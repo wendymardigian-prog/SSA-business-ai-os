@@ -352,8 +352,9 @@ export class EmbedRuntime {
   /**
    * La atribución EFECTIVA de la página que embebe (la de su URL si trae un toque nuevo; si
    * no, la última guardada en su `localStorage`), con las cookies de los anuncios y la
-   * primera visita. Si no entra en el tope, se sueltan primero la primera visita y después
-   * las páginas.
+   * primera visita. Si no entra en el tope, se suelta primero la URL de entrada completa
+   * (la página madre igual la manda cortada en `referrer`), después la primera visita y
+   * por último las páginas: las UTM y los ids de clic no se pierden.
    */
   private attrParam(): string | null {
     let effective: Record<string, unknown>;
@@ -370,7 +371,12 @@ export class EmbedRuntime {
       for (const key of drop) delete copy[key];
       return Object.keys(copy).length > 0 ? encodeAttr(copy) : null;
     };
-    return attempt([]) ?? attempt(["first_visit"]) ?? attempt(["first_visit", "referrer_url", "landing_page", "page_url"]);
+    return (
+      attempt([]) ??
+      attempt(["entry_url"]) ??
+      attempt(["entry_url", "first_visit"]) ??
+      attempt(["entry_url", "first_visit", "referrer_url", "landing_page", "page_url"])
+    );
   }
 
   private createIframe(calLink: string, config: EmbedConfig, container: EmbedElement, fallback: FallbackPayload): EmbedElement {

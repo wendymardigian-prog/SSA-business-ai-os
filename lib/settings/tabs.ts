@@ -74,14 +74,27 @@ export function activeSettingsTab(pathname: string): string {
 /**
  * Las pestañas que ve quien pregunta (S1): las que no piden permiso, y las que piden alguno
  * que tiene. Función pura: la pantalla solo la compone.
+ *
+ * Recursos e Integraciones salieron del menú lateral (plano formularios-ui, D4) y se llega a ellas desde
+ * Ajustes. Recursos no pide permiso: la ve cualquier miembro (la usa todos los días desde la bandeja), así
+ * que a un Member de sistema solo le queda esa; Owner y Admin ven todas.
  */
 export function visibleSettingsTabs(can: (key: string) => boolean): SettingsTab[] {
   return SETTINGS_TABS.filter((tab) => !tab.permissions || tab.permissions.some((key) => can(key)));
 }
 
 /**
- * Las claves que hacen aparecer "Ajustes" en el menú: la unión de las de sus pestañas con
- * permiso, más la Actividad (que cuelga de General). Recursos no cuenta: tiene su propio ítem.
+ * A dónde lleva "Ajustes" en el menú: a la primera pestaña que esta persona ve. Un Member no abre General
+ * (pide una clave de Ajustes): entra por Recursos.
+ */
+export function settingsEntryHref(can: (key: string) => boolean): string {
+  return visibleSettingsTabs(can)[0]?.href ?? SETTINGS_TABS[0].href;
+}
+
+/**
+ * Las claves que dan una pestaña de Ajustes con permiso, más la Actividad (que cuelga de General). La usa
+ * `catalog-usage.test.ts` para saber que esas claves tienen un uso; el menú ya no las lee (Ajustes se ve con
+ * `requires: "settings"`, que calcula el layout con `visibleSettingsTabs`).
  */
 export const SETTINGS_NAV_PERMISSIONS: string[] = [
   ...new Set([...SETTINGS_TABS.flatMap((tab) => tab.permissions ?? []), "audit.view"]),

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CheckCircle2 } from "lucide-react";
-import { brandLogoUrl, brandName } from "@/lib/brand";
+import { brandName } from "@/lib/brand";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/supabase/auth-user";
 import { PublicForm } from "@/components/forms/public/public-form";
@@ -85,16 +85,12 @@ export default async function PublicFormPage({
     );
   }
 
-  const logo = form.design?.showLogo ? brandLogoUrl() : null;
-
+  // Plano formularios-ui, D9: el formulario publico ya no muestra el logo de la marca, tenga o no el dato guardado
+  // (el valor se conserva en el diseño, pero nadie lo usa).
   return (
     <main className={embed ? "px-1 py-1" : "px-4 py-8"}>
       {/* Fuera de un iframe, la página anota de dónde vino la persona (cookie `ssa_attr`). */}
       {!embed && !preview && <AttributionTracker />}
-      {logo && !embed && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={logo} alt={brandName()} className="mx-auto mb-6 h-10 w-auto" />
-      )}
       <PublicForm form={form} params={query} mode={embed ? "embed" : "public_page"} preview={preview} linkToken={query.c} />
     </main>
   );

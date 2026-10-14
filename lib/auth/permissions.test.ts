@@ -139,11 +139,12 @@ describe("el Member es exactamente el de hoy (F68)", () => {
   });
 
   it("coincide con lo que el menu le muestra hoy", () => {
-    // Lo que el Member NO ve en el menu es justo lo que no tiene permiso de ver.
-    const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true } }).map((i) => i.name);
+    // Lo que el Member NO ve en el menu es justo lo que no tiene permiso de ver (Social). Plano formularios-ui (D3):
+    // Conocimiento ya no es un item; se abre con un boton de la barra de Agentes IA que pide `knowledge.view`.
+    const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true, settings: true } }).map((i) => i.name);
     const ocultos = NAV_ITEMS.map((i) => i.name).filter((n) => !visibles.includes(n)).sort();
-    expect(ocultos).toEqual(["Ajustes", "Conocimiento", "Integraciones", "Social"]);
-
+    expect(ocultos).toEqual(["Social"]);
+    expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
     expect(can(member, "knowledge.view")).toBe(false);
     // Social no es por cargo (F78): se ve con `social.view`, que el Member de sistema no tiene.
     const social = NAV_ITEMS.find((i) => i.name === "Social");

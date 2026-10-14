@@ -420,6 +420,11 @@ export interface PageActionState {
 
 /** Lo que va a la derecha de la barra, ya filtrado por rol. */
 const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
+  // Conocimiento sale del menu (plano formularios-ui, D3): se abre con este boton. Lo ve quien tiene
+  // `knowledge.view` (Owner y Admin; el Member de sistema no, igual que antes en el menu).
+  "/dashboard/agents": () => [
+    { id: "knowledge", label: "Conocimiento", kind: "secondary", href: "/dashboard/knowledge", permission: "knowledge.view" },
+  ],
   "/dashboard/settings/integrations": () => [
     { id: "attention", label: "Requiere atencion", kind: "toggle", permissions: ["integrations.view", "integrations.manage", "channels.manage"] },
   ],

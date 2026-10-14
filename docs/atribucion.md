@@ -211,3 +211,14 @@ utm_source=facebook&utm_medium=paid_social&utm_campaign={{campaign.id}}&utm_cont
 
 `{{campaign.id}}`, `{{ad.id}}` y `{{adset.id}}` los reemplaza Meta por los ids; con ids el vinculo es exacto. Con nombres (`{{campaign.name}}`,
 `{{ad.name}}`) tambien funciona, pero un nombre repetido queda ambiguo y va a «Sin vincular».
+
+## La URL de entrada completa (`entry_url`, octubre 2026)
+
+Hasta acá se guardaba solo lo que el vocabulario cerrado reconoce (UTM, ids de clic, ids del anuncio). Lo que el anuncio mandaba y no estaba en la lista (`ad_name`, `campaign_name`, `site_source_name`, un `?ref=podcast` propio) se perdía. Ahora **la dirección completa por la que entró la persona se guarda entera**.
+
+- **Qué se guarda** (`lib/attribution/entry-url.ts`, `entryUrlFrom`): solo `http`/`https`, con todos los parámetros en su orden y su codificación originales. **Se sacan** los que identifican a una persona (`lib/attribution/sensitive-params.ts`: tokens, claves, contraseñas), los internos del sistema (`embed`, `attr`, `preview`, `c`, `referrer`), el `#`, las credenciales y los caracteres de control. Tope de 2000 caracteres (nunca corta un `%` a la mitad).
+- **De dónde sale:** de la página de llegada. Si la visita de ahora trae UTM o ids de clic, gana la de esta visita; si no, la de la última visita guardada; si no hay ninguna, la de la página. En un embed, la página que lo contiene manda la URL **entera** dentro de `attr` (su tope subió de 2048 a 4096 bytes) y gana sobre el `referrer`, que llega cortado a 500.
+- **Dónde queda:** `form_submissions.attribution.entry_url` (en cada respuesta, ya sanitizada de nuevo en el servidor), `contact_touches.entry_url` (migración 00215; `record_contact_touch` la escribe sin cambiar su firma ni su comportamiento) y, para la Agenda, `bookings.utm.entry_url` (de ahí pasa al toque por `raw.utm`, sin tocar `create_booking`).
+- **Dónde se ve:** el detalle de una respuesta ("De dónde vino") y las visitas del contacto, con un bloque monoespaciado que parte líneas y un botón Copiar. El CSV de respuestas **no** suma una columna (queda anotado en PENDIENTE).
+- **Lo que NO cambia:** `landing_page` y `page_url` siguen filtradas (solo claves de atribución / sin query); la lista de claves es la de siempre (`lib/attribution/keys.ts`) y `contacts.attribution` sigue siendo una copia derivada que no incluye la URL completa.
+- **Nunca se loguea** una URL de entrada: puede traer datos de la campaña que no tienen por qué quedar en los logs.

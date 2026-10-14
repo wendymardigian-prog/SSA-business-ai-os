@@ -2,7 +2,7 @@ import { ALL_PERMISSION_KEYS, SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permiss
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { NAV_ITEMS, NAV_GROUPS, navSections, navItemTooltip, visibleNavItems } from "./items";
+import { NAV_ITEMS, NAV_GROUPS, navSections, navItemTooltip, navItemHref, visibleNavItems } from "./items";
 
 describe("orden del menú (F13)", () => {
   it("Dashboards es el primer ítem, con ícono de grilla", () => {
@@ -45,26 +45,27 @@ describe("lo que salio del menú", () => {
 });
 
 describe("lo que entro al menú (bloque N, N1)", () => {
-  it("Integraciones esta: pide ver o administrar integraciones o canales, icono Blocks, en el bloque del fondo", () => {
-    const integraciones = NAV_ITEMS.find((i) => i.name === "Integraciones");
-
-    expect(integraciones).toBeDefined();
-    expect(integraciones?.href).toBe("/dashboard/settings/integrations");
-    expect(integraciones?.icon).toBe("Blocks");
-    expect(integraciones?.permissions).toEqual(["integrations.view", "integrations.manage", "channels.manage"]);
-    expect(integraciones?.group).toBe("sistema");
+  // Plano formularios-ui (D4): Integraciones sale del menu (es una pestaña de Ajustes). Ajustes sigue y
+  // pasa a Herramientas; se ve para quien tenga alguna pestaña de Ajustes (bandera `settings`).
+  it("Integraciones ya no es un item del menu (plano formularios-ui, D4)", () => {
+    expect(NAV_ITEMS.some((i) => i.name === "Integraciones")).toBe(false);
+    expect(NAV_ITEMS.some((i) => i.href === "/dashboard/settings/integrations")).toBe(false);
   });
 
-  it("Ajustes (antes Settings) tambien esta en el bloque del fondo", () => {
+  it("Ajustes (antes Settings) esta en Herramientas, se ve con la bandera `settings` y deja marcado Channels", () => {
     const ajustes = NAV_ITEMS.find((i) => i.name === "Ajustes");
 
     expect(ajustes).toBeDefined();
     expect(ajustes?.href).toBe("/dashboard/settings");
-    expect(ajustes?.permissions).toBeDefined();
-    // Recursos tiene su propio item: tener la banca no hace aparecer Ajustes.
-    expect(ajustes?.permissions).not.toContain("templates.manage");
-    expect(ajustes?.group).toBe("sistema");
+    expect(ajustes?.requires).toBe("settings");
+    expect(ajustes?.group).toBe("herramientas");
+    expect(ajustes?.alsoActiveOn).toEqual(["/dashboard/channels"]);
     expect(NAV_ITEMS.some((i) => i.name === "Settings")).toBe(false);
+  });
+
+  it("Conocimiento y Recursos tampoco son items (plano formularios-ui, D3 y D4)", () => {
+    expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
+    expect(NAV_ITEMS.some((i) => i.name === "Recursos")).toBe(false);
   });
 });
 
@@ -118,10 +119,13 @@ describe("Agenda en el menu (F8)", () => {
     // Los nombres cambiaron (bloque N) y el orden ahora sigue a los grupos.
     // Con SUS permisos reales y no con una lista vacia: ahora cada item pide una clave.
     const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys }).map((i) => i.name);
-    // Recursos (banca v2, F3) es visible para todos y no pide ninguna.
-    expect(member).toEqual(["Dashboards", "Bandeja", "Tareas", "Contenido", "Formularios", "Contactos", "Agenda", "Llamadas", "Ventas", "Automatizaciones", "Agentes IA", "Recursos"]);
-    // Sin ningun permiso, solo queda lo que no pide ninguno.
-    expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual(["Recursos"]);
+    // Plano formularios-ui (D4): Recursos ya no es un item (se llega por Ajustes) y Ajustes pide su bandera,
+    // que aca no se pasa: un viewer sin flags no lo ve.
+    expect(member).toEqual(["Dashboards", "Bandeja", "Tareas", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Automatizaciones", "Formularios", "Agentes IA"]);
+    // Sin ningun permiso (y sin banderas), no queda nada.
+    expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
+    // Con la bandera de Ajustes, el Member suma Ajustes (llega a Recursos).
+    expect(visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { settings: true } }).map((i) => i.name)).toContain("Ajustes");
   });
 });
 
@@ -163,11 +167,11 @@ describe("Llamadas en el menu", () => {
 describe("Formularios en el menu", () => {
   const formularios = NAV_ITEMS.find((i) => i.name === "Formularios");
 
-  it("va en Adquisicion, con el permiso forms.view y sin ser solo de admins", () => {
+  it("va en Herramientas (plano formularios-ui, D2), con el permiso forms.view y sin ser solo de admins", () => {
     expect(formularios).toMatchObject({
       href: "/dashboard/formularios",
       icon: "ClipboardList",
-      group: "adquisicion",
+      group: "herramientas",
       permissions: ["forms.view"],
     });
   });
@@ -222,16 +226,16 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(vacios.map((g) => g.id), "estos grupos no tienen ni un item").toEqual([]);
   });
 
-  it("el orden de los grupos es: inicio, adquisicion, ventas, automatizacion, sistema", () => {
-    expect(NAV_GROUPS.map((g) => g.id)).toEqual(["inicio", "adquisicion", "ventas", "automatizacion", "sistema"]);
+  it("el orden de los grupos es: inicio, adquisicion, ventas, herramientas (plano formularios-ui, D1)", () => {
+    expect(NAV_GROUPS.map((g) => g.id)).toEqual(["inicio", "adquisicion", "ventas", "herramientas"]);
   });
 
-  it("inicio y sistema no tienen titulo; los del medio si", () => {
+  it("inicio no tiene titulo; los demas si, y Herramientas es la unica colapsable (plano formularios-ui, D1)", () => {
     expect(NAV_GROUPS.find((g) => g.id === "inicio")?.title).toBeNull();
-    expect(NAV_GROUPS.find((g) => g.id === "sistema")?.title).toBeNull();
     expect(NAV_GROUPS.find((g) => g.id === "adquisicion")?.title).toBe("Adquisición");
     expect(NAV_GROUPS.find((g) => g.id === "ventas")?.title).toBe("Ventas");
-    expect(NAV_GROUPS.find((g) => g.id === "automatizacion")?.title).toBe("Automatización");
+    expect(NAV_GROUPS.find((g) => g.id === "herramientas")?.title).toBe("Herramientas");
+    expect(NAV_GROUPS.filter((g) => g.collapsible).map((g) => g.id)).toEqual(["herramientas"]);
   });
 
   it("Dashboards, Bandeja, Tareas y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
@@ -240,9 +244,13 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(sueltos).toEqual(["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"]);
   });
 
-  it("Integraciones y Ajustes son el bloque del fondo", () => {
-    const fondo = NAV_ITEMS.filter((i) => i.group === "sistema").map((i) => i.name);
-    expect(fondo.sort()).toEqual(["Ajustes", "Integraciones"]);
+  it("el orden de los grupos e items es exactamente el del plano formularios-ui (F1)", () => {
+    expect(NAV_GROUPS.map((g) => [g.id, NAV_ITEMS.filter((i) => i.group === g.id).map((i) => i.name)])).toEqual([
+      ["inicio", ["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"]],
+      ["adquisicion", ["Contenido", "Social"]],
+      ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas"]],
+      ["herramientas", ["Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]],
+    ]);
   });
 
   it("todo href de NAV_ITEMS resuelve a una ruta que existe (app/(dashboard)/.../page.tsx)", () => {
@@ -288,7 +296,7 @@ describe("grupos del menu (bloque N, N1)", () => {
 describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
   it("devuelve los grupos en orden, con sus items", () => {
     const secciones = navSections(NAV_ITEMS);
-    expect(secciones.map((s) => s.group)).toEqual(["inicio", "adquisicion", "ventas", "automatizacion", "sistema"]);
+    expect(secciones.map((s) => s.group)).toEqual(["inicio", "adquisicion", "ventas", "herramientas"]);
   });
 
   it("un grupo sin ningun item visible no aparece, y con el su titulo", () => {
@@ -300,8 +308,18 @@ describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
     const ventas = secciones.find((s) => s.group === "ventas");
     expect(ventas?.items.map((i) => i.name)).toEqual(["Contactos"]);
 
-    // "sistema" (Integraciones y Ajustes) se queda sin nada y por eso no aparece en absoluto.
-    expect(secciones.some((s) => s.group === "sistema")).toBe(false);
+    // Plano formularios-ui (F1): "Herramientas" (Automatizaciones, Formularios, Agentes IA y Ajustes) pide
+    // permisos y la bandeja de Ajustes; sin nada de eso se queda vacia y no aparece, con su titulo.
+    expect(secciones.some((s) => s.group === "herramientas")).toBe(false);
+  });
+
+  it("Herramientas es la unica seccion con el titulo colapsable", () => {
+    expect(navSections(NAV_ITEMS).map((s) => [s.group, s.collapsible])).toEqual([
+      ["inicio", false],
+      ["adquisicion", false],
+      ["ventas", false],
+      ["herramientas", true],
+    ]);
   });
 
   it("con nada filtrado no sobra ningun grupo vacio", () => {
@@ -313,22 +331,20 @@ describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
 describe("navSections: separatorBefore, para el colapsado (bloque N, N3)", () => {
   it("la primera seccion visible nunca lleva separador, y las demas si", () => {
     const secciones = navSections(NAV_ITEMS);
-    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true, true]);
+    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true]);
   });
 
-  it("el bloque del fondo (sistema) tambien lleva separador: es el que ya tiene su linea", () => {
+  it("Herramientas tambien lleva separador: con el menu angosto es la linea que la separa de Ventas (plano formularios-ui, F2)", () => {
     const secciones = navSections(NAV_ITEMS);
-    expect(secciones.find((s) => s.group === "sistema")?.separatorBefore).toBe(true);
+    expect(secciones.find((s) => s.group === "herramientas")?.separatorBefore).toBe(true);
   });
 
   it("si un grupo del medio queda vacio, el separador sigue siendo solo uno por cada hueco entre los que quedan", () => {
-    // Como Member: "sistema" desaparece entero, asi que quedan 4 secciones
-    // visibles (inicio, adquisicion, ventas, automatizacion) con 3
-    // separadores, no 4.
-    const comoMember = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { eod: true } });
-    const secciones = navSections(comoMember);
-    expect(secciones.map((s) => s.group)).toEqual(["inicio", "adquisicion", "ventas", "automatizacion"]);
-    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true]);
+    // Sin ningun item de "adquisicion" (sin Contenido ni Social), quedan 3 secciones con 2 separadores, no 3.
+    const sinAdquisicion = NAV_ITEMS.filter((i) => i.group !== "adquisicion");
+    const secciones = navSections(sinAdquisicion);
+    expect(secciones.map((s) => s.group)).toEqual(["inicio", "ventas", "herramientas"]);
+    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true]);
   });
 
   it("con una sola seccion visible, no hay ningun separador", () => {
@@ -345,11 +361,11 @@ describe("navItemTooltip (bloque N, N3)", () => {
     expect(navItemTooltip(contactos)).toBe("Contactos · Ventas");
   });
 
-  it("un item suelto (inicio o sistema) muestra solo el nombre", () => {
+  it("un item suelto (inicio) muestra solo el nombre; uno de Herramientas, nombre y grupo", () => {
     const dashboards = NAV_ITEMS.find((i) => i.name === "Dashboards")!;
     const ajustes = NAV_ITEMS.find((i) => i.name === "Ajustes")!;
     expect(navItemTooltip(dashboards)).toBe("Dashboards");
-    expect(navItemTooltip(ajustes)).toBe("Ajustes");
+    expect(navItemTooltip(ajustes)).toBe("Ajustes · Herramientas");
   });
 });
 
@@ -367,5 +383,31 @@ describe("Mi reporte del día (EOD, E10)", () => {
     expect(names({ eod: false })).not.toContain("Mi reporte del día");
     expect(names(undefined, true)).not.toContain("Mi reporte del día");
     expect(names({ eod: true }, true)).toContain("Mi reporte del día");
+  });
+});
+
+describe("Ajustes en el menu (plano formularios-ui, D4)", () => {
+  const names = (viewer: { admin: boolean; settings?: boolean }) =>
+    visibleNavItems(NAV_ITEMS, { permissionKeys: viewer.admin ? ALL_PERMISSION_KEYS : [], flags: { settings: viewer.settings ?? false } }).map((i) => i.name);
+
+  it("se ve con la bandera `settings`, y sin ella no (tambien para un admin)", () => {
+    expect(names({ admin: false, settings: true })).toContain("Ajustes");
+    expect(names({ admin: true, settings: true })).toContain("Ajustes");
+    expect(names({ admin: true, settings: false })).not.toContain("Ajustes");
+  });
+
+  it("lleva a General para un admin y a Recursos para quien solo ve esa pestaña", () => {
+    const ajustes = NAV_ITEMS.find((i) => i.name === "Ajustes")!;
+    expect(navItemHref(ajustes, { permissionKeys: ALL_PERMISSION_KEYS })).toBe("/dashboard/settings");
+    expect(navItemHref(ajustes, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys })).toBe("/dashboard/settings/recursos");
+    // Un rol personalizado con solo `products.manage` entra por Recursos: es la primera pestaña que ve.
+    expect(navItemHref(ajustes, { permissionKeys: ["products.manage"] })).toBe("/dashboard/settings/recursos");
+    // Con una clave de General entra por General.
+    expect(navItemHref(ajustes, { permissionKeys: ["settings.general"] })).toBe("/dashboard/settings");
+  });
+
+  it("el resto de los items lleva a su propio href", () => {
+    const formularios = NAV_ITEMS.find((i) => i.name === "Formularios")!;
+    expect(navItemHref(formularios, { permissionKeys: [] })).toBe("/dashboard/formularios");
   });
 });

@@ -30,7 +30,7 @@ Cada fila tiene su test y el comentario «cambio aprobado».
 | M3 | Webhooks entrantes | podía | **no** (`webhooks.manage`) |
 | M6 | Broadcasts | podía | **no** (`broadcasts.manage`) |
 | M7 | Que lo que publica se dispare de verdad | el disparador fallaba en silencio | **sí** (`triggers` pide `flows.edit`) |
-| M8 | Entrar a Integraciones por la URL | lo rebotaba | ve solo «Mis conexiones» (el menú no cambia) |
+| M8 | Entrar a Integraciones por la URL | lo rebotaba | ve solo «Mis conexiones». El menú cambió por el rediseño de Formularios: Integraciones y Recursos son pestañas de Ajustes, y «Ajustes» lo ve cualquiera (entra a Recursos) |
 | M4, M5 | Reasignar los leads que ve; publicar flujos | podía | sin cambios |
 
 ## El catálogo: 74 claves

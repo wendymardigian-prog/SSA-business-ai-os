@@ -337,6 +337,14 @@
 @custom-variant collapsed (html.sidebar-collapsed &:where([data-sidebar="desktop"], [data-sidebar="desktop"] *));
 
 /*
+ * La seccion "Herramientas" del menu abierta (plano formularios-ui, F2). La clase
+ * `nav-tools-open` la pone el script del <head> (app/layout.tsx) leyendo localStorage,
+ * y la cambia el titulo de la seccion (components/sidebar.tsx). Sirve igual en el menu
+ * de escritorio y en el panel del telefono.
+ */
+@custom-variant tools-open (html.nav-tools-open &);
+
+/*
  * `dark:` sigue a la clase `.dark`, que es la que pone el conmutador del perfil.
  *
  * Sin esto, en Tailwind 4 las utilidades `dark:*` miran `prefers-color-scheme`

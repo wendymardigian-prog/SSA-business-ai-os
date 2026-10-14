@@ -259,29 +259,57 @@ export interface ValidateOptions {
   formType?: FormType;
 }
 
-/** Valida la forma y las reglas cruzadas. No lanza. */
-export function validateDefinition(input: unknown, options: ValidateOptions = {}): DefinitionResult {
+/**
+ * Valida y, ademas de los mensajes, dice a que pregunta pertenece cada uno (`owners[i]` es la clave de la pregunta
+ * del error `i`, o `null` si es general). El editor lo usa para marcar en rojo la pregunta que tiene el problema
+ * (plano formularios-ui, F9). Los mensajes son EXACTAMENTE los de `validateDefinition`.
+ */
+export interface DetailedResult {
+  ok: boolean;
+  definition?: FormDefinition;
+  errors: string[];
+  owners: Array<string | null>;
+}
+
+export function validateDefinitionDetailed(input: unknown, options: ValidateOptions = {}): DetailedResult {
   const parsed = definitionSchema.safeParse(input);
   if (!parsed.success) {
-    const errors = parsed.error.issues.map((issue) => {
+    const rawFields = (input as { fields?: unknown } | null | undefined)?.fields;
+    const errors: string[] = [];
+    const owners: Array<string | null> = [];
+    for (const issue of parsed.error.issues) {
       const where = issue.path.length ? `${issue.path.join(".")}: ` : "";
-      return `${where}${issue.message}`;
-    });
-    return { ok: false, errors };
+      errors.push(`${where}${issue.message}`);
+      // `fields.3.label`: la pregunta numero 3 (los campos de un canal de fin de dia no se marcan en una tarjeta).
+      const index = issue.path[0] === "fields" && typeof issue.path[1] === "number" ? issue.path[1] : null;
+      const key = index !== null && Array.isArray(rawFields) ? (rawFields[index] as { key?: unknown } | undefined)?.key : undefined;
+      owners.push(typeof key === "string" ? key : null);
+    }
+    return { ok: false, errors, owners };
   }
 
   const definition = parsed.data as FormDefinition;
   const errors: string[] = [];
+  const owners: Array<string | null> = [];
+  /** Lo que se agrego desde la ultima vez es de esa pregunta (o general). */
+  const claim = (owner: string | null) => {
+    while (owners.length < errors.length) owners.push(owner);
+  };
   const { fields } = definition;
   const isEod = options.formType === "eod";
 
   if (fields.length > MAX_FIELDS) errors.push(`Como máximo ${MAX_FIELDS} campos`);
+  claim(null);
 
   // Claves únicas
   checkUniqueKeys(fields, errors);
+  claim(null);
 
   if (isEod) {
-    for (const field of fields) checkEodField(field, errors);
+    for (const field of fields) {
+      checkEodField(field, errors);
+      claim(field.key);
+    }
     const channelKeys = new Set<string>();
     for (const channel of definition.channels ?? []) {
       const where = `Canal "${channel.label}": `;
@@ -297,15 +325,18 @@ export function validateDefinition(input: unknown, options: ValidateOptions = {}
         checkEodField(field, errors);
         for (let i = before; i < errors.length; i += 1) errors[i] = `${where}${errors[i]}`;
       }
+      claim(null);
     }
   } else {
     if (definition.channels !== undefined || definition.channelSelector !== undefined) {
       errors.push("Solo un reporte de fin de día tiene canales");
+      claim(null);
     }
     for (const field of fields) {
       if (field.step !== undefined || field.metricKey !== undefined) {
         errors.push(`${name(field)}: el paso y la métrica son solo de un reporte de fin de día`);
       }
+      claim(field.key);
     }
   }
 
@@ -319,6 +350,7 @@ export function validateDefinition(input: unknown, options: ValidateOptions = {}
       }
       paramOwner.set(param.toLowerCase(), field.key);
     }
+    claim(field.key);
   }
 
   fields.forEach((field, index) => {
@@ -332,10 +364,18 @@ export function validateDefinition(input: unknown, options: ValidateOptions = {}
         break;
       }
     }
+    claim(field.key);
   });
 
-  if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, definition };
+  if (errors.length > 0) return { ok: false, errors, owners };
+  return { ok: true, definition, errors, owners };
+}
+
+/** Valida la forma y las reglas cruzadas. No lanza. */
+export function validateDefinition(input: unknown, options: ValidateOptions = {}): DefinitionResult {
+  const result = validateDefinitionDetailed(input, options);
+  if (result.ok) return { ok: true, definition: result.definition as FormDefinition };
+  return { ok: false, errors: result.errors };
 }
 
 // ── Borrador: se guarda aunque esté incompleto ───────────────────────────────

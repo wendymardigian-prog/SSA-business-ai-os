@@ -8,9 +8,11 @@ import { Tabs } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { changeFormSlug } from "@/lib/actions/forms/forms";
 import { formPageSnippet, generateFormEmbedCode, trackingSnippet } from "@/lib/embed/code";
-import { PrefillCard } from "./prefill-card";
+import { AttributionCard } from "./attribution-card";
+import { PrefillLinkBuilder } from "./prefill-card";
+import { StatusCard } from "./status-card";
 import { ContactLinkCard } from "./contact-link-card";
-import { isPublicFormType, type FormDefinition } from "@/lib/forms/fields";
+import { isPublicFormType, type FormDefinition, type FormStatus } from "@/lib/forms/fields";
 import type { EditorForm, EditorVersion } from "./types";
 
 /**
@@ -18,7 +20,7 @@ import type { EditorForm, EditorVersion } from "./types";
  * el historial de versiones.
  */
 
-type CodeTab = "inline" | "floating";
+type CodeTab = "inline" | "floating" | "site";
 
 function useCopy() {
   const [copied, setCopied] = useState<string | null>(null);
@@ -52,6 +54,7 @@ export function PublishTab({
   onSlugChanged,
   timeZone,
   definition,
+  onStatusChanged,
 }: {
   form: EditorForm;
   versions: EditorVersion[];
@@ -62,6 +65,7 @@ export function PublishTab({
   timeZone: string;
   /** Los campos del borrador que se está editando (los parámetros de la URL salen de acá). */
   definition: FormDefinition;
+  onStatusChanged: (status: FormStatus) => void;
 }) {
   const copy = useCopy();
   const [slug, setSlug] = useState(form.slug);
@@ -72,7 +76,7 @@ export function PublishTab({
 
   const base = appUrl || (typeof window !== "undefined" ? window.location.origin : "");
   const publicUrl = `${base}/f/${form.slug}`;
-  const code = useMemo(() => generateFormEmbedCode(codeTab, { slug: form.slug }, base || "https://tu-dominio.com"), [codeTab, form.slug, base]);
+  const code = useMemo(() => generateFormEmbedCode(codeTab === "site" ? "inline" : codeTab, { slug: form.slug }, base || "https://tu-dominio.com"), [codeTab, form.slug, base]);
   const siteSnippet = formPageSnippet(form.slug);
   const tracking = trackingSnippet(base || "https://tu-dominio.com");
 
@@ -98,8 +102,37 @@ export function PublishTab({
   // "Mi reporte del día" con la sesión iniciada. De Publicar le quedan las versiones.
   const publicForm = isPublicFormType(form.type);
 
+  const signedLink = canManage && form.contactConfig.mode !== "none" && publicForm;
+  const builder = <PrefillLinkBuilder definition={definition} baseUrl={publicUrl} slug={form.slug} />;
+
+  const versionsCard = (
+    <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="versiones">
+      <h2 id="versiones" className="text-sm font-semibold">
+        Versiones publicadas
+      </h2>
+      {versions.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">Todavía no publicaste ninguna versión.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-border text-sm">
+          {versions.map((v) => (
+            <li key={v.number} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <span>
+                <span className="font-medium">Versión {v.number}</span>
+                {v.shaPrefix && <span className="ml-2 font-mono text-xs text-muted-foreground">huella {v.shaPrefix}…</span>}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(v.publishedAt).toLocaleString("es-AR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone })}
+                {v.publishedByName ? ` · ${v.publishedByName}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1100px] space-y-4">
       {!publicForm && (
         <Notice tone="info">
           {published
@@ -107,115 +140,115 @@ export function PublishTab({
             : "Cuando lo publiques, las personas a las que les toca lo van a ver en “Mi reporte del día”, con su sesión iniciada. No tiene link público."}
         </Notice>
       )}
-      {publicForm && (
-      <>
-      {!published && <Notice tone="info">Este formulario todavía no está publicado: el link y el código funcionan recién cuando lo publiques.</Notice>}
+      {publicForm && !published && <Notice tone="info">Este formulario todavía no está publicado: el link y el código funcionan recién cuando lo publiques.</Notice>}
 
-      <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="link-publico">
-        <h2 id="link-publico" className="text-sm font-semibold">
-          Link público
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-lg bg-muted px-3 py-2 text-xs">{publicUrl}</code>
-          <CopyButton id="url" text={publicUrl} label="Copiar" state={copy} />
-          <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Abrir
-          </a>
+      <div className={publicForm ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]" : "mx-auto grid max-w-[640px] gap-4"}>
+        {/* Izquierda: como se comparte y se mide. En el celular va primero. */}
+        <div className={publicForm ? "min-w-0 space-y-4" : "hidden"}>
+          {publicForm && (
+            <>
+              <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="link-publico">
+                <h2 id="link-publico" className="text-sm font-semibold">
+                  Link público
+                </h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-lg bg-muted px-3 py-2 text-xs">{publicUrl}</code>
+                  <CopyButton id="url" text={publicUrl} label="Copiar" state={copy} />
+                  <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Abrir
+                  </a>
+                </div>
+                {canManage && (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-[14rem] flex-1">
+                      <Field label="Parte final del link" hint="De 3 a 60 caracteres: minúsculas, números y guiones.">
+                        {(id) => <input id={id} className={inputClass} value={slug} maxLength={60} onChange={(e) => setSlug(e.target.value.toLowerCase())} />}
+                      </Field>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={saving || slug === form.slug}
+                      onClick={requestSlugChange}
+                      className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
+                    >
+                      {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Cambiar link
+                    </button>
+                  </div>
+                )}
+                {message && (
+                  <div role="status">
+                    <Notice tone={message.tone}>{message.text}</Notice>
+                  </div>
+                )}
+              </section>
+
+              <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="embed">
+                <h2 id="embed" className="text-sm font-semibold">
+                  Insertar en tu web
+                </h2>
+                <Tabs
+                  label="Tipo de embed"
+                  value={codeTab}
+                  onChange={setCodeTab}
+                  tabs={[
+                    { value: "inline", label: "En la página" },
+                    { value: "floating", label: "Botón flotante" },
+                    { value: "site", label: "Página del sitio" },
+                  ]}
+                >
+                  {codeTab === "site" ? (
+                    <div className="space-y-2 pt-3">
+                      <p className="text-xs text-muted-foreground">
+                        Si armás páginas dentro de este mismo proyecto (se piden a Claude Code), el formulario va con este componente. Muestra siempre la versión publicada, sin volver a desplegar. Ver <code>docs/sitio.md</code>.
+                      </p>
+                      <code className="block rounded-lg bg-muted px-3 py-2 text-xs">{siteSnippet}</code>
+                      <CopyButton id="site" text={siteSnippet} label="Copiar" state={copy} />
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pt-3">
+                      <textarea readOnly aria-label="Código HTML para pegar" rows={9} value={code.html} className="w-full rounded-lg border border-input bg-muted px-3 py-2 font-mono text-[11px]" />
+                      <CopyButton id="embed-html" text={code.html} label="Copiar código" state={copy} />
+                      <p className="text-xs text-muted-foreground">Si la web ya carga el embed de la Agenda, no hace falta repetir la primera parte: es el mismo script.</p>
+                    </div>
+                  )}
+                </Tabs>
+              </section>
+
+              <AttributionCard />
+
+              <section className="space-y-2 rounded-xl border border-border bg-card p-5" aria-labelledby="seguimiento">
+                <h2 id="seguimiento" className="text-sm font-semibold">
+                  Seguimiento en todo el sitio
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Pegá esta línea UNA vez en el &lt;head&gt; de tu web (con o sin formulario). Guarda de dónde vino cada persona (UTM, ids de clic) para que un formulario que llene en otra página, o en otra visita, no pierda esos datos. No muestra nada ni hace pedidos.
+                </p>
+                <textarea readOnly aria-label="Código de seguimiento para el head de tu web" rows={2} value={tracking} className="w-full rounded-lg border border-input bg-muted px-3 py-2 font-mono text-[11px]" />
+                <CopyButton id="tracking" text={tracking} label="Copiar seguimiento" state={copy} />
+              </section>
+
+              {signedLink ? (
+                <ContactLinkCard formId={form.id} published={published} type={form.type as "custom" | "survey" | "contract"}>
+                  {builder}
+                </ContactLinkCard>
+              ) : (
+                <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="link-contacto">
+                  <h2 id="link-contacto" className="mb-3 text-sm font-semibold">
+                    Link para un contacto
+                  </h2>
+                  {builder}
+                </section>
+              )}
+            </>
+          )}
         </div>
-        {canManage && (
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-[14rem] flex-1">
-              <Field label="Parte final del link" hint="De 3 a 60 caracteres: minúsculas, números y guiones.">
-                {(id) => <input id={id} className={inputClass} value={slug} maxLength={60} onChange={(e) => setSlug(e.target.value.toLowerCase())} />}
-              </Field>
-            </div>
-            <button
-              type="button"
-              disabled={saving || slug === form.slug}
-              onClick={requestSlugChange}
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50"
-            >
-              {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Cambiar link
-            </button>
-          </div>
-        )}
-        {message && (
-          <div role="status">
-            <Notice tone={message.tone}>{message.text}</Notice>
-          </div>
-        )}
-      </section>
 
-      {canManage && form.contactConfig.mode !== "none" && isPublicFormType(form.type) && <ContactLinkCard formId={form.id} published={published} type={form.type} />}
-
-      <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="embed">
-        <h2 id="embed" className="text-sm font-semibold">
-          Pegarlo en tu web
-        </h2>
-        <Tabs
-          label="Tipo de embed"
-          value={codeTab}
-          onChange={setCodeTab}
-          tabs={[
-            { value: "inline", label: "En la página" },
-            { value: "floating", label: "Botón flotante" },
-          ]}
-        >
-          <div className="space-y-2 pt-3">
-            <textarea readOnly aria-label="Código HTML para pegar" rows={9} value={code.html} className="w-full rounded-lg border border-input bg-muted px-3 py-2 font-mono text-[11px]" />
-            <CopyButton id="embed-html" text={code.html} label="Copiar código" state={copy} />
-          </div>
-        </Tabs>
-        <p className="text-xs text-muted-foreground">Si la web ya carga el embed de la Agenda, no hace falta repetir la primera parte: es el mismo script.</p>
-
-        <div className="space-y-2 border-t border-border pt-3">
-          <h3 className="text-xs font-semibold">Seguimiento en todo el sitio</h3>
-          <p className="text-xs text-muted-foreground">
-            Pegá esta línea UNA vez en el &lt;head&gt; de tu web (con o sin formulario). Guarda de dónde vino cada persona (UTM, ids de clic) para que un formulario que llene en otra página, o en otra visita, no pierda esos datos. No muestra nada ni hace pedidos.
-          </p>
-          <textarea readOnly aria-label="Código de seguimiento para el head de tu web" rows={2} value={tracking} className="w-full rounded-lg border border-input bg-muted px-3 py-2 font-mono text-[11px]" />
-          <CopyButton id="tracking" text={tracking} label="Copiar seguimiento" state={copy} />
+        {/* Derecha: el estado y las versiones. */}
+        <div className="min-w-0 space-y-4">
+          <StatusCard formId={form.id} formName={form.name} status={form.status} canManage={canManage} onStatus={onStatusChanged} hasVersion={versions.length > 0} />
+          {versionsCard}
         </div>
-      </section>
-
-      <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="pagina-sitio">
-        <h2 id="pagina-sitio" className="text-sm font-semibold">
-          Usar en una página del sitio
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Si armás páginas dentro de este mismo proyecto (se piden a Claude Code), el formulario va con este componente. Muestra siempre la versión publicada, sin volver a desplegar. Ver <code>docs/sitio.md</code>.
-        </p>
-        <code className="block rounded-lg bg-muted px-3 py-2 text-xs">{siteSnippet}</code>
-        <CopyButton id="site" text={siteSnippet} label="Copiar" state={copy} />
-      </section>
-
-      <PrefillCard definition={definition} baseUrl={publicUrl} slug={form.slug} />
-      </>
-      )}
-
-      <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="versiones">
-        <h2 id="versiones" className="text-sm font-semibold">
-          Versiones publicadas
-        </h2>
-        {versions.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">Todavía no publicaste ninguna versión.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-border text-sm">
-            {versions.map((v) => (
-              <li key={v.number} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span>
-                  <span className="font-medium">Versión {v.number}</span>
-                  {v.shaPrefix && <span className="ml-2 font-mono text-xs text-muted-foreground">huella {v.shaPrefix}…</span>}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(v.publishedAt).toLocaleString("es-AR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone })}
-                  {v.publishedByName ? ` · ${v.publishedByName}` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      </div>
 
       <ConfirmDialog
         open={confirmSlug}

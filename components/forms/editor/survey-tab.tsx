@@ -1,47 +1,55 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BarChart3, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Checkbox, Field, Notice, Section, inputClass } from "@/components/agents/fields";
 import { saveSurveyConfig } from "@/lib/actions/forms/config";
 import { SURVEY_CATEGORIES, SURVEY_CATEGORY_LABELS, scoreCandidates, type SurveyCategory, type SurveyConfig } from "@/lib/forms/survey";
-import type { Draft, EditorForm } from "./types";
+import type { ContactMode } from "@/lib/forms/contact-config";
+import type { FormField } from "@/lib/forms/fields";
 
 /**
- * La pestaña Encuesta (F22): qué campo lleva el puntaje, la categoría y "una vez por
+ * La configuración de la encuesta (F22): qué campo lleva el puntaje, la categoría y "una vez por
  * contacto". Se guarda con su propio botón: vale desde que se guarda, no por versión.
+ *
+ * Plano formularios-ui (diferencia 7): ya no es una pestaña del editor sino las tarjetas de arriba de la ruta
+ * `/encuesta`, encima del panel de NPS. Recibe lo mínimo (no el formulario entero) para poder vivir ahí.
  */
 export function SurveyTab({
-  form,
-  draft,
+  formId,
+  archived,
+  contactMode,
+  fields,
   config,
   onSaved,
   canManage,
 }: {
-  form: EditorForm;
-  draft: Draft;
+  formId: string;
+  archived: boolean;
+  contactMode: ContactMode;
+  /** Los campos del borrador: de ahí salen los candidatos a llevar el puntaje. */
+  fields: FormField[];
   config: SurveyConfig | null;
   onSaved: (config: SurveyConfig) => void;
   canManage: boolean;
 }) {
   const router = useRouter();
-  const candidates = useMemo(() => scoreCandidates(draft.definition.fields), [draft.definition.fields]);
+  const candidates = useMemo(() => scoreCandidates(fields), [fields]);
   const [scoreFieldKey, setScoreFieldKey] = useState(config?.scoreFieldKey ?? candidates[0]?.key ?? "");
   const [category, setCategory] = useState<SurveyCategory>(config?.category ?? "servicio");
   const [oncePerContact, setOncePerContact] = useState(config?.oncePerContact ?? false);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [saving, start] = useTransition();
 
-  const disabled = !canManage || form.status === "archived";
+  const disabled = !canManage || archived;
   const known = candidates.some((c) => c.key === scoreFieldKey);
 
   function save() {
     setMessage(null);
     start(async () => {
       const next: SurveyConfig = { scoreFieldKey, category, oncePerContact };
-      const result = await saveSurveyConfig({ formId: form.id, config: next });
+      const result = await saveSurveyConfig({ formId, config: next });
       if (result.ok) {
         onSaved(next);
         setMessage({ tone: "success", text: "Guardado" });
@@ -53,7 +61,7 @@ export function SurveyTab({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-[900px] space-y-4">
       {candidates.length === 0 && (
         <Notice tone="warning">Para publicar la encuesta hace falta un campo de estrellas o de NPS obligatorio. Sumalo en la pestaña Campos.</Notice>
       )}
@@ -91,9 +99,9 @@ export function SurveyTab({
         <Checkbox
           checked={oncePerContact}
           onChange={setOncePerContact}
-          disabled={form.contactConfig.mode === "none" && !oncePerContact}
+          disabled={contactMode === "none" && !oncePerContact}
           label="Cada contacto responde una sola vez"
-          description={form.contactConfig.mode === "none" ? "No disponible: las respuestas de este formulario no se vinculan con contactos. Prendé el vínculo en la pestaña Contacto. " : "Quien ya respondió ve “Ya respondiste, ¡gracias!”. Las respuestas anónimas (sin email ni link) no se pueden limitar. Una respuesta marcada como spam no cuenta: esa persona puede responder de nuevo."}
+          description={contactMode === "none" ? "No disponible: las respuestas de este formulario no se vinculan con contactos. Prendé el vínculo en la pestaña Contacto. " : "Quien ya respondió ve “Ya respondiste, ¡gracias!”. Las respuestas anónimas (sin email ni link) no se pueden limitar. Una respuesta marcada como spam no cuenta: esa persona puede responder de nuevo."}
         />
       </Section>
 
@@ -115,9 +123,6 @@ export function SurveyTab({
             Guardar
           </button>
         )}
-        <Link href={`/dashboard/formularios/${form.id}/encuesta`} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent">
-          <BarChart3 className="h-4 w-4" aria-hidden /> Ver el panel de la encuesta
-        </Link>
       </div>
     </div>
   );

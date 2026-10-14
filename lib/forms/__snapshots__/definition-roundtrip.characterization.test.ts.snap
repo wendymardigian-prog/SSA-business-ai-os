@@ -1,0 +1,378 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`caracterizacion: las operaciones del builder > agregar a un formulario vacio: la clave sale de la etiqueta y email y telefono se prellenan 1`] = `
+[
+  {
+    "key": "email",
+    "label": "Email",
+    "required": false,
+    "type": "email",
+  },
+  {
+    "key": "email_2",
+    "label": "Email",
+    "required": false,
+    "type": "email",
+  },
+]
+`;
+
+exports[`caracterizacion: las operaciones del builder > agregar un campo de cada tipo a la rica da lo de hoy 1`] = `
+{
+  "consent": {
+    "added": {
+      "consentText": "Acepto los términos",
+      "key": "casilla_de_consentimiento",
+      "label": "Casilla de consentimiento",
+      "required": true,
+      "type": "consent",
+    },
+    "count": 18,
+  },
+  "date": {
+    "added": {
+      "key": "fecha_2",
+      "label": "Fecha",
+      "required": false,
+      "type": "date",
+    },
+    "count": 18,
+  },
+  "email": {
+    "added": {
+      "key": "email_2",
+      "label": "Email",
+      "required": false,
+      "type": "email",
+    },
+    "count": 18,
+  },
+  "file": {
+    "added": {
+      "file": {
+        "accept": [
+          "application/pdf",
+          "image/jpeg",
+          "image/png",
+        ],
+        "maxFiles": 1,
+        "maxMb": 10,
+      },
+      "key": "archivo",
+      "label": "Archivo",
+      "required": false,
+      "type": "file",
+    },
+    "count": 18,
+  },
+  "hidden": {
+    "added": {
+      "hidden": {
+        "param": "campo_oculto",
+        "source": "url_param",
+      },
+      "key": "campo_oculto",
+      "label": "Campo oculto",
+      "required": false,
+      "type": "hidden",
+    },
+    "count": 18,
+  },
+  "long_text": {
+    "added": {
+      "key": "texto_largo",
+      "label": "Texto largo",
+      "required": false,
+      "type": "long_text",
+    },
+    "count": 18,
+  },
+  "multi_select": {
+    "added": {
+      "key": "seleccion_multiple",
+      "label": "Selección múltiple",
+      "options": [
+        "Opción 1",
+        "Opción 2",
+      ],
+      "required": false,
+      "type": "multi_select",
+    },
+    "count": 18,
+  },
+  "nps": {
+    "added": {
+      "key": "nps_0_a_10",
+      "label": "NPS (0 a 10)",
+      "max": 10,
+      "min": 0,
+      "required": false,
+      "type": "nps",
+    },
+    "count": 18,
+  },
+  "number": {
+    "added": {
+      "key": "numero",
+      "label": "Número",
+      "required": false,
+      "type": "number",
+    },
+    "count": 18,
+  },
+  "phone": {
+    "added": {
+      "key": "telefono",
+      "label": "Teléfono",
+      "prefill": {
+        "behavior": "editable",
+        "params": [
+          "telefono",
+          "phone",
+        ],
+      },
+      "required": false,
+      "type": "phone",
+    },
+    "count": 18,
+  },
+  "rating": {
+    "added": {
+      "key": "estrellas_1_a_5",
+      "label": "Estrellas (1 a 5)",
+      "max": 5,
+      "min": 1,
+      "required": false,
+      "type": "rating",
+    },
+    "count": 18,
+  },
+  "short_text": {
+    "added": {
+      "key": "texto_corto",
+      "label": "Texto corto",
+      "required": false,
+      "type": "short_text",
+    },
+    "count": 18,
+  },
+  "single_select": {
+    "added": {
+      "key": "seleccion_unica",
+      "label": "Selección única",
+      "options": [
+        "Opción 1",
+        "Opción 2",
+      ],
+      "required": false,
+      "type": "single_select",
+    },
+    "count": 18,
+  },
+  "social": {
+    "added": {
+      "key": "tu_usuario_de_instagram",
+      "label": "Tu usuario de Instagram",
+      "required": false,
+      "social": {
+        "platform": "instagram",
+      },
+      "type": "social",
+    },
+    "count": 18,
+  },
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > la plantilla por defecto contract valida como hoy y su forma es la de hoy 1`] = `
+{
+  "contractConfig": {
+    "acceptLabel": "Leí y acepto el contrato",
+    "ccEmails": [],
+    "signatureRequired": true,
+    "title": "Formulario",
+  },
+  "design": {
+    "intro": "",
+    "showLogo": true,
+    "submitLabel": "",
+    "title": "Formulario",
+  },
+  "fields": [
+    {
+      "key": "nombre",
+      "label": "Nombre completo",
+      "required": true,
+      "type": "short_text",
+    },
+    {
+      "key": "email",
+      "label": "Email",
+      "required": true,
+      "type": "email",
+    },
+  ],
+  "surveyConfig": null,
+  "validation": {
+    "ok": true,
+  },
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > la plantilla por defecto custom valida como hoy y su forma es la de hoy 1`] = `
+{
+  "contractConfig": null,
+  "design": {
+    "intro": "",
+    "showLogo": true,
+    "submitLabel": "",
+    "title": "Formulario",
+  },
+  "fields": [],
+  "surveyConfig": null,
+  "validation": {
+    "ok": true,
+  },
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > la plantilla por defecto eod-general valida como hoy y su forma es la de hoy 1`] = `
+{
+  "contractConfig": null,
+  "design": {
+    "intro": "",
+    "showLogo": true,
+    "submitLabel": "",
+    "title": "Formulario",
+  },
+  "fields": [
+    {
+      "key": "logros",
+      "label": "¿Qué lograste hoy?",
+      "required": false,
+      "type": "long_text",
+    },
+    {
+      "key": "bloqueos",
+      "label": "¿Qué te frenó?",
+      "required": false,
+      "type": "long_text",
+    },
+  ],
+  "surveyConfig": null,
+  "validation": {
+    "ok": true,
+  },
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > la plantilla por defecto eod-setter valida como hoy y su forma es la de hoy 1`] = `
+{
+  "contractConfig": null,
+  "design": {
+    "intro": "",
+    "showLogo": true,
+    "submitLabel": "",
+    "title": "Formulario",
+  },
+  "fields": [
+    {
+      "key": "horas_trabajadas",
+      "label": "Horas trabajadas hoy",
+      "max": 24,
+      "metricKey": "horas_trabajadas",
+      "min": 0,
+      "required": true,
+      "step": 1,
+      "type": "number",
+    },
+    {
+      "key": "rendimiento",
+      "label": "Calificación de tu rendimiento general (1 a 10)",
+      "max": 10,
+      "metricKey": "rendimiento",
+      "min": 1,
+      "required": true,
+      "step": 1,
+      "type": "number",
+    },
+    {
+      "key": "mejor_conversacion",
+      "label": "Mejor conversación del día",
+      "required": false,
+      "type": "long_text",
+    },
+    {
+      "key": "mejorar_rendimiento",
+      "label": "¿Qué puede hacer el equipo o la empresa para mejorar tu rendimiento?",
+      "required": false,
+      "type": "long_text",
+    },
+  ],
+  "surveyConfig": null,
+  "validation": {
+    "ok": true,
+  },
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > la plantilla por defecto survey valida como hoy y su forma es la de hoy 1`] = `
+{
+  "contractConfig": null,
+  "design": {
+    "intro": "",
+    "showLogo": true,
+    "submitLabel": "",
+    "title": "Formulario",
+  },
+  "fields": [
+    {
+      "key": "nps",
+      "label": "¿Qué tan probable es que nos recomiendes?",
+      "max": 10,
+      "min": 0,
+      "required": true,
+      "type": "nps",
+    },
+    {
+      "key": "por_que",
+      "label": "¿Por qué?",
+      "required": false,
+      "type": "long_text",
+    },
+  ],
+  "surveyConfig": {
+    "category": "servicio",
+    "oncePerContact": false,
+    "scoreFieldKey": "nps",
+  },
+  "validation": {
+    "ok": true,
+  },
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > live-prueba1: el resultado de validar es el de hoy 1`] = `
+{
+  "ok": true,
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > live-test: el resultado de validar es el de hoy 1`] = `
+{
+  "ok": true,
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > rich-custom: el resultado de validar es el de hoy 1`] = `
+{
+  "ok": true,
+}
+`;
+
+exports[`caracterizacion: validateDefinition (los textos de hoy) > un formulario con un error conocido da los mismos mensajes (con la etiqueta delante) 1`] = `
+[
+  "La clave "nombre" está repetida",
+  ""¿Qué negocio tenés?": cargá al menos 2 opciones",
+]
+`;

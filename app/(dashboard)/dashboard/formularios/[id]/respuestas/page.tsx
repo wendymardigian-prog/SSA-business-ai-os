@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
+import { EditorBar } from "@/components/forms/editor/editor-bar";
+import { loadEditorBar } from "@/lib/forms/editor-bar-load";
 import { ResponsesTable, type ResponseTableRow } from "@/components/forms/responses/responses-table";
 import { fieldsOf } from "@/lib/forms/server-ports";
 import { FORM_LIMITS } from "@/lib/forms/limits";
@@ -32,7 +34,7 @@ export default async function RespuestasPage({
   const { data: form } = await supabase.from("forms").select("id, name, type, current_version_id, draft_definition").eq("id", id).eq("workspace_id", workspace.id).maybeSingle();
   if (!form) notFound();
 
-  const timeZone = await resolveViewerTimezone(workspace.timezone);
+  const [timeZone, barData] = await Promise.all([resolveViewerTimezone(workspace.timezone), loadEditorBar(supabase, workspace.id, id)]);
   const filters = parseResponseFilters(sp);
   const pageSize = FORM_LIMITS.pageSize;
   const from = (filters.page - 1) * pageSize;
@@ -85,8 +87,12 @@ export default async function RespuestasPage({
 
   return (
     <ResponsesTable
+      header={
+        barData ? (
+          <EditorBar form={barData.form} route="respuestas" canManage={ctx.can("forms.manage")} noContactsWarning={barData.noContactsWarning} />
+        ) : null
+      }
       formId={form.id}
-      formName={form.name}
       formType={form.type as "custom" | "survey" | "contract"}
       rows={tableRows}
       columns={columns}

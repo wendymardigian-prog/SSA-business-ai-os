@@ -973,6 +973,26 @@ node scripts/verify-eod.mjs     # EOD: RLS, unicidad, concurrencia, audiencia, r
 
 Crea y limpia sus datos (prefijo `zz-test-`); no se corre en simultaneo con los otros `verify-*`.
 
+# Menu lateral y Formularios UI (construido, 13/10/2026)
+
+Menu con la seccion **Herramientas** colapsable, Formularios rediseñado (lista de tarjetas, editor con lienzo y panel) y la **URL de entrada completa** en la atribucion. Plano en `requerimientos-formularios-ui-menu.md`, avance y decisiones en `docs/PROGRESS-formularios-ui.md` y `docs/PENDIENTE-formularios-ui.md`, detalle en [docs/formularios.md](docs/formularios.md) y [docs/atribucion.md](docs/atribucion.md).
+
+## Lo que no se puede romper
+
+- **El menu es `lib/nav/items.ts`**: grupos `inicio`, `adquisicion`, `ventas` y `herramientas` (Automatizaciones, Formularios, Agentes IA, Ajustes). Conocimiento ya no es un item: es un boton de la pantalla de Agentes IA (`lib/nav/page-actions.ts`). Recursos e Integraciones se llegan desde Ajustes. Ajustes aparece para quien pueda ver al menos una pestaña (`visibleSettingsTabs`, `lib/settings/tabs.ts`): un Member lo ve y lo lleva a Recursos.
+- **El colapso de Herramientas no pasa por React**: clase `nav-tools-open` en `<html>` + clave `nav-tools-open` de `localStorage` (siempre en `try/catch`) + una linea mas en el script del `<head>` de `app/layout.tsx`. Si la pantalla activa esta adentro, el servidor la dibuja abierta.
+- **El editor de un formulario es lienzo + panel** (`components/forms/builder/`, pestaña Campos). Las reglas son puras y viven en `lib/forms/` (`builder-ops`, `contact-map`, `publish-issues`, `canvas-view`, `editor-bar`, `list`, `form-card`); los componentes solo las componen. **Ni un `<details>` en `components/forms/editor` ni en `components/forms/builder`** (`components/forms/no-details.test.ts`). Escribir en una pregunta no puede redibujar las otras ni perder el foco (las tarjetas son `React.memo` y reciben acciones estables).
+- **"Se guarda en el contacto" y la tabla de la pestaña Contacto son el mismo dato** (`contactConfig.map`, `setFieldMapping`): un dato del contacto lo usa una sola pregunta.
+- **La pestaña del editor vive en `?tab=`** y se cambia con `window.history.pushState(null, ...)` (sin pedirle la pagina al servidor).
+- **El formulario publico ya no muestra el logo** (`design.showLogo` queda guardado, nadie lo usa).
+- **`entry_url`**: la direccion completa por la que entro la persona, con todos sus parametros menos los sensibles (`lib/attribution/sensitive-params.ts`), los internos y el `#`; tope de 2000. Se arma y se vuelve a sanear en UN solo lugar (`lib/attribution/entry-url.ts`), viaja en `form_submissions.attribution.entry_url` y en `contact_touches.entry_url`, y se ve en el detalle de una respuesta y en las visitas del contacto. **Nunca se loguea.** `landing_page` y `page_url` siguen filtradas, la lista de claves de `lib/attribution/keys.ts` no cambio y `contacts.attribution` (copia derivada) no la incluye.
+- **`record_contact_touch` cambio A PROPOSITO en la 00215** y solo para escribir `entry_url` (misma firma, mismo comportamiento): su huella ahora es `2f51ddbf060e31528b89ce7481b38e3d` (la vieja era `f364db1862cc0f90291ca14ef855a214`; la definicion completa esta en la cabecera de la migracion y `lib/contacts/record-touch-00215-diff.test.ts` fija el diff). `create_booking` NO se toco: la Agenda manda la URL dentro de `p_utm` y llega por `raw.utm`.
+- **El `embed.js` se regenera** cuando se toca `lib/attribution/` o `lib/embed/` (`npm run build:embed`, se commitea, tope 60 KB). El `attr` del embed admite hasta 4096 bytes.
+
+## Migraciones
+
+`00215` (`contact_touches.entry_url` y `record_contact_touch`), **aplicada y registrada** (14/10/2026 UTC). **La proxima libre es la `00216`** (confirmar con `list_migrations`: la sesion de Equipo y roles uso la `00208` a la `00214`).
+
 # Ventas Fase 1 (construido)
 
 Catalogo de productos con precio versionado, atribucion y asignacion automatica de cada lead, alta de venta en tres pasos, pagos, mora, historial y triggers por cambio de estado. El resumen esta en [docs/ventas.md](docs/ventas.md); avance y decisiones en `docs/PROGRESS-ventas.md` y `docs/PENDIENTE-ventas.md`; triggers y nodos en [docs/flow-registry.md](docs/flow-registry.md).

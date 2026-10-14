@@ -1,0 +1,8 @@
+{
+  "name": "Prueba1",
+  "type": "custom",
+  "definition": { "fields": [] },
+  "design": { "title": "Prueba1", "intro": "", "showLogo": true, "submitLabel": "" },
+  "success": { "mode": "message", "title": "¡Gracias!", "body": "Recibimos tu respuesta." },
+  "contactConfig": { "mode": "create_or_link", "update": "fill_empty", "map": [] }
+}

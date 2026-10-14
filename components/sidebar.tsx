@@ -11,9 +11,6 @@ import {
   MessageSquare,
   Users,
   LayoutGrid,
-  Blocks,
-  BookOpen,
-  Library,
   Bot,
   Settings,
   CalendarDays,
@@ -22,10 +19,12 @@ import {
   ClipboardList,
   ListChecks,
   ListTodo,
+  ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { NAV_ITEMS, visibleNavItems, navSections, navItemTooltip, type NavFlag } from "@/lib/nav/items";
+import { NAV_ITEMS, visibleNavItems, navSections, navItemTooltip, navItemHref, type NavFlag } from "@/lib/nav/items";
+import { TOOLS_OPEN_KEY, activeInsideTools, toolsOpen } from "@/lib/nav/tools-open";
 
 export type NavFlags = Partial<Record<NavFlag, boolean>>;
 import { activeNavHref } from "@/lib/nav/active";
@@ -60,10 +59,10 @@ interface WorkspaceItem {
 // Radio, ListOrdered y Sprout ya no estan aca: se mudaron a las sub-pestañas
 // de Inbox (components/comunicacion/section-tabs.tsx). Channels ya no tiene
 // item propio (D3): se llega desde el detalle de Zernio/Evolution en
-// Integraciones, que es la que trae a Blocks de vuelta al mapa.
+// Integraciones (que hoy es una pestaña de Ajustes, no un item).
 const ICONS: Record<string, LucideIcon> = {
-  LayoutGrid, GitBranch, MessageSquare, Users, Blocks, Bot, BookOpen, Settings,
-  Clapperboard, Grid3x3, CalendarDays, Library, PhoneCall, ClipboardList, CircleDollarSign, ListChecks, ListTodo,
+  LayoutGrid, GitBranch, MessageSquare, Users, Bot, Settings,
+  Clapperboard, Grid3x3, CalendarDays, PhoneCall, ClipboardList, CircleDollarSign, ListChecks, ListTodo,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({
@@ -154,8 +153,6 @@ export function Sidebar({
       </div>
 
       {/*
-        flex flex-col: para que el bloque del fondo (Integraciones, Ajustes)
-        pueda empujarse con mt-auto sin importar cuantos grupos haya arriba.
         overflow-y-auto: con los titulos de grupo el menu es mas alto; en una
         pantalla baja scrollea en vez de cortarse.
       */}
@@ -210,74 +207,108 @@ export function NavLinks({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const navItems = visibleNavItems(navigation, { permissionKeys, flags: navFlags });
+  const navItems = visibleNavItems(navigation, { permissionKeys: permissionKeys ?? [], flags: navFlags });
   // El agrupamiento se calcula sobre los items YA filtrados: un grupo sin
   // nada visible no aparece, y con el su titulo (N1).
   const sections = navSections(navItems);
   // Se resuelve UNA sola vez, sobre todos los items visibles: asi, cuando dos
-  // matchean (Integraciones es sub-ruta de Ajustes), gana el mas especifico
-  // en vez de marcar los dos (N4).
+  // matchean (Ajustes y sus subrutas), gana el mas especifico en vez de
+  // marcar los dos (N4).
   const activeHref = activeNavHref(pathname, navItems);
+  // Herramientas (plano formularios-ui, F2): la preferencia vive como clase en el <html>, igual que el
+  // colapso del menu (un script del <head> la aplica antes de pintar, sin parpadeo).
+  const storedOpen = useHtmlClass(TOOLS_OPEN_KEY);
+  const open = toolsOpen(storedOpen ? "1" : "0", activeHref);
+  const activeInside = activeInsideTools(activeHref);
+
+  function toggleTools() {
+    const next = !storedOpen;
+    document.documentElement.classList.toggle(TOOLS_OPEN_KEY, next);
+    try {
+      localStorage.setItem(TOOLS_OPEN_KEY, next ? "1" : "0");
+    } catch {
+      // Sin almacenamiento (ventana privada): la preferencia dura hasta recargar y nada mas.
+    }
+  }
+
   return (
     <>
-      {sections.map((section) => (
-        <div
-          key={section.group}
-          className={cn(
-            "space-y-1",
-            // El bloque del fondo (Integraciones, Ajustes) se empuja contra
-            // el pie del menu y se separa del grupo anterior con una linea,
-            // en vez de un titulo (N1).
-            section.group === "sistema"
-              ? "mt-auto border-t border-sidebar-border pt-3 collapsed:pt-2"
-              : "mt-4 first:mt-0",
-          )}
-        >
-          {section.title && (
-            <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/40 collapsed:hidden">
-              {section.title}
-            </div>
-          )}
-          {/*
-            Colapsado (N3), los titulos de grupo no entran: se esconden
-            (arriba) y en su lugar va esta linea fina. El bloque del fondo ya
-            tiene la suya (el border-t del contenedor), por eso no se duplica.
-          */}
-          {section.separatorBefore && section.group !== "sistema" && (
-            <div className="hidden border-t border-sidebar-border pt-2 collapsed:-mt-1 collapsed:block" aria-hidden="true" />
-          )}
-          {section.items.map((item) => {
-            const isActive = item.href === activeHref;
-            const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
-            return (
-              // El badge de borradores es un link propio y no puede vivir
-              // adentro del link de Inbox (anidar <a> es invalido y llevaria
-              // a la bandeja en vez de a la cola). Por eso la fila es un
-              // contenedor relativo.
-              <div key={item.name} className="relative">
-                <Link
-                  href={item.href}
-                  onClick={onNavigate}
-                  aria-current={isActive ? "page" : undefined}
-                  title={collapsed ? navItemTooltip(item) : undefined}
-                  className={cn(
-                    "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
-                    badge && "pr-14 collapsed:pr-0",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  )}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  <span className="collapsed:hidden">{item.name}</span>
-                  <LinkPending className="ml-auto collapsed:hidden" />
-                </Link>
-                {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
+      {sections.map((section) => {
+        const itemsId = `nav-items-${section.group}`;
+        return (
+          <div key={section.group} className="mt-4 space-y-1 first:mt-0">
+            {section.title && !section.collapsible && (
+              <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/40 collapsed:hidden">
+                {section.title}
               </div>
-            );
-          })}
-        </div>
-      ))}
+            )}
+            {/* El titulo de una seccion colapsable es un boton: Tab llega, Enter o Espacio abren y cierran. */}
+            {section.title && section.collapsible && (
+              <button
+                type="button"
+                onClick={toggleTools}
+                aria-expanded={open}
+                aria-controls={itemsId}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-md px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide transition-colors hover:text-sidebar-foreground/70 collapsed:hidden",
+                  activeInside ? "text-sidebar-foreground/70" : "text-sidebar-foreground/40",
+                )}
+              >
+                {section.title}
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden />
+              </button>
+            )}
+            {/*
+              Colapsado (N3), los titulos de grupo no entran: se esconden
+              (arriba) y en su lugar va esta linea fina.
+            */}
+            {section.separatorBefore && (
+              <div className="hidden border-t border-sidebar-border pt-2 collapsed:-mt-1 collapsed:block" aria-hidden="true" />
+            )}
+            <div
+              id={itemsId}
+              // Una seccion colapsable se esconde con CSS (no con el estado de React) para que no parpadee al
+              // cargar: abierta si la pantalla activa esta adentro, o si el <html> trae `nav-tools-open`. Con el
+              // menu angosto (`collapsed:`) se ven todos los iconos.
+              className={cn(
+                "space-y-1",
+                section.collapsible && !activeInside && "hidden tools-open:block collapsed:block",
+              )}
+            >
+              {section.items.map((item) => {
+                const isActive = item.href === activeHref;
+                const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
+                return (
+                  // El badge de borradores es un link propio y no puede vivir
+                  // adentro del link de Inbox (anidar <a> es invalido y llevaria
+                  // a la bandeja en vez de a la cola). Por eso la fila es un
+                  // contenedor relativo.
+                  <div key={item.name} className="relative">
+                    <Link
+                      href={navItemHref(item, { permissionKeys: permissionKeys ?? [] })}
+                      onClick={onNavigate}
+                      aria-current={isActive ? "page" : undefined}
+                      title={collapsed ? navItemTooltip(item) : undefined}
+                      className={cn(
+                        "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
+                        badge && "pr-14 collapsed:pr-0",
+                        isActive
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="collapsed:hidden">{item.name}</span>
+                      <LinkPending className="ml-auto collapsed:hidden" />
+                    </Link>
+                    {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </>
   );
 }

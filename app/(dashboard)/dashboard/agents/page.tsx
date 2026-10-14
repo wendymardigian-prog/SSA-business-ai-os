@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { Bot } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, Bot } from "lucide-react";
 import { getWorkspace } from "@/lib/workspace";
 import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -16,6 +17,7 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { ALL_AI_TASKS } from "@/lib/ai-tasks/catalog";
 import { loadTaskRunSummaries } from "@/lib/ai-tasks/task-run-summary";
 import { resolveBackgroundSettings } from "@/lib/background/settings";
+import { pageActions } from "@/lib/nav/page-actions";
 
 /**
  * Agentes IA (F24, Bloque Agentes IA): dos grupos, los agentes arriba y las
@@ -52,6 +54,10 @@ export default async function AgentsPage({
   const canCreateAgent = permissions.can("agents.edit");
   const canManageTasks = permissions.can("ai_tasks.manage");
   const canEditLimits = permissions.can("ai_limits.manage");
+  // Conocimiento ya no es un item del menu (plano formularios-ui, D3): se abre desde esta barra, con `knowledge.view`.
+  const canOpenKnowledge = pageActions("/dashboard/agents", { permissionKeys: permissions.permissions.keys }).some(
+    (action) => action.id === "knowledge",
+  );
 
   let filter = null;
   if (canViewCosts) {
@@ -65,7 +71,21 @@ export default async function AgentsPage({
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader route="/dashboard/agents" filters={canViewCosts ? <AiPeriodControl timezone={timeZone} /> : undefined} />
+      <PageHeader
+        route="/dashboard/agents"
+        filters={canViewCosts ? <AiPeriodControl timezone={timeZone} /> : undefined}
+        right={
+          canOpenKnowledge ? (
+            <Link
+              href="/dashboard/knowledge"
+              className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-accent"
+            >
+              <BookOpen className="h-4 w-4" aria-hidden />
+              Conocimiento
+            </Link>
+          ) : undefined
+        }
+      />
 
       <div className="flex-1 overflow-auto px-8 py-6">
         {canViewCosts && filter && (

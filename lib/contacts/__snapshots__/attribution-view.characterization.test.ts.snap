@@ -1,0 +1,103 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`caracterizacion: buildAttributionView (hoy) > camino de dos toques, con la zona horaria de quien mira 1`] = `
+{
+  "empty": false,
+  "first": {
+    "ad": null,
+    "adLine": null,
+    "adThumbnail": null,
+    "details": [],
+    "href": null,
+    "matchNote": null,
+    "origin": "Instagram · social",
+    "piece": null,
+    "rawMedium": false,
+    "text": "Instagram · social · 20 sep",
+    "when": "20 sep",
+  },
+  "last": {
+    "ad": {
+      "ad": "120214558930140527",
+      "adset": "120214558930130527",
+      "campaign": "120214558930120527",
+    },
+    "adLine": "Anuncio · Facebook · Campaña 120214558930120527 › Conjunto 120214558930130527 › Anuncio 120214558930140527",
+    "adThumbnail": null,
+    "details": [
+      {
+        "label": "Campaña (UTM)",
+        "value": "Programa X · clase jueves",
+      },
+      {
+        "label": "Clic de Facebook (fbclid)",
+        "value": "IwZXh0bgNhZW0BMABh",
+      },
+      {
+        "label": "Venía de",
+        "value": "https://l.facebook.com/",
+      },
+      {
+        "label": "Página de llegada",
+        "value": "https://ejemplo.test/programa-x?utm_source=facebook",
+      },
+    ],
+    "href": null,
+    "matchNote": null,
+    "origin": "Facebook · paid",
+    "piece": "Video testimonio",
+    "rawMedium": false,
+    "text": "Facebook · paid · «Video testimonio» · 2 oct",
+    "when": "2 oct",
+  },
+  "path": [
+    {
+      "ad": null,
+      "adLine": null,
+      "adThumbnail": null,
+      "details": [],
+      "href": null,
+      "matchNote": null,
+      "origin": "Instagram · social",
+      "piece": null,
+      "rawMedium": false,
+      "text": "Instagram · social · 20 sep",
+      "when": "20 sep",
+    },
+    {
+      "ad": {
+        "ad": "120214558930140527",
+        "adset": "120214558930130527",
+        "campaign": "120214558930120527",
+      },
+      "adLine": "Anuncio · Facebook · Campaña 120214558930120527 › Conjunto 120214558930130527 › Anuncio 120214558930140527",
+      "adThumbnail": null,
+      "details": [
+        {
+          "label": "Campaña (UTM)",
+          "value": "Programa X · clase jueves",
+        },
+        {
+          "label": "Clic de Facebook (fbclid)",
+          "value": "IwZXh0bgNhZW0BMABh",
+        },
+        {
+          "label": "Venía de",
+          "value": "https://l.facebook.com/",
+        },
+        {
+          "label": "Página de llegada",
+          "value": "https://ejemplo.test/programa-x?utm_source=facebook",
+        },
+      ],
+      "href": null,
+      "matchNote": null,
+      "origin": "Facebook · paid",
+      "piece": "Video testimonio",
+      "rawMedium": false,
+      "text": "Facebook · paid · «Video testimonio» · 2 oct",
+      "when": "2 oct",
+    },
+  ],
+}
+`;

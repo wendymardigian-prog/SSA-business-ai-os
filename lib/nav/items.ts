@@ -3,8 +3,14 @@
  * y los nombres; el sidebar les pone el ícono. Testeable sin React.
  *
  * Bloque N (requerimientos v2.0, seccion 4): el menu pasa de lista plana a
- * grupos con titulo. Dashboards y Bandeja quedan sueltos arriba; Integraciones
- * y Ajustes, pegados al fondo. `navSections` hace el agrupamiento real.
+ * grupos con titulo. Dashboards y Bandeja quedan sueltos arriba.
+ * `navSections` hace el agrupamiento real.
+ *
+ * Plano formularios-ui (D1-D4): las herramientas de uso menos diario van a la
+ * seccion "Herramientas", que se colapsa (Automatizaciones, Formularios,
+ * Agentes IA y Ajustes). Conocimiento, Recursos e Integraciones salen del menu:
+ * Conocimiento se abre desde Agentes IA (boton de la barra) y Recursos e
+ * Integraciones son pestañas de Ajustes. Sus rutas siguen andando.
  *
  * Broadcasts, Sequences y Growth NO estan aca: son sub-pestañas de Inbox
  * (components/comunicacion/section-tabs.tsx). Inbox es el hub de comunicacion,
@@ -12,18 +18,16 @@
  * Channels tampoco: sale del menu (D3), pero la pantalla se conserva entera y
  * se llega desde el detalle de Zernio/Evolution en Integraciones.
  */
-import { SETTINGS_NAV_PERMISSIONS } from "@/lib/settings/tabs";
+import { settingsEntryHref } from "@/lib/settings/tabs";
 
-export type NavGroupId = "inicio" | "adquisicion" | "ventas" | "automatizacion" | "sistema";
+export type NavGroupId = "inicio" | "adquisicion" | "ventas" | "herramientas";
 
 export interface NavGroupMeta {
   id: NavGroupId;
-  /**
-   * null = sin titulo: son los dos items sueltos de arriba (`inicio`) y el
-   * bloque del fondo (`sistema`), que se separa con una linea en vez de un
-   * titulo (ver N3).
-   */
+  /** null = sin titulo: son los items sueltos de arriba (`inicio`). */
   title: string | null;
+  /** El titulo es un boton que abre y cierra el grupo (solo Herramientas). */
+  collapsible?: boolean;
 }
 
 /** El orden de los grupos, tal cual se renderizan. */
@@ -32,12 +36,11 @@ export const NAV_GROUPS: NavGroupMeta[] = [
   { id: "adquisicion", title: "Adquisición" },
   // Contactos, Agenda, Llamadas y Ventas (Etapa 5).
   { id: "ventas", title: "Ventas" },
-  { id: "automatizacion", title: "Automatización" },
-  { id: "sistema", title: null },
+  { id: "herramientas", title: "Herramientas", collapsible: true },
 ];
 
 /** Condiciones del menú que se calculan en el servidor (no son un permiso). */
-export type NavFlag = "eod";
+export type NavFlag = "eod" | "settings";
 
 export interface NavItemMeta {
   name: string;
@@ -84,10 +87,6 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // `social.view` (F78): Owner y Admin lo tienen siempre, y un rol
   // personalizado se lo puede dar a un Member.
   { name: "Social", href: "/dashboard/social", icon: "Grid3x3", permissions: ["social.view"], group: "adquisicion" },
-  // Formularios (personalizado, encuesta y contrato): se ve con `forms.view`.
-  // El Member de sistema lo tiene (ve las respuestas de los contactos que ve);
-  // crear y publicar lo decide `forms.manage`, no el menu.
-  { name: "Formularios", href: "/dashboard/formularios", icon: "ClipboardList", permissions: ["forms.view"], group: "adquisicion" },
 
   { name: "Contactos", href: "/dashboard/contacts", icon: "Users", permissions: ["contacts.view"], group: "ventas" },
   // Agenda (Etapa 4, F8): abre directo las agendas. La configuracion va
@@ -101,26 +100,21 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // Llamadas: ese lugar ya estaba fijado por su test.
   { name: "Ventas", href: "/dashboard/ventas", icon: "CircleDollarSign", permissions: ["sales.view"], group: "ventas", alsoActiveOn: ["/dashboard/ventas"] },
 
-  { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", permissions: ["flows.view"], group: "automatizacion" },
-  { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", permissions: ["agents.view"], group: "automatizacion" },
-  { name: "Conocimiento", href: "/dashboard/knowledge", icon: "BookOpen", permissions: ["knowledge.view"], group: "automatizacion" },
-  // Recursos (banca v2, F3): la MISMA pantalla que la pestaña "Recursos" de
-  // Ajustes, con un segundo camino para llegar. Es el patron de Integraciones
-  // (una pantalla, dos caminos), pero visible para todos: un Member la usa
-  // todos los dias desde la bandeja y tiene que poder leer y escuchar cada
-  // recurso. Crear y editar lo decide `templates.manage`, no el menu. Gana
-  // sobre Ajustes en su ruta por ser el candidato mas largo (N4).
-  // alsoActiveOn: las dos rutas viejas, igual que la pestaña (lib/settings/tabs.ts).
-  { name: "Recursos", href: "/dashboard/settings/recursos", icon: "Library", group: "automatizacion", alsoActiveOn: ["/dashboard/settings/templates", "/dashboard/settings/audios"] },
-
-  // Integraciones (nuevo, N1): es sub-ruta de Ajustes (gana por ser el
-  // candidato mas largo, N4), y ademas deja marcado a Channels: esa pantalla
-  // ya no tiene item propio (D3), pero conceptualmente cuelga de Integraciones
-  // (se llega desde el detalle de Zernio/Evolution). Se ve con el permiso de ver o administrar
-  // integraciones o canales; el Member de sistema NO lo tiene en el menu (llega a "Mis conexiones"
-  // por Agenda y Llamadas, y por la URL). Decision del 13/10/2026.
-  { name: "Integraciones", href: "/dashboard/settings/integrations", icon: "Blocks", permissions: ["integrations.view", "integrations.manage", "channels.manage"], group: "sistema", alsoActiveOn: ["/dashboard/channels"] },
-  { name: "Ajustes", href: "/dashboard/settings", icon: "Settings", permissions: SETTINGS_NAV_PERMISSIONS, group: "sistema" },
+  // Herramientas (plano formularios-ui, D1): la unica seccion colapsable. Orden fijo:
+  // Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
+  { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", permissions: ["flows.view"], group: "herramientas" },
+  // Formularios (personalizado, encuesta, contrato y fin de dia): se ve con `forms.view`.
+  // El Member de sistema lo tiene (ve las respuestas de los contactos que ve);
+  // crear y publicar lo decide `forms.manage`, no el menu.
+  { name: "Formularios", href: "/dashboard/formularios", icon: "ClipboardList", permissions: ["forms.view"], group: "herramientas" },
+  // Agentes IA: Conocimiento ya no es un item (D3): se abre con el boton "Conocimiento" de la
+  // barra de esta pantalla (lib/nav/page-actions.ts), y mientras esta abierto queda marcado Agentes IA.
+  { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", permissions: ["agents.view"], group: "herramientas", alsoActiveOn: ["/dashboard/knowledge"] },
+  // Ajustes (D4): Recursos e Integraciones son pestañas de Ajustes y ya no son items. Se ve para quien
+  // tenga al menos una pestaña (`requires: "settings"`, lo calcula el layout con `visibleSettingsTabs`):
+  // un Member entra directo a Recursos. En cualquier pestaña, y en /dashboard/channels (que cuelga de
+  // Integraciones y no tiene item propio), queda marcado Ajustes.
+  { name: "Ajustes", href: "/dashboard/settings", icon: "Settings", requires: "settings", group: "herramientas", alsoActiveOn: ["/dashboard/channels"] },
 ];
 
 /**
@@ -144,6 +138,8 @@ export function visibleNavItems<T extends Pick<NavItemMeta, "permissions" | "req
 export interface NavSection<T> {
   group: NavGroupId;
   title: string | null;
+  /** El titulo es un boton que abre y cierra el grupo (Herramientas, plano formularios-ui F2). */
+  collapsible: boolean;
   items: T[];
   /**
    * Colapsado (N3), el titulo del grupo se esconde y en su lugar va una
@@ -166,6 +162,7 @@ export function navSections<T extends Pick<NavItemMeta, "group">>(items: T[]): N
   const visibles = NAV_GROUPS.map((g) => ({
     group: g.id,
     title: g.title,
+    collapsible: g.collapsible === true,
     items: items.filter((item) => item.group === g.id),
   })).filter((section) => section.items.length > 0);
 
@@ -174,10 +171,18 @@ export function navSections<T extends Pick<NavItemMeta, "group">>(items: T[]): N
 
 /**
  * El tooltip de un item colapsado (N3): nombre y, si el grupo tiene titulo,
- * el grupo. Los sueltos (`inicio`, `sistema`) no agregan nada: ya se
- * distinguen por su posicion (arriba del todo o pegados al fondo).
+ * el grupo. Los sueltos (`inicio`) no agregan nada: ya se
+ * distinguen por su posicion (arriba del todo).
  */
 export function navItemTooltip(item: Pick<NavItemMeta, "name" | "group">): string {
   const group = NAV_GROUPS.find((g) => g.id === item.group);
   return group?.title ? `${item.name} · ${group.title}` : item.name;
+}
+
+/**
+ * A donde lleva un item para esta persona. Casi siempre es su `href`; "Ajustes" lleva a la primera
+ * pestaña que la persona ve (un Member no puede abrir General: entra por Recursos).
+ */
+export function navItemHref(item: Pick<NavItemMeta, "href" | "requires">, viewer: { permissionKeys: string[] }): string {
+  return item.requires === "settings" ? settingsEntryHref((key) => viewer.permissionKeys.includes(key)) : item.href;
 }

@@ -35,26 +35,49 @@ describe("isNavItemActive: coincide por segmento, no por texto crudo", () => {
 });
 
 describe("activeNavHref: gana el candidato mas largo (N4)", () => {
-  it("Integraciones (sub-ruta de Ajustes) le gana a Ajustes en su propia ruta", () => {
-    expect(activeNavHref("/dashboard/settings/integrations", NAV_ITEMS)).toBe(
+  // Plano formularios-ui (D3, D4): Integraciones, Recursos y Conocimiento ya no son items del menu.
+  // Estas aserciones se reescriben con la regla nueva; las rutas siguen andando y marcan su pantalla madre.
+  it("Ajustes queda activo en cualquier pestaña de Ajustes, incluida Integraciones (plano formularios-ui, D4)", () => {
+    for (const pathname of [
+      "/dashboard/settings",
+      "/dashboard/settings/team",
+      "/dashboard/settings/roles",
       "/dashboard/settings/integrations",
-    );
+      "/dashboard/settings/integrations/webhooks",
+      "/dashboard/settings/custom-fields",
+      "/dashboard/settings/productos",
+      "/dashboard/settings/asignacion",
+    ]) {
+      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/settings");
+    }
   });
 
-  it("Ajustes queda activo, e Integraciones no, en el resto de settings", () => {
-    expect(activeNavHref("/dashboard/settings/team", NAV_ITEMS)).toBe("/dashboard/settings");
-  });
-
-  it("Recursos (banca v2, F3) le gana a Ajustes en su ruta y en las dos viejas, igual que la pestaña", () => {
+  it("Recursos (y sus dos rutas viejas) tambien marca Ajustes, y la pestaña de Ajustes sigue marcando Recursos (plano formularios-ui, D4)", () => {
     for (const pathname of ["/dashboard/settings/recursos", "/dashboard/settings/templates", "/dashboard/settings/audios"]) {
-      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/settings/recursos");
-      // Una pantalla, dos caminos: el menu lateral y la pestaña marcan lo mismo.
+      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/settings");
       expect(activeSettingsTab(pathname), pathname).toBe("/dashboard/settings/recursos");
     }
   });
 
-  it("/dashboard/channels deja marcado Integraciones (D3: la pantalla se conserva, el item no)", () => {
-    expect(activeNavHref("/dashboard/channels", NAV_ITEMS)).toBe("/dashboard/settings/integrations");
+  it("/dashboard/channels deja marcado Ajustes (plano formularios-ui, D4: cuelga de Integraciones, que es una pestaña)", () => {
+    expect(activeNavHref("/dashboard/channels", NAV_ITEMS)).toBe("/dashboard/settings");
+  });
+
+  it("Conocimiento deja marcado Agentes IA, tambien un documento (plano formularios-ui, D3)", () => {
+    expect(activeNavHref("/dashboard/knowledge", NAV_ITEMS)).toBe("/dashboard/agents");
+    expect(activeNavHref("/dashboard/knowledge/9f0d1b6e", NAV_ITEMS)).toBe("/dashboard/agents");
+  });
+
+  it("Formularios queda marcado en todas sus subrutas (plano formularios-ui, F3)", () => {
+    for (const pathname of [
+      "/dashboard/formularios",
+      "/dashboard/formularios/abc",
+      "/dashboard/formularios/abc/respuestas",
+      "/dashboard/formularios/abc/metricas",
+      "/dashboard/formularios/abc/automatizaciones/def",
+    ]) {
+      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/formularios");
+    }
   });
 
   it("Bandeja queda marcada desde drafts, broadcasts, sequences y growth", () => {
@@ -90,8 +113,8 @@ describe("exactamente un item activo en cualquier ruta real del dashboard (N4)",
   const rutaDeEjemplo = (patron: string) => patron.replace(/\[[^\]]+\]/g, "muestra");
 
   // Un admin que además está en la audiencia de un EOD: ve el menú entero.
-  const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true } });
-  const member = visibleNavItems(NAV_ITEMS, { permissionKeys: [] });
+  const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true, settings: true } });
+  const member = visibleNavItems(NAV_ITEMS, { permissionKeys: [], flags: { settings: true } });
 
   for (const patron of Object.keys(PAGE_META)) {
     it(`${patron}: exactamente un item activo para un admin`, () => {

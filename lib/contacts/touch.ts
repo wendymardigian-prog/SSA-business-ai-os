@@ -19,6 +19,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "@/lib/types/database";
+import { entryUrlFrom } from "@/lib/attribution/entry-url";
 import { ORIGINS, normalizeMedium, normalizeSource, type TouchOrigin } from "./taxonomy";
 
 type Db = SupabaseClient<Database>;
@@ -45,6 +46,12 @@ export interface TouchInput {
   ctwaClid?: string | null;
   referrerUrl?: string | null;
   landingPage?: string | null;
+  /**
+   * La URL de entrada completa (plano formularios-ui, F17). Se vuelve a sanear aca (`entryUrlFrom`: http(s),
+   * sin sensibles ni internos ni fragmento, hasta 2000) y NUNCA hace fallar el toque: una URL que no sirve se
+   * descarta y el toque se registra igual. Nunca se loguea.
+   */
+  entryUrl?: string | null;
   origin: TouchOrigin;
   /** El id del mensaje, comentario, evento o reserva: lo que evita duplicar. */
   dedupeKey: string;
@@ -81,6 +88,9 @@ const schema = z.object({
   ctwaClid: text(),
   referrerUrl: text(),
   landingPage: text(),
+  // Sin limite de largo aca: `entryUrlFrom` la recorta a 2000 y la descarta si no sirve (un texto de mas de 500
+  // haria fallar el toque ENTERO con `text()`).
+  entryUrl: z.unknown().optional(),
   origin: z.enum(ORIGINS),
   dedupeKey: z.string().trim().min(1).max(200),
   raw: z.unknown().optional(),
@@ -191,6 +201,7 @@ export function parseTouch(input: TouchInput): ParsedTouch {
       ctwa_clid: t.ctwaClid,
       referrer_url: t.referrerUrl,
       landing_page: t.landingPage,
+      entry_url: entryUrlFrom(t.entryUrl),
       origin: t.origin,
       dedupe_key: t.dedupeKey,
       raw: sanitizeRaw(t.raw),

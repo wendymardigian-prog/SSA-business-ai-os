@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Checkbox, Field, Notice, Section, inputClass } from "@/components/agents/fields";
+import { FIELD_ICONS } from "@/components/forms/builder/field-icons";
 import { saveContactSettings } from "@/lib/actions/forms/contact";
 import {
   brokenMappings,
@@ -17,6 +18,7 @@ import {
   type ContactMode,
   type ContactUpdate,
 } from "@/lib/forms/contact-config";
+import { setFieldMapping } from "@/lib/forms/contact-map";
 import type { FormField } from "@/lib/forms/fields";
 import { cn } from "@/lib/utils";
 import type { Draft, EditorExtras, EditorForm } from "./types";
@@ -89,9 +91,16 @@ export function ContactTab({
   const cleaned: ContactConfig = useMemo(() => ({ ...config, map: config.map.filter((m) => fields.some((f) => f.key === m.fieldKey)) }), [config, fields]);
   const validation = useMemo(() => validateContactConfig(cleaned, fields, extras.customFields), [cleaned, fields, extras.customFields]);
 
+  // Misma regla que "Se guarda en el contacto" del panel de cada pregunta (`setFieldMapping`): un dato del contacto lo
+  // usa una sola pregunta, y si otra lo tenia se lo saca y se avisa.
   function setTarget(fieldKey: string, target: string) {
-    setMessage(null);
-    setConfig((c) => ({ ...c, map: [...c.map.filter((m) => m.fieldKey !== fieldKey), ...(target ? [{ fieldKey, target }] : [])] }));
+    const result = setFieldMapping(config, fields, extras.customFields, fieldKey, target || null);
+    if (result.error) {
+      setMessage({ tone: "error", text: result.error });
+      return;
+    }
+    setConfig(result.config);
+    setMessage(result.displaced ? { tone: "success", text: `Ese dato ya lo usaba "${result.displaced.label}": se lo sacamos.` } : null);
   }
 
   function save() {
@@ -114,7 +123,7 @@ export function ContactTab({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-[900px] space-y-4">
       {linking && !identifiable && (
         <Notice tone="warning">Sin email, teléfono ni usuario de red social mapeados, ninguna respuesta va a crear ni vincular contacto.</Notice>
       )}
@@ -179,7 +188,7 @@ export function ContactTab({
       </Section>
 
       {linking && (
-      <Section title="Campo del formulario → campo del contacto" description="Elegí a qué dato del contacto va cada respuesta. Lo que no se mapea queda solo en la respuesta.">
+      <Section title="Pregunta → dato del contacto" description="Elegí a qué dato del contacto va cada respuesta. Lo que no se mapea queda solo en la respuesta. Es el mismo dato que “Se guarda en el contacto” en el panel de cada pregunta.">
         {fields.length === 0 ? (
           <p className="text-sm text-muted-foreground">Todavía no hay campos. Sumalos en la pestaña Campos.</p>
         ) : (
@@ -187,8 +196,9 @@ export function ContactTab({
             <table className="w-full text-sm">
               <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
                 <tr>
-                  <th scope="col" className="px-3 py-2 font-medium">Campo del formulario</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Campo del contacto</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Pregunta</th>
+                  <th scope="col" className="w-8 px-0 py-2" aria-hidden />
+                  <th scope="col" className="px-3 py-2 font-medium">Dato del contacto</th>
                 </tr>
               </thead>
               <tbody>
@@ -196,11 +206,17 @@ export function ContactTab({
                   const current = config.map.find((m) => m.fieldKey === field.key)?.target ?? "";
                   const options = targetsFor(field, extras.customFields);
                   const known = current === "" || options.some((o) => o.value === current);
+                  const Icon = FIELD_ICONS[field.type];
                   return (
                     <tr key={field.key} className="border-t border-border">
                       <td className="px-3 py-2">
-                        <span className="font-medium">{field.label || field.key}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{field.key}</span>
+                        <span className="flex items-center gap-2">
+                          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                          <span className="font-medium">{field.label || field.key}</span>
+                        </span>
+                      </td>
+                      <td className="px-0 py-2 text-center text-muted-foreground" aria-hidden>
+                        →
                       </td>
                       <td className="px-3 py-2">
                         {options.length === 0 ? (

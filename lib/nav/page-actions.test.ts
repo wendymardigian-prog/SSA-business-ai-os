@@ -57,6 +57,16 @@ describe("acciones de la barra", () => {
     expect(pageActions("/dashboard/knowledge", admin).map((a) => a.id)).toEqual(["upload"]);
   });
 
+  it("Conocimiento se abre desde la barra de Agentes IA: lo ve quien tiene knowledge.view (Owner y Admin), un Member no (plano formularios-ui, F4)", () => {
+    expect(pageActions("/dashboard/agents", admin)).toEqual([
+      { id: "knowledge", label: "Conocimiento", kind: "secondary", href: "/dashboard/knowledge", permission: "knowledge.view" },
+    ]);
+    expect(pageActions("/dashboard/agents", member)).toEqual([]);
+    // Un rol personalizado con la clave lo ve; sin ella (aunque pueda ver agentes), no.
+    expect(pageActions("/dashboard/agents", { permissionKeys: ["agents.view", "knowledge.view"] })).toHaveLength(1);
+    expect(pageActions("/dashboard/agents", { permissionKeys: ["agents.view"] })).toEqual([]);
+  });
+
   it("las acciones que son de todos las recibe tambien un Member", () => {
     // Cambio aprobado, plano §9.3: el Member ya no importa contactos, asi que pierde "Importar" (M1).
     expect(pageActions("/dashboard/contacts", member).map((a) => a.id)).toEqual(["new"]);

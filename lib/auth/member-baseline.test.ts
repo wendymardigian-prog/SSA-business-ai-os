@@ -16,11 +16,10 @@
  * podía antes, y cualquier diferencia es una decisión explícita.
  */
 
-import { visibleNavItems } from "@/lib/nav/items";
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { NAV_ITEMS } from "@/lib/nav/items";
+import { NAV_ITEMS, visibleNavItems } from "@/lib/nav/items";
 import { SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 
 const ROOT = resolve(__dirname, "../..");
@@ -330,27 +329,39 @@ describe("caracterizacion: el menu (F68)", () => {
   // con el mismo criterio adminOnly que sus vecinas de siempre. Settings e
   // Inbox se renombran a Ajustes y Bandeja; Contacts y Flows, a Contactos y
   // Automatizaciones. Ninguna clave de PERMISSION_KEYS se agrego para esto.
-  // Equipo y roles (B1): `adminOnly` desaparecio. El menu se calcula con las claves de cada rol, y la
-  // lista de lo que ve el Member de sistema es EXACTAMENTE la de siempre (este test no se afloja).
+  //
+  // Plano formularios-ui (D1-D4): Conocimiento, Recursos e Integraciones salen del menu y Ajustes se ve con la
+  // bandera `settings` (quien vea alguna pestaña de Ajustes). Equipo y roles (B1): `adminOnly` desaparecio; el
+  // menu se calcula con las claves de cada rol. Lo que NO cambia: las PAGINAS de administracion se protegen por
+  // su clave, y un Member que abre Ajustes llega a Recursos, que ya era suya.
   const memberMenu = () =>
-    visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { eod: true } })
+    visibleNavItems(NAV_ITEMS, {
+      permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys,
+      flags: { eod: true, settings: true },
+    })
       .map((item) => item.name)
       .sort();
 
-  it("las cuatro entradas que el Member NO ve son las de hoy: Ajustes, Conocimiento, Integraciones y Social", () => {
+  it("ningun item del menu es adminOnly: lo decide el permiso de cada uno y la bandera de Ajustes (plano formularios-ui, D1-D4)", () => {
+    expect(NAV_ITEMS.filter((item) => "adminOnly" in item).map((item) => item.name)).toEqual([]);
+    expect(NAV_ITEMS.find((item) => item.name === "Ajustes")?.requires).toBe("settings");
+  });
+
+  it("la unica entrada que el Member NO ve es Social (no tiene social.view)", () => {
     const visibles = memberMenu();
     const ocultas = NAV_ITEMS.map((item) => item.name).filter((n) => !visibles.includes(n)).sort();
 
-    // Social salio de "solo Admin" en F78: ya no es por cargo, es por el permiso `social.view`.
-    expect(ocultas).toEqual(["Ajustes", "Conocimiento", "Integraciones", "Social"]);
+    expect(ocultas).toEqual(["Social"]);
   });
 
   it("las demas las ve un Member", () => {
-    // "Agenda" (Etapa 4) y "Social" (F78) se filtran por permiso (`permissions`). El Member de sistema
-    // ve Agenda porque tiene scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
+    // "Agenda" (Etapa 4) y "Social" (F78) se filtran por permiso (`permissions`). El Member de sistema ve
+    // Agenda porque tiene scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
     expect(memberMenu()).toEqual([
       "Agenda",
       "Agentes IA",
+      // Plano formularios-ui (D4): Recursos ya no es un item; Ajustes lo lleva a esa pantalla.
+      "Ajustes",
       "Automatizaciones",
       "Bandeja",
       "Contactos",
@@ -363,9 +374,6 @@ describe("caracterizacion: el menu (F68)", () => {
       // Reporte de fin de día (E10): no pide permiso, pide estar en la audiencia de un
       // EOD publicado (condición del servidor, `requires: "eod"`).
       "Mi reporte del día",
-      // Banca v2 (F3): la misma pantalla que la pestaña de Ajustes, visible
-      // para todos. Crear y editar los decide templates.manage.
-      "Recursos",
       // Tareas (Extra A): el Member de sistema tiene tasks.view (alcance own).
       "Tareas",
       // Ventas (Etapa 5): el Member de sistema tiene sales.view (alcance own).

@@ -6,6 +6,7 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { FormEditor } from "@/components/forms/editor/form-editor";
 import type { EditorExtras, EditorForm, EditorVersion } from "@/components/forms/editor/types";
 import { flowsForForm } from "@/lib/forms/data/form-flows";
+import { countResponses } from "@/lib/forms/editor-bar-load";
 import { parseStoredContactConfig, type CustomFieldDef } from "@/lib/forms/contact-config";
 import { parseStoredSurveyConfig } from "@/lib/forms/survey";
 import { parseStoredContractConfig } from "@/lib/forms/contract/config";
@@ -40,13 +41,14 @@ export default async function FormularioEditorPage({ params }: { params: Promise
 
   const service = await createServiceClient();
   const isEod = form.type === "eod";
-  const [{ data: customRows }, { data: tagRows }, flows, { data: roleRows }] = await Promise.all([
+  const [{ data: customRows }, { data: tagRows }, flows, { data: roleRows }, responseCount] = await Promise.all([
     supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     flowsForForm(supabase, id, { [id]: form.name }),
     isEod
       ? service.from("workspace_roles").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true })
       : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+    countResponses(supabase, workspace.id, id, form.type as FormType),
   ]);
 
   const names = new Map(members.map((m) => [m.userId, m.name]));
@@ -92,6 +94,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     flows,
     canFlows: ctx.can("flows.edit"),
     roles: roleRows ?? [],
+    responseCount,
   };
 
   return (

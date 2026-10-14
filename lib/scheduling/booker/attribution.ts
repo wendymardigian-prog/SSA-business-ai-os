@@ -12,7 +12,7 @@
  * PURO: recibe lo que lee el navegador; no toca `window` ni `document`.
  */
 import { attributionFromParams, gaClientId, parseCookieHeader, sanitizeAttribution } from "@/lib/attribution/collect";
-import { effectiveAttribution } from "@/lib/attribution/merge";
+import { effectiveAttribution, preferEmbeddedEntryUrl } from "@/lib/attribution/merge";
 import { storedFromEffective } from "@/lib/attribution/browser";
 import { parseStored } from "@/lib/attribution/store";
 import { COOKIE_KEYS } from "@/lib/attribution/keys";
@@ -46,7 +46,8 @@ export function bookingAttribution(input: BookingAttributionInput): Record<strin
       cookies: parseCookieHeader(input.cookieHeader),
     });
     if (input.isEmbed) {
-      return effectiveAttribution(current, storedFromEffective(sanitizeAttribution(decodeAttr(input.attrParam))));
+      const fromEmbed = sanitizeAttribution(decodeAttr(input.attrParam));
+      return preferEmbeddedEntryUrl(effectiveAttribution(current, storedFromEffective(fromEmbed)), fromEmbed);
     }
     return effectiveAttribution(current, parseStored(input.storedCookie));
   } catch {

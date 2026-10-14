@@ -2,9 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronLeft, Download, Inbox, Loader2 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
-import { BackLink } from "@/components/forms/back-link";
+import { Download, Inbox, Loader2 } from "lucide-react";
 import { Notice } from "@/components/agents/fields";
 import { FilterBar, FilterSelect, Pagination, useUrlFilters } from "@/components/agents/filters";
 import { exportResponsesCsv } from "@/lib/actions/forms/responses";
@@ -30,8 +28,8 @@ const STATUS_STYLE: Record<SubmissionStatus, string> = {
 };
 
 export function ResponsesTable({
+  header,
   formId,
-  formName,
   formType,
   rows,
   columns,
@@ -44,8 +42,9 @@ export function ResponsesTable({
   canExport = false,
   timeZone,
 }: {
+  /** La barra del editor (la arma el servidor: plano formularios-ui, F7). */
+  header: React.ReactNode;
   formId: string;
-  formName: string;
   formType: "custom" | "survey" | "contract";
   rows: ResponseTableRow[];
   columns: ResponseColumn[];
@@ -92,23 +91,17 @@ export function ResponsesTable({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader
-        title="Respuestas"
-        tooltip="Lo que respondió la gente. Solo ves las respuestas de los contactos que podés ver."
-        backHref={<BackLink href={`/dashboard/formularios/${formId}`} label="Volver al formulario" />}
-        right={
-          canExport ? (
-          <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-            <span className="hidden sm:inline">Exportar CSV</span>
-          </button>
-          ) : undefined
-        }
-      />
+      {header}
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
-        <Link href={`/dashboard/formularios/${formId}`} className="mb-3 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="h-3.5 w-3.5" aria-hidden /> {formName}
-        </Link>
+        {/* Exportar es `canExport` (equipo y roles, M2): quien no puede, no ve el boton. */}
+        {canExport && (
+          <div className="mb-3 flex items-center justify-end">
+            <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+            Exportar CSV
+          </button>
+          </div>
+        )}
 
         {message && (
           <div className="mb-3" role="status">
@@ -154,7 +147,7 @@ export function ResponsesTable({
               ) : (
                 <>
                   Compartí el link desde{" "}
-                  <Link href={`/dashboard/formularios/${formId}`} className="underline">
+                  <Link href={`/dashboard/formularios/${formId}?tab=publicar`} className="underline">
                     Publicar
                   </Link>
                   .

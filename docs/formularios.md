@@ -19,6 +19,20 @@ a cinco tipos), las versiones y la pestaña Automatizaciones, pero **no** tiene 
 link, embed, contacto ni respuestas: se completa con la sesión iniciada en "Mi reporte del día" y
 se ve en la pestaña Reportes. Todo en [eod.md](eod.md).
 
+## El editor (UI de octubre 2026)
+
+Plano: `requerimientos-formularios-ui-menu.md`; avance en [PROGRESS-formularios-ui.md](PROGRESS-formularios-ui.md).
+
+- **Menú:** Formularios vive en la sección colapsable **Herramientas** (Automatizaciones, Formularios, Agentes IA, Ajustes). Conocimiento sale del menú (es un botón de la pantalla de Agentes IA) y Recursos e Integraciones se llegan desde Ajustes.
+- **Lista** (`/dashboard/formularios`): tarjetas con buscador, Estado y Tipo en la barra superior (se guardan en la URL); por defecto muestra **todos**, también los archivados. La lógica de qué mostrar vive en `lib/forms/list.ts` y `form-card.ts`.
+- **Barra del editor** (`components/forms/editor/editor-bar.tsx`, reglas en `lib/forms/editor-bar.ts`): ← Volver, ícono del tipo, nombre interno, pestañas, estado, guardado, Métricas, Vista previa y Publicar. La pestaña vive en `?tab=`. Respuestas, Métricas, Encuesta y Reportes usan la misma barra.
+- **Campos = lienzo + panel** (`components/forms/builder/`): el formulario como lo ve quien responde, con las preguntas editables en el lugar (arrastrar con HTML5 nativo, duplicar, borrar, "+ Agregar pregunta" dentro del lienzo) y a la derecha el panel de lo elegido: el formulario, una pregunta o "Después de enviar". No hay vista previa al costado (es el botón de la barra) ni `<details>`: `components/forms/no-details.test.ts` lo cuida. Las operaciones son puras (`lib/forms/builder-ops.ts`, `contact-map.ts`, `publish-issues.ts`, `canvas-view.ts`) y el reporte de fin de día usa el mismo lienzo.
+- **"Se guarda en el contacto"** (panel de la pregunta) y la tabla de la pestaña Contacto son **el mismo dato** (`contactConfig.map`, `setFieldMapping`): un dato del contacto lo usa una sola pregunta.
+- **Publicar con algo pendiente** lleva a Campos, elige la primera pregunta con un problema y la muestra; cada pregunta con un problema se marca en rojo.
+- **Flows** (antes "Automatizaciones" dentro del formulario): la lógica no cambió.
+- **Publicar** en dos columnas: link, insertar en tu web, atribución (siempre activa), seguimiento y link para un contacto (con el armador de links con datos cargados) a la izquierda; Estado (Pausar, Reanudar, Archivar, Restaurar) y Versiones a la derecha.
+- **Sin logo:** el formulario público ya no muestra el logo de la marca (`design.showLogo` sigue guardado pero nadie lo usa).
+
 ## Datos
 
 Cuatro tablas nuevas. Todas con RLS; **escribe solo el servidor**. `form_versions` además tiene un candado en la base (00177): ni el service role puede cambiar una versión publicada.
@@ -78,6 +92,7 @@ Todo lo que toca base y Storage entra por `SubmitPorts`: el orden se prueba ente
 - **Las claves en un solo lugar**: `lib/attribution/keys.ts` (UTM, ids de clic de cada plataforma, ids del anuncio, cookies `fbp`/`fbc`/`ga_client_id`).
 - **Atribución efectiva** (`effectiveAttribution`): si la URL trae un toque nuevo, gana; si no, vale el último guardado. La primera visita viaja aparte y **nunca se pisa**. El servidor vuelve a sanear todo lo que manda el navegador.
 - **Persistente entre páginas** (`lib/attribution/store.ts`): cookie `ssa_attr` en las páginas del proyecto, `localStorage` de la web externa con el mismo `embed.js`, y un modo "solo seguimiento" (`data-agenda-track`). Ver [sitio.md](sitio.md).
+- **La URL de entrada completa** (`entry_url`): la dirección con todos los parámetros con los que entró la persona (también `ad_name`, `campaign_name` o un `?ref=podcast` propio). Se guarda en `form_submissions.attribution` y en `contact_touches.entry_url`, sin los datos que identifican a la persona (tokens, claves) ni el `#`. Detalle en [atribucion.md](atribucion.md).
 - **El toque** (`formTouch`): `medium = "form"`, la campaña y los ids a sus columnas y el resto (`msclkid`, `gbraid`, `fbc`…) a `raw`. La regla del primer y último toque es la de `record_contact_touch`: contacto nuevo → este toque es el primero y el último; existente → pasa a ser el último y el primero no cambia.
 
 ## Automatizaciones
@@ -142,7 +157,7 @@ El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante
 - La protección anti-spam es honeypot + tope por IP + idempotencia (el captcha está en `docs/pendientes/turnstile-captcha.md`).
 - Una versión publicada no se puede cambiar (trigger `form_versions_protect`, también para el service role).
 - Con el interruptor de contactos apagado, la base no toca ningún contacto (aunque el servidor mande datos).
-- Las claves de atribución están en **un solo lugar** (`lib/attribution/keys.ts`).
+- Las claves de atribución están en **un solo lugar** (`lib/attribution/keys.ts`). `entry_url` es un dato aparte (`lib/attribution/entry-url.ts`): **nunca se loguea**.
 - Un `service_id` o `sale_id` suelto nunca se guarda: solo viaja dentro de un link firmado válido.
 - Los eventos de automatización llevan solo escalares y nunca `booking_id`.
 - Un flujo con Condiciones se guarda desde el servidor (`saveFormFlowTree`): el disparador sale de la base y solo "Solo si…" es editable; "Probar condiciones" nunca escribe nada.

@@ -1,9 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
-import { BackLink } from "@/components/forms/back-link";
 import { Notice } from "@/components/agents/fields";
 import { FilterSelect, useUrlFilters } from "@/components/agents/filters";
 import { formatPercent, PERIOD_OPTIONS, summarize, type DailyRow, type Period } from "@/lib/forms/metrics";
@@ -24,8 +21,7 @@ function shortDay(day: string): string {
 }
 
 export function MetricsView({
-  formId,
-  formName,
+  header,
   period,
   rows,
   fieldMetrics,
@@ -33,8 +29,8 @@ export function MetricsView({
   loadError,
   activePreset,
 }: {
-  formId: string;
-  formName: string;
+  /** La barra del editor (la arma el servidor: plano formularios-ui, F7). */
+  header: React.ReactNode;
   period: Period;
   rows: DailyRow[];
   fieldMetrics: MetricasDelFormulario;
@@ -50,13 +46,9 @@ export function MetricsView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader title="Métricas" tooltip="Vistas, inicios y envíos por día. La conversión es envíos sobre vistas." backHref={<BackLink href={`/dashboard/formularios/${formId}`} label="Volver al formulario" />} />
+      {header}
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <div className="mx-auto max-w-4xl space-y-5">
-          <Link href={`/dashboard/formularios/${formId}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="h-3.5 w-3.5" aria-hidden /> {formName}
-          </Link>
-
           <div className="flex flex-wrap items-center gap-2">
             <FilterSelect
               label="Período"

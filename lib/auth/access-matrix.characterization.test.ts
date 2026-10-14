@@ -207,7 +207,7 @@ const ROLES: Role[] = ["owner", "admin", "member"];
 /** Adaptadores: si cambia la firma de una funcion, se cambia ESTO, no la foto. */
 function navFor(role: Role): string[] {
   const perms = SYSTEM_ROLE_PERMISSIONS[role];
-  return visibleNavItems(NAV_ITEMS, { permissionKeys: perms.keys, flags: { eod: true } }).map((i) => i.name);
+  return visibleNavItems(NAV_ITEMS, { permissionKeys: perms.keys, flags: { eod: true, settings: true } }).map((i) => i.name);
 }
 
 const ACTION_ROUTES = [
@@ -289,12 +289,26 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
   }
 
   describe("lo que se dibuja (menu, botones de cabecera, pestanas del agente)", () => {
-    it("Owner y Admin ven EXACTAMENTE lo mismo que antes", () => {
-      for (const r of ["owner", "admin"] as const) expect(now.rendered[r]).toEqual(base.rendered[r]);
+    // Cambio aprobado FUERA de esta corrida (plano formularios-ui, D1-D4, ya en `main`): Conocimiento, Recursos e
+    // Integraciones dejan de ser items del menu, y Formularios pasa de grupo (el orden cambia). No se pierde ningun
+    // acceso: Conocimiento se abre con un boton de Agentes IA, y Recursos e Integraciones son pestañas de Ajustes.
+    // Ajustes ahora lo ven todos (todos llegan a Recursos). Por eso el menu se compara como CONJUNTO.
+    const REMOVED_FROM_MENU = ["Conocimiento", "Recursos", "Integraciones"];
+    const sorted = (names: string[]) => [...names].sort();
+
+    it("Owner y Admin ven lo mismo que antes (el menu, salvo el rediseño aprobado de formularios-ui)", () => {
+      for (const r of ["owner", "admin"] as const) {
+        const now_ = now.rendered[r] as { nav: string[] };
+        const base_ = base.rendered[r] as { nav: string[] };
+        expect(sorted(now_.nav), r).toEqual(sorted(base_.nav.filter((n) => !REMOVED_FROM_MENU.includes(n))));
+        expect({ ...now_, nav: [] }).toEqual({ ...base_, nav: [] });
+      }
     });
 
-    it("el menu del Member es el de hoy", () => {
-      expect((now.rendered.member as { nav: string[] }).nav).toEqual((base.rendered.member as { nav: string[] }).nav);
+    it("el menu del Member es el de hoy, salvo el rediseño aprobado: pierde Recursos como item y gana Ajustes", () => {
+      const nav = (now.rendered.member as { nav: string[] }).nav;
+      const baseNav = (base.rendered.member as { nav: string[] }).nav;
+      expect(sorted(nav)).toEqual(sorted([...baseNav.filter((n) => n !== "Recursos"), "Ajustes"]));
     });
 
     it("las pestanas del agente del Member son las de hoy", () => {

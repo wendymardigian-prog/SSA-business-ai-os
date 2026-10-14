@@ -4743,6 +4743,8 @@ export interface Database {
           ctwa_clid: string | null;
           referrer_url: string | null;
           landing_page: string | null;
+          /** La URL de entrada completa, con todos sus parametros menos los sensibles (00215). Puede traer datos de la persona: nunca se loguea. */
+          entry_url: string | null;
           origin: "dm" | "comment" | "booking" | "form" | "manual" | "import";
           dedupe_key: string;
           raw: Json;

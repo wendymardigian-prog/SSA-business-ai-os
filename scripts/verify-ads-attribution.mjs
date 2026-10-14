@@ -306,10 +306,12 @@ try {
     check(after !== null && JSON.stringify(before) === JSON.stringify(after), "para un contacto con varios toques, refresh deja el mismo attribution que record_contact_touch", `antes ${JSON.stringify(before)} / despues ${JSON.stringify(after)}`);
   }
 
-  console.log("\n— AT3: la huella de record_contact_touch no cambio —");
+  console.log("\n— AT3: la huella de record_contact_touch —");
   {
     const rows = sql(`select md5(pg_get_functiondef('public.record_contact_touch'::regproc)) as h;`);
-    check(rows[0]?.h === "f364db1862cc0f90291ca14ef855a214", "record_contact_touch tiene la misma huella que en el punto de partida", rows[0]?.h);
+    // Plano formularios-ui F18: la 00215 reescribe `record_contact_touch` SOLO para escribir `entry_url` (la huella vieja era
+    // f364db1862cc0f90291ca14ef855a214; la definicion completa esta en la cabecera de la 00215).
+    check(rows[0]?.h === "2f51ddbf060e31528b89ce7481b38e3d", "record_contact_touch tiene la huella de la 00215 (solo suma entry_url)", rows[0]?.h);
   }
 
   console.log("\n— AT3: re-vincular despues de un sync (rematch_meta_touches) —");

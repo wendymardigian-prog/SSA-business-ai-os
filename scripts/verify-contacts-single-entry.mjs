@@ -98,6 +98,8 @@ try {
       check(dupPhone.error?.code === "23505" && /uq_contacts_workspace_phone/.test(dupPhone.error.message), "el telefono principal repetido en el workspace se rechaza");
       check(dupMail.error?.code === "23505" && /uq_contacts_workspace_email/.test(dupMail.error.message), "el email repetido con otras mayusculas tambien");
       check(!!a.data, "(el primero se creo)");
+      // Con los indices aplicados esta rama deja un contacto vivo en `ws`: se borra para no ensuciar el conteo de las secciones siguientes.
+      if (a.data) await svc.from("contacts").delete().eq("id", a.data.id);
     } else {
       console.log("  (los indices de la 00205 todavia no estan aplicados: se ensayan dentro de una transaccion que se deshace)");
       const file = readFileSync("supabase/migrations/00205_contacts_unique_identity.sql", "utf8");
@@ -208,7 +210,7 @@ $ens$;`;
     check(byEmail.contact_id === created.contact_id && byEmail.matched_by === "email", "lo encuentra por email con otras mayusculas");
     const viaWa = await central(ws, { whatsapp_phone: p1 });
     check(viaWa.contact_id === created.contact_id, "el WhatsApp tambien busca en la columna del telefono");
-    check((await count(ws)) === 1, "sigue habiendo UN contacto");
+    { const n = await count(ws); check(n === 1, "sigue habiendo UN contacto", `hay ${n}: ${n !== 1 ? JSON.stringify((await svc.from("contacts").select("id,display_name,phone,email,whatsapp_phone,created_at,metadata").eq("workspace_id", ws).is("deleted_at", null)).data) : ""}`); }
 
     const other = await central(ws2, { phone: p1 });
     check(other.status === "created" && other.contact_id !== created.contact_id, "otro workspace con el mismo telefono: otro contacto");
