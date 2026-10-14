@@ -6,6 +6,7 @@
  * real; esto fija que la tabla diga lo mismo.
  */
 
+import { visibleNavItems } from "@/lib/nav/items";
 import { describe, it, expect } from "vitest";
 import { NAV_ITEMS } from "@/lib/nav/items";
 import {
@@ -138,17 +139,14 @@ describe("el Member es exactamente el de hoy (F68)", () => {
   });
 
   it("coincide con lo que el menu le muestra hoy", () => {
-    // Las entradas `adminOnly` del menu son justo las que el Member no tiene
-    // permiso de ver.
-    const adminOnly = NAV_ITEMS.filter((i) => i.adminOnly).map((i) => i.name);
+    // Lo que el Member NO ve en el menu es justo lo que no tiene permiso de ver.
+    const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true } }).map((i) => i.name);
+    const ocultos = NAV_ITEMS.map((i) => i.name).filter((n) => !visibles.includes(n)).sort();
+    expect(ocultos).toEqual(["Ajustes", "Conocimiento", "Integraciones", "Social"]);
 
-    expect(adminOnly).toContain("Conocimiento");
     expect(can(member, "knowledge.view")).toBe(false);
-
-    // Social dejo de ser por cargo (F78): se ve con el permiso `social.view`,
-    // y el Member de sistema no lo tiene, asi que sigue sin verlo.
+    // Social no es por cargo (F78): se ve con `social.view`, que el Member de sistema no tiene.
     const social = NAV_ITEMS.find((i) => i.name === "Social");
-    expect(social?.adminOnly).toBe(false);
     expect(social?.permissions).toEqual(["social.view"]);
     expect(can(member, "social.view")).toBe(false);
   });

@@ -49,8 +49,8 @@ interface WorkspaceItem {
   role: string;
 }
 
-// adminOnly: la pantalla ademas esta protegida por requireWorkspaceAdmin y por
-// RLS. Ocultarla del menu es para no ofrecerle a un Member un link que rebota.
+// Cada item pide el permiso de lo que abre (lib/nav/items.ts): la pantalla ademas se protege
+// con su guard y con la RLS. Ocultarla del menu es para no ofrecer un link que rebota.
 //
 // Borradores NO esta en el menu (Bloque 2d): el modo borrador es una rampa para
 // confiar en el agente, no una seccion permanente. El dia que un canal vuelve a
@@ -72,7 +72,6 @@ export const navigation = NAV_ITEMS.map((item) => ({
   href: item.href,
   permissions: item.permissions,
   icon: ICONS[item.icon] ?? LayoutGrid,
-  adminOnly: item.adminOnly,
   group: item.group,
   alsoActiveOn: item.alsoActiveOn,
   requires: item.requires,
@@ -212,7 +211,7 @@ export function NavLinks({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const navItems = visibleNavItems(navigation, { isAdmin: isAdminRole(role), permissionKeys, flags: navFlags });
+  const navItems = visibleNavItems(navigation, { permissionKeys, flags: navFlags });
   // El agrupamiento se calcula sobre los items YA filtrados: un grupo sin
   // nada visible no aparece, y con el su titulo (N1).
   const sections = navSections(navItems);

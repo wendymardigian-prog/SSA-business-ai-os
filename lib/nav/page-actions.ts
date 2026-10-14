@@ -25,13 +25,10 @@ export interface PageAction {
   kind: ActionKind;
   /** Solo para `link`. */
   href?: string;
-  /** Solo lo ven Owner y Admin. */
-  adminOnly?: boolean;
-  /**
-   * Lo ve quien tiene este permiso (Owner y Admin los tienen todos). Para
-   * las acciones que un rol personalizado puede hacer sin ser Admin.
-   */
+  /** Lo ve quien tiene este permiso (Owner y Admin los tienen todos). */
   permission?: string;
+  /** Lo ve quien tiene ALGUNO de estos permisos. */
+  permissions?: string[];
 }
 
 export interface PageMeta {
@@ -413,9 +410,8 @@ export function pageMetaFor(pathname: string): PageMeta | null {
 }
 
 export interface PageActionState {
-  isAdmin: boolean;
-  /** Las claves del rol resuelto, para las acciones con `permission`. */
-  permissionKeys?: string[];
+  /** Las claves del rol resuelto (Owner y Admin las traen todas). */
+  permissionKeys: string[];
   /** Vista elegida, para las pantallas que tienen varias. */
   view?: string;
   /** Hay algo para filtrar (si no, el filtro no se ofrece). */
@@ -425,17 +421,17 @@ export interface PageActionState {
 /** Lo que va a la derecha de la barra, ya filtrado por rol. */
 const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
   "/dashboard/settings/integrations": () => [
-    { id: "attention", label: "Requiere atencion", kind: "toggle", adminOnly: true },
+    { id: "attention", label: "Requiere atencion", kind: "toggle", permissions: ["integrations.view", "integrations.manage", "channels.manage"] },
   ],
   "/dashboard/settings/team": () => [
-    { id: "invite", label: "Invitar", kind: "primary", adminOnly: true },
+    { id: "invite", label: "Invitar", kind: "primary", permission: "team.invite" },
   ],
   "/dashboard/content": () => [
     { id: "new_idea", label: "Nueva idea", kind: "secondary" },
     { id: "new_post", label: "Nuevo post", kind: "primary" },
   ],
   "/dashboard/contacts": () => [
-    { id: "import", label: "Importar", kind: "secondary", href: "/dashboard/contacts/import", adminOnly: false },
+    { id: "import", label: "Importar", kind: "secondary", href: "/dashboard/contacts/import", permission: "contacts.import" },
     { id: "new", label: "Nuevo contacto", kind: "primary" },
   ],
   "/dashboard/flows": () => [
@@ -443,17 +439,17 @@ const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
     { id: "new", label: "Nuevo flow", kind: "primary" },
   ],
   "/dashboard/sequences": () => [
-    { id: "new", label: "Nueva secuencia", kind: "primary", adminOnly: true },
+    { id: "new", label: "Nueva secuencia", kind: "primary", permission: "sequences.edit" },
   ],
   "/dashboard/broadcasts": () => [{ id: "new", label: "Nuevo broadcast", kind: "primary" }],
   "/dashboard/channels": () => [
-    { id: "connect", label: "Conectar canal", kind: "primary", adminOnly: true },
+    { id: "connect", label: "Conectar canal", kind: "primary", permission: "channels.manage" },
   ],
   "/dashboard/knowledge": () => [
-    { id: "upload", label: "Subir documento", kind: "primary", adminOnly: true },
+    { id: "upload", label: "Subir documento", kind: "primary", permission: "knowledge.edit" },
   ],
   "/dashboard/settings/custom-fields": () => [
-    { id: "new", label: "Nuevo campo", kind: "primary", adminOnly: true },
+    { id: "new", label: "Nuevo campo", kind: "primary", permission: "custom_fields.manage" },
   ],
   "/dashboard/settings/recursos": () => [
     // Banca v2 (F4): no es por cargo, es por permiso.
@@ -464,15 +460,15 @@ const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
 /**
  * Las acciones de una pantalla para quien la esta mirando.
  *
- * Devuelve solo lo que esa persona puede usar: un Member no recibe la accion
- * de administrador, asi no hay que acordarse de esconderla en el JSX.
+ * Devuelve solo lo que esa persona puede usar: quien no tiene el permiso no recibe la
+ * accion, asi no hay que acordarse de esconderla en el JSX.
  */
 export function pageActions(pathname: string, state: PageActionState): PageAction[] {
   const build = ACTIONS[routePattern(pathname)];
   if (!build) return [];
   return build(state).filter((action) => {
-    if (action.adminOnly && !state.isAdmin) return false;
-    if (action.permission && !state.isAdmin) return (state.permissionKeys ?? []).includes(action.permission);
+    if (action.permission) return state.permissionKeys.includes(action.permission);
+    if (action.permissions) return action.permissions.some((key) => state.permissionKeys.includes(key));
     return true;
   });
 }

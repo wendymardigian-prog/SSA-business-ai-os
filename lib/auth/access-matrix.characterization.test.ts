@@ -179,7 +179,7 @@ const ROLES: Role[] = ["owner", "admin", "member"];
 /** Adaptadores: si cambia la firma de una funcion, se cambia ESTO, no la foto. */
 function navFor(role: Role): string[] {
   const perms = SYSTEM_ROLE_PERMISSIONS[role];
-  return visibleNavItems(NAV_ITEMS, { isAdmin: role !== "member", permissionKeys: perms.keys, flags: { eod: true } }).map((i) => i.name);
+  return visibleNavItems(NAV_ITEMS, { permissionKeys: perms.keys, flags: { eod: true } }).map((i) => i.name);
 }
 
 const ACTION_ROUTES = [
@@ -191,7 +191,7 @@ function actionsFor(role: Role): Record<string, string[]> {
   const perms = SYSTEM_ROLE_PERMISSIONS[role];
   const out: Record<string, string[]> = {};
   for (const route of ACTION_ROUTES) {
-    out[route] = pageActions(route, { isAdmin: role !== "member", permissionKeys: perms.keys }).map((a) => a.id);
+    out[route] = pageActions(route, { permissionKeys: perms.keys }).map((a) => a.id);
   }
   return out;
 }
@@ -199,7 +199,7 @@ function actionsFor(role: Role): Record<string, string[]> {
 function agentTabsFor(role: Role): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const [type, def] of Object.entries(AGENT_TYPES)) {
-    out[type] = tabsForViewer(def, role !== "member").tabs.map((t) => t.key);
+    out[type] = tabsForViewer(def, (key) => SYSTEM_ROLE_PERMISSIONS[role].keys.includes(key)).tabs.map((t) => t.key);
   }
   return out;
 }
@@ -267,6 +267,17 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
 
     it("el menu del Member es el de hoy", () => {
       expect((now.rendered.member as { nav: string[] }).nav).toEqual((base.rendered.member as { nav: string[] }).nav);
+    });
+
+    it("las pestanas del agente del Member son las de hoy", () => {
+      expect((now.rendered.member as { agentTabs: unknown }).agentTabs).toEqual((base.rendered.member as { agentTabs: unknown }).agentTabs);
+    });
+
+    it("los botones de cabecera del Member son los de hoy, salvo los aprobados", () => {
+      const actions = JSON.parse(JSON.stringify((now.rendered.member as { pageActions: Record<string, string[]> }).pageActions)) as Record<string, string[]>;
+      // Cambio aprobado, plano §9.3: el Member pierde importar contactos (M1), y con eso el boton "Importar".
+      actions["/dashboard/contacts"] = ["import", ...actions["/dashboard/contacts"]];
+      expect(actions).toEqual((base.rendered.member as { pageActions: Record<string, string[]> }).pageActions);
     });
   });
 });

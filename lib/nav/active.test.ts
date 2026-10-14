@@ -1,3 +1,4 @@
+import { ALL_PERMISSION_KEYS } from "@/lib/auth/permissions";
 import { describe, it, expect } from "vitest";
 import { isNavItemActive, activeNavHref } from "./active";
 import { NAV_ITEMS, visibleNavItems } from "./items";
@@ -89,8 +90,8 @@ describe("exactamente un item activo en cualquier ruta real del dashboard (N4)",
   const rutaDeEjemplo = (patron: string) => patron.replace(/\[[^\]]+\]/g, "muestra");
 
   // Un admin que además está en la audiencia de un EOD: ve el menú entero.
-  const admin = visibleNavItems(NAV_ITEMS, { isAdmin: true, permissionKeys: [], flags: { eod: true } });
-  const member = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] });
+  const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true } });
+  const member = visibleNavItems(NAV_ITEMS, { permissionKeys: [] });
 
   for (const patron of Object.keys(PAGE_META)) {
     it(`${patron}: exactamente un item activo para un admin`, () => {

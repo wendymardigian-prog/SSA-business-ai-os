@@ -29,10 +29,10 @@ export interface AgentTypeDefinition {
   /** Secciones de la pestana Configuracion, en orden. */
   configSections: AgentConfigSection[];
   /**
-   * Pestanas del detalle. adminOnly: solo Owner/Admin; un Member ve Runs y
+   * Pestanas del detalle. permission: la clave que pide la pestaña (sin clave la ve quien ve el agente); un Member ve Runs y
    * Acciones (acotadas a su scope por RLS) y nada de configuracion ni costos.
    */
-  tabs: Array<{ key: string; label: string; available: boolean; adminOnly: boolean }>;
+  tabs: Array<{ key: string; label: string; available: boolean; permission?: string }>;
   /** Si responde a leads en conversaciones de la bandeja. */
   conversational: boolean;
 }
@@ -44,15 +44,15 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     description: "Responde a los leads en los canales conectados, con su prompt, sus limites y la base de conocimiento.",
     configSections: ["identity", "prompt", "model", "timing", "output", "guardrails", "closing"],
     tabs: [
-      { key: "config", label: "Configuracion", available: true, adminOnly: true },
-      { key: "tools", label: "Herramientas", available: true, adminOnly: true },
-      { key: "knowledge", label: "Conocimiento", available: true, adminOnly: true },
-      { key: "channels", label: "Canales", available: true, adminOnly: true },
-      { key: "runs", label: "Runs", available: true, adminOnly: false },
-      { key: "actions", label: "Acciones", available: true, adminOnly: false },
-      { key: "costs", label: "Costos", available: true, adminOnly: true },
+      { key: "config", label: "Configuracion", available: true, permission: "agents.edit" },
+      { key: "tools", label: "Herramientas", available: true, permission: "agents.edit" },
+      { key: "knowledge", label: "Conocimiento", available: true, permission: "agents.edit" },
+      { key: "channels", label: "Canales", available: true, permission: "agents.edit" },
+      { key: "runs", label: "Runs", available: true },
+      { key: "actions", label: "Acciones", available: true },
+      { key: "costs", label: "Costos", available: true, permission: "ai_costs.view" },
       // Bloque 2d-A: el efecto de cada etiqueta sobre el agente.
-      { key: "tags", label: "Etiquetas", available: true, adminOnly: true },
+      { key: "tags", label: "Etiquetas", available: true, permission: "agents.edit" },
     ],
     conversational: true,
   },
@@ -73,10 +73,10 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     description: "Escribe el guion y los captions de cada pieza con la voz de tu marca.",
     configSections: ["identity", "prompt", "model", "copywriter"],
     tabs: [
-      { key: "config", label: "Configuracion", available: true, adminOnly: true },
-      { key: "knowledge", label: "Conocimiento", available: true, adminOnly: true },
-      { key: "runs", label: "Runs", available: true, adminOnly: false },
-      { key: "costs", label: "Costos", available: true, adminOnly: true },
+      { key: "config", label: "Configuracion", available: true, permission: "agents.edit" },
+      { key: "knowledge", label: "Conocimiento", available: true, permission: "agents.edit" },
+      { key: "runs", label: "Runs", available: true },
+      { key: "costs", label: "Costos", available: true, permission: "ai_costs.view" },
     ],
     conversational: false,
   },
@@ -87,8 +87,8 @@ export function getAgentType(type: string): AgentTypeDefinition | null {
 }
 
 /** Las pestanas que puede ver un rol, y cual abre por defecto. */
-export function tabsForViewer(typeDef: AgentTypeDefinition, isAdmin: boolean) {
-  const tabs = typeDef.tabs.filter((t) => isAdmin || !t.adminOnly);
+export function tabsForViewer(typeDef: AgentTypeDefinition, can: (permission: string) => boolean) {
+  const tabs = typeDef.tabs.filter((t) => !t.permission || can(t.permission));
   const first = tabs.find((t) => t.available)?.key ?? "runs";
   return { tabs, defaultTab: first };
 }

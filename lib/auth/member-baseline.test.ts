@@ -16,6 +16,7 @@
  * podía antes, y cualquier diferencia es una decisión explícita.
  */
 
+import { visibleNavItems } from "@/lib/nav/items";
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -287,20 +288,25 @@ describe("caracterizacion: el menu (F68)", () => {
   // con el mismo criterio adminOnly que sus vecinas de siempre. Settings e
   // Inbox se renombran a Ajustes y Bandeja; Contacts y Flows, a Contactos y
   // Automatizaciones. Ninguna clave de PERMISSION_KEYS se agrego para esto.
-  it("las tres entradas de Admin son las de hoy, con Integraciones en vez de Channels", () => {
-    const adminOnly = NAV_ITEMS.filter((item) => item.adminOnly).map((item) => item.name).sort();
+  // Equipo y roles (B1): `adminOnly` desaparecio. El menu se calcula con las claves de cada rol, y la
+  // lista de lo que ve el Member de sistema es EXACTAMENTE la de siempre (este test no se afloja).
+  const memberMenu = () =>
+    visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { eod: true } })
+      .map((item) => item.name)
+      .sort();
 
-    // Social salio en F78: ya no es por cargo, es por el permiso `social.view`.
-    expect(adminOnly).toEqual(["Ajustes", "Conocimiento", "Integraciones"]);
+  it("las cuatro entradas que el Member NO ve son las de hoy: Ajustes, Conocimiento, Integraciones y Social", () => {
+    const visibles = memberMenu();
+    const ocultas = NAV_ITEMS.map((item) => item.name).filter((n) => !visibles.includes(n)).sort();
+
+    // Social salio de "solo Admin" en F78: ya no es por cargo, es por el permiso `social.view`.
+    expect(ocultas).toEqual(["Ajustes", "Conocimiento", "Integraciones", "Social"]);
   });
 
   it("las demas las ve un Member", () => {
-    const visible = NAV_ITEMS.filter((item) => !item.adminOnly).map((item) => item.name).sort();
-
-    // "Agenda" (Etapa 4) y "Social" (F78) no son adminOnly: se filtran por
-    // permiso (`permissions`). El Member de sistema ve Agenda porque tiene
-    // scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
-    expect(visible).toEqual([
+    // "Agenda" (Etapa 4) y "Social" (F78) se filtran por permiso (`permissions`). El Member de sistema
+    // ve Agenda porque tiene scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
+    expect(memberMenu()).toEqual([
       "Agenda",
       "Agentes IA",
       "Automatizaciones",
@@ -318,7 +324,6 @@ describe("caracterizacion: el menu (F68)", () => {
       // Banca v2 (F3): la misma pantalla que la pestaña de Ajustes, visible
       // para todos. Crear y editar los decide templates.manage.
       "Recursos",
-      "Social",
       // Tareas (Extra A): el Member de sistema tiene tasks.view (alcance own).
       "Tareas",
       // Ventas (Etapa 5): el Member de sistema tiene sales.view (alcance own).

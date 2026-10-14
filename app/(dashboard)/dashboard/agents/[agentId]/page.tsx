@@ -38,6 +38,9 @@ export default async function AgentDetailPage({
   const query = await searchParams;
   const [{ workspace, supabase, role }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
   const isAdmin = isAdminRole(role);
+  // Las pestañas piden su permiso; la carga de datos de abajo sigue siendo de Admin hasta que
+  // F23 la pase a permisos (por eso `isAdmin &&`).
+  const viewerCan = (await getPermissionContext()).can;
   // Costos y topes: la zona del NEGOCIO (consistente con los topes que
   // evalua el agente). La pestana Acciones es un filtro: la de quien mira.
   const [viewerTimezone, agents] = await Promise.all([
@@ -49,7 +52,7 @@ export default async function AgentDetailPage({
   const typeDef = getAgentType(agent.type);
   if (!typeDef) notFound();
 
-  const { tabs, defaultTab } = tabsForViewer(typeDef, isAdmin);
+  const { tabs, defaultTab } = tabsForViewer(typeDef, (key) => isAdmin && viewerCan(key));
   const requested = typeof query.tab === "string" ? query.tab : defaultTab;
   const tab = tabs.find((t) => t.key === requested && t.available)?.key ?? defaultTab;
 

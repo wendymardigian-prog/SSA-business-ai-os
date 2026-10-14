@@ -12,6 +12,8 @@
  * Channels tampoco: sale del menu (D3), pero la pantalla se conserva entera y
  * se llega desde el detalle de Zernio/Evolution en Integraciones.
  */
+import { SETTINGS_NAV_PERMISSIONS } from "@/lib/settings/tabs";
+
 export type NavGroupId = "inicio" | "adquisicion" | "ventas" | "automatizacion" | "sistema";
 
 export interface NavGroupMeta {
@@ -41,12 +43,11 @@ export interface NavItemMeta {
   name: string;
   href: string;
   icon: string;
-  adminOnly: boolean;
   group: NavGroupId;
   /**
-   * Visible si la persona tiene ALGUNO de estos permisos (Etapa 4). Owner y
-   * Admin los tienen todos, asi que para ellos no cambia nada. Sin esta lista,
-   * el item se muestra a cualquier miembro (o solo a admins, si adminOnly).
+   * Visible si la persona tiene ALGUNO de estos permisos. Owner y Admin los tienen
+   * todos. Sin esta lista, el item se muestra a cualquier miembro (Recursos).
+   * Ya no hay "solo para admins": cada item pide el permiso de lo que abre.
    */
   permissions?: string[];
   /**
@@ -67,42 +68,42 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // alsoActiveOn: "/dashboard/dashboards" (sin el /chat) para que las otras
   // pantallas de dashboards (ads, content, unified y sus detalles) tambien
   // dejen marcado este item. Antes del bloque N ninguna lo hacia (N4).
-  { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", adminOnly: false, group: "inicio", alsoActiveOn: ["/dashboard/dashboards"] },
+  { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", permissions: ["dashboards.chat.view", "dashboards.content.view", "dashboards.agenda.view", "dashboards.ads.view", "dashboards.unified.view", "calls.view"], group: "inicio", alsoActiveOn: ["/dashboard/dashboards"] },
   // La cola de borradores y las sub-pestañas de la bandeja (broadcasts,
   // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
-  { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false, group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
+  { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", permissions: ["inbox.instagram.view", "inbox.whatsapp.view", "inbox.email.view"], group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
   // Tareas (Extra A): el trabajo pendiente del equipo, junto a la bandeja. Se ve con `tasks.view`:
   // el Member de sistema lo tiene (ve las que creo, tiene a cargo o sigue).
-  { name: "Tareas", href: "/dashboard/tareas", icon: "ListTodo", adminOnly: false, permissions: ["tasks.view"], group: "inicio" },
+  { name: "Tareas", href: "/dashboard/tareas", icon: "ListTodo", permissions: ["tasks.view"], group: "inicio" },
   // Reporte de fin de día (E10): completarlo no necesita permiso, alcanza con estar en
   // la audiencia de un EOD publicado. Por eso es una condición del servidor y no un permiso.
-  { name: "Mi reporte del día", href: "/dashboard/eod", icon: "ListChecks", adminOnly: false, group: "inicio", requires: "eod" },
+  { name: "Mi reporte del día", href: "/dashboard/eod", icon: "ListChecks", group: "inicio", requires: "eod" },
 
-  { name: "Contenido", href: "/dashboard/content", icon: "Clapperboard", adminOnly: false, group: "adquisicion" },
+  { name: "Contenido", href: "/dashboard/content", icon: "Clapperboard", permissions: ["content.view"], group: "adquisicion" },
   // Social: el perfil de cada red y sus publicaciones. Se ve con el permiso
   // `social.view` (F78): Owner y Admin lo tienen siempre, y un rol
   // personalizado se lo puede dar a un Member.
-  { name: "Social", href: "/dashboard/social", icon: "Grid3x3", adminOnly: false, permissions: ["social.view"], group: "adquisicion" },
+  { name: "Social", href: "/dashboard/social", icon: "Grid3x3", permissions: ["social.view"], group: "adquisicion" },
   // Formularios (personalizado, encuesta y contrato): se ve con `forms.view`.
   // El Member de sistema lo tiene (ve las respuestas de los contactos que ve);
   // crear y publicar lo decide `forms.manage`, no el menu.
-  { name: "Formularios", href: "/dashboard/formularios", icon: "ClipboardList", adminOnly: false, permissions: ["forms.view"], group: "adquisicion" },
+  { name: "Formularios", href: "/dashboard/formularios", icon: "ClipboardList", permissions: ["forms.view"], group: "adquisicion" },
 
-  { name: "Contactos", href: "/dashboard/contacts", icon: "Users", adminOnly: false, group: "ventas" },
+  { name: "Contactos", href: "/dashboard/contacts", icon: "Users", permissions: ["contacts.view"], group: "ventas" },
   // Agenda (Etapa 4, F8): abre directo las agendas. La configuracion va
   // detras del engranaje de esa pantalla, no del menu.
-  { name: "Agenda", href: "/dashboard/agenda", icon: "CalendarDays", adminOnly: false, permissions: ["scheduling.use", "bookings.view"], group: "ventas" },
+  { name: "Agenda", href: "/dashboard/agenda", icon: "CalendarDays", permissions: ["scheduling.use", "bookings.view"], group: "ventas" },
   // Llamadas (Fathom + analizador): menu propio (decision 151), debajo de
   // Agenda. Se ve con `calls.view`; un Member de sistema lo tiene (decision 152).
-  { name: "Llamadas", href: "/dashboard/llamadas", icon: "PhoneCall", adminOnly: false, permissions: ["calls.view"], group: "ventas" },
+  { name: "Llamadas", href: "/dashboard/llamadas", icon: "PhoneCall", permissions: ["calls.view"], group: "ventas" },
   // Ventas y pagos (Etapa 5, F8): abre la lista de ventas, SIN engranaje. Los
   // productos y las reglas de asignacion viven en Ajustes. Va despues de
   // Llamadas: ese lugar ya estaba fijado por su test.
-  { name: "Ventas", href: "/dashboard/ventas", icon: "CircleDollarSign", adminOnly: false, permissions: ["sales.view"], group: "ventas", alsoActiveOn: ["/dashboard/ventas"] },
+  { name: "Ventas", href: "/dashboard/ventas", icon: "CircleDollarSign", permissions: ["sales.view"], group: "ventas", alsoActiveOn: ["/dashboard/ventas"] },
 
-  { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", adminOnly: false, group: "automatizacion" },
-  { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", adminOnly: false, group: "automatizacion" },
-  { name: "Conocimiento", href: "/dashboard/knowledge", icon: "BookOpen", adminOnly: true, group: "automatizacion" },
+  { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", permissions: ["flows.view"], group: "automatizacion" },
+  { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", permissions: ["agents.view"], group: "automatizacion" },
+  { name: "Conocimiento", href: "/dashboard/knowledge", icon: "BookOpen", permissions: ["knowledge.view"], group: "automatizacion" },
   // Recursos (banca v2, F3): la MISMA pantalla que la pestaña "Recursos" de
   // Ajustes, con un segundo camino para llegar. Es el patron de Integraciones
   // (una pantalla, dos caminos), pero visible para todos: un Member la usa
@@ -110,36 +111,32 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // recurso. Crear y editar lo decide `templates.manage`, no el menu. Gana
   // sobre Ajustes en su ruta por ser el candidato mas largo (N4).
   // alsoActiveOn: las dos rutas viejas, igual que la pestaña (lib/settings/tabs.ts).
-  { name: "Recursos", href: "/dashboard/settings/recursos", icon: "Library", adminOnly: false, group: "automatizacion", alsoActiveOn: ["/dashboard/settings/templates", "/dashboard/settings/audios"] },
+  { name: "Recursos", href: "/dashboard/settings/recursos", icon: "Library", group: "automatizacion", alsoActiveOn: ["/dashboard/settings/templates", "/dashboard/settings/audios"] },
 
   // Integraciones (nuevo, N1): es sub-ruta de Ajustes (gana por ser el
   // candidato mas largo, N4), y ademas deja marcado a Channels: esa pantalla
   // ya no tiene item propio (D3), pero conceptualmente cuelga de Integraciones
-  // (se llega desde el detalle de Zernio/Evolution). adminOnly, como el resto
-  // de las pantallas de admin (N2): la clave `integrations.manage` existe,
-  // pero el item sigue el mismo criterio que sus vecinas del fondo para no
-  // desalinearse de member-baseline.
-  { name: "Integraciones", href: "/dashboard/settings/integrations", icon: "Blocks", adminOnly: true, group: "sistema", alsoActiveOn: ["/dashboard/channels"] },
-  { name: "Ajustes", href: "/dashboard/settings", icon: "Settings", adminOnly: true, group: "sistema" },
+  // (se llega desde el detalle de Zernio/Evolution). Se ve con el permiso de ver o administrar
+  // integraciones o canales; el Member de sistema NO lo tiene en el menu (llega a "Mis conexiones"
+  // por Agenda y Llamadas, y por la URL). Decision del 13/10/2026.
+  { name: "Integraciones", href: "/dashboard/settings/integrations", icon: "Blocks", permissions: ["integrations.view", "integrations.manage", "channels.manage"], group: "sistema", alsoActiveOn: ["/dashboard/channels"] },
+  { name: "Ajustes", href: "/dashboard/settings", icon: "Settings", permissions: SETTINGS_NAV_PERMISSIONS, group: "sistema" },
 ];
 
 /**
  * Los items que ve una persona con estos permisos (F8).
  *
- * Es la regla del menu en un solo lugar, sin React: `adminOnly` sigue
- * valiendo por rol (es lo que fija member-baseline), y `permissions` se
- * evalua sobre las claves del rol resuelto.
+ * Es la regla del menu en un solo lugar, sin React: cada item pide ALGUNO de sus
+ * `permissions` (Owner y Admin los tienen todos), y `requires` es una condicion que
+ * calcula el servidor y vale tambien para ellos.
  */
-export function visibleNavItems<T extends Pick<NavItemMeta, "adminOnly" | "permissions" | "requires">>(
+export function visibleNavItems<T extends Pick<NavItemMeta, "permissions" | "requires">>(
   items: T[],
-  viewer: { isAdmin: boolean; permissionKeys: string[]; flags?: Partial<Record<NavFlag, boolean>> },
+  viewer: { permissionKeys: string[]; flags?: Partial<Record<NavFlag, boolean>> },
 ): T[] {
   return items.filter((item) => {
     if (item.requires && viewer.flags?.[item.requires] !== true) return false;
-    if (item.adminOnly && !viewer.isAdmin) return false;
-    if (item.permissions && !viewer.isAdmin) {
-      return item.permissions.some((key) => viewer.permissionKeys.includes(key));
-    }
+    if (item.permissions) return item.permissions.some((key) => viewer.permissionKeys.includes(key));
     return true;
   });
 }

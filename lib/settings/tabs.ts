@@ -14,16 +14,22 @@ export interface SettingsTab {
   href: string;
   /** Otras rutas que dejan esta pestaña marcada. */
   also?: string[];
+  /**
+   * Se ve con ALGUNA de estas claves. Sin lista, la ve cualquier miembro (Recursos: la usa
+   * todo el equipo todos los dias). Owner y Admin tienen todas las claves.
+   */
+  permissions?: string[];
 }
 
 export const SETTINGS_TABS: SettingsTab[] = [
-  { name: "General", href: "/dashboard/settings" },
+  { name: "General", href: "/dashboard/settings", permissions: ["settings.general", "sales.settings"] },
   {
     name: "Equipo y roles",
     href: "/dashboard/settings/team",
     also: ["/dashboard/settings/roles"],
+    permissions: ["team.view", "team.invite", "team.manage", "roles.view", "roles.manage"],
   },
-  { name: "Campos personalizados", href: "/dashboard/settings/custom-fields" },
+  { name: "Campos personalizados", href: "/dashboard/settings/custom-fields", permissions: ["custom_fields.manage"] },
   {
     // Las dos rutas de `also` solo redirigen (F17/F20 se unificaron en
     // /recursos): un marcador o un link viejo que llegue ahí tiene que
@@ -38,10 +44,11 @@ export const SETTINGS_TABS: SettingsTab[] = [
     name: "Productos",
     href: "/dashboard/settings/productos",
     also: ["/dashboard/settings/contenido"],
+    permissions: ["products.manage"],
   },
   // Reglas de asignacion (Ventas, F13): como se asignan solos setter, vendedor y referido.
-  { name: "Asignación", href: "/dashboard/settings/asignacion" },
-  { name: "Integraciones", href: "/dashboard/settings/integrations" },
+  { name: "Asignación", href: "/dashboard/settings/asignacion", permissions: ["assignment.manage"] },
+  { name: "Integraciones", href: "/dashboard/settings/integrations", permissions: ["integrations.view", "integrations.manage", "channels.manage"] },
   // "Tareas" se mudo a Agentes IA (Bloque Agentes IA): /dashboard/settings/background
   // ahora solo redirige, ya no es una pestana de Ajustes.
 ];
@@ -63,3 +70,19 @@ export function activeSettingsTab(pathname: string): string {
   }
   return "";
 }
+
+/**
+ * Las pestañas que ve quien pregunta (S1): las que no piden permiso, y las que piden alguno
+ * que tiene. Función pura: la pantalla solo la compone.
+ */
+export function visibleSettingsTabs(can: (key: string) => boolean): SettingsTab[] {
+  return SETTINGS_TABS.filter((tab) => !tab.permissions || tab.permissions.some((key) => can(key)));
+}
+
+/**
+ * Las claves que hacen aparecer "Ajustes" en el menú: la unión de las de sus pestañas con
+ * permiso, más la Actividad (que cuelga de General). Recursos no cuenta: tiene su propio ítem.
+ */
+export const SETTINGS_NAV_PERMISSIONS: string[] = [
+  ...new Set([...SETTINGS_TABS.flatMap((tab) => tab.permissions ?? []), "audit.view"]),
+];
