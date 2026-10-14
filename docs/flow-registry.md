@@ -413,6 +413,38 @@ Destinos nuevos: `member` (quien envió el reporte) y `users` (personas elegidas
 contacto no se lee el contacto ni se aplica "no contactar" (con contacto, igual que siempre:
 lo fija su test).
 
+**`to: "variable"` + `toVariable` (Tirón 2, D4).** La dirección sale de una variable del flujo (`{{webhook.body.email}}`, también se
+acepta sin llaves). Se valida **al correr** (`EMAIL_ADDRESS_RE`, tope de 254 caracteres, sin comas, punto y coma ni paréntesis que
+puedan romper un filtro): si la variable está vacía, no existe o no es un email, el paso se saltea con el motivo (`node_skipped` y el
+aviso del envío de webhook). Si la dirección es de un contacto marcado «no contactar» (email principal o segundo, sin importar
+mayúsculas), no se manda; **un error de la base al comprobarlo no se toma como «no es de nadie»**. `needsContact` sigue en `false`
+(`nodeNeedsContact` solo pide contacto cuando el destino es el contacto). El panel del lienzo (`SendEmailPanel`) lo ofrece junto al
+contacto y a una dirección fija. Los demás destinos no cambiaron (el «no contactar» del contacto del flujo sigue frenando también a las
+direcciones fijas: queda anotado en `docs/PENDIENTE-atribucion.md`).
+
+### `send_whatsapp_number` ("Enviar WhatsApp a un número", Tirón 2, D3)
+
+`{ to: "fixed" | "variable", fixedPhone, toVariable, channelId, text, mediaUrl?, mediaType? }`, `needsContact: false`, alias
+`{ nodeType: "action", actionType: "send_whatsapp_number" }`. Es un paso **aparte** y no una opción de «Enviar mensaje» a propósito:
+`sendMessage` queda intacto (cero riesgo para los flujos que ya existen) y este paso tiene reglas propias.
+
+1. **Destino**: un número fijo o el de una variable, normalizado con `lib/phone.ts` (`resolveWhatsAppTarget` en
+   `lib/flow-engine/whatsapp-target.ts`, puro: lo comparten el paso, el simulador y el editor). Variable vacía, inexistente o número
+   inválido → se saltea con el motivo.
+2. **Canal**: un WhatsApp por Evolution, activo y de ESTE workspace, que se elige en el paso. Sin canal, o con uno que no sirve →
+   se saltea. El editor dice «Conectá un WhatsApp en Canales para usar este paso» si no hay ninguno.
+3. **Contacto** (`findContact`, modo `find_only`: nunca crea nada; un error de la base no se toma como «no es de nadie»):
+   - marcado «no contactar» → no se manda y queda anotado;
+   - con conversación en ese canal → sale por `sendChannelMessage` + `recordSend` y queda guardado en su conversación;
+   - de nadie, o sin conversación en ese canal → `sendEvolutionDirect` (el tramo final de `sendViaEvolution`, extraído sin cambios):
+     no crea contacto ni conversación; queda en el historial del flujo (`analytics_events`: `whatsapp_number_sent` / `whatsapp_number_failed`
+     con el número, el texto —hasta 500 caracteres— y el resultado).
+4. **Nunca dos veces**: la reserva `(sesión, paso, número)` en `flow_send_claims` (00222, índice único) va ANTES de mandar.
+5. **Tope**: `claim_automated_send` con 200 mensajes por hora y canal (el mismo contador del resto del motor).
+
+Todo lo que no se puede hacer es un `node_skipped` con `reason` y el aviso `onStepSkipped` (aparece en «pasos salteados» del envío de
+webhook). Nunca lanza.
+
 ## Webhooks entrantes: el trigger `webhook_received`, el nodo `upsert_contact` y el sujeto `webhook` (Extra L, WH2)
 
 Detalle de producto en `docs/webhooks.md`. Lo que importa para el registro:
@@ -543,7 +575,8 @@ Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CH
 | Ir a otro flujo (`goToFlow`) | Salta. Sirve sin contacto si el destino tampoco lo necesita |
 | Llamada HTTP (`httpRequest`) | Habla con una URL |
 | Avisar en la campana (`notify_team`) | Va al equipo |
-| Enviar email (`send_email`) | Sin contacto si el destino no es el contacto (dirección fija, equipo, persona, variable) |
+| Enviar email (`send_email`) | Sin contacto si el destino no es el contacto (dirección fija, equipo, persona, **la dirección de una variable**) |
+| Enviar WhatsApp a un número (`send_whatsapp_number`) | Va a un número fijo o al de una variable: puede no ser de ningún contacto |
 | Crear o actualizar contacto (`upsert_contact`) | **Lo consigue**: después de su salida «Listo» ya hay contacto |
 | Crear tarea / Completar tarea (`create_task`, `complete_task`) | Trabajo de una persona; la tarea queda sin contacto |
 

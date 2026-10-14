@@ -5297,6 +5297,13 @@ export interface Database {
         Update: { count?: number };
         Relationships: [];
       };
+      /** Reserva de «un paso no manda dos veces al mismo numero en la misma sesion» (00222). Solo la escribe el servidor. */
+      flow_send_claims: {
+        Row: { id: string; workspace_id: string; session_id: string; node_id: string; target: string; created_at: string };
+        Insert: { id?: string; workspace_id: string; session_id: string; node_id: string; target: string };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;

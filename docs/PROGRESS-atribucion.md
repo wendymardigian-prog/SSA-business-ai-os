@@ -137,10 +137,10 @@ esta lista marcada, commit `fix: atribucion - bloque X (nombre)` y push.
 - [x] **A · Anuncios y contenido** (la revisión visual de los menús y la sección queda para el cierre)
   - [x] A1 · recuperar el anuncio desde la conversación de Zernio (solo Instagram)
   - [x] A2 · vínculo manual anuncio ↔ pieza en menús "⋯", sección "Publicidad", indicador y filtro "Pautadas"
-- [ ] **D · Envíos sin contacto (D3–D5)**
-  - [ ] D3 · paso "Enviar WhatsApp a un número"
-  - [ ] D4 · "Enviar email" a una dirección de una variable
-  - [ ] D5 · validar al guardar un flujo publicado
+- [x] **D · Envíos sin contacto (D3–D5)**
+  - [x] D3 · paso "Enviar WhatsApp a un número"
+  - [x] D4 · "Enviar email" a una dirección de una variable
+  - [x] D5 · validar al guardar un flujo publicado
 - [ ] **Cierre**: docs (`webhooks`, `atribucion` con la lista de columnas, `flow-registry`, `PENDIENTE-atribucion`), `CLAUDE.md`, revisión visual (1440/390 px, claro/oscuro), PR sin mergear
 
 ### Punto de partida (Tirón 2)

@@ -333,6 +333,40 @@ try {
     await svc.from("inbound_webhooks").delete().eq("id", inb.id);
   }
 
+  console.log("\n— La reserva «un paso no manda dos veces al mismo numero» (Tiron 2, D3, 00222) —");
+  {
+    const { data: flow } = await svc.from("flows").insert({ workspace_id: ws.id, name: "zz-test flujo reserva", status: "draft", nodes: [], edges: [] }).select("id").single();
+    const { data: sess } = await svc.from("flow_sessions").insert({ flow_id: flow.id, status: "active", variables: {}, source_type: "system", source_id: "claims" }).select("id").single();
+    const { data: sess2 } = await svc.from("flow_sessions").insert({ flow_id: flow.id, status: "active", variables: {}, source_type: "system", source_id: "claims-2" }).select("id").single();
+    const claim = (session_id, node_id, target) => svc.from("flow_send_claims").insert({ workspace_id: ws.id, session_id, node_id, target });
+
+    const first = await claim(sess.id, "n1", "+5491122334455");
+    check(!first.error, "la primera reserva (sesion, paso, numero) se guarda", first.error?.message);
+    const dup = await claim(sess.id, "n1", "+5491122334455");
+    check(dup.error?.code === "23505", "la misma reserva otra vez choca con el indice unico (23505): el paso no manda de nuevo", JSON.stringify(dup.error));
+    check(!(await claim(sess.id, "n2", "+5491122334455")).error, "otro paso de la misma sesion, el mismo numero: se puede");
+    check(!(await claim(sess.id, "n1", "+5491199998888")).error, "el mismo paso, otro numero: se puede");
+    check(!(await claim(sess2.id, "n1", "+5491122334455")).error, "otra sesion, el mismo paso y numero: se puede");
+
+    // Dos reservas a la vez: gana una sola.
+    const race = await Promise.all(Array.from({ length: 8 }, () => claim(sess.id, "n-carrera", "+5491100000000")));
+    check(race.filter((r) => !r.error).length === 1 && race.filter((r) => r.error?.code === "23505").length === 7, "ocho reservas simultaneas iguales: una gana y siete chocan", JSON.stringify(race.map((r) => r.error?.code ?? "ok")));
+
+    // Solo el servidor.
+    const anon = createClient(URL, ANON, { auth: { persistSession: false } });
+    check(!!(await anon.from("flow_send_claims").insert({ workspace_id: ws.id, session_id: sess.id, node_id: "x", target: "+5491111111111" })).error, "anon no puede escribir en flow_send_claims");
+    const asAdmin = await admin.client.from("flow_send_claims").select("id");
+    check(!!asAdmin.error || (asAdmin.data ?? []).length === 0, "un Admin con sesion no lee ni una reserva", asAdmin.error?.message);
+    check(!!(await admin.client.from("flow_send_claims").insert({ workspace_id: ws.id, session_id: sess.id, node_id: "x", target: "+5491111111111" })).error, "ni un Admin con sesion escribe");
+
+    // Se limpia sola con la sesion.
+    await svc.from("flow_sessions").delete().eq("id", sess.id);
+    const left = await svc.from("flow_send_claims").select("id", { count: "exact", head: true }).eq("session_id", sess.id);
+    check(left.count === 0, "al borrarse la sesion se borran sus reservas (ON DELETE CASCADE)", String(left.count));
+    await svc.from("flow_sessions").delete().eq("id", sess2.id);
+    await svc.from("flows").delete().eq("id", flow.id);
+  }
+
   console.log("\n— Las claves de disparo por (envio, flujo) (Tiron 2, C2, 00217) —");
   {
     const { data: epk } = await svc.from("webhook_endpoints").insert({ workspace_id: ws.id, name: "zz-test claves", token: newToken() }).select("id").single();

@@ -8,6 +8,8 @@ import { EnrollSequencePanel } from "./EnrollSequencePanel";
 import { SendAssetPanel } from "./SendAssetPanel";
 import { CreateTaskPanel } from "./CreateTaskPanel";
 import { CompleteTaskPanel } from "./CompleteTaskPanel";
+import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
+import { SendEmailPanel } from "./SendEmailPanel";
 
 interface ActionPanelData {
   actionType?: NodeType;
@@ -74,6 +76,12 @@ export function ActionPanel({ data: rawData, onChange, availableVariables }: Act
       return <PauseAgentConfig data={data} onChange={onChange} />;
     case "resumeAgent":
       return <ResumeAgentConfig />;
+    // Tirón 2, D3: un aviso por WhatsApp a un número que puede no ser de ningún contacto.
+    case "send_whatsapp_number" as NodeType:
+      return <SendWhatsAppNumberPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+    // Etapa 4 (F46) + Tirón 2, D4: el email, ahora también a la dirección de una variable.
+    case "send_email" as NodeType:
+      return <SendEmailPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     // Tareas (F22): deja una tarea para el equipo.
     case "create_task" as NodeType:
       return <CreateTaskPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;

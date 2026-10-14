@@ -61,9 +61,22 @@ export async function PUT(
   const body = await request.json();
 
   // Un flujo sin contacto (reporte de fin de día, E15) no puede tener pasos que necesiten uno.
-  if (Array.isArray(body.nodes)) {
-    // Guardar un flujo de webhook a medias esta permitido: su regla de contacto frena la publicacion.
-    const problems = await checkMemberFlow(supabase, workspaceId, body.nodes);
+  if (Array.isArray(body.nodes) || Array.isArray(body.edges)) {
+    // Un flujo PUBLICADO se valida igual que al publicar (Tirón 2, D5): el motor lee `flows.nodes` en vivo, así que guardar
+    // sobre uno publicado sin esa regla lo dejaba corriendo con pasos que no pueden funcionar (un envío sin contacto, por
+    // ejemplo). Necesita las aristas (el contacto tiene que llegar por todos los caminos), que salen del cuerpo o, si
+    // no vienen, de lo guardado. Un borrador sí se puede guardar a medias: su regla frena la publicación.
+    const { data: current } = await supabase
+      .from("flows")
+      .select("status, nodes, edges")
+      .eq("id", flowId)
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+    if (!current) return NextResponse.json({ error: "Flow not found" }, { status: 404 });
+
+    const nodes = Array.isArray(body.nodes) ? body.nodes : Array.isArray(current.nodes) ? (current.nodes as unknown[]) : [];
+    const edges = Array.isArray(body.edges) ? body.edges : Array.isArray(current.edges) ? (current.edges as unknown[]) : [];
+    const problems = await checkMemberFlow(supabase, workspaceId, nodes, edges, { publishing: current.status === "published" });
     if (problems.length > 0) return NextResponse.json({ error: problems[0], problems }, { status: 400 });
   }
 

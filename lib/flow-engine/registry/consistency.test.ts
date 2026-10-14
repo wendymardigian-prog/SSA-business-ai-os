@@ -144,7 +144,7 @@ describe("cada nodo declara si necesita un contacto (EOD, E15)", () => {
       .filter((n) => !n.needsContact)
       .map((n) => n.type)
       .sort();
-    expect(libres).toEqual(["abSplit", "branch", "complete_task", "create_task", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "upsert_contact"]);
+    expect(libres).toEqual(["abSplit", "branch", "complete_task", "create_task", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "send_whatsapp_number", "upsert_contact"]);
     expect([...CONTACT_FREE_NODE_TYPES].sort()).toEqual(libres);
   });
 

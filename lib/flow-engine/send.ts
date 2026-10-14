@@ -456,6 +456,23 @@ async function sendViaEvolution(
     };
   }
 
+  return sendEvolutionDirect(supabase, config, channel.evolution_instance, link.platform_sender_id, message);
+}
+
+/**
+ * Manda el mensaje a un número de WhatsApp con Evolution, sin mirar contactos ni conversaciones (Tirón 2, D3).
+ *
+ * Es el tramo final de `sendViaEvolution`, sin cambios: texto, un archivo de `chat-media` o una URL pública, y el
+ * mismo manejo del error del proveedor. El paso «Enviar WhatsApp a un número» lo usa para avisar a alguien que no es
+ * un contacto (por ejemplo, el aviso a la dueña); el resto del motor sigue entrando por `sendChannelMessage`.
+ */
+export async function sendEvolutionDirect(
+  supabase: SupabaseClient<Database>,
+  config: EvolutionConfig,
+  instance: string,
+  number: string,
+  message: OutboundMessage
+): Promise<SendOutcome> {
   try {
     if (message.media) {
       const signedUrl = await chatMediaSignedUrl(supabase, message.media.storagePath, EVOLUTION_MEDIA_URL_SECONDS);
@@ -465,7 +482,7 @@ async function sendViaEvolution(
           failure: { kind: "unknown", message: "No pude preparar el archivo para enviarlo.", retryable: true },
         };
       }
-      const sent = await sendEvolutionMediaMessage(config, channel.evolution_instance, link.platform_sender_id, {
+      const sent = await sendEvolutionMediaMessage(config, instance, number, {
         url: signedUrl,
         kind: message.media.kind,
         mime: message.media.mime,
@@ -476,7 +493,7 @@ async function sendViaEvolution(
     }
 
     if (message.mediaUrl) {
-      const sent = await sendEvolutionMediaMessage(config, channel.evolution_instance, link.platform_sender_id, {
+      const sent = await sendEvolutionMediaMessage(config, instance, number, {
         url: message.mediaUrl,
         kind: message.mediaType || "image",
         caption: message.text || undefined,
@@ -486,8 +503,8 @@ async function sendViaEvolution(
 
     const sent = await sendText(
       config,
-      channel.evolution_instance,
-      link.platform_sender_id,
+      instance,
+      number,
       message.text
     );
     return { ok: true, platformMessageId: sent.id };

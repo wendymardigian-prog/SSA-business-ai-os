@@ -275,3 +275,20 @@ Se midió con `EXPLAIN ANALYZE` sobre los 10.000 toques sintéticos de `verify-a
 - **«Pautada» mira solo `meta_ads.content_post_id`.** Una pieza cuyo anuncio todavía no está en el catálogo (sync pendiente) no aparece como pautada.
 - **El menú «⋯» de la pieza desvincula UN anuncio por vez**; para una pieza con muchos anuncios hay una opción por anuncio.
 
+### Bloque D (Tirón 2): envíos sin contacto (D3–D5), lo que queda
+
+- **D5: el lienzo NO guarda por la API.** `components/flow-builder/flow-canvas.tsx` guarda con `supabase.from("flows").update(...)` directo
+  (la RLS decide), así que la validación nueva de `PUT /api/v1/flows/:id` (publicado → mismas reglas que al publicar) solo corta a quien guarda
+  por la API. Lo que ya existía es lo mismo: el lienzo nunca pasó por `checkMemberFlow`; la protección real al publicar sigue siendo la del
+  botón «Publicar». Cerrarlo del todo es mandar el guardado del lienzo por la API (cambia cómo se guarda y cómo se muestran los errores):
+  queda para una pasada aparte, con aprobación.
+- **«No contactar» del contacto del flujo frena también a las direcciones fijas** (`send-email.ts`, ya era así): un email a una dirección fija o al
+  equipo se cancela si el contacto del flujo está marcado. No se tocó porque cambia flujos con contacto que ya andan.
+- **El paso de WhatsApp a un número no se probó con un Evolution real** (la cuenta no tiene ningún WhatsApp conectado): todo el envío está
+  simulado en los tests (`sendText` falso) y la reserva `flow_send_claims` se verificó contra la base. Al conectar un número, probar el primer
+  aviso a mano.
+- **Una reserva de `flow_send_claims` no se libera si el envío falla**: el paso no reintenta solo; reprocesar un webhook crea otra sesión, y
+  con ella otra reserva, así que un reproceso sí vuelve a intentar.
+- **El editor de pasos de las pantallas de agenda, formularios y fin de día no ofrece «la dirección de una variable»**: solo el lienzo (el
+  editor de los flujos de webhook). Los destinos de esas pantallas siguen siendo los de antes.
+

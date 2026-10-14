@@ -29,6 +29,7 @@ import { notifyTeamNode } from "../nodes/notify-team";
 import { upsertContactNode } from "../nodes/upsert-contact";
 import { createTaskNode } from "../nodes/create-task";
 import { completeTaskNode } from "../nodes/complete-task";
+import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -71,3 +72,5 @@ registerNode(upsertContactNode);
 registerNode(createTaskNode);
 // Tareas × CRM (R4): cierra las tareas abiertas con una clave de origen (la de «Crear tarea»).
 registerNode(completeTaskNode);
+// Tiron 2, D3: un aviso por WhatsApp a un numero que puede no ser de ningun contacto (sirve con y sin contacto).
+registerNode(sendWhatsAppNumberNode);

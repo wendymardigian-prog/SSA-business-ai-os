@@ -1,0 +1,108 @@
+/**
+ * D5: guardar un flujo PUBLICADO por la API se valida igual que al publicar (con las aristas y `publishing: true`).
+ * Un borrador se puede guardar a medias. La base es en memoria; el permiso y el usuario están simulados.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+
+let db: MemoryDb;
+vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: async () => ({ workspace: { id: "ws-1" } }) }));
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: { id: "u-1" } } }) },
+    from: (table: string) => db.client.from(table as never),
+  }),
+}));
+
+const { PUT } = await import("./route");
+
+const trigger = { id: "t", type: "trigger", position: { x: 0, y: 0 }, data: { triggerType: "webhook_received" } };
+const upsert = { id: "u", type: "upsert_contact", position: { x: 0, y: 0 }, data: { mode: "create_or_update" } };
+const message = { id: "m", type: "sendMessage", position: { x: 0, y: 0 }, data: { label: "Bienvenida", messages: [{ text: "Hola" }] } };
+const whatsapp = { id: "w", type: "action", position: { x: 0, y: 0 }, data: { actionType: "send_whatsapp_number", to: "fixed", fixedPhone: "+5491122334455", channelId: "ch", text: "Hola" } };
+
+const edge = (source: string, target: string, sourceHandle?: string) => ({ id: `${source}-${target}`, source, target, ...(sourceHandle ? { sourceHandle } : {}) });
+/** El mensaje SIN «Crear o actualizar contacto» antes: en un flujo de webhook no tiene contacto. */
+const brokenNodes = [trigger, message];
+const brokenEdges = [edge("t", "m")];
+/** El mensaje DESPUÉS del contacto, por su salida «Listo». */
+const goodNodes = [trigger, upsert, message];
+const goodEdges = [edge("t", "u"), edge("u", "m", "ok")];
+
+const put = (body: Record<string, unknown>) =>
+  PUT(new NextRequest("https://app.test/api/v1/flows/f1", { method: "PUT", body: JSON.stringify(body) }), { params: Promise.resolve({ flowId: "f1" }) });
+
+function world(status: "draft" | "published", nodes: unknown[] = goodNodes, edges: unknown[] = goodEdges) {
+  db = memoryDb({
+    workspace_members: [{ user_id: "u-1", workspace_id: "ws-1" }],
+    flows: [{ id: "f1", workspace_id: "ws-1", name: "Mi flujo", status, nodes, edges, updated_at: "2026-10-01T00:00:00Z" }],
+  });
+}
+const stored = () => db.rows("flows")[0] as { nodes: unknown[]; edges: unknown[]; name: string };
+
+beforeEach(() => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+
+describe("PUT /flows/:id · flujo publicado (D5)", () => {
+  it("un grafo que no pasa la validación de publicar NO se guarda y devuelve el motivo", async () => {
+    world("published");
+    const res = await put({ nodes: brokenNodes, edges: brokenEdges });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("Bienvenida");
+    expect(body.error).toMatch(/contacto/);
+    expect(stored().nodes).toEqual(goodNodes);
+  });
+
+  it("un grafo válido se guarda", async () => {
+    world("published");
+    const res = await put({ nodes: [...goodNodes, whatsapp], edges: [...goodEdges, edge("m", "w")] });
+    expect(res.status).toBe(200);
+    expect(stored().nodes).toHaveLength(4);
+  });
+
+  it("el paso «Enviar WhatsApp a un número» no necesita contacto: puede ir antes de «Crear o actualizar contacto»", async () => {
+    world("published");
+    const res = await put({ nodes: [trigger, whatsapp, upsert, message], edges: [edge("t", "w"), edge("w", "u"), edge("u", "m", "ok")] });
+    expect(res.status).toBe(200);
+  });
+
+  it("si solo cambian las aristas (se corta la unión con el contacto), se valida con lo guardado", async () => {
+    world("published");
+    const res = await put({ edges: [edge("t", "m"), edge("t", "u")] });
+    expect(res.status).toBe(400);
+    expect(stored().edges).toEqual(goodEdges);
+  });
+
+  it("un cambio de nombre (sin nodos ni aristas) no valida nada", async () => {
+    world("published", brokenNodes, brokenEdges); // aunque lo guardado ya estuviera mal, renombrar no se bloquea
+    const res = await put({ name: "Otro nombre" });
+    expect(res.status).toBe(200);
+    expect(stored().name).toBe("Otro nombre");
+  });
+});
+
+describe("PUT /flows/:id · borrador", () => {
+  it("un borrador de webhook se puede guardar a medias (la regla frena la publicación)", async () => {
+    world("draft");
+    const res = await put({ nodes: brokenNodes, edges: brokenEdges });
+    expect(res.status).toBe(200);
+    expect(stored().nodes).toEqual(brokenNodes);
+  });
+
+  it("un flujo de una persona del equipo con un paso que necesita contacto se rechaza también como borrador", async () => {
+    world("draft");
+    const eodTrigger = { id: "t", type: "trigger", position: { x: 0, y: 0 }, data: { triggerType: "eod_submitted" } };
+    const res = await put({ nodes: [eodTrigger, message], edges: [edge("t", "m")] });
+    expect(res.status).toBe(400);
+  });
+
+  it("un flujo que no existe devuelve 404", async () => {
+    world("draft");
+    db.tables.flows.length = 0;
+    const res = await put({ nodes: goodNodes, edges: goodEdges });
+    expect(res.status).toBe(404);
+  });
+});
