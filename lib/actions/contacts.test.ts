@@ -26,7 +26,12 @@ vi.mock("@/lib/audit", () => ({
 }));
 vi.mock("@/lib/workspace", () => ({ getWorkspace: async () => ({ user: { id: "user-1" }, workspace: { id: WS }, role: "admin", roleId: null, supabase: db.client }) }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => svc.client }));
-vi.mock("@/lib/auth/guards", () => ({ getAdminContext: async () => (admin ? { user: { id: "user-1" }, workspace: { id: WS }, supabase: db.client } : null) }));
+// Un Member de sistema tiene contacts.edit y contacts.assign; borrar, restaurar, fusionar y sacar «no contactar» piden un Admin.
+const MEMBER_KEYS = ["contacts.edit", "contacts.assign"];
+vi.mock("@/lib/auth/guards", () => ({
+  getPermissionAction: async (key: string) =>
+    admin || MEMBER_KEYS.includes(key) ? { user: { id: "user-1" }, workspace: { id: WS }, supabase: db.client } : null,
+}));
 vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "UTC" }));
 
 const { linkContacts } = await import("./contacts");
@@ -54,10 +59,10 @@ beforeEach(() => {
 });
 
 describe("linkContacts: lo que no cambia", () => {
-  it("solo Owner y Admin: sin permiso no se toca nada", async () => {
+  it("sin contacts.merge no se toca nada", async () => {
     admin = false;
     const r = await linkContacts(DUP, MAIN);
-    expect(r).toEqual({ ok: false, error: "Solo Owner y Admin pueden vincular contactos" });
+    expect(r).toEqual({ ok: false, error: "No tenés permiso para fusionar contactos" });
     expect(db.rows("contacts").every((c) => c.deleted_at === null)).toBe(true);
   });
 

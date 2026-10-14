@@ -19,10 +19,10 @@ const ROOT = join(process.cwd(), "app/(dashboard)/dashboard/settings");
 
 /** Las siete pestañas (Contenido se sumó con F89 y hoy es Productos; Tareas se mudó a Agentes IA), con el archivo que resuelve la ruta y el guard que usa hoy. */
 const PAGES: Record<string, { file: string; guardMarker: string }> = {
-  general: { file: "page.tsx", guardMarker: "requireWorkspaceAdmin" },
+  general: { file: "page.tsx", guardMarker: 'requireAnyPermission(["settings.general", "sales.settings"])' },
   team: { file: "team/page.tsx", guardMarker: 'requirePermission("team.view")' },
   roles: { file: "roles/page.tsx", guardMarker: "listRoles" },
-  "custom-fields": { file: "custom-fields/page.tsx", guardMarker: "requireWorkspaceAdmin" },
+  "custom-fields": { file: "custom-fields/page.tsx", guardMarker: 'requirePermission("custom_fields.manage")' },
   // Banca v2 (F4): sin guard de pagina (la abre cualquier miembro), pero ahora
   // con los permisos resueltos para decidir si ofrece crear y editar.
   recursos: { file: "recursos/page.tsx", guardMarker: "getPermissionContext" },
@@ -32,7 +32,7 @@ const PAGES: Record<string, { file: string; guardMarker: string }> = {
   productos: { file: "productos/page.tsx", guardMarker: 'requirePermission("products.manage")' },
   // Reglas de asignacion (Ventas, F13): tambien por permiso fino, como Productos.
   asignacion: { file: "asignacion/page.tsx", guardMarker: 'requirePermission("assignment.manage")' },
-  integrations: { file: "integrations/page.tsx", guardMarker: "requireWorkspaceAdmin" },
+  integrations: { file: "integrations/page.tsx", guardMarker: "integrationSections(ctx.can)" },
 };
 
 describe("Bloque S — guard de cada pestaña (no cambia en S1-S7)", () => {
@@ -53,14 +53,15 @@ describe("Bloque S — guard de cada pestaña (no cambia en S1-S7)", () => {
 function visibleTabs(role: "owner" | "admin" | "member", permissions: RolePermissions) {
   const admin = isAdminRole(role);
   return {
-    general: admin,
+    general: can(permissions, "settings.general") || can(permissions, "sales.settings"),
     team: can(permissions, "team.view"),
     roles: can(permissions, "roles.manage"),
-    "custom-fields": admin,
+    "custom-fields": can(permissions, "custom_fields.manage"),
     recursos: true,
     productos: can(permissions, "products.manage"),
     asignacion: can(permissions, "assignment.manage"),
-    integrations: admin,
+    // La pestaña se ve con alguna de las tres claves; la pagina en si la abre todo el equipo (Mis conexiones, M8).
+    integrations: can(permissions, "integrations.view") || can(permissions, "integrations.manage") || can(permissions, "channels.manage"),
   };
 }
 

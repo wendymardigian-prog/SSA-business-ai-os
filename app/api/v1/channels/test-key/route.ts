@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createZernioClient } from "@/lib/zernio-client";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { storeSecret, SECRET_NAMES } from "@/lib/vault";
 import {
@@ -22,7 +22,7 @@ import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
  * Solo Owner/Admin: conectar un canal no es parte del rol de un Member.
  */
 export async function POST(request: NextRequest) {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("channels.manage");
   if (!ctx) {
     return NextResponse.json(
       { error: "Solo Owner y Admin pueden conectar canales" },
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
   // block saving the key or syncing channels.
   try {
     // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
-    // servidor. El workspace sale de la sesion (getAdminContext).
+    // servidor. El workspace sale de la sesion (channels.manage).
     const secret = await getOrCreateWorkspaceWebhookSecret(await createServiceClient(), workspaceId);
     const zernio = createZernioClient(apiKey.trim());
     await ensureWebhookRegistered(zernio, {

@@ -33,7 +33,10 @@ vi.mock("@/lib/workspace", () => ({
   }),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
-vi.mock("@/lib/auth/guards", () => ({ getAdminContext: async () => null }));
+// Quien importa tiene contacts.import (el Member de sistema ya no); ademas puede editar y reasignar. No borra ni fusiona.
+vi.mock("@/lib/auth/guards", () => ({
+  getPermissionAction: async (key: string) => (["contacts.edit", "contacts.assign", "contacts.import"].includes(key) ? { user: { id: "user-1" }, workspace: { id: "ws-1" }, supabase: null } : null),
+}));
 // No es parte de lo que prueba este archivo (F87, atribucion): se simula para
 // no tener que mockear tambien @/lib/supabase/server#createClient.
 vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "UTC" }));

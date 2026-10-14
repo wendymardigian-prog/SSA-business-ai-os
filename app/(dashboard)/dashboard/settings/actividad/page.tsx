@@ -1,5 +1,5 @@
 import { ActivityScreen, type ActivityRow } from "@/components/settings/activity-screen";
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { ACTIVITY_PAGE_SIZE, ACTOR_TYPES, applyAuditFilters, auditFilters } from "@/lib/audit-query";
 import { HISTORY_COLUMNS } from "@/lib/audit-history";
 import { isDateOnly } from "@/lib/sales/dates";
@@ -22,7 +22,7 @@ const one = (v: string | string[] | undefined): string | null => {
  * son los de la zona de quien mira.
  */
 export default async function ActividadPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  const { workspace, supabase } = await requirePermission("audit.view");
   const sp = await searchParams;
   const timeZone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
   const members = await getWorkspaceMembers(workspace.id);

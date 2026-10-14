@@ -13,6 +13,7 @@ import type { PaymentMethodKey } from "@/lib/sales/payment-methods";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SectionNav } from "@/components/settings/section-nav";
+import { generalSectionsFor } from "@/lib/settings/general-sections";
 import Link from "next/link";
 import { AiRunsLink } from "@/components/settings/ai-runs-link";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
@@ -50,12 +51,22 @@ interface WorkspaceSettings {
 export function SettingsView({
   workspace,
   canViewAiCosts,
+  canViewAudit,
+  canGeneral,
+  canSales,
   paymentTasks,
 }: {
   workspace: WorkspaceSettings;
   canViewAiCosts: boolean;
+  /** `audit.view`: ve el link a la Actividad. */
+  canViewAudit: boolean;
+  /** `settings.general`: las secciones de General. */
+  canGeneral: boolean;
+  /** `sales.settings`: la sección «Ventas y cobranza». */
+  canSales: boolean;
   paymentTasks: TaskPaymentState;
 }) {
+  const sections = generalSectionsFor((key) => (key === "settings.general" ? canGeneral : key === "sales.settings" ? canSales : false));
   const [name, setName] = useState(workspace.name);
   const [keywords, setKeywords] = useState<string[]>(workspace.globalKeywords);
   const [newKeyword, setNewKeyword] = useState("");
@@ -109,9 +120,10 @@ export function SettingsView({
 
       <div className="flex-1 overflow-auto">
         <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-8 sm:px-8 md:flex-row md:items-start md:gap-10">
-          <SectionNav />
+          <SectionNav sections={sections} />
 
           <div className="min-w-0 flex-1 space-y-10">
+            {canGeneral && (<>
             {/* Workspace */}
             <section id="workspace" className="scroll-mt-20 space-y-6">
               <div>
@@ -264,9 +276,12 @@ export function SettingsView({
               />
             </section>
 
-            <hr className="border-border" />
+            </>)}
 
-            {/* Ventas */}
+            {canSales && (<>
+            {canGeneral && <hr className="border-border" />}
+
+            {/* Ventas y cobranza */}
             <section id="ventas" className="scroll-mt-20 space-y-6">
               <SalesSettings
                 enabledMethods={workspace.enabledPaymentMethods}
@@ -277,33 +292,40 @@ export function SettingsView({
               />
               <PaymentTasksCard initial={paymentTasks} />
             </section>
+            </>)}
 
-            <hr className="border-border" />
+            {canViewAudit && (
+              <>
+                {(canGeneral || canSales) && <hr className="border-border" />}
+                {/* Actividad */}
+                <section id="actividad" className="scroll-mt-20 space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Quién hizo qué y cuándo en todo el workspace:{" "}
+                    <Link href="/dashboard/settings/actividad" className="font-medium text-primary underline-offset-2 hover:underline">
+                      Ver la actividad
+                    </Link>
+                    .
+                  </p>
+                </section>
+              </>
+            )}
 
-            {/* Actividad */}
-            <section id="actividad" className="scroll-mt-20 space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Quién hizo qué y cuándo en todo el workspace:{" "}
-                <Link href="/dashboard/settings/actividad" className="font-medium text-primary underline-offset-2 hover:underline">
-                  Ver la actividad
-                </Link>
-                .
-              </p>
-            </section>
-
-            <hr className="border-border" />
-
-            {/* IA */}
-            <section id="ia" className="scroll-mt-20 space-y-6">
-              <p className="text-sm text-muted-foreground">
-                Los topes de gasto de IA y sus avisos se configuran en{" "}
-                <Link href="/dashboard/agents" className="font-medium text-primary underline-offset-2 hover:underline">
-                  Agentes → Gasto de IA
-                </Link>
-                .
-              </p>
-              <AiRunsLink canView={canViewAiCosts} />
-            </section>
+            {canGeneral && (
+              <>
+                <hr className="border-border" />
+                {/* IA */}
+                <section id="ia" className="scroll-mt-20 space-y-6">
+                  <p className="text-sm text-muted-foreground">
+                    Los topes de gasto de IA y sus avisos se configuran en{" "}
+                    <Link href="/dashboard/agents" className="font-medium text-primary underline-offset-2 hover:underline">
+                      Agentes → Gasto de IA
+                    </Link>
+                    .
+                  </p>
+                  <AiRunsLink canView={canViewAiCosts} />
+                </section>
+              </>
+            )}
           </div>
         </div>
       </div>

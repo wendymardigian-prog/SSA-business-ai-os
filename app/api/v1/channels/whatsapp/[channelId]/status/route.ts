@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getConnectionState } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
@@ -18,7 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ channelId: string }> },
 ) {
   const { channelId } = await params;
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("channels.manage");
   if (!ctx) {
     return NextResponse.json({ error: "Solo Owner y Admin" }, { status: 403 });
   }

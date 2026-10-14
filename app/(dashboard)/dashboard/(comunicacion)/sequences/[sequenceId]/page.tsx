@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { SequenceEditor } from "@/components/sequences/sequence-editor";
 import { EnrollmentList, type EnrollmentRow } from "@/components/sequences/enrollment-list";
@@ -18,8 +18,10 @@ export default async function SequenceDetailPage({
   params: Promise<{ sequenceId: string }>;
 }) {
   const { sequenceId } = await params;
-  const { workspace, supabase, role } = await getWorkspace();
-  const canEdit = isAdminRole(role);
+  // Equipo y roles (F22): la pagina pide su permiso.
+  await requirePermission("sequences.view");
+  const { workspace, supabase } = await getWorkspace();
+  const canEdit = (await getPermissionContext()).can("sequences.edit");
 
   const { data: sequence } = await supabase
     .from("sequences")

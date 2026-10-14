@@ -69,10 +69,17 @@ try {
   const member = await makeUser("hooks-member");
   const editor = await makeUser("hooks-editor");
   const integrador = await makeUser("hooks-integrador");
+  const soloFlujos = await makeUser("hooks-solo-flujos");
   const outsider = await makeUser("hooks-outsider");
 
   const { data: rolEditor } = await svc.from("workspace_roles").insert({
     workspace_id: ws.id, name: "zz-test Editor de flujos",
+    // Equipo y roles (00208/00211): los webhooks tienen su propia clave. Un rol que ya podia editar flujos recibio
+    // `webhooks.manage` al migrar; sin ella ya no los ve (ver el caso «solo flujos» mas abajo).
+    permissions: { keys: ["flows.view", "flows.edit", "webhooks.manage"], scopes: {} },
+  }).select("id").single();
+  const { data: rolSoloFlujos } = await svc.from("workspace_roles").insert({
+    workspace_id: ws.id, name: "zz-test Solo flujos",
     permissions: { keys: ["flows.view", "flows.edit"], scopes: {} },
   }).select("id").single();
   const { data: rolIntegrador } = await svc.from("workspace_roles").insert({
@@ -84,6 +91,7 @@ try {
     { workspace_id: ws.id, user_id: admin.id, role: "admin" },
     { workspace_id: ws.id, user_id: member.id, role: "member" },
     { workspace_id: ws.id, user_id: editor.id, role: "member", role_id: rolEditor.id },
+    { workspace_id: ws.id, user_id: soloFlujos.id, role: "member", role_id: rolSoloFlujos.id },
     { workspace_id: ws.id, user_id: integrador.id, role: "member", role_id: rolIntegrador.id },
     { workspace_id: otherWs.id, user_id: outsider.id, role: "admin" },
   ]);
@@ -137,10 +145,16 @@ try {
     check((i.data ?? []).length === 0, "pero NO se ven los envios (tienen datos personales)");
   }
   {
+    // Cambio aprobado (plano §9.3): editar flujos ya no alcanza para leer webhooks; hace falta `webhooks.manage`.
+    const e = await sel(soloFlujos, "webhook_endpoints", "id");
+    const i = await sel(soloFlujos, "inbound_webhooks");
+    check((e.data ?? []).length === 0 && (i.data ?? []).length === 0, "con flows.edit y SIN webhooks.manage no se ve ningun endpoint ni envio");
+  }
+  {
     const e = await sel(member, "webhook_endpoints", "id");
     const i = await sel(member, "inbound_webhooks");
     check((e.data ?? []).length === 0 && (i.data ?? []).length === 0,
-      "un Member de sistema no ve filas por la RLS (la pantalla lee con el servidor despues de chequear flows.edit)");
+      "un Member de sistema no ve filas por la RLS (la pantalla lee con el servidor despues de chequear webhooks.manage)");
   }
   {
     const e = await sel(outsider, "webhook_endpoints", "id");

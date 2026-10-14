@@ -31,7 +31,35 @@ const ROOT = process.cwd();
 const BASELINE_FILE = path.join(ROOT, "lib/auth/access-matrix.baseline.json");
 
 /** Filas del Member que cambian a proposito. Vacio al arrancar. */
-export const APPROVED_MEMBER_CHANGES: Record<string, { from: Cell; to: Cell; why: string }> = {};
+export const APPROVED_MEMBER_CHANGES: Record<string, { from: Cell; to: Cell; why: string }> = {
+  // M8 (decision del 13/10/2026): la pantalla de Integraciones la abre todo el equipo y un Member ve solo
+  // «Mis conexiones»; el menu del Member NO cambia (el item sigue pidiendo integrations.view/manage/channels.manage).
+  // M3 (plano §9.3): el Member pierde los webhooks (paginas y acciones). Las acciones se agregan abajo.
+  "app/(dashboard)/dashboard/settings/integrations/webhooks/page.tsx": { from: true, to: false, why: "M3: webhooks.manage" },
+  "app/(dashboard)/dashboard/settings/integrations/webhooks/[endpointId]/page.tsx": { from: true, to: false, why: "M3: webhooks.manage" },
+  // M6 (decision del 13/10/2026): el Member pierde Broadcasts (pagina y API).
+  "app/(dashboard)/dashboard/(comunicacion)/broadcasts/page.tsx": { from: true, to: false, why: "M6: broadcasts.manage" },
+  "app/api/v1/broadcasts/route.ts#GET": { from: true, to: false, why: "M6: broadcasts.manage" },
+  "app/api/v1/broadcasts/route.ts#POST": { from: true, to: false, why: "M6: broadcasts.manage" },
+  "app/api/v1/broadcasts/[broadcastId]/send/route.ts#POST": { from: true, to: false, why: "M6: broadcasts.manage" },
+  // M1 (plano §9.3): el Member pierde importar contactos.
+  "app/(dashboard)/dashboard/contacts/import/page.tsx": { from: true, to: false, why: "M1: contacts.import" },
+  "lib/actions/csv-import.ts#startImport": { from: true, to: false, why: "M1: contacts.import" },
+  "lib/actions/csv-import.ts#importBatch": { from: true, to: false, why: "M1: contacts.import" },
+  "lib/actions/csv-import.ts#finishImport": { from: true, to: false, why: "M1: contacts.import" },
+  "app/(dashboard)/dashboard/settings/integrations/page.tsx": {
+    from: false,
+    to: true,
+    why: "M8: Integraciones abre para todos (Mis conexiones); canales y negocio piden sus claves",
+  },
+};
+
+// M3: todas las acciones de webhooks (los endpoints y el editor de flujos) pasan a `webhooks.manage`.
+for (const id of Object.keys((JSON.parse(readFileSync(BASELINE_FILE, "utf8")) as { actions: Record<string, unknown> }).actions)) {
+  if (id.startsWith("lib/actions/webhook-endpoints.ts#") || id.startsWith("lib/actions/webhook-flow-editor.ts#")) {
+    APPROVED_MEMBER_CHANGES[id] = { from: true, to: false, why: "M3: el Member pierde los webhooks (plano §9.3)" };
+  }
+}
 
 /** Entradas que el escaner no puede resolver solas. Cada una explica por que. */
 const MANUAL: Record<string, Triple> = {

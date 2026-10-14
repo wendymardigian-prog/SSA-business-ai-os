@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import {
   canActivate,
@@ -47,7 +47,7 @@ function detailPath(sequenceId: string) {
 }
 
 export async function createSequence(name: string): Promise<SequenceActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("sequences.edit");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden crear secuencias" };
   const { workspace, supabase, user } = ctx;
 
@@ -93,7 +93,7 @@ export async function updateSequence(
   sequenceId: string,
   updates: SequenceUpdate
 ): Promise<SequenceActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("sequences.edit");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden editar secuencias" };
   const { workspace, supabase, user } = ctx;
 
@@ -237,7 +237,7 @@ async function pauseEnrollmentsOfSequence(
 }
 
 export async function deleteSequence(sequenceId: string): Promise<SequenceActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("sequences.edit");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden eliminar secuencias" };
   const { workspace, supabase, user } = ctx;
 
@@ -285,6 +285,7 @@ export async function listSequenceOptions(): Promise<
   Array<{ id: string; name: string; status: SequenceStatus }>
 > {
   const { workspace, supabase } = await getWorkspace();
+  if (!(await getPermissionAction("sequences.view"))) return [];
 
   const { data, error } = await supabase
     .from("sequences")
@@ -323,7 +324,7 @@ export async function enrollContact(
   channelId: string,
   options: { confirmCollision?: boolean } = {}
 ): Promise<EnrollResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("sequences.edit");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden inscribir contactos" };
   const { workspace, supabase, user } = ctx;
 
@@ -482,7 +483,7 @@ export async function resolveCollision(
   enrollmentId: string,
   resolution: SequenceCollisionResolution
 ): Promise<SequenceActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("sequences.edit");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden resolver colisiones" };
   const { workspace, supabase, user } = ctx;
 
@@ -573,6 +574,7 @@ export async function searchContactsForEnrollment(query: string): Promise<
   Array<{ id: string; name: string; channels: Array<{ id: string; label: string }> }>
 > {
   const { workspace, supabase } = await getWorkspace();
+  if (!(await getPermissionAction("sequences.view"))) return [];
 
   const term = query.trim();
   if (term.length < 2) return [];
@@ -624,7 +626,7 @@ export async function searchContactsForEnrollment(query: string): Promise<
  * no destrabando lo que ya estaba.
  */
 export async function resumeEnrollment(enrollmentId: string): Promise<SequenceActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("sequences.edit");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden reanudar inscripciones" };
   const { workspace, supabase, user } = ctx;
 
@@ -692,7 +694,7 @@ export async function resumeEnrollment(enrollmentId: string): Promise<SequenceAc
 }
 
 export async function cancelEnrollment(enrollmentId: string): Promise<SequenceActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("sequences.edit");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cancelar inscripciones" };
   const { workspace, supabase, user } = ctx;
 

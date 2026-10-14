@@ -1,5 +1,6 @@
 "use server";
 
+import { getPermissionAction } from "@/lib/auth/guards";
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -65,6 +66,8 @@ export async function startImport(
   totalRows: number,
 ): Promise<ImportStartResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Importar contactos pide `contacts.import` (cambio aprobado del Member, plano §9.3).
+  if (!(await getPermissionAction("contacts.import"))) return { ok: false, error: "No tenés permiso para importar contactos" };
 
   const name = (fileName ?? "").trim().slice(0, 200);
   if (!name) return { ok: false, error: "El archivo no tiene nombre" };
@@ -124,6 +127,8 @@ export interface ImportBatchInput {
  */
 export async function importBatch(input: ImportBatchInput): Promise<ImportBatchResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Importar contactos pide `contacts.import` (cambio aprobado del Member, plano §9.3).
+  if (!(await getPermissionAction("contacts.import"))) return { ok: false, error: "No tenés permiso para importar contactos" };
 
   const { importId, rows, mapping, offset } = input;
 
@@ -273,6 +278,8 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
 /** Cierra la importacion y deja el resultado en el audit log. */
 export async function finishImport(importId: string) {
   const { workspace, supabase, user } = await getWorkspace();
+  // Importar contactos pide `contacts.import` (cambio aprobado del Member, plano §9.3).
+  if (!(await getPermissionAction("contacts.import"))) return { ok: false as const, error: "No tenés permiso para importar contactos" };
 
   const { data: registro } = await supabase
     .from("csv_imports")

@@ -21,7 +21,7 @@ export async function updateSalesSettings(input: {
   autoCreateFlows?: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const ctx = await getPermissionAction("sales.settings");
-  if (!ctx) return { ok: false, error: "Solo quien puede cambiar la configuración maneja los ajustes de Ventas" };
+  if (!ctx) return { ok: false, error: "No tenés permiso para cambiar los ajustes de Ventas y cobranza" };
   const { workspace, supabase, user } = ctx;
 
   const patch: Record<string, unknown> = {};
@@ -57,7 +57,8 @@ export async function updateSalesSettings(input: {
 
   if (Object.keys(patch).length === 0) return { ok: true };
 
-  const { error } = await supabase.from("workspaces").update(patch as never).eq("id", workspace.id);
+  // `workspaces` solo lo escribe un Admin por RLS: servicio despues del guard, sobre el workspace de la sesion.
+  const { error } = await (await createServiceClient()).from("workspaces").update(patch as never).eq("id", workspace.id);
   if (error) {
     console.error("[sales-settings] no pude guardar:", error.message);
     return { ok: false, error: "No pude guardar el cambio" };

@@ -1,7 +1,7 @@
 "use server";
 
 import { generateText } from "ai";
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { buildAnalysisContext, buildAnalysisSystemPrompt, hasSomethingToAnalyze } from "@/lib/meta/ai-analysis";
@@ -46,7 +46,7 @@ export async function analyzeAdsWithAi(input: {
   adAccountId?: string;
   question?: string;
 }): Promise<AdsAnalysisResult> {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  const { workspace, supabase } = await requirePermission("dashboards.ads.view");
 
   const period: PeriodPreset =
     input.period && isPeriodPreset(input.period) ? input.period : "30d";

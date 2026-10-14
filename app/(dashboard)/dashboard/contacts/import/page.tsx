@@ -1,4 +1,5 @@
 import { getWorkspace } from "@/lib/workspace";
+import { requirePermission } from "@/lib/auth/guards";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { ImportView } from "./import-view";
 
@@ -11,6 +12,8 @@ import { ImportView } from "./import-view";
  * compartir con quien tenga que hacerla.
  */
 export default async function ImportPage() {
+  // Equipo y roles (F21): la pagina pide su permiso; el alcance de los contactos lo sigue aplicando la RLS.
+  await requirePermission("contacts.import");
   const { workspace, supabase } = await getWorkspace();
 
   const [tagsRes, members] = await Promise.all([

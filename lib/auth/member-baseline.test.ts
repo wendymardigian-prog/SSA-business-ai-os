@@ -43,21 +43,29 @@ const read = (relativePath: string) => readFileSync(join(ROOT, relativePath), "u
  * de `ADMIN_PAGES` entra aca con su clave, asi el total de "paginas de Admin de hoy" sigue siendo once.
  */
 const MIGRATED_ADMIN_PAGES = [
-  ["app/(dashboard)/dashboard/settings/team/page.tsx", "team.view"],
+  ["app/(dashboard)/dashboard/settings/team/page.tsx", "team.view", 'requirePermission("team.view")'],
+  // General se parte en dos por permiso: la abre quien tiene `settings.general` o `sales.settings` (el Member, ninguna).
+  ["app/(dashboard)/dashboard/settings/custom-fields/page.tsx", "custom_fields.manage", 'requirePermission("custom_fields.manage")'],
+  // Ventas (F36): el historial de todo el workspace; ahora lo ve quien tiene `audit.view`.
+  ["app/(dashboard)/dashboard/settings/actividad/page.tsx", "audit.view", 'requirePermission("audit.view")'],
+  ["app/(dashboard)/dashboard/channels/page.tsx", "channels.manage", 'requirePermission("channels.manage")'],
+  [
+    "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
+    "integrations.view",
+    'requireAnyPermission(["integrations.view", "integrations.manage", "channels.manage"])',
+  ],
+  [
+    "app/(dashboard)/dashboard/settings/page.tsx",
+    "settings.general",
+    'requireAnyPermission(["settings.general", "sales.settings"])',
+  ],
 ] as const;
 
 const ADMIN_PAGES = [
   "app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx",
-  "app/(dashboard)/dashboard/channels/page.tsx",
   "app/(dashboard)/dashboard/dashboards/unified/page.tsx",
   "app/(dashboard)/dashboard/knowledge/page.tsx",
   "app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx",
-  "app/(dashboard)/dashboard/settings/page.tsx",
-  "app/(dashboard)/dashboard/settings/custom-fields/page.tsx",
-  "app/(dashboard)/dashboard/settings/integrations/page.tsx",
-  "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
-  // Ventas (F36): el historial de todo el workspace, solo Owner y Admin.
-  "app/(dashboard)/dashboard/settings/actividad/page.tsx",
 ] as const;
 
 /**
@@ -84,15 +92,22 @@ const MEMBER_PAGES = [
 /** Los archivos de acciones que HOY exigen Owner/Admin en todo lo que hacen. */
 const ADMIN_ACTION_FILES = [
   "lib/actions/agents.ts",
-  "lib/actions/custom-fields.ts",
-  "lib/actions/integrations.ts",
   "lib/actions/knowledge.ts",
-  "lib/actions/meta-accounts.ts",
-  "lib/actions/metrics.ts",
-  "lib/actions/patterns.ts",
-  "lib/actions/sequences.ts",
-  "lib/actions/tag-effects.ts",
-  "lib/actions/workspace.ts",
+] as const;
+
+/**
+ * Los archivos de acciones que eran de Owner/Admin y pasaron a pedir un permiso (Equipo y roles).
+ * Siguen siendo imposibles para un Member de sistema: ninguna de sus claves esta en su lista.
+ */
+const MIGRATED_ADMIN_ACTION_FILES = [
+  ["lib/actions/workspace.ts", ["settings.general", "ai_tasks.manage"]],
+  ["lib/actions/custom-fields.ts", ["custom_fields.manage"]],
+  ["lib/actions/sequences.ts", ["sequences.edit"]],
+  ["lib/actions/integrations.ts", ["integrations.manage", "channels.manage", "agents.edit"]],
+  ["lib/actions/meta-accounts.ts", ["integrations.manage"]],
+  ["lib/actions/metrics.ts", ["integrations.manage"]],
+  ["lib/actions/patterns.ts", ["ai_tasks.manage"]],
+  ["lib/actions/tag-effects.ts", ["tags.manage"]],
 ] as const;
 
 /**
@@ -137,14 +152,15 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
     // (Bloque G suma el detalle de una integracion, G5. F78 saca Social y el
     // dashboard de contenido: pasaron a un permiso. AT4 (F32) saca el dashboard
     // de Ads: pide `dashboards.ads.view`, que es lo que ya anunciaba `available.ts`.)
-    expect(ADMIN_PAGES.length + MIGRATED_ADMIN_PAGES.length).toBe(11);
+    // Integraciones (la lista) deja de ser de Admin: la abre todo el equipo (M8); por eso son diez.
+    expect(ADMIN_PAGES.length + MIGRATED_ADMIN_PAGES.length).toBe(10);
     for (const page of [...ADMIN_PAGES, ...MIGRATED_ADMIN_PAGES.map(([p]) => p)]) {
       expect(existsSync(join(ROOT, page)), page).toBe(true);
     }
   });
 
-  it.each(MIGRATED_ADMIN_PAGES)("%s ahora pide %s y un Member de sistema sigue sin entrar", (page, key) => {
-    expect(read(page)).toContain(`requirePermission("${key}")`);
+  it.each(MIGRATED_ADMIN_PAGES)("%s ahora pide %s y un Member de sistema sigue sin entrar", (page, key, marker) => {
+    expect(read(page)).toContain(marker);
     expect(read(page)).not.toContain("requireWorkspaceAdmin");
     expect(SYSTEM_ROLE_PERMISSIONS.member.keys).not.toContain(key);
     expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toContain(key);
@@ -259,6 +275,16 @@ describe("caracterizacion: las acciones de Owner/Admin (F68)", () => {
     });
 
     expect(sinGuard, `estos archivos dejaron de exigir Admin: ${sinGuard.join(", ")}`).toEqual([]);
+  });
+
+  it.each(MIGRATED_ADMIN_ACTION_FILES)("%s ahora pide %j y un Member de sistema sigue sin poder", (file, keys) => {
+    const source = read(file);
+    expect(source).not.toContain("getAdminContext");
+    for (const key of keys) {
+      expect(source, `${file} deberia pedir ${key}`).toContain(`getPermissionAction("${key}")`);
+      expect(SYSTEM_ROLE_PERMISSIONS.member.keys).not.toContain(key);
+      expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toContain(key);
+    }
   });
 
   it("ninguna accion de Admin usa getWorkspace a secas", () => {

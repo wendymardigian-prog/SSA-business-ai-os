@@ -15,7 +15,7 @@ const ymd = (value: string): [number, number, number] => {
 };
 
 /**
- * Un endpoint: su URL, el ejemplo, y el historial de envios con el payload. Solo `flows.edit`:
+ * Un endpoint: su URL, el ejemplo, y el historial de envios con el payload. Solo `webhooks.manage`:
  * el payload tiene datos personales y la URL es una credencial.
  */
 export default async function WebhookEndpointPage({
@@ -27,7 +27,7 @@ export default async function WebhookEndpointPage({
 }) {
   const { endpointId } = await params;
   const query = await searchParams;
-  const ctx = await requirePermission("flows.edit");
+  const ctx = await requirePermission("webhooks.manage");
   const db = await createServiceClient();
 
   const endpoint = await loadEndpointDetail(db, ctx.workspace.id, endpointId);

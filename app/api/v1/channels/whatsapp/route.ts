@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import {
@@ -22,7 +22,7 @@ import { getEvolutionConfig, getEvolutionWebhookToken } from "@/lib/evolution-co
  * mientras el usuario tiene el modal abierto.
  */
 export async function POST() {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("channels.manage");
   if (!ctx) {
     return NextResponse.json(
       { error: "Solo Owner y Admin pueden conectar canales" },

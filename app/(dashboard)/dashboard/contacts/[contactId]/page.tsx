@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, CalendarClock } from "lucide-react";
 
 import { getWorkspace } from "@/lib/workspace";
+import { requirePermission } from "@/lib/auth/guards";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
@@ -86,6 +87,8 @@ export default async function ContactDetailPage({
 }) {
   const { contactId } = await params;
   const { fusion } = await searchParams;
+  // Equipo y roles (F21): la pagina pide su permiso; el alcance de los contactos lo sigue aplicando la RLS.
+  await requirePermission("contacts.view");
   const { workspace, supabase, user, role } = await getWorkspace();
   const isAdmin = isAdminRole(role);
 

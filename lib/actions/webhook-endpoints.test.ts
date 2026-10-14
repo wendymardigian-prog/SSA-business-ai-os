@@ -46,7 +46,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("sin flows.edit todo se rechaza y no se toca la base", () => {
+describe("sin webhooks.manage todo se rechaza y no se toca la base", () => {
   it.each([
     ["crear", () => createWebhookEndpoint({ name: "x" })],
     ["editar", () => updateWebhookEndpoint("ep-1", { name: "x" })],
@@ -62,7 +62,7 @@ describe("sin flows.edit todo se rechaza y no se toca la base", () => {
     getPermissionAction.mockResolvedValue(null);
     const res = await run();
     expect(res.ok).toBe(false);
-    expect(getPermissionAction).toHaveBeenCalledWith("flows.edit");
+    expect(getPermissionAction).toHaveBeenCalledWith("webhooks.manage");
     expect(createServiceClient).not.toHaveBeenCalled();
     expect(db.rows("webhook_endpoints")).toHaveLength(2);
     expect(db.rows("audit_log")).toHaveLength(0);

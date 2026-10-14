@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { isValidTimeZone } from "@/lib/timezone";
@@ -195,7 +196,8 @@ export async function setAutoCreateFlows(enabled: boolean): Promise<ProfileActio
   const ctx = await getPermissionAction("settings.general");
   if (!ctx) return { ok: false, error: "No tenés permiso para cambiar esto." };
 
-  const { error } = await ctx.supabase
+  // `workspaces` solo lo escribe un Admin por RLS: servicio despues del guard, sobre el workspace de la sesion.
+  const { error } = await (await createServiceClient())
     .from("workspaces")
     .update({ scheduling_auto_create_flows: enabled })
     .eq("id", ctx.workspace.id);

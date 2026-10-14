@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ListOrdered } from "lucide-react";
 import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { CreateSequenceButton } from "@/components/sequences/create-sequence-button";
 import { sequenceStatusStyle, stepCountLabel } from "@/lib/sequences/labels";
 import { formatDateTime } from "@/components/contacts/ui";
@@ -15,11 +15,13 @@ import { matchesSearch } from "@/lib/comunicacion/search";
 import { firstParam, sanitizeSearch, type SearchParams } from "@/lib/url-params";
 
 export default async function SequencesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const { workspace, supabase, role } = await getWorkspace();
+  // Equipo y roles (F22): la pagina pide su permiso.
+  await requirePermission("sequences.view");
+  const { workspace, supabase } = await getWorkspace();
   // Bloque I (I4): el buscador de la barra filtra por nombre la lista, que se
   // carga entera (no pagina).
   const query = sanitizeSearch(firstParam((await searchParams).q));
-  const canEdit = isAdminRole(role);
+  const canEdit = (await getPermissionContext()).can("sequences.edit");
 
   const { data: sequences, error } = await supabase
     .from("sequences")

@@ -10,7 +10,8 @@ const { getAdminContext, createServiceClient } = vi.hoisted(() => ({
   createServiceClient: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/guards", () => ({ getAdminContext }));
+// Equipo y roles: el guard ahora se llama por permiso; el mismo mock responde a las tres formas.
+vi.mock("@/lib/auth/guards", () => ({ getAdminContext, getPermissionAction: getAdminContext, getAnyPermissionAction: getAdminContext }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 

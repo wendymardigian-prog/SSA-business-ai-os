@@ -6,7 +6,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
 import { unscheduleOnDisconnect } from "@/lib/publishing/disconnect-networks";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getAnyPermissionAction, getPermissionAction } from "@/lib/auth/guards";
+import { sectionOfProvider } from "@/lib/integrations/sections";
 import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
@@ -99,13 +100,17 @@ export interface SaveIntegrationInput {
 export async function saveIntegration(
   input: SaveIntegrationInput,
 ): Promise<IntegrationActionResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden configurar integraciones" };
-
   // getVisibleProvider y no getProvider: una integracion que todavia no se
   // muestra tampoco se puede guardar, aunque alguien arme el pedido a mano.
   const provider = getVisibleProvider(input.providerId);
   if (!provider) return { ok: false, error: "Integracion desconocida" };
+
+  // Los canales (Zernio, Evolution, email) piden `channels.manage`; el resto, `integrations.manage`.
+  const ctx =
+    sectionOfProvider(provider.id) === "channels"
+      ? await getPermissionAction("channels.manage")
+      : await getPermissionAction("integrations.manage");
+  if (!ctx) return { ok: false, error: "No tenés permiso para configurar esta integración" };
 
   const { workspace, supabase } = ctx;
   const secrets = input.secrets ?? {};
@@ -261,7 +266,7 @@ export async function updateIntegrationConfig(
  * bloque 3 solo tenga que cambiar el cuerpo, no la pantalla.
  */
 export async function countScheduledUses(providerId: string): Promise<number> {
-  const ctx = await getAdminContext();
+  const ctx = await getAnyPermissionAction(["integrations.manage", "channels.manage"]);
   if (!ctx) return 0;
   if (!getVisibleProvider(providerId)) return 0;
 
@@ -299,11 +304,14 @@ const PUBLISHERS_BY_PROVIDER: Record<string, string[]> = {
 export async function disconnectIntegration(
   providerId: string,
 ): Promise<IntegrationActionResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden configurar integraciones" };
-
   const provider = getVisibleProvider(providerId);
   if (!provider) return { ok: false, error: "Integracion desconocida" };
+
+  const ctx =
+    sectionOfProvider(provider.id) === "channels"
+      ? await getPermissionAction("channels.manage")
+      : await getPermissionAction("integrations.manage");
+  if (!ctx) return { ok: false, error: "No tenés permiso para configurar esta integración" };
 
   const { workspace, supabase } = ctx;
 
@@ -365,13 +373,14 @@ export async function disconnectIntegration(
  * Solo lectura y sin nada sensible: id, etiqueta y modelos disponibles. La key
  * no sale de Vault ni aparece por ningun lado.
  *
- * Es Owner/Admin porque configurar el nodo de IA tambien lo es. Un Member que
+ * Pide `agents.edit` porque configurar el nodo de IA tambien lo pide. Un Member que
  * mira un flow ve el nodo, no el selector.
  */
 export async function listAiProviders(): Promise<
   Array<{ provider: string; label: string; defaultModel: string; models: string[] }>
 > {
-  const ctx = await getAdminContext();
+  // Configurar el nodo de IA es de quien edita agentes (`agents.edit`), no de quien edita flujos.
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return [];
   return listConnectedAiProviders(ctx.workspace.id);
 }

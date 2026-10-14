@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
@@ -7,6 +8,9 @@ export async function GET() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
+  if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { data: membership } = await supabase
     .from("workspace_members")
@@ -34,6 +38,9 @@ export async function POST(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
+  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { data: membership } = await supabase
     .from("workspace_members")

@@ -1,4 +1,5 @@
 import { getWorkspace } from "@/lib/workspace";
+import { requirePermission } from "@/lib/auth/guards";
 import Link from "next/link";
 import { GitBranch, Sparkles, Plug } from "lucide-react";
 import { CreateFlowButton } from "@/components/create-flow-button";
@@ -35,6 +36,8 @@ function formatDate(dateString: string) {
 }
 
 export default async function FlowsPage() {
+  // Equipo y roles (F22): la pagina pide su permiso.
+  await requirePermission("flows.view");
   const { workspace, supabase } = await getWorkspace();
 
   const [{ data: flows }, { count: channelCount }] = await Promise.all([

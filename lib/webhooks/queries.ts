@@ -2,9 +2,9 @@
  * Lecturas de las pantallas de webhooks. SOLO servidor.
  *
  * Leen con el cliente de SERVICIO, restringido al workspace de la sesion, y SIEMPRE despues de que
- * quien llama chequeo el permiso en TypeScript (`flows.edit`; `integrations.manage` solo para la
+ * quien llama chequeo el permiso en TypeScript (`webhooks.manage`; `integrations.manage` solo para la
  * lista, sin URL ni payloads). Se lee asi porque la RLS usa `has_permission`, que para el Member de
- * sistema (cuyas claves viven en lib/auth/permissions.ts) devuelve false aunque tenga `flows.edit`.
+ * sistema (cuyas claves viven en lib/auth/permissions.ts) devuelve false aunque tenga `webhooks.manage`.
  * La RLS queda como segunda barrera para cualquier acceso directo.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -94,7 +94,7 @@ function toListItem(r: EndpointRowLite, count: { total: number; errors: number }
   };
 }
 
-/** El detalle de UN endpoint, con la URL (credencial). Solo para quien tiene `flows.edit`. */
+/** El detalle de UN endpoint, con la URL (credencial). Solo para quien tiene `webhooks.manage`. */
 export async function loadEndpointDetail(db: Db, workspaceId: string, endpointId: string, now: Date = new Date()): Promise<EndpointDetail | null> {
   const { data } = await db
     .from("webhook_endpoints")

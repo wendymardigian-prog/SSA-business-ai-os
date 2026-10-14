@@ -21,7 +21,8 @@ const { getAdminContext, storeSecret, deleteSecret, listSecretNames, logAudit, f
     syncSocialAccounts: vi.fn(),
   }));
 
-vi.mock("@/lib/auth/guards", () => ({ getAdminContext }));
+// Equipo y roles: el guard ahora se llama por permiso; el mismo mock responde a las tres formas.
+vi.mock("@/lib/auth/guards", () => ({ getAdminContext, getPermissionAction: getAdminContext, getAnyPermissionAction: getAdminContext }));
 vi.mock("@/lib/vault", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/vault")>();
   return { ...actual, storeSecret, deleteSecret, listSecretNames };

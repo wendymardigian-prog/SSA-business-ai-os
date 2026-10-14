@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { isCustomFieldType, uniqueSlug } from "@/lib/custom-fields";
 import type { CustomFieldType } from "@/lib/types/database";
@@ -10,7 +10,7 @@ import type { CustomFieldType } from "@/lib/types/database";
  * Definiciones de campos personalizados (F6).
  *
  * Hasta ahora no habia forma de crearlas desde la app: existian solo si
- * alguien escribia SQL. Las gestionan Owner y Admin; los valores por contacto
+ * alguien escribia SQL. Los gestiona quien tiene `custom_fields.manage`; los valores por contacto
  * los completa cualquiera que vea el contacto, que es otra accion
  * (setContactCustomField).
  *
@@ -33,8 +33,8 @@ export async function createCustomField(
   rawName: string,
   rawType: string,
 ): Promise<CustomFieldResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden definir campos personalizados" };
+  const ctx = await getPermissionAction("custom_fields.manage");
+  if (!ctx) return { ok: false, error: "No tenés permiso para definir campos personalizados" };
 
   const { workspace, supabase, user } = ctx;
 
@@ -92,8 +92,8 @@ export async function updateCustomField(
   rawName: string,
   rawType: string,
 ): Promise<CustomFieldResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden editar campos personalizados" };
+  const ctx = await getPermissionAction("custom_fields.manage");
+  if (!ctx) return { ok: false, error: "No tenés permiso para editar campos personalizados" };
 
   const { workspace, supabase, user } = ctx;
 
@@ -162,8 +162,8 @@ export async function updateCustomField(
  * por cascade el valor de ese campo en cada contacto.
  */
 export async function deleteCustomField(fieldId: string): Promise<CustomFieldResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden eliminar campos personalizados" };
+  const ctx = await getPermissionAction("custom_fields.manage");
+  if (!ctx) return { ok: false, error: "No tenés permiso para eliminar campos personalizados" };
 
   const { workspace, supabase, user } = ctx;
 

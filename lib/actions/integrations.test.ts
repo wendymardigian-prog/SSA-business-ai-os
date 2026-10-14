@@ -24,7 +24,8 @@ const { getAdminContext, storeSecret, deleteSecret, listSecretNames, logAudit, f
   fetchMock: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/guards", () => ({ getAdminContext }));
+// Equipo y roles: el guard ahora se llama por permiso; el mismo mock responde a las tres formas.
+vi.mock("@/lib/auth/guards", () => ({ getAdminContext, getPermissionAction: getAdminContext, getAnyPermissionAction: getAdminContext }));
 // SECRET_NAMES sale del modulo real: son nombres, no secretos, y el codigo
 // bajo prueba los usa para decidir que mover.
 vi.mock("@/lib/vault", async (importOriginal) => {
@@ -81,7 +82,7 @@ describe("guardar una integracion", () => {
 
     const result = await saveIntegration({ providerId: "anthropic", secrets: { api_key: KEY } });
 
-    expect(result).toEqual({ ok: false, error: expect.stringContaining("Owner y Admin") });
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("No tenés permiso") });
     expect(storeSecret).not.toHaveBeenCalled();
   });
 

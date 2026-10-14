@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const guards = vi.hoisted(() => ({
-  getAdminContext: vi.fn(),
   getPermissionAction: vi.fn(),
   getMemberAction: vi.fn(),
 }));
@@ -22,7 +21,6 @@ const memberCtx = { workspace: { id: "ws-1" }, user: { id: "member-1" } };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  guards.getAdminContext.mockResolvedValue(null); // es Member
   guards.getMemberAction.mockResolvedValue(memberCtx);
   guards.getPermissionAction.mockImplementation(async (key: string) => (key === "scheduling.use" ? memberCtx : null));
   startOAuth.mockResolvedValue({ ok: true, authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth?x=1", nonce: "n" });

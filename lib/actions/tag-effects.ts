@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 
 /**
@@ -25,7 +25,7 @@ export async function setTagEffect(
   tagId: string,
   effect: { disablesAgent: boolean; assignsTo: string | null },
 ): Promise<TagEffectResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("tags.manage");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar el efecto de una etiqueta." };
   const { workspace, supabase, user } = ctx;
 

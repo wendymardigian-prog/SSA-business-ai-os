@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import {
@@ -33,7 +33,7 @@ export type MetaActionResult<T = undefined> =
   | { ok: false; error: string };
 
 async function loadMeta() {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("integrations.manage");
   if (!ctx) return null;
 
   const { data: row } = await ctx.supabase
@@ -48,7 +48,7 @@ async function loadMeta() {
 }
 
 async function saveConfig(
-  ctx: NonNullable<Awaited<ReturnType<typeof getAdminContext>>>,
+  ctx: PermissionContext,
   config: Record<string, unknown>,
 ): Promise<boolean> {
   const { error } = await ctx.supabase

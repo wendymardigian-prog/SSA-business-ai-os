@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { moveText, createCategoryAndMove, renameCategory, mergeCategory, confirmText, addButtonText, removeButtonText } from "@/lib/patterns/corrections";
 import { normalizeForGrouping } from "@/lib/text/normalize";
 
@@ -9,7 +9,7 @@ const NOT_ADMIN = "Solo Owner y Admin pueden corregir categorías";
 
 /** F21: mover un texto a otra categoría. */
 export async function moveTextAction(textId: string, categoryId: string) {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await moveText(ctx.supabase, { workspaceId: ctx.workspace.id, textId, categoryId, userId: ctx.user.id });
   revalidatePath("/dashboard/dashboards/chat");
@@ -18,7 +18,7 @@ export async function moveTextAction(textId: string, categoryId: string) {
 
 /** F21: crear una categoría nueva y mover el texto ahí. */
 export async function createCategoryAndMoveAction(direction: "inbound" | "outbound", name: string, textId: string) {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await createCategoryAndMove(ctx.supabase, { workspaceId: ctx.workspace.id, direction, name, textId, userId: ctx.user.id });
   revalidatePath("/dashboard/dashboards/chat");
@@ -27,7 +27,7 @@ export async function createCategoryAndMoveAction(direction: "inbound" | "outbou
 
 /** F21: renombrar o editar la descripción de una categoría ("Otro" protegida). */
 export async function renameCategoryAction(categoryId: string, patch: { name?: string; description?: string }) {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await renameCategory(ctx.supabase, { workspaceId: ctx.workspace.id, categoryId, ...patch, userId: ctx.user.id });
   revalidatePath("/dashboard/dashboards/chat");
@@ -36,7 +36,7 @@ export async function renameCategoryAction(categoryId: string, patch: { name?: s
 
 /** F21: unir una categoría con otra. */
 export async function mergeCategoryAction(sourceId: string, targetId: string) {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await mergeCategory(ctx.supabase, { workspaceId: ctx.workspace.id, sourceId, targetId, userId: ctx.user.id });
   revalidatePath("/dashboard/dashboards/chat");
@@ -45,7 +45,7 @@ export async function mergeCategoryAction(sourceId: string, targetId: string) {
 
 /** F25: "Está bien" de la revisión rápida. No cambia `source`: sigue siendo del modelo. */
 export async function confirmTextAction(textId: string) {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await confirmText(ctx.supabase, { workspaceId: ctx.workspace.id, textId, userId: ctx.user.id });
   revalidatePath("/dashboard/settings/background");
@@ -54,7 +54,7 @@ export async function confirmTextAction(textId: string) {
 
 /** F19: sumar un texto a la lista de botones conocidos. */
 export async function addButtonTextAction(text: string) {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await addButtonText(ctx.supabase, {
     workspaceId: ctx.workspace.id,
@@ -68,7 +68,7 @@ export async function addButtonTextAction(text: string) {
 
 /** F19: sacar un texto de la lista de botones. */
 export async function removeButtonTextAction(textId: string) {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await removeButtonText(ctx.supabase, { workspaceId: ctx.workspace.id, textId, userId: ctx.user.id });
   revalidatePath("/dashboard/settings/background");

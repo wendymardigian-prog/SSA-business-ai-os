@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { parsePublishers } from "@/lib/social/accounts-schema";
@@ -26,7 +26,7 @@ export type ProbeActionResult =
   | { ok: false; error: string };
 
 export async function probeYouTubeUpload(): Promise<ProbeActionResult> {
-  const { workspace, user, supabase } = await requireWorkspaceAdmin();
+  const { workspace, user, supabase } = await requirePermission("integrations.manage");
 
   const { data: account } = await supabase
     .from("social_accounts")

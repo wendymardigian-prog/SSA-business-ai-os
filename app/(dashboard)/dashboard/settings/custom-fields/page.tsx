@@ -1,4 +1,4 @@
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { CustomFieldsView, type FieldRow } from "./custom-fields-view";
 
 /**
@@ -9,7 +9,7 @@ import { CustomFieldsView, type FieldRow } from "./custom-fields-view";
  * que vea el contacto.
  */
 export default async function CustomFieldsPage() {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  const { workspace, supabase } = await requirePermission("custom_fields.manage");
 
   const { data, error } = await supabase
     .from("custom_field_definitions")

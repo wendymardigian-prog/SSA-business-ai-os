@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
@@ -30,7 +30,7 @@ export async function DELETE(
   // Solo Owner y Admin. Antes un Member pasaba: la cuenta se desconectaba en
   // Zernio o Evolution, la RLS despues rechazaba el borrado sin dar error, y
   // la ruta respondia ok con el canal muerto pero todavia en la lista.
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("channels.manage");
   if (!ctx) {
     return NextResponse.json(
       { error: "Solo Owner y Admin pueden borrar canales" },
