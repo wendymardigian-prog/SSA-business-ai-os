@@ -19,7 +19,7 @@ import { NetworkBadge } from "./network-badge";
  *
  * El selector de pilar termina en "+ Crear": cargar una idea no se frena por
  * un pilar que falta. Solo aparece para quien puede cambiar la configuracion
- * (`settings.manage`); para el resto el selector ofrece lo que hay y nada mas.
+ * (`settings.general`); para el resto el selector ofrece lo que hay y nada mas.
  *
  * El de PRODUCTO (las ofertas de antes) no se crea desde aca: un producto lleva
  * precio y estado, y se carga en Ajustes -> Productos. Solo se ofrecen los

@@ -200,7 +200,7 @@ try {
   {
     { const { error } = await acotado.client.from("workspace_roles").insert({
         workspace_id: ws.id, name: "zz-test Colado",
-        permissions: { keys: ["settings.manage"], scopes: {} },
+        permissions: { keys: ["settings.general"], scopes: {} },
       });
       check(!!error, "un Member no puede crearse un rol con permisos"); }
 
@@ -242,12 +242,12 @@ try {
     // Se consultan con el cliente del usuario: son SECURITY DEFINER y miran
     // auth.uid(), asi que con el service role no dirian nada util.
     const { data: puedeAdmin } = await admin.client.rpc("has_permission", {
-      p_workspace_id: ws.id, p_key: "settings.manage",
+      p_workspace_id: ws.id, p_key: "settings.general",
     });
     check(puedeAdmin === true, "un Admin tiene todos los permisos segun la base");
 
     const { data: puedeMember } = await acotado.client.rpc("has_permission", {
-      p_workspace_id: ws.id, p_key: "settings.manage",
+      p_workspace_id: ws.id, p_key: "settings.general",
     });
     check(puedeMember === false, "un Member no");
 

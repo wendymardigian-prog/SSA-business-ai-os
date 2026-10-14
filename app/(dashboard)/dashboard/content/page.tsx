@@ -104,7 +104,7 @@ export default async function ContentPage({
     canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
     // Archivados incluidos: una idea o pieza que ya tiene un pilar lo sigue
     // mostrando aunque ya no se ofrezca en el selector (F89).
-    loadContentTaxonomy(supabase, workspace.id, can("settings.manage")),
+    loadContentTaxonomy(supabase, workspace.id, can("settings.general")),
     firstTouchCounts(supabase),
   ]);
 
@@ -351,7 +351,7 @@ export default async function ContentPage({
         right={
           <>
             {/* Los pilares (y lo que se sume en el futuro): solo para quien puede cambiar la configuracion. */}
-            {can("settings.manage") && <ContentSettingsButton pillars={pillarRows} />}
+            {can("settings.general") && <ContentSettingsButton pillars={pillarRows} />}
             <NewContentButtons {...crear} />
           </>
         }

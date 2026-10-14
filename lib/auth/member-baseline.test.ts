@@ -169,11 +169,11 @@ const PERMISSION_PAGES = [
   // Extra L (AT4, F32): el dashboard de Ads pide su permiso, no el cargo (Owner y Admin lo tienen siempre).
   ["app/(dashboard)/dashboard/dashboards/ads/page.tsx", "dashboards.ads.view"],
   // Ventas (Etapa 5): la lista pide sales.view; el detalle de un producto, la
-  // misma settings.manage que la lista de Productos.
+  // misma products.manage que la lista de Productos.
   ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"],
   // Tareas (Extra A): la pantalla pide tasks.view (el Member de sistema lo tiene).
   ["app/(dashboard)/dashboard/tareas/page.tsx", "tasks.view"],
-  ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "settings.manage"],
+  ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "products.manage"],
 ] as const;
 
 describe("caracterizacion: las paginas que piden un permiso (F78)", () => {

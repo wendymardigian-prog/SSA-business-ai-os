@@ -12,7 +12,11 @@
  *
  * Ventas suma (plano §5): `sales.view`, `sales.manage` y `payments.manage` a los
  * tres roles de sistema, con alcance `sales` = `own` para el Member y `all` para
- * Owner y Admin. El Member NO tiene `settings.manage`.
+ * Owner y Admin. El Member NO tiene `products.manage` ni `sales.settings`.
+ *
+ * Equipo y roles (plano §9.3, cambio aprobado el 13/10/2026): el Member suma `contacts.assign` y
+ * `flows.publish` (las dos ya las podia hacer de hecho; se conservan) y pierde `sequences.edit`
+ * (la base nunca se lo dejo usar: corrige el catalogo, sin cambio real). Son 27 claves.
  */
 import { describe, expect, it } from "vitest";
 import { SYSTEM_ROLE_PERMISSIONS, ALL_PERMISSION_KEYS } from "./permissions";
@@ -26,8 +30,13 @@ describe("Member de sistema", () => {
         "inbox.whatsapp.view", "inbox.whatsapp.reply",
         "inbox.email.view", "inbox.email.reply",
         "contacts.view", "contacts.edit",
+        // Cambio aprobado, plano §9.3: reasignar los leads que ve (ya podia, sin que hubiera una clave).
+        "contacts.assign",
         "flows.view", "flows.edit",
-        "sequences.view", "sequences.edit",
+        // Cambio aprobado, plano §9.3: publicar flujos (ya podia). Se conserva.
+        "flows.publish",
+        // Cambio aprobado, plano §9.3: sale `sequences.edit` (las acciones de secuencias ya eran solo de Admin).
+        "sequences.view",
         "agents.view",
         "content.view", "content.create",
         "scheduling.use", "bookings.view", "bookings.manage",
@@ -54,7 +63,7 @@ describe("Owner y Admin", () => {
     expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", tasks: "all" });
   });
 
-  it("el Admin tiene todas menos transferir la propiedad", () => {
-    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toEqual(ALL_PERMISSION_KEYS.filter((k) => k !== "workspace.transfer"));
+  it("el Admin tiene todas menos las dos solo-Owner: transferir la propiedad y quitar personas", () => {
+    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toEqual(ALL_PERMISSION_KEYS.filter((k) => k !== "workspace.transfer" && k !== "team.remove"));
   });
 });

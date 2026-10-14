@@ -10,11 +10,11 @@ import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { createRole, deleteRole, updateRole } from "@/lib/actions/roles";
 import {
   PERMISSION_MODULES,
-  permissionsOfModule,
+  visiblePermissionsOfModule,
+  MODULE_LABELS,
   SCOPE_LABELS,
   scopeOptionsFor,
   type ScopedModule,
-  type PermissionModule,
   type PermissionScope,
 } from "@/lib/auth/permissions";
 import { describeRole, moduleState, sortRoles, toggleModule, type RoleRow } from "@/lib/auth/roles-admin";
@@ -30,27 +30,6 @@ import { describeRole, moduleState, sortRoles, toggleModule, type RoleRow } from
  * tiene treinta y cinco claves y armar un rol tildando de a una es tedioso.
  */
 
-const MODULE_LABELS: Record<PermissionModule, string> = {
-  dashboards: "Dashboards",
-  social: "Social",
-  inbox: "Bandeja",
-  contacts: "Contactos",
-  flows: "Automatizaciones",
-  sequences: "Secuencias",
-  broadcasts: "Broadcasts",
-  templates: "Plantillas",
-  agents: "Agente de IA",
-  knowledge: "Base de conocimiento",
-  content: "Contenido",
-  scheduling: "Agenda",
-  calls: "Llamadas",
-  forms: "Formularios",
-  sales: "Ventas",
-  tasks: "Tareas",
-  integrations: "Integraciones",
-  team: "Equipo",
-  settings: "Configuracion",
-};
 
 interface Draft {
   id: string | null;
@@ -361,7 +340,7 @@ export function RolesView({
 
             <div className="mt-4 space-y-3">
               {PERMISSION_MODULES.map((module) => {
-                const permissions = permissionsOfModule(module);
+                const permissions = visiblePermissionsOfModule(module);
                 const state = moduleState(draft.keys, permissions.map((p) => p.key));
 
                 return (

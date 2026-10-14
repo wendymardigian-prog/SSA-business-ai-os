@@ -1,6 +1,6 @@
 /**
  * Ventas F13 y F16: guardar las reglas, el probador y la simulación en seco.
- * Fija que sin settings.manage no se escribe nada, que se valida en el servidor
+ * Fija que sin assignment.manage no se escribe nada, que se valida en el servidor
  * (no solo en la pantalla) y que el probador y la simulación NO escriben.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";

@@ -1,7 +1,7 @@
 /**
  * F89: las acciones de pilares y productos (las ofertas de antes, 00134).
  *
- * Fija tres cosas: que sin `settings.manage` no se escribe nada, que archivar
+ * Fija tres cosas: que sin `settings.general` no se escribe nada, que archivar
  * deja la fila (nunca se borra) y que NO existe una accion de borrar.
  */
 
@@ -103,15 +103,19 @@ describe("permiso", () => {
     expect(db.rows("content_pillars")).toHaveLength(0);
   });
 
-  it("un rol personalizado con settings.manage SI crea", async () => {
-    customRole(["settings.manage"]);
-
-    const result = await actions.createProduct({ name: "Mentoria", priceUsd: 1500 });
-
-    expect(result.ok).toBe(true);
+  it("un rol personalizado con settings.general crea pilares, pero no productos", async () => {
+    customRole(["settings.general"]);
+    expect((await actions.createPillar({ name: "Educativo" })).ok).toBe(true);
+    // Los pilares y los productos tienen cada uno su clave (el catalogo de Ventas pide products.manage).
+    expect((await actions.createProduct({ name: "Mentoria", priceUsd: 1500 })).ok).toBe(false);
   });
 
-  it("un rol con content.approve pero sin settings.manage no crea", async () => {
+  it("un rol personalizado con products.manage crea productos", async () => {
+    customRole(["products.manage"]);
+    expect((await actions.createProduct({ name: "Mentoria", priceUsd: 1500 })).ok).toBe(true);
+  });
+
+  it("un rol con content.approve pero sin settings.general ni products.manage no crea", async () => {
     customRole(["content.view", "content.approve"]);
 
     expect((await actions.createPillar({ name: "X" })).ok).toBe(false);

@@ -32,7 +32,7 @@ export default async function AdsDashboardPage({
   const permissions = await requirePermission("dashboards.ads.view");
   const { workspace, supabase } = permissions;
   const dashboards = availableDashboards(permissions.can);
-  const canSync = permissions.can("settings.manage");
+  const canSync = permissions.can("settings.general");
   const sp = await searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;

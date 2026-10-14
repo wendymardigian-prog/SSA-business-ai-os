@@ -27,11 +27,11 @@ const PAGES: Record<string, { file: string; guardMarker: string }> = {
   // con los permisos resueltos para decidir si ofrece crear y editar.
   recursos: { file: "recursos/page.tsx", guardMarker: "getPermissionContext" },
   // Productos (antes Contenido) es la unica pestaña que pide un permiso fino y
-  // no un cargo (F89): un rol personalizado con `settings.manage` entra, un
+  // no un cargo (F89): un rol personalizado con `products.manage` entra, un
   // admin al que se lo sacaron no.
-  productos: { file: "productos/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
+  productos: { file: "productos/page.tsx", guardMarker: 'requirePermission("products.manage")' },
   // Reglas de asignacion (Ventas, F13): tambien por permiso fino, como Productos.
-  asignacion: { file: "asignacion/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
+  asignacion: { file: "asignacion/page.tsx", guardMarker: 'requirePermission("assignment.manage")' },
   integrations: { file: "integrations/page.tsx", guardMarker: "requireWorkspaceAdmin" },
 };
 
@@ -58,8 +58,8 @@ function visibleTabs(role: "owner" | "admin" | "member", permissions: RolePermis
     roles: can(permissions, "roles.manage"),
     "custom-fields": admin,
     recursos: true,
-    productos: can(permissions, "settings.manage"),
-    asignacion: can(permissions, "settings.manage"),
+    productos: can(permissions, "products.manage"),
+    asignacion: can(permissions, "assignment.manage"),
     integrations: admin,
   };
 }
@@ -121,10 +121,10 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
     });
   });
 
-  it("Member con rol personalizado y settings.manage ve Recursos, Productos y Asignación, nada mas", () => {
+  it("Member con rol personalizado con products.manage y assignment.manage ve Recursos, Productos y Asignación, nada mas", () => {
     // Contenido es la excepcion: mira el permiso, no el cargo (F89).
     const customPermissions: RolePermissions = {
-      keys: ["settings.manage"],
+      keys: ["products.manage", "assignment.manage"],
       scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
     };
     expect(visibleTabs("member", customPermissions)).toEqual({

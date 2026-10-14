@@ -10,7 +10,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 /**
  * Ajustes de Ventas del workspace (Ajustes > General > Ventas). Pide
- * `settings.manage`. Cada campo es opcional: lo que no viene no se toca.
+ * `sales.settings`. Cada campo es opcional: lo que no viene no se toca.
  */
 export async function updateSalesSettings(input: {
   enabledPaymentMethods?: unknown;
@@ -20,7 +20,7 @@ export async function updateSalesSettings(input: {
   /** «Crear flujos de cobranza»: al prenderlo se crean (apagados) los que falten. */
   autoCreateFlows?: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const ctx = await getPermissionAction("settings.manage");
+  const ctx = await getPermissionAction("sales.settings");
   if (!ctx) return { ok: false, error: "Solo quien puede cambiar la configuración maneja los ajustes de Ventas" };
   const { workspace, supabase, user } = ctx;
 

@@ -36,6 +36,6 @@ export async function loadWizardConfig(ctx: PermissionContext): Promise<WizardCo
     // La zona con la que MIRA la persona (fechas de las agendas); la de las reglas es la del workspace.
     timeZone: viewerTz,
     currentUserId: user.id,
-    canManageCatalog: ctx.can("settings.manage"),
+    canManageCatalog: ctx.can("products.manage"),
   };
 }

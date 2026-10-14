@@ -140,7 +140,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
         .limit(50),
       canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
       getWorkspaceMembers(workspace.id),
-      loadContentTaxonomy(supabase, workspace.id, can("settings.manage")),
+      loadContentTaxonomy(supabase, workspace.id, can("settings.general")),
       // La idea de la que salio: el chip para volver a abrirla y su texto, que
       // es contexto para quien escribe el guion (F90).
       post.idea_id

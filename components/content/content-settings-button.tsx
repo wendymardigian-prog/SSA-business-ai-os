@@ -10,7 +10,7 @@ import { PillarsManager, type PillarRow } from "./pillars-manager";
  * contenido. Hoy es solo la administracion de los pilares; el dia que haya
  * otros ajustes de contenido se suman en este mismo dialogo.
  *
- * Solo lo ve quien puede cambiar la configuracion (`settings.manage`): la
+ * Solo lo ve quien puede cambiar la configuracion (`settings.general`): la
  * pagina no lo dibuja para el resto, y las acciones lo piden igual.
  */
 export function ContentSettingsButton({ pillars }: { pillars: PillarRow[] }) {

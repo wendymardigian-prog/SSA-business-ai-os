@@ -7,7 +7,7 @@ let config: unknown = { ad_accounts: [{ ad_account_id: "act_1", sync_enabled: tr
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/scheduler", () => ({ scheduleJob: (...args: unknown[]) => scheduleJob(...args) }));
 vi.mock("@/lib/auth/guards", () => ({
-  getPermissionAction: async (key: string) => (allowed && key === "settings.manage" ? { workspace: { id: "ws-1" }, user: { id: "u-1" } } : null),
+  getPermissionAction: async (key: string) => (allowed && key === "settings.general" ? { workspace: { id: "ws-1" }, user: { id: "u-1" } } : null),
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createServiceClient: async () => ({
@@ -36,7 +36,7 @@ describe("syncMetaAdsNow", () => {
     expect(String(key)).toMatch(/^meta-ads-manual:act_1:\d+$/);
   });
 
-  it("sin el permiso settings.manage no encola nada", async () => {
+  it("sin el permiso settings.general no encola nada", async () => {
     allowed = false;
     const r = await syncMetaAdsNow("act_1");
     expect(r.ok).toBe(false);

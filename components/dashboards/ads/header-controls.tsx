@@ -136,7 +136,7 @@ export function HeaderActions({
   onOpenAi: () => void;
   account: { id: string; name: string | null; currency: string | null; lastError: string | null } | null;
   syncedLabel: string | null;
-  /** Tiene `settings.manage`: puede pedir la sincronizacion. */
+  /** Tiene `settings.general`: puede pedir la sincronizacion. */
   canSync?: boolean;
 }) {
   return (

@@ -14,7 +14,7 @@ import type { Json } from "@/lib/types/database";
 
 /**
  * Reglas de asignación (Ajustes > Reglas de asignación, plano F13 y F16). Todo
- * pide `settings.manage`, y lo repite la RLS de la 00161.
+ * pide `assignment.manage`, y lo repite la RLS de la 00161.
  *
  * El probador y la simulación en seco usan `resolveAssignments` (la misma
  * función que el job) y NO escriben: solo leen.
@@ -31,7 +31,7 @@ export async function saveAssignmentRule(input: {
   enabledMemberIds?: string[];
   conditionRules?: unknown[];
 }): Promise<Result> {
-  const ctx = await getPermissionAction("settings.manage");
+  const ctx = await getPermissionAction("assignment.manage");
   if (!ctx) return { ok: false, error: NOT_ALLOWED };
   const { workspace, supabase, user } = ctx;
 
@@ -101,7 +101,7 @@ const CONTACT_COLUMNS =
 
 /** Probador: para cada tipo, a quién se asignaría y por qué regla. NO escribe. */
 export async function probeAssignment(input: ProbeInput): Promise<Result<DryRunRow[]>> {
-  const ctx = await getPermissionAction("settings.manage");
+  const ctx = await getPermissionAction("assignment.manage");
   if (!ctx) return { ok: false, error: NOT_ALLOWED };
   const { workspace, supabase } = ctx;
 
@@ -145,7 +145,7 @@ export interface SimulationRow {
 
 /** Simulación en seco: los últimos 50 contactos, lo que tienen y lo que asignaría la regla. NO escribe. */
 export async function simulateAssignments(): Promise<Result<SimulationRow[]>> {
-  const ctx = await getPermissionAction("settings.manage");
+  const ctx = await getPermissionAction("assignment.manage");
   if (!ctx) return { ok: false, error: NOT_ALLOWED };
   const { workspace, supabase } = ctx;
 
@@ -180,7 +180,7 @@ export interface RuleContactOption {
 
 /** El buscador de contactos del probador y del destino "contacto" de un referido. Con el cliente de la persona: la RLS acota lo que ve. */
 export async function searchContactsForRules(query: string): Promise<RuleContactOption[]> {
-  const ctx = await getPermissionAction("settings.manage");
+  const ctx = await getPermissionAction("assignment.manage");
   if (!ctx) return [];
   const q = sanitizeSearch(query, 60);
   if (q.length < 2) return [];

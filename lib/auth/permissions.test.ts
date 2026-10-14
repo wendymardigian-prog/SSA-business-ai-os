@@ -62,10 +62,11 @@ describe("los tres roles de sistema (F68)", () => {
     expect(SYSTEM_ROLE_PERMISSIONS.owner.keys).toEqual(ALL_PERMISSION_KEYS);
   });
 
-  it("el Admin puede todo menos transferir la propiedad", () => {
-    // Es lo unico irreversible del sistema.
+  it("el Admin puede todo menos las dos claves solo-Owner (transferir la propiedad y quitar personas)", () => {
+    // Quitar personas ya era solo del Owner (la policy de DELETE de workspace_members); ahora tiene su clave.
     expect(can(SYSTEM_ROLE_PERMISSIONS.admin, "workspace.transfer")).toBe(false);
-    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toHaveLength(ALL_PERMISSION_KEYS.length - 1);
+    expect(can(SYSTEM_ROLE_PERMISSIONS.admin, "team.remove")).toBe(false);
+    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toHaveLength(ALL_PERMISSION_KEYS.length - 2);
   });
 
   it("Owner y Admin ven todo el negocio", () => {
@@ -97,8 +98,10 @@ describe("el Member es exactamente el de hoy (F68)", () => {
     expect(canAny(member, ["contacts.import", "contacts.delete"])).toBe(false);
   });
 
-  it("edita flows y secuencias", () => {
-    expect(canAll(member, ["flows.edit", "sequences.edit"])).toBe(true);
+  it("edita y publica flows, y ve secuencias sin editarlas", () => {
+    // Cambio aprobado, plano §9.3: `sequences.edit` sale de su lista (las acciones ya eran solo de Admin).
+    expect(canAll(member, ["flows.edit", "flows.publish", "sequences.view"])).toBe(true);
+    expect(can(member, "sequences.edit")).toBe(false);
   });
 
   it("ve el dashboard de chat y ninguno de los otros dos", () => {
@@ -123,7 +126,11 @@ describe("el Member es exactamente el de hoy (F68)", () => {
         "integrations.manage",
         "team.manage",
         "roles.manage",
-        "settings.manage",
+        "settings.general",
+        "products.manage",
+        "channels.manage",
+        "team.invite",
+        "webhooks.manage",
         "knowledge.edit",
         "social.view",
       ]),

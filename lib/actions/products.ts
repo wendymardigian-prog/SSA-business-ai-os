@@ -12,7 +12,7 @@ import type { CatalogResult } from "@/lib/sales/catalog/result";
 /**
  * Productos y variantes (Ventas, plano F3 a F6).
  *
- * Todo pide `settings.manage` (lo repite la RLS de la 00159). El workspace sale
+ * Todo pide `products.manage` (lo repite la RLS de la 00159). El workspace sale
  * SIEMPRE de la sesion, nunca del pedido.
  *
  *  - Nada se borra: un producto pasa a inactivo o discontinuado y una variante se
@@ -33,7 +33,7 @@ const NOT_ALLOWED = "Solo quien puede cambiar la configuración maneja los produ
 type Ctx = NonNullable<Awaited<ReturnType<typeof getPermissionAction>>>;
 
 async function manage(): Promise<Ctx | null> {
-  return getPermissionAction("settings.manage");
+  return getPermissionAction("products.manage");
 }
 
 function uniqueViolation(error: { code?: string; message?: string } | null | undefined): boolean {

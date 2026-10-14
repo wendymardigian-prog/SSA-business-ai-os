@@ -55,7 +55,7 @@ export interface AdsDashboardProps {
   syncedLabel: string | null;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
   dashboards: DashboardOption[];
-  /** Puede pedir "Sincronizar ahora" (`settings.manage`). */
+  /** Puede pedir "Sincronizar ahora" (`settings.general`). */
   canSync?: boolean;
   /** Lo que dice el CRM (AT4): con esto las tres tablas son «Meta vs CRM». Sin esto, la tabla de siempre. */
   crm?: CrmTableData;
