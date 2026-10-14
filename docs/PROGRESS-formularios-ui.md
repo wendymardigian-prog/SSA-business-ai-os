@@ -35,9 +35,9 @@ Plano: `claude/v12/requerimientos-formularios-ui-menu.md` (v1.0, 13/10/2026). Ra
 - [x] F8 · Vista previa
 
 ### B4 · El constructor (pestaña Campos)
-- [ ] F9 · El lienzo
-- [ ] F10 · Elegir
-- [ ] F11 · El panel de la derecha
+- [x] F9 · El lienzo
+- [x] F10 · Elegir
+- [x] F11 · El panel de la derecha
 
 ### B5 · Las demás pestañas
 - [ ] F12 · Contacto
@@ -137,6 +137,17 @@ Se tilda a mano en el navegador al cerrar B5.
   - "Cambios sin publicar" es un punto ámbar junto al chip hasta 1600 px (el botón ya dice "Publicar cambios"); el texto completo aparece desde 1600 px y en el celular.
   - Abajo de 860 px las pestañas bajan a la segunda fila (con scroll) junto con Métricas, el estado y el guardado; arriba quedan el ícono de tipo, Vista previa (solo ícono) y Publicar.
   - En un EOD, la pestaña Configuración abre primero (lo de hoy), como pide el plano; el prototipo pone Preguntas primero.
+
+### B4 · Constructor (1440/390 px; datos de ejemplo)
+- La pestaña Campos es el lienzo (el formulario como lo ve quien responde, con las preguntas editables en el lugar) más un panel de ajustes de 330 px, pegado arriba al desplazarse. **Ya no hay vista previa al costado, ni `DesignCards`, ni la opción "Mostrar el logo", ni `<details>`** (los tests `components/forms/no-details.test.ts` lo cuidan, también para `prefill-card`, que ahora muestra "Atribución · Automática" abierta; el resto de Publicar se rehace en B5).
+- Tarjeta de pregunta (`React.memo`, clave `field.id`): asa de arrastre, tipo, chips de condición y de mapeo (`→ Email`), acciones Subir/Bajar/Duplicar/Borrar, texto editable en el lugar y el control "inerte" (`InertControl`) tal como lo ve el público. Las acciones que reciben las tarjetas son siempre las mismas (`useBuilderActions` lee lo último desde refs), así escribir en una no redibuja las demás.
+- **Verificado en el navegador:** escribir una etiqueta completa mantiene el foco y el panel se actualiza; arrastrar con HTML5 nativo (con línea de caída) reordena; duplicar deja la copia debajo y la elige; borrar; "+ Agregar pregunta" abre el selector DENTRO del lienzo con cuatro grupos; cambiar el mapeo a un dato que usaba otra pregunta avisa "El dato pasó a …: se lo sacamos a …"; en 390 px el panel sale de abajo con el botón flotante "Ajustes" y nunca se abre solo; el EOD usa el mismo lienzo y panel (con "Mide:" y los ajustes del número).
+- El panel tiene tres vistas: Formulario (nombre interno, título público, introducción, texto del botón, resumen, "Atribución · Automática"), Pregunta (tipo, etiqueta, ayuda, ejemplo, obligatoria, lo propio de cada tipo, "Se guarda en el contacto", "Lógica · mostrar solo si…", "Llenar desde la URL", Avanzado con la clave, Duplicar/Eliminar) y Después de enviar (mensaje o redirección, variables).
+- Publicar con algo pendiente lleva a Campos, elige la primera pregunta con un problema y la muestra; arriba del lienzo, "Para publicar falta arreglar N cosas" y cada tarjeta con su problema en rojo (`publishIssues`, mismos mensajes que `checkPublishable`).
+- D9: la página pública (`/f/[slug]`) no dibuja el logo; `saveFormDraft` sigue guardando `showLogo` como está. D12: un oculto nuevo ya no ofrece la fuente "atribución"; los que ya la tienen la muestran como "Atribución de la visita (ya se guarda sola)".
+- Diferencias con el prototipo, justificadas:
+  - El aviso de "se lo sacamos a otra pregunta" es una franja arriba del lienzo (no hay librería de toasts en el proyecto); se va sola a los 7 s.
+  - La lista de problemas en el celular y el panel de ajustes se abren con un botón flotante, no con un toque en la tarjeta: un toque en el texto abriría una hoja encima de lo que se está escribiendo.
 
 ---
 

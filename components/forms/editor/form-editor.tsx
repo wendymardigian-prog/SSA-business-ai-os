@@ -9,6 +9,7 @@ import { isPublicFormType } from "@/lib/forms/fields";
 import { parseEditorTab, type EditorSection, type SaveState } from "@/lib/forms/editor-bar";
 import { reconcileContactConfig, type ContactConfig } from "@/lib/forms/contact-config";
 import { checkPublishable, contactWarning, hasUnpublishedChanges } from "@/lib/forms/publish";
+import { publishIssues } from "@/lib/forms/publish-issues";
 import { typeChecks } from "@/lib/forms/type-checks";
 import { fingerprint } from "@/lib/unsaved-changes";
 import { AutomationsTab } from "./automations-tab";
@@ -34,6 +35,8 @@ import { EodFieldsEditor } from "@/components/eod/editor/eod-fields-editor";
  */
 
 type Section = EditorSection;
+
+const NO_ISSUES = { general: [], byField: {}, total: 0, firstFieldKey: null };
 
 export function FormEditor({
   form,
@@ -78,6 +81,7 @@ export function FormEditor({
   const [snapshot, setSnapshot] = useState(form.publishedSnapshot);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ fieldKey: string | null; nonce: number } | null>(null);
   const [publishMessage, setPublishMessage] = useState<{ tone: "success" | "error"; text: string; reasons?: string[] } | null>(null);
   const [publishing, startPublishing] = useTransition();
 
@@ -154,6 +158,17 @@ export function FormEditor({
       }),
     [form.type, slug, draft.definition, surveyConfig, contractConfig, contactConfig.mode, eodConfig],
   );
+  // Lo mismo que `check`, pero sabiendo de que pregunta es cada problema (para marcarlo en su tarjeta).
+  const issues = useMemo(
+    () =>
+      publishIssues({
+        type: form.type,
+        slug,
+        definition: draft.definition,
+        extraChecks: typeChecks(form.type, { surveyConfig, contractConfig, contactMode: contactConfig.mode, eodConfig }),
+      }),
+    [form.type, slug, draft.definition, surveyConfig, contractConfig, contactConfig.mode, eodConfig],
+  );
   const unpublished = hasUnpublishedChanges(draft.definition, snapshot);
   const reasons = check.ok ? [] : check.reasons;
   const publishBlocked = disabled || publishing || saveState === "conflict";
@@ -177,7 +192,9 @@ export function FormEditor({
    */
   function publish() {
     if (reasons.length > 0) {
-      setPublishMessage({ tone: "error", text: "Para publicar falta arreglar algo:", reasons });
+      // Se lleva a la primera pregunta con un problema (o al aviso de arriba, si el problema no es de una pregunta).
+      setPublishMessage(issues.total > 0 ? null : { tone: "error", text: "Para publicar falta arreglar algo:", reasons });
+      setFocusRequest({ fieldKey: issues.firstFieldKey, nonce: Date.now() });
       setSection("campos");
       return;
     }
@@ -318,11 +335,12 @@ export function FormEditor({
                 onChange={changeDraft}
                 disabled={disabled}
                 neverPublished={neverPublished}
-                slug={slug}
                 type={form.type}
-                contract={contractConfig}
                 contactConfig={contactConfig}
+                onContactConfig={setContactConfig}
                 customFields={extras.customFields}
+                issues={disabled ? NO_ISSUES : issues}
+                focusRequest={focusRequest}
                 onOpenContact={() => setSection("contacto")}
               />
             ) : section === "contrato" && form.type === "contract" && contractConfig ? (

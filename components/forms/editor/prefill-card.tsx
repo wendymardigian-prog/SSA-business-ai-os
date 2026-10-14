@@ -112,8 +112,9 @@ export function PrefillCard({ definition, baseUrl, slug }: { definition: FormDef
         </>
       )}
 
-      <details className="rounded-lg border border-border p-3 text-xs">
-        <summary className="cursor-pointer font-medium">Lo que se registra solo (no tenés que hacer nada)</summary>
+      <div className="rounded-lg border border-border p-3 text-xs">
+        <p className="font-medium">Atribución · Automática</p>
+        <p className="mt-0.5 text-muted-foreground">Esto se registra solo en cada respuesta; no tenés que hacer nada.</p>
         <ul className="mt-2 space-y-1.5 text-muted-foreground">
           {AUTO_ATTRIBUTION_GROUPS.map((group) => (
             <li key={group.title}>
@@ -122,7 +123,7 @@ export function PrefillCard({ definition, baseUrl, slug }: { definition: FormDef
             </li>
           ))}
         </ul>
-      </details>
+      </div>
     </section>
   );
 }

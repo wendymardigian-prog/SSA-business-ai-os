@@ -1,200 +1,174 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Eye, GitBranch, Trash2 } from "lucide-react";
-import { Sheet } from "@/components/ui/sheet";
-import { FieldEditor } from "@/components/forms/builder/field-editor";
-import { FIELD_ICONS } from "@/components/forms/builder/field-icons";
-import { FieldTypePicker } from "@/components/forms/builder/field-type-picker";
-import { PublicForm } from "@/components/forms/public/public-form";
-import { addField, moveField, relabelField, removeField, setFieldKey, updateField } from "@/lib/forms/builder";
-import { validateDefinition } from "@/lib/forms/definition-schema";
-import { FIELD_TYPE_LABELS, MAX_FIELDS, type FormDefinition, type FormField, type PublicFormType } from "@/lib/forms/fields";
-import { toPublicFields } from "@/lib/forms/public-definition";
-import type { PublicFormData } from "@/lib/forms/public-client";
-import { cn } from "@/lib/utils";
-import { DesignCards } from "./design-cards";
-import { fieldContactLine, type ContactConfig, type CustomFieldDef } from "@/lib/forms/contact-config";
+import { useEffect, useState } from "react";
+import { BuilderLayout } from "@/components/forms/builder/builder-layout";
+import { FormCanvas } from "@/components/forms/builder/form-canvas";
+import { InspectorEnd } from "@/components/forms/builder/inspector-end";
+import { InspectorField } from "@/components/forms/builder/inspector-field";
+import { InspectorForm } from "@/components/forms/builder/inspector-form";
+import { useBuilderActions } from "@/components/forms/builder/use-builder-actions";
+import { FIELD_TYPE_LABELS, type FormField, type PublicFormType } from "@/lib/forms/fields";
+import { FORM_SELECTION, normalizeSelection, selectedIndex, type BuilderSelection } from "@/lib/forms/builder-selection";
+import type { PublishIssues } from "@/lib/forms/publish-issues";
+import type { ContactConfig, CustomFieldDef } from "@/lib/forms/contact-config";
 import type { Draft } from "./types";
 
 /**
- * La pestaña Campos (F4): la lista a la izquierda, el panel del campo al medio
- * y la vista previa en vivo a la derecha, con el MISMO componente de la página
- * pública. Aspecto de `CustomFormBuilderPage.tsx` de prevxcrm.
+ * La pestaña Campos (plano formularios-ui, F9-F11): el formulario como lo ve quien responde, con las preguntas
+ * editables en el lugar, y a la derecha el panel de lo que esta elegido (el formulario, una pregunta o la pantalla
+ * final). Ya no hay vista previa al costado: la vista previa es el boton de la barra de arriba.
+ *
+ * Solo compone: las reglas viven en `lib/forms/builder*.ts`, `contact-map.ts` y `publish-issues.ts`.
  */
 export function FieldsTab({
   draft,
   onChange,
   disabled,
   neverPublished,
-  slug,
   type,
-  contract,
   contactConfig,
+  onContactConfig,
   customFields,
+  issues,
+  focusRequest,
   onOpenContact,
 }: {
   draft: Draft;
   onChange: (next: Draft) => void;
   disabled: boolean;
   neverPublished: boolean;
-  slug: string;
   type: PublicFormType;
-  /** Solo un contrato: lo que la vista previa necesita para mostrar el texto y la firma. */
-  contract?: { title: string; acceptLabel: string; signatureRequired: boolean } | null;
-  /** El mapeo al contacto, para decirle a cada campo adónde va (R4). */
+  /** El mapeo al contacto, para decirle a cada pregunta adonde va y dejar cambiarlo desde su panel. */
   contactConfig: ContactConfig;
+  onContactConfig: (next: ContactConfig) => void;
   customFields: CustomFieldDef[];
+  /** Lo que falta para publicar; el aviso y los rojos de las tarjetas salen de aca. Vacio si no se puede editar. */
+  issues: PublishIssues;
+  /** Pedido de la barra: "llevame al primer problema" (la `nonce` cambia en cada pedido). */
+  focusRequest: { fieldKey: string | null; nonce: number } | null;
   onOpenContact: () => void;
 }) {
   const fields = draft.definition.fields;
-  const [selected, setSelected] = useState<number>(fields.length > 0 ? 0 : -1);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const current = fields[selected];
+  const [rawSelection, setSelection] = useState<BuilderSelection>(FORM_SELECTION);
+  const selection = normalizeSelection(rawSelection, fields);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  function setFields(next: FormField[], nextSelected?: number) {
-    const definition: FormDefinition = { ...draft.definition, fields: next };
-    onChange({ ...draft, definition });
-    if (nextSelected !== undefined) setSelected(nextSelected);
-  }
+  const builder = useBuilderActions({
+    fields,
+    selection,
+    neverPublished,
+    onFields: (next: FormField[]) => onChange({ ...draft, definition: { ...draft.definition, fields: next } }),
+    onSelect: setSelection,
+  });
 
-  const problems = (() => {
-    const result = validateDefinition(draft.definition);
-    return result.ok ? [] : result.errors;
-  })();
+  // Un aviso (por ejemplo "se lo sacamos a otra pregunta") se va solo.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
-  const previewData: PublicFormData = {
-    status: "available",
-    slug,
-    type,
-    version_id: "preview",
-    design: draft.design,
-    fields: toPublicFields(fields),
-    contract: type === "contract" && contract ? { text: draft.definition.contractText ?? "", version_number: 0, title: contract.title, accept_label: contract.acceptLabel } : null,
-    signature_required: type === "contract" ? (contract?.signatureRequired ?? true) : false,
-    survey: null,
-  };
+  // "Publicar" con problemas: se elige y se muestra la primera pregunta con un problema.
+  useEffect(() => {
+    if (!focusRequest) return;
+    const target = focusRequest.fieldKey ? fields.find((f) => f.key === focusRequest.fieldKey) : undefined;
+    if (target) setSelection({ kind: "field", id: target.id });
+    const frame = window.requestAnimationFrame(() => {
+      const el = target ? document.getElementById(`q-${target.id}`) : document.getElementById("publish-issues");
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // Solo cuando llega un pedido nuevo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest?.nonce]);
 
-  const preview = (
-    <div className="rounded-xl border border-border bg-background p-4">
-      <PublicForm form={previewData} params={{}} mode="public_page" preview />
-    </div>
+  const index = selectedIndex(selection, fields);
+  const current = index >= 0 ? fields[index] : null;
+
+  const title = selection.kind === "end" ? "Después de enviar" : current ? `Pregunta · ${FIELD_TYPE_LABELS[current.type]}` : "El formulario";
+
+  const panel = current ? (
+    <InspectorField
+      field={current}
+      index={index}
+      fields={fields}
+      mode="form"
+      formType={type}
+      neverPublished={neverPublished}
+      disabled={disabled}
+      contactConfig={contactConfig}
+      customFields={customFields}
+      onContactConfig={(next, message) => {
+        onContactConfig(next);
+        if (message) setNotice(message);
+      }}
+      onOpenContact={onOpenContact}
+      changeType={builder.changeType}
+      patch={builder.patch}
+      setKey={builder.setKey}
+      actions={builder.actions}
+    />
+  ) : selection.kind === "end" ? (
+    <InspectorEnd success={draft.success} onChange={(success) => onChange({ ...draft, success })} fields={fields} disabled={disabled} />
+  ) : (
+    <InspectorForm
+      name={draft.name}
+      onName={(name) => onChange({ ...draft, name })}
+      design={draft.design}
+      onDesign={(design) => onChange({ ...draft, design })}
+      fields={fields}
+      contactConfig={contactConfig}
+      disabled={disabled}
+    />
   );
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_minmax(0,420px)]">
-        {/* Lista */}
-        <section aria-label="Campos del formulario" className="space-y-3">
-          {!disabled && <FieldTypePicker disabled={fields.length >= MAX_FIELDS} onPick={(t) => setFields(addField(fields, t), fields.length)} />}
-          {fields.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">Todavía no hay campos. Agregá el primero.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {fields.map((field, index) => {
-                const Icon = FIELD_ICONS[field.type];
-                const active = index === selected;
-                return (
-                  <li key={field.id} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1.5", active ? "border-primary bg-primary/5" : "border-border")}>
-                    <button type="button" onClick={() => setSelected(index)} aria-current={active} className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm focus:outline-none focus-visible:underline">
-                      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{field.label || FIELD_TYPE_LABELS[field.type]}</span>
-                        <span className="flex flex-wrap gap-1">
-                          {field.required && <span className="text-[10px] text-muted-foreground">Obligatorio</span>}
-                          {field.type === "hidden" && <span className="text-[10px] text-muted-foreground">Oculto</span>}
-                          {field.visibility && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600">
-                              <GitBranch className="h-2.5 w-2.5" aria-hidden /> Condicional
-                            </span>
-                          )}
-                        </span>
-                      </span>
-                    </button>
-                    {!disabled && (
-                      <span className="flex shrink-0 flex-col">
-                        <button type="button" aria-label={`Subir ${field.label}`} disabled={index === 0} onClick={() => setFields(moveField(fields, index, -1), index - 1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
-                          <ArrowUp className="h-3.5 w-3.5" aria-hidden />
-                        </button>
-                        <button type="button" aria-label={`Bajar ${field.label}`} disabled={index === fields.length - 1} onClick={() => setFields(moveField(fields, index, 1), index + 1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
-                          <ArrowDown className="h-3.5 w-3.5" aria-hidden />
-                        </button>
-                      </span>
-                    )}
-                    {!disabled && (
-                      <button
-                        type="button"
-                        aria-label={`Borrar ${field.label}`}
-                        onClick={() => setFields(removeField(fields, index), Math.min(selected, fields.length - 2))}
-                        className="rounded p-1 text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden />
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
+    <div className="space-y-4">
+      {issues.total > 0 && (
+        <div id="publish-issues" role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <p className="font-semibold">
+            Para publicar falta arreglar {issues.total} {issues.total === 1 ? "cosa" : "cosas"}
+          </p>
+          {issues.general.length > 0 && (
+            <ul className="mt-1 list-inside list-disc space-y-0.5">
+              {issues.general.slice(0, 6).map((p) => (
+                <li key={p}>{p}</li>
+              ))}
             </ul>
           )}
-        </section>
-
-        {/* Panel del campo */}
-        <section aria-label="Editar campo" className="min-w-0 rounded-xl border border-border bg-card p-4">
-          {current ? (
-            <FieldEditor
-              key={current.id}
-              field={current}
-              index={selected}
-              fields={fields}
-              neverPublished={neverPublished}
-              disabled={disabled}
-              contactLine={fieldContactLine(contactConfig, current, customFields)}
-              onOpenContact={onOpenContact}
-              onPatch={(patch) => setFields(updateField(fields, selected, patch))}
-              onRelabel={(label) => setFields(relabelField(fields, selected, label, neverPublished))}
-              onSetKey={(key) => {
-                const result = setFieldKey(fields, selected, key);
-                if (!result.error) setFields(result.fields);
-                return result.error;
-              }}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">Elegí un campo de la lista para editarlo.</p>
-          )}
-        </section>
-
-        {/* Vista previa (pantallas grandes) */}
-        <aside aria-label="Vista previa" className="hidden xl:block">
-          <p className="mb-2 text-xs font-semibold text-muted-foreground">Así lo ve quien responde</p>
-          {preview}
-        </aside>
-      </div>
-
-      {/* Vista previa (celular y pantallas medianas) */}
-      <div className="xl:hidden">
-        <button type="button" onClick={() => setPreviewOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent">
-          <Eye className="h-4 w-4" aria-hidden /> Ver cómo queda
-        </button>
-        {previewOpen && (
-          <Sheet title="Así lo ve quien responde" onClose={() => setPreviewOpen(false)}>
-            {preview}
-          </Sheet>
-        )}
-      </div>
-
-      {problems.length > 0 && (
-        <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-          <p className="font-semibold">Para poder publicar falta arreglar:</p>
-          <ul className="mt-1 list-inside list-disc space-y-0.5">
-            {problems.slice(0, 8).map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ul>
-          {problems.length > 8 && <p className="mt-1">…y {problems.length - 8} más.</p>}
+          {Object.keys(issues.byField).length > 0 && <p className="mt-1">Las preguntas con algo para arreglar están marcadas en rojo.</p>}
         </div>
       )}
-
-      <DesignCards draft={draft} onChange={onChange} disabled={disabled} />
+      {notice && (
+        <div role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-xs">
+          {notice}
+        </div>
+      )}
+      <BuilderLayout
+        title={title}
+        back={selection.kind !== "form" ? { label: "Formulario", onClick: () => setSelection(FORM_SELECTION) } : undefined}
+        canvas={
+          <FormCanvas
+            mode="form"
+            formType={type}
+            fields={fields}
+            selection={selection}
+            onSelect={setSelection}
+            actions={builder.actions}
+            dropAt={builder.dropAt}
+            onAdd={builder.add}
+            disabled={disabled}
+            design={draft.design}
+            onDesign={(design) => onChange({ ...draft, design })}
+            success={draft.success}
+            formName={draft.name}
+            contactConfig={contactConfig}
+            customFields={customFields}
+            issues={issues}
+          />
+        }
+        panel={panel}
+      />
     </div>
   );
 }
