@@ -221,6 +221,8 @@ try {
   // --- Ejecutar -----------------------------------------------------------------------------------------------
   async function attempt(actor, c) {
     const table = ctx_table(c);
+    // Una cuenta social por red y workspace (unico): antes de cada intento se vacia la tabla de ese workspace.
+    if (c.table === "social_accounts") await svc.from("social_accounts").delete().eq("workspace_id", ws.id);
     if (c.op === "insert") {
       const { error } = await actor.client.from(table).insert(c.payload(actor));
       return { allowed: !error, error };
