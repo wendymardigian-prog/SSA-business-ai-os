@@ -54,8 +54,9 @@ function QuestionCardImpl({ field, index, count, selected, disabled, conditionCh
       onDragOver={(e) => actions.dragOver(field.id, e)}
       onDrop={(e) => actions.drop(field.id, e)}
       className={cn(
-        "group relative rounded-xl border bg-card p-3 transition-colors",
-        selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40",
+        // Como el prototipo: sin borde hasta que se pasa el mouse o se elige (el rojo de un problema se ve siempre).
+        "group relative rounded-xl border p-3 transition-colors",
+        selected ? "border-primary bg-card ring-1 ring-primary" : "border-transparent hover:border-border",
         problemList.length > 0 && !selected && "border-red-400 dark:border-red-500/60",
       )}
     >

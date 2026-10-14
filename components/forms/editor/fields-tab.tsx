@@ -7,7 +7,7 @@ import { InspectorEnd } from "@/components/forms/builder/inspector-end";
 import { InspectorField } from "@/components/forms/builder/inspector-field";
 import { InspectorForm } from "@/components/forms/builder/inspector-form";
 import { useBuilderActions } from "@/components/forms/builder/use-builder-actions";
-import { FIELD_TYPE_LABELS, type FormField, type PublicFormType } from "@/lib/forms/fields";
+import { FIELD_TYPE_LABELS, FORM_TYPE_LABELS, type FormField, type PublicFormType } from "@/lib/forms/fields";
 import { FORM_SELECTION, normalizeSelection, selectedIndex, type BuilderSelection } from "@/lib/forms/builder-selection";
 import type { PublishIssues } from "@/lib/forms/publish-issues";
 import type { ContactConfig, CustomFieldDef } from "@/lib/forms/contact-config";
@@ -119,6 +119,7 @@ export function FieldsTab({
       fields={fields}
       contactConfig={contactConfig}
       disabled={disabled}
+      onOpenContact={onOpenContact}
     />
   );
 
@@ -146,6 +147,7 @@ export function FieldsTab({
       )}
       <BuilderLayout
         title={title}
+        subtitle={selection.kind === "form" ? `${FORM_TYPE_LABELS[type]} · el tipo no se puede cambiar` : undefined}
         back={selection.kind !== "form" ? { label: "Formulario", onClick: () => setSelection(FORM_SELECTION) } : undefined}
         canvas={
           <FormCanvas

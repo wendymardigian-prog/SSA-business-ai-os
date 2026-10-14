@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  * derecha (330 px, pegado arriba al desplazarse). En pantallas angostas el panel sale de abajo, como una hoja, con un
  * boton flotante "Ajustes": nunca se abre solo, para no tapar lo que se esta escribiendo.
  */
-export function BuilderLayout({ canvas, title, back, panel }: { canvas: ReactNode; title: string; back?: { label: string; onClick: () => void }; panel: ReactNode }) {
+export function BuilderLayout({ canvas, title, subtitle, back, panel }: { canvas: ReactNode; title: string; subtitle?: string; back?: { label: string; onClick: () => void }; panel: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px]">
@@ -32,6 +32,7 @@ export function BuilderLayout({ canvas, title, back, panel }: { canvas: ReactNod
               </button>
             )}
             <h2 className="truncate text-sm font-semibold">{title}</h2>
+            {subtitle && <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>}
           </div>
           <button type="button" aria-label="Cerrar ajustes" onClick={() => setOpen(false)} className="rounded p-1 text-muted-foreground hover:bg-accent lg:hidden">
             <X className="h-4 w-4" aria-hidden />
