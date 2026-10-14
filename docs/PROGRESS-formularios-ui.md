@@ -47,10 +47,10 @@ Plano: `claude/v12/requerimientos-formularios-ui-menu.md` (v1.0, 13/10/2026). Ra
 - [x] F16 · Respuestas
 
 ### B7 · Verificación y cierre
-- [ ] Revisión visual (1440 y 390 px, claro y oscuro)
-- [ ] `docs/formularios.md` y `docs/atribucion.md`
-- [ ] `CLAUDE.md` (menú nuevo, próxima migración libre)
-- [ ] PR a `main` (sin mergear)
+- [x] Revisión visual (1440 y 390 px, claro y oscuro)
+- [x] `docs/formularios.md` y `docs/atribucion.md`
+- [x] `CLAUDE.md` (menú nuevo, próxima migración libre)
+- [x] PR a `main` (sin mergear, en borrador por lo de abajo)
 
 ## Punto de partida
 
@@ -102,6 +102,16 @@ Cómo se verificó (sin sesión iniciada, no hay forma de ejecutar Server Action
 - **EOD:** [x] roles · [x] horario · [x] pantalla final · [x] recordatorio · [x] canales
 - **Respuestas:** [x] filtros (fecha, estado, contacto) · [x] paginación · [x] columnas · [x] exportar CSV · [x] detalle: marcar spam · [x] vincular contacto · [x] panel del contrato · [x] archivos · [x] historial · [x] notas · [x] "De dónde vino" (tarjeta abierta) con la URL de entrada
 - **Lista y editor:** [~] crear un formulario de cada tipo · [~] duplicar · [~] autoguardado y conflicto · [~] publicar con y sin contactos · [x] solo lectura sin `forms.manage`
+
+## B7 · Cierre: resultados finales (14/10/2026)
+
+- `npx vitest run`: **854 archivos, 10.687 tests, todos verdes.** `npm run build`: sale 0 (`embed.js` sin cambios, 22,7 KB). `npm run lint`: **0 errores, 36 avisos** (los mismos 36 del punto de partida).
+- `app/harness-zz` (la página de prueba temporal) se borró. Capturas en `docs/capturas-formularios-ui/` (lista, editor, EOD, Contacto, Publicar, menú; 1440 y 390 px, claro y oscuro donde se pudo) junto con la del prototipo.
+- **`verify-*` después de la 00215** (de a uno, con el candado):
+  - **Exit 0:** forms (con los siete casos nuevos de `entry_url`), scheduling (con el caso nuevo de la Agenda), booking-concurrency, ads-attribution, roles, workspace-isolation, audit-visibility, crm, content, csv-import, dashboards, enrichment, inbox-filters, message-persistence, optout, publishing, chat-media, knowledge, webhook, calls, contact-merge, sales, tasks.
+  - **Fallan igual que antes de aplicar la 00215 (no los causa esta rama):** `verify-attribution` (1: "todos los contactos reales tienen first_touch", 791 de 850; era 788 de 847) y `verify-inbound-webhooks` (2, por la `00208` de la sesión de Equipo y roles).
+  - **Fallan por la base compartida con la sesión de Equipo y roles, no por esta rama:** `verify-rls` (4 fallas, todas de "un rol personalizado con `settings.manage`": la `00211` de la otra sesión retiró ese permiso y esta rama todavía tiene el código viejo) y `verify-contacts-single-entry` (1: "sigue habiendo UN contacto"; **la sesión de Equipo y roles ve exactamente la misma falla en su rama**).
+  - **Sin resultado limpio, queda abierto:** `verify-eod`. La primera corrida falló en dos comprobaciones del flujo sin contacto (el aviso en la campana y la sesión del flujo); la segunda se cortó con un `TypeError` y se colgó 41 minutos. En el medio la base se puso muy lenta (consultas de 14 s y después sin respuesta unos minutos) y la limpieza de los datos de prueba (`zz-test-eod`, `zz-test-eod-otro` y 7 usuarios) chocó con "statement timeout" varias veces. La sesión de Equipo y roles lo corrió en verde a las 20:24 (ya con la 00215 aplicada). **Quedó sin limpiar** esa tanda de datos de prueba (2 workspaces y 7 usuarios, muy chicos): borrarlos con SQL directo fue rechazado por el permiso de la sesión, y la limpieza normal de los scripts sigue dando timeout. Hay que borrarlos (los reconoce el prefijo `zz-test-`) y volver a correr `verify-eod`. Mientras estén, el candado de los `verify-*` (que exige cero filas `zz-test-`) deja a todas las sesiones esperando.
 
 ## Revisión visual
 
