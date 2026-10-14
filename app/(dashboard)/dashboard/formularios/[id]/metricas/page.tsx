@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
+import { EditorBar } from "@/components/forms/editor/editor-bar";
+import { loadEditorBar } from "@/lib/forms/editor-bar-load";
 import { MetricsView } from "@/components/forms/responses/metrics-view";
 import { fieldsOf } from "@/lib/forms/server-ports";
 import { calcularMetricasDelFormulario } from "@/lib/forms/field-metrics";
@@ -34,7 +36,7 @@ export default async function MetricasPage({
   if (!form) notFound();
 
   const timeZone = workspace.timezone || "UTC";
-  const viewerZone = await resolveViewerTimezone(workspace.timezone);
+  const [viewerZone, barData] = await Promise.all([resolveViewerTimezone(workspace.timezone), loadEditorBar(supabase, workspace.id, id)]);
   const period = resolvePeriod({ dias: one("dias"), desde: one("desde"), hasta: one("hasta") }, dayInZone(new Date(), timeZone));
 
   const { data: daily, error } = await supabase.rpc("form_metrics_daily", { p_form_id: id, p_from: period.from, p_to: period.to });
@@ -67,8 +69,11 @@ export default async function MetricasPage({
 
   return (
     <MetricsView
-      formId={form.id}
-      formName={form.name}
+      header={
+        barData ? (
+          <EditorBar form={barData.form} route="metricas" canManage={ctx.can("forms.manage")} noContactsWarning={barData.noContactsWarning} />
+        ) : null
+      }
       period={period}
       rows={rows}
       fieldMetrics={fieldMetrics}

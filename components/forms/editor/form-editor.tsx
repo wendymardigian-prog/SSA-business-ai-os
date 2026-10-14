@@ -1,51 +1,39 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { BarChart3, ClipboardList, ExternalLink, Inbox, Loader2 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
-import { BackLink } from "@/components/forms/back-link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Notice } from "@/components/agents/fields";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { Tabs } from "@/components/ui/tabs";
 import { publishForm, saveFormDraft } from "@/lib/actions/forms/forms";
-import { FORM_STATUS_LABELS, FORM_TYPE_LABELS, isPublicFormType } from "@/lib/forms/fields";
+import { isPublicFormType } from "@/lib/forms/fields";
+import { parseEditorTab, type EditorSection, type SaveState } from "@/lib/forms/editor-bar";
 import { reconcileContactConfig, type ContactConfig } from "@/lib/forms/contact-config";
 import { checkPublishable, contactWarning, hasUnpublishedChanges } from "@/lib/forms/publish";
 import { typeChecks } from "@/lib/forms/type-checks";
 import { fingerprint } from "@/lib/unsaved-changes";
-import { cn } from "@/lib/utils";
 import { AutomationsTab } from "./automations-tab";
 import { ContractEditor } from "./contract-editor";
-import { SurveyTab } from "./survey-tab";
 import { ContactTab } from "./contact-tab";
 import { FieldsTab } from "./fields-tab";
 import { PublishTab } from "./publish-tab";
+import { EditorBar } from "./editor-bar";
+import { PreviewOverlay } from "./preview-overlay";
 import type { Draft, EditorExtras, EditorForm, EditorVersion } from "./types";
 import { EodConfigTab } from "@/components/eod/editor/config-tab";
 import { ChannelsTab } from "@/components/eod/editor/channels-tab";
 import { EodFieldsEditor } from "@/components/eod/editor/eod-fields-editor";
 
 /**
- * El editor de un formulario (F4, F8). Carcasa: encabezado con el nombre, el
- * estado y "Publicar"; las pestañas; y el guardado automático del borrador.
+ * El editor de un formulario (F4, F8). Carcasa: la barra superior (nombre, pestañas, estado, guardado,
+ * Métricas, Vista previa y Publicar: `EditorBar`, plano formularios-ui F7), el contenido de la pestaña elegida
+ * y el guardado automático del borrador. La pestaña vive en la URL (`?tab=`).
  *
  * El borrador se guarda solo (a los 0,8 s de dejar de escribir). Si alguien más
  * cambió el formulario mientras tanto, el guardado se frena y se avisa: nunca se
  * pisa lo de otra persona sin que lo sepa.
  */
 
-type Section = "configuracion" | "campos" | "canales" | "encuesta" | "contrato" | "contacto" | "automatizaciones" | "publicar";
-type SaveState = "saved" | "pending" | "saving" | "error" | "conflict";
-
-const SAVE_LABEL: Record<SaveState, string> = {
-  saved: "Guardado",
-  pending: "Cambios sin guardar…",
-  saving: "Guardando…",
-  error: "No se pudo guardar",
-  conflict: "Alguien más cambió este formulario",
-};
+type Section = EditorSection;
 
 export function FormEditor({
   form,
@@ -64,8 +52,19 @@ export function FormEditor({
 }) {
   const router = useRouter();
   const isEod = form.type === "eod";
-  const [section, setSection] = useState<Section>(isEod ? "configuracion" : "campos");
   const [eodConfig, setEodConfig] = useState(form.eodConfig);
+  // La pestaña sale de `?tab=` (se puede recargar y compartir). Un valor invalido cae en la primera.
+  const searchParams = useSearchParams();
+  const section: Section = parseEditorTab(form.type, eodConfig?.variant ?? null, searchParams.get("tab"));
+  /** Cambia de pestaña sin recargar ni volver a pedir la pagina: Next sincroniza `useSearchParams` con `pushState`. */
+  const setSection = useCallback(
+    (next: Section) => {
+      const first = parseEditorTab(form.type, eodConfig?.variant ?? null, null);
+      window.history.pushState(null, "", next === first ? window.location.pathname : `?tab=${next}`);
+    },
+    [form.type, eodConfig?.variant],
+  );
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>({ name: form.name, definition: form.draftDefinition, design: form.design, success: form.success });
   const [surveyConfig, setSurveyConfig] = useState(form.surveyConfig);
   const [contractConfig, setContractConfig] = useState(form.contractConfig);
@@ -157,7 +156,7 @@ export function FormEditor({
   );
   const unpublished = hasUnpublishedChanges(draft.definition, snapshot);
   const reasons = check.ok ? [] : check.reasons;
-  const publishBlocked = disabled || reasons.length > 0 || publishing || saveState === "conflict";
+  const publishBlocked = disabled || publishing || saveState === "conflict";
 
   /** Guarda lo último que se escribió (si hace falta) y dice si quedó guardado. */
   const ensureSaved = useCallback(async (): Promise<boolean> => (dirty ? save(draft, fp) : true), [dirty, save, draft, fp]);
@@ -172,8 +171,16 @@ export function FormEditor({
 
   const noContactsWarning = contactWarning(contactConfig, draft.definition.fields);
 
-  /** Publicar. Sin identificadores en el mapeo (y con el interruptor prendido) primero se pide confirmación. */
+  /**
+   * Publicar. Si falta algo, lleva a Campos (donde se marca lo que falta); sin identificadores en el mapeo (y con el
+   * interruptor prendido) primero se pide confirmación.
+   */
   function publish() {
+    if (reasons.length > 0) {
+      setPublishMessage({ tone: "error", text: "Para publicar falta arreglar algo:", reasons });
+      setSection("campos");
+      return;
+    }
     if (noContactsWarning && !confirmingPublish) {
       setConfirmingPublish(true);
       return;
@@ -208,94 +215,35 @@ export function FormEditor({
     });
   }
 
+  const barForm = {
+    id: form.id,
+    name: draft.name,
+    slug,
+    type: form.type,
+    status,
+    eodVariant: eodConfig?.variant ?? null,
+    hasUnpublishedChanges: unpublished,
+    responseCount: extras.responseCount,
+  };
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader
-        title={draft.name || "Formulario"}
-        tooltip="Los campos, cómo se publica y qué pasa con cada respuesta."
-        backHref={<BackLink href="/dashboard/formularios" label="Volver a Formularios" />}
-        right={
-          <div className="flex shrink-0 items-center gap-2">
-            {!isEod && (
-            <a
-              href={`/f/${slug}?preview=1`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent"
-            >
-              <ExternalLink className="h-4 w-4" aria-hidden />
-              <span className="hidden sm:inline">Vista previa</span>
-            </a>
-            )}
-            {canManage && (
-              <button
-                type="button"
-                onClick={publish}
-                disabled={publishBlocked}
-                title={reasons[0]}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                {publishing && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                {status === "published" && !unpublished ? "Publicado" : "Publicar"}
-              </button>
-            )}
-          </div>
-        }
+      <EditorBar
+        form={barForm}
+        route="editor"
+        section={section}
+        canManage={canManage}
+        saveState={saveState}
+        name={draft.name}
+        onNameChange={(name) => setDraft({ ...draft, name })}
+        onSection={setSection}
+        onRetrySave={() => void save(draft, fp)}
+        onReload={() => router.refresh()}
+        onPreview={() => setPreviewOpen(true)}
+        onPublish={publish}
+        publishing={publishing}
       />
 
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <label className="sr-only" htmlFor="form-name-input">
-            Nombre del formulario
-          </label>
-          <input
-            id="form-name-input"
-            value={draft.name}
-            disabled={disabled}
-            maxLength={120}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            className="min-w-[12rem] flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-lg font-semibold hover:border-input focus:border-input focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">{FORM_TYPE_LABELS[form.type]}</span>
-          <span className="rounded-full border border-border px-2 py-0.5 text-[11px]">{FORM_STATUS_LABELS[status]}</span>
-          {status === "published" && unpublished && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">Hay cambios sin publicar</span>}
-          {!disabled && (
-            <span role="status" aria-live="polite" className={cn("text-xs", saveState === "error" || saveState === "conflict" ? "text-destructive" : "text-muted-foreground")}>
-              {SAVE_LABEL[saveState]}
-              {(saveState === "error" || saveState === "conflict") && (
-                <button
-                  type="button"
-                  className="ml-2 underline"
-                  onClick={() => (saveState === "conflict" ? router.refresh() : void save(draft, fp))}
-                >
-                  {saveState === "conflict" ? "Recargar" : "Reintentar"}
-                </button>
-              )}
-            </span>
-          )}
-          <span className="ml-auto flex items-center gap-2">
-            {isEod ? (
-              <Link href={`/dashboard/formularios/${form.id}/reportes`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
-                <ClipboardList className="h-3.5 w-3.5" aria-hidden /> Reportes
-              </Link>
-            ) : (
-            <>
-            <Link href={`/dashboard/formularios/${form.id}/respuestas`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
-              <Inbox className="h-3.5 w-3.5" aria-hidden /> Respuestas
-            </Link>
-            {form.type === "survey" && (
-              <Link href={`/dashboard/formularios/${form.id}/encuesta`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
-                <BarChart3 className="h-3.5 w-3.5" aria-hidden /> Panel NPS
-              </Link>
-            )}
-            <Link href={`/dashboard/formularios/${form.id}/metricas`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
-              <BarChart3 className="h-3.5 w-3.5" aria-hidden /> Métricas
-            </Link>
-            </>
-            )}
-          </span>
-        </div>
-
         {!canManage && <div className="mb-4"><Notice tone="info">Podés ver este formulario, pero solo quien administra formularios puede editarlo.</Notice></div>}
         {status === "archived" && <div className="mb-4"><Notice tone="warning">Este formulario está archivado. Restauralo desde la lista para editarlo.</Notice></div>}
         {saveError && <div className="mb-4"><Notice tone="error">{saveError}</Notice></div>}
@@ -326,29 +274,7 @@ export function FormEditor({
           </div>
         )}
 
-        <Tabs
-          label="Secciones del formulario"
-          value={section}
-          onChange={setSection}
-          tabs={
-            isEod
-              ? [
-                  { value: "configuracion" as const, label: "Configuración" },
-                  { value: "campos" as const, label: "Preguntas" },
-                  ...(eodConfig?.variant === "setter" ? [{ value: "canales" as const, label: "Canales" }] : []),
-                  { value: "automatizaciones" as const, label: "Automatizaciones" },
-                  { value: "publicar" as const, label: "Publicar" },
-                ]
-              : [
-                  { value: "campos", label: "Campos" },
-                  ...(form.type === "survey" ? [{ value: "encuesta" as const, label: "Encuesta" }] : []),
-                  ...(form.type === "contract" ? [{ value: "contrato" as const, label: "Contrato" }] : []),
-                  { value: "contacto", label: "Contacto" },
-                  { value: "automatizaciones", label: "Automatizaciones" },
-                  { value: "publicar", label: "Publicar" },
-                ]
-          }
-        >
+        <div>
           <div className="pt-4">
             {isEod && section === "configuracion" ? (
               eodConfig ? (
@@ -399,8 +325,6 @@ export function FormEditor({
                 customFields={extras.customFields}
                 onOpenContact={() => setSection("contacto")}
               />
-            ) : section === "encuesta" && form.type === "survey" ? (
-              <SurveyTab form={{ ...form, contactConfig }} draft={draft} config={surveyConfig} onSaved={setSurveyConfig} canManage={canManage} />
             ) : section === "contrato" && form.type === "contract" && contractConfig ? (
               <ContractEditor form={form} draft={draft} onDraftChange={setDraft} config={contractConfig} onSaved={setContractConfig} canManage={canManage} />
             ) : section === "contacto" ? (
@@ -415,7 +339,7 @@ export function FormEditor({
                   if (newUpdatedAt) updatedAt.current = newUpdatedAt;
                 }}
               />
-            ) : section === "automatizaciones" ? (
+            ) : section === "flows" ? (
               <AutomationsTab form={form} extras={extras} canManage={canManage} />
             ) : (
               <PublishTab
@@ -430,8 +354,20 @@ export function FormEditor({
               />
             )}
           </div>
-        </Tabs>
+        </div>
       </div>
+      {previewOpen && isPublicFormType(form.type) && (
+        <PreviewOverlay
+          type={form.type}
+          slug={slug}
+          formName={draft.name}
+          design={draft.design}
+          definition={draft.definition}
+          success={draft.success}
+          contract={contractConfig ? { title: contractConfig.title, acceptLabel: contractConfig.acceptLabel, signatureRequired: contractConfig.signatureRequired } : null}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
       <ConfirmDialog
         open={confirmingPublish}
         title="Publicar sin contactos"

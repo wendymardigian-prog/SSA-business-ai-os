@@ -70,7 +70,7 @@ export function FormsList({
     const next = { ...query, ...patch };
     setQueryState(next);
     const qs = listQueryString(next);
-    window.history.replaceState(window.history.state, "", qs ? `?${qs}` : window.location.pathname);
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
     try {
       sessionStorage.setItem(FORMS_LIST_QUERY_KEY, qs);
     } catch {

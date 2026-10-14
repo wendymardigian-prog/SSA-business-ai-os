@@ -31,8 +31,8 @@ Plano: `claude/v12/requerimientos-formularios-ui-menu.md` (v1.0, 13/10/2026). Ra
 - [x] F6 · Las tarjetas
 
 ### B3 · La barra superior del editor
-- [ ] F7 · Qué va en la barra
-- [ ] F8 · Vista previa
+- [x] F7 · Qué va en la barra
+- [x] F8 · Vista previa
 
 ### B4 · El constructor (pestaña Campos)
 - [ ] F9 · El lienzo
@@ -122,6 +122,21 @@ Se tilda a mano en el navegador al cerrar B5.
   - **La barra de cada tarjeta compara las respuestas con las del formulario que más tiene** (no la conversión escalada): el prototipo la escala con un factor arbitrario por tipo y la app no calcula nada equivalente; así no se inventa un número.
   - **La conversión de la tarjeta es la de los últimos 366 días** (el tope de `form_metrics_daily`), no la de toda la vida; para pedirla se llama a la RPC una vez por formulario con respuestas (hasta 40, en paralelo), no una consulta única: la RPC solo acepta un formulario. Anotado en PENDIENTE.
   - Los números del prototipo (582 respuestas, NPS +62…) son de ejemplo; los de la app salen de la base.
+
+### B3 · Barra del editor (1440/1000/390 px; datos de ejemplo)
+- Todo va en la barra de la app (`PageHeader` con tres props nuevas y compatibles hacia atrás: `titleSlot`, `tabs`, `tabsExtra`): ← Volver · ícono de tipo (tooltip "Tipo: Personalizado") · nombre interno editable · pestañas · estado · guardado · Métricas · Vista previa · Publicar. No hay encabezado dentro del contenido.
+- Pestañas: personalizado Campos · Contacto · Flows · Publicar · Respuestas N; encuesta suma Encuesta (ruta) después de Campos; contrato suma Contrato; EOD Configuración · Preguntas · Canales (setters) · Flows · Publicar · Reportes N. Verificado en el navegador: el EOD de setters trae las seis y no tiene Vista previa.
+- La pestaña vive en `?tab=`: se cambia con `pushState` (sin pedir la página al servidor), "atrás" vuelve a la anterior, recargar la conserva y un valor inválido cae en la primera (verificado). `lib/forms/editor-bar.ts` decide todo y se prueba por tipo, permiso y estado.
+- Publicar: "Publicar" / "Publicar cambios" / "✓ Publicado" (sin acción) / nada sin `forms.manage` o archivado. **Si falta algo, el botón ya no está apagado: lleva a Campos** (donde B4 marca la pregunta). En las pantallas hermanas publica solo: valida en el servidor (`publishForm`) y, si falta algo, lleva a Campos; el aviso "Publicar sin contactos" también está ahí.
+- Guardado: "Guardando…" · "Guardado ✓" (solo después de que el servidor confirmó) · "No se guardó · Reintentar" · "Alguien más cambió este formulario · Recargar" (el estado de conflicto de hoy se conserva).
+- Pantallas hermanas (Respuestas, Métricas, Encuesta, Reportes) usan la misma barra (`EditorBar`, la arma el servidor con `loadEditorBar`); su filtro de período/estado y "Exportar CSV" ya estaban o pasaron al contenido. En ellas el nombre se ve pero no se edita (no cargan el borrador). **La configuración de la encuesta pasó a la ruta `/encuesta`, arriba del panel NPS** (diferencia 7); el botón "Panel NPS" desaparece.
+- Vista previa (F8): pantalla completa con la barra "Vista previa · Así lo ve quien responde · acá no se envía nada", Escritorio/Celular, "Abrir en pestaña" (`/f/slug?preview=1`) y ✕. Usa el `PublicForm` real: las condicionales reaccionan (verificado con "Otro" → "¿Cuál?"), "enviar" valida como un envío de verdad y muestra la pantalla final con las variables resueltas, o "Acá la persona va a [url]. Se le suman el id de la respuesta y los UTM." Esc cierra, devuelve el foco al botón y restaura el scroll (verificado). Foco atrapado adentro con Tab.
+- "← Volver" deja la lista con los filtros (sessionStorage, leído al hacer clic).
+- Diferencias con el prototipo, justificadas:
+  - **Los cortes de ancho se corrieron:** Métricas queda solo con ícono abajo de 1500 px (el plano decía 1320) y el guardado abajo de 1360 (decía 1180). Con el menú lateral de 240 px, el nombre real, el contador de Respuestas y "Publicar cambios", la barra no entraba a 1440 con los cortes del prototipo.
+  - "Cambios sin publicar" es un punto ámbar junto al chip hasta 1600 px (el botón ya dice "Publicar cambios"); el texto completo aparece desde 1600 px y en el celular.
+  - Abajo de 860 px las pestañas bajan a la segunda fila (con scroll) junto con Métricas, el estado y el guardado; arriba quedan el ícono de tipo, Vista previa (solo ícono) y Publicar.
+  - En un EOD, la pestaña Configuración abre primero (lo de hoy), como pide el plano; el prototipo pone Preguntas primero.
 
 ---
 

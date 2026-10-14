@@ -42,6 +42,8 @@ export interface EditorExtras {
   canFlows: boolean;
   /** Solo un EOD: los roles del workspace (incluidos los de sistema) para "Roles elegidos". */
   roles: Array<{ id: string; name: string }>;
+  /** Respuestas (o reportes) que esta persona ve: el numerito de la pestaña Respuestas / Reportes. */
+  responseCount: number | null;
 }
 
 export interface EditorVersion {

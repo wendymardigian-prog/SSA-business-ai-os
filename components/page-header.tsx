@@ -30,6 +30,9 @@ export function PageHeader({
   filters,
   backHref,
   filtersBreakpoint = "topbar",
+  titleSlot,
+  tabs,
+  tabsExtra,
 }: {
   /**
    * La ruta de la pantalla. De ahi salen el titulo y la explicacion
@@ -58,6 +61,18 @@ export function PageHeader({
    * (Agenda).
    */
   filtersBreakpoint?: "topbar" | "wide";
+  /**
+   * Reemplaza al titulo y a su ⓘ (plano formularios-ui, F7): el editor de un formulario pone ahi el icono del
+   * tipo y el nombre editable. Sin esto, el titulo de siempre.
+   */
+  titleSlot?: ReactNode;
+  /**
+   * Pestañas de la pantalla. En la computadora van en la barra, despues del titulo; abajo de 860 px bajan a la
+   * segunda fila, que se desplaza de costado (no hay scroll horizontal de la pagina).
+   */
+  tabs?: ReactNode;
+  /** Lo que acompaña a las pestañas SOLO en la segunda fila del celular (estado, Metricas…): en la computadora ya va a la derecha. */
+  tabsExtra?: ReactNode;
 }) {
   const chrome = useDashboardChrome();
   const meta = route ? PAGE_META[route] : undefined;
@@ -71,9 +86,15 @@ export function PageHeader({
       <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-border px-3 md:px-6">
         {chrome && <MobileMenuButton chrome={chrome} />}
         {backHref}
-        <h1 className="truncate text-base font-semibold">{shownTitle}</h1>
-        {shownTooltip && <InfoTooltip text={shownTooltip} />}
+        {titleSlot ?? (
+          <>
+            <h1 className="truncate text-base font-semibold">{shownTitle}</h1>
+            {shownTooltip && <InfoTooltip text={shownTooltip} />}
+          </>
+        )}
         {left}
+        {/* Las pestañas se encogen y se desplazan de costado antes de pisar lo que tienen a la derecha. */}
+        {tabs && <div className="hidden min-w-0 [flex-shrink:0.1] items-center overflow-x-auto [scrollbar-width:none] topbar:flex [&::-webkit-scrollbar]:hidden">{tabs}</div>}
         <div className="min-w-0 flex-1" />
         {/* shrink-0: lo que se aprieta primero es el titulo (que se trunca), nunca
             los botones. Sin esto un boton con "+" y texto se partia en dos
@@ -97,6 +118,12 @@ export function PageHeader({
         pantallas que pasan filtros, asi el lugar donde aparecen es el mismo
         siempre.
       */}
+      {tabs && (
+        <div className="flex h-12 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 topbar:hidden">
+          {tabs}
+          {tabsExtra}
+        </div>
+      )}
       {filters && (
         <div
           className={
