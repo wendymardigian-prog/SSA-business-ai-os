@@ -1,19 +1,25 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getPermissionAction } from "@/lib/auth/guards";
+import { getAnyPermissionAction, getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
+import { createServiceClient } from "@/lib/supabase/server";
 import {
   parsePermissions,
   systemRolePermissions,
   type PermissionScope,
+  type RolePermissions,
+  type ScopedModule,
 } from "@/lib/auth/permissions";
 import {
+  applyKeyToggle,
   canDeleteRole,
   canEditRole,
   validateRole,
   type RoleRow,
 } from "@/lib/auth/roles-admin";
+import { assertCanEditRole, assertCanGrant, grantActorOf } from "@/lib/team/grant";
+import { isSameSession, mergeRoleAuditSession, type RoleAuditMetadata } from "@/lib/roles/audit-session";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -47,7 +53,7 @@ export interface RoleFormInput {
 
 export async function createRole(
   input: RoleFormInput,
-): Promise<RoleActionResult<{ id: string; warnings: string[] }>> {
+): Promise<RoleActionResult<{ id: string; warnings: string[]; role: RoleRow }>> {
   const ctx = await getPermissionAction("roles.manage");
   if (!ctx) return { ok: false, error: "No tenes permiso para administrar roles" };
 
@@ -58,6 +64,10 @@ export async function createRole(
     scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, tasks: input.tasksScope },
   });
   if (!checked.ok) return checked;
+
+  // No podes dar lo que no tenes: ni claves ni alcances mas anchos que los tuyos (lib/team/grant.ts).
+  const granted = assertCanGrant(grantActorOf(ctx), { keys: checked.role.permissions.keys, scopes: checked.role.permissions.scopes });
+  if (!granted.ok) return { ok: false, error: granted.error };
 
   const { data, error } = await ctx.supabase
     .from("workspace_roles")
@@ -91,7 +101,14 @@ export async function createRole(
   });
 
   revalidatePath(ROLES_PATH);
-  return { ok: true, data: { id: data.id, warnings: checked.role.warnings } };
+  return {
+    ok: true,
+    data: {
+      id: data.id,
+      warnings: checked.role.warnings,
+      role: { id: data.id, name: checked.role.name, description: checked.role.description, systemRole: null, permissions: checked.role.permissions, members: 0 },
+    },
+  };
 }
 
 export async function updateRole(
@@ -103,7 +120,7 @@ export async function updateRole(
 
   const { data: existing } = await ctx.supabase
     .from("workspace_roles")
-    .select("id, system_role")
+    .select("id, system_role, permissions")
     .eq("id", roleId)
     .eq("workspace_id", ctx.workspace.id)
     .maybeSingle();
@@ -120,6 +137,14 @@ export async function updateRole(
     scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, tasks: input.tasksScope },
   });
   if (!checked.ok) return checked;
+
+  // Solo hay que poder dar lo que se AGREGA, y nadie edita el rol que tiene asignado.
+  const allowed = assertCanEditRole(
+    grantActorOf(ctx),
+    { id: existing.id, systemRole: existing.system_role as null, permissions: parsePermissions(existing.permissions) },
+    checked.role.permissions,
+  );
+  if (!allowed.ok) return { ok: false, error: allowed.error };
 
   const { error } = await ctx.supabase
     .from("workspace_roles")
@@ -202,9 +227,10 @@ export async function deleteRole(roleId: string): Promise<RoleActionResult> {
 }
 
 /** Los roles del workspace con cuanta gente tiene cada uno (F71). */
-export async function listRoles(): Promise<RoleActionResult<{ roles: RoleRow[] }>> {
-  const ctx = await getPermissionAction("roles.manage");
-  if (!ctx) return { ok: false, error: "No tenes permiso para administrar roles" };
+export async function listRoles(): Promise<RoleActionResult<{ roles: RoleRow[]; canManage: boolean }>> {
+  // Ver la lista alcanza con `roles.view`; editar exige `roles.manage`.
+  const ctx = await getAnyPermissionAction(["roles.view", "roles.manage"]);
+  if (!ctx) return { ok: false, error: "No tenes permiso para ver los roles" };
 
   const [{ data: roles }, { data: members }] = await Promise.all([
     ctx.supabase
@@ -225,6 +251,7 @@ export async function listRoles(): Promise<RoleActionResult<{ roles: RoleRow[] }
   return {
     ok: true,
     data: {
+      canManage: ctx.can("roles.manage"),
       roles: (roles ?? []).map((row) => ({
         id: row.id,
         name: row.name,
@@ -240,4 +267,156 @@ export async function listRoles(): Promise<RoleActionResult<{ roles: RoleRow[] }
       })),
     },
   };
+}
+
+// ── Guardado automático (F13) ─────────────────────────────────────────────
+
+export interface RolePatch {
+  addKeys?: string[];
+  removeKeys?: string[];
+  scopes?: Partial<Record<ScopedModule, PermissionScope>>;
+  name?: string;
+  description?: string | null;
+}
+
+/**
+ * Un cambio parcial a un rol, para el guardado automatico: tildes, selectores, nombre y descripcion
+ * llegan de a uno y devuelven el rol resultante, asi la tarjeta se actualiza en el lugar sin recargar.
+ *
+ * Las correcciones automaticas (responder implica ver) se aplican igual que en la pantalla. Solo se
+ * puede AGREGAR lo que quien edita ya tiene (`assertCanEditRole`), y nadie edita el rol que tiene asignado.
+ * Los cambios de una misma persona sobre un mismo rol dentro de 10 minutos quedan en UNA fila del historial.
+ */
+export async function patchRole(
+  roleId: string,
+  patch: RolePatch,
+): Promise<RoleActionResult<{ role: RoleRow; warnings: string[] }> & { field?: "name" | "description" | "permissions" }> {
+  const ctx = await getPermissionAction("roles.manage");
+  if (!ctx) return { ok: false, error: "No tenes permiso para administrar roles" };
+
+  const { data: row } = await ctx.supabase
+    .from("workspace_roles")
+    .select("id, name, description, system_role, permissions")
+    .eq("id", roleId)
+    .eq("workspace_id", ctx.workspace.id)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "No encontre ese rol" };
+
+  const editable = canEditRole({ systemRole: row.system_role });
+  if (!editable.ok) return editable;
+
+  const current = parsePermissions(row.permissions);
+  let keys = current.keys;
+  for (const key of patch.removeKeys ?? []) keys = applyKeyToggle(keys, key, false).keys;
+  for (const key of patch.addKeys ?? []) keys = applyKeyToggle(keys, key, true).keys;
+
+  const checked = validateRole({
+    name: patch.name ?? row.name,
+    description: patch.description !== undefined ? patch.description : row.description,
+    keys,
+    scopes: { ...current.scopes, ...(patch.scopes ?? {}) },
+  });
+  if (!checked.ok) {
+    return { ok: false, error: checked.error, field: patch.name !== undefined ? "name" : patch.description !== undefined ? "description" : "permissions" };
+  }
+
+  const allowed = assertCanEditRole(grantActorOf(ctx), { id: row.id, systemRole: null, permissions: current }, checked.role.permissions);
+  if (!allowed.ok) return { ok: false, error: allowed.error, field: "permissions" };
+
+  const next = checked.role;
+  const update: { name?: string; description?: string | null; permissions?: Json } = {};
+  if (next.name !== row.name) update.name = next.name;
+  if (next.description !== row.description) update.description = next.description;
+  const samePermissions = JSON.stringify(sortedPermissions(current)) === JSON.stringify(sortedPermissions(next.permissions));
+  if (!samePermissions) update.permissions = next.permissions as unknown as Json;
+
+  if (Object.keys(update).length > 0) {
+    const { error } = await ctx.supabase.from("workspace_roles").update(update).eq("id", roleId);
+    if (error) {
+      if (error.code === "23505") return { ok: false, error: `Ya hay un rol que se llama "${next.name}"`, field: "name" };
+      console.error("[roles] no pude guardar el cambio del rol:", error.message);
+      return { ok: false, error: "No pude guardar los cambios" };
+    }
+    await recordRoleEdit(ctx, row.id, row.name, current, next.permissions, update.name ?? null);
+  }
+
+  const { count } = await ctx.supabase
+    .from("workspace_members")
+    .select("user_id", { count: "exact", head: true })
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("role_id", roleId);
+
+  revalidatePath(ROLES_PATH);
+  return {
+    ok: true,
+    data: {
+      warnings: next.warnings,
+      role: { id: row.id, name: next.name, description: next.description, systemRole: null, permissions: next.permissions, members: count ?? 0 },
+    },
+  };
+}
+
+const sortedPermissions = (p: RolePermissions) => ({ keys: [...p.keys].sort(), scopes: p.scopes });
+
+/**
+ * Deja el cambio en el historial, agrupado por sesion de edicion: si esta misma persona ya toco este
+ * rol en los ultimos 10 minutos, se suma a esa fila (con service client: el historial no se edita
+ * desde el navegador).
+ */
+async function recordRoleEdit(
+  ctx: PermissionContext,
+  roleId: string,
+  originalName: string,
+  before: RolePermissions,
+  after: RolePermissions,
+  renamedTo: string | null,
+) {
+  try {
+    const addedKeys = after.keys.filter((k) => !before.keys.includes(k));
+    const removedKeys = before.keys.filter((k) => !after.keys.includes(k));
+    const scopes: Record<string, string> = {};
+    for (const [module, value] of Object.entries(after.scopes)) {
+      if (before.scopes[module as ScopedModule] !== value) scopes[module] = value;
+    }
+    const now = new Date();
+    const service = await createServiceClient();
+
+    const { data: recent } = await service
+      .from("audit_log")
+      .select("id, performed_at, performed_by, metadata")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("entity_type", "channel")
+      .eq("action", "update")
+      .eq("performed_by", ctx.user.id)
+      .order("performed_at", { ascending: false })
+      .limit(20);
+
+    const previous = (recent ?? []).find((r) => {
+      const meta = r.metadata as Partial<RoleAuditMetadata> | null;
+      return meta?.kind === "role_updated" && isSameSession({ performedAt: r.performed_at, performedBy: r.performed_by, metadata: meta }, now, ctx.user.id, roleId);
+    });
+
+    const prevMeta = previous ? (previous.metadata as Partial<RoleAuditMetadata>) : null;
+    const merged = mergeRoleAuditSession(prevMeta, roleId, originalName, { addedKeys, removedKeys, scopes, renamedTo });
+
+    if (previous) {
+      await service
+        .from("audit_log")
+        .update({ metadata: merged, performed_at: now.toISOString() } as never)
+        .eq("id", previous.id);
+    } else {
+      await logAudit({
+        supabase: ctx.supabase,
+        workspaceId: ctx.workspace.id,
+        entityType: "channel",
+        entityId: ctx.workspace.id,
+        action: "update",
+        metadata: merged as unknown as Record<string, Json>,
+        performedBy: ctx.user.id,
+      });
+    }
+  } catch (err) {
+    // El historial es evidencia, no una precondicion: un fallo aca no deshace el guardado.
+    console.error("[roles] no pude anotar el cambio del rol:", err instanceof Error ? err.message : "error");
+  }
 }

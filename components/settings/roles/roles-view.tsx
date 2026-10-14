@@ -1,144 +1,71 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { ChevronDown, Copy, Eye, Pencil, Plus, Shield, Trash2, User, Crown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { deleteRole } from "@/lib/actions/roles";
+import { describeRole, sortRoles, type RoleRow } from "@/lib/auth/roles-admin";
+import type { GrantActor } from "@/lib/team/grant";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
-import { createRole, deleteRole, updateRole } from "@/lib/actions/roles";
-import {
-  PERMISSION_MODULES,
-  visiblePermissionsOfModule,
-  MODULE_LABELS,
-  SCOPE_LABELS,
-  scopeOptionsFor,
-  type ScopedModule,
-  type PermissionScope,
-} from "@/lib/auth/permissions";
-import { describeRole, moduleState, sortRoles, toggleModule, type RoleRow } from "@/lib/auth/roles-admin";
+import { RoleEditor } from "./role-editor";
+import { NewRoleDialog } from "./new-role-dialog";
 
 /**
- * La pantalla de roles (F71).
+ * La pantalla de roles (F71, B3).
  *
- * Los tres de sistema se muestran arriba y no se editan: si alguien le saca
- * un permiso al rol Admin, la mitad del sistema deja de andar sin que quede
- * claro por qué. Para eso está "+ Nuevo rol".
- *
- * Los permisos se agrupan por módulo con un "todos" por grupo: la lista
- * tiene treinta y cinco claves y armar un rol tildando de a una es tedioso.
+ * Los de sistema se muestran arriba con «Ver permisos» y «Duplicar» (no se editan). Los personalizados
+ * se editan EN EL LUGAR, debajo de su tarjeta, con guardado automático. Quien solo tiene `roles.view`
+ * ve todo en solo lectura.
  */
 
-
-interface Draft {
-  id: string | null;
-  name: string;
-  description: string;
-  keys: string[];
-  leadsScope: PermissionScope;
-  conversationsScope: PermissionScope;
-  bookingsScope: PermissionScope;
-  callsScope: PermissionScope;
-  salesScope: PermissionScope;
-  tasksScope: PermissionScope;
-}
-
-const emptyDraft = (): Draft => ({
-  id: null,
-  name: "",
-  description: "",
-  keys: [],
-  leadsScope: "own",
-  conversationsScope: "own",
-  bookingsScope: "own",
-  callsScope: "own",
-  salesScope: "own",
-  tasksScope: "own",
-});
+const systemIcon: Record<string, React.ReactNode> = {
+  owner: <Crown className="h-3 w-3" aria-hidden />,
+  admin: <Shield className="h-3 w-3" aria-hidden />,
+  member: <User className="h-3 w-3" aria-hidden />,
+};
 
 export function RolesView({
   roles: initial,
   canSeeMembers,
+  canManage,
+  viewer,
 }: {
   roles: RoleRow[];
-  /** Si puede ver también Equipo: oculta "Miembros" del segmented para un
-   * rol personalizado con `roles.manage` que no es Owner/Admin (esa pantalla
-   * lo rebotaría). Default true: Owner/Admin es el caso normal. */
+  /** Si puede ver también Equipo: oculta «Miembros» del segmented si esa pantalla lo rebotaría. */
   canSeeMembers?: boolean;
+  /** `roles.manage`: puede crear, editar y borrar. Sin esto, solo ve. */
+  canManage: boolean;
+  /** Quien mira, para saber qué permisos puede dar. */
+  viewer: GrantActor;
 }) {
   const [roles, setRoles] = useState(sortRoles(initial));
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [pending, start] = useTransition();
+  const [open, setOpen] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<RoleRow | null>(null);
+  const [, start] = useTransition();
 
-  function openNew() {
-    setDraft(emptyDraft());
-    setError(null);
-    setWarnings([]);
+  function replaceRole(updated: RoleRow) {
+    setRoles((current) => sortRoles(current.map((r) => (r.id === updated.id ? { ...updated, members: updated.members } : r))));
   }
 
-  function openEdit(role: RoleRow) {
-    setDraft({
-      id: role.id,
-      name: role.name,
-      description: role.description ?? "",
-      keys: [...role.permissions.keys],
-      leadsScope: role.permissions.scopes.leads,
-      conversationsScope: role.permissions.scopes.conversations,
-      bookingsScope: role.permissions.scopes.bookings,
-      callsScope: role.permissions.scopes.calls,
-      salesScope: role.permissions.scopes.sales,
-      tasksScope: role.permissions.scopes.tasks,
-    });
-    setError(null);
-    setWarnings([]);
-  }
-
-  function save() {
-    if (!draft) return;
-    setError(null);
-
-    start(async () => {
-      const input = {
-        name: draft.name,
-        description: draft.description,
-        keys: draft.keys,
-        leadsScope: draft.leadsScope,
-        conversationsScope: draft.conversationsScope,
-        bookingsScope: draft.bookingsScope,
-        callsScope: draft.callsScope,
-        salesScope: draft.salesScope,
-        tasksScope: draft.tasksScope,
-      };
-
-      const result = draft.id ? await updateRole(draft.id, input) : await createRole(input);
-
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-
-      setWarnings(result.data.warnings);
-      setDraft(null);
-      // Se recarga para traer los roles con su cuenta de personas al dia.
-      window.location.reload();
-    });
-  }
-
-  function remove(roleId: string) {
+  function remove(role: RoleRow) {
     setError(null);
     start(async () => {
-      const result = await deleteRole(roleId);
+      const result = await deleteRole(role.id);
       if (!result.ok) {
         setError(result.error);
         setConfirmingDelete(null);
         return;
       }
-      setRoles((current) => current.filter((r) => r.id !== roleId));
+      setRoles((current) => current.filter((r) => r.id !== role.id));
       setConfirmingDelete(null);
+      if (open === role.id) setOpen(null);
     });
   }
 
@@ -147,14 +74,12 @@ export function RolesView({
       <PageHeader
         route="/dashboard/settings/roles"
         right={
-          <button
-            type="button"
-            onClick={openNew}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
-            Nuevo rol
-          </button>
+          canManage ? (
+            <button type="button" onClick={() => setCreating(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground">
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              Nuevo rol
+            </button>
+          ) : undefined
         }
       />
       <SettingsTabs />
@@ -162,297 +87,110 @@ export function RolesView({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <p className="mb-4 text-sm text-muted-foreground">
-          Los roles Owner, Admin y Member vienen con el sistema y no se editan. Para armar
-          el tuyo, usá Nuevo rol.
+          {canManage
+            ? "Owner, Admin y Member vienen con el sistema y no se editan: podés ver sus permisos y duplicarlos. Los roles que armes se guardan solos a medida que los cambiás."
+            : "Acá ves qué puede cada rol. Para cambiarlos hace falta el permiso «Administrar roles»."}
         </p>
 
-        {error && (
-          <p role="alert" className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </p>
-        )}
-
-        {warnings.length > 0 && (
-          <ul className="mb-4 space-y-1">
-            {warnings.map((warning) => (
-              <li key={warning} className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-sm">
-                {warning}
-              </li>
-            ))}
-          </ul>
-        )}
+        {error && <p role="alert" className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
 
         {roles.length === 0 ? (
           <SettingsEmptyState
             description={SETTINGS_EMPTY_STATES.roles}
-            action={
-              <button
-                type="button"
-                onClick={openNew}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-              >
-                Nuevo rol
-              </button>
-            }
+            action={canManage ? <button type="button" onClick={() => setCreating(true)} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">Nuevo rol</button> : undefined}
           />
         ) : (
-        <ul className="space-y-2">
-          {roles.map((role) => (
-            <li key={role.id} className="rounded-xl border border-border p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {role.name}
-                    {role.systemRole && (
-                      <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                        de sistema
-                      </span>
-                    )}
-                  </p>
-                  {role.description && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">{role.description}</p>
-                  )}
-                  <p className="mt-1 text-xs text-muted-foreground">{describeRole(role)}</p>
-                  {role.members > 0 && (
-                    <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      <Users className="h-3 w-3" aria-hidden />
-                      {role.members} {role.members === 1 ? "persona" : "personas"}
-                    </p>
-                  )}
-                </div>
+          <ul className="space-y-2">
+            {roles.map((role) => {
+              const expanded = open === role.id;
+              const editable = canManage && !role.systemRole;
+              const summary = !role.systemRole || role.systemRole === "member" ? describeRole(role) : null;
+              return (
+                <li key={role.id} className="overflow-hidden rounded-xl border border-border bg-card">
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-semibold">{role.name}</h2>
+                        {role.systemRole && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            {systemIcon[role.systemRole]} de sistema
+                          </span>
+                        )}
+                      </div>
+                      {role.description && <p className="mt-0.5 text-xs text-muted-foreground">{role.description}</p>}
+                      {summary && <p className="mt-0.5 text-xs text-muted-foreground">{summary}</p>}
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {role.members === 0 ? "Sin personas" : role.members === 1 ? "1 persona" : `${role.members} personas`}
+                      </p>
+                    </div>
 
-                {!role.systemRole && (
-                  <div className="flex shrink-0 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(role)}
-                      aria-label={`Editar ${role.name}`}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent"
-                    >
-                      <Pencil className="h-3.5 w-3.5" aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmingDelete(role.id)}
-                      aria-label={`Borrar ${role.name}`}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {confirmingDelete === role.id && (
-                <div className="mt-3 rounded-lg border border-border p-3">
-                  <p className="text-sm">¿Borrar el rol &quot;{role.name}&quot;?</p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => remove(role.id)}
-                      className="rounded-lg bg-destructive px-3 py-1.5 text-sm text-destructive-foreground disabled:opacity-50"
-                    >
-                      Si, borrar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmingDelete(null)}
-                      className="rounded-lg border px-3 py-1.5 text-sm"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-        )}
-
-        {draft && (
-          <section className="mt-6 rounded-xl border border-border p-4">
-            <h2 className="text-sm font-semibold">{draft.id ? "Editar rol" : "Nuevo rol"}</h2>
-
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                Nombre
-                <input
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  placeholder="Setter senior"
-                  className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                />
-              </label>
-              <label className="text-sm">
-                Descripcion
-                <input
-                  value={draft.description}
-                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                  placeholder="Atiende todos los leads y programa contenido"
-                  className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                />
-              </label>
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <ScopeField
-                label="Que leads ve"
-                module="leads"
-                hint="«Sin asignar» son los leads que todavía no tienen setter, vendedor ni agente."
-                value={draft.leadsScope}
-                onChange={(leadsScope) => setDraft({ ...draft, leadsScope })}
-              />
-              <ScopeField
-                label="Que conversaciones ve"
-                module="conversations"
-                value={draft.conversationsScope}
-                onChange={(conversationsScope) => setDraft({ ...draft, conversationsScope })}
-              />
-              <ScopeField
-                label="Que agendas ve"
-                module="bookings"
-                value={draft.bookingsScope}
-                onChange={(bookingsScope) => setDraft({ ...draft, bookingsScope })}
-              />
-              <ScopeField
-                label="Que llamadas ve"
-                module="calls"
-                hint="Las que grabó o las de contactos que puede ver."
-                value={draft.callsScope}
-                onChange={(callsScope) => setDraft({ ...draft, callsScope })}
-              />
-              <ScopeField
-                label="Que ventas ve"
-                module="sales"
-                hint="Las que cargó o donde es setter o vendedor."
-                value={draft.salesScope}
-                onChange={(salesScope) => setDraft({ ...draft, salesScope })}
-              />
-              <ScopeField
-                label="Que tareas ve"
-                module="tasks"
-                hint="Las que creó, tiene a cargo o sigue."
-                value={draft.tasksScope}
-                onChange={(tasksScope) => setDraft({ ...draft, tasksScope })}
-              />
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {PERMISSION_MODULES.map((module) => {
-                const permissions = visiblePermissionsOfModule(module);
-                const state = moduleState(draft.keys, permissions.map((p) => p.key));
-
-                return (
-                  <fieldset key={module} className="rounded-lg border border-border p-3">
-                    <legend className="flex items-center gap-2 px-1 text-xs font-semibold">
-                      {MODULE_LABELS[module]}
+                    <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
-                        onClick={() =>
-                          setDraft({
-                            ...draft,
-                            keys: toggleModule(
-                              draft.keys,
-                              permissions.map((p) => p.key),
-                              state !== "all",
-                            ),
-                          })
-                        }
-                        className="rounded border border-border px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground"
+                        onClick={() => setOpen(expanded ? null : role.id)}
+                        aria-expanded={expanded}
+                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted"
                       >
-                        {state === "all" ? "Ninguno" : "Todos"}
+                        {editable ? <Pencil className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
+                        {editable ? "Editar" : "Ver permisos"}
+                        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden />
                       </button>
-                    </legend>
+                      {canManage && (
+                        <button
+                          type="button"
+                          onClick={() => setCreating(true)}
+                          title="Duplicar este rol"
+                          aria-label={`Duplicar el rol ${role.name}`}
+                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        >
+                          <Copy className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      )}
+                      {editable && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingDelete(role)}
+                          title="Borrar el rol"
+                          aria-label={`Borrar el rol ${role.name}`}
+                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-                    <ul className="mt-1 space-y-1">
-                      {permissions.map((permission) => (
-                        <li key={permission.key}>
-                          <label className="flex items-start gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={draft.keys.includes(permission.key)}
-                              onChange={(e) =>
-                                setDraft({
-                                  ...draft,
-                                  keys: e.target.checked
-                                    ? [...draft.keys, permission.key]
-                                    : draft.keys.filter((k) => k !== permission.key),
-                                })
-                              }
-                              className="mt-0.5 h-4 w-4 rounded border-border"
-                            />
-                            <span>
-                              {permission.label}
-                              {permission.description && (
-                                <span className="block text-[11px] text-muted-foreground">
-                                  {permission.description}
-                                </span>
-                              )}
-                            </span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  </fieldset>
-                );
-              })}
-            </div>
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={save}
-                disabled={pending}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-60"
-              >
-                {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                Guardar
-              </button>
-              <button
-                type="button"
-                onClick={() => setDraft(null)}
-                className="h-9 rounded-lg border border-border px-3 text-sm"
-              >
-                Cancelar
-              </button>
-            </div>
-          </section>
+                  {expanded && <RoleEditor role={role} viewer={viewer} readOnly={!editable} onRoleChange={replaceRole} />}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
-    </div>
-  );
-}
 
-function ScopeField({
-  label,
-  module,
-  hint,
-  value,
-  onChange,
-}: {
-  label: string;
-  module: ScopedModule;
-  /** Una linea que aclara que significa la opcion, si hace falta. */
-  hint?: string;
-  value: PermissionScope;
-  onChange: (value: PermissionScope) => void;
-}) {
-  return (
-    <label className="text-sm">
-      {label}
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as PermissionScope)}
-        className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-      >
-        {scopeOptionsFor(module).map((scope) => (
-          <option key={scope} value={scope}>
-            {SCOPE_LABELS[scope]}
-          </option>
-        ))}
-      </select>
-      {hint && <span className="mt-1 block text-[11px] text-muted-foreground">{hint}</span>}
-    </label>
+      {creating && (
+        <NewRoleDialog
+          roles={roles}
+          viewer={viewer}
+          onClose={() => setCreating(false)}
+          onCreated={(role) => {
+            setRoles((current) => sortRoles([...current, role]));
+            setOpen(role.id);
+            setCreating(false);
+          }}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!confirmingDelete}
+        title="Borrar el rol"
+        message={confirmingDelete ? `¿Seguro que querés borrar el rol «${confirmingDelete.name}»? Si tiene personas asignadas, primero hay que cambiarles el rol.` : ""}
+        confirmLabel="Borrar"
+        cancelLabel="Cancelar"
+        destructive
+        onConfirm={() => confirmingDelete && remove(confirmingDelete)}
+        onCancel={() => setConfirmingDelete(null)}
+      />
+    </div>
   );
 }
