@@ -32,17 +32,17 @@ Plano: [requerimientos-equipo-roles.md](requerimientos-equipo-roles.md) (v1.0). 
 - [x] F16 · General partido
 - [x] F17 · Campos, Productos, Asignación, Actividad
 - [x] F18 · Integraciones en tres secciones
-- [ ] F19 · Webhooks con permiso propio (`00213`, después del código)
+- [x] F19 · Webhooks con permiso propio (`00213`, después del código)
 
 ### B5 · Módulos
 - [x] F20 · Bandeja por canal
 - [x] F21 · Contactos
 - [x] F22 · Automatizaciones, secuencias y broadcasts
 - [x] F23 · Agentes IA, tareas de IA, topes y Conocimiento
-- [ ] F24 · Contenido, dashboards y exportar (`00214`, después del código)
+- [x] F24 · Contenido, dashboards y exportar (`00214`, después del código)
 
 ### B6 · Verificación y cierre
-- [ ] F25 · `verify-permissions-matrix.mjs`
+- [x] F25 · `verify-permissions-matrix.mjs`
 - [ ] F26 · Documentación (`docs/roles.md`, `CLAUDE.md`, PENDIENTE) y PR sin merge
 
 ## Punto de partida
@@ -53,8 +53,11 @@ Medido el 13/10/2026 sobre `main` (`55f61e6`; el `main` actual `7bad3d1` solo su
 |---|---|
 | `npx vitest run` | 830 archivos, 10 379 tests, todos verdes |
 | `npm run lint` | 0 errores, 36 warnings |
-| `npm run build` | _(se completa al empezar B1)_ |
-| `verify-*.mjs` | _(se completa al empezar B1; antes de cada uno se chequea que no haya filas `zz-test-` de otra corrida)_ |
+| `npm run build` | compila |
+| `verify-*.mjs` que pasaban | roles, rls, workspace-isolation, audit-visibility, crm, inbox-filters, inbound-webhooks, eod, sales, scheduling, content, dashboards, calls, tasks |
+| `verify-*.mjs` que **ya fallaban** antes de tocar nada | attribution, publishing, forms, webhook y ads-attribution (este por tiempos con el cron real); coincide con `PROGRESS-tareas-crm.md` |
+
+Cada `verify-*` se corrió de a uno, con el candado `/private/tmp/ssa-verify.lock` y sin filas `zz-test-` ajenas.
 
 ## Migraciones
 
@@ -67,18 +70,29 @@ El plano las numeraba 00200 a 00206; esos números ya estaban ocupados (Tareas y
 | 00202 | `00210` | `members_role_id_backfill` | B1 | **aplicada y registrada** (`20261014005139`); 0 miembros reales sin `role_id` |
 | 00203 | `00211` | `retire_settings_manage` | B1 | **aplicada y registrada** (`20261014005202`); 0 políticas y 0 roles con `settings.manage`; Content Manager recibió `flows.publish`, `webhooks.manage` y `contacts.assign` |
 | 00204 | `00212` | `team_rls` | B2 (después del código) | **aplicada y registrada** (`20261014012921`, texto corregido después: el trigger pasó a `SECURITY DEFINER`); `verify-roles` (126 comprobaciones, con los 14 casos compartidos y 40 ataques), `verify-rls`, `verify-workspace-isolation` y `verify-audit-visibility` en verde |
-| 00205 | `00213` | `settings_rls` | B4 (después del código) | escrita, sin aplicar |
-| 00206 | `00214` | `modules_rls` | B5 (después del código) | pendiente de escribir |
+| 00205 | `00213` | `settings_rls` | B4 (después del código) | **aplicada y registrada** (`20261014014211`); `verify-rls`, `verify-roles`, `verify-audit-visibility` y `verify-inbound-webhooks` en verde |
+| 00206 | `00214` | `modules_rls` | B5 (después del código) | **aplicada y registrada** (`20261014014858`); `verify-permissions-matrix` (375 comprobaciones sobre 49 casos), `verify-rls`, `verify-roles`, `verify-crm`, `verify-inbox-filters` y `verify-tasks` en verde |
 
 La `00212` suma tres funciones en `public` (`can_grant_permissions`, `can_give_role`, `is_own_role`), dos auxiliares en `private` (`ungrantable_keys`, `scope_rank`) y el trigger `workspace_roles_grant_check`. Las gemelas SQL de `assertCanGrant` se prueban con los mismos casos compartidos (`lib/team/grant.cases.json`) en `grant.cases.test.ts` y en `verify-roles.mjs --despues-de-00212`.
 
 ## Retiro de settings.manage
 
-Tabla archivo → clave nueva: ver §5 del plan. Se marca archivo por archivo al ejecutar F4.
+Hecho (F4). La tabla archivo → clave nueva es la del §5 del plan. `settings.manage` ya no existe en el catálogo ni en ninguna política viva (consulta de control sobre `pg_policies`: 0), y ningún rol personalizado la conserva (la 00211 le sumó sus sucesoras: `settings.general`, `sales.settings`, `products.manage`, `assignment.manage`). Los scripts `verify-rls.mjs` y `verify-roles.mjs` usan ahora la sucesora, sin aflojar ninguna aserción.
 
 ## Matriz de acceso
 
-Foto de hoy: `lib/auth/access-matrix.baseline.json` (se genera en B1, antes de tocar permisos). Cambios aprobados del Member (M1 a M8): ver §6 del plan.
+Foto: `lib/auth/access-matrix.baseline.json` (82 páginas, 337 acciones y 28 rutas, tomada **antes** de tocar permisos) y `lib/auth/access-matrix.characterization.test.ts`. Owner y Admin dan idénticos a la foto en todo; el Member cambia solo en las filas aprobadas, que están en `APPROVED_MEMBER_CHANGES` con su comentario:
+
+| # | Cambio del Member | Origen |
+|---|---|---|
+| M1 | Ya no importa contactos (`/contacts/import`, `startImport`, `importBatch`, `finishImport`, botón «Importar») | plano §9.3 |
+| M2 | Ya no exporta CSV (corridas de IA, respuestas de formularios, reportes de fin de día); el botón no se muestra | plano §9.3 |
+| M3 | Ya no ve Webhooks (páginas y acciones de endpoints y del editor) | plano §9.3 |
+| M4 | Reasigna los leads que ve (`contacts.assign`) | plano §9.3, sin cambio |
+| M5 | Publica flujos (`flows.publish`) | plano §9.3, sin cambio |
+| M6 | Ya no ve Broadcasts (API y página) | decisión del 13/10 |
+| M7 | Lo que publica se dispara de verdad (`triggers` pide `flows.edit`; antes el insert fallaba en silencio) | decisión del 13/10 |
+| M8 | Por la URL, `/dashboard/settings/integrations` muestra solo «Mis conexiones» (el menú no cambia) | decisión del 13/10 |
 
 ---
 
