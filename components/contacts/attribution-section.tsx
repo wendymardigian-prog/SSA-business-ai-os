@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AttributionView, TouchView } from "@/lib/contacts/attribution-view";
+import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { EmptyHint, Section } from "./ui";
 
 /**
@@ -41,6 +42,7 @@ export function AttributionSection({ view }: { view: AttributionView }) {
                 {view.path.map((touch, index) => (
                   <li key={index} className="text-xs">
                     <TouchText touch={touch} />
+                    {touch.entryUrl && <EntryUrlBlock url={touch.entryUrl} className="mt-1.5" />}
                   </li>
                 ))}
               </ol>
@@ -61,6 +63,7 @@ function TouchCard({ title, hint, touch }: { title: string; hint: string; touch:
         <TouchText touch={touch} />
       </p>
       <TouchDetail touch={touch} />
+      {touch.entryUrl && <EntryUrlBlock url={touch.entryUrl} className="mt-2" />}
     </div>
   );
 }

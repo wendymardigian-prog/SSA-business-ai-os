@@ -57,3 +57,33 @@ describe("caracterizacion: buildAttributionView (hoy)", () => {
     expect(buildAttributionView({ attribution: null, rows: [] })).toEqual({ empty: true, first: null, last: null, path: [] });
   });
 });
+
+describe("la URL de entrada en la ficha (plano formularios-ui, F19)", () => {
+  const ENTRY = "https://ejemplo.test/programa-x?utm_source=facebook&ad_name=Video+Noe&ref=podcast";
+  const withEntry = ROWS.map((r) => (r.id === "t2" ? { ...r, entry_url: ENTRY } : r));
+
+  it("el camino y las tarjetas muestran la URL de la visita que la tiene, y solo esa", () => {
+    const view = buildAttributionView({ attribution: null, rows: withEntry });
+    expect(view.path.map((t) => t.entryUrl)).toEqual([undefined, ENTRY]);
+    expect(view.last?.entryUrl).toBe(ENTRY);
+    expect(view.first?.entryUrl).toBeUndefined();
+  });
+
+  it("con la copia derivada (sin la URL) la URL se busca en la fila de la misma fecha", () => {
+    const derived = {
+      version: 2,
+      first_touch: { occurred_at: ROWS[0].occurred_at, source: "instagram", medium: "social", origin: "comment" },
+      last_touch: { occurred_at: ROWS[1].occurred_at, source: "facebook", medium: "paid", content: "Video testimonio", origin: "form" },
+    };
+    const view = buildAttributionView({ attribution: derived, rows: withEntry });
+    expect(view.last?.entryUrl).toBe(ENTRY);
+  });
+
+  it("todo lo que ya se mostraba sigue igual: quitando entryUrl, el resultado es el de hoy", () => {
+    const strip = (v: ReturnType<typeof buildAttributionView>) =>
+      JSON.parse(JSON.stringify(v, (k, val) => (k === "entryUrl" ? undefined : val)));
+    expect(strip(buildAttributionView({ attribution: null, rows: withEntry, timeZone: "America/Costa_Rica", formNames: { "form-1": "Aplicación al Programa X" } }))).toEqual(
+      strip(buildAttributionView({ attribution: null, rows: ROWS, timeZone: "America/Costa_Rica", formNames: { "form-1": "Aplicación al Programa X" } })),
+    );
+  });
+});

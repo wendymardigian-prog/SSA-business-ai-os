@@ -9,9 +9,13 @@
  *
  * Todo lo que se lee se vuelve a limpiar: solo claves de atribución conocidas, solo
  * texto de hasta 200 caracteres, nada de más de 90 días, nada de más de 3,5 KB.
+ *
+ * La URL de entrada (`entry_url`, plano formularios-ui F18) es la unica que puede tener hasta 2000
+ * caracteres: tiene su propio saneo (`entryUrlFrom`) y es lo PRIMERO que se suelta si no entra.
  */
 import { ATTRIBUTION_KEYS, MAX_VALUE_LENGTH, TOUCH_KEYS, VISIT_META_KEYS } from "./keys";
 import { hasTouchKeys } from "./collect";
+import { ENTRY_URL_KEY, entryUrlFrom } from "./entry-url";
 import type { Attribution, StoredAttribution, Visit } from "./types";
 
 /** El nombre de la cookie (sitio) y de la clave de `localStorage` (web externa). */
@@ -52,6 +56,8 @@ function cleanVisit(raw: unknown, now: number): Visit | null {
     visit[key] = value;
     if (TOUCH_KEYS.includes(key)) touch = true;
   }
+  const entry = entryUrlFrom(input[ENTRY_URL_KEY]);
+  if (entry) visit[ENTRY_URL_KEY] = entry;
   return touch ? visit : null;
 }
 
@@ -83,6 +89,8 @@ function toVisit(current: Attribution, now: number): Visit {
     const value = cleanText(current[key]);
     if (value) visit[key] = value;
   }
+  const entry = entryUrlFrom(current[ENTRY_URL_KEY]);
+  if (entry) visit[ENTRY_URL_KEY] = entry;
   return visit;
 }
 
@@ -100,7 +108,8 @@ export function recordVisit(stored: StoredAttribution | null | undefined, curren
 
 /**
  * El texto para guardar, de hasta 3,5 KB (o `maxBytes`). Si no entra, se sueltan
- * primero el referrer y la página de llegada.
+ * primero la URL de entrada (la de la primera visita, despues la de la ultima) y
+ * recien despues el referrer y la pagina de llegada: las UTM nunca se pierden.
  */
 export function serializeStored(stored: StoredAttribution, maxBytes: number = MAX_STORED_BYTES): string {
   const trimmed = (visit: Visit | undefined, drop: readonly string[]): Visit | undefined => {
@@ -108,26 +117,35 @@ export function serializeStored(stored: StoredAttribution, maxBytes: number = MA
     const copy: Visit = { ts: visit.ts };
     for (const [key, value] of Object.entries(visit)) {
       if (key === "ts" || drop.includes(key)) continue;
-      const text = cleanText(value);
+      // La URL de entrada se sanea con su propia regla (hasta 2000), el resto se recorta a 200.
+      const text = key === ENTRY_URL_KEY ? entryUrlFrom(value) : cleanText(value);
       if (text) copy[key] = text;
     }
     return copy;
   };
-  const build = (drop: readonly string[]): string => {
+  const build = (dropFirst: readonly string[], dropLast: readonly string[]): string => {
     const out: StoredAttribution = { v: 1 };
-    const first = trimmed(stored.first, drop);
-    const last = trimmed(stored.last, drop);
+    const first = trimmed(stored.first, dropFirst);
+    const last = trimmed(stored.last, dropLast);
     if (first) out.first = first;
     if (last) out.last = last;
     return JSON.stringify(out);
   };
 
-  for (const drop of [[], ["referrer_url"], ["referrer_url", "landing_page"]] as const) {
-    const text = build(drop);
+  const pages = ["referrer_url", "landing_page"] as const;
+  const attempts: Array<[readonly string[], readonly string[]]> = [
+    [[], []],
+    [[ENTRY_URL_KEY], []],
+    [[ENTRY_URL_KEY], [ENTRY_URL_KEY]],
+    [[ENTRY_URL_KEY, "referrer_url"], [ENTRY_URL_KEY, "referrer_url"]],
+    [[ENTRY_URL_KEY, ...pages], [ENTRY_URL_KEY, ...pages]],
+  ];
+  for (const [dropFirst, dropLast] of attempts) {
+    const text = build(dropFirst, dropLast);
     if (bytes(text) <= maxBytes) return text;
   }
   // Último recurso: solo la última visita, sin páginas.
-  const text = JSON.stringify({ v: 1, last: trimmed(stored.last, ["referrer_url", "landing_page"]) });
+  const text = JSON.stringify({ v: 1, last: trimmed(stored.last, [ENTRY_URL_KEY, ...pages]) });
   return bytes(text) <= maxBytes ? text : JSON.stringify({ v: 1 });
 }
 

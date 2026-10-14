@@ -153,6 +153,8 @@ export function formTouch(input: {
     liFatId: str(a.li_fat_id),
     referrerUrl: str(a.referrer_url),
     landingPage: str(a.landing_page),
+    // La URL de entrada completa (plano formularios-ui, F18): un dato aparte de `landing_page`, que sigue filtrada.
+    entryUrl: str(a.entry_url),
     origin: "form",
     dedupeKey: `form:${input.submissionId}`,
     raw: { utm, source_type: "form", source_id: input.formId, ...extras },

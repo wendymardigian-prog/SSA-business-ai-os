@@ -116,6 +116,9 @@ export function pickUtm(params: Record<string, unknown> | URLSearchParams): Reco
       if (out[key] === undefined && clean[key]) out[key] = clean[key];
     }
     if (clean.first_visit) out.first_visit = clean.first_visit;
+    // La URL de entrada completa (plano formularios-ui, F17): ya viene re-saneada por `sanitizeAttribution`.
+    // Va dentro de `utm` y llega a `contact_touches.entry_url` por `raw.utm`, sin tocar `create_booking`.
+    if (clean.entry_url) out.entry_url = clean.entry_url;
   }
   return out;
 }

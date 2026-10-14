@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { attributionSections } from "./attribution-view";
+import { attributionSections, entryUrlOf } from "./attribution-view";
 
 const META = {
   utm_source: "facebook",
@@ -58,5 +58,19 @@ describe("caracterizacion: attributionSections (hoy)", () => {
     // B6 la muestra en su propio bloque, no en estas secciones.
     const out = attributionSections({ utm_source: "facebook", entry_url: "https://ejemplo.test/?ref=x", ad_name: "algo" });
     expect(out.flatMap((s) => s.items.map((i) => i.key))).toEqual(["utm_source"]);
+  });
+});
+
+describe("la URL de entrada (plano formularios-ui, F19) va aparte de las secciones", () => {
+  it("entryUrlOf lee entry_url y devuelve null si no hay", () => {
+    expect(entryUrlOf({ entry_url: " https://ejemplo.test/p?ad_name=Video " })).toBe("https://ejemplo.test/p?ad_name=Video");
+    expect(entryUrlOf({ utm_source: "x" })).toBeNull();
+    expect(entryUrlOf({ entry_url: "" })).toBeNull();
+    expect(entryUrlOf(null)).toBeNull();
+  });
+
+  it("con entry_url en la atribucion, las secciones de hoy dan EXACTAMENTE lo mismo", () => {
+    const withEntry = { ...META, entry_url: "https://ejemplo.test/programa-x?utm_source=facebook&ad_name=Video+Noe&ref=podcast" };
+    expect(attributionSections(withEntry)).toEqual(attributionSections(META));
   });
 });

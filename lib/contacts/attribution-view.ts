@@ -40,6 +40,8 @@ export interface TouchRow {
   ctwa_clid?: string | null;
   referrer_url?: string | null;
   landing_page?: string | null;
+  /** La URL de entrada completa (00215): todos los parametros con los que llego la persona. */
+  entry_url?: string | null;
   /** El vinculo con el catalogo de Meta (00192). */
   meta_campaign_id?: string | null;
   meta_adset_id?: string | null;
@@ -76,6 +78,8 @@ export interface TouchView {
   matchNote: string | null;
   /** El detalle plegado: UTMs, ids de clic y página de llegada. Solo lo que el toque trae. */
   details: { label: string; value: string }[];
+  /** La URL de entrada completa de esta visita (plano formularios-ui, F19). Solo si el toque la trae. */
+  entryUrl?: string;
 }
 
 /** Los nombres del catalogo de Meta para los ids de los toques (los arma la ficha con la sesion de quien mira). */
@@ -136,6 +140,7 @@ export function describeTouch(
         | "ctwa_clid"
         | "referrer_url"
         | "landing_page"
+        | "entry_url"
         | "meta_campaign_id"
         | "meta_adset_id"
         | "meta_ad_id"
@@ -224,6 +229,8 @@ export function describeTouch(
     adThumbnail,
     matchNote,
     details,
+    // Solo si el toque la trae: sin ella el resultado es identico al de antes (lo fija la caracterizacion).
+    ...(touch.entry_url?.trim() ? { entryUrl: touch.entry_url.trim() } : {}),
   };
 }
 
@@ -245,6 +252,7 @@ const fromRow = (row: TouchRow): AttributionTouch => ({
   ctwa_clid: row.ctwa_clid ?? undefined,
   referrer_url: row.referrer_url ?? undefined,
   landing_page: row.landing_page ?? undefined,
+  entry_url: row.entry_url ?? undefined,
   meta_campaign_id: row.meta_campaign_id ?? undefined,
   meta_adset_id: row.meta_adset_id ?? undefined,
   meta_ad_id: row.meta_ad_id ?? undefined,
@@ -285,6 +293,14 @@ export function buildAttributionView(params: {
     return row ? formNameOfRow(row) : null;
   };
 
+  // La copia derivada (`contacts.attribution`) no trae la URL de entrada: se busca en la fila con la misma fecha.
+  const withEntry = (touch: AttributionTouch): AttributionTouch => {
+    if (touch.entry_url) return touch;
+    const at = new Date(touch.occurred_at ?? 0).getTime();
+    const row = rows.find((r) => r.entry_url && new Date(r.occurred_at).getTime() === at);
+    return row?.entry_url ? { ...touch, entry_url: row.entry_url } : touch;
+  };
+
   const path = [...rows]
     .sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime())
     .map((row) => describeTouch(fromRow(row), params.timeZone, formNameOfRow(row), params.names));
@@ -302,8 +318,8 @@ export function buildAttributionView(params: {
 
   return {
     empty: false,
-    first: describeTouch(firstTouch, params.timeZone, formNameOfTouch(firstTouch), params.names),
-    last: single ? null : describeTouch(lastTouch, params.timeZone, formNameOfTouch(lastTouch), params.names),
+    first: describeTouch(withEntry(firstTouch), params.timeZone, formNameOfTouch(firstTouch), params.names),
+    last: single ? null : describeTouch(withEntry(lastTouch), params.timeZone, formNameOfTouch(lastTouch), params.names),
     path,
   };
 }
