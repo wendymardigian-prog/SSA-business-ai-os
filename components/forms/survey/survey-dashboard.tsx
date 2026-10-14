@@ -1,9 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
-import { BackLink } from "@/components/forms/back-link";
 import { Notice } from "@/components/agents/fields";
 import { FilterSelect, useUrlFilters } from "@/components/agents/filters";
 import { PERIOD_OPTIONS, type Period } from "@/lib/forms/metrics";
@@ -41,8 +38,9 @@ function pointLabel(key: string, granularity: Granularity): string {
 }
 
 export function SurveyDashboard({
+  header,
+  topSlot,
   formId,
-  formName,
   period,
   scale,
   summary,
@@ -58,8 +56,11 @@ export function SurveyDashboard({
   activePreset,
   timeZone,
 }: {
+  /** La barra del editor (la arma el servidor: plano formularios-ui, F7). */
+  header: React.ReactNode;
+  /** Arriba del panel: la configuración de la encuesta. */
+  topSlot?: React.ReactNode;
   formId: string;
-  formName: string;
   period: Period;
   scale: Scale;
   summary: SurveySummary;
@@ -84,16 +85,10 @@ export function SurveyDashboard({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader
-        title="Panel de la encuesta"
-        tooltip="El NPS (o el promedio), cómo se reparten los puntajes y cómo evoluciona."
-        backHref={<BackLink href={`/dashboard/formularios/${formId}`} label="Volver al formulario" />}
-      />
+      {header}
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <div className="mx-auto max-w-4xl space-y-5">
-          <Link href={`/dashboard/formularios/${formId}`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="h-3.5 w-3.5" aria-hidden /> {formName}
-          </Link>
+          {topSlot}
 
           <div className="flex flex-wrap items-center gap-2">
             <FilterSelect

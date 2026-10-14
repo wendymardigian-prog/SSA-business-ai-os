@@ -63,3 +63,28 @@ export function activeSettingsTab(pathname: string): string {
   }
   return "";
 }
+
+/** La unica pestaña de Ajustes que ve quien no es Owner ni Admin: Recursos. */
+const RECURSOS_HREF = "/dashboard/settings/recursos";
+
+/**
+ * Las pestañas de Ajustes que ve esta persona (plano formularios-ui, D4).
+ *
+ * Recursos e Integraciones salieron del menu lateral y se llega a ellas desde
+ * Ajustes. Hoy un Owner o Admin ve las siete y cualquier otra persona solo
+ * Recursos (la pantalla que usa todos los dias desde la bandeja; el resto son
+ * paginas de administracion). La sesion de roles reemplaza este cuerpo por
+ * claves de permiso sin cambiar la firma.
+ */
+export function visibleSettingsTabs(viewer: { isAdmin: boolean }): SettingsTab[] {
+  if (viewer.isAdmin) return SETTINGS_TABS;
+  return SETTINGS_TABS.filter((tab) => tab.href === RECURSOS_HREF);
+}
+
+/**
+ * A donde lleva "Ajustes" en el menu: a la primera pestaña que esta persona ve.
+ * Un Member no puede abrir General (es de administradores): entra por Recursos.
+ */
+export function settingsEntryHref(viewer: { isAdmin: boolean }): string {
+  return visibleSettingsTabs(viewer)[0]?.href ?? SETTINGS_TABS[0].href;
+}

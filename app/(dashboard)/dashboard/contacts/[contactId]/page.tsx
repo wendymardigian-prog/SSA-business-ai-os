@@ -6,6 +6,7 @@ import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
+import { loadContactTouches } from "@/lib/contacts/load-touches";
 import { loadMetaNames } from "@/lib/contacts/meta-names";
 import type { AuditAction, Json, LeadTemperature } from "@/lib/types/database";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -166,15 +167,7 @@ export default async function ContactDetailPage({
         .limit(20),
       // El camino de toques de atribucion (F88). Lo que se ve lo decide la RLS:
       // un Member ve los toques de los contactos que ya puede ver.
-      supabase
-        .from("contact_touches")
-        .select(
-          "id, occurred_at, source, medium, content_label, content_post_id, origin, raw, campaign, term, ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid, referrer_url, landing_page, meta_campaign_id, meta_adset_id, meta_ad_id, meta_match_status, meta_match_method",
-        )
-        .eq("contact_id", contactId)
-        .eq("workspace_id", workspace.id)
-        .order("occurred_at", { ascending: true })
-        .limit(100),
+      loadContactTouches(supabase, workspace.id, contactId),
       // El historial junta todo lo automatico (migracion 00135 para los emails):
       // las automatizaciones que corrieron sobre este contacto...
       supabase

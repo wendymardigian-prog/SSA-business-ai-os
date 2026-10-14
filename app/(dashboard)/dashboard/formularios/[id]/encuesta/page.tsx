@@ -2,6 +2,10 @@ import { notFound, redirect } from "next/navigation";
 import { requirePermission, isAdminRole } from "@/lib/auth/guards";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { SurveyDashboard, type SurveyComment } from "@/components/forms/survey/survey-dashboard";
+import { SurveyConfigCards } from "@/components/forms/survey/survey-config";
+import { EditorBar } from "@/components/forms/editor/editor-bar";
+import { loadEditorBar } from "@/lib/forms/editor-bar-load";
+import { parseStoredContactConfig } from "@/lib/forms/contact-config";
 import { fieldsOf } from "@/lib/forms/server-ports";
 import { addDays, dayInZone, resolvePeriod } from "@/lib/forms/metrics";
 import { parseStoredSurveyConfig, scaleOf } from "@/lib/forms/survey";
@@ -34,7 +38,7 @@ export default async function EncuestaPage({
 
   const { data: form } = await supabase
     .from("forms")
-    .select("id, name, type, survey_config, current_version_id, draft_definition")
+    .select("id, name, type, status, survey_config, contact_config, current_version_id, draft_definition")
     .eq("id", id)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -42,7 +46,7 @@ export default async function EncuestaPage({
   if (form.type !== "survey") redirect(`/dashboard/formularios/${id}`);
 
   const timeZone = workspace.timezone || "UTC";
-  const viewerZone = await resolveViewerTimezone(workspace.timezone);
+  const [viewerZone, barData] = await Promise.all([resolveViewerTimezone(workspace.timezone), loadEditorBar(supabase, workspace.id, id)]);
   const period = resolvePeriod({ dias: one("dias"), desde: one("desde"), hasta: one("hasta") }, dayInZone(new Date(), timeZone));
 
   let definition = form.draft_definition;
@@ -90,8 +94,18 @@ export default async function EncuestaPage({
 
   return (
     <SurveyDashboard
+      header={barData ? <EditorBar form={barData.form} route="encuesta" canManage={ctx.can("forms.manage")} noContactsWarning={barData.noContactsWarning} /> : null}
+      topSlot={
+        <SurveyConfigCards
+          formId={form.id}
+          archived={form.status === "archived"}
+          contactMode={parseStoredContactConfig(form.contact_config).mode}
+          fields={fieldsOf(form.draft_definition)}
+          initial={config}
+          canManage={ctx.can("forms.manage")}
+        />
+      }
       formId={form.id}
-      formName={form.name}
       period={period}
       scale={scale}
       summary={summarizeSurvey(scores, scale)}

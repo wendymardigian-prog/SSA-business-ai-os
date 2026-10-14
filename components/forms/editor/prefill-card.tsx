@@ -3,22 +3,16 @@
 import { useMemo, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Notice, inputClass } from "@/components/agents/fields";
-import { AUTO_ATTRIBUTION_GROUPS, CONTACT_LINK_VARIABLES, buildPrefillLink, describePrefillParams } from "@/lib/forms/prefill";
-import type { FormDefinition, PrefillBehavior } from "@/lib/forms/fields";
-
-const BEHAVIOR_LABELS: Record<PrefillBehavior, string> = {
-  editable: "Editable",
-  locked: "Bloqueado",
-  hidden: "Se oculta si viene lleno",
-};
+import { CONTACT_LINK_VARIABLES, buildPrefillLink, describePrefillParams } from "@/lib/forms/prefill";
+import type { FormDefinition } from "@/lib/forms/fields";
 
 /**
- * Los parámetros de la URL del formulario y un armador de links con prellenado (F32).
- * La tabla sale de la definición del borrador; el armador junta los valores en una URL
- * lista para copiar. Las variables del contacto van sin codificar, para pegar el link en
- * un mensaje o email de una automatización (las resuelve el nodo de envío).
+ * El armador de links con datos ya cargados (F32; plano formularios-ui, F14: vive en la tarjeta "Link para un
+ * contacto" de Publicar). Los parametros de cada pregunta se configuran en su panel ("Llenar desde la URL"); aca
+ * solo se les pone un valor y se arma una URL lista para copiar. Las variables del contacto van sin codificar, para
+ * pegar el link en un mensaje o email de un flow (las resuelve el nodo de envio).
  */
-export function PrefillCard({ definition, baseUrl, slug }: { definition: FormDefinition; baseUrl: string; slug?: string }) {
+export function PrefillLinkBuilder({ definition, baseUrl, slug }: { definition: FormDefinition; baseUrl: string; slug?: string }) {
   const described = useMemo(() => describePrefillParams(definition), [definition]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
@@ -26,8 +20,8 @@ export function PrefillCard({ definition, baseUrl, slug }: { definition: FormDef
   const link = buildPrefillLink(baseUrl, values);
   const usesContactVariables = Object.values(values).some((v) => /\{\{\s*contact\./i.test(v));
   const rows = [
-    ...described.fields.map((f) => ({ key: f.fieldKey, label: f.label, param: f.params[0], note: BEHAVIOR_LABELS[f.behavior], accepts: f.params, example: f.example })),
-    ...described.hidden.filter((h) => h.source === "url_param").map((h) => ({ key: h.fieldKey, label: h.label, param: h.param, note: "Campo oculto", accepts: [h.param], example: "valor" })),
+    ...described.fields.map((f) => ({ key: f.fieldKey, label: f.label, param: f.params[0], accepts: f.params })),
+    ...described.hidden.filter((h) => h.source === "url_param").map((h) => ({ key: h.fieldKey, label: h.label, param: h.param, accepts: [h.param] })),
   ];
   // El link firmado por contacto: lo identifica sin poner sus datos en la URL.
   const signedToken = slug ? `{{form_link.${slug.replace(/-/g, "_")}}}` : "{{form_link.<link>}}";
@@ -40,26 +34,22 @@ export function PrefillCard({ definition, baseUrl, slug }: { definition: FormDef
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-border bg-card p-5" aria-labelledby="parametros-url">
+    <div className="space-y-3">
       <div>
-        <h2 id="parametros-url" className="text-sm font-semibold">
-          Parámetros de la URL
-        </h2>
-        <p className="mt-1 text-xs text-muted-foreground">Podés mandar un link que ya traiga datos escritos. Estos son los parámetros que acepta este formulario.</p>
+        <h3 className="text-xs font-semibold">Link con datos ya cargados</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">Mandá un link que ya traiga datos escritos. Cada pregunta define su parámetro en su panel, en “Llenar desde la URL”.</p>
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Ningún campo se puede prellenar desde la URL. Los de consentimiento y archivos nunca se prellenan.</p>
+        <p className="text-sm text-muted-foreground">Ninguna pregunta se puede prellenar desde la URL. Las de consentimiento y archivos nunca se prellenan.</p>
       ) : (
         <>
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-left text-xs">
               <thead className="bg-muted/60 text-muted-foreground">
                 <tr>
-                  <th scope="col" className="px-3 py-2 font-medium">Campo</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Pregunta</th>
                   <th scope="col" className="px-3 py-2 font-medium">Parámetro</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Ejemplo de link</th>
-                  <th scope="col" className="px-3 py-2 font-medium">Comportamiento</th>
                   <th scope="col" className="px-3 py-2 font-medium">Valor para el link</th>
                 </tr>
               </thead>
@@ -68,10 +58,6 @@ export function PrefillCard({ definition, baseUrl, slug }: { definition: FormDef
                   <tr key={row.key} className="border-t border-border">
                     <td className="px-3 py-2">{row.label}</td>
                     <td className="px-3 py-2 font-mono font-semibold">{row.accepts.join(" · ")}</td>
-                    <td className="px-3 py-2">
-                      <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">{buildPrefillLink(baseUrl, { [row.param]: row.example })}</code>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{row.note}</td>
                     <td className="px-3 py-2">
                       <input
                         aria-label={`Valor de ${row.label} para el link`}
@@ -111,18 +97,6 @@ export function PrefillCard({ definition, baseUrl, slug }: { definition: FormDef
           </div>
         </>
       )}
-
-      <details className="rounded-lg border border-border p-3 text-xs">
-        <summary className="cursor-pointer font-medium">Lo que se registra solo (no tenés que hacer nada)</summary>
-        <ul className="mt-2 space-y-1.5 text-muted-foreground">
-          {AUTO_ATTRIBUTION_GROUPS.map((group) => (
-            <li key={group.title}>
-              <span className="font-medium text-foreground">{group.title}: </span>
-              <span className="font-mono">{group.keys.join(", ")}</span>
-            </li>
-          ))}
-        </ul>
-      </details>
-    </section>
+    </div>
   );
 }

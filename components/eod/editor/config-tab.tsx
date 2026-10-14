@@ -61,7 +61,7 @@ export function EodConfigTab({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-[900px] space-y-4">
       <Section title="El rol" description={draft.variant === "setter" ? "Reporte de setters: con canales." : "Reporte general: solo preguntas, sin canales."}>
         <Field label="Cómo se llama el rol en pantalla" hint="La variante (con o sin canales) se elige al crear y no cambia.">
           {(id) => <input id={id} className={inputClass} disabled={disabled} maxLength={MAX_ROLE_LABEL} value={draft.roleLabel} onChange={(e) => setDraft({ ...draft, roleLabel: e.target.value })} />}

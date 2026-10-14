@@ -76,3 +76,12 @@ export function attributionSections(attribution: Record<string, unknown> | null 
   }
   return sections.filter((s) => s.items.length > 0);
 }
+
+/**
+ * La URL de entrada completa de la respuesta (plano formularios-ui, F19), o null. Va APARTE de las secciones:
+ * no reemplaza nada de lo que ya se muestra (UTM, anuncio, navegador, de donde vino).
+ */
+export function entryUrlOf(attribution: Record<string, unknown> | null | undefined): string | null {
+  const value = attribution?.entry_url;
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}

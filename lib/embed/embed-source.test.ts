@@ -348,6 +348,32 @@ describe("seguimiento de la atribución en la web que contiene el script (F29)",
     expect(attr).toMatchObject({ utm_source: "meta", utm_campaign: "octubre", first_visit: { utm_campaign: "octubre" } });
   });
 
+  // Plano formularios-ui (F17-F18): la URL de entrada completa de la pagina madre viaja ENTERA dentro de `attr`.
+  it("el iframe de un formulario recibe attr con la URL de entrada completa de la web (con ad_name y un ?ref= propio, sin el token)", () => {
+    const search = "?utm_source=meta&utm_campaign=octubre&ad_name=Video+Noe&campaign_name=Programa+X&ref=podcast&token=SECRETO";
+    const env = makeEnv(search);
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion" }]]);
+    const attr = decodeAttr(new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.get("attr"));
+    const entry = String(attr?.entry_url);
+    expect(entry).toContain("ad_name=Video+Noe");
+    expect(entry).toContain("campaign_name=Programa+X");
+    expect(entry).toContain("ref=podcast");
+    expect(entry).not.toContain("SECRETO");
+    expect(entry).not.toContain("#");
+    // landing_page sigue filtrada: solo las claves de toque
+    expect(String(attr?.landing_page)).not.toContain("ad_name");
+  });
+
+  it("una URL de entrada de 2000 caracteres viaja entera en attr (el tope es de 4 KB) y conserva las UTM", () => {
+    const env = makeEnv(`?utm_source=meta&utm_campaign=octubre&relleno=${"z".repeat(1900)}`);
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion" }]]);
+    const attr = decodeAttr(new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.get("attr"));
+    expect(attr).toMatchObject({ utm_source: "meta", utm_campaign: "octubre" });
+    expect(String(attr?.entry_url).length).toBeGreaterThan(1900);
+  });
+
   it("con UTM nuevos en la URL, esos mandan y la primera visita viaja aparte", () => {
     const env = makeEnv("?gclid=g2");
     const storage = memoryStorage();

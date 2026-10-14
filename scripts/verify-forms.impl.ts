@@ -264,7 +264,10 @@ try {
     // contacto (usa `find_or_create_contact`; sin email ni telefono se rechaza con CB001). La huella anterior era
     // 57b486fed13f20a0db3af410d1aa91ac (la definicion completa esta en la cabecera de la 00203).
     create_booking: "dc462c28e99c353bbc9ca26198eddd64",
-    record_contact_touch: "f364db1862cc0f90291ca14ef855a214",
+    // Plano formularios-ui F18: la 00215 reescribe `record_contact_touch` SOLO para escribir `entry_url` (suma la columna y
+    // su valor; misma firma y mismo comportamiento). La huella vieja era f364db1862cc0f90291ca14ef855a214 (la definicion
+    // completa esta en la cabecera de la 00215 y `lib/contacts/record-touch-00215-diff.test.ts` fija el diff).
+    record_contact_touch: "2f51ddbf060e31528b89ce7481b38e3d",
   };
   for (const [name, hash] of Object.entries(expected)) {
     const row = fingerprints.find((r) => r.proname === name);
@@ -1298,6 +1301,37 @@ try {
   check(adTouch?.referrer_url === "https://www.google.com/" && String(adTouch?.landing_page).includes("fbclid=abc"), "el referrer y la pagina de llegada van a sus columnas");
   check(!JSON.stringify(adRaw).includes("foo"), "raw sigue siendo una lista blanca");
   check((adRow.attribution as Record<string, string>).msclkid === "m1" && (adRow.attribution as Record<string, string>).gbraid === "gb1", "la respuesta guarda todos los datos del anuncio");
+
+  // F17-F19 (plano formularios-ui): la URL de entrada completa llega ENTERA, con todos sus parametros
+  // (tambien los que landing_page filtra) y sin los sensibles, a la respuesta y al toque del contacto.
+  const entryRaw =
+    "https://app.ejemplo.test/programa-x?utm_source=facebook&utm_medium=paid&utm_campaign=Programa+X&ad_id=77&ad_name=Video+Noe&adset_name=Lookalike+1%25+compradores&campaign_name=Programa+X&site_source_name=ig&ref=podcast&fbclid=abc&token=SECRETO-NO-GUARDAR#seccion";
+  const entryExpected =
+    "https://app.ejemplo.test/programa-x?utm_source=facebook&utm_medium=paid&utm_campaign=Programa+X&ad_id=77&ad_name=Video+Noe&adset_name=Lookalike+1%25+compradores&campaign_name=Programa+X&site_source_name=ig&ref=podcast&fbclid=abc";
+  const entryAttribution = attributionFromParams(new globalThis.URL(entryRaw).searchParams, { landing: entryRaw, pageUrl: "https://app.ejemplo.test/f/x", referrer: "https://l.facebook.com/" });
+  check(entryAttribution.entry_url === entryExpected, "el navegador arma entry_url con todos los parametros y sin el token ni el fragmento");
+  // El servidor no confia en el navegador: aunque mande el token, se vuelve a sanear.
+  const entrySend = await send({ nombre: "Con URL Entrada", email: "entrada.zz@example.test" }, { origin: "site", site_path: "/", attribution: { ...entryAttribution, entry_url: entryRaw } });
+  check(entrySend.status === 200, "un envio con la URL de entrada de Meta responde 200", JSON.stringify(entrySend.body));
+  const entryRow = await rowOf(entrySend.body.submission_id);
+  const entryStored = (entryRow.attribution as Record<string, unknown>).entry_url;
+  check(entryStored === entryExpected, "form_submissions.attribution.entry_url esta entera, sin token ni fragmento", String(entryStored));
+  check(!JSON.stringify(entryRow.attribution).includes("SECRETO-NO-GUARDAR"), "el token no se guarda en ninguna parte de la respuesta");
+  check(!String((entryRow.attribution as Record<string, unknown>).landing_page).includes("ad_name"), "landing_page sigue filtrada (solo claves de toque): no lleva ad_name");
+  const { data: entryTouch } = await svc.from("contact_touches").select("entry_url, landing_page, origin").eq("contact_id", String(entryRow.contact_id)).single();
+  check(entryTouch?.entry_url === entryExpected, "contact_touches.entry_url esta entera, sin los parametros sensibles", String(entryTouch?.entry_url));
+  check(!String(entryTouch?.landing_page).includes("ad_name") && entryTouch?.origin === "form", "y landing_page del toque sigue siendo la filtrada");
+  // Una URL enorme no tumba el toque: se recorta a 2000 y el toque queda registrado.
+  const hugeEntry = `https://app.ejemplo.test/p?utm_source=facebook&relleno=${"z".repeat(2500)}`;
+  const hugeSend = await send({ nombre: "URL Enorme", email: "enorme.zz@example.test" }, { origin: "site", site_path: "/", attribution: { utm_source: "facebook", entry_url: hugeEntry } });
+  const hugeRow = await rowOf(hugeSend.body.submission_id);
+  const { data: hugeTouch } = await svc.from("contact_touches").select("entry_url, source").eq("contact_id", String(hugeRow.contact_id)).single();
+  check(hugeTouch?.source === "facebook" && typeof hugeTouch?.entry_url === "string" && hugeTouch.entry_url.length <= 2000 && hugeTouch.entry_url.length > 1500, "una URL de entrada enorme se recorta a 2000 y el toque se registra igual");
+  // Sin URL de entrada (un envio de antes) el toque queda con NULL.
+  const noEntrySend = await send({ nombre: "Sin URL", email: "sinurl.zz@example.test" }, { origin: "site", site_path: "/", attribution: { utm_source: "facebook" } });
+  const noEntryRow = await rowOf(noEntrySend.body.submission_id);
+  const { data: noEntryTouch } = await svc.from("contact_touches").select("entry_url").eq("contact_id", String(noEntryRow.contact_id)).single();
+  check(noEntryTouch?.entry_url === null, "sin entry_url el toque queda con NULL (no hay backfill ni valor inventado)");
 
   // La vista y el inicio llevan el origen.
   const siteBeaconPorts = createBeaconPorts(svc);

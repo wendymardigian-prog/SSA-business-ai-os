@@ -83,7 +83,15 @@ describe("currentVisit y el referrer", () => {
     const visit = currentVisit(memoryEnv({ href: "https://miweb.com/promo?utm_source=meta&email=ana@x.com", search: "?utm_source=meta&email=ana@x.com" }));
     expect(visit).toMatchObject({ utm_source: "meta", fbp: "fb.1.2.3", referrer_url: "https://google.com/" });
     expect(visit.page_url).toBe("https://miweb.com/promo");
-    expect(JSON.stringify(visit)).not.toContain("ana@x.com");
+    // `page_url` y `landing_page` siguen filtradas: la query de la persona no entra en ninguna de las dos.
+    expect(visit.page_url).not.toContain("ana@x.com");
+    expect(visit.landing_page).not.toContain("ana@x.com");
+    // Plano formularios-ui (D13, F17): la URL de entrada es un dato APARTE y conserva TODOS los parametros
+    // (salvo los sensibles e internos), incluido el de la persona. Antes del plano este test pedia que el
+    // JSON entero no la tuviera; ahora solo `entry_url` la guarda.
+    expect(visit.entry_url).toBe("https://miweb.com/promo?utm_source=meta&email=ana@x.com");
+    const { entry_url: _entry, ...rest } = visit;
+    expect(JSON.stringify(rest)).not.toContain("ana@x.com");
   });
 });
 

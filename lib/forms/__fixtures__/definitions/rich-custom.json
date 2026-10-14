@@ -1,0 +1,39 @@
+{
+  "name": "Aplicación al Programa X",
+  "type": "custom",
+  "definition": {
+    "fields": [
+      { "id": "f_nombre01", "key": "nombre", "type": "short_text", "label": "Nombre completo", "required": true, "placeholder": "Cómo te llamás", "prefill": { "params": ["nombre", "name"], "behavior": "editable" } },
+      { "id": "f_email001", "key": "email", "type": "email", "label": "Email", "required": true, "prefill": { "params": ["email", "mail"], "behavior": "editable" } },
+      { "id": "f_phone001", "key": "whatsapp", "type": "phone", "label": "WhatsApp", "required": true, "help": "Con código de país." },
+      { "id": "f_social01", "key": "instagram", "type": "social", "label": "Usuario de Instagram", "required": false, "social": { "platform": "instagram" } },
+      { "id": "f_negocio1", "key": "negocio", "type": "single_select", "label": "¿Qué negocio tenés?", "required": true, "options": ["Agencia", "Consultora", "Estudio", "Otro"] },
+      { "id": "f_cual0001", "key": "cual", "type": "short_text", "label": "¿Cuál?", "required": false,
+        "visibility": { "rootConjunction": "and", "conditions": [{ "fieldKey": "negocio", "operator": "is", "value": "Otro" }], "groups": [] } },
+      { "id": "f_intereses", "key": "intereses", "type": "multi_select", "label": "¿Qué te interesa?", "required": false, "options": ["Ventas", "Contenido", "Automatizaciones"] },
+      { "id": "f_factura1", "key": "facturacion", "type": "number", "label": "Facturación mensual (USD)", "required": false, "min": 0, "max": 1000000 },
+      { "id": "f_fecha001", "key": "fecha", "type": "date", "label": "¿Cuándo querés arrancar?", "required": false },
+      { "id": "f_objetivo", "key": "objetivo", "type": "long_text", "label": "¿Qué querés resolver en los próximos 90 días?", "required": false,
+        "visibility": { "rootConjunction": "or", "conditions": [], "groups": [{ "conjunction": "and", "conditions": [{ "fieldKey": "negocio", "operator": "is_not", "value": "Estudio" }, { "fieldKey": "facturacion", "operator": "gte", "value": "1000" }] }] } },
+      { "id": "f_rating01", "key": "valoracion", "type": "rating", "label": "¿Cómo nos encontraste?", "required": false, "min": 1, "max": 5 },
+      { "id": "f_nps00001", "key": "nps", "type": "nps", "label": "¿Nos recomendarías?", "required": false, "min": 0, "max": 10 },
+      { "id": "f_archivo1", "key": "adjunto", "type": "file", "label": "Adjuntá tu presentación", "required": false, "file": { "accept": ["application/pdf"], "maxMb": 10, "maxFiles": 1 } },
+      { "id": "f_consent1", "key": "consentimiento", "type": "consent", "label": "Consentimiento", "required": true, "consentText": "Acepto que me contacten por WhatsApp y email" },
+      { "id": "f_hidden01", "key": "ref", "type": "hidden", "label": "ref", "required": false, "hidden": { "source": "url_param", "param": "ref" } },
+      { "id": "f_hidden02", "key": "origen", "type": "hidden", "label": "origen", "required": false, "hidden": { "source": "fixed", "value": "landing-programa-x" } },
+      { "id": "f_hidden03", "key": "utm_origen", "type": "hidden", "label": "utm_origen", "required": false, "hidden": { "source": "attribution", "param": "utm_source" } }
+    ]
+  },
+  "design": { "title": "Aplicá al Programa X", "intro": "Contanos de tu negocio. Lo leemos en persona y te escribimos por WhatsApp en menos de 24 horas.", "showLogo": true, "submitLabel": "Enviar mi aplicación" },
+  "success": { "mode": "message", "title": "¡Listo!", "body": "Recibimos tu aplicación, {{answer.nombre}}." },
+  "contactConfig": {
+    "mode": "create_or_link",
+    "update": "fill_empty",
+    "map": [
+      { "fieldKey": "nombre", "target": "contact.display_name" },
+      { "fieldKey": "email", "target": "contact.email" },
+      { "fieldKey": "whatsapp", "target": "contact.phone" },
+      { "fieldKey": "instagram", "target": "contact.instagram_username" }
+    ]
+  }
+}

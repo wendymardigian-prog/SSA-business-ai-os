@@ -62,7 +62,7 @@ export function ContractEditor({
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-[900px] space-y-4">
       {!hasSignerEmail && <Notice tone="warning">El contrato necesita un campo de email obligatorio: ahí se manda la copia firmada. Sumalo en la pestaña Campos.</Notice>}
 
       <Section title="El texto del contrato" description="Se puede usar # y ## para títulos, **negrita**, *cursiva* y listas. No hay HTML, links ni imágenes. Al publicar, el texto queda congelado con su huella: una firma siempre se refiere al texto exacto que se firmó.">

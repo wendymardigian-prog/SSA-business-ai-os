@@ -1,7 +1,8 @@
 /**
  * El parámetro `attr` del embed (F10): la atribución y las cookies de la web
  * que embebe el formulario, en un solo parámetro (JSON en base64url, hasta
- * 2 KB). El iframe no ve las cookies de la web que lo contiene, así que el
+ * 4 KB: 2 KB hasta el plano formularios-ui; la URL de entrada completa, que puede
+ * pesar 2000 caracteres, tiene que entrar entera). El iframe no ve las cookies de la web que lo contiene, así que el
  * script del embed las lee allá y se las pasa por acá.
  *
  * El servidor NO confía en lo que trae: lo vuelve a sanear con
@@ -9,7 +10,7 @@
  * en el navegador y en Node 16+), porque también lo importa el embed.
  */
 
-export const ATTR_MAX_BYTES = 2048;
+export const ATTR_MAX_BYTES = 4096;
 
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";

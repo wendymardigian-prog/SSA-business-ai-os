@@ -61,7 +61,7 @@ export function EodFlowEditor({
       routeForHeader={`/dashboard/formularios/${formId}/automatizaciones/${flowId}`}
       backHref={
         <Link
-          href={`/dashboard/formularios/${formId}`}
+          href={`/dashboard/formularios/${formId}?tab=flows`}
           aria-label={`Volver a ${formName}`}
           className="-ml-1 flex items-center gap-1 rounded-lg p-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
         >

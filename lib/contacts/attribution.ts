@@ -96,6 +96,8 @@ export interface AttributionTouch {
   ctwa_clid?: string;
   referrer_url?: string;
   landing_page?: string;
+  /** La URL de entrada completa (00215). La copia derivada no la trae: viene de la fila de `contact_touches`. */
+  entry_url?: string;
   origin?: string;
   /** Lo que el catalogo de Meta dice de este toque (los ids son los de Meta). */
   meta_campaign_id?: string;

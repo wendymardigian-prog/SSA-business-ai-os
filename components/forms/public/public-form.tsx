@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { attributionFromParams, parseCookieHeader, sanitizeAttribution } from "@/lib/attribution/collect";
-import { effectiveAttribution } from "@/lib/attribution/merge";
+import { effectiveAttribution, preferEmbeddedEntryUrl } from "@/lib/attribution/merge";
 import { cookieEnv, storedFromEffective } from "@/lib/attribution/browser";
 import { parseStored } from "@/lib/attribution/store";
 import { decodeAttr } from "@/lib/forms/embed-attr";
 import { hiddenValues, prefillFromParams } from "@/lib/forms/prefill";
+import { answerToText } from "@/lib/forms/responses";
 import { validateSubmission } from "@/lib/forms/submission-schema";
 import { visibleFieldKeys } from "@/lib/forms/visibility";
 import {
@@ -54,6 +55,12 @@ export interface PublicFormProps {
   explicitPrefill?: Record<string, string | number>;
   /** Vista previa del editor: se ve igual pero no envía. */
   preview?: boolean;
+  /**
+   * Solo con `preview`: al "enviar" valida igual que un envío de verdad y, en vez de mandar nada, muestra la
+   * pantalla final que devuelve esta función (plano formularios-ui, F8). Sin ella la vista previa se ve igual pero
+   * el boton no hace nada, como siempre.
+   */
+  onPreviewSubmit?: (answers: Record<string, string>) => RenderedSuccess;
   /** Solo en modo `site`: la ruta de la página. */
   sitePath?: string;
   /** Link firmado por contacto (`?c=`), ya verificado o no: el servidor lo vuelve a verificar. */
@@ -96,7 +103,7 @@ function sendBeacon(slug: string, kind: "view" | "start", sid: string, origin: F
   }
 }
 
-export function PublicForm({ form, params, mode, explicitPrefill, preview = false, sitePath, linkToken, className }: PublicFormProps) {
+export function PublicForm({ form, params, mode, explicitPrefill, preview = false, onPreviewSubmit, sitePath, linkToken, className }: PublicFormProps) {
   const fields = useMemo(() => toFormFields(form.fields), [form.fields]);
   const prefill = useMemo(() => prefillFromParams(fields, params, { explicit: explicitPrefill }), [fields, params, explicitPrefill]);
 
@@ -187,7 +194,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
       });
       if (mode === "embed") {
         const fromEmbed = sanitizeAttribution(decodeAttr(params.attr));
-        return effectiveAttribution(current, storedFromEffective(fromEmbed));
+        return preferEmbeddedEntryUrl(effectiveAttribution(current, storedFromEffective(fromEmbed)), fromEmbed);
       }
       // Las páginas propias: la cookie `ssa_attr`; la URL actual manda si trae un toque nuevo.
       return effectiveAttribution(current, parseStored(cookieEnv(document, window.location).readStored()));
@@ -198,7 +205,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (submitting || preview) return;
+    if (submitting || (preview && !onPreviewSubmit)) return;
     setGlobalError(null);
 
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -221,6 +228,13 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
     }
     if (isContract && !contractReady) {
       setGlobalError(!accepted ? "Tenés que aceptar el contrato para poder firmarlo." : "Falta tu firma. Dibujala en el recuadro.");
+      return;
+    }
+    if (preview && onPreviewSubmit) {
+      // Vista previa: no se manda nada. Se muestra la pantalla final con lo que se respondio en la prueba.
+      const texts: Record<string, string> = {};
+      for (const [key, value] of Object.entries(answersForSubmit(fields, answers))) texts[key] = answerToText(value);
+      setDone(onPreviewSubmit(texts));
       return;
     }
     setSubmitting(true);
@@ -318,6 +332,13 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
             <ExternalLink className="h-4 w-4" aria-hidden="true" />
           </a>
         )}
+        {preview && (
+          <div>
+            <button type="button" onClick={() => setDone(null)} className="text-sm font-medium text-primary hover:underline">
+              Volver al formulario
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -333,7 +354,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
         </header>
       )}
 
-      {preview && (
+      {preview && !onPreviewSubmit && (
         <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
           Vista previa: así lo ve quien responde. Acá no se envía nada.
         </p>
@@ -395,7 +416,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
 
       <button
         type="submit"
-        disabled={submitting || preview || (isContract && !contractReady)}
+        disabled={submitting || (preview && !onPreviewSubmit) || (isContract && !contractReady)}
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
       >
         {submitting ? (

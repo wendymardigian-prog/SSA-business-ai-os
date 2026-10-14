@@ -10,6 +10,7 @@
 import { normalizeHexColor, UTM_KEYS, CLICK_ID_KEYS, type BookerTheme, BOOKER_THEMES } from "@/lib/scheduling/booker/embed-params";
 import { IDENTIFIER_RE } from "@/lib/scheduling/identifier";
 import { TOUCH_KEYS, canonicalKey } from "@/lib/attribution/keys";
+import { isSensitiveParamName } from "@/lib/attribution/sensitive-params";
 
 export const CAL_LINK_RE = /^[a-z0-9-]+\/[a-z0-9-]+$/;
 
@@ -70,11 +71,8 @@ export function parentAttributionFromSearch(search: string): ParentAttribution {
 const HOST_PARAM_NAME_RE = /^[a-zA-Z0-9_.-]{1,40}$/;
 const MAX_HOST_PARAMS = 30;
 const MAX_HOST_VALUE = 500;
-/** Nombres que nunca se reenvian: parecen credenciales o sesiones. */
-const SENSITIVE_PARAM_NAMES = new Set([
-  "token", "password", "pass", "passwd", "secret", "key", "code", "auth", "session", "sessionid",
-  "access_token", "id_token", "refresh_token", "api_key", "apikey",
-]);
+// Los nombres que nunca se reenvian (credenciales, sesiones) viven en `lib/attribution/sensitive-params.ts`:
+// los comparte la URL de entrada (plano formularios-ui, F17), una sola copia.
 /** Nombres con significado propio en la URL del iframe. */
 const RESERVED_PARAM_NAMES = new Set(["embed", "referrer", "attr", "preview", "c", "website"]);
 
@@ -91,7 +89,7 @@ export function filterHostParams(params: Record<string, string | undefined | nul
     if (typeof raw !== "string" || raw === "") continue;
     if (!HOST_PARAM_NAME_RE.test(name) || name.startsWith("_")) continue;
     const lower = name.toLowerCase();
-    if (SENSITIVE_PARAM_NAMES.has(lower) || RESERVED_PARAM_NAMES.has(lower) || canonicalKey(name)) continue;
+    if (isSensitiveParamName(name) || RESERVED_PARAM_NAMES.has(lower) || canonicalKey(name)) continue;
     out[name] = raw.slice(0, MAX_HOST_VALUE);
   }
   return out;

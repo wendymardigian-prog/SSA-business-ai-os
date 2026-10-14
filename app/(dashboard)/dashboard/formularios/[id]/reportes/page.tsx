@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
-import { PageHeader } from "@/components/page-header";
-import { BackLink } from "@/components/forms/back-link";
+import { EditorBar } from "@/components/forms/editor/editor-bar";
+import { loadEditorBar } from "@/lib/forms/editor-bar-load";
 import { ReportsView } from "@/components/eod/reports/reports-view";
 import { loadReportsPage } from "@/lib/eod/reports-load";
 
@@ -17,12 +17,12 @@ export default async function EodReportesPage({ params, searchParams }: { params
   const ctx = await requirePermission("forms.view");
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!UUID.test(id)) notFound();
-  const data = await loadReportsPage(ctx, id, sp);
+  const [data, barData] = await Promise.all([loadReportsPage(ctx, id, sp), loadEditorBar(ctx.supabase, ctx.workspace.id, id)]);
   if (!data) notFound();
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader title={`Reportes · ${data.form.name}`} route="/dashboard/formularios/[id]/reportes" backHref={<BackLink href={`/dashboard/formularios/${id}`} label="Volver al reporte" />} />
+      {barData && <EditorBar form={barData.form} route="reportes" canManage={ctx.can("forms.manage")} />}
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         {!data.canViewAll && <p className="mb-4 text-xs text-muted-foreground">Ves tus propios reportes. Los de todo el equipo los ven Owner, Admin y quien tiene el permiso de verlos.</p>}
         <ReportsView data={data} />

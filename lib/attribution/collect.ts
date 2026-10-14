@@ -7,6 +7,7 @@
  * 200 caracteres y se limpia de caracteres de control.
  */
 import { ATTRIBUTION_KEYS, COOKIE_KEYS, MAX_VALUE_LENGTH, TOUCH_KEYS, canonicalKey } from "./keys";
+import { ENTRY_URL_KEY, entryUrlFrom } from "./entry-url";
 import type { Attribution } from "./types";
 
 type ParamsInput = Record<string, string | string[] | undefined | null> | URLSearchParams;
@@ -138,6 +139,9 @@ export function attributionFromParams(params: ParamsInput, options: CollectOptio
   if (landing) out.landing_page = landing;
   const pageUrl = pageUrlFromUrl(options.pageUrl);
   if (pageUrl) out.page_url = pageUrl;
+  // La URL de entrada completa (plano formularios-ui, F17): un dato APARTE de `landing_page`, que sigue filtrada.
+  const entry = entryUrlFrom(options.landing);
+  if (entry) out[ENTRY_URL_KEY] = entry;
 
   return out;
 }
@@ -170,6 +174,9 @@ export function sanitizeAttribution(raw: unknown): Attribution & { first_visit?:
   if (landing) out.landing_page = landing;
   const pageUrl = pageUrlFromUrl(source.page_url);
   if (pageUrl) out.page_url = pageUrl;
+  // Se vuelve a sanear aca: el servidor no confia en la URL que manda el navegador.
+  const entry = entryUrlFrom(source[ENTRY_URL_KEY]);
+  if (entry) out[ENTRY_URL_KEY] = entry;
 
   const first = source.first_visit;
   if (first && typeof first === "object" && !Array.isArray(first)) {
@@ -183,6 +190,8 @@ export function sanitizeAttribution(raw: unknown): Attribution & { first_visit?:
     if (fReferrer) visit.referrer_url = fReferrer;
     const fLanding = landingFromUrl(f.landing_page);
     if (fLanding) visit.landing_page = fLanding;
+    const fEntry = entryUrlFrom(f[ENTRY_URL_KEY]);
+    if (fEntry) visit[ENTRY_URL_KEY] = fEntry;
     if (typeof f.ts === "number" && Number.isFinite(f.ts)) visit.ts = f.ts;
     if (Object.keys(visit).length > 0) out.first_visit = visit;
   }

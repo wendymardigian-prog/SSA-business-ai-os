@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronLeft, FileText, Loader2, ShieldAlert } from "lucide-react";
+import { ChevronLeft, FileText, Loader2, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { BackLink } from "@/components/forms/back-link";
 import { Historial } from "@/components/historial/historial";
@@ -15,7 +15,8 @@ import { setSubmissionSpam } from "@/lib/actions/forms/forms";
 import { answerToText, orderedAnswers, statusLabel, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
 import { filesOfAnswers } from "@/lib/forms/files";
 import { formatInZone } from "@/lib/forms/responses-query";
-import { attributionSections } from "@/lib/forms/attribution-view";
+import { attributionSections, entryUrlOf } from "@/lib/forms/attribution-view";
+import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { matchedByText, type ConflictView } from "@/lib/forms/contact-outcome";
 
 export interface SubmissionView {
@@ -74,6 +75,7 @@ export function SubmissionDetail({
   const files = filesOfAnswers(submission.answers);
   const fileKeys = new Set(files.map((f) => f.path));
   const sections = attributionSections(submission.attribution);
+  const entryUrl = entryUrlOf(submission.attribution);
 
   function openFile(path: string) {
     setMessage(null);
@@ -228,12 +230,13 @@ export function SubmissionDetail({
             )}
           </section>
 
-          <details className="rounded-xl border border-border bg-card p-5">
-            <summary className="flex cursor-pointer items-center justify-between text-sm font-semibold">
-              Atribución de la visita
-              <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden />
-            </summary>
-            {sections.length === 0 ? (
+          {/* Plano formularios-ui, diferencia 13: siempre abierta, como el prototipo. */}
+          <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="de-donde-vino">
+            <h2 id="de-donde-vino" className="text-sm font-semibold">
+              De dónde vino
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">La atribución de la visita: se guarda sola en cada respuesta.</p>
+            {sections.length === 0 && !entryUrl ? (
               <p className="mt-3 text-sm text-muted-foreground">Esta visita llegó sin datos de campaña.</p>
             ) : (
               <div className="mt-3 space-y-4">
@@ -252,9 +255,10 @@ export function SubmissionDetail({
                     </dl>
                   </div>
                 ))}
+                {entryUrl && <EntryUrlBlock url={entryUrl} />}
               </div>
             )}
-          </details>
+          </section>
 
           {showHistory && (
             <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="historial-titulo">
