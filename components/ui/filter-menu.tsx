@@ -208,6 +208,7 @@ export function MenuOption({
   title,
   description,
   disabled,
+  trailing,
 }: {
   checked: boolean;
   onSelect: () => void;
@@ -215,6 +216,8 @@ export function MenuOption({
   title: string;
   description?: string | null;
   disabled?: boolean;
+  /** Un dato chico a la derecha (por ejemplo, cuantos hay): se esconde cuando la opcion esta elegida y entra el tilde. */
+  trailing?: ReactNode;
 }) {
   const close = useContext(CloseContext);
   return (
@@ -235,6 +238,7 @@ export function MenuOption({
         <span className="block text-sm font-medium">{title}</span>
         {description && <span className="block text-xs text-muted-foreground">{description}</span>}
       </span>
+      {trailing !== undefined && !checked && <span className="text-xs tabular-nums text-muted-foreground">{trailing}</span>}
       {checked && <span className="text-primary" aria-hidden>✓</span>}
     </button>
   );

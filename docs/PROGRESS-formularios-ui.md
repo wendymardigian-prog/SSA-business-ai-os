@@ -27,8 +27,8 @@ Plano: `claude/v12/requerimientos-formularios-ui-menu.md` (v1.0, 13/10/2026). Ra
 - [ ] F19 · Dónde se ve (detalle de respuesta y visitas del contacto)
 
 ### B2 · Lista de formularios
-- [ ] F5 · La barra superior
-- [ ] F6 · Las tarjetas
+- [x] F5 · La barra superior
+- [x] F6 · Las tarjetas
 
 ### B3 · La barra superior del editor
 - [ ] F7 · Qué va en la barra
@@ -111,6 +111,17 @@ Se tilda a mano en el navegador al cerrar B5.
 - Menú angosto: los cuatro íconos de Herramientas visibles, sin título, con la línea separadora y el tooltip "Nombre · Herramientas".
 - Member: Ajustes lleva a `/dashboard/settings/recursos`.
 - Diferencia con el prototipo: el prototipo tiene el "Asistente" arriba y "Facturación"/"Agentes" con otros nombres; no se suman (D5). El resto coincide.
+
+### B2 · Lista de formularios (800/1000/390 px; oscuro y claro; datos de ejemplo del prototipo)
+- Barra: buscador · Estado ⌄ · Tipo ⌄ · "+ Nuevo formulario"; en el celular los tres primeros bajan a la segunda fila (el `PageHeader` ya lo hace). Los contadores de los menús van a la derecha, como en el prototipo.
+- Tarjetas: ícono de tipo con color, tipo, chip de estado con punto, "⋯", nombre, "Lo que ve el público: …", número grande + unidad + conversión/NPS/personas, barra fina, pie con preguntas, última respuesta y "Editado …". Archivadas al final y apagadas. Tarjeta punteada "+ Nuevo formulario" al final (sin filtros y con `forms.manage`).
+- Toda la tarjeta es un `<Link>` real; el "⋯" es un hermano del link (no un hijo), así que tocarlo no navega (verificado en el navegador: la URL no cambia al abrir el menú).
+- Escribir en el buscador filtra al instante, mantiene el foco (verificado tras 10 teclas), escribe `?q=` en la URL con `history.replaceState` (sin pedir la página al servidor) y recuerda lo filtrado en `sessionStorage` para el "← Volver" del editor (B3). Esc lo vacía.
+- Estados: vacío ("Todavía no hay formularios" + "Crear el primero"), sin resultados ("Ningún formulario coincide" + "Ver todos"), esqueleto de tarjetas (`loading.tsx`), y `formularios/[id]/loading.tsx` para que el editor no herede el de la lista.
+- Diferencias con el prototipo, justificadas:
+  - **La barra de cada tarjeta compara las respuestas con las del formulario que más tiene** (no la conversión escalada): el prototipo la escala con un factor arbitrario por tipo y la app no calcula nada equivalente; así no se inventa un número.
+  - **La conversión de la tarjeta es la de los últimos 366 días** (el tope de `form_metrics_daily`), no la de toda la vida; para pedirla se llama a la RPC una vez por formulario con respuestas (hasta 40, en paralelo), no una consulta única: la RPC solo acepta un formulario. Anotado en PENDIENTE.
+  - Los números del prototipo (582 respuestas, NPS +62…) son de ejemplo; los de la app salen de la base.
 
 ---
 
