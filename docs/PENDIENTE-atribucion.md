@@ -222,3 +222,46 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
   mensaje a Instagram (el primer mensaje trae `referral.ad_id`), un clic a WhatsApp, un comentario en un anuncio, una mención en historia, y el primer
   sync de Meta con el código nuevo (que llena el catálogo, las miniaturas y el estado de las campañas). Antes de eso, el catálogo de producción está vacío.
 - **Al desplegar**: el código nuevo ya necesita las migraciones 00186–00195, que **ya están aplicadas** en la base. No hay variables de entorno nuevas.
+
+## Correcciones del Tirón 2 (14/10/2026): bloques B y E
+
+### B4 — costo de contar personas distintas (medido, decidido)
+
+Se midió con `EXPLAIN ANALYZE` sobre los 10.000 toques sintéticos de `verify-ads-attribution.mjs` (20 anuncios, 200 contactos,
+90 días), mediana de 3 corridas de cada función: `ads_crm_metrics` **31 ms** contra `ads_crm_metrics_v2` **50 ms** (de más:
+~19 ms, ×1,6; en otras corridas de 11 a 23 ms, ×1,3 a ×1,7). Ni pasa los 300 ms de más ni duplica el costo, así que **se queda con
+`count(DISTINCT)` en la misma consulta** (la alternativa de la suma simple con tooltip no hizo falta). Con los datos reales de hoy
+(toques vinculados: 0) la medición no dice nada; se repite cuando haya volumen.
+
+- **Detalle que apareció al probar:** la lista de la fila Total de «Leads totales» repetía a quien tocó dos anuncios (3 filas contra
+  el número 2). Se corrigió en `ads_crm_cell_detail` (una fila por persona solo en el Total de esa métrica; la 00219 se volvió a
+  aplicar, es idempotente, y se actualizó su texto en `schema_migrations`). Ahora el test compara la lista con el número en las 40
+  celdas (4 métricas × 3 niveles × cada objeto y el total).
+- **La medición vieja de `verify-ads-attribution` era inestable** (la misma consulta daba 153 ms o 345–361 ms): los 10.000 toques
+  recién cargados no tienen estadísticas del planificador hasta que pasa el autoanálisis de Postgres. Ahora el script corre
+  `ANALYZE` sobre `contact_touches` y `contacts` antes de medir (en producción esas tablas ya están analizadas). El umbral de
+  300 ms **no se tocó**; con las estadísticas da 132 ms.
+
+### Catálogo vacío (E1) — qué pasó y qué falta
+
+- La causa fue que el código del catálogo nunca llegó a correr (la corrida de las 3 a. m. del 13/10 fue con el código viejo y la del
+  14/10 cayó en el incidente de Supabase). Arreglado: el cron se pone al día si pasaron más de 26 h, un lote que no se guarda deja el
+  catálogo incompleto y sin token se anota.
+- **Falta (lo hace Wendy o se hace con su OK):** apretar «Sincronizar ahora» en la cuenta para llenar el catálogo hoy mismo; después,
+  `rematch_meta_touches` vincula los toques que ya existían.
+
+### Leads de Meta inflados (00220) — **sin aplicar a propósito**
+
+- El código ya cuenta el evento canónico (`lead`, si no `onsite_conversion.lead_grouped`, si no `offsite_conversion.fb_pixel_lead`; compras:
+  `omni_purchase`, si no `purchase`), con los mismos casos que la regla SQL (`lib/meta/action-counts.cases.json`).
+- La **00220 recalcula el historial** desde `actions` y se aplica **DESPUÉS de desplegar este código**: si se aplicara antes, el próximo
+  sync con el código viejo volvería a escribir los días recientes inflados. Antes de aplicarla: el respaldo está en
+  `docs/atribucion/respaldo-leads-meta.json` (id, `leads`, `purchases`).
+- **Cómo volver atrás:** `UPDATE` de `leads` y `purchases` en `meta_ads_insights_daily` desde ese archivo (la cabecera de la migración
+  trae la consulta).
+
+### Sugerencia (no se construyó)
+
+- Una columna «Conversaciones iniciadas» (`onsite_conversion.messaging_conversation_started_7d`): es la conversión principal de esta
+  cuenta (6.188 en 888 filas) y hoy no tiene columna.
+

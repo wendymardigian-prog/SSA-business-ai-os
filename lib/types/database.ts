@@ -5318,6 +5318,33 @@ export interface Database {
         Returns: Json;
       };
       /** La tabla Meta vs CRM: lo que paso en el CRM por campaña, conjunto o anuncio (00195). SECURITY INVOKER: la RLS de quien mira decide que cuenta. */
+      /** Las filas que forman cada numero de la tabla Meta vs CRM (00219). SECURITY INVOKER. */
+      ads_crm_items: {
+        Args: { p_level: string; p_metric: string; p_since: string; p_until: string; p_workspace_id: string; p_ad_account_id?: string | null; p_object_id?: string | null; p_object_ids?: string[] | null };
+        Returns: Array<{ obj: string; contact_id: string | null; item_id: string | null; occurred_at: string | null; origin: string | null; detail_at: string | null; amount_cents: number | null }>;
+      };
+      /** La tabla Meta vs CRM v2: lo mismo que `ads_crm_metrics` mas una fila `is_total` con personas distintas y el primer pago (00219). SECURITY INVOKER. */
+      ads_crm_metrics_v2: {
+        Args: { p_level: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null; p_object_ids?: string[] | null };
+        Returns: Array<{
+          object_id: string | null;
+          is_total: boolean;
+          leads_first: number | null;
+          leads_total: number | null;
+          leads_with_booking: number | null;
+          bookings: number | null;
+          bookings_attended: number | null;
+          sales: number | null;
+          revenue_cents: number | null;
+          cash_cents: number | null;
+          uf_cash_cents: number | null;
+        }>;
+      };
+      /** El detalle de una celda de la tabla Meta vs CRM, de a 50 (00219). SECURITY INVOKER. */
+      ads_crm_cell_detail: {
+        Args: { p_level: string; p_metric: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null; p_object_id?: string | null; p_object_ids?: string[] | null; p_limit?: number; p_offset?: number };
+        Returns: Array<{ item_id: string | null; contact_id: string | null; contact_name: string | null; occurred_at: string | null; origin: string | null; detail_at: string | null; amount_cents: number | null; total_count: number }>;
+      };
       ads_crm_metrics: {
         Args: { p_level: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null };
         Returns: Array<{

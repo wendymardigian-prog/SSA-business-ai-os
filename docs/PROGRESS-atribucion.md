@@ -121,19 +121,19 @@ esta lista marcada, commit `fix: atribucion - bloque X (nombre)` y push.
   - [x] C2 · recepción con `pg_advisory_xact_lock`; clave `(envío, flujo)` sin `reprocess_count`; casilla "Volver a correr…"; "una sola vez por contacto"
   - [x] C3 · error visible si falla guardar el contacto en el flujo; el historial del webhook se entera de lo que pasa después de un "Esperar"
   - [x] C4 · purga de las copias del payload (`flow_sessions.variables` y jobs `resume_flow`)
-- [ ] **E · Anuncios: el catálogo (E1)**
-  - [ ] Ponerse al día si se perdió la corrida de las 3 a. m.; un lote que falla deja el catálogo incompleto; sin token se anota
-  - [ ] Respaldo desde los insights cuando falta el catálogo; aviso "Ningún contacto de este período trae datos de anuncio…"
-  - [ ] Leads Meta sin duplicados (`lead` canónico) + recálculo del historial (00220, después del deploy)
-- [ ] **B · Tabla Meta vs CRM**
-  - [ ] B1 · Leads nuevos / Leads totales / CPL nuevo / CPL total, con tooltips
-  - [ ] B2 · clic en los números, panel lateral y detalle (`ads_crm_cell_detail`)
-  - [ ] B3 · fila Total sin contar dos veces (`ads_crm_metrics_v2`)
-  - [ ] B4 · medición con `EXPLAIN ANALYZE` y decisión
-- [ ] **E · Anuncios: columnas (E2–E4)**
-  - [ ] E2 · columnas nuevas (ocultas) + fila Total
-  - [ ] E3 · columnas visibles por defecto
-  - [ ] E4 · selector con buscador, subtítulos, arrastrar, migración de preferencias, CSV, celular
+- [x] **E · Anuncios: el catálogo (E1)**
+  - [x] Ponerse al día si se perdió la corrida de las 3 a. m.; un lote que falla deja el catálogo incompleto; sin token se anota
+  - [x] Respaldo desde los insights cuando falta el catálogo; aviso "Ningún contacto de este período trae datos de anuncio…"
+  - [x] Leads Meta sin duplicados (`lead` canónico) + recálculo del historial (00220, escrita y ensayada, **sin aplicar** hasta después del deploy)
+- [x] **B · Tabla Meta vs CRM**
+  - [x] B1 · Leads nuevos / Leads totales / CPL nuevo / CPL total, con tooltips
+  - [x] B2 · clic en los números, panel lateral y detalle (`ads_crm_cell_detail`)
+  - [x] B3 · fila Total sin contar dos veces (`ads_crm_metrics_v2`)
+  - [x] B4 · medición con `EXPLAIN ANALYZE` y decisión
+- [x] **E · Anuncios: columnas (E2–E4)** (el celular y el tema claro/oscuro quedan para la revisión visual del cierre)
+  - [x] E2 · columnas nuevas (ocultas) + fila Total
+  - [x] E3 · columnas visibles por defecto
+  - [x] E4 · selector con buscador, subtítulos, arrastrar, migración de preferencias, CSV, celular
 - [ ] **A · Anuncios y contenido**
   - [ ] A1 · recuperar el anuncio desde la conversación de Zernio (solo Instagram)
   - [ ] A2 · vínculo manual anuncio ↔ pieza en menús "⋯", sección "Publicidad", indicador y filtro "Pautadas"

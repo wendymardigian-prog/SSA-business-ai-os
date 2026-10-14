@@ -21,6 +21,7 @@ import { AdsAiPanel } from "./ads-ai-panel";
 import type { PeriodPreset } from "@/lib/dashboards/period";
 import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 import { computeTotals, type AdsRow } from "@/lib/dashboards/ads";
+import { crmLeadsSummary } from "@/lib/dashboards/ads-crm";
 
 /**
  * El dashboard de Meta Ads: la réplica de un panel de Ads de referencia.
@@ -112,7 +113,11 @@ export function AdsDashboard(props: AdsDashboardProps) {
     );
   }
 
-  const kpis = buildKpiItems({ totals, previous: previousTotals, currency: props.currency });
+  const crmLeads =
+    props.crm && !props.crm.error
+      ? crmLeadsSummary({ metrics: props.crm.metrics.campaign, distinct: props.crm.distinct.campaign, spend: totals.spend })
+      : null;
+  const kpis = buildKpiItems({ totals, previous: previousTotals, currency: props.currency, crmLeads });
 
   return (
     <div className="flex h-full flex-col">
