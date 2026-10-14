@@ -16,10 +16,10 @@ Plano: `claude/v12/requerimientos-formularios-ui-menu.md` (v1.0, 13/10/2026). Ra
 - [ ] Mensaje a la sesión de roles (00215 y archivos del menú)
 
 ### B1 · Menú lateral
-- [ ] F1 · Orden y grupos
-- [ ] F2 · Herramientas colapsable
-- [ ] F3 · Estado activo
-- [ ] F4 · Botón Conocimiento en Agentes IA
+- [x] F1 · Orden y grupos
+- [x] F2 · Herramientas colapsable
+- [x] F3 · Estado activo
+- [x] F4 · Botón Conocimiento en Agentes IA
 
 ### B6 · URL de entrada completa
 - [ ] F17 · Qué se guarda (`entryUrlFrom`, saneo, tope)
@@ -103,7 +103,14 @@ Se tilda a mano en el navegador al cerrar B5.
 
 ## Revisión visual
 
-_(se completa en B1–B5 y B7: diferencias contra el prototipo y cómo se resolvió cada una)_
+**Sin sesión:** la app pide login en `/dashboard/*` y no escribo credenciales. Para ver los componentes reales armé una página de prueba temporal (`app/harness-zz`, excluida de git con `.git/info/exclude`, se borra al cerrar B7) que renderiza `NavLinks` y, en los bloques siguientes, los componentes de Formularios con datos de ejemplo. Lo que depende de datos reales de la base (números de la lista, respuestas) no se ve.
+
+### B1 · Menú (1440 px, oscuro; claro y 390 px en B7)
+- Orden y grupos igual al prototipo: Dashboards, Bandeja, Tareas, Mi reporte del día · ADQUISICIÓN · VENTAS · HERRAMIENTAS ⌄ (Automatizaciones, Formularios, Agentes IA, Ajustes).
+- Herramientas arranca cerrada con chevron; Enter la abre sin perder el foco; se recuerda en `localStorage`; con la pantalla activa adentro se ve abierta aunque esté guardada como cerrada (Conocimiento marca Agentes IA).
+- Menú angosto: los cuatro íconos de Herramientas visibles, sin título, con la línea separadora y el tooltip "Nombre · Herramientas".
+- Member: Ajustes lleva a `/dashboard/settings/recursos`.
+- Diferencia con el prototipo: el prototipo tiene el "Asistente" arriba y "Facturación"/"Agentes" con otros nombres; no se suman (D5). El resto coincide.
 
 ---
 

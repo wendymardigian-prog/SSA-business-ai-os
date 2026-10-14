@@ -19,3 +19,8 @@ Formato: **qué quedó**, **por qué**, **qué se decidió**.
 ## Pendientes
 
 _(vacío: se completa durante la construcción)_
+
+## Notas de la corrida
+
+- **Mensaje a la sesión de Equipo y roles: no llegó.** Lo mandé el 13/10 (migración `00215` y archivos del menú que toca B1) y quedó retenido: la otra sesión corre en un modo de permisos distinto y no lo aprobó antes de que venciera. Qué se decidió: no reenviarlo; el aviso queda en este documento y en el PR. Si roles mergea antes, los conflictos en `lib/nav/items.ts`, `lib/nav/page-actions.ts`, `lib/settings/tabs.ts`, `components/sidebar.tsx` y `member-baseline.test.ts` se resuelven en esta rama.
+- **`supabase/.temp` y `.env` enlazados al checkout principal.** Los scripts `verify-*` usan `supabase db query --linked` y leen `.env`; el worktree no los tiene (están en `.gitignore`). Son symlinks, no se commitean.

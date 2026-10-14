@@ -37,7 +37,8 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `try{if(localStorage.getItem("theme")==="dark"||(!localStorage.getItem("theme")&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}
-try{if(localStorage.getItem("sidebar-collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed")}catch(e){}`,
+try{if(localStorage.getItem("sidebar-collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed")}catch(e){}
+try{if(localStorage.getItem("nav-tools-open")==="1")document.documentElement.classList.add("nav-tools-open")}catch(e){}`,
           }}
         />
         {/*

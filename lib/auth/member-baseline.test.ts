@@ -19,7 +19,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { NAV_ITEMS } from "@/lib/nav/items";
+import { NAV_ITEMS, visibleNavItems } from "@/lib/nav/items";
 import { SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 
 const ROOT = resolve(__dirname, "../..");
@@ -287,22 +287,35 @@ describe("caracterizacion: el menu (F68)", () => {
   // con el mismo criterio adminOnly que sus vecinas de siempre. Settings e
   // Inbox se renombran a Ajustes y Bandeja; Contacts y Flows, a Contactos y
   // Automatizaciones. Ninguna clave de PERMISSION_KEYS se agrego para esto.
-  it("las tres entradas de Admin son las de hoy, con Integraciones en vez de Channels", () => {
+  //
+  // Plano formularios-ui (D1-D4): Conocimiento, Recursos e Integraciones salen del menu y Ajustes deja de
+  // ser `adminOnly`: se ve con la bandeja `settings` (quien vea alguna pestaña de Ajustes). Lo que NO
+  // cambia: las PAGINAS de administracion siguen siendo solo de Owner/Admin (ADMIN_PAGES, mas arriba) y el
+  // Member no gana ningun permiso; un Member que abre Ajustes llega a Recursos, que ya era suya.
+  it("ningun item del menu es adminOnly: lo administrativo lo deciden las paginas y la bandera de Ajustes (plano formularios-ui, D1-D4)", () => {
     const adminOnly = NAV_ITEMS.filter((item) => item.adminOnly).map((item) => item.name).sort();
 
-    // Social salio en F78: ya no es por cargo, es por el permiso `social.view`.
-    expect(adminOnly).toEqual(["Ajustes", "Conocimiento", "Integraciones"]);
+    expect(adminOnly).toEqual([]);
+    expect(NAV_ITEMS.find((item) => item.name === "Ajustes")?.requires).toBe("settings");
   });
 
-  it("las demas las ve un Member", () => {
-    const visible = NAV_ITEMS.filter((item) => !item.adminOnly).map((item) => item.name).sort();
+  it("el menu del Member es el de hoy menos Recursos y mas Ajustes (plano formularios-ui, D4)", () => {
+    // Se calcula con el filtro REAL (`visibleNavItems`) y las claves del Member de sistema, no leyendo `adminOnly`.
+    const visible = visibleNavItems(NAV_ITEMS, {
+      isAdmin: false,
+      permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys,
+      flags: { eod: true, settings: true },
+    })
+      .map((item) => item.name)
+      .sort();
 
-    // "Agenda" (Etapa 4) y "Social" (F78) no son adminOnly: se filtran por
-    // permiso (`permissions`). El Member de sistema ve Agenda porque tiene
-    // scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
+    // "Agenda" (Etapa 4) y "Social" (F78) se filtran por permiso (`permissions`). El Member de sistema ve
+    // Agenda porque tiene scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
     expect(visible).toEqual([
       "Agenda",
       "Agentes IA",
+      // Plano formularios-ui (D4): Recursos ya no es un item; Ajustes lo lleva a esa pantalla.
+      "Ajustes",
       "Automatizaciones",
       "Bandeja",
       "Contactos",
@@ -315,10 +328,6 @@ describe("caracterizacion: el menu (F68)", () => {
       // Reporte de fin de día (E10): no pide permiso, pide estar en la audiencia de un
       // EOD publicado (condición del servidor, `requires: "eod"`).
       "Mi reporte del día",
-      // Banca v2 (F3): la misma pantalla que la pestaña de Ajustes, visible
-      // para todos. Crear y editar los decide templates.manage.
-      "Recursos",
-      "Social",
       // Tareas (Extra A): el Member de sistema tiene tasks.view (alcance own).
       "Tareas",
       // Ventas (Etapa 5): el Member de sistema tiene sales.view (alcance own).

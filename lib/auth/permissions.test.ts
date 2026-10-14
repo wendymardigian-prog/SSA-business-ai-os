@@ -131,11 +131,9 @@ describe("el Member es exactamente el de hoy (F68)", () => {
   });
 
   it("coincide con lo que el menu le muestra hoy", () => {
-    // Las entradas `adminOnly` del menu son justo las que el Member no tiene
-    // permiso de ver.
-    const adminOnly = NAV_ITEMS.filter((i) => i.adminOnly).map((i) => i.name);
-
-    expect(adminOnly).toContain("Conocimiento");
+    // Plano formularios-ui (D3): Conocimiento ya no es un item del menu; se abre con un boton de la barra de
+    // Agentes IA que solo ven Owner y Admin (`page-actions.ts`). El Member sigue sin `knowledge.view`.
+    expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
     expect(can(member, "knowledge.view")).toBe(false);
 
     // Social dejo de ser por cargo (F78): se ve con el permiso `social.view`,

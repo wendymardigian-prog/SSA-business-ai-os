@@ -56,6 +56,15 @@ describe("acciones de la barra", () => {
     expect(pageActions("/dashboard/knowledge", admin).map((a) => a.id)).toEqual(["upload"]);
   });
 
+  it("Conocimiento se abre desde la barra de Agentes IA: lo ven Owner y Admin, un Member no (plano formularios-ui, F4)", () => {
+    expect(pageActions("/dashboard/agents", admin)).toEqual([
+      { id: "knowledge", label: "Conocimiento", kind: "secondary", href: "/dashboard/knowledge", adminOnly: true },
+    ]);
+    expect(pageActions("/dashboard/agents", member)).toEqual([]);
+    // Un rol personalizado tampoco: la pagina pide Owner o Admin, igual que antes el item del menu.
+    expect(pageActions("/dashboard/agents", { isAdmin: false, permissionKeys: ["agents.view", "knowledge.view"] })).toEqual([]);
+  });
+
   it("las acciones que son de todos las recibe tambien un Member", () => {
     expect(pageActions("/dashboard/contacts", member).map((a) => a.id)).toEqual(["import", "new"]);
   });
