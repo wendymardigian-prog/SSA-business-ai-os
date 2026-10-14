@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { Check, Copy, Loader2, Search } from "lucide-react";
 import { Notice, inputClass } from "@/components/agents/fields";
 import { createSignedFormLink } from "@/lib/actions/forms/config";
@@ -13,7 +13,7 @@ import { useContactSearch } from "@/components/forms/use-contact-search";
  * por contacto" se sabe si ya respondió. Vence a los 60 días y solo sirve para ese
  * formulario.
  */
-export function ContactLinkCard({ formId, published, type }: { formId: string; published: boolean; type: "custom" | "survey" | "contract" }) {
+export function ContactLinkCard({ formId, published, type, children }: { formId: string; published: boolean; type: "custom" | "survey" | "contract"; children?: ReactNode }) {
   const { query, setQuery, options, searching, reset } = useContactSearch();
   const [chosen, setChosen] = useState<ContactOption | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -126,6 +126,7 @@ export function ContactLinkCard({ formId, published, type }: { formId: string; p
           )}
         </>
       )}
+      {children && <div className="space-y-3 border-t border-border pt-4">{children}</div>}
     </section>
   );
 }

@@ -40,11 +40,11 @@ Plano: `claude/v12/requerimientos-formularios-ui-menu.md` (v1.0, 13/10/2026). Ra
 - [x] F11 · El panel de la derecha
 
 ### B5 · Las demás pestañas
-- [ ] F12 · Contacto
-- [ ] F13 · Flows
-- [ ] F14 · Publicar
-- [ ] F15 · Encuesta, Contrato, Configuración y Canales del EOD
-- [ ] F16 · Respuestas
+- [x] F12 · Contacto
+- [x] F13 · Flows
+- [x] F14 · Publicar
+- [x] F15 · Encuesta, Contrato, Configuración y Canales del EOD
+- [x] F16 · Respuestas
 
 ### B7 · Verificación y cierre
 - [ ] Revisión visual (1440 y 390 px, claro y oscuro)
@@ -90,16 +90,18 @@ Están desarrolladas (21 puntos) en el plan completo de abajo, sección "Diferen
 
 ## Funcionalidad que se conserva (F16)
 
-Se tilda a mano en el navegador al cerrar B5.
+Cómo se verificó (sin sesión iniciada, no hay forma de ejecutar Server Actions contra la base desde el navegador):
+- **[x] visto** = se ve en el navegador (harness con datos de ejemplo) y el control sigue conectado a la misma acción o función de antes, sin tocar su lógica.
+- **[~]** = además necesita una prueba con sesión real: queda en `docs/PENDIENTE-formularios-ui.md` para revisar en vivo.
 
-- **Contacto:** [ ] interruptor de vincular · [ ] si la persona no está · [ ] si ya está · [ ] mapeo pregunta → dato · [ ] aviso "ninguna respuesta va a crear contacto" · [ ] etiquetas al enviar · [ ] avisar al equipo (con personas)
-- **Flows:** [ ] lista de flows · [ ] encender y apagar · [ ] Editar · [ ] Nuevo flow · [ ] las 5 plantillas (con selector de tag y de pregunta) · [ ] aviso sin permiso de flows · [ ] link a Automatizaciones · [ ] EOD: plantillas de EOD
-- **Publicar:** [ ] copiar el link · [ ] cambiar la parte final (con confirmación si está publicado) · [ ] embed (inline, ventana, botón flotante) · [ ] snippet del sitio · [ ] link firmado para un contacto (60 días) · [ ] armador de link de prellenado · [ ] versiones · [ ] pausar · [ ] reanudar · [ ] archivar · [ ] restaurar · [ ] razones para publicar
-- **Encuesta:** [ ] el puntaje · [ ] "una vez por contacto" · [ ] panel NPS
-- **Contrato:** [ ] texto · [ ] firma y aceptación · [ ] copias por email
-- **EOD:** [ ] roles · [ ] horario · [ ] pantalla final · [ ] recordatorio · [ ] canales
-- **Respuestas:** [ ] filtros (fecha, estado, contacto) · [ ] paginación · [ ] columnas · [ ] exportar CSV · [ ] detalle: marcar spam · [ ] vincular contacto · [ ] panel del contrato · [ ] archivos · [ ] historial · [ ] notas
-- **Lista y editor:** [ ] crear un formulario de cada tipo · [ ] duplicar · [ ] autoguardado y conflicto · [ ] publicar con y sin contactos · [ ] solo lectura sin `forms.manage`
+- **Contacto:** [x] interruptor de vincular · [x] si la persona no está · [x] si ya está · [x] mapeo pregunta → dato (ahora con `setFieldMapping`: un dato lo usa una sola pregunta) · [x] aviso "ninguna respuesta va a crear contacto" · [x] etiquetas al enviar · [x] avisar al equipo (con personas) · [~] Guardar (guarda el borrador pendiente y después `saveContactSettings`)
+- **Flows:** [x] lista de flows · [~] encender y apagar · [x] Editar · [~] Nuevo flow · [x] las 5 plantillas (con selector de tag y de pregunta) · [x] aviso sin permiso de flows · [x] link a Automatizaciones · [x] EOD: plantillas de EOD
+- **Publicar:** [x] copiar el link · [~] cambiar la parte final (con confirmación si está publicado) · [x] embed (en la página, botón flotante, página del sitio) · [x] snippet del sitio · [~] link firmado para un contacto (60 días) · [x] armador de link de prellenado (dentro de "Link para un contacto") · [x] versiones · [~] pausar · [~] reanudar · [~] archivar · [~] restaurar (la tarjeta Estado usa `setFormStatus`, la misma acción del menú "⋯" de la lista) · [x] razones para publicar (ahora marcadas en Campos)
+- **Encuesta:** [x] el puntaje · [x] "una vez por contacto" · [x] panel NPS (la ruta `/encuesta`)
+- **Contrato:** [x] texto · [x] firma y aceptación · [x] copias por email
+- **EOD:** [x] roles · [x] horario · [x] pantalla final · [x] recordatorio · [x] canales
+- **Respuestas:** [x] filtros (fecha, estado, contacto) · [x] paginación · [x] columnas · [x] exportar CSV · [x] detalle: marcar spam · [x] vincular contacto · [x] panel del contrato · [x] archivos · [x] historial · [x] notas · [x] "De dónde vino" (tarjeta abierta) con la URL de entrada
+- **Lista y editor:** [~] crear un formulario de cada tipo · [~] duplicar · [~] autoguardado y conflicto · [~] publicar con y sin contactos · [x] solo lectura sin `forms.manage`
 
 ## Revisión visual
 

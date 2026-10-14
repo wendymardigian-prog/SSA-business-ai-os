@@ -369,6 +369,7 @@ export function FormEditor({
                 onSlugChanged={setSlug}
                 timeZone={timeZone}
                 definition={draft.definition}
+                onStatusChanged={setStatus}
               />
             )}
           </div>

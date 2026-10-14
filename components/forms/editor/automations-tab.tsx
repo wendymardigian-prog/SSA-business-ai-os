@@ -83,8 +83,8 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      {!extras.canFlows && <Notice tone="info">Para crear o prender automatizaciones hace falta el permiso de editar automatizaciones.</Notice>}
+    <div className="mx-auto max-w-[900px] space-y-4">
+      {!extras.canFlows && <Notice tone="info">Para crear o prender flows hace falta el permiso de editar automatizaciones.</Notice>}
       {message && (
         <div role={message.tone === "error" ? "alert" : "status"}>
           <Notice tone={message.tone}>{message.text}</Notice>
@@ -92,7 +92,7 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
       )}
 
       <Section
-        title={isEod ? "Automatizaciones de este reporte" : "Automatizaciones de este formulario"}
+        title={isEod ? "Flows de este reporte" : "Flows de este formulario"}
         description={
           isEod
             ? "Lo que pasa solo cuando alguien envía su reporte. Son sobre la persona del equipo, no sobre un contacto: mandan emails y avisos, nunca mensajes por chat."
@@ -100,7 +100,7 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
         }
       >
         {flows.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">Todavía no hay automatizaciones. Creá una desde cero o empezá con una plantilla.</p>
+          <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">Todavía no hay flows. Creá uno desde cero o empezá con una plantilla.</p>
         ) : (
           <ul className="divide-y divide-border rounded-lg border border-border">
             {flows.map((flow) => (
@@ -128,13 +128,13 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
             className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-60"
           >
             {busyKey === "new" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
-            Nueva automatización
+            Nuevo flow
           </button>
         )}
       </Section>
 
       {canEdit && isEod && (
-        <Section title="Plantillas de un clic" description="Nacen apagadas: las revisás y las encendés cuando quieras.">
+        <Section title="Plantillas de un clic" description="Cada flow nace apagado: lo revisás y lo encendés cuando quieras.">
           <div className="grid gap-3 sm:grid-cols-2">
             {EOD_FLOW_TEMPLATES.map((t) => (
               <div key={t.key} className="flex flex-col justify-between rounded-lg border border-border p-3">
@@ -158,7 +158,7 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
       )}
 
       {canEdit && !isEod && (
-        <Section title="Plantillas de un clic" description="Nacen apagadas: las revisás y las encendés cuando quieras.">
+        <Section title="Plantillas de un clic" description="Cada flow nace apagado: lo revisás y lo encendés cuando quieras.">
           <div className="grid gap-3 sm:grid-cols-2">
             {templates.map((t) => (
               <div key={t.key} className="flex flex-col justify-between rounded-lg border border-border p-3">

@@ -61,7 +61,7 @@ export function SurveyTab({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-[900px] space-y-4">
       {candidates.length === 0 && (
         <Notice tone="warning">Para publicar la encuesta hace falta un campo de estrellas o de NPS obligatorio. Sumalo en la pestaña Campos.</Notice>
       )}
