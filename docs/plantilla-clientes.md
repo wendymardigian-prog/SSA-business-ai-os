@@ -4,14 +4,16 @@ Este repo (el de trabajo) tiene la historia interna, los docs y datos del negoci
 
 ## Los dos repositorios
 
-| | Repo de trabajo | Plantilla de clientes |
+| | Repo de trabajo | Plantilla de clientes B2B |
 |---|---|---|
-| Dónde | `wendymardigian-prog/SSA-business-ai-os` | `Scaling-Systems/SSA-BAIOS` (organización "Scaling Systems") |
+| Dónde | `wendymardigian-prog/SSA-business-ai-os` | `Scaling-Systems/BAIOS` (organización "Scaling Systems") |
 | Quién lo ve | Solo el equipo interno. **Tiene que ser privado.** | Cada cliente, como colaborador externo con rol **Read** |
 | Qué tiene | Todo: `docs/`, `BITACORA.md`, historia completa | Lo mismo que el de trabajo menos lo interno (ver `scripts/export-template.mjs`) |
 | Marcado como Template | No hace falta | Sí (botón verde "Use this template") |
 
-Copia local de la plantilla: `~/Documents/business-os-template`.
+Copia local de la plantilla: `~/Documents/BAIOS-b2b`.
+
+**Ojo, hay una tercera cosa que no es esto:** `Scaling-Systems/SSA-BAIOS` es la plantilla de los **estudiantes**, a propósito más chica que el proyecto actual. `sync-template.mjs` no se usa con ella ni se la toca. La de clientes B2B es `BAIOS`, con el proyecto completo (creada el 15/10/2026 con `export-template.mjs`).
 
 ## Publicar una actualización de la plantilla
 
@@ -22,14 +24,14 @@ La plantilla **solo crece**: cada actualización es un commit nuevo encima del a
 3. Correr, desde este repo:
 
    ```bash
-   node scripts/sync-template.mjs --template=../business-os-template
+   node scripts/sync-template.mjs --template=../BAIOS-b2b
    ```
 
    El script regenera `ALL_MIGRATIONS.sql`, exporta una copia limpia a una carpeta temporal (con el control de nombres y dominios identificables: si encuentra algo, se corta y no toca la plantilla), la espeja encima de la plantilla (agrega, cambia y borra) y muestra el resumen. **No hace commit ni push.**
 4. Mirar el resultado en la plantilla (`git status`, `git diff`), commitear con **la lista de qué trae** (los clientes la leen) y subir:
 
    ```bash
-   cd ../business-os-template
+   cd ../BAIOS-b2b
    git add -A && git commit -m "feat: <qué trae, en una línea>"
    git push origin main
    ```
