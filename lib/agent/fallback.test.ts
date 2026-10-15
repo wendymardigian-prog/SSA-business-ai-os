@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { APICallError } from "ai";
 import type { LanguageModel } from "ai";
-import { describeAttempts, generateWithFallback, type Candidate, type ModelRunner } from "./fallback";
+import { describeAttempts, finalStepText, generateWithFallback, type Candidate, type ModelRunner } from "./fallback";
 import type { AiRunHandle } from "@/lib/ai/run";
 
 /**
@@ -205,5 +205,27 @@ describe("describeAttempts", () => {
       "primary anthropic/claude-sonnet-5: api_401:authentication_error; " +
         "fallback anthropic/claude-haiku-4-5: skipped_same_provider_auth",
     );
+  });
+});
+
+describe("finalStepText", () => {
+  it("si el ultimo paso trae texto, es ese (como siempre)", () => {
+    expect(finalStepText("hola", [{ text: "antes" }, { text: "hola" }])).toBe("hola");
+  });
+
+  it("si el ultimo paso vino vacio, usa el texto escrito junto a la herramienta", () => {
+    // El caso real: texto + declarar_intencion en el paso 1, "stop" vacio en el 2.
+    expect(finalStepText("", [{ text: "Genial, te paso el link" }, { text: "" }])).toBe("Genial, te paso el link");
+  });
+
+  it("toma el ULTIMO paso con texto, no los junta", () => {
+    expect(finalStepText("", [{ text: "dejame revisar" }, { text: "Listo, son 50 USD" }, { text: "  " }])).toBe(
+      "Listo, son 50 USD",
+    );
+  });
+
+  it("sin texto en ningun paso sigue vacio (el runner lo trata como siempre)", () => {
+    expect(finalStepText("", [{ text: "" }, { text: "" }])).toBe("");
+    expect(finalStepText("", [])).toBe("");
   });
 });

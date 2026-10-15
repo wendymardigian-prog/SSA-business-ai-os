@@ -19,6 +19,7 @@ import { executeFlow, findWaitingSession, resumeSession } from "@/lib/flow-engin
 import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
 import type { IncomingMessage } from "@/lib/flow-engine/types";
 import { fromZernioAttachments, toAttachmentsColumn, type ChatAttachment } from "@/lib/messages/attachments";
+import { isNewerThanLastInbound, outboundCountsAsAnswered } from "@/lib/inbox/unread";
 
 type Db = SupabaseClient<Database>;
 
@@ -283,12 +284,55 @@ export async function insertMessage({
     ({ data, error } = await insertRow({}));
   }
 
-  if (!error) return { stored: true, id: data?.id ?? null };
+  if (!error) {
+    // Una respuesta nuestra (o que salio de afuera de la app) apaga el "no
+    // leido": ver lib/inbox/unread.ts. Nunca puede hacer fallar el guardado.
+    if (direction === "outbound" && outboundCountsAsAnswered(origin, sentByUserId)) {
+      await clearUnreadIfAnswered(supabase, conversationId, createdAt);
+    }
+    return { stored: true, id: data?.id ?? null };
+  }
   if (error.code === "23505") return { stored: false, id: null };
 
   // Sin el texto del mensaje: el error de Postgres puede traer la fila entera.
   console.error("[inbound] no pude guardar el mensaje:", error.message);
   return { stored: false, id: null };
+}
+
+/**
+ * Pone el "no leido" en cero porque ya se respondio, salvo que el lead haya
+ * escrito DESPUES de esa respuesta (un eco que llega tarde no tapa nada).
+ *
+ * Nunca lanza: es un reflejo sobre un mensaje que ya se guardo.
+ */
+async function clearUnreadIfAnswered(supabase: Db, conversationId: string, outboundAt: string): Promise<void> {
+  try {
+    const { data: lastInbound, error: inboundError } = await supabase
+      .from("messages")
+      .select("created_at")
+      .eq("conversation_id", conversationId)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Si no se pudo mirar, no se apaga: un "no leido" de mas se ve y se arregla
+    // con un clic; uno apagado de mas esconde a un lead sin responder.
+    if (inboundError) {
+      console.error("[inbound] no pude mirar el ultimo entrante:", inboundError.message);
+      return;
+    }
+    if (!isNewerThanLastInbound(outboundAt, lastInbound?.created_at ?? null)) return;
+
+    const { error } = await supabase
+      .from("conversations")
+      .update({ unread_count: 0 })
+      .eq("id", conversationId)
+      .gt("unread_count", 0);
+    if (error) console.error("[inbound] no pude apagar el no leido:", error.message);
+  } catch (err) {
+    console.error("[inbound] fallo al apagar el no leido:", err instanceof Error ? err.message : "error");
+  }
 }
 
 /**

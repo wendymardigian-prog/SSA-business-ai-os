@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Tag as TagIcon, Workflow } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +19,7 @@ import {
 import { markAssetUsed, prepareAssetSend } from "@/lib/actions/response-assets";
 import type { AssetChatCopy } from "@/lib/response-assets/send-copy";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { CreateTaskButton } from "@/components/tasks/create-task-button";
@@ -42,6 +43,13 @@ import { headBase64Of } from "@/lib/content/media";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 type Conversation = ConversationRow;
+
+/** El estado de la conversacion como se lee en la bandeja (las pestanas dicen Abiertas / Cerradas / Pospuestas). */
+const STATUS_LABELS: Record<ConversationStatus, string> = {
+  open: "Abierta",
+  snoozed: "Pospuesta",
+  closed: "Cerrada",
+};
 
 function formatMessageTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -746,7 +754,10 @@ export function MessageThread({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Todo en una linea (en la compu): lo que no es el estado de la
+            conversacion es un icono con tooltip, y el agente es un desplegable
+            con la explicacion adentro. */}
+        <div className="flex flex-wrap items-center gap-1.5 md:flex-shrink-0 md:flex-nowrap">
           {onOpenContact && (
             <button
               type="button"
@@ -759,7 +770,7 @@ export function MessageThread({
           )}
           <span
             className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-medium capitalize",
+              "whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium",
               conversation.status === "open"
                 ? "bg-green-100 text-green-700"
                 : conversation.status === "snoozed"
@@ -767,34 +778,52 @@ export function MessageThread({
                 : "bg-muted text-muted-foreground"
             )}
           >
-            {conversation.status}
+            {STATUS_LABELS[conversation.status] ?? conversation.status}
           </span>
           {conversation.is_automation_paused && (
-            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700">
-              Flows pausados
-            </span>
+            <Tip content="Flows pausados: las automatizaciones no corren en esta conversación." side="bottom">
+              <span
+                tabIndex={0}
+                aria-label="Flows pausados"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-orange-700"
+              >
+                <Workflow className="h-3.5 w-3.5" aria-hidden />
+              </span>
+            </Tip>
           )}
           {conversation.agent_disabled_by_tag_id && (
-            <span
-              className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
-              title="El contacto tiene una etiqueta que apaga el agente (por ejemplo es-conocido). Prenderlo a mano acá gana sobre la etiqueta."
+            <Tip
+              content="Apagado por etiqueta: el contacto tiene una etiqueta que apaga el agente (por ejemplo es-conocido). Prenderlo a mano acá gana sobre la etiqueta."
+              side="bottom"
             >
-              Apagado por etiqueta
-            </span>
+              <span
+                tabIndex={0}
+                aria-label="Agente apagado por etiqueta"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+              >
+                <TagIcon className="h-3.5 w-3.5" aria-hidden />
+              </span>
+            </Tip>
           )}
           {agentInfo?.available && agentInfo.mode === "draft" && (
-            <span
-              className="rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200"
-              title="En este canal el agente deja borradores para aprobar: nada sale sin que alguien lo envíe."
+            <Tip
+              content="Modo borrador: en este canal el agente deja borradores para aprobar. Nada sale sin que alguien lo envíe."
+              side="bottom"
             >
-              Modo borrador
-            </span>
+              <span
+                tabIndex={0}
+                aria-label="Modo borrador"
+                className="flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-amber-400 text-amber-700 dark:text-amber-300"
+              >
+                <FileText className="h-3.5 w-3.5" aria-hidden />
+              </span>
+            </Tip>
           )}
           {/* F11: el aviso completo va en la barra de abajo; acá alcanza un
               pill, para que se vea sin desplazar el hilo. */}
           {needsHumanBadge(conversation).show && (
             <span
-              className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
               title={needsHumanBadge(conversation).title}
             >
               <UserRoundSearch className="h-3 w-3" aria-hidden />
@@ -807,7 +836,7 @@ export function MessageThread({
             pausedUntil={conversation.agent_paused_until}
             info={agentInfo}
           />
-          <div className="flex items-center gap-1">
+          <div className="flex flex-shrink-0 items-center gap-1">
             {canCreateTask && (
               <CreateTaskButton contactId={conversation.contact_id} conversationId={conversation.id} contactName={conversation.contacts?.display_name ?? null} />
             )}

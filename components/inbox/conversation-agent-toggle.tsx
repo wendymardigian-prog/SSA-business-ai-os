@@ -1,9 +1,10 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, PauseCircle } from "lucide-react";
+import { Bot, Check, ChevronDown, PauseCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/ui/tooltip";
 import { setConversationAgent } from "@/lib/actions/conversation-agent";
 import { toAgentMode, type ConversationAgentMode } from "@/lib/agent/config";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
@@ -12,10 +13,10 @@ import type { ChannelAgentInfo } from "@/lib/agent/public";
  * El agente de IA en una conversacion, con sus tres estados (F31, 00066):
  * heredar del canal (default), forzado prendido, forzado apagado.
  *
- * El estado tiene que ser obvio. En "heredar" se dice que se esta heredando
- * ("el agente atiende Instagram, asi que esta conversacion si"); en los
- * forzados, que alguien lo decidio aca. Pausado por un flow y bloqueado por el
- * maestro se muestran con el motivo escrito, no en un tooltip.
+ * Es un desplegable para que el encabezado entre en una linea: el boton dice
+ * el estado elegido y su tooltip explica que significa HOY ("el agente atiende
+ * Instagram, asi que esta conversacion si"); adentro, cada opcion trae su
+ * explicacion. Pausado por un flow se ve en el icono y en el tooltip.
  */
 
 const MODE_LABELS: Record<ConversationAgentMode, string> = {
@@ -23,6 +24,8 @@ const MODE_LABELS: Record<ConversationAgentMode, string> = {
   on: "Prendido",
   off: "Apagado",
 };
+
+const MODES = Object.keys(MODE_LABELS) as ConversationAgentMode[];
 
 export function describeAgentMode(mode: ConversationAgentMode, info: ChannelAgentInfo | null): { on: boolean; text: string } {
   const channel = info?.channelLabel ?? "este canal";
@@ -38,6 +41,23 @@ export function describeAgentMode(mode: ConversationAgentMode, info: ChannelAgen
   return attends
     ? { on: true, text: `Heredando del canal: el agente atiende ${channel}, así que esta conversación sí.` }
     : { on: false, text: `Heredando del canal: ${info?.message ?? `el agente no atiende ${channel}, así que esta conversación no.`}` };
+}
+
+/** Lo que significa cada opcion del desplegable, con el canal de esta conversacion. */
+export function agentModeOptionHelp(mode: ConversationAgentMode, info: ChannelAgentInfo | null): string {
+  const channel = info?.channelLabel ?? "el canal";
+  const attends = Boolean(info?.available);
+  if (mode === "inherit") {
+    return attends
+      ? `Hace lo mismo que ${channel}: hoy el agente lo atiende, así que acá responde.`
+      : `Hace lo mismo que ${channel}: hoy el agente no lo atiende, así que acá no responde.`;
+  }
+  if (mode === "on") {
+    return attends
+      ? "El agente responde en esta conversación, cambie lo que cambie en el canal."
+      : `No disponible: ${info?.message ?? `el agente no atiende ${channel}`}.`;
+  }
+  return "El agente no responde en esta conversación, aunque atienda el canal.";
 }
 
 export function ConversationAgentToggle({
@@ -56,13 +76,39 @@ export function ConversationAgentToggle({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [askAssignment, setAskAssignment] = useState<{ assignedName: string | null; mode: ConversationAgentMode } | null>(null);
+  const [open, setOpen] = useState(false);
   const groupId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const mode = toAgentMode(rawMode);
   const { on, text } = describeAgentMode(mode, info);
   // El instante se toma una vez al montar: un render no puede leer el reloj.
   const [mountedAt] = useState(() => Date.now());
   const paused = on && pausedUntil !== null && (pausedUntil === "infinity" || new Date(pausedUntil).getTime() > mountedAt);
+
+  const close = useCallback((returnFocus: boolean) => {
+    setOpen(false);
+    if (returnFocus) buttonRef.current?.focus();
+  }, []);
+
+  // Mismo comportamiento que components/ui/popover.tsx: Esc devuelve el foco
+  // al boton y un clic afuera cierra.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close(true);
+    };
+    const onPointer = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) close(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [open, close]);
 
   function send(next: ConversationAgentMode, assignment?: "keep" | "reassign") {
     setError(null);
@@ -81,51 +127,91 @@ export function ConversationAgentToggle({
     });
   }
 
+  function choose(next: ConversationAgentMode) {
+    close(true);
+    if (next !== mode) send(next);
+  }
+
+  const tip = (
+    <span className="block">
+      <span className="block">{paused ? "Pausado por un flow. " : ""}{text}</span>
+      {error && <span className="mt-1 block text-red-600 dark:text-red-400">{error}</span>}
+    </span>
+  );
+
   return (
-    <div className="flex flex-col items-end">
-      <div className="flex items-center gap-2">
-        {paused ? (
-          <PauseCircle className="h-3.5 w-3.5 text-amber-600" aria-hidden />
-        ) : (
-          <Bot className={on ? "h-3.5 w-3.5 text-emerald-600" : "h-3.5 w-3.5 text-muted-foreground"} aria-hidden />
-        )}
-        <span className="text-[11px] font-medium text-muted-foreground">
-          {paused ? "Agente IA pausado por un flow" : on ? "Agente IA" : "Agente IA apagado"}
-        </span>
-        <div
-          role="radiogroup"
-          aria-label="Agente de IA en esta conversacion"
+    <div ref={rootRef} className="relative flex-shrink-0">
+      {/* Arriba: abajo taparia el desplegable recien abierto. */}
+      <Tip content={open ? null : tip} side="top" align="center">
+        <button
+          ref={buttonRef}
+          type="button"
+          aria-label={`Agente de IA en esta conversación: ${MODE_LABELS[mode]}`}
+          aria-haspopup="true"
+          aria-expanded={open}
+          aria-controls={open ? `${groupId}-menu` : undefined}
           aria-describedby={`${groupId}-d`}
-          className="flex overflow-hidden rounded-md border border-border text-[11px]"
+          disabled={pending}
+          onClick={() => setOpen((value) => !value)}
+          className={cn(
+            "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-[11px] font-medium transition-colors hover:bg-accent disabled:opacity-60",
+            error ? "border-red-400 text-red-700 dark:text-red-300" : "border-border text-foreground",
+          )}
         >
-          {(Object.keys(MODE_LABELS) as ConversationAgentMode[]).map((m) => {
+          {paused ? (
+            <PauseCircle className="h-3.5 w-3.5 text-amber-600" aria-hidden />
+          ) : (
+            <Bot className={on ? "h-3.5 w-3.5 text-emerald-600" : "h-3.5 w-3.5 text-muted-foreground"} aria-hidden />
+          )}
+          <span className="text-muted-foreground">IA:</span>
+          {MODE_LABELS[mode]}
+          <ChevronDown className="h-3 w-3 text-muted-foreground" aria-hidden />
+        </button>
+      </Tip>
+      {/* La explicacion del estado, para el lector de pantalla (el tooltip
+          solo aparece con hover o foco). */}
+      <span id={`${groupId}-d`} className="sr-only">
+        {paused ? "Pausado por un flow. " : ""}
+        {text}
+      </span>
+      {error && (
+        <span role="alert" className="sr-only">
+          {error}
+        </span>
+      )}
+
+      {open && (
+        <div
+          id={`${groupId}-menu`}
+          role="radiogroup"
+          aria-label="Agente de IA en esta conversación"
+          className="absolute right-0 top-full z-50 mt-1 w-72 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg"
+        >
+          {MODES.map((m) => {
             const disabled = pending || (m === "on" && !info?.available);
+            const selected = mode === m;
             return (
               <button
                 key={m}
                 type="button"
                 role="radio"
-                aria-checked={mode === m}
+                aria-checked={selected}
                 disabled={disabled}
-                onClick={() => mode !== m && send(m)}
+                onClick={() => choose(m)}
                 className={cn(
-                  "px-2 py-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-                  mode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent",
+                  "flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                  selected ? "bg-accent" : "hover:bg-accent",
                 )}
               >
-                {MODE_LABELS[m]}
+                <Check className={cn("mt-0.5 h-3.5 w-3.5 flex-shrink-0", selected ? "text-primary" : "invisible")} aria-hidden />
+                <span className="min-w-0">
+                  <span className="block text-xs font-medium text-foreground">{MODE_LABELS[m]}</span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{agentModeOptionHelp(m, info)}</span>
+                </span>
               </button>
             );
           })}
         </div>
-      </div>
-      <p id={`${groupId}-d`} className="mt-0.5 max-w-xs text-right text-[10px] text-muted-foreground">
-        {text}
-      </p>
-      {error && (
-        <p role="alert" className="mt-0.5 max-w-xs text-right text-[10px] text-red-600 dark:text-red-400">
-          {error}
-        </p>
       )}
 
       {askAssignment && (

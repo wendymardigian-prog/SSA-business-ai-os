@@ -10,6 +10,14 @@
  * que ya vencieron. Asi que se cruza por `platform_message_id` y cada mensaje se
  * enriquece con lo nuestro.
  *
+ * El cruce mira LAS DOS columnas de id. El endpoint de historial de Zernio
+ * devolvia antes su propio id (el mismo que manda el webhook y que guardamos en
+ * `platform_message_id`), pero hoy devuelve el de Meta (`aWdf...`), que el
+ * webhook trae aparte y guardamos en `platform_native_message_id`. Cruzar solo
+ * por la primera dejaba toda la media de Instagram como "ya no disponible"
+ * aunque el archivo estuviera en nuestro Storage (14/10/2026). Mismo criterio
+ * que `lib/backfill-messages.ts` y `lib/agent/refresh.ts`.
+ *
  * Tambien se reemplaza el `id`: el de Zernio no sirve para pedir una
  * transcripcion, porque nuestras rutas trabajan con el id de la fila. Un mensaje
  * sin fila local conserva el de Zernio, que es lo unico que hay.
@@ -23,6 +31,7 @@ import type { InboxMessage } from "./zernio-message";
 export interface LocalMessageMedia {
   id: string;
   platform_message_id: string | null;
+  platform_native_message_id: string | null;
   attachments: unknown;
   transcript: string | null;
   transcript_status: string | null;
@@ -62,7 +71,12 @@ export function mergeThreadWithLocal(
   thread: InboxMessage[],
   local: LocalMessageMedia[],
 ): MergedInboxMessage[] {
+  // Las dos columnas al mismo mapa: el id que trae el hilo puede ser
+  // cualquiera de los dos (ver la cabecera).
   const byPlatformId = new Map<string, LocalMessageMedia>();
+  for (const row of local) {
+    if (row.platform_native_message_id) byPlatformId.set(row.platform_native_message_id, row);
+  }
   for (const row of local) {
     if (row.platform_message_id) byPlatformId.set(row.platform_message_id, row);
   }

@@ -253,6 +253,83 @@ describe("insertMessage", () => {
   });
 });
 
+/**
+ * Un cliente falso a medida para el "no leido": registra los updates de
+ * `conversations` y contesta que el ultimo entrante fue en `lastInboundAt`.
+ */
+function unreadDb(lastInboundAt: string | null, opts: { inboundError?: boolean } = {}) {
+  const updates: Array<{ table: string; values: unknown }> = [];
+  const client = {
+    from(table: string) {
+      const builder: Record<string, unknown> = {};
+      const chain = () => builder;
+      builder.select = chain;
+      builder.eq = chain;
+      builder.order = chain;
+      builder.limit = chain;
+      builder.gt = async () => ({ error: null });
+      builder.maybeSingle = async () =>
+        opts.inboundError
+          ? { data: null, error: { message: "boom" } }
+          : { data: lastInboundAt ? { created_at: lastInboundAt } : null, error: null };
+      builder.insert = () => {
+        const res: Record<string, unknown> = {
+          select: () => res,
+          single: async () => ({ data: { id: "m-1" }, error: null }),
+        };
+        return res;
+      };
+      builder.update = (values: unknown) => {
+        updates.push({ table, values });
+        return builder;
+      };
+      return builder;
+    },
+  };
+  return { client: client as unknown as Db, updates };
+}
+
+describe("insertMessage apaga el no leido cuando ya se respondio", () => {
+  const base = { conversationId: "cv-1", direction: "outbound" as const, text: "Espero te sirva", platformMessageId: "ZR-9" };
+
+  it("el eco de ManyChat / Meta Business Suite (external) lo apaga", async () => {
+    const { client, updates } = unreadDb("2026-10-14T17:11:00Z");
+    await insertMessage({ ...base, supabase: client, origin: "external", createdAt: "2026-10-14T17:34:00Z" });
+    expect(updates).toEqual([{ table: "conversations", values: { unread_count: 0 } }]);
+  });
+
+  it("lo que escribe una persona en la bandeja lo apaga", async () => {
+    const { client, updates } = unreadDb(null);
+    await insertMessage({ ...base, supabase: client, origin: "user", sentByUserId: "u-1", createdAt: "2026-10-14T17:34:00Z" });
+    expect(updates).toHaveLength(1);
+  });
+
+  it("una automatizacion de la app (flow) NO lo apaga: el lead sigue sin leer", async () => {
+    const { client, updates } = unreadDb("2026-10-14T17:11:00Z");
+    await insertMessage({ ...base, supabase: client, origin: "flow", createdAt: "2026-10-14T17:34:00Z" });
+    expect(updates).toEqual([]);
+  });
+
+  it("un eco de ANTES del ultimo mensaje del lead no tapa ese mensaje", async () => {
+    const { client, updates } = unreadDb("2026-10-14T17:11:00Z");
+    await insertMessage({ ...base, supabase: client, origin: "external", createdAt: "2026-10-14T17:00:00Z" });
+    expect(updates).toEqual([]);
+  });
+
+  it("un mensaje del lead nunca lo apaga", async () => {
+    const { client, updates } = unreadDb(null);
+    await insertMessage({ supabase: client, conversationId: "cv-1", direction: "inbound", text: "hola", platformMessageId: "ZR-1", createdAt: "2026-10-14T17:34:00Z" });
+    expect(updates).toEqual([]);
+  });
+
+  it("si no pudo mirar el ultimo entrante, no apaga y el mensaje se guarda igual", async () => {
+    const { client, updates } = unreadDb(null, { inboundError: true });
+    const out = await insertMessage({ ...base, supabase: client, origin: "external", createdAt: "2026-10-14T17:34:00Z" });
+    expect(out.stored).toBe(true);
+    expect(updates).toEqual([]);
+  });
+});
+
 describe("persistInboundMessage", () => {
   const zernio = { id: "ch-1", workspace_id: "ws-1", provider: "zernio" as const };
   const evolution = { id: "ch-2", workspace_id: "ws-1", provider: "evolution" as const };
