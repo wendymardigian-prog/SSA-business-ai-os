@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeFrequency, monthlyEquivalent, normalizeTemplate, recurringStatus, ruleFromRow, templateForEngine, type RecurringTemplateRow } from "./recurring";
+import { describeFrequency, editResetsAnchor, missedDatesOnReactivate, monthlyEquivalent, normalizeTemplate, recurringStatus, ruleFromRow, templateForEngine, type RecurringTemplateRow } from "./recurring";
 
 const row = (over: Partial<RecurringTemplateRow> = {}): RecurringTemplateRow => ({
   concept: "Google Workspace",
@@ -256,5 +256,34 @@ describe("normalizeTemplate", () => {
     const r = normalizeTemplate(null, TODAY);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.length).toBeGreaterThan(0);
+  });
+});
+
+describe("editResetsAnchor", () => {
+  const base = { frequency: "monthly" as const, weekly_day: null, weekly_interval: null, monthly_day: 5, yearly_month: null, yearly_day: null, start_date: "2026-09-01", lead_days: 0 };
+  it("cambiar el día, la frecuencia, el inicio o la anticipación reinicia el anclaje", () => {
+    expect(editResetsAnchor(base, { ...base, monthly_day: 10 })).toBe(true);
+    expect(editResetsAnchor(base, { ...base, frequency: "biweekly", monthly_day: null })).toBe(true);
+    expect(editResetsAnchor(base, { ...base, start_date: "2026-10-01" })).toBe(true);
+    expect(editResetsAnchor(base, { ...base, lead_days: 7 })).toBe(true);
+  });
+  it("no cambiar nada de fechas no lo reinicia", () => {
+    expect(editResetsAnchor(base, { ...base })).toBe(false);
+  });
+});
+
+describe("missedDatesOnReactivate", () => {
+  const monthly5 = { frequency: "monthly" as const, weekly_day: null, weekly_interval: null, monthly_day: 5, yearly_month: null, yearly_day: null, start_date: "2026-01-01", end_date: null, lead_days: 0, charge_mode: "manual" as const };
+  it("lista las fechas de pago que cayeron mientras estuvo pausada, hasta ayer", () => {
+    expect(missedDatesOnReactivate(monthly5, "2026-09-20", "2026-11-10")).toEqual(["2026-10-05", "2026-11-05"]);
+  });
+  it("si se pausó hoy o después de ayer no hay nada", () => {
+    expect(missedDatesOnReactivate(monthly5, "2026-11-10", "2026-11-10")).toEqual([]);
+  });
+  it("no mira más de 62 días hacia atrás", () => {
+    expect(missedDatesOnReactivate(monthly5, "2026-01-01", "2026-11-10")).toEqual(["2026-10-05", "2026-11-05"]);
+  });
+  it("una regla inválida no devuelve nada", () => {
+    expect(missedDatesOnReactivate({ ...monthly5, monthly_day: null }, "2026-09-20", "2026-11-10")).toEqual([]);
   });
 });

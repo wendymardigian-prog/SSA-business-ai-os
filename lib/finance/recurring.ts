@@ -13,7 +13,9 @@ import { fromCents, toCents } from "@/lib/sales/money";
 import { CATEGORY_KEY_RE } from "./categories";
 import type { RuleResult } from "./expense-rules";
 import {
+  addDaysCivil,
   firstOccurrenceOnOrAfter,
+  getPendingPaymentDates,
   isValidCivil,
   RECURRENCE_FREQUENCIES,
   validateRecurrenceRule,
@@ -287,4 +289,37 @@ export function normalizeTemplate(input: unknown, todayLocal: CivilDate): RuleRe
       notes: emptyToNull(v.notes),
     },
   };
+}
+
+// ── Qué reinicia el anclaje ────────────────────────────────────────────
+
+/** Los campos que cambian QUÉ fechas de pago tiene la plantilla. Editar cualquier otro (concepto, monto, notas…) no regenera nada. */
+const DATE_FIELDS = ["frequency", "weekly_day", "weekly_interval", "monthly_day", "yearly_month", "yearly_day", "start_date", "lead_days"] as const;
+
+/**
+ * ¿Editar la plantilla reinicia `generation_anchor` a hoy? Sí si cambia la regla de fechas o la anticipación:
+ * así el trabajo diario no «recupera» fechas pasadas con la regla nueva. No si cambia solo el texto, el monto o
+ * quién la paga. El fin (`end_date`) tampoco: acortarlo o alargarlo no regenera el pasado.
+ */
+export function editResetsAnchor(before: Pick<NewRecurringRow, (typeof DATE_FIELDS)[number]>, after: Pick<NewRecurringRow, (typeof DATE_FIELDS)[number]>): boolean {
+  return DATE_FIELDS.some((f) => before[f] !== after[f]);
+}
+
+/**
+ * Al reactivar una plantilla pausada, el anclaje pasa a hoy: las fechas de pago que cayeron mientras estuvo
+ * pausada NO se crean solas. Esta función dice cuáles fueron (para avisarlo y ofrecer crearlas a mano). Va de
+ * la fecha en que se pausó hasta ayer, y nunca más de 62 días hacia atrás (lo que mira el trabajo diario).
+ */
+export function missedDatesOnReactivate(
+  template: Pick<RecurringTemplateRow, "frequency" | "weekly_day" | "weekly_interval" | "monthly_day" | "yearly_month" | "yearly_day" | "start_date" | "end_date" | "lead_days" | "charge_mode">,
+  pausedOnLocal: CivilDate,
+  todayLocal: CivilDate,
+): CivilDate[] {
+  const engine = templateForEngine(template);
+  if (!engine || !isValidCivil(pausedOnLocal) || !isValidCivil(todayLocal)) return [];
+  const yesterday = addDaysCivil(todayLocal, -1);
+  if (pausedOnLocal > yesterday) return [];
+  const floor = addDaysCivil(todayLocal, -62);
+  const from = pausedOnLocal > floor ? pausedOnLocal : floor;
+  return getPendingPaymentDates(engine, from, yesterday, template.charge_mode === "automatic" ? 0 : template.lead_days);
 }

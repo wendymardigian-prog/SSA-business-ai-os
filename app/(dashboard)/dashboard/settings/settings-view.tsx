@@ -12,6 +12,7 @@ import { SalesSettings } from "@/components/settings/sales-settings";
 import { FinanceSettings } from "@/components/settings/finance-settings";
 import type { ExpenseCategory } from "@/lib/finance/categories";
 import type { CategoryUsage } from "@/lib/finance/category-totals";
+import type { FinanceAutoData } from "@/lib/finance/auto-card";
 import type { PaymentMethodConfig } from "@/lib/sales/payment-methods-config";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
@@ -62,6 +63,7 @@ export function SettingsView({
   financeUsage,
   financeUsageFailed,
   financeUsageTruncated,
+  financeAuto,
   paymentTasks,
 }: {
   workspace: WorkspaceSettings;
@@ -78,6 +80,7 @@ export function SettingsView({
   financeUsage: Record<string, CategoryUsage>;
   financeUsageFailed: boolean;
   financeUsageTruncated: boolean;
+  financeAuto: FinanceAutoData;
   paymentTasks: TaskPaymentState;
 }) {
   // Lo que cada persona puede ver, serializable desde el servidor: una función `can(key)` real para las secciones.
@@ -320,6 +323,7 @@ export function SettingsView({
                 usage={financeUsage}
                 usageFailed={financeUsageFailed}
                 usageTruncated={financeUsageTruncated}
+                auto={financeAuto}
               />
             </section>
             </>)}

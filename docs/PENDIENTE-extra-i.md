@@ -64,3 +64,10 @@ Las 30 diferencias detectadas al planificar están numeradas en la sección 2 de
 ## Entradas de la corrida
 
 _(Se agregan a medida que se construye: bloques trabados, nice-to-have que no entraron, verificaciones que fallaron y cómo volver atrás.)_
+
+## GF18 — Generar faltantes con vista previa (nice-to-have, sin hacer)
+Al reactivar una plantilla pausada la pantalla avisa qué fechas de pago se saltearon (`missedDatesOnReactivate`), pero no ofrece crearlas con un botón. Si Wendy lo quiere: una acción «vista previa» (solo lecturas) y otra «confirmar» (inserta con `ON CONFLICT DO NOTHING`), con tope de 366 días.
+
+## Gastos automáticos: dos cosas a mirar en vivo
+- Con Whop en 0 % (hasta que Wendy cargue el real) encender «Comisiones de procesadores» no crea ningún gasto: es lo esperado.
+- La pantalla de Recurrentes y la de Ajustes > Finanzas > Gastos automáticos no se vieron en un navegador (pide sesión): revisar a 1440 y 390 px.

@@ -349,7 +349,7 @@ try {
       END $$;`);
     // 05:00 UTC del 11 = 23:00 del 10 en Costa Rica: encola el del 10, nunca el del 11.
     check(probe("2026-10-11T05:00:00Z") === "1|2026-10-10", "a las 05:00 UTC (23:00 locales) encola la fecha local 2026-10-10", probe("2026-10-11T05:00:00Z"));
-    check(probe("2026-10-11T08:59:00Z") === "1|2026-10-10", "a las 08:59 UTC (02:59 locales) todavia NO encola el del 11", probe("2026-10-11T08:59:00Z"));
+    check(probe("2026-10-11T08:59:00Z") === "0|", "a las 08:59 UTC (02:59 locales) todavia NO encola nada (espera a las 03:00 locales)", probe("2026-10-11T08:59:00Z"));
     check(probe("2026-10-11T09:00:00Z") === "1|2026-10-10,2026-10-11" || probe("2026-10-11T09:00:00Z") === "1|2026-10-11", "a las 09:00 UTC (03:00 locales) SI encola el del 11", probe("2026-10-11T09:00:00Z"));
     const twice = sqlProbe(`
       DO $$

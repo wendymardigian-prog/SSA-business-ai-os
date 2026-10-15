@@ -14,6 +14,11 @@ import { isAutoOrigin, type ExpenseStatus } from "./expense-status";
 import type { ChargeMode } from "./settings";
 
 export type AutoKind = "processor_fee" | "meta_ads";
+
+/** «Whop (registrado a mano)» → «Whop», para el concepto y el nombre del proveedor. */
+export function shortMethodName(name: string): string {
+  return name.replace(/\s*\(.*\)\s*$/, "").trim() || name;
+}
 export type AutoVoidKind = "manual" | "auto_zero";
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;

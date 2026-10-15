@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Copy, ExternalLink, FileImage, FileText, Loader2, Paperclip, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Historial } from "@/components/historial/historial";
+import { DriftAdjustmentDialog, IgnoreDriftDialog } from "@/components/finance/drift-dialogs";
 import { PayExpenseDialog, RevertExpenseDialog, VoidExpenseDialog } from "@/components/finance/expense-dialogs";
 import { ExpenseForm, type EditableExpense } from "@/components/finance/expense-form";
 import { FinanceTabs, ReadOnlyNote } from "@/components/finance/finance-tabs";
@@ -63,7 +64,7 @@ export interface ExpenseDetailData {
   canManage: boolean;
 }
 
-type DialogKind = "pay" | "revert" | "void" | "edit" | "duplicate" | null;
+type DialogKind = "pay" | "revert" | "void" | "edit" | "duplicate" | "drift-adjust" | "drift-ignore" | null;
 
 export function ExpenseDetail({ data }: { data: ExpenseDetailData }) {
   const { expense: e, origin, categories, vendors, members, timeZone, today, canManage } = data;
@@ -72,6 +73,7 @@ export function ExpenseDetail({ data }: { data: ExpenseDetailData }) {
   const editAction = transitions.find((a) => a === "confirm_amount" || a === "edit_date" || a === "reschedule");
   const annulled = e.status === "anulado";
   const drift = driftNotice(e);
+  const driftCents = toCents(e.auto_drift_amount);
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
   const category = findCategory(categories, e.category_key);
   const hint = dueHint(e.scheduled_date, today, e.status);
@@ -141,6 +143,12 @@ export function ExpenseDetail({ data }: { data: ExpenseDetailData }) {
                 <div>
                   <p className="font-medium">{drift}</p>
                   <p className="text-xs">El gasto ya estaba pagado, así que no se tocó su monto.</p>
+                  {canManage && (
+                    <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Qué hacer con la diferencia">
+                      <button type="button" onClick={() => setDialog("drift-adjust")} className="h-8 rounded-lg bg-amber-600 px-3 text-xs font-medium text-white hover:opacity-90">Crear ajuste</button>
+                      <button type="button" onClick={() => setDialog("drift-ignore")} className="h-8 rounded-lg border border-amber-600/50 px-3 text-xs font-medium hover:bg-amber-500/10">Ignorar</button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -198,6 +206,8 @@ export function ExpenseDetail({ data }: { data: ExpenseDetailData }) {
       {dialog === "pay" && <PayExpenseDialog expense={e} today={today} onClose={() => setDialog(null)} />}
       {dialog === "revert" && <RevertExpenseDialog expense={e} onClose={() => setDialog(null)} />}
       {dialog === "void" && <VoidExpenseDialog expense={e} onClose={() => setDialog(null)} />}
+      {dialog === "drift-adjust" && <DriftAdjustmentDialog expense={e} driftCents={driftCents} onClose={() => setDialog(null)} />}
+      {dialog === "drift-ignore" && <IgnoreDriftDialog expense={e} driftCents={driftCents} onClose={() => setDialog(null)} />}
       {dialog === "edit" && <ExpenseForm mode="edit" expense={editable} categories={categories} vendors={vendors} members={members} today={today} onClose={() => setDialog(null)} />}
       {dialog === "duplicate" && (
         <ExpenseForm mode="create" initial={draftFromDuplicate(editable, today, categories)} categories={categories} vendors={vendors} members={members} today={today} onClose={() => setDialog(null)} />

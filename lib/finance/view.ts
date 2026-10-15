@@ -144,6 +144,17 @@ export function driftNotice(input: { auto_drift_amount?: unknown; auto_drift_res
   return `El monto cambió después de pagado: diferencia ${formatUsd(cents)}`;
 }
 
+/**
+ * Qué significa la diferencia de un automático ya pagado, en palabras: con signo positivo el monto subió después de
+ * pagar (falta pagar esa diferencia); con signo negativo bajó (se pagó de más). `cents` es la diferencia con su signo.
+ */
+export function driftExplanation(cents: number): string {
+  const amount = formatUsd(Math.abs(cents));
+  if (cents > 0) return `El monto subió después de pagado: faltan ${amount} por pagar.`;
+  if (cents < 0) return `El monto bajó después de pagado: se pagaron ${amount} de más.`;
+  return "No hay diferencia.";
+}
+
 // ── CSV ────────────────────────────────────────────────────────────────
 
 /** El link del CSV: la misma query de la lista (sin la página). */

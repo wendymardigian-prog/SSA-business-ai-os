@@ -4,7 +4,7 @@ import { emptyExpenseFilters } from "./expense-filters";
 import { EXPENSES_CSV_LIMIT } from "./expenses-csv";
 import { EXPENSE_STATUS_KEYS } from "./expense-status";
 import { RECEIPT_MAX_BYTES } from "./receipts";
-import { amountClasses, receiptPickError, categoryOptionGroups, describeOrigin, driftNotice, exportHref, exportWarning, expenseStatusClasses, formatCivilDate, receiptKind } from "./view";
+import { amountClasses, receiptPickError, categoryOptionGroups, describeOrigin, driftExplanation, driftNotice, exportHref, exportWarning, expenseStatusClasses, formatCivilDate, receiptKind } from "./view";
 
 describe("formatCivilDate", () => {
   it("escribe la fecha sin pasar por una zona", () => {
@@ -125,5 +125,13 @@ describe("receiptPickError", () => {
     expect(receiptPickError({ size: 0 })).toBe("El archivo está vacío");
     expect(receiptPickError({ size: RECEIPT_MAX_BYTES + 1 })).toBe("El comprobante pesa más de 10 MB");
     expect(receiptPickError({ size: RECEIPT_MAX_BYTES })).toBeNull();
+  });
+});
+
+describe("driftExplanation", () => {
+  it("dice si falta pagar o se pagó de más, siempre con el monto sin signo", () => {
+    expect(driftExplanation(420)).toBe("El monto subió después de pagado: faltan USD 4,20 por pagar.");
+    expect(driftExplanation(-420)).toBe("El monto bajó después de pagado: se pagaron USD 4,20 de más.");
+    expect(driftExplanation(0)).toBe("No hay diferencia.");
   });
 });

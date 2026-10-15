@@ -250,28 +250,28 @@ Marcar `[x]` al cumplir los criterios de la F. Las nice-to-have pueden quedar en
 - [x] Bloque G1 listo
 
 ## G2 — Recurrentes y automáticos
-- [ ] GF15 Motor de recurrencia (función pura)
-- [ ] GF16 Plantillas recurrentes
-- [ ] GF17 Generación diaria idempotente (00228)
-- [ ] GF18 Generar faltantes con vista previa (nice-to-have)
-- [ ] GF19 Configuración de los gastos automáticos
-- [ ] GF20 Comisiones de procesador (00229)
-- [ ] GF21 Pauta de Meta
-- [ ] GF22 Cambio después de pagado y ajuste
-- [ ] 00233 escrita y ensayada con `BEGIN … ROLLBACK` (NO se aplica)
-- [ ] Bloque G2 listo
+- [x] GF15 Motor de recurrencia (función pura)
+- [x] GF16 Plantillas recurrentes
+- [x] GF17 Generación diaria idempotente (00228)
+- [~] GF18 Generar faltantes con vista previa (nice-to-have)
+- [x] GF19 Configuración de los gastos automáticos
+- [x] GF20 Comisiones de procesador (00229)
+- [x] GF21 Pauta de Meta
+- [x] GF22 Cambio después de pagado y ajuste
+- [x] 00233 escrita y ensayada con `BEGIN … ROLLBACK` (NO se aplica)
+- [x] Bloque G2 listo
 
 ## G3 — Panel de Finanzas
-- [ ] GF23 Métricas puras en centavos
-- [ ] GF24 Lectura de datos del panel
-- [ ] GF25 Resumen: ingresos, gastos, resultado y margen
-- [ ] GF26 Por categoría, por grupo y top proveedores
-- [ ] GF27 Tendencia de 6 meses y CAC
-- [ ] GF28 Por pagar (nice-to-have)
-- [ ] Bloque G3 listo
+- [x] GF23 Métricas puras en centavos
+- [x] GF24 Lectura de datos del panel
+- [x] GF25 Resumen: ingresos, gastos, resultado y margen
+- [x] GF26 Por categoría, por grupo y top proveedores
+- [x] GF27 Tendencia de 6 meses y CAC
+- [x] GF28 Por pagar (nice-to-have)
+- [x] Bloque G3 listo
 
 ## AO1 — Toques de contenido
-- [ ] F30 Migración 00230 (columnas, canal y triggers) + `touch_channel` ↔ `channel.ts`
+- [x] F30 Migración 00230 (columnas, canal y triggers) + `touch_channel` ↔ `channel.ts`
 - [ ] F31 Opción "Crear contactos desde comentarios" + sección Atribución en Ajustes
 - [ ] F32 Vínculo retroactivo de comentarios (job; 00234 solo ensayada)
 - [ ] F33 Respuesta a historia → pieza
@@ -384,3 +384,6 @@ Los nombres de archivo son una propuesta; si cambian, se corrige esta tabla en e
 - **Exportar CSV de gastos** lo habilita `expenses.view` (como pide el plano de Gastos), no `data.export`. Anotado en `docs/finanzas.md`.
 - **Trabajo en paralelo.** La lógica pura (recurrencia, métricas, gastos automáticos, atribución, comisiones), con sus archivos de casos compartidos, y la UI de G1 se escribieron en paralelo con subagentes; la integración, las migraciones, los permisos y las verificaciones las hice yo.
 - **Dudas del plano resueltas por el código:** la regla del vendedor del flujo 7.1 es **8 % del neto** (38,82 / 25,00 / 15,00); el «12 %» del enunciado era un ejemplo de frase (`alcance-v11.md` línea 230 dice 8 %).
+- **G2.** 00228 y 00229 aplicadas y registradas; `verify-expenses` completo en 0 (incluye paridad de los 8+13 casos de `decide_auto_expense_action`, concurrencia de 8 recálculos y `enqueue_finance_daily` con reloj fijo). 00233 solo ensayada con `BEGIN … ROLLBACK` (no se aplica). GF18 (generar faltantes con vista previa) quedó sin hacer: el aviso de las fechas salteadas al reactivar cubre el caso común (ver PENDIENTE). Reactivar una plantilla reinicia el anclaje a hoy; editar solo reinicia si cambia la regla de fechas o la anticipación (`editResetsAnchor`).
+- **G3.** El período por defecto del Resumen es «Este mes» (los demás dashboards usan 30 días). Pagos y ventas se leen con el cliente de servicio después de `expenses.view` y solo viajan agregados (test de forma). La zona es la del workspace, no la de quien mira.
+- **AO1 (parcial).** 00230 aplicada y registrada (836 toques con canal: 832 organic, 4 direct); `verify-organic-attribution` en 0. `record_contact_touch` no escribe `channel`, así que el canal siempre sale del trigger (el selector de la venta lo logra con `medium`).

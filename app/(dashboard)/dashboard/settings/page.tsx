@@ -8,6 +8,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getPaymentTasksState } from "@/lib/tasks/automation-templates";
 import { financeContextOf } from "@/lib/finance/context";
 import { loadCategoryUsage } from "@/lib/finance/totals-load";
+import { loadFinanceAuto } from "@/lib/finance/auto-card-load";
 import { SettingsView } from "./settings-view";
 
 export default async function SettingsPage() {
@@ -40,6 +41,11 @@ export default async function SettingsPage() {
     ? await loadCategoryUsage(await createServiceClient(), workspace.id, financeContextOf(ctx).todayLocal)
     : { usage: {}, truncated: false, failed: false };
 
+  // Los gastos automáticos (comisiones de procesadores, pauta de Meta, cierre del mes): también solo con `expenses.manage`.
+  const financeAuto = canFinance
+    ? await loadFinanceAuto(ctx)
+    : { processorRows: [], metaRows: [], autoCloseDays: financeContextOf(ctx).settings.auto_close_days, vendors: [], metaFailed: false };
+
   return (
     <SettingsView
       workspace={{
@@ -65,6 +71,7 @@ export default async function SettingsPage() {
       financeUsage={finance.usage}
       financeUsageFailed={finance.failed}
       financeUsageTruncated={finance.truncated}
+      financeAuto={financeAuto}
       paymentTasks={paymentTasks}
     />
   );
