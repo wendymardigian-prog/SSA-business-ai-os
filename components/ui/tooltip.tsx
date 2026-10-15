@@ -58,6 +58,7 @@ export function Tip({
   className = "",
   children,
 }: {
+  /** `null` o `false` lo apagan sin desmontar el disparador. */
   content: ReactNode;
   side?: "top" | "bottom";
   align?: "start" | "center";
@@ -108,7 +109,9 @@ export function Tip({
       className={`inline-flex ${className}`}
     >
       {children}
-      {pos && (
+      {/* Sin contenido no hay tooltip (por ejemplo, mientras el desplegable
+          que abre el mismo boton esta abierto). */}
+      {pos && content !== null && content !== false && (
         <span
           id={id}
           role="tooltip"
