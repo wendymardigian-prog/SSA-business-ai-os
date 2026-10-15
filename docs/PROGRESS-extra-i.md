@@ -329,7 +329,7 @@ Marcar `[x]` al cumplir los criterios de la F. Las nice-to-have pueden quedar en
 - [x] Bloque CM3 listo
 
 ## Cierre
-- [~] Suite completa + build + tsc + lint + todos los `verify-*` (de a uno, con candado) — todo en 0 salvo `verify-attribution` (59 contactos viejos sin toque; decisión de Wendy pendiente, ver PENDIENTE)
+- [x] Suite completa + build + tsc + lint + todos los `verify-*` (de a uno, con candado) — todo en 0 (15/10/2026; los 59 contactos sin toque se resolvieron con toques `import`, ver PENDIENTE)
 - [x] Las 8 huellas iguales al punto de partida
 - [x] Docs de §9 (`finanzas.md`, `comisiones.md`, `atribucion.md`, `ventas.md`, `flow-registry.md`, `sitio.md`, `roles.md`)
 - [x] `CLAUDE.md` con las 4 secciones nuevas y el cambio aprobado M9
@@ -404,3 +404,5 @@ Los nombres de archivo son una propuesta; si cambian, se corrige esta tabla en e
 - Migraciones: **00224 a 00232 aplicadas y registradas**; **00233, 00234 y 00235 escritas y ensayadas con `BEGIN … ROLLBACK`, sin aplicar**. `ALL_MIGRATIONS.sql` regenerado (232).
 
 - **Corrección posterior al cierre (15/10/2026).** `verify-tasks` fallaba desde antes por una fecha escrita a fuego («B al 14, C al 15», cierta solo el 13/10); ahora espera «hoy + 1» y «hoy + 2» en la zona del negocio (misma regla, sin relajar nada) y da 0. `verify-attribution` sigue con su fallo previo: 59 contactos «Instagram User» que la sincronización del buzón dio de alta el 6/10/2026 en 24 segundos no tienen primer toque y no hay de dónde sacarlo; no se tocó el script ni los datos (ver PENDIENTE).
+
+- **Cierre final (15/10/2026).** Segunda pasada completa en esta sesión: tsc, vitest, lint, build y todos los `verify-*` en 0 (`verify-workspace-isolation` con `--despues-de-00143`). `verify-attribution` quedó en 0 después de crear 59 toques `import` para los contactos del buzón (opción (b) de Wendy, con respaldo).
