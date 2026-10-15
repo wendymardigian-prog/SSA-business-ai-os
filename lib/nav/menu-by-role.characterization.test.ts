@@ -6,7 +6,7 @@
  * comentario que cita el plano. Lo que NO cambia por esas decisiones sigue fijado: quien ve
  * cada item (Social, Formularios, Agenda, Llamadas, Ventas, Tareas, Mi reporte del dia) y el
  * orden dentro de cada grupo. Antes de B1:
- *   Owner/Admin: inicio[Dashboards, Bandeja, Tareas, Mi reporte del dia] adquisicion[Contenido, Social, Formularios]
+ *   Owner/Admin: inicio[Dashboards, Bandeja, Mi reporte del dia] adquisicion[Contenido, Social, Formularios]
  *     ventas[Contactos, Agenda, Llamadas, Ventas] automatizacion[Automatizaciones, Agentes IA, Conocimiento, Recursos]
  *     sistema[Integraciones, Ajustes]
  *   Member: lo mismo sin Social, Conocimiento, Integraciones ni Ajustes (con Recursos).
@@ -36,20 +36,20 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
   it("Owner y Admin ven todo, en este orden y con estos grupos (plano formularios-ui, D1-D4)", () => {
     for (const role of ["owner", "admin"] as const) {
       expect(menuFor({ permissionKeys: keysOf(role), eod: true })).toEqual([
-        { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"] },
+        { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] },
         { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido", "Social"] },
         { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas"] },
-        { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] },
+        { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] },
       ]);
     }
   });
 
   it("el Member de sistema pierde Recursos y gana Ajustes; sigue sin Social (plano formularios-ui, D4)", () => {
     expect(menuFor({ permissionKeys: keysOf("member"), eod: true })).toEqual([
-      { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"] },
+      { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] },
       { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido"] },
       { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas"] },
-      { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] },
+      { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] },
     ]);
   });
 

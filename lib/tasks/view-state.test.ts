@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clearFilters, countActiveFilters, DEFAULT_VIEW_STATE, parseViewState, serializeViewState, toggleMine, type TasksViewState } from "./view-state";
+import { clearFilters, clearPanelFilters, countActiveFilters, countPanelFilters, DEFAULT_VIEW_STATE, parseViewState, serializeViewState, toggleMine, type TasksViewState } from "./view-state";
 
 const ID = "00000000-0000-4000-8000-000000000009";
 
@@ -80,5 +80,17 @@ describe("estado de la vista en la URL (F14)", () => {
   it("«Mis tareas» se prende y se apaga", () => {
     expect(toggleMine(DEFAULT_VIEW_STATE).mine).toBe(true);
     expect(toggleMine(toggleMine(DEFAULT_VIEW_STATE)).mine).toBe(false);
+  });
+});
+
+describe("los filtros del boton «Filtros» de la barra", () => {
+  it("la insignia no cuenta la busqueda ni «Mis tareas», que tienen su propio lugar", () => {
+    expect(countPanelFilters({ ...DEFAULT_VIEW_STATE, q: "ana", mine: true })).toBe(0);
+    expect(countPanelFilters({ ...DEFAULT_VIEW_STATE, q: "ana", mine: true, status: ["pending"], overdue: true })).toBe(2);
+  });
+  it("limpiar el panel deja la busqueda y «Mis tareas» como estaban", () => {
+    const state: TasksViewState = { ...DEFAULT_VIEW_STATE, q: "ana", mine: true, status: ["pending"], blocked: true, group: "project" };
+    expect(clearPanelFilters(state)).toEqual({ ...DEFAULT_VIEW_STATE, q: "ana", mine: true, group: "project" });
+    expect(countPanelFilters(clearPanelFilters(state))).toBe(0);
   });
 });

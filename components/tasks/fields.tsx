@@ -1,7 +1,9 @@
 "use client";
 
+import { CalendarDays, Timer, X } from "lucide-react";
+import { formatDayLong } from "@/lib/tasks/format";
 import { formatDuration } from "@/lib/tasks/time";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -127,180 +129,123 @@ export function AutoSaveText({
   );
 }
 
-/** Una fecha (AAAA-MM-DD). Se guarda al salir del campo; vacia = sin fecha. */
-export function DateField({
+/**
+ * La fecha de la tarea (AAAA-MM-DD), como una pastilla. Todo el campo es el boton: hacer clic en cualquier parte
+ * abre el calendario (no hace falta apuntarle al iconito). Por abajo hay un `<input type="date">` transparente
+ * que cubre la pastilla; elegir un dia lo guarda al instante. Sin fecha, la pastilla dice «Fecha».
+ */
+export function DatePill({
   value,
   onSave,
   label,
+  today,
   disabled,
-  min,
-  max,
+  overdue = false,
 }: {
   value: string | null;
   onSave: (next: string | null) => void | Promise<unknown>;
   label: string;
+  /** AAAA-MM-DD de hoy en la zona del workspace: decide si el texto lleva el año. */
+  today: string;
   disabled?: boolean;
-  min?: string | null;
-  max?: string | null;
+  /** La fecha ya paso y la tarea sigue abierta: el texto va en rojo. */
+  overdue?: boolean;
 }) {
-  const [text, setText] = useState(value ?? "");
-  const [focused, setFocused] = useState(false);
-  const [seen, setSeen] = useState(value);
-  if (value !== seen) {
-    setSeen(value);
-    if (!focused) setText(value ?? "");
-  }
-
-  const textRef = useLatest(text);
-  const valueRef = useLatest(value);
-  const saveRef = useLatest(onSave);
-  const flush = () => {
-    const next = textRef.current || null;
-    if (next === valueRef.current) return;
-    void saveRef.current(next);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const openCalendar = () => {
+    try {
+      inputRef.current?.showPicker();
+    } catch {
+      // Un navegador sin showPicker, o uno que ya tiene el calendario abierto: el campo sigue siendo escribible.
+    }
   };
-  useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const text = value ? formatDayLong(value, today) : "Fecha";
 
   return (
-    <input
-      type="date"
-      value={text}
-      disabled={disabled}
-      min={min ?? undefined}
-      max={max ?? undefined}
-      aria-label={label}
-      onFocus={() => setFocused(true)}
-      onBlur={() => {
-        setFocused(false);
-        flush();
-      }}
-      onChange={(e) => setText(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        else if (e.key === "Escape" && text !== (value ?? "")) {
-          e.preventDefault();
-          e.stopPropagation();
-          setText(value ?? "");
-        }
-      }}
-      className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary disabled:cursor-default disabled:opacity-80"
-    />
-  );
-}
-
-/** Una hora (HH:MM). Se guarda al salir del campo; vacia = sin hora. «Quitar hora» la borra de un clic. */
-export function TimeField({
-  value,
-  onSave,
-  label,
-  disabled,
-}: {
-  value: string | null;
-  onSave: (next: string | null) => void | Promise<unknown>;
-  label: string;
-  disabled?: boolean;
-}) {
-  const [text, setText] = useState(value ?? "");
-  const [focused, setFocused] = useState(false);
-  const [seen, setSeen] = useState(value);
-  if (value !== seen) {
-    setSeen(value);
-    if (!focused) setText(value ?? "");
-  }
-
-  const textRef = useLatest(text);
-  const valueRef = useLatest(value);
-  const saveRef = useLatest(onSave);
-  const flush = () => {
-    const next = textRef.current || null;
-    if (next === valueRef.current) return;
-    void saveRef.current(next);
-  };
-  useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="flex items-center gap-2">
-      <input
-        type="time"
-        value={text}
-        disabled={disabled}
-        aria-label={label}
-        onFocus={() => setFocused(true)}
-        onBlur={() => {
-          setFocused(false);
-          flush();
-        }}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          else if (e.key === "Escape" && text !== (value ?? "")) {
-            e.preventDefault();
-            e.stopPropagation();
-            setText(value ?? "");
-          }
-        }}
-        className="h-8 w-36 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary disabled:cursor-default disabled:opacity-60"
-      />
+    <span className="inline-flex items-center gap-1">
+      <span
+        className={cn(
+          "relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] transition-colors focus-within:border-primary",
+          !disabled && "hover:border-muted-foreground/60",
+          disabled && "opacity-80",
+          !value && "text-muted-foreground",
+          overdue && "text-red-600 dark:text-red-400",
+        )}
+      >
+        <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="whitespace-nowrap">{text}</span>
+        <input
+          ref={inputRef}
+          type="date"
+          value={value ?? ""}
+          disabled={disabled}
+          aria-label={label}
+          onClick={openCalendar}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openCalendar();
+            }
+          }}
+          onChange={(e) => void onSave(e.target.value || null)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-default"
+        />
+      </span>
       {value && !disabled && (
         <button
           type="button"
-          onClick={() => {
-            setText("");
-            void onSave(null);
-          }}
-          className="h-8 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => void onSave(null)}
+          aria-label="Quitar la fecha"
+          title="Quitar la fecha"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
         >
-          Quitar hora
+          <X className="h-3.5 w-3.5" aria-hidden />
         </button>
       )}
-    </div>
+    </span>
   );
 }
 
-/** La duracion: 15, 30, 45, 60, 90 o 120 minutos, o vacia (se dibuja de 30 minutos). Un valor que ya estaba se conserva. */
+/** La duracion, como una pastilla con un reloj: de 15 minutos a 8 horas, o vacia (se dibuja de 30 minutos). Un valor que ya estaba se conserva. */
 export function DurationSelect({
   value,
   onChange,
   label,
   disabled,
   options,
+  title,
 }: {
   value: number | null;
   onChange: (next: number | null) => void | Promise<unknown>;
   label: string;
   disabled?: boolean;
   options: readonly number[];
+  /** Un texto de ayuda al pasar el mouse (por ejemplo, por que esta apagada). */
+  title?: string;
 }) {
   const list = value !== null && !options.includes(value) ? [...options, value].sort((a, b) => a - b) : options;
   return (
-    <select
-      value={value === null ? "" : String(value)}
-      disabled={disabled}
-      aria-label={label}
-      onChange={(e) => void onChange(e.target.value === "" ? null : Number(e.target.value))}
-      className="h-8 w-48 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary disabled:cursor-default disabled:opacity-60"
-    >
-      <option value="">Sin duración (30 min)</option>
-      {list.map((m) => (
-        <option key={m} value={m}>{formatDuration(m)}</option>
-      ))}
-    </select>
+    <span title={title} className={cn("relative inline-flex h-8 items-center rounded-lg border border-input bg-background text-[13px] transition-colors focus-within:border-primary", !disabled && "hover:border-muted-foreground/60", disabled && "opacity-60")}>
+      <Timer className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+      <select
+        value={value === null ? "" : String(value)}
+        disabled={disabled}
+        aria-label={label}
+        onChange={(e) => void onChange(e.target.value === "" ? null : Number(e.target.value))}
+        className={cn("h-full cursor-pointer appearance-none rounded-lg bg-transparent pl-8 pr-3 outline-none disabled:cursor-default", value === null && "text-muted-foreground")}
+      >
+        <option value="">Duración</option>
+        {list.map((m) => (
+          <option key={m} value={m}>{formatDuration(m)}</option>
+        ))}
+      </select>
+    </span>
   );
 }
 
-/** Una fila «etiqueta + valor» del drawer. */
-export function FieldRow({ label, children, htmlFor, top = false }: { label: string; children: ReactNode; htmlFor?: string; top?: boolean }) {
+export function Section({ title, children, action, innerRef }: { title: string; children: ReactNode; action?: ReactNode; innerRef?: RefObject<HTMLElement | null> }) {
   return (
-    <div className={cn("grid gap-1 sm:grid-cols-[130px_1fr] sm:gap-3", top ? "sm:items-start" : "sm:items-center")}>
-      <label htmlFor={htmlFor} className={cn("text-xs font-medium text-muted-foreground", top && "sm:pt-2")}>{label}</label>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-export function Section({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
-  return (
-    <section className="border-b border-border px-4 py-4 last:border-b-0" aria-label={title}>
+    <section ref={innerRef} className="border-b border-border px-4 py-4 last:border-b-0" aria-label={title}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
         {action}

@@ -191,8 +191,9 @@ Migraciones: **00206** (hora, duración, seguimiento único) y **00207** (fusió
 
 - `tasks.due_time` (hora local del workspace, sin fecha) y `tasks.duration_minutes` (5 a 1440): **opcionales**; una tarea es solo fecha
   por defecto. La base exige que la hora tenga fecha (CHECK) y la acción borra hora y duración cuando se borra la fecha.
-- Se agregan a propósito: «Agregar hora» en el selector de fecha de la celda, campos «Hora» y «Duración» en el drawer, o arrastrando en
-  el calendario. Se muestran junto a la fecha («Hoy · 14:30») con el 12 h / 24 h del perfil de agenda (`scheduling_profiles.time_format`,
+- Se agregan a propósito: «Agregar hora» en el selector de fecha de la celda, o arrastrando en el calendario. **El drawer ya no tiene
+  campo de hora** (una hora que la tarea ya traiga se conserva, pero no se edita ahí) y solo ofrece la **duración**, de 15 minutos a 8
+  horas (`DURATION_OPTIONS`); una duración vieja que no está en la lista (por ejemplo 90 min) se conserva y se muestra igual. Se muestran junto a la fecha («Hoy · 14:30») con el 12 h / 24 h del perfil de agenda (`scheduling_profiles.time_format`,
   24 h por defecto).
 - **Las reglas de fechas siguen siendo por DÍA**: `computeDateShifts`, la validación de «la bloqueada no vence antes que su bloqueante»,
   el barrido de vencimientos y el filtro «vencidas» no miran la hora. Un corrimiento solo toca fechas: la hora y la duración se conservan.
@@ -263,3 +264,15 @@ Detalle en [contactos-fusion.md](contactos-fusion.md).
 node scripts/verify-tasks.mjs           # suma los bloques de 00206 (hora, seguimiento único), de la cobranza de punta a punta y de 00207 (regla de fechas)
 node scripts/verify-contact-merge.mjs   # la fusión de contactos con una fusión real, la atomicidad y la guardia de deriva
 ```
+
+## Drawer compacto y barra de una línea (14/10/2026)
+
+- **El drawer pone lo más usado arriba, en una sola fila de pastillas**: una **única fecha** (la de vencimiento: todo el campo abre el
+  calendario, no hace falta apuntarle al iconito; `DatePill`, `showPicker`), duración, prioridad, responsable y proyecto (se elige de la
+  lista, sin título de sección). Debajo, la descripción a todo el ancho y sin etiqueta. Los **seguidores** van en la campanita de la
+  cabecera y el **historial** detrás de su icono (`HeaderIconButton`): arranca escondido.
+- La **fecha de inicio** sigue existiendo en la base y en la tabla, pero el drawer ya no la muestra. Si se elige una fecha anterior al
+  inicio que la tarea ya traía, el inicio se quita en el mismo cambio (`dueDatePatch`), para que la base no rechace el guardado.
+- **La barra de arriba de la lista es una sola línea** (`FiltersBar`): buscador, botón «Filtros» (todos los filtros adentro, con la cuenta
+  en una insignia; `countPanelFilters`), «Mis tareas» y, desde 1024 px, los contadores de vencidas / vencen hoy / próximos 7 días. En el
+  celular quedan solo el buscador y los dos botones.
