@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyDraftPatch, draftFromDefaults, draftProblem, valuesFromTask } from "./draft";
+import { applyDraftPatch, draftFromDefaults, draftProblem, dueDatePatch, valuesFromTask } from "./draft";
 import { makeTask } from "./fixtures";
 
 describe("borrador de una tarea nueva (F12, F15)", () => {
@@ -43,5 +43,22 @@ describe("hora y duracion en el borrador (R6)", () => {
     const d = applyDraftPatch(draftFromDefaults({ due_date: "2026-10-20" }, "me"), { due_time: "10:00", duration_minutes: 30 });
     expect(d).toMatchObject({ due_time: "10:00", duration_minutes: 30 });
     expect(applyDraftPatch(d, { due_date: null })).toMatchObject({ due_date: null, due_time: null, duration_minutes: null });
+  });
+});
+
+describe("elegir la fecha en el drawer (una sola fecha)", () => {
+  it("sin fecha de inicio, solo cambia el vencimiento", () => {
+    expect(dueDatePatch({ start_date: null }, "2026-10-20")).toEqual({ due_date: "2026-10-20" });
+    expect(dueDatePatch({ start_date: null }, null)).toEqual({ due_date: null });
+  });
+  it("si el inicio que ya traia queda despues de la fecha nueva, se quita para que la base no rechace el cambio", () => {
+    expect(dueDatePatch({ start_date: "2026-10-25" }, "2026-10-20")).toEqual({ due_date: "2026-10-20", start_date: null });
+  });
+  it("si el inicio sigue siendo anterior o igual, se conserva", () => {
+    expect(dueDatePatch({ start_date: "2026-10-10" }, "2026-10-20")).toEqual({ due_date: "2026-10-20" });
+    expect(dueDatePatch({ start_date: "2026-10-20" }, "2026-10-20")).toEqual({ due_date: "2026-10-20" });
+  });
+  it("quitar la fecha no toca el inicio (la base ya lo valida solo)", () => {
+    expect(dueDatePatch({ start_date: "2026-10-10" }, null)).toEqual({ due_date: null });
   });
 });

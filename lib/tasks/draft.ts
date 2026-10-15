@@ -112,3 +112,13 @@ export function draftProblem(values: TaskValues): string | null {
   }
   return null;
 }
+
+/**
+ * El cambio que hace elegir una fecha en el drawer (que muestra UNA sola fecha: la de vencimiento). Si la tarea
+ * ya traia una fecha de inicio y la nueva fecha cae antes, se quita el inicio: si no, la base rechazaria el
+ * cambio por «inicio posterior al vencimiento» sin que el drawer tenga nada para corregirlo.
+ */
+export function dueDatePatch(values: Pick<TaskValues, "start_date">, due: string | null): CellPatch {
+  if (due && values.start_date && values.start_date > due) return { due_date: due, start_date: null };
+  return { due_date: due };
+}

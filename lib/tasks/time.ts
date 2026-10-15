@@ -9,8 +9,11 @@ export type TimeFormat = "12h" | "24h";
 
 export const DURATION_MIN = 5;
 export const DURATION_MAX = 1440;
-/** Lo que el drawer ofrece; vacio = sin duracion (el calendario la dibuja de 30 minutos). */
-export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120] as const;
+/**
+ * Lo que el drawer ofrece: de 15 minutos a 8 horas. Vacio = sin duracion (el calendario la dibuja de 30 minutos).
+ * Una duracion que ya estaba guardada y no esta en la lista (por ejemplo 90) se conserva y se muestra igual.
+ */
+export const DURATION_OPTIONS = [15, 30, 45, 60, 120, 180, 240, 300, 360, 420, 480] as const;
 /** Cuanto dura una tarea con hora y sin duracion cuando se dibuja en el calendario. */
 export const DEFAULT_DURATION_MINUTES = 30;
 

@@ -172,6 +172,19 @@ export function clearFilters(state: TasksViewState): TasksViewState {
   };
 }
 
+/**
+ * Los filtros que viven DENTRO del boton «Filtros» de la barra: todos menos la busqueda (tiene su propio campo)
+ * y «Mis tareas» (tiene su propio boton). Es el numero que se ve en la insignia del boton.
+ */
+export function countPanelFilters(state: TasksViewState): number {
+  return countActiveFilters({ ...state, q: "", mine: false });
+}
+
+/** Limpia los filtros del panel y deja la busqueda y «Mis tareas» como estaban. */
+export function clearPanelFilters(state: TasksViewState): TasksViewState {
+  return { ...clearFilters(state), q: state.q, mine: state.mine };
+}
+
 /** Prende o apaga «Mis tareas». */
 export function toggleMine(state: TasksViewState): TasksViewState {
   return { ...state, mine: !state.mine };

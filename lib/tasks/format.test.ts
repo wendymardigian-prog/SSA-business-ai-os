@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dueLabel, flowIdOf, formatDay, formatDayShort, formatSource, formatTaskWhen } from "./format";
+import { dueLabel, flowIdOf, formatDay, formatDayLong, formatDayShort, formatSource, formatTaskWhen } from "./format";
 
 const TODAY = "2026-10-13";
 
@@ -66,5 +66,13 @@ describe("fecha con hora (R6)", () => {
   it("sin formato (como siempre) o sin hora, dueLabel es el de siempre", () => {
     expect(dueLabel({ due_date: TODAY, due_time: "14:30", status: "pending" }, TODAY)).toEqual({ text: "Hoy", tone: "today" });
     expect(dueLabel({ due_date: TODAY, due_time: null, status: "pending" }, TODAY, "24h")).toEqual({ text: "Hoy", tone: "today" });
+  });
+});
+
+describe("formatDayLong (selector de fecha del drawer)", () => {
+  it("dia de la semana, dia y mes; el año solo si no es el de hoy", () => {
+    expect(formatDayLong("2026-10-14", "2026-10-14")).toBe("mié 14 oct");
+    expect(formatDayLong("2026-01-01", "2026-10-14")).toBe("jue 1 ene");
+    expect(formatDayLong("2027-03-05", "2026-10-14")).toBe("vie 5 mar 2027");
   });
 });

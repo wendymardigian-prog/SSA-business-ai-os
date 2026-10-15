@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatTime, isTimeOfDay, isValidDuration, minutesToTime, normalizeTime, timeToMinutes } from "./time";
+import { DURATION_OPTIONS, formatDuration, formatTime, isTimeOfDay, isValidDuration, minutesToTime, normalizeTime, timeToMinutes } from "./time";
 
 describe("hora de una tarea (R6)", () => {
   it("normaliza lo que devuelve la base (HH:MM:SS) a HH:MM", () => {
@@ -45,5 +45,12 @@ describe("hora de una tarea (R6)", () => {
     expect(formatDuration(60)).toBe("1 h");
     expect(formatDuration(90)).toBe("1 h 30 min");
     expect(formatDuration(null)).toBe("");
+  });
+});
+
+describe("las duraciones que ofrece el drawer", () => {
+  it("van de 15 minutos a 8 horas y todas son validas", () => {
+    expect(DURATION_OPTIONS.map((m) => formatDuration(m))).toEqual(["15 min", "30 min", "45 min", "1 h", "2 h", "3 h", "4 h", "5 h", "6 h", "7 h", "8 h"]);
+    expect(DURATION_OPTIONS.every((m) => isValidDuration(m))).toBe(true);
   });
 });

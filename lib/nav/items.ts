@@ -7,7 +7,7 @@
  * `navSections` hace el agrupamiento real.
  *
  * Plano formularios-ui (D1-D4): las herramientas de uso menos diario van a la
- * seccion "Herramientas", que se colapsa (Automatizaciones, Formularios,
+ * seccion "Herramientas", que se colapsa (Tareas, Automatizaciones, Formularios,
  * Agentes IA y Ajustes). Conocimiento, Recursos e Integraciones salen del menu:
  * Conocimiento se abre desde Agentes IA (boton de la barra) y Recursos e
  * Integraciones son pestañas de Ajustes. Sus rutas siguen andando.
@@ -75,9 +75,6 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // La cola de borradores y las sub-pestañas de la bandeja (broadcasts,
   // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
   { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", permissions: ["inbox.instagram.view", "inbox.whatsapp.view", "inbox.email.view"], group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
-  // Tareas (Extra A): el trabajo pendiente del equipo, junto a la bandeja. Se ve con `tasks.view`:
-  // el Member de sistema lo tiene (ve las que creo, tiene a cargo o sigue).
-  { name: "Tareas", href: "/dashboard/tareas", icon: "ListTodo", permissions: ["tasks.view"], group: "inicio" },
   // Reporte de fin de día (E10): completarlo no necesita permiso, alcanza con estar en
   // la audiencia de un EOD publicado. Por eso es una condición del servidor y no un permiso.
   { name: "Mi reporte del día", href: "/dashboard/eod", icon: "ListChecks", group: "inicio", requires: "eod" },
@@ -101,7 +98,10 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Ventas", href: "/dashboard/ventas", icon: "CircleDollarSign", permissions: ["sales.view"], group: "ventas", alsoActiveOn: ["/dashboard/ventas"] },
 
   // Herramientas (plano formularios-ui, D1): la unica seccion colapsable. Orden fijo:
-  // Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
+  // Tareas, Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
+  // Tareas (Extra A): el trabajo pendiente del equipo. Se ve con `tasks.view`: el Member de sistema lo tiene
+  // (ve las que creo, tiene a cargo o sigue). Se mudo de los sueltos de arriba a Herramientas.
+  { name: "Tareas", href: "/dashboard/tareas", icon: "ListTodo", permissions: ["tasks.view"], group: "herramientas" },
   { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", permissions: ["flows.view"], group: "herramientas" },
   // Formularios (personalizado, encuesta, contrato y fin de dia): se ve con `forms.view`.
   // El Member de sistema lo tiene (ve las respuestas de los contactos que ve);
