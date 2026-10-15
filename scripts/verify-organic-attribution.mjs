@@ -287,6 +287,32 @@ try {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  console.log("\n— Un formulario con utm_content = codigo, y los clics de un link (F40 y F41) —");
+  {
+    const piece = await newPiece();
+    const contact = await newContact();
+    // Lo que escribe el formulario: `record_contact_touch` con `content` = el utm_content (el trigger lo reconoce).
+    const form = await svc.rpc("record_contact_touch", {
+      p_workspace_id: ws.id, p_contact_id: contact,
+      p_touch: { source: "instagram", medium: "organic_social", origin: "form", content: piece.attribution_code, campaign: "info-reel", dedupe_key: `zz-form-${stamp}`, occurred_at: new Date().toISOString() },
+    });
+    check(form.data?.inserted === true, "el formulario deja su toque", form.error?.message);
+    const t = (await svc.from("contact_touches").select("content_post_id, channel, meta_match_status").eq("workspace_id", ws.id).eq("dedupe_key", `zz-form-${stamp}`).single()).data;
+    check(t?.content_post_id === piece.id && t?.channel === "organic" && t?.meta_match_status === "ignored", "...vinculado a la pieza, organico y fuera de «Sin vincular» de Meta", JSON.stringify(t));
+
+    // Los clics de un link con seguimiento: UNO por dia, por persona y pieza.
+    const click = (key) => svc.rpc("record_contact_touch", {
+      p_workspace_id: ws.id, p_contact_id: contact,
+      p_touch: { source: "instagram", medium: "dm_link", origin: "link_click", content: piece.attribution_code, content_post_id: piece.id, dedupe_key: key, occurred_at: new Date().toISOString() },
+    });
+    const key = `click:${contact}:${randomUUID()}:${piece.id}:${new Date().toISOString().slice(0, 10)}`;
+    check((await click(key)).data?.inserted === true, "el primer clic del dia deja un toque link_click");
+    check((await click(key)).data?.reason === "duplicate", "el segundo clic del mismo dia NO deja otro (misma clave)");
+    const clicks = (await svc.from("contact_touches").select("id, channel", { count: "exact" }).eq("contact_id", contact).eq("origin", "link_click")).data ?? [];
+    check(clicks.length === 1 && clicks[0].channel === "organic", "queda UN toque link_click y es organico");
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   console.log("\n— Funciones y lo que NO se toco —");
   {
     checkProtectedFunctions(sql, check);

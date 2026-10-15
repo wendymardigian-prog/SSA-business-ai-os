@@ -15,6 +15,7 @@ import { sniffUploadMime } from "@/lib/content/media";
 import { attachmentLabel, emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
 import { assetKindForAttachment, channelAccepts } from "@/lib/channels/media";
+import { loadOriginChips, withOriginChips } from "@/lib/inbox/origin-chip-load";
 
 /**
  * Cuantos mensajes trae el hilo. Es el maximo que acepta Zernio, y alcanza
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
       console.error("Failed to read messages from our table:", error);
       return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
     }
-    return NextResponse.json(messages ?? []);
+    return NextResponse.json(await withChips(supabase, conversation.workspace_id, messages ?? []));
   }
 
   if (!conversation.late_conversation_id) {
@@ -139,7 +140,7 @@ export async function GET(request: NextRequest) {
     const idList = platformIds.map((id) => `"${id.replace(/["\\]/g, "")}"`).join(",");
     const { data: local, error: localError } = await supabase
       .from("messages")
-      .select("id, platform_message_id, platform_native_message_id, attachments, transcript, transcript_status, transcript_error, media_description")
+      .select("id, platform_message_id, platform_native_message_id, attachments, transcript, transcript_status, transcript_error, media_description, origin_context")
       .eq("conversation_id", conversationId)
       .or(`platform_message_id.in.(${idList}),platform_native_message_id.in.(${idList})`);
 
@@ -149,13 +150,41 @@ export async function GET(request: NextRequest) {
       console.error("Failed to read local media for the Instagram thread:", localError.message);
     }
 
-    return NextResponse.json(mergeThreadWithLocal(thread, (local ?? []) as LocalMessageMedia[]));
+    const merged = mergeThreadWithLocal(thread, (local ?? []) as LocalMessageMedia[]);
+    return NextResponse.json(await withChips(supabase, conversation.workspace_id, merged));
   } catch (error) {
     console.error("Failed to fetch messages from Zernio API:", error);
     return NextResponse.json(
       { error: "Failed to fetch messages" },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Suma a cada mensaje entrante con origen su chip "Vino de…" (Extra I, F44).
+ *
+ * Los titulos se resuelven aca, en el servidor y con la sesion de quien mira: una consulta por tabla por hilo, no una por
+ * mensaje. Nunca falla: sin chips el hilo se ve igual que siempre.
+ */
+async function withChips<T extends { id: string; direction: "inbound" | "outbound"; origin_context?: unknown }>(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workspaceId: string,
+  messages: T[],
+) {
+  try {
+    if (!messages.some((m) => m.direction === "inbound" && m.origin_context)) return messages;
+    // Los anuncios solo se linkean (y su nombre solo se lee del catalogo) con el permiso del dashboard de anuncios.
+    const access = await getMemberAction();
+    const chips = await loadOriginChips(supabase, {
+      workspaceId,
+      messages,
+      canSeeAds: access?.can("dashboards.ads.view") ?? false,
+    });
+    return withOriginChips(messages, chips);
+  } catch (error) {
+    console.error("Failed to build the origin chips:", error instanceof Error ? error.message : "error");
+    return messages;
   }
 }
 

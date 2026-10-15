@@ -49,6 +49,8 @@ export interface PiecePost {
   reference: string | null;
   /** El responsable (00223). */
   assignedTo: string | null;
+  /** El código corto de la pieza para sus links (`c8k2f`, 00230; Extra I F38). */
+  attributionCode: string | null;
   /** "Ana · creada el 3 oct · editada el 5 oct" (F91). */
   authorship: string | null;
   caption: string | null;
@@ -109,7 +111,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
   const { data: post } = await supabase
     .from("content_posts")
     .select(
-      "id, title, format, script, recording_notes, caption, networks, media, status, ai_unreviewed, review_note, created_by, assigned_to, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
+      "id, title, format, script, recording_notes, caption, networks, media, status, ai_unreviewed, review_note, created_by, assigned_to, attribution_code, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
     )
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
@@ -241,6 +243,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       funnelStage: post.funnel_stage,
       reference: post.reference,
       assignedTo: post.assigned_to,
+      attributionCode: post.attribution_code || null,
       authorship: authorshipLine({
         authorName: post.created_by ? (labels.get(post.created_by) ?? null) : null,
         createdAt: post.created_at,

@@ -264,9 +264,59 @@ export function manualOccurredAt(saleDate: string, timeZone: string): string {
   return iso;
 }
 
-/** La clave que evita el segundo toque si el asistente se envia dos veces. */
-export function manualDedupeKey(saleKey: string): string {
-  return `sale-manual:${saleKey}`;
+/**
+ * La clave que evita el segundo toque si el asistente se envia dos veces. Con `suffix` es la clave de REINTENTO
+ * (ver `manualRetryKey`): solo se usa cuando la clave simple ya existe con OTROS datos.
+ */
+export function manualDedupeKey(saleKey: string, suffix?: string): string {
+  return suffix ? `sale-manual:${saleKey}:${suffix}` : `sale-manual:${saleKey}`;
+}
+
+/** Lo que un toque guardado tiene que coincidir con el que se quiere registrar para considerarlo "el mismo". */
+export interface StoredManualTouch {
+  contact_id?: string | null;
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  content_label: string | null;
+  content_post_id: string | null;
+  social_post_id: string | null;
+  ad_id: string | null;
+  adset_id: string | null;
+  campaign_id: string | null;
+}
+
+const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? null) === (b ?? null);
+
+/**
+ * ¿El toque que ya esta guardado bajo la clave es el que se quiere registrar? Si la persona cambia de idea entre dos
+ * envios de la misma venta (volvio atras y eligio otra pieza), la clave simple ya esta tomada por el toque viejo y
+ * `ON CONFLICT DO NOTHING` lo dejaria: la venta se atribuiria a lo que ya NO eligio.
+ */
+export function storedTouchMatches(stored: StoredManualTouch, built: ManualSaleTouch, contactId: string): boolean {
+  return (
+    (stored.contact_id === undefined || stored.contact_id === contactId) &&
+    same(stored.source, built.source) &&
+    same(stored.medium, built.medium) &&
+    same(stored.campaign, built.campaign) &&
+    same(stored.content_label, built.content) &&
+    same(stored.content_post_id, built.contentPostId) &&
+    same(stored.social_post_id, built.socialPostId) &&
+    same(stored.ad_id, built.adId) &&
+    same(stored.adset_id, built.adsetId) &&
+    same(stored.campaign_id, built.campaignId)
+  );
+}
+
+/**
+ * El sufijo de la clave de reintento: un hash corto y DETERMINISTA de lo que dice el toque. La misma eleccion da
+ * siempre la misma clave (un doble clic sigue dejando un solo toque) y una eleccion distinta da otra.
+ */
+export function manualRetryKey(saleKey: string, built: ManualSaleTouch): string {
+  const text = JSON.stringify([built.source, built.medium, built.campaign, built.content, built.contentPostId, built.socialPostId, built.adId, built.adsetId, built.campaignId, built.raw]);
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) hash = ((hash << 5) + hash + text.charCodeAt(i)) >>> 0;
+  return manualDedupeKey(saleKey, hash.toString(16).padStart(8, "0"));
 }
 
 /**

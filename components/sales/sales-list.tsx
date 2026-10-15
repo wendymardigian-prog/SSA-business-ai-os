@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { ChevronLeft, ChevronRight, Filter, Plus, Search, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { ChannelChip } from "@/components/sales/channel-chip";
+import { SearchPicker } from "@/components/sales/search-picker";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
+import { searchPiecesForSale, type PieceOption } from "@/lib/actions/sales-attribution";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
 import type { WizardConfig } from "@/components/sales/wizard/types";
-import { MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "@/lib/contacts/taxonomy";
+import { CHANNELS, CHANNEL_LABELS, MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "@/lib/contacts/taxonomy";
 import { formatMoney } from "@/lib/sales/format";
 import { ATTRIBUTION_TYPE_LABELS, SALE_STATUS_LABELS, SALE_STATUSES, type SaleStatus } from "@/lib/sales/labels";
 import { PILLS, PILL_LABELS, countActiveSalesFilters, salesFiltersToParams, scopeChip, type Pill, type SaleListRow, type SalesFilters } from "@/lib/sales/list";
@@ -31,6 +34,39 @@ export interface SalesListData {
   variants: Array<{ id: string; product_id: string; name: string }>;
   members: Array<{ id: string; name: string }>;
   timeZone: string;
+  /** El titulo de la pieza del filtro `?pieza=` (null si no hay filtro o la pieza no se ve). */
+  pieceTitle: string | null;
+}
+
+const ORIGIN_COLUMN_KEY = "ventas-columna-origen";
+
+/** La columna «Origen» se puede ocultar; la eleccion vive en este navegador (puede no haber `localStorage`). */
+function readOriginColumn(): boolean {
+  try {
+    return window.localStorage.getItem(ORIGIN_COLUMN_KEY) !== "oculta";
+  } catch {
+    return true;
+  }
+}
+const originListeners = new Set<() => void>();
+function writeOriginColumn(visible: boolean) {
+  try {
+    window.localStorage.setItem(ORIGIN_COLUMN_KEY, visible ? "visible" : "oculta");
+  } catch {
+    // Sin almacenamiento, la eleccion vale hasta recargar.
+  }
+  originListeners.forEach((l) => l());
+}
+function useOriginColumn(): [boolean, (visible: boolean) => void] {
+  const visible = useSyncExternalStore(
+    (listener) => {
+      originListeners.add(listener);
+      return () => originListeners.delete(listener);
+    },
+    readOriginColumn,
+    () => true,
+  );
+  return [visible, writeOriginColumn];
 }
 
 const selectClass = "h-8 w-full rounded-lg border border-input bg-background px-2 text-sm";
@@ -44,6 +80,7 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
   const [search, setSearch] = useState(filters.q ?? "");
   const [campaign, setCampaign] = useState(filters.utmCampaign ?? "");
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [showOrigin, setShowOrigin] = useOriginColumn();
 
   const active = countActiveSalesFilters(filters);
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -107,7 +144,10 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
                   <X className="h-4 w-4" aria-hidden /> Limpiar
                 </button>
               )}
-              <span className="ml-auto rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">{scopeChip(data.scopeAll)}</span>
+              <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                <input type="checkbox" checked={showOrigin} onChange={(e) => setShowOrigin(e.target.checked)} /> Columna «Origen»
+              </label>
+              <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">{scopeChip(data.scopeAll)}</span>
             </div>
 
             {panelOpen && (
@@ -151,6 +191,29 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
                       {Object.entries(ATTRIBUTION_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   </Field>
+                  <Field label="Canal">
+                    <select className={selectClass} value={filters.channel ?? ""} onChange={(e) => go({ channel: (e.target.value || null) as SalesFilters["channel"] })}>
+                      <option value="">Todos</option>
+                      {CHANNELS.map((c) => <option key={c} value={c}>{CHANNEL_LABELS[c]}</option>)}
+                    </select>
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <SearchPicker<PieceOption>
+                      label="Pieza de contenido"
+                      placeholder="Buscá por título o por código"
+                      search={searchPiecesForSale}
+                      getKey={(p) => p.id}
+                      renderOption={(p) => (
+                        <>
+                          <span className="font-medium">{p.title}</span>
+                          <span className="text-xs text-muted-foreground">Código {p.code}</span>
+                        </>
+                      )}
+                      selectedLabel={filters.pieceId ? (data.pieceTitle ?? "Una pieza que no podés ver") : null}
+                      onPick={(p) => go({ pieceId: p.id })}
+                      onClear={() => go({ pieceId: null })}
+                    />
+                  </div>
                   <Field label="Origen (source)">
                     <select className={selectClass} value={filters.utmSource ?? ""} onChange={(e) => go({ utmSource: e.target.value || null })}>
                       <option value="">Todos</option>
@@ -191,10 +254,10 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
             ) : (
               <>
                 <div className="mt-4 hidden overflow-x-auto rounded-xl border border-border md:block">
-                  <table className="w-full min-w-[960px] text-sm">
+                  <table className={`w-full text-sm ${showOrigin ? "min-w-[1180px]" : "min-w-[960px]"}`}>
                     <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
                       <tr>
-                        {["Fecha", "Contacto", "Producto", "Monto", "Cobrado", "Pendiente", "Estado", "Vendedor", "Atribución"].map((h, i) => (
+                        {["Fecha", "Contacto", "Producto", "Monto", "Cobrado", "Pendiente", "Estado", "Vendedor", "Atribución", ...(showOrigin ? ["Origen"] : [])].map((h, i) => (
                           <th key={h} scope="col" className={`whitespace-nowrap px-3 py-2 font-medium ${i >= 3 && i <= 5 ? "text-right" : ""}`}>{h}</th>
                         ))}
                       </tr>
@@ -211,6 +274,14 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
                           <td className="px-3 py-2"><StatusChip status={r.status} /></td>
                           <td className="whitespace-nowrap px-3 py-2">{r.vendedorName ?? "—"}</td>
                           <td className="max-w-[220px] truncate px-3 py-2 text-xs text-muted-foreground" title={r.attribution}>{r.attribution}</td>
+                          {showOrigin && (
+                            <td className="max-w-[260px] px-3 py-2">
+                              <div className="flex items-center gap-1.5">
+                                <ChannelChip channel={r.origin.channel} />
+                                <span className="min-w-0 truncate text-xs" title={r.origin.summary}>{r.origin.channel === "direct" || r.origin.channel === null ? <span className="text-muted-foreground">{r.origin.summary}</span> : r.origin.summary}</span>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -234,6 +305,12 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
                           <div><dt className="text-muted-foreground">Pendiente</dt><dd className="font-medium tabular-nums">{formatMoney(r.pending)}</dd></div>
                         </dl>
                         <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{r.attribution}</p>
+                        {showOrigin && (
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <ChannelChip channel={r.origin.channel} />
+                            <span className="min-w-0 truncate text-[11px] text-muted-foreground">{r.origin.summary}</span>
+                          </div>
+                        )}
                       </Link>
                     </li>
                   ))}

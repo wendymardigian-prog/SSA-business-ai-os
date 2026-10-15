@@ -16,6 +16,7 @@ describe("validateStep1", () => {
     expect(draftAttributionType({ mode: "last_touch" }, 3)).toBe("last_touch");
     expect(draftAttributionType({ mode: "touch", touchId: "t" }, 3)).toBe("manual");
     expect(draftAttributionType({ mode: "manual", manual: { source: "web" } }, 0)).toBe("manual");
+    expect(draftAttributionType({ mode: "manual_channel", choice: { kind: "other" } }, 0)).toBe("manual");
   });
 
   it("una fecha futura (en la zona del workspace) se rechaza", () => {

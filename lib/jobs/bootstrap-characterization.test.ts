@@ -34,6 +34,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       // Atribución orgánica (Extra I, AO1): el vínculo retroactivo de comentarios.
       "comment_backfill",
       "comment_backfill_workspace",
+      // Comisiones (Extra I, CM1): generar o revertir las de un pago.
+      "commissions_payment",
       "content_copy",
       "content_provider_schedule",
       "content_publish",

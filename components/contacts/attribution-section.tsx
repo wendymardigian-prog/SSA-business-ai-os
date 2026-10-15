@@ -12,7 +12,7 @@ import { EmptyHint, Section } from "./ui";
  * uno solo, porque dos tarjetas iguales parecen dos eventos. El camino completo
  * va plegado: es para quien lo quiere mirar, no para quien solo pasa.
  */
-export function AttributionSection({ view }: { view: AttributionView }) {
+export function AttributionSection({ view, contactId }: { view: AttributionView; contactId?: string }) {
   return (
     <Section title="Atribución">
       {view.empty || !view.first ? (
@@ -32,6 +32,14 @@ export function AttributionSection({ view }: { view: AttributionView }) {
               <TouchCard title="Último toque" hint="Se actualiza con cada interacción nueva" touch={view.last} />
             )}
           </div>
+
+          {contactId && (
+            <p className="text-xs">
+              <Link href={`/dashboard/contacts/${contactId}/toques`} className="text-primary underline-offset-2 hover:underline">
+                Ver todos los toques
+              </Link>
+            </p>
+          )}
 
           {view.path.length > 1 && (
             <details className="rounded-lg border border-border">

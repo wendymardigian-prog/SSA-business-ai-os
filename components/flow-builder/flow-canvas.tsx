@@ -43,6 +43,7 @@ import { NodeConfigSidebar } from "./panels/NodeConfigSidebar";
 import { VersionHistoryPanel } from "./panels/VersionHistoryPanel";
 import { TestPanel } from "./panels/TestPanel";
 import { isNoContactTriggerType } from "@/lib/flow-engine/contact-free";
+import { newNodeAttribution, type AttributionDefaults } from "@/lib/attribution/panel-view";
 
 type Flow = Database["public"]["Tables"]["flows"]["Row"];
 
@@ -59,19 +60,26 @@ const nodeTypes: NodeTypes = {
 
 interface FlowCanvasProps {
   flow: Flow;
+  /** Los valores por defecto de atribución del negocio (Ajustes → Atribución). Sin esto, los nodos nuevos nacen sin atribución. */
+  attributionDefaults?: AttributionDefaults;
 }
+
+const NO_ATTRIBUTION_DEFAULTS: AttributionDefaults = { append: false, trackClicks: true };
 
 let nodeId = 0;
 function getNodeId() {
   return `node_${Date.now()}_${nodeId++}`;
 }
 
-function getDefaultData(type: string, actionType?: string): Record<string, unknown> {
+function getDefaultData(type: string, actionType?: string, attributionDefaults?: AttributionDefaults): Record<string, unknown> {
   switch (type) {
     case "trigger":
       return { triggerType: "keyword", keywords: [] };
-    case "sendMessage":
-      return { messages: [] };
+    case "sendMessage": {
+      // Un nodo de envío nuevo nace con la atribución encendida solo si el negocio la tiene así por defecto (F39).
+      const attribution = attributionDefaults ? newNodeAttribution(attributionDefaults) : undefined;
+      return attribution ? { messages: [], attribution } : { messages: [] };
+    }
     case "condition":
       return { conditions: [], logic: "and" };
     case "branch":
@@ -91,7 +99,7 @@ function getDefaultData(type: string, actionType?: string): Record<string, unkno
   }
 }
 
-function FlowCanvasInner({ flow }: FlowCanvasProps) {
+function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }: FlowCanvasProps) {
   const router = useRouter();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
@@ -170,12 +178,12 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         id: getNodeId(),
         type,
         position,
-        data: getDefaultData(type, actionType || nodeType),
+        data: getDefaultData(type, actionType || nodeType, attributionDefaults),
       };
 
       setNodes((nds) => [...nds, newNode]);
     },
-    [screenToFlowPosition, setNodes]
+    [screenToFlowPosition, setNodes, attributionDefaults]
   );
 
   const onNodeClick = useCallback(
@@ -524,6 +532,8 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         {selectedNode && !versionPanelOpen && !testPanelOpen && (
           <NodeConfigSidebar
             flowId={flow.id}
+            flowName={flowName}
+            attributionDefaults={attributionDefaults}
             node={selectedNode}
             nodes={nodes}
             edges={edges}
@@ -558,10 +568,10 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
   );
 }
 
-export function FlowCanvas({ flow }: FlowCanvasProps) {
+export function FlowCanvas({ flow, attributionDefaults }: FlowCanvasProps) {
   return (
     <ReactFlowProvider>
-      <FlowCanvasInner flow={flow} />
+      <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
     </ReactFlowProvider>
   );
 }

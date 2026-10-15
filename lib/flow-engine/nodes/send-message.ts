@@ -8,6 +8,7 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { sendChannelMessage, recordSend } from "../send";
 import { sentContentContext } from "@/lib/attribution/content-variables";
+import { attributeOutgoing, type OutgoingMessage } from "@/lib/attribution/outgoing-links";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
@@ -70,14 +71,24 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
       const mediaUrl = rawMsg.mediaUrl || rawMsg.imageUrl;
       const mediaType = rawMsg.mediaType || (rawMsg.imageUrl ? "image" : undefined);
 
+      // Atribución de los links (Extra I, F39/F40): sobre el mensaje YA adaptado a la plataforma. Apagada, devuelve el
+      // mismo objeto y no lee nada (lo fija la caracterización).
+      const outgoing = await attributeOutgoing(
+        supabase,
+        { workspaceId: context.workspaceId, contactId: context.contactId, flowId: context.flowId, platform: context.platform, variables: context.variables },
+        data.attribution,
+        { text, buttons: adapted.buttons, template: adapted.template, replyMarkup: adapted.replyMarkup } as OutgoingMessage,
+      );
+      const finalText = outgoing.text;
+
       const outcome = await sendChannelMessage(supabase, context, {
-        text,
+        text: finalText,
         mediaUrl,
         mediaType,
-        buttons: adapted.buttons,
+        buttons: outgoing.buttons as typeof adapted.buttons,
         quickReplies: adapted.quickReplies,
-        template: adapted.template,
-        replyMarkup: adapted.replyMarkup,
+        template: outgoing.template as typeof adapted.template,
+        replyMarkup: outgoing.replyMarkup as typeof adapted.replyMarkup,
       });
 
       // El adjunto se guarda en formato v2 (F19), no el array legado
@@ -97,7 +108,7 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
         { ...context, nodeId: node.id },
         // Un envio rechazado guarda el motivo en lugar del texto que no salio:
         // es lo que va a leer el operador en la conversacion.
-        outcome.ok ? text : outcome.failure?.message ?? text,
+        outcome.ok ? finalText : outcome.failure?.message ?? finalText,
         outcome,
         attachments
       );
@@ -159,10 +170,19 @@ async function sendFirstMessageAsPrivateReply(
 
   const zernio = createZernioClient(apiKey);
 
-  const text = interpolateVariables(
+  const interpolated = interpolateVariables(
     adaptMessage(first, context.platform ?? "instagram").text,
     context.variables || {}
   );
+  // Atribución de los links (Extra I, F39): también en el respaldo por respuesta privada (solo el texto; los botones no viajan).
+  const text = (
+    await attributeOutgoing(
+      supabase,
+      { workspaceId: context.workspaceId, contactId: context.contactId, flowId: context.flowId, platform: context.platform ?? "instagram", variables: context.variables },
+      data.attribution,
+      { text: interpolated },
+    )
+  ).text;
 
   try {
     await zernio.comments.sendPrivateReplyToComment({

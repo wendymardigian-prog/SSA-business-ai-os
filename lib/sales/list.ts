@@ -7,6 +7,7 @@ import { isDateOnly } from "./dates";
 import { ATTRIBUTION_TYPES, SALE_STATUSES } from "./labels";
 import { saleBalance, salePaid } from "./sale-math";
 import { describeAttribution, type SaleAttribution } from "./attribution";
+import { CHANNELS, type TouchChannelKey } from "@/lib/contacts/taxonomy";
 import { snapshotText } from "./sale-text";
 
 export const SALES_PAGE_SIZE = 50;
@@ -39,6 +40,10 @@ export interface SalesFilters {
   utmMedium: string | null;
   utmCampaign: string | null;
   attributionType: string | null;
+  /** El canal del toque de la venta (Extra I, F49): `?canal=`. */
+  channel: TouchChannelKey | null;
+  /** La pieza de contenido del toque de la venta (Extra I, F49): `?pieza=<id>`. */
+  pieceId: string | null;
   from: string | null;
   to: string | null;
   q: string | null;
@@ -50,12 +55,15 @@ const one = (v: string | string[] | undefined): string | null => {
   const raw = Array.isArray(v) ? v[0] : v;
   return raw && raw.trim() ? raw.trim().slice(0, 120) : null;
 };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const many = (v: string | string[] | undefined): string[] => (Array.isArray(v) ? v : v ? v.split(",") : []).map((x) => x.trim()).filter(Boolean);
 
 /** Arma los filtros desde la URL: lo desconocido se ignora. */
 export function parseSalesFilters(params: Params): SalesFilters {
   const pill = one(params.pastilla);
   const type = one(params.atribucion);
+  const channel = one(params.canal);
+  const piece = one(params.pieza);
   const date = (key: string) => {
     const v = one(params[key]);
     return v && isDateOnly(v) ? v : null;
@@ -72,6 +80,8 @@ export function parseSalesFilters(params: Params): SalesFilters {
     utmMedium: one(params.utm_medium),
     utmCampaign: one(params.utm_campaign),
     attributionType: (ATTRIBUTION_TYPES as readonly string[]).includes(type ?? "") ? type : null,
+    channel: (CHANNELS as readonly string[]).includes(channel ?? "") ? (channel as TouchChannelKey) : null,
+    pieceId: piece && UUID.test(piece) ? piece : null,
     from: date("desde"),
     to: date("hasta"),
     q: one(params.q),
@@ -103,9 +113,23 @@ export function salesQueryFilters(f: SalesFilters): QueryFilter[] {
   if (f.utmMedium) out.push({ column: "attribution->>medium", op: "eq", value: f.utmMedium });
   if (f.utmCampaign) out.push({ column: "attribution->>campaign", op: "ilike", value: `%${f.utmCampaign.replace(/[%_,()]/g, " ")}%` });
   if (f.attributionType) out.push({ column: "attribution_type", op: "eq", value: f.attributionType });
+  // El canal y la pieza viven en el TOQUE al que apunta la venta: se filtran sobre el recurso embebido (ver `touchEmbed`).
+  if (f.channel) out.push({ column: `${TOUCH_EMBED}.channel`, op: "eq", value: f.channel });
+  if (f.pieceId) out.push({ column: `${TOUCH_EMBED}.content_post_id`, op: "eq", value: f.pieceId });
   if (f.from) out.push({ column: "sale_date", op: "gte", value: f.from });
   if (f.to) out.push({ column: "sale_date", op: "lte", value: f.to });
   return out;
+}
+
+/** El recurso embebido del toque de la venta (`sales.attribution_touch_id`). */
+export const TOUCH_EMBED = "contact_touches";
+
+/**
+ * La parte del `select` que trae el toque embebido. Con un filtro por canal o por pieza es un `inner` (solo quedan las
+ * ventas cuyo toque cumple); sin filtro no se pide: el origen de cada fila se lee aparte, en una sola consulta.
+ */
+export function touchEmbed(f: Pick<SalesFilters, "channel" | "pieceId">): string {
+  return f.channel || f.pieceId ? `, ${TOUCH_EMBED}!attribution_touch_id!inner(id)` : "";
 }
 
 export interface SaleListRowInput {
@@ -132,6 +156,8 @@ export interface SaleListRow {
   status: string;
   vendedorId: string | null;
   attribution: string;
+  /** El origen de la venta (F49): el canal y una linea corta. Lo completa la pagina con el toque de la venta. */
+  origin: { channel: string | null; channelLabel: string; summary: string };
 }
 
 /** Cobrado y pendiente salen de `saleBalance` en céntimos. */
@@ -152,6 +178,7 @@ export function saleListRow(
     pending: saleBalance(sale.final_amount, payments),
     status: sale.status,
     vendedorId: sale.vendedor_id,
+    origin: { channel: null, channelLabel: "Sin origen", summary: "Sin origen identificado" },
     attribution: attribution && (attribution.source || attribution.medium || attribution.campaign)
       ? [attribution.source, attribution.medium].filter(Boolean).join(" / ") + (attribution.campaign ? ` · ${attribution.campaign}` : "")
       : describeAttribution(null, now, timeZone),
@@ -179,6 +206,8 @@ export function salesFiltersToParams(f: SalesFilters): URLSearchParams {
   if (f.utmMedium) p.set("utm_medium", f.utmMedium);
   if (f.utmCampaign) p.set("utm_campaign", f.utmCampaign);
   if (f.attributionType) p.set("atribucion", f.attributionType);
+  if (f.channel) p.set("canal", f.channel);
+  if (f.pieceId) p.set("pieza", f.pieceId);
   if (f.from) p.set("desde", f.from);
   if (f.to) p.set("hasta", f.to);
   if (f.q) p.set("q", f.q);
@@ -188,5 +217,5 @@ export function salesFiltersToParams(f: SalesFilters): URLSearchParams {
 
 /** Cuántos filtros hay puestos (sin contar la pastilla ni la búsqueda ni la página): el globito de «Filtros». */
 export function countActiveSalesFilters(f: SalesFilters): number {
-  return [f.status.length > 0, f.productId, f.variantId, f.vendedorId, f.setterId, f.utmSource, f.utmMedium, f.utmCampaign, f.attributionType, f.from, f.to].filter(Boolean).length;
+  return [f.status.length > 0, f.productId, f.variantId, f.vendedorId, f.setterId, f.utmSource, f.utmMedium, f.utmCampaign, f.attributionType, f.channel, f.pieceId, f.from, f.to].filter(Boolean).length;
 }

@@ -50,6 +50,7 @@ function ctx(over: { keys?: string[]; db?: ReturnType<typeof memoryDb> } = {}) {
           offer_id: null,
           funnel_stage: "mofu",
           reference: null,
+          attribution_code: "c8k2f",
         },
         { id: "ajena", workspace_id: "otro-ws", title: "Ajena", status: "draft", networks: [], media: [] },
       ],
@@ -91,6 +92,7 @@ describe("loadPiece (F96)", () => {
       recordingNotes: "Notas",
       funnelStage: "mofu",
       reviewNote: "Cambiá el gancho",
+      attributionCode: "c8k2f",
       idea: { id: "idea-1", title: "La idea", content: "Texto de la idea" },
     });
   });

@@ -9,6 +9,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { financeContextOf, memberBelongs, vendorBelongs, UUID_RE } from "@/lib/finance/context";
 import { planCreateExpense, planPayExpense, planRevertExpense, planUpdateExpense, planVoidExpense, type ExpenseRowLite } from "@/lib/finance/expense-rules";
 import { EXPENSE_RECEIPT_BUCKET, RECEIPT_SIGNED_URL_SECONDS, checkExpenseReceipt, receiptPath, receiptPathBelongsTo } from "@/lib/finance/receipts";
+import { payoutPaidNotice } from "@/lib/commissions/notices";
+import { createNotification } from "@/lib/notifications/create";
+import { toCents } from "@/lib/sales/money";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -22,6 +25,40 @@ import type { Json } from "@/lib/types/database";
 
 const NO_PERMISSION = "No tenés permiso para cambiar los gastos";
 const NO_VIEW = "No tenés permiso para ver los gastos";
+
+/**
+ * Un gasto de liquidación (`origin = commission_payout`) se pagó: cada persona a la que se le debía sale a saber que
+ * ya cobró. Nunca frena el pago (try/catch), y nunca le avisa a quien lo pagó. Lee con el servicio las comisiones del
+ * gasto del workspace de la sesión; el aviso lleva solo el monto y la fecha.
+ */
+async function notifyCommissionPayoutPaid(ctx: NonNullable<Awaited<ReturnType<typeof getPermissionAction>>>, expenseId: string, paidDate: string | null): Promise<void> {
+  try {
+    const service = await createServiceClient();
+    const { data } = await service
+      .from("commissions")
+      .select("id, user_id, amount")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("expense_id", expenseId)
+      .is("voided_at", null);
+    const byUser = new Map<string, { cents: number; ids: string[] }>();
+    for (const row of (data ?? []) as Array<{ id: string; user_id: string | null; amount: unknown }>) {
+      if (!row.user_id || row.user_id === ctx.user.id) continue;
+      const slot = byUser.get(row.user_id) ?? { cents: 0, ids: [] };
+      slot.cents += toCents(row.amount);
+      slot.ids.push(row.id);
+      byUser.set(row.user_id, slot);
+    }
+    for (const [userId, slot] of byUser) {
+      const notice = payoutPaidNotice({ totalCents: slot.cents, paidDate });
+      await createNotification({
+        supabase: service, workspaceId: ctx.workspace.id, type: "commission_payout_paid", title: notice.title, body: notice.body,
+        entityType: "commission", entityId: slot.ids.length === 1 ? slot.ids[0] : null, recipientId: userId, metadata: { expense_id: expenseId, count: slot.ids.length },
+      });
+    }
+  } catch (e) {
+    console.error("[finance] no pude avisar del pago de las comisiones:", e instanceof Error ? e.message : String(e));
+  }
+}
 
 export type FinanceActionResult<T extends object = object> = ({ ok: true } & T) | { ok: false; error: string };
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
@@ -187,6 +224,7 @@ export async function markExpensePaid(id: string, input: unknown): Promise<Finan
     changes: diffFields({ status: existing.status, amount: existing.amount }, { status: "pagado", amount: planned.patch.amount }),
     metadata: { paid_date: planned.patch.paid_date }, performedBy: ctx.user.id,
   });
+  if (existing.origin === "commission_payout") await notifyCommissionPayoutPaid(ctx, id, planned.patch.paid_date ?? null);
   revalidate(id);
   return { ok: true };
 }

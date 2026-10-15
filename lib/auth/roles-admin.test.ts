@@ -21,7 +21,7 @@ const role = (over: Partial<RoleRow> = {}): RoleRow => ({
   name: "Setter senior",
   description: null,
   systemRole: null,
-  permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" } },
+  permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } },
   members: 0,
   ...over,
 });
@@ -88,7 +88,7 @@ describe("validar un rol (F71)", () => {
   it("sin alcance elegido, el mas restrictivo", () => {
     const result = validateRole({ name: "Setter", keys: ["contacts.view"], scopes: {} });
 
-    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" });
+    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" });
   });
 });
 
@@ -176,7 +176,7 @@ describe("como se muestran (F71)", () => {
     expect(
       describeRole(
         role({
-          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" } },
+          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } },
         }),
       ),
     ).toBe("2 permisos · contactos: todos · conversaciones: solo las suyas");
@@ -185,7 +185,7 @@ describe("como se muestran (F71)", () => {
   it("el alcance 'los suyos + los sin asignar' se nombra", () => {
     expect(
       describeRole(
-        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" } } }),
+        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } } }),
       ),
     ).toBe("1 permiso · contactos: los suyos + los sin asignar · conversaciones: solo las suyas");
   });
@@ -197,7 +197,7 @@ describe("como se muestran (F71)", () => {
 
   it("uno vacio lo dice", () => {
     expect(
-      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" } } })),
+      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } } })),
     ).toBe("Sin permisos.");
   });
 });
@@ -244,7 +244,7 @@ describe("scopeFieldState (F12)", () => {
   });
 
   it("cada alcance vive dentro de su grupo", () => {
-    expect(SCOPE_GROUP).toEqual({ leads: "contacts", conversations: "inbox", bookings: "scheduling", calls: "calls", sales: "sales", tasks: "tasks" });
+    expect(SCOPE_GROUP).toEqual({ leads: "contacts", conversations: "inbox", bookings: "scheduling", calls: "calls", sales: "sales", commissions: "commissions", tasks: "tasks" });
   });
 });
 

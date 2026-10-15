@@ -62,6 +62,10 @@ export const SECRET_NAMES = {
   // ── Formularios ──────────────────────────────────────────────────────────
   /** Firma los links de formulario por contacto (HMAC). Se genera la primera vez. */
   formsLinkSecret: "forms_link_secret",
+
+  // ── Atribución orgánica (Extra I) ────────────────────────────────────────
+  /** Firma los links con seguimiento `/l/<token>` de los mensajes de los flujos (HMAC). Se genera la primera vez. */
+  attributionLinkSecret: "attribution_link_secret",
 } as const;
 
 export type SecretName = (typeof SECRET_NAMES)[keyof typeof SECRET_NAMES] | (string & {});

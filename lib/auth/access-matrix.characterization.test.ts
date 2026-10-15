@@ -296,6 +296,8 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     const REMOVED_FROM_MENU = ["Conocimiento", "Recursos", "Integraciones"];
     // Extra I (Finanzas): Owner y Admin GANAN un item. No se regenera la foto: se declara aca, a proposito.
     const ADDED_TO_MENU = ["Finanzas"];
+    // Cambio aprobado M9 (Extra I): el Member de sistema tambien gana «Finanzas», por `commissions.view`.
+    const ADDED_TO_MENU_MEMBER = ["Finanzas"];
     const sorted = (names: string[]) => [...names].sort();
 
     it("Owner y Admin ven lo mismo que antes (el menu, salvo el rediseño aprobado de formularios-ui)", () => {
@@ -310,7 +312,9 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     it("el menu del Member es el de hoy, salvo el rediseño aprobado: pierde Recursos como item y gana Ajustes", () => {
       const nav = (now.rendered.member as { nav: string[] }).nav;
       const baseNav = (base.rendered.member as { nav: string[] }).nav;
-      expect(sorted(nav)).toEqual(sorted([...baseNav.filter((n) => n !== "Recursos"), "Ajustes"]));
+      // Cambio aprobado M9 (Extra I): el Member de sistema gana «Finanzas» (tiene commissions.view, ve sus propias
+      // comisiones). Es lo UNICO que suma al menu; adentro no ve ninguna pestaña de gastos.
+      expect(sorted(nav)).toEqual(sorted([...baseNav.filter((n) => n !== "Recursos"), "Ajustes", ...ADDED_TO_MENU_MEMBER]));
     });
 
     it("las pestanas del agente del Member son las de hoy", () => {

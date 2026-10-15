@@ -29,6 +29,8 @@ import type { Database, ConversationStatus } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { parseAttachments } from "@/lib/messages/attachments";
 import { MediaAttachment } from "./media-attachment";
+import { OriginChip } from "./origin-chip";
+import type { OriginChipView } from "@/lib/inbox/origin-chip";
 import { TranscriptBlock } from "./transcript-block";
 import { VoiceRecorder, recordingFilename } from "./voice-recorder";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
@@ -41,7 +43,10 @@ import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/a
 import { formatBytes } from "@/lib/inbox/media-render";
 import { headBase64Of } from "@/lib/content/media";
 
-type Message = Database["public"]["Tables"]["messages"]["Row"];
+type Message = Database["public"]["Tables"]["messages"]["Row"] & {
+  /** El chip "Vino de…" que arma el servidor para este mensaje (Extra I, F44). Casi todos no lo traen. */
+  origin_chip?: OriginChipView;
+};
 type Conversation = ConversationRow;
 
 /** El estado de la conversacion como se lee en la bandeja (las pestanas dicen Abiertas / Cerradas / Pospuestas). */
@@ -140,6 +145,7 @@ function MessageBubble({ message }: { message: Message }) {
           <span>{formatMessageTime(message.created_at)}</span>
           {!isInbound && message.status === "delivered" && <span>Entregado</span>}
         </div>
+        {isInbound && message.origin_chip && <OriginChip chip={message.origin_chip} />}
       </div>
 
       {!isInbound && !isBot && (

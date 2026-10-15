@@ -7,7 +7,7 @@ import { Bot, ChevronLeft, ChevronRight, Cog, User, Webhook } from "lucide-react
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { ACTOR_TYPE_LABELS, ACTOR_TYPES, ENTITY_TYPE_LABELS, entityHref } from "@/lib/audit-query";
-import { actorName, describeChanges, effectiveActorType, SALE_ACTION_LABELS, CALL_ACTION_LABELS, FINANCE_ACTION_LABELS, FORM_ACTION_LABELS, type HistoryRow } from "@/lib/audit-history";
+import { actorName, describeChanges, effectiveActorType, SALE_ACTION_LABELS, CALL_ACTION_LABELS, COMMISSION_ACTION_LABELS, FINANCE_ACTION_LABELS, FORM_ACTION_LABELS, type HistoryRow } from "@/lib/audit-history";
 import type { AuditActorType } from "@/lib/types/database";
 
 export type ActivityRow = HistoryRow & { entity_type: string; entity_id: string };
@@ -23,7 +23,7 @@ interface Filters {
 }
 
 const ACTOR_ICON: Record<AuditActorType, typeof User> = { user: User, agent: Bot, system: Cog, webhook: Webhook };
-const ACTIONS: Record<string, string> = { create: "creó", update: "editó", delete: "eliminó", restore: "restauró", link: "vinculó", ...CALL_ACTION_LABELS, ...FINANCE_ACTION_LABELS, ...FORM_ACTION_LABELS, ...SALE_ACTION_LABELS };
+const ACTIONS: Record<string, string> = { create: "creó", update: "editó", delete: "eliminó", restore: "restauró", link: "vinculó", ...CALL_ACTION_LABELS, ...COMMISSION_ACTION_LABELS, ...FINANCE_ACTION_LABELS, ...FORM_ACTION_LABELS, ...SALE_ACTION_LABELS };
 const selectClass = "h-8 w-full rounded-lg border border-input bg-background px-2 text-sm";
 
 function formatWhen(value: string, timeZone: string): string {

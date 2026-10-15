@@ -78,3 +78,12 @@ Al reactivar una plantilla pausada la pantalla avisa qué fechas de pago se salt
 ## Mensajes con pieza (F34/F35)
 - `{{content.title}}` y `{{content.code}}` salen en los flujos de comentario y en los de mensaje que vienen de una historia propia, de la respuesta a un DM de automatización o de un anuncio vinculado a una pieza. Si no hay pieza, el token queda escrito tal cual (así funciona la interpolación para cualquier variable).
 - La herencia de pieza mira el último DM saliente con `origin_context.content` en la conversación; se prueba con datos sembrados, no con Zernio real.
+
+## F48 — Contenido que vende (nice-to-have, sin hacer)
+Las columnas por pieza (leads, agendas, ventas, revenue, cash) con una función `content_crm_metrics(p_since, p_until)` (SECURITY INVOKER, mismo patrón que `ads_crm_metrics`) quedaron afuera. La venta ya muestra su pieza y su responsable, y el dashboard de Contenido no cambió.
+
+## Reordenar reglas de comisión: ventana de milisegundos
+`reorderCommissionRules` y archivar renumeran una fila por vez (el cliente de Supabase no da una transacción propia); entre movimiento y movimiento puede haber un orden intermedio visible para el motor durante milisegundos. Si molesta, una RPC `reorder_commission_rules` en una migración futura lo vuelve atómico.
+
+## Catálogo de Meta en «Cargar a mano»
+El buscador de anuncios usa la sesión de quien carga la venta, así que sin `dashboards.ads.view` no ve el catálogo y queda «No sé qué anuncio». Si se quiere que cualquiera con `sales.manage` pueda buscar, hay que pasar a cliente de servicio.

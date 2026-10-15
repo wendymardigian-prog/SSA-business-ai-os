@@ -196,3 +196,12 @@ describe("describeAttributionExample", () => {
     expect(ex.text.startsWith("Con una respuesta a tu historia en una pieza, el link")).toBe(true);
   });
 });
+
+describe("el medio del link (F42)", () => {
+  it("por defecto es dm; un link de una pieza puede pedir organic_social", () => {
+    expect(attributionParams({ platform: "instagram", flowName: "x", flowId: null, contentCode: "c8k2f" }).find((p) => p.key === "utm_medium")?.value).toBe("dm");
+    expect(buildAttributedUrl("https://a.com/p", { platform: "instagram", flowName: "Mi reel", flowId: null, contentCode: "c8k2f", medium: "organic_social" })).toBe(
+      "https://a.com/p?utm_source=instagram&utm_medium=organic_social&utm_campaign=mi-reel&utm_content=c8k2f",
+    );
+  });
+});

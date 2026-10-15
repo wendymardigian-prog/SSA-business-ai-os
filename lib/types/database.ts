@@ -468,6 +468,11 @@ export type AuditEntityType =
   | "expense"
   | "recurring_expense"
   | "vendor"
+  /** Comisiones (Extra I, 00231): una comision y una regla de comision. Los roles de comision se auditan sobre "workspace". */
+  | "commission"
+  | "commission_rule"
+  /** Una publicacion de una red (Extra I, F43): su responsable cuando no tiene pieza. */
+  | "social_post"
   | "task";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
@@ -616,6 +621,8 @@ export type AuditAction =
   | "finance.settings_updated"
   /** Entity workspace: la configuración de atribución (Extra I, F31). */
   | "attribution.settings_updated"
+  /** Entity social_post: se cambió el responsable de una publicación sin pieza (Extra I, F43). changes.assigned_to {old,new}. */
+  | "social_post.assignee_changed"
   /** Formularios (entity form, salvo que se aclare). `form.published` lo escribe la funcion SQL. */
   | "form.created"
   | "form.updated"
@@ -700,7 +707,23 @@ export type AuditAction =
   | "webhook_endpoint.secret_changed"
   | "webhook_endpoint.sample_saved"
   | "webhook_endpoint.deleted"
-  | "webhook_endpoint.reprocessed";
+  | "webhook_endpoint.reprocessed"
+  /** Comisiones (Extra I, entity commission). `generated`, `voided` (automatica) y `payout_released` los escribe la base (00231). */
+  | "commission.generated"
+  | "commission.voided"
+  | "commission.payout_released"
+  | "commission.payout_assigned"
+  | "commission.person_assigned"
+  | "commission.adjustment_created"
+  /** Entity workspace: los roles de comision. */
+  | "commission.roles_updated"
+  /** Entity commission_rule. */
+  | "commission_rule.created"
+  | "commission_rule.updated"
+  | "commission_rule.paused"
+  | "commission_rule.resumed"
+  | "commission_rule.archived"
+  | "commission_rule.reordered";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -1034,6 +1057,8 @@ export interface Database {
       };
       workspaces: {
         Row: {
+          /** Roles de comision (00231): { roles: [...] }. */
+          commission_settings: Json;
           /** Atribución orgánica (00230): comentarios que crean contactos, días de herencia y valores por defecto de los links. */
           attribution_settings: Json;
           /** Crear los 7 flujos sugeridos al crear un evento (Etapa 4, F49). */
@@ -1097,6 +1122,8 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
+          /** Roles de comision (00231): { roles: [...] }. */
+          commission_settings?: Json;
           /** Atribución orgánica (00230): comentarios que crean contactos, días de herencia y valores por defecto de los links. */
           attribution_settings?: Json;
           id?: string;
@@ -1135,6 +1162,8 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          /** Roles de comision (00231): { roles: [...] }. */
+          commission_settings?: Json;
           /** Atribución orgánica (00230): comentarios que crean contactos, días de herencia y valores por defecto de los links. */
           attribution_settings?: Json;
           id?: string;
@@ -5478,11 +5507,82 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
+      commission_rules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          role: string;
+          position: number;
+          conditions: Json;
+          calc_type: "percent" | "fixed";
+          rate: number | null;
+          fixed_amount: number | null;
+          base: "gross" | "net_of_fees";
+          beneficiary_user_id: string | null;
+          hold_days: number;
+          valid_from: string | null;
+          valid_until: string | null;
+          is_active: boolean;
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      commissions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          kind: "earned" | "adjustment";
+          role: string | null;
+          user_id: string | null;
+          payment_id: string | null;
+          sale_id: string | null;
+          rule_id: string | null;
+          rule_snapshot: Json | null;
+          base_amount: number | null;
+          amount: number;
+          currency: "USD";
+          attribution_touch_id: string | null;
+          attribution_snapshot: Json | null;
+          paid_on: string | null;
+          available_on: string;
+          expense_id: string | null;
+          voided_at: string | null;
+          voided_by: string | null;
+          void_reason: string | null;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      /** Comisiones (00231): los hechos de un pago que mira el motor. Solo service_role. */
+      commission_facts: { Args: { p_payment_id: string }; Returns: Json };
+      /** Comisiones (00231): genera las comisiones de un pago cobrado (idempotente). Solo service_role. */
+      generate_commissions_for_payment: { Args: { p_payment_id: string }; Returns: Json };
+      /** Comisiones (00231): revierte las comisiones libres de un pago que dejo de estar cobrado. Solo service_role. */
+      revert_commissions_for_payment: { Args: { p_payment_id: string }; Returns: Json };
+      /** Comisiones (00231): convierte comisiones en gastos de liquidacion. Solo service_role. */
+      create_commission_payout: {
+        Args: { p_workspace: string; p_commission_ids: string[]; p_mode: string; p_scheduled_date: string; p_concepts: Json; p_notes: string | null; p_actor: string | null; p_today: string };
+        Returns: Json;
+      };
+      /** Comisiones (00231): el responsable de la pieza o publicacion que trajo una venta. Solo service_role. */
+      commission_content_owner: { Args: { p_social_post_id: string | null; p_content_post_id: string | null; p_workspace: string }; Returns: string | null };
       /** Finanzas (00228): pasa a `vencido` los programados con fecha anterior a hoy. Devuelve los ids. Solo service_role. */
       mark_expenses_overdue: {
         Args: { p_workspace_id: string; p_today: string };

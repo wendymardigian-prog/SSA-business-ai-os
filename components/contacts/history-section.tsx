@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { describeHistoryItem, type AuditHistoryItem, type HistoryItem } from "@/lib/contacts/history";
 import type { AuditAction, Json } from "@/lib/types/database";
-import { CALL_ACTION_LABELS, FINANCE_ACTION_LABELS, FORM_ACTION_LABELS, SALE_ACTION_LABELS } from "@/lib/audit-history";
+import { CALL_ACTION_LABELS, COMMISSION_ACTION_LABELS, FINANCE_ACTION_LABELS, FORM_ACTION_LABELS, SALE_ACTION_LABELS } from "@/lib/audit-history";
 import { EmptyHint, Section, formatDateTime } from "./ui";
 
 /**
@@ -109,6 +109,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "task.blockers_changed": "cambió las dependencias de una tarea",
   "task.deleted": "borró una tarea",
   ...CALL_ACTION_LABELS,
+  ...COMMISSION_ACTION_LABELS,
   ...FINANCE_ACTION_LABELS,
   ...FORM_ACTION_LABELS,
   ...SALE_ACTION_LABELS,

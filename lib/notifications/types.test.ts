@@ -134,3 +134,12 @@ describe("linkFor: reportes de fin de día", () => {
     expect(linkFor("eod_form", "f1")).toBe("/dashboard/eod/f1");
   });
 });
+
+describe("links de comisiones", () => {
+  it("una comisión abre su ficha; el aviso de un gasto pagado, la lista de ese gasto; el de una venta, la lista de esa venta", () => {
+    expect(linkFor("commission", "c1", {})).toBe("/dashboard/finanzas/comisiones?commission=c1");
+    expect(linkFor("commission", null, { expense_id: "e1", count: 3 })).toBe("/dashboard/finanzas/comisiones?gasto=e1");
+    expect(linkFor("commission", null, { sale_id: "s1" })).toBe("/dashboard/finanzas/comisiones?venta=s1");
+    expect(linkFor("commission", null, {})).toBe("/dashboard/finanzas/comisiones");
+  });
+});

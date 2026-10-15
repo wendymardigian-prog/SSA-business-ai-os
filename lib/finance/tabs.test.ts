@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeFinanceTab, financeEntryHref, visibleFinanceTabs } from "./tabs";
+import { FINANCE_ENTRY_PERMISSIONS, activeFinanceTab, financeEntryHref, visibleFinanceTabs } from "./tabs";
 
 const can = (...keys: string[]) => (k: string) => keys.includes(k);
 
@@ -10,6 +10,13 @@ describe("tabs de Finanzas", () => {
   it("sin la clave no ve ninguna", () => {
     expect(visibleFinanceTabs(can())).toEqual([]);
     expect(financeEntryHref(can())).toBeNull();
+  });
+  // Cambio aprobado M9 (Extra I): quien solo tiene commissions.view entra a Finanzas pero NO ve las pestañas de gastos.
+  it("commissions.view deja entrar a Finanzas pero no muestra ninguna pestaña de gastos", () => {
+    expect(FINANCE_ENTRY_PERMISSIONS).toEqual(["expenses.view", "commissions.view"]);
+    expect(visibleFinanceTabs(can("commissions.view"))).toEqual([]);
+    // Todavia no existe la pestaña de Comisiones: no hay a donde mandarlo (quien llama redirige a /dashboard).
+    expect(financeEntryHref(can("commissions.view"))).toBeNull();
   });
   it("la pestaña activa sale de la ruta", () => {
     expect(activeFinanceTab("/dashboard/finanzas")).toBe("resumen");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countActiveSalesFilters, parseSalesFilters, PILL_STATUSES, salesFiltersToParams, SALES_PAGE_SIZE, saleListRow, salesQueryFilters, scopeChip } from "./list";
+import { countActiveSalesFilters, parseSalesFilters, PILL_STATUSES, salesFiltersToParams, SALES_PAGE_SIZE, saleListRow, salesQueryFilters, scopeChip, touchEmbed } from "./list";
 
 describe("parseSalesFilters", () => {
   it("lee la URL y descarta lo desconocido", () => {
@@ -60,6 +60,40 @@ describe("saleListRow", () => {
   it("el chip de alcance", () => {
     expect(scopeChip(true)).toBe("Todas las ventas del equipo");
     expect(scopeChip(false)).toBe("Solo tus ventas");
+  });
+});
+
+describe("filtros por canal y por pieza (Extra I, F49)", () => {
+  const PIECE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+  it("se leen de la URL; un canal que no existe o una pieza que no es un id se ignoran", () => {
+    expect(parseSalesFilters({ canal: "organic", pieza: PIECE })).toMatchObject({ channel: "organic", pieceId: PIECE });
+    expect(parseSalesFilters({ canal: "inventado", pieza: "no-es-un-id" })).toMatchObject({ channel: null, pieceId: null });
+  });
+
+  it("filtran sobre el toque embebido de la venta", () => {
+    expect(salesQueryFilters(parseSalesFilters({ canal: "paid", pieza: PIECE }))).toEqual([
+      { column: "contact_touches.channel", op: "eq", value: "paid" },
+      { column: "contact_touches.content_post_id", op: "eq", value: PIECE },
+    ]);
+  });
+
+  it("el toque se embebe como inner solo cuando hay uno de los dos filtros", () => {
+    expect(touchEmbed(parseSalesFilters({}))).toBe("");
+    expect(touchEmbed(parseSalesFilters({ canal: "organic" }))).toBe(", contact_touches!attribution_touch_id!inner(id)");
+    expect(touchEmbed(parseSalesFilters({ pieza: PIECE }))).toContain("!inner");
+  });
+
+  it("viajan en la URL (ida y vuelta) y cuentan como filtros activos", () => {
+    const f = parseSalesFilters({ canal: "referral", pieza: PIECE });
+    expect(salesFiltersToParams(f).toString()).toBe(`canal=referral&pieza=${PIECE}`);
+    expect(parseSalesFilters(Object.fromEntries(salesFiltersToParams(f).entries()))).toEqual(f);
+    expect(countActiveSalesFilters(f)).toBe(2);
+  });
+
+  it("cada fila arranca con «Sin origen identificado» hasta que la página le pone el toque", () => {
+    const row = saleListRow({ id: "s1", sale_date: "2026-10-10", status: "paid", final_amount: 1, product_snapshot: {}, attribution: null, attribution_type: "none", contact_id: "c1", vendedor_id: null }, [], new Date("2026-10-11T00:00:00Z"), "UTC");
+    expect(row.origin).toEqual({ channel: null, channelLabel: "Sin origen", summary: "Sin origen identificado" });
   });
 });
 

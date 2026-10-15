@@ -49,7 +49,7 @@ async function makeUser(tag) {
   return { id: data.user.id, client };
 }
 
-const ALL_SCOPES = { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", tasks: "all" };
+const ALL_SCOPES = { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" };
 
 try {
   const { data: ws, error: wsErr } = await svc.from("workspaces")
@@ -217,6 +217,12 @@ try {
     T({ name: "contacts DELETE", table: "contacts", op: "delete", any: ["contacts.delete"], deny: ["contacts.edit", "contacts.merge"], member: false, base: ["contacts.view"],
       seed: () => svc.from("contacts").insert({ workspace_id: ws.id, display_name: `zz-test contacto ${uid()}` }).select("id").single() }),
 
+    // ---- Comisiones (Extra I, 00231): solo se LEEN con la sesion (escribe el servidor). `commissions.view` con alcance `all`
+    // (ALL_SCOPES) ve todas; las reglas las ve tambien quien administra.
+    T({ name: "commissions SELECT", table: "commissions", op: "select", any: ["commissions.view"], deny: ["commissions.manage"], member: false,
+      seed: () => svc.from("commissions").insert({ workspace_id: ws.id, kind: "adjustment", user_id: null, amount: 5, available_on: "2031-01-01", notes: "zz-test ajuste" }).select("id").single() }),
+    T({ name: "commission_rules SELECT", table: "commission_rules", op: "select", any: ["commissions.manage", "commissions.view"], deny: ["expenses.view"], member: false,
+      seed: () => svc.from("commission_rules").insert({ workspace_id: ws.id, name: "zz-test regla", role: "vendedor", position: 1 + Math.floor(Math.random() * 100000), calc_type: "percent", rate: 5 }).select("id").single() }),
     // ---- Finanzas (Extra I, 00225): leer con expenses.view, escribir con expenses.manage (para UPDATE tambien hace falta VER la fila)
     T({ name: "expenses SELECT", table: "expenses", op: "select", any: ["expenses.view"], deny: ["expenses.manage"], member: false,
       seed: () => svc.from("expenses").insert({ workspace_id: ws.id, concept: "zz-test gasto", category_key: "marketing", amount: 10, status: "programado", scheduled_date: "2031-01-01", origin: "manual" }).select("id").single() }),

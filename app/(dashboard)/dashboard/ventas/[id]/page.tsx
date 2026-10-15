@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { SaleContracts } from "@/components/sales/sale-contracts";
 import { SaleDetail, type SaleDetailData } from "@/components/sales/sale-detail";
+import { buildOriginViews, loadOriginParts } from "@/lib/sales/attribution-load";
 import { loadSaleContracts } from "@/lib/sales/contracts-load";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/auth/guards";
@@ -26,7 +27,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
 
   const { data: sale } = await supabase
     .from("sales")
-    .select("id, contact_id, status, financing_type, subscription_interval, base_amount, discount_amount, final_amount, discount_reason, product_snapshot, product_variant_id, setter_id, vendedor_id, attribution, attribution_type, booking_id, service_starts_at, sale_date, notes, plan_unbalanced, cancellation_reason, subscription_cancel_reason, created_at, updated_at")
+    .select("id, contact_id, status, financing_type, subscription_interval, base_amount, discount_amount, final_amount, discount_reason, product_snapshot, product_variant_id, setter_id, vendedor_id, attribution, attribution_touch_id, attribution_type, booking_id, service_starts_at, sale_date, notes, plan_unbalanced, cancellation_reason, subscription_cancel_reason, created_at, updated_at")
     .eq("id", id)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -46,6 +47,18 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
 
   const rows = payments.data ?? [];
   const names = Object.fromEntries(members.map((m) => [m.userId, m.name]));
+
+  // De donde vino (F49): el toque, la pieza con su responsable, el anuncio y quien refirio, con la sesion de quien
+  // mira. Un fallo aca no tumba la ficha: la venta cae a su copia congelada.
+  const canViewAds = ctx.can("dashboards.ads.view");
+  const originParts = await loadOriginParts(supabase, {
+    workspaceId: workspace.id,
+    touchIds: sale.attribution_touch_id ? [sale.attribution_touch_id] : [],
+    memberNames: new Map(Object.entries(names)),
+    canViewAds,
+    withThumbnails: true,
+  });
+  const origin = buildOriginViews([sale], originParts, canViewAds)[sale.id];
   const data: SaleDetailData = {
     sale: { ...sale, product: snapshotText(sale.product_snapshot) },
     payments: rows,
@@ -60,6 +73,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
     canManagePayments: ctx.can("payments.manage"),
     enabledMethods: wizard.enabledMethods,
     methods: wizard.methods,
+    origin,
   };
 
   const closed = ["cancelled", "refunded", "subscription_cancelled"].includes(sale.status);

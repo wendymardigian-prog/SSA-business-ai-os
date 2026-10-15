@@ -253,3 +253,32 @@ Hasta acá se guardaba solo lo que el vocabulario cerrado reconoce (UTM, ids de 
 - **Dónde se ve:** el detalle de una respuesta ("De dónde vino") y las visitas del contacto, con un bloque monoespaciado que parte líneas y un botón Copiar. El CSV de respuestas **no** suma una columna (queda anotado en PENDIENTE).
 - **Lo que NO cambia:** `landing_page` y `page_url` siguen filtradas (solo claves de atribución / sin query); la lista de claves es la de siempre (`lib/attribution/keys.ts`) y `contacts.attribution` sigue siendo una copia derivada que no incluye la URL completa.
 - **Nunca se loguea** una URL de entrada: puede traer datos de la campaña que no tienen por qué quedar en los logs.
+
+## Atribución orgánica (Extra I, octubre 2026)
+
+Qué **contenido** trajo a cada persona, y por qué canal. Plano: `claude/v11/requerimientos-extra-i.md`; avance y decisiones en `docs/PROGRESS-extra-i.md` y `docs/PENDIENTE-extra-i.md`.
+
+### El canal de un toque (00230)
+Cada toque tiene `channel`: **organic**, **paid**, **referral** o **direct**. Lo calcula un trigger (`contact_touches_zz_channel`) con `public.touch_channel(...)`, gemela de `lib/attribution/channel.ts`; los casos compartidos (`channel.cases.json`, 54) corren contra las dos. Orden: pauta (cualquier id de anuncio, `gclid`, `ttclid`, `li_fat_id`, `ctwa_clid` o un medio de pago; `fbclid` SOLO no alcanza porque Meta lo agrega a clics orgánicos) → referido (`medium = referral_person`) → orgánico (hay pieza o publicación, un medio orgánico, o un DM de una red social) → directo. **`record_contact_touch` no escribe el canal** (está protegida): siempre sale del trigger, a partir del `medium` y los ids que traiga el toque. Un link orgánico con UTMs y pieza queda con el vínculo de Meta en `ignored / organic_content`, así no aparece en «Sin vincular».
+
+### El código de la pieza
+`content_posts.attribution_code` (`c` + 5 caracteres `[a-z2-9]`, único por workspace, lo completa un trigger). Un toque cuyo `utm_content` es ese código (decodificado, sin importar mayúsculas) queda vinculado a la pieza (y a la publicación si hay UNA sola en esa red). El drawer de la pieza muestra el código con «Copiar» y «Armar un link».
+
+### Comentarios, historias y mensajes con pieza
+- **Comentarios que crean contactos:** Ajustes > General > Atribución. Instagram apagado por defecto (solo vincula si ya es contacto), TikTok prendido (contacto discreto). Cuando un contacto gana su usuario de Instagram o TikTok, el job `comment_backfill` vincula sus comentarios viejos (con la fecha del comentario) y puede volverse su primer toque. El trigger que lo encola es la **00234** (después del merge); su función ya está.
+- **Respuesta a una historia propia:** el toque lleva la publicación y la pieza si `social_posts.external_post_id` coincide (una sola fila; defensivo, pendiente de confirmar en vivo).
+- **Variables de pieza** en los flujos (`{{content.title}}`, `{{content.code}}`) para comentarios, historias propias, anuncios vinculados a una pieza y respuestas a un DM de automatización.
+- **Herencia de pieza:** un DM de una automatización que salió de una pieza guarda `origin_context.content`; si la persona responde dentro de `content_inherit_days` (7 por defecto) la respuesta hereda la pieza y deja UN toque (`content-reply:<id del DM>`). Un anuncio en el mensaje gana a la herencia.
+- **Chip «Vino de…»** en la bandeja y **línea de tiempo** de toques en la ficha (con las marcas Primer toque, Último toque y Último con origen).
+
+### Links con parámetros y con seguimiento (nodo «Enviar mensaje»)
+`attribution: { append, trackClicks }` a nivel nodo. Con `append`, cada link del mensaje ya adaptado a la plataforma (texto, botones URL, carrusel; en WhatsApp los botones ya bajaron a texto) sale con `utm_source` (la red), `utm_medium=dm`, `utm_campaign` (slug del flujo) y `utm_content` (el código de la pieza, o `f-` + 8 del id del flujo); **nunca pisa** un parámetro que el link ya trae, conserva el `#hash` y no toca `wa.me`, `m.me`, `instagram.com`. Con `trackClicks` (y contacto), el link sale como `<app>/l/<token>`: una ruta pública que registra el clic como un toque `link_click` (uno por día, persona y pieza) y redirige. El destino sale **solo del token firmado** (HMAC, secreto `attribution_link_secret` por workspace en Vault, vence a los 180 días): no hay `?to=`, no es un open redirect, un token alterado cae a la app, los previsualizadores (WhatsApp, Facebook, Slack…) redirigen sin registrar y hay un tope de 120 pedidos por minuto y por IP. Con el interruptor apagado el mensaje es **idéntico** al de siempre (`send-message-characterization.test.ts`).
+
+### La venta
+La atribución de la venta sugiere el último toque **con origen** cuando el último fue directo; «Cargar a mano» es un selector de canal (contenido orgánico con buscador de piezas, anuncio del catálogo de Meta, referido, evento, otro) que crea un toque `manual` (con `create_sale` en modo `touch`, que no se tocó); la ficha tiene «De dónde vino» (con el responsable de la pieza leído en vivo) y la lista de ventas una columna «Origen» y filtros por canal y por pieza.
+
+### Verificación
+```
+node scripts/verify-organic-attribution.mjs                   # paridad del canal, códigos, triggers, errores forzados, relleno
+node scripts/verify-organic-attribution.mjs --despues-de-00234
+```

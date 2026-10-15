@@ -222,6 +222,8 @@ export default async function ContentPage({
         timeZone,
       }),
       assignee: assigneeOf(post.assigned_to, authorNames),
+      // El id tal cual esta guardado: el filtro de Responsable (F43) compara contra el, aunque la persona ya no este.
+      assignedTo: post.assigned_to,
     };
   });
 
@@ -299,6 +301,7 @@ export default async function ContentPage({
       title: post.title,
       status: post.status,
       createdBy: post.createdBy,
+      assignedTo: post.assignedTo,
       platforms: post.networks.map((n) => n.platform),
       format: post.format,
       authorName: post.authorName,

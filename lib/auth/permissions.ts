@@ -35,6 +35,7 @@ export const PERMISSION_MODULES = [
   "forms",
   "sales",
   "finance",
+  "commissions",
   "tasks",
   "integrations",
   "team",
@@ -59,6 +60,7 @@ export const MODULE_LABELS: Record<PermissionModule, string> = {
   forms: "Formularios",
   sales: "Ventas",
   finance: "Finanzas",
+  commissions: "Comisiones",
   tasks: "Tareas",
   integrations: "Integraciones",
   team: "Equipo",
@@ -83,7 +85,7 @@ export interface PermissionDefinition {
  * La etiqueta importa tanto como la clave: la pantalla de roles la muestra
  * tal cual, y "inbox.whatsapp.reply" no le dice nada a nadie.
  *
- * Son 76 claves; 74 visibles (dos estan reservadas). Cada clave nueva se suma
+ * Son 78 claves; 76 visibles (dos estan reservadas). Cada clave nueva se suma
  * aca, en la pantalla, en el guard, en la RLS y en `catalog-usage.test.ts` en el
  * MISMO cambio (ver `docs/roles.md`, "Como sumar una clave nueva").
  */
@@ -180,6 +182,10 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "expenses.view", module: "finance", label: "Ver Finanzas", description: "Los gastos, comprobantes, recurrentes, proveedores y el panel de Finanzas, con los ingresos cobrados totales. Exportar a CSV." },
   { key: "expenses.manage", module: "finance", label: "Administrar gastos", description: "Crear, editar, pagar, revertir y anular gastos; plantillas recurrentes; proveedores; categorías y gastos automáticos." },
 
+  // ── Comisiones (Extra I) ────────────────────────────────────────────────
+  { key: "commissions.view", module: "commissions", label: "Ver comisiones", description: "La lista de Comisiones y el detalle de cada una. El alcance decide si ve todas o solo las que tiene a su nombre." },
+  { key: "commissions.manage", module: "commissions", label: "Administrar comisiones", description: "Crear y editar reglas y roles de comisión, generar gastos de liquidación, asignar persona, anular y crear ajustes." },
+
   // ── Tareas (Extra A) ────────────────────────────────────────────────────
   { key: "tasks.view", module: "tasks", label: "Ver las tareas", description: "La tabla y el tablero de Tareas. El alcance decide si ve todas o solo las que creó, tiene a cargo o sigue." },
   { key: "tasks.edit", module: "tasks", label: "Crear y editar tareas", description: "Crear tareas, editarlas, completarlas, reasignarlas y agregar seguidores. Mismo alcance que ver." },
@@ -229,7 +235,7 @@ export function visiblePermissionsOfModule(module: PermissionModule): Permission
 // ── Alcances ──────────────────────────────────────────────────────────────
 
 /** Los modulos donde importa CUANTO se ve, no solo si se ve. */
-export const SCOPED_MODULES = ["leads", "conversations", "bookings", "calls", "sales", "tasks"] as const;
+export const SCOPED_MODULES = ["leads", "conversations", "bookings", "calls", "sales", "commissions", "tasks"] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
 /**
@@ -322,6 +328,10 @@ const MEMBER_KEYS = [
   // cargo o sigue (alcance `own`, aplicado por la RLS). NO borra (`tasks.delete`).
   "tasks.view",
   "tasks.edit",
+  // Comisiones (Extra I, cambio aprobado M9): un Member ve SUS propias comisiones (alcance
+  // `own`, las que tiene a su nombre). Es lo unico que suma: NO administra comisiones
+  // (`commissions.manage`) ni ve los gastos (`expenses.*`).
+  "commissions.view",
 ] as const;
 
 /**
@@ -333,16 +343,16 @@ export const MEMBER_PERMISSION_KEYS: readonly string[] = MEMBER_KEYS;
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", tasks: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
   },
   admin: {
     // Todo salvo lo solo-Owner (transferir la propiedad, quitar personas).
     keys: ALL_PERMISSION_KEYS.filter((key) => !OWNER_ONLY_KEYS.includes(key)),
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", tasks: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
+    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
   },
 };
 
@@ -404,7 +414,7 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), tasks: scope("tasks") },
+    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks") },
   };
 }
 

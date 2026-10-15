@@ -70,6 +70,7 @@ import { LinkAdMenu } from "./link-ad-menu";
 import { showAdsSection } from "@/lib/meta/content-ad-summary";
 import { PieceAdsSection } from "./piece-ads-section";
 import { PiecePublications } from "./piece-publications";
+import { PieceAttribution } from "./piece-attribution";
 import { SaveIndicator } from "./save-indicator";
 import { AssigneeSelect } from "./assignee-select";
 import { StatusSelect } from "./status-select";
@@ -729,6 +730,9 @@ export function PieceDrawer({
             </p>
           )}
         </section>
+
+        {/* Código de atribución y generador de links (Extra I, F38 y F42): solo si la pieza ya tiene código. */}
+        <PieceAttribution code={post.attributionCode} pieceTitle={draft.title || post.title} />
 
         <PiecePublications
           publications={publications}

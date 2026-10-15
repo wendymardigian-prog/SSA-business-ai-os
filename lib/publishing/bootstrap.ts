@@ -37,6 +37,7 @@ import { registerPaymentsOverdueSweepHandler } from "@/lib/jobs/handlers/payment
 import { registerTasksDueSweepHandler } from "@/lib/jobs/handlers/tasks-due-sweep";
 import { registerFinanceDailyHandler } from "@/lib/jobs/handlers/finance-daily";
 import { registerCommentBackfillHandlers } from "@/lib/jobs/handlers/comment-backfill";
+import { registerCommissionsPaymentHandler } from "@/lib/jobs/handlers/commissions-payment";
 import { registerEodReminderHandler } from "@/lib/jobs/handlers/eod-reminder";
 import { registerPaymentRelativeHandler } from "@/lib/jobs/handlers/payment-relative";
 import { registerContractEmailHandler } from "@/lib/jobs/handlers/contract-email";
@@ -127,6 +128,7 @@ export function registerPublishing(): void {
   registerTasksDueSweepHandler();
   registerFinanceDailyHandler();
   registerCommentBackfillHandlers();
+  registerCommissionsPaymentHandler();
   // Reporte de fin de día (E13): el recordatorio.
   registerEodReminderHandler();
   registerPaymentRelativeHandler();

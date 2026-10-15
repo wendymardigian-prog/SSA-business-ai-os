@@ -20,6 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "@/lib/types/database";
 import { entryUrlFrom } from "@/lib/attribution/entry-url";
+import { TOUCH_CHANNELS } from "@/lib/attribution/channel";
 import { ORIGINS, normalizeMedium, normalizeSource, type TouchOrigin } from "./taxonomy";
 
 type Db = SupabaseClient<Database>;
@@ -117,7 +118,24 @@ const RAW_KEYS = new Set([
   "endpoint_id", "endpoint_name",
   // Chat (Extra L, F19): el `referral` completo y la mencion en una historia.
   "referral_type", "story_mention",
+  // La venta cargada a mano con canal (Extra I, F47): el canal buscado y quien refirio. Los tres tienen forma
+  // validada aparte (ver `RAW_SHAPED`): un valor que no la cumple se descarta.
+  "channel", "referrer_contact_id", "referrer_user_id",
 ]);
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CHANNEL_SHAPE = new Set<string>(TOUCH_CHANNELS);
+
+/**
+ * Las claves de `raw` que no son texto libre: tienen una forma y, si el valor no la cumple, no se guardan. Los ids
+ * del referidor son UUID (despues se leen para completar al contacto) y el canal es uno de los cuatro. Son DATOS
+ * INFORMATIVOS: el canal real del toque lo calcula un trigger de la base, nunca sale de aca.
+ */
+const RAW_SHAPED: Record<string, (value: string) => boolean> = {
+  channel: (v) => CHANNEL_SHAPE.has(v),
+  referrer_contact_id: (v) => UUID_SHAPE.test(v),
+  referrer_user_id: (v) => UUID_SHAPE.test(v),
+};
 
 /** Cuánto texto puede tener un valor guardado en `raw`. */
 const RAW_VALUE_MAX = 300;
@@ -133,6 +151,12 @@ export function sanitizeRaw(value: unknown, depth = 0): Record<string, Json> {
   const out: Record<string, Json> = {};
   for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
     if (!RAW_KEYS.has(key)) continue;
+
+    const shaped = RAW_SHAPED[key];
+    if (shaped) {
+      if (typeof entry === "string" && shaped(entry.trim())) out[key] = entry.trim();
+      continue;
+    }
 
     if (typeof entry === "string") out[key] = entry.slice(0, RAW_VALUE_MAX);
     else if (typeof entry === "number" || typeof entry === "boolean") out[key] = entry;

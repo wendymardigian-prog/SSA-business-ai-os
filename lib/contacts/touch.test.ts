@@ -181,6 +181,28 @@ describe("el raw conserva los datos del anuncio de un formulario (F33)", () => {
   });
 });
 
+describe("el raw conserva el canal y el referidor de una venta cargada a mano (Extra I, F47)", () => {
+  const CONTACT_ID = "0f0f0f0f-0000-4000-8000-000000000001";
+  const USER_ID = "0f0f0f0f-0000-4000-8000-000000000002";
+
+  it("guarda channel, referrer_contact_id y referrer_user_id con la forma correcta", () => {
+    expect(sanitizeRaw({ channel: "referral", referrer_contact_id: CONTACT_ID })).toEqual({ channel: "referral", referrer_contact_id: CONTACT_ID });
+    expect(sanitizeRaw({ channel: "organic", referrer_user_id: ` ${USER_ID} ` })).toEqual({ channel: "organic", referrer_user_id: USER_ID });
+  });
+
+  it("descarta un canal que no es uno de los cuatro y un id que no es un UUID", () => {
+    expect(sanitizeRaw({ channel: "instagram" })).toEqual({});
+    expect(sanitizeRaw({ channel: 5 })).toEqual({});
+    expect(sanitizeRaw({ referrer_contact_id: "no-es-uuid", referrer_user_id: "1; drop table" })).toEqual({});
+    expect(sanitizeRaw({ referrer_contact_id: { id: CONTACT_ID } })).toEqual({});
+  });
+
+  it("parseTouch lo deja en el raw que se manda a la base", () => {
+    const parsed = parseTouch({ ...base, raw: { channel: "referral", referrer_user_id: USER_ID, access_token: "secreto" } });
+    expect(parsed.ok && parsed.touch.raw).toEqual({ channel: "referral", referrer_user_id: USER_ID });
+  });
+});
+
 describe("recordTouch (F83)", () => {
   it("llama a la función de la base con el workspace, el contacto y el toque limpio", async () => {
     const { client, rpc } = fakeDb({ data: { inserted: true, touch_id: "t-1" } });

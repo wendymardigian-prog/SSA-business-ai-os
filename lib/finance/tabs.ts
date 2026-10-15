@@ -17,8 +17,12 @@ export const FINANCE_TABS: readonly FinanceTab[] = [
   { id: "proveedores", name: "Proveedores", href: "/dashboard/finanzas/proveedores", permissions: ["expenses.view"] },
 ];
 
-/** Las claves con las que alguien entra a Finanzas (el layout y el menú piden alguna). */
-export const FINANCE_ENTRY_PERMISSIONS: readonly string[] = ["expenses.view"];
+/**
+ * Las claves con las que alguien entra a Finanzas (el layout y el menú piden ALGUNA). `commissions.view` (cambio
+ * aprobado M9) deja entrar al Member de sistema a ver sus comisiones; las pestañas de gastos siguen pidiendo
+ * `expenses.view`.
+ */
+export const FINANCE_ENTRY_PERMISSIONS: readonly string[] = ["expenses.view", "commissions.view"];
 
 export function visibleFinanceTabs(can: (key: string) => boolean): FinanceTab[] {
   return FINANCE_TABS.filter((t) => t.permissions.some((k) => can(k)));
@@ -31,7 +35,10 @@ export function activeFinanceTab(pathname: string): FinanceTab["id"] {
   return match.sort((a, b) => b.href.length - a.href.length)[0]?.id ?? "resumen";
 }
 
-/** A dónde manda `/dashboard/finanzas` a quien no ve el Resumen. */
+/**
+ * A dónde manda `/dashboard/finanzas` a quien no ve el Resumen: la primera pestaña que ve, o `null` si ninguna
+ * (quien solo tiene `commissions.view` mientras no exista la pestaña de Comisiones): quien llama redirige a `/dashboard`.
+ */
 export function financeEntryHref(can: (key: string) => boolean): string | null {
   return visibleFinanceTabs(can)[0]?.href ?? null;
 }

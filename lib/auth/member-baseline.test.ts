@@ -351,8 +351,9 @@ describe("caracterizacion: el menu (F68)", () => {
     const visibles = memberMenu();
     const ocultas = NAV_ITEMS.map((item) => item.name).filter((n) => !visibles.includes(n)).sort();
 
-    // Extra I: el Member de sistema tampoco ve Finanzas (no tiene expenses.view; sus comisiones llegan en el bloque CM).
-    expect(ocultas).toEqual(["Finanzas", "Social"]);
+    // Cambio aprobado M9 (Extra I): el Member de sistema ve «Finanzas» (tiene commissions.view, para sus
+    // propias comisiones). Sigue sin Social.
+    expect(ocultas).toEqual(["Social"]);
   });
 
   it("las demas las ve un Member", () => {
@@ -368,6 +369,9 @@ describe("caracterizacion: el menu (F68)", () => {
       "Contactos",
       "Contenido",
       "Dashboards",
+      // Finanzas (Extra I, cambio aprobado M9): el Member de sistema tiene commissions.view (sus comisiones,
+      // alcance own). Adentro NO ve las pestañas de gastos (piden expenses.view).
+      "Finanzas",
       // Formularios (alcance v7.1 §4.5): el Member de sistema tiene forms.view.
       "Formularios",
       // Llamadas (decision 152): el Member de sistema tiene calls.view.

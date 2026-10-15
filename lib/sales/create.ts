@@ -13,6 +13,7 @@ import { validatePlanBalances } from "./payment-plan";
 import { checkDiscount, type ProductSnapshot } from "./sale-math";
 import { isDateOnly, localToday } from "./dates";
 import { manualAttributionSchema, type AttributionRequest } from "./attribution";
+import { manualChoiceSchema } from "./manual-channel";
 
 const dateOnly = z.string().refine(isDateOnly, "La fecha no es válida");
 const uuid = z.string().uuid();
@@ -27,11 +28,16 @@ export const paymentInputSchema = z.object({
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
-/** La atribución que viaja del navegador: último toque, otro toque del historial o cargada a mano. */
+/**
+ * La atribución que viaja del navegador: último toque, otro toque del historial, cargada a mano (sin crear un
+ * toque) o cargada a mano CON CANAL (`manual_channel`, Extra I F47): el servidor crea el toque y atribuye la venta
+ * a el. `label` es solo para mostrar en el navegador.
+ */
 export const attributionRequestSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("last_touch") }),
   z.object({ mode: z.literal("touch"), touchId: uuid }),
   z.object({ mode: z.literal("manual"), manual: manualAttributionSchema }),
+  z.object({ mode: z.literal("manual_channel"), choice: manualChoiceSchema, label: z.string().max(400).optional() }),
 ]);
 
 export const createSaleInputSchema = z.object({
@@ -54,6 +60,11 @@ export const createSaleInputSchema = z.object({
   setterId: uuid.nullable().optional(),
   vendedorId: uuid.nullable().optional(),
   attribution: attributionRequestSchema.default({ mode: "last_touch" }),
+  /**
+   * Una clave que genera el asistente al abrirse. Solo la usa la atribucion `manual_channel`, para que enviar dos
+   * veces la misma venta deje UN solo toque (`sale-manual:<clave>`).
+   */
+  idempotencyKey: z.string().trim().min(8).max(100).optional(),
   bookingId: uuid.nullable().optional(),
   serviceStartsAt: dateOnly.nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
@@ -163,6 +174,11 @@ export function applySaleRules(input: CreateSaleParsed, ctx: SaleRuleContext): S
     if (!check.ok) {
       return { ok: false, code: "plan_unbalanced", diffCents: check.diffCents, error: check.diffCents > 0 ? `Falta asignar ${fromCents(check.diffCents).toFixed(2)}` : `Te pasaste por ${fromCents(-check.diffCents).toFixed(2)}` };
     }
+  }
+
+  // `manual_channel` se resuelve ANTES (la accion crea el toque y reemplaza el modo por `touch`): aca no puede llegar.
+  if (input.attribution.mode === "manual_channel") {
+    return { ok: false, code: "invalid_manual", error: "La atribución cargada a mano no se pudo resolver" };
   }
 
   const attribution: Record<string, unknown> =

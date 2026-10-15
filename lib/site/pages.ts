@@ -17,7 +17,7 @@ export interface SitePage {
 }
 
 /** Las rutas que el sistema ya usa: una página del sitio no puede llamarse así. */
-export const RESERVED_ROUTES = ["dashboard", "login", "auth", "invite", "api", "calendario", "f", "embed"] as const;
+export const RESERVED_ROUTES = ["dashboard", "login", "auth", "invite", "api", "calendario", "f", "embed", "l"] as const;
 
 /** La lista de este clon. Vacía en la plantilla. */
 export const SITE_PAGES: SitePage[] = [];

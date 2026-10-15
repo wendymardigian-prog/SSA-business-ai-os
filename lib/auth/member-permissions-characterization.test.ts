@@ -48,19 +48,22 @@ describe("Member de sistema", () => {
         "sales.view", "sales.manage", "payments.manage",
         // Tareas (Extra A, §4): las dos claves nuevas del Member. Alcance `own`. SIN `tasks.delete`.
         "tasks.view", "tasks.edit",
+        // Comisiones (Extra I, cambio aprobado M9): el unico permiso nuevo del Member. Alcance `own` (las suyas).
+        // SIN `commissions.manage` y SIN `expenses.*`.
+        "commissions.view",
       ].sort(),
     );
   });
 
   it("tiene alcance 'own' en todo lo que tiene alcance", () => {
-    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" });
+    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" });
   });
 });
 
 describe("Owner y Admin", () => {
   it("el Owner tiene todas las claves y el alcance 'all'", () => {
     expect(SYSTEM_ROLE_PERMISSIONS.owner.keys).toEqual(ALL_PERMISSION_KEYS);
-    expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", tasks: "all" });
+    expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" });
   });
 
   it("el Admin tiene todas menos las dos solo-Owner: transferir la propiedad y quitar personas", () => {

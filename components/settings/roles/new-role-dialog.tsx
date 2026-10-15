@@ -59,6 +59,7 @@ export function NewRoleDialog({
       bookingsScope: scopes?.bookings,
       callsScope: scopes?.calls,
       salesScope: scopes?.sales,
+      commissionsScope: scopes?.commissions,
       tasksScope: scopes?.tasks,
     });
     setPending(false);

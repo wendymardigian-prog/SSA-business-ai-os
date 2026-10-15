@@ -143,8 +143,9 @@ describe("el Member es exactamente el de hoy (F68)", () => {
     // Conocimiento ya no es un item; se abre con un boton de la barra de Agentes IA que pide `knowledge.view`.
     const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true, settings: true } }).map((i) => i.name);
     const ocultos = NAV_ITEMS.map((i) => i.name).filter((n) => !visibles.includes(n)).sort();
-    // Extra I: Finanzas pide expenses.view, que el Member de sistema no tiene.
-    expect(ocultos).toEqual(["Finanzas", "Social"]);
+    // Cambio aprobado M9 (Extra I): Finanzas se ve con expenses.view O commissions.view; el Member de sistema
+    // tiene commissions.view (sus comisiones), asi que lo ve. Sigue sin Social.
+    expect(ocultos).toEqual(["Social"]);
     expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
     expect(can(member, "knowledge.view")).toBe(false);
     // Social no es por cargo (F78): se ve con `social.view`, que el Member de sistema no tiene.
@@ -193,7 +194,7 @@ describe("preguntar por un permiso (F68)", () => {
     // Un permiso mal escrito no puede abrir una puerta, y renombrar una
     // clave cierra el acceso en vez de abrirlo.
     expect(can(role, "telepatia.usar")).toBe(false);
-    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", conversations: "all", bookings: "all", calls: "own", sales: "own", tasks: "own" } }, "telepatia.usar")).toBe(false);
+    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", conversations: "all", bookings: "all", calls: "own", sales: "own", commissions: "own", tasks: "own" } }, "telepatia.usar")).toBe(false);
   });
 
   it("sin rol, nada", () => {

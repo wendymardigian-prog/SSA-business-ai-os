@@ -19,7 +19,7 @@ const { patchRole, createRole, listRoles, deleteRole } = await import("./roles")
 
 const perms = (keys: string[], scopes: Partial<RolePermissions["scopes"]> = {}): RolePermissions => ({
   keys,
-  scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own", ...scopes },
+  scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", ...scopes },
 });
 
 function actor(kind: "owner" | "admin" | RolePermissions, roleId: string | null = null) {
@@ -200,6 +200,7 @@ describe("createRole (F14) y listRoles (F15)", () => {
     const r = await listRoles();
     if (!r.ok) throw new Error("listRoles fallo");
     const member = r.data.roles.find((x) => x.systemRole === "member")!;
-    expect(member.permissions.keys).toHaveLength(27);
+    // 27 + commissions.view (cambio aprobado M9, Extra I).
+    expect(member.permissions.keys).toHaveLength(28);
   });
 });

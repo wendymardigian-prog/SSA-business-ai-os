@@ -44,6 +44,9 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
   const [rows, setRows] = useState<PlannedPayment[]>([]);
   const [rowsFor, setRowsFor] = useState<string | null>(null);
   const [duplicateOk, setDuplicateOk] = useState(false);
+  // La clave de esta venta para el toque de «Cargar a mano» (F47): enviar dos veces deja un solo toque. Si la
+  // persona cambia de atribucion, la clave cambia (otra eleccion, otro toque).
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   // El contexto del contacto (toques, avisos, agendas) se pide al elegirlo. Lo cargado se compara
   // con el contacto actual: así nada se setea de forma síncrona dentro del efecto.
@@ -146,6 +149,7 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
         setterId: s1.setterId,
         vendedorId: s1.vendedorId,
         attribution: s1.attribution as never,
+        idempotencyKey,
         bookingId: s1.bookingId,
         serviceStartsAt: s2.serviceStartsAt || rows[0]?.due_date || null,
         notes: s1.notes.trim() || null,
@@ -212,7 +216,10 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
           <Step1Contact
             config={config}
             values={s1}
-            onChange={(patch) => setS1((prev) => ({ ...prev, ...patch }))}
+            onChange={(patch) => {
+              if (patch.attribution) setIdempotencyKey(crypto.randomUUID());
+              setS1((prev) => ({ ...prev, ...patch }));
+            }}
             onContact={(c) => {
               requested.current = null;
               setS1((prev) => ({ ...prev, contact: c, attribution: DEFAULT_ATTRIBUTION_STATE, bookingId: null }));

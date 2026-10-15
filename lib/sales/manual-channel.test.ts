@@ -6,8 +6,11 @@ import {
   manualChoiceReferences,
   manualDedupeKey,
   manualOccurredAt,
+  manualRetryKey,
   parseManualChoice,
+  storedTouchMatches,
   type ManualChoice,
+  type StoredManualTouch,
 } from "./manual-channel";
 
 const PIECE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -251,5 +254,45 @@ describe("manualChoiceReferences (lo que el servidor tiene que comprobar)", () =
   it("sin referencias, todo null", () => {
     expect(Object.values(manualChoiceReferences(choice({ kind: "event", name: "Expo" }))).every((v) => v === null)).toBe(true);
     expect(Object.values(manualChoiceReferences(choice({ kind: "organic", network: "instagram" }))).every((v) => v === null)).toBe(true);
+  });
+});
+
+describe("la clave de deduplicacion y el reintento (una eleccion distinta de la misma venta)", () => {
+  const stored = (over: Partial<StoredManualTouch> = {}): StoredManualTouch => ({
+    contact_id: CONTACT,
+    source: "instagram",
+    medium: "organic_social",
+    campaign: null,
+    content_label: "Reel A",
+    content_post_id: PIECE,
+    social_post_id: null,
+    ad_id: null,
+    adset_id: null,
+    campaign_id: null,
+    ...over,
+  });
+  const built = buildManualTouch(choice({ kind: "organic", network: "instagram", piece: { contentPostId: PIECE, title: "Reel A" } }), ctx);
+
+  it("la clave con sufijo es sale-manual:<clave>:<sufijo>", () => {
+    expect(manualDedupeKey("abc", "1234abcd")).toBe("sale-manual:abc:1234abcd");
+    expect(manualDedupeKey("abc")).toBe("sale-manual:abc");
+  });
+
+  it("un toque guardado igual al que se quiere registrar es 'el mismo'", () => {
+    expect(storedTouchMatches(stored(), built, CONTACT)).toBe(true);
+  });
+
+  it("otra pieza, otro anuncio, otra red o otro contacto no son 'el mismo'", () => {
+    expect(storedTouchMatches(stored({ content_post_id: "otra" }), built, CONTACT)).toBe(false);
+    expect(storedTouchMatches(stored({ source: "tiktok" }), built, CONTACT)).toBe(false);
+    expect(storedTouchMatches(stored({ ad_id: "1" }), built, CONTACT)).toBe(false);
+    expect(storedTouchMatches(stored({ contact_id: "otro-contacto" }), built, CONTACT)).toBe(false);
+  });
+
+  it("la clave de reintento es deterministica: la misma eleccion da la misma, otra eleccion da otra", () => {
+    const other = buildManualTouch(choice({ kind: "organic", network: "instagram", piece: { contentPostId: POST, title: "Reel B" } }), ctx);
+    expect(manualRetryKey("sale-uuid-1", built)).toBe(manualRetryKey("sale-uuid-1", built));
+    expect(manualRetryKey("sale-uuid-1", built)).not.toBe(manualRetryKey("sale-uuid-1", other));
+    expect(manualRetryKey("sale-uuid-1", built)).toMatch(/^sale-manual:sale-uuid-1:[0-9a-f]{8}$/);
   });
 });

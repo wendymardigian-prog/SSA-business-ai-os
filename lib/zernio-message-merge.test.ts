@@ -70,6 +70,16 @@ describe("mergeThreadWithLocal (F14)", () => {
     expect(merged.transcript_status).toBeNull();
   });
 
+  it("trae el origen del mensaje (origin_context) de nuestra fila; sin fila, null (F44)", () => {
+    const ctx = { ad: { ad_id: "123", title: "Video testimonio", platform: "instagram" } };
+    const [withRow] = mergeThreadWithLocal([fromZernio()], [localRow({ origin_context: ctx })]);
+    expect(withRow.origin_context).toEqual(ctx);
+    const [withoutRow] = mergeThreadWithLocal([fromZernio()], []);
+    expect(withoutRow.origin_context).toBeNull();
+    const [noContext] = mergeThreadWithLocal([fromZernio()], [localRow()]);
+    expect(noContext.origin_context).toBeNull();
+  });
+
   it("no cambia el orden ni agrega mensajes: el hilo lo manda Zernio", () => {
     const thread = [
       fromZernio({ id: "z-1", platform_message_id: "z-1", text: "hola" }),

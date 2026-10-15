@@ -124,6 +124,10 @@ const SERVER_ONLY = [
   { label: "lib/forms/contract/pdf-run.ts", file: join(ROOT, "lib/forms/contract/pdf-run.ts") },
   { label: "lib/forms/contract/email-run.ts", file: join(ROOT, "lib/forms/contract/email-run.ts") },
   { label: "lib/forms/contract/storage.ts", file: join(ROOT, "lib/forms/contract/storage.ts") },
+  // Atribución orgánica (Extra I): firman y arman los links con seguimiento; leen el secreto de Vault.
+  { label: "lib/attribution/tracked-link.ts", file: join(ROOT, "lib/attribution/tracked-link.ts") },
+  { label: "lib/attribution/link-secret.ts", file: join(ROOT, "lib/attribution/link-secret.ts") },
+  { label: "lib/attribution/outgoing-links.ts", file: join(ROOT, "lib/attribution/outgoing-links.ts") },
 ];
 
 describe("limite del servidor: lib/vault.ts", () => {
@@ -164,8 +168,8 @@ describe("limite del servidor: lib/vault.ts", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("ningun Client Component llega a los modulos de solo servidor de Formularios", () => {
-    const formsOnly = SERVER_ONLY.filter((e) => e.label.startsWith("lib/forms/") || e.label.startsWith("lib/antispam/"));
+  it("ningun Client Component llega a los modulos de solo servidor de Formularios y de la Atribución", () => {
+    const formsOnly = SERVER_ONLY.filter((e) => e.label.startsWith("lib/forms/") || e.label.startsWith("lib/antispam/") || e.label.startsWith("lib/attribution/"));
     expect(formsOnly.length).toBeGreaterThan(0);
 
     const offenders = formsOnly.flatMap((entry) =>

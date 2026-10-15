@@ -31,6 +31,11 @@ export interface LinkAttributionContext {
   flowId: string | null | undefined;
   /** El codigo de atribucion de la pieza (`content.code`), si el flujo arranco desde una. */
   contentCode?: string | null;
+  /**
+   * El `utm_medium`. Por defecto `dm` (los links de los mensajes). El generador de links de una pieza (F42) usa
+   * `organic_social`: es un link para poner en una bio o en un post, no en un mensaje.
+   */
+  medium?: string | null;
 }
 
 export const MAX_CAMPAIGN_LENGTH = 60;
@@ -74,7 +79,7 @@ export function attributionParams(ctx: LinkAttributionContext): Array<{ key: Utm
 
   const out: Array<{ key: UtmKey; value: string }> = [];
   if (platform) out.push({ key: "utm_source", value: platform });
-  out.push({ key: "utm_medium", value: "dm" });
+  out.push({ key: "utm_medium", value: (ctx.medium ?? "").trim().toLowerCase() || "dm" });
   if (campaign) out.push({ key: "utm_campaign", value: campaign });
   if (content) out.push({ key: "utm_content", value: content });
   return out;

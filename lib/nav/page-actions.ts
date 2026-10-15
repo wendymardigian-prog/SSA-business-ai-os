@@ -134,6 +134,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Formularios del contacto",
     tooltip: "Todos los formularios que respondió esta persona. Solo ves las respuestas de los contactos que podés ver.",
   },
+  "/dashboard/contacts/[contactId]/toques": {
+    title: "Toques del contacto",
+    tooltip: "Todas las veces que esta persona interactuó, del más nuevo al más viejo, con el canal y de dónde vino cada una.",
+  },
   "/dashboard/contacts/import": {
     title: "Importar contactos",
     tooltip: "Subir un CSV. Los repetidos se unen por telefono o email, nunca por nombre.",

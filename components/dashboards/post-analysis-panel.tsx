@@ -7,6 +7,7 @@ import { loadPostAnalysis, type PostAnalysis } from "@/lib/actions/post-analysis
 import { drawerHref } from "@/lib/content/drawer-url";
 import { ANALYSIS_METRIC_LABELS, ageLabel, type AnalysisMetric } from "@/lib/dashboards/post-analysis";
 import { platformLabel } from "@/lib/platforms";
+import { PostResponsible } from "@/components/social/post-responsible";
 import { colorFor, DualAxisChart, type ChartSeries } from "./charts";
 
 /**
@@ -210,6 +211,12 @@ export function PostAnalysisPanel({
               </div>
             </div>
           </div>
+
+          <PostResponsible
+            key={data.post.id}
+            socialPostId={data.post.id}
+            responsible={data.responsible}
+          />
 
           <section>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

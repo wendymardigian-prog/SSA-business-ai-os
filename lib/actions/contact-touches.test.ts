@@ -48,3 +48,18 @@ describe("listContactTouches", () => {
     expect(second.ok && second.data.nextCursor).toBeNull();
   });
 });
+
+describe("listContactTouches: los nombres para elegir un toque (Extra I, F46)", () => {
+  it("trae el título de la pieza y el nombre del anuncio de los toques de la página", async () => {
+    db.rows("content_posts").push({ id: "p1", workspace_id: WS, title: "Reel: 3 errores" }, { id: "p2", workspace_id: "ws-2", title: "Ajena" });
+    db.rows("meta_ads").push({ workspace_id: WS, ad_id: "33", name: "Video 1" });
+    Object.assign(db.rows("contact_touches").find((t) => t.id === "t025")!, { content_post_id: "p1", meta_ad_id: "33" });
+    const r = await listContactTouches({ contactId: "c1" });
+    expect(r.ok && r.data.names).toEqual({ pieces: { p1: "Reel: 3 errores" }, ads: { "33": "Video 1" } });
+  });
+
+  it("sin piezas ni anuncios los nombres vienen vacíos", async () => {
+    const r = await listContactTouches({ contactId: "c1" });
+    expect(r.ok && r.data.names).toEqual({ pieces: {}, ads: {} });
+  });
+});

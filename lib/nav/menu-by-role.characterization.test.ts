@@ -49,7 +49,8 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
     expect(menuFor({ permissionKeys: keysOf("member"), eod: true })).toEqual([
       { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] },
       { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido"] },
-      { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas"] },
+      // Cambio aprobado M9 (Extra I): el Member de sistema gana «Finanzas» (ve sus propias comisiones).
+      { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"] },
       { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] },
     ]);
   });
