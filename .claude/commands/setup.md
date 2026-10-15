@@ -84,17 +84,35 @@ Saludá y explicá en 3-4 líneas los pasos: Supabase, Railway, conectar la base
 
 ## Paso 2 — Railway: deploy, dominio y variables
 
-1. Preguntale si tiene cuenta en railway.com. Si no, que se cree una (entrar con GitHub le simplifica el paso siguiente).
-2. Guiala a crear un proyecto: **New Project → Deploy from GitHub repo**, eligiendo su repositorio. Avisale que el primer deploy probablemente falle porque faltan las variables: es esperable.
-3. **Dominio público:** en el servicio, Settings → Networking → Public Networking → Generate Domain. Pedile que te pase ese dominio (`https://algo.up.railway.app`), o leelo vos con el conector de Railway si lo tiene: no es secreto, y lo vas a usar en los próximos pasos.
+Railway es el servicio que va a mantener la app prendida las 24 horas con una dirección web propia (hosting). En este paso la persona hace los clics y vos la guiás mirando la misma pantalla que ella.
+
+**Cómo ayudar con el navegador de la app.** Explicale, la primera vez, que arriba a la derecha de la sesión hay un botoncito que abre el **Navegador**: una página web dentro de la misma app, para que ella y vos vean lo mismo. Pedile que lo abra. Después abrí vos `https://railway.com` en ese navegador (herramienta de navegación del navegador integrado). Cuando necesites ver en qué pantalla está, sacá una captura de pantalla o leé la página, y decile exactamente qué botón tocar y dónde está (arriba a la derecha, en el costado, etc.). Los inicios de sesión quedan guardados en ese navegador, así que no tiene que repetirlos.
+
+**Lo que hace SIEMPRE la persona y nunca vos, ni siquiera "para ayudar":** crear la cuenta, escribir contraseñas o códigos, autorizar el acceso a GitHub, elegir un plan o cargar una tarjeta, y pegar las variables (son claves). Para todo lo demás (navegar, abrir menús, mirar qué dice una pantalla) podés ofrecerte a hacerlo vos, pero en la duda dejá que haga el clic ella. Nunca le pidas que te pase por chat una contraseña, un código ni una clave.
+
+1. **La cuenta de Railway.** Preguntale si ya tiene cuenta en railway.com. Si ya la tiene, que inicie sesión en el navegador de la app. Si no, que la cree ella en el navegador: botón **Login** o **Sign up** arriba a la derecha. Recomendale entrar con **GitHub** ("Login with GitHub"): le crea la cuenta y de paso deja conectado GitHub, que es lo que el próximo paso necesita. Esperá a que te diga que ya entró (tiene que ver el panel de Railway, con "New Project" o la lista de sus proyectos). Railway le puede pedir elegir un plan y cargar una tarjeta: es normal, el plan inicial trae 30 días de prueba gratis. Eso lo decide y lo hace ella.
+
+2. **Crear el proyecto y conectar el repositorio.** Guiala paso por paso:
+   - En el panel de Railway, botón **New Project**.
+   - Elegir **Deploy from GitHub repo**.
+   - Si GitHub todavía no está conectado, Railway muestra un botón **Configure GitHub App** (o "Connect GitHub"). Que lo toque: la lleva a GitHub, donde tiene que autorizar. En "Repository access" conviene elegir **Only select repositories** y marcar solo el repositorio de este negocio, y después **Install**. Vuelve sola a Railway.
+   - Elegir **su** repositorio (el que creó con "Use this template", no el original). Si no aparece en la lista, volver a **Configure GitHub App** y darle permiso a ese repositorio.
+   - Railway empieza a construir. Avisale que **el primer deploy probablemente falle** porque todavía faltan las variables: es esperable, no hay que asustarse por un cartel rojo.
+
+3. **Dominio público (la dirección web de la app).** En el proyecto, que haga clic en el servicio (el cuadrito con el nombre del repositorio) → pestaña **Settings** → sección **Networking** → **Public Networking** → **Generate Domain**.
+   - Railway puede preguntar **"Enter the port your app is listening on"** (en qué puerto escucha tu app). Explicale en simple: "el puerto es como el número de puerta por donde entra la gente a la app. En Railway es siempre el mismo y ya viene puesto". **Que escriba `8080`** y toque **Generate Domain**. Si no pregunta nada (a veces lo detecta solo), mejor: no hay nada que escribir.
+   - Por qué 8080: Railway le pasa a la app el número de puerto en una variable llamada `PORT` (por defecto 8080), y la app (`next start`) escucha justo ese. Si el puerto del dominio no coincide con el de la app, la dirección responde un error 502 ("Application failed to respond") aunque el deploy esté en verde.
+   - Si pasa eso: miren los logs del deploy (con el conector de Railway, o el botón **Deployments → View logs**) y buscá la línea que dice `Local: http://...:NUMERO`. Ese número es el puerto real. En **Networking**, junto al dominio hay un lápiz para editar el puerto: ponerle ese número.
+   - Pedile que te pase el dominio que le aparece (`https://algo.up.railway.app`), o leelo vos con el conector de Railway si lo tiene: no es secreto, y lo vas a usar en los próximos pasos.
+
 4. **El `CRON_SECRET`:** lo inventa la persona, no sale de ningún panel. Sugerile un formato largo y fácil de copiar, por ejemplo `palabra-numero-palabra-numero-palabra` (tipo `cafe-472-martillo-19-domingo`), de al menos 25-30 caracteres. Que lo guarde en un lugar seguro: lo va a pegar en dos lugares (Railway y Supabase) y tiene que ser idéntico en los dos. No te lo pase a vos.
-5. **Las 5 variables** (en el servicio → Variables). Explicale de dónde sale cada una y que las pegue DIRECTO en Railway:
+5. **Las 5 variables.** Son datos de configuración que la app necesita para funcionar. En Railway: hacer clic en el servicio → pestaña **Variables** → botón **New Variable** (una por una) o **Raw Editor** (pegar todas juntas, una por línea, con el formato `NOMBRE=valor`). **Importante: para copiar las claves de Supabase, que use su navegador de siempre (Chrome, Safari...), NO el Navegador de esta app**: así las claves nunca aparecen en pantallas que vos puedas ver. Ni siquiera le pidas una captura de esas pantallas. Explicale de dónde sale cada una y que las pegue DIRECTO en Railway:
    - `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase → Project Settings → Data API.
    - `SUPABASE_SERVICE_ROLE_KEY`: Supabase → Project Settings → API Keys → service_role. Es la más sensible (salta todos los permisos de la base): nunca por chat.
    - `NEXT_PUBLIC_APP_URL`: el dominio del punto 3.
    - `CRON_SECRET`: el valor del punto 4.
 6. Railway vuelve a desplegar solo. Si el conector de Railway está disponible, mirá vos el estado del deploy y los logs (después de confirmar el proyecto); si no, preguntale qué dice el estado. Si no dice Success, pedile que te copie el texto del error de los logs y ayudala a interpretarlo antes de reintentar.
-7. Con el deploy en verde, que abra el dominio en el navegador: tiene que ver la pantalla de login.
+7. Con el deploy en verde (en Railway dice **Active** o **Success**), que abra el dominio en el navegador: tiene que ver la pantalla de login. Si ve un error 502 o "Application failed to respond", casi seguro es el puerto del dominio: volvé al punto 3 (el lápiz junto al dominio, en Networking).
 
 ## Paso 3 — Conectar la base con la app (los cron)
 
