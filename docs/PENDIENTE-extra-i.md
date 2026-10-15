@@ -1,0 +1,66 @@
+# Pendiente — Extra I (Métodos de pago, Gastos, Atribución orgánica y Comisiones)
+
+Formato de cada entrada: **qué quedó**, **por qué**, **qué se decidió**. Avance general en `docs/PROGRESS-extra-i.md`.
+
+---
+
+## Para después del merge
+
+### 00233, 00234 y 00235 (se escriben y se ensayan, NO se aplican en la corrida)
+
+- **Qué quedó:** tres migraciones que encolan trabajos en producción.
+  - `00233` — programa la tarea de `pg_cron` `finance-daily` (cada hora, minuto 7).
+  - `00234` — trigger `contacts_comment_backfill` en `contacts` y el barrido inicial de comentarios (un job por workspace).
+  - `00235` — trigger `payments_enqueue_commissions` en `payments`.
+- **Por qué:** si se aplicaran antes del merge, producción encolaría trabajos de tipos que todavía no conoce (`finance_daily`, `comment_backfill`, `comment_backfill_workspace`, `commissions_payment`), los marcaría fallidos y se perdería el barrido inicial de comentarios y las comisiones de los primeros cobros.
+- **Qué se decidió:** la corrida las escribe, las ensaya dentro de `BEGIN; … ROLLBACK;` para comprobar que compilan, y prueba sus funciones de trigger llamándolas directo en los `verify-*`. Se aplican después de mergear y de que Railway termine de desplegar, en este orden: 00233, 00234, 00235.
+- **Cómo se aplican (Wendy, con el prompt "Después del merge" del archivo de construcción):**
+  1. `git checkout main && git pull origin main`; confirmar que las tres están en `supabase/migrations/`.
+  2. `list_migrations`: las anteriores del Extra I aplicadas y estas tres no.
+  3. Correr `verify-contacts-single-entry.mjs` y `verify-sales.mjs` (punto de partida).
+  4. Aplicar con `supabase db query --linked -f <archivo>`, registrar en `supabase_migrations.schema_migrations` y correr `node scripts/build-all-migrations.mjs`. Después de cada una:
+     - 00233 → `node scripts/verify-expenses.mjs --despues-de-00233`
+     - 00234 → `node scripts/verify-organic-attribution.mjs --despues-de-00234` y `verify-contacts-single-entry.mjs`
+     - 00235 → `node scripts/verify-commissions.mjs --despues-de-00235` y `verify-sales.mjs`
+  5. Comprobar: `select jobname, schedule from cron.job where jobname = 'finance-daily'` y `select status, count(*) from scheduled_jobs where type like 'comment_backfill%' group by 1` (repetir hasta que no queden pendientes).
+- **Cómo se vuelve atrás:** 00233 → `select cron.unschedule('finance-daily');`. 00234 → `drop trigger contacts_comment_backfill on contacts;` + cancelar los `scheduled_jobs` pendientes de `comment_backfill%` (los toques creados quedan: son verdaderos). 00235 → `drop trigger payments_enqueue_commissions on payments;` + cancelar los `commissions_payment` pendientes (las comisiones ya generadas quedan).
+
+---
+
+## Puntos a confirmar con Wendy
+
+### Permiso para elegir el responsable de una publicación sin pieza (Social)
+- **Qué quedó:** `social_posts.assigned_to` (publicaciones externas o marcadas a mano) necesita un selector en Social.
+- **Por qué:** el detalle de una publicación en Social es de solo lectura (`social.view`); hoy no existe ninguna edición de una publicación externa.
+- **Qué se decidió:** acción nueva protegida con `content.publish`, que es el permiso que ya gobierna marcar y desmarcar una publicación como subida a mano. Si preferís otro (por ejemplo `content.create` o `social.view` + Admin), se cambia en una línea.
+
+### Respuesta a historias → pieza (F33)
+- **Qué quedó:** no se pudo verificar en el código que `social_posts.external_post_id` de una historia coincida con el `storyId` que manda Zernio. Ningún código ni test los cruza, y una historia publicada a mano probablemente no tiene fila en `social_posts`.
+- **Por qué:** `recordInboundTouch` hoy solo guarda `storyId` en `raw.story_id`.
+- **Qué se decidió:** se construye de forma defensiva (busca por plataforma + `external_post_id`, solo si hay una única fila en el workspace; si no, el toque queda como hoy) y se prueba con datos sembrados. Falta confirmarlo en vivo con una historia real publicada por el sistema.
+
+### Comisión de Whop
+- **Qué quedó:** los 5 métodos de pago arrancan con comisión 0 % + 0, **Whop incluido** (decisión del 11/10/2026).
+- **Por qué:** hasta que Wendy confirme el porcentaje real, un valor inventado distorsionaría las comisiones y los gastos automáticos.
+- **Qué se decidió:** el backfill de la 00224 mantiene 0; Wendy carga los valores reales desde Ajustes > General > Ventas > Métodos de pago.
+
+### Avisos de comisión y privacidad
+- **Qué quedó:** un aviso de comisión dirigido a una persona (`commission_generated`) lo puede ver también todo Owner/Admin.
+- **Por qué:** la regla `can_see_notification` (que no se toca) deja ver todas las notificaciones del workspace a Owner y Admin.
+- **Qué se decidió:** se documenta; los avisos llevan solo el monto agregado y el contacto de la venta, nunca datos de pago.
+
+---
+
+## Diferencias entre el plano y el código real
+
+Las 30 diferencias detectadas al planificar están numeradas en la sección 2 del plan (`docs/PROGRESS-extra-i.md`). Las que dejan trabajo o una decisión abierta:
+
+- **Diferencia 9 — alcance `commissions` en ~12 lugares escritos a mano:** se hace en CM1, junto con la 00231 y el cambio aprobado M9; se lista cada archivo en PROGRESS al cerrar CM1.
+- **Diferencia 14 — atribución manual de la venta hoy no crea toque:** F47 cambia el significado (ahora crea el toque y manda su `touch_id` a `create_sale`). La edición de la venta tiene su propio camino y se cubre por separado.
+- **Diferencia 28 — `docs/roles.md` documenta `verify-rls --despues-de-00208`, pero el script ignora ese flag:** se corre con el flag vigente (`--despues-de-00143`). Corregir el doc queda para el cierre.
+
+---
+
+## Entradas de la corrida
+
+_(Se agregan a medida que se construye: bloques trabados, nice-to-have que no entraron, verificaciones que fallaron y cómo volver atrás.)_
