@@ -13,12 +13,12 @@ describe("salesVariables", () => {
       sale, salePayments: [{ amount: 300, status: "paid" }, { amount: 997, status: "scheduled" }],
       payment: { id: "p1", amount: 997, due_date: "2026-10-26", payment_method: "wise", status: "overdue" },
       event: { sale_id: "s1", payment_id: "p1", from_status: "scheduled", to_status: "overdue", days_overdue: 3 },
-      names: { u1: "Wendy", u2: "Pablo" },
+      names: { u1: "Ana", u2: "Pablo" },
     });
     expect(v.sale).toMatchObject({
       id: "s1", product_name: "Mentoría", variant_name: "Premium", final_amount: "$1.297,00", balance: "$997,00", status: "Reservada",
       utm_source: "instagram", utm_medium: "paid_social", utm_campaign: "octubre", utm_content: "Reel", utm_term: "kw",
-      attribution_type: "Último toque", vendedor_name: "Wendy", setter_name: "Pablo",
+      attribution_type: "Último toque", vendedor_name: "Ana", setter_name: "Pablo",
     });
     expect(v.payment).toMatchObject({ id: "p1", amount: "$997,00", due_date: "26 de octubre de 2026", days_overdue: "3", method: "Wise", from_status: "Programado", to_status: "Moroso" });
   });

@@ -286,7 +286,7 @@ const MEMBER_KEYS = [
   "contacts.view",
   "contacts.edit",
   // Reasignar los leads que ve: hoy puede hacerlo (nunca hubo un chequeo de rol). Se conserva
-  // (plano §9.3, decision de Wendy del 13/10/2026).
+  // (plano §9.3, decision del 13/10/2026).
   "contacts.assign",
   "flows.view",
   "flows.edit",

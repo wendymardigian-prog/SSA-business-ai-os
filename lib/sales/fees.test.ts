@@ -3,7 +3,7 @@ import { buildPaymentOptionSnapshot, computeProviderFee } from "./fees";
 import { DEFAULT_ENABLED_PAYMENT_METHODS, PAYMENT_METHODS, PAYMENT_METHOD_KEYS, isPaymentMethodKey, paymentMethodName, scheduledUsingDisabled, selectableMethods } from "./payment-methods";
 
 describe("computeProviderFee", () => {
-  it("100 con 3 % da 3.00 (comisión explícita; la de Whop está en 0 hasta que Wendy confirme)", () => {
+  it("100 con 3 % da 3.00 (comisión explícita; la de Whop está en 0 hasta que se confirme)", () => {
     expect(computeProviderFee(100, { pct: 3, fixed: 0 })).toBe(3);
   });
 

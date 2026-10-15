@@ -20,6 +20,8 @@ Fuera de este comando, a propósito: crear el primer usuario del sistema y las i
 
 ## Paso 0 — Bienvenida
 
+Antes de los pasos, aclará una sola vez, en una línea: este asistente funciona con la cuenta de API de Anthropic de la persona (no hace falta una suscripción Claude Pro), y lo que consuma se cobra aparte según el uso. Si está en un modelo caro, sugerile Sonnet para la instalación: alcanza y gasta menos saldo. Si no sabés con qué cuenta inició sesión, no lo asumas: preguntale.
+
 Saludá y explicá en 3-4 líneas los pasos: Supabase, Railway, conectar la base con la app, links de autenticación, archivo `.env` local y, al final, una pregunta sobre las actualizaciones. Después le vas a indicar qué falta. Preguntale si arrancamos.
 
 ## Paso 1 — Supabase: proyecto, conector y migraciones
