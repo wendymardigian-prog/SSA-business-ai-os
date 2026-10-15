@@ -48,6 +48,11 @@ export interface TriggerNodeData {
 }
 
 export interface SendMessageNodeData {
+  /**
+   * Atribución de los links del nodo (Extra I, F39/F40). A nivel nodo: aplica a todos sus mensajes (texto, botones URL
+   * y botones de carrusel). Ausente o con `append` apagado, el mensaje sale exactamente como siempre.
+   */
+  attribution?: { append: boolean; trackClicks: boolean };
   messages: Array<{
     text?: string;
     imageUrl?: string;
@@ -276,6 +281,8 @@ export interface IncomingMessage {
    * «Solo si vino de un anuncio» del disparador de palabra clave (Extra L, F19).
    */
   fromAd?: boolean;
+  /** Extra I (F34): la pieza de la que vino (historia propia, anuncio vinculado o DM de una automatización): `{{content.title}}`. */
+  content?: { social_post_id: string | null; content_post_id: string | null; code: string | null; title: string | null };
   /** El anuncio del que vino, si se sabe. */
   adId?: string;
   adTitle?: string;

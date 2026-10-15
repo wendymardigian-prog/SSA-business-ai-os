@@ -27,6 +27,7 @@ import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-me
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
 import { fromBaileysMessage, recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { adOriginOfBaileys, buildOriginContext } from "@/lib/messages/origin-context";
+import { inheritedContentContext, resolveInboundOriginExtras } from "@/lib/attribution/inbound-origin";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { fetchProfilePictureUrl } from "@/lib/evolution-client";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
@@ -284,6 +285,18 @@ async function processMessage(
   // ahora era `attachments: text ? null : data.message`, y como `extractText`
   // devuelve el `caption` de una imagen, **una foto con texto se guardaba sin
   // la foto**: la media se perdia sin que nada lo indicara.
+  // Extra I, F35: la respuesta a un DM de una automatización con pieza la hereda. Se resuelve ANTES de guardar para
+  // que `origin_context` quede completo; no lanza.
+  const baseOrigin = fromMe ? null : buildOriginContext({ platform: channel.platform, baileysMessage: data?.message ?? null });
+  const extras = fromMe
+    ? { storyPiece: null, inherited: null }
+    : await resolveInboundOriginExtras(supabase, {
+        workspaceId: channel.workspace_id,
+        conversationId: conversation.id,
+        platform: channel.platform,
+        storyId: null,
+        baseOriginContext: baseOrigin,
+      });
   const inserted = await insertMessage({
     supabase,
     conversationId: conversation.id,
@@ -298,7 +311,7 @@ async function processMessage(
     origin: fromMe ? "external" : null,
     // De donde vino un ENTRANTE: el anuncio de "clic a WhatsApp" (`externalAdReply`) y el mensaje citado.
     // Lista blanca; guardarlo nunca frena el mensaje (Extra L, F19).
-    originContext: fromMe ? null : buildOriginContext({ platform: channel.platform, baileysMessage: data?.message ?? null }),
+    originContext: fromMe ? null : buildOriginContext({ platform: channel.platform, baileysMessage: data?.message ?? null, content: inheritedContentContext(extras.inherited) }),
   });
 
   // ── El toque de atribución (F85) ──────────────────────────────────────────
@@ -318,6 +331,7 @@ async function processMessage(
         platformMessageId: messageId,
         messageId: inserted.id ?? null,
         referral: fromBaileysMessage(data?.message),
+        inherited: extras.inherited,
       });
     } catch (err) {
       // Cinturón de seguridad: la función ya atrapa todo, pero el lead no se

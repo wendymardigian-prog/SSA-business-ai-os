@@ -76,6 +76,20 @@ export const NOTIFICATION_TYPES = [
   "task_due_today",
   /** Una tarea venció y sigue sin completarse. */
   "task_overdue",
+  // Finanzas (Extra I). Van a Owner y Admin (sin destinatario concreto).
+  /** El trabajo diario venció uno o más gastos. */
+  "expense_overdue",
+  /** Se generaron gastos «por revisar»: falta cargarles el monto. */
+  "expense_review_pending",
+  /** Un gasto automático ya pagado cambió su total después de pagado. */
+  "expense_auto_changed",
+  // Comisiones (Extra I). Van a UNA persona concreta (`recipient_id`), nunca a quien hizo el cambio.
+  /** Generaste comisiones por una venta (agrupado: una por persona cada 10 minutos). */
+  "commission_generated",
+  /** El gasto que liquida tus comisiones se pagó. */
+  "commission_payout_paid",
+  /** Se revirtió un cobro con comisiones ya liquidadas: revisá si corresponde un ajuste. Va a Owner/Admin. */
+  "commission_review_needed",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -101,7 +115,11 @@ export type NotificationEntity =
   /** Un endpoint de webhooks entrantes (el id es el del endpoint). */
   | "webhook_endpoint"
   /** Una tarea (el id es el de la tarea). */
-  | "task";
+  | "task"
+  /** Un gasto (el id es el del gasto); sin id apunta a la lista filtrada por `metadata.pill`. */
+  | "expense"
+  /** Una comisión (el id es el de la comisión); abre su ficha. */
+  | "commission";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -344,6 +362,12 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   task_date_moved: { type: "task_date_moved", label: "Se movió la fecha de una tarea", tone: "warning", entity: "task" },
   task_due_today: { type: "task_due_today", label: "Una tarea vence hoy", tone: "warning", entity: "task" },
   task_overdue: { type: "task_overdue", label: "Una tarea está vencida", tone: "warning", entity: "task" },
+  expense_overdue: { type: "expense_overdue", label: "Gastos vencidos", tone: "warning", entity: "expense" },
+  expense_review_pending: { type: "expense_review_pending", label: "Gastos por revisar", tone: "info", entity: "expense" },
+  expense_auto_changed: { type: "expense_auto_changed", label: "Un gasto automático cambió después de pagado", tone: "warning", entity: "expense" },
+  commission_generated: { type: "commission_generated", label: "Generaste comisiones", tone: "success", entity: "commission" },
+  commission_payout_paid: { type: "commission_payout_paid", label: "Se pagaron tus comisiones", tone: "success", entity: "commission" },
+  commission_review_needed: { type: "commission_review_needed", label: "Un cobro revertido tenía comisiones liquidadas", tone: "warning", entity: "commission" },
   webhook_errors: {
     type: "webhook_errors",
     label: "Un webhook está fallando",
@@ -423,6 +447,23 @@ export function linkFor(
 
     case "eod_form":
       return entityId ? `/dashboard/eod/${entityId}` : "/dashboard/eod";
+
+    // Finanzas: un gasto abre su ficha; un aviso agrupado, la lista filtrada por la pastilla que corresponda.
+    case "expense": {
+      if (entityId) return `/dashboard/finanzas/gastos/${entityId}`;
+      const pill = metadata?.pill;
+      return typeof pill === "string" ? `/dashboard/finanzas/gastos?pastilla=${encodeURIComponent(pill)}` : "/dashboard/finanzas/gastos";
+    }
+
+    // Comisiones: una comisión abre su ficha; un aviso de una venta, la lista filtrada por esa venta.
+    case "commission": {
+      if (entityId) return `/dashboard/finanzas/comisiones?commission=${entityId}`;
+      // El aviso de que se pagó un gasto de liquidación con varias comisiones: la lista de ese gasto.
+      const expenseId = metadata?.expense_id;
+      if (typeof expenseId === "string") return `/dashboard/finanzas/comisiones?gasto=${encodeURIComponent(expenseId)}`;
+      const saleId = metadata?.sale_id;
+      return typeof saleId === "string" ? `/dashboard/finanzas/comisiones?venta=${encodeURIComponent(saleId)}` : "/dashboard/finanzas/comisiones";
+    }
 
     // Tareas: abre la tarea en su drawer.
     case "task":

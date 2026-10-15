@@ -54,11 +54,14 @@ export const MEDIUMS = [
   "booking",
   "qr",
   "import",
+  // Extra I: un clic en un link con seguimiento de un DM, y el referido que carga una persona a mano en la venta.
+  "dm_link",
+  "referral_person",
 ] as const;
 export type KnownMedium = (typeof MEDIUMS)[number];
 
 /** Por qué camino técnico entró el toque (columna `origin`). */
-export const ORIGINS = ["dm", "comment", "booking", "form", "manual", "import", "webhook"] as const;
+export const ORIGINS = ["dm", "comment", "booking", "form", "manual", "import", "webhook", "link_click"] as const;
 export type TouchOrigin = (typeof ORIGINS)[number];
 
 /**
@@ -170,6 +173,8 @@ export const MEDIUM_LABELS: Record<KnownMedium, string> = {
   booking: "reserva",
   qr: "código QR",
   import: "importación",
+  dm_link: "link de un mensaje",
+  referral_person: "referido",
 };
 
 /**
@@ -201,4 +206,35 @@ export const ORIGIN_LABELS: Record<TouchOrigin, string> = {
   manual: "Alta manual",
   import: "Importación",
   webhook: "Webhook",
+  link_click: "Clic en un link",
 };
+
+// ── El canal de un toque (Extra I, F37) ──────────────────────────────────────
+
+/** Orgánico, pauta, referido o directo (la columna `contact_touches.channel`; ver `lib/attribution/channel.ts`). */
+export const CHANNELS = ["organic", "paid", "referral", "direct"] as const;
+export type TouchChannelKey = (typeof CHANNELS)[number];
+
+export const CHANNEL_LABELS: Record<TouchChannelKey, string> = {
+  organic: "Orgánico",
+  paid: "Pauta",
+  referral: "Referido",
+  direct: "Directo",
+};
+
+/** Un color por canal (clases de Tailwind sobre fondos suaves, legibles en claro y oscuro). */
+export const CHANNEL_COLORS: Record<TouchChannelKey, string> = {
+  organic: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+  paid: "bg-sky-500/12 text-sky-700 dark:text-sky-300",
+  referral: "bg-violet-500/12 text-violet-700 dark:text-violet-300",
+  direct: "bg-muted text-muted-foreground",
+};
+
+export function isChannel(value: string | null | undefined): value is TouchChannelKey {
+  return Boolean(value) && (CHANNELS as readonly string[]).includes(value as string);
+}
+
+/** "Orgánico" para un canal conocido; "" si no hay (un toque viejo sin canal no inventa uno). */
+export function channelLabel(channel: string | null | undefined): string {
+  return isChannel(channel) ? CHANNEL_LABELS[channel] : "";
+}

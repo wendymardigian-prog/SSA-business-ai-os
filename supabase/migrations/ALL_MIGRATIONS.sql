@@ -39038,3 +39038,2658 @@ CREATE POLICY "content_posts_update" ON public.content_posts
       AND status IN ('draft', 'in_production', 'in_review')
     )
   );
+
+-- ============================================================
+-- MIGRATION 224: PAYMENT METHODS
+-- ============================================================
+-- ============================================================================
+-- 00224 — Métodos de pago del negocio (Extra I, bloque MP, F1)
+-- ============================================================================
+-- Hasta hoy los metodos de pago eran 5 claves escritas a fuego en un CHECK. Ahora el negocio crea los
+-- suyos, con su porcentaje y su fijo, y cada pago cobrado congela lo que se quedo el procesador.
+--
+-- 1. `workspaces.payment_methods` (jsonb, array): [{ key, name, fee_percent, fee_fixed, active, created_at }].
+--    Relleno SOLO al crear la columna: los 5 de siempre, con comision 0, y `active` = estaba en
+--    `enabled_payment_methods`. Esa columna vieja QUEDA (nadie la lee, no se borra).
+-- 2. `payments.provider_fee_percent` y `payments.provider_fee_fixed`: el porcentaje y el fijo con los que se
+--    calculo la comision al cobrar, congelados junto con `provider_fee_amount` (el total). Solo en un pago
+--    cobrado y que no sea reembolso.
+-- 3. El CHECK fijo `payments_method_check` se reemplaza por el trigger `payments_validate_method`: el metodo
+--    tiene que existir en `workspaces.payment_methods` del mismo workspace (ACTIVO O NO: un pago viejo con un
+--    metodo desactivado se sigue pudiendo editar; "solo activos en pagos nuevos" lo decide la app).
+--    Error: ERRCODE 'PM001'.
+-- 4. Trigger `payments_fee_spec_from_snapshot`: `create_sale` (protegida, no se toca) inserta los pagos con
+--    una lista fija de columnas que no incluye las dos nuevas; este trigger las copia del
+--    `payment_option_snapshot` (que la app ya manda) cuando el pago nace o pasa a cobrado. Y las deja en null
+--    si el pago NO esta cobrado (asi el codigo viejo, que al revertir no las conoce, no choca con el CHECK).
+--    Envuelto en EXCEPTION: nunca tumba un cobro.
+-- 5. `public.workspace_payment_method(ws, key)`: el elemento de la lista o null.
+--
+-- Definicion VIGENTE del CHECK que se reemplaza (leida de la base con pg_get_constraintdef el 15/10/2026):
+--   payments_method_check:
+--   CHECK (((payment_method IS NULL) OR (payment_method = ANY (ARRAY['whop'::text, 'transferencia_cr'::text,
+--           'transferencia_usa'::text, 'wise'::text, 'binance'::text]))))
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS payments_validate_method ON public.payments;
+--   DROP TRIGGER IF EXISTS payments_fee_spec_from_snapshot ON public.payments;
+--   DROP FUNCTION IF EXISTS private.payments_validate_method();
+--   DROP FUNCTION IF EXISTS private.payments_fee_spec_from_snapshot();
+--   DROP FUNCTION IF EXISTS public.workspace_payment_method(uuid, text);
+--   ALTER TABLE public.payments ADD CONSTRAINT payments_method_check
+--     CHECK (((payment_method IS NULL) OR (payment_method = ANY (ARRAY['whop'::text, 'transferencia_cr'::text,
+--     'transferencia_usa'::text, 'wise'::text, 'binance'::text]))));
+--   (antes, comprobar que ningun pago use un metodo fuera de esos 5)
+--   Las columnas nuevas pueden quedar. El codigo viejo vuelve a leer `enabled_payment_methods`, que nunca se tocó.
+-- Riesgo: ALTO (cambia la regla que valida el metodo del cobro). Hay 0 pagos, no hay datos en juego; el codigo
+-- viejo sigue funcionando contra la base nueva (los 5 metodos siguen siendo validos).
+-- ============================================================================
+
+SET search_path = '';
+
+-- 1. Metodos del negocio ---------------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_is_new boolean := NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'workspaces' AND column_name = 'payment_methods'
+  );
+BEGIN
+  IF v_is_new THEN
+    ALTER TABLE public.workspaces
+      ADD COLUMN payment_methods jsonb NOT NULL DEFAULT '[
+        {"key":"whop","name":"Whop (registrado a mano)","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"},
+        {"key":"transferencia_cr","name":"Transferencia CR","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"},
+        {"key":"transferencia_usa","name":"Transferencia USA","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"},
+        {"key":"wise","name":"Wise","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"},
+        {"key":"binance","name":"Binance","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"}
+      ]'::jsonb;
+
+    -- Relleno: `active` = estaba habilitado en la lista vieja de cada workspace.
+    UPDATE public.workspaces w
+       SET payment_methods = (
+         SELECT jsonb_agg(
+                  jsonb_build_object(
+                    'key', m.key, 'name', m.name, 'fee_percent', 0, 'fee_fixed', 0,
+                    'active', m.key = ANY (w.enabled_payment_methods),
+                    'created_at', '2026-10-15T00:00:00.000Z')
+                  ORDER BY m.ord)
+           FROM (VALUES
+             (1, 'whop', 'Whop (registrado a mano)'),
+             (2, 'transferencia_cr', 'Transferencia CR'),
+             (3, 'transferencia_usa', 'Transferencia USA'),
+             (4, 'wise', 'Wise'),
+             (5, 'binance', 'Binance')
+           ) AS m(ord, key, name)
+       );
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_payment_methods_check' AND conrelid = 'public.workspaces'::regclass) THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_payment_methods_check
+      CHECK (jsonb_typeof(payment_methods) = 'array');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.payment_methods IS
+  'Metodos de pago del negocio: [{key,name,fee_percent,fee_fixed,active,created_at}]. La key no cambia nunca; no se borran, se desactivan. Los escribe `updatePaymentMethods` (sales.settings). `enabled_payment_methods` quedo sin leerse.';
+
+-- 2. Lo que se quedo el procesador, congelado en el pago ------------------------------------------------
+ALTER TABLE public.payments
+  ADD COLUMN IF NOT EXISTS provider_fee_percent numeric(6,3),
+  ADD COLUMN IF NOT EXISTS provider_fee_fixed numeric(12,2);
+
+COMMENT ON COLUMN public.payments.provider_fee_percent IS 'Porcentaje del procesador con el que se calculo la comision al cobrar (congelado).';
+COMMENT ON COLUMN public.payments.provider_fee_fixed IS 'Fijo en USD del procesador con el que se calculo la comision al cobrar (congelado).';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_fee_spec_only_paid_check' AND conrelid = 'public.payments'::regclass) THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_fee_spec_only_paid_check
+      CHECK (status = 'paid' OR (provider_fee_percent IS NULL AND provider_fee_fixed IS NULL));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_refund_fee_spec_check' AND conrelid = 'public.payments'::regclass) THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_refund_fee_spec_check
+      CHECK (type <> 'refund' OR (provider_fee_percent IS NULL AND provider_fee_fixed IS NULL));
+  END IF;
+END $$;
+
+-- 3. El metodo tiene que existir en la lista del negocio (activo o no) -----------------------------------
+ALTER TABLE public.payments DROP CONSTRAINT IF EXISTS payments_method_check;
+
+CREATE OR REPLACE FUNCTION private.payments_validate_method()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.payment_method IS NULL THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+      FROM public.workspaces w, jsonb_array_elements(w.payment_methods) AS m
+     WHERE w.id = NEW.workspace_id
+       AND m ->> 'key' = NEW.payment_method
+  ) THEN
+    RAISE EXCEPTION 'El metodo de pago % no existe en este negocio', NEW.payment_method
+      USING ERRCODE = 'PM001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.payments_validate_method() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS payments_validate_method ON public.payments;
+CREATE TRIGGER payments_validate_method
+  BEFORE INSERT OR UPDATE OF payment_method ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION private.payments_validate_method();
+
+-- 4. %, fijo y total viajan juntos -----------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.payments_fee_spec_from_snapshot()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  -- Fuera de un cobro (o en un reembolso) el porcentaje y el fijo no existen.
+  IF NEW.status <> 'paid' OR NEW.type = 'refund' THEN
+    NEW.provider_fee_percent := NULL;
+    NEW.provider_fee_fixed := NULL;
+    RETURN NEW;
+  END IF;
+
+  -- Cobrado y sin los dos valores: salen de la foto del metodo al cobrar.
+  IF NEW.provider_fee_percent IS NULL AND NEW.provider_fee_fixed IS NULL AND NEW.payment_option_snapshot IS NOT NULL THEN
+    NEW.provider_fee_percent := NULLIF(NEW.payment_option_snapshot ->> 'provider_fee_percent', '')::numeric;
+    NEW.provider_fee_fixed := NULLIF(NEW.payment_option_snapshot ->> 'provider_fee_fixed', '')::numeric;
+  END IF;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Esto nunca tumba un cobro: sin los dos valores, el pago sigue valido (solo falta el desglose).
+  RAISE WARNING 'payments_fee_spec_from_snapshot: %', SQLERRM;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.payments_fee_spec_from_snapshot() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS payments_fee_spec_from_snapshot ON public.payments;
+CREATE TRIGGER payments_fee_spec_from_snapshot
+  BEFORE INSERT OR UPDATE ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION private.payments_fee_spec_from_snapshot();
+
+-- 5. Un metodo por clave ------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.workspace_payment_method(p_workspace uuid, p_key text)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT m
+    FROM public.workspaces w, jsonb_array_elements(w.payment_methods) AS m
+   WHERE w.id = p_workspace
+     AND m ->> 'key' = p_key
+     AND (COALESCE(auth.role(), '') = 'service_role' OR public.is_workspace_member(p_workspace))
+   LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.workspace_payment_method(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.workspace_payment_method(uuid, text) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 225: FINANCE TABLES
+-- ============================================================
+-- ============================================================================
+-- 00225 — Gastos, proveedores y recurrentes (Extra I, bloque G1, GF1)
+-- ============================================================================
+-- Tablas NUEVAS (aditiva): `vendors`, `recurring_expenses`, `expenses`. Y una columna en `workspaces`:
+-- `finance_settings` (jsonb) con las 12 categorias de gasto precargadas y los gastos automaticos apagados.
+-- No hay tablas de categorias ni de configuracion (decision del Extra I): categorias y automaticos viven en
+-- ese jsonb y se leen con la sesion de cualquier miembro (no son datos sensibles); se escriben SOLO por
+-- Server Action con el cliente de servicio, despues de `expenses.manage`.
+--
+--   1. workspaces.finance_settings (jsonb): { expense_categories, processor_fees, meta_ads, auto_close_days }.
+--   2. vendors: proveedores (con `user_id`: una persona del equipo para liquidar comisiones).
+--   3. recurring_expenses: plantillas de gastos que se repiten.
+--   4. expenses: cada salida de plata. `category_key` (texto) valida contra el jsonb (trigger, EX001).
+--      Origenes: manual, recurring, processor_fee, meta_ads, adjustment y commission_payout.
+--   5. Triggers:
+--        - expenses_validate_category (EX001): la categoria existe en la configuracion del workspace y, si
+--          quien escribe es una PERSONA, no esta archivada (el trabajo diario puede generar con una archivada);
+--        - expenses_guard: un pagado no cambia monto ni fechas; un anulado no se edita (salvo la reactivacion
+--          de un automatico que el sistema anulo por quedar en cero); un automatico no se edita a mano; una
+--          liquidacion de comisiones no cambia monto ni persona; origen, plantilla y ajuste no cambian nunca;
+--          una persona solo da de alta gastos manuales o ajustes.
+--   6. RLS: SELECT con `expenses.view`; INSERT/UPDATE con `expenses.manage`; sin DELETE (nada se borra).
+--
+-- Indices unicos de idempotencia (la verdad la dan los indices, no un SELECT previo):
+--   - (recurring_expense_id, scheduled_date): un anulado sigue ocupando su fecha;
+--   - (workspace_id, auto_key): un automatico por metodo/cuenta y mes.
+--
+-- Como volver atras (las tablas estan vacias al aplicar esta migracion):
+--   DROP TABLE IF EXISTS public.expenses; DROP TABLE IF EXISTS public.recurring_expenses; DROP TABLE IF EXISTS public.vendors;
+--   DROP FUNCTION IF EXISTS private.expenses_validate_category(); DROP FUNCTION IF EXISTS private.expenses_guard();
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS finance_settings;
+-- Riesgo: bajo. Nada existente cambia; el codigo viejo ignora las tablas y la columna.
+-- ============================================================================
+
+SET search_path = '';
+
+-- 1. Configuracion de Finanzas ---------------------------------------------------------------------------
+-- El default es el mismo que `defaultFinanceSettings()` (lib/finance/settings.ts): un test los compara.
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS finance_settings jsonb NOT NULL DEFAULT '{"expense_categories":[{"key":"ads_meta","name":"Publicidad (Meta)","color":"#2563eb","group":"adquisicion","system":true,"archived_at":null},{"key":"marketing","name":"Marketing y contenido","color":"#7c3aed","group":"adquisicion","system":true,"archived_at":null},{"key":"sales_team","name":"Equipo de ventas","color":"#db2777","group":"adquisicion","system":true,"archived_at":null},{"key":"commissions","name":"Comisiones del equipo","color":"#e11d48","group":"adquisicion","system":true,"archived_at":null},{"key":"delivery_team","name":"Equipo de entrega","color":"#0d9488","group":"entrega","system":true,"archived_at":null},{"key":"delivery_tools","name":"Herramientas de entrega","color":"#16a34a","group":"entrega","system":true,"archived_at":null},{"key":"software","name":"Software y suscripciones","color":"#ca8a04","group":"operacion","system":true,"archived_at":null},{"key":"processor_fees","name":"Comisiones de procesador","color":"#ea580c","group":"operacion","system":true,"archived_at":null},{"key":"professional","name":"Contabilidad y legal","color":"#4f46e5","group":"operacion","system":true,"archived_at":null},{"key":"admin_team","name":"Equipo administrativo","color":"#0891b2","group":"operacion","system":true,"archived_at":null},{"key":"taxes","name":"Impuestos","color":"#64748b","group":"otro","system":true,"archived_at":null},{"key":"other","name":"Otros","color":"#78716c","group":"otro","system":true,"archived_at":null}],"processor_fees":{},"meta_ads":{},"auto_close_days":3}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_finance_settings_check' AND conrelid = 'public.workspaces'::regclass) THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_finance_settings_check
+      CHECK (jsonb_typeof(finance_settings) = 'object' AND COALESCE(jsonb_typeof(finance_settings -> 'expense_categories'), '') = 'array');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.finance_settings IS
+  'Configuracion de Finanzas: { expense_categories:[{key,name,color,group,system,archived_at}], processor_fees:{}, meta_ads:{}, auto_close_days }. La key de una categoria no cambia nunca; no se borran, se archivan. Se escribe solo por Server Action (expenses.manage).';
+
+-- 2. Proveedores -------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.vendors (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 120),
+  country text CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
+  email text CHECK (email IS NULL OR char_length(email) <= 200),
+  payment_details text CHECK (payment_details IS NULL OR char_length(payment_details) <= 1000),
+  terms text CHECK (terms IS NULL OR char_length(terms) <= 200),
+  notes text CHECK (notes IS NULL OR char_length(notes) <= 2000),
+  -- Una persona del equipo (liquidaciones de comisiones). Su nombre sale del miembro.
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  archived_at timestamptz,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendors_active_name ON public.vendors (workspace_id, lower(btrim(name))) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendors_user ON public.vendors (workspace_id, user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_vendors_workspace_archived ON public.vendors (workspace_id, archived_at);
+
+-- 3. Plantillas recurrentes ----------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.recurring_expenses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  concept text NOT NULL CHECK (char_length(btrim(concept)) BETWEEN 1 AND 200),
+  vendor_id uuid REFERENCES public.vendors(id) ON DELETE RESTRICT,
+  category_key text NOT NULL,
+  amount_type text NOT NULL CHECK (amount_type IN ('fixed', 'variable')),
+  amount numeric(12,2),
+  currency text NOT NULL DEFAULT 'USD' CHECK (currency = 'USD'),
+  charge_mode text NOT NULL CHECK (charge_mode IN ('automatic', 'manual')),
+  frequency text NOT NULL CHECK (frequency IN ('weekly', 'biweekly', 'monthly', 'yearly')),
+  weekly_day smallint CHECK (weekly_day BETWEEN 0 AND 6),
+  weekly_interval smallint CHECK (weekly_interval BETWEEN 1 AND 52),
+  monthly_day smallint CHECK (monthly_day BETWEEN 1 AND 31),
+  yearly_month smallint CHECK (yearly_month BETWEEN 1 AND 12),
+  yearly_day smallint CHECK (yearly_day BETWEEN 1 AND 31),
+  start_date date NOT NULL,
+  end_date date,
+  lead_days smallint NOT NULL DEFAULT 0 CHECK (lead_days BETWEEN 0 AND 60),
+  is_active boolean NOT NULL DEFAULT true,
+  paused_at timestamptz,
+  -- Desde que fecha de pago genera el trabajo diario. Se pone en hoy al crear, al reactivar y al editar.
+  generation_anchor date NOT NULL,
+  responsible_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  notes text CHECK (notes IS NULL OR char_length(notes) <= 2000),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT recurring_end_after_start CHECK (end_date IS NULL OR end_date >= start_date),
+  CONSTRAINT recurring_fixed_needs_amount CHECK (amount_type <> 'fixed' OR (amount IS NOT NULL AND amount > 0)),
+  CONSTRAINT recurring_variable_amount CHECK (amount_type <> 'variable' OR amount IS NULL OR amount > 0),
+  CONSTRAINT recurring_automatic_no_lead CHECK (charge_mode <> 'automatic' OR lead_days = 0),
+  CONSTRAINT recurring_frequency_fields CHECK (
+    (frequency = 'weekly'   AND weekly_day IS NOT NULL AND weekly_interval IS NOT NULL AND monthly_day IS NULL AND yearly_month IS NULL AND yearly_day IS NULL) OR
+    (frequency = 'biweekly' AND weekly_day IS NULL AND weekly_interval IS NULL AND monthly_day IS NULL AND yearly_month IS NULL AND yearly_day IS NULL) OR
+    (frequency = 'monthly'  AND weekly_day IS NULL AND weekly_interval IS NULL AND monthly_day IS NOT NULL AND yearly_month IS NULL AND yearly_day IS NULL) OR
+    (frequency = 'yearly'   AND weekly_day IS NULL AND weekly_interval IS NULL AND monthly_day IS NULL AND yearly_month IS NOT NULL AND yearly_day IS NOT NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_recurring_expenses_workspace_active ON public.recurring_expenses (workspace_id, is_active);
+
+-- 4. Gastos --------------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.expenses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  concept text NOT NULL CHECK (char_length(btrim(concept)) BETWEEN 1 AND 200),
+  vendor_id uuid REFERENCES public.vendors(id) ON DELETE RESTRICT,
+  category_key text NOT NULL,
+  amount numeric(12,2) NOT NULL DEFAULT 0,
+  currency text NOT NULL DEFAULT 'USD' CHECK (currency = 'USD'),
+  status text NOT NULL CHECK (status IN ('por_revisar', 'programado', 'vencido', 'pagado', 'anulado')),
+  scheduled_date date NOT NULL,
+  paid_date date,
+  paid_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  origin text NOT NULL CHECK (origin IN ('manual', 'recurring', 'processor_fee', 'meta_ads', 'adjustment', 'commission_payout')),
+  recurring_expense_id uuid REFERENCES public.recurring_expenses(id) ON DELETE RESTRICT,
+  auto_key text,
+  source_ref jsonb,
+  auto_drift_amount numeric(12,2),
+  auto_drift_detected_at timestamptz,
+  auto_drift_resolved_at timestamptz,
+  adjusts_expense_id uuid REFERENCES public.expenses(id) ON DELETE RESTRICT,
+  receipt_path text,
+  receipt_name text,
+  responsible_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  notes text CHECK (notes IS NULL OR char_length(notes) <= 2000),
+  void_reason text,
+  void_kind text CHECK (void_kind IS NULL OR void_kind IN ('manual', 'auto_zero')),
+  voided_at timestamptz,
+  voided_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  -- Pagado si y solo si tiene fecha de pago efectiva.
+  CONSTRAINT expenses_paid_iff_date CHECK ((status = 'pagado') = (paid_date IS NOT NULL)),
+  CONSTRAINT expenses_void_fields CHECK ((status = 'anulado') = (voided_at IS NOT NULL AND void_reason IS NOT NULL AND void_kind IS NOT NULL)),
+  -- Cero solo en Por revisar (o en un anulado que lo era); negativo solo en un ajuste.
+  CONSTRAINT expenses_amount_rules CHECK (
+    (origin = 'adjustment' AND amount <> 0) OR
+    (origin <> 'adjustment' AND amount >= 0 AND (amount > 0 OR status IN ('por_revisar', 'anulado')))
+  ),
+  CONSTRAINT expenses_recurring_origin CHECK ((origin = 'recurring') = (recurring_expense_id IS NOT NULL)),
+  CONSTRAINT expenses_auto_key_origin CHECK ((origin IN ('processor_fee', 'meta_ads')) = (auto_key IS NOT NULL)),
+  CONSTRAINT expenses_adjustment_origin CHECK ((origin = 'adjustment') = (adjusts_expense_id IS NOT NULL)),
+  -- Una liquidacion por persona siempre tiene a la persona como proveedor; la unica excepcion es el modo «un solo gasto».
+  CONSTRAINT expenses_payout_vendor CHECK (origin <> 'commission_payout' OR vendor_id IS NOT NULL OR COALESCE(source_ref ->> 'mode', '') = 'single')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_expenses_recurring_date ON public.expenses (recurring_expense_id, scheduled_date) WHERE recurring_expense_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_expenses_auto_key ON public.expenses (workspace_id, auto_key) WHERE auto_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_expenses_status_date ON public.expenses (workspace_id, status, scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_paid ON public.expenses (workspace_id, paid_date) WHERE status = 'pagado';
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON public.expenses (workspace_id, category_key);
+CREATE INDEX IF NOT EXISTS idx_expenses_vendor ON public.expenses (workspace_id, vendor_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_adjusts ON public.expenses (adjusts_expense_id) WHERE adjusts_expense_id IS NOT NULL;
+
+COMMENT ON TABLE public.expenses IS 'Gastos del negocio. Nada se borra: se anula. La plata es USD. Ver docs/finanzas.md.';
+
+-- 5. Triggers ------------------------------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS vendors_updated_at ON public.vendors;
+CREATE TRIGGER vendors_updated_at BEFORE UPDATE ON public.vendors FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+DROP TRIGGER IF EXISTS recurring_expenses_updated_at ON public.recurring_expenses;
+CREATE TRIGGER recurring_expenses_updated_at BEFORE UPDATE ON public.recurring_expenses FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+DROP TRIGGER IF EXISTS expenses_updated_at ON public.expenses;
+CREATE TRIGGER expenses_updated_at BEFORE UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- La categoria tiene que existir en la configuracion del workspace; una PERSONA no puede elegir una archivada.
+CREATE OR REPLACE FUNCTION private.expenses_validate_category()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_cat jsonb;
+BEGIN
+  SELECT c INTO v_cat
+    FROM public.workspaces w, jsonb_array_elements(w.finance_settings -> 'expense_categories') AS c
+   WHERE w.id = NEW.workspace_id
+     AND c ->> 'key' = NEW.category_key
+   LIMIT 1;
+  IF v_cat IS NULL THEN
+    RAISE EXCEPTION 'La categoria % no existe en este negocio', NEW.category_key USING ERRCODE = 'EX001';
+  END IF;
+  IF COALESCE(auth.role(), '') = 'authenticated'
+     AND v_cat ->> 'archived_at' IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.category_key IS DISTINCT FROM OLD.category_key) THEN
+    RAISE EXCEPTION 'La categoria % esta archivada', NEW.category_key USING ERRCODE = 'EX001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.expenses_validate_category() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS expenses_validate_category ON public.expenses;
+CREATE TRIGGER expenses_validate_category
+  BEFORE INSERT OR UPDATE OF category_key ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION private.expenses_validate_category();
+
+DROP TRIGGER IF EXISTS recurring_expenses_validate_category ON public.recurring_expenses;
+CREATE TRIGGER recurring_expenses_validate_category
+  BEFORE INSERT OR UPDATE OF category_key ON public.recurring_expenses
+  FOR EACH ROW EXECUTE FUNCTION private.expenses_validate_category();
+
+-- Las protecciones que valen para CUALQUIER cliente (tambien una persona con la consola).
+-- «Una persona» = una sesion con rol `authenticated`; el servicio y el SQL directo son «el sistema».
+CREATE OR REPLACE FUNCTION private.expenses_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user boolean := COALESCE(auth.role(), '') = 'authenticated';
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF v_user AND NEW.origin NOT IN ('manual', 'adjustment') THEN
+      RAISE EXCEPTION 'Una persona solo da de alta gastos manuales o ajustes' USING ERRCODE = 'EX002';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  -- Lo que no cambia nunca.
+  IF NEW.workspace_id IS DISTINCT FROM OLD.workspace_id
+     OR NEW.origin IS DISTINCT FROM OLD.origin
+     OR NEW.recurring_expense_id IS DISTINCT FROM OLD.recurring_expense_id
+     OR NEW.adjusts_expense_id IS DISTINCT FROM OLD.adjusts_expense_id THEN
+    RAISE EXCEPTION 'El origen de un gasto no se cambia' USING ERRCODE = 'EX002';
+  END IF;
+  IF v_user AND NEW.auto_key IS DISTINCT FROM OLD.auto_key THEN
+    RAISE EXCEPTION 'La clave de un gasto automatico no se cambia' USING ERRCODE = 'EX002';
+  END IF;
+
+  -- Un anulado es final: solo el sistema reactiva el que el mismo sistema anulo por quedar en cero.
+  IF OLD.status = 'anulado' AND NOT (NOT v_user AND OLD.void_kind = 'auto_zero') THEN
+    RAISE EXCEPTION 'Un gasto anulado no se edita' USING ERRCODE = 'EX002';
+  END IF;
+
+  -- Un pagado no cambia monto ni fechas: se revierte primero.
+  IF OLD.status = 'pagado' AND NEW.status = 'pagado'
+     AND (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.paid_date IS DISTINCT FROM OLD.paid_date OR NEW.scheduled_date IS DISTINCT FROM OLD.scheduled_date) THEN
+    RAISE EXCEPTION 'Revertí el pago primero para cambiar el monto o las fechas' USING ERRCODE = 'EX002';
+  END IF;
+
+  -- Un automatico no pagado lo recalcula el sistema.
+  IF v_user AND OLD.origin IN ('processor_fee', 'meta_ads') AND OLD.status <> 'pagado'
+     AND (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.concept IS DISTINCT FROM OLD.concept) THEN
+    RAISE EXCEPTION 'Este monto lo calcula el sistema todos los dias' USING ERRCODE = 'EX002';
+  END IF;
+
+  -- El monto de una liquidacion es la suma de sus comisiones: para cambiarlo se anula y se genera de nuevo.
+  IF v_user AND OLD.origin = 'commission_payout'
+     AND (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.vendor_id IS DISTINCT FROM OLD.vendor_id OR NEW.source_ref IS DISTINCT FROM OLD.source_ref) THEN
+    RAISE EXCEPTION 'El monto de una liquidacion de comisiones no se cambia: anulala y generala de nuevo' USING ERRCODE = 'EX002';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.expenses_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS expenses_guard ON public.expenses;
+CREATE TRIGGER expenses_guard
+  BEFORE INSERT OR UPDATE ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION private.expenses_guard();
+
+-- 6. RLS: sin DELETE (nada se borra) --------------------------------------------------------------------------
+ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recurring_expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+
+DO $$
+DECLARE
+  t text;
+  p record;
+BEGIN
+  -- Cada tabla nace SOLO con sus politicas: se borran las que hubiera con otro nombre.
+  FOREACH t IN ARRAY ARRAY['vendors', 'recurring_expenses', 'expenses'] LOOP
+    FOR p IN SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = t LOOP
+      EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', p.policyname, t);
+    END LOOP;
+    EXECUTE format($f$CREATE POLICY %I ON public.%I FOR SELECT TO authenticated USING ((select public.has_permission(workspace_id, 'expenses.view')))$f$, t || '_select', t);
+    EXECUTE format($f$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK ((select public.has_permission(workspace_id, 'expenses.manage')))$f$, t || '_insert', t);
+    EXECUTE format($f$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING ((select public.has_permission(workspace_id, 'expenses.manage'))) WITH CHECK ((select public.has_permission(workspace_id, 'expenses.manage')))$f$, t || '_update', t);
+  END LOOP;
+END $$;
+
+REVOKE ALL ON public.vendors, public.recurring_expenses, public.expenses FROM anon;
+REVOKE DELETE ON public.vendors, public.recurring_expenses, public.expenses FROM authenticated;
+
+-- Permisos explicitos (un proyecto nuevo no da acceso por defecto): la app lee, crea y edita con la sesion (la RLS decide
+-- quien) y nunca borra; el servidor puede todo.
+GRANT SELECT, INSERT, UPDATE ON public.vendors TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.recurring_expenses TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.expenses TO authenticated;
+GRANT ALL ON public.vendors TO service_role;
+GRANT ALL ON public.recurring_expenses TO service_role;
+GRANT ALL ON public.expenses TO service_role;
+
+-- ============================================================
+-- MIGRATION 226: EXPENSE RECEIPTS BUCKET
+-- ============================================================
+-- ============================================================================
+-- 00226 — Gastos (G1, GF8): bucket privado para los comprobantes
+-- ============================================================================
+-- Un bucket PRIVADO:
+--
+--   expense-receipts   {workspace_id}/{expense_id}/{uuid}.{ext}
+--
+-- Tipos: JPEG, PNG, WebP, HEIC y PDF. Tope: 10 MB. SUBE y FIRMA solo el servidor (service role) DESPUES de
+-- comprobar el permiso con la sesion de quien pide; la lectura es un link firmado de 60 segundos. Como segunda
+-- barrera hay una politica de SELECT por carpeta (el primer segmento del path es el workspace) que pide
+-- `expenses.view`. Insertar, actualizar y borrar son del servidor: no hay politica para usuarios.
+-- Reemplazar un comprobante NO borra el anterior.
+--
+-- Aditiva e idempotente. Que sea privado es una condicion de seguridad: si ya existia, se le fuerza.
+--
+-- Como volver atras (solo si esta vacio):
+--   DROP POLICY IF EXISTS expense_receipts_select ON storage.objects;
+--   select count(*) from storage.objects where bucket_id = 'expense-receipts';  -- 0
+--   DELETE FROM storage.buckets WHERE id = 'expense-receipts';
+-- ============================================================================
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'expense-receipts',
+  'expense-receipts',
+  false,
+  10485760,  -- 10 MB
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']
+)
+ON CONFLICT (id) DO UPDATE
+  SET public = false,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS expense_receipts_select ON storage.objects;
+CREATE POLICY expense_receipts_select ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'expense-receipts'
+    AND (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    AND (select public.has_permission(((storage.foldername(name))[1])::uuid, 'expenses.view'))
+  );
+
+-- ============================================================
+-- MIGRATION 227: AUDIT LOG SELECT FINANCE
+-- ============================================================
+-- ============================================================================
+-- 00227 — Gastos (G1, GF14): quien lee el historial de Finanzas
+-- ============================================================================
+-- `audit_log_select` NO se reescribe. Siguiendo la convencion de los demas modulos (00147 Llamadas, 00168 Ventas,
+-- 00197 Tareas, 00213 Actividad), Finanzas suma su propia politica de SELECT ADICIONAL y permisiva; Postgres las
+-- combina con OR. La de Finanzas deja ver las entradas de gastos, plantillas y proveedores a quien tiene
+-- `expenses.view` (en la practica, un rol personalizado de contabilidad). Las categorias y la configuracion se
+-- auditan sobre `workspace`, que ya lo ven los Admin.
+--
+-- Lo que ya se veia de los demas `entity_type` no cambia: `scripts/verify-audit-visibility.mjs` (y
+-- `verify-expenses.mjs`) lo comprueban contra el resultado de antes.
+--
+-- Idempotente: DROP POLICY IF EXISTS + CREATE.
+--
+-- Como volver atras:
+--   DROP POLICY IF EXISTS audit_log_select_finance ON public.audit_log;
+-- ============================================================================
+
+DROP POLICY IF EXISTS audit_log_select_finance ON public.audit_log;
+CREATE POLICY audit_log_select_finance ON public.audit_log
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    entity_type IN ('expense', 'recurring_expense', 'vendor')
+    AND (select public.has_permission(workspace_id, 'expenses.view'))
+  );
+
+-- ============================================================
+-- MIGRATION 228: FINANCE DAILY FNS
+-- ============================================================
+-- ============================================================================
+-- 00228 — Gastos (G2, GF11): vencer gastos y encolar el trabajo diario (SIN programar el cron)
+-- ============================================================================
+-- Dos funciones, ninguna cambia lo que hace el codigo de produccion actual:
+--
+--   1. public.mark_expenses_overdue(workspace, hoy): pasa a `vencido` los gastos `programado` con fecha anterior
+--      a hoy. NUNCA toca otro estado (un pagado, un anulado o un «por revisar» no vencen). Devuelve los ids.
+--
+--   2. private.enqueue_finance_daily(ahora): por cada workspace, si en SU zona ya son las 03:00 o mas, encola UN
+--      `finance_daily` para su fecha local, SOLO si no existe ya un trabajo con esa clave EN CUALQUIER ESTADO
+--      (el unico de `scheduled_jobs.dedupe_key` solo cubre los pendientes; sin esto, un trabajo completado no
+--      impediria encolar otro). Una zona invalida cae a UTC y una falla en un workspace no frena a los demas.
+--      Recibe «ahora» como parametro (default now()) para poder probarla con un reloj fijo.
+--
+-- El `cron.schedule('finance-daily', ...)` NO esta en esta migracion: es la 00233, que se aplica DESPUES de
+-- mergear (si se aplicara antes, la tarea encolaria trabajos de un tipo que el codigo en produccion todavia no
+-- conoce y la cola los marcaria fallidos). Mientras tanto «Calcular ahora» (Ajustes) encola el trabajo a mano.
+--
+-- NO se agrega una ruta en `app/api/cron/` ni se toca `private.call_app_cron` (patron de 00167 y 00198).
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS private.enqueue_finance_daily(timestamptz);
+--   DROP FUNCTION IF EXISTS public.mark_expenses_overdue(uuid, date);
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'finance_daily' AND status = 'pending';
+-- Riesgo: bajo. Aditiva.
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.mark_expenses_overdue(p_workspace_id uuid, p_today date)
+RETURNS SETOF uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH changed AS (
+    UPDATE public.expenses e
+       SET status = 'vencido'
+     WHERE e.workspace_id = p_workspace_id
+       AND e.status = 'programado'
+       AND e.scheduled_date < p_today
+    RETURNING e.id
+  )
+  SELECT id FROM changed;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_expenses_overdue(uuid, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_expenses_overdue(uuid, date) TO service_role;
+
+CREATE OR REPLACE FUNCTION private.enqueue_finance_daily(p_now timestamptz DEFAULT now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws record;
+  v_local timestamp;
+  v_day date;
+  v_key text;
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_ws IN SELECT w.id, COALESCE(w.timezone, 'UTC') AS tz FROM public.workspaces w LOOP
+    BEGIN
+      BEGIN
+        v_local := p_now AT TIME ZONE v_ws.tz;
+      EXCEPTION WHEN OTHERS THEN
+        -- Una zona guardada invalida no frena a nadie: ese workspace corre en UTC.
+        v_local := p_now AT TIME ZONE 'UTC';
+      END;
+      v_day := v_local::date;
+      CONTINUE WHEN v_local::time < time '03:00';
+
+      v_key := 'finance_daily:' || v_ws.id::text || ':' || v_day::text;
+      -- «Una vez por dia»: se mira si existe en CUALQUIER estado, no solo pendiente.
+      CONTINUE WHEN EXISTS (SELECT 1 FROM public.scheduled_jobs j WHERE j.dedupe_key = v_key);
+
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES (
+        'finance_daily',
+        jsonb_build_object('workspace_id', v_ws.id, 'local_date', v_day::text),
+        p_now,
+        v_key
+      )
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+
+      IF FOUND THEN
+        v_enqueued := v_enqueued + 1;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_finance_daily: no pude encolar el workspace %: %', v_ws.id, SQLERRM;
+    END;
+  END LOOP;
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_finance_daily(timestamptz) FROM PUBLIC, anon, authenticated;
+
+-- ============================================================
+-- MIGRATION 229: UPSERT AUTO EXPENSE
+-- ============================================================
+-- ============================================================================
+-- 00229 — Gastos (G2, GF20/GF21/GF22): los gastos automaticos
+-- ============================================================================
+-- Dos funciones. La REGLA vive en la base (lo que se hace con un automatico segun lo que ya existe y el total
+-- recalculado) y tiene su gemela pura en TypeScript (`decideAutoExpenseAction`, lib/finance/auto-expenses.ts): los
+-- mismos casos (`lib/finance/auto-expenses.cases.json`) corren contra las dos.
+--
+--   1. public.decide_auto_expense_action(existing, total, ctx): la decision, pura (STABLE: castea texto a fecha). Los 8 casos de GF20.
+--   2. public.upsert_auto_expense(...): en UNA transaccion, con un candado por clave y `SELECT ... FOR UPDATE`,
+--      lee el gasto, decide y aplica. Si el pago de una persona gana la carrera, el recalculo ve «pagado» y solo
+--      marca diferencia; si el recalculo gana, el pago congela el monto recien recalculado.
+--
+-- Un automatico por clave (`processor_fee:{metodo}:{AAAA-MM}` o `meta_ads:{cuenta}:{AAAA-MM}`): el indice unico
+-- `(workspace_id, auto_key)` es la idempotencia. El monto SE RECALCULA ENTERO cada vez (la suma del mes), nunca
+-- «se le suma lo nuevo». Lo pagado no se toca: la diferencia se marca (`auto_drift_*`) y se ajusta aparte.
+-- Solo `service_role`. SECURITY DEFINER, `search_path = ''`.
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.upsert_auto_expense(uuid, text, text, bigint, text, text, uuid, text, text, jsonb, date);
+--   DROP FUNCTION IF EXISTS public.decide_auto_expense_action(jsonb, bigint, jsonb);
+-- Riesgo: bajo. Aditiva.
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.decide_auto_expense_action(p_existing jsonb, p_total_cents bigint, p_ctx jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_total bigint := GREATEST(0, COALESCE(p_total_cents, 0));
+  v_month text := p_ctx ->> 'month';
+  v_today date := (p_ctx ->> 'todayLocal')::date;
+  v_month_end date := ((v_month || '-01')::date + interval '1 month' - interval '1 day')::date;
+  v_unpaid text := CASE WHEN p_ctx ->> 'chargeMode' = 'manual' AND v_month_end < v_today THEN 'vencido' ELSE 'programado' END;
+  v_status text;
+  v_amount bigint;
+  v_adjust bigint;
+  v_drift bigint;
+  v_cur_drift bigint;
+  v_open boolean;
+BEGIN
+  IF p_existing IS NULL OR jsonb_typeof(p_existing) = 'null' THEN
+    IF v_total <= 0 THEN
+      RETURN jsonb_build_object('kind', 'none');
+    END IF;
+    RETURN jsonb_build_object('kind', 'create', 'amountCents', v_total, 'status', v_unpaid, 'scheduledDate', v_month_end::text);
+  END IF;
+
+  v_status := p_existing ->> 'status';
+  v_amount := (p_existing ->> 'amountCents')::bigint;
+
+  IF v_status = 'anulado' THEN
+    IF p_existing ->> 'voidKind' = 'auto_zero' AND v_total > 0 THEN
+      RETURN jsonb_build_object('kind', 'reactivate', 'amountCents', v_total, 'status', v_unpaid);
+    END IF;
+    RETURN jsonb_build_object('kind', 'none');
+  END IF;
+
+  IF v_status = 'pagado' THEN
+    SELECT COALESCE(sum(x::bigint), 0) INTO v_adjust FROM jsonb_array_elements_text(COALESCE(p_existing -> 'adjustmentsCents', '[]'::jsonb)) AS x;
+    v_drift := v_total - (v_amount + v_adjust);
+    v_cur_drift := (p_existing ->> 'driftCents')::bigint;
+    IF v_drift = 0 THEN
+      v_open := v_cur_drift IS NOT NULL AND v_cur_drift <> 0 AND NOT COALESCE((p_existing ->> 'driftResolved')::boolean, false);
+      RETURN CASE WHEN v_open THEN jsonb_build_object('kind', 'clear_drift') ELSE jsonb_build_object('kind', 'none') END;
+    END IF;
+    IF v_cur_drift IS NOT NULL AND v_cur_drift = v_drift THEN
+      RETURN jsonb_build_object('kind', 'none');
+    END IF;
+    RETURN jsonb_build_object('kind', 'mark_drift', 'driftCents', v_drift);
+  END IF;
+
+  -- programado, vencido o por_revisar
+  IF v_total <= 0 THEN
+    RETURN jsonb_build_object('kind', 'void_zero', 'voidKind', 'auto_zero');
+  END IF;
+  IF v_amount <> v_total THEN
+    RETURN jsonb_build_object('kind', 'update_amount', 'amountCents', v_total);
+  END IF;
+  RETURN jsonb_build_object('kind', 'none');
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.decide_auto_expense_action(jsonb, bigint, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.decide_auto_expense_action(jsonb, bigint, jsonb) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.upsert_auto_expense(
+  p_workspace uuid,
+  p_auto_key text,
+  p_origin text,
+  p_total_cents bigint,
+  p_concept text,
+  p_month text,
+  p_vendor_id uuid,
+  p_category_key text,
+  p_charge_mode text,
+  p_source_ref jsonb,
+  p_today date
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.expenses%ROWTYPE;
+  v_existing jsonb;
+  v_ctx jsonb := jsonb_build_object('todayLocal', p_today::text, 'month', p_month, 'chargeMode', p_charge_mode);
+  v_action jsonb;
+  v_kind text;
+  v_reason text;
+  v_new_id uuid;
+BEGIN
+  IF p_origin NOT IN ('processor_fee', 'meta_ads') THEN
+    RAISE EXCEPTION 'origen invalido para un gasto automatico: %', p_origin;
+  END IF;
+
+  -- Un candado por clave: «FOR UPDATE» no bloquea una fila que todavia no existe, y dos corridas a la vez
+  -- no deben crear dos gastos.
+  PERFORM pg_advisory_xact_lock(hashtextextended('upsert_auto_expense:' || p_workspace::text || ':' || p_auto_key, 0));
+
+  SELECT * INTO v_row FROM public.expenses WHERE workspace_id = p_workspace AND auto_key = p_auto_key FOR UPDATE;
+
+  IF FOUND THEN
+    v_existing := jsonb_build_object(
+      'status', v_row.status,
+      'amountCents', round(v_row.amount * 100)::bigint,
+      'voidKind', v_row.void_kind,
+      'driftCents', CASE WHEN v_row.auto_drift_amount IS NULL THEN NULL ELSE round(v_row.auto_drift_amount * 100)::bigint END,
+      'driftResolved', v_row.auto_drift_resolved_at IS NOT NULL,
+      'adjustmentsCents', COALESCE((
+        SELECT jsonb_agg(round(a.amount * 100)::bigint ORDER BY a.created_at, a.id)
+          FROM public.expenses a
+         WHERE a.adjusts_expense_id = v_row.id AND a.status <> 'anulado'
+      ), '[]'::jsonb)
+    );
+  END IF;
+
+  v_action := public.decide_auto_expense_action(v_existing, p_total_cents, v_ctx);
+  v_kind := v_action ->> 'kind';
+
+  IF v_kind = 'create' THEN
+    INSERT INTO public.expenses (
+      workspace_id, concept, vendor_id, category_key, amount, status, scheduled_date, origin, auto_key, source_ref
+    ) VALUES (
+      p_workspace, p_concept, p_vendor_id, p_category_key, ((v_action ->> 'amountCents')::bigint)::numeric / 100,
+      v_action ->> 'status', (v_action ->> 'scheduledDate')::date, p_origin, p_auto_key, p_source_ref
+    ) RETURNING id INTO v_new_id;
+    RETURN jsonb_build_object('action', 'create', 'expense_id', v_new_id, 'amount_cents', (v_action ->> 'amountCents')::bigint);
+
+  ELSIF v_kind = 'update_amount' THEN
+    UPDATE public.expenses SET amount = ((v_action ->> 'amountCents')::bigint)::numeric / 100, source_ref = p_source_ref WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'update_amount', 'expense_id', v_row.id, 'previous_amount_cents', round(v_row.amount * 100)::bigint, 'amount_cents', (v_action ->> 'amountCents')::bigint);
+
+  ELSIF v_kind = 'void_zero' THEN
+    v_reason := CASE WHEN p_origin = 'processor_fee' THEN 'La comisión del mes quedó en cero' ELSE 'La pauta del mes quedó en cero' END;
+    UPDATE public.expenses
+       SET status = 'anulado', void_reason = v_reason, void_kind = 'auto_zero', voided_at = now(), source_ref = p_source_ref
+     WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'void_zero', 'expense_id', v_row.id);
+
+  ELSIF v_kind = 'reactivate' THEN
+    UPDATE public.expenses
+       SET status = v_action ->> 'status', amount = ((v_action ->> 'amountCents')::bigint)::numeric / 100,
+           void_reason = NULL, void_kind = NULL, voided_at = NULL, voided_by = NULL, source_ref = p_source_ref
+     WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'reactivate', 'expense_id', v_row.id, 'amount_cents', (v_action ->> 'amountCents')::bigint);
+
+  ELSIF v_kind = 'mark_drift' THEN
+    UPDATE public.expenses
+       SET auto_drift_amount = ((v_action ->> 'driftCents')::bigint)::numeric / 100, auto_drift_detected_at = now(), auto_drift_resolved_at = NULL
+     WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'mark_drift', 'expense_id', v_row.id, 'drift_cents', (v_action ->> 'driftCents')::bigint);
+
+  ELSIF v_kind = 'clear_drift' THEN
+    UPDATE public.expenses SET auto_drift_amount = NULL, auto_drift_detected_at = NULL, auto_drift_resolved_at = NULL WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'clear_drift', 'expense_id', v_row.id);
+  END IF;
+
+  RETURN jsonb_build_object('action', 'none', 'expense_id', v_row.id);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.upsert_auto_expense(uuid, text, text, bigint, text, text, uuid, text, text, jsonb, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upsert_auto_expense(uuid, text, text, bigint, text, text, uuid, text, text, jsonb, date) TO service_role;
+
+-- ============================================================
+-- MIGRATION 230: ORGANIC ATTRIBUTION
+-- ============================================================
+-- ============================================================================
+-- 00230 — Atribucion organica (Extra I, bloque AO1, F30)
+-- ============================================================================
+-- Que contenido trajo a cada contacto, y por que canal. Lo que agrega:
+--
+--   1. `content_posts.attribution_code`: un codigo corto y unico por pieza ('c' + 5 caracteres de [a-z2-9], sin 0, 1, l, o)
+--      que se pone en el UTM (`utm_content`) de los links. Lo completa un trigger al crear; se rellena el historico.
+--   2. `social_posts.assigned_to`: responsable de una publicacion SIN pieza (externa o marcada a mano), miembro del workspace.
+--   3. `contact_touches.channel` ('organic' | 'paid' | 'referral' | 'direct'), calculado por `public.touch_channel(...)`
+--      (IMMUTABLE; su gemela en TypeScript es `lib/attribution/channel.ts`, con los mismos casos en `channel.cases.json`).
+--   4. El CHECK de `contact_touches.origin` suma `link_click` (un clic en un link con seguimiento).
+--   5. Dos triggers de `contact_touches` (BEFORE INSERT), con `EXCEPTION WHEN OTHERS` (un error aca NUNCA cuesta un toque):
+--        - `contact_touches_content_code`: si `content_label` es el codigo de una pieza, completa la pieza (y la
+--          publicacion si hay UNA sola en esa red). Corre antes de `contact_touches_meta_match` (orden alfabetico).
+--        - `contact_touches_zz_channel`: calcula el canal (respeta uno puesto en el INSERT) y, si es organico con pieza
+--          y sin ningun dato de anuncio, marca el vinculo de Meta como `ignored / organic_content` (asi no aparece en
+--          «Sin vincular» y `rematch_meta_touches`, que nunca toca `ignored`, no lo vuelve a tocar). Corre despues de
+--          `contact_touches_meta_match`.
+--   6. `public.contact_last_origin_touch(contact)`: el ultimo toque con canal organico, pago o referido. NO se guarda
+--      en `contacts.attribution` (eso exigiria tocar `record_contact_touch`, que esta protegido).
+--   7. `workspaces.attribution_settings` (jsonb): comentarios que crean contactos, dias de herencia y valores por
+--      defecto de los links.
+--   8. `private.enqueue_comment_backfill()`: la FUNCION del trigger que encola el vinculo retroactivo de comentarios
+--      cuando un contacto gana un usuario de Instagram o TikTok. El trigger en si es la 00234 (despues del merge).
+--   9. Relleno de `channel` del historico, en lotes de 1.000.
+--
+-- NO se tocan: `record_contact_touch`, `find_or_link_contact`, `contact_touches_meta_match_trg`,
+-- `rematch_meta_touches` ni `resolve_meta_match` (sus huellas md5 no cambian).
+--
+-- Definicion vieja del CHECK de origin (la que esta vigente hasta esta migracion):
+--   CHECK ((origin = ANY (ARRAY['dm'::text, 'comment'::text, 'booking'::text, 'form'::text, 'manual'::text, 'import'::text, 'webhook'::text])))
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS contact_touches_zz_channel ON public.contact_touches;
+--   DROP TRIGGER IF EXISTS contact_touches_content_code ON public.contact_touches;
+--   DROP FUNCTION IF EXISTS public.contact_touches_zz_channel_trg();
+--   DROP FUNCTION IF EXISTS public.contact_touches_content_code_trg();
+--   DROP FUNCTION IF EXISTS public.contact_last_origin_touch(uuid);
+--   DROP FUNCTION IF EXISTS private.enqueue_comment_backfill();
+--   DROP FUNCTION IF EXISTS public.touch_channel(text, text, text, text, text, text, text, text, text, text, text, text, text, uuid, uuid);
+--   ALTER TABLE public.contact_touches DROP CONSTRAINT IF EXISTS contact_touches_origin_check;
+--   ALTER TABLE public.contact_touches ADD CONSTRAINT contact_touches_origin_check
+--     CHECK ((origin = ANY (ARRAY['dm'::text, 'comment'::text, 'booking'::text, 'form'::text, 'manual'::text, 'import'::text, 'webhook'::text])));
+--     (antes, borrar o recodificar los toques con origin = 'link_click', si los hubiera)
+--   DROP INDEX IF EXISTS public.idx_contact_touches_channel;
+--   ALTER TABLE public.contact_touches DROP COLUMN IF EXISTS channel;
+--   DROP TRIGGER IF EXISTS social_posts_assignee ON public.social_posts;
+--   DROP FUNCTION IF EXISTS public.social_posts_assignee_guard();
+--   ALTER TABLE public.social_posts DROP COLUMN IF EXISTS assigned_to;
+--   DROP TRIGGER IF EXISTS content_posts_attribution_code ON public.content_posts;
+--   DROP FUNCTION IF EXISTS public.content_posts_attribution_code_trg();
+--   DROP FUNCTION IF EXISTS private.new_attribution_code(uuid);
+--   DROP INDEX IF EXISTS public.uq_content_posts_attribution_code;
+--   ALTER TABLE public.content_posts DROP COLUMN IF EXISTS attribution_code;
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS attribution_settings;
+-- Riesgo: medio-alto. Toca la tabla donde escribe todo lo entrante; los dos triggers nuevos no pueden fallar un insert.
+-- ============================================================================
+
+SET search_path = '';
+
+-- 1. Codigo de atribucion de cada pieza ---------------------------------------------------------------------------
+
+ALTER TABLE public.content_posts ADD COLUMN IF NOT EXISTS attribution_code text;
+
+COMMENT ON COLUMN public.content_posts.attribution_code IS
+  'Codigo corto y unico por workspace (c + 5 caracteres [a-z2-9]) que va en el utm_content de los links de la pieza.';
+
+-- 32 simbolos: a-z sin l ni o (24) + 2-9 (8). Reintenta ante colision hasta 10 veces.
+CREATE OR REPLACE FUNCTION private.new_attribution_code(p_workspace_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_alphabet constant text := 'abcdefghijkmnpqrstuvwxyz23456789';
+  v_code text;
+  v_try int := 0;
+BEGIN
+  LOOP
+    v_try := v_try + 1;
+    v_code := 'c';
+    FOR i IN 1..5 LOOP
+      v_code := v_code || substr(v_alphabet, 1 + floor(random() * length(v_alphabet))::int, 1);
+    END LOOP;
+    IF NOT EXISTS (SELECT 1 FROM public.content_posts p WHERE p.workspace_id = p_workspace_id AND p.attribution_code = v_code) THEN
+      RETURN v_code;
+    END IF;
+    IF v_try >= 10 THEN
+      RAISE EXCEPTION 'No pude generar un codigo de atribucion libre despues de 10 intentos';
+    END IF;
+  END LOOP;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.new_attribution_code(uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.content_posts_attribution_code_trg()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.attribution_code IS NULL OR btrim(NEW.attribution_code) = '' THEN
+    NEW.attribution_code := private.new_attribution_code(NEW.workspace_id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.content_posts_attribution_code_trg() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS content_posts_attribution_code ON public.content_posts;
+CREATE TRIGGER content_posts_attribution_code
+  BEFORE INSERT ON public.content_posts
+  FOR EACH ROW EXECUTE FUNCTION public.content_posts_attribution_code_trg();
+
+-- Relleno de las piezas que ya existen (una por una: cada una ve el codigo de la anterior).
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN SELECT id, workspace_id FROM public.content_posts WHERE attribution_code IS NULL LOOP
+    UPDATE public.content_posts SET attribution_code = private.new_attribution_code(r.workspace_id) WHERE id = r.id;
+  END LOOP;
+END $$;
+
+ALTER TABLE public.content_posts ALTER COLUMN attribution_code SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_content_posts_attribution_code
+  ON public.content_posts (workspace_id, attribution_code);
+
+-- 2. Responsable de una publicacion sin pieza ---------------------------------------------------------------------
+
+ALTER TABLE public.social_posts ADD COLUMN IF NOT EXISTS assigned_to uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN public.social_posts.assigned_to IS
+  'Responsable de una publicacion SIN pieza (externa o marcada a mano). Las de una pieza usan content_posts.assigned_to.';
+
+CREATE OR REPLACE FUNCTION public.social_posts_assignee_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.assigned_to IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.assigned_to IS DISTINCT FROM OLD.assigned_to) THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.workspace_members m
+       WHERE m.workspace_id = NEW.workspace_id AND m.user_id = NEW.assigned_to
+    ) THEN
+      RAISE EXCEPTION 'El responsable tiene que ser parte del equipo.' USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.social_posts_assignee_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS social_posts_assignee ON public.social_posts;
+CREATE TRIGGER social_posts_assignee
+  BEFORE INSERT OR UPDATE OF assigned_to ON public.social_posts
+  FOR EACH ROW EXECUTE FUNCTION public.social_posts_assignee_guard();
+
+-- 3. El canal de un toque -----------------------------------------------------------------------------------------
+
+ALTER TABLE public.contact_touches ADD COLUMN IF NOT EXISTS channel text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contact_touches_channel_check' AND conrelid = 'public.contact_touches'::regclass) THEN
+    ALTER TABLE public.contact_touches
+      ADD CONSTRAINT contact_touches_channel_check CHECK (channel IS NULL OR channel IN ('organic', 'paid', 'referral', 'direct'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.contact_touches.channel IS
+  'organic | paid | referral | direct. Lo calcula contact_touches_zz_channel con touch_channel(); un valor puesto en el INSERT se respeta.';
+
+CREATE INDEX IF NOT EXISTS idx_contact_touches_channel
+  ON public.contact_touches (workspace_id, contact_id, channel, occurred_at DESC);
+
+-- Gemela de lib/attribution/channel.ts. IMMUTABLE. `fbclid` SOLO no alcanza para pauta (Meta lo agrega tambien a
+-- clics organicos): el parametro existe para que las dos firmas sean identicas, y no se usa.
+CREATE OR REPLACE FUNCTION public.touch_channel(
+  p_origin text, p_medium text, p_source text,
+  p_ad_id text, p_adset_id text, p_campaign_id text, p_meta_ad_id text, p_meta_campaign_id text,
+  p_gclid text, p_ttclid text, p_li_fat_id text, p_ctwa_clid text, p_fbclid text,
+  p_social_post_id uuid, p_content_post_id uuid
+)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_origin text := nullif(lower(btrim(p_origin)), '');
+  v_medium text := nullif(lower(btrim(p_medium)), '');
+  v_source text := nullif(lower(btrim(p_source)), '');
+BEGIN
+  -- 1) Pauta
+  IF nullif(btrim(p_ad_id), '') IS NOT NULL
+     OR nullif(btrim(p_adset_id), '') IS NOT NULL
+     OR nullif(btrim(p_campaign_id), '') IS NOT NULL
+     OR nullif(btrim(p_meta_ad_id), '') IS NOT NULL
+     OR nullif(btrim(p_meta_campaign_id), '') IS NOT NULL
+     OR nullif(btrim(p_gclid), '') IS NOT NULL
+     OR nullif(btrim(p_ttclid), '') IS NOT NULL
+     OR nullif(btrim(p_li_fat_id), '') IS NOT NULL
+     OR nullif(btrim(p_ctwa_clid), '') IS NOT NULL
+     OR (v_medium IS NOT NULL AND v_medium = ANY (ARRAY['paid_social', 'cpc', 'ppc', 'paid', 'display', 'paidsocial', 'paid_search'])) THEN
+    RETURN 'paid';
+  END IF;
+
+  -- 2) Referido (lo deja el selector de la venta)
+  IF v_medium = 'referral_person' THEN
+    RETURN 'referral';
+  END IF;
+
+  -- 3) Organico
+  IF p_social_post_id IS NOT NULL
+     OR p_content_post_id IS NOT NULL
+     OR (v_medium IS NOT NULL AND v_medium = ANY (ARRAY['comment', 'story_reply', 'story_mention', 'organic_social', 'social', 'dm_link']))
+     OR (v_origin = 'dm' AND v_source IS NOT NULL
+         AND v_source = ANY (ARRAY['instagram', 'tiktok', 'facebook', 'youtube', 'linkedin', 'threads', 'twitter'])) THEN
+    RETURN 'organic';
+  END IF;
+
+  -- 4) Cualquier otro caso
+  RETURN 'direct';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.touch_channel(text, text, text, text, text, text, text, text, text, text, text, text, text, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.touch_channel(text, text, text, text, text, text, text, text, text, text, text, text, text, uuid, uuid) TO authenticated, service_role;
+
+-- 4. Origen `link_click` ------------------------------------------------------------------------------------------
+
+ALTER TABLE public.contact_touches DROP CONSTRAINT IF EXISTS contact_touches_origin_check;
+ALTER TABLE public.contact_touches
+  ADD CONSTRAINT contact_touches_origin_check
+  CHECK ((origin = ANY (ARRAY['dm'::text, 'comment'::text, 'booking'::text, 'form'::text, 'manual'::text, 'import'::text, 'webhook'::text, 'link_click'::text])));
+
+-- 5. Triggers de contact_touches ----------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.contact_touches_content_code_trg()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_label text;
+  v_piece uuid;
+  v_source text;
+  v_count int;
+  v_post uuid;
+BEGIN
+  IF NEW.content_post_id IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+
+  BEGIN
+    v_label := lower(btrim(private.meta_url_decode(NEW.content_label)));
+    IF v_label IS NULL OR v_label !~ '^c[a-z2-9]{5}$' THEN
+      RETURN NEW;
+    END IF;
+    SELECT p.id INTO v_piece FROM public.content_posts p WHERE p.workspace_id = NEW.workspace_id AND p.attribution_code = v_label;
+    IF v_piece IS NULL THEN
+      RETURN NEW;
+    END IF;
+    IF NEW.social_post_id IS NULL THEN
+      v_source := lower(btrim(coalesce(NEW.source, '')));
+      SELECT count(*), (array_agg(s.id))[1] INTO v_count, v_post
+        FROM public.social_posts s
+       WHERE s.workspace_id = NEW.workspace_id AND s.content_post_id = v_piece AND s.platform = v_source AND s.deleted_at IS NULL;
+      IF v_count = 1 THEN
+        NEW.social_post_id := v_post;
+      END IF;
+    END IF;
+    NEW.content_post_id := v_piece;
+    NEW.raw := coalesce(NEW.raw, '{}'::jsonb) || jsonb_build_object('content_code_matched', true);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'contact_touches_content_code: no pude completar la pieza del toque (%): %', NEW.id, SQLERRM;
+  END;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contact_touches_content_code_trg() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contact_touches_content_code ON public.contact_touches;
+CREATE TRIGGER contact_touches_content_code
+  BEFORE INSERT ON public.contact_touches
+  FOR EACH ROW EXECUTE FUNCTION public.contact_touches_content_code_trg();
+
+CREATE OR REPLACE FUNCTION public.contact_touches_zz_channel_trg()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_channel text := NEW.channel;
+  v_status text := NEW.meta_match_status;
+  v_reason text := NEW.meta_match_reason;
+BEGIN
+  BEGIN
+    IF TG_OP = 'INSERT' THEN
+      IF v_channel IS NULL THEN
+        v_channel := public.touch_channel(NEW.origin, NEW.medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
+                                          NEW.gclid, NEW.ttclid, NEW.li_fat_id, NEW.ctwa_clid, NEW.fbclid, NEW.social_post_id, NEW.content_post_id);
+      END IF;
+    ELSIF NEW.channel IS NOT DISTINCT FROM OLD.channel THEN
+      -- Se actualizo algo que cambia el canal y nadie lo puso a mano: se recalcula.
+      v_channel := public.touch_channel(NEW.origin, NEW.medium, NEW.source, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.meta_ad_id, NEW.meta_campaign_id,
+                                        NEW.gclid, NEW.ttclid, NEW.li_fat_id, NEW.ctwa_clid, NEW.fbclid, NEW.social_post_id, NEW.content_post_id);
+    END IF;
+
+    -- Un link organico con UTMs no es un anuncio sin vincular.
+    IF v_channel = 'organic'
+       AND (NEW.content_post_id IS NOT NULL OR NEW.social_post_id IS NOT NULL)
+       AND nullif(btrim(NEW.ad_id), '') IS NULL AND nullif(btrim(NEW.adset_id), '') IS NULL AND nullif(btrim(NEW.campaign_id), '') IS NULL
+       AND nullif(btrim(NEW.fbclid), '') IS NULL
+       AND nullif(btrim(NEW.meta_ad_id), '') IS NULL AND nullif(btrim(NEW.meta_adset_id), '') IS NULL AND nullif(btrim(NEW.meta_campaign_id), '') IS NULL
+       AND v_status = 'unmatched' THEN
+      v_status := 'ignored';
+      v_reason := 'organic_content';
+    END IF;
+
+    NEW.channel := v_channel;
+    NEW.meta_match_status := v_status;
+    NEW.meta_match_reason := v_reason;
+  EXCEPTION WHEN OTHERS THEN
+    NEW.channel := 'direct';
+    RAISE WARNING 'contact_touches_zz_channel: no pude calcular el canal del toque (%): %', NEW.id, SQLERRM;
+  END;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contact_touches_zz_channel_trg() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contact_touches_zz_channel ON public.contact_touches;
+CREATE TRIGGER contact_touches_zz_channel
+  BEFORE INSERT OR UPDATE OF ad_id, adset_id, campaign_id, meta_ad_id, meta_adset_id, meta_campaign_id, social_post_id, content_post_id, medium
+  ON public.contact_touches
+  FOR EACH ROW EXECUTE FUNCTION public.contact_touches_zz_channel_trg();
+
+-- 6. El ultimo toque con origen identificado ----------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.contact_last_origin_touch(p_contact_id uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT t.id
+    FROM public.contact_touches t
+   WHERE t.contact_id = p_contact_id
+     AND t.channel IN ('organic', 'paid', 'referral')
+   ORDER BY t.occurred_at DESC, t.created_at DESC, t.id DESC
+   LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.contact_last_origin_touch(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.contact_last_origin_touch(uuid) TO authenticated, service_role;
+
+-- 7. Configuracion de la atribucion -------------------------------------------------------------------------------
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS attribution_settings jsonb NOT NULL
+  DEFAULT '{"comments_create_contact":{"instagram":false,"tiktok":true},"content_inherit_days":7,"links_append_default":false,"links_track_clicks_default":true}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_attribution_settings_check' AND conrelid = 'public.workspaces'::regclass) THEN
+    ALTER TABLE public.workspaces
+      ADD CONSTRAINT workspaces_attribution_settings_check CHECK (jsonb_typeof(attribution_settings) = 'object');
+  END IF;
+END $$;
+
+-- 8. La funcion del vinculo retroactivo de comentarios (el trigger es la 00234) -----------------------------------
+
+CREATE OR REPLACE FUNCTION private.enqueue_comment_backfill()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_platform text;
+  v_username text;
+  v_old text;
+BEGIN
+  BEGIN
+    IF NEW.deleted_at IS NOT NULL THEN
+      RETURN NEW;
+    END IF;
+    FOREACH v_platform IN ARRAY ARRAY['instagram', 'tiktok'] LOOP
+      v_username := nullif(btrim(CASE v_platform WHEN 'instagram' THEN NEW.instagram_username ELSE NEW.tiktok_username END), '');
+      v_old := CASE WHEN TG_OP = 'UPDATE' THEN nullif(btrim(CASE v_platform WHEN 'instagram' THEN OLD.instagram_username ELSE OLD.tiktok_username END), '') END;
+      IF v_username IS NULL OR v_username IS NOT DISTINCT FROM v_old THEN
+        CONTINUE;
+      END IF;
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES (
+        'comment_backfill',
+        jsonb_build_object('workspace_id', NEW.workspace_id, 'contact_id', NEW.id, 'platform', v_platform),
+        now() + interval '5 seconds',
+        'comment_backfill:' || NEW.id::text || ':' || v_platform || ':' || lower(v_username)
+      )
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN
+    -- Encolar el vinculo de comentarios nunca puede costar un contacto.
+    RAISE WARNING 'enqueue_comment_backfill: no pude encolar el contacto %: %', NEW.id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_comment_backfill() FROM PUBLIC, anon, authenticated;
+
+-- 9. Relleno del canal del historico (lotes de 1.000). `channel` no esta en la lista de columnas del trigger, asi que
+--    esta actualizacion no lo dispara. -----------------------------------------------------------------------------
+
+DO $$
+DECLARE
+  n int;
+  total int := 0;
+  r record;
+BEGIN
+  LOOP
+    WITH batch AS (
+      SELECT id FROM public.contact_touches WHERE channel IS NULL LIMIT 1000 FOR UPDATE SKIP LOCKED
+    )
+    UPDATE public.contact_touches t
+       SET channel = public.touch_channel(t.origin, t.medium, t.source, t.ad_id, t.adset_id, t.campaign_id, t.meta_ad_id, t.meta_campaign_id,
+                                          t.gclid, t.ttclid, t.li_fat_id, t.ctwa_clid, t.fbclid, t.social_post_id, t.content_post_id)
+      FROM batch
+     WHERE t.id = batch.id;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    EXIT WHEN n = 0;
+    total := total + n;
+  END LOOP;
+  FOR r IN SELECT channel, count(*) AS c FROM public.contact_touches GROUP BY channel ORDER BY channel LOOP
+    RAISE NOTICE 'contact_touches.channel = %: % toques', r.channel, r.c;
+  END LOOP;
+  RAISE NOTICE 'canal calculado para % toques', total;
+END $$;
+
+-- ============================================================
+-- MIGRATION 231: COMMISSIONS
+-- ============================================================
+-- ============================================================================
+-- 00231 — Comisiones (Extra I, bloque CM1, F50 a F54; y la base de CM2 en F60)
+-- ============================================================================
+-- Quien cobra que comision por cada pago cobrado. Lo que agrega:
+--
+--   1. `workspaces.commission_settings` (jsonb): los ROLES de comision (vendedor, setter, contenido y pauta precargados;
+--      el negocio crea los suyos) con a quien se le paga cada uno (`payee`). Un trigger impide borrar un rol, cambiar su
+--      `key` o su `payee`, o cambiar el `system` de un precargado (CM002).
+--   2. `commission_rules` (las reglas, por rol y orden) y `commissions` (lo ganado, con foto de la regla, la base y la
+--      atribucion). Nada se borra: las reglas se archivan, las comisiones se anulan.
+--   3. `private.commission_role_valid` + triggers: el rol de una regla o comision tiene que existir (y estar activo al
+--      crear una regla): CM001.
+--   4. `can_see_commission` (siempre true/false, nunca NULL) y la RLS: solo SELECT para `authenticated`; escribe el servidor.
+--   5. El motor, en SQL, gemelo del de TypeScript (`lib/commissions/rules.ts`, con `rules.cases.json` y
+--      `content-owner.cases.json` corriendo contra las dos): `commission_content_owner`, `commission_facts`,
+--      `commission_rule_matches`, `commission_pick_rule`, `commission_payee`, `commission_base_cents`,
+--      `commission_amount_cents`.
+--   6. `generate_commissions_for_payment` y `revert_commissions_for_payment` (idempotentes), y `create_commission_payout`
+--      (convierte comisiones en gastos de liquidacion, con candado por fila).
+--   7. `commissions_guard` y `expenses_release_commissions`. ESTE ULTIMO ES LA EXCEPCION a la regla «lo automatico nunca
+--      tumba lo que lo origina»: si no puede liberar las comisiones de un gasto de liquidacion que se anula, la anulacion
+--      FALLA (si no, quedarian comisiones atadas a un gasto anulado).
+--   8. `private.enqueue_commissions_for_payment()`: la FUNCION del trigger que encola la generacion y la reversion cuando un
+--      pago entra o sale de `paid`. El trigger en si es la 00235 (despues del merge). Envuelta en EXCEPTION: un cobro nunca
+--      falla por esto.
+--   9. `private.member_permission_keys()` se redefine: la lista vigente (00208) + `commissions.view` (M9: el Member ve sus
+--      propias comisiones, nada mas).
+--
+-- NO se tocan: `create_sale`, `record_contact_touch`, `find_or_link_contact`, `create_booking`, `submit_form_response`,
+-- `find_contact_for_form`, `find_or_create_contact`, `resolve_meta_match` (sus huellas md5 no cambian), ni `audit_log_select`.
+--
+-- Definicion vieja de `private.member_permission_keys()` (00208), copiada letra por letra para volver atras:
+--   CREATE OR REPLACE FUNCTION private.member_permission_keys() RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path TO ''
+--   AS $$ SELECT ARRAY['dashboards.chat.view','inbox.instagram.view','inbox.instagram.reply','inbox.whatsapp.view',
+--     'inbox.whatsapp.reply','inbox.email.view','inbox.email.reply','contacts.view','contacts.edit','contacts.assign','flows.view',
+--     'flows.edit','flows.publish','sequences.view','agents.view','content.view','content.create','scheduling.use','bookings.view',
+--     'bookings.manage','calls.view','forms.view','sales.view','sales.manage','payments.manage','tasks.view','tasks.edit']::text[] $$;
+--
+-- Como volver atras (en este orden):
+--   DROP TRIGGER IF EXISTS expenses_release_commissions ON public.expenses;
+--   DROP FUNCTION IF EXISTS private.expenses_release_commissions();
+--   DROP FUNCTION IF EXISTS private.enqueue_commissions_for_payment();
+--   DROP FUNCTION IF EXISTS public.create_commission_payout(uuid, uuid[], text, date, jsonb, text, uuid, date);
+--   DROP FUNCTION IF EXISTS public.revert_commissions_for_payment(uuid);
+--   DROP FUNCTION IF EXISTS public.generate_commissions_for_payment(uuid);
+--   DROP FUNCTION IF EXISTS public.commission_amount_cents(public.commission_rules, jsonb);
+--   DROP FUNCTION IF EXISTS public.commission_base_cents(public.commission_rules, jsonb);
+--   DROP FUNCTION IF EXISTS public.commission_payee(jsonb, public.commission_rules, jsonb);
+--   DROP FUNCTION IF EXISTS public.commission_pick_rule(uuid, jsonb, text);
+--   DROP FUNCTION IF EXISTS public.commission_rule_matches(public.commission_rules, jsonb, text);
+--   DROP FUNCTION IF EXISTS public.commission_facts(uuid);
+--   DROP FUNCTION IF EXISTS public.commission_content_owner(uuid, uuid, uuid);
+--   DROP TABLE IF EXISTS public.commissions;  (y despues public.commission_rules)
+--   DROP FUNCTION IF EXISTS public.can_see_commission(public.commissions);
+--   DROP TRIGGER IF EXISTS workspaces_commission_settings_guard ON public.workspaces;
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS commission_settings;
+--   (recrear private.member_permission_keys() con la definicion de arriba)
+-- Riesgo: medio-alto. Tablas y funciones nuevas; lo unico existente que cambia es la lista del Member (+ una clave).
+-- ============================================================================
+
+SET search_path = '';
+
+-- 1. Los roles de comision ----------------------------------------------------------------------------------------
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS commission_settings jsonb NOT NULL
+  DEFAULT '{"roles":[
+    {"key":"vendedor","name":"Vendedor","payee":"sale_vendedor","active":true,"system":true,"created_at":"2026-10-15T00:00:00.000Z"},
+    {"key":"setter","name":"Setter","payee":"sale_setter","active":true,"system":true,"created_at":"2026-10-15T00:00:00.000Z"},
+    {"key":"contenido","name":"Contenido","payee":"content_assignee","active":true,"system":true,"created_at":"2026-10-15T00:00:00.000Z"},
+    {"key":"pauta","name":"Pauta","payee":"fixed","active":true,"system":true,"created_at":"2026-10-15T00:00:00.000Z"}
+  ]}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_commission_settings_check' AND conrelid = 'public.workspaces'::regclass) THEN
+    ALTER TABLE public.workspaces
+      ADD CONSTRAINT workspaces_commission_settings_check
+      CHECK (COALESCE(jsonb_typeof(commission_settings) = 'object' AND jsonb_typeof(commission_settings -> 'roles') = 'array', false));
+  END IF;
+END $$;
+
+-- Un rol existente no se borra, no cambia de `key` ni de `payee`, y un precargado sigue siendo precargado. Una `key`
+-- nueva tiene que tener la forma ^[a-z0-9_]{2,40}$ y no repetirse.
+CREATE OR REPLACE FUNCTION private.commission_settings_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_old jsonb;
+  v_new jsonb;
+  v_keys text[];
+BEGIN
+  IF NEW.commission_settings IS NOT DISTINCT FROM OLD.commission_settings THEN
+    RETURN NEW;
+  END IF;
+
+  FOR v_old IN SELECT * FROM jsonb_array_elements(OLD.commission_settings -> 'roles') LOOP
+    SELECT n INTO v_new FROM jsonb_array_elements(NEW.commission_settings -> 'roles') n WHERE n ->> 'key' = v_old ->> 'key' LIMIT 1;
+    IF v_new IS NULL THEN
+      RAISE EXCEPTION 'Un rol de comision no se borra: se desactiva (%).', v_old ->> 'key' USING ERRCODE = 'CM002';
+    END IF;
+    IF (v_new ->> 'payee') IS DISTINCT FROM (v_old ->> 'payee') THEN
+      RAISE EXCEPTION 'A quien se le paga un rol de comision no se cambia (%).', v_old ->> 'key' USING ERRCODE = 'CM002';
+    END IF;
+    IF COALESCE(v_new ->> 'system', 'false') IS DISTINCT FROM COALESCE(v_old ->> 'system', 'false') THEN
+      RAISE EXCEPTION 'Un rol precargado sigue siendo precargado (%).', v_old ->> 'key' USING ERRCODE = 'CM002';
+    END IF;
+  END LOOP;
+
+  SELECT array_agg(n ->> 'key') INTO v_keys FROM jsonb_array_elements(NEW.commission_settings -> 'roles') n;
+  IF EXISTS (SELECT 1 FROM unnest(v_keys) k WHERE k IS NULL OR k !~ '^[a-z0-9_]{2,40}$') THEN
+    RAISE EXCEPTION 'La clave de un rol de comision tiene que ser ^[a-z0-9_]{2,40}$.' USING ERRCODE = 'CM002';
+  END IF;
+  IF (SELECT count(*) FROM unnest(v_keys)) <> (SELECT count(DISTINCT k) FROM unnest(v_keys) k) THEN
+    RAISE EXCEPTION 'Hay dos roles de comision con la misma clave.' USING ERRCODE = 'CM002';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(NEW.commission_settings -> 'roles') n
+     WHERE (n ->> 'payee') NOT IN ('sale_vendedor', 'sale_setter', 'content_assignee', 'fixed') OR (n ->> 'payee') IS NULL
+  ) THEN
+    RAISE EXCEPTION 'A quien se le paga un rol de comision no es valido.' USING ERRCODE = 'CM002';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.commission_settings_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS workspaces_commission_settings_guard ON public.workspaces;
+CREATE TRIGGER workspaces_commission_settings_guard
+  BEFORE UPDATE OF commission_settings ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION private.commission_settings_guard();
+
+-- ¿El rol existe en este workspace (y, si se pide, esta activo)?
+CREATE OR REPLACE FUNCTION private.commission_role_valid(p_workspace_id uuid, p_role text, p_require_active boolean)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE((
+    SELECT bool_or(r ->> 'key' = p_role AND (NOT p_require_active OR COALESCE((r ->> 'active')::boolean, false)))
+      FROM public.workspaces w, jsonb_array_elements(w.commission_settings -> 'roles') r
+     WHERE w.id = p_workspace_id
+  ), false);
+$$;
+
+REVOKE ALL ON FUNCTION private.commission_role_valid(uuid, text, boolean) FROM PUBLIC, anon, authenticated;
+
+-- 2. Las reglas ---------------------------------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.commission_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 120),
+  role text NOT NULL,
+  position integer NOT NULL CHECK (position >= 1),
+  conditions jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(conditions) = 'object'),
+  calc_type text NOT NULL CHECK (calc_type IN ('percent', 'fixed')),
+  rate numeric(6,3),
+  fixed_amount numeric(12,2),
+  base text NOT NULL DEFAULT 'gross' CHECK (base IN ('gross', 'net_of_fees')),
+  beneficiary_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  hold_days smallint NOT NULL DEFAULT 0 CHECK (hold_days BETWEEN 0 AND 365),
+  valid_from date,
+  valid_until date,
+  is_active boolean NOT NULL DEFAULT true,
+  archived_at timestamptz,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT commission_rules_rate CHECK (calc_type <> 'percent' OR (rate IS NOT NULL AND rate > 0 AND rate <= 100)),
+  CONSTRAINT commission_rules_fixed CHECK (calc_type <> 'fixed' OR (fixed_amount IS NOT NULL AND fixed_amount > 0)),
+  CONSTRAINT commission_rules_validity CHECK (valid_from IS NULL OR valid_until IS NULL OR valid_until >= valid_from),
+  -- Una posicion por rol entre las reglas vivas; DIFERIDA para poder renumerar 1..N en una transaccion.
+  CONSTRAINT uq_commission_rules_position EXCLUDE USING btree (workspace_id WITH =, role WITH =, position WITH =)
+    WHERE (archived_at IS NULL) DEFERRABLE INITIALLY DEFERRED
+);
+
+COMMENT ON TABLE public.commission_rules IS 'Reglas de comision por rol. Se escriben solo desde el servidor. Nada se borra: se archivan.';
+
+CREATE INDEX IF NOT EXISTS idx_commission_rules_pick
+  ON public.commission_rules (workspace_id, role, position)
+  WHERE archived_at IS NULL AND is_active;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.commission_rules;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.commission_rules FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE OR REPLACE FUNCTION private.commission_rules_validate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_payee text;
+BEGIN
+  IF TG_OP = 'INSERT' OR NEW.role IS DISTINCT FROM OLD.role THEN
+    IF NOT private.commission_role_valid(NEW.workspace_id, NEW.role, true) THEN
+      RAISE EXCEPTION 'El rol "%" no existe o esta desactivado.', NEW.role USING ERRCODE = 'CM001';
+    END IF;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    SELECT r ->> 'payee' INTO v_payee
+      FROM public.workspaces w, jsonb_array_elements(w.commission_settings -> 'roles') r
+     WHERE w.id = NEW.workspace_id AND r ->> 'key' = NEW.role;
+    IF v_payee = 'fixed' AND NEW.beneficiary_user_id IS NULL THEN
+      RAISE EXCEPTION 'Una regla de un rol de persona fija necesita la persona.' USING ERRCODE = 'CM001';
+    END IF;
+  END IF;
+
+  IF NEW.beneficiary_user_id IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.beneficiary_user_id IS DISTINCT FROM OLD.beneficiary_user_id)
+     AND NOT EXISTS (SELECT 1 FROM public.workspace_members m WHERE m.workspace_id = NEW.workspace_id AND m.user_id = NEW.beneficiary_user_id) THEN
+    RAISE EXCEPTION 'La persona de la regla tiene que ser parte del equipo.' USING ERRCODE = 'CM001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.commission_rules_validate() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS commission_rules_validate ON public.commission_rules;
+CREATE TRIGGER commission_rules_validate
+  BEFORE INSERT OR UPDATE OF role, beneficiary_user_id ON public.commission_rules
+  FOR EACH ROW EXECUTE FUNCTION private.commission_rules_validate();
+
+-- 3. Las comisiones -----------------------------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.commissions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('earned', 'adjustment')),
+  role text,
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  payment_id uuid REFERENCES public.payments(id),
+  sale_id uuid REFERENCES public.sales(id),
+  rule_id uuid REFERENCES public.commission_rules(id),
+  rule_snapshot jsonb,
+  base_amount numeric(12,2),
+  amount numeric(12,2) NOT NULL,
+  currency text NOT NULL DEFAULT 'USD' CHECK (currency = 'USD'),
+  attribution_touch_id uuid REFERENCES public.contact_touches(id) ON DELETE SET NULL,
+  attribution_snapshot jsonb,
+  paid_on date,
+  available_on date NOT NULL,
+  expense_id uuid REFERENCES public.expenses(id),
+  voided_at timestamptz,
+  voided_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  void_reason text,
+  notes text,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT commissions_earned_shape CHECK (
+    kind <> 'earned' OR (role IS NOT NULL AND payment_id IS NOT NULL AND sale_id IS NOT NULL AND rule_id IS NOT NULL AND amount >= 0)
+  ),
+  CONSTRAINT commissions_adjustment_shape CHECK (
+    kind <> 'adjustment' OR (amount <> 0 AND rule_id IS NULL AND notes IS NOT NULL AND btrim(notes) <> '')
+  ),
+  CONSTRAINT commissions_void_reason CHECK (voided_at IS NULL OR (void_reason IS NOT NULL AND btrim(void_reason) <> ''))
+);
+
+COMMENT ON TABLE public.commissions IS 'Lo ganado por cada persona (kind earned) y los ajustes a mano (adjustment). La app solo lee; escribe el servidor. El estado de pago se lee del gasto, nunca se copia.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_commissions_payment_role
+  ON public.commissions (payment_id, role)
+  WHERE kind = 'earned' AND voided_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_commissions_user_paid ON public.commissions (workspace_id, user_id, paid_on DESC);
+CREATE INDEX IF NOT EXISTS idx_commissions_expense ON public.commissions (workspace_id, expense_id);
+CREATE INDEX IF NOT EXISTS idx_commissions_sale ON public.commissions (workspace_id, sale_id);
+CREATE INDEX IF NOT EXISTS idx_commissions_paid_live ON public.commissions (workspace_id, paid_on DESC) WHERE voided_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_commissions_payment ON public.commissions (payment_id);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.commissions;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.commissions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- El rol de una comision tiene que existir (puede estar desactivado: se conserva la clave).
+CREATE OR REPLACE FUNCTION private.commissions_validate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.role IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.role IS DISTINCT FROM OLD.role)
+     AND NOT private.commission_role_valid(NEW.workspace_id, NEW.role, false) THEN
+    RAISE EXCEPTION 'El rol "%" no existe.', NEW.role USING ERRCODE = 'CM001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.commissions_validate() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS commissions_validate ON public.commissions;
+CREATE TRIGGER commissions_validate
+  BEFORE INSERT OR UPDATE OF role ON public.commissions
+  FOR EACH ROW EXECUTE FUNCTION private.commissions_validate();
+
+-- Las protecciones que valen para CUALQUIER cliente. Una persona (rol `authenticated`) no escribe; el servicio no
+-- cambia lo que define una comision ni la suelta de un gasto ya pagado.
+CREATE OR REPLACE FUNCTION private.commissions_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  -- Una persona (rol `authenticated`) no escribe. Una sola excepcion: el trigger que libera las comisiones de un gasto
+  -- anulado (`expenses_release_commissions`) corre en nombre de quien anula el gasto y marca la transaccion con esta bandera.
+  v_user boolean := COALESCE(auth.role(), '') = 'authenticated'
+                    AND COALESCE(current_setting('app.commissions_internal', true), '') <> 'on';
+  v_status text;
+BEGIN
+  IF v_user THEN
+    RAISE EXCEPTION 'Las comisiones las escribe el servidor.' USING ERRCODE = 'CM003';
+  END IF;
+  IF NEW.workspace_id IS DISTINCT FROM OLD.workspace_id
+     OR NEW.kind IS DISTINCT FROM OLD.kind
+     OR NEW.amount IS DISTINCT FROM OLD.amount
+     OR NEW.payment_id IS DISTINCT FROM OLD.payment_id
+     OR NEW.rule_id IS DISTINCT FROM OLD.rule_id THEN
+    RAISE EXCEPTION 'Una comision no cambia de monto, pago, regla ni tipo: se anula y se genera de nuevo.' USING ERRCODE = 'CM003';
+  END IF;
+  IF OLD.expense_id IS NOT NULL AND NEW.expense_id IS DISTINCT FROM OLD.expense_id THEN
+    SELECT e.status INTO v_status FROM public.expenses e WHERE e.id = OLD.expense_id;
+    IF v_status = 'pagado' THEN
+      RAISE EXCEPTION 'Una comision de un gasto pagado no se suelta.' USING ERRCODE = 'CM003';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.commissions_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS commissions_guard ON public.commissions;
+CREATE TRIGGER commissions_guard
+  BEFORE UPDATE ON public.commissions
+  FOR EACH ROW EXECUTE FUNCTION private.commissions_guard();
+
+-- 4. Quien ve una comision ----------------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.can_see_commission(c public.commissions)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(
+    public.is_workspace_member(c.workspace_id)
+    AND (
+      public.is_workspace_admin(c.workspace_id)
+      OR (
+        public.has_permission(c.workspace_id, 'commissions.view')
+        AND (
+          public.permission_scope(c.workspace_id, 'commissions') = 'all'
+          OR c.user_id = auth.uid()
+        )
+      )
+    ),
+    false
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.can_see_commission(public.commissions) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_commission(public.commissions) TO authenticated, service_role;
+
+ALTER TABLE public.commission_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.commissions ENABLE ROW LEVEL SECURITY;
+
+DO $$
+DECLARE
+  t text;
+  p record;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['commission_rules', 'commissions'] LOOP
+    FOR p IN SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = t LOOP
+      EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', p.policyname, t);
+    END LOOP;
+  END LOOP;
+END $$;
+
+CREATE POLICY commissions_select ON public.commissions
+  FOR SELECT TO authenticated USING ((select public.can_see_commission(commissions)));
+
+CREATE POLICY commission_rules_select ON public.commission_rules
+  FOR SELECT TO authenticated USING (
+    (select public.is_workspace_admin(workspace_id))
+    OR (select public.has_permission(workspace_id, 'commissions.manage'))
+    OR (
+      (select public.has_permission(workspace_id, 'commissions.view'))
+      AND (select public.permission_scope(workspace_id, 'commissions')) = 'all'
+    )
+  );
+
+-- Solo lectura para la app: ni INSERT, ni UPDATE, ni DELETE (escribe el servidor con el cliente de servicio).
+REVOKE ALL ON public.commission_rules, public.commissions FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.commission_rules, public.commissions FROM authenticated;
+
+-- Permisos explicitos (un proyecto nuevo no da acceso por defecto): la sesion solo LEE (la RLS decide quien); el servidor puede todo.
+GRANT SELECT ON public.commission_rules TO authenticated;
+GRANT SELECT ON public.commissions TO authenticated;
+GRANT ALL ON public.commission_rules TO service_role;
+GRANT ALL ON public.commissions TO service_role;
+
+-- 5. El motor ---------------------------------------------------------------------------------------------------------
+
+-- Un jsonb array de textos → text[] (cualquier otra cosa es una lista vacia).
+CREATE OR REPLACE FUNCTION private.cm_list(p_json jsonb)
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE WHEN jsonb_typeof(p_json) = 'array'
+              THEN COALESCE(ARRAY(SELECT jsonb_array_elements_text(p_json)), ARRAY[]::text[])
+              ELSE ARRAY[]::text[] END;
+$$;
+
+-- Sin mayusculas ni espacios de mas; los UTM a veces llegan codificados (gemela de `norm` en rules.ts).
+CREATE OR REPLACE FUNCTION private.cm_norm(p_value text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT lower(btrim(COALESCE(private.meta_url_decode(p_value), '')));
+$$;
+
+-- Una lista vacia no limita; con valores, el dato tiene que estar.
+CREATE OR REPLACE FUNCTION private.cm_in_list(p_values text[], p_actual text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT cardinality(p_values) = 0 OR (p_actual IS NOT NULL AND p_actual = ANY (p_values));
+$$;
+
+REVOKE ALL ON FUNCTION private.cm_list(jsonb), private.cm_norm(text), private.cm_in_list(text[], text) FROM PUBLIC, anon, authenticated;
+
+-- Quien es el responsable de lo que genero una venta (gemela de `contentOwner`, F43).
+CREATE OR REPLACE FUNCTION public.commission_content_owner(p_social_post_id uuid, p_content_post_id uuid, p_workspace uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_found boolean;
+  v_owner uuid;
+  v_pub_piece uuid;
+  v_pub_owner uuid;
+BEGIN
+  IF p_content_post_id IS NOT NULL THEN
+    SELECT true, c.assigned_to INTO v_found, v_owner FROM public.content_posts c WHERE c.id = p_content_post_id AND c.workspace_id = p_workspace;
+    IF COALESCE(v_found, false) THEN
+      RETURN v_owner;
+    END IF;
+  END IF;
+  IF p_social_post_id IS NOT NULL THEN
+    v_found := false;
+    SELECT true, s.content_post_id, s.assigned_to INTO v_found, v_pub_piece, v_pub_owner
+      FROM public.social_posts s WHERE s.id = p_social_post_id AND s.workspace_id = p_workspace;
+    IF COALESCE(v_found, false) THEN
+      IF v_pub_piece IS NOT NULL THEN
+        v_found := false;
+        SELECT true, c.assigned_to INTO v_found, v_owner FROM public.content_posts c WHERE c.id = v_pub_piece AND c.workspace_id = p_workspace;
+        IF COALESCE(v_found, false) THEN
+          RETURN v_owner;
+        END IF;
+      END IF;
+      RETURN v_pub_owner;
+    END IF;
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+-- Los hechos de un pago (F51): lo unico que el motor mira.
+CREATE OR REPLACE FUNCTION public.commission_facts(p_payment_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT jsonb_build_object(
+    'payment', jsonb_build_object(
+      'id', p.id,
+      'type', p.type,
+      'amount', p.amount,
+      'paid_on', p.paid_on,
+      'method', p.payment_method,
+      'fee_amount', p.provider_fee_amount,
+      'number', COALESCE((
+        SELECT ranked.n FROM (
+          SELECT x.id, row_number() OVER (ORDER BY COALESCE(x.original_due_date, x.due_date) NULLS LAST, x.created_at, x.id) AS n
+            FROM public.payments x
+           WHERE x.sale_id = p.sale_id AND x.type <> 'refund' AND x.status <> 'cancelled'
+        ) ranked WHERE ranked.id = p.id
+      ), 1)
+    ),
+    'sale', jsonb_build_object(
+      'id', s.id,
+      'status', s.status,
+      'financing_type', s.financing_type,
+      'final_amount', s.final_amount,
+      'product_id', COALESCE(pv.product_id::text, NULLIF(s.product_snapshot ->> 'product_id', '')),
+      'variant_id', s.product_variant_id,
+      'setter_id', s.setter_id,
+      'vendedor_id', s.vendedor_id,
+      'contact_id', s.contact_id
+    ),
+    'touch', CASE WHEN t.id IS NULL THEN NULL ELSE jsonb_build_object(
+      'id', t.id,
+      'channel', t.channel,
+      'source', t.source,
+      'medium', NULLIF(btrim(private.meta_url_decode(t.medium)), ''),
+      'campaign', NULLIF(btrim(private.meta_url_decode(t.campaign)), ''),
+      'content', NULLIF(btrim(private.meta_url_decode(t.content_label)), ''),
+      'term', NULLIF(btrim(private.meta_url_decode(t.term)), ''),
+      'content_post_id', t.content_post_id,
+      'social_post_id', t.social_post_id,
+      'meta_ad_id', t.meta_ad_id,
+      'meta_adset_id', t.meta_adset_id,
+      'meta_campaign_id', t.meta_campaign_id
+    ) END,
+    'content_assignee_id', CASE
+      WHEN t.id IS NOT NULL AND (t.content_post_id IS NOT NULL OR t.social_post_id IS NOT NULL)
+        THEN public.commission_content_owner(t.social_post_id, t.content_post_id, s.workspace_id)
+      ELSE NULL END
+  )
+  FROM public.payments p
+  JOIN public.sales s ON s.id = p.sale_id
+  LEFT JOIN public.product_variants pv ON pv.id = s.product_variant_id
+  LEFT JOIN public.contact_touches t ON t.id = s.attribution_touch_id
+  WHERE p.id = p_payment_id;
+$$;
+
+-- La persona de la venta (o de la pieza) que corresponde al `payee`; con `fixed` no hay.
+CREATE OR REPLACE FUNCTION private.cm_sale_person(p_payee text, p_facts jsonb)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE p_payee
+    WHEN 'sale_vendedor' THEN p_facts -> 'sale' ->> 'vendedor_id'
+    WHEN 'sale_setter' THEN p_facts -> 'sale' ->> 'setter_id'
+    WHEN 'content_assignee' THEN p_facts ->> 'content_assignee_id'
+    ELSE NULL END;
+$$;
+
+-- La primera dimension que NO se cumple (null = la regla matchea). Mismo recorrido que `firstFailedDimension`.
+CREATE OR REPLACE FUNCTION private.commission_failed_dimension(p_rule public.commission_rules, p_facts jsonb, p_payee text)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  c jsonb := CASE WHEN jsonb_typeof(p_rule.conditions) = 'object' THEN p_rule.conditions ELSE '{}'::jsonb END;
+  f_sale jsonb := COALESCE(p_facts -> 'sale', '{}'::jsonb);
+  f_pay jsonb := COALESCE(p_facts -> 'payment', '{}'::jsonb);
+  touch jsonb := CASE WHEN jsonb_typeof(p_facts -> 'touch') = 'object' THEN p_facts -> 'touch' ELSE NULL END;
+  v_vals text[];
+  v_actual text;
+  v_dim text;
+  v_cond jsonb;
+  v_num int;
+  v_from numeric;
+  v_to numeric;
+  v_cents bigint;
+  v_paid_on date;
+BEGIN
+  v_vals := private.cm_list(c -> 'user_ids');
+  IF cardinality(v_vals) > 0 AND p_payee <> 'fixed' AND NOT private.cm_in_list(v_vals, private.cm_sale_person(p_payee, p_facts)) THEN RETURN 'user_ids'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'vendedor_ids'), f_sale ->> 'vendedor_id') THEN RETURN 'vendedor_ids'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'setter_ids'), f_sale ->> 'setter_id') THEN RETURN 'setter_ids'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'product_ids'), f_sale ->> 'product_id') THEN RETURN 'product_ids'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'variant_ids'), f_sale ->> 'variant_id') THEN RETURN 'variant_ids'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'financing_types'), f_sale ->> 'financing_type') THEN RETURN 'financing_types'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'payment_methods'), f_pay ->> 'method') THEN RETURN 'payment_methods'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'payment_types'), f_pay ->> 'type') THEN RETURN 'payment_types'; END IF;
+  -- Sin toque (o un toque sin canal) el canal es `direct`.
+  IF NOT private.cm_in_list(private.cm_list(c -> 'channels'), COALESCE(NULLIF(touch ->> 'channel', ''), 'direct')) THEN RETURN 'channels'; END IF;
+
+  v_vals := ARRAY(SELECT private.cm_norm(x) FROM unnest(private.cm_list(c -> 'platforms')) x WHERE private.cm_norm(x) <> '');
+  IF cardinality(v_vals) > 0 AND NOT (private.cm_norm(touch ->> 'source') = ANY (v_vals)) THEN RETURN 'platforms'; END IF;
+
+  IF NOT private.cm_in_list(private.cm_list(c -> 'content_post_ids'), touch ->> 'content_post_id') THEN RETURN 'content_post_ids'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'meta_campaign_ids'), touch ->> 'meta_campaign_id') THEN RETURN 'meta_campaign_ids'; END IF;
+  IF NOT private.cm_in_list(private.cm_list(c -> 'meta_ad_ids'), touch ->> 'meta_ad_id') THEN RETURN 'meta_ad_ids'; END IF;
+
+  FOREACH v_dim IN ARRAY ARRAY['source', 'medium', 'campaign', 'content', 'term'] LOOP
+    v_cond := c -> 'utm' -> v_dim;
+    v_vals := ARRAY(SELECT private.cm_norm(x) FROM unnest(private.cm_list(v_cond -> 'values')) x WHERE private.cm_norm(x) <> '');
+    CONTINUE WHEN cardinality(v_vals) = 0; -- dimension vacia = cualquiera
+    v_actual := CASE WHEN touch IS NULL THEN '' ELSE private.cm_norm(touch ->> v_dim) END;
+    IF v_actual = '' THEN RETURN 'utm.' || v_dim; END IF;
+    IF (v_cond ->> 'op') = 'contains' THEN
+      IF NOT EXISTS (SELECT 1 FROM unnest(v_vals) v WHERE position(v IN v_actual) > 0) THEN RETURN 'utm.' || v_dim; END IF;
+    ELSE
+      IF NOT (v_actual = ANY (v_vals)) THEN RETURN 'utm.' || v_dim; END IF;
+    END IF;
+  END LOOP;
+
+  IF jsonb_typeof(c -> 'payment_number') = 'object' THEN
+    v_num := COALESCE((f_pay ->> 'number')::int, 0);
+    IF jsonb_typeof(c -> 'payment_number' -> 'from') = 'number' AND v_num < (c -> 'payment_number' ->> 'from')::numeric THEN RETURN 'payment_number'; END IF;
+    IF jsonb_typeof(c -> 'payment_number' -> 'to') = 'number' AND v_num > (c -> 'payment_number' ->> 'to')::numeric THEN RETURN 'payment_number'; END IF;
+  END IF;
+
+  IF jsonb_typeof(c -> 'sale_amount') = 'object' THEN
+    v_cents := round(COALESCE((f_sale ->> 'final_amount')::numeric, 0) * 100)::bigint;
+    IF jsonb_typeof(c -> 'sale_amount' -> 'min') = 'number' THEN
+      v_from := round((c -> 'sale_amount' ->> 'min')::numeric * 100);
+      IF v_cents < v_from THEN RETURN 'sale_amount'; END IF;
+    END IF;
+    IF jsonb_typeof(c -> 'sale_amount' -> 'max') = 'number' THEN
+      v_to := round((c -> 'sale_amount' ->> 'max')::numeric * 100);
+      IF v_cents > v_to THEN RETURN 'sale_amount'; END IF;
+    END IF;
+  END IF;
+
+  v_paid_on := NULLIF(f_pay ->> 'paid_on', '')::date;
+  IF v_paid_on IS NOT NULL THEN
+    IF p_rule.valid_from IS NOT NULL AND v_paid_on < p_rule.valid_from THEN RETURN 'validity'; END IF;
+    IF p_rule.valid_until IS NOT NULL AND v_paid_on > p_rule.valid_until THEN RETURN 'validity'; END IF;
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.commission_rule_matches(p_rule public.commission_rules, p_facts jsonb, p_payee text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT private.commission_failed_dimension(p_rule, p_facts, p_payee) IS NULL;
+$$;
+
+-- La primera regla (por `position`) del rol, activa, no archivada y que matchea; o null.
+CREATE OR REPLACE FUNCTION public.commission_pick_rule(p_workspace uuid, p_facts jsonb, p_role text)
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_payee text;
+  r public.commission_rules;
+BEGIN
+  SELECT x ->> 'payee' INTO v_payee
+    FROM public.workspaces w, jsonb_array_elements(w.commission_settings -> 'roles') x
+   WHERE w.id = p_workspace AND x ->> 'key' = p_role;
+  IF v_payee IS NULL THEN
+    RETURN NULL;
+  END IF;
+  FOR r IN
+    SELECT * FROM public.commission_rules
+     WHERE workspace_id = p_workspace AND role = p_role AND is_active AND archived_at IS NULL
+     ORDER BY position, created_at, id
+  LOOP
+    IF public.commission_rule_matches(r, p_facts, v_payee) THEN
+      RETURN r.id;
+    END IF;
+  END LOOP;
+  RETURN NULL;
+END;
+$$;
+
+-- A quien se le paga (gemela de `payeeFor`). `p_role` es el jsonb del rol (`{key, payee, ...}`).
+CREATE OR REPLACE FUNCTION public.commission_payee(p_role jsonb, p_rule public.commission_rules, p_facts jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_payee text := p_role ->> 'payee';
+  v_override uuid := p_rule.beneficiary_user_id;
+  v_touch jsonb := CASE WHEN jsonb_typeof(p_facts -> 'touch') = 'object' THEN p_facts -> 'touch' ELSE NULL END;
+  v_user text;
+BEGIN
+  IF v_payee IN ('sale_vendedor', 'sale_setter') THEN
+    v_user := COALESCE(v_override::text, private.cm_sale_person(v_payee, p_facts));
+    RETURN jsonb_build_object('applies', v_user IS NOT NULL, 'user_id', v_user);
+  ELSIF v_payee = 'content_assignee' THEN
+    IF v_touch IS NULL OR (NULLIF(v_touch ->> 'content_post_id', '') IS NULL AND NULLIF(v_touch ->> 'social_post_id', '') IS NULL) THEN
+      RETURN jsonb_build_object('applies', false, 'user_id', NULL);
+    END IF;
+    RETURN jsonb_build_object('applies', true, 'user_id', COALESCE(v_override::text, NULLIF(p_facts ->> 'content_assignee_id', '')));
+  ELSIF v_payee = 'fixed' THEN
+    RETURN jsonb_build_object('applies', v_override IS NOT NULL, 'user_id', v_override);
+  END IF;
+  RETURN jsonb_build_object('applies', false, 'user_id', NULL);
+END;
+$$;
+
+-- La base en centavos: cobrado, o cobrado menos el fee del procesador (nunca menor que 0).
+CREATE OR REPLACE FUNCTION public.commission_base_cents(p_rule public.commission_rules, p_facts jsonb)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT CASE WHEN p_rule.base = 'net_of_fees'
+              THEN GREATEST(0, round(COALESCE((p_facts -> 'payment' ->> 'amount')::numeric, 0) * 100)::bigint
+                               - round(COALESCE((p_facts -> 'payment' ->> 'fee_amount')::numeric, 0) * 100)::bigint)
+              ELSE round(COALESCE((p_facts -> 'payment' ->> 'amount')::numeric, 0) * 100)::bigint END;
+$$;
+
+-- El monto en centavos. El porcentaje (hasta 3 decimales) se pasa a milesimas enteras; el medio centavo sube.
+CREATE OR REPLACE FUNCTION public.commission_amount_cents(p_rule public.commission_rules, p_facts jsonb)
+RETURNS bigint
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_base bigint := public.commission_base_cents(p_rule, p_facts);
+  v_milli bigint;
+BEGIN
+  IF p_rule.calc_type = 'fixed' THEN
+    RETURN round(COALESCE(p_rule.fixed_amount, 0) * 100)::bigint;
+  END IF;
+  v_milli := GREATEST(0, round(COALESCE(p_rule.rate, 0) * 1000))::bigint;
+  RETURN ((GREATEST(0, v_base) * v_milli * 2 + 100000) / (2 * 100000));
+END;
+$$;
+
+-- 6. Generar, revertir y liquidar -----------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION private.cm_audit(p_workspace uuid, p_entity text, p_entity_id uuid, p_action text, p_changes jsonb, p_metadata jsonb, p_actor uuid DEFAULT NULL)
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type, actor_label)
+  VALUES (p_workspace, p_entity, p_entity_id, p_action, p_changes, p_metadata, p_actor,
+          CASE WHEN p_actor IS NULL THEN 'system' ELSE 'user' END,
+          CASE WHEN p_actor IS NULL THEN 'Comisiones' ELSE NULL END);
+$$;
+
+REVOKE ALL ON FUNCTION private.cm_audit(uuid, text, uuid, text, jsonb, jsonb, uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.generate_commissions_for_payment(p_payment_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  p public.payments%ROWTYPE;
+  v_facts jsonb;
+  v_settings jsonb;
+  v_role jsonb;
+  v_rule public.commission_rules;
+  v_rule_id uuid;
+  v_payee jsonb;
+  v_base bigint;
+  v_amount bigint;
+  v_user uuid;
+  v_id uuid;
+  v_touch jsonb;
+  v_created int := 0;
+  v_created_ids jsonb := '[]'::jsonb;
+  v_skipped jsonb := '[]'::jsonb;
+  v_title text;
+  v_ad_name text;
+BEGIN
+  SELECT * INTO p FROM public.payments WHERE id = p_payment_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('skipped', 'not_found');
+  END IF;
+  IF p.status <> 'paid' OR p.type = 'refund' THEN
+    RETURN jsonb_build_object('skipped', 'not_paid');
+  END IF;
+
+  v_facts := public.commission_facts(p.id);
+  v_touch := CASE WHEN jsonb_typeof(v_facts -> 'touch') = 'object' THEN v_facts -> 'touch' ELSE NULL END;
+  SELECT w.commission_settings INTO v_settings FROM public.workspaces w WHERE w.id = p.workspace_id;
+
+  IF v_touch IS NOT NULL THEN
+    SELECT c.title INTO v_title FROM public.content_posts c WHERE c.id = NULLIF(v_touch ->> 'content_post_id', '')::uuid;
+    SELECT a.name INTO v_ad_name FROM public.meta_ads a WHERE a.workspace_id = p.workspace_id AND a.ad_id = NULLIF(v_touch ->> 'meta_ad_id', '');
+  END IF;
+
+  FOR v_role IN SELECT * FROM jsonb_array_elements(COALESCE(v_settings -> 'roles', '[]'::jsonb)) LOOP
+    CONTINUE WHEN COALESCE((v_role ->> 'active')::boolean, false) IS NOT TRUE;
+
+    v_rule_id := public.commission_pick_rule(p.workspace_id, v_facts, v_role ->> 'key');
+    IF v_rule_id IS NULL THEN
+      v_skipped := v_skipped || jsonb_build_object('role', v_role ->> 'key', 'reason', 'no_rule');
+      CONTINUE;
+    END IF;
+    SELECT * INTO v_rule FROM public.commission_rules WHERE id = v_rule_id;
+
+    v_payee := public.commission_payee(v_role, v_rule, v_facts);
+    IF NOT COALESCE((v_payee ->> 'applies')::boolean, false) THEN
+      v_skipped := v_skipped || jsonb_build_object('role', v_role ->> 'key', 'reason', 'not_applicable');
+      CONTINUE;
+    END IF;
+
+    v_amount := public.commission_amount_cents(v_rule, v_facts);
+    IF v_amount <= 0 THEN
+      v_skipped := v_skipped || jsonb_build_object('role', v_role ->> 'key', 'reason', 'zero_amount');
+      CONTINUE;
+    END IF;
+    v_base := public.commission_base_cents(v_rule, v_facts);
+    v_user := NULLIF(v_payee ->> 'user_id', '')::uuid;
+    v_id := NULL;
+
+    INSERT INTO public.commissions (
+      workspace_id, kind, role, user_id, payment_id, sale_id, rule_id, rule_snapshot, base_amount, amount,
+      attribution_touch_id, attribution_snapshot, paid_on, available_on
+    ) VALUES (
+      p.workspace_id, 'earned', v_role ->> 'key', v_user, p.id, p.sale_id, v_rule.id,
+      jsonb_build_object('name', v_rule.name, 'role', v_rule.role, 'calc_type', v_rule.calc_type, 'rate', v_rule.rate,
+                         'fixed_amount', v_rule.fixed_amount, 'base', v_rule.base, 'conditions', v_rule.conditions, 'position', v_rule.position),
+      v_base::numeric / 100, v_amount::numeric / 100,
+      NULLIF(v_touch ->> 'id', '')::uuid,
+      CASE WHEN v_touch IS NULL THEN NULL ELSE jsonb_build_object(
+        'channel', v_touch ->> 'channel', 'source', v_touch ->> 'source', 'content_post_id', v_touch ->> 'content_post_id',
+        'content_title', v_title, 'meta_ad_id', v_touch ->> 'meta_ad_id', 'ad_name', v_ad_name) END,
+      p.paid_on, COALESCE(p.paid_on, CURRENT_DATE) + v_rule.hold_days
+    )
+    ON CONFLICT (payment_id, role) WHERE kind = 'earned' AND voided_at IS NULL DO NOTHING
+    RETURNING id INTO v_id;
+
+    IF v_id IS NOT NULL THEN
+      v_created := v_created + 1;
+      v_created_ids := v_created_ids || to_jsonb(v_id);
+      PERFORM private.cm_audit(p.workspace_id, 'commission', v_id, 'commission.generated',
+        jsonb_build_object('amount', jsonb_build_object('old', NULL, 'new', v_amount::numeric / 100)),
+        jsonb_build_object('role', v_role ->> 'key', 'payment_id', p.id, 'sale_id', p.sale_id, 'rule_id', v_rule.id, 'user_id', v_user));
+    END IF;
+  END LOOP;
+
+  RETURN jsonb_build_object('created', v_created, 'created_ids', v_created_ids, 'skipped_roles', v_skipped);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.revert_commissions_for_payment(p_payment_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_status text;
+  v_ws uuid;
+  v_voided jsonb := '[]'::jsonb;
+  v_review jsonb := '[]'::jsonb;
+  r record;
+BEGIN
+  SELECT status, workspace_id INTO v_status, v_ws FROM public.payments WHERE id = p_payment_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('skipped', 'not_found');
+  END IF;
+  -- Si volvio a `paid` antes de que corra (carrera), no hay nada que revertir.
+  IF v_status = 'paid' THEN
+    RETURN jsonb_build_object('skipped', 'still_paid');
+  END IF;
+
+  FOR r IN
+    SELECT c.id, c.expense_id, c.workspace_id FROM public.commissions c
+     WHERE c.payment_id = p_payment_id AND c.kind = 'earned' AND c.voided_at IS NULL
+     ORDER BY c.id FOR UPDATE
+  LOOP
+    IF r.expense_id IS NULL THEN
+      UPDATE public.commissions SET voided_at = now(), voided_by = NULL, void_reason = 'Se revirtió el cobro' WHERE id = r.id;
+      v_voided := v_voided || to_jsonb(r.id);
+      PERFORM private.cm_audit(r.workspace_id, 'commission', r.id, 'commission.voided',
+        jsonb_build_object('void_reason', jsonb_build_object('old', NULL, 'new', 'Se revirtió el cobro')), jsonb_build_object('payment_id', p_payment_id));
+    ELSE
+      v_review := v_review || to_jsonb(r.id);
+    END IF;
+  END LOOP;
+
+  RETURN jsonb_build_object('voided', v_voided, 'needs_review', v_review);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.create_commission_payout(
+  p_workspace uuid,
+  p_commission_ids uuid[],
+  p_mode text,
+  p_scheduled_date date,
+  p_concepts jsonb,
+  p_notes text,
+  p_actor uuid,
+  p_today date
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_excluded jsonb := '[]'::jsonb;
+  v_expenses jsonb := '[]'::jsonb;
+  r record;
+  g record;
+  v_total numeric;
+  v_ids uuid[];
+  v_vendor uuid;
+  v_concept text;
+  v_name text;
+  v_exp uuid;
+  v_status text;
+  v_eligible uuid[] := ARRAY[]::uuid[];
+BEGIN
+  IF p_mode NOT IN ('per_person', 'single') THEN
+    RAISE EXCEPTION 'Modo de liquidacion invalido: %', p_mode;
+  END IF;
+  IF p_scheduled_date IS NULL OR p_today IS NULL OR p_scheduled_date < p_today - 60 THEN
+    RAISE EXCEPTION 'La fecha programada no puede ser anterior a hace 60 dias.';
+  END IF;
+  IF p_commission_ids IS NULL OR cardinality(p_commission_ids) = 0 THEN
+    RETURN jsonb_build_object('expenses', '[]'::jsonb, 'excluded', '[]'::jsonb);
+  END IF;
+
+  -- Las pedidas que no son de este workspace.
+  FOR r IN SELECT u AS id FROM unnest(p_commission_ids) u WHERE NOT EXISTS (SELECT 1 FROM public.commissions c WHERE c.id = u AND c.workspace_id = p_workspace) LOOP
+    v_excluded := v_excluded || jsonb_build_object('id', r.id, 'reason', 'not_found');
+  END LOOP;
+
+  -- Candado por fila, en orden fijo (dos llamadas a la vez no se cruzan).
+  FOR r IN
+    SELECT c.id, c.user_id, c.amount, c.voided_at, c.expense_id, c.available_on
+      FROM public.commissions c
+     WHERE c.workspace_id = p_workspace AND c.id = ANY (p_commission_ids)
+     ORDER BY c.id FOR UPDATE
+  LOOP
+    IF r.voided_at IS NOT NULL THEN
+      v_excluded := v_excluded || jsonb_build_object('id', r.id, 'reason', 'voided');
+    ELSIF r.expense_id IS NOT NULL THEN
+      v_excluded := v_excluded || jsonb_build_object('id', r.id, 'reason', 'already_in_expense');
+    ELSIF r.user_id IS NULL THEN
+      v_excluded := v_excluded || jsonb_build_object('id', r.id, 'reason', 'no_person');
+    ELSIF r.available_on > p_today THEN
+      v_excluded := v_excluded || jsonb_build_object('id', r.id, 'reason', 'held');
+    ELSE
+      v_eligible := v_eligible || r.id;
+    END IF;
+  END LOOP;
+
+  v_status := CASE WHEN p_scheduled_date >= p_today THEN 'programado' ELSE 'vencido' END;
+
+  FOR g IN
+    SELECT CASE WHEN p_mode = 'per_person' THEN c.user_id ELSE NULL END AS user_id,
+           sum(c.amount) AS total, array_agg(c.id ORDER BY c.id) AS ids
+      FROM public.commissions c
+     WHERE c.id = ANY (v_eligible)
+     GROUP BY CASE WHEN p_mode = 'per_person' THEN c.user_id ELSE NULL END
+     ORDER BY 1 NULLS LAST
+  LOOP
+    v_total := g.total;
+    v_ids := g.ids;
+    IF v_total <= 0 THEN
+      FOR r IN SELECT u AS id FROM unnest(v_ids) u LOOP
+        v_excluded := v_excluded || jsonb_build_object('id', r.id, 'reason', 'non_positive_total');
+      END LOOP;
+      CONTINUE;
+    END IF;
+
+    v_vendor := NULL;
+    IF p_mode = 'per_person' THEN
+      SELECT v.id INTO v_vendor FROM public.vendors v WHERE v.workspace_id = p_workspace AND v.user_id = g.user_id;
+      IF v_vendor IS NULL THEN
+        SELECT COALESCE(NULLIF(btrim(u.raw_user_meta_data ->> 'full_name'), ''), NULLIF(btrim(u.email), ''), 'Persona del equipo') INTO v_name
+          FROM auth.users u WHERE u.id = g.user_id;
+        v_name := left(COALESCE(v_name, 'Persona del equipo'), 120);
+        -- Un proveedor activo con ese nombre que no es de la persona: se distingue.
+        IF EXISTS (SELECT 1 FROM public.vendors v WHERE v.workspace_id = p_workspace AND archived_at IS NULL AND lower(btrim(v.name)) = lower(btrim(v_name))) THEN
+          v_name := left(v_name, 105) || ' (equipo)';
+        END IF;
+        INSERT INTO public.vendors (workspace_id, name, user_id, created_by, updated_by)
+        VALUES (p_workspace, v_name, g.user_id, p_actor, p_actor)
+        RETURNING id INTO v_vendor;
+      ELSE
+        UPDATE public.vendors SET archived_at = NULL WHERE id = v_vendor AND archived_at IS NOT NULL;
+      END IF;
+    END IF;
+
+    v_concept := COALESCE(NULLIF(btrim(CASE WHEN p_mode = 'per_person' THEN p_concepts ->> g.user_id::text ELSE p_concepts ->> 'single' END), ''), 'Comisiones');
+    v_concept := left(v_concept, 200);
+
+    INSERT INTO public.expenses (
+      workspace_id, concept, vendor_id, category_key, amount, status, scheduled_date, origin, notes, source_ref, created_by, updated_by
+    ) VALUES (
+      p_workspace, v_concept, v_vendor, 'commissions', v_total, v_status, p_scheduled_date, 'commission_payout', NULLIF(btrim(p_notes), ''),
+      jsonb_build_object('mode', CASE WHEN p_mode = 'per_person' THEN 'per_person' ELSE 'single' END, 'user_id', g.user_id, 'commission_ids', to_jsonb(v_ids), 'count', cardinality(v_ids)),
+      p_actor, p_actor
+    ) RETURNING id INTO v_exp;
+
+    UPDATE public.commissions SET expense_id = v_exp WHERE id = ANY (v_ids);
+    v_expenses := v_expenses || jsonb_build_object('id', v_exp, 'user_id', g.user_id, 'amount', v_total, 'count', cardinality(v_ids), 'commission_ids', to_jsonb(v_ids));
+  END LOOP;
+
+  RETURN jsonb_build_object('expenses', v_expenses, 'excluded', v_excluded);
+END;
+$$;
+
+-- Al anular el gasto de una liquidacion, sus comisiones vuelven a Pendiente. EXCEPCION a la regla «lo automatico nunca
+-- tumba lo que lo origina»: si esto falla, la anulacion FALLA (quedarian comisiones atadas a un gasto anulado).
+CREATE OR REPLACE FUNCTION private.expenses_release_commissions()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  r record;
+BEGIN
+  IF NEW.status = 'anulado' AND OLD.status IS DISTINCT FROM 'anulado' AND NEW.origin = 'commission_payout' THEN
+    PERFORM set_config('app.commissions_internal', 'on', true);
+    FOR r IN SELECT c.id, c.workspace_id FROM public.commissions c WHERE c.expense_id = NEW.id ORDER BY c.id FOR UPDATE LOOP
+      UPDATE public.commissions SET expense_id = NULL WHERE id = r.id;
+      PERFORM private.cm_audit(r.workspace_id, 'commission', r.id, 'commission.payout_released', NULL, jsonb_build_object('expense_id', NEW.id));
+    END LOOP;
+    PERFORM set_config('app.commissions_internal', 'off', true);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.expenses_release_commissions() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS expenses_release_commissions ON public.expenses;
+CREATE TRIGGER expenses_release_commissions
+  AFTER UPDATE OF status ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION private.expenses_release_commissions();
+
+-- La FUNCION del trigger de `payments` (el trigger es la 00235, despues del merge): encola la generacion cuando un pago
+-- entra a `paid` y la reversion cuando sale. Envuelta en EXCEPTION: un cobro NUNCA falla por esto.
+CREATE OR REPLACE FUNCTION private.enqueue_commissions_for_payment()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  BEGIN
+    IF NEW.status = 'paid' AND NEW.type <> 'refund' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'paid') THEN
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES ('commissions_payment', jsonb_build_object('payment_id', NEW.id, 'action', 'generate'), now(),
+              'commissions:gen:' || NEW.id::text || ':' || COALESCE(extract(epoch FROM NEW.paid_at)::text, '0'))
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+    ELSIF TG_OP = 'UPDATE' AND OLD.status = 'paid' AND NEW.status <> 'paid' AND OLD.type <> 'refund' THEN
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES ('commissions_payment', jsonb_build_object('payment_id', NEW.id, 'action', 'revert'), now(),
+              'commissions:rev:' || NEW.id::text || ':' || extract(epoch FROM now())::text)
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'enqueue_commissions_for_payment: no pude encolar el pago %: %', NEW.id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_commissions_for_payment() FROM PUBLIC, anon, authenticated;
+
+-- 7. Permisos de las funciones: solo el servidor ----------------------------------------------------------------------
+
+REVOKE ALL ON FUNCTION public.commission_content_owner(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.commission_facts(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.commission_rule_matches(public.commission_rules, jsonb, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.commission_pick_rule(uuid, jsonb, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.commission_payee(jsonb, public.commission_rules, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.commission_base_cents(public.commission_rules, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.commission_amount_cents(public.commission_rules, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.generate_commissions_for_payment(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.revert_commissions_for_payment(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.create_commission_payout(uuid, uuid[], text, date, jsonb, text, uuid, date) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.commission_failed_dimension(public.commission_rules, jsonb, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.cm_sale_person(text, jsonb) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.commission_content_owner(uuid, uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.commission_facts(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.commission_rule_matches(public.commission_rules, jsonb, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.commission_pick_rule(uuid, jsonb, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.commission_payee(jsonb, public.commission_rules, jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.commission_base_cents(public.commission_rules, jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.commission_amount_cents(public.commission_rules, jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.generate_commissions_for_payment(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.revert_commissions_for_payment(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.create_commission_payout(uuid, uuid[], text, date, jsonb, text, uuid, date) TO service_role;
+
+-- 8. M9: el Member ve sus propias comisiones --------------------------------------------------------------------------
+-- La lista vigente (00208) + `commissions.view`. Tiene que ser igual a MEMBER_PERMISSION_KEYS (lib/auth/permissions.ts):
+-- lo exige lib/auth/member-sql-parity.test.ts.
+
+CREATE OR REPLACE FUNCTION private.member_permission_keys()
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT ARRAY[
+    'dashboards.chat.view',
+    'inbox.instagram.view',
+    'inbox.instagram.reply',
+    'inbox.whatsapp.view',
+    'inbox.whatsapp.reply',
+    'inbox.email.view',
+    'inbox.email.reply',
+    'contacts.view',
+    'contacts.edit',
+    'contacts.assign',
+    'flows.view',
+    'flows.edit',
+    'flows.publish',
+    'sequences.view',
+    'agents.view',
+    'content.view',
+    'content.create',
+    'scheduling.use',
+    'bookings.view',
+    'bookings.manage',
+    'calls.view',
+    'forms.view',
+    'sales.view',
+    'sales.manage',
+    'payments.manage',
+    'tasks.view',
+    'tasks.edit',
+    'commissions.view'
+  ]::text[]
+$function$;
+
+-- ============================================================
+-- MIGRATION 232: AUDIT LOG SELECT COMMISSIONS
+-- ============================================================
+-- ============================================================================
+-- 00232 — Comisiones (Extra I, CM3, F67): quien lee el historial de las comisiones y de sus reglas
+-- ============================================================================
+-- `audit_log_select` NO se reescribe. Siguiendo la convencion de los demas modulos (00147, 00168, 00197, 00213, 00227),
+-- Comisiones suma su propia politica de SELECT ADICIONAL y permisiva (Postgres las combina con OR):
+--   - entradas de `commission`: las ve quien ve ESA comision (`can_see_commission`): Owner/Admin, un rol con
+--     `commissions.view` de alcance `all`, o la persona a la que se le debe;
+--   - entradas de `commission_rule`: las ve quien puede ver las reglas (Owner/Admin, `commissions.manage`, o
+--     `commissions.view` de alcance `all`).
+-- Lo que ya se veia de los demas `entity_type` no cambia: `scripts/verify-audit-visibility.mjs` lo compara.
+--
+-- Como volver atras:
+--   DROP POLICY IF EXISTS audit_log_select_commissions ON public.audit_log;
+-- ============================================================================
+
+DROP POLICY IF EXISTS audit_log_select_commissions ON public.audit_log;
+CREATE POLICY audit_log_select_commissions ON public.audit_log
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    (
+      entity_type = 'commission'
+      AND EXISTS (SELECT 1 FROM public.commissions c WHERE c.id = audit_log.entity_id AND (select public.can_see_commission(c)))
+    )
+    OR (
+      entity_type = 'commission_rule'
+      AND (
+        (select public.is_workspace_admin(workspace_id))
+        OR (select public.has_permission(workspace_id, 'commissions.manage'))
+        OR ((select public.has_permission(workspace_id, 'commissions.view')) AND (select public.permission_scope(workspace_id, 'commissions')) = 'all')
+      )
+    )
+  );
+
+-- ============================================================
+-- MIGRATION 233: FINANCE DAILY CRON
+-- ============================================================
+-- ============================================================================
+-- 00233 — Gastos (G2, GF11): programa la tarea `finance-daily`   *** SE APLICA DESPUES DEL MERGE ***
+-- ============================================================================
+-- Cada hora, minuto 7, pg_cron llama a `private.enqueue_finance_daily()` (00228), que encola UN `finance_daily` por
+-- workspace y por dia local, a partir de las 03:00 de su zona. El cron `jobs` que ya corre cada minuto lo procesa
+-- con el handler `lib/jobs/handlers/finance-daily.ts`.
+--
+-- POR QUE NO SE APLICA ANTES DEL MERGE: si se programara antes de desplegar el codigo, la tarea encolaria
+-- trabajos de un tipo que el runner de produccion todavia no conoce y la cola los marcaria fallidos. No rompe
+-- nada, pero ensucia la cola. Si pasara: UPDATE scheduled_jobs SET status = 'cancelled' WHERE type = 'finance_daily' AND status = 'failed'.
+--
+-- NO se agrega una ruta en `app/api/cron/` ni se toca `private.call_app_cron` (patron de 00167 y 00198).
+--
+-- Como volver atras:
+--   SELECT cron.unschedule('finance-daily');
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'finance_daily' AND status = 'pending';
+-- Riesgo: medio (un proceso periodico nuevo). Aditiva.
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'finance-daily') THEN
+    PERFORM cron.unschedule('finance-daily');
+  END IF;
+END $$;
+
+SELECT cron.schedule('finance-daily', '7 * * * *', $$SELECT private.enqueue_finance_daily()$$);
+
+-- ============================================================
+-- MIGRATION 234: COMMENT BACKFILL TRIGGER
+-- ============================================================
+-- ============================================================================
+-- 00234 — Vinculo retroactivo de comentarios: el trigger y el barrido inicial (Extra I, F32)
+-- ============================================================================
+-- SE APLICA DESPUES DEL MERGE (el codigo que ejecuta los jobs `comment_backfill` y `comment_backfill_workspace` tiene que
+-- estar desplegado antes: si no, la cola marcaria esos tipos como fallidos).
+--
+--   1. Trigger `contacts_comment_backfill` (AFTER INSERT OR UPDATE OF instagram_username, tiktok_username ON contacts):
+--      cuando un contacto gana un usuario de Instagram o TikTok, encola un `comment_backfill` (5 s despues) que une a esa
+--      persona con los comentarios viejos que dejo sin contacto. La FUNCION es `private.enqueue_comment_backfill()` (00230,
+--      con `EXCEPTION WHEN OTHERS`: encolar nunca puede costar un contacto).
+--   2. Encola UN `comment_backfill_workspace` por workspace (barrido inicial de los contactos que ya existian), con la
+--      clave `comment_backfill_workspace:<workspace>:00234` (no se puede encolar dos veces mientras espere).
+--
+-- Despues de aplicarla:
+--   node scripts/verify-organic-attribution.mjs --despues-de-00234
+--   node scripts/verify-contacts-single-entry.mjs
+--   select status, count(*) from scheduled_jobs where type like 'comment_backfill%' group by 1;
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS contacts_comment_backfill ON public.contacts;
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type LIKE 'comment_backfill%' AND status = 'pending';
+-- Riesgo: bajo. El trigger esta envuelto en EXCEPTION y solo encola.
+-- ============================================================================
+
+SET search_path = '';
+
+DROP TRIGGER IF EXISTS contacts_comment_backfill ON public.contacts;
+CREATE TRIGGER contacts_comment_backfill
+  AFTER INSERT OR UPDATE OF instagram_username, tiktok_username ON public.contacts
+  FOR EACH ROW
+  WHEN (NEW.deleted_at IS NULL)
+  EXECUTE FUNCTION private.enqueue_comment_backfill();
+
+INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+SELECT 'comment_backfill_workspace', jsonb_build_object('workspace_id', w.id), now(), 'comment_backfill_workspace:' || w.id::text || ':00234'
+  FROM public.workspaces w
+ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+
+-- ============================================================
+-- MIGRATION 235: COMMISSIONS PAYMENT TRIGGER
+-- ============================================================
+-- ============================================================================
+-- 00235 — Comisiones: el trigger de `payments` (Extra I, CM1, F53)
+-- ============================================================================
+-- SE APLICA DESPUES DEL MERGE (el codigo que ejecuta los jobs `commissions_payment` tiene que estar desplegado antes:
+-- si no, la cola marcaria ese tipo como fallido y las comisiones no se generarian).
+--
+-- Conecta `private.enqueue_commissions_for_payment()` (00231) con `public.payments`: cuando un pago entra a `paid` se
+-- encola la generacion de sus comisiones, y cuando sale se encola la reversion. La funcion esta envuelta en EXCEPTION: un
+-- cobro NUNCA falla por esto.
+--
+-- Pagos que ya estaban cobrados antes de esta migracion NO generan comisiones (no hay barrido hacia atras a proposito:
+-- las reglas se arman despues y recalcular el pasado es una decision del negocio, F65).
+--
+-- Despues de aplicarla:
+--   node scripts/verify-commissions.mjs --despues-de-00235
+--   node scripts/verify-sales.mjs
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS payments_enqueue_commissions ON public.payments;
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'commissions_payment' AND status = 'pending';
+-- Riesgo: bajo. Solo encola.
+-- ============================================================================
+
+SET search_path = '';
+
+DROP TRIGGER IF EXISTS payments_enqueue_commissions ON public.payments;
+CREATE TRIGGER payments_enqueue_commissions
+  AFTER INSERT OR UPDATE OF status ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION private.enqueue_commissions_for_payment();

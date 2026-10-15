@@ -13,7 +13,7 @@ Vienen con cada negocio y **no se editan**.
 |---|---|
 | **Owner** | Todo, incluidas las dos claves solo-Owner: quitar personas del equipo y (reservada) transferir la propiedad. |
 | **Admin** | Todas las claves menos las solo-Owner. |
-| **Member** | Las 27 claves de la tabla de abajo (columna «Member»): atender los leads asignados, crear contenido, ver y usar Agenda, Ventas, Tareas y Formularios, y poco más. |
+| **Member** | Las 28 claves de la tabla de abajo (columna «Member»): atender los leads asignados, crear contenido, ver y usar Agenda, Ventas, Tareas y Formularios, ver sus propias comisiones, y poco más. |
 
 La lista de permisos del Member vive en **dos** lugares que tienen que ser iguales: `MEMBER_PERMISSION_KEYS` (TypeScript) y
 `private.member_permission_keys()` (SQL, migración 00208). El test `lib/auth/member-sql-parity.test.ts` los compara y falla si se separan.
@@ -31,9 +31,10 @@ Cada fila tiene su test y el comentario «cambio aprobado».
 | M6 | Broadcasts | podía | **no** (`broadcasts.manage`) |
 | M7 | Que lo que publica se dispare de verdad | el disparador fallaba en silencio | **sí** (`triggers` pide `flows.edit`) |
 | M8 | Entrar a Integraciones por la URL | lo rebotaba | ve solo «Mis conexiones». El menú cambió por el rediseño de Formularios: Integraciones y Recursos son pestañas de Ajustes, y «Ajustes» lo ve cualquiera (entra a Recursos) |
+| M9 | Ver sus propias comisiones (Extra I) | no existía | **sí**, solo `commissions.view` con alcance `own`: ve «Finanzas» en el menú pero ninguna pestaña de gastos. NO tiene `commissions.manage` ni `expenses.*` |
 | M4, M5 | Reasignar los leads que ve; publicar flujos | podía | sin cambios |
 
-## El catálogo: 74 claves
+## El catálogo: 78 claves
 
 La fuente es `lib/auth/permissions.ts`. Los permisos de Owner, Admin y Member **salen de ahí**, no de la base: la fila de un rol de sistema
 tiene los permisos vacíos a propósito. Las claves *reservadas* existen pero no se muestran ni se dan todavía; las *solo Owner* no viajan en
@@ -162,6 +163,22 @@ ningún rol (ni el Owner las da).
 | `products.manage` | Administrar productos | — |
 | `sales.settings` | Configurar ventas y cobranza | — |
 
+### Finanzas
+
+| Clave | Qué permite | Member |
+|---|---|---|
+| `expenses.view` | Ver Finanzas | — |
+| `expenses.manage` | Administrar gastos | — |
+
+### Comisiones
+
+| Clave | Qué permite | Member |
+|---|---|---|
+| `commissions.view` | Ver comisiones (el alcance decide si ve todas o solo las que tiene a su nombre) | sí (alcance `own`) |
+| `commissions.manage` | Administrar comisiones: reglas y roles, liquidaciones, asignar persona, anular y ajustes | — |
+
+El menú «Finanzas» se ve con `expenses.view` **o** `commissions.view` (`FINANCE_ENTRY_PERMISSIONS`, `lib/finance/tabs.ts`); adentro, cada pestaña pide su propia clave.
+
 ### Tareas
 
 | Clave | Qué permite | Member |
@@ -200,7 +217,7 @@ ningún rol (ni el Owner las da).
 
 ## Alcances
 
-Además de *qué* puede hacer, un rol define *cuánto ve* en seis módulos: `leads`, `conversations`, `bookings`, `calls`, `sales`, `tasks`.
+Además de *qué* puede hacer, un rol define *cuánto ve* en siete módulos: `leads`, `conversations`, `bookings`, `calls`, `sales`, `commissions`, `tasks`. Un rol sin alcance de comisiones queda en `own` (lo más angosto).
 
 | Alcance | Qué significa |
 |---|---|
@@ -208,7 +225,7 @@ Además de *qué* puede hacer, un rol define *cuánto ve* en seis módulos: `lea
 | `own_unassigned` | Lo asignado más lo que no tiene a nadie. |
 | `all` | Todo el negocio. |
 
-**El alcance lo aplica la base** (`can_see_contact`, `can_see_conversation`, `can_see_booking`, `can_see_call`, `can_see_sale`, `can_see_task`), no la
+**El alcance lo aplica la base** (`can_see_contact`, `can_see_conversation`, `can_see_booking`, `can_see_call`, `can_see_sale`, `can_see_task`, y la política de lectura de comisiones), no la
 pantalla. En la pantalla de Roles el selector de alcance vive dentro de su grupo y se activa recién cuando el rol tiene la clave «ver» de ese grupo.
 
 ## Quién puede dar qué («no podés dar lo que no tenés»)

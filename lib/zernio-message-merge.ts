@@ -37,6 +37,11 @@ export interface LocalMessageMedia {
   transcript_status: string | null;
   transcript_error: string | null;
   media_description: string | null;
+  /**
+   * De donde vino el mensaje (00189): anuncio, historia, pieza. Opcional en el tipo para que las filas anteriores al
+   * Extra I (F44) sigan siendo validas; sin el dato, el mensaje no lleva el chip "Vino de".
+   */
+  origin_context?: unknown;
 }
 
 /**
@@ -52,6 +57,7 @@ export type MergedInboxMessage = Omit<InboxMessage, "attachments"> & {
   transcript_status: string | null;
   transcript_error: string | null;
   media_description: string | null;
+  origin_context: unknown;
 };
 
 /**
@@ -94,6 +100,7 @@ export function mergeThreadWithLocal(
         transcript_status: null,
         transcript_error: null,
         media_description: null,
+        origin_context: null,
       };
     }
 
@@ -108,6 +115,8 @@ export function mergeThreadWithLocal(
       transcript_status: match.transcript_status,
       transcript_error: match.transcript_error,
       media_description: match.media_description,
+      // El origen vive solo en nuestra tabla (Zernio no lo conoce): se cruza igual que la media (Extra I, F44).
+      origin_context: match.origin_context ?? null,
     };
   });
 }

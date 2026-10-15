@@ -59,6 +59,19 @@ Seis tipos (`sale_created`, `sale_status_changed`, `payment_created`, `payment_s
 
 Los flujos de cobranza precreados (cuatro, en borrador y apagados) se crean al abrir Ventas por primera vez (Owner/Admin), al prender la opción en Ajustes y al crear un workspace.
 
+## Métodos de pago (Extra I, bloque MP)
+
+Los métodos de pago dejaron de ser una lista fija: viven en `workspaces.payment_methods` (jsonb, 00224) y se administran en Ajustes > General > Ventas (`sales.settings`). Cada uno tiene nombre, **comisión del procesador** (porcentaje + monto fijo, con tope opcional) y estado activo o inactivo (nunca se borra: un pago viejo conserva su método).
+
+- **El pago congela la comisión al cobrar:** `provider_fee_percent`, `provider_fee_fixed` y `provider_fee_amount` (y la reversión de un cobro los limpia). Cambiar la comisión de un método después no toca los pagos ya cobrados; la ficha del pago muestra «Cobrado · Comisión (2,9 % + 0,30) · Neto». «Corregir la comisión» de un pago cobrado queda en el historial.
+- **La base valida el método** (`payments_validate_method`, `PM001`): un pago solo puede usar un método que exista en el negocio. `create_sale` no se tocó: un trigger copia el porcentaje y el fijo del snapshot de la opción de pago cuando el pago nace cobrado.
+- **Un solo lector:** todo el código obtiene los métodos con `workspaceMethods(workspace)` (`lib/sales/workspace-methods.ts`); un test de frontera falla si algo vuelve a leer `enabled_payment_methods` (la columna vieja quedó sin leerse). Los cinco de siempre (Whop, transferencia CR, transferencia USA, Wise, Binance) arrancan con comisión 0 hasta que se carguen las reales.
+- Los gastos de comisión de procesador se calculan solos en Finanzas ([finanzas.md](finanzas.md)).
+
+## De dónde vino la venta (Extra I)
+
+La ficha tiene «De dónde vino» (canal, pieza con su responsable, anuncio o referido), la lista una columna «Origen» con filtros por canal y por pieza, y la venta puede sugerir el último toque **con origen** si el último fue directo. Detalle en [atribucion.md](atribucion.md). Cada cobro genera sus comisiones: [comisiones.md](comisiones.md).
+
 ## Contrato desde la venta
 
 El link firmado del contrato lleva el `sale_id` **adentro del token**. Uno suelto en la URL o en el cuerpo se ignora; uno que no existe o es de otro workspace se descarta (`meta.sale_id_discarded`).

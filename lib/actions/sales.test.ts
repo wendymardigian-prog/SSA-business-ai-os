@@ -1,8 +1,10 @@
 /**
  * Ventas F26: updateSale, cancelSale, cancelSubscription y rebuildPlan.
  */
+import { paymentMethodsFixture } from "@/lib/sales/test-support/payment-methods";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryRecordTouch } from "@/lib/sales/test-support/touch-rpc";
 
 const WS = "ws-1";
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -23,14 +25,18 @@ vi.mock("@/lib/audit", async (orig) => ({
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
     user: { id: ME },
-    workspace: { id: WS, timezone: "America/Costa_Rica", enabled_payment_methods: ["wise"], max_discount_percent: null },
+    workspace: { id: WS, timezone: "America/Costa_Rica", payment_methods: paymentMethodsFixture(["wise"]), max_discount_percent: null },
     role, roleId, supabase: db.client,
   }),
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createServiceClient: async () => ({
     from: (t: string) => (db.client as unknown as { from: (t: string) => unknown }).from(t),
-    rpc: async (name: string, args: Record<string, unknown>) => { rpcCalls.push({ name, args }); return { data: { ok: true }, error: null }; },
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      if (name === "record_contact_touch") return { data: memoryRecordTouch(args, db), error: null };
+      return { data: { ok: true }, error: null };
+    },
   }),
 }));
 
@@ -42,7 +48,7 @@ const seed = () =>
     workspace_members: [{ workspace_id: WS, user_id: ME }],
     workspace_roles: [],
     sales: [{
-      id: SALE, workspace_id: WS, contact_id: U(10), status: "pending_payment", financing_type: "installments",
+      id: SALE, workspace_id: WS, contact_id: U(10), status: "pending_payment", financing_type: "installments", sale_date: "2026-10-01",
       base_amount: 1000, discount_amount: 0, final_amount: 1000, discount_reason: null, product_snapshot: { price: 1000 },
       product_variant_id: U(22), setter_id: ME, vendedor_id: null, attribution: null, attribution_touch_id: null,
       attribution_type: "none", notes: null, service_starts_at: null, plan_unbalanced: false, updated_at: "2026-10-01T10:00:00Z",
@@ -52,10 +58,45 @@ const seed = () =>
       { id: U(41), workspace_id: WS, sale_id: SALE, type: "installment", status: "scheduled", amount: 600 },
     ],
     contact_touches: [],
+    content_posts: [{ id: U(50), workspace_id: WS, title: "Reel: 3 errores", deleted_at: null }],
     product_variants: [], products: [],
   });
 
 beforeEach(() => { role = "admin"; roleId = null; rpcCalls.length = 0; audits.length = 0; db = seed(); });
+
+describe("updateSale: atribución cargada a mano por canal (Extra I, F47)", () => {
+  const choice = { mode: "manual_channel", choice: { kind: "organic", network: "instagram", piece: { contentPostId: U(50) } } };
+
+  it("crea el toque (origin manual, mediodía de la fecha de la venta, clave sale-manual:<venta>) y la venta apunta a él", async () => {
+    expect(await updateSale({ saleId: SALE, attribution: choice })).toEqual({ ok: true });
+    const touches = db.rows("contact_touches");
+    expect(touches).toHaveLength(1);
+    expect(touches[0]).toMatchObject({ contact_id: U(10), origin: "manual", channel: "organic", content_post_id: U(50), dedupe_key: `sale-manual:${SALE}`, occurred_at: "2026-10-01T18:00:00.000Z" });
+    expect(db.rows("sales")[0]).toMatchObject({ attribution_touch_id: touches[0].id, attribution_type: "manual" });
+    expect(audits.some((a) => a.action === "sale.attribution_changed")).toBe(true);
+  });
+
+  it("editar dos veces con la misma elección no duplica el toque", async () => {
+    await updateSale({ saleId: SALE, attribution: choice });
+    db.rows("sales")[0].updated_at = "2026-10-01T10:00:00Z";
+    await updateSale({ saleId: SALE, attribution: choice });
+    expect(db.rows("contact_touches")).toHaveLength(1);
+  });
+
+  it("una pieza de otro workspace se rechaza y la venta no cambia", async () => {
+    db.rows("content_posts").push({ id: U(51), workspace_id: "ws-otro", title: "Ajena", deleted_at: null });
+    const r = await updateSale({ saleId: SALE, attribution: { mode: "manual_channel", choice: { kind: "organic", network: "instagram", piece: { contentPostId: U(51) } } } });
+    expect(r).toMatchObject({ ok: false, code: "invalid", error: "Esa pieza no existe" });
+    expect(db.rows("contact_touches")).toHaveLength(0);
+    expect(db.rows("sales")[0].attribution_type).toBe("none");
+  });
+
+  it("una venta cancelada no admite cambiar la atribución, ni se crea el toque", async () => {
+    db.rows("sales")[0].status = "cancelled";
+    expect(await updateSale({ saleId: SALE, attribution: choice })).toMatchObject({ ok: false, code: "locked" });
+    expect(db.rows("contact_touches")).toHaveLength(0);
+  });
+});
 
 describe("updateSale", () => {
   it("sin sales.manage no escribe nada", async () => {

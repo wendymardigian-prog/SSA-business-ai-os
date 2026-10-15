@@ -37,7 +37,7 @@ export interface EditableSale {
  * notas. Cambiar el producto o el precio con cobros pide una confirmación y un motivo: lo
  * cobrado no se toca y, si el plan deja de cuadrar, la ficha ofrece «Rearmar el plan».
  */
-export function SaleEditDialog({ sale, contactName, config, onClose }: { sale: EditableSale; contactName: string; config: WizardConfig; onClose: () => void }) {
+export function SaleEditDialog({ sale, contactName, config, onClose, openAttribution = false }: { sale: EditableSale; contactName: string; config: WizardConfig; onClose: () => void; openAttribution?: boolean }) {
   const router = useRouter();
   const locked = isLockedForEdit(sale.status);
   const productId = snapshotProductId(sale.product_snapshot) ?? "";
@@ -49,7 +49,7 @@ export function SaleEditDialog({ sale, contactName, config, onClose }: { sale: E
   const [vendedorId, setVendedorId] = useState(sale.vendedor_id);
   const [attribution, setAttribution] = useState<AttributionFieldState>(DEFAULT_ATTRIBUTION_STATE);
   const [attributionTouched, setAttributionTouched] = useState(false);
-  const [editAttribution, setEditAttribution] = useState(false);
+  const [editAttribution, setEditAttribution] = useState(openAttribution);
   const [prodId, setProdId] = useState(productId);
   const [variantId, setVariantId] = useState(currentVariantId);
   const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
@@ -151,7 +151,7 @@ export function SaleEditDialog({ sale, contactName, config, onClose }: { sale: E
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Atribución</h3>
         <p className="text-sm">{sale.attribution_line}</p>
         {!locked && (editAttribution ? (
-          <AttributionField contactId={contact.id} value={attribution} onChange={(a) => { setAttribution(a); setAttributionTouched(true); }} timeZone={config.timeZone} />
+          <AttributionField contactId={contact.id} value={attribution} onChange={(a) => { setAttribution(a); setAttributionTouched(true); }} timeZone={config.timeZone} members={config.members} autoSuggest={false} />
         ) : (
           <button type="button" onClick={() => setEditAttribution(true)} className="h-8 rounded-lg border border-border px-3 text-xs font-medium hover:bg-accent">Cambiar la atribución</button>
         ))}

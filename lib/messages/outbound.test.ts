@@ -138,3 +138,14 @@ describe("originConsistencyError", () => {
     );
   });
 });
+
+describe("outboundMessageRow: origin_context (Extra I, F35)", () => {
+  const base = { conversationId: "c-1", origin: "flow" as const, text: "hola", status: "sent" as const, sentByFlowId: "f-1" };
+  it("sin contexto, la fila NO lleva la clave (la columna queda en su default)", () => {
+    expect("origin_context" in outboundMessageRow(base)).toBe(false);
+  });
+  it("con contexto, lo guarda tal cual", () => {
+    const row = outboundMessageRow({ ...base, originContext: { content: { content_post_id: "cp-1", via: "flow" } } });
+    expect(row.origin_context).toEqual({ content: { content_post_id: "cp-1", via: "flow" } });
+  });
+});

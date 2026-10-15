@@ -8,11 +8,12 @@ import { wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { computeProviderFee, buildPaymentOptionSnapshot } from "./fees";
 import { FINANCING_TYPES, PAYMENT_TYPES } from "./labels";
 import { toCents, fromCents } from "./money";
-import { isPaymentMethodKey } from "./payment-methods";
+import { isKnownMethod, type PaymentMethodDef } from "./payment-methods";
 import { validatePlanBalances } from "./payment-plan";
 import { checkDiscount, type ProductSnapshot } from "./sale-math";
 import { isDateOnly, localToday } from "./dates";
 import { manualAttributionSchema, type AttributionRequest } from "./attribution";
+import { manualChoiceSchema } from "./manual-channel";
 
 const dateOnly = z.string().refine(isDateOnly, "La fecha no es válida");
 const uuid = z.string().uuid();
@@ -27,11 +28,16 @@ export const paymentInputSchema = z.object({
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
-/** La atribución que viaja del navegador: último toque, otro toque del historial o cargada a mano. */
+/**
+ * La atribución que viaja del navegador: último toque, otro toque del historial, cargada a mano (sin crear un
+ * toque) o cargada a mano CON CANAL (`manual_channel`, Extra I F47): el servidor crea el toque y atribuye la venta
+ * a el. `label` es solo para mostrar en el navegador.
+ */
 export const attributionRequestSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("last_touch") }),
   z.object({ mode: z.literal("touch"), touchId: uuid }),
   z.object({ mode: z.literal("manual"), manual: manualAttributionSchema }),
+  z.object({ mode: z.literal("manual_channel"), choice: manualChoiceSchema, label: z.string().max(400).optional() }),
 ]);
 
 export const createSaleInputSchema = z.object({
@@ -54,6 +60,11 @@ export const createSaleInputSchema = z.object({
   setterId: uuid.nullable().optional(),
   vendedorId: uuid.nullable().optional(),
   attribution: attributionRequestSchema.default({ mode: "last_touch" }),
+  /**
+   * Una clave que genera el asistente al abrirse. Solo la usa la atribucion `manual_channel`, para que enviar dos
+   * veces la misma venta deje UN solo toque (`sale-manual:<clave>`).
+   */
+  idempotencyKey: z.string().trim().min(8).max(100).optional(),
   bookingId: uuid.nullable().optional(),
   serviceStartsAt: dateOnly.nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
@@ -81,6 +92,8 @@ export interface SaleRuleContext {
   timeZone: string;
   now: Date;
   enabledMethods: readonly string[];
+  /** Los métodos del negocio con su comisión (`workspaces.payment_methods`). Sin esto, el catálogo de arranque. */
+  methods?: readonly PaymentMethodDef[];
   maxDiscountPercent: number | null;
   /** Alcance de ventas de quien carga: con `own` tiene que quedar como setter o vendedor. */
   hasAllScope: boolean;
@@ -97,7 +110,7 @@ export type SaleRulesResult =
 /** Las filas de `payments` que recibe `create_sale`: lo cobrado lleva fecha local, instante, método y comisión congelada. */
 export function buildPaymentRows(
   payments: ReadonlyArray<z.output<typeof paymentInputSchema>>,
-  ctx: Pick<SaleRuleContext, "timeZone" | "now">,
+  ctx: Pick<SaleRuleContext, "timeZone" | "now"> & { methods?: readonly PaymentMethodDef[] },
 ): Array<Record<string, unknown>> {
   const today = localToday(ctx.now, ctx.timeZone);
   return payments.map((p) => {
@@ -115,8 +128,8 @@ export function buildPaymentRows(
       paid_on: p.date,
       paid_at: paidAt.toISOString(),
       payment_method: method,
-      payment_option_snapshot: buildPaymentOptionSnapshot(method),
-      provider_fee_amount: computeProviderFee(p.amount, method),
+      payment_option_snapshot: buildPaymentOptionSnapshot(method, ctx.methods),
+      provider_fee_amount: computeProviderFee(p.amount, method, ctx.methods),
       notes: p.notes ?? null,
     };
   });
@@ -142,9 +155,9 @@ export function applySaleRules(input: CreateSaleParsed, ctx: SaleRuleContext): S
     if (p.status === "paid") {
       if (p.date < input.saleDate) return { ok: false, code: "date", error: "Un pago no puede estar cobrado antes de la fecha de la venta" };
       if (p.date > today) return { ok: false, code: "date", error: "Un pago cobrado no puede tener fecha futura" };
-      if (!p.method || !isPaymentMethodKey(p.method)) return { ok: false, code: "method", error: "Elegí el método de pago de lo que ya se cobró" };
+      if (!p.method || !isKnownMethod(p.method, ctx.methods)) return { ok: false, code: "method", error: "Elegí el método de pago de lo que ya se cobró" };
       if (!ctx.enabledMethods.includes(p.method)) return { ok: false, code: "method", error: "Ese método de pago no está habilitado" };
-    } else if (p.method && !isPaymentMethodKey(p.method)) {
+    } else if (p.method && !isKnownMethod(p.method, ctx.methods)) {
       return { ok: false, code: "method", error: "Ese método de pago no existe" };
     }
   }
@@ -161,6 +174,11 @@ export function applySaleRules(input: CreateSaleParsed, ctx: SaleRuleContext): S
     if (!check.ok) {
       return { ok: false, code: "plan_unbalanced", diffCents: check.diffCents, error: check.diffCents > 0 ? `Falta asignar ${fromCents(check.diffCents).toFixed(2)}` : `Te pasaste por ${fromCents(-check.diffCents).toFixed(2)}` };
     }
+  }
+
+  // `manual_channel` se resuelve ANTES (la accion crea el toque y reemplaza el modo por `touch`): aca no puede llegar.
+  if (input.attribution.mode === "manual_channel") {
+    return { ok: false, code: "invalid_manual", error: "La atribución cargada a mano no se pudo resolver" };
   }
 
   const attribution: Record<string, unknown> =

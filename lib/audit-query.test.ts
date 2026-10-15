@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
-import { applyAuditFilters, auditFilters, entityHref } from "./audit-query";
+import { applyAuditFilters, auditFilters, ENTITY_TYPE_LABELS, entityHref } from "./audit-query";
+import { COMMISSION_ACTION_LABELS } from "./audit-history";
 import { buildHistoryQuery, runHistoryQuery } from "./audit-history";
 
 describe("auditFilters", () => {
@@ -58,5 +59,20 @@ describe("entityHref", () => {
     expect(entityHref("contact", "c1")).toBe("/dashboard/contacts/c1");
     expect(entityHref("product", "x")).toBe("/dashboard/settings/productos/x");
     expect(entityHref("tag", "t")).toBeNull();
+  });
+});
+
+describe("Comisiones en el historial", () => {
+  it("la comisión lleva a su ficha y las dos entidades tienen nombre", () => {
+    expect(entityHref("commission", "c1")).toBe("/dashboard/finanzas/comisiones?commission=c1");
+    expect(entityHref("commission_rule", "r1")).toBeNull();
+    expect(ENTITY_TYPE_LABELS.commission).toBe("Comisión");
+    expect(ENTITY_TYPE_LABELS.commission_rule).toBe("Regla de comisión");
+  });
+
+  it("cada acción de comisiones tiene su texto en español, sin guiones bajos", () => {
+    const actions = Object.keys(COMMISSION_ACTION_LABELS);
+    expect(actions).toEqual(expect.arrayContaining(["commission.voided", "commission.person_assigned", "commission.payout_assigned", "commission.adjustment_created", "commission.roles_updated", "commission_rule.created", "commission_rule.updated", "commission_rule.paused", "commission_rule.archived", "commission_rule.reordered"]));
+    for (const text of Object.values(COMMISSION_ACTION_LABELS)) expect(text).not.toMatch(/_/);
   });
 });

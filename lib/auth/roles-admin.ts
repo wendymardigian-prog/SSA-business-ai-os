@@ -94,6 +94,7 @@ export function validateRole(input: RoleInput): RoleValidation {
       bookings: input.scopes.bookings ?? "own",
       calls: input.scopes.calls ?? "own",
       sales: input.scopes.sales ?? "own",
+      commissions: input.scopes.commissions ?? "own",
       tasks: input.scopes.tasks ?? "own",
     },
   });
@@ -241,6 +242,7 @@ const SCOPE_GATES: Record<ScopedModule, { keys: string[]; label: string; hint: s
   bookings: { keys: ["bookings.view"], label: "Qué agendas ve", hint: "Activá «Ver agendas» para elegir el alcance", hintSelector: "bookings.view" },
   calls: { keys: ["calls.view"], label: "Qué llamadas ve", hint: "Activá «Ver las llamadas» para elegir el alcance", hintSelector: "calls.view" },
   sales: { keys: ["sales.view"], label: "Qué ventas ve", hint: "Activá «Ver las ventas» para elegir el alcance", hintSelector: "sales.view" },
+  commissions: { keys: ["commissions.view"], label: "Qué comisiones ve", hint: "Activá «Ver comisiones» para elegir el alcance", hintSelector: "commissions.view" },
   tasks: { keys: ["tasks.view"], label: "Qué tareas ve", hint: "Activá «Ver las tareas» para elegir el alcance", hintSelector: "tasks.view" },
 };
 
@@ -251,6 +253,7 @@ export const SCOPE_GROUP: Record<ScopedModule, string> = {
   bookings: "scheduling",
   calls: "calls",
   sales: "sales",
+  commissions: "commissions",
   tasks: "tasks",
 };
 

@@ -19,7 +19,7 @@ const ROOT = join(process.cwd(), "app/(dashboard)/dashboard/settings");
 
 /** Las siete pestañas (Contenido se sumó con F89 y hoy es Productos; Tareas se mudó a Agentes IA), con el archivo que resuelve la ruta y el guard que usa hoy. */
 const PAGES: Record<string, { file: string; guardMarker: string }> = {
-  general: { file: "page.tsx", guardMarker: 'requireAnyPermission(["settings.general", "sales.settings"])' },
+  general: { file: "page.tsx", guardMarker: 'requireAnyPermission(["settings.general", "sales.settings", "expenses.manage"])' },
   team: { file: "team/page.tsx", guardMarker: 'requirePermission("team.view")' },
   roles: { file: "roles/page.tsx", guardMarker: "listRoles" },
   "custom-fields": { file: "custom-fields/page.tsx", guardMarker: 'requirePermission("custom_fields.manage")' },
@@ -108,7 +108,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
     // comportamiento real hoy; S3 (el segmented Miembros|Roles) no lo cambia.
     const customPermissions: RolePermissions = {
       keys: ["roles.manage"],
-      scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
+      scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
     };
     expect(visibleTabs("member", customPermissions)).toEqual({
       general: false,
@@ -126,7 +126,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
     // Contenido es la excepcion: mira el permiso, no el cargo (F89).
     const customPermissions: RolePermissions = {
       keys: ["products.manage", "assignment.manage"],
-      scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
+      scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
     };
     expect(visibleTabs("member", customPermissions)).toEqual({
       general: false,

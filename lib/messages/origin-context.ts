@@ -9,7 +9,8 @@
 import { fromBaileysMessage, fromZernioReferral, type AdReferral } from "@/lib/contacts/touch-inbound";
 
 export interface OriginContext {
-  story_reply?: { story_id: string; story_url?: string };
+  /** Desde F33, si la historia es nuestra: la publicación y la pieza. */
+  story_reply?: { story_id: string; story_url?: string; social_post_id?: string; content_post_id?: string };
   /** Instagram: alguien mencionó la cuenta en SU historia. */
   story_mention?: true;
   ad?: {
@@ -24,6 +25,18 @@ export interface OriginContext {
     platform: string;
   };
   quoted_message_id?: string;
+  /**
+   * La pieza de contenido (Extra I, F35): un DM de una automatización que salió de un comentario o historia la lleva
+   * (`via: "flow"`), y la respuesta de la persona la hereda (`via: "automation_reply"`).
+   */
+  content?: {
+    social_post_id?: string;
+    content_post_id?: string;
+    via?: string;
+    flow_id?: string;
+    outbound_message_id?: string;
+    title?: string;
+  };
 }
 
 const text = (value: unknown, max = 500): string | undefined => {
@@ -54,13 +67,36 @@ function adFrom(referral: AdReferral | null, platform: string): OriginContext["a
 export interface OriginInput {
   /** La plataforma del canal. */
   platform: string;
-  storyReply?: { storyId?: unknown; storyUrl?: unknown } | null;
+  storyReply?: { storyId?: unknown; storyUrl?: unknown; socialPostId?: unknown; contentPostId?: unknown } | null;
   isStoryMention?: boolean | null;
   /** El `metadata.referral` de Zernio, tal cual vino. */
   zernioReferral?: unknown;
   /** El mensaje de Baileys (WhatsApp), donde puede venir `externalAdReply`. */
   baileysMessage?: unknown;
   quotedMessageId?: unknown;
+  /** La pieza que lleva el mensaje (F35): `{ social_post_id, content_post_id, via, flow_id, outbound_message_id, title }`. */
+  content?: unknown;
+}
+
+/** `origin_context.content` con lista blanca: nada que no sea pieza o publicación vale como contenido. */
+function contentFrom(raw: unknown): OriginContext["content"] | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const c = raw as Record<string, unknown>;
+  const out: NonNullable<OriginContext["content"]> = {};
+  const social = text(c.social_post_id, 100);
+  const piece = text(c.content_post_id, 100);
+  if (social) out.social_post_id = social;
+  if (piece) out.content_post_id = piece;
+  if (!social && !piece) return undefined;
+  const via = text(c.via, 40);
+  if (via) out.via = via;
+  const flow = text(c.flow_id, 100);
+  if (flow) out.flow_id = flow;
+  const outbound = text(c.outbound_message_id, 100);
+  if (outbound) out.outbound_message_id = outbound;
+  const title = text(c.title, 120);
+  if (title) out.title = title;
+  return out;
 }
 
 /** El contexto de origen, o null si el mensaje no vino de nada de esto (el caso de casi todos). */
@@ -71,7 +107,14 @@ export function buildOriginContext(input: OriginInput): OriginContext | null {
     const storyId = text(input.storyReply?.storyId, 200);
     if (storyId) {
       const storyUrl = text(input.storyReply?.storyUrl, 1000);
-      out.story_reply = { story_id: storyId, ...(storyUrl ? { story_url: storyUrl } : {}) };
+      const socialPostId = text(input.storyReply?.socialPostId, 100);
+      const contentPostId = text(input.storyReply?.contentPostId, 100);
+      out.story_reply = {
+        story_id: storyId,
+        ...(storyUrl ? { story_url: storyUrl } : {}),
+        ...(socialPostId ? { social_post_id: socialPostId } : {}),
+        ...(contentPostId ? { content_post_id: contentPostId } : {}),
+      };
     }
     // Responder a una historia y mencionarla son excluyentes (Zernio): si vienen las dos, manda la respuesta.
     if (input.isStoryMention === true && !out.story_reply) out.story_mention = true;
@@ -82,6 +125,9 @@ export function buildOriginContext(input: OriginInput): OriginContext | null {
 
     const quoted = text(input.quotedMessageId, 200);
     if (quoted) out.quoted_message_id = quoted;
+
+    const content = contentFrom(input.content);
+    if (content) out.content = content;
 
     return Object.keys(out).length > 0 ? out : null;
   } catch {

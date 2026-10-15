@@ -1,0 +1,154 @@
+{
+  "descripcion": "Casos compartidos de decideAutoExpenseAction (TypeScript) y upsert_auto_expense (SQL). `cases` son LOS 8 de la tabla de GF20, en su orden; `extra` son matices que las dos gemelas tambien tienen que cumplir. Montos en CENTIMOS. existing: null = no existe; adjustmentsCents = ajustes ya creados sobre el gasto (con signo). ctx.month es el mes del gasto; todayLocal, hoy en la zona del workspace.",
+  "cases": [
+    {
+      "name": "1. no existe y total > 0: crea programado",
+      "existing": null,
+      "total": 1548,
+      "ctx": { "todayLocal": "2026-10-20", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "create", "amountCents": 1548, "status": "programado", "scheduledDate": "2026-10-31" }
+    },
+    {
+      "name": "2. no existe y total = 0: no crea nada",
+      "existing": null,
+      "total": 0,
+      "ctx": { "todayLocal": "2026-10-20", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    },
+    {
+      "name": "3. existe sin pagar y total > 0 cambio: actualiza el monto",
+      "existing": { "status": "programado", "amountCents": 1548, "voidKind": null, "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 2000,
+      "ctx": { "todayLocal": "2026-10-20", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "update_amount", "amountCents": 2000 }
+    },
+    {
+      "name": "4. existe sin pagar y total = 0: lo anula como auto_zero",
+      "existing": { "status": "vencido", "amountCents": 1548, "voidKind": null, "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 0,
+      "ctx": { "todayLocal": "2026-11-05", "month": "2026-10", "chargeMode": "manual" },
+      "expected": { "kind": "void_zero", "voidKind": "auto_zero" }
+    },
+    {
+      "name": "5. anulado por el sistema (auto_zero) y total > 0: lo reactiva",
+      "existing": { "status": "anulado", "amountCents": 0, "voidKind": "auto_zero", "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 730,
+      "ctx": { "todayLocal": "2026-10-20", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "reactivate", "amountCents": 730, "status": "programado" }
+    },
+    {
+      "name": "6. anulado por una persona: no hace nada",
+      "existing": { "status": "anulado", "amountCents": 1548, "voidKind": "manual", "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 9999,
+      "ctx": { "todayLocal": "2026-10-20", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    },
+    {
+      "name": "7. pagado y total distinto: no toca el monto, marca la diferencia",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 4580,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "mark_drift", "driftCents": -420 }
+    },
+    {
+      "name": "8. pagado y total igual: limpia la diferencia sin resolver",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": -420, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 5000,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "clear_drift" }
+    }
+  ],
+  "extra": [
+    {
+      "name": "1b. no existe, cobro a mano y el mes ya termino: nace vencido",
+      "existing": null,
+      "total": 1548,
+      "ctx": { "todayLocal": "2026-11-05", "month": "2026-10", "chargeMode": "manual" },
+      "expected": { "kind": "create", "amountCents": 1548, "status": "vencido", "scheduledDate": "2026-10-31" }
+    },
+    {
+      "name": "1c. no existe, cobro automatico y el mes ya termino: nace programado (lo cierra el cierre automatico)",
+      "existing": null,
+      "total": 1548,
+      "ctx": { "todayLocal": "2026-11-05", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "create", "amountCents": 1548, "status": "programado", "scheduledDate": "2026-10-31" }
+    },
+    {
+      "name": "3b. existe sin pagar y el total no cambio: nada (no escribe ni audita)",
+      "existing": { "status": "programado", "amountCents": 1548, "voidKind": null, "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 1548,
+      "ctx": { "todayLocal": "2026-10-20", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    },
+    {
+      "name": "5b. anulado por el sistema y el total sigue en 0: nada",
+      "existing": { "status": "anulado", "amountCents": 0, "voidKind": "auto_zero", "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 0,
+      "ctx": { "todayLocal": "2026-10-20", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    },
+    {
+      "name": "5c. reactivar un gasto de un mes ya terminado con cobro a mano: vuelve vencido",
+      "existing": { "status": "anulado", "amountCents": 0, "voidKind": "auto_zero", "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 730,
+      "ctx": { "todayLocal": "2026-11-05", "month": "2026-10", "chargeMode": "manual" },
+      "expected": { "kind": "reactivate", "amountCents": 730, "status": "vencido" }
+    },
+    {
+      "name": "7b. pagado, la misma diferencia ya estaba marcada: no vuelve a marcar ni a notificar",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": -420, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 4580,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    },
+    {
+      "name": "7c. pagado, la diferencia ya estaba marcada e ignorada: no se desanda sola",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": -420, "driftResolved": true, "adjustmentsCents": [] },
+      "total": 4580,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    },
+    {
+      "name": "7d. pagado, la diferencia cambio: se marca la nueva",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": -420, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 4480,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "mark_drift", "driftCents": -520 }
+    },
+    {
+      "name": "7e. pagado con un ajuste de -4,20 ya creado y el recalculo vuelve a dar 45,80: no marca",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": -420, "driftResolved": true, "adjustmentsCents": [-420] },
+      "total": 4580,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    },
+    {
+      "name": "7f. pagado con ese ajuste y el recalculo da 44,80: marca -1,00 (no -5,20)",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": -420, "driftResolved": true, "adjustmentsCents": [-420] },
+      "total": 4480,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "mark_drift", "driftCents": -100 }
+    },
+    {
+      "name": "7g. pagado y el total quedo en 0: marca la diferencia completa",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 0,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "mark_drift", "driftCents": -5000 }
+    },
+    {
+      "name": "8b. pagado y total igual, sin diferencia previa: nada",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": null, "driftResolved": false, "adjustmentsCents": [] },
+      "total": 5000,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    },
+    {
+      "name": "8c. pagado y total igual, con una diferencia ya resuelta: no la toca",
+      "existing": { "status": "pagado", "amountCents": 5000, "voidKind": null, "driftCents": -420, "driftResolved": true, "adjustmentsCents": [] },
+      "total": 5000,
+      "ctx": { "todayLocal": "2026-11-10", "month": "2026-10", "chargeMode": "automatic" },
+      "expected": { "kind": "none" }
+    }
+  ]
+}

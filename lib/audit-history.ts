@@ -94,6 +94,7 @@ const FIELD_LABELS: Record<string, string> = {
   priority: "Prioridad",
   start_date: "Inicio",
   owner_id: "Responsable",
+  assigned_to: "Responsable",
   follower_ids: "Seguidores",
   project: "Proyecto",
   conversation_id: "Conversación",
@@ -158,6 +159,8 @@ export function describeChange(
         return value.split(",").map((id) => names[id.trim()] ?? id.trim()).join(", ");
       }
     }
+    // El responsable de una publicacion (Extra I, F43) tambien se guarda como id.
+    if (entityType === "social_post" && key === "assigned_to" && names) return names[value] ?? value;
     return value;
   };
   return {
@@ -261,7 +264,7 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
 
 /** Etiquetas de las acciones de Formularios, para <Historial/> y la ficha del contacto. */
 export const FORM_ACTION_LABELS: Record<
-  Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}` | `eod.${string}` | `attribution.${string}`>,
+  Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}` | `eod.${string}` | `attribution.${string}` | `social_post.${string}`>,
   string
 > = {
   "eod.edited": "corrigió el reporte de fin de día",
@@ -287,8 +290,61 @@ export const FORM_ACTION_LABELS: Record<
   "attribution.meta_linked": "vinculó un toque con un anuncio de Meta",
   "attribution.meta_ignored": "ignoró un toque para el vínculo con Meta",
   "attribution.meta_unlinked": "quitó el vínculo manual de un toque con Meta",
+  // Extra I (F31): la configuración de Ajustes > General > Atribución (entidad workspace).
+  "attribution.settings_updated": "cambió la configuración de atribución",
+  // Extra I (F43): el responsable de una publicación sin pieza.
+  "social_post.assignee_changed": "cambió el responsable de la publicación",
   "contract.email_resent": "reenvió la copia del contrato",
   "contract.pdf_regenerated": "regeneró el PDF del contrato",
+};
+
+/** Etiquetas de las acciones de Finanzas (gastos, recurrentes, proveedores y su configuracion), para <Historial/>. */
+export const FINANCE_ACTION_LABELS: Record<Extract<AuditAction, `expense.${string}` | `recurring.${string}` | `vendor.${string}` | `finance.${string}`>, string> = {
+  "expense.created": "cargó el gasto",
+  "expense.updated": "editó el gasto",
+  "expense.paid": "marcó el gasto como pagado",
+  "expense.payment_reverted": "revirtió el pago del gasto",
+  "expense.voided": "anuló el gasto",
+  "expense.receipt_uploaded": "subió el comprobante",
+  "expense.receipt_removed": "quitó el comprobante",
+  "expense.overdue": "venció el gasto",
+  "expense.auto_created": "generó el gasto automático",
+  "expense.auto_updated": "recalculó el gasto automático",
+  "expense.auto_voided_zero": "anuló el gasto automático: quedó en cero",
+  "expense.auto_reactivated": "reactivó el gasto automático",
+  "expense.auto_closed": "cerró el gasto automático como pagado",
+  "expense.drift_detected": "detectó que el monto cambió después de pagado",
+  "expense.drift_ignored": "ignoró la diferencia del gasto",
+  "expense.adjustment_created": "creó un ajuste",
+  "recurring.created": "creó la plantilla recurrente",
+  "recurring.updated": "editó la plantilla recurrente",
+  "recurring.paused": "pausó la plantilla recurrente",
+  "recurring.reactivated": "reactivó la plantilla recurrente",
+  "recurring.expense_generated": "generó un gasto desde la plantilla",
+  "recurring.backfilled": "generó los gastos que faltaban",
+  "vendor.created": "creó el proveedor",
+  "vendor.updated": "editó el proveedor",
+  "vendor.archived": "archivó el proveedor",
+  "vendor.restored": "restauró el proveedor",
+  "finance.categories_updated": "cambió las categorías de gasto",
+  "finance.settings_updated": "cambió la configuración de Finanzas",
+};
+
+/** Etiquetas de las acciones de Comisiones (la comision, sus reglas y sus roles), para <Historial/>. */
+export const COMMISSION_ACTION_LABELS: Record<Extract<AuditAction, `commission.${string}` | `commission_rule.${string}`>, string> = {
+  "commission.generated": "generó la comisión",
+  "commission.voided": "anuló la comisión",
+  "commission.payout_released": "soltó la comisión del gasto anulado",
+  "commission.payout_assigned": "pasó la comisión a un gasto",
+  "commission.person_assigned": "asignó la persona de la comisión",
+  "commission.adjustment_created": "cargó un ajuste de comisión",
+  "commission.roles_updated": "cambió los roles de comisión",
+  "commission_rule.created": "creó la regla de comisión",
+  "commission_rule.updated": "editó la regla de comisión",
+  "commission_rule.paused": "pausó la regla de comisión",
+  "commission_rule.resumed": "reactivó la regla de comisión",
+  "commission_rule.archived": "archivó la regla de comisión",
+  "commission_rule.reordered": "reordenó las reglas de comisión",
 };
 
 /** Etiquetas de las acciones de Ventas (catalogo, venta y pago), para <Historial/>. */
@@ -340,4 +396,5 @@ export const SALE_ACTION_LABELS: Record<
   "payment.overdue": "marcó el pago como moroso",
   "payment.refund": "registró un reembolso",
   "payment.receipt_uploaded": "subió el comprobante del pago",
+  "payment.fee_corrected": "corrigió la comisión del procesador del pago",
 };

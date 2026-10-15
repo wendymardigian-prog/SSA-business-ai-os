@@ -44,14 +44,14 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     name: "Setter",
     description: "Contesta los chats, atiende a los contactos y agenda reuniones.",
     keys: SETTER_KEYS,
-    scopes: { leads: "own_unassigned", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
+    scopes: { leads: "own_unassigned", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
   },
   {
     id: "closer",
     name: "Closer",
     description: "Hace las llamadas de venta, carga las ventas y cobra.",
     keys: CLOSER_KEYS,
-    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
+    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
   },
   {
     id: "content",
@@ -62,14 +62,14 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       "content.view", "content.create", "content.approve", "content.publish", "content.ai",
       "templates.manage", "tasks.view", "tasks.edit",
     ],
-    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
+    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
   },
   {
     id: "leader",
     name: "Líder de equipo",
     description: "Todo lo del Setter y el Closer, y ve a todo el equipo.",
     keys: [...new Set([...SETTER_KEYS, ...CLOSER_KEYS, "team.view", "eod.view_all", "dashboards.agenda.view", "data.export", "tasks.delete"])],
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", tasks: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
   },
 ];
 

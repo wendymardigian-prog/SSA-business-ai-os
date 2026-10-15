@@ -6,7 +6,7 @@
 import type { PermissionContext } from "@/lib/auth/guards";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
-import { DEFAULT_ENABLED_PAYMENT_METHODS } from "@/lib/sales/payment-methods";
+import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { localToday } from "@/lib/sales/dates";
 import { buildWizardCatalog } from "./catalog";
 import type { WizardConfig } from "@/components/sales/wizard/types";
@@ -17,7 +17,8 @@ export function hasSalesAllScope(ctx: Pick<PermissionContext, "role" | "scope">)
 
 export async function loadWizardConfig(ctx: PermissionContext): Promise<WizardConfig> {
   const { supabase, workspace, user } = ctx;
-  const w = workspace as unknown as { timezone?: string; enabled_payment_methods?: string[] | null; max_discount_percent?: number | null };
+  const w = workspace as unknown as { timezone?: string; max_discount_percent?: number | null };
+  const methods = workspaceMethods(workspace);
 
   const [products, variants, members, viewerTz] = await Promise.all([
     supabase.from("products").select("id, name, product_type, status").eq("workspace_id", workspace.id),
@@ -29,7 +30,8 @@ export async function loadWizardConfig(ctx: PermissionContext): Promise<WizardCo
   return {
     catalog: buildWizardCatalog(products.data ?? [], variants.data ?? []),
     members: members.map((m) => ({ id: m.userId, name: m.name })),
-    enabledMethods: w.enabled_payment_methods ?? [...DEFAULT_ENABLED_PAYMENT_METHODS],
+    enabledMethods: methods.enabledKeys,
+    methods: methods.defs,
     maxDiscountPercent: w.max_discount_percent == null ? null : Number(w.max_discount_percent),
     hasAllScope: hasSalesAllScope(ctx),
     today: localToday(new Date(), w.timezone ?? "UTC"),

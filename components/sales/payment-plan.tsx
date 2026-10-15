@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { ChevronDown, ChevronRight, CreditCard, FileText, Loader2, Paperclip, Plus, RotateCcw, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getPaymentReceiptUrl, uploadPaymentReceipt } from "@/lib/actions/payments";
-import { AddPaymentDialog, MarkPaidDialog, ReasonDialog, RefundDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
+import { AddPaymentDialog, FeeCorrectionDialog, MarkPaidDialog, ReasonDialog, RefundDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
 import { Historial } from "@/components/historial/historial";
+import { refundAdjustHref } from "@/lib/commissions/list-view";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
 import { formatMoney } from "@/lib/sales/format";
 import { PAYMENT_STATUS_LABELS } from "@/lib/sales/labels";
 import { paymentRows, tableFooter, type TablePayment } from "@/lib/sales/payment-table";
+import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 import { paymentStatusClasses } from "@/lib/sales/status-colors";
 
 function formatDate(date: string | null): string {
@@ -23,6 +26,7 @@ type Dialog =
   | { kind: "reschedule"; id: string }
   | { kind: "uncollectible"; id: string }
   | { kind: "revert"; id: string }
+  | { kind: "fee"; id: string }
   | { kind: "add" }
   | { kind: "refund" }
   | null;
@@ -42,9 +46,11 @@ export function PaymentPlan({
   saleStatus,
   canManage,
   enabledMethods,
+  methods,
   today,
   timeZone,
   names,
+  canAdjustCommissions = false,
 }: {
   saleId: string;
   saleDate: string;
@@ -54,9 +60,12 @@ export function PaymentPlan({
   saleStatus: string;
   canManage: boolean;
   enabledMethods: string[];
+  methods: PaymentMethodDef[];
   today: string;
   timeZone: string;
   names: Record<string, string>;
+  /** Con `commissions.manage`: en un reembolso cobrado, el link para ajustar las comisiones de ese reembolso (Extra I, F64). */
+  canAdjustCommissions?: boolean;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -64,7 +73,7 @@ export function PaymentPlan({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const closed = ["cancelled", "refunded", "subscription_cancelled"].includes(saleStatus);
-  const rows = paymentRows(payments, canManage && !closed);
+  const rows = paymentRows(payments, canManage && !closed, methods);
   const footer = tableFooter(finalAmount, payments, isSubscription);
   const byId = new Map(payments.map((p) => [p.id, p]));
   const target = dialog && "id" in dialog ? byId.get(dialog.id) : null;
@@ -124,6 +133,7 @@ export function PaymentPlan({
                   busy={pending}
                   timeZone={timeZone}
                   names={names}
+                  adjustHref={canAdjustCommissions && byId.get(r.id)?.type === "refund" && r.status === "paid" ? refundAdjustHref(r.id) : undefined}
                 />
               ))}
             </tbody>
@@ -143,26 +153,28 @@ export function PaymentPlan({
       {message && <p role="alert" className="text-xs text-red-700 dark:text-red-400">{message}</p>}
       {pending && <p className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Un momento…</p>}
 
-      {dialog?.kind === "paid" && payable && <MarkPaidDialog saleId={saleId} payment={payable} saleDate={saleDate} today={today} enabledMethods={enabledMethods} onClose={() => setDialog(null)} />}
+      {dialog?.kind === "paid" && payable && <MarkPaidDialog saleId={saleId} payment={payable} saleDate={saleDate} today={today} enabledMethods={enabledMethods} methods={methods} onClose={() => setDialog(null)} />}
       {dialog?.kind === "reschedule" && payable && <RescheduleDialog payment={payable} onClose={() => setDialog(null)} />}
+      {dialog?.kind === "fee" && payable && <FeeCorrectionDialog payment={payable} currentFee={target?.provider_fee_amount == null ? null : Number(target.provider_fee_amount)} onClose={() => setDialog(null)} />}
       {(dialog?.kind === "uncollectible" || dialog?.kind === "revert") && payable && <ReasonDialog payment={payable} kind={dialog.kind} onClose={() => setDialog(null)} />}
-      {dialog?.kind === "add" && <AddPaymentDialog saleId={saleId} today={today} enabledMethods={enabledMethods} onClose={() => setDialog(null)} />}
+      {dialog?.kind === "add" && <AddPaymentDialog saleId={saleId} today={today} enabledMethods={enabledMethods} methods={methods} onClose={() => setDialog(null)} />}
       {dialog?.kind === "refund" && <RefundDialog saleId={saleId} netPaid={footer.paid} saleDate={saleDate} today={today} onClose={() => setDialog(null)} />}
     </section>
   );
 }
 
 function PaymentRowView({
-  row, expanded, onToggle, onAction, onReceipt, busy, timeZone, names,
+  row, expanded, onToggle, onAction, onReceipt, busy, timeZone, names, adjustHref,
 }: {
   row: ReturnType<typeof paymentRows>[number];
   expanded: boolean;
   onToggle: () => void;
-  onAction: (kind: "paid" | "reschedule" | "uncollectible" | "revert") => void;
+  onAction: (kind: "paid" | "reschedule" | "uncollectible" | "revert" | "fee") => void;
   onReceipt: (mode: "view" | "upload", file?: File) => void;
   busy: boolean;
   timeZone: string;
   names: Record<string, string>;
+  adjustHref?: string;
 }) {
   const a = row.actions;
   const btn = "rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50";
@@ -185,13 +197,23 @@ function PaymentRowView({
         <td className="px-2 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${DELAY_TONE_CLASSES[row.delay.tone]}`}>{row.delay.label}</span></td>
         <td className="px-2 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusClasses(row.status)}`}>{PAYMENT_STATUS_LABELS[row.status as keyof typeof PAYMENT_STATUS_LABELS] ?? row.statusLabel}</span></td>
         <td className="px-2 py-2">{row.method ?? "—"}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{row.fee != null ? formatMoney(row.fee) : "—"}</td>
+        <td className="px-2 py-2 text-right tabular-nums">
+          {row.fee != null ? (
+            <>
+              <div>{formatMoney(row.fee)}</div>
+              {row.feeNote && <div className="text-[10px] text-muted-foreground">({row.feeNote})</div>}
+              {row.net != null && <div className="text-[10px] text-muted-foreground">Neto {formatMoney(row.net)}</div>}
+            </>
+          ) : "—"}
+        </td>
         <td className="px-2 py-2">
           <div className="flex flex-wrap items-center justify-end gap-1">
             {a.markPaid && <button type="button" className={btn} onClick={() => onAction("paid")}>Cobrar</button>}
             {a.reschedule && <button type="button" className={btn} onClick={() => onAction("reschedule")}>Reprogramar</button>}
             {a.uncollectible && <button type="button" className={btn} onClick={() => onAction("uncollectible")}>Incobrable</button>}
+            {row.canCorrectFee && <button type="button" className={btn} onClick={() => onAction("fee")}>Corregir comisión</button>}
             {a.revert && <button type="button" className={btn} onClick={() => onAction("revert")}>Revertir</button>}
+            {adjustHref && <Link href={adjustHref} className={btn}>Ajustar comisiones de este reembolso</Link>}
             {a.receipt === "view" && <button type="button" disabled={busy} className={btn} onClick={() => onReceipt("view")} aria-label="Ver comprobante"><Paperclip className="inline h-3 w-3" aria-hidden /> Comprobante</button>}
             {a.receipt === "upload" && (
               <label className={`${btn} cursor-pointer`}>

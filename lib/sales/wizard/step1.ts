@@ -53,7 +53,7 @@ export function validateStep1(state: Step1State, ctx: Step1Context): Step1Result
 
 /** El tipo con el que va a quedar el borrador: sin toques y sin edición, `none`. */
 export function draftAttributionType(state: AttributionFieldState, touchCount: number): "last_touch" | "manual" | "none" {
-  if (state.mode === "touch" || state.mode === "manual") return "manual";
+  if (state.mode === "touch" || state.mode === "manual" || state.mode === "manual_channel") return "manual";
   return touchCount > 0 ? "last_touch" : "none";
 }
 

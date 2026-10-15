@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import { AI_RUNS_HREF, GENERAL_SECTIONS } from "./general-sections";
 
 describe("GENERAL_SECTIONS", () => {
-  it("tiene las secciones en orden (Ventas se suma con la Etapa 5), sin Zona de peligro", () => {
+  // Extra I: Finanzas y Atribución se suman al final de las que ya había.
+  it("tiene las secciones en orden (Ventas se suma con la Etapa 5, Finanzas y Atribución con el Extra I), sin Zona de peligro", () => {
     expect(GENERAL_SECTIONS.map((s) => s.id)).toEqual([
       "workspace",
       "conversaciones",
       "archivos",
       "ventas",
+      "finanzas",
       "ia",
+      "atribucion",
     ]);
   });
 });
@@ -25,7 +28,7 @@ describe("General partido por permiso (F16)", () => {
   const can = (...keys: string[]) => (key: string) => keys.includes(key);
 
   it("con settings.general ve General (sin Ventas y cobranza)", () => {
-    expect(generalSectionsFor(can("settings.general")).map((s) => s.id)).toEqual(["workspace", "conversaciones", "archivos", "ia"]);
+    expect(generalSectionsFor(can("settings.general")).map((s) => s.id)).toEqual(["workspace", "conversaciones", "archivos", "ia", "atribucion"]);
   });
 
   it("con solo sales.settings ve únicamente «Ventas y cobranza»", () => {
@@ -34,8 +37,30 @@ describe("General partido por permiso (F16)", () => {
     expect(sections[0].label).toBe("Ventas y cobranza");
   });
 
-  it("Owner y Admin (todas las claves) ven las cinco; quien no tiene ninguna no ve nada", () => {
-    expect(generalSectionsFor(can("settings.general", "sales.settings"))).toHaveLength(5);
+  it("con solo expenses.manage ve únicamente «Finanzas»", () => {
+    const sections = generalSectionsFor(can("expenses.manage"));
+    expect(sections.map((s) => s.id)).toEqual(["finanzas"]);
+    expect(sections[0].label).toBe("Finanzas");
+    expect(canOpenGeneral(can("expenses.manage"))).toBe(true);
+  });
+
+  it("expenses.view sin expenses.manage no abre Finanzas en Ajustes (la configuración es de quien administra)", () => {
+    expect(generalSectionsFor(can("expenses.view"))).toEqual([]);
+  });
+
+  it("«Atribución» (Extra I) es de settings.general: sales.settings, expenses.manage o ninguna clave no la ven", () => {
+    expect(generalSectionsFor(can("settings.general")).map((s) => s.id)).toContain("atribucion");
+    expect(generalSectionsFor(can("sales.settings", "expenses.manage")).map((s) => s.id)).not.toContain("atribucion");
+    expect(generalSectionsFor(can()).map((s) => s.id)).not.toContain("atribucion");
+  });
+
+  it("settings.general y sales.settings no dan la sección de Finanzas", () => {
+    expect(generalSectionsFor(can("settings.general", "sales.settings")).map((s) => s.id)).not.toContain("finanzas");
+  });
+
+  it("Owner y Admin (todas las claves) ven las siete; quien no tiene ninguna no ve nada", () => {
+    expect(generalSectionsFor(can("settings.general", "sales.settings", "expenses.manage"))).toHaveLength(7);
+    expect(generalSectionsFor(() => true).map((s) => s.id)).toEqual(["workspace", "conversaciones", "archivos", "ventas", "finanzas", "ia", "atribucion"]);
     expect(generalSectionsFor(can("products.manage"))).toEqual([]);
     expect(canOpenGeneral(can("products.manage"))).toBe(false);
     expect(canOpenGeneral(can("sales.settings"))).toBe(true);

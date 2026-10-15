@@ -1,21 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { listContactTouches } from "@/lib/actions/contact-touches";
-import { MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS, mediumLabel, sourceLabel } from "@/lib/contacts/taxonomy";
+import { ManualChannelSelector } from "@/components/sales/manual-channel-selector";
+import type { WizardMember } from "@/components/sales/wizard/types";
+import { ChannelChip } from "@/components/sales/channel-chip";
+import { mediumLabel, sourceLabel } from "@/lib/contacts/taxonomy";
 import { attributionFromTouch, describeAttribution, latestTouch, relativeDays, type TouchRow } from "@/lib/sales/attribution";
 import {
   backToLastTouch,
   chooseTouch,
-  EMPTY_MANUAL,
+  initialAttributionState,
   initialPanel,
-  loadManually,
+  loadChannelChoice,
   modeLead,
+  suggestionNotice,
   type AttributionFieldState,
   type AttributionPanel,
 } from "@/lib/sales/attribution-field";
-import { fieldInput } from "@/components/content/dialog";
+import { suggestSaleTouch } from "@/lib/sales/suggest-touch";
+import { channelOfTouch, NO_NAMES, touchTitle, type TouchNames } from "@/lib/sales/touch-label";
 import { cn } from "@/lib/utils";
 
 /**
@@ -26,6 +31,10 @@ import { cn } from "@/lib/utils";
  *
  * Lo usan el paso 1 del asistente de venta y la edición de la venta. El estado
  * es el que viaja al servidor; la lógica vive en `lib/sales/attribution-field.ts`.
+ *
+ * Extra I: si el último toque es un mensaje sin origen y hay uno anterior que sí lo tiene, el asistente arranca
+ * con ese (F46, `autoSuggest`); en la edición solo se ofrece. "Cargar a mano" es el selector de canal en dos pasos
+ * (F47): el servidor crea el toque al guardar.
  */
 export function AttributionField({
   contactId,
@@ -33,20 +42,33 @@ export function AttributionField({
   onChange,
   timeZone,
   disabled,
+  members,
+  autoSuggest = true,
 }: {
   contactId: string | null;
   value: AttributionFieldState;
   onChange: (next: AttributionFieldState) => void;
   timeZone: string;
   disabled?: boolean;
+  /** Las personas del equipo (para "Referido por alguien del equipo"). */
+  members: WizardMember[];
+  /** El asistente arranca con la sugerencia puesta; la edicion solo la ofrece. */
+  autoSuggest?: boolean;
 }) {
   const [touches, setTouches] = useState<TouchRow[]>([]);
+  const [names, setNames] = useState<TouchNames>(NO_NAMES);
+  // Lo ultimo que se recibio por props, para usarlo dentro de la respuesta asincronica sin repetir la consulta.
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    valueRef.current = value;
+    onChangeRef.current = onChange;
+  });
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [errorState, setErrorState] = useState<{ contactId: string | null; message: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<AttributionPanel>("touches");
-  const [manual, setManual] = useState({ ...EMPTY_MANUAL });
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
   // Los toques de ESTE contacto: se cargan al elegirlo (la primera página alcanza para la línea).
@@ -65,12 +87,18 @@ export function AttributionField({
       }
       setErrorState(null);
       setTouches(result.data.touches);
+      setNames(result.data.names);
       setCursor(result.data.nextCursor);
+      // F46: si el ultimo toque no dice de donde vino y hay uno anterior que si, el asistente arranca con ese.
+      if (autoSuggest && valueRef.current.mode === "last_touch") {
+        const initial = initialAttributionState(result.data.touches);
+        if (initial.state.mode === "touch") onChangeRef.current(initial.state);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [contactId, loadedFor]);
+  }, [contactId, loadedFor, autoSuggest]);
 
   const loading = loadingMore || (contactId !== null && loadedFor !== contactId);
   const error = errorState && errorState.contactId === contactId ? errorState.message : null;
@@ -85,6 +113,7 @@ export function AttributionField({
       return;
     }
     setTouches((prev) => [...prev, ...result.data.touches]);
+    setNames((prev) => ({ pieces: { ...prev.pieces, ...result.data.names.pieces }, ads: { ...prev.ads, ...result.data.names.ads } }));
     setCursor(result.data.nextCursor);
   }
 
@@ -99,10 +128,13 @@ export function AttributionField({
       const m = (value.manual ?? {}) as { source?: string; medium?: string; campaign?: string };
       return { source: m.source || undefined, medium: m.medium || undefined, campaign: m.campaign || undefined };
     }
+    if (value.mode === "manual_channel") return null;
     return latest ? attributionFromTouch(latest) : null;
   }, [value, touches, latest]);
 
-  const line = describeAttribution(shown, now, timeZone);
+  const line = value.mode === "manual_channel" ? (value.label ?? "Cargada a mano") : describeAttribution(shown, now, timeZone);
+  const suggestion = useMemo(() => suggestSaleTouch(touches), [touches]);
+  const notice = suggestionNotice({ state: value, suggestion, touches, timeZone, names });
 
   function openPanel() {
     setPanel(initialPanel(touches.length));
@@ -114,7 +146,7 @@ export function AttributionField({
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1">
           <span className="font-medium">Atribución: {modeLead(value, touches.length > 0)}</span>
-          {shown ? <> — {line}</> : <> — Sin atribución</>}
+          {shown || value.mode === "manual_channel" ? <> — {line}</> : <> — Sin atribución</>}
           {loading && <Loader2 className="ml-2 inline h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />}
         </p>
         <button
@@ -129,6 +161,24 @@ export function AttributionField({
       {error && (
         <p role="alert" className="text-xs text-red-700 dark:text-red-400">
           {error}
+        </p>
+      )}
+
+      {notice && (
+        <p role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs">
+          <span className="min-w-0">
+            {notice.before}
+            <em className="font-medium not-italic">{notice.title}</em>
+            {notice.after}
+          </span>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(notice.action.to === "last_touch" ? backToLastTouch() : chooseTouch(suggestion!.touchId))}
+            className="font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+          >
+            {notice.action.label}
+          </button>
         </p>
       )}
 
@@ -176,9 +226,13 @@ export function AttributionField({
                         aria-pressed={selected}
                         className={cn("flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2 text-left text-xs hover:bg-accent/50", selected && "bg-primary/10")}
                       >
-                        <span className="font-medium">{relativeDays(t.occurred_at, now, timeZone)}</span>
-                        <span className="text-muted-foreground">
-                          {[sourceLabel(t.source), mediumLabel(t.medium), t.campaign ? `campaña ${t.campaign}` : ""].filter(Boolean).join(" / ") || "Sin datos"}
+                        <ChannelChip channel={channelOfTouch(t)} />
+                        <span className="min-w-0 flex-1 truncate font-medium" title={touchTitle(t, names)}>
+                          {touchTitle(t, names)}
+                        </span>
+                        <span className="text-muted-foreground">{relativeDays(t.occurred_at, now, timeZone)}</span>
+                        <span className="w-full text-[11px] text-muted-foreground">
+                          {[sourceLabel(t.source), mediumLabel(t.medium)].filter(Boolean).join(" / ") || "Sin datos"}
                         </span>
                       </button>
                     </li>
@@ -194,46 +248,7 @@ export function AttributionField({
           )}
 
           {panel === "manual" && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block space-y-1">
-                <span className="text-xs font-medium">Fuente</span>
-                <select value={manual.source} onChange={(e) => setManual({ ...manual, source: e.target.value })} className={fieldInput}>
-                  <option value="">Elegí…</option>
-                  {SOURCES.map((s) => (
-                    <option key={s} value={s}>
-                      {SOURCE_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block space-y-1">
-                <span className="text-xs font-medium">Medio</span>
-                <select value={manual.medium} onChange={(e) => setManual({ ...manual, medium: e.target.value })} className={fieldInput}>
-                  <option value="">Sin medio</option>
-                  {MEDIUMS.map((m) => (
-                    <option key={m} value={m}>
-                      {MEDIUM_LABELS[m]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {(["campaign", "content", "term"] as const).map((key) => (
-                <label key={key} className="block space-y-1">
-                  <span className="text-xs font-medium">{key === "campaign" ? "Campaña" : key === "content" ? "Contenido" : "Término"}</span>
-                  <input value={manual[key]} maxLength={200} onChange={(e) => setManual({ ...manual, [key]: e.target.value })} className={fieldInput} />
-                </label>
-              ))}
-              <div className="sm:col-span-2">
-                <button
-                  type="button"
-                  disabled={!manual.source}
-                  onClick={() => onChange(loadManually({ source: manual.source as never, medium: (manual.medium || undefined) as never, campaign: manual.campaign, content: manual.content, term: manual.term }))}
-                  className="h-8 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                >
-                  Usar esta atribución
-                </button>
-              </div>
-            </div>
+            <ManualChannelSelector members={members} onUse={(choice, label) => onChange(loadChannelChoice(choice, label))} />
           )}
         </div>
       )}

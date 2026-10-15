@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { STATUS_LABELS } from "@/lib/content/status";
 import { applyContentFilters, type ContentFilters, type FilterablePost } from "@/lib/content/filters";
+import { ResponsibleFilter } from "./responsible-filter";
 import type { ContentPostStatus } from "@/lib/types/database";
 import type { TaxonomyTag } from "@/lib/content/taxonomy";
 import { Users } from "lucide-react";
@@ -95,6 +96,11 @@ export function ContentList({
           value={filters.author ?? ""}
           onChange={(v) => setFilter("autor", v)}
           options={authors.map((a) => ({ value: a.id, label: a.name }))}
+        />
+        <ResponsibleFilter
+          selected={filters.responsible ?? []}
+          team={authors}
+          onChange={(ids) => setFilter("responsable", ids.join(","))}
         />
         <Select
           label="Mes"

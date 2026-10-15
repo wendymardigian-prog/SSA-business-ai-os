@@ -1,0 +1,420 @@
+{
+ "fecha": "2026-10-15",
+ "motivo": "59 contactos sin first_touch (verify-attribution)",
+ "contactos": [
+  {
+   "id": "a35179c9-8110-4afa-8ead-4c5bd317a6a4",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:41.269994+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "d97daf39-44af-4fca-b338-ac57125f8817",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:41.733401+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "189af634-33c0-4db7-9824-579fe541abac",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:46.068961+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "443a6418-d558-4601-8165-cff748df979d",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:47.333053+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "b10adb62-b0e8-446b-8022-9361094f22d5",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:47.68438+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "64ec289e-2050-4889-bddf-17a5c76568e7",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:48.980299+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "7c9af816-c44d-4d7c-a0b0-947cd509b5b1",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:41.949068+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "9611d8ab-89d4-4503-a697-1f4b3b75e5d6",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:54.607003+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "a20cfefa-3954-466d-9875-51fd4d642fc5",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:57:00.373117+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "6b58589e-ae32-4f86-8921-4844d27d667a",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:57:00.818219+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "63e83a67-4577-439d-9a15-1249b79c1944",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:57:01.018446+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "e8ee778c-71d1-479e-a26f-e22e63ade5f1",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:53.073533+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "4a207679-cc0b-4d21-84d0-27ec37ce887f",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:46.583083+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "428af65c-46c1-4e89-8df5-e2c21d10b2ec",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:47.575636+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "f89d04cf-c1da-43a0-aff8-0ace1e70bc48",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:48.221717+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "6a380d0c-d5f8-404f-a259-dc9fdb94ac00",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:45.516063+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "99e238a9-f81b-4f0b-8458-e3c2c18d26a2",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:47.788119+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "69c58b8c-c534-43e1-954f-527a7b9fe62e",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:48.768102+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "17285844-e741-409e-b5c6-f2c629ced877",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:50.452258+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "72e1ee63-1288-46e9-b05c-1e82ee5be9d2",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:49.394826+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "8d25820d-9c45-4698-814f-d2fcc98e6d56",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:51.390705+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "d4bef9e0-7053-444a-856a-62bb01b6ebbb",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:52.356078+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "e725ab14-e921-4376-9cea-8dba74aa303f",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:53.996028+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "cdefcb36-3f67-43db-8668-680da9113805",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:56.403783+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "8fd996e5-7ff4-4a48-9126-6c9330968b74",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:57.919848+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "5bdb7067-a712-4f1b-87b5-3fe5631f8b6f",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:58.651792+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "962d8111-c456-435c-8dd1-52fa275e5b18",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:59.003648+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "69d37517-4cd9-435f-8cd7-b9b67b9795dc",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:59.425854+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "7eb54b97-3649-4b85-87dd-ad534d2709ae",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:57:00.690001+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "2c3efbf8-2e31-40fe-b73c-e96141e1bd7d",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:57:01.421237+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "ac861930-2791-486b-961c-7dbf0f30b3ef",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:50.246841+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "e56b05ee-b877-4afd-9737-0920af82ac34",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:51.633227+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "72e45e67-eabb-4273-8b9a-00cae02dfa12",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:53.699914+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "f1590a95-a1de-4b23-84ce-2fd814912141",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:51.506975+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "5ce63ac8-9c52-4fc4-a59a-55003691cac4",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:53.478523+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "992a58d7-2cbd-498f-ac9d-60e9936d18df",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:56.521883+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "1504e12e-8244-493a-bf84-9e2f15a5bb82",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:58.416674+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "c89202b0-3ae7-488c-b0e6-9a01cf468311",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:59.167457+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "2a0e762a-4df3-4e37-90c0-a1442ce0261e",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:59.536858+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "2908a4ea-eb6b-4503-8bd5-a81d8bc6f392",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:59.864121+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "21158618-a855-403a-93c6-5b567295c13e",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:57:01.214829+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "82d2cf56-c24b-44b4-a147-12c274211061",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:57:01.687322+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "e5f89988-dddd-4b61-abb6-3872e27a6fb6",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:58.866563+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "5f6b9f4e-a0d0-4855-ac90-2ba260a4fecc",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:59.288062+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "a2d1a649-b747-4117-a76e-e065a46b1a71",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:57:01.563042+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "5bd08af5-f393-472f-acf8-92f596befe85",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:37.598439+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "cd2de9a1-ae9a-4ccf-97b5-725bfc5cf39e",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:38.14237+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "465d79a1-44a7-4c74-9a7e-b1cbbef05d2d",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:38.544627+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "8c45abf6-2f9e-4634-b59d-657ed367bedc",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:41.848413+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "30089149-d57a-425f-bbc7-a1b9d7b310e5",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:42.180651+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "16eaab56-d92f-483b-b78e-5c5bbeb07c3b",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:39.066375+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "a259cac6-f204-4fb3-b2a6-7e0bed1e0942",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:38.003845+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "8968f101-d9c2-4122-8451-3a4366e57211",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:42.39721+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "387d8e46-8711-4588-8248-997c0f605913",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:38.950696+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "43cedd34-7d15-456a-a0ee-4b73f9d9ef79",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:38.684227+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "7ca05825-46b8-4f19-9f92-f951afb8dfbf",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:42.063593+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "e59a6cb0-5369-4504-b7e1-e5200894fd69",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:38.810995+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "6e1ef634-be1a-4e59-b355-1874c7be80c9",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:40.132031+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  },
+  {
+   "id": "f6159542-cb85-4d62-80b4-584c91479d5b",
+   "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+   "created_at": "2026-10-06T21:56:39.921981+00:00",
+   "attribution": {},
+   "plataforma": "instagram"
+  }
+ ],
+ "toques_previos": []
+}

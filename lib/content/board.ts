@@ -80,6 +80,8 @@ export interface BoardPost {
   authorship: string | null;
   /** El responsable (00223). Null = sin responsable, o alguien que ya no esta en el equipo. */
   assignee: { id: string; name: string } | null;
+  /** El id del responsable tal cual esta guardado (aunque ya no sea del equipo), para el filtro de Responsable (F43). */
+  assignedTo?: string | null;
 }
 
 export type BoardCard = BoardIdea | BoardPost;

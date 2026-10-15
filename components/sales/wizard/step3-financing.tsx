@@ -40,7 +40,7 @@ export function Step3Financing({
 }) {
   const subscription = state.financing === "subscription";
   const full = state.financing === "full";
-  const methods = selectableMethods(config.enabledMethods);
+  const methods = selectableMethods(config.enabledMethods, null, config.methods);
   const setRow = (i: number, patch: Partial<PlannedPayment>) => onRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
 
   return (
@@ -140,7 +140,7 @@ export function Step3Financing({
                     <td className="px-2 py-1.5">
                       <select aria-label={`Método del pago ${i + 1}`} className="h-8 rounded-md border border-input bg-background px-1" value={r.payment_method ?? ""} onChange={(e) => setRow(i, { payment_method: e.target.value || null })}>
                         <option value="">—</option>
-                        {selectableMethods(config.enabledMethods, r.payment_method).map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
+                        {selectableMethods(config.enabledMethods, r.payment_method, config.methods).map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
                       </select>
                     </td>
                     <td className="px-2 py-1.5 text-right">

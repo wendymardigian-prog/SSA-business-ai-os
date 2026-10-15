@@ -2,6 +2,7 @@ import { getWorkspace } from "@/lib/workspace";
 import { requirePermission } from "@/lib/auth/guards";
 import { notFound } from "next/navigation";
 import { FlowCanvas } from "@/components/flow-builder/flow-canvas";
+import { parseAttributionSettings } from "@/lib/attribution/settings";
 
 export default async function FlowEditorPage({
   params,
@@ -24,9 +25,15 @@ export default async function FlowEditorPage({
     notFound();
   }
 
+  // Los valores por defecto de atribución del negocio (F39): el bloque «Atribución de links» del nodo de envío los usa.
+  const attribution = parseAttributionSettings(workspace.attribution_settings);
+
   return (
     <div className="flex h-full flex-col">
-      <FlowCanvas flow={flow} />
+      <FlowCanvas
+        flow={flow}
+        attributionDefaults={{ append: attribution.links_append_default, trackClicks: attribution.links_track_clicks_default }}
+      />
     </div>
   );
 }

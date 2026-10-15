@@ -134,6 +134,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Formularios del contacto",
     tooltip: "Todos los formularios que respondió esta persona. Solo ves las respuestas de los contactos que podés ver.",
   },
+  "/dashboard/contacts/[contactId]/toques": {
+    title: "Toques del contacto",
+    tooltip: "Todas las veces que esta persona interactuó, del más nuevo al más viejo, con el canal y de dónde vino cada una.",
+  },
   "/dashboard/contacts/import": {
     title: "Importar contactos",
     tooltip: "Subir un CSV. Los repetidos se unen por telefono o email, nunca por nombre.",
@@ -335,6 +339,34 @@ export const PAGE_META: Record<string, PageMeta> = {
   "/dashboard/ventas/[id]": {
     title: "Venta",
     tooltip: "El detalle de una venta: sus números, el plan de pagos, los contratos y todo lo que se le hizo. Cancelar es definitivo.",
+  },
+  "/dashboard/finanzas": {
+    title: "Finanzas",
+    tooltip: "Cuánto entra, cuánto sale y cuánto queda: ingresos cobrados, gastos pagados, resultado y margen del período.",
+  },
+  "/dashboard/finanzas/gastos": {
+    title: "Gastos",
+    tooltip: "Todo lo que pagás: facturas, suscripciones, sueldos y los gastos automáticos. Filtrá, agrupá, pagá desde la fila y exportá a CSV.",
+  },
+  "/dashboard/finanzas/gastos/[id]": {
+    title: "Gasto",
+    tooltip: "El detalle de un gasto: su monto, estado, comprobante, de dónde salió y todo lo que se le hizo. Un gasto anulado ya no se puede editar.",
+  },
+  "/dashboard/finanzas/recurrentes": {
+    title: "Recurrentes",
+    tooltip: "Los gastos que se repiten (suscripciones, sueldos, alquiler): cada plantilla crea sola sus gastos en la fecha que le toca.",
+  },
+  "/dashboard/finanzas/proveedores": {
+    title: "Proveedores",
+    tooltip: "A quién le pagás, con lo que le pagaste en total y en el año. Un proveedor no se borra: se archiva.",
+  },
+  "/dashboard/finanzas/comisiones": {
+    title: "Comisiones",
+    tooltip: "Quién cobra qué por cada pago cobrado. Elegí las que ya se pueden pagar y generá el gasto de la liquidación; un ajuste corrige a mano lo que haga falta. Quien ve solo las suyas tiene «Mis comisiones».",
+  },
+  "/dashboard/finanzas/comisiones/reglas": {
+    title: "Reglas de comisión",
+    tooltip: "Cuánto cobra cada rol y en qué casos. Gana la primera regla que cumple sus condiciones; cambiarlas no toca las comisiones ya generadas.",
   },
 };
 

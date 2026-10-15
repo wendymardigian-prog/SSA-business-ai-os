@@ -5,6 +5,7 @@ import {
   contentFiltersToQuery,
   matchesPlatform,
   parseContentFilters,
+  toggleResponsible,
   type FilterablePost,
 } from "./filters";
 
@@ -185,5 +186,65 @@ describe("A2 · filtro de piezas pautadas (?pautada=)", () => {
   it("combina con los demas filtros", () => {
     const filters = parseContentFilters(new URLSearchParams("pautada=si&q=pieza a"));
     expect(applyContentFilters(rows, filters).map((p) => p.id)).toEqual(["a"]);
+  });
+});
+
+describe("filtro de Responsable (F43)", () => {
+  const owned: FilterablePost[] = [
+    { id: "a", title: "A", status: "draft", createdBy: "u1", assignedTo: "u2", platforms: [] },
+    { id: "b", title: "B", status: "draft", createdBy: "u2", assignedTo: "u1", platforms: [] },
+    { id: "c", title: "C", status: "draft", createdBy: "u1", assignedTo: null, platforms: [] },
+    { id: "d", title: "Una idea", status: "draft", createdBy: "u1", platforms: [] },
+  ];
+  const ids = (list: FilterablePost[]) => list.map((p) => p.id);
+
+  it("se lee de la URL: separado por comas o repetido, sin repetidos ni vacios", () => {
+    expect(parseContentFilters(new URLSearchParams("responsable=u1,u2")).responsible).toEqual(["u1", "u2"]);
+    expect(parseContentFilters(new URLSearchParams("responsable=u1&responsable=u2&responsable=u1")).responsible).toEqual(["u1", "u2"]);
+    expect(parseContentFilters({ responsable: ["u1", "u3,u4"] }).responsible).toEqual(["u1", "u3", "u4"]);
+    expect(parseContentFilters({ responsable: " , " }).responsible).toBeUndefined();
+  });
+
+  it("sin el parametro el resultado es el de siempre (no aparece la clave)", () => {
+    expect("responsible" in parseContentFilters(new URLSearchParams("autor=u1"))).toBe(false);
+  });
+
+  it("vuelve a la URL y hace ida y vuelta", () => {
+    const filters = parseContentFilters(new URLSearchParams("responsable=u1,none&estado=draft"));
+    expect(contentFiltersToQuery(filters)).toBe("estado=draft&responsable=u1%2Cnone");
+    expect(parseContentFilters(new URLSearchParams(contentFiltersToQuery(filters))).responsible).toEqual(["u1", "none"]);
+  });
+
+  it("filtra por responsable (assigned_to) y no por autor", () => {
+    const f = parseContentFilters(new URLSearchParams("responsable=u1"));
+    expect(ids(applyContentFilters(owned, f))).toEqual(["b"]);
+  });
+
+  it("varios responsables suman", () => {
+    const f = parseContentFilters(new URLSearchParams("responsable=u1,u2"));
+    expect(ids(applyContentFilters(owned, f))).toEqual(["a", "b"]);
+  });
+
+  it("'none' trae las piezas sin responsable (y las ideas, que no tienen)", () => {
+    const f = parseContentFilters(new URLSearchParams("responsable=none"));
+    expect(ids(applyContentFilters(owned, f))).toEqual(["c", "d"]);
+  });
+
+  it("el filtro de autor sigue filtrando por quien la creo", () => {
+    const f = parseContentFilters(new URLSearchParams("autor=u1"));
+    expect(ids(applyContentFilters(owned, f))).toEqual(["a", "c", "d"]);
+    const both = parseContentFilters(new URLSearchParams("autor=u1&responsable=u2"));
+    expect(ids(applyContentFilters(owned, both))).toEqual(["a"]);
+  });
+
+  it("cuenta como un filtro puesto", () => {
+    expect(activeFilterCount(parseContentFilters(new URLSearchParams("responsable=u1,u2")))).toBe(1);
+    expect(activeFilterCount(parseContentFilters(new URLSearchParams()))).toBe(0);
+  });
+
+  it("toggleResponsible suma y saca", () => {
+    expect(toggleResponsible(undefined, "u1")).toEqual(["u1"]);
+    expect(toggleResponsible(["u1"], "u2")).toEqual(["u1", "u2"]);
+    expect(toggleResponsible(["u1", "u2"], "u1")).toEqual(["u2"]);
   });
 });

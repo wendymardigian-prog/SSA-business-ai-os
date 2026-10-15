@@ -92,6 +92,27 @@ describe("applySaleRules", () => {
   });
 });
 
+describe("atribución cargada a mano por canal (manual_channel)", () => {
+  const PIECE = `${U}20`;
+
+  it("el esquema acepta la elección, normaliza sus textos y conserva la clave de idempotencia", () => {
+    const parsed = input({ idempotencyKey: " wizard-key-0001 ", attribution: { mode: "manual_channel", choice: { kind: "event", name: "  Expo 2026 " }, label: "Evento" } });
+    expect(parsed.idempotencyKey).toBe("wizard-key-0001");
+    expect(parsed.attribution).toMatchObject({ mode: "manual_channel", choice: { kind: "event", name: "Expo 2026" } });
+  });
+
+  it("una elección con forma inválida no pasa el esquema", () => {
+    expect(() => input({ attribution: { mode: "manual_channel", choice: { kind: "organic", network: "snapchat" } } })).toThrow();
+    expect(() => input({ attribution: { mode: "manual_channel", choice: { kind: "organic", network: "instagram", piece: { contentPostId: "no-uuid" } } } })).toThrow();
+    expect(() => input({ idempotencyKey: "corta" })).toThrow();
+  });
+
+  it("applySaleRules no arma el payload: la acción tiene que resolver el toque antes", () => {
+    const r = applySaleRules(input({ attribution: { mode: "manual_channel", choice: { kind: "organic", network: "instagram", piece: { contentPostId: PIECE } } } }), ctx());
+    expect(r).toMatchObject({ ok: false, code: "invalid_manual" });
+  });
+});
+
 describe("buildPaymentRows", () => {
   it("lo cobrado vence el día del cobro, con fecha local, instante, snapshot y comisión congelada", () => {
     const [row] = buildPaymentRows([{ type: "full", amount: 416.67, status: "paid", date: "2026-10-10", method: "wise", notes: null }], { timeZone: "America/Costa_Rica", now: new Date("2026-10-11T18:00:00Z") });

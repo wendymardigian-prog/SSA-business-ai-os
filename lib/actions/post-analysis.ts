@@ -13,6 +13,8 @@ import {
 import { computeFollowerBump, neighborPosts } from "@/lib/dashboards/follower-bump";
 import { daysBetween } from "@/lib/metrics/rules";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
+import { buildResponsible, type PostResponsible } from "@/lib/social/responsible";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 /**
  * Los datos del panel de analisis de un post (F51, F52).
@@ -48,6 +50,8 @@ export interface PostAnalysis {
     isOwn: boolean;
   }>;
   metric: AnalysisMetric;
+  /** Quien se ocupa de la publicacion (Extra I, F43): el de la pieza, o el propio si no tiene pieza. */
+  responsible: PostResponsible;
 }
 
 export type AnalysisResult = { ok: true; data: PostAnalysis } | { ok: false; error: string };
@@ -68,7 +72,7 @@ export async function loadPostAnalysis(input: {
   const { data: post } = await supabase
     .from("social_posts")
     .select(
-      "id, platform, media_type, published_at, origin, url, caption, thumbnail_url, content_post_id, social_account_id, engagement_d7",
+      "id, platform, media_type, published_at, origin, url, caption, thumbnail_url, content_post_id, social_account_id, engagement_d7, assigned_to",
     )
     .eq("id", input.socialPostId)
     .eq("workspace_id", workspace.id)
@@ -191,9 +195,30 @@ export async function loadPostAnalysis(input: {
     .order("commented_at", { ascending: false })
     .limit(10);
 
+  // El responsable (F43). Una publicacion con pieza muestra el de la pieza; una sin pieza, el suyo.
+  const [{ data: pieceRow }, members] = await Promise.all([
+    post.content_post_id
+      ? supabase
+          .from("content_posts")
+          .select("title, assigned_to")
+          .eq("id", post.content_post_id)
+          .eq("workspace_id", workspace.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    getWorkspaceMembers(workspace.id),
+  ]);
+  const responsible = buildResponsible({
+    contentPostId: post.content_post_id,
+    postAssignedTo: (post as { assigned_to?: string | null }).assigned_to ?? null,
+    piece: pieceRow ? { title: pieceRow.title, assignedTo: pieceRow.assigned_to } : null,
+    members,
+    canAssign: ctx.can("content.publish"),
+  });
+
   return {
     ok: true,
     data: {
+      responsible,
       post: {
         id: post.id,
         platform: post.platform,

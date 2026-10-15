@@ -31,6 +31,11 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "call_classify",
       "call_index_knowledge",
       "call_summary",
+      // Atribución orgánica (Extra I, AO1): el vínculo retroactivo de comentarios.
+      "comment_backfill",
+      "comment_backfill_workspace",
+      // Comisiones (Extra I, CM1): generar o revertir las de un pago.
+      "commissions_payment",
       "content_copy",
       "content_provider_schedule",
       "content_publish",
@@ -42,6 +47,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       // Reporte de fin de día (E13): el recordatorio.
       "eod_reminder_sweep",
       "fathom_sync",
+      // Finanzas (Extra I, G1): el trabajo diario.
+      "finance_daily",
       // Catalogo de Meta (Extra L, AT2): las miniaturas de los anuncios.
       "meta_ad_thumbnails",
       "meta_ads_sync",

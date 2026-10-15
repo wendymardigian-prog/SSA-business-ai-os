@@ -16,7 +16,7 @@
 
 import { drawerHref } from "@/lib/content/drawer-url";
 import { readAttribution, type AttributionTouch } from "./attribution";
-import { mediumLabel, sourceLabel } from "./taxonomy";
+import { channelLabel, mediumLabel, sourceLabel } from "./taxonomy";
 import { describeMatchMethod } from "@/lib/attribution/meta-match-reasons";
 
 /** Un toque guardado en la tabla `contact_touches`, en lo que la pantalla usa. */
@@ -48,6 +48,8 @@ export interface TouchRow {
   meta_ad_id?: string | null;
   meta_match_status?: string | null;
   meta_match_method?: string | null;
+  /** El canal (00230): organic | paid | referral | direct. */
+  channel?: string | null;
   /** La carga original del toque (lista blanca): de ahi sale `source_id`, el formulario de un toque de formulario. */
   raw?: unknown;
 }
@@ -80,6 +82,16 @@ export interface TouchView {
   details: { label: string; value: string }[];
   /** La URL de entrada completa de esta visita (plano formularios-ui, F19). Solo si el toque la trae. */
   entryUrl?: string;
+  /** El canal del toque (Extra I, F37): `organic | paid | referral | direct`. Solo si se conoce. */
+  channel?: string;
+  /** "Orgánico", "Pauta"… Solo si se conoce. */
+  channelLabel?: string;
+}
+
+/** Suma el canal a un `TouchView` SOLO si se conoce: sin él el resultado es idéntico al de antes (lo fija la caracterización). */
+function withChannel(view: TouchView, channel: string | null | undefined): TouchView {
+  const label = channelLabel(channel);
+  return label ? { ...view, channel: channel as string, channelLabel: label } : view;
 }
 
 /** Los nombres del catalogo de Meta para los ids de los toques (los arma la ficha con la sesion de quien mira). */
@@ -303,7 +315,13 @@ export function buildAttributionView(params: {
 
   const path = [...rows]
     .sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime())
-    .map((row) => describeTouch(fromRow(row), params.timeZone, formNameOfRow(row), params.names));
+    .map((row) => withChannel(describeTouch(fromRow(row), params.timeZone, formNameOfRow(row), params.names), row.channel));
+
+  // La copia derivada no guarda el canal: se busca en la tabla por la fecha del toque.
+  const channelOfTouch = (touch: AttributionTouch): string | null => {
+    const at = new Date(touch.occurred_at ?? 0).getTime();
+    return rows.find((r) => new Date(r.occurred_at).getTime() === at)?.channel ?? null;
+  };
 
   // Sin copia derivada pero con toques en la tabla (un contacto al que todavía no
   // se le calculó): el primero y el último salen de la propia tabla.
@@ -318,8 +336,8 @@ export function buildAttributionView(params: {
 
   return {
     empty: false,
-    first: describeTouch(withEntry(firstTouch), params.timeZone, formNameOfTouch(firstTouch), params.names),
-    last: single ? null : describeTouch(withEntry(lastTouch), params.timeZone, formNameOfTouch(lastTouch), params.names),
+    first: withChannel(describeTouch(withEntry(firstTouch), params.timeZone, formNameOfTouch(firstTouch), params.names), channelOfTouch(firstTouch)),
+    last: single ? null : withChannel(describeTouch(withEntry(lastTouch), params.timeZone, formNameOfTouch(lastTouch), params.names), channelOfTouch(lastTouch)),
     path,
   };
 }

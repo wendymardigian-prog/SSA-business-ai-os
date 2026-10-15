@@ -294,13 +294,17 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     // acceso: Conocimiento se abre con un boton de Agentes IA, y Recursos e Integraciones son pestañas de Ajustes.
     // Ajustes ahora lo ven todos (todos llegan a Recursos). Por eso el menu se compara como CONJUNTO.
     const REMOVED_FROM_MENU = ["Conocimiento", "Recursos", "Integraciones"];
+    // Extra I (Finanzas): Owner y Admin GANAN un item. No se regenera la foto: se declara aca, a proposito.
+    const ADDED_TO_MENU = ["Finanzas"];
+    // Cambio aprobado M9 (Extra I): el Member de sistema tambien gana «Finanzas», por `commissions.view`.
+    const ADDED_TO_MENU_MEMBER = ["Finanzas"];
     const sorted = (names: string[]) => [...names].sort();
 
     it("Owner y Admin ven lo mismo que antes (el menu, salvo el rediseño aprobado de formularios-ui)", () => {
       for (const r of ["owner", "admin"] as const) {
         const now_ = now.rendered[r] as { nav: string[] };
         const base_ = base.rendered[r] as { nav: string[] };
-        expect(sorted(now_.nav), r).toEqual(sorted(base_.nav.filter((n) => !REMOVED_FROM_MENU.includes(n))));
+        expect(sorted(now_.nav), r).toEqual(sorted([...base_.nav.filter((n) => !REMOVED_FROM_MENU.includes(n)), ...ADDED_TO_MENU]));
         expect({ ...now_, nav: [] }).toEqual({ ...base_, nav: [] });
       }
     });
@@ -308,7 +312,9 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     it("el menu del Member es el de hoy, salvo el rediseño aprobado: pierde Recursos como item y gana Ajustes", () => {
       const nav = (now.rendered.member as { nav: string[] }).nav;
       const baseNav = (base.rendered.member as { nav: string[] }).nav;
-      expect(sorted(nav)).toEqual(sorted([...baseNav.filter((n) => n !== "Recursos"), "Ajustes"]));
+      // Cambio aprobado M9 (Extra I): el Member de sistema gana «Finanzas» (tiene commissions.view, ve sus propias
+      // comisiones). Es lo UNICO que suma al menu; adentro no ve ninguna pestaña de gastos.
+      expect(sorted(nav)).toEqual(sorted([...baseNav.filter((n) => n !== "Recursos"), "Ajustes", ...ADDED_TO_MENU_MEMBER]));
     });
 
     it("las pestanas del agente del Member son las de hoy", () => {

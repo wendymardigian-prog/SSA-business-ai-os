@@ -16,7 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { addDays } from "@/lib/sales/dates";
-import { DEFAULT_ENABLED_PAYMENT_METHODS } from "@/lib/sales/payment-methods";
+import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { cancelSaleAsSystem, markPaidCore, rescheduleCore, type CoreContext } from "@/lib/sales/payments-core";
 
 type Db = SupabaseClient<Database>;
@@ -65,11 +65,12 @@ async function loadCore(db: Db, context: NodeExecutionArgs<unknown>["context"], 
   if (!saleId) return null;
   const [{ data: sale }, { data: workspace }, { data: flow }] = await Promise.all([
     db.from("sales").select("id, contact_id, sale_date, status, financing_type").eq("id", saleId).eq("workspace_id", context.workspaceId).maybeSingle(),
-    db.from("workspaces").select("timezone, enabled_payment_methods, overdue_grace_days").eq("id", context.workspaceId).maybeSingle(),
+    db.from("workspaces").select("timezone, payment_methods, overdue_grace_days").eq("id", context.workspaceId).maybeSingle(),
     db.from("flows").select("name").eq("id", context.flowId).maybeSingle(),
   ]);
   if (!sale) return null;
-  const w = (workspace ?? {}) as { timezone?: string; enabled_payment_methods?: string[] | null; overdue_grace_days?: number | null };
+  const w = (workspace ?? {}) as { timezone?: string; overdue_grace_days?: number | null };
+  const methods = workspaceMethods(workspace);
   return {
     service: db,
     workspaceId: context.workspaceId,
@@ -77,7 +78,8 @@ async function loadCore(db: Db, context: NodeExecutionArgs<unknown>["context"], 
     sale,
     tz: w.timezone ?? "UTC",
     graceDays: Number(w.overdue_grace_days) || 0,
-    enabledMethods: w.enabled_payment_methods ?? [...DEFAULT_ENABLED_PAYMENT_METHODS],
+    enabledMethods: methods.enabledKeys,
+    methods: methods.defs,
     flowName: flow?.name ?? "Automatización",
   };
 }

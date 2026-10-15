@@ -80,6 +80,14 @@ export interface TouchRow {
   referrer_url: string | null;
   landing_page: string | null;
   raw?: unknown;
+  /** Lo que suma el Extra I (F46): el canal, la pieza, la publicacion, el origen y el vinculo con el catalogo de Meta. */
+  channel?: string | null;
+  content_post_id?: string | null;
+  social_post_id?: string | null;
+  origin?: string | null;
+  meta_campaign_id?: string | null;
+  meta_adset_id?: string | null;
+  meta_ad_id?: string | null;
 }
 
 /** Cuántos toques se piden por página en el selector de atribución. */
@@ -87,7 +95,7 @@ export const TOUCHES_PAGE_SIZE = 20;
 
 /** Las columnas que se piden de `contact_touches` (nunca `select("*")`). */
 export const TOUCH_COLUMNS =
-  "id, occurred_at, source, medium, campaign, content_label, term, ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid, referrer_url, landing_page, raw";
+  "id, occurred_at, source, medium, campaign, content_label, term, ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid, referrer_url, landing_page, raw, channel, content_post_id, social_post_id, origin, meta_campaign_id, meta_adset_id, meta_ad_id";
 
 const text = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;

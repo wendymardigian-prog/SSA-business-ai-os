@@ -9,9 +9,10 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { localToday } from "@/lib/sales/dates";
 import { totalPaidCents } from "@/lib/sales/money";
-import { DEFAULT_ENABLED_PAYMENT_METHODS } from "@/lib/sales/payment-methods";
+import { workspaceMethods } from "@/lib/sales/workspace-methods";
+import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 import {
-  planAddPayment, planMarkPaid, planRefund, planReschedule, planRevert, planUncollectible, REVERT_CLEARED_FIELDS,
+  planAddPayment, planFeeCorrection, planMarkPaid, planRefund, planReschedule, planRevert, planUncollectible, REVERT_CLEARED_FIELDS,
   type PartialOffer,
 } from "@/lib/sales/payments-rules";
 import { checkReceipt, receiptPath, receiptPathBelongsTo, RECEIPT_BUCKET, RECEIPT_MAX_BYTES, RECEIPT_SIGNED_URL_SECONDS } from "@/lib/sales/receipts";
@@ -49,11 +50,13 @@ interface Loaded {
   tz: string;
   graceDays: number;
   enabledMethods: string[];
+  methods: PaymentMethodDef[];
 }
 
 function settingsOf(ctx: Ctx) {
-  const w = ctx.workspace as unknown as { timezone?: string; enabled_payment_methods?: string[] | null; overdue_grace_days?: number | null };
-  return { tz: w.timezone ?? "UTC", graceDays: Number(w.overdue_grace_days) || 0, enabledMethods: w.enabled_payment_methods ?? [...DEFAULT_ENABLED_PAYMENT_METHODS] };
+  const w = ctx.workspace as unknown as { timezone?: string; overdue_grace_days?: number | null };
+  const { defs, enabledKeys } = workspaceMethods(ctx.workspace);
+  return { tz: w.timezone ?? "UTC", graceDays: Number(w.overdue_grace_days) || 0, enabledMethods: enabledKeys, methods: defs };
 }
 
 async function loadPayment(paymentId: string): Promise<{ error: string } | Loaded> {
@@ -107,10 +110,10 @@ export interface MarkPaidInput {
 export async function markPaymentPaid(input: MarkPaidInput): Promise<PaymentActionResult<{ partial: PartialOffer | null; overpaidBy: number }>> {
   const loaded = await loadPayment(input.paymentId);
   if (isError(loaded)) return fail(loaded.error);
-  const { ctx, payment, sale, tz, graceDays, enabledMethods } = loaded;
+  const { ctx, payment, sale, tz, graceDays, enabledMethods, methods } = loaded;
   const service = await createServiceClient();
   const result = await markPaidCore(
-    { service, workspaceId: ctx.workspace.id, payment, sale, tz, graceDays, enabledMethods, actor: { kind: "user", userId: ctx.user.id } },
+    { service, workspaceId: ctx.workspace.id, payment, sale, tz, graceDays, enabledMethods, methods, actor: { kind: "user", userId: ctx.user.id } },
     { amount: input.amount, paidOn: input.paidOn, method: input.method, notes: input.notes },
   );
   if (!result.ok) return fail(result.error);
@@ -148,15 +151,39 @@ export async function revertPayment(input: { paymentId: string; reason: string }
   return { ok: true, status: planned.target };
 }
 
+// ── Extra I, MP, F6: corregir la comisión del procesador de un cobro ──
+
+export async function correctPaymentFee(input: { paymentId: string; feeAmount: number; reason: string }): Promise<PaymentActionResult<{ feeAmount: number }>> {
+  const loaded = await loadPayment(input.paymentId);
+  if (isError(loaded)) return fail(loaded.error);
+  const { ctx, payment, sale } = loaded;
+  if (CLOSED_SALE.includes(sale.status)) return fail("Esta venta ya no admite cambios en sus pagos");
+
+  const planned = planFeeCorrection(payment, input);
+  if (!planned.ok) return fail(planned.error);
+  // Solo cambia el total; el % y el fijo quedan como registro de lo que se calculó.
+  const written = await writePayment(payment.id, ctx.workspace.id, payment.status, { provider_fee_amount: planned.feeAmount }, ctx.user.id);
+  if (!written) return fail("Este pago cambió mientras lo corregías. Recargá para verlo.");
+
+  await logAudit({
+    supabase: ctx.supabase, workspaceId: ctx.workspace.id, entityType: "payment", entityId: payment.id, action: "payment.fee_corrected",
+    changes: diffFields({ provider_fee_amount: payment.provider_fee_amount }, { provider_fee_amount: planned.feeAmount }),
+    metadata: { sale_id: sale.id, reason: input.reason.trim() },
+    performedBy: ctx.user.id,
+  });
+  revalidate(sale.id);
+  return { ok: true, feeAmount: planned.feeAmount };
+}
+
 // ── F32: reprogramar ──────────────────────────────────────────────────
 
 export async function reschedulePayment(input: { paymentId: string; newDate: string; reason: string }): Promise<PaymentActionResult<{ status: "scheduled" | "overdue" }>> {
   const loaded = await loadPayment(input.paymentId);
   if (isError(loaded)) return fail(loaded.error);
-  const { ctx, payment, sale, tz, graceDays, enabledMethods } = loaded;
+  const { ctx, payment, sale, tz, graceDays, enabledMethods, methods } = loaded;
   const service = await createServiceClient();
   const result = await rescheduleCore(
-    { service, workspaceId: ctx.workspace.id, payment, sale, tz, graceDays, enabledMethods, actor: { kind: "user", userId: ctx.user.id } },
+    { service, workspaceId: ctx.workspace.id, payment, sale, tz, graceDays, enabledMethods, methods, actor: { kind: "user", userId: ctx.user.id } },
     { newDate: input.newDate, reason: input.reason },
   );
   if (!result.ok) return fail(result.error);
@@ -268,8 +295,8 @@ export async function addPayment(input: { saleId: string; amount: number; dueDat
   if (!sale) return fail("Esta venta no existe o no tenés acceso");
   if (CLOSED_SALE.includes(sale.status)) return fail("Esta venta ya no admite pagos nuevos");
 
-  const { enabledMethods } = settingsOf(ctx);
-  const planned = planAddPayment(input, enabledMethods);
+  const { enabledMethods, methods } = settingsOf(ctx);
+  const planned = planAddPayment(input, enabledMethods, methods);
   if (!planned.ok) return fail(planned.error);
 
   const service = await createServiceClient();

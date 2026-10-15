@@ -48,6 +48,7 @@ export interface RoleFormInput {
   bookingsScope?: PermissionScope;
   callsScope?: PermissionScope;
   salesScope?: PermissionScope;
+  commissionsScope?: PermissionScope;
   tasksScope?: PermissionScope;
 }
 
@@ -61,7 +62,7 @@ export async function createRole(
     name: input.name,
     description: input.description,
     keys: input.keys,
-    scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, tasks: input.tasksScope },
+    scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope },
   });
   if (!checked.ok) return checked;
 
@@ -134,7 +135,7 @@ export async function updateRole(
     name: input.name,
     description: input.description,
     keys: input.keys,
-    scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, tasks: input.tasksScope },
+    scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope },
   });
   if (!checked.ok) return checked;
 

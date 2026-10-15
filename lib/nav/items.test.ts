@@ -121,7 +121,8 @@ describe("Agenda en el menu (F8)", () => {
     const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys }).map((i) => i.name);
     // Plano formularios-ui (D4): Recursos ya no es un item (se llega por Ajustes) y Ajustes pide su bandera,
     // que aca no se pasa: un viewer sin flags no lo ve.
-    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]);
+    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]);
+    // (cambio aprobado M9: «Finanzas» se suma al Member de sistema, que tiene commissions.view)
     // Sin ningun permiso (y sin banderas), no queda nada.
     expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
     // Con la bandera de Ajustes, el Member suma Ajustes (llega a Recursos).
@@ -248,7 +249,7 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(NAV_GROUPS.map((g) => [g.id, NAV_ITEMS.filter((i) => i.group === g.id).map((i) => i.name)])).toEqual([
       ["inicio", ["Dashboards", "Bandeja", "Mi reporte del día"]],
       ["adquisicion", ["Contenido", "Social"]],
-      ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas"]],
+      ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo
       ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]],
     ]);
   });

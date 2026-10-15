@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { partialOffer, planAddPayment, planMarkPaid, planRefund, planReschedule, planRevert, planUncollectible, revertTarget } from "./payments-rules";
+import { partialOffer, planAddPayment, planFeeCorrection, planMarkPaid, planRefund, planReschedule, planRevert, planUncollectible, revertTarget } from "./payments-rules";
 
 const ctx = { saleDate: "2026-10-01", todayLocal: "2026-10-11", timeZone: "America/Costa_Rica", now: new Date("2026-10-11T18:00:00Z"), enabledMethods: ["wise", "binance"] };
 const scheduled = { type: "installment", status: "scheduled", amount: 500, due_date: "2026-10-15" };
@@ -111,5 +111,23 @@ describe("planAddPayment", () => {
     expect(planAddPayment({ amount: 0, dueDate: "2026-11-10" }, ["wise"])).toMatchObject({ ok: false });
     expect(planAddPayment({ amount: 10, dueDate: "x" }, ["wise"])).toMatchObject({ ok: false });
     expect(planAddPayment({ amount: 10, dueDate: "2026-11-10", method: "binance" }, ["wise"])).toMatchObject({ ok: false });
+  });
+});
+
+describe("planFeeCorrection (Extra I, F6)", () => {
+  const paid = { type: "installment", status: "paid", amount: 500 };
+  it("corrige a un monto de cero hasta lo cobrado, con motivo", () => {
+    expect(planFeeCorrection(paid, { feeAmount: 12.5, reason: "el procesador cobró de más" })).toEqual({ ok: true, feeAmount: 12.5 });
+    expect(planFeeCorrection(paid, { feeAmount: 0, reason: "sin cargo" })).toEqual({ ok: true, feeAmount: 0 });
+  });
+  it("rechaza un monto mayor al pago, negativo o vacío, y un motivo vacío", () => {
+    expect(planFeeCorrection(paid, { feeAmount: 500.01, reason: "x" })).toMatchObject({ ok: false });
+    expect(planFeeCorrection(paid, { feeAmount: -1, reason: "x" })).toMatchObject({ ok: false });
+    expect(planFeeCorrection(paid, { feeAmount: "", reason: "x" })).toMatchObject({ ok: false });
+    expect(planFeeCorrection(paid, { feeAmount: 5, reason: "  " })).toMatchObject({ ok: false });
+  });
+  it("solo un cobro que no es reembolso", () => {
+    expect(planFeeCorrection({ ...paid, status: "scheduled" }, { feeAmount: 1, reason: "x" })).toMatchObject({ ok: false });
+    expect(planFeeCorrection({ ...paid, type: "refund" }, { feeAmount: 1, reason: "x" })).toMatchObject({ ok: false });
   });
 });

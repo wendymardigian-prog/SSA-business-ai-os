@@ -596,3 +596,11 @@ Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CH
 **Necesitan la reunión o la venta del disparador, no un contacto suelto**
 
 `cancel_booking`, `set_booking_status` (reunión) y `mark_payment_paid`, `reschedule_payment`, `set_sale_status` (venta) leen `event_booking_id` / `event_sale_id` y los datos del evento. Siguen declarando `needsContact: true` (la reunión y la venta tienen contacto), pero **lo que se le dice a quien edita es otra cosa**: en un flujo que no arrancó por una reunión o una venta (un webhook, un reporte de fin de día, el sistema) el mensaje dice «actúa sobre la reunión (o la venta) que dispara el flujo… solo se puede usar en un flujo que empieza con un disparador de agenda (o de venta)», en lugar de mandar a poner «Crear o actualizar contacto», que no se las da (`TRIGGER_ENTITY_NODES`, `contact-requirement.ts`).
+
+
+## Atribución en los flujos de mensajes (Extra I)
+
+- **Nodo «Enviar mensaje»:** `attribution?: { append, trackClicks }` a nivel nodo (ver [atribucion.md](atribucion.md)). Ausente o con `append` apagado, el mensaje es idéntico al de siempre. Se aplica sobre el mensaje YA adaptado a la plataforma, también en el respaldo por respuesta privada (solo el texto).
+- **Variables de pieza:** `{{content.title}}` y `{{content.code}}` (más los ids `content.social_post_id` y `content.content_post_id`) en los flujos disparados por un comentario (`comment_keyword`), por la respuesta a una historia propia, por un anuncio vinculado a una pieza y por la respuesta a un DM de una automatización. Si no hay pieza, el token queda escrito tal cual (como cualquier variable que no resuelve).
+- **Lo que guarda el saliente:** un DM de un flujo con pieza guarda `messages.origin_context.content = { social_post_id, content_post_id, via: "flow", flow_id, title }`; es lo que usa la herencia de pieza cuando la persona responde.
+- **Jobs nuevos** (registrados en `registerPublishing()`): `finance_daily`, `comment_backfill`, `comment_backfill_workspace` y `commissions_payment`. El de comisiones lo encola el trigger de `payments` (00235, después del merge).

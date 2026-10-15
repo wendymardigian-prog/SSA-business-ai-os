@@ -3,9 +3,11 @@
  * RELEE el catálogo (price_changed), que pasa por la RPC con el cliente de servicio y que el
  * alta del contacto usa find_contact_by_phone_or_email (nunca find_or_link_contact).
  */
+import { paymentMethodsFixture } from "@/lib/sales/test-support/payment-methods";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
+import { memoryRecordTouch } from "@/lib/sales/test-support/touch-rpc";
 
 const WS = "ws-1";
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -26,7 +28,7 @@ vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => null) }));
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
     user: { id: ME },
-    workspace: { id: WS, timezone: "America/Costa_Rica", enabled_payment_methods: ["wise", "binance"], max_discount_percent: null },
+    workspace: { id: WS, timezone: "America/Costa_Rica", payment_methods: paymentMethodsFixture(["wise", "binance"]), max_discount_percent: null },
     role, roleId, supabase: db.client,
   }),
 }));
@@ -40,6 +42,8 @@ vi.mock("@/lib/supabase/server", () => ({
         if (centralResult.error) return { data: null, error: centralResult.error };
         return { data: centralResult.data ?? memoryCentralRpc(args, db), error: null };
       }
+      // La funcion de la base que registra un toque (Extra I, F47), en memoria.
+      if (name === "record_contact_touch") return { data: memoryRecordTouch(args, db), error: null };
       return { data: rpcResult.data ?? null, error: rpcResult.error ?? null };
     },
   }),
@@ -180,5 +184,71 @@ describe("createContactForSale", () => {
   it("sin email ni teléfono se rechaza", async () => {
     expect(await createContactForSale({ name: "Dani" })).toMatchObject({ ok: false });
     expect(rpcCalls).toHaveLength(0);
+  });
+});
+
+describe("createSale con «Cargar a mano» por canal (Extra I, F47)", () => {
+  const PIECE = U(50);
+  const FOREIGN_PIECE = U(51);
+  const KEY = "wizard-key-0001";
+  const organic = { mode: "manual_channel", choice: { kind: "organic", network: "instagram", piece: { contentPostId: PIECE, title: "Titulo del navegador" } }, label: "x" };
+
+  beforeEach(() => {
+    db.rows("content_posts").push({ id: PIECE, workspace_id: WS, title: "Reel: 3 errores", deleted_at: null }, { id: FOREIGN_PIECE, workspace_id: "ws-otro", title: "Ajena", deleted_at: null });
+    db.rows("contact_touches").length = 0;
+  });
+
+  const createCall = () => rpcCalls.find((c) => c.name === "create_sale");
+
+  it("el servidor crea el toque manual y la venta se atribuye a él en modo touch (no se toca create_sale)", async () => {
+    const r = await createSale(valid({ attribution: organic, idempotencyKey: KEY }) as never);
+    expect(r).toEqual({ ok: true, id: "sale-1" });
+
+    const touches = db.rows("contact_touches");
+    expect(touches).toHaveLength(1);
+    expect(touches[0]).toMatchObject({ contact_id: CONTACT, origin: "manual", channel: "organic", content_post_id: PIECE, content_label: "Reel: 3 errores", dedupe_key: `sale-manual:${KEY}`, occurred_at: expect.stringContaining("2026-10-01T18:00:00") });
+    const payload = createCall()!.args.p_payload as { attribution: unknown };
+    expect(payload.attribution).toEqual({ mode: "touch", touch_id: touches[0].id });
+  });
+
+  it("doble clic en «Crear venta»: la misma clave deja UN solo toque", async () => {
+    await createSale(valid({ attribution: organic, idempotencyKey: KEY }) as never);
+    await createSale(valid({ attribution: organic, idempotencyKey: KEY }) as never);
+    expect(db.rows("contact_touches")).toHaveLength(1);
+    const touchIds = rpcCalls.filter((c) => c.name === "create_sale").map((c) => (c.args.p_payload as { attribution: { touch_id: string } }).attribution.touch_id);
+    expect(new Set(touchIds).size).toBe(1);
+  });
+
+  it("una pieza de otro workspace se rechaza: no hay toque ni venta", async () => {
+    const r = await createSale(valid({ attribution: { mode: "manual_channel", choice: { kind: "organic", network: "instagram", piece: { contentPostId: FOREIGN_PIECE } } }, idempotencyKey: KEY }) as never);
+    expect(r).toMatchObject({ ok: false, code: "invalid_manual", error: "Esa pieza no existe" });
+    expect(db.rows("contact_touches")).toHaveLength(0);
+    expect(createCall()).toBeUndefined();
+  });
+
+  it("una venta que no pasa las reglas (el plan no cuadra) no deja un toque huérfano", async () => {
+    const r = await createSale(valid({ attribution: organic, idempotencyKey: KEY, payments: [{ type: "full", amount: 1000, status: "scheduled", date: "2026-11-01" }] }) as never);
+    expect(r).toMatchObject({ ok: false, code: "plan_unbalanced" });
+    expect(db.rows("contact_touches")).toHaveLength(0);
+  });
+
+  it("una elección con forma inválida se rechaza antes de tocar nada", async () => {
+    const r = await createSale(valid({ attribution: { mode: "manual_channel", choice: { kind: "event", name: "" } } }) as never);
+    expect(r).toMatchObject({ ok: false, code: "invalid" });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("sin sales.manage no se crea ni el toque", async () => {
+    role = "member";
+    roleId = "rol-1";
+    db.rows("workspace_roles").push({ id: "rol-1", workspace_id: WS, system_role: null, permissions: { keys: ["sales.view"], scopes: {} } });
+    expect(await createSale(valid({ attribution: organic, idempotencyKey: KEY }) as never)).toMatchObject({ ok: false });
+    expect(db.rows("contact_touches")).toHaveLength(0);
+  });
+
+  it("los otros modos siguen igual: last_touch no crea ningún toque", async () => {
+    await createSale(valid() as never);
+    expect(db.rows("contact_touches")).toHaveLength(0);
+    expect((createCall()!.args.p_payload as { attribution: unknown }).attribution).toEqual({ mode: "last_touch" });
   });
 });

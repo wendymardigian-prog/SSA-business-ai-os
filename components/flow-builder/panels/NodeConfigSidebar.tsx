@@ -7,6 +7,7 @@ import type { Edge, Node } from "@xyflow/react";
 
 import { TriggerPanel } from "./TriggerPanel";
 import { SendMessagePanel } from "./SendMessagePanel";
+import type { AttributionDefaults } from "@/lib/attribution/panel-view";
 import { ConditionPanel } from "./ConditionPanel";
 import { DelayPanel } from "./DelayPanel";
 import { ActionPanel } from "./ActionPanel";
@@ -21,6 +22,10 @@ import { SALES_VARIABLE_KEYS } from "@/lib/sales/automation/variables";
 interface NodeConfigSidebarProps {
   /** El flujo que se edita (el panel de Condiciones le pide al servidor los campos comparables). */
   flowId: string;
+  /** El nombre del flujo tal como se está editando (el ejemplo de atribución lo usa). */
+  flowName?: string;
+  /** Los valores por defecto de atribución del negocio. */
+  attributionDefaults?: AttributionDefaults;
   node: Node;
   nodes: Node[];
   edges: Edge[];
@@ -46,6 +51,8 @@ function getUpstreamNodeIds(nodeId: string, edges: Edge[]): Set<string> {
   return upstream;
 }
 
+import { CONTENT_VARIABLE_KEYS } from "@/lib/attribution/content-variables";
+
 function getFlowVariables({
   node,
   nodes,
@@ -61,7 +68,7 @@ function getFlowVariables({
   const triggerType = (triggerNode?.data as Record<string, unknown> | undefined)
     ?.triggerType as string | undefined;
   if (triggerType === "comment_keyword") {
-    variables.push("comment_id", "comment_text", "commenter_name", "post_id");
+    variables.push("comment_id", "comment_text", "commenter_name", "post_id", ...CONTENT_VARIABLE_KEYS);
   }
   // Ventas: la venta, el contacto y, si el disparador es de un pago, el pago (las mismas que ofrece el esquema de condiciones).
   if (isSalesTriggerType(triggerType)) {
@@ -141,7 +148,7 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
   },
 };
 
-export function NodeConfigSidebar({ flowId, node, nodes, edges, onChange, onClose, onDelete, onConvert }: NodeConfigSidebarProps) {
+export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node, nodes, edges, onChange, onClose, onDelete, onConvert }: NodeConfigSidebarProps) {
   const nodeType = node.type || "action";
   const config = nodeTypeConfig[nodeType] || nodeTypeConfig.action;
   const Icon = config.icon;
@@ -173,15 +180,28 @@ export function NodeConfigSidebar({ flowId, node, nodes, edges, onChange, onClos
 
   function renderPanel() {
     const data = node.data as Record<string, unknown>;
+    const triggerData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
     switch (nodeType) {
       case "trigger":
         return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} sendsMessages={flowSendsMessages(nodes)} />;
       case "sendMessage":
         return (
           <SendMessagePanel
+            key={node.id}
             data={data}
             onChange={handleChange}
             availableVariables={getFlowVariables({ node, nodes, edges })}
+            attributionContext={
+              attributionDefaults
+                ? {
+                    flowId,
+                    flowName: flowName ?? "",
+                    defaults: attributionDefaults,
+                    triggerType: triggerData?.triggerType as string | undefined,
+                    storyReply: triggerData?.storyReply === true,
+                  }
+                : undefined
+            }
           />
         );
       case "condition":

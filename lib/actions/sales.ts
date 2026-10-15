@@ -1,5 +1,6 @@
 "use server";
 
+import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { snapshotProductId } from "@/lib/sales/sale-text";
@@ -12,6 +13,7 @@ import { isProductStatus } from "@/lib/content/taxonomy";
 import { LOCKED_REASON, hasEditConflict, isLockedForEdit, lockedEditError, planRepricing, type EditField } from "@/lib/sales/edit";
 import { resolveSaleAttribution, TOUCH_COLUMNS, type TouchRow } from "@/lib/sales/attribution";
 import { attributionRequestSchema } from "@/lib/sales/create";
+import { registerManualSaleTouch } from "@/lib/sales/manual-touch";
 import { diffFields } from "@/lib/audit";
 import { validatePlanBalances } from "@/lib/sales/payment-plan";
 import { applySaleRules, createSaleInputSchema, mapCreateSaleError, type CreateSaleInput, type SaleCode } from "@/lib/sales/create";
@@ -96,13 +98,18 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
   // 3. Las reglas del servidor: descuento, fechas, métodos, alcance y cuadre.
   const w = workspace as unknown as {
     timezone?: string;
-    enabled_payment_methods?: string[];
     max_discount_percent?: number | null;
   };
-  const ruled = applySaleRules(input, {
+  const methods = workspaceMethods(workspace);
+  // `manual_channel` (F47): el toque se crea DESPUES de validar todo lo demas (una venta rechazada no deja un toque
+  // huerfano). Para las reglas alcanza con un valor neutro: el modo real se pone al armar el payload.
+  const manualChannel = input.attribution.mode === "manual_channel" ? input.attribution : null;
+  const rulesInput = manualChannel ? { ...input, attribution: { mode: "last_touch" as const } } : input;
+  const ruled = applySaleRules(rulesInput, {
     timeZone: w.timezone ?? "UTC",
     now: new Date(),
-    enabledMethods: w.enabled_payment_methods ?? [],
+    enabledMethods: methods.enabledKeys,
+    methods: methods.defs,
     maxDiscountPercent: w.max_discount_percent == null ? null : Number(w.max_discount_percent),
     hasAllScope: ctx.role === "owner" || ctx.role === "admin" || ctx.scope("sales") === "all",
     userId: user.id,
@@ -113,8 +120,23 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
 
   // 4. Una transacción en la base: venta + pagos + estado + eventos + auditoría.
   const service = await createServiceClient();
+  let payload: Record<string, unknown> = ruled.payload;
+  if (manualChannel) {
+    // El servidor crea el toque (origin = 'manual', mediodia del dia de la venta) y la venta se atribuye a el.
+    // La clave es la del asistente: enviar dos veces la misma venta deja UN solo toque.
+    const touch = await registerManualSaleTouch(service, {
+      workspaceId: workspace.id,
+      contactId: input.contactId,
+      choice: manualChannel.choice,
+      saleDate: input.saleDate,
+      timeZone: w.timezone ?? "UTC",
+      saleKey: input.idempotencyKey ?? globalThis.crypto.randomUUID(),
+    });
+    if (!touch.ok) return fail("invalid_manual", touch.error);
+    payload = { ...payload, attribution: { mode: "touch", touch_id: touch.touchId } };
+  }
   const { data, error } = await service.rpc("create_sale", {
-    p_payload: { ...ruled.payload, workspace_id: workspace.id } as unknown as Json,
+    p_payload: { ...payload, workspace_id: workspace.id } as unknown as Json,
     p_actor_id: user.id,
   });
   if (error) {
@@ -252,7 +274,7 @@ export interface UpdateSaleInput {
 }
 
 const SALE_COLUMNS =
-  "id, workspace_id, contact_id, status, financing_type, base_amount, discount_amount, final_amount, discount_reason, product_snapshot, product_variant_id, setter_id, vendedor_id, attribution, attribution_touch_id, attribution_type, notes, service_starts_at, plan_unbalanced, updated_at";
+  "id, workspace_id, contact_id, status, financing_type, sale_date, base_amount, discount_amount, final_amount, discount_reason, product_snapshot, product_variant_id, setter_id, vendedor_id, attribution, attribution_touch_id, attribution_type, notes, service_starts_at, plan_unbalanced, updated_at";
 
 /**
  * Edita una venta. Pide `sales.manage` y que la persona VEA la venta (RLS). Una venta
@@ -312,9 +334,25 @@ export async function updateSale(input: UpdateSaleInput): Promise<SaleActionResu
     const request = attributionRequestSchema.safeParse(input.attribution);
     if (!request.success) return fail2("invalid", "La atribución no es válida");
     const contactId = (patch.contact_id as string | undefined) ?? sale.contact_id;
+    // `manual_channel` (F47): se crea el toque con la fecha de la venta y la venta pasa a apuntar a el.
+    let touchRequest: Parameters<typeof resolveSaleAttribution>[0];
+    if (request.data.mode === "manual_channel") {
+      const created = await registerManualSaleTouch(await createServiceClient(), {
+        workspaceId: workspace.id,
+        contactId,
+        choice: request.data.choice,
+        saleDate: sale.sale_date,
+        timeZone: (workspace as unknown as { timezone?: string }).timezone ?? "UTC",
+        saleKey: sale.id,
+      });
+      if (!created.ok) return fail2("invalid", created.error);
+      touchRequest = { mode: "touch", touchId: created.touchId };
+    } else {
+      touchRequest = request.data.mode === "touch" ? { mode: "touch", touchId: request.data.touchId } : request.data.mode === "manual" ? { mode: "manual", manual: request.data.manual } : { mode: "last_touch" };
+    }
     const { data: touches } = await supabase.from("contact_touches").select(TOUCH_COLUMNS).eq("contact_id", contactId).eq("workspace_id", workspace.id);
     const resolved = resolveSaleAttribution(
-      request.data.mode === "touch" ? { mode: "touch", touchId: request.data.touchId } : request.data.mode === "manual" ? { mode: "manual", manual: request.data.manual } : { mode: "last_touch" },
+      touchRequest,
       { attribution: null },
       (touches ?? []) as unknown as TouchRow[],
     );

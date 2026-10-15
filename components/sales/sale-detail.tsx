@@ -7,15 +7,18 @@ import { PageHeader } from "@/components/page-header";
 import { Historial } from "@/components/historial/historial";
 import { CancelDialog, RebuildPlanDialog } from "@/components/sales/sale-action-dialogs";
 import { SaleEditDialog, type EditableSale } from "@/components/sales/sale-edit-dialog";
+import { SaleOrigin } from "@/components/sales/sale-origin";
 import { StatusChip } from "@/components/sales/sales-list";
 import type { WizardConfig, WizardMember } from "@/components/sales/wizard/types";
 import { describeAttribution, type SaleAttribution } from "@/lib/sales/attribution";
+import type { SaleAttributionViewModel } from "@/lib/sales/attribution-view";
 import type { SaleNumbers } from "@/lib/sales/detail";
 import { isLockedForEdit } from "@/lib/sales/edit";
 import { formatMoney } from "@/lib/sales/format";
 import { ATTRIBUTION_TYPE_LABELS, FINANCING_TYPE_LABELS, PAYMENT_TYPE_LABELS, paymentStatusLabel, type AttributionType, type FinancingType, type PaymentType } from "@/lib/sales/labels";
 import { PaymentPlan } from "@/components/sales/payment-plan";
 import type { TablePayment } from "@/lib/sales/payment-table";
+import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 
 export interface SaleDetailData {
   sale: {
@@ -56,6 +59,11 @@ export interface SaleDetailData {
   canManage: boolean;
   canManagePayments: boolean;
   enabledMethods: string[];
+  methods: PaymentMethodDef[];
+  /** De donde vino la venta (F49), armado en el servidor con la sesion de quien mira. */
+  origin: SaleAttributionViewModel;
+  /** Con `commissions.manage`: ofrece «Ajustar comisiones de este reembolso» en los reembolsos cobrados (Extra I, F64). */
+  canAdjustCommissions?: boolean;
 }
 
 function formatDate(date: string | null): string {
@@ -68,9 +76,11 @@ function formatDate(date: string | null): string {
  * La ficha de una venta (F26): cabecera con los números, datos, plan de pagos (solo lectura en
  * este bloque), contratos e historial. Las acciones solo aparecen con `sales.manage`.
  */
-export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; wizard: WizardConfig; contracts?: React.ReactNode }) {
+export function SaleDetail({ data, wizard, contracts, commissions }: { data: SaleDetailData; wizard: WizardConfig; contracts?: React.ReactNode; commissions?: React.ReactNode }) {
   const { sale, payments, numbers, contact } = data;
   const [dialog, setDialog] = useState<"edit" | "cancel" | "subscription" | "rebuild" | null>(null);
+  // «Cambiar» en «De dónde vino» abre la edicion con la atribucion ya desplegada.
+  const [editAttribution, setEditAttribution] = useState(false);
   const closed = isLockedForEdit(sale.status) || sale.status === "subscription_cancelled";
   const isSubscription = sale.financing_type === "subscription";
   const attribution = sale.attribution_type === "none" ? null : (sale.attribution as SaleAttribution | null);
@@ -107,7 +117,7 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
         right={
           data.canManage ? (
             <div className="flex shrink-0 items-center gap-2">
-              <button type="button" onClick={() => setDialog("edit")} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent" aria-label="Editar la venta">
+              <button type="button" onClick={() => { setEditAttribution(false); setDialog("edit"); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent" aria-label="Editar la venta">
                 <Pencil className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Editar</span>
               </button>
               {!closed && !isSubscription && (
@@ -176,6 +186,14 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
             </dl>
           </Section>
 
+          <Section title="De dónde vino">
+            <SaleOrigin
+              view={data.origin}
+              timeZone={data.timeZone}
+              onChange={data.canManage && !isLockedForEdit(sale.status) ? () => { setEditAttribution(true); setDialog("edit"); } : undefined}
+            />
+          </Section>
+
           <PaymentPlan
             saleId={sale.id}
             saleDate={sale.sale_date}
@@ -185,12 +203,16 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
             saleStatus={sale.status}
             canManage={data.canManagePayments}
             enabledMethods={data.enabledMethods}
+            methods={data.methods}
             today={data.today}
             timeZone={data.timeZone}
             names={data.names}
+            canAdjustCommissions={data.canAdjustCommissions}
           />
 
           {contracts}
+
+          {commissions}
 
           <Section title="Historial">
             <Historial entityType="sale" entityId={sale.id} names={{ users: data.names }} timeZone={data.timeZone} />
@@ -198,7 +220,7 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
         </div>
       </div>
 
-      {dialog === "edit" && <SaleEditDialog sale={editable} contactName={contact?.name ?? "Contacto"} config={wizard} onClose={() => setDialog(null)} />}
+      {dialog === "edit" && <SaleEditDialog sale={editable} contactName={contact?.name ?? "Contacto"} config={wizard} openAttribution={editAttribution} onClose={() => setDialog(null)} />}
       {dialog === "cancel" && <CancelDialog saleId={sale.id} kind="sale" hasCollected={hasCollected} onClose={() => setDialog(null)} />}
       {dialog === "subscription" && <CancelDialog saleId={sale.id} kind="subscription" hasCollected={false} onClose={() => setDialog(null)} />}
       {dialog === "rebuild" && <RebuildPlanDialog saleId={sale.id} finalAmount={numbers.total} paidAmount={numbers.paid} today={data.today} onClose={() => setDialog(null)} />}

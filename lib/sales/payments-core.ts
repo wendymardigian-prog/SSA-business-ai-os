@@ -10,6 +10,7 @@ import type { Database } from "@/lib/types/database";
 import { auditAsSystem, diffFields, logAudit } from "@/lib/audit";
 import { localToday } from "./dates";
 import { planMarkPaid, planReschedule, type PartialOffer } from "./payments-rules";
+import type { PaymentMethodDef } from "./payment-methods";
 import { refreshContactPaymentHealth } from "./payment-health-run";
 import { syncPaymentRelativeJobs } from "./automation/relative";
 
@@ -47,6 +48,8 @@ export interface CoreContext {
   tz: string;
   graceDays: number;
   enabledMethods: readonly string[];
+  /** Los métodos del negocio con su comisión; sin esto, el catálogo de arranque. */
+  methods?: readonly PaymentMethodDef[];
   actor: Actor;
 }
 
@@ -92,7 +95,7 @@ export async function markPaidCore(c: CoreContext, input: MarkPaidCoreInput): Pr
   const today = localToday(now, c.tz);
   const planned = planMarkPaid(
     { amount: input.amount ?? c.payment.amount, paidOn: input.paidOn ?? today, method: input.method, notes: input.notes },
-    { payment: c.payment, saleDate: c.sale.sale_date, todayLocal: today, timeZone: c.tz, now, enabledMethods: c.enabledMethods },
+    { payment: c.payment, saleDate: c.sale.sale_date, todayLocal: today, timeZone: c.tz, now, enabledMethods: c.enabledMethods, methods: c.methods },
   );
   if (!planned.ok) return fail(planned.error);
 

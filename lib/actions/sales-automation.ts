@@ -2,6 +2,7 @@
 
 import { getWorkspace } from "@/lib/workspace";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
+import { workspaceMethods } from "@/lib/sales/workspace-methods";
 
 /**
  * Las opciones de los filtros de los triggers de Ventas en el editor de flujos (plano F37):
@@ -11,6 +12,8 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 export interface SalesTriggerOptions {
   products: Array<{ id: string; name: string }>;
   members: Array<{ id: string; name: string }>;
+  /** Los métodos de pago del negocio (activos o no: un disparador puede filtrar por uno viejo). */
+  methods: Array<{ key: string; name: string }>;
 }
 
 export async function loadSalesTriggerOptions(): Promise<SalesTriggerOptions> {
@@ -22,5 +25,6 @@ export async function loadSalesTriggerOptions(): Promise<SalesTriggerOptions> {
   return {
     products: (products.data ?? []).map((p) => ({ id: p.id, name: p.name })),
     members: members.map((m) => ({ id: m.userId, name: m.name })),
+    methods: workspaceMethods(workspace).defs.map((m) => ({ key: m.key, name: m.name })),
   };
 }

@@ -87,7 +87,7 @@ export function Step1Contact({
 
       <section aria-label="Atribución" className="space-y-1.5">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">De dónde vino</h3>
-        <AttributionField contactId={values.contact?.id ?? null} value={values.attribution} onChange={(a) => onChange({ attribution: a })} timeZone={config.timeZone} disabled={!values.contact} />
+        <AttributionField contactId={values.contact?.id ?? null} value={values.attribution} onChange={(a) => onChange({ attribution: a })} timeZone={config.timeZone} disabled={!values.contact} members={config.members} />
         {contactContext && (
           <p className="text-[11px] text-muted-foreground">
             Va a quedar como: {ATTRIBUTION_TYPE_TEXT[draftAttributionType(values.attribution, contactContext.touchCount)]}.

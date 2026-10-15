@@ -518,7 +518,7 @@ export default async function ContactDetailPage({
 
             {contactForms && <ContactFormsSection rows={contactForms.rows} total={contactForms.total} contactId={contact.id} timeZone={viewerTimezone} />}
 
-            <AttributionSection view={attributionView} />
+            <AttributionSection view={attributionView} contactId={contact.id} />
 
             <HistorySection items={history} />
           </div>

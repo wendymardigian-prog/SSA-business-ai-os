@@ -265,3 +265,61 @@ describe("recordInboundTouch (F85)", () => {
     await expect(recordInboundTouch(db.client as never, params())).resolves.toBeUndefined();
   });
 });
+
+describe("la pieza de una historia y la herencia de una automatización (Extra I, F33 y F35)", () => {
+  const SP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const CP = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const CONTACT = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const calls: Array<Record<string, unknown>> = [];
+
+  function world(seed: Record<string, Array<Record<string, unknown>>> = {}) {
+    calls.length = 0;
+    return memoryDb(
+      { messages: [], social_posts: [], content_posts: [], ...seed },
+      { rpc: { record_contact_touch: (args) => (calls.push(args), { inserted: true }) } },
+    ).client as never;
+  }
+  const base: InboundTouchParams = {
+    workspaceId: "ws-1", contactId: CONTACT, conversationId: "conv-1", platform: "instagram", contactExisted: true,
+    messageAt: AT, platformMessageId: "m-200", messageId: "msg-row-200",
+  };
+  const touch = () => calls[0]?.p_touch as Record<string, unknown> | undefined;
+  const stories = [{ id: SP, workspace_id: "ws-1", platform: "instagram", external_post_id: "story-9", content_post_id: CP, caption: "x", deleted_at: null }];
+
+  it("F33: la respuesta a una historia publicada por el sistema deja el toque con la publicación y la pieza", async () => {
+    await recordInboundTouch(world({ social_posts: stories, content_posts: [{ id: CP, workspace_id: "ws-1", title: "Historia del lunes" }] }), { ...base, storyId: "story-9" });
+    expect(touch()).toMatchObject({ medium: "story_reply", social_post_id: SP, content_post_id: CP, content: "Historia del lunes" });
+  });
+
+  it("F33: con una historia desconocida el toque queda como hoy (sin pieza)", async () => {
+    await recordInboundTouch(world({ social_posts: stories }), { ...base, storyId: "story-desconocida" });
+    expect(touch()).toMatchObject({ medium: "story_reply" });
+    expect(touch()?.social_post_id).toBeUndefined();
+    expect(touch()?.content_post_id).toBeUndefined();
+  });
+
+  it("F33: si el receptor ya resolvió la pieza, no se vuelve a consultar", async () => {
+    await recordInboundTouch(world(), { ...base, storyId: "story-9", storyPiece: { socialPostId: SP, contentPostId: CP, title: "Ya resuelta" } });
+    expect(touch()).toMatchObject({ social_post_id: SP, content_post_id: CP, content: "Ya resuelta" });
+  });
+
+  const inherited = { content_post_id: CP, social_post_id: SP, via: "automation_reply" as const, outbound_message_id: "out-1", title: "Reel de dólares" };
+
+  it("F35: una respuesta que hereda la pieza deja UN toque, aunque el contacto ya existiera, con la clave del DM respondido", async () => {
+    await recordInboundTouch(world(), { ...base, inherited });
+    expect(calls).toHaveLength(1);
+    expect(touch()).toMatchObject({ source: "instagram", medium: "dm", origin: "dm", dedupe_key: "content-reply:out-1", content_post_id: CP, social_post_id: SP, content: "Reel de dólares" });
+  });
+
+  it("F35: tres respuestas al mismo DM comparten la clave (el índice único deja un toque)", async () => {
+    for (const id of ["m-1", "m-2", "m-3"]) await recordInboundTouch(world(), { ...base, platformMessageId: id, inherited });
+    expect(calls.map((c) => (c.p_touch as Record<string, unknown>).dedupe_key)).toEqual(["content-reply:out-1"]);
+  });
+
+  it("F35: si el mensaje trae un anuncio, gana el anuncio", async () => {
+    const referral = { adId: "ad-1", ctwaClid: null, sourceType: "ad", sourceUrl: null, title: null, ref: null };
+    await recordInboundTouch(world(), { ...base, inherited, referral });
+    expect(touch()).toMatchObject({ medium: "paid_social", ad_id: "ad-1" });
+    expect(touch()?.content_post_id).toBeUndefined();
+  });
+});

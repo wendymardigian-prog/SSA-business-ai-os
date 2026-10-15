@@ -82,6 +82,9 @@ export async function executeFlow(
     adTitle: context.incomingMessage.adTitle,
   });
   if (messageOrigin) context.variables.message_origin ??= messageOrigin;
+  // La pieza de la que vino el mensaje (Extra I, F34): `{{content.title}}`, `{{content.code}}`. Un disparador de comentario
+  // ya la trae en `variables.content`; no se pisa.
+  if (context.incomingMessage.content) context.variables.content ??= context.incomingMessage.content;
 
   // Check for active session waiting for input
   const activeSession = await findWaitingSession(supabase, {

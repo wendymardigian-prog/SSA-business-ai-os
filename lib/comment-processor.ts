@@ -6,6 +6,7 @@ import type { TriggerRow } from "@/lib/flow-engine/registry/types";
 import { createZernioClient } from "@/lib/zernio-client";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
+import { resolveContentForPost } from "@/lib/attribution/content-variables";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type Trigger = Database["public"]["Tables"]["triggers"]["Row"];
@@ -217,6 +218,8 @@ export async function processComment({
             comment_text: comment.text,
             commenter_name: senderName,
             post_id: comment.postId,
+            // La pieza comentada (Extra I, F34): `{{content.title}}`. Null si la publicación no es de este sistema.
+            content: await resolveContentForPost(supabase, { workspaceId: channel.workspace_id, platform: channel.platform, externalPostId: comment.postId }),
           },
         });
         dmSent = true;

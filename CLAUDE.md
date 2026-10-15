@@ -315,6 +315,8 @@ La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e
 
 Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`.
 
+**Extra I (15/10/2026).** `00224` a `00232` estan **aplicadas y registradas** (metodos de pago, gastos y finanzas, atribucion organica y comisiones); `00233`, `00234` y `00235` estan escritas y ensayadas pero **se aplican DESPUES del merge** (ver las cuatro secciones del Extra I mas abajo). **La proxima libre es la `00236`.**
+
 **Permisos de tablas en un proyecto nuevo (15/10/2026).** Desde el 30/5/2026 Supabase no le da acceso automatico a las tablas nuevas de `public` a `anon`, `authenticated` y `service_role` (el 30/10/2026 el cambio llega a los proyectos existentes, solo para objetos nuevos). Las migraciones viejas se escribieron con el comportamiento anterior (casi sin `GRANT`, con ~230 `REVOKE ALL`), asi que la **`00000_default_privileges`** restaura el acceso por defecto ANTES de crear ninguna tabla y deja los permisos como en produccion. Es la primera migracion; en una base que ya existe se marca con `supabase migration repair --status applied 00000`. **Desde la `00224`, cada migracion que crea una tabla declara sus `GRANT`** (a `service_role` siempre, y a `authenticated`/`anon` lo que corresponda): `lib/migrations-grants.test.ts` lo exige. Ese test tambien prohibe un tipo de extension sin esquema (`vector(N)` en vez de `extensions.vector(N)`): la CLI (`db push`) no tiene `extensions` en su `search_path` y el panel si; asi fallo la `00083` en el primer cliente de prueba. El `/setup` comprueba el acceso de la app a las tablas justo despues de aplicar las migraciones.
 
 # Etapa 2 (construida)
@@ -361,7 +363,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 
 # Equipo, roles y permisos (construido, 14/10/2026)
 
-74 claves, cada una con su guard en la pagina, en la accion y en la base. Invitar por email o por link, historial, roles con guardado automatico y reglas de seguridad de quien puede dar que. Resumen y "como sumar una clave en 5 pasos" en [docs/roles.md](docs/roles.md); plano en `docs/requerimientos-equipo-roles.md`; avance y decisiones en `docs/PROGRESS-equipo-roles.md` y `docs/PENDIENTE-equipo-roles.md`.
+78 claves, cada una con su guard en la pagina, en la accion y en la base. Invitar por email o por link, historial, roles con guardado automatico y reglas de seguridad de quien puede dar que. Resumen y "como sumar una clave en 5 pasos" en [docs/roles.md](docs/roles.md); plano en `docs/requerimientos-equipo-roles.md`; avance y decisiones en `docs/PROGRESS-equipo-roles.md` y `docs/PENDIENTE-equipo-roles.md`.
 
 ## Lo que no se puede romper
 
@@ -377,7 +379,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 - **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
 - **La bandeja respeta el canal**: `inbox.<canal>.view` filtra lo que se ve y `inbox.<canal>.reply` habilita el composer, `POST /api/v1/messages` (403 sin llamar al proveedor) y los borradores del agente.
-- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones". Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
+- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones". Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
 
 ## Migraciones (00208 a 00214, todas aplicadas y registradas)
 
@@ -1298,6 +1300,80 @@ canonico (si va antes, el proximo sync con el codigo viejo vuelve a escribir los
 - **El lienzo guarda DIRECTO en `flows`** (no por la API): la validacion de `PUT` no lo alcanza (ver `docs/PENDIENTE-atribucion.md`).
 - **`verify-ads-attribution` corre `ANALYZE` antes de medir** los 10.000 toques: sin estadisticas del planificador la misma consulta daba 150 o 350 ms segun el
   momento del autoanalisis. El umbral de 300 ms no se toco.
+
+# Métodos de pago (Extra I, bloque MP, 15/10/2026)
+
+Los métodos de pago pasaron de una lista fija a `workspaces.payment_methods` (jsonb), con la comisión del procesador de cada uno. Resumen en [docs/ventas.md](docs/ventas.md); avance y decisiones en `docs/PROGRESS-extra-i.md` y `docs/PENDIENTE-extra-i.md`.
+
+## Lo que no se puede romper
+
+- **Un solo lector:** todo el código obtiene los métodos con `workspaceMethods(workspace)` (`lib/sales/workspace-methods.ts`). `enabled_payment_methods` quedó sin leerse y un test de frontera (`enabled-methods-boundary.test.ts`) falla si algo lo vuelve a leer. Los métodos no se borran: se desactivan (un pago viejo conserva el suyo).
+- **El pago congela la comisión al cobrar:** `provider_fee_percent`, `provider_fee_fixed` y `provider_fee_amount`; la reversión de un cobro los limpia, el reembolso los deja en null. Cambiar la comisión de un método no toca lo ya cobrado. Whop arranca en 0 % hasta que se cargue el real.
+- **La base valida el método** (`payments_validate_method`, `PM001`) y un trigger copia % y fijo del snapshot de la opción de pago cuando el pago nace cobrado, porque `create_sale` (protegida) no los inserta.
+- `lib/sales/payments-fee-characterization.test.ts` fija el cálculo con fee distinto de cero; sus aserciones no se tocan.
+
+## Migración
+
+`00224` (aplicada y registrada).
+
+# Gastos y Finanzas (Extra I, bloques G1 a G3, 15/10/2026)
+
+Gastos, proveedores, gastos que se repiten, gastos automáticos (comisiones de procesadores y pauta de Meta) y el Resumen. Resumen en [docs/finanzas.md](docs/finanzas.md).
+
+## Lo que no se puede romper
+
+- **Tres tablas y una columna:** `expenses`, `recurring_expenses`, `vendors` y `workspaces.finance_settings` (categorías y configuración de lo automático). Nada se borra (se anula, se pausa, se archiva); no hay política de DELETE. `expenses_guard` impide que una persona dé de alta algo que no sea `manual`/`adjustment`, que cambie el origen, que edite un anulado o un pagado, o el monto de un automático no pagado o de una liquidación de comisiones.
+- **Plata en céntimos enteros, USD, fechas civiles en la zona del negocio.** Un dato que no existe es «—», nunca 0.
+- **El trabajo diario es el job `finance_daily`** (`private.enqueue_finance_daily`, 00228; sin `app/api/cron` ni `call_app_cron`). Cinco pasos, cada uno en su `try`; si alguno falla el job lanza al final. **El `cron.schedule` es la 00233, que se aplica DESPUÉS del merge.** «Calcular ahora» encola uno a mano.
+- **Idempotencia por índice único** (`(recurring_expense_id, scheduled_date)` y `(workspace_id, auto_key)`); un automático se recalcula entero (nunca «se le suma lo nuevo»). Su decisión vive en la base (`upsert_auto_expense`) y en `decideAutoExpenseAction`, con los mismos casos (`auto-expenses.cases.json`).
+- **Un automático ya pagado cuyo total cambia no se toca:** se marca la diferencia y la persona elige crear un ajuste o ignorarla.
+- **El Resumen** lee pagos y ventas en el servidor (después de `expenses.view`) y al navegador solo viajan agregados. No usa `recharts`.
+- **El historial de Finanzas** es la política adicional `audit_log_select_finance` (00227); `audit_log_select` no se reescribe.
+
+## Migraciones
+
+`00225` a `00229` aplicadas y registradas. `00233` (el cron): **escrita y ensayada, sin aplicar**.
+
+# Atribución orgánica (Extra I, bloques AO1 a AO3, 15/10/2026)
+
+Qué contenido trajo a cada persona y por qué canal, con links que se miden. Resumen en [docs/atribucion.md](docs/atribucion.md) (sección «Atribución orgánica»).
+
+## Lo que no se puede romper
+
+- **El canal de un toque** (`organic|paid|referral|direct`) lo calcula un trigger con `public.touch_channel`, gemela de `lib/attribution/channel.ts`; los 54 casos de `channel.cases.json` corren contra las dos. `record_contact_touch` NO escribe el canal (está protegida): sale siempre del `medium` y los ids del toque. `fbclid` solo no alcanza para pauta.
+- **Los dos triggers nuevos de `contact_touches` (`contact_touches_content_code`, `contact_touches_zz_channel`) nunca pueden costar un toque:** `EXCEPTION WHEN OTHERS` (probado forzando el error). Corren en el orden `content_code` < `meta_match` < `zz_channel`.
+- **`content_posts.attribution_code`** (único por workspace, lo completa un trigger) en el `utm_content` vincula el toque a la pieza. El responsable de la pieza es el `assigned_to` que ya existía (00223): ese trigger no se tocó.
+- **Comentarios que crean contactos:** Instagram apagado por defecto, TikTok prendido (Ajustes > General > Atribución, `settings.general`). El vínculo retroactivo de comentarios es el job `comment_backfill`; **su trigger es la 00234, después del merge** (la función ya está en la 00230).
+- **Links de los mensajes:** el nodo «Enviar mensaje» suma `attribution: { append, trackClicks }`. Apagado, el mensaje es **idéntico** al de siempre (`send-message-characterization.test.ts`, escrito antes del cambio). `/l/[token]` es público: el destino sale SOLO del token firmado (HMAC, secreto `attribution_link_secret` en Vault, vence a 180 días), un token alterado cae a la app sin error, los previsualizadores no registran, tope de 120 pedidos por minuto y por IP, nunca 500, y `l` es una ruta reservada del sitio. `lib/attribution/{tracked-link,link-secret,outgoing-links}.ts` son solo de servidor (`vault-boundary.test.ts`).
+- **La atribución nunca tumba nada:** `recordTouch`, la herencia de pieza, la resolución de la historia y las variables de pieza capturan sus errores. La herencia de pieza y la pieza de la historia se resuelven ANTES de guardar el mensaje, para que `origin_context` quede completo en el mismo insert.
+- **La atribución de la venta:** «Cargar a mano» crea un toque `manual` y llama a `create_sale` en modo `touch` (que no se tocó); el doble clic deja un solo toque.
+- **Funciones protegidas:** las huellas md5 de `record_contact_touch`, `find_or_link_contact`, `find_contact_for_form`, `find_or_create_contact`, `submit_form_response`, `create_booking`, `create_sale` y `resolve_meta_match` no cambian (`scripts/protected-functions.mjs`).
+
+## Migraciones
+
+`00230` aplicada y registrada. `00234` (el trigger del vínculo de comentarios): **escrita y ensayada, sin aplicar**.
+
+# Comisiones (Extra I, bloques CM1 a CM3, 15/10/2026)
+
+Roles, reglas, comisiones por cada pago cobrado y su liquidación en gastos. Resumen en [docs/comisiones.md](docs/comisiones.md).
+
+## Lo que no se puede romper
+
+- **El motor tiene gemelas SQL y TypeScript** (`lib/commissions/rules.ts` y las funciones `commission_*`): los 113 casos de `rules.cases.json` y los de `content-owner.cases.json` corren contra las dos (`verify-commissions.mjs`). Si se cambia una regla, se cambia en las dos y se suma el caso.
+- **Solo el servidor escribe** `commissions` y `commission_rules`; `commissions_guard` impide cambiar monto, pago, regla o tipo (se anula y se genera de nuevo). La bandera de transacción `app.commissions_internal` solo la pone `expenses_release_commissions`.
+- **Idempotencia:** único `(payment_id, role)` entre las ganadas vivas. Un cobro revertido anula las comisiones libres; las que ya están en un gasto NO se tocan y se avisa a Owner/Admin.
+- **`expenses_release_commissions` es la excepción** a «lo automático nunca tumba lo que lo origina»: si falla, la anulación del gasto falla. Lo demás (el trigger de pagos, los avisos, la herencia) nunca tumba nada.
+- **Roles de comisión** en `workspaces.commission_settings`: no se borran, no cambian de `key` ni de `payee`, los precargados siguen siéndolo (`CM002`); una regla necesita un rol existente y activo (`CM001`).
+- **Permisos:** `commissions.view` (alcance `own` o `all`) y `commissions.manage`; el Member de sistema tiene SOLO `commissions.view` con alcance `own` (**M9, cambio aprobado**). El estado de pago de una comisión se lee del gasto, nunca se copia. `can_see_commission` devuelve siempre true o false.
+- **El historial** es la política adicional `audit_log_select_commissions` (00232).
+
+## Migraciones
+
+`00231` y `00232` aplicadas y registradas (la 00231 se corrigió el mismo día; el SQL registrado es el corregido). `00235` (el trigger de `payments` que encola las comisiones): **escrita y ensayada, sin aplicar**.
+
+## Después del merge (lo aplica Wendy, en este orden)
+
+`00233` (cron de Finanzas), `00234` (trigger del vínculo de comentarios) y `00235` (trigger de comisiones); después `verify-expenses --despues-de-00233`, `verify-organic-attribution --despues-de-00234`, `verify-commissions --despues-de-00235` y `verify-contacts-single-entry`. **La próxima migración disponible es la `00236`** (confirmar con `list_migrations`).
 
 # Seguridad
 
