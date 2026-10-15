@@ -48,6 +48,8 @@ const DEST = resolve(REPO_ROOT, outArg);
 function isExcluded(relPath) {
   if (relPath === "docs" || relPath.startsWith("docs/")) return true;
   if (relPath === "BITACORA.md") return true;
+  // Es la herramienta de quien mantiene la plantilla; un cliente no la usa.
+  if (relPath === "scripts/sync-template.mjs") return true;
   if (relPath === "claude" || relPath.startsWith("claude/")) return true;
   if (relPath === ".claude/worktrees" || relPath.startsWith(".claude/worktrees/")) return true;
   if (relPath === "supabase/.temp" || relPath.startsWith("supabase/.temp/")) return true;

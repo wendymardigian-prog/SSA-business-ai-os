@@ -78,7 +78,7 @@ const ctx = (over: Partial<FlowExecutionContext> = {}): FlowExecutionContext => 
 const run = (data: Parameters<typeof sendWhatsAppNumberNode.execute>[0]["data"], context = ctx(), sessionId = "sess-1", nodeId = "n1") =>
   sendWhatsAppNumberNode.execute({
     supabase: db.client,
-    node: { id: nodeId, type: "action", position: { x: 0, y: 0 }, data: { label: "Avisar a Wendy" } } as never,
+    node: { id: nodeId, type: "action", position: { x: 0, y: 0 }, data: { label: "Avisar a Ana" } } as never,
     data,
     context,
     sessionId,
@@ -142,7 +142,7 @@ describe("Enviar WhatsApp a un número", () => {
     await run({ to: "variable", toVariable: "{{webhook.body.no_existe}}", channelId: CH, text: "Hola" });
     expect(sendText).not.toHaveBeenCalled();
     expect(events("node_skipped")).toEqual([expect.objectContaining({ metadata: expect.objectContaining({ nodeId: "n1", nodeType: "send_whatsapp_number", reason: expect.stringContaining("no existe o está vacía") }) })]);
-    expect(skipped).toEqual(["Avisar a Wendy"]);
+    expect(skipped).toEqual(["Avisar a Ana"]);
     expect(db.rows("flow_send_claims")).toHaveLength(0);
   });
 

@@ -16,7 +16,7 @@ export interface PaymentMethodDef {
 }
 
 /**
- * COMISIÓN DE WHOP: 0 % hasta que Wendy confirme el valor real (decisión del
+ * COMISIÓN DE WHOP: 0 % hasta que se confirme el valor real (decisión del
  * 11/10/2026). El plano proponía 3 % como valor de arranque. Mientras la
  * integración de Whop está en pausa, `whop` es un método más que se registra a
  * mano. Cambiar el número NO reescribe lo ya cobrado: el pago guarda su
