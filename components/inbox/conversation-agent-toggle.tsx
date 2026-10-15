@@ -142,7 +142,7 @@ export function ConversationAgentToggle({
   return (
     <div ref={rootRef} className="relative flex-shrink-0">
       {/* Arriba: abajo taparia el desplegable recien abierto. */}
-      <Tip content={tip} side="top" align="center">
+      <Tip content={open ? null : tip} side="top" align="center">
         <button
           ref={buttonRef}
           type="button"
