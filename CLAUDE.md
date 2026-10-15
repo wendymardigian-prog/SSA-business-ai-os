@@ -1260,9 +1260,9 @@ anuncio ↔ pieza. Avance y decisiones en `docs/PROGRESS-atribucion.md` ("Correc
 
 `00216` (`receive_inbound_webhook` con lock), `00217` (claves nuevas de `trigger_fires`), `00218` (`source_type`/`source_id`), `00219` (`ads_crm_items`,
 `ads_crm_metrics_v2`, `ads_crm_cell_detail`), `00221` (`enrich_touch_ad_origin`) y `00222` (`flow_send_claims`): **aplicadas y registradas**. **La `00220`
-(recalcula `leads`/`purchases` de Meta) esta escrita y ensayada pero SIN APLICAR a proposito**: va DESPUES de desplegar el codigo que cuenta el evento
-canonico (si va antes, el proximo sync con el codigo viejo vuelve a escribir los dias recientes inflados); su respaldo esta en
-`docs/atribucion/respaldo-leads-meta.json`. **La proxima libre es la `00223`** (confirmar con `list_migrations`). No cambiaron las huellas de
+(recalcula `leads`/`purchases` de Meta) se aplico el 15/10/2026, DESPUES de desplegar el codigo que cuenta el evento canonico** (de 1.872 a 468 en
+el nivel cuenta, igual a lo que informa Meta; 0 filas desparejas con la regla); respaldos en `docs/atribucion/respaldo-leads-meta.json` y
+`respaldo-leads-meta-2026-10-15.json`. **La proxima libre es la `00223`** (confirmar con `list_migrations`). No cambiaron las huellas de
 `record_contact_touch`, `find_or_link_contact`, `find_contact_for_form`, `submit_form_response`, `create_booking` y `find_or_create_contact`.
 
 ## Lo que no se puede romper

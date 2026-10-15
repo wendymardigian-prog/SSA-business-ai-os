@@ -170,9 +170,9 @@ Todas aditivas e idempotentes, con "Cómo volver atrás" en la cabecera. Aplicar
 | 00217 | claves nuevas de `trigger_fires` para webhooks (C2) | antes | **aplicada y registrada** (14/10) |
 | 00218 | `source_type`/`source_id`, trigger, backfill y CHECK superconjunto (D1) | antes | **aplicada y registrada** (14/10; ver «Notas de la corrida») |
 | 00219 | `ads_crm_items`, `ads_crm_metrics_v2` y `ads_crm_cell_detail` (B2, B3) | antes | **aplicada y registrada** (14/10; el código que la usa va en el bloque B) |
-| 00220 | recalcular `leads`/`purchases` de Meta (decisión 1) | **después del deploy**, con respaldo | pendiente |
-| 00221 | `enrich_touch_ad_origin` (A1) | antes | pendiente |
-| 00222 | `flow_send_claims` (D3) | antes | pendiente |
+| 00220 | recalcular `leads`/`purchases` de Meta (decisión 1) | **después del deploy**, con respaldo | **aplicada y registrada** (15/10, con respaldo fresco; cuenta 468 = Meta) |
+| 00221 | `enrich_touch_ad_origin` (A1) | antes | **aplicada y registrada** (14/10) |
+| 00222 | `flow_send_claims` (D3) | antes | **aplicada y registrada** (14/10) |
 
 No cambian (sus huellas quedan iguales a las del Tirón 1): `record_contact_touch`, `find_or_link_contact`, `find_contact_for_form`,
 `submit_form_response`, `create_booking` y `find_or_create_contact`.
