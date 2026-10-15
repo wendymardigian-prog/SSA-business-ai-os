@@ -16,7 +16,7 @@ Fuera de este comando, a propósito: crear el primer usuario del sistema y las i
 - Si la persona pega una captura de pantalla, usala para ver en qué pantalla está y decirle exactamente qué tocar.
 - **NUNCA le pidas que te pase por chat ninguna clave**: ni la `SUPABASE_SERVICE_ROLE_KEY`, ni la anon key, ni el `CRON_SECRET`, ni contraseñas. Tu trabajo es decirle DÓNDE copiarla y DÓNDE pegarla (en Railway, en el SQL Editor de Supabase o en el archivo `.env`). Si igual te pega una, no la repitas, no la uses, y avisale que conviene generar una nueva porque quedó escrita en el chat.
 - Si algo falla, no tires el error técnico crudo: explicá qué pasó, por qué probablemente pasó, y qué proponés. Pará y esperá confirmación antes de reintentar.
-- Antes de preguntar nada, hacé un diagnóstico rápido: ¿existe `.mcp.json`? ¿existe `.env`? Si hay señales de que un paso ya se hizo, decíselo y preguntale si lo salteamos.
+- Antes de preguntar nada, hacé un diagnóstico rápido: ¿hay herramientas de Supabase disponibles en esta sesión? ¿ya existe la carpeta `~/supabase-cli` o `supabase --version` responde? ¿existe `.env`? Si hay señales de que un paso ya se hizo, decíselo y preguntale si lo salteamos.
 
 ## Paso 0 — Bienvenida
 
@@ -30,39 +30,53 @@ Saludá y explicá en 3-4 líneas los pasos: Supabase, Railway, conectar la base
 
 2. **Reference ID.** Pedile el Reference ID del proyecto (Supabase → Project Settings → General, o en la dirección del panel: `supabase.com/dashboard/project/<ESTO>`). No es secreto: está bien que te lo pase por chat.
 
-3. **Conectar el conector de Supabase.** Explicale que esto te permite a vos revisar su base y cargar configuración sin que la persona tenga que escribir SQL a mano.
-   - Si no existe `.mcp.json` en la raíz (lo normal en un clon nuevo, porque no se sube a GitHub), copiá `.mcp.json.example` a `.mcp.json`.
-   - Reemplazá `<PROJECT_REF>` en `.mcp.json` por el Reference ID.
-   - Pedile que escriba `/mcp` para ver el conector "supabase" y aprobarlo si aparece pendiente. Si no aparece, o las herramientas de Supabase siguen sin estar disponibles, que cierre esta sesión de Claude Code, la vuelva a abrir y corra `/setup` de nuevo: vas a detectar que el paso ya está hecho.
-   - Probalo con una consulta de solo lectura, por ejemplo `select count(*) from information_schema.tables where table_schema = 'public';`. En un proyecto nuevo tiene que dar 0 o casi 0. Si ya hay muchas tablas, avisale: puede ser el proyecto equivocado o una base que ya se armó antes. No sigas sin aclararlo.
+3. **Conectar Supabase a Claude (el "conector").** Explicale que esto te permite a vos revisar su base y cargarle configuración sin que ella tenga que escribir SQL a mano.
 
-4. **Construir la base de datos (las migraciones).** Explicale que las migraciones son archivos que ya traen escrito todo el trabajo de armar la base (las tablas, las reglas de seguridad), y que se corren una sola vez.
+   **Camino normal (un clic).** Si es la primera vez que conecta Supabase:
+   - En la app de escritorio de Claude, que abra **Configuración (Settings) → Conectores (Connectors)**.
+   - Que busque **Supabase** en la lista y haga clic en **Conectar (Connect)**.
+   - Se abre el navegador. Que inicie sesión en Supabase y, cuando le pregunte qué organización conectar, que elija **la organización que contiene el proyecto de este negocio** (es la que figura arriba a la izquierda en el panel de Supabase). Después, clic en **Autorizar (Authorize)**.
+   - Cuando vuelva a la app, que **cierre esta sesión de Claude Code, abra una nueva en la misma carpeta y vuelva a escribir `/setup`**. Las herramientas de Supabase recién aparecen en una sesión nueva. Vas a detectar que este paso ya está hecho y seguís desde el siguiente.
 
-   **Nunca las apliques de a una con el conector** (`apply_migration` / `execute_sql`): son más de cien archivos y decenas de miles de líneas. Tendrías que leerlas y reescribirlas enteras, tardaría muchísimo y un solo carácter mal copiado rompe la base. En las dos opciones de abajo el archivo va directo del disco a Supabase, sin pasar por vos.
+   **Si ya tenía Supabase conectado con OTRA cuenta (conector personalizado).** Un conector solo puede estar atado a una cuenta de Supabase. Para sumar otra, se crea uno aparte:
+   - **Configuración → Conectores → Agregar (Add) → Agregar conector personalizado (Add custom connector)**.
+   - En el nombre, algo que lo distinga: por ejemplo "Supabase - Mi negocio".
+   - En la dirección, pegar `https://mcp.supabase.com/mcp?project_ref=` seguido de su Reference ID (sin espacios).
+   - Guardar, hacer clic en **Conectar** y elegir la organización correcta en el navegador. Después, sesión nueva y `/setup` otra vez.
 
-   Ofrecele elegir entre estas dos opciones, y que decida la persona:
+   **Regla de seguridad (muy importante).** Si la persona tiene varios conectores de Supabase, NO uses el primero que encuentres ni busques "el que sirva". Un conector equivocado correría cosas en la base de OTRO proyecto. Antes de ejecutar ninguna consulta, comprobá que el conector apunta al proyecto correcto: pedile la dirección del proyecto con la herramienta de Supabase (`get_project_url`, o `list_projects` si el conector es de toda la cuenta) y compará con el Reference ID. Si no coincide, o no ves ninguna herramienta de Supabase, **frená**: explicale en simple qué falta (conectar Supabase, o iniciar una sesión nueva) y esperá. No uses otro conector como atajo.
 
-   **Opción rápida (la recomendada): pegar un solo archivo en el SQL Editor.** Tarda un par de minutos y no hay que instalar nada. Si más adelante quiere la CLI, la puede sumar cuando quiera.
-   - Copiale el archivo al portapapeles sin leerlo: en Mac, `pbcopy < supabase/migrations/ALL_MIGRATIONS.sql`; en Windows (PowerShell), `Get-Content -Raw supabase/migrations/ALL_MIGRATIONS.sql | Set-Clipboard`. Si no se puede, que lo abra en GitHub (carpeta `supabase/migrations`, archivo `ALL_MIGRATIONS.sql`) y use el botón de copiar.
-   - Que vaya a Supabase → **SQL Editor → New query**, pegue todo y haga clic en **Run**. Puede tardar uno o dos minutos. Si Supabase avisa que hay operaciones destructivas (borrar columnas o tablas), es normal en una base vacía: que confirme.
-   - **Ofrecé hacerlo vos con el navegador, de entrada.** Decile algo así: "Si querés, lo hago yo: abro Supabase en el navegador desde acá, vos iniciás sesión y yo pego y corro el archivo". Esto sirve si tenés navegador (el integrado de la app de escritorio o Claude en Chrome). Si acepta:
-     - Copiá el archivo al portapapeles como arriba y abrí `https://supabase.com/dashboard`.
-     - Pedile a la persona que **inicie sesión por su cuenta**: nunca escribas su contraseña.
-     - Entrá a su proyecto → SQL Editor → New query, pegá con Cmd+V (Ctrl+V en Windows), hacé clic en Run y confirmá el aviso si aparece.
-     - En el navegador **solo** usás el SQL Editor. **Nunca** abras Project Settings → API Keys ni Data API, ni ninguna pantalla con claves: las claves las copia siempre la persona.
-     - Si el pegado no funciona, volvé al camino de que lo pegue la persona.
-   - Preguntale qué dijo al terminar (o miralo vos, si lo hiciste en el navegador). Si dio error, explicá el mensaje en criollo antes de seguir.
+   Cuando coincida, probalo con una consulta de solo lectura: `select count(*) from information_schema.tables where table_schema = 'public';`. En un proyecto nuevo tiene que dar 0 o casi 0. Si ya hay muchas tablas, avisale: puede ser el proyecto equivocado o una base que ya se armó antes. No sigas sin aclararlo.
 
-   **Opción CLI: más técnica y más larga, pero completa.** Explicale qué es: la CLI de Supabase es una herramienta para manejar Supabase desde la computadora. Con ella su proyecto queda conectado para trabajar con Supabase sin ninguna restricción desde Claude Code: aplicar migraciones, revisar la base, traer actualizaciones con un solo comando. Ofrecela solo si la persona se siente cómoda escribiendo un par de cosas en una terminal.
-   - **Instalarla:** fijate si ya está (`supabase --version`). Si no:
-     - en Mac con Homebrew, `brew install supabase/tap/supabase`;
-     - si tiene Node, `npx supabase@latest` sirve sin instalar;
-     - si no tiene ninguno de los dos, explicale qué falta antes de seguir.
-   - **Iniciar sesión** (`supabase login`) y **vincular el proyecto** (`supabase link --project-ref <Reference ID>`): estos dos los tiene que completar la persona en una terminal donde pueda escribir. Usá el panel Terminal de la app de escritorio, o pedile que los corra con `!` adelante (por ejemplo `!supabase login`). El login abre el navegador para autorizar y puede pedir un código de verificación. El `link` puede pedir la **contraseña de la base**, la que guardó al crear el proyecto: la escribe la persona en la terminal, nunca en el chat.
-   - **Aplicar:** `supabase db push`. Aplica todas las migraciones en orden y las registra. Mostrale lo que pregunte y que confirme.
-   - **Si la base ya se había armado con la opción rápida** (por ejemplo, la persona pasa a la CLI más adelante), NO corras `db push` directo: intentaría crear todo de nuevo. Primero marcá las migraciones como ya aplicadas: `supabase migration repair --status applied $(ls supabase/migrations | grep -oE '^[0-9]+' | tr '\n' ' ')`. Recién después, `supabase db push` para las que falten.
+4. **Construir la base de datos (las migraciones).** Explicale que las migraciones son archivos que ya traen escrito todo el trabajo de armar la base (las tablas, las funciones, las reglas de seguridad, las tareas automáticas), y que se corren una sola vez. Son más de doscientos archivos.
 
-   Con cualquiera de las dos opciones, **comprobalo vos con el conector**: `select to_regprocedure('private.set_system_secret(text,text)') is not null as base_completa, (select count(*) from information_schema.tables where table_schema = 'public') as tablas;`. `base_completa` tiene que dar `true` (es una de las últimas piezas que se crean) y `tablas` tiene que ser un número alto.
+   **Nunca las pegues en el SQL Editor de Supabase ni las apliques de a una con el conector** (`apply_migration` / `execute_sql`): juntas pesan casi 2 MB, el SQL Editor las rechaza por demasiado grandes, y por el conector tendrías que leerlas y reescribirlas enteras. El camino es la **CLI de Supabase**: una herramienta que manda los archivos directo desde la computadora a Supabase, en orden, y anota cuáles ya aplicó.
+
+   Para ayudar a alguien que nunca usó una terminal, seguí este orden:
+
+   **a) Explicale la terminal, antes de pedirle nada.** Decile, en simple: "Una terminal es una ventana donde en vez de hacer clic escribís una orden y apretás Enter. Es como mandarle un mensaje a la computadora. Yo te voy a dar cada orden lista para copiar y pegar, no tenés que inventar nada, y si algo sale mal no se rompe nada". Mostrale dónde está: en la sesión de Claude Code, **arriba a la derecha hay unos botones chiquitos** (si pasa el mouse por encima, cada uno dice qué es). Hay uno que se llama **Terminal**: al hacer clic se abre un panel con texto y una rayita que parpadea. Hay otro que es el **Navegador**, que abre una página web dentro de la misma app. Pedile que abra el de Terminal y te cuente qué ve, antes de seguir. Cómo pegar una orden: Mac, **Cmd + V**; Windows, **Ctrl + V** (o clic derecho). Para que se ejecute: **Enter**. Cuando escribe una contraseña, **no se ve nada en pantalla ni asteriscos**: es normal, escribe igual; después Enter.
+
+   **b) Fijate si ya tiene la CLI.** Corré `supabase --version`. Si responde un número de versión, usá esa y saltá al punto d). Si no existe, NO le pidas instalar Homebrew, Scoop ni Node: descargala vos.
+
+   **c) Descargá la CLI (no es instalarla).** Explicale: "Es un solo archivo que Supabase publica en su GitHub oficial. Lo bajo a una carpeta aparte, no toca la configuración de tu computadora y no pide contraseña de administrador. Si algún día lo querés sacar, borrás la carpeta". Pedile permiso (es una descarga de internet de unos 50 MB) y avisale que le va a aparecer un mensaje de permiso en Claude Code para que haga clic en **Permitir (Allow)**. Detectá el sistema y el procesador y bajá el que corresponde desde `https://github.com/supabase/cli/releases/latest/download/<ARCHIVO>` a una carpeta FUERA del proyecto (así nunca se sube a GitHub por error):
+   - Mac con chip Apple (M1, M2, M3...): `supabase_darwin_arm64.tar.gz`. Mac Intel: `supabase_darwin_amd64.tar.gz`. Se puede saber con `uname -m` (`arm64` = Apple).
+   - Windows: `supabase_windows_amd64.tar.gz` (o `supabase_windows_arm64.tar.gz` si el procesador es ARM).
+   - Carpeta: `~/supabase-cli` en Mac; `%USERPROFILE%\supabase-cli` en Windows.
+   - Mac: `mkdir -p ~/supabase-cli && curl -fsSL -o ~/supabase-cli/supabase.tar.gz <URL> && tar -xzf ~/supabase-cli/supabase.tar.gz -C ~/supabase-cli`.
+   - Windows (PowerShell): `mkdir $env:USERPROFILE\supabase-cli; curl.exe -fsSL -o $env:USERPROFILE\supabase-cli\supabase.tar.gz <URL>; tar -xzf $env:USERPROFILE\supabase-cli\supabase.tar.gz -C $env:USERPROFILE\supabase-cli`.
+   - Comprobá con `<carpeta>/supabase --version` (en Windows, `supabase.exe`). Si falla la descarga, explicale qué pasó (puede ser una red de empresa que bloquea GitHub) y frená: no sigas con otro método sin hablarlo.
+
+   **d) Iniciar sesión, vincular y aplicar: los tres los hace la persona, en el panel Terminal.** Por cada uno, dale la orden COMPLETA lista para copiar, con la ruta de la CLI y la carpeta del proyecto ya escritas (empezando con `cd` a la carpeta del proyecto, así no depende de dónde se abrió la terminal). Explicale antes qué va a pasar y qué va a ver:
+   - **Login:** `<ruta>/supabase login`. Se abre solo el navegador de su computadora (Chrome, Safari...). Que inicie sesión en Supabase si hace falta y haga clic en el botón para autorizar. El navegador le muestra un **código de verificación**: que lo copie, vuelva al panel Terminal, lo pegue y apriete **Enter**. Tiene que aparecer un mensaje de que ya inició sesión.
+   - **Vincular:** `<ruta>/supabase link --project-ref <Reference ID>`. Conecta esa carpeta con SU proyecto. Puede pedir la contraseña de la base de datos (la que guardó al crear el proyecto): que la escriba ahí, nunca en el chat, y Enter.
+   - **Aplicar:** `<ruta>/supabase db push`. Muestra la lista de migraciones que va a aplicar y pregunta `Do you want to push these migrations...? [Y/n]`. Explicale: "te está preguntando si seguimos; apretá la letra **Y** del teclado y después **Enter**". Después tarda unos minutos mientras va aplicando una por una: que no cierre ni toque nada hasta que vuelva el cursor que parpadea y diga `Finished supabase db push`. Si se corta a la mitad (internet, o se cerró sin querer), no pasa nada: se vuelve a correr la misma orden y sigue donde quedó.
+   - Pedile que te cuente qué dijo al final. Si dio error, explicalo en criollo antes de seguir. Si avisa que el archivo `ALL_MIGRATIONS.sql` no cumple el formato y lo saltea, es normal: se ignora.
+
+   **e) Comprobalo vos con el conector** (después de confirmar que es el proyecto correcto, ver el punto 3): `select to_regprocedure('private.set_system_secret(text,text)') is not null as base_completa, (select count(*) from information_schema.tables where table_schema = 'public') as tablas;`. `base_completa` tiene que dar `true` (es una de las últimas piezas que se crean) y `tablas` tiene que ser un número alto.
+
+   Si la persona ya tenía Homebrew, Scoop o Node y prefiere usarlos, está bien: lo importante es llegar a `supabase login`, `supabase link` y `supabase db push`.
+
+   **Este sistema no usa Edge Functions de Supabase:** no hay nada que desplegar aparte. Toda la lógica corre en la app (Railway) y en la base, y las migraciones ya dejan creadas las funciones, las reglas de seguridad, las carpetas de archivos y las tareas automáticas. Si la persona pregunta por las Edge Functions, decíselo.
 
 ## Paso 2 — Railway: deploy, dominio y variables
 
@@ -119,7 +133,7 @@ Sirve para que el proyecto también corra en su computadora (para probar cosas a
 1. Si no existe `.env` en la raíz, copiá `.env.example` a `.env`.
 2. Completá vos `NEXT_PUBLIC_APP_URL=http://localhost:3000` (local, no el dominio de Railway).
 3. Generá un `CRON_SECRET` nuevo y distinto al de Railway para este archivo. Explicale que no hace falta que coincida: ningún cron de producción le pega a su computadora, y así un `.env` filtrado no expone el de producción.
-4. Dejá vacías `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`. Decile EXPLÍCITAMENTE que esas tres las escribe la persona: que abra el archivo `.env` con un editor de texto, pegue los mismos valores que usó en Railway, y guarde. Nunca por chat.
+4. Dejá vacías `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`. Decile EXPLÍCITAMENTE que esas tres las escribe la persona: pegue los mismos valores que usó en Railway, y guarde. Nunca por chat. El archivo `.env` está oculto en el explorador de archivos (empieza con punto), así que no se lo hagas buscar: abrilo vos con el editor de texto de su computadora (Mac: `open -e .env`; Windows: `notepad .env`), explicale que se abrió una ventana con líneas tipo `NOMBRE=valor`, y que pegue cada valor justo después del signo `=`, sin espacios ni comillas, y guarde con Cmd + S (Mac) o Ctrl + S (Windows).
 5. El resto de las variables (WhatsApp/Evolution, etc.) quedan como están: no son parte del arranque obligatorio.
 
 ## Paso 6 — Actualizaciones (preguntale, no lo hagas sin su sí)
@@ -147,6 +161,8 @@ Hacé un resumen corto con checks de lo que quedó funcionando:
 - El `.env` local listo.
 - Actualizaciones: preparadas o no, según lo que eligió.
 
-Después explicale qué falta y dónde está: crear su primer usuario (Supabase → Authentication → Users → Add user, con "Auto Confirm User"; o `scripts/create-owner.mjs` si prefiere la terminal) y las integraciones opcionales. Todo eso está en la guía de instalación.
+Después explicale qué falta y dónde está. Primero, crear su primer usuario (Supabase → Authentication → Users → Add user, con "Auto Confirm User"; o `scripts/create-owner.mjs` si prefiere la terminal) y las integraciones opcionales. Todo eso está en la guía de instalación.
+
+**Un último paso que necesita al primer usuario: los precios de los modelos de IA.** No viajan en las migraciones: están en `supabase/seeds/00_model_pricing.sql` y `01_transcription_pricing.sql` (son chicos y se pueden correr más de una vez sin duplicar nada). Sin ellos, todo lo que gasta IA queda con el costo vacío y los topes de gasto no pueden funcionar. Cargan precios para cada espacio de trabajo que exista, así que hay que correrlos DESPUÉS de crear el primer usuario. Si en este momento ya lo creó (`select count(*) from public.workspaces;` da 1 o más), cargalos vos con el conector, uno por vez, después de confirmar el proyecto como en el paso 1. Si todavía no lo creó, decile que cuando lo haga vuelva y te pida "cargá los precios de los modelos de IA", y que la guía de instalación también se lo recuerda.
 
 Si en el medio te pregunta por el primer usuario o una integración, respondé lo puntual si es rápido, pero sugerile terminar primero el arranque obligatorio.
