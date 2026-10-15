@@ -44,6 +44,29 @@ export interface ModelRunOutput {
 
 export type ModelRunner = (input: ModelRunInput) => Promise<ModelRunOutput>;
 
+/**
+ * El texto final de una corrida con herramientas.
+ *
+ * `result.text` del AI SDK es SOLO el texto del ultimo paso. Claude (Haiku
+ * sobre todo) suele escribir la respuesta en el MISMO paso en que llama a una
+ * herramienta (`declarar_intencion`, por ejemplo) y, cuando recibe el
+ * resultado, cierra con "stop" sin repetir nada. Con solo `result.text` esa
+ * respuesta se tiraba y el borrador quedaba vacio: "El modelo respondio algo
+ * que no se pudo usar" en 18 de 80 corridas (14/10/2026), todas despues de una
+ * herramienta.
+ *
+ * Si el ultimo paso trae texto, gana ese (igual que siempre). Si no, el del
+ * ultimo paso que tenga: no se juntan todos, porque un paso intermedio puede
+ * ser un "dejame revisar" que no es la respuesta.
+ */
+export function finalStepText(lastText: string, steps: ReadonlyArray<{ text: string }>): string {
+  if (lastText.trim()) return lastText;
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i].text.trim()) return steps[i].text;
+  }
+  return lastText;
+}
+
 export const toolLoopRunner: ModelRunner = async (input) => {
   const agent = new ToolLoopAgent({
     model: input.model,
@@ -65,7 +88,7 @@ export const toolLoopRunner: ModelRunner = async (input) => {
       });
     },
   });
-  return { text: result.text, totalUsage: result.totalUsage };
+  return { text: finalStepText(result.text, result.steps), totalUsage: result.totalUsage };
 };
 
 export type ModelResolver = (provider: string, model: string) => Promise<AiModelResult>;
