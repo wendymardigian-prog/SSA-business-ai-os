@@ -121,7 +121,7 @@ describe("Agenda en el menu (F8)", () => {
     const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys }).map((i) => i.name);
     // Plano formularios-ui (D4): Recursos ya no es un item (se llega por Ajustes) y Ajustes pide su bandera,
     // que aca no se pasa: un viewer sin flags no lo ve.
-    expect(member).toEqual(["Dashboards", "Bandeja", "Tareas", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Automatizaciones", "Formularios", "Agentes IA"]);
+    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]);
     // Sin ningun permiso (y sin banderas), no queda nada.
     expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
     // Con la bandera de Ajustes, el Member suma Ajustes (llega a Recursos).
@@ -238,18 +238,18 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(NAV_GROUPS.filter((g) => g.collapsible).map((g) => g.id)).toEqual(["herramientas"]);
   });
 
-  it("Dashboards, Bandeja, Tareas y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
+  it("Dashboards, Bandeja y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
     const sueltos = NAV_ITEMS.filter((i) => i.group === "inicio").map((i) => i.name);
-    // Tareas (Extra A) va pegada a la Bandeja; el orden de los demas no cambia.
-    expect(sueltos).toEqual(["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"]);
+    // Tareas se mudo a Herramientas: ya no es un suelto.
+    expect(sueltos).toEqual(["Dashboards", "Bandeja", "Mi reporte del día"]);
   });
 
   it("el orden de los grupos e items es exactamente el del plano formularios-ui (F1)", () => {
     expect(NAV_GROUPS.map((g) => [g.id, NAV_ITEMS.filter((i) => i.group === g.id).map((i) => i.name)])).toEqual([
-      ["inicio", ["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"]],
+      ["inicio", ["Dashboards", "Bandeja", "Mi reporte del día"]],
       ["adquisicion", ["Contenido", "Social"]],
       ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas"]],
-      ["herramientas", ["Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]],
+      ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]],
     ]);
   });
 

@@ -1,22 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, type MutableRefObject, type RefObject } from "react";
-import { CheckCircle2, Loader2, Lock, Plus, RotateCcw, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode, type RefObject } from "react";
+import { Bell, CheckCircle2, Flag, FolderKanban, History as HistoryIcon, Loader2, Lock, Plus, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { Historial } from "@/components/historial/historial";
-import { Avatar } from "@/components/ui/filter-menu";
 import type { CellPatch } from "@/lib/tasks/cell-edit";
-import { applyDraftPatch, draftFromDefaults, draftProblem, valuesFromTask, type DraftDefaults, type TaskValues } from "@/lib/tasks/draft";
+import { applyDraftPatch, draftFromDefaults, draftProblem, dueDatePatch, valuesFromTask, type DraftDefaults, type TaskValues } from "@/lib/tasks/draft";
 import { wouldCreateCycle } from "@/lib/tasks/dependencies";
 import { dueLabel, formatSource, type SourceContext } from "@/lib/tasks/format";
-import { colorOf, initialsOf } from "@/lib/tasks/people";
 import type { ProjectSummary } from "@/lib/tasks/project";
 import { openBlockers, type MemberLite } from "@/lib/tasks/table-model";
-import { TASK_LIMITS, type TaskRow } from "@/lib/tasks/types";
+import { PRIORITY_LABELS, TASK_LIMITS, type TaskRow } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
-import { BlockedMark, PersonBadge, PriorityChip, StatusChip } from "./chips";
-import { AutoSaveText, DateField, DurationSelect, FieldRow, Section, TimeField } from "./fields";
-import { useTimeFormat } from "./time-format-context";
+import { BlockedMark, PersonBadge, PRIORITY_TONE, StatusChip } from "./chips";
+import { AutoSaveText, DatePill, DurationSelect, Section } from "./fields";
 import { DURATION_OPTIONS } from "@/lib/tasks/time";
 import { CenterDialog, SidePanel } from "./overlay";
 import { MemberPicker, MembersMultiPicker, PriorityPicker, ProjectPicker, StatusPicker } from "./pickers";
@@ -81,7 +78,6 @@ function DrawerBody(props: TaskDrawerProps) {
   const { mode, task, allTasks, members, memberNames, projects, today, canEdit, canDelete, actions, contactName, source, defaults, onClose, onOpenTask, onCreated, returnFocus } = props;
   const creating = mode === "create";
   const editable = creating || canEdit;
-  const timeFormat = useTimeFormat();
 
   const [draft, setDraft] = useState<TaskValues>(() => draftFromDefaults(defaults, props.currentUserId));
   const values: TaskValues = creating ? draft : valuesFromTask(task as TaskRow);
@@ -89,6 +85,12 @@ function DrawerBody(props: TaskDrawerProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [open, setOpen] = useState<PickerName | null>(null);
   const [blockerPicker, setBlockerPicker] = useState(false);
+  // El historial vive detras de un icono de la cabecera: arranca escondido.
+  const [showHistory, setShowHistory] = useState(false);
+  const historyRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (showHistory) historyRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [showHistory]);
 
   const statusRef = useRef<HTMLButtonElement>(null);
   const priorityRef = useRef<HTMLButtonElement>(null);
@@ -134,6 +136,10 @@ function DrawerBody(props: TaskDrawerProps) {
   const isDone = values.status === "completed";
   const ownerName = values.owner_id ? (memberNames.get(values.owner_id) ?? null) : null;
 
+  const followerNames = values.follower_ids.map((id) => memberNames.get(id) ?? "Alguien del equipo");
+  const followersCount = values.follower_ids.length;
+  const followersTitle = followersCount === 0 ? "Seguidores: nadie" : `Seguidores: ${followerNames.join(", ")}`;
+
   const header = (
     <>
       {!creating && (
@@ -157,6 +163,22 @@ function DrawerBody(props: TaskDrawerProps) {
           className={cn("text-base font-semibold", isDone && "text-muted-foreground line-through")}
         />
       </div>
+      <HeaderIconButton
+        refEl={followersRef}
+        label={editable ? `${followersTitle}. Cambiar los seguidores` : followersTitle}
+        title={followersTitle}
+        disabled={!editable}
+        active={followersCount > 0}
+        onClick={() => setOpen("followers")}
+        badge={followersCount > 0 ? followersCount : null}
+      >
+        <Bell className="h-4 w-4" aria-hidden />
+      </HeaderIconButton>
+      {!creating && (
+        <HeaderIconButton label={showHistory ? "Ocultar el historial" : "Ver el historial"} title="Historial" active={showHistory} pressed={showHistory} onClick={() => setShowHistory((v) => !v)}>
+          <HistoryIcon className="h-4 w-4" aria-hidden />
+        </HeaderIconButton>
+      )}
       <CloseButton onClose={close} />
     </>
   );
@@ -195,66 +217,40 @@ function DrawerBody(props: TaskDrawerProps) {
       <SidePanel label={creating ? "Nueva tarea" : `Tarea: ${values.title}`} onClose={close} returnFocus={returnFocus} header={header} footer={footer}>
         {!editable && <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">Podés ver esta tarea, pero no editarla.</p>}
 
-        <Section title="Detalles">
-          <FieldRow label="Descripción" top>
-            <AutoSaveText value={values.description ?? ""} onSave={(description) => patch({ description: description || null })} label="Descripción" placeholder="Agregá detalles (texto simple)" maxLength={TASK_LIMITS.description} multiline disabled={!editable} />
-          </FieldRow>
-          <FieldRow label="Prioridad">
-            <PickerButton refEl={priorityRef} disabled={!editable} onClick={() => setOpen("priority")} label="Cambiar la prioridad">
-              <PriorityChip priority={values.priority} />
-            </PickerButton>
-          </FieldRow>
-          <FieldRow label="Inicio">
-            <DateField value={values.start_date} onSave={(start_date) => patch({ start_date })} label="Fecha de inicio" disabled={!editable} max={values.due_date} />
-          </FieldRow>
-          <FieldRow label="Vencimiento">
-            <div className="flex items-center gap-2">
-              <DateField value={values.due_date} onSave={(due_date) => patch({ due_date })} label="Fecha de vencimiento" disabled={!editable} min={values.start_date} />
-              {!creating && task && values.due_date && (
-                <span className={cn("shrink-0 text-xs", dueLabel(task, today, timeFormat).tone === "overdue" ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>{dueLabel(task, today, timeFormat).text}</span>
-              )}
-            </div>
-          </FieldRow>
-          <FieldRow label="Hora">
-            <TimeField value={values.due_time} onSave={(due_time) => patch({ due_time })} label="Hora de vencimiento" disabled={!editable || !values.due_date} />
-            {!values.due_date && <p className="mt-1 text-xs text-muted-foreground">Elegí primero una fecha. Sin hora, la tarea es solo para ese día.</p>}
-          </FieldRow>
-          <FieldRow label="Duración">
-            <DurationSelect value={values.duration_minutes} onChange={(duration_minutes) => patch({ duration_minutes })} label="Duración" disabled={!editable || !values.due_time} options={DURATION_OPTIONS} />
-          </FieldRow>
-        </Section>
+        {/* Lo mas usado, junto y arriba: fecha, duracion, prioridad, responsable y proyecto. */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3" role="group" aria-label="Datos de la tarea">
+          <DatePill
+            value={values.due_date}
+            onSave={(due_date) => patch(dueDatePatch(values, due_date))}
+            label="Fecha de la tarea"
+            today={today}
+            disabled={!editable}
+            overdue={!creating && !!task && dueLabel(task, today).tone === "overdue"}
+          />
+          <DurationSelect
+            value={values.duration_minutes}
+            onChange={(duration_minutes) => patch({ duration_minutes })}
+            label="Duración"
+            disabled={!editable || !values.due_date}
+            title={values.due_date ? undefined : "Elegí primero una fecha"}
+            options={DURATION_OPTIONS}
+          />
+          <PickerButton refEl={priorityRef} pill tone={PRIORITY_TONE[values.priority]} disabled={!editable} onClick={() => setOpen("priority")} label={`Prioridad: ${PRIORITY_LABELS[values.priority]}. Cambiar`}>
+            <Flag className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>{PRIORITY_LABELS[values.priority]}</span>
+          </PickerButton>
+          <PickerButton refEl={ownerRef} pill disabled={!editable} onClick={() => setOpen("owner")} label="Cambiar el responsable">
+            <PersonBadge id={values.owner_id} name={ownerName} />
+          </PickerButton>
+          <PickerButton refEl={projectRef} pill disabled={!editable} onClick={() => setOpen("project")} label={values.project ? `Proyecto: ${values.project}. Cambiar` : "Elegir un proyecto"}>
+            <FolderKanban className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            {values.project ? <span className="max-w-[12rem] truncate">{values.project}</span> : <span className="text-muted-foreground">Proyecto</span>}
+          </PickerButton>
+        </div>
 
-        <Section title="Personas">
-          <FieldRow label="Responsable">
-            <PickerButton refEl={ownerRef} disabled={!editable} onClick={() => setOpen("owner")} label="Cambiar el responsable">
-              <PersonBadge id={values.owner_id} name={ownerName} />
-            </PickerButton>
-          </FieldRow>
-          <FieldRow label="Seguidores">
-            <PickerButton refEl={followersRef} disabled={!editable} onClick={() => setOpen("followers")} label="Cambiar los seguidores">
-              {values.follower_ids.length === 0 ? (
-                <span className="text-sm text-muted-foreground">Nadie</span>
-              ) : (
-                <span className="flex flex-wrap items-center gap-1.5">
-                  {values.follower_ids.map((id) => (
-                    <span key={id} className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-0.5 pr-2 text-xs">
-                      <Avatar initials={initialsOf(memberNames.get(id) ?? "?")} color={colorOf(id)} size="sm" />
-                      {memberNames.get(id) ?? "Alguien del equipo"}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </PickerButton>
-          </FieldRow>
-        </Section>
-
-        <Section title="Proyecto">
-          <FieldRow label="Proyecto">
-            <PickerButton refEl={projectRef} disabled={!editable} onClick={() => setOpen("project")} label="Cambiar el proyecto">
-              {values.project ? <span className="rounded-md bg-muted px-1.5 py-0.5 text-sm">{values.project}</span> : <span className="text-sm text-muted-foreground">Sin proyecto</span>}
-            </PickerButton>
-          </FieldRow>
-        </Section>
+        <div className="px-4 py-3">
+          <AutoSaveText value={values.description ?? ""} onSave={(description) => patch({ description: description || null })} label="Descripción" placeholder="Agregá una descripción (texto simple)…" maxLength={TASK_LIMITS.description} multiline rows={7} disabled={!editable} className="min-h-[9rem]" />
+        </div>
 
         {!creating && task && (
           <>
@@ -271,38 +267,35 @@ function DrawerBody(props: TaskDrawerProps) {
               addRef={blockerAnchor}
             />
 
-            <Section title="Vínculos">
-              <FieldRow label="Contacto">
-                {task.contact_id ? <Link href={`/dashboard/contacts/${task.contact_id}`} className="text-sm text-primary hover:underline">{contactName ?? "Ver contacto"}</Link> : <span className="text-sm text-muted-foreground">Sin contacto</span>}
-              </FieldRow>
-              <FieldRow label="Conversación">
-                {task.conversation_id ? <Link href={`/dashboard/inbox?c=${task.conversation_id}`} className="text-sm text-primary hover:underline">Abrir la conversación</Link> : <span className="text-sm text-muted-foreground">Sin conversación</span>}
-              </FieldRow>
-            </Section>
-
-            <Section title="Origen">
-              <FieldRow label="Creada por">
+            <div className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border px-4 py-3 text-sm" aria-label="Vínculos y origen">
+              <Meta label="Contacto">
+                {task.contact_id ? <Link href={`/dashboard/contacts/${task.contact_id}`} className="text-primary hover:underline">{contactName ?? "Ver contacto"}</Link> : <span className="text-muted-foreground">Sin contacto</span>}
+              </Meta>
+              <Meta label="Conversación">
+                {task.conversation_id ? <Link href={`/dashboard/inbox?c=${task.conversation_id}`} className="text-primary hover:underline">Abrir</Link> : <span className="text-muted-foreground">Sin conversación</span>}
+              </Meta>
+              <Meta label="Creada por">
                 {(() => {
                   const info = formatSource(task, source);
-                  return info.href ? <Link href={info.href} className="text-sm text-primary hover:underline">{info.label}</Link> : <span className="text-sm">{info.label}</span>;
+                  return info.href ? <Link href={info.href} className="text-primary hover:underline">{info.label}</Link> : <span>{info.label}</span>;
                 })()}
-              </FieldRow>
-            </Section>
+              </Meta>
+            </div>
 
-            <Section title="Historial">
-              <Historial key={`${task.id}:${task.updated_at}`} entityType="task" entityId={task.id} names={{ users: props.historyNames }} timeZone={props.timeZone} pageSize={10} />
-            </Section>
+            {showHistory && (
+              <Section title="Historial" innerRef={historyRef}>
+                <Historial key={`${task.id}:${task.updated_at}`} entityType="task" entityId={task.id} names={{ users: props.historyNames }} timeZone={props.timeZone} pageSize={10} />
+              </Section>
+            )}
           </>
         )}
         {creating && defaults?.contact_id && (
-          <Section title="Vínculos">
-            <FieldRow label="Contacto">
-              <span className="text-sm">{contactName ?? "Este contacto"}</span>
-            </FieldRow>
-          </Section>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border px-4 py-3 text-sm" aria-label="Vínculos">
+            <Meta label="Contacto"><span>{contactName ?? "Este contacto"}</span></Meta>
+          </div>
         )}
         {creating && (
-          <p className="px-4 py-4 text-xs text-muted-foreground">Las dependencias y el historial aparecen cuando la tarea está creada.</p>
+          <p className="px-4 py-3 text-xs text-muted-foreground">Las dependencias y el historial aparecen cuando la tarea está creada.</p>
         )}
       </SidePanel>
 
@@ -348,13 +341,54 @@ function DrawerBody(props: TaskDrawerProps) {
   );
 }
 
-/** El boton que abre un selector. Sin permiso de editar, es solo el valor. */
-function PickerButton({ refEl, onClick, children, label, disabled }: { refEl: RefObject<HTMLButtonElement | null>; onClick: () => void; children: React.ReactNode; label: string; disabled?: boolean }) {
+/**
+ * El boton que abre un selector. Con `pill` es una pastilla con borde (los datos de arriba del drawer); sin el, un
+ * boton sin borde (el estado de la cabecera). Sin permiso de editar, es solo el valor.
+ */
+function PickerButton({ refEl, onClick, children, label, disabled, pill = false, tone }: { refEl: RefObject<HTMLButtonElement | null>; onClick: () => void; children: ReactNode; label: string; disabled?: boolean; pill?: boolean; tone?: string }) {
+  if (pill) {
+    const look = cn("inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg border px-2.5 text-[13px]", tone ? `${tone} border-transparent` : "border-input bg-background");
+    if (disabled) return <span className={cn(look, "opacity-80")}>{children}</span>;
+    return (
+      <button ref={refEl} type="button" onClick={onClick} aria-label={label} className={cn(look, "transition-colors hover:border-muted-foreground/60 focus-visible:border-primary focus-visible:outline-none")}>
+        {children}
+      </button>
+    );
+  }
   if (disabled) return <div className="px-2 py-1">{children}</div>;
   return (
     <button ref={refEl} type="button" onClick={onClick} aria-label={label} className="flex min-h-8 w-full items-center rounded-lg border border-transparent px-2 py-1 text-left transition-colors hover:border-input hover:bg-accent/40 focus-visible:border-primary focus-visible:outline-none">
       {children}
     </button>
+  );
+}
+
+/** Un icono de la cabecera (seguidores, historial). `badge` es un numerito en la esquina. */
+function HeaderIconButton({ refEl, children, label, title, onClick, disabled, active, pressed, badge }: { refEl?: RefObject<HTMLButtonElement | null>; children: ReactNode; label: string; title: string; onClick?: () => void; disabled?: boolean; active?: boolean; pressed?: boolean; badge?: number | null }) {
+  return (
+    <button
+      ref={refEl}
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-pressed={pressed}
+      title={title}
+      className={cn("relative grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-accent hover:text-foreground disabled:cursor-default disabled:hover:bg-transparent", active ? "text-primary" : "text-muted-foreground", pressed && "bg-accent")}
+    >
+      {children}
+      {badge ? <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">{badge}</span> : null}
+    </button>
+  );
+}
+
+/** Un dato chico con su etiqueta (contacto, conversacion, origen). */
+function Meta({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <p className="min-w-0">
+      <span className="mr-1.5 text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </p>
   );
 }
 

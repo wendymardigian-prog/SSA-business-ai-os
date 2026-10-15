@@ -18,6 +18,17 @@ export function formatDayShort(date: string, today: string): string {
   return y === today.slice(0, 4) ? `${d}/${m}` : `${d}/${m}/${y}`;
 }
 
+const WEEKDAYS_SHORT = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"] as const;
+const MONTHS_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"] as const;
+
+/** «mié 16 oct», o «mié 16 oct 2027» si no es del año de `today`. Para el selector de fecha del drawer. */
+export function formatDayLong(date: string, today: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const weekday = WEEKDAYS_SHORT[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  const base = `${weekday} ${d} ${MONTHS_SHORT[m - 1]}`;
+  return String(y) === today.slice(0, 4) ? base : `${base} ${y}`;
+}
+
 export type DueTone = "overdue" | "today" | "soon" | "normal" | "none" | "done";
 
 export interface DueLabel {

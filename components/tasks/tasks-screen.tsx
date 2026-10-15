@@ -214,8 +214,7 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
           <EmptyState canEdit={canEdit} onCreate={() => startCreate()} />
         ) : (
           <div className="space-y-3">
-            <MineBar mine={mine} active={state.mine} onToggle={() => change(toggleMine(state))} />
-            <FiltersBar state={state} onChange={change} members={members} projects={projects} showGroup={state.view === "table"} total={tasks.length} shown={sorted.length} />
+            <FiltersBar state={state} onChange={change} members={members} projects={projects} mine={mine} onToggleMine={() => change(toggleMine(state))} showGroup={state.view === "table"} total={tasks.length} shown={sorted.length} />
             {sorted.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-8 text-center">
                 <p className="text-sm font-medium">{state.mine && !filtersOnBeyondMine ? "No tenés tareas abiertas a tu cargo." : "No hay tareas con estos filtros."}</p>
@@ -340,27 +339,3 @@ function EmptyState({ canEdit, onCreate }: { canEdit: boolean; onCreate: () => v
   );
 }
 
-
-/** «Mis tareas»: el atajo (mias y sin completar, por vencimiento) y los contadores de lo que viene. */
-function MineBar({ mine, active, onToggle }: { mine: ReturnType<typeof summarizeMine>; active: boolean; onToggle: () => void }) {
-  const chip = (n: number, text: string, hot: boolean) => (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs", hot && n > 0 ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300" : "border-border text-muted-foreground")}>
-      <span className="font-semibold tabular-nums">{n}</span> {text}
-    </span>
-  );
-  return (
-    <div className="flex flex-wrap items-center gap-2" aria-label="Mis tareas">
-      <button
-        type="button"
-        aria-pressed={active}
-        onClick={onToggle}
-        className={cn("h-8 whitespace-nowrap rounded-lg border px-3 text-[13px] font-medium transition-colors", active ? "border-primary bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60")}
-      >
-        Mis tareas
-      </button>
-      {chip(mine.overdue, mine.overdue === 1 ? "vencida" : "vencidas", true)}
-      {chip(mine.today, mine.today === 1 ? "vence hoy" : "vencen hoy", false)}
-      {chip(mine.next7, "en los próximos 7 días", false)}
-    </div>
-  );
-}
