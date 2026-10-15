@@ -307,3 +307,12 @@ END $$;
 
 REVOKE ALL ON public.vendors, public.recurring_expenses, public.expenses FROM anon;
 REVOKE DELETE ON public.vendors, public.recurring_expenses, public.expenses FROM authenticated;
+
+-- Permisos explicitos (un proyecto nuevo no da acceso por defecto): la app lee, crea y edita con la sesion (la RLS decide
+-- quien) y nunca borra; el servidor puede todo.
+GRANT SELECT, INSERT, UPDATE ON public.vendors TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.recurring_expenses TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.expenses TO authenticated;
+GRANT ALL ON public.vendors TO service_role;
+GRANT ALL ON public.recurring_expenses TO service_role;
+GRANT ALL ON public.expenses TO service_role;

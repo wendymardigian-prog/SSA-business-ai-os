@@ -406,6 +406,12 @@ CREATE POLICY commission_rules_select ON public.commission_rules
 REVOKE ALL ON public.commission_rules, public.commissions FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.commission_rules, public.commissions FROM authenticated;
 
+-- Permisos explicitos (un proyecto nuevo no da acceso por defecto): la sesion solo LEE (la RLS decide quien); el servidor puede todo.
+GRANT SELECT ON public.commission_rules TO authenticated;
+GRANT SELECT ON public.commissions TO authenticated;
+GRANT ALL ON public.commission_rules TO service_role;
+GRANT ALL ON public.commissions TO service_role;
+
 -- 5. El motor ---------------------------------------------------------------------------------------------------------
 
 -- Un jsonb array de textos → text[] (cualquier otra cosa es una lista vacia).

@@ -39556,6 +39556,15 @@ END $$;
 REVOKE ALL ON public.vendors, public.recurring_expenses, public.expenses FROM anon;
 REVOKE DELETE ON public.vendors, public.recurring_expenses, public.expenses FROM authenticated;
 
+-- Permisos explicitos (un proyecto nuevo no da acceso por defecto): la app lee, crea y edita con la sesion (la RLS decide
+-- quien) y nunca borra; el servidor puede todo.
+GRANT SELECT, INSERT, UPDATE ON public.vendors TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.recurring_expenses TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.expenses TO authenticated;
+GRANT ALL ON public.vendors TO service_role;
+GRANT ALL ON public.recurring_expenses TO service_role;
+GRANT ALL ON public.expenses TO service_role;
+
 -- ============================================================
 -- MIGRATION 226: EXPENSE RECEIPTS BUCKET
 -- ============================================================
@@ -40799,6 +40808,12 @@ CREATE POLICY commission_rules_select ON public.commission_rules
 -- Solo lectura para la app: ni INSERT, ni UPDATE, ni DELETE (escribe el servidor con el cliente de servicio).
 REVOKE ALL ON public.commission_rules, public.commissions FROM anon;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.commission_rules, public.commissions FROM authenticated;
+
+-- Permisos explicitos (un proyecto nuevo no da acceso por defecto): la sesion solo LEE (la RLS decide quien); el servidor puede todo.
+GRANT SELECT ON public.commission_rules TO authenticated;
+GRANT SELECT ON public.commissions TO authenticated;
+GRANT ALL ON public.commission_rules TO service_role;
+GRANT ALL ON public.commissions TO service_role;
 
 -- 5. El motor ---------------------------------------------------------------------------------------------------------
 
