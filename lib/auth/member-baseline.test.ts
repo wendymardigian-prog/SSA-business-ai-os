@@ -43,7 +43,7 @@ const read = (relativePath: string) => readFileSync(join(ROOT, relativePath), "u
  */
 const MIGRATED_ADMIN_PAGES = [
   ["app/(dashboard)/dashboard/settings/team/page.tsx", "team.view", 'requirePermission("team.view")'],
-  // General se parte en dos por permiso: la abre quien tiene `settings.general` o `sales.settings` (el Member, ninguna).
+  // General se parte por permiso: la abre quien tiene `settings.general`, `sales.settings` o `expenses.manage` (el Member, ninguna).
   ["app/(dashboard)/dashboard/settings/custom-fields/page.tsx", "custom_fields.manage", 'requirePermission("custom_fields.manage")'],
   // Ventas (F36): el historial de todo el workspace; ahora lo ve quien tiene `audit.view`.
   ["app/(dashboard)/dashboard/settings/actividad/page.tsx", "audit.view", 'requirePermission("audit.view")'],
@@ -60,7 +60,7 @@ const MIGRATED_ADMIN_PAGES = [
   [
     "app/(dashboard)/dashboard/settings/page.tsx",
     "settings.general",
-    'requireAnyPermission(["settings.general", "sales.settings"])',
+    'requireAnyPermission(["settings.general", "sales.settings", "expenses.manage"])',
   ],
 ] as const;
 
@@ -351,7 +351,8 @@ describe("caracterizacion: el menu (F68)", () => {
     const visibles = memberMenu();
     const ocultas = NAV_ITEMS.map((item) => item.name).filter((n) => !visibles.includes(n)).sort();
 
-    expect(ocultas).toEqual(["Social"]);
+    // Extra I: el Member de sistema tampoco ve Finanzas (no tiene expenses.view; sus comisiones llegan en el bloque CM).
+    expect(ocultas).toEqual(["Finanzas", "Social"]);
   });
 
   it("las demas las ve un Member", () => {

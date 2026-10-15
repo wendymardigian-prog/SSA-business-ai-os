@@ -1,6 +1,7 @@
 /**
  * Ventas F26: updateSale, cancelSale, cancelSubscription y rebuildPlan.
  */
+import { paymentMethodsFixture } from "@/lib/sales/test-support/payment-methods";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 
@@ -23,7 +24,7 @@ vi.mock("@/lib/audit", async (orig) => ({
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
     user: { id: ME },
-    workspace: { id: WS, timezone: "America/Costa_Rica", enabled_payment_methods: ["wise"], max_discount_percent: null },
+    workspace: { id: WS, timezone: "America/Costa_Rica", payment_methods: paymentMethodsFixture(["wise"]), max_discount_percent: null },
     role, roleId, supabase: db.client,
   }),
 }));

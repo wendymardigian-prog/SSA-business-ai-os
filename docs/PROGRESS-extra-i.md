@@ -221,33 +221,33 @@ Lo de §7, más recorrido visual y el flujo 7.1 del plano de punta a punta con d
 Marcar `[x]` al cumplir los criterios de la F. Las nice-to-have pueden quedar en `[~]` con la decisión en `PENDIENTE-extra-i.md`. Los bloques se cierran con commit `feat: extra-i - bloque X (nombre)` y `git push origin feat/extra-i`.
 
 ## Antes de MP
-- [ ] Test de caracterización del cobro con fee distinto de 0 (`lib/sales/payments-fee-characterization.test.ts`)
+- [x] Test de caracterización del cobro con fee distinto de 0 (`lib/sales/payments-fee-characterization.test.ts`)
 
 ## MP — Métodos de pago
-- [ ] F1 Migración 00224 (métodos del negocio, % y fijo en el pago, trigger que valida el método)
-- [ ] F2 Módulo de métodos de pago (código) + test de frontera de `enabled_payment_methods`
-- [ ] F3 El pago congela %, fijo y total al cobrar (y la reversión los limpia)
-- [ ] F4 Pantalla de métodos de pago (Ajustes > General > Ventas)
-- [ ] F5 Neto y fee en la pantalla del pago
-- [ ] F6 Corregir el fee de un pago cobrado (nice-to-have)
-- [ ] Bloque MP listo (vitest, verify-payment-methods, verify-sales, verify-rls, lint, build, 00224 aplicada y registrada)
+- [x] F1 Migración 00224 (métodos del negocio, % y fijo en el pago, trigger que valida el método)
+- [x] F2 Módulo de métodos de pago (código) + test de frontera de `enabled_payment_methods`
+- [x] F3 El pago congela %, fijo y total al cobrar (y la reversión los limpia)
+- [x] F4 Pantalla de métodos de pago (Ajustes > General > Ventas)
+- [x] F5 Neto y fee en la pantalla del pago
+- [x] F6 Corregir el fee de un pago cobrado (nice-to-have)
+- [x] Bloque MP listo (vitest, verify-payment-methods, verify-sales, verify-rls, lint, build, 00224 aplicada y registrada)
 
 ## G1 — Gastos, categorías y proveedores
-- [ ] GF1 Tablas, RLS y `verify-expenses.mjs` (00225)
-- [ ] GF2 Permisos y navegación (módulo `finance`, 4 claves, ítem Finanzas, `lib/finance/tabs.ts`)
-- [ ] GF3 Valores por defecto (categorías precargadas y configuración en jsonb)
-- [ ] GF4 Categorías (Ajustes > General > Finanzas)
-- [ ] GF5 Proveedores
-- [ ] GF6 Estados y transiciones (función pura)
-- [ ] GF7 Alta y edición de un gasto
-- [ ] GF8 Comprobante (00226)
-- [ ] GF9 Marcar pagado y revertir
-- [ ] GF10 Anular y duplicar
-- [ ] GF11 Vencimiento diario y handler `finance_daily`
-- [ ] GF12 Lista de gastos
-- [ ] GF13 Exportar CSV
-- [ ] GF14 Historial de Finanzas (00227)
-- [ ] Bloque G1 listo
+- [x] GF1 Tablas, RLS y `verify-expenses.mjs` (00225)
+- [x] GF2 Permisos y navegación (módulo `finance`, 4 claves, ítem Finanzas, `lib/finance/tabs.ts`)
+- [x] GF3 Valores por defecto (categorías precargadas y configuración en jsonb)
+- [x] GF4 Categorías (Ajustes > General > Finanzas)
+- [x] GF5 Proveedores
+- [x] GF6 Estados y transiciones (función pura)
+- [x] GF7 Alta y edición de un gasto
+- [x] GF8 Comprobante (00226)
+- [x] GF9 Marcar pagado y revertir
+- [x] GF10 Anular y duplicar
+- [x] GF11 Vencimiento diario y handler `finance_daily`
+- [x] GF12 Lista de gastos
+- [x] GF13 Exportar CSV
+- [x] GF14 Historial de Finanzas (00227)
+- [x] Bloque G1 listo
 
 ## G2 — Recurrentes y automáticos
 - [ ] GF15 Motor de recurrencia (función pura)
@@ -344,10 +344,10 @@ Primer número libre confirmado el 15/10/2026: **00224** (última registrada: `0
 
 | Plano | Real | Archivo | Qué | Quién la aplica | Estado |
 |---|---|---|---|---|---|
-| 00224 | 00224 | `00224_payment_methods.sql` | Métodos de pago del negocio, % y fijo en el pago, trigger de validación | Corrida (MP) | pendiente |
-| 00225 | 00225 | `00225_finance_tables.sql` | `expenses`, `recurring_expenses`, `vendors`, `finance_settings`, triggers, RLS | Corrida (G1) | pendiente |
-| 00226 | 00226 | `00226_expense_receipts_bucket.sql` | Bucket privado de comprobantes | Corrida (G1) | pendiente |
-| 00227 | 00227 | `00227_audit_log_select_finance.sql` | Política adicional del historial de Finanzas | Corrida (G1) | pendiente |
+| 00224 | 00224 | `00224_payment_methods.sql` | Métodos de pago del negocio, % y fijo en el pago, trigger de validación | Corrida (MP) | **aplicada y registrada (15/10/2026)** |
+| 00225 | 00225 | `00225_finance_tables.sql` | `expenses`, `recurring_expenses`, `vendors`, `finance_settings`, triggers, RLS | Corrida (G1) | **aplicada y registrada (15/10/2026)** |
+| 00226 | 00226 | `00226_expense_receipts_bucket.sql` | Bucket privado de comprobantes | Corrida (G1) | **aplicada y registrada (15/10/2026)** |
+| 00227 | 00227 | `00227_audit_log_select_finance.sql` | Política adicional del historial de Finanzas | Corrida (G1) | **aplicada y registrada (15/10/2026)** |
 | 00228 | 00228 | `00228_finance_daily.sql` | `mark_expenses_overdue`, `private.enqueue_finance_daily` (sin programar el cron) | Corrida (G2) | pendiente |
 | 00229 | 00229 | `00229_upsert_auto_expense.sql` | Gastos automáticos | Corrida (G2) | pendiente |
 | 00230 | 00230 | `00230_organic_attribution.sql` | Código de pieza, canal del toque, triggers, ajustes de atribución | Corrida (AO1) | pendiente |
@@ -367,4 +367,20 @@ Los nombres de archivo son una propuesta; si cambian, se corrige esta tabla en e
 - `npm run lint`: 0 errores, 36 avisos.
 - `npm run build`: compila (sin diferencias en `public/embed/embed.js`).
 - Huellas de las 8 funciones protegidas: ver la tabla de la sección 1 del plan.
-- `verify-*`: PENDIENTE_BASELINE
+- `verify-*` (28 scripts, de a uno con el candado, 15/10/2026): **25 en 0**. Fallan HOY, ya en `main`, y se anotan (no pueden empeorar):
+  - `verify-attribution`: «todos los contactos reales tienen first_touch (819 de 878)» — depende de los datos reales de la base (59 contactos sin primer toque). Confirmado sobre una copia limpia de `main`.
+  - `verify-tasks`: «las fechas de las dependientes ajenas se corrigieron (B al 14, C al 15)». Confirmado sobre una copia limpia de `main`.
+  - `verify-publishing` falló en la primera pasada por una edición mía en curso (lib/ cambiaba mientras corría); sobre `main` limpio y sobre mi árbol después da 0.
+  - `verify-webhook` no se corre: necesita la app local en marcha (`--target`).
+
+
+---
+
+# Registro de la corrida (decisiones y datos que no están en el plan)
+
+- **15/10/2026 — worktree.** El worktree no traía `.env` ni `supabase/.temp`: se copió el `.env` y se enlazó `supabase/.temp` (ambos ignorados por git, nunca se imprimen). Los planos se leyeron del checkout principal.
+- **MP.** `workspaces.payment_methods`, trigger `payments_validate_method` (PM001), trigger `payments_fee_spec_from_snapshot` (copia % y fijo del snapshot que manda `buildPaymentRows`, porque `create_sale` no se toca). `enabled_payment_methods` queda sin leerse (test de frontera). Los 5 métodos arrancan en comisión 0 (Whop incluido: Wendy carga el real).
+- **G1.** `finance_settings` jsonb (12 categorías), `expenses`, `recurring_expenses`, `vendors`. Dos CHECK que dejaban pasar NULL (`workspaces_finance_settings_check` y `expenses_payout_vendor`) se corrigieron el mismo día con `COALESCE`, en el archivo y en la base (el `statements` registrado de la 00225 es el corregido).
+- **Exportar CSV de gastos** lo habilita `expenses.view` (como pide el plano de Gastos), no `data.export`. Anotado en `docs/finanzas.md`.
+- **Trabajo en paralelo.** La lógica pura (recurrencia, métricas, gastos automáticos, atribución, comisiones), con sus archivos de casos compartidos, y la UI de G1 se escribieron en paralelo con subagentes; la integración, las migraciones, los permisos y las verificaciones las hice yo.
+- **Dudas del plano resueltas por el código:** la regla del vendedor del flujo 7.1 es **8 % del neto** (38,82 / 25,00 / 15,00); el «12 %» del enunciado era un ejemplo de frase (`alcance-v11.md` línea 230 dice 8 %).

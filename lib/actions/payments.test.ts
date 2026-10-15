@@ -2,6 +2,7 @@
  * Ventas F29 y F32: cobrar, cobro parcial, revertir, reprogramar, incobrable, reembolso, agregar
  * un pago y comprobantes. Sin servicios externos: la base y el Storage están en memoria.
  */
+import { paymentMethodsFixture } from "@/lib/sales/test-support/payment-methods";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 
@@ -29,7 +30,7 @@ vi.mock("@/lib/sales/automation/relative", () => ({ syncPaymentRelativeJobs: vi.
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
     user: { id: ME },
-    workspace: { id: WS, timezone: "America/Costa_Rica", enabled_payment_methods: ["wise", "binance"], overdue_grace_days: 0 },
+    workspace: { id: WS, timezone: "America/Costa_Rica", payment_methods: paymentMethodsFixture(["wise", "binance"]), overdue_grace_days: 0 },
     role, roleId, supabase: db.client,
   }),
 }));
@@ -46,7 +47,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-const { markPaymentPaid, revertPayment, reschedulePayment, markUncollectible, createRefund, addPayment, uploadPaymentReceipt, getPaymentReceiptUrl } = await import("./payments");
+const { correctPaymentFee, markPaymentPaid, revertPayment, reschedulePayment, markUncollectible, createRefund, addPayment, uploadPaymentReceipt, getPaymentReceiptUrl } = await import("./payments");
 
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 const seed = () =>
@@ -236,5 +237,26 @@ describe("comprobantes", () => {
     Object.assign(row(PAY), { receipt_path: `otro/${SALE}/${PAY}/abc.png` });
     expect(await getPaymentReceiptUrl({ paymentId: PAY })).toMatchObject({ ok: false });
     expect(signed).toHaveLength(1);
+  });
+});
+
+describe("correctPaymentFee (Extra I, F6)", () => {
+  it("cambia solo el total de la comisión de un cobro y lo deja en el historial con su motivo", async () => {
+    await markPaymentPaid({ paymentId: PAY, method: "wise" });
+    audits.length = 0;
+    const before = { ...row(PAY) };
+    expect(await correctPaymentFee({ paymentId: PAY, feeAmount: 12.5, reason: "el banco cobró distinto" })).toEqual({ ok: true, feeAmount: 12.5 });
+    expect(row(PAY).provider_fee_amount).toBe(12.5);
+    expect(row(PAY).amount).toBe(before.amount);
+    expect(row(PAY).payment_option_snapshot).toEqual(before.payment_option_snapshot);
+    expect(audits[0]).toMatchObject({ entityType: "payment", action: "payment.fee_corrected", metadata: { reason: "el banco cobró distinto" } });
+  });
+
+  it("rechaza más que lo cobrado, un pago sin cobrar y a quien no administra pagos", async () => {
+    expect(await correctPaymentFee({ paymentId: PAY, feeAmount: 1, reason: "x" })).toMatchObject({ ok: false }); // programado
+    await markPaymentPaid({ paymentId: PAY, method: "wise" });
+    expect(await correctPaymentFee({ paymentId: PAY, feeAmount: 999, reason: "x" })).toMatchObject({ ok: false });
+    asLimitedMember();
+    expect(await correctPaymentFee({ paymentId: PAY, feeAmount: 1, reason: "x" })).toMatchObject({ ok: false });
   });
 });

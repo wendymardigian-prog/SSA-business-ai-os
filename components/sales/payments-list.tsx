@@ -10,7 +10,7 @@ import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
 import { formatMoney } from "@/lib/sales/format";
 import { PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, type PaymentStatus } from "@/lib/sales/labels";
-import { PAYMENT_METHODS } from "@/lib/sales/payment-methods";
+import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 import {
   PAYMENT_PILLS, PAYMENT_PILL_LABELS, countActivePaymentFilters, paymentsFiltersToParams,
   type PaymentListRow, type PaymentPill, type PaymentsFilters, type PaymentsTotals,
@@ -33,6 +33,7 @@ export interface PaymentsListData {
   scopeAll: boolean;
   members: Array<{ id: string; name: string }>;
   enabledMethods: string[];
+  methods: PaymentMethodDef[];
   today: string;
 }
 
@@ -109,7 +110,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
               <Field label="Método">
                 <select className={selectClass} value={filters.method ?? ""} onChange={(e) => go({ method: e.target.value || null })}>
                   <option value="">Todos</option>
-                  {PAYMENT_METHODS.map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
+                  {data.methods.map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
                 </select>
               </Field>
               <Field label="Vendedor">
@@ -222,7 +223,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
         )}
       </div>
 
-      {action?.kind === "paid" && payable && <MarkPaidDialog saleId={action.row.saleId} payment={payable} saleDate={action.row.saleDate} today={data.today} enabledMethods={data.enabledMethods} onClose={() => setAction(null)} />}
+      {action?.kind === "paid" && payable && <MarkPaidDialog saleId={action.row.saleId} payment={payable} saleDate={action.row.saleDate} today={data.today} enabledMethods={data.enabledMethods} methods={data.methods} onClose={() => setAction(null)} />}
       {action?.kind === "reschedule" && payable && <RescheduleDialog payment={payable} onClose={() => setAction(null)} />}
     </div>
   );

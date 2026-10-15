@@ -38983,3 +38983,923 @@ CREATE POLICY "content_posts_update" ON public.content_posts
       AND status IN ('draft', 'in_production', 'in_review')
     )
   );
+
+-- ============================================================
+-- MIGRATION 224: PAYMENT METHODS
+-- ============================================================
+-- ============================================================================
+-- 00224 — Métodos de pago del negocio (Extra I, bloque MP, F1)
+-- ============================================================================
+-- Hasta hoy los metodos de pago eran 5 claves escritas a fuego en un CHECK. Ahora el negocio crea los
+-- suyos, con su porcentaje y su fijo, y cada pago cobrado congela lo que se quedo el procesador.
+--
+-- 1. `workspaces.payment_methods` (jsonb, array): [{ key, name, fee_percent, fee_fixed, active, created_at }].
+--    Relleno SOLO al crear la columna: los 5 de siempre, con comision 0, y `active` = estaba en
+--    `enabled_payment_methods`. Esa columna vieja QUEDA (nadie la lee, no se borra).
+-- 2. `payments.provider_fee_percent` y `payments.provider_fee_fixed`: el porcentaje y el fijo con los que se
+--    calculo la comision al cobrar, congelados junto con `provider_fee_amount` (el total). Solo en un pago
+--    cobrado y que no sea reembolso.
+-- 3. El CHECK fijo `payments_method_check` se reemplaza por el trigger `payments_validate_method`: el metodo
+--    tiene que existir en `workspaces.payment_methods` del mismo workspace (ACTIVO O NO: un pago viejo con un
+--    metodo desactivado se sigue pudiendo editar; "solo activos en pagos nuevos" lo decide la app).
+--    Error: ERRCODE 'PM001'.
+-- 4. Trigger `payments_fee_spec_from_snapshot`: `create_sale` (protegida, no se toca) inserta los pagos con
+--    una lista fija de columnas que no incluye las dos nuevas; este trigger las copia del
+--    `payment_option_snapshot` (que la app ya manda) cuando el pago nace o pasa a cobrado. Y las deja en null
+--    si el pago NO esta cobrado (asi el codigo viejo, que al revertir no las conoce, no choca con el CHECK).
+--    Envuelto en EXCEPTION: nunca tumba un cobro.
+-- 5. `public.workspace_payment_method(ws, key)`: el elemento de la lista o null.
+--
+-- Definicion VIGENTE del CHECK que se reemplaza (leida de la base con pg_get_constraintdef el 15/10/2026):
+--   payments_method_check:
+--   CHECK (((payment_method IS NULL) OR (payment_method = ANY (ARRAY['whop'::text, 'transferencia_cr'::text,
+--           'transferencia_usa'::text, 'wise'::text, 'binance'::text]))))
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS payments_validate_method ON public.payments;
+--   DROP TRIGGER IF EXISTS payments_fee_spec_from_snapshot ON public.payments;
+--   DROP FUNCTION IF EXISTS private.payments_validate_method();
+--   DROP FUNCTION IF EXISTS private.payments_fee_spec_from_snapshot();
+--   DROP FUNCTION IF EXISTS public.workspace_payment_method(uuid, text);
+--   ALTER TABLE public.payments ADD CONSTRAINT payments_method_check
+--     CHECK (((payment_method IS NULL) OR (payment_method = ANY (ARRAY['whop'::text, 'transferencia_cr'::text,
+--     'transferencia_usa'::text, 'wise'::text, 'binance'::text]))));
+--   (antes, comprobar que ningun pago use un metodo fuera de esos 5)
+--   Las columnas nuevas pueden quedar. El codigo viejo vuelve a leer `enabled_payment_methods`, que nunca se tocó.
+-- Riesgo: ALTO (cambia la regla que valida el metodo del cobro). Hay 0 pagos, no hay datos en juego; el codigo
+-- viejo sigue funcionando contra la base nueva (los 5 metodos siguen siendo validos).
+-- ============================================================================
+
+SET search_path = '';
+
+-- 1. Metodos del negocio ---------------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_is_new boolean := NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'workspaces' AND column_name = 'payment_methods'
+  );
+BEGIN
+  IF v_is_new THEN
+    ALTER TABLE public.workspaces
+      ADD COLUMN payment_methods jsonb NOT NULL DEFAULT '[
+        {"key":"whop","name":"Whop (registrado a mano)","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"},
+        {"key":"transferencia_cr","name":"Transferencia CR","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"},
+        {"key":"transferencia_usa","name":"Transferencia USA","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"},
+        {"key":"wise","name":"Wise","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"},
+        {"key":"binance","name":"Binance","fee_percent":0,"fee_fixed":0,"active":true,"created_at":"2026-10-15T00:00:00.000Z"}
+      ]'::jsonb;
+
+    -- Relleno: `active` = estaba habilitado en la lista vieja de cada workspace.
+    UPDATE public.workspaces w
+       SET payment_methods = (
+         SELECT jsonb_agg(
+                  jsonb_build_object(
+                    'key', m.key, 'name', m.name, 'fee_percent', 0, 'fee_fixed', 0,
+                    'active', m.key = ANY (w.enabled_payment_methods),
+                    'created_at', '2026-10-15T00:00:00.000Z')
+                  ORDER BY m.ord)
+           FROM (VALUES
+             (1, 'whop', 'Whop (registrado a mano)'),
+             (2, 'transferencia_cr', 'Transferencia CR'),
+             (3, 'transferencia_usa', 'Transferencia USA'),
+             (4, 'wise', 'Wise'),
+             (5, 'binance', 'Binance')
+           ) AS m(ord, key, name)
+       );
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_payment_methods_check' AND conrelid = 'public.workspaces'::regclass) THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_payment_methods_check
+      CHECK (jsonb_typeof(payment_methods) = 'array');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.payment_methods IS
+  'Metodos de pago del negocio: [{key,name,fee_percent,fee_fixed,active,created_at}]. La key no cambia nunca; no se borran, se desactivan. Los escribe `updatePaymentMethods` (sales.settings). `enabled_payment_methods` quedo sin leerse.';
+
+-- 2. Lo que se quedo el procesador, congelado en el pago ------------------------------------------------
+ALTER TABLE public.payments
+  ADD COLUMN IF NOT EXISTS provider_fee_percent numeric(6,3),
+  ADD COLUMN IF NOT EXISTS provider_fee_fixed numeric(12,2);
+
+COMMENT ON COLUMN public.payments.provider_fee_percent IS 'Porcentaje del procesador con el que se calculo la comision al cobrar (congelado).';
+COMMENT ON COLUMN public.payments.provider_fee_fixed IS 'Fijo en USD del procesador con el que se calculo la comision al cobrar (congelado).';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_fee_spec_only_paid_check' AND conrelid = 'public.payments'::regclass) THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_fee_spec_only_paid_check
+      CHECK (status = 'paid' OR (provider_fee_percent IS NULL AND provider_fee_fixed IS NULL));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_refund_fee_spec_check' AND conrelid = 'public.payments'::regclass) THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_refund_fee_spec_check
+      CHECK (type <> 'refund' OR (provider_fee_percent IS NULL AND provider_fee_fixed IS NULL));
+  END IF;
+END $$;
+
+-- 3. El metodo tiene que existir en la lista del negocio (activo o no) -----------------------------------
+ALTER TABLE public.payments DROP CONSTRAINT IF EXISTS payments_method_check;
+
+CREATE OR REPLACE FUNCTION private.payments_validate_method()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.payment_method IS NULL THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+      FROM public.workspaces w, jsonb_array_elements(w.payment_methods) AS m
+     WHERE w.id = NEW.workspace_id
+       AND m ->> 'key' = NEW.payment_method
+  ) THEN
+    RAISE EXCEPTION 'El metodo de pago % no existe en este negocio', NEW.payment_method
+      USING ERRCODE = 'PM001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.payments_validate_method() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS payments_validate_method ON public.payments;
+CREATE TRIGGER payments_validate_method
+  BEFORE INSERT OR UPDATE OF payment_method ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION private.payments_validate_method();
+
+-- 4. %, fijo y total viajan juntos -----------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.payments_fee_spec_from_snapshot()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  -- Fuera de un cobro (o en un reembolso) el porcentaje y el fijo no existen.
+  IF NEW.status <> 'paid' OR NEW.type = 'refund' THEN
+    NEW.provider_fee_percent := NULL;
+    NEW.provider_fee_fixed := NULL;
+    RETURN NEW;
+  END IF;
+
+  -- Cobrado y sin los dos valores: salen de la foto del metodo al cobrar.
+  IF NEW.provider_fee_percent IS NULL AND NEW.provider_fee_fixed IS NULL AND NEW.payment_option_snapshot IS NOT NULL THEN
+    NEW.provider_fee_percent := NULLIF(NEW.payment_option_snapshot ->> 'provider_fee_percent', '')::numeric;
+    NEW.provider_fee_fixed := NULLIF(NEW.payment_option_snapshot ->> 'provider_fee_fixed', '')::numeric;
+  END IF;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Esto nunca tumba un cobro: sin los dos valores, el pago sigue valido (solo falta el desglose).
+  RAISE WARNING 'payments_fee_spec_from_snapshot: %', SQLERRM;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.payments_fee_spec_from_snapshot() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS payments_fee_spec_from_snapshot ON public.payments;
+CREATE TRIGGER payments_fee_spec_from_snapshot
+  BEFORE INSERT OR UPDATE ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION private.payments_fee_spec_from_snapshot();
+
+-- 5. Un metodo por clave ------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.workspace_payment_method(p_workspace uuid, p_key text)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT m
+    FROM public.workspaces w, jsonb_array_elements(w.payment_methods) AS m
+   WHERE w.id = p_workspace
+     AND m ->> 'key' = p_key
+     AND (COALESCE(auth.role(), '') = 'service_role' OR public.is_workspace_member(p_workspace))
+   LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.workspace_payment_method(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.workspace_payment_method(uuid, text) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 225: FINANCE TABLES
+-- ============================================================
+-- ============================================================================
+-- 00225 — Gastos, proveedores y recurrentes (Extra I, bloque G1, GF1)
+-- ============================================================================
+-- Tablas NUEVAS (aditiva): `vendors`, `recurring_expenses`, `expenses`. Y una columna en `workspaces`:
+-- `finance_settings` (jsonb) con las 12 categorias de gasto precargadas y los gastos automaticos apagados.
+-- No hay tablas de categorias ni de configuracion (decision del Extra I): categorias y automaticos viven en
+-- ese jsonb y se leen con la sesion de cualquier miembro (no son datos sensibles); se escriben SOLO por
+-- Server Action con el cliente de servicio, despues de `expenses.manage`.
+--
+--   1. workspaces.finance_settings (jsonb): { expense_categories, processor_fees, meta_ads, auto_close_days }.
+--   2. vendors: proveedores (con `user_id`: una persona del equipo para liquidar comisiones).
+--   3. recurring_expenses: plantillas de gastos que se repiten.
+--   4. expenses: cada salida de plata. `category_key` (texto) valida contra el jsonb (trigger, EX001).
+--      Origenes: manual, recurring, processor_fee, meta_ads, adjustment y commission_payout.
+--   5. Triggers:
+--        - expenses_validate_category (EX001): la categoria existe en la configuracion del workspace y, si
+--          quien escribe es una PERSONA, no esta archivada (el trabajo diario puede generar con una archivada);
+--        - expenses_guard: un pagado no cambia monto ni fechas; un anulado no se edita (salvo la reactivacion
+--          de un automatico que el sistema anulo por quedar en cero); un automatico no se edita a mano; una
+--          liquidacion de comisiones no cambia monto ni persona; origen, plantilla y ajuste no cambian nunca;
+--          una persona solo da de alta gastos manuales o ajustes.
+--   6. RLS: SELECT con `expenses.view`; INSERT/UPDATE con `expenses.manage`; sin DELETE (nada se borra).
+--
+-- Indices unicos de idempotencia (la verdad la dan los indices, no un SELECT previo):
+--   - (recurring_expense_id, scheduled_date): un anulado sigue ocupando su fecha;
+--   - (workspace_id, auto_key): un automatico por metodo/cuenta y mes.
+--
+-- Como volver atras (las tablas estan vacias al aplicar esta migracion):
+--   DROP TABLE IF EXISTS public.expenses; DROP TABLE IF EXISTS public.recurring_expenses; DROP TABLE IF EXISTS public.vendors;
+--   DROP FUNCTION IF EXISTS private.expenses_validate_category(); DROP FUNCTION IF EXISTS private.expenses_guard();
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS finance_settings;
+-- Riesgo: bajo. Nada existente cambia; el codigo viejo ignora las tablas y la columna.
+-- ============================================================================
+
+SET search_path = '';
+
+-- 1. Configuracion de Finanzas ---------------------------------------------------------------------------
+-- El default es el mismo que `defaultFinanceSettings()` (lib/finance/settings.ts): un test los compara.
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS finance_settings jsonb NOT NULL DEFAULT '{"expense_categories":[{"key":"ads_meta","name":"Publicidad (Meta)","color":"#2563eb","group":"adquisicion","system":true,"archived_at":null},{"key":"marketing","name":"Marketing y contenido","color":"#7c3aed","group":"adquisicion","system":true,"archived_at":null},{"key":"sales_team","name":"Equipo de ventas","color":"#db2777","group":"adquisicion","system":true,"archived_at":null},{"key":"commissions","name":"Comisiones del equipo","color":"#e11d48","group":"adquisicion","system":true,"archived_at":null},{"key":"delivery_team","name":"Equipo de entrega","color":"#0d9488","group":"entrega","system":true,"archived_at":null},{"key":"delivery_tools","name":"Herramientas de entrega","color":"#16a34a","group":"entrega","system":true,"archived_at":null},{"key":"software","name":"Software y suscripciones","color":"#ca8a04","group":"operacion","system":true,"archived_at":null},{"key":"processor_fees","name":"Comisiones de procesador","color":"#ea580c","group":"operacion","system":true,"archived_at":null},{"key":"professional","name":"Contabilidad y legal","color":"#4f46e5","group":"operacion","system":true,"archived_at":null},{"key":"admin_team","name":"Equipo administrativo","color":"#0891b2","group":"operacion","system":true,"archived_at":null},{"key":"taxes","name":"Impuestos","color":"#64748b","group":"otro","system":true,"archived_at":null},{"key":"other","name":"Otros","color":"#78716c","group":"otro","system":true,"archived_at":null}],"processor_fees":{},"meta_ads":{},"auto_close_days":3}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_finance_settings_check' AND conrelid = 'public.workspaces'::regclass) THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_finance_settings_check
+      CHECK (jsonb_typeof(finance_settings) = 'object' AND COALESCE(jsonb_typeof(finance_settings -> 'expense_categories'), '') = 'array');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.finance_settings IS
+  'Configuracion de Finanzas: { expense_categories:[{key,name,color,group,system,archived_at}], processor_fees:{}, meta_ads:{}, auto_close_days }. La key de una categoria no cambia nunca; no se borran, se archivan. Se escribe solo por Server Action (expenses.manage).';
+
+-- 2. Proveedores -------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.vendors (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 120),
+  country text CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
+  email text CHECK (email IS NULL OR char_length(email) <= 200),
+  payment_details text CHECK (payment_details IS NULL OR char_length(payment_details) <= 1000),
+  terms text CHECK (terms IS NULL OR char_length(terms) <= 200),
+  notes text CHECK (notes IS NULL OR char_length(notes) <= 2000),
+  -- Una persona del equipo (liquidaciones de comisiones). Su nombre sale del miembro.
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  archived_at timestamptz,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendors_active_name ON public.vendors (workspace_id, lower(btrim(name))) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendors_user ON public.vendors (workspace_id, user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_vendors_workspace_archived ON public.vendors (workspace_id, archived_at);
+
+-- 3. Plantillas recurrentes ----------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.recurring_expenses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  concept text NOT NULL CHECK (char_length(btrim(concept)) BETWEEN 1 AND 200),
+  vendor_id uuid REFERENCES public.vendors(id) ON DELETE RESTRICT,
+  category_key text NOT NULL,
+  amount_type text NOT NULL CHECK (amount_type IN ('fixed', 'variable')),
+  amount numeric(12,2),
+  currency text NOT NULL DEFAULT 'USD' CHECK (currency = 'USD'),
+  charge_mode text NOT NULL CHECK (charge_mode IN ('automatic', 'manual')),
+  frequency text NOT NULL CHECK (frequency IN ('weekly', 'biweekly', 'monthly', 'yearly')),
+  weekly_day smallint CHECK (weekly_day BETWEEN 0 AND 6),
+  weekly_interval smallint CHECK (weekly_interval BETWEEN 1 AND 52),
+  monthly_day smallint CHECK (monthly_day BETWEEN 1 AND 31),
+  yearly_month smallint CHECK (yearly_month BETWEEN 1 AND 12),
+  yearly_day smallint CHECK (yearly_day BETWEEN 1 AND 31),
+  start_date date NOT NULL,
+  end_date date,
+  lead_days smallint NOT NULL DEFAULT 0 CHECK (lead_days BETWEEN 0 AND 60),
+  is_active boolean NOT NULL DEFAULT true,
+  paused_at timestamptz,
+  -- Desde que fecha de pago genera el trabajo diario. Se pone en hoy al crear, al reactivar y al editar.
+  generation_anchor date NOT NULL,
+  responsible_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  notes text CHECK (notes IS NULL OR char_length(notes) <= 2000),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT recurring_end_after_start CHECK (end_date IS NULL OR end_date >= start_date),
+  CONSTRAINT recurring_fixed_needs_amount CHECK (amount_type <> 'fixed' OR (amount IS NOT NULL AND amount > 0)),
+  CONSTRAINT recurring_variable_amount CHECK (amount_type <> 'variable' OR amount IS NULL OR amount > 0),
+  CONSTRAINT recurring_automatic_no_lead CHECK (charge_mode <> 'automatic' OR lead_days = 0),
+  CONSTRAINT recurring_frequency_fields CHECK (
+    (frequency = 'weekly'   AND weekly_day IS NOT NULL AND weekly_interval IS NOT NULL AND monthly_day IS NULL AND yearly_month IS NULL AND yearly_day IS NULL) OR
+    (frequency = 'biweekly' AND weekly_day IS NULL AND weekly_interval IS NULL AND monthly_day IS NULL AND yearly_month IS NULL AND yearly_day IS NULL) OR
+    (frequency = 'monthly'  AND weekly_day IS NULL AND weekly_interval IS NULL AND monthly_day IS NOT NULL AND yearly_month IS NULL AND yearly_day IS NULL) OR
+    (frequency = 'yearly'   AND weekly_day IS NULL AND weekly_interval IS NULL AND monthly_day IS NULL AND yearly_month IS NOT NULL AND yearly_day IS NOT NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_recurring_expenses_workspace_active ON public.recurring_expenses (workspace_id, is_active);
+
+-- 4. Gastos --------------------------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.expenses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  concept text NOT NULL CHECK (char_length(btrim(concept)) BETWEEN 1 AND 200),
+  vendor_id uuid REFERENCES public.vendors(id) ON DELETE RESTRICT,
+  category_key text NOT NULL,
+  amount numeric(12,2) NOT NULL DEFAULT 0,
+  currency text NOT NULL DEFAULT 'USD' CHECK (currency = 'USD'),
+  status text NOT NULL CHECK (status IN ('por_revisar', 'programado', 'vencido', 'pagado', 'anulado')),
+  scheduled_date date NOT NULL,
+  paid_date date,
+  paid_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  origin text NOT NULL CHECK (origin IN ('manual', 'recurring', 'processor_fee', 'meta_ads', 'adjustment', 'commission_payout')),
+  recurring_expense_id uuid REFERENCES public.recurring_expenses(id) ON DELETE RESTRICT,
+  auto_key text,
+  source_ref jsonb,
+  auto_drift_amount numeric(12,2),
+  auto_drift_detected_at timestamptz,
+  auto_drift_resolved_at timestamptz,
+  adjusts_expense_id uuid REFERENCES public.expenses(id) ON DELETE RESTRICT,
+  receipt_path text,
+  receipt_name text,
+  responsible_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  notes text CHECK (notes IS NULL OR char_length(notes) <= 2000),
+  void_reason text,
+  void_kind text CHECK (void_kind IS NULL OR void_kind IN ('manual', 'auto_zero')),
+  voided_at timestamptz,
+  voided_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  -- Pagado si y solo si tiene fecha de pago efectiva.
+  CONSTRAINT expenses_paid_iff_date CHECK ((status = 'pagado') = (paid_date IS NOT NULL)),
+  CONSTRAINT expenses_void_fields CHECK ((status = 'anulado') = (voided_at IS NOT NULL AND void_reason IS NOT NULL AND void_kind IS NOT NULL)),
+  -- Cero solo en Por revisar (o en un anulado que lo era); negativo solo en un ajuste.
+  CONSTRAINT expenses_amount_rules CHECK (
+    (origin = 'adjustment' AND amount <> 0) OR
+    (origin <> 'adjustment' AND amount >= 0 AND (amount > 0 OR status IN ('por_revisar', 'anulado')))
+  ),
+  CONSTRAINT expenses_recurring_origin CHECK ((origin = 'recurring') = (recurring_expense_id IS NOT NULL)),
+  CONSTRAINT expenses_auto_key_origin CHECK ((origin IN ('processor_fee', 'meta_ads')) = (auto_key IS NOT NULL)),
+  CONSTRAINT expenses_adjustment_origin CHECK ((origin = 'adjustment') = (adjusts_expense_id IS NOT NULL)),
+  -- Una liquidacion por persona siempre tiene a la persona como proveedor; la unica excepcion es el modo «un solo gasto».
+  CONSTRAINT expenses_payout_vendor CHECK (origin <> 'commission_payout' OR vendor_id IS NOT NULL OR COALESCE(source_ref ->> 'mode', '') = 'single')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_expenses_recurring_date ON public.expenses (recurring_expense_id, scheduled_date) WHERE recurring_expense_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_expenses_auto_key ON public.expenses (workspace_id, auto_key) WHERE auto_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_expenses_status_date ON public.expenses (workspace_id, status, scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_expenses_paid ON public.expenses (workspace_id, paid_date) WHERE status = 'pagado';
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON public.expenses (workspace_id, category_key);
+CREATE INDEX IF NOT EXISTS idx_expenses_vendor ON public.expenses (workspace_id, vendor_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_adjusts ON public.expenses (adjusts_expense_id) WHERE adjusts_expense_id IS NOT NULL;
+
+COMMENT ON TABLE public.expenses IS 'Gastos del negocio. Nada se borra: se anula. La plata es USD. Ver docs/finanzas.md.';
+
+-- 5. Triggers ------------------------------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS vendors_updated_at ON public.vendors;
+CREATE TRIGGER vendors_updated_at BEFORE UPDATE ON public.vendors FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+DROP TRIGGER IF EXISTS recurring_expenses_updated_at ON public.recurring_expenses;
+CREATE TRIGGER recurring_expenses_updated_at BEFORE UPDATE ON public.recurring_expenses FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+DROP TRIGGER IF EXISTS expenses_updated_at ON public.expenses;
+CREATE TRIGGER expenses_updated_at BEFORE UPDATE ON public.expenses FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- La categoria tiene que existir en la configuracion del workspace; una PERSONA no puede elegir una archivada.
+CREATE OR REPLACE FUNCTION private.expenses_validate_category()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_cat jsonb;
+BEGIN
+  SELECT c INTO v_cat
+    FROM public.workspaces w, jsonb_array_elements(w.finance_settings -> 'expense_categories') AS c
+   WHERE w.id = NEW.workspace_id
+     AND c ->> 'key' = NEW.category_key
+   LIMIT 1;
+  IF v_cat IS NULL THEN
+    RAISE EXCEPTION 'La categoria % no existe en este negocio', NEW.category_key USING ERRCODE = 'EX001';
+  END IF;
+  IF COALESCE(auth.role(), '') = 'authenticated'
+     AND v_cat ->> 'archived_at' IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.category_key IS DISTINCT FROM OLD.category_key) THEN
+    RAISE EXCEPTION 'La categoria % esta archivada', NEW.category_key USING ERRCODE = 'EX001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.expenses_validate_category() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS expenses_validate_category ON public.expenses;
+CREATE TRIGGER expenses_validate_category
+  BEFORE INSERT OR UPDATE OF category_key ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION private.expenses_validate_category();
+
+DROP TRIGGER IF EXISTS recurring_expenses_validate_category ON public.recurring_expenses;
+CREATE TRIGGER recurring_expenses_validate_category
+  BEFORE INSERT OR UPDATE OF category_key ON public.recurring_expenses
+  FOR EACH ROW EXECUTE FUNCTION private.expenses_validate_category();
+
+-- Las protecciones que valen para CUALQUIER cliente (tambien una persona con la consola).
+-- «Una persona» = una sesion con rol `authenticated`; el servicio y el SQL directo son «el sistema».
+CREATE OR REPLACE FUNCTION private.expenses_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user boolean := COALESCE(auth.role(), '') = 'authenticated';
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF v_user AND NEW.origin NOT IN ('manual', 'adjustment') THEN
+      RAISE EXCEPTION 'Una persona solo da de alta gastos manuales o ajustes' USING ERRCODE = 'EX002';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  -- Lo que no cambia nunca.
+  IF NEW.workspace_id IS DISTINCT FROM OLD.workspace_id
+     OR NEW.origin IS DISTINCT FROM OLD.origin
+     OR NEW.recurring_expense_id IS DISTINCT FROM OLD.recurring_expense_id
+     OR NEW.adjusts_expense_id IS DISTINCT FROM OLD.adjusts_expense_id THEN
+    RAISE EXCEPTION 'El origen de un gasto no se cambia' USING ERRCODE = 'EX002';
+  END IF;
+  IF v_user AND NEW.auto_key IS DISTINCT FROM OLD.auto_key THEN
+    RAISE EXCEPTION 'La clave de un gasto automatico no se cambia' USING ERRCODE = 'EX002';
+  END IF;
+
+  -- Un anulado es final: solo el sistema reactiva el que el mismo sistema anulo por quedar en cero.
+  IF OLD.status = 'anulado' AND NOT (NOT v_user AND OLD.void_kind = 'auto_zero') THEN
+    RAISE EXCEPTION 'Un gasto anulado no se edita' USING ERRCODE = 'EX002';
+  END IF;
+
+  -- Un pagado no cambia monto ni fechas: se revierte primero.
+  IF OLD.status = 'pagado' AND NEW.status = 'pagado'
+     AND (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.paid_date IS DISTINCT FROM OLD.paid_date OR NEW.scheduled_date IS DISTINCT FROM OLD.scheduled_date) THEN
+    RAISE EXCEPTION 'Revertí el pago primero para cambiar el monto o las fechas' USING ERRCODE = 'EX002';
+  END IF;
+
+  -- Un automatico no pagado lo recalcula el sistema.
+  IF v_user AND OLD.origin IN ('processor_fee', 'meta_ads') AND OLD.status <> 'pagado'
+     AND (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.concept IS DISTINCT FROM OLD.concept) THEN
+    RAISE EXCEPTION 'Este monto lo calcula el sistema todos los dias' USING ERRCODE = 'EX002';
+  END IF;
+
+  -- El monto de una liquidacion es la suma de sus comisiones: para cambiarlo se anula y se genera de nuevo.
+  IF v_user AND OLD.origin = 'commission_payout'
+     AND (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.vendor_id IS DISTINCT FROM OLD.vendor_id OR NEW.source_ref IS DISTINCT FROM OLD.source_ref) THEN
+    RAISE EXCEPTION 'El monto de una liquidacion de comisiones no se cambia: anulala y generala de nuevo' USING ERRCODE = 'EX002';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.expenses_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS expenses_guard ON public.expenses;
+CREATE TRIGGER expenses_guard
+  BEFORE INSERT OR UPDATE ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION private.expenses_guard();
+
+-- 6. RLS: sin DELETE (nada se borra) --------------------------------------------------------------------------
+ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recurring_expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+
+DO $$
+DECLARE
+  t text;
+  p record;
+BEGIN
+  -- Cada tabla nace SOLO con sus politicas: se borran las que hubiera con otro nombre.
+  FOREACH t IN ARRAY ARRAY['vendors', 'recurring_expenses', 'expenses'] LOOP
+    FOR p IN SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = t LOOP
+      EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', p.policyname, t);
+    END LOOP;
+    EXECUTE format($f$CREATE POLICY %I ON public.%I FOR SELECT TO authenticated USING ((select public.has_permission(workspace_id, 'expenses.view')))$f$, t || '_select', t);
+    EXECUTE format($f$CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK ((select public.has_permission(workspace_id, 'expenses.manage')))$f$, t || '_insert', t);
+    EXECUTE format($f$CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated USING ((select public.has_permission(workspace_id, 'expenses.manage'))) WITH CHECK ((select public.has_permission(workspace_id, 'expenses.manage')))$f$, t || '_update', t);
+  END LOOP;
+END $$;
+
+REVOKE ALL ON public.vendors, public.recurring_expenses, public.expenses FROM anon;
+REVOKE DELETE ON public.vendors, public.recurring_expenses, public.expenses FROM authenticated;
+
+-- ============================================================
+-- MIGRATION 226: EXPENSE RECEIPTS BUCKET
+-- ============================================================
+-- ============================================================================
+-- 00226 — Gastos (G1, GF8): bucket privado para los comprobantes
+-- ============================================================================
+-- Un bucket PRIVADO:
+--
+--   expense-receipts   {workspace_id}/{expense_id}/{uuid}.{ext}
+--
+-- Tipos: JPEG, PNG, WebP, HEIC y PDF. Tope: 10 MB. SUBE y FIRMA solo el servidor (service role) DESPUES de
+-- comprobar el permiso con la sesion de quien pide; la lectura es un link firmado de 60 segundos. Como segunda
+-- barrera hay una politica de SELECT por carpeta (el primer segmento del path es el workspace) que pide
+-- `expenses.view`. Insertar, actualizar y borrar son del servidor: no hay politica para usuarios.
+-- Reemplazar un comprobante NO borra el anterior.
+--
+-- Aditiva e idempotente. Que sea privado es una condicion de seguridad: si ya existia, se le fuerza.
+--
+-- Como volver atras (solo si esta vacio):
+--   DROP POLICY IF EXISTS expense_receipts_select ON storage.objects;
+--   select count(*) from storage.objects where bucket_id = 'expense-receipts';  -- 0
+--   DELETE FROM storage.buckets WHERE id = 'expense-receipts';
+-- ============================================================================
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'expense-receipts',
+  'expense-receipts',
+  false,
+  10485760,  -- 10 MB
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']
+)
+ON CONFLICT (id) DO UPDATE
+  SET public = false,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS expense_receipts_select ON storage.objects;
+CREATE POLICY expense_receipts_select ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'expense-receipts'
+    AND (storage.foldername(name))[1] ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    AND (select public.has_permission(((storage.foldername(name))[1])::uuid, 'expenses.view'))
+  );
+
+-- ============================================================
+-- MIGRATION 227: AUDIT LOG SELECT FINANCE
+-- ============================================================
+-- ============================================================================
+-- 00227 — Gastos (G1, GF14): quien lee el historial de Finanzas
+-- ============================================================================
+-- `audit_log_select` NO se reescribe. Siguiendo la convencion de los demas modulos (00147 Llamadas, 00168 Ventas,
+-- 00197 Tareas, 00213 Actividad), Finanzas suma su propia politica de SELECT ADICIONAL y permisiva; Postgres las
+-- combina con OR. La de Finanzas deja ver las entradas de gastos, plantillas y proveedores a quien tiene
+-- `expenses.view` (en la practica, un rol personalizado de contabilidad). Las categorias y la configuracion se
+-- auditan sobre `workspace`, que ya lo ven los Admin.
+--
+-- Lo que ya se veia de los demas `entity_type` no cambia: `scripts/verify-audit-visibility.mjs` (y
+-- `verify-expenses.mjs`) lo comprueban contra el resultado de antes.
+--
+-- Idempotente: DROP POLICY IF EXISTS + CREATE.
+--
+-- Como volver atras:
+--   DROP POLICY IF EXISTS audit_log_select_finance ON public.audit_log;
+-- ============================================================================
+
+DROP POLICY IF EXISTS audit_log_select_finance ON public.audit_log;
+CREATE POLICY audit_log_select_finance ON public.audit_log
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    entity_type IN ('expense', 'recurring_expense', 'vendor')
+    AND (select public.has_permission(workspace_id, 'expenses.view'))
+  );
+
+-- ============================================================
+-- MIGRATION 228: FINANCE DAILY FNS
+-- ============================================================
+-- ============================================================================
+-- 00228 — Gastos (G2, GF11): vencer gastos y encolar el trabajo diario (SIN programar el cron)
+-- ============================================================================
+-- Dos funciones, ninguna cambia lo que hace el codigo de produccion actual:
+--
+--   1. public.mark_expenses_overdue(workspace, hoy): pasa a `vencido` los gastos `programado` con fecha anterior
+--      a hoy. NUNCA toca otro estado (un pagado, un anulado o un «por revisar» no vencen). Devuelve los ids.
+--
+--   2. private.enqueue_finance_daily(ahora): por cada workspace, si en SU zona ya son las 03:00 o mas, encola UN
+--      `finance_daily` para su fecha local, SOLO si no existe ya un trabajo con esa clave EN CUALQUIER ESTADO
+--      (el unico de `scheduled_jobs.dedupe_key` solo cubre los pendientes; sin esto, un trabajo completado no
+--      impediria encolar otro). Una zona invalida cae a UTC y una falla en un workspace no frena a los demas.
+--      Recibe «ahora» como parametro (default now()) para poder probarla con un reloj fijo.
+--
+-- El `cron.schedule('finance-daily', ...)` NO esta en esta migracion: es la 00233, que se aplica DESPUES de
+-- mergear (si se aplicara antes, la tarea encolaria trabajos de un tipo que el codigo en produccion todavia no
+-- conoce y la cola los marcaria fallidos). Mientras tanto «Calcular ahora» (Ajustes) encola el trabajo a mano.
+--
+-- NO se agrega una ruta en `app/api/cron/` ni se toca `private.call_app_cron` (patron de 00167 y 00198).
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS private.enqueue_finance_daily(timestamptz);
+--   DROP FUNCTION IF EXISTS public.mark_expenses_overdue(uuid, date);
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'finance_daily' AND status = 'pending';
+-- Riesgo: bajo. Aditiva.
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.mark_expenses_overdue(p_workspace_id uuid, p_today date)
+RETURNS SETOF uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  RETURN QUERY
+  WITH changed AS (
+    UPDATE public.expenses e
+       SET status = 'vencido'
+     WHERE e.workspace_id = p_workspace_id
+       AND e.status = 'programado'
+       AND e.scheduled_date < p_today
+    RETURNING e.id
+  )
+  SELECT id FROM changed;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.mark_expenses_overdue(uuid, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_expenses_overdue(uuid, date) TO service_role;
+
+CREATE OR REPLACE FUNCTION private.enqueue_finance_daily(p_now timestamptz DEFAULT now())
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws record;
+  v_local timestamp;
+  v_day date;
+  v_key text;
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_ws IN SELECT w.id, COALESCE(w.timezone, 'UTC') AS tz FROM public.workspaces w LOOP
+    BEGIN
+      BEGIN
+        v_local := p_now AT TIME ZONE v_ws.tz;
+      EXCEPTION WHEN OTHERS THEN
+        -- Una zona guardada invalida no frena a nadie: ese workspace corre en UTC.
+        v_local := p_now AT TIME ZONE 'UTC';
+      END;
+      v_day := v_local::date;
+      CONTINUE WHEN v_local::time < time '03:00';
+
+      v_key := 'finance_daily:' || v_ws.id::text || ':' || v_day::text;
+      -- «Una vez por dia»: se mira si existe en CUALQUIER estado, no solo pendiente.
+      CONTINUE WHEN EXISTS (SELECT 1 FROM public.scheduled_jobs j WHERE j.dedupe_key = v_key);
+
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES (
+        'finance_daily',
+        jsonb_build_object('workspace_id', v_ws.id, 'local_date', v_day::text),
+        p_now,
+        v_key
+      )
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+
+      IF FOUND THEN
+        v_enqueued := v_enqueued + 1;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_finance_daily: no pude encolar el workspace %: %', v_ws.id, SQLERRM;
+    END;
+  END LOOP;
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_finance_daily(timestamptz) FROM PUBLIC, anon, authenticated;
+
+-- ============================================================
+-- MIGRATION 229: UPSERT AUTO EXPENSE
+-- ============================================================
+-- ============================================================================
+-- 00229 — Gastos (G2, GF20/GF21/GF22): los gastos automaticos
+-- ============================================================================
+-- Dos funciones. La REGLA vive en la base (lo que se hace con un automatico segun lo que ya existe y el total
+-- recalculado) y tiene su gemela pura en TypeScript (`decideAutoExpenseAction`, lib/finance/auto-expenses.ts): los
+-- mismos casos (`lib/finance/auto-expenses.cases.json`) corren contra las dos.
+--
+--   1. public.decide_auto_expense_action(existing, total, ctx): la decision, pura (STABLE: castea texto a fecha). Los 8 casos de GF20.
+--   2. public.upsert_auto_expense(...): en UNA transaccion, con un candado por clave y `SELECT ... FOR UPDATE`,
+--      lee el gasto, decide y aplica. Si el pago de una persona gana la carrera, el recalculo ve «pagado» y solo
+--      marca diferencia; si el recalculo gana, el pago congela el monto recien recalculado.
+--
+-- Un automatico por clave (`processor_fee:{metodo}:{AAAA-MM}` o `meta_ads:{cuenta}:{AAAA-MM}`): el indice unico
+-- `(workspace_id, auto_key)` es la idempotencia. El monto SE RECALCULA ENTERO cada vez (la suma del mes), nunca
+-- «se le suma lo nuevo». Lo pagado no se toca: la diferencia se marca (`auto_drift_*`) y se ajusta aparte.
+-- Solo `service_role`. SECURITY DEFINER, `search_path = ''`.
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.upsert_auto_expense(uuid, text, text, bigint, text, text, uuid, text, text, jsonb, date);
+--   DROP FUNCTION IF EXISTS public.decide_auto_expense_action(jsonb, bigint, jsonb);
+-- Riesgo: bajo. Aditiva.
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.decide_auto_expense_action(p_existing jsonb, p_total_cents bigint, p_ctx jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_total bigint := GREATEST(0, COALESCE(p_total_cents, 0));
+  v_month text := p_ctx ->> 'month';
+  v_today date := (p_ctx ->> 'todayLocal')::date;
+  v_month_end date := ((v_month || '-01')::date + interval '1 month' - interval '1 day')::date;
+  v_unpaid text := CASE WHEN p_ctx ->> 'chargeMode' = 'manual' AND v_month_end < v_today THEN 'vencido' ELSE 'programado' END;
+  v_status text;
+  v_amount bigint;
+  v_adjust bigint;
+  v_drift bigint;
+  v_cur_drift bigint;
+  v_open boolean;
+BEGIN
+  IF p_existing IS NULL OR jsonb_typeof(p_existing) = 'null' THEN
+    IF v_total <= 0 THEN
+      RETURN jsonb_build_object('kind', 'none');
+    END IF;
+    RETURN jsonb_build_object('kind', 'create', 'amountCents', v_total, 'status', v_unpaid, 'scheduledDate', v_month_end::text);
+  END IF;
+
+  v_status := p_existing ->> 'status';
+  v_amount := (p_existing ->> 'amountCents')::bigint;
+
+  IF v_status = 'anulado' THEN
+    IF p_existing ->> 'voidKind' = 'auto_zero' AND v_total > 0 THEN
+      RETURN jsonb_build_object('kind', 'reactivate', 'amountCents', v_total, 'status', v_unpaid);
+    END IF;
+    RETURN jsonb_build_object('kind', 'none');
+  END IF;
+
+  IF v_status = 'pagado' THEN
+    SELECT COALESCE(sum(x::bigint), 0) INTO v_adjust FROM jsonb_array_elements_text(COALESCE(p_existing -> 'adjustmentsCents', '[]'::jsonb)) AS x;
+    v_drift := v_total - (v_amount + v_adjust);
+    v_cur_drift := (p_existing ->> 'driftCents')::bigint;
+    IF v_drift = 0 THEN
+      v_open := v_cur_drift IS NOT NULL AND v_cur_drift <> 0 AND NOT COALESCE((p_existing ->> 'driftResolved')::boolean, false);
+      RETURN CASE WHEN v_open THEN jsonb_build_object('kind', 'clear_drift') ELSE jsonb_build_object('kind', 'none') END;
+    END IF;
+    IF v_cur_drift IS NOT NULL AND v_cur_drift = v_drift THEN
+      RETURN jsonb_build_object('kind', 'none');
+    END IF;
+    RETURN jsonb_build_object('kind', 'mark_drift', 'driftCents', v_drift);
+  END IF;
+
+  -- programado, vencido o por_revisar
+  IF v_total <= 0 THEN
+    RETURN jsonb_build_object('kind', 'void_zero', 'voidKind', 'auto_zero');
+  END IF;
+  IF v_amount <> v_total THEN
+    RETURN jsonb_build_object('kind', 'update_amount', 'amountCents', v_total);
+  END IF;
+  RETURN jsonb_build_object('kind', 'none');
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.decide_auto_expense_action(jsonb, bigint, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.decide_auto_expense_action(jsonb, bigint, jsonb) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.upsert_auto_expense(
+  p_workspace uuid,
+  p_auto_key text,
+  p_origin text,
+  p_total_cents bigint,
+  p_concept text,
+  p_month text,
+  p_vendor_id uuid,
+  p_category_key text,
+  p_charge_mode text,
+  p_source_ref jsonb,
+  p_today date
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.expenses%ROWTYPE;
+  v_existing jsonb;
+  v_ctx jsonb := jsonb_build_object('todayLocal', p_today::text, 'month', p_month, 'chargeMode', p_charge_mode);
+  v_action jsonb;
+  v_kind text;
+  v_reason text;
+  v_new_id uuid;
+BEGIN
+  IF p_origin NOT IN ('processor_fee', 'meta_ads') THEN
+    RAISE EXCEPTION 'origen invalido para un gasto automatico: %', p_origin;
+  END IF;
+
+  -- Un candado por clave: «FOR UPDATE» no bloquea una fila que todavia no existe, y dos corridas a la vez
+  -- no deben crear dos gastos.
+  PERFORM pg_advisory_xact_lock(hashtextextended('upsert_auto_expense:' || p_workspace::text || ':' || p_auto_key, 0));
+
+  SELECT * INTO v_row FROM public.expenses WHERE workspace_id = p_workspace AND auto_key = p_auto_key FOR UPDATE;
+
+  IF FOUND THEN
+    v_existing := jsonb_build_object(
+      'status', v_row.status,
+      'amountCents', round(v_row.amount * 100)::bigint,
+      'voidKind', v_row.void_kind,
+      'driftCents', CASE WHEN v_row.auto_drift_amount IS NULL THEN NULL ELSE round(v_row.auto_drift_amount * 100)::bigint END,
+      'driftResolved', v_row.auto_drift_resolved_at IS NOT NULL,
+      'adjustmentsCents', COALESCE((
+        SELECT jsonb_agg(round(a.amount * 100)::bigint ORDER BY a.created_at, a.id)
+          FROM public.expenses a
+         WHERE a.adjusts_expense_id = v_row.id AND a.status <> 'anulado'
+      ), '[]'::jsonb)
+    );
+  END IF;
+
+  v_action := public.decide_auto_expense_action(v_existing, p_total_cents, v_ctx);
+  v_kind := v_action ->> 'kind';
+
+  IF v_kind = 'create' THEN
+    INSERT INTO public.expenses (
+      workspace_id, concept, vendor_id, category_key, amount, status, scheduled_date, origin, auto_key, source_ref
+    ) VALUES (
+      p_workspace, p_concept, p_vendor_id, p_category_key, ((v_action ->> 'amountCents')::bigint)::numeric / 100,
+      v_action ->> 'status', (v_action ->> 'scheduledDate')::date, p_origin, p_auto_key, p_source_ref
+    ) RETURNING id INTO v_new_id;
+    RETURN jsonb_build_object('action', 'create', 'expense_id', v_new_id, 'amount_cents', (v_action ->> 'amountCents')::bigint);
+
+  ELSIF v_kind = 'update_amount' THEN
+    UPDATE public.expenses SET amount = ((v_action ->> 'amountCents')::bigint)::numeric / 100, source_ref = p_source_ref WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'update_amount', 'expense_id', v_row.id, 'previous_amount_cents', round(v_row.amount * 100)::bigint, 'amount_cents', (v_action ->> 'amountCents')::bigint);
+
+  ELSIF v_kind = 'void_zero' THEN
+    v_reason := CASE WHEN p_origin = 'processor_fee' THEN 'La comisión del mes quedó en cero' ELSE 'La pauta del mes quedó en cero' END;
+    UPDATE public.expenses
+       SET status = 'anulado', void_reason = v_reason, void_kind = 'auto_zero', voided_at = now(), source_ref = p_source_ref
+     WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'void_zero', 'expense_id', v_row.id);
+
+  ELSIF v_kind = 'reactivate' THEN
+    UPDATE public.expenses
+       SET status = v_action ->> 'status', amount = ((v_action ->> 'amountCents')::bigint)::numeric / 100,
+           void_reason = NULL, void_kind = NULL, voided_at = NULL, voided_by = NULL, source_ref = p_source_ref
+     WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'reactivate', 'expense_id', v_row.id, 'amount_cents', (v_action ->> 'amountCents')::bigint);
+
+  ELSIF v_kind = 'mark_drift' THEN
+    UPDATE public.expenses
+       SET auto_drift_amount = ((v_action ->> 'driftCents')::bigint)::numeric / 100, auto_drift_detected_at = now(), auto_drift_resolved_at = NULL
+     WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'mark_drift', 'expense_id', v_row.id, 'drift_cents', (v_action ->> 'driftCents')::bigint);
+
+  ELSIF v_kind = 'clear_drift' THEN
+    UPDATE public.expenses SET auto_drift_amount = NULL, auto_drift_detected_at = NULL, auto_drift_resolved_at = NULL WHERE id = v_row.id;
+    RETURN jsonb_build_object('action', 'clear_drift', 'expense_id', v_row.id);
+  END IF;
+
+  RETURN jsonb_build_object('action', 'none', 'expense_id', v_row.id);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.upsert_auto_expense(uuid, text, text, bigint, text, text, uuid, text, text, jsonb, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.upsert_auto_expense(uuid, text, text, bigint, text, text, uuid, text, text, jsonb, date) TO service_role;
+
+-- ============================================================
+-- MIGRATION 233: FINANCE DAILY CRON
+-- ============================================================
+-- ============================================================================
+-- 00233 — Gastos (G2, GF11): programa la tarea `finance-daily`   *** SE APLICA DESPUES DEL MERGE ***
+-- ============================================================================
+-- Cada hora, minuto 7, pg_cron llama a `private.enqueue_finance_daily()` (00228), que encola UN `finance_daily` por
+-- workspace y por dia local, a partir de las 03:00 de su zona. El cron `jobs` que ya corre cada minuto lo procesa
+-- con el handler `lib/jobs/handlers/finance-daily.ts`.
+--
+-- POR QUE NO SE APLICA ANTES DEL MERGE: si se programara antes de desplegar el codigo, la tarea encolaria
+-- trabajos de un tipo que el runner de produccion todavia no conoce y la cola los marcaria fallidos. No rompe
+-- nada, pero ensucia la cola. Si pasara: UPDATE scheduled_jobs SET status = 'cancelled' WHERE type = 'finance_daily' AND status = 'failed'.
+--
+-- NO se agrega una ruta en `app/api/cron/` ni se toca `private.call_app_cron` (patron de 00167 y 00198).
+--
+-- Como volver atras:
+--   SELECT cron.unschedule('finance-daily');
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'finance_daily' AND status = 'pending';
+-- Riesgo: medio (un proceso periodico nuevo). Aditiva.
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'finance-daily') THEN
+    PERFORM cron.unschedule('finance-daily');
+  END IF;
+END $$;
+
+SELECT cron.schedule('finance-daily', '7 * * * *', $$SELECT private.enqueue_finance_daily()$$);

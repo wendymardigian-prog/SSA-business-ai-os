@@ -38,7 +38,8 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
       expect(menuFor({ permissionKeys: keysOf(role), eod: true })).toEqual([
         { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] },
         { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido", "Social"] },
-        { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas"] },
+        // Extra I: Owner y Admin ganan «Finanzas» al final del grupo; el resto del orden no cambia.
+        { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"] },
         { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] },
       ]);
     }

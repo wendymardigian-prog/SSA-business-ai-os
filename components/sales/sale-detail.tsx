@@ -16,6 +16,7 @@ import { formatMoney } from "@/lib/sales/format";
 import { ATTRIBUTION_TYPE_LABELS, FINANCING_TYPE_LABELS, PAYMENT_TYPE_LABELS, paymentStatusLabel, type AttributionType, type FinancingType, type PaymentType } from "@/lib/sales/labels";
 import { PaymentPlan } from "@/components/sales/payment-plan";
 import type { TablePayment } from "@/lib/sales/payment-table";
+import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 
 export interface SaleDetailData {
   sale: {
@@ -56,6 +57,7 @@ export interface SaleDetailData {
   canManage: boolean;
   canManagePayments: boolean;
   enabledMethods: string[];
+  methods: PaymentMethodDef[];
 }
 
 function formatDate(date: string | null): string {
@@ -185,6 +187,7 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
             saleStatus={sale.status}
             canManage={data.canManagePayments}
             enabledMethods={data.enabledMethods}
+            methods={data.methods}
             today={data.today}
             timeZone={data.timeZone}
             names={data.names}

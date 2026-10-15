@@ -2,21 +2,24 @@ import { redirect } from "next/navigation";
 import { getPermissionContext, requireAnyPermission } from "@/lib/auth/guards";
 import { canOpenGeneral } from "@/lib/settings/general-sections";
 import { visibleSettingsTabs } from "@/lib/settings/tabs";
-import { isPaymentMethodKey, scheduledUsingDisabled } from "@/lib/sales/payment-methods";
-import { PAYMENT_METHOD_KEYS } from "@/lib/sales/payment-methods";
+import { scheduledUsingDisabled } from "@/lib/sales/payment-methods";
+import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getPaymentTasksState } from "@/lib/tasks/automation-templates";
+import { financeContextOf } from "@/lib/finance/context";
+import { loadCategoryUsage } from "@/lib/finance/totals-load";
 import { SettingsView } from "./settings-view";
 
 export default async function SettingsPage() {
-  // General se parte en dos por permiso: «General» (`settings.general`) y «Ventas y cobranza` (`sales.settings`).
-  // Quien tiene otra pestaña de Ajustes pero ninguna de estas dos aterriza en esa pestaña, no en el dashboard.
+  // General se parte por permiso: «General» (`settings.general`), «Ventas y cobranza» (`sales.settings`) y «Finanzas»
+  // (`expenses.manage`). Quien tiene otra pestaña de Ajustes pero ninguna de estas aterriza en esa pestaña, no en el dashboard.
   const first = await getPermissionContext();
   if (!canOpenGeneral(first.can)) {
     redirect(visibleSettingsTabs(first.can).find((tab) => tab.href !== "/dashboard/settings")?.href ?? "/dashboard");
   }
-  const { workspace, supabase, can } = await requireAnyPermission(["settings.general", "sales.settings"]);
-  const enabledMethods = (workspace.enabled_payment_methods ?? PAYMENT_METHOD_KEYS).filter(isPaymentMethodKey);
+  const ctx = await requireAnyPermission(["settings.general", "sales.settings", "expenses.manage"]);
+  const { workspace, supabase, can } = ctx;
+  const methods = workspaceMethods(workspace);
   // Los pagos programados o morosos que ya usan un metodo que se apago (el aviso de Ajustes > Ventas).
   const { data: openPayments } = await supabase.from("payments").select("payment_method").eq("workspace_id", workspace.id).in("status", ["scheduled", "overdue"]).not("payment_method", "is", null).limit(5000);
   const w = workspace as unknown as { max_discount_percent?: number | null; overdue_grace_days?: number | null; sales_auto_create_flows?: boolean | null };
@@ -30,6 +33,13 @@ export default async function SettingsPage() {
     ? await getPaymentTasksState(await createServiceClient(), workspace.id)
     : { enabled: false, flows: [] } as unknown as Awaited<ReturnType<typeof getPaymentTasksState>>;
 
+  // «Finanzas» (categorías de gasto): solo con `expenses.manage`. Los números de cada categoría se leen con el cliente de
+  // servicio, acotado al workspace de la sesión, porque un rol que administra gastos puede no tener `expenses.view`.
+  const canFinance = can("expenses.manage");
+  const finance = canFinance
+    ? await loadCategoryUsage(await createServiceClient(), workspace.id, financeContextOf(ctx).todayLocal)
+    : { usage: {}, truncated: false, failed: false };
+
   return (
     <SettingsView
       workspace={{
@@ -40,8 +50,8 @@ export default async function SettingsPage() {
         persistChatMedia: workspace.persist_chat_media ?? true,
         chatMediaRetentionDays: workspace.chat_media_retention_days ?? 180,
         timezone: (workspace as { timezone?: string }).timezone ?? "UTC",
-        enabledPaymentMethods: enabledMethods,
-        scheduledByMethod: scheduledUsingDisabled((openPayments ?? []).map((p) => p.payment_method), enabledMethods),
+        paymentMethods: methods.configs,
+        scheduledByMethod: scheduledUsingDisabled((openPayments ?? []).map((p) => p.payment_method), methods.enabledKeys),
         maxDiscountPercent: w.max_discount_percent == null ? null : Number(w.max_discount_percent),
         overdueGraceDays: Number(w.overdue_grace_days) || 0,
         salesAutoCreateFlows: w.sales_auto_create_flows !== false,
@@ -50,6 +60,11 @@ export default async function SettingsPage() {
       canViewAudit={can("audit.view")}
       canGeneral={can("settings.general")}
       canSales={canSales}
+      canFinance={canFinance}
+      financeCategories={canFinance ? financeContextOf(ctx).settings.expense_categories : []}
+      financeUsage={finance.usage}
+      financeUsageFailed={finance.failed}
+      financeUsageTruncated={finance.truncated}
       paymentTasks={paymentTasks}
     />
   );

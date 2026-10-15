@@ -1,4 +1,5 @@
 import type { WizardProduct } from "@/lib/sales/wizard/catalog";
+import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 
 export interface WizardMember {
   id: string;
@@ -9,7 +10,10 @@ export interface WizardMember {
 export interface WizardConfig {
   catalog: WizardProduct[];
   members: WizardMember[];
+  /** Las claves activas: lo que se ofrece en pagos nuevos. */
   enabledMethods: string[];
+  /** Todos los métodos del negocio (con su comisión): para mostrar nombres y elegir. */
+  methods: PaymentMethodDef[];
   maxDiscountPercent: number | null;
   hasAllScope: boolean;
   /** Hoy en la zona del workspace (YYYY-MM-DD). */

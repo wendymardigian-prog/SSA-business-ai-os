@@ -17,6 +17,19 @@ describe("filas de la tabla", () => {
     expect(paid.delay.label).toBe("puntual");
     expect(paymentRows([pay({ delay_days: 4 })], true)[0].delay.label).toBe("—");
   });
+  it("un cobro con comisión muestra el total, lo que se congeló y el neto (Extra I)", () => {
+    const [row] = paymentRows([pay({ status: "paid", amount: 500, provider_fee_amount: 14.8, provider_fee_percent: 2.9, provider_fee_fixed: 0.3 })], true);
+    expect(row).toMatchObject({ fee: 14.8, feeNote: "2,9 % + 0,30", net: 485.2 });
+  });
+  it("un cobro sin el desglose (anterior al Extra I) muestra el total pero no la nota; sin comisión no hay fee ni nota", () => {
+    expect(paymentRows([pay({ status: "paid", amount: 500, provider_fee_amount: 14.8 })], true)[0]).toMatchObject({ fee: 14.8, feeNote: null, net: 485.2 });
+    expect(paymentRows([pay({ status: "paid", amount: 500, provider_fee_amount: 0, provider_fee_percent: 0, provider_fee_fixed: 0 })], true)[0]).toMatchObject({ fee: null, feeNote: null, net: 500 });
+    expect(paymentRows([pay({ status: "scheduled" })], true)[0].net).toBeNull();
+  });
+  it("el nombre del método sale de la lista del negocio", () => {
+    const catalog = [{ key: "stripe", name: "Stripe", feePercent: 2.9, feeFixed: 0.3 }];
+    expect(paymentRows([pay({ status: "paid", payment_method: "stripe" })], true, catalog)[0].method).toBe("Stripe");
+  });
   it("la comisión solo aparece en lo cobrado y mayor que cero", () => {
     expect(paymentRows([pay({ status: "paid", provider_fee_amount: 14.5 })], true)[0].fee).toBe(14.5);
     expect(paymentRows([pay({ status: "paid", provider_fee_amount: 0 })], true)[0].fee).toBeNull();

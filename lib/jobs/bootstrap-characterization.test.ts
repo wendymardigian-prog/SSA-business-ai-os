@@ -42,6 +42,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       // Reporte de fin de día (E13): el recordatorio.
       "eod_reminder_sweep",
       "fathom_sync",
+      // Finanzas (Extra I, G1): el trabajo diario.
+      "finance_daily",
       // Catalogo de Meta (Extra L, AT2): las miniaturas de los anuncios.
       "meta_ad_thumbnails",
       "meta_ads_sync",

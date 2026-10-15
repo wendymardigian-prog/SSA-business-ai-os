@@ -10,6 +10,7 @@ import {
   effectiveActorType,
   runHistoryQuery,
   CALL_ACTION_LABELS,
+  FINANCE_ACTION_LABELS,
   FORM_ACTION_LABELS,
   SALE_ACTION_LABELS,
   TASK_ACTION_LABELS,
@@ -37,6 +38,7 @@ const GENERIC_ACTIONS: Record<string, string> = {
   summary: "actualizó el resumen",
   ...CALL_ACTION_LABELS,
   ...FORM_ACTION_LABELS,
+  ...FINANCE_ACTION_LABELS,
   ...SALE_ACTION_LABELS,
   ...TASK_ACTION_LABELS,
 };

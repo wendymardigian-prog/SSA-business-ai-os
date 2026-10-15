@@ -291,6 +291,38 @@ export const FORM_ACTION_LABELS: Record<
   "contract.pdf_regenerated": "regeneró el PDF del contrato",
 };
 
+/** Etiquetas de las acciones de Finanzas (gastos, recurrentes, proveedores y su configuracion), para <Historial/>. */
+export const FINANCE_ACTION_LABELS: Record<Extract<AuditAction, `expense.${string}` | `recurring.${string}` | `vendor.${string}` | `finance.${string}`>, string> = {
+  "expense.created": "cargó el gasto",
+  "expense.updated": "editó el gasto",
+  "expense.paid": "marcó el gasto como pagado",
+  "expense.payment_reverted": "revirtió el pago del gasto",
+  "expense.voided": "anuló el gasto",
+  "expense.receipt_uploaded": "subió el comprobante",
+  "expense.receipt_removed": "quitó el comprobante",
+  "expense.overdue": "venció el gasto",
+  "expense.auto_created": "generó el gasto automático",
+  "expense.auto_updated": "recalculó el gasto automático",
+  "expense.auto_voided_zero": "anuló el gasto automático: quedó en cero",
+  "expense.auto_reactivated": "reactivó el gasto automático",
+  "expense.auto_closed": "cerró el gasto automático como pagado",
+  "expense.drift_detected": "detectó que el monto cambió después de pagado",
+  "expense.drift_ignored": "ignoró la diferencia del gasto",
+  "expense.adjustment_created": "creó un ajuste",
+  "recurring.created": "creó la plantilla recurrente",
+  "recurring.updated": "editó la plantilla recurrente",
+  "recurring.paused": "pausó la plantilla recurrente",
+  "recurring.reactivated": "reactivó la plantilla recurrente",
+  "recurring.expense_generated": "generó un gasto desde la plantilla",
+  "recurring.backfilled": "generó los gastos que faltaban",
+  "vendor.created": "creó el proveedor",
+  "vendor.updated": "editó el proveedor",
+  "vendor.archived": "archivó el proveedor",
+  "vendor.restored": "restauró el proveedor",
+  "finance.categories_updated": "cambió las categorías de gasto",
+  "finance.settings_updated": "cambió la configuración de Finanzas",
+};
+
 /** Etiquetas de las acciones de Ventas (catalogo, venta y pago), para <Historial/>. */
 export const SALE_ACTION_LABELS: Record<
   Extract<
@@ -340,4 +372,5 @@ export const SALE_ACTION_LABELS: Record<
   "payment.overdue": "marcó el pago como moroso",
   "payment.refund": "registró un reembolso",
   "payment.receipt_uploaded": "subió el comprobante del pago",
+  "payment.fee_corrected": "corrigió la comisión del procesador del pago",
 };

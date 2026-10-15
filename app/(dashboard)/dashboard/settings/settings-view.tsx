@@ -9,7 +9,10 @@ import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
 import { SalesSettings } from "@/components/settings/sales-settings";
-import type { PaymentMethodKey } from "@/lib/sales/payment-methods";
+import { FinanceSettings } from "@/components/settings/finance-settings";
+import type { ExpenseCategory } from "@/lib/finance/categories";
+import type { CategoryUsage } from "@/lib/finance/category-totals";
+import type { PaymentMethodConfig } from "@/lib/sales/payment-methods-config";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SectionNav } from "@/components/settings/section-nav";
@@ -26,7 +29,7 @@ interface WorkspaceSettings {
   persistChatMedia: boolean;
   chatMediaRetentionDays: number;
   timezone: string;
-  enabledPaymentMethods: PaymentMethodKey[];
+  paymentMethods: PaymentMethodConfig[];
   /** Pagos programados o morosos por método de pago (para el aviso de apagar uno). */
   scheduledByMethod: Record<string, number>;
   maxDiscountPercent: number | null;
@@ -54,6 +57,11 @@ export function SettingsView({
   canViewAudit,
   canGeneral,
   canSales,
+  canFinance,
+  financeCategories,
+  financeUsage,
+  financeUsageFailed,
+  financeUsageTruncated,
   paymentTasks,
 }: {
   workspace: WorkspaceSettings;
@@ -64,9 +72,17 @@ export function SettingsView({
   canGeneral: boolean;
   /** `sales.settings`: la sección «Ventas y cobranza». */
   canSales: boolean;
+  /** `expenses.manage`: la sección «Finanzas». */
+  canFinance: boolean;
+  financeCategories: ExpenseCategory[];
+  financeUsage: Record<string, CategoryUsage>;
+  financeUsageFailed: boolean;
+  financeUsageTruncated: boolean;
   paymentTasks: TaskPaymentState;
 }) {
-  const sections = generalSectionsFor((key) => (key === "settings.general" ? canGeneral : key === "sales.settings" ? canSales : false));
+  // Lo que cada persona puede ver, serializable desde el servidor: una función `can(key)` real para las secciones.
+  const allowed: Record<string, boolean> = { "settings.general": canGeneral, "sales.settings": canSales, "expenses.manage": canFinance };
+  const sections = generalSectionsFor((key) => allowed[key] === true);
   const [name, setName] = useState(workspace.name);
   const [keywords, setKeywords] = useState<string[]>(workspace.globalKeywords);
   const [newKeyword, setNewKeyword] = useState("");
@@ -284,7 +300,7 @@ export function SettingsView({
             {/* Ventas y cobranza */}
             <section id="ventas" className="scroll-mt-20 space-y-6">
               <SalesSettings
-                enabledMethods={workspace.enabledPaymentMethods}
+                methods={workspace.paymentMethods}
                 scheduledByMethod={workspace.scheduledByMethod}
                 maxDiscountPercent={workspace.maxDiscountPercent}
                 overdueGraceDays={workspace.overdueGraceDays}
@@ -294,9 +310,23 @@ export function SettingsView({
             </section>
             </>)}
 
+            {canFinance && (<>
+            {(canGeneral || canSales) && <hr className="border-border" />}
+
+            {/* Finanzas */}
+            <section id="finanzas" className="scroll-mt-20 space-y-6">
+              <FinanceSettings
+                categories={financeCategories}
+                usage={financeUsage}
+                usageFailed={financeUsageFailed}
+                usageTruncated={financeUsageTruncated}
+              />
+            </section>
+            </>)}
+
             {canViewAudit && (
               <>
-                {(canGeneral || canSales) && <hr className="border-border" />}
+                {(canGeneral || canSales || canFinance) && <hr className="border-border" />}
                 {/* Actividad */}
                 <section id="actividad" className="scroll-mt-20 space-y-2">
                   <p className="text-sm text-muted-foreground">

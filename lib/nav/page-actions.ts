@@ -336,6 +336,26 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Venta",
     tooltip: "El detalle de una venta: sus números, el plan de pagos, los contratos y todo lo que se le hizo. Cancelar es definitivo.",
   },
+  "/dashboard/finanzas": {
+    title: "Finanzas",
+    tooltip: "Cuánto entra, cuánto sale y cuánto queda: ingresos cobrados, gastos pagados, resultado y margen del período.",
+  },
+  "/dashboard/finanzas/gastos": {
+    title: "Gastos",
+    tooltip: "Todo lo que pagás: facturas, suscripciones, sueldos y los gastos automáticos. Filtrá, agrupá, pagá desde la fila y exportá a CSV.",
+  },
+  "/dashboard/finanzas/gastos/[id]": {
+    title: "Gasto",
+    tooltip: "El detalle de un gasto: su monto, estado, comprobante, de dónde salió y todo lo que se le hizo. Un gasto anulado ya no se puede editar.",
+  },
+  "/dashboard/finanzas/recurrentes": {
+    title: "Recurrentes",
+    tooltip: "Los gastos que se repiten (suscripciones, sueldos, alquiler): cada plantilla crea sola sus gastos en la fecha que le toca.",
+  },
+  "/dashboard/finanzas/proveedores": {
+    title: "Proveedores",
+    tooltip: "A quién le pagás, con lo que le pagaste en total y en el año. Un proveedor no se borra: se archiva.",
+  },
 };
 
 /** Rutas que a proposito NO llevan barra superior, y por que. */

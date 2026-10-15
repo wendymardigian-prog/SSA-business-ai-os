@@ -1,0 +1,15 @@
+{
+  "_comment": "Casos compartidos entre lib/commissions/content-owner.ts (TS) y public.commission_content_owner(social_post_id, content_post_id, workspace) (SQL). La siembra: contentPost = una fila de content_posts con ese assigned_to; socialPost = una fila de social_posts con ese assigned_to (linkedToContentPost = true: su content_post_id apunta a la contentPost sembrada y se llama SOLO con social_post_id; false: sin pieza). Una contentPost sin socialPost vinculada se pasa directo como content_post_id (si además hay socialPost sin vincular, se pasan las dos y gana la pieza). El assignedTo es un UUID de miembro del workspace, o null.",
+  "cases": [
+    { "name": "pieza directa con responsable", "seed": { "contentPost": { "assignedTo": "a0000000-0000-4000-8000-000000000003" } }, "expected": "a0000000-0000-4000-8000-000000000003" },
+    { "name": "pieza directa sin responsable: Sin persona (null)", "seed": { "contentPost": { "assignedTo": null } }, "expected": null },
+    { "name": "publicación vinculada a una pieza con responsable: gana el de la pieza", "seed": { "contentPost": { "assignedTo": "a0000000-0000-4000-8000-000000000003" }, "socialPost": { "linkedToContentPost": true, "assignedTo": "a0000000-0000-4000-8000-000000000005" } }, "expected": "a0000000-0000-4000-8000-000000000003" },
+    { "name": "publicación vinculada a una pieza SIN responsable: null, no se busca otro dueño", "seed": { "contentPost": { "assignedTo": null }, "socialPost": { "linkedToContentPost": true, "assignedTo": "a0000000-0000-4000-8000-000000000005" } }, "expected": null },
+    { "name": "publicación vinculada a una pieza, la publicación sin responsable", "seed": { "contentPost": { "assignedTo": "a0000000-0000-4000-8000-000000000003" }, "socialPost": { "linkedToContentPost": true, "assignedTo": null } }, "expected": "a0000000-0000-4000-8000-000000000003" },
+    { "name": "publicación externa (sin pieza) con responsable", "seed": { "socialPost": { "linkedToContentPost": false, "assignedTo": "a0000000-0000-4000-8000-000000000005" } }, "expected": "a0000000-0000-4000-8000-000000000005" },
+    { "name": "publicación externa (sin pieza) sin responsable", "seed": { "socialPost": { "linkedToContentPost": false, "assignedTo": null } }, "expected": null },
+    { "name": "pieza directa y publicación externa sin vínculo: gana la pieza", "seed": { "contentPost": { "assignedTo": "a0000000-0000-4000-8000-000000000003" }, "socialPost": { "linkedToContentPost": false, "assignedTo": "a0000000-0000-4000-8000-000000000005" } }, "expected": "a0000000-0000-4000-8000-000000000003" },
+    { "name": "pieza directa sin responsable y publicación externa con responsable: gana la pieza (null)", "seed": { "contentPost": { "assignedTo": null }, "socialPost": { "linkedToContentPost": false, "assignedTo": "a0000000-0000-4000-8000-000000000005" } }, "expected": null },
+    { "name": "nada: ni pieza ni publicación", "seed": {}, "expected": null }
+  ]
+}

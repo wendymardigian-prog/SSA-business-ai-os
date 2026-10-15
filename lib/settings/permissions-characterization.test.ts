@@ -19,7 +19,7 @@ const ROOT = join(process.cwd(), "app/(dashboard)/dashboard/settings");
 
 /** Las siete pestañas (Contenido se sumó con F89 y hoy es Productos; Tareas se mudó a Agentes IA), con el archivo que resuelve la ruta y el guard que usa hoy. */
 const PAGES: Record<string, { file: string; guardMarker: string }> = {
-  general: { file: "page.tsx", guardMarker: 'requireAnyPermission(["settings.general", "sales.settings"])' },
+  general: { file: "page.tsx", guardMarker: 'requireAnyPermission(["settings.general", "sales.settings", "expenses.manage"])' },
   team: { file: "team/page.tsx", guardMarker: 'requirePermission("team.view")' },
   roles: { file: "roles/page.tsx", guardMarker: "listRoles" },
   "custom-fields": { file: "custom-fields/page.tsx", guardMarker: 'requirePermission("custom_fields.manage")' },

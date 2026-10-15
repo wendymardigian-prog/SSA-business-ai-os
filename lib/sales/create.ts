@@ -8,7 +8,7 @@ import { wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { computeProviderFee, buildPaymentOptionSnapshot } from "./fees";
 import { FINANCING_TYPES, PAYMENT_TYPES } from "./labels";
 import { toCents, fromCents } from "./money";
-import { isPaymentMethodKey } from "./payment-methods";
+import { isKnownMethod, type PaymentMethodDef } from "./payment-methods";
 import { validatePlanBalances } from "./payment-plan";
 import { checkDiscount, type ProductSnapshot } from "./sale-math";
 import { isDateOnly, localToday } from "./dates";
@@ -81,6 +81,8 @@ export interface SaleRuleContext {
   timeZone: string;
   now: Date;
   enabledMethods: readonly string[];
+  /** Los métodos del negocio con su comisión (`workspaces.payment_methods`). Sin esto, el catálogo de arranque. */
+  methods?: readonly PaymentMethodDef[];
   maxDiscountPercent: number | null;
   /** Alcance de ventas de quien carga: con `own` tiene que quedar como setter o vendedor. */
   hasAllScope: boolean;
@@ -97,7 +99,7 @@ export type SaleRulesResult =
 /** Las filas de `payments` que recibe `create_sale`: lo cobrado lleva fecha local, instante, método y comisión congelada. */
 export function buildPaymentRows(
   payments: ReadonlyArray<z.output<typeof paymentInputSchema>>,
-  ctx: Pick<SaleRuleContext, "timeZone" | "now">,
+  ctx: Pick<SaleRuleContext, "timeZone" | "now"> & { methods?: readonly PaymentMethodDef[] },
 ): Array<Record<string, unknown>> {
   const today = localToday(ctx.now, ctx.timeZone);
   return payments.map((p) => {
@@ -115,8 +117,8 @@ export function buildPaymentRows(
       paid_on: p.date,
       paid_at: paidAt.toISOString(),
       payment_method: method,
-      payment_option_snapshot: buildPaymentOptionSnapshot(method),
-      provider_fee_amount: computeProviderFee(p.amount, method),
+      payment_option_snapshot: buildPaymentOptionSnapshot(method, ctx.methods),
+      provider_fee_amount: computeProviderFee(p.amount, method, ctx.methods),
       notes: p.notes ?? null,
     };
   });
@@ -142,9 +144,9 @@ export function applySaleRules(input: CreateSaleParsed, ctx: SaleRuleContext): S
     if (p.status === "paid") {
       if (p.date < input.saleDate) return { ok: false, code: "date", error: "Un pago no puede estar cobrado antes de la fecha de la venta" };
       if (p.date > today) return { ok: false, code: "date", error: "Un pago cobrado no puede tener fecha futura" };
-      if (!p.method || !isPaymentMethodKey(p.method)) return { ok: false, code: "method", error: "Elegí el método de pago de lo que ya se cobró" };
+      if (!p.method || !isKnownMethod(p.method, ctx.methods)) return { ok: false, code: "method", error: "Elegí el método de pago de lo que ya se cobró" };
       if (!ctx.enabledMethods.includes(p.method)) return { ok: false, code: "method", error: "Ese método de pago no está habilitado" };
-    } else if (p.method && !isPaymentMethodKey(p.method)) {
+    } else if (p.method && !isKnownMethod(p.method, ctx.methods)) {
       return { ok: false, code: "method", error: "Ese método de pago no existe" };
     }
   }

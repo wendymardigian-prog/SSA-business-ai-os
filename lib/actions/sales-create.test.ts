@@ -3,6 +3,7 @@
  * RELEE el catálogo (price_changed), que pasa por la RPC con el cliente de servicio y que el
  * alta del contacto usa find_contact_by_phone_or_email (nunca find_or_link_contact).
  */
+import { paymentMethodsFixture } from "@/lib/sales/test-support/payment-methods";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
@@ -26,7 +27,7 @@ vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => null) }));
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
     user: { id: ME },
-    workspace: { id: WS, timezone: "America/Costa_Rica", enabled_payment_methods: ["wise", "binance"], max_discount_percent: null },
+    workspace: { id: WS, timezone: "America/Costa_Rica", payment_methods: paymentMethodsFixture(["wise", "binance"]), max_discount_percent: null },
     role, roleId, supabase: db.client,
   }),
 }));

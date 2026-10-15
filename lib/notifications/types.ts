@@ -76,6 +76,13 @@ export const NOTIFICATION_TYPES = [
   "task_due_today",
   /** Una tarea venció y sigue sin completarse. */
   "task_overdue",
+  // Finanzas (Extra I). Van a Owner y Admin (sin destinatario concreto).
+  /** El trabajo diario venció uno o más gastos. */
+  "expense_overdue",
+  /** Se generaron gastos «por revisar»: falta cargarles el monto. */
+  "expense_review_pending",
+  /** Un gasto automático ya pagado cambió su total después de pagado. */
+  "expense_auto_changed",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -101,7 +108,9 @@ export type NotificationEntity =
   /** Un endpoint de webhooks entrantes (el id es el del endpoint). */
   | "webhook_endpoint"
   /** Una tarea (el id es el de la tarea). */
-  | "task";
+  | "task"
+  /** Un gasto (el id es el del gasto); sin id apunta a la lista filtrada por `metadata.pill`. */
+  | "expense";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -344,6 +353,9 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   task_date_moved: { type: "task_date_moved", label: "Se movió la fecha de una tarea", tone: "warning", entity: "task" },
   task_due_today: { type: "task_due_today", label: "Una tarea vence hoy", tone: "warning", entity: "task" },
   task_overdue: { type: "task_overdue", label: "Una tarea está vencida", tone: "warning", entity: "task" },
+  expense_overdue: { type: "expense_overdue", label: "Gastos vencidos", tone: "warning", entity: "expense" },
+  expense_review_pending: { type: "expense_review_pending", label: "Gastos por revisar", tone: "info", entity: "expense" },
+  expense_auto_changed: { type: "expense_auto_changed", label: "Un gasto automático cambió después de pagado", tone: "warning", entity: "expense" },
   webhook_errors: {
     type: "webhook_errors",
     label: "Un webhook está fallando",
@@ -423,6 +435,13 @@ export function linkFor(
 
     case "eod_form":
       return entityId ? `/dashboard/eod/${entityId}` : "/dashboard/eod";
+
+    // Finanzas: un gasto abre su ficha; un aviso agrupado, la lista filtrada por la pastilla que corresponda.
+    case "expense": {
+      if (entityId) return `/dashboard/finanzas/gastos/${entityId}`;
+      const pill = metadata?.pill;
+      return typeof pill === "string" ? `/dashboard/finanzas/gastos?pastilla=${encodeURIComponent(pill)}` : "/dashboard/finanzas/gastos";
+    }
 
     // Tareas: abre la tarea en su drawer.
     case "task":

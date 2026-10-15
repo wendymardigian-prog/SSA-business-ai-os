@@ -21,7 +21,6 @@ import { z } from "zod";
 import { wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { addDays, isDateOnly } from "../dates";
 import { ATTRIBUTION_TYPES, FINANCING_TYPES, PAYMENT_STATUSES, PAYMENT_TYPES, SALE_STATUSES } from "../labels";
-import { PAYMENT_METHOD_KEYS } from "../payment-methods";
 
 export const SALES_TRIGGER_TYPES = [
   "sale_created",
@@ -100,7 +99,8 @@ export const SALES_CONFIG_SCHEMAS = {
   payment_created: z
     .object({
       payment_types: oneOf(PAYMENT_TYPES).optional(),
-      payment_methods: oneOf(PAYMENT_METHOD_KEYS as unknown as readonly [string, ...string[]]).optional(),
+      // Los métodos los crea el negocio (Extra I): la clave es un slug, no una lista fija.
+      payment_methods: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).max(20).optional(),
       refund_scope: z.array(z.enum(["total", "partial"])).max(2).optional(),
       product_ids: ids.optional(),
     })
@@ -110,7 +110,8 @@ export const SALES_CONFIG_SCHEMAS = {
       from_status: oneOf(PAYMENT_STATUSES).optional(),
       to_status: oneOf(PAYMENT_STATUSES).optional(),
       payment_types: oneOf(PAYMENT_TYPES).optional(),
-      payment_methods: oneOf(PAYMENT_METHOD_KEYS as unknown as readonly [string, ...string[]]).optional(),
+      // Los métodos los crea el negocio (Extra I): la clave es un slug, no una lista fija.
+      payment_methods: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).max(20).optional(),
       min_amount: amount.optional(),
       max_amount: amount.optional(),
       min_delay_days: z.coerce.number().int().min(-3650).max(3650).optional(),

@@ -81,7 +81,7 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
   const duplicates = activeSalesOfProduct(contactContext?.sales ?? [], product?.id ?? null);
   const step2Ok = variant?.price != null && !!discount?.ok && finalAmount > 0 && (duplicates.length === 0 || duplicateOk);
 
-  const check = useMemo(() => checkRows(rows, { saleDate: s1.saleDate, today: config.today, enabledMethods: config.enabledMethods }), [rows, s1.saleDate, config.today, config.enabledMethods]);
+  const check = useMemo(() => checkRows(rows, { saleDate: s1.saleDate, today: config.today, enabledMethods: config.enabledMethods, methods: config.methods }), [rows, s1.saleDate, config.today, config.enabledMethods, config.methods]);
   const summary = useMemo(
     () => buildSummary({ financing: s3.financing, finalAmount, payments: rows, todayLocal: config.today, matchingFlows: [] }),
     [s3.financing, finalAmount, rows, config.today],

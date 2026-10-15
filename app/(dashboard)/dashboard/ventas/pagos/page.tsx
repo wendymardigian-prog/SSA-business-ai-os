@@ -3,7 +3,7 @@ import { requirePermission } from "@/lib/auth/guards";
 import { localToday } from "@/lib/sales/dates";
 import { monthRange, paymentListRow, parsePaymentsFilters, PAYMENTS_PAGE_SIZE, paymentsQueryFilters, paymentsTotals, weekRange, type QueryFilter } from "@/lib/sales/payments-list";
 import { snapshotText } from "@/lib/sales/sale-text";
-import { DEFAULT_ENABLED_PAYMENT_METHODS } from "@/lib/sales/payment-methods";
+import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { hasSalesAllScope } from "@/lib/sales/wizard/load";
 import { sanitizeSearch } from "@/lib/url-params";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -25,7 +25,8 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
   const ctx = await requirePermission("sales.view");
   const { supabase, workspace } = ctx;
   const filters = parsePaymentsFilters(await searchParams);
-  const w = workspace as unknown as { timezone?: string; enabled_payment_methods?: string[] | null };
+  const w = workspace as unknown as { timezone?: string };
+  const methods = workspaceMethods(workspace);
   const today = localToday(new Date(), w.timezone ?? "UTC");
 
   // El vendedor y la búsqueda se resuelven a las ventas que cumplen (las que esta persona ve).
@@ -89,7 +90,7 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
     rows: payments.map((p) => {
       const sale = saleById.get(p.sale_id);
       return {
-        ...paymentListRow(p, canManage),
+        ...paymentListRow(p, canManage, methods.defs),
         contactName: sale ? contactName.get(sale.contact_id) ?? "Sin nombre" : "—",
         contactId: sale?.contact_id ?? null,
         product: sale ? snapshotText(sale.product_snapshot) : "—",
@@ -106,7 +107,8 @@ export default async function PagosPage({ searchParams }: { searchParams: Promis
     totalsTruncated: totalsRows.length >= TOTALS_LIMIT,
     scopeAll: hasSalesAllScope(ctx),
     members: members.map((m) => ({ id: m.userId, name: m.name })),
-    enabledMethods: w.enabled_payment_methods ?? [...DEFAULT_ENABLED_PAYMENT_METHODS],
+    enabledMethods: methods.enabledKeys,
+    methods: methods.defs,
     today,
   };
   return <PaymentsList data={data} />;

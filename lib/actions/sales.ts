@@ -1,5 +1,6 @@
 "use server";
 
+import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { snapshotProductId } from "@/lib/sales/sale-text";
@@ -96,13 +97,14 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
   // 3. Las reglas del servidor: descuento, fechas, métodos, alcance y cuadre.
   const w = workspace as unknown as {
     timezone?: string;
-    enabled_payment_methods?: string[];
     max_discount_percent?: number | null;
   };
+  const methods = workspaceMethods(workspace);
   const ruled = applySaleRules(input, {
     timeZone: w.timezone ?? "UTC",
     now: new Date(),
-    enabledMethods: w.enabled_payment_methods ?? [],
+    enabledMethods: methods.enabledKeys,
+    methods: methods.defs,
     maxDiscountPercent: w.max_discount_percent == null ? null : Number(w.max_discount_percent),
     hasAllScope: ctx.role === "owner" || ctx.role === "admin" || ctx.scope("sales") === "all",
     userId: user.id,

@@ -45,20 +45,42 @@ export function paymentMethod(key: string | null | undefined): PaymentMethodDef 
   return PAYMENT_METHODS.find((m) => m.key === key) ?? null;
 }
 
+/**
+ * Busca un método en la lista DEL NEGOCIO (`workspaces.payment_methods`). Sin lista usa el catálogo de
+ * arranque: así lo que todavía no recibe la lista se comporta como antes.
+ */
+export function findMethod(catalog: readonly PaymentMethodDef[] | null | undefined, key: string | null | undefined): PaymentMethodDef | null {
+  if (!key) return null;
+  if (!catalog) return paymentMethod(key);
+  return catalog.find((m) => m.key === key) ?? null;
+}
+
+/** ¿Existe el método? En la lista del negocio si se la pasa; si no, en el catálogo de arranque. */
+export function isKnownMethod(key: unknown, catalog?: readonly PaymentMethodDef[] | null): boolean {
+  if (typeof key !== "string" || !key) return false;
+  return findMethod(catalog, key) !== null;
+}
+
 /** El nombre legible; una clave que ya no existe se muestra tal cual. */
-export function paymentMethodName(key: string | null | undefined): string {
+export function paymentMethodName(key: string | null | undefined, catalog?: readonly PaymentMethodDef[] | null): string {
   if (!key) return "—";
-  return paymentMethod(key)?.name ?? key;
+  return findMethod(catalog, key)?.name ?? key;
 }
 
 /**
  * Qué métodos ofrece el selector: los habilitados del workspace. Un pago que
  * ya usa un método deshabilitado lo sigue mostrando (se agrega con `keep`).
+ * `catalog` es la lista del negocio; sin ella, el catálogo de arranque.
  */
-export function selectableMethods(enabled: readonly string[] | null | undefined, keep?: string | null): PaymentMethodDef[] {
+export function selectableMethods(
+  enabled: readonly string[] | null | undefined,
+  keep?: string | null,
+  catalog?: readonly PaymentMethodDef[] | null,
+): PaymentMethodDef[] {
   const on = new Set((enabled ?? DEFAULT_ENABLED_PAYMENT_METHODS) as string[]);
   if (keep) on.add(keep);
-  return PAYMENT_METHODS.filter((m) => on.has(m.key));
+  const all: readonly PaymentMethodDef[] = catalog ?? PAYMENT_METHODS;
+  return all.filter((m) => on.has(m.key));
 }
 
 /** Cuántos pagos programados usan un método deshabilitado (el aviso de Ajustes). */

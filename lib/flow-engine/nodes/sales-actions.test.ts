@@ -2,6 +2,7 @@
  * Ventas F37: las tres acciones de cobranza de un flujo. Pasan por el MISMO núcleo que las Server
  * Actions; lo que cambia es el actor: el sistema, con el nombre del flujo.
  */
+import { paymentMethodsFixture } from "@/lib/sales/test-support/payment-methods";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 
@@ -23,7 +24,7 @@ const WS = "ws-1";
 let db: MemoryDb;
 const seed = () =>
   memoryDb({
-    workspaces: [{ id: WS, timezone: "America/Costa_Rica", enabled_payment_methods: ["wise", "binance"], overdue_grace_days: 0 }],
+    workspaces: [{ id: WS, timezone: "America/Costa_Rica", payment_methods: paymentMethodsFixture(["wise", "binance"]), overdue_grace_days: 0 }],
     flows: [{ id: "flow-1", name: "Cobranza automática" }],
     sales: [{ id: "s1", workspace_id: WS, contact_id: "c1", sale_date: "2026-10-01", status: "reserved", financing_type: "installments" }],
     payments: [{ id: "p1", workspace_id: WS, sale_id: "s1", type: "installment", status: "scheduled", amount: 500, due_date: "2099-12-01", original_due_date: "2099-12-01", reschedule_count: 0, paid_on: null, payment_method: null }],

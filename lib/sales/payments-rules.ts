@@ -5,7 +5,7 @@
 import { addDays, isDateOnly } from "./dates";
 import { buildPaymentOptionSnapshot, computeProviderFee, type PaymentOptionSnapshot } from "./fees";
 import { fromCents, toCents } from "./money";
-import { isPaymentMethodKey } from "./payment-methods";
+import { findMethod, isPaymentMethodKey, type PaymentMethodDef } from "./payment-methods";
 import { overdueCutoff } from "./overdue";
 import { wallClockToUtc } from "@/lib/scheduling/time/tz";
 
@@ -36,6 +36,11 @@ export interface MarkPaidContext {
   timeZone: string;
   now: Date;
   enabledMethods: readonly string[];
+  /**
+   * Los métodos DEL NEGOCIO (`workspaces.payment_methods`) con su comisión. Sin esto se usa el catálogo de
+   * arranque (los 5 de siempre, comisión 0), que es lo que hacían los llamadores antes del Extra I.
+   */
+  methods?: readonly PaymentMethodDef[];
 }
 
 export interface PaidPatch {
@@ -47,6 +52,9 @@ export interface PaidPatch {
   payment_option_snapshot: PaymentOptionSnapshot | null;
   /** La comisión queda CONGELADA al cobrar: es la que Gastos suma por método y mes. */
   provider_fee_amount: number;
+  /** El porcentaje y el fijo con los que se calculó, congelados junto con el total (Extra I, MP). */
+  provider_fee_percent: number;
+  provider_fee_fixed: number;
   notes: string | null;
 }
 
@@ -61,7 +69,8 @@ export function planMarkPaid(input: MarkPaidInput, ctx: MarkPaidContext): RuleRe
   if (!isDateOnly(input.paidOn)) return { ok: false, error: "La fecha del cobro no es válida" };
   if (input.paidOn < ctx.saleDate) return { ok: false, error: "El cobro no puede ser anterior a la fecha de la venta" };
   if (input.paidOn > ctx.todayLocal) return { ok: false, error: "El cobro no puede tener fecha futura" };
-  if (!isPaymentMethodKey(input.method)) return { ok: false, error: "Elegí el método con el que se cobró" };
+  const known = ctx.methods ? findMethod(ctx.methods, input.method) : isPaymentMethodKey(input.method) ? findMethod(undefined, input.method) : null;
+  if (!known) return { ok: false, error: "Elegí el método con el que se cobró" };
   if (!ctx.enabledMethods.includes(input.method)) return { ok: false, error: "Ese método de pago no está habilitado" };
 
   const paidAt = input.paidOn === ctx.todayLocal ? ctx.now : wallClockToUtc(input.paidOn, "12:00", ctx.timeZone);
@@ -74,8 +83,10 @@ export function planMarkPaid(input: MarkPaidInput, ctx: MarkPaidContext): RuleRe
       paid_at: paidAt.toISOString(),
       paid_on: input.paidOn,
       payment_method: input.method,
-      payment_option_snapshot: buildPaymentOptionSnapshot(input.method),
-      provider_fee_amount: computeProviderFee(fromCents(amountCents), input.method),
+      payment_option_snapshot: buildPaymentOptionSnapshot(input.method, ctx.methods),
+      provider_fee_amount: computeProviderFee(fromCents(amountCents), input.method, ctx.methods),
+      provider_fee_percent: known.feePercent,
+      provider_fee_fixed: known.feeFixed,
       notes: input.notes?.trim() || null,
     },
     partial: amountCents < scheduledCents ? partialOffer(scheduledCents, amountCents, input.paidOn) : null,
@@ -115,7 +126,34 @@ export function planRevert(payment: RulePayment, reason: string | null | undefin
 }
 
 /** Lo que se limpia al revertir un cobro: nada de lo cobrado queda guardado. */
-export const REVERT_CLEARED_FIELDS = { paid_at: null, paid_on: null, provider_fee_amount: null, payment_option_snapshot: null, payment_method: null } as const;
+export const REVERT_CLEARED_FIELDS = {
+  paid_at: null,
+  paid_on: null,
+  provider_fee_amount: null,
+  provider_fee_percent: null,
+  provider_fee_fixed: null,
+  payment_option_snapshot: null,
+  payment_method: null,
+} as const;
+
+// ── Corregir la comisión de un cobro (Extra I, MP, F6) ────────────────
+
+/**
+ * La comisión que el procesador SE QUEDÓ de verdad puede diferir de la calculada (redondeos, un cargo
+ * que llegó distinto). Se corrige SOLO el total (`provider_fee_amount`): el porcentaje y el fijo quedan
+ * como estaban, como registro de lo que se calculó. Queda en el historial con su motivo.
+ */
+export function planFeeCorrection(
+  payment: Pick<RulePayment, "type" | "status" | "amount">,
+  input: { feeAmount: unknown; reason: string | null | undefined },
+): RuleResult<{ feeAmount: number }> {
+  if (payment.status !== "paid" || payment.type === "refund") return { ok: false, error: "Solo se puede corregir la comisión de un cobro" };
+  const fee = toCents(input.feeAmount);
+  if (!(fee >= 0) || String(input.feeAmount ?? "").trim() === "") return { ok: false, error: "La comisión tiene que ser un monto de cero o más" };
+  if (fee > toCents(payment.amount)) return { ok: false, error: `La comisión no puede superar lo cobrado: máximo ${fromCents(toCents(payment.amount)).toFixed(2)}` };
+  if (!(input.reason ?? "").trim()) return { ok: false, error: "Explicá el motivo de la corrección" };
+  return { ok: true, feeAmount: fromCents(fee) };
+}
 
 // ── Reprogramar (F32) ──────────────────────────────────────────────────
 
@@ -166,10 +204,15 @@ export function planRefund(input: { amount: unknown; date: string; reason: strin
 
 // ── Agregar un pago a mano (F28) ───────────────────────────────────────
 
-export function planAddPayment(input: { amount: unknown; dueDate: string; method?: string | null }, enabledMethods: readonly string[]): RuleResult<{ amount: number }> {
+export function planAddPayment(
+  input: { amount: unknown; dueDate: string; method?: string | null },
+  enabledMethods: readonly string[],
+  methods?: readonly PaymentMethodDef[],
+): RuleResult<{ amount: number }> {
   const cents = toCents(input.amount);
   if (!(cents > 0)) return { ok: false, error: "El monto tiene que ser mayor que cero" };
   if (!isDateOnly(input.dueDate)) return { ok: false, error: "La fecha de vencimiento no es válida" };
-  if (input.method && (!isPaymentMethodKey(input.method) || !enabledMethods.includes(input.method))) return { ok: false, error: "Ese método de pago no está habilitado" };
+  const isKnown = (key: string) => (methods ? findMethod(methods, key) !== null : isPaymentMethodKey(key));
+  if (input.method && (!isKnown(input.method) || !enabledMethods.includes(input.method))) return { ok: false, error: "Ese método de pago no está habilitado" };
   return { ok: true, amount: fromCents(cents) };
 }

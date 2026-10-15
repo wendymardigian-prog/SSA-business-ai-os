@@ -248,7 +248,7 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(NAV_GROUPS.map((g) => [g.id, NAV_ITEMS.filter((i) => i.group === g.id).map((i) => i.name)])).toEqual([
       ["inicio", ["Dashboards", "Bandeja", "Mi reporte del día"]],
       ["adquisicion", ["Contenido", "Social"]],
-      ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas"]],
+      ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo
       ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]],
     ]);
   });

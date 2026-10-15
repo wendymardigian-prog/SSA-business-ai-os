@@ -143,7 +143,8 @@ describe("el Member es exactamente el de hoy (F68)", () => {
     // Conocimiento ya no es un item; se abre con un boton de la barra de Agentes IA que pide `knowledge.view`.
     const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true, settings: true } }).map((i) => i.name);
     const ocultos = NAV_ITEMS.map((i) => i.name).filter((n) => !visibles.includes(n)).sort();
-    expect(ocultos).toEqual(["Social"]);
+    // Extra I: Finanzas pide expenses.view, que el Member de sistema no tiene.
+    expect(ocultos).toEqual(["Finanzas", "Social"]);
     expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
     expect(can(member, "knowledge.view")).toBe(false);
     // Social no es por cargo (F78): se ve con `social.view`, que el Member de sistema no tiene.

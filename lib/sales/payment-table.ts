@@ -4,7 +4,7 @@
  */
 import { delayChip, type DelayChip } from "./delay";
 import { fromCents, toCents } from "./money";
-import { paymentMethodName } from "./payment-methods";
+import { paymentMethodName, type PaymentMethodDef } from "./payment-methods";
 import { paymentStatusLabel, paymentTypeLabel } from "./labels";
 import { saleBalance, saleExpected, salePaid } from "./sale-math";
 
@@ -19,6 +19,9 @@ export interface TablePayment {
   delay_days: number | null;
   payment_method: string | null;
   provider_fee_amount: unknown;
+  /** El porcentaje y el fijo con los que se calculó la comisión al cobrar (Extra I). Null en pagos anteriores. */
+  provider_fee_percent?: unknown;
+  provider_fee_fixed?: unknown;
   receipt_path: string | null;
   reschedule_count: number;
   notes: string | null;
@@ -45,6 +48,12 @@ export interface PaymentRowView {
   status: string;
   method: string | null;
   fee: number | null;
+  /** "2,9 % + 0,30" con lo que se congeló al cobrar; null si el pago no lo guardó o no tuvo comisión. */
+  feeNote: string | null;
+  /** Lo cobrado menos la comisión (null si no está cobrado). */
+  net: number | null;
+  /** Con `payments.manage` y un cobro que no es reembolso: se puede corregir la comisión (F6). */
+  canCorrectFee: boolean;
   actions: RowActions;
 }
 
@@ -62,7 +71,22 @@ export function rowActions(p: Pick<TablePayment, "status" | "type" | "receipt_pa
   };
 }
 
-export function paymentRows(payments: readonly TablePayment[], canManage: boolean): PaymentRowView[] {
+const PCT = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+const FIXED = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** "2,9 % + 0,30": lo que se congeló al cobrar. Null si no hay nada que mostrar. */
+export function feeSpecNote(percent: unknown, fixed: unknown): string | null {
+  if (percent == null && fixed == null) return null;
+  const pct = Number(percent) || 0;
+  const fix = Number(fixed) || 0;
+  if (pct <= 0 && fix <= 0) return null;
+  const parts: string[] = [];
+  if (pct > 0) parts.push(`${PCT.format(pct)} %`);
+  if (fix > 0) parts.push(FIXED.format(fix));
+  return parts.join(" + ");
+}
+
+export function paymentRows(payments: readonly TablePayment[], canManage: boolean, catalog?: readonly PaymentMethodDef[] | null): PaymentRowView[] {
   return payments.map((p, i) => ({
     id: p.id,
     index: i + 1,
@@ -76,8 +100,11 @@ export function paymentRows(payments: readonly TablePayment[], canManage: boolea
     delay: p.status === "paid" ? delayChip(p.delay_days) : { label: "—", tone: "none" },
     statusLabel: paymentStatusLabel(p.status),
     status: p.status,
-    method: p.payment_method ? paymentMethodName(p.payment_method) : null,
+    method: p.payment_method ? paymentMethodName(p.payment_method, catalog) : null,
     fee: p.status === "paid" && p.provider_fee_amount != null && toCents(p.provider_fee_amount) > 0 ? fromCents(toCents(p.provider_fee_amount)) : null,
+    feeNote: p.status === "paid" && p.provider_fee_amount != null && toCents(p.provider_fee_amount) > 0 ? feeSpecNote(p.provider_fee_percent, p.provider_fee_fixed) : null,
+    net: p.status === "paid" ? fromCents(toCents(p.amount) - (p.provider_fee_amount != null ? toCents(p.provider_fee_amount) : 0)) : null,
+    canCorrectFee: canManage && p.status === "paid" && p.type !== "refund",
     actions: rowActions(p, canManage),
   }));
 }

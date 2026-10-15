@@ -91,6 +91,13 @@ describe("visibleSettingsTabs (plano formularios-ui, D4; por permiso desde Equip
     expect(visibleSettingsTabs(can(["products.manage", "integrations.view"])).map((t) => t.name)).toEqual(["Recursos", "Productos", "Integraciones"]);
   });
 
+  it("quien solo administra gastos (expenses.manage) ve General: ahí está la sección de Finanzas", () => {
+    expect(visibleSettingsTabs(can(["expenses.manage"])).map((t) => t.name)).toEqual(["General", "Recursos"]);
+    expect(settingsEntryHref(can(["expenses.manage"]))).toBe("/dashboard/settings");
+    // Ver Finanzas no alcanza para configurarla.
+    expect(visibleSettingsTabs(can(["expenses.view"])).map((t) => t.name)).toEqual(["Recursos"]);
+  });
+
   it("Ajustes lleva a General con una clave de General, y a Recursos para un Member", () => {
     expect(settingsEntryHref(() => true)).toBe("/dashboard/settings");
     expect(settingsEntryHref(can(["settings.general"]))).toBe("/dashboard/settings");

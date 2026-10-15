@@ -96,6 +96,9 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // productos y las reglas de asignacion viven en Ajustes. Va despues de
   // Llamadas: ese lugar ya estaba fijado por su test.
   { name: "Ventas", href: "/dashboard/ventas", icon: "CircleDollarSign", permissions: ["sales.view"], group: "ventas", alsoActiveOn: ["/dashboard/ventas"] },
+  // Finanzas (Extra I): gastos, recurrentes, proveedores y el panel. Va al final del grupo para no mover el
+  // orden de los demas items. Se suma `commissions.view` en el bloque de Comisiones (Mis comisiones).
+  { name: "Finanzas", href: "/dashboard/finanzas", icon: "Wallet", permissions: ["expenses.view"], group: "ventas", alsoActiveOn: ["/dashboard/finanzas"] },
 
   // Herramientas (plano formularios-ui, D1): la unica seccion colapsable. Orden fijo:
   // Tareas, Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.

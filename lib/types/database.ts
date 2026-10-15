@@ -464,6 +464,10 @@ export type AuditEntityType =
   /** Un anuncio del catalogo de Meta (00191): el vinculo manual con una pieza de Contenido (Extra L, Tiron 2, A2). */
   | "meta_ad"
   /** Tareas (00196). Las RPC de 00197 escriben `task.completed`, `task.date_shifted`, `task.blockers_changed` y `task.deleted`. */
+  /** Finanzas (Extra I, 00225): gastos, plantillas recurrentes y proveedores. Las categorias y la configuracion se auditan sobre "workspace". */
+  | "expense"
+  | "recurring_expense"
+  | "vendor"
   | "task";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
@@ -575,6 +579,41 @@ export type AuditAction =
   | "task.deleted"
   | "call.objection_resolved"
   | "call.archived"
+  /** Extra I, MP: los metodos de pago del negocio (entity workspace) y la correccion de la comision de un pago. */
+  | "payment_methods.updated"
+  | "payment.fee_corrected"
+  /** Finanzas (Extra I). Entity expense, salvo que se aclare. */
+  | "expense.created"
+  | "expense.updated"
+  | "expense.paid"
+  | "expense.payment_reverted"
+  | "expense.voided"
+  | "expense.receipt_uploaded"
+  | "expense.receipt_removed"
+  | "expense.overdue"
+  | "expense.auto_created"
+  | "expense.auto_updated"
+  | "expense.auto_voided_zero"
+  | "expense.auto_reactivated"
+  | "expense.auto_closed"
+  | "expense.drift_detected"
+  | "expense.drift_ignored"
+  | "expense.adjustment_created"
+  /** Entity recurring_expense. */
+  | "recurring.created"
+  | "recurring.updated"
+  | "recurring.paused"
+  | "recurring.reactivated"
+  | "recurring.expense_generated"
+  | "recurring.backfilled"
+  /** Entity vendor. */
+  | "vendor.created"
+  | "vendor.updated"
+  | "vendor.archived"
+  | "vendor.restored"
+  /** Entity workspace: las categorias y la configuracion de Finanzas. */
+  | "finance.categories_updated"
+  | "finance.settings_updated"
   /** Formularios (entity form, salvo que se aclare). `form.published` lo escribe la funcion SQL. */
   | "form.created"
   | "form.updated"
@@ -1033,6 +1072,8 @@ export interface Database {
           timezone: string;
           /** Metodos de pago que ofrece el selector de Ventas (00159). */
           enabled_payment_methods: string[];
+          payment_methods: Json;
+          finance_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */
           max_discount_percent: number | null;
           overdue_grace_days: number;
@@ -1071,6 +1112,8 @@ export interface Database {
           scheduling_public_base_url?: string | null;
           timezone?: string;
           enabled_payment_methods?: string[];
+          payment_methods?: Json;
+          finance_settings?: Json;
           max_discount_percent?: number | null;
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
@@ -1105,6 +1148,8 @@ export interface Database {
           scheduling_public_base_url?: string | null;
           timezone?: string;
           enabled_payment_methods?: string[];
+          payment_methods?: Json;
+          finance_settings?: Json;
           max_discount_percent?: number | null;
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
@@ -3989,9 +4034,11 @@ export interface Database {
           paid_at: string | null;
           paid_on: string | null;
           delay_days: number | null;
-          payment_method: "whop" | "transferencia_cr" | "transferencia_usa" | "wise" | "binance" | null;
+          payment_method: string | null;
           payment_option_snapshot: Json | null;
           provider_fee_amount: number | null;
+          provider_fee_percent: number | null;
+          provider_fee_fixed: number | null;
           receipt_path: string | null;
           notes: string | null;
           reschedule_reason: string | null;
@@ -5308,11 +5355,133 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
+
+      /** Proveedores (Finanzas, 00225). Un proveedor con `user_id` es una persona del equipo. Se escribe con `as never`. */
+      vendors: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          country: string | null;
+          email: string | null;
+          payment_details: string | null;
+          terms: string | null;
+          notes: string | null;
+          user_id: string | null;
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      /** Plantillas de gastos que se repiten (Finanzas, 00225). */
+      recurring_expenses: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          concept: string;
+          vendor_id: string | null;
+          category_key: string;
+          amount_type: "fixed" | "variable";
+          amount: number | null;
+          currency: "USD";
+          charge_mode: "automatic" | "manual";
+          frequency: "weekly" | "biweekly" | "monthly" | "yearly";
+          weekly_day: number | null;
+          weekly_interval: number | null;
+          monthly_day: number | null;
+          yearly_month: number | null;
+          yearly_day: number | null;
+          start_date: string;
+          end_date: string | null;
+          lead_days: number;
+          is_active: boolean;
+          paused_at: string | null;
+          generation_anchor: string;
+          responsible_id: string | null;
+          notes: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      /** Gastos (Finanzas, 00225). Nada se borra: se anula. La plata es USD. */
+      expenses: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          concept: string;
+          vendor_id: string | null;
+          category_key: string;
+          amount: number;
+          currency: "USD";
+          status: "por_revisar" | "programado" | "vencido" | "pagado" | "anulado";
+          scheduled_date: string;
+          paid_date: string | null;
+          paid_by: string | null;
+          origin: "manual" | "recurring" | "processor_fee" | "meta_ads" | "adjustment" | "commission_payout";
+          recurring_expense_id: string | null;
+          auto_key: string | null;
+          source_ref: Json | null;
+          auto_drift_amount: number | null;
+          auto_drift_detected_at: string | null;
+          auto_drift_resolved_at: string | null;
+          adjusts_expense_id: string | null;
+          receipt_path: string | null;
+          receipt_name: string | null;
+          responsible_id: string | null;
+          notes: string | null;
+          void_reason: string | null;
+          void_kind: "manual" | "auto_zero" | null;
+          voided_at: string | null;
+          voided_by: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      /** Finanzas (00228): pasa a `vencido` los programados con fecha anterior a hoy. Devuelve los ids. Solo service_role. */
+      mark_expenses_overdue: {
+        Args: { p_workspace_id: string; p_today: string };
+        Returns: string[];
+      };
+      /** Finanzas (00229): la decision pura sobre un gasto automatico (gemela de decideAutoExpenseAction). Solo service_role. */
+      decide_auto_expense_action: {
+        Args: { p_existing: Json | null; p_total_cents: number; p_ctx: Json };
+        Returns: Json;
+      };
+      /** Finanzas (00229): crea o recalcula un gasto automatico por su clave, con candado. Solo service_role. */
+      upsert_auto_expense: {
+        Args: {
+          p_workspace: string; p_auto_key: string; p_origin: string; p_total_cents: number; p_concept: string; p_month: string;
+          p_vendor_id: string | null; p_category_key: string; p_charge_mode: string; p_source_ref: Json | null; p_today: string;
+        };
+        Returns: Json;
+      };
+      /** Metodos de pago (00224): el elemento de `workspaces.payment_methods` por clave, o null. */
+      workspace_payment_method: {
+        Args: { p_workspace: string; p_key: string };
+        Returns: Json | null;
+      };
       /** Busca un contacto por telefono primero y despues por email; NO crea (Formularios, 00156). Solo service_role. */
       find_contact_by_phone_or_email: {
         Args: { p_workspace_id: string; p_phone: string; p_email: string };

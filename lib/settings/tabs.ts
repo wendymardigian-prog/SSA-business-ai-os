@@ -22,7 +22,7 @@ export interface SettingsTab {
 }
 
 export const SETTINGS_TABS: SettingsTab[] = [
-  { name: "General", href: "/dashboard/settings", permissions: ["settings.general", "sales.settings"] },
+  { name: "General", href: "/dashboard/settings", permissions: ["settings.general", "sales.settings", "expenses.manage"] },
   {
     name: "Equipo y roles",
     href: "/dashboard/settings/team",

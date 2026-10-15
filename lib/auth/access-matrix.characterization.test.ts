@@ -294,13 +294,15 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     // acceso: Conocimiento se abre con un boton de Agentes IA, y Recursos e Integraciones son pestañas de Ajustes.
     // Ajustes ahora lo ven todos (todos llegan a Recursos). Por eso el menu se compara como CONJUNTO.
     const REMOVED_FROM_MENU = ["Conocimiento", "Recursos", "Integraciones"];
+    // Extra I (Finanzas): Owner y Admin GANAN un item. No se regenera la foto: se declara aca, a proposito.
+    const ADDED_TO_MENU = ["Finanzas"];
     const sorted = (names: string[]) => [...names].sort();
 
     it("Owner y Admin ven lo mismo que antes (el menu, salvo el rediseño aprobado de formularios-ui)", () => {
       for (const r of ["owner", "admin"] as const) {
         const now_ = now.rendered[r] as { nav: string[] };
         const base_ = base.rendered[r] as { nav: string[] };
-        expect(sorted(now_.nav), r).toEqual(sorted(base_.nav.filter((n) => !REMOVED_FROM_MENU.includes(n))));
+        expect(sorted(now_.nav), r).toEqual(sorted([...base_.nav.filter((n) => !REMOVED_FROM_MENU.includes(n)), ...ADDED_TO_MENU]));
         expect({ ...now_, nav: [] }).toEqual({ ...base_, nav: [] });
       }
     });

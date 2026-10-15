@@ -3,11 +3,11 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { addPayment, createRefund, markPaymentPaid, markUncollectible, reschedulePayment, revertPayment, uploadPaymentReceipt, type PaymentActionResult } from "@/lib/actions/payments";
+import { addPayment, correctPaymentFee, createRefund, markPaymentPaid, markUncollectible, reschedulePayment, revertPayment, uploadPaymentReceipt, type PaymentActionResult } from "@/lib/actions/payments";
 import { SaleModal } from "@/components/sales/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { formatMoney } from "@/lib/sales/format";
-import { selectableMethods } from "@/lib/sales/payment-methods";
+import { selectableMethods, type PaymentMethodDef } from "@/lib/sales/payment-methods";
 import type { PartialOffer } from "@/lib/sales/payments-rules";
 
 /**
@@ -44,7 +44,7 @@ export interface PayableRow {
   due: string | null;
 }
 
-export function MarkPaidDialog({ saleId, payment, saleDate, today, enabledMethods, onClose }: { saleId: string; payment: PayableRow; saleDate: string; today: string; enabledMethods: string[]; onClose: () => void }) {
+export function MarkPaidDialog({ saleId, payment, saleDate, today, enabledMethods, methods: catalog, onClose }: { saleId: string; payment: PayableRow; saleDate: string; today: string; enabledMethods: string[]; methods: PaymentMethodDef[]; onClose: () => void }) {
   const router = useRouter();
   const [paidOn, setPaidOn] = useState(today);
   const [method, setMethod] = useState("");
@@ -54,7 +54,7 @@ export function MarkPaidDialog({ saleId, payment, saleDate, today, enabledMethod
   const [done, setDone] = useState<{ partial: PartialOffer | null; overpaidBy: number; receiptError: string | null } | null>(null);
   const [pending, start] = useTransition();
   const file = useRef<HTMLInputElement>(null);
-  const methods = selectableMethods(enabledMethods);
+  const methods = selectableMethods(enabledMethods, null, catalog);
   const differs = Number(amount) !== payment.amount;
 
   function submit() {
@@ -169,6 +169,34 @@ export function RescheduleDialog({ payment, onClose }: { payment: PayableRow; on
   );
 }
 
+// ── Corregir la comisión del procesador (Extra I, F6) ────────────────
+
+export function FeeCorrectionDialog({ payment, currentFee, onClose }: { payment: PayableRow; currentFee: number | null; onClose: () => void }) {
+  const router = useRouter();
+  const [fee, setFee] = useState(currentFee == null ? "" : String(currentFee));
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  function submit() {
+    setError(null);
+    start(async () => {
+      const result = await correctPaymentFee({ paymentId: payment.id, feeAmount: Number(fee), reason });
+      if (!result.ok) return setError(result.error);
+      router.refresh();
+      onClose();
+    });
+  }
+
+  return (
+    <SaleModal title="Corregir la comisión del procesador" label="Corregir la comisión del procesador" onClose={onClose} footer={<Footer error={error} onClose={onClose}><Primary pending={pending} disabled={fee.trim() === "" || !reason.trim()} onClick={submit}>Corregir</Primary></Footer>}>
+      <p className="text-sm">Cobrado {formatMoney(payment.amount)}. Se corrige solo lo que se quedó el procesador; el porcentaje y el fijo calculados quedan como registro.</p>
+      <DialogField label="Comisión real (USD)"><input type="number" min={0} max={payment.amount} step="0.01" inputMode="decimal" className={fieldInput} value={fee} onChange={(e) => setFee(e.target.value)} /></DialogField>
+      <DialogField label="Motivo"><textarea className={fieldInput} rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} /></DialogField>
+    </SaleModal>
+  );
+}
+
 // ── Incobrable / revertir ────────────────────────────────────────────
 
 export function ReasonDialog({ payment, kind, onClose }: { payment: PayableRow; kind: "uncollectible" | "revert"; onClose: () => void }) {
@@ -208,7 +236,7 @@ export function ReasonDialog({ payment, kind, onClose }: { payment: PayableRow; 
 
 // ── Agregar una cuota a mano ─────────────────────────────────────────
 
-export function AddPaymentDialog({ saleId, today, enabledMethods, onClose }: { saleId: string; today: string; enabledMethods: string[]; onClose: () => void }) {
+export function AddPaymentDialog({ saleId, today, enabledMethods, methods: catalog, onClose }: { saleId: string; today: string; enabledMethods: string[]; methods: PaymentMethodDef[]; onClose: () => void }) {
   const router = useRouter();
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today);
@@ -235,7 +263,7 @@ export function AddPaymentDialog({ saleId, today, enabledMethods, onClose }: { s
         <DialogField label="Método (opcional)">
           <select className={fieldInput} value={method} onChange={(e) => setMethod(e.target.value)}>
             <option value="">Sin definir</option>
-            {selectableMethods(enabledMethods).map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
+            {selectableMethods(enabledMethods, null, catalog).map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
           </select>
         </DialogField>
       </div>

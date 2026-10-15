@@ -6,7 +6,7 @@
 import { addDays, isDateOnly } from "./dates";
 import { delayChip, type DelayChip } from "./delay";
 import { fromCents, toCents } from "./money";
-import { paymentMethodName } from "./payment-methods";
+import { paymentMethodName, type PaymentMethodDef } from "./payment-methods";
 import { PAYMENT_STATUSES, paymentStatusLabel, paymentTypeLabel } from "./labels";
 
 export const PAYMENTS_PAGE_SIZE = 50;
@@ -157,7 +157,7 @@ export interface PaymentListRow {
   canAct: { markPaid: boolean; reschedule: boolean };
 }
 
-export function paymentListRow(p: PaymentListInput, canManage: boolean): PaymentListRow {
+export function paymentListRow(p: PaymentListInput, canManage: boolean, catalog?: readonly PaymentMethodDef[] | null): PaymentListRow {
   const open = p.status === "scheduled" || p.status === "overdue";
   return {
     id: p.id,
@@ -169,7 +169,7 @@ export function paymentListRow(p: PaymentListInput, canManage: boolean): Payment
     dueDate: p.due_date,
     paidOn: p.paid_on,
     delay: p.status === "paid" ? delayChip(p.delay_days) : { label: "—", tone: "none" },
-    method: p.payment_method ? paymentMethodName(p.payment_method) : null,
+    method: p.payment_method ? paymentMethodName(p.payment_method, catalog) : null,
     canAct: { markPaid: canManage && open && p.type !== "refund", reschedule: canManage && open && p.type !== "refund" },
   };
 }

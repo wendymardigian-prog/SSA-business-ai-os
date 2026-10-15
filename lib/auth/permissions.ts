@@ -34,6 +34,7 @@ export const PERMISSION_MODULES = [
   "calls",
   "forms",
   "sales",
+  "finance",
   "tasks",
   "integrations",
   "team",
@@ -57,6 +58,7 @@ export const MODULE_LABELS: Record<PermissionModule, string> = {
   calls: "Llamadas",
   forms: "Formularios",
   sales: "Ventas",
+  finance: "Finanzas",
   tasks: "Tareas",
   integrations: "Integraciones",
   team: "Equipo",
@@ -81,7 +83,7 @@ export interface PermissionDefinition {
  * La etiqueta importa tanto como la clave: la pantalla de roles la muestra
  * tal cual, y "inbox.whatsapp.reply" no le dice nada a nadie.
  *
- * Son 74 claves; 72 visibles (dos estan reservadas). Cada clave nueva se suma
+ * Son 76 claves; 74 visibles (dos estan reservadas). Cada clave nueva se suma
  * aca, en la pantalla, en el guard, en la RLS y en `catalog-usage.test.ts` en el
  * MISMO cambio (ver `docs/roles.md`, "Como sumar una clave nueva").
  */
@@ -173,6 +175,10 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." },
   { key: "products.manage", module: "sales", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." },
   { key: "sales.settings", module: "sales", label: "Configurar ventas y cobranza", description: "Métodos de pago, tope de descuento, días de gracia y los flujos de cobranza." },
+
+  // ── Finanzas (Extra I) ──────────────────────────────────────────────────
+  { key: "expenses.view", module: "finance", label: "Ver Finanzas", description: "Los gastos, comprobantes, recurrentes, proveedores y el panel de Finanzas, con los ingresos cobrados totales. Exportar a CSV." },
+  { key: "expenses.manage", module: "finance", label: "Administrar gastos", description: "Crear, editar, pagar, revertir y anular gastos; plantillas recurrentes; proveedores; categorías y gastos automáticos." },
 
   // ── Tareas (Extra A) ────────────────────────────────────────────────────
   { key: "tasks.view", module: "tasks", label: "Ver las tareas", description: "La tabla y el tablero de Tareas. El alcance decide si ve todas o solo las que creó, tiene a cargo o sigue." },

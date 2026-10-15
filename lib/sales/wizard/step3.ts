@@ -4,7 +4,7 @@
  */
 import { isDateOnly } from "../dates";
 import type { FinancingType } from "../labels";
-import { isPaymentMethodKey } from "../payment-methods";
+import { isKnownMethod, type PaymentMethodDef } from "../payment-methods";
 import { bornOverdue, buildPaymentPlan, type Frequency, type PlannedPayment } from "../payment-plan";
 
 export type SubscriptionInterval = "monthly" | "quarterly" | "yearly";
@@ -59,7 +59,7 @@ export interface RowsCheck {
 
 export function checkRows(
   rows: readonly PlannedPayment[],
-  ctx: { saleDate: string; today: string; enabledMethods: readonly string[] },
+  ctx: { saleDate: string; today: string; enabledMethods: readonly string[]; methods?: readonly PaymentMethodDef[] },
 ): RowsCheck {
   const errors: string[] = [];
   rows.forEach((p, i) => {
@@ -72,7 +72,7 @@ export function checkRows(
     if (p.status === "paid") {
       if (p.due_date < ctx.saleDate) errors.push(`El pago ${n} no puede estar cobrado antes de la fecha de la venta`);
       if (p.due_date > ctx.today) errors.push(`El pago ${n} está cobrado con una fecha futura`);
-      if (!p.payment_method || !isPaymentMethodKey(p.payment_method)) errors.push(`Elegí el método del pago ${n}, que ya se cobró`);
+      if (!p.payment_method || !isKnownMethod(p.payment_method, ctx.methods)) errors.push(`Elegí el método del pago ${n}, que ya se cobró`);
       else if (!ctx.enabledMethods.includes(p.payment_method)) errors.push(`El método del pago ${n} no está habilitado`);
     }
   });

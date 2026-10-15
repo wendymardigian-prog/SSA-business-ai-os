@@ -5,7 +5,6 @@ import { Loader2 } from "lucide-react";
 import { loadSalesTriggerOptions, type SalesTriggerOptions } from "@/lib/actions/sales-automation";
 import { MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "@/lib/contacts/taxonomy";
 import { ATTRIBUTION_TYPE_LABELS, ATTRIBUTION_TYPES, FINANCING_TYPE_LABELS, FINANCING_TYPES, PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, PAYMENT_TYPE_LABELS, PAYMENT_TYPES, SALE_STATUS_LABELS, SALE_STATUSES } from "@/lib/sales/labels";
-import { PAYMENT_METHODS } from "@/lib/sales/payment-methods";
 import { describeSalesTrigger } from "@/lib/sales/automation/presets";
 import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers";
 
@@ -97,7 +96,7 @@ export function SalesTriggerPanel({ triggerType, data, onChange }: { triggerType
     let cancelled = false;
     loadSalesTriggerOptions()
       .then((o) => { if (!cancelled) setOptions(o); })
-      .catch(() => { if (!cancelled) setOptions({ products: [], members: [] }); });
+      .catch(() => { if (!cancelled) setOptions({ products: [], members: [], methods: [] }); });
     return () => { cancelled = true; };
   }, []);
 
@@ -116,7 +115,7 @@ export function SalesTriggerPanel({ triggerType, data, onChange }: { triggerType
   const saleStatuses: Option[] = SALE_STATUSES.map((s) => ({ value: s, label: SALE_STATUS_LABELS[s] }));
   const paymentStatuses: Option[] = PAYMENT_STATUSES.filter((s) => s !== "refunded").map((s) => ({ value: s, label: PAYMENT_STATUS_LABELS[s] }));
   const paymentTypes: Option[] = PAYMENT_TYPES.map((t) => ({ value: t, label: PAYMENT_TYPE_LABELS[t] }));
-  const methods: Option[] = PAYMENT_METHODS.map((m) => ({ value: m.key, label: m.name }));
+  const methods: Option[] = (options?.methods ?? []).map((m) => ({ value: m.key, label: m.name }));
   const sources: Option[] = SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] }));
   const mediums: Option[] = MEDIUMS.map((m) => ({ value: m, label: MEDIUM_LABELS[m] }));
   const relative = isRelativeSalesTrigger(triggerType);
