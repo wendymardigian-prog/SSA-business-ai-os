@@ -124,14 +124,23 @@ Explicale PARA QUÉ es: las tareas automáticas (secuencias, recordatorios, publ
 1. **La dirección (no es secreta, la cargás vos)** con el conector:
    `select private.set_system_secret('app_url', 'https://<el dominio del paso 2>');`
    Tiene que devolver "listo: app_url guardado en Vault".
-2. **El `CRON_SECRET` lo carga la persona**, porque es secreto. La forma más amigable es el formulario de Vault:
-   - Supabase → **Integrations → Vault → Secrets → Add new secret**.
-   - **Name:** `system:cron_secret`, exactamente así (con los dos puntos). Es el nombre con el que la base lo busca.
-   - **Description:** puede quedar vacía.
-   - **Secret value:** el mismo valor que puso en `CRON_SECRET` en Railway.
-   - Clic en **Add secret**.
+2. **El `CRON_SECRET` lo carga la persona, y vos la guiás SIN ver el secreto.** Es la parte más delicada: el valor tiene que llegar a Supabase sin pasar por el chat ni por ninguna pantalla que vos puedas ver.
+   - **Antes de abrir nada, preguntale si tiene el valor a mano.** Lo pegó en Railway en el Paso 2, así que lo tendría que tener guardado (en un bloc de notas o un gestor de contraseñas). Si no lo encuentra: en Railway, servicio → Variables, el ojito junto a `CRON_SECRET` lo muestra (lo mira ella, no vos). Si de verdad lo perdió, que invente uno nuevo y lo cambie en los DOS lugares (Railway y Supabase). Nunca te lo pase a vos.
+   - **Guiala en el Navegador de la app** (botón **Browser**), así ven la misma pantalla: abrí `https://supabase.com/dashboard`, que inicie sesión ella (nunca escribas vos contraseñas ni códigos), entrá a su proyecto y llevala hasta el formulario:
+     1. En el menú de la izquierda, **Integrations**.
+     2. **Vault** (si te lo pide, que lo active).
+     3. Pestaña **Secrets**.
+     4. Botón **Add new secret**.
+   - **Que complete ella todo el formulario, vos no lo toques** (ni siquiera el nombre: no uses herramientas que escriban en la página):
+     - **Name:** `system:cron_secret`, exactamente así, con los dos puntos. Es el nombre con el que la base lo busca.
+     - **Description:** puede quedar vacía.
+     - **Secret value:** el mismo valor que puso en `CRON_SECRET` en Railway. Se pega con **Cmd + V** (Mac) o **Ctrl + V** (Windows).
+     - Clic en **Add secret**.
+   - **Regla de oro mientras pega el valor:** decile EXPLÍCITAMENTE "ahora pegá el valor; mientras lo hacés yo no miro la pantalla", y **no saques capturas ni leas la página** (ni captura, ni zoom, ni leer el texto de la página) desde ese momento hasta que ella te avise "listo" y haya tocado **Add secret**. El campo puede mostrar el valor en pantalla. Después comprobá con la consulta de estado del punto 3, nunca mirando la pantalla.
+   - **Si prefiere hacerlo en su navegador de siempre** (Chrome, Safari...) en vez del de la app, también está bien y es lo más simple: pasale la misma lista de clics y esperá a que te avise.
+   - **No cargues el secreto con el conector** (`execute_sql` con el valor adentro): pasaría por vos.
 
-   Si prefiere SQL, o si ya existía un `system:cron_secret` y hay que cambiarlo (el formulario no deja crear dos con el mismo nombre), que pegue esta línea en Supabase → SQL Editor, con su valor entre las comillas, y la ejecute con Run:
+   Si prefiere SQL, o si ya existía un `system:cron_secret` y hay que cambiarlo (el formulario no deja crear dos con el mismo nombre), que lo haga ella en Supabase → **SQL Editor** → **New query**: que pegue esta línea, reemplace `EL-MISMO-VALOR-QUE-EN-RAILWAY` por su valor (entre las comillas) y toque **Run**. Mismas reglas: vos no mirás la pantalla mientras lo hace.
    `select private.set_system_secret('cron_secret', 'EL-MISMO-VALOR-QUE-EN-RAILWAY');`
 3. **Comprobalo vos**, sin ver el secreto:
    `select * from private.system_secrets_status();`
