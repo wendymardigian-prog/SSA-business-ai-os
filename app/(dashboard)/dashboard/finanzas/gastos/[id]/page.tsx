@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
+import { RelatedCommissions } from "@/components/commissions/related-commissions";
 import { ExpenseDetail, type ExpenseDetailData, type ExpenseDetailRow } from "@/components/finance/expense-detail";
+import { loadExpenseCommissions } from "@/lib/commissions/screen-load";
 import { requirePermission } from "@/lib/auth/guards";
 import { financeContextOf } from "@/lib/finance/context";
 import { loadVendorsLite } from "@/lib/finance/list-load";
@@ -53,5 +55,14 @@ export default async function GastoPage({ params }: { params: Promise<{ id: stri
     today: f.todayLocal,
     canManage: ctx.can("expenses.manage"),
   };
-  return <ExpenseDetail data={detail} />;
+
+  // Un gasto de liquidación dice qué comisiones paga (Extra I, F62). Se lee DESPUÉS de `expenses.view` y solo trae
+  // persona, venta, monto y estado de cada una.
+  const payoutCommissions = await loadExpenseCommissions(ctx, { id: expense.id, origin: expense.origin, source_ref: expense.source_ref });
+  return (
+    <ExpenseDetail
+      data={detail}
+      commissions={payoutCommissions ? <RelatedCommissions list={payoutCommissions} variant="expense" canViewSales={ctx.can("sales.view")} canOpen={ctx.can("commissions.view")} /> : undefined}
+    />
+  );
 }

@@ -62,6 +62,8 @@ export interface SaleDetailData {
   methods: PaymentMethodDef[];
   /** De donde vino la venta (F49), armado en el servidor con la sesion de quien mira. */
   origin: SaleAttributionViewModel;
+  /** Con `commissions.manage`: ofrece «Ajustar comisiones de este reembolso» en los reembolsos cobrados (Extra I, F64). */
+  canAdjustCommissions?: boolean;
 }
 
 function formatDate(date: string | null): string {
@@ -74,7 +76,7 @@ function formatDate(date: string | null): string {
  * La ficha de una venta (F26): cabecera con los números, datos, plan de pagos (solo lectura en
  * este bloque), contratos e historial. Las acciones solo aparecen con `sales.manage`.
  */
-export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; wizard: WizardConfig; contracts?: React.ReactNode }) {
+export function SaleDetail({ data, wizard, contracts, commissions }: { data: SaleDetailData; wizard: WizardConfig; contracts?: React.ReactNode; commissions?: React.ReactNode }) {
   const { sale, payments, numbers, contact } = data;
   const [dialog, setDialog] = useState<"edit" | "cancel" | "subscription" | "rebuild" | null>(null);
   // «Cambiar» en «De dónde vino» abre la edicion con la atribucion ya desplegada.
@@ -205,9 +207,12 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
             today={data.today}
             timeZone={data.timeZone}
             names={data.names}
+            canAdjustCommissions={data.canAdjustCommissions}
           />
 
           {contracts}
+
+          {commissions}
 
           <Section title="Historial">
             <Historial entityType="sale" entityId={sale.id} names={{ users: data.names }} timeZone={data.timeZone} />

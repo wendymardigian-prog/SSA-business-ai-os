@@ -360,6 +360,14 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Proveedores",
     tooltip: "A quién le pagás, con lo que le pagaste en total y en el año. Un proveedor no se borra: se archiva.",
   },
+  "/dashboard/finanzas/comisiones": {
+    title: "Comisiones",
+    tooltip: "Quién cobra qué por cada pago cobrado. Elegí las que ya se pueden pagar y generá el gasto de la liquidación; un ajuste corrige a mano lo que haga falta. Quien ve solo las suyas tiene «Mis comisiones».",
+  },
+  "/dashboard/finanzas/comisiones/reglas": {
+    title: "Reglas de comisión",
+    tooltip: "Cuánto cobra cada rol y en qué casos. Gana la primera regla que cumple sus condiciones; cambiarlas no toca las comisiones ya generadas.",
+  },
 };
 
 /** Rutas que a proposito NO llevan barra superior, y por que. */

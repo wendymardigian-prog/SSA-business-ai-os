@@ -87,3 +87,9 @@ Las columnas por pieza (leads, agendas, ventas, revenue, cash) con una función 
 
 ## Catálogo de Meta en «Cargar a mano»
 El buscador de anuncios usa la sesión de quien carga la venta, así que sin `dashboards.ads.view` no ve el catálogo y queda «No sé qué anuncio». Si se quiere que cualquiera con `sales.manage` pueda buscar, hay que pasar a cliente de servicio.
+
+## F65 — Recalcular comisiones pendientes (nice-to-have, sin hacer)
+Falta la acción de servidor que arme la vista previa (antes → después) de las comisiones Pendientes o Retenidas sin gasto y las recalcule (anula con motivo «Recalculada» y vuelve a generar por pago). Nunca debe tocar las que están en un gasto.
+
+## Revisión visual con datos
+Las pantallas nuevas se vieron con la base vacía. Falta mirar con datos reales o de prueba: filas de gastos y comisiones, el diálogo «Generar gasto», el panel de reglas y su arrastre, el chip «Vino de…» en la bandeja, la línea de tiempo de toques y «Cargar a mano» en una venta.

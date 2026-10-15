@@ -66,7 +66,7 @@ export interface ExpenseDetailData {
 
 type DialogKind = "pay" | "revert" | "void" | "edit" | "duplicate" | "drift-adjust" | "drift-ignore" | null;
 
-export function ExpenseDetail({ data }: { data: ExpenseDetailData }) {
+export function ExpenseDetail({ data, commissions }: { data: ExpenseDetailData; commissions?: React.ReactNode }) {
   const { expense: e, origin, categories, vendors, members, timeZone, today, canManage } = data;
   const [dialog, setDialog] = useState<DialogKind>(null);
   const transitions = canManage ? allowedTransitions(e) : [];
@@ -190,6 +190,8 @@ export function ExpenseDetail({ data }: { data: ExpenseDetailData }) {
               </Link>
             )}
           </Section>
+
+          {commissions}
 
           <Section title="Historial">
             <Historial key={e.updated_at} entityType="expense" entityId={e.id} names={{ users: names }} timeZone={timeZone} />

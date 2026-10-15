@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { ChevronDown, ChevronRight, CreditCard, FileText, Loader2, Paperclip, Plus, RotateCcw, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getPaymentReceiptUrl, uploadPaymentReceipt } from "@/lib/actions/payments";
 import { AddPaymentDialog, FeeCorrectionDialog, MarkPaidDialog, ReasonDialog, RefundDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
 import { Historial } from "@/components/historial/historial";
+import { refundAdjustHref } from "@/lib/commissions/list-view";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
 import { formatMoney } from "@/lib/sales/format";
 import { PAYMENT_STATUS_LABELS } from "@/lib/sales/labels";
@@ -48,6 +50,7 @@ export function PaymentPlan({
   today,
   timeZone,
   names,
+  canAdjustCommissions = false,
 }: {
   saleId: string;
   saleDate: string;
@@ -61,6 +64,8 @@ export function PaymentPlan({
   today: string;
   timeZone: string;
   names: Record<string, string>;
+  /** Con `commissions.manage`: en un reembolso cobrado, el link para ajustar las comisiones de ese reembolso (Extra I, F64). */
+  canAdjustCommissions?: boolean;
 }) {
   const router = useRouter();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -128,6 +133,7 @@ export function PaymentPlan({
                   busy={pending}
                   timeZone={timeZone}
                   names={names}
+                  adjustHref={canAdjustCommissions && byId.get(r.id)?.type === "refund" && r.status === "paid" ? refundAdjustHref(r.id) : undefined}
                 />
               ))}
             </tbody>
@@ -158,7 +164,7 @@ export function PaymentPlan({
 }
 
 function PaymentRowView({
-  row, expanded, onToggle, onAction, onReceipt, busy, timeZone, names,
+  row, expanded, onToggle, onAction, onReceipt, busy, timeZone, names, adjustHref,
 }: {
   row: ReturnType<typeof paymentRows>[number];
   expanded: boolean;
@@ -168,6 +174,7 @@ function PaymentRowView({
   busy: boolean;
   timeZone: string;
   names: Record<string, string>;
+  adjustHref?: string;
 }) {
   const a = row.actions;
   const btn = "rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent disabled:opacity-50";
@@ -206,6 +213,7 @@ function PaymentRowView({
             {a.uncollectible && <button type="button" className={btn} onClick={() => onAction("uncollectible")}>Incobrable</button>}
             {row.canCorrectFee && <button type="button" className={btn} onClick={() => onAction("fee")}>Corregir comisión</button>}
             {a.revert && <button type="button" className={btn} onClick={() => onAction("revert")}>Revertir</button>}
+            {adjustHref && <Link href={adjustHref} className={btn}>Ajustar comisiones de este reembolso</Link>}
             {a.receipt === "view" && <button type="button" disabled={busy} className={btn} onClick={() => onReceipt("view")} aria-label="Ver comprobante"><Paperclip className="inline h-3 w-3" aria-hidden /> Comprobante</button>}
             {a.receipt === "upload" && (
               <label className={`${btn} cursor-pointer`}>

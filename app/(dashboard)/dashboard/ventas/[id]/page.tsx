@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { SaleContracts } from "@/components/sales/sale-contracts";
 import { SaleDetail, type SaleDetailData } from "@/components/sales/sale-detail";
 import { buildOriginViews, loadOriginParts } from "@/lib/sales/attribution-load";
+import { RelatedCommissions } from "@/components/commissions/related-commissions";
+import { loadSaleCommissions } from "@/lib/commissions/screen-load";
 import { loadSaleContracts } from "@/lib/sales/contracts-load";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/auth/guards";
@@ -34,7 +36,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
   if (!sale) notFound();
 
   const service = await createServiceClient();
-  const [payments, contact, members, timeZone, booking, wizard, contracts] = await Promise.all([
+  const [payments, contact, members, timeZone, booking, wizard, contracts, saleCommissions] = await Promise.all([
     supabase.from("payments").select("id, type, status, amount, due_date, original_due_date, paid_on, delay_days, payment_method, provider_fee_amount, provider_fee_percent, provider_fee_fixed, receipt_path, reschedule_count, notes").eq("sale_id", id).order("due_date", { ascending: true }).order("created_at", { ascending: true }),
     supabase.from("contacts").select("id, display_name, email, phone").eq("id", sale.contact_id).maybeSingle().then((r) => r.data),
     getWorkspaceMembers(workspace.id),
@@ -43,6 +45,8 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
     loadWizardConfig(ctx),
     // La venta ya se comprobó con la sesión de quien mira: las firmas se leen con el cliente de servicio.
     loadSaleContracts(service, workspace.id, id),
+    // Las comisiones de la venta (Extra I, F62): solo con `commissions.view` y las que la RLS deja ver a quien mira.
+    loadSaleCommissions(ctx, id),
   ]);
 
   const rows = payments.data ?? [];
@@ -74,6 +78,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
     enabledMethods: wizard.enabledMethods,
     methods: wizard.methods,
     origin,
+    canAdjustCommissions: ctx.can("commissions.manage"),
   };
 
   const closed = ["cancelled", "refunded", "subscription_cancelled"].includes(sale.status);
@@ -81,6 +86,12 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
     <SaleDetail
       data={data}
       wizard={wizard}
+      commissions={
+        // Quien ve solo las suyas y no tiene ninguna en esta venta no ve la sección: "no se generó ninguna" sería engañoso.
+        saleCommissions && !(ctx.scope("commissions") !== "all" && saleCommissions.items.length === 0) ? (
+          <RelatedCommissions list={saleCommissions} variant="sale" saleId={sale.id} />
+        ) : undefined
+      }
       contracts={
         <SaleContracts
           saleId={sale.id}
