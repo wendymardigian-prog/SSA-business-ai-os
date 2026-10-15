@@ -56,3 +56,12 @@ Está en la guía de instalación (sección "Más adelante — Cómo recibir act
 - **Los clientes no ven nada de `docs/`** (se excluye en el export). Si una guía tiene que viajar, va en la guía de instalación o en `.claude/commands/`.
 - **El export no es lo mismo que el repo de trabajo**: si algo funciona solo con un archivo que el export excluye, no funciona en el clon. Antes de una actualización grande, vale la pena probar `/setup` en un proyecto descartable.
 - **Una persona nueva = acceso de lectura a la plantilla**, nunca miembro de la organización.
+
+## El aviso automático después de un merge
+
+Para no olvidarse de actualizar la plantilla, este repo trae un **hook** de Claude Code (`.claude/settings.json` y `.claude/hooks/baios-reminder.mjs`): cada vez que una sesión corre `gh pr merge`, Claude recibe la instrucción de preguntarte si querés sincronizar `BAIOS`, con una recomendación (sí si el cambio lo ve un cliente: app, migraciones, `/setup`, README; no si es solo interno). Nunca sincroniza solo.
+
+Límites a conocer:
+- **Solo cubre los merges que hace Claude** con `gh pr merge`. Si mergeás desde la página de GitHub, el hook no se entera: avisale a Claude ("mergeado") y la regla guardada en su memoria hace la misma pregunta.
+- **Lo toman las sesiones nuevas.** Una sesión abierta antes de que este archivo llegue a `main` no lo tiene hasta que se actualice su rama.
+- El hook y su configuración **no viajan a la plantilla** (`scripts/export-template.mjs` los excluye).

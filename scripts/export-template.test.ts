@@ -37,7 +37,7 @@ describe("export-template: qué se copia y qué no", () => {
   });
 
   it("no copia docs internos, material del proyecto, .env ni .git original", () => {
-    for (const p of ["docs", "claude", "BITACORA.md", ".env", ".env.local", ".claude/worktrees", "node_modules", ".next"]) {
+    for (const p of ["docs", "claude", "BITACORA.md", ".claude/settings.json", ".claude/hooks", "scripts/sync-template.mjs", ".env", ".env.local", ".claude/worktrees", "node_modules", ".next"]) {
       expect(existsSync(join(dest, p)), p).toBe(false);
     }
   });
