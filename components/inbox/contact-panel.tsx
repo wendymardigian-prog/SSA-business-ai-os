@@ -194,9 +194,13 @@ export function ContactPanel({
             />
           </PanelSection>
 
-          <ContactTasks wrap={(body) => <PanelSection title="Tareas">{body}</PanelSection>} />
+          <PanelSection title="Etiquetas">
+            <TagsEditor contactId={details.contact.id} allTags={allTags} assignedIds={details.tagIds} onSaved={reload} />
+          </PanelSection>
 
-          <AgentMemory contact={details.contact} />
+          <div className="border-b border-border p-4 [&>section]:space-y-2">
+            <NotesSection key={details.contact.id} contactId={details.contact.id} notes={details.contact.notes} onSaved={reload} />
+          </div>
 
           {/* Bloque 2d-A: las etiquetas con efecto sobre el agente, a un clic. */}
           {allTags.some((t) => t.disablesAgent || t.assignsTo) && (
@@ -211,13 +215,9 @@ export function ContactPanel({
             </PanelSection>
           )}
 
-          <PanelSection title="Etiquetas">
-            <TagsEditor contactId={details.contact.id} allTags={allTags} assignedIds={details.tagIds} onSaved={reload} />
-          </PanelSection>
+          <ContactTasks wrap={(body) => <PanelSection title="Tareas">{body}</PanelSection>} />
 
-          <div className="border-b border-border p-4 [&>section]:space-y-2">
-            <NotesSection key={details.contact.id} contactId={details.contact.id} notes={details.contact.notes} onSaved={reload} />
-          </div>
+          <AgentMemory contact={details.contact} />
 
           <Channels details={details} />
 
