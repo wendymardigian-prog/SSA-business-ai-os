@@ -315,6 +315,8 @@ La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e
 
 Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`.
 
+**Permisos de tablas en un proyecto nuevo (15/10/2026).** Desde el 30/5/2026 Supabase no le da acceso automatico a las tablas nuevas de `public` a `anon`, `authenticated` y `service_role` (el 30/10/2026 el cambio llega a los proyectos existentes, solo para objetos nuevos). Las migraciones viejas se escribieron con el comportamiento anterior (casi sin `GRANT`, con ~230 `REVOKE ALL`), asi que la **`00000_default_privileges`** restaura el acceso por defecto ANTES de crear ninguna tabla y deja los permisos como en produccion. Es la primera migracion; en una base que ya existe se marca con `supabase migration repair --status applied 00000`. **Desde la `00224`, cada migracion que crea una tabla declara sus `GRANT`** (a `service_role` siempre, y a `authenticated`/`anon` lo que corresponda): `lib/migrations-grants.test.ts` lo exige. Ese test tambien prohibe un tipo de extension sin esquema (`vector(N)` en vez de `extensions.vector(N)`): la CLI (`db push`) no tiene `extensions` en su `search_path` y el panel si; asi fallo la `00083` en el primer cliente de prueba. El `/setup` comprueba el acceso de la app a las tablas justo despues de aplicar las migraciones.
+
 # Etapa 2 (construida)
 
 Lo que se sumo, y donde esta lo importante de cada cosa. El detalle en `docs/`.
