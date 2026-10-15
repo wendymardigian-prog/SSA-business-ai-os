@@ -50,6 +50,10 @@ function isExcluded(relPath) {
   if (relPath === "BITACORA.md") return true;
   // Es la herramienta de quien mantiene la plantilla; un cliente no la usa.
   if (relPath === "scripts/sync-template.mjs") return true;
+  // El aviso de "actualizar la plantilla" despues de un merge (hook de Claude Code) es de
+  // quien mantiene este repo: ni la configuracion que lo activa ni su script van al cliente.
+  if (relPath === ".claude/settings.json") return true;
+  if (relPath === ".claude/hooks" || relPath.startsWith(".claude/hooks/")) return true;
   if (relPath === "claude" || relPath.startsWith("claude/")) return true;
   if (relPath === ".claude/worktrees" || relPath.startsWith(".claude/worktrees/")) return true;
   if (relPath === "supabase/.temp" || relPath.startsWith("supabase/.temp/")) return true;
