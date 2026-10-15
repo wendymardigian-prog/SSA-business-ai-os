@@ -333,7 +333,7 @@ Marcar `[x]` al cumplir los criterios de la F. Las nice-to-have pueden quedar en
 - [x] Las 8 huellas iguales al punto de partida
 - [x] Docs de §9 (`finanzas.md`, `comisiones.md`, `atribucion.md`, `ventas.md`, `flow-registry.md`, `sitio.md`, `roles.md`)
 - [x] `CLAUDE.md` con las 4 secciones nuevas y el cambio aprobado M9
-- [x] Revisión visual (1440 y 390 px, claro y oscuro) hecha o anotada (hecha el 15/10/2026 a 375 y 1440 px, en tema claro y con la sesión ya abierta del panel: Resumen, Gastos, Recurrentes, Proveedores, Comisiones y Reglas, sin desborde horizontal ni errores de consola, todas con su estado vacío; el tema oscuro y las pantallas con datos reales quedan anotados en PENDIENTE)
+- [x] Revisión visual (1440 y 390 px, claro y oscuro) hecha o anotada (hecha el 15/10/2026 a 375/390 y 1440 px, en tema claro (las seis pantallas) y oscuro (Gastos, Comisiones y Resumen), con la sesión ya abierta del panel: Resumen, Gastos, Recurrentes, Proveedores, Comisiones y Reglas, sin desborde horizontal ni errores de consola, todas con su estado vacío; las pantallas con datos reales quedan anotadas en PENDIENTE (la base de producción no tiene gastos ni comisiones y no se escriben datos de prueba ahí))
 - [x] PR abierto de `feat/extra-i` a `main` con la sección "Después del merge" (sin mergear) (PR #63)
 
 ---
@@ -408,3 +408,5 @@ Los nombres de archivo son una propuesta; si cambian, se corrige esta tabla en e
 - **Cierre final (15/10/2026).** Segunda pasada completa en esta sesión: tsc, vitest, lint, build y todos los `verify-*` en 0 (`verify-workspace-isolation` con `--despues-de-00143`). `verify-attribution` quedó en 0 después de crear 59 toques `import` para los contactos del buzón (opción (b) de Wendy, con respaldo).
 
 - **Ensayos de las 00233 a 00235 (15/10/2026).** Cada una se corrió dentro de `BEGIN … ROLLBACK`: adentro existían el cron `finance-daily` (`7 * * * *`) y los triggers `contacts_comment_backfill` y `payments_enqueue_commissions`; después del `ROLLBACK` los tres volvieron a 0. Siguen sin aplicarse.
+
+- **Huellas y aislamiento (15/10/2026, esta sesión).** Las 8 funciones protegidas se consultaron en la base y coinciden una por una con las del punto de partida (`create_booking` dc462c28…, `create_sale` adb766e6…, `find_contact_for_form` b7b5605c…, `find_or_create_contact` a71d6af7…, `find_or_link_contact` 0aee0354…, `record_contact_touch` 2f51ddbf…, `resolve_meta_match` 78aa59a2…, `submit_form_response` 78a358d5…). `verify-workspace-isolation --despues-de-00143` da exit 0.
