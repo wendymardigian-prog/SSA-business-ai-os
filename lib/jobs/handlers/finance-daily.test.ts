@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const audits: Array<Record<string, unknown>> = [];
 const notices: Array<Record<string, unknown>> = [];
 vi.mock("@/lib/audit", async (orig) => ({ ...(await orig<typeof import("@/lib/audit")>()), auditAsSystem: vi.fn(async (a: Record<string, unknown>) => { audits.push(a); return null; }) }));
+// Los pasos que escriben (recurrentes y automáticos) tienen su propio test: acá se prueba la orquestación.
+const stepCalls: string[] = [];
+vi.mock("@/lib/finance/daily-steps", () => ({
+  generateRecurringStep: vi.fn(async () => { stepCalls.push("recurring"); return { created: 0 }; }),
+  autoExpensesStep: vi.fn(async () => { stepCalls.push("auto_expenses"); return { actions: 0 }; }),
+}));
 vi.mock("@/lib/notifications/create", () => ({ createNotification: vi.fn(async (a: Record<string, unknown>) => { notices.push(a); return true; }) }));
 
 const { runFinanceDaily, handleFinanceDaily, registerFinanceDailyStep, FINANCE_DAILY_JOB } = await import("./finance-daily");
@@ -32,6 +38,7 @@ function fakeDb(opts: { overdueIds?: string[]; rpcError?: string; amounts?: Reco
 beforeEach(() => {
   audits.length = 0;
   notices.length = 0;
+  stepCalls.length = 0;
 });
 
 describe("finance_daily: vencer", () => {
@@ -39,6 +46,7 @@ describe("finance_daily: vencer", () => {
     const { db, calls } = fakeDb({ overdueIds: [] });
     const { results, failed } = await runFinanceDaily(db, WS, "2026-10-11", "America/Costa_Rica");
     expect(failed).toEqual([]);
+    expect(stepCalls).toEqual(["recurring", "auto_expenses"]); // antes de vencer, en este orden
     expect(calls).toEqual([{ fn: "mark_expenses_overdue", args: { p_workspace_id: WS, p_today: "2026-10-11" } }]);
     expect(results.find((r) => r.step === "overdue")?.detail).toEqual({ overdue: 0 });
     expect(notices).toHaveLength(0);

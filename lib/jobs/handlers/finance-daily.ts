@@ -19,6 +19,7 @@ import { auditAsSystem } from "@/lib/audit";
 import { isDateOnly } from "@/lib/finance/dates";
 import { summarizeOverdue } from "@/lib/finance/summary-text";
 import { toCents } from "@/lib/sales/money";
+import { autoExpensesStep, generateRecurringStep } from "@/lib/finance/daily-steps";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { createNotification } from "@/lib/notifications/create";
 import type { Database } from "@/lib/types/database";
@@ -26,7 +27,8 @@ import type { Database } from "@/lib/types/database";
 type Db = SupabaseClient<Database>;
 
 export const FINANCE_DAILY_JOB = "finance_daily";
-export const FINANCE_AUDIT_LABEL = "Finanzas: trabajo diario";
+export { FINANCE_AUDIT_LABEL } from "@/lib/finance/audit-label";
+import { FINANCE_AUDIT_LABEL } from "@/lib/finance/audit-label";
 
 export interface DailyStepResult {
   step: string;
@@ -94,7 +96,13 @@ async function reviewStep(ctx: FinanceDailyContext): Promise<Record<string, numb
 
 export async function runFinanceDaily(db: Db, workspaceId: string, localDate: string, timeZone: string): Promise<{ results: DailyStepResult[]; failed: string[] }> {
   const ctx: FinanceDailyContext = { db, workspaceId, localDate, timeZone, review: { pending: 0 } };
-  const steps: Step[] = [...EXTRA_STEPS_BEFORE_OVERDUE, { name: "overdue", run: overdueStep }, { name: "review_notice", run: reviewStep }];
+  const steps: Step[] = [
+    { name: "recurring", run: generateRecurringStep },
+    { name: "auto_expenses", run: autoExpensesStep },
+    ...EXTRA_STEPS_BEFORE_OVERDUE,
+    { name: "overdue", run: overdueStep },
+    { name: "review_notice", run: reviewStep },
+  ];
 
   const results: DailyStepResult[] = [];
   for (const step of steps) {
