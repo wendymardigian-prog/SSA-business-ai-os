@@ -132,11 +132,22 @@ export async function GET(request: NextRequest) {
     const platformIds = platformIdsOf(thread);
     if (platformIds.length === 0) return NextResponse.json(thread);
 
-    const { data: local } = await supabase
+    // Por las DOS columnas de id: el historial de Zernio hoy devuelve el id de
+    // Meta, que guardamos en platform_native_message_id (ver
+    // lib/zernio-message-merge.ts). Cada id va entre comillas dobles para que
+    // un caracter raro no rompa el filtro de PostgREST.
+    const idList = platformIds.map((id) => `"${id.replace(/["\\]/g, "")}"`).join(",");
+    const { data: local, error: localError } = await supabase
       .from("messages")
-      .select("id, platform_message_id, attachments, transcript, transcript_status, transcript_error, media_description")
+      .select("id, platform_message_id, platform_native_message_id, attachments, transcript, transcript_status, transcript_error, media_description")
       .eq("conversation_id", conversationId)
-      .in("platform_message_id", platformIds);
+      .or(`platform_message_id.in.(${idList}),platform_native_message_id.in.(${idList})`);
+
+    if (localError) {
+      // Sin lo nuestro el hilo igual se muestra (la media como "ya no
+      // disponible"): mejor eso que una bandeja en blanco.
+      console.error("Failed to read local media for the Instagram thread:", localError.message);
+    }
 
     return NextResponse.json(mergeThreadWithLocal(thread, (local ?? []) as LocalMessageMedia[]));
   } catch (error) {

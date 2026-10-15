@@ -28,6 +28,7 @@ const fromZernio = (over: Partial<InboxMessage> = {}): InboxMessage => ({
 const localRow = (over: Partial<LocalMessageMedia> = {}): LocalMessageMedia => ({
   id: "m-local-1",
   platform_message_id: "z-1",
+  platform_native_message_id: null,
   attachments: {
     v: 2,
     items: [{ kind: "voice", status: "ready", storagePath: "ws-1/cv-1/m-local-1-0.ogg", mime: "audio/ogg" }],
@@ -125,6 +126,31 @@ describe("mergeThreadWithLocal (F14)", () => {
 
     expect(merged.transcript_error).toBe("No pudimos abrir este audio");
     expect(merged.media_description).toBe("Una captura del comprobante");
+  });
+
+  it("cruza tambien por el id de Meta: el historial de Zernio hoy devuelve ese (14/10/2026)", () => {
+    const metaId = "aWdfZAG1faXRlbToxOklHTWVzc2FnZA";
+    const [merged] = mergeThreadWithLocal(
+      [fromZernio({ id: metaId, platform_message_id: metaId })],
+      [localRow({ platform_message_id: "6ad0090e535eb5f9cc40ef93", platform_native_message_id: metaId })],
+    );
+
+    expect(merged.id).toBe("m-local-1");
+    expect(merged.attachments).toEqual({
+      v: 2,
+      items: [expect.objectContaining({ kind: "voice", status: "ready" })],
+    });
+  });
+
+  it("si un id coincide con el de Zernio de una fila y el de Meta de otra, gana el de Zernio", () => {
+    const [merged] = mergeThreadWithLocal(
+      [fromZernio({ platform_message_id: "x" })],
+      [
+        localRow({ id: "por-meta", platform_message_id: "otro", platform_native_message_id: "x" }),
+        localRow({ id: "por-zernio", platform_message_id: "x" }),
+      ],
+    );
+    expect(merged.id).toBe("por-zernio");
   });
 
   it("un hilo vacio devuelve un hilo vacio", () => {
