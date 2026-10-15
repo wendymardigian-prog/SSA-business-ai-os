@@ -48,6 +48,10 @@ Saludá y explicá en 3-4 líneas los pasos: Supabase, Railway, conectar la base
 
    Cuando coincida, probalo con una consulta de solo lectura: `select count(*) from information_schema.tables where table_schema = 'public';`. En un proyecto nuevo tiene que dar 0 o casi 0. Si ya hay muchas tablas, avisale: puede ser el proyecto equivocado o una base que ya se armó antes. No sigas sin aclararlo.
 
+   **Conectar también Railway (hacelo ahora, en la misma pasada, así la sesión nueva se reinicia una sola vez).** Railway tiene su propio conector, con el mismo estilo de un clic: **Configuración → Conectores → Railway → Conectar**, iniciar sesión en el navegador y, cuando pida elegir a qué **espacio de trabajo (workspace)** darle acceso, elegir solo el que va a usar para este sistema. Si ya tenía Railway conectado con OTRA cuenta, el conector personalizado usa la dirección `https://mcp.railway.com` (nombre sugerido: "Railway - Mi negocio"); Railway no tiene una dirección distinta por proyecto, así que puede ser que Claude no deje tener dos con la misma dirección o que el login vuelva a la cuenta equivocada (sugerile cerrar sesión de la otra cuenta en el navegador antes). Si no funciona, el Paso 2 se hace igual, a mano: el conector de Railway ayuda pero no es obligatorio.
+
+   Con el conector de Railway usás SOLO lecturas y comprobaciones que no llevan secretos: encontrar el servicio y su dominio, ver el estado del deploy y leer los logs cuando algo falla (así la persona no tiene que copiar errores). **Nunca cargues variables con el conector**: son claves y las pega la persona directo en Railway. Igual que con Supabase, si hay varios conectores de Railway, no uses el primero que veas: confirmá que el proyecto que ves es el que la persona creó para este negocio (nombre del proyecto y del repositorio) antes de tocar o leer nada.
+
 4. **Construir la base de datos (las migraciones).** Explicale que las migraciones son archivos que ya traen escrito todo el trabajo de armar la base (las tablas, las funciones, las reglas de seguridad, las tareas automáticas), y que se corren una sola vez. Son más de doscientos archivos.
 
    **Nunca las pegues en el SQL Editor de Supabase ni las apliques de a una con el conector** (`apply_migration` / `execute_sql`): juntas pesan casi 2 MB, el SQL Editor las rechaza por demasiado grandes, y por el conector tendrías que leerlas y reescribirlas enteras. El camino es la **CLI de Supabase**: una herramienta que manda los archivos directo desde la computadora a Supabase, en orden, y anota cuáles ya aplicó.
@@ -82,14 +86,14 @@ Saludá y explicá en 3-4 líneas los pasos: Supabase, Railway, conectar la base
 
 1. Preguntale si tiene cuenta en railway.com. Si no, que se cree una (entrar con GitHub le simplifica el paso siguiente).
 2. Guiala a crear un proyecto: **New Project → Deploy from GitHub repo**, eligiendo su repositorio. Avisale que el primer deploy probablemente falle porque faltan las variables: es esperable.
-3. **Dominio público:** en el servicio, Settings → Networking → Public Networking → Generate Domain. Pedile que te pase ese dominio (`https://algo.up.railway.app`): no es secreto, y lo vas a usar en los próximos pasos.
+3. **Dominio público:** en el servicio, Settings → Networking → Public Networking → Generate Domain. Pedile que te pase ese dominio (`https://algo.up.railway.app`), o leelo vos con el conector de Railway si lo tiene: no es secreto, y lo vas a usar en los próximos pasos.
 4. **El `CRON_SECRET`:** lo inventa la persona, no sale de ningún panel. Sugerile un formato largo y fácil de copiar, por ejemplo `palabra-numero-palabra-numero-palabra` (tipo `cafe-472-martillo-19-domingo`), de al menos 25-30 caracteres. Que lo guarde en un lugar seguro: lo va a pegar en dos lugares (Railway y Supabase) y tiene que ser idéntico en los dos. No te lo pase a vos.
 5. **Las 5 variables** (en el servicio → Variables). Explicale de dónde sale cada una y que las pegue DIRECTO en Railway:
    - `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase → Project Settings → Data API.
    - `SUPABASE_SERVICE_ROLE_KEY`: Supabase → Project Settings → API Keys → service_role. Es la más sensible (salta todos los permisos de la base): nunca por chat.
    - `NEXT_PUBLIC_APP_URL`: el dominio del punto 3.
    - `CRON_SECRET`: el valor del punto 4.
-6. Railway vuelve a desplegar solo. Preguntale qué dice el estado. Si no dice Success, pedile que te copie el texto del error de los logs y ayudala a interpretarlo antes de reintentar.
+6. Railway vuelve a desplegar solo. Si el conector de Railway está disponible, mirá vos el estado del deploy y los logs (después de confirmar el proyecto); si no, preguntale qué dice el estado. Si no dice Success, pedile que te copie el texto del error de los logs y ayudala a interpretarlo antes de reintentar.
 7. Con el deploy en verde, que abra el dominio en el navegador: tiene que ver la pantalla de login.
 
 ## Paso 3 — Conectar la base con la app (los cron)
