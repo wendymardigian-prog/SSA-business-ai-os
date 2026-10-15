@@ -27,6 +27,8 @@ import type { EditorPermissions } from "./editor";
 import type { AutomationRule } from "./keywords";
 import { loadContentTaxonomy, type ContentTaxonomy } from "./load-taxonomy";
 import type { MediaEntry } from "./media";
+import { canWritePost } from "./piece-drawer";
+import { canReassign, isAuthorOrAssignee } from "./assignee";
 import type { NetworkEntry } from "./redistribution";
 import type { StoredVersion } from "./versions";
 
@@ -45,6 +47,8 @@ export interface PiecePost {
   offerId: string | null;
   funnelStage: string | null;
   reference: string | null;
+  /** El responsable (00223). */
+  assignedTo: string | null;
   /** "Ana · creada el 3 oct · editada el 5 oct" (F91). */
   authorship: string | null;
   caption: string | null;
@@ -60,6 +64,16 @@ export interface PiecePost {
 export interface PieceData {
   post: PiecePost;
   perms: EditorPermissions;
+  /**
+   * Si quien mira puede ESCRIBIR esta pieza. La base lo decide asi (00083):
+   * un administrador siempre, y un Member solo la que creo y solo hasta
+   * revision. Sin esto la pantalla se veia editable y cada guardado fallaba.
+   */
+  canEdit: boolean;
+  /** Si quien mira puede cambiar el responsable: un administrador o quien creo la pieza. */
+  canAssign: boolean;
+  /** El equipo, para elegir responsable. */
+  team: Array<{ id: string; name: string }>;
   publications: PublicationSummary[];
   /** Las redes conectadas del negocio. */
   connected: string[];
@@ -86,7 +100,7 @@ export interface PieceData {
 }
 
 export async function loadPiece(ctx: PermissionContext, postId: string): Promise<PieceData | null> {
-  const { workspace, user, supabase, can } = ctx;
+  const { workspace, user, supabase, can, role } = ctx;
   const canUseAi = can("content.ai");
   // La zona del NEGOCIO: la misma que usa el editor para agendar (A19,
   // lib/dates.ts) y el tope diario server-side (lib/publishing/schedule-core.ts).
@@ -95,7 +109,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
   const { data: post } = await supabase
     .from("content_posts")
     .select(
-      "id, title, format, script, recording_notes, caption, networks, media, status, ai_unreviewed, review_note, created_by, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
+      "id, title, format, script, recording_notes, caption, networks, media, status, ai_unreviewed, review_note, created_by, assigned_to, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
     )
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
@@ -226,6 +240,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       offerId: post.offer_id,
       funnelStage: post.funnel_stage,
       reference: post.reference,
+      assignedTo: post.assigned_to,
       authorship: authorshipLine({
         authorName: post.created_by ? (labels.get(post.created_by) ?? null) : null,
         createdAt: post.created_at,
@@ -240,12 +255,16 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       reviewNote: post.review_note,
       updatedAt: post.updated_at,
     },
+    canEdit: canWritePost({ role, isAuthor: isAuthorOrAssignee(user.id, post), status: post.status }),
+    canAssign: canReassign({ role, userId: user.id, piece: post }),
+    team: members.map((m) => ({ id: m.userId, name: m.name })),
     perms: {
       create: true,
       approve: can("content.approve"),
       publish: can("content.publish"),
       ai: canUseAi,
-      isAuthor: post.created_by === user.id,
+      // Autor o responsable: lo que la politica de la base acepta (00223).
+      isAuthor: isAuthorOrAssignee(user.id, post),
     },
     publications: (publicationsRes.data ?? []).map((p) => ({
       platform: p.platform,

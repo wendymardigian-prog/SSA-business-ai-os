@@ -1,35 +1,21 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Sparkles } from "lucide-react";
-import { createIdea, createPost } from "@/lib/actions/content";
-import { drawerHref } from "@/lib/content/drawer-url";
+import { useRouter } from "next/navigation";
+import { createIdea } from "@/lib/actions/content";
 import { ContentDialog, DialogField, fieldInput } from "./dialog";
-import { ClassificationFields, FormatField, type TaxonomyOptions } from "./classification-fields";
-import { NetworkBadge } from "./network-badge";
+import { ClassificationFields, type TaxonomyOptions } from "./classification-fields";
 import { CONTENT_PLATFORMS } from "@/lib/content/network-format";
 
 /**
- * Crear una idea o un post, encima del tablero (C2).
+ * Crear una idea, encima del tablero (C2).
  *
- * Antes eran una pagina aparte: se perdia el tablero de vista y volver
- * costaba dos clics. Y "Crear" devolvia al kanban, asi que para escribir
- * habia que buscar la pieza y entrar. Ahora "Crear y abrir" abre el drawer de
- * la pieza, que es lo que se iba a hacer igual.
+ * Un post nuevo ya no pasa por un modal: crea el borrador y abre su drawer
+ * (`use-new-post.ts`), donde se escribe todo con el guardado automatico.
  *
- * Editar una idea ya no pasa por aca: se edita en el drawer (F95), donde todo
+ * Editar una idea tampoco pasa por aca: se edita en el drawer (F95), donde todo
  * es editable al abrir.
  */
-
-export interface CreateDialogsProps {
-  /** Las ideas sin decidir, para vincular un post a una. */
-  ideas: Array<{ id: string; title: string }>;
-  /** Las redes conectadas del negocio. */
-  platforms: string[];
-  /** Si el copywriter puede escribir al crear. */
-  copywriter: { available: boolean; reason?: string };
-}
 
 // ── Nueva idea ────────────────────────────────────────────────────────────
 
@@ -165,166 +151,6 @@ export function IdeaDialog({
           onChange: (next) => setValues((prev) => ({ ...prev, platforms: next })),
         }}
       />
-    </ContentDialog>
-  );
-}
-
-// ── Nuevo post ────────────────────────────────────────────────────────────
-
-export function NewPostDialog({
-  ideas,
-  platforms,
-  copywriter,
-  /** La idea de la que sale, si viene de aprobar una. */
-  ideaId,
-  onClose,
-}: {
-  ideas: CreateDialogsProps["ideas"];
-  platforms: string[];
-  copywriter: CreateDialogsProps["copywriter"];
-  ideaId?: string;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const params = useSearchParams();
-  const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [format, setFormat] = useState("");
-  const [origin, setOrigin] = useState(ideaId ?? "");
-  const [selected, setSelected] = useState<string[]>(platforms.slice(0, 1));
-  const [withAi, setWithAi] = useState(false);
-
-  function create() {
-    setError(null);
-    start(async () => {
-      const result = await createPost({
-        title,
-        format: format || null,
-        ideaId: origin || null,
-        platforms: selected,
-      });
-
-      if (!result.ok) return setError(result.error);
-
-      // "Crear y abrir": abre el drawer de la pieza, que es donde se iba a ir
-      // igual. Si se pidio el copy, el drawer ya lo muestra escribiendo.
-      if (withAi && copywriter.available) {
-        const { requestCopy } = await import("@/lib/actions/copywriter");
-        await requestCopy({ postId: result.data.id, confirmed: true });
-      }
-
-      onClose();
-      router.push(drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id: result.data.id }), {
-        scroll: false,
-      });
-      router.refresh();
-    });
-  }
-
-  return (
-    <ContentDialog
-      label="Nuevo post"
-      title="Nuevo post"
-      onClose={onClose}
-      footer={
-        <>
-          <span className="flex-1" />
-          {error && (
-            <span role="alert" className="text-xs text-red-700 dark:text-red-400">
-              {error}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={create}
-            disabled={pending || !title.trim()}
-            className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
-            Crear y abrir
-          </button>
-        </>
-      }
-    >
-      <DialogField label="Título interno *" hint="Cómo lo vas a reconocer en el tablero.">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={200}
-          className={fieldInput}
-        />
-      </DialogField>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <FormatField value={format} onChange={setFormat} />
-        <DialogField label="Idea de origen" hint="Opcional.">
-          <select
-            value={origin}
-            onChange={(e) => setOrigin(e.target.value)}
-            className={fieldInput}
-          >
-            <option value="">Ninguna</option>
-            {ideas.map((idea) => (
-              <option key={idea.id} value={idea.id}>
-                {idea.title}
-              </option>
-            ))}
-          </select>
-        </DialogField>
-      </div>
-
-      <DialogField label="Redes" hint="Pueden ser redes todavía no conectadas. Se pueden cambiar después, en el editor.">
-        <div className="flex flex-wrap gap-1.5">
-          {CONTENT_PLATFORMS.map((platform) => {
-            const on = selected.includes(platform);
-            const manual = !platforms.includes(platform);
-            return (
-              <button
-                key={platform}
-                type="button"
-                aria-pressed={on}
-                onClick={() =>
-                  setSelected(on ? selected.filter((p) => p !== platform) : [...selected, platform])
-                }
-                className={`inline-flex items-center gap-1 rounded-full ${
-                  on ? "ring-2 ring-primary" : "opacity-60 hover:opacity-100"
-                }`}
-              >
-                <NetworkBadge platform={platform} />
-                {manual && <span className="text-[10px] text-amber-700 dark:text-amber-400">a mano</span>}
-              </button>
-            );
-          })}
-        </div>
-      </DialogField>
-
-      <label className="flex items-start gap-2.5 rounded-lg border border-border p-3">
-        <input
-          type="checkbox"
-          checked={withAi && copywriter.available}
-          disabled={!copywriter.available}
-          onChange={(e) => setWithAi(e.target.checked)}
-          className="mt-0.5 h-4 w-4"
-        />
-        <span className="text-sm">
-          <span className="flex items-center gap-1">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden />
-            Generar guion y caption con IA al crear
-          </span>
-          <span className="block text-xs text-muted-foreground">
-            {copywriter.available
-              ? "El copywriter escribe mientras abrís el editor."
-              : (copywriter.reason ?? "No está disponible.")}
-          </span>
-        </span>
-      </label>
     </ContentDialog>
   );
 }

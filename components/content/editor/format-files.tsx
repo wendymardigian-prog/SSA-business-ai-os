@@ -35,11 +35,17 @@ export function FormatFiles({
   network,
   library,
   editable,
+  filesRequired = true,
   onChange,
 }: {
   network: NetworkEntry;
   library: MediaEntry[];
   editable: boolean;
+  /**
+   * Si los archivos son obligatorios: solo cuando la red la publica el sistema.
+   * Si la sube la persona, que falten no es un error (se ve en gris).
+   */
+  filesRequired?: boolean;
   onChange: (patch: Partial<NetworkEntry>) => void;
 }) {
   const def = getFormat(network.platform, network.format);
@@ -81,7 +87,15 @@ export function FormatFiles({
           </p>
         </div>
       ) : (
-        <FilesPicker network={network} def={def} byId={byId} live={live} editable={editable} onChange={onChange} />
+        <FilesPicker
+          network={network}
+          def={def}
+          byId={byId}
+          live={live}
+          editable={editable}
+          filesRequired={filesRequired}
+          onChange={onChange}
+        />
       )}
     </div>
   );
@@ -93,6 +107,7 @@ function FilesPicker({
   byId,
   live,
   editable,
+  filesRequired,
   onChange,
 }: {
   network: NetworkEntry;
@@ -100,12 +115,15 @@ function FilesPicker({
   byId: Map<string, { entry: MediaEntry; index: number }>;
   live: MediaEntry[];
   editable: boolean;
+  filesRequired: boolean;
   onChange: (patch: Partial<NetworkEntry>) => void;
 }) {
   const selectedIds = (network.files ?? []).filter((id) => byId.has(id));
   const selected = selectedIds.map((id) => byId.get(id)!);
   const available = eligibleFiles(def, live).filter((m) => !selectedIds.includes(idOf(m)));
   const check = checkFormatFiles(def, selected.map((s) => s.entry));
+  // Faltan archivos y la sube la persona: no es un error, es un dato.
+  const justMissing = !check.ok && !filesRequired && selected.length < def.min;
 
   const setFiles = (files: string[]) => onChange({ files });
 
@@ -211,11 +229,14 @@ function FilesPicker({
           "rounded-lg px-2.5 py-1.5 text-xs",
           check.ok
             ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-            : "bg-red-500/10 text-red-600 dark:text-red-400",
+            : justMissing
+              ? "bg-muted text-muted-foreground"
+              : "bg-red-500/10 text-red-600 dark:text-red-400",
         )}
       >
-        {check.ok ? "✓ " : "✕ "}
-        {check.message}
+        {justMissing
+          ? "Sin archivos todavía. No hacen falta si la subís vos; sí si la publica el sistema."
+          : `${check.ok ? "✓" : "✕"} ${check.message}`}
       </p>
     </div>
   );

@@ -55,11 +55,13 @@ try {
 
   const owner = await makeUser("owner");
   const member = await makeUser("member");
+  const member2 = await makeUser("member2");
   const ajeno = await makeUser("ajeno");
 
   await svc.from("workspace_members").insert([
     { workspace_id: wsA, user_id: owner.id, role: "owner" },
     { workspace_id: wsA, user_id: member.id, role: "member" },
+    { workspace_id: wsA, user_id: member2.id, role: "member" },
     { workspace_id: wsB, user_id: ajeno.id, role: "owner" },
   ]);
 
@@ -204,6 +206,46 @@ try {
 
   { const { data } = await member.client.from("content_posts").select("id").eq("id", postMember.id);
     check((data ?? []).length === 1, "pero SI ve todas las piezas del workspace: el contenido no tiene scope de leads"); }
+
+  console.log("\n— Responsable de la pieza (00223) —");
+
+  { const { data } = await svc.from("content_posts").select("assigned_to").eq("id", postMember.id).single();
+    check(data.assigned_to === member.id, "una pieza nueva queda asignada a quien la crea (trigger)"); }
+
+  { const { data: p } = await svc.from("content_posts")
+      .insert({ workspace_id: wsA, title: "zz-test pieza asignada", created_by: owner.id })
+      .select("id, assigned_to").single();
+    check(p.assigned_to === owner.id, "lo mismo si la crea el servidor (aprobar una idea, el agente)");
+
+    // El Owner se la asigna a un Member: ahora la puede editar, sin ser su autor.
+    await svc.from("content_posts").update({ assigned_to: member.id }).eq("id", p.id);
+    { const { error } = await member.client.from("content_posts").update({ title: "zz-test editada por el responsable" }).eq("id", p.id);
+      const { data } = await svc.from("content_posts").select("title, created_by").eq("id", p.id).single();
+      check(!error && data.title === "zz-test editada por el responsable" && data.created_by === owner.id,
+        "un Member edita la pieza que tiene ASIGNADA, y created_by no cambia", error?.message); }
+
+    { await member.client.from("content_posts").update({ assigned_to: member2.id }).eq("id", p.id);
+      const { data } = await svc.from("content_posts").select("assigned_to").eq("id", p.id).single();
+      check(data.assigned_to === member.id, "pero el responsable no se la pasa a otra persona (eso es del autor o un admin)"); }
+
+    { await member.client.from("content_posts").update({ status: "approved" }).eq("id", p.id);
+      const { data } = await svc.from("content_posts").select("status").eq("id", p.id).single();
+      check(data.status !== "approved", "ni la aprueba: el limite de estados es el mismo"); }
+
+    // Quien NO es autor ni responsable sigue sin poder.
+    { await member2.client.from("content_posts").update({ title: "colada" }).eq("id", p.id);
+      const { data } = await svc.from("content_posts").select("title").eq("id", p.id).single();
+      check(data.title !== "colada", "un tercero Member sigue sin editarla"); }
+
+    // El responsable tiene que ser del equipo.
+    { const { error } = await svc.from("content_posts").update({ assigned_to: ajeno.id }).eq("id", p.id);
+      check(!!error, "el responsable tiene que ser miembro del workspace (trigger)", error ? undefined : "lo dejo asignar a alguien de otro negocio"); }
+  }
+
+  { // El autor SI reasigna.
+    const { error } = await member.client.from("content_posts").update({ assigned_to: member2.id }).eq("id", postMember.id);
+    const { data } = await svc.from("content_posts").select("assigned_to").eq("id", postMember.id).single();
+    check(!error && data.assigned_to === member2.id, "quien creo la pieza puede cambiar el responsable", error?.message); }
 
   console.log("\n— social_posts solo la escribe el servidor —");
 

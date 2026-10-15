@@ -57,6 +57,7 @@ const post = (over: Partial<BoardPost> = {}): BoardPost => ({
   updatedAt: null,
   authorName: null,
   authorship: null,
+  assignee: null,
   ...over,
 });
 

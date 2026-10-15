@@ -44,34 +44,60 @@ export interface TaxonomyOptions {
 
 const NEW = "__nuevo__";
 
+/**
+ * La version compacta (el drawer de la pieza): etiqueta chica arriba y un campo
+ * de una linea, sin pistas debajo. Lo que la version comun explica en un
+ * parrafo, aca va en el tooltip del campo (`title`).
+ */
+const compactInput = "h-8 w-full rounded-md border border-border bg-background px-2 text-xs disabled:opacity-70";
+
+function CompactField({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={cn("block min-w-0", className)}>
+      <span className="mb-0.5 block truncate text-[11px] font-medium text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  );
+}
+
 export function FormatField({
   value,
   onChange,
   disabled,
+  compact,
 }: {
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
-  return (
-    <DialogField label="Formato">
-      <>
-        <input
-          list="formatos-de-contenido"
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Reel"
-          className={fieldInput}
-        />
-        <datalist id="formatos-de-contenido">
-          {FORMAT_SUGGESTIONS.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
-      </>
-    </DialogField>
+  const input = (
+    <>
+      <input
+        list="formatos-de-contenido"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Reel"
+        className={compact ? compactInput : fieldInput}
+      />
+      <datalist id="formatos-de-contenido">
+        {FORMAT_SUGGESTIONS.map((f) => (
+          <option key={f} value={f} />
+        ))}
+      </datalist>
+    </>
   );
+
+  return compact ? <CompactField label="Formato">{input}</CompactField> : <DialogField label="Formato">{input}</DialogField>;
 }
 
 /** Un selector de pilar u oferta con "+ Crear" al final. */
@@ -86,6 +112,7 @@ function TaxonomySelect({
   disabled,
   create,
   hint,
+  compact,
   onChange,
 }: {
   label: string;
@@ -101,6 +128,8 @@ function TaxonomySelect({
     { ok: true; data: { id: string; name: string; color?: string | null } } | { ok: false; error: string }
   >;
   hint?: string;
+  /** Una linea, sin pista debajo: la pista pasa al tooltip. */
+  compact?: boolean;
   onChange: (id: string) => void;
 }) {
   // Lo recien creado se ve ya, sin esperar a que la pagina vuelva a leer.
@@ -129,32 +158,41 @@ function TaxonomySelect({
     });
   }
 
+  const select = (
+    <select
+      value={creating ? NEW : value}
+      disabled={disabled}
+      title={compact ? hint : undefined}
+      onChange={(e) => {
+        if (e.target.value === NEW) {
+          setCreating(true);
+          return;
+        }
+        setCreating(false);
+        onChange(e.target.value);
+      }}
+      className={compact ? compactInput : fieldInput}
+    >
+      <option value="">{none}</option>
+      {options.map((item) => (
+        <option key={item.id} value={item.id}>
+          {item.name}
+          {item.archivedAt ? " (archivad" + (feminine ? "a)" : "o)") : ""}
+        </option>
+      ))}
+      {canCreate && create && <option value={NEW}>+ Crear {singular}…</option>}
+    </select>
+  );
+
   return (
-    <div className="space-y-1">
-      <DialogField label={label} hint={hint}>
-        <select
-          value={creating ? NEW : value}
-          disabled={disabled}
-          onChange={(e) => {
-            if (e.target.value === NEW) {
-              setCreating(true);
-              return;
-            }
-            setCreating(false);
-            onChange(e.target.value);
-          }}
-          className={fieldInput}
-        >
-          <option value="">{none}</option>
-          {options.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-              {item.archivedAt ? " (archivad" + (feminine ? "a)" : "o)") : ""}
-            </option>
-          ))}
-          {canCreate && create && <option value={NEW}>+ Crear {singular}…</option>}
-        </select>
-      </DialogField>
+    <div className="min-w-0 space-y-1">
+      {compact ? (
+        <CompactField label={label}>{select}</CompactField>
+      ) : (
+        <DialogField label={label} hint={hint}>
+          {select}
+        </DialogField>
+      )}
 
       {creating && (
         <div className="flex gap-1.5">
@@ -174,7 +212,7 @@ function TaxonomySelect({
               }
             }}
             placeholder={`Nombre ${feminine ? "de la" : "del"} ${singular}`}
-            className={cn(fieldInput, "min-w-0 flex-1")}
+            className={cn(compact ? compactInput : fieldInput, "min-w-0 flex-1")}
           />
           <button
             type="button"
@@ -211,6 +249,7 @@ export function ClassificationFields({
   taxonomy,
   disabled,
   platforms,
+  compact,
 }: {
   value: ClassificationValue;
   onChange: (patch: Partial<ClassificationValue>) => void;
@@ -220,6 +259,8 @@ export function ClassificationFields({
    * Las redes a elegir, solo en la idea. En la pieza las redes son sus filas
    * de "Redes", asi que no se repiten aca.
    */
+  /** Una sola franja de campos chicos, para el drawer de la pieza. */
+  compact?: boolean;
   platforms?: {
     /** Las cinco redes (Contenido v4, C1): siempre se puede elegir cualquiera. */
     available: string[];
@@ -230,6 +271,69 @@ export function ClassificationFields({
   };
 }) {
   const stage = funnelStageInfo(value.funnelStage);
+
+  // El drawer de la pieza: todo en una franja de una o dos lineas, en el orden
+  // en que se piensa (de donde sale, que es, para que sirve). La descripcion de
+  // la etapa va en el tooltip y no en un parrafo que ocupa una linea mas.
+  if (compact) {
+    return (
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-6" data-testid="classification-compact">
+        <CompactField label="Referencia" className="col-span-2">
+          <input
+            value={value.reference}
+            disabled={disabled}
+            onChange={(e) => onChange({ reference: e.target.value })}
+            placeholder="https://… o de dónde salió"
+            title="Un link o de dónde salió la idea."
+            className={compactInput}
+          />
+        </CompactField>
+        <FormatField compact value={value.format} onChange={(format) => onChange({ format })} disabled={disabled} />
+        <TaxonomySelect
+          compact
+          label="Pilar"
+          none="Sin pilar"
+          singular="pilar"
+          feminine={false}
+          items={taxonomy.pillars}
+          value={value.pillarId}
+          canCreate={taxonomy.canCreate}
+          disabled={disabled}
+          create={(name) => createPillar({ name })}
+          onChange={(pillarId) => onChange({ pillarId })}
+        />
+        <CompactField label="Etapa del embudo">
+          <select
+            value={value.funnelStage}
+            disabled={disabled}
+            title={stage ? `${stage.label}: ${stage.description}` : "En qué momento del camino de compra está quien lo ve."}
+            onChange={(e) => onChange({ funnelStage: e.target.value })}
+            className={compactInput}
+          >
+            <option value="">Sin etapa</option>
+            {FUNNEL_STAGES.map((s) => (
+              <option key={s.value} value={s.value} title={s.description}>
+                {s.value.toUpperCase()} · {s.label}
+              </option>
+            ))}
+          </select>
+        </CompactField>
+        <TaxonomySelect
+          compact
+          label="Producto"
+          none="Sin producto"
+          singular="producto"
+          feminine={false}
+          items={taxonomy.offers}
+          value={value.offerId}
+          canCreate={false}
+          disabled={disabled}
+          hint="Se cargan, con su precio, en Ajustes → Productos."
+          onChange={(offerId) => onChange({ offerId })}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">

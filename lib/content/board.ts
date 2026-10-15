@@ -78,6 +78,8 @@ export interface BoardPost {
   updatedAt: string | null;
   authorName: string | null;
   authorship: string | null;
+  /** El responsable (00223). Null = sin responsable, o alguien que ya no esta en el equipo. */
+  assignee: { id: string; name: string } | null;
 }
 
 export type BoardCard = BoardIdea | BoardPost;

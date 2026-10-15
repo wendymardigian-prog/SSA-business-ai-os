@@ -20,6 +20,17 @@ export function isEditableStatus(status: ContentPostStatus): boolean {
 }
 
 /**
+ * Si quien mira puede escribir la pieza: lo mismo que la politica de
+ * `content_posts` (00223). Un administrador siempre; un Member la que creo o la
+ * que tiene asignada, mientras este en borrador, produccion o revision. Cualquier
+ * otra cosa la base la rechaza, asi que la pantalla no puede ofrecerla como editable.
+ */
+export function canWritePost(params: { role: string; isAuthor: boolean; status: ContentPostStatus }): boolean {
+  if (params.role === "owner" || params.role === "admin") return true;
+  return params.isAuthor && isEditableStatus(params.status);
+}
+
+/**
  * El color de cada estado, para el dropdown teñido (C4). Los mismos nombres
  * que usa el kanban (F17): nada nuevo, solo se reusan.
  */
@@ -139,6 +150,8 @@ export interface PieceDraft {
   reference: string;
   caption: string;
   networks: NetworkEntry[];
+  /** El responsable (id de la persona), o "" si no tiene. */
+  assignedTo: string;
 }
 
 /** El borrador a partir de lo que hay guardado. */
@@ -153,6 +166,7 @@ export function draftFromPost(post: {
   reference: string | null;
   caption: string | null;
   networks: NetworkEntry[];
+  assignedTo?: string | null;
 }): PieceDraft {
   return {
     title: post.title,
@@ -165,6 +179,7 @@ export function draftFromPost(post: {
     reference: post.reference ?? "",
     caption: post.caption ?? "",
     networks: post.networks,
+    assignedTo: post.assignedTo ?? "",
   };
 }
 
@@ -174,8 +189,11 @@ export function draftFromPost(post: {
  * Los textos vacios viajan como null (asi "sin pilar" se distingue de un pilar
  * en blanco) y el formato y la referencia se recortan.
  */
-export function draftPayload(postId: string, draft: PieceDraft) {
+export function draftPayload(postId: string, draft: PieceDraft, savedAssignee?: string) {
   return {
+    // El responsable solo viaja si cambio respecto de lo guardado: mandarlo
+    // siempre pisaria, con un valor viejo, el cambio que hizo otra persona.
+    ...(savedAssignee !== undefined && draft.assignedTo === savedAssignee ? {} : { assigned_to: draft.assignedTo || null }),
     postId,
     title: draft.title,
     format: draft.format.trim() || null,

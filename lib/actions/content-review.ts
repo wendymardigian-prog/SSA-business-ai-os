@@ -12,6 +12,7 @@ import { publishDeps } from "@/lib/jobs/handlers/content-publish";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
 import { writeVersion } from "@/lib/content/save-version";
 import type { ContentPostStatus } from "@/lib/types/database";
+import { isAuthorOrAssignee } from "@/lib/content/assignee";
 
 /**
  * Mandar a revision, aprobar, devolver y reintentar (F37).
@@ -34,7 +35,7 @@ async function loadPost(postId: string) {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, title, status, created_by")
+    .select("id, title, status, created_by, assigned_to")
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -45,7 +46,7 @@ async function loadPost(postId: string) {
     create: true,
     approve: can("content.approve"),
     publish: can("content.publish"),
-    isAuthor: post.created_by === user.id,
+    isAuthor: isAuthorOrAssignee(user.id, post),
   };
 
   return { workspace, user, supabase, post, perms };

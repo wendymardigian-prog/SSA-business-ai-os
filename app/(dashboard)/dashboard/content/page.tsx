@@ -8,6 +8,7 @@ import { ContentShell } from "@/components/content/drawer/content-shell";
 import { ContentSettingsButton } from "@/components/content/content-settings-button";
 import { parseContentFilters, matchesPlatform } from "@/lib/content/filters";
 import { parseDrawer } from "@/lib/content/drawer-url";
+import { assigneeOf } from "@/lib/content/assignee";
 import { loadPiece, type PieceData } from "@/lib/content/load-piece";
 import { contentTooltip } from "@/lib/nav/page-actions";
 import { timeZoneLabel } from "@/lib/dates";
@@ -95,7 +96,7 @@ export default async function ContentPage({
       .order("position"),
     supabase
       .from("content_posts")
-      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, copy_status, pillar_id, offer_id, funnel_stage, created_at, updated_at")
+      .select("id, title, format, status, created_by, assigned_to, position, networks, script, caption, copy_source, copy_status, pillar_id, offer_id, funnel_stage, created_at, updated_at")
       .eq("workspace_id", workspace.id)
       .is("archived_at", null)
       .order("position"),
@@ -220,6 +221,7 @@ export default async function ContentPage({
         updatedAt: post.updated_at,
         timeZone,
       }),
+      assignee: assigneeOf(post.assigned_to, authorNames),
     };
   });
 
@@ -241,7 +243,7 @@ export default async function ContentPage({
     notice = "Esa idea ya no está en el tablero: la aprobaron o la descartaron.";
   }
 
-  // Lo que necesitan los modales de crear: las redes conectadas.
+  // Lo que necesitan las altas: las redes conectadas.
   const { data: accountsRes } = await supabase
     .from("social_accounts")
     .select("platform")
@@ -270,10 +272,8 @@ export default async function ContentPage({
 
   const crear = {
     canCreate: true,
-    ideas: ideas.map((i) => ({ id: i.id, title: i.title })),
     platforms,
     taxonomy,
-    copywriter,
     canApprove,
   };
 
@@ -370,9 +370,9 @@ export default async function ContentPage({
           posts={visiblePosts}
           perms={{ create: true, approve: canApprove, publish: canPublish, ai: canUseAi }}
           currentUserId={user.id}
-          aiAvailable={aiProviders.length > 0}
           platforms={platforms}
           taxonomy={taxonomy}
+          timeZone={timeZone}
         />
       )}
 

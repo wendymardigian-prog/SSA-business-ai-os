@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { networkCardView, publisherLine } from "./network-card";
+import { networkAuto, networkCardView, publisherLine, systemPublishes } from "./network-card";
 import type { NetworkStateView } from "./network-state";
 
 const state = (id: NetworkStateView["id"], over: Partial<NetworkStateView> = {}): NetworkStateView => ({
@@ -125,5 +125,20 @@ describe("C10 · la linea del publicador", () => {
 
   it("sin publicador elegido no inventa uno", () => {
     expect(publisherLine({ available: ["postproxy", "youtube_api"], current: null, labels })).toBeNull();
+  });
+});
+
+describe("quien publica la red: el sistema o la persona", () => {
+  it("lo que pidio la persona manda; sin dato, se deduce de la cola", () => {
+    expect(networkAuto({ auto: true }, undefined)).toBe(true);
+    expect(networkAuto({ auto: false }, { status: "scheduled" })).toBe(false);
+    expect(networkAuto({}, { status: "scheduled" })).toBe(true);
+    expect(networkAuto({}, undefined)).toBe(false);
+  });
+
+  it("el sistema solo publica si lo pidieron Y hay cuenta conectada", () => {
+    expect(systemPublishes({ network: { auto: true }, publication: undefined, connected: true })).toBe(true);
+    expect(systemPublishes({ network: { auto: true }, publication: undefined, connected: false })).toBe(false);
+    expect(systemPublishes({ network: { auto: false }, publication: undefined, connected: true })).toBe(false);
   });
 });

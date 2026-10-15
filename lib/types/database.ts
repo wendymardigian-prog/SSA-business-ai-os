@@ -3822,6 +3822,8 @@ export interface Database {
           current_version: number;
           position: number;
           created_by: string | null;
+          /** Responsable de la pieza (00223). Por defecto, quien la crea; se puede cambiar. */
+          assigned_to: string | null;
           approved_by: string | null;
           approved_at: string | null;
           review_note: string | null;
@@ -3852,6 +3854,7 @@ export interface Database {
           status?: ContentPostStatus;
           position?: number;
           created_by?: string | null;
+          assigned_to?: string | null;
           created_at?: string;
         };
         Update: {
@@ -3874,6 +3877,7 @@ export interface Database {
           current_version?: number;
           position?: number;
           approved_by?: string | null;
+          assigned_to?: string | null;
           approved_at?: string | null;
           review_note?: string | null;
           archived_at?: string | null;

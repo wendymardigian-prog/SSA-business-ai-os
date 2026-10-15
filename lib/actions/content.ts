@@ -19,6 +19,8 @@ import { writeVersion } from "@/lib/content/save-version";
 import { reschedulePublication } from "@/lib/publishing/reschedule";
 import { canTransition, columnFor, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
+import { canReassign, isAuthorOrAssignee } from "@/lib/content/assignee";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 /**
  * Server Actions del pipeline de contenido (F19, F20).
@@ -48,11 +50,12 @@ export type ContentActionResult<T = undefined> =
  * sacaron, no.
  */
 async function contentContext() {
-  const { workspace, user, supabase, can } = await getPermissionContext();
+  const { workspace, user, supabase, can, role } = await getPermissionContext();
   return {
     workspace,
     user,
     supabase,
+    role,
     perms: (isAuthor: boolean): ContentPermissions => ({
       create: can("content.create"),
       approve: can("content.approve"),
@@ -395,7 +398,7 @@ export async function movePostToColumn(
 
   const { data: post, error: readError } = await supabase
     .from("content_posts")
-    .select("id, status, created_by, networks")
+    .select("id, status, created_by, assigned_to, networks")
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -408,7 +411,7 @@ export async function movePostToColumn(
   }>;
 
   const decision = evaluateDrop({
-    perms: perms(post.created_by === user.id),
+    perms: perms(isAuthorOrAssignee(user.id, post)),
     post: {
       status: post.status,
       networks: networks.map((n) => ({
@@ -564,6 +567,8 @@ export async function savePostDraft(input: {
   pillar_id?: string | null;
   funnel_stage?: string | null;
   reference?: string | null;
+  /** El responsable (00223). Solo se manda cuando cambia. */
+  assigned_to?: string | null;
   /** El guion (F90). */
   script?: string | null;
   recording_notes?: string | null;
@@ -574,11 +579,11 @@ export async function savePostDraft(input: {
 }): Promise<
   ContentActionResult<{ updatedAt: string; staleWarning: boolean; rescheduleWarnings: string[] }>
 > {
-  const { workspace, user, supabase } = await contentContext();
+  const { workspace, user, supabase, role } = await contentContext();
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, updated_at, status, pillar_id, offer_id, media, networks")
+    .select("id, updated_at, status, pillar_id, offer_id, media, networks, created_by, assigned_to")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -630,6 +635,21 @@ export async function savePostDraft(input: {
     if (!refs.ok) return refs;
   }
 
+  // Cambiar de responsable: de un administrador o de quien creo la pieza, y a
+  // alguien del equipo. La base lo exige tambien (00223); esto lo dice claro.
+  if (input.assigned_to !== undefined && (input.assigned_to || null) !== (post.assigned_to ?? null)) {
+    if (!canReassign({ role, userId: user.id, piece: post })) {
+      return { ok: false, error: "Solo quien creó la pieza o un administrador puede cambiar el responsable." };
+    }
+    if (input.assigned_to) {
+      const members = await getWorkspaceMembers(workspace.id);
+      if (!members.some((m) => m.userId === input.assigned_to)) {
+        return { ok: false, error: "Esa persona no es parte del equipo." };
+      }
+    }
+    patch.assigned_to = input.assigned_to || null;
+  }
+
   if (input.script !== undefined) patch.script = input.script;
   if (input.recording_notes !== undefined) patch.recording_notes = input.recording_notes;
   if (input.caption !== undefined) patch.caption = input.caption;
@@ -650,8 +670,16 @@ export async function savePostDraft(input: {
     .select("updated_at")
     .maybeSingle();
 
-  if (error || !updated) {
+  if (error) {
     return { ok: false, error: "No pude guardar los cambios" };
+  }
+  // Sin error y sin fila: la politica de la base no dejo escribir (un Member
+  // solo escribe lo que creo). Decirlo, en vez de un "no pude" que parece un fallo.
+  if (!updated) {
+    return {
+      ok: false,
+      error: "No pudiste guardar: esta pieza solo la edita quien la creó o un administrador.",
+    };
   }
 
   // Cambiar la fecha de una red YA programada tiene que mover la publicacion

@@ -53,6 +53,26 @@ export function systemModeBlock(params: {
   return null;
 }
 
+/**
+ * Lo que pidio la persona para una red: que la publique el sistema (true) o
+ * subirla ella (false). Si el dato falta (piezas de antes), se deduce de la cola.
+ */
+export function networkAuto(
+  network: { auto?: boolean | null },
+  publication: { status: string | null } | undefined,
+): boolean {
+  return typeof network.auto === "boolean" ? network.auto : publication?.status === "scheduled";
+}
+
+/** Si el sistema es quien publica esta red: lo pidio la persona Y hay cuenta conectada. */
+export function systemPublishes(params: {
+  network: { auto?: boolean | null };
+  publication: { status: string | null } | undefined;
+  connected: boolean;
+}): boolean {
+  return networkAuto(params.network, params.publication) && params.connected;
+}
+
 export function networkCardView(params: {
   connected: boolean;
   canPublish: boolean;

@@ -27,7 +27,8 @@ import type { NetworkEntry } from "@/lib/content/redistribution";
 import type { NetworkSummary } from "@/lib/content/editor";
 import type { NetworkValidation } from "@/lib/content/validation";
 import type { MediaEntry } from "@/lib/content/media";
-import { networkCardView, publisherLine } from "@/lib/content/network-card";
+import { networkAuto, networkCardView, publisherLine, systemPublishes } from "@/lib/content/network-card";
+import { lacksFiles, NO_FILES_TO_SCHEDULE, visibleValidation } from "@/lib/content/network-files";
 import { networkStateOf, type NetworkPublication } from "@/lib/content/network-state";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { useState } from "react";
@@ -104,6 +105,8 @@ export interface NetworkRowProps {
   defaultPublisher: string | null;
   /** La biblioteca de archivos de la pieza (F92). */
   library: MediaEntry[];
+  /** La fecha de esta red es la general de la pieza: se avisa, y cambiarla da una propia. */
+  usesGeneralDate?: boolean;
   onToggle: () => void;
   onChange: (patch: Partial<NetworkEntry>) => void;
   onRemove: () => void;
@@ -117,7 +120,7 @@ export interface NetworkRowProps {
 }
 
 export function NetworkRow(props: NetworkRowProps) {
-  const { network, summary, validation, open, editable, canPublish } = props;
+  const { network, summary, open, editable, canPublish } = props;
   const options = (network.options ?? {}) as Record<string, unknown>;
   const setOption = (key: string, value: unknown) =>
     props.onChange({ options: { ...options, [key]: value } });
@@ -150,8 +153,15 @@ export function NetworkRow(props: NetworkRowProps) {
     canPublish,
     postStatus: props.postStatus,
     state,
-    auto: typeof network.auto === "boolean" ? network.auto : props.publication?.status === "scheduled",
+    auto: networkAuto(network, props.publication),
   });
+
+  // Los archivos solo son obligatorios si la publica el SISTEMA: una red que
+  // "la subo yo" lleva su fecha tentativa sin ellos. El servidor sigue
+  // exigiendo todo al programar; esto es lo que se le muestra a la persona.
+  const system = systemPublishes({ network, publication: props.publication, connected: props.connected });
+  const filesMissing = lacksFiles(props.validation);
+  const validation = visibleValidation(props.validation, system);
 
   return (
     <li className={`rounded-lg border border-border ${BORDER_BY_STATE[state.id] ?? ""}`}>
@@ -216,7 +226,14 @@ export function NetworkRow(props: NetworkRowProps) {
 
       {open && (
         <div className="space-y-3 border-t border-border p-3">
-          <Field label={`Fecha y hora en ${network.platform}`} hint="Cada red tiene la suya.">
+          <Field
+            label={`Fecha y hora en ${network.platform}`}
+            hint={
+              props.usesGeneralDate
+                ? "Es la fecha general de la pieza. Si la cambiás acá, esta red pasa a tener la suya."
+                : "Cada red tiene la suya."
+            }
+          >
             <input
               type="datetime-local"
               value={isoToDatetimeInput(network.planned_at ?? null, props.timeZone)}
@@ -266,6 +283,7 @@ export function NetworkRow(props: NetworkRowProps) {
             network={network}
             library={props.library}
             editable={editable}
+            filesRequired={system}
             onChange={props.onChange}
           />
 
@@ -377,7 +395,9 @@ export function NetworkRow(props: NetworkRowProps) {
             state={state}
             card={card}
             pending={props.pending}
-            canSchedule={validation.ok && faltan.length === 0}
+            canSchedule={props.validation.ok && faltan.length === 0}
+            filesMissing={filesMissing}
+            systemOn={system}
             timeZone={props.timeZone}
             onSetAuto={props.onSetAuto}
             onMarkPublished={props.onMarkPublished}
@@ -415,6 +435,8 @@ function PublishModeBlock({
   card,
   pending,
   canSchedule,
+  filesMissing,
+  systemOn,
   timeZone,
   onSetAuto,
   onMarkPublished,
@@ -425,6 +447,10 @@ function PublishModeBlock({
   card: ReturnType<typeof networkCardView>;
   pending: boolean;
   canSchedule: boolean;
+  /** Le faltan archivos para que el sistema la publique. */
+  filesMissing: boolean;
+  /** El sistema es quien la publica ahora. */
+  systemOn: boolean;
   timeZone: string;
   onSetAuto: (auto: boolean) => void;
   onMarkPublished: (input: { publishedAt: string | null; url: string | null }) => void;
@@ -433,6 +459,10 @@ function PublishModeBlock({
   const [marking, setMarking] = useState(false);
   const [publishedAt, setPublishedAt] = useState(() => isoToDatetimeInput(new Date().toISOString(), timeZone));
   const [url, setUrl] = useState("");
+
+  // Por que el sistema no puede publicarla. Primero lo que no depende de los
+  // archivos (cuenta, permiso, estado de la pieza); despues los archivos.
+  const systemReason = card.systemDisabledReason ?? (filesMissing && !systemOn ? NO_FILES_TO_SCHEDULE : null);
 
   return (
     <div className="space-y-2 border-t border-border pt-3">
@@ -458,16 +488,16 @@ function PublishModeBlock({
           type="button"
           role="radio"
           aria-checked={card.mode === "system"}
-          disabled={pending || Boolean(card.systemDisabledReason) || (card.mode !== "system" && !canSchedule)}
-          title={card.systemDisabledReason ?? (!canSchedule ? "Revisá los avisos del formato primero." : undefined)}
+          disabled={pending || Boolean(systemReason) || (card.mode !== "system" && !canSchedule)}
+          title={systemReason ?? (!canSchedule ? "Revisá los avisos del formato primero." : undefined)}
           onClick={() => onSetAuto(true)}
           className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
             card.mode === "system" ? "border-primary bg-primary/5" : "border-border"
           }`}
         >
           <b className="block">El sistema la publica</b>
-          <span className="text-muted-foreground">
-            {card.systemDisabledReason ?? "A la fecha de arriba se publica sola. Queda en cola."}
+          <span className={systemReason && filesMissing ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}>
+            {systemReason ?? "A la fecha de arriba se publica sola. Queda en cola."}
           </span>
         </button>
       </div>

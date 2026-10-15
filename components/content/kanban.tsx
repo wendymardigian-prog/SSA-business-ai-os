@@ -3,7 +3,7 @@
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Link2 as LinkIcon, Loader2, Plus, Users } from "lucide-react";
+import { CalendarClock, Link2 as LinkIcon, Loader2, Plus, Users } from "lucide-react";
 import { movePostToColumn } from "@/lib/actions/content";
 import { drawerHref } from "@/lib/content/drawer-url";
 import {
@@ -18,7 +18,11 @@ import {
 import { contentExcerpt } from "@/lib/content/ideas";
 import { STATUS_LABELS, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import { NetworkBadge, NetworkBadges } from "./network-badge";
-import { IdeaDialog, NewPostDialog } from "./create-dialogs";
+import { IdeaDialog } from "./create-dialogs";
+import { useNewPost } from "./use-new-post";
+import { AssigneeAvatar } from "./assignee-avatar";
+import { cardDates, formatCardDate } from "@/lib/content/card-dates";
+import { isAuthorOrAssignee } from "@/lib/content/assignee";
 import type { TaxonomyOptions } from "./classification-fields";
 import { PillarDot } from "./pillar-tag";
 
@@ -39,19 +43,20 @@ export function ContentKanban({
   posts,
   perms,
   currentUserId,
-  aiAvailable,
   platforms,
   taxonomy,
+  timeZone,
 }: {
   ideas: BoardIdea[];
   posts: BoardPost[];
   perms: Omit<ContentPermissions, "isAuthor"> & { ai: boolean };
   currentUserId: string;
-  aiAvailable: boolean;
-  /** Las redes conectadas, para el modal de crear. */
+  /** Las redes conectadas, para el modal de la idea. */
   platforms: string[];
   /** Pilares y ofertas, para clasificar una idea (F91). */
   taxonomy: TaxonomyOptions;
+  /** La zona del negocio: las fechas de las tarjetas se muestran en ella. */
+  timeZone: string;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -59,18 +64,11 @@ export function ContentKanban({
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
 
-  // Los modales viven acá y no en cada tarjeta: así el tablero no se
-  // desmonta al abrirlos y volver no cuesta nada (C2, C3).
-  const [dialog, setDialog] = useState<{ kind: "new-idea" } | { kind: "new-post"; ideaId?: string } | null>(null);
-
-  const copywriter = {
-    available: perms.ai && aiAvailable,
-    reason: !perms.ai
-      ? "Necesitás el permiso de generar copy con IA."
-      : !aiAvailable
-        ? "Conectá un proveedor de IA en Ajustes → Integraciones."
-        : undefined,
-  };
+  // El modal de la idea vive acá y no en cada tarjeta: así el tablero no se
+  // desmonta al abrirlo y volver no cuesta nada (C2, C3). Un post nuevo ya no
+  // abre un modal: crea el borrador y abre su drawer (`useNewPost`).
+  const [dialog, setDialog] = useState<{ kind: "new-idea" } | null>(null);
+  const newPost = useNewPost();
 
   // El tablero se mueve al soltar, sin esperar al servidor: con la respuesta
   // de por medio, la tarjeta se queda quieta medio segundo y parece que el
@@ -84,7 +82,8 @@ export function ContentKanban({
   const board = useMemo(() => buildBoard(ideas, optimistic), [ideas, optimistic]);
 
   function permsFor(card: BoardPost): ContentPermissions {
-    return { ...perms, isAuthor: card.createdBy === currentUserId };
+    // Autor o responsable: lo que la base acepta para que un Member la mueva (00223).
+    return { ...perms, isAuthor: isAuthorOrAssignee(currentUserId, { created_by: card.createdBy, assigned_to: card.assignee?.id ?? null }) };
   }
 
   function onDrop(target: BoardColumn) {
@@ -161,6 +160,7 @@ export function ContentKanban({
                     <PostCard
                       key={card.id}
                       post={card}
+                      timeZone={timeZone}
                       href={drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id: card.id })}
                       dragging={dragging === card.id}
                       onDragStart={() => setDragging(card.id)}
@@ -175,7 +175,7 @@ export function ContentKanban({
                 <AddCard label="+ Idea" onClick={() => setDialog({ kind: "new-idea" })} />
               )}
               {perms.create && column.column === "draft" && (
-                <AddCard label="+ Post" onClick={() => setDialog({ kind: "new-post" })} />
+                <AddCard label={newPost.pending ? "Creando…" : "+ Post"} onClick={newPost.create} disabled={newPost.pending} />
               )}
             </div>
           </section>
@@ -190,27 +190,18 @@ export function ContentKanban({
           onClose={() => setDialog(null)}
         />
       )}
-
-      {dialog?.kind === "new-post" && (
-        <NewPostDialog
-          ideas={ideas.map((i) => ({ id: i.id, title: i.title }))}
-          platforms={platforms}
-          copywriter={copywriter}
-          ideaId={dialog.ideaId}
-          onClose={() => setDialog(null)}
-        />
-      )}
     </div>
   );
 }
 
 /** El botón al pie de una columna, donde termina lo que ya hay. */
-function AddCard({ label, onClick }: { label: string; onClick: () => void }) {
+function AddCard({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg border border-dashed border-border py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+      disabled={disabled}
+      className="rounded-lg border border-dashed border-border py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-60"
     >
       {label}
     </button>
@@ -278,21 +269,25 @@ function IdeaCard({ idea, href }: { idea: BoardIdea; href: string }) {
 /**
  * La tarjeta de una pieza (C13).
  *
- * El bloque de color con el formato es lo que deja reconocerla de un
- * vistazo en una columna de diez. Los chips dicen qué le falta: sin eso hay
- * que abrir cada una para saber cuál está lista para grabar.
+ * Sin cabecera de formato: ocupaba una franja entera para un dato que se ve
+ * mejor adentro. Arriba va el título; abajo, las redes con su fecha (una sola
+ * fecha si todas salen juntas, o la de cada red), los chips de lo que le falta
+ * —sin eso hay que abrir cada una para saber cuál está lista para grabar— y el
+ * responsable en un círculo, a la derecha del pie.
  *
  * Abre el drawer de la pieza (F96): el mismo para un borrador que para algo
  * ya publicado.
  */
 function PostCard({
   post,
+  timeZone,
   href,
   dragging,
   onDragStart,
   onDragEnd,
 }: {
   post: BoardPost;
+  timeZone: string;
   href: string;
   dragging: boolean;
   onDragStart: () => void;
@@ -300,7 +295,8 @@ function PostCard({
 }) {
   const chip = redistributionChip(post.networks);
   const editable = post.status === "draft" || post.status === "in_production";
-  const color = post.networks[0] ? NETWORK_TINT[post.networks[0].platform] : null;
+  const dates = cardDates(post.networks);
+  const singleDate = dates.kind === "single" ? formatCardDate(dates.at, timeZone) : null;
 
   return (
     <article
@@ -310,15 +306,6 @@ function PostCard({
       className={`overflow-hidden rounded-lg border border-border bg-card ${dragging ? "opacity-50" : ""}`}
     >
       <Link href={href} scroll={false} data-card-id={`piece-${post.id}`} className="block hover:bg-accent/40">
-        {post.format && (
-          <span
-            className="flex h-9 items-center px-3 text-[11px] font-medium uppercase tracking-wide text-white/90"
-            style={{ background: color ?? "var(--muted-foreground)" }}
-          >
-            {post.format}
-          </span>
-        )}
-
         <span className="block p-3">
           <span className="block text-sm font-medium">
             {post.title}
@@ -342,11 +329,7 @@ function PostCard({
                   platform={n.platform}
                   size="sm"
                   className={NETWORK_STATE_TINT[n.status ?? ""]}
-                  detail={
-                    n.at
-                      ? new Date(n.at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })
-                      : null
-                  }
+                  detail={dates.kind === "per_network" ? formatCardDate(n.at, timeZone) : null}
                 />
               ))
             )}
@@ -358,6 +341,17 @@ function PostCard({
             {chip && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px]">{chip}</span>}
           </span>
 
+          {singleDate && (
+            <span
+              className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground"
+              data-testid="card-date"
+              title="Cuándo se publica"
+            >
+              <CalendarClock className="h-3 w-3" aria-hidden />
+              {singleDate}
+            </span>
+          )}
+
           {editable && post.copyStatus !== "generating" && (
             <span className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
               <Chip on={post.hasCopy}>
@@ -367,18 +361,21 @@ function PostCard({
             </span>
           )}
 
-          <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-            {post.authorship && <span>{post.authorship}</span>}
-            {post.attributedContacts !== null && (
-              <span
-                className="inline-flex items-center gap-0.5 tabular-nums"
-                title={attributionTooltip(post.attributedContacts)}
-                data-testid="attributed-contacts"
-              >
-                <Users className="h-3 w-3" aria-hidden />
-                {post.attributedContacts}
-              </span>
-            )}
+          <span className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              {post.authorship && <span>{post.authorship}</span>}
+              {post.attributedContacts !== null && (
+                <span
+                  className="inline-flex items-center gap-0.5 tabular-nums"
+                  title={attributionTooltip(post.attributedContacts)}
+                  data-testid="attributed-contacts"
+                >
+                  <Users className="h-3 w-3" aria-hidden />
+                  {post.attributedContacts}
+                </span>
+              )}
+            </span>
+            <AssigneeAvatar assignee={post.assignee} />
           </span>
         </span>
       </Link>
@@ -406,17 +403,6 @@ const NETWORK_STATE_TINT: Record<string, string> = {
   failed: "border-red-500 bg-red-500/10",
 };
 
-/** El color del bloque de formato. El mismo de la insignia de la red. */
-const NETWORK_TINT: Record<string, string> = {
-  instagram: "#E4405F",
-  tiktok: "#111827",
-  youtube: "#FF0000",
-  linkedin: "#0A66C2",
-  threads: "#111827",
-  facebook: "#1877F2",
-};
-
-
 /**
  * Los botones de crear de la barra superior.
  *
@@ -429,20 +415,17 @@ const NETWORK_TINT: Record<string, string> = {
  */
 export function NewContentButtons({
   canCreate,
-  ideas,
   platforms,
   taxonomy,
-  copywriter,
   canApprove,
 }: {
   canCreate: boolean;
-  ideas: Array<{ id: string; title: string }>;
   platforms: string[];
   taxonomy: TaxonomyOptions;
-  copywriter: { available: boolean; reason?: string };
   canApprove: boolean;
 }) {
-  const [dialog, setDialog] = useState<"idea" | "post" | null>(null);
+  const [dialog, setDialog] = useState<"idea" | null>(null);
+  const newPost = useNewPost();
   if (!canCreate) return null;
 
   return (
@@ -458,24 +441,17 @@ export function NewContentButtons({
         </button>
         <button
           type="button"
-          onClick={() => setDialog("post")}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground"
+          onClick={newPost.create}
+          disabled={newPost.pending}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
-          <Plus className="h-4 w-4" aria-hidden />
+          {newPost.pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
           <span className="hidden sm:inline">Nuevo post</span>
         </button>
       </div>
 
       {dialog === "idea" && (
         <IdeaDialog canApprove={canApprove} platforms={platforms} taxonomy={taxonomy} onClose={() => setDialog(null)} />
-      )}
-      {dialog === "post" && (
-        <NewPostDialog
-          ideas={ideas}
-          platforms={platforms}
-          copywriter={copywriter}
-          onClose={() => setDialog(null)}
-        />
       )}
     </>
   );

@@ -1374,6 +1374,16 @@ completo en `docs/PROGRESS-CV4.md`.
   siempre el `default_publisher` de la cuenta (F13), nunca algo elegido por
   pieza.
 
+## Responsable de la pieza (15/10/2026)
+
+Cada pieza de contenido tiene un **responsable** (`content_posts.assigned_to`, migracion `00223`, **aplicada y registrada**), distinto de quien la creo (`created_by`, que no cambia nunca).
+
+- **Por defecto es quien la crea**: lo pone un trigger (`content_posts_assignee`), asi que cubre `createPost`, aprobar una idea y el agente sin tocar sus funciones. Tiene que ser miembro del workspace (el mismo trigger lo exige). Las piezas que ya existian se rellenaron con su autor.
+- **Quien edita**: Owner y Admin todo; un Member lo que creo **o lo que tiene asignado**, solo hasta revision (politica `content_posts_update`, con la definicion vieja en la cabecera de la 00223). `lib/content/assignee.ts` (`isAuthorOrAssignee`) es la misma regla en TypeScript.
+- **Quien reasigna**: un administrador o quien la creo (`canReassign`). El responsable edita pero no la pasa a otra persona. `savePostDraft` lo dice con un mensaje claro y manda `assigned_to` solo si cambio (`draftPayload` con `savedAssignee`), para no pisar un cambio de otra persona.
+- **El tablero muestra un circulo con las iniciales** (`AssigneeAvatar`, el mismo de Tareas: el sistema no guarda fotos del equipo). La tarjeta ya no lleva la cabecera de color con el formato, y muestra la fecha con hora: una sola si todas las redes salen juntas, o la de cada red (`lib/content/card-dates.ts`).
+- Verificado con `scripts/verify-content.mjs` (seccion "Responsable de la pieza"). **La proxima migracion disponible es la `00224`** (confirmar con `list_migrations`).
+
 # Agentes IA (Bloque Agentes IA, 10/10/2026)
 
 El menu "Agentes" paso a llamarse **Agentes IA** y junta en una sola pantalla

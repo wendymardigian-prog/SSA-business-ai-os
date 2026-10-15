@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canWritePost,
   copyJustFinished,
   draftFromPost,
   draftPayload,
@@ -194,7 +195,23 @@ describe("el borrador del drawer", () => {
       reference: "",
       caption: "",
       networks: [{ platform: "instagram" }],
+      assignedTo: "",
     });
+  });
+
+  it("el responsable pasa al borrador", () => {
+    expect(draftFromPost({ ...post, assignedTo: "u2" }).assignedTo).toBe("u2");
+  });
+
+  it("el responsable solo viaja al guardar si cambio (no pisa lo que cambio otra persona)", () => {
+    const draft = { ...draftFromPost(post), assignedTo: "u2" };
+    // Sin dato de lo guardado: viaja.
+    expect(draftPayload("p", draft)).toMatchObject({ assigned_to: "u2" });
+    // Igual a lo guardado: no viaja.
+    expect(draftPayload("p", draft, "u2")).not.toHaveProperty("assigned_to");
+    // Cambio: viaja; y quitarlo viaja como null.
+    expect(draftPayload("p", draft, "u1")).toMatchObject({ assigned_to: "u2" });
+    expect(draftPayload("p", { ...draft, assignedTo: "" }, "u2")).toMatchObject({ assigned_to: null });
   });
 
   it("al guardar, lo vacio viaja como null y el formato y la referencia se recortan", () => {
@@ -242,5 +259,24 @@ describe("el copywriter escribiendo", () => {
     expect(copyJustFinished("generating", "generating")).toBe(false);
     expect(copyJustFinished("idle", "idle")).toBe(false);
     expect(copyJustFinished("idle", "generating")).toBe(false);
+  });
+});
+
+describe("quien puede escribir la pieza (lo mismo que la politica de la base; `isAuthor` = autor o responsable)", () => {
+  it("owner y admin siempre", () => {
+    for (const role of ["owner", "admin"]) {
+      expect(canWritePost({ role, isAuthor: false, status: "in_production" })).toBe(true);
+      expect(canWritePost({ role, isAuthor: false, status: "approved" })).toBe(true);
+    }
+  });
+
+  it("un Member, la suya o la que tiene asignada, y solo hasta revision", () => {
+    expect(canWritePost({ role: "member", isAuthor: true, status: "draft" })).toBe(true);
+    expect(canWritePost({ role: "member", isAuthor: true, status: "in_review" })).toBe(true);
+    expect(canWritePost({ role: "member", isAuthor: true, status: "approved" })).toBe(false);
+  });
+
+  it("un Member no escribe la pieza de otra persona (ni autor ni responsable): se le dice, no se le deja fallar al guardar", () => {
+    expect(canWritePost({ role: "member", isAuthor: false, status: "in_production" })).toBe(false);
   });
 });
