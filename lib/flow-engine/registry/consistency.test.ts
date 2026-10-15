@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { listNodes, resolveNodeType, listTriggers } from "./index";
-import { CONTACT_FREE_NODE_TYPES, MEMBER_TRIGGER_TYPES } from "../contact-free";
+import { CONTACT_FREE_NODE_TYPES, MEMBER_TRIGGER_TYPES, SYSTEM_TRIGGER_TYPES } from "../contact-free";
+import { AUTOMATION_SOURCE_TYPES } from "./types";
 
 /**
  * Guardia contra la desincronizacion entre la UI y el motor.
@@ -143,11 +144,41 @@ describe("cada nodo declara si necesita un contacto (EOD, E15)", () => {
       .filter((n) => !n.needsContact)
       .map((n) => n.type)
       .sort();
-    expect(libres).toEqual(["abSplit", "branch", "complete_task", "create_task", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "upsert_contact"]);
+    expect(libres).toEqual(["abSplit", "branch", "complete_task", "create_task", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "send_whatsapp_number", "upsert_contact"]);
     expect([...CONTACT_FREE_NODE_TYPES].sort()).toEqual(libres);
   });
 
   it("los disparadores sin contacto son los de la lista del navegador", () => {
     expect(listTriggers().filter((t) => t.subject === "member").map((t) => t.type)).toEqual([...MEMBER_TRIGGER_TYPES]);
+  });
+});
+
+describe("cada disparador declara el origen de sus sesiones (Tirón 2, D1)", () => {
+  // `flow_sessions.source_type` dice QUE disparo el flujo y la base exige contacto u origen. Un disparador nuevo que
+  // no lo declare no podria arrancar sin contacto: se exige, y tiene que ser un valor que la base admite (00218).
+  it("todos los disparadores registrados declaran sourceType, y es un valor que admite la base", () => {
+    const sinDeclarar = listTriggers().filter((t) => !t.sourceType).map((t) => t.type);
+    expect(sinDeclarar).toEqual([]);
+    for (const t of listTriggers()) expect(AUTOMATION_SOURCE_TYPES).toContain(t.sourceType);
+  });
+
+  it("el origen coincide con el sujeto del flujo: persona = member, webhook = webhook, sistema = system", () => {
+    for (const t of listTriggers()) {
+      if (t.subject === "member") expect(t.sourceType, t.type).toBe("member");
+      if (t.subject === "webhook") expect(t.sourceType, t.type).toBe("webhook");
+      if (t.subject === "system") expect(t.sourceType, t.type).toBe("system");
+    }
+  });
+
+  it("los disparadores de sistema son los de la lista del navegador", () => {
+    expect(listTriggers().filter((t) => t.subject === "system").map((t) => t.type)).toEqual([...SYSTEM_TRIGGER_TYPES]);
+  });
+
+  it("la lista de origenes del codigo es exactamente la del CHECK de la migracion", () => {
+    const sql = readFileSync(resolve(__dirname, "../../../supabase/migrations/00218_automation_source.sql"), "utf8");
+    const check = /source_type IN \(([^)]*)\)/.exec(sql);
+    expect(check, "no encontre el CHECK de source_type en la 00218").not.toBeNull();
+    const enLaBase = [...check![1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+    expect(enLaBase).toEqual([...AUTOMATION_SOURCE_TYPES].sort());
   });
 });

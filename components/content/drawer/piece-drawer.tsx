@@ -60,6 +60,9 @@ import { NetworkRow } from "../editor/network-row";
 import { ClassificationFields } from "../classification-fields";
 import { Drawer } from "./drawer";
 import { PiecePerformanceSection } from "./piece-performance";
+import { LinkAdMenu } from "./link-ad-menu";
+import { showAdsSection } from "@/lib/meta/content-ad-summary";
+import { PieceAdsSection } from "./piece-ads-section";
 import { PiecePublications } from "./piece-publications";
 import { StatusSelect } from "./status-select";
 import { useToast } from "./toast";
@@ -523,6 +526,8 @@ export function PieceDrawer({
               ✦ IA · revisalo
             </span>
           )}
+          {/* «⋯»: vincular la pieza con un anuncio de Meta (A2). Solo lo ve quien puede editar piezas y ver anuncios. */}
+          {data.canLinkAds && <LinkAdMenu pieceId={post.id} pieceTitle={draft.title || post.title} ads={data.ads} />}
           <button
             type="button"
             onClick={() => void flush().then(() => setView("history"))}
@@ -617,6 +622,9 @@ export function PieceDrawer({
 
         {/* Rendimiento por red (F102): solo si alguna publicacion ya salio. */}
         <PiecePerformanceSection performance={data.measurement} timeZone={timeZone} />
+
+        {/* Publicidad (A2): solo si la pieza tiene al menos un anuncio vinculado; sin anuncio, el detalle queda como siempre. */}
+        {showAdsSection(data.ads) && <PieceAdsSection pieceId={post.id} ads={data.ads} />}
 
         {/* ── Guion ── */}
         <section className="space-y-3" aria-labelledby="guion">

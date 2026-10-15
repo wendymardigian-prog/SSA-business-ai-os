@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  adAccountNeedsCatchUp,
+  CATALOG_RETRY_AFTER_HOURS,
+  CATCH_UP_AFTER_HOURS,
   cadenceFor,
   computeD7,
   d7Status,
@@ -370,5 +373,40 @@ describe("la tolerancia del cron (F79)", () => {
     const now = new Date("2026-10-01T09:30:05Z");
 
     expect(shouldCollect({ ...post, lastSyncedAt: "2026-09-28T09:30:05Z", now, graceMs: 6 * 3600_000 })).toBe(false);
+  });
+});
+
+describe("ponerse al dia: las cuentas de anuncios que perdieron su corrida (Tirón 2, E1)", () => {
+  const NOW = new Date("2026-10-14T15:00:00Z");
+  const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000).toISOString();
+  const account = (over: Partial<Parameters<typeof adAccountNeedsCatchUp>[0]> = {}) => ({ sync_enabled: true, last_synced_at: hoursAgo(2), catalog_synced_at: hoursAgo(2), ...over });
+
+  it("una cuenta sincronizada hace poco, con el catálogo completo, no necesita nada", () => {
+    expect(adAccountNeedsCatchUp(account(), NOW)).toBe(false);
+    expect(adAccountNeedsCatchUp(account({ last_synced_at: hoursAgo(25) }), NOW)).toBe(false);
+  });
+
+  it("a las 26 horas sin sincronizar se pone al día (se perdió la corrida de las 3 de la mañana)", () => {
+    expect(adAccountNeedsCatchUp(account({ last_synced_at: hoursAgo(CATCH_UP_AFTER_HOURS) }), NOW)).toBe(true);
+    expect(adAccountNeedsCatchUp(account({ last_synced_at: hoursAgo(30) }), NOW)).toBe(true);
+  });
+
+  it("una cuenta que nunca se sincronizó, o con una fecha que no se entiende, se pone al día", () => {
+    expect(adAccountNeedsCatchUp(account({ last_synced_at: null }), NOW)).toBe(true);
+    expect(adAccountNeedsCatchUp(account({ last_synced_at: "basura" }), NOW)).toBe(true);
+  });
+
+  it("el catálogo que nunca se leyó completo se reintenta cada 6 horas, no cada hora", () => {
+    expect(adAccountNeedsCatchUp(account({ catalog_synced_at: null, last_synced_at: hoursAgo(1) }), NOW)).toBe(false);
+    expect(adAccountNeedsCatchUp(account({ catalog_synced_at: undefined, last_synced_at: hoursAgo(CATALOG_RETRY_AFTER_HOURS - 1) }), NOW)).toBe(false);
+    expect(adAccountNeedsCatchUp(account({ catalog_synced_at: null, last_synced_at: hoursAgo(CATALOG_RETRY_AFTER_HOURS) }), NOW)).toBe(true);
+  });
+
+  it("una cuenta apagada nunca se encola", () => {
+    expect(adAccountNeedsCatchUp(account({ sync_enabled: false, last_synced_at: null }), NOW)).toBe(false);
+  });
+
+  it("el caso real del 14/10: último intento del 13/10 a las 09:30 UTC y sin catálogo", () => {
+    expect(adAccountNeedsCatchUp({ sync_enabled: true, last_synced_at: "2026-10-13T09:30:46.148Z", catalog_synced_at: undefined }, new Date("2026-10-14T14:30:00Z"))).toBe(true);
   });
 });

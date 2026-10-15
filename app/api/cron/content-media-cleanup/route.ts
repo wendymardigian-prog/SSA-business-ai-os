@@ -134,6 +134,8 @@ export async function GET(request: NextRequest) {
     cleanedPosts,
     webhookPayloadsCleared: webhooks.cleared,
     webhooksDeleted: webhooks.deleted,
+    webhookSessionCopiesCleared: webhooks.sessionCopiesCleared,
+    webhookJobCopiesCleared: webhooks.jobCopiesCleared,
     deletedFiles,
     chatMediaMessages: chat.cleanedMessages,
     chatMediaFiles: chat.deletedFiles,

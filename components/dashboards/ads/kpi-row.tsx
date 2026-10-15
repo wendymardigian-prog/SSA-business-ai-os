@@ -16,6 +16,8 @@ export interface KpiItem {
   sub: string;
   /** Contra el periodo anterior. Null si no hay con que comparar. */
   delta: KpiDelta | null;
+  /** Una explicacion corta (tooltip nativo) para las cifras que se prestan a confusion. */
+  tip?: string;
 }
 
 const DELTA_TONE = {
@@ -27,10 +29,11 @@ const DELTA_TONE = {
 export function KpiRow({ items }: { items: KpiItem[] }) {
   return (
     <div className="rounded-xl border border-border bg-card p-3">
-      <div className="grid grid-cols-4 gap-y-3 lg:grid-cols-8">
+      <div className={`grid grid-cols-4 gap-y-3 ${items.length > 8 ? "lg:grid-cols-9" : "lg:grid-cols-8"}`}>
         {items.map((item) => (
           <div
             key={item.key}
+            title={item.tip}
             className="min-w-0 border-l border-border/60 px-2 first:border-l-0 first:pl-0 sm:px-3 [&:nth-child(4n+1)]:border-l-0 [&:nth-child(4n+1)]:pl-0 lg:[&:nth-child(4n+1)]:border-l lg:[&:nth-child(4n+1)]:pl-3 lg:first:border-l-0 lg:first:pl-0"
           >
             <p className="mb-1.5 truncate text-[9px] font-medium uppercase leading-none tracking-normal text-muted-foreground sm:text-[10px] sm:tracking-wider">

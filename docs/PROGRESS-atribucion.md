@@ -100,6 +100,474 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 - [x] Revisión visual (WH1, WH2, AT2, AT3, AT4; ver las notas de cada bloque)
 - [x] PR abierto, sin mergear
 
+## Correcciones (Tirón 2)
+
+Rama `fix/atribucion-webhooks-flujos` (desde `main` en `2738c16`). Planificado el 14/10/2026, **sin código ni base tocados todavía**.
+Se arranca con el `/goal` de Wendy. Regla de oro: los flujos con contacto se comportan exactamente igual (caracterización del
+motor y del cron ANTES de tocar). Decisiones de Wendy: Leads Meta se corrige y se recalcula; el vínculo anuncio↔pieza pide
+`content.create` + `dashboards.ads.view`; B4 se mide con datos sintéticos; las columnas duplicadas se unifican.
+
+### Checklist por bloque
+Orden de ejecución: D1–D2 y C primero (son la base), después E1, B, E2–E4, A y D3–D5. Cada tramo: `npx vitest run` en verde,
+esta lista marcada, commit `fix: atribucion - bloque X (nombre)` y push.
+
+- [x] **Paso 1**: `npm run build` y cada `scripts/verify-*.mjs` de a uno (con candado), para fijar el punto de partida (ver «Punto de partida»)
+- [x] **Paso 2**: tests de caracterización ANTES de tocar (`lib/flow-engine/resume-characterization.test.ts` es nuevo; el resto ya existía: motor, EOD, webhook, tabla Meta vs CRM, pieza)
+- [ ] **D · Flujos sin contacto: el origen**
+  - [x] D1 · `source_type`/`source_id` en `flow_sessions` y `automation_events`, CHECK superconjunto, `subject: system`, motor y cron (`resume_flow` desde la sesión)
+  - [x] D2 · tabla de pasos y contacto en `docs/flow-registry.md`; mensaje del validador de agenda y ventas
+- [ ] **C · Webhooks**
+  - [x] C1 · `occurredAt = received_at` en el toque
+  - [x] C2 · recepción con `pg_advisory_xact_lock`; clave `(envío, flujo)` sin `reprocess_count`; casilla "Volver a correr…"; "una sola vez por contacto"
+  - [x] C3 · error visible si falla guardar el contacto en el flujo; el historial del webhook se entera de lo que pasa después de un "Esperar"
+  - [x] C4 · purga de las copias del payload (`flow_sessions.variables` y jobs `resume_flow`)
+- [x] **E · Anuncios: el catálogo (E1)**
+  - [x] Ponerse al día si se perdió la corrida de las 3 a. m.; un lote que falla deja el catálogo incompleto; sin token se anota
+  - [x] Respaldo desde los insights cuando falta el catálogo; aviso "Ningún contacto de este período trae datos de anuncio…"
+  - [x] Leads Meta sin duplicados (`lead` canónico) + recálculo del historial (00220, escrita y ensayada, **sin aplicar** hasta después del deploy)
+- [x] **B · Tabla Meta vs CRM**
+  - [x] B1 · Leads nuevos / Leads totales / CPL nuevo / CPL total, con tooltips
+  - [x] B2 · clic en los números, panel lateral y detalle (`ads_crm_cell_detail`)
+  - [x] B3 · fila Total sin contar dos veces (`ads_crm_metrics_v2`)
+  - [x] B4 · medición con `EXPLAIN ANALYZE` y decisión
+- [x] **E · Anuncios: columnas (E2–E4)** (el celular y el tema claro/oscuro quedan para la revisión visual del cierre)
+  - [x] E2 · columnas nuevas (ocultas) + fila Total
+  - [x] E3 · columnas visibles por defecto
+  - [x] E4 · selector con buscador, subtítulos, arrastrar, migración de preferencias, CSV, celular
+- [x] **A · Anuncios y contenido** (la revisión visual de los menús y la sección queda para el cierre)
+  - [x] A1 · recuperar el anuncio desde la conversación de Zernio (solo Instagram)
+  - [x] A2 · vínculo manual anuncio ↔ pieza en menús "⋯", sección "Publicidad", indicador y filtro "Pautadas"
+- [x] **D · Envíos sin contacto (D3–D5)**
+  - [x] D3 · paso "Enviar WhatsApp a un número"
+  - [x] D4 · "Enviar email" a una dirección de una variable
+  - [x] D5 · validar al guardar un flujo publicado
+- [ ] **Cierre**: docs (`webhooks`, `atribucion` con la lista de columnas, `flow-registry`, `PENDIENTE-atribucion`), `CLAUDE.md`, revisión visual (1440/390 px, claro/oscuro), PR sin mergear
+
+### Punto de partida (Tirón 2)
+Medido el 14/10/2026, antes de tocar nada (modo solo lectura).
+- `npx vitest run`: **874 archivos, 10.998 tests, todos en verde**.
+- `npm run lint`: **0 errores, 36 avisos** (directivas `eslint-disable` sin usar).
+- `npm run build` y los `scripts/verify-*.mjs`: **pendientes** (el paso 1 de la ejecución). Se postergaron porque `build` regenera
+  `public/embed/embed.js` y los `verify-*` escriben en la base real, y Supabase tenía un incidente el 14/10 (pooler bloqueado y crons con
+  "job startup timeout").
+- Conocido de antes: `verify-attribution` (caso de datos, 776 de 835), `verify-forms` y `verify-publishing` a veces fallan.
+- Base `knrxjnmxnmjavivyuwew` y repo coinciden en la `00215`. **Primera libre: `00216`** (confirmar con `list_migrations`).
+- CHECK vigentes (`pg_get_constraintdef`, 14/10):
+  - `flow_sessions_contact_or_member`: `CHECK (((contact_id IS NOT NULL) OR (member_user_id IS NOT NULL) OR (inbound_webhook_id IS NOT NULL)))`
+  - `automation_events_contact_or_member`: `CHECK (((contact_id IS NOT NULL) OR ((event_type = ANY (ARRAY['eod_submitted'::text, 'task_completed'::text, 'task_overdue'::text])) AND (member_user_id IS NOT NULL))))`
+- Catálogo de Meta: `meta_campaigns`/`meta_adsets`/`meta_ads` con 0 filas; `meta_ads_insights_daily` con 1.067 filas (13/07 a 13/10). Causa: el cron de las 09:30 UTC
+  del 13/10 corrió con el código viejo (sin catálogo) y el del 14/10 falló por el incidente de Supabase.
+- "Leads Meta" inflado: se guardan 2.337 leads y Meta reporta 468 (se suman variantes del mismo lead).
+- Los 804 toques tienen `meta_match_status = 'none'`.
+
+### Migraciones (Tirón 2)
+Todas aditivas e idempotentes, con "Cómo volver atrás" en la cabecera. Aplicar con la CLI, registrar en `schema_migrations`, y después
+`node scripts/build-all-migrations.mjs`. Números a confirmar con `list_migrations`.
+
+| # | Qué | Se aplica | Estado |
+|---|---|---|---|
+| 00216 | `receive_inbound_webhook` con lock (C2) | antes del deploy | **aplicada y registrada** (14/10) |
+| 00217 | claves nuevas de `trigger_fires` para webhooks (C2) | antes | **aplicada y registrada** (14/10) |
+| 00218 | `source_type`/`source_id`, trigger, backfill y CHECK superconjunto (D1) | antes | **aplicada y registrada** (14/10; ver «Notas de la corrida») |
+| 00219 | `ads_crm_items`, `ads_crm_metrics_v2` y `ads_crm_cell_detail` (B2, B3) | antes | **aplicada y registrada** (14/10; el código que la usa va en el bloque B) |
+| 00220 | recalcular `leads`/`purchases` de Meta (decisión 1) | **después del deploy**, con respaldo | pendiente |
+| 00221 | `enrich_touch_ad_origin` (A1) | antes | pendiente |
+| 00222 | `flow_send_claims` (D3) | antes | pendiente |
+
+No cambian (sus huellas quedan iguales a las del Tirón 1): `record_contact_touch`, `find_or_link_contact`, `find_contact_for_form`,
+`submit_form_response`, `create_booking` y `find_or_create_contact`.
+
+### Notas de la corrida (Tirón 2)
+
+**Punto de partida real** (14/10, sobre una copia limpia de `origin/main` en `2738c16`; lo que importa código de la app —`forms`, `tasks`, `eod`, `sales`, `publishing`, `contact-merge`— se midió así para que mis cambios no lo contaminaran):
+- `npx vitest run`: 874 archivos, 10.998 tests, verdes. `npm run build`: salida 0. `npm run lint`: 0 errores, 36 avisos.
+- Todos los `verify-*` dan 0 salvo cuatro que ya fallaban **antes de tocar nada**:
+  - `verify-tasks`: 1 fallo, «las fechas de las dependientes ajenas se corrigieron (B al 14, C al 15)»: un test de fechas que depende del día.
+  - `verify-forms`: 1 fallo, «el EXPLAIN de la consulta de vistas usa idx_analytics_forms» (el plan de ejecución de una consulta; a veces pasa).
+  - `verify-ads-attribution`: 1 fallo, «EXPLAIN ANALYZE: 344 ms (el plano pide < 300 ms)» sobre `ads_crm_metrics`.
+  - `verify-attribution`: el caso de datos de siempre («todos los contactos reales tienen first_touch», 793 de 852).
+- `verify-webhook` y `verify-inbound-webhooks` corrieron con la app en local (`npm run dev`, puerto 3000).
+
+**Orden**: el plan decía D1 antes que C; se hizo C primero para que las migraciones salgan con los números del plan sin saltear ninguno (C usa la 00216 y la 00217, D1 la 00218). C no depende de D1.
+
+**C2 · reprocesar**: sin la casilla, un flujo que ya corrió **no se repite**, pero el contacto **se vuelve a mapear** si el flujo tiene UN solo paso «Crear o actualizar contacto» (con varios, en ramas distintas, no se sabe cuál corrió: no se toca). Un flujo que **falló** libera su clave y se reintenta. El `result` del envío se **fusiona** con lo anterior (antes lo pisaba entero, y un reproceso que corre solo algunos flujos habría borrado el historial de los demás).
+
+**C3**: además de lanzar si falla el guardado en la sesión, el historial del webhook ahora se entera de lo que pasa **después de un «Esperar»** (`settleResumedSession`): terminar, volver a esperar o fallar. Antes quedaba «en curso» para siempre.
+
+**C4**: la purga de las copias del payload es de TypeScript (sin migración): filtra del lado de la base lo que ya está vacío para no releer todo cada día.
+
+**D1 · el CHECK de `automation_events`**: la primera versión de la 00218 lo aflojaba de más (cualquier evento con persona pasaba). Dos verificaciones lo atajaron (`verify-eod`, `verify-tasks`: «un evento de contacto sin contacto se sigue rechazando»). Se corrigió **la misma 00218** (se reaplicó, es idempotente, y se actualizó lo registrado): un evento de contacto sin contacto sigue rechazado aunque traiga persona; lo nuevo es un evento sin contacto **ni persona** con origen declarado.
+- Una prueba **vieja** de `verify-inbound-webhooks` se cambió a propósito: «borrar un envío que sostiene una sesión sin contacto lo frena el CHECK». Con el origen, la sesión sigue siendo válida y el borrado ya no se frena (queda con el envío en NULL y su origen `webhook`).
+- Un evento de Tareas **sin contacto ni persona** sigue sin correr (el test `automation-events-routing` lo fija y no se tocó): hoy no se emite. Habilitarlo es un cambio de una línea, a decidir cuando Tareas lo necesite.
+- No hay todavía ningún disparador `system`: el camino está probado con uno de prueba. El **simulador no cambia**: solo simula disparadores de mensaje (los de evento, persona, webhook y sistema responden «No coincide»).
+- D2: los pasos de agenda y ventas ahora dicen «actúa sobre la reunión (o la venta) que dispara el flujo» en lugar de mandar a poner «Crear o actualizar contacto» (`TRIGGER_ENTITY_NODES`).
+
+**Verificación después de aplicar 00216–00219** (con el código nuevo): `verify-inbound-webhooks` 0 (129 pruebas, incluye diez entregas simultáneas por el receptor real: una procesable y nueve ignoradas), `verify-eod` 0, `verify-forms` 0, `verify-webhook` 0, `verify-tasks` el mismo único fallo de fechas de antes.
+
+### Plan completo (Tirón 2, tal cual se presentó y aprobó)
+
+### Plan — Correcciones del Extra L (Tirón 2): webhooks, atribución, anuncios y flujos sin contacto
+
+#### Contexto
+
+El Extra L (PR #47, mergeado el 13/10) dejó funcionando webhooks entrantes, atribución y la tabla Meta vs CRM, pero tiene huecos:
+- Un envío puede disparar dos veces el mismo flujo.
+- Un flujo sin contacto se rompe después de un "Esperar".
+- El catálogo de Meta está vacío, así que la tabla de anuncios casi no muestra datos.
+- La fila Total cuenta dos veces.
+- No hay vínculo manual entre anuncios y piezas de contenido.
+
+Además, la regla de flujos sin contacto solo sirve para EOD y webhooks, y traba cualquier disparador nuevo, como los de Tareas. Esta corrida corrige todo eso **sin cambiar el comportamiento de los flujos con contacto**. Rama: `fix/atribucion-webhooks-flujos`.
+
+Decisiones de Wendy (14/10):
+1. **Leads Meta: corregir y recalcular.** Se cuenta solo la acción `lead` y se recalcula el historial desde el `actions` ya guardado, con respaldo previo.
+2. **Permiso del vínculo anuncio ↔ pieza:** `content.create` + `dashboards.ads.view`.
+3. **B4 se mide con datos sintéticos.** Se usan los 10.000 toques de `verify-ads-attribution`. Se usa la alternativa simple si el costo extra pasa los 300 ms o duplica la consulta actual.
+4. **Unificar columnas duplicadas.** CAC, Costo por cierre y Costo por nuevo deal pasan a una sola: "Costo por nuevo deal". Leads CRM pasa a Leads totales y Agendas CRM pasa a Agendas.
+
+---
+
+#### 1. Verificación contra el código real: diferencias con el pedido
+
+| # | Lo que dice el pedido | Lo que hay en el código | Cómo lo adapto |
+|---|---|---|---|
+| 1 | `receive.ts` hace SELECT por `body_hash` y después INSERT | Es así cuando el envío no trae id propio (`hasRecentSameBody`, ventana de 10 min, `server-ports.ts:47-56`). Con `event_id_path` configurado ya hay un índice único `uq_inbound_webhooks_event`. | La función SQL con lock cubre los dos casos. El índice único se queda. |
+| 2 | La clave de `trigger_fires` incluye `reprocess_count` | Confirmado: `webhook:<inbound>:<flow>:<n>` (`trigger-config.ts:90`, `run-flows.ts:109`). | Se cambia, y se migran las claves viejas (ver C2). |
+| 3 | Reprocesar corre solo lo que no corrió | La clave se toma ANTES de correr el flujo, así que un flujo que **falló** también queda marcado como "ya corrió". | Si el flujo falla, se libera la clave (se borra esa fila de `trigger_fires`). Así "Reprocesar" reintenta lo que falló y no repite lo que salió bien. |
+| 4 | `upsert-contact.ts` (webhooks) no pasa `occurredAt` | Confirmado (`upsert-contact.ts:304`). `buildWebhookTouch` ya acepta `occurredAt`. | Se pasa `received_at`. |
+| 5 | Error al guardar el contacto en el flujo | Confirmado: el update de `flow_sessions` en `nodes/upsert-contact.ts:101-104` ignora el error. **Además**, si el flujo falla o termina después de un "Esperar", el historial del webhook nunca se entera: queda en "pendiente" para siempre. | Se lanza el error. También se agrega que la reanudación actualice el resultado del envío (ver D1). |
+| 6 | `resume_flow` no pasa `inboundWebhookId` | Confirmado (`cron/jobs/route.ts:695-708`). Además, toma `contactId` del job y no de la sesión. | El origen se lee de la SESIÓN (ver D1). |
+| 7 | CHECK de `automation_events`: "salvo `eod_submitted`" | La definición vigente admite `eod_submitted`, `task_completed` y `task_overdue` (la 00199 sumó Tareas). | Se copia tal cual en la cabecera. |
+| 8 | `flows/[flowId]` PUT llama a `checkMemberFlow` sin `edges` | Confirmado (`route.ts:64-68`). La firma ya acepta `edges` y `{publishing}` (`member-flow-db.ts:10`). | D5 tal cual. |
+| 9 | "Correr una sola vez por contacto" | No existe en flujos. Solo hay `oncePerContact` en encuestas, y `new_contact` ya es de por vida. | Se agrega al disparador "Webhook recibido" (ver C2). |
+| 10 | "Tope por hora del canal" | Solo existe para Instagram y Facebook (`claim_automated_send`, 200 por hora, `send.ts:177-193`). **WhatsApp no tiene tope.** | El paso nuevo de D3 usa el mismo `claim_automated_send` con 200 por hora. `sendMessage` no cambia. |
+| 11 | WhatsApp por Evolution | Confirmado. Pero `sendViaEvolution` exige que el contacto tenga un número de WhatsApp vinculado (`contact_channels.platform_sender_id`). | D3 manda directo al número con el cliente de Evolution, sin pasar por el contacto. |
+| 12 | `send_email` "a fija o al equipo" sin contacto | Modos reales: `contact`, `host`, `fixed`, `member` y `users`. **Bug existente:** si el contacto tiene "No contactar", también se cancelan los correos a una dirección fija o al equipo (`send-email.ts:66-80`). | No lo toco: cambiaría el comportamiento de los flujos con contacto. Queda en el PENDIENTE. D4 suma `variable`. |
+| 13 | A1: el campo de Zernio | `messages.getInboxConversation` devuelve `metadata.meta_ad_id`, `meta_ad_title`, `meta_ad_post_id`, etc. Solo existe para Instagram y Messenger: el `ctwa_*` de WhatsApp sale únicamente del listado. | En este sistema WhatsApp va por Evolution, así que **A1 aplica solo a Instagram**. |
+| 14 | A1: "guardarlo en el toque" | El trigger de vínculo con Meta es `BEFORE INSERT` y no corre al actualizar. El toque del mensaje ya existe (`msg:<id>`). | Hace falta una función nueva que enriquezca ese toque (00221). `record_contact_touch` no se toca. |
+| 15 | A2: permiso de edición | No existe `content.edit`. Las claves son `content.create` ("Crear y editar piezas"), `approve`, `publish` y `ai`. Vincular toques usa `settings.general` (`settings.manage` ya no existe desde la 00211). | Decisión 2. |
+| 16 | A2: la pieza "con el período elegido" | El detalle de la pieza no tiene selector de período: mide por edad. | La sección "Publicidad" trae su propio selector chico (`PERIOD_PRESETS`), con "Histórico" por defecto. |
+| 17 | A2: no hay menú "⋯" | No existe ni en el detalle del anuncio (`ads-detail-view.tsx`, página completa) ni en el de la pieza. | Se suma con `PopoverMenu` (`components/automations/popover-menu.tsx`) y el buscador estilo `LinkPicker` (`components/dashboards/ads/unlinked-list.tsx:191`). |
+| 18 | A2: filtro "Pautadas" en la lista | La lista carga todas las piezas y filtra en el cliente (`lib/content/filters.ts`). El filtro es barato. | **Se hace el filtro.** Ojo: `meta_ads` se lee con la RLS `dashboards.ads.view`, así que quien no ve anuncios no ve el indicador. Eso es correcto. |
+| 19 | B: agendas y ventas en el Total | Cada agenda y cada venta cae en UN solo objeto por nivel (subconsulta con `LIMIT 1` y un único `attribution_touch_id`). | **Suma simple, que es exacta.** Solo "Leads totales" necesita contar distintos. |
+| 20 | B1: "KPIs que usan leads de anuncios" | Las tarjetas y KPIs del dashboard de Ads (Leads, CPL, comparación, embudo, tabla diaria, análisis IA, dashboard unificado) usan **Leads de Meta**, no del CRM. Solo la tabla Meta vs CRM usa el CRM. | Leads nuevos y Leads totales con sus dos CPL van en la tabla, y en una tarjeta nueva "Leads CRM" en la fila de KPIs del dashboard de Ads. Los KPIs de Meta conservan su nombre "Leads Meta" y corrigen su número (decisión 1). El unificado también corrige su número. |
+| 21 | E1: estado desde `effective_status` del insight | **Ninguna fila de insights tiene estado** (0 de 1.067). La API de insights de Meta no lo da: hoy se copiaba del catálogo. | Sin catálogo, el estado queda "Sin estado", con una nota que dice que llega con el catálogo. El arreglo real del estado es el sync (ver punto 2). Nombre, padre y campaña sí se resuelven desde los insights. |
+| 22 | E1: `ads_crm_metrics` con el filtro de cuenta | Con el catálogo vacío, el filtro por cuenta (`x.ad_account_id = $6` sobre el catálogo) **descarta todas las filas del CRM**. | La v2 toma como objetos de la cuenta el catálogo más los `object_id` de los insights de esa cuenta. |
+| 23 | E2: columnas | Ver el punto 3. Algunas no tienen datos hoy en esta cuenta: se muestran como "—", nunca como 0. | — |
+| 24 | E4: preferencias guardadas | Ya existe `parsePrefs`: descarta lo desconocido y suma las columnas nuevas ocultas. **Falta reemplazar una columna vieja por su equivalente.** | Se agrega un mapa de equivalencias y la versión del default. |
+| 25 | Exportar CSV | Usa las columnas visibles en el orden elegido (`ads-crm-csv.ts:20`). | Solo se suman las columnas nuevas. |
+| 26 | Celular: primera columna fija | Ya está fija (`sticky left-0`). | Se verifica en la revisión visual. |
+| 27 | Detalles a los que lleva el panel | Contacto `/dashboard/contacts/<id>`, agenda `/dashboard/agenda?agenda=<id>`, venta `/dashboard/ventas/<id>`. | Se reusan. |
+| 28 | UF cash | No hay columna "primer pago", pero se deduce: es el primer pago `paid` positivo de cada venta, por `paid_at`. | Va en la v2. |
+
+**CHECK vigentes** (leídos con `pg_get_constraintdef` el 14/10):
+- `flow_sessions_contact_or_member`: `CHECK (((contact_id IS NOT NULL) OR (member_user_id IS NOT NULL) OR (inbound_webhook_id IS NOT NULL)))`
+- `automation_events_contact_or_member`: `CHECK (((contact_id IS NOT NULL) OR ((event_type = ANY (ARRAY['eod_submitted'::text, 'task_completed'::text, 'task_overdue'::text])) AND (member_user_id IS NOT NULL))))`
+
+#### 2. Diagnóstico del catálogo vacío (E1)
+
+**La causa no es un bug del código: el código del catálogo nunca llegó a correr.**
+- El job `meta_ads_sync` se encola solo a las 3 a. m. de la zona del workspace. En Costa Rica eso es 09:30 UTC.
+- **13/10:** corrió a las 09:30 UTC. El Extra L se mergeó ese día a las 14:45 UTC, así que esa corrida fue con el código viejo, que no tenía catálogo. Por eso la cuenta no tiene `catalog_synced_at`.
+- **14/10:** el cron `metrics-sync` de las 09:30 UTC **falló con "job startup timeout"**, igual que el de las 10:30, 14:30, 15:32, 16:30 y 17:30. Es el incidente de Supabase de hoy. Volvió a andar a las 18:30, pero ya fuera de la hora 3.
+- Resultado: ninguna corrida con catálogo. "Sincronizar ahora" habría alcanzado, pero nadie lo apretó.
+
+**Arreglos, para que no se repita y para que no falle en silencio:**
+1. **Ponerse al día.** `metrics-sync` encola también fuera de las 3 a. m. si `last_synced_at` tiene más de 26 h, o si la cuenta nunca completó el catálogo (`catalog_synced_at` vacío). Es una regla pura en `lib/metrics/rules.ts` con test.
+2. **Un lote del catálogo que no se pudo guardar cuenta como incompleto.** Hoy `upsertChunks` (`catalog-store.ts:21-32`) solo lo loguea y `catalog_synced_at` avanza igual, así que el siguiente sync es incremental y esas filas no vuelven nunca. Pasa a devolver `{written, failed}`, `failed > 0` deja `complete=false` y se anota en `last_error`.
+3. **Sin token:** hoy el handler vuelve sin anotar nada (`meta-ads-sync.ts:196-200`). Pasa a dejar `last_error = "Falta el token de Meta"`.
+4. Test con Meta simulado: catálogo vacío más un lote que falla da incompleto y una nota. Un cron perdido hace que la regla de ponerse al día encole.
+5. Al aplicar, Wendy (o yo con su OK) aprieta "Sincronizar ahora" para llenar el catálogo hoy mismo.
+
+#### 3. `actions` en `meta_ads_insights_daily` y qué columnas de E2 se pueden calcular
+
+Tipos presentes (filas / total): `post_engagement`, `page_engagement`, `link_click` (998 / 116k), `onsite_conversion.messaging_conversation_started_7d` (888 / 6.188), `messaging_first_reply`, `total_messaging_connection`, `post_reaction`, `lead` (616 / 1.872), `offsite_search_add_meta_leads`, `offsite_complete_registration_add_meta_leads`, `onsite_conversion.lead_grouped` y `offsite_content_view_add_meta_leads` (613 / 1.860 cada una, **duplicados de `lead`**), `landing_page_view`, `omni_landing_page_view`, `video_view` (399 / 573k), `post_save`, `like`, `comment`, `offsite_conversion.fb_pixel_lead` (12), `onsite_web_lead` (12), y algunas más menores. **No hay `purchase`, `schedule`, `submit_application` ni `view_content`.**
+
+Columnas propias con dato: `reach`, `link_clicks` y `outbound_clicks` en casi todas las filas; `video_p25`…`p100` y `thruplays` en unas 100 filas de anuncio; `video_avg_time_seconds` solo en 5; rankings en las 416 de anuncio; `purchases` y `purchase_value` en 0; `effective_status` en 0.
+
+| Columna E2 | ¿Se puede hoy? | Fuente |
+|---|---|---|
+| Alcance, Frecuencia, CPM, CPC | Sí (ya existen) | columnas |
+| Clics en el enlace, CTR del enlace, CPC del enlace | Sí | `link_clicks` |
+| Reproducciones de 3 s, costo, hook rate | Sí | `actions.video_view` |
+| ThruPlays, hold rate | Sí, con poco dato | `thruplays` |
+| Retención al 25/50/75/100 % | Sí, con poco dato | `video_pXX ÷ video_view` |
+| Tiempo promedio visto | Sí, casi sin dato (5 filas) | `video_avg_time_seconds`, promedio ponderado por `video_view` en el Total |
+| Vistas de contenido y costo | Calculable; hoy "—" | `view_content` / `omni_view_content` / `offsite_conversion.fb_pixel_view_content`. **No** `offsite_content_view_add_meta_leads`, que es un lead. |
+| Aplicaciones y costo | Calculable; hoy "—" | `submit_application` / `offsite_conversion.fb_pixel_submit_application` |
+| Agendas Meta y costo | Calculable; hoy "—" | regla `/schedule/i` (ya existe) |
+| Compras Meta, costo, valor, ROAS Meta | Calculable; hoy "—" | `purchases` / `purchase_value` (con la misma regla anti-duplicado que leads) |
+| Ranking de calidad, interacción y conversión | Sí (solo anuncio) | el valor del último día con dato; "—" en el Total |
+| Asistidas y costo; UF cash; UF ROAS; Costo por nuevo deal | Sí | `ads_crm_metrics_v2` |
+| Campaña, Conjunto, Estado, Publicación, Objetivo, # anuncios | Nombres sí, con los insights como respaldo. Estado, Publicación y Objetivo solo con catálogo. | catálogo + insights |
+
+No hace falta sumar campos a `FIELDS` de `lib/meta/insights.ts`: todo lo de E2 ya se pide. **Sugerencia para el PENDIENTE, no se construye:** una columna "Conversaciones iniciadas" (`messaging_conversation_started_7d`), que es la conversión principal de esta cuenta.
+
+#### 4. Punto de partida (14/10, sin tocar nada)
+
+| Comando | Resultado |
+|---|---|
+| `npx vitest run` | **874 archivos, 10.998 tests, todos en verde** (40 s) |
+| `npm run lint` | **0 errores, 36 avisos** (directivas `eslint-disable` sin usar) |
+| `npm run build` | **No se corrió en el modo plan**: regenera `public/embed/embed.js`, un archivo que se commitea. Va en el paso 1 de la ejecución. |
+| `scripts/verify-*.mjs` | **No se corrieron en el modo plan**: escriben en la base de producción, y Supabase está con incidente (pooler bloqueado y crons con "job startup timeout"). Van en el paso 1, de a uno, con el candado `/private/tmp/ssa-verify.lock`, cuando Supabase esté estable. |
+
+Flags a usar: `verify-rls --despues-de-00143`, `verify-roles --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212`, `verify-permissions-matrix --despues-de-00212`, `verify-workspace-isolation --despues-de-00143`, `verify-audit-visibility --despues-de-00168`, `verify-sales`, `verify-tasks` y el resto sin flags. Lo que ya falle se anota en "Punto de partida" y no puede empeorar. Lo que ya se sabe del PENDIENTE de atribución:
+- `verify-forms` y `verify-publishing` a veces fallan;
+- `verify-attribution` tiene un caso de datos (776 de 835).
+
+Migraciones: repo y base **coinciden en `00215`**. **La primera libre es la `00216`**; se confirma otra vez con `list_migrations` antes de escribir.
+
+#### 5. Lecturas que asumen contacto o persona (D1) y cómo queda cada una
+
+| Lugar | Hoy | Después |
+|---|---|---|
+| `engine.ts:135-150`, insert de sesión | `member_user_id` solo sin contacto; `inbound_webhook_id` si viene | Guarda además `source_type` y `source_id` desde `context.source`. Con contacto: `contact`. |
+| `engine.ts:35-60`, `findWaitingSession` | Exige contacto y canal | **Igual.** "Esperar respuesta" necesita contacto. |
+| `engine.ts:157-163, 326-332, 449-470`, eventos `flow_started`, `node_executed`, `flow_completed` | Usa `contactId`, que es null sin contacto | Igual con contacto. Sin contacto, se guardan con `metadata.source`. |
+| `nodes/delay.ts:20-54`, job `resume_flow` | Payload sin `inboundWebhookId` ni origen | Suma `source` e `inboundWebhookId` en el payload, solo como respaldo. |
+| `cron/jobs/route.ts:622-739`, `resume_flow` | `contactId` del payload; sin webhook; sin los ganchos `onStepSkipped` | Lee `contact_id`, `member_user_id`, `inbound_webhook_id` y el origen **de la sesión** (el payload solo como respaldo); vuelve a enganchar los ganchos; al terminar o fallar una sesión de webhook actualiza el envío (C3). |
+| `nodes/go-to-flow.ts:29-52` | Hereda contacto, persona y webhook | Hereda también el origen. Un destino sin contacto funciona desde cualquier flujo. Uno que necesita contacto y no lo tiene se saltea y queda anotado (como hoy). |
+| `lib/flow-engine/automation-events.ts:35-46, 187-271` | Rama contacto / persona; un evento de contacto sin contacto lanza | La rama de contacto **no cambia**. Sin contacto, rama por `source_type`: `member` (la de hoy) o `system`/`task` (la nueva genérica). `switch` explícito, sin `else`. |
+| `app/api/cron/automation-events/route.ts:38-73` | Lee `contact_id` y `member_user_id` | Lee además `source_type` y `source_id`. |
+| `registry.ts:213-230`, `eventSubject` y `eventAllowsNoContact` | Solo devuelven `contact` o `member` | Suman `system`; cada disparador declara `sourceType`. |
+| `lib/inbound.ts:583-603` y `lib/agent/runner.ts:252,891`, reanudar al recibir un mensaje | Por contacto y canal | **Igual** (solo aplica con contacto). |
+| `lib/contacts/history.ts` y la ficha | `analytics_events` por `contact_id` | **Igual**: una sesión sin contacto no aparece en ninguna ficha, y está bien. |
+| `lib/flow-engine/simulator.ts:323-331` | Supone contacto | Modela el salteo de los pasos `needsContact` cuando el sujeto no es `contact`, con el mismo `contact-requirement`. |
+| `contact-requirement.ts`, `member-flow.ts` y `contact-free.ts` (validador del editor) | Sujetos `webhook` y `member` | Suman `system`; `goToFlow` a un destino `system` no pide contacto; D3 y D4 entran a la lista de pasos que no necesitan contacto. |
+| `lib/webhooks/sweep.ts:32` | Borra las sesiones de webhook sin contacto ni persona antes de borrar los envíos (por el CHECK) | Igual (sigue haciendo falta). |
+| `lib/contacts/merge.ts`, `lib/tasks/automation/emit.ts`, `tasks-due-sweep.ts` y `submit_eod_report` (SQL) | Por contacto o persona | El trigger de la base completa el origen solo; los que emiten código nuevo lo pasan explícito. |
+| Scripts `verify-inbound-webhooks`, `verify-webhook`, `verify-eod` y `verify-tasks` | Insertan sesiones y eventos | Siguen pasando: el CHECK nuevo acepta todo lo que acepta el viejo. |
+
+---
+
+#### 6. Plan por bloque (orden de ejecución)
+
+**Paso 0 (pedido por Wendy):**
+1. En `docs/PROGRESS-atribucion.md`, nueva sección `## Correcciones (Tirón 2)` antes de `## Punto de partida`, con este plan, los bloques A–E como checklist, "Punto de partida" y "Migraciones" con números reales.
+2. Commit `docs: plan de correcciones del Extra L` y push.
+3. **FRENO y espero el `/goal`.**
+
+**Paso 1:** `npm run build` y cada `verify-*` de a uno, para fijar el punto de partida.
+
+**Paso 2:** tests de caracterización ANTES de tocar nada:
+- el motor y el cron con contacto: `resume_flow`, `goToFlow`, `delay`;
+- EOD sin contacto;
+- el webhook actual: recepción, `run-flows` y reproceso;
+- la tabla Meta vs CRM actual: `buildCrmRows`, `totalRow` y el CSV;
+- el detalle de una pieza sin anuncio.
+
+Commits por tramo, en este orden (cada uno con `npx vitest run` en verde y PROGRESS marcado):
+- `fix: atribucion - bloque D (origen de las automatizaciones)` (D1–D2)
+- `bloque C`
+- `bloque E (catalogo)` (E1)
+- `bloque B`
+- `bloque E (columnas)` (E2–E4)
+- `bloque A`
+- `bloque D (envios sin contacto)` (D3–D5)
+
+##### D1–D2 · El origen de cada automatización (primero)
+- **Migración `00218_automation_source`** (aditiva). Cada paso:
+  - `source_type text` y `source_id text` en `flow_sessions` y `automation_events`.
+  - CHECK de valores: `contact|member|webhook|task|form|booking|sale|call|system`.
+  - Backfill: `inbound_webhook_id` da `webhook`, `member_user_id` da `member`, `contact_id` da `contact`.
+  - Trigger `BEFORE INSERT` que completa el origen si viene vacío, para que el código viejo siga andando mientras se despliega.
+  - CHECK nuevo, que es un **superconjunto** del viejo: lo viejo `OR source_type IS NOT NULL`. Se crea con `NOT VALID` y se hace `VALIDATE`.
+  - Se borra el CHECK viejo.
+  - La cabecera lleva las dos definiciones viejas, letra por letra. `member_user_id` e `inbound_webhook_id` quedan.
+- **Registro** (`registry/types.ts`):
+  - `subject` admite `system`.
+  - Cada disparador declara `sourceType`.
+  - `consistency.test.ts` exige que todos lo declaren.
+  - `registry-characterization` y `triggers-characterization` se actualizan solo con lo nuevo.
+- **Motor y cron**:
+  - `context.source` en `ExecutionContext`.
+  - Insert de sesión, `delay.ts`, `go-to-flow.ts`, `resume_flow` (lee de la sesión) y `automation-events.ts` (rama `system`).
+- **Test pedido:** webhook sin contacto → Esperar → Ir a otro flujo → el destino arranca y corre sus pasos sin contacto.
+- **Test de caracterización:** los flujos con contacto dan exactamente el mismo resultado.
+- **D2:** en `docs/flow-registry.md`, una tabla con cada paso, si necesita contacto y por qué. Los pasos de agenda y ventas (`cancel_booking`, `set_booking_status`, `mark_payment_paid`, `reschedule_payment`, `set_sale_status`) se verifican: hoy dicen `needsContact:true`, pero lo que necesitan es la agenda o la venta del disparador. Se ajusta el **mensaje** del validador para que lo diga ("necesita la reunión del disparador"), sin aflojar la regla.
+
+##### C · Webhooks
+- **C1:** `occurredAt = received_at` en `lib/webhooks/upsert-contact.ts:304`. Test: un reproceso viejo conserva su fecha.
+- **C2, recepción. Migración `00216_inbound_receive_lock`:**
+  - `public.receive_inbound_webhook(...)`, SECURITY INVOKER (la llama el cliente de servicio), `SET search_path=''`, `EXECUTE` solo para `service_role`.
+  - Hace `pg_advisory_xact_lock(hashtextextended(endpoint_id || coalesce(external_event_id, body_hash), 0))`, verifica (el id propio o el mismo cuerpo en 10 min), inserta como `received` o `ignored` y devuelve `{id, status, duplicate}`.
+  - `server-ports.ts` la usa en lugar de SELECT + INSERT. El orden de validaciones de `receive.ts` no cambia.
+  - Test en `verify-inbound-webhooks.mjs`: dos inserciones en paralelo dan una `received` y una `ignored`.
+- **C2, reproceso:**
+  - Clave nueva: `webhook:<inbound>:<flow>`, sin el contador.
+  - **Migración `00217_webhook_fire_keys`:** inserta la clave nueva por cada clave vieja (`ON CONFLICT DO NOTHING`), para que lo que ya corrió no vuelva a correr al desplegar.
+  - Si un flujo falla, se libera su clave.
+  - `reprocessInbound(..., {rerunCompleted})`: con la casilla, borra antes las claves de ese envío y lo audita con `logAudit`, con quién lo pidió y `rerun_completed: true`.
+  - UI: casilla "Volver a correr también los flujos que ya corrieron", apagada por defecto, con la advertencia "puede mandar mensajes repetidos", en `inbound-drawer.tsx` y en el reproceso masivo de `endpoint-detail.tsx`.
+  - Tests:
+    - reprocesar dos veces corre el flujo una sola vez;
+    - con la casilla vuelve a correr y queda auditado;
+    - dos procesamientos simultáneos del mismo envío corren el flujo una vez (el `processInbound` ya toma el envío de forma condicional, y la clave única lo cierra).
+- **C2, "una sola vez por contacto":**
+  - Opción `oncePerContact` en `WebhookTriggerPanel`, apagada por defecto.
+  - Como el contacto recién se conoce en "Crear o actualizar contacto", ahí se toma `trigger_fires(trigger, 'webhook-contact:<flow>:<contact>')`. Si ya existía, la sesión termina anotada como "ya pasó por este flujo". Sin migración.
+  - Si el flujo tiene un paso que manda un mensaje, el panel muestra una sugerencia corta.
+- **C3:**
+  - El update de `flow_sessions` en `nodes/upsert-contact.ts` lanza si falla.
+  - `run-flows` ya lo convierte en `error` con el motivo.
+  - Nuevo `lib/webhooks/session-result.ts`: al terminar o fallar una sesión de webhook reanudada, recalcula `inbound_webhooks.result` y `status`.
+  - Test.
+- **C4:** en `lib/webhooks/retention.ts`, una función pura `stripWebhookCopies(variables)`.
+  - `sweep.ts` vacía `variables.webhook.payload` y `.query` de las sesiones terminadas hace más de 90 días, y el `payload.variables.webhook` de los jobs `resume_flow` terminados de esa antigüedad.
+  - Sin migración. Test de la función pura y del barrido con datos simulados.
+
+##### E1 · Catálogo (ver el punto 2)
+- Arreglos 1 a 4 del punto 2.
+- **Respaldo cuando falta una fila del catálogo:** función pura `resolveRowInfo(catalog, insights)` en `lib/dashboards/ads-crm.ts`.
+  - Nombre y padre salen de `object_name` y `parent_name`.
+  - La campaña y el conjunto salen de los insights de esos niveles, usando `campaign_id` y `adset_id`.
+  - Sin estado, "Sin estado".
+  - Tests: con catálogo, sin catálogo y mezclado.
+- **Aviso** "Ningún contacto de este período trae datos de anuncio…": aparece cuando hay gasto en el período y 0 toques vinculados. Enlaza a `docs/atribucion.md#guia-parametros-de-url-para-los-anuncios`.
+- **Leads Meta (decisión 1):**
+  - `countLeads` y `countPurchases` en `lib/meta/insights.ts` cuentan solo el canónico: `lead`; si no está, `onsite_conversion.lead_grouped`; si no, `offsite_conversion.fb_pixel_lead`. Para compras: `omni_purchase`, si no `purchase`.
+  - Los casos van en `lib/meta/action-counts.cases.json`, compartidos con la gemela SQL.
+  - Se corrige el test que hoy espera la suma de duplicados (`insights.test.ts:30-35`).
+  - **Migración `00220_meta_leads_recount`:** antes, un respaldo en `docs/atribucion/respaldo-leads-meta.json` (id, `leads`, `purchases`). Después, un `UPDATE` con la misma regla desde `actions`.
+  - **Se aplica DESPUÉS de desplegar el código**: si no, el próximo sync con el código viejo vuelve a escribir los días recientes inflados. Queda escrita y ensayada, sin aplicar, anotada en el PENDIENTE.
+
+##### B · Tabla Meta vs CRM
+- **Migración `00219_ads_crm_metrics_v2`** (aditiva; la v1 queda para volver atrás):
+  - `ads_crm_metrics_v2(...)`, SECURITY INVOKER y STABLE, con los mismos filtros.
+  - Suma `is_total boolean`: una fila extra con `leads_total = count(DISTINCT contact_id)` de todo el período y filtro, en la misma consulta.
+  - Suma `uf_cash_cents`: el primer pago `paid` positivo de cada venta, por `paid_at`.
+  - Los objetos de la cuenta salen del catálogo más los insights (punto 1, fila 22).
+- **Función hermana `ads_crm_cell_detail(p_level, p_object_id | null=Total, p_metric 'leads_new'|'leads_total'|'bookings'|'sales', fechas, cuenta, workspace, p_limit=50, p_offset)`:**
+  - INVOKER, misma lógica de filtros.
+  - Devuelve id, nombre, fecha del toque, origen, fecha de la reunión o monto, y `total_count`.
+  - **Test en `verify-ads-attribution`:** `total_count` es igual al número de la celda, para cada métrica y el Total.
+- **B1:** columnas "Leads nuevos" (`leads_first`), "Leads totales", "CPL nuevo" y "CPL total", cada una con su tooltip.
+  - Reemplazan a Leads CRM, Leads 1er toque, Leads totales y CPL real.
+  - Las cuentas van en `lib/dashboards/ads-crm.ts`.
+  - Tarjeta nueva en la fila de KPIs del dashboard de Ads: "Leads CRM: N nuevos · M totales", con "CPL USD X nuevo · USD Y total".
+- **B2:**
+  - `components/dashboards/ads/crm-cell-panel.tsx` sobre `Sheet`: vacío, cargando y error; en el celular, pantalla completa.
+  - Server action `loadCrmCell`, con el cliente del usuario. Los datos se piden solo al abrir el panel.
+  - Lo que se muestra va en `lib/dashboards/ads-crm-detail.ts` (puro): los enlaces a la ficha, la agenda y la venta.
+- **B3:**
+  - Fila Total: Leads nuevos y agendas/ventas por suma; Leads totales desde la fila `is_total`.
+  - CPL total y Lead→Agenda calculados sobre esos totales.
+  - Test: 1 contacto, 2 anuncios y gasto 100 dan Total de Leads totales = 1 y CPL total = 100.
+  - Nota al pie nueva (movida a `lib`).
+- **B4:**
+  - `EXPLAIN ANALYZE` sobre los datos reales (se anota, aunque hoy no dice nada) y sobre los 10.000 toques sintéticos.
+  - Si el costo extra pasa los 300 ms o duplica la consulta actual: suma simple con el tooltip "puede contar dos veces a quien tocó varios anuncios".
+  - Se anota en el PENDIENTE.
+
+##### E2–E4 · Columnas y selector
+- **Catálogo** (`ads-crm-columns.ts`): grupos `info`, `meta` (con subgrupos Entrega, Clics, Video, Conversiones, Calidad), `metaVsCrm` y `crm`.
+  - Cada columna lleva su tooltip y una lista de niveles donde aplica (`levels`): la miniatura solo en anuncio, Objetivo solo en campaña, Calidad solo en anuncio, # anuncios en campaña y conjunto.
+  - Las columnas de E2 van ocultas.
+  - El default es el de E3.
+  - Las duplicadas se unifican (decisión 4).
+  - Las cuentas van en `lib/dashboards/ads-crm.ts` y en `lib/dashboards/ads-meta-metrics.ts` (nuevo, puro).
+  - El Total recalcula los cocientes desde los totales. Alcance y frecuencia van en "—" con su tooltip.
+- **Carga:** `ads-crm-load.ts` agrega los campos de video, link y rankings desde `ads-load.ts` (ya los selecciona). El catálogo suma `objective`, `instagram_media_id` y `object_story_id`.
+- **Preferencias** (`ads-columns.ts`):
+  - `DEFAULT_VERSION` y el mapa `REPLACED_COLUMNS`: `cplReal` pasa a `cplNew` y `cplTotal`; `leadsCrm` y `leadsFirst` pasan a `leadsTotal` y `leadsNew`; `bookingsCrm` pasa a `bookings`; `cac` y `costPerClose` pasan a `costPerNewDeal`.
+  - Quien nunca tocó nada ve el default nuevo.
+  - Quien eligió sus columnas conserva su elección; las nuevas le aparecen ocultas y las viejas se reemplazan.
+  - Test de las tres situaciones.
+- **Selector** (`columns-menu.tsx`): buscador arriba, subtítulos dentro de Meta y "Restablecer" al default de E3.
+  - Las flechas se quedan.
+  - Arrastrar para reordenar con HTML5 drag and drop nativo, sin dependencias; las flechas siguen andando con teclado.
+  - La lógica del filtro de búsqueda y del orden es pura y tiene test.
+- **CSV:** visibles y en orden (ya lo hace); se suman las nuevas.
+
+##### A · Anuncios y contenido
+- **A1:**
+  - En el `after()` de `app/api/webhooks/late/route.ts`, si un mensaje de Instagram no trae una referral usable, se encola el job `zernio_ad_origin` con clave `zernio-ad-origin:<conversationId>` (una vez por conversación). Hay que verificar si la clave de `scheduled_jobs` es permanente. Si no lo es, se suma la marca en la conversación sin migración: `conversations` ya tiene un jsonb de metadatos (a verificar; si no, va en la 00221).
+  - El handler llama a `getInboxConversation`. Si trae `meta_ad_id`, hace merge en `messages.origin_context` del primer mensaje entrante y llama a la **migración `00221_touch_ad_origin`**.
+  - `public.enrich_touch_ad_origin(p_workspace_id, p_dedupe_key, p_ad_id, p_title, p_post_id)`, `service_role`, SECURITY DEFINER con `search_path=''`:
+    - completa el anuncio en el toque solo si no tenía uno y no es `manual` ni `ignored`;
+    - resuelve el vínculo con `resolve_meta_match`;
+    - recalcula con `private.refresh_contact_attribution`.
+  - Nunca lanza. Si Zernio no trae nada, no hace nada. Zernio simulado en los tests, inyectado como en `inbox-sync.test.ts`.
+- **A2:**
+  - Acciones en `lib/actions/content-ad-link.ts`: `linkAdToPiece`, `unlinkAd`, `searchPiecesForAd` y `searchAdsForPiece`.
+    - Piden `content.create` + `dashboards.ads.view` y escriben con el cliente de servicio filtrando por el workspace de la sesión.
+    - Desvincular vacía los ids y pone `content_link_manual=false`.
+    - Todo queda en `logAudit` (se suma `meta_ad` a `AuditEntityType`).
+  - Menú "⋯" (`PopoverMenu`) en `ads-detail-view.tsx`, solo en el nivel anuncio, y en el encabezado de `piece-drawer.tsx`. El buscador va en un `Sheet` con título, fecha y miniatura.
+  - Sección "Publicidad" (`components/content/drawer/piece-ads-section.tsx`):
+    - aparece solo con al menos un anuncio vinculado;
+    - los números salen de `ads_crm_metrics_v2` (nivel anuncio) más el gasto, las impresiones y los clics de los insights;
+    - la lógica va en `lib/meta/content-ad-summary.ts` (puro; tests con 0, 1 y varios anuncios);
+    - test: sin anuncio, el detalle queda idéntico.
+  - Lista de Contenido: indicador "Pautada" y filtro `?pautada=si|no` en `lib/content/filters.ts`.
+- `lib/meta/content-link.ts` no cambia.
+
+##### D3–D5 · Envíos sin contacto
+- **D3: paso NUEVO "Enviar WhatsApp a un número"** (`send_whatsapp_number`, `needsContact:false`). Se elige un paso aparte, y no una opción adentro de "Enviar mensaje", porque deja `sendMessage` intacto, con riesgo cero para los flujos que ya existen.
+  - Destino: un número fijo (normalizado con `normalizePhone` de `lib/phone.ts`) o una variable.
+  - Canal: el editor obliga a elegir uno de WhatsApp; si no hay, muestra "Conectá un WhatsApp en Canales para usar este paso".
+  - Texto con variables y archivo opcional.
+  - `findContact` (modo `find_only`):
+    - número de un contacto con "No contactar": no se manda y queda anotado;
+    - número de un contacto con conversación en ese canal: el mensaje se guarda ahí;
+    - número sin contacto (o contacto sin conversación en ese canal): se manda igual y queda en el historial del flujo, con número, texto y resultado, sin crear nada.
+  - Se manda con el cliente de Evolution (`lib/evolution-message.ts`), con el tope `claim_automated_send` de 200 por hora.
+  - "Nunca dos veces": **migración `00222_flow_send_claims`**, una tabla chica `(session_id, node_id, target)` con unique, RLS activada y sin policies (solo el servidor).
+  - Tests con Evolution simulado: número fijo, variable vacía, número de un contacto con "No contactar", número desconocido, sin canal y tope por hora.
+- **D4:** `send_email` suma `to: "variable"` con `toVariable`.
+  - Se valida en ejecución; si la dirección no es válida, se saltea con el motivo.
+  - Si la dirección es de un contacto con "No contactar", no se manda.
+  - Con ese destino, `needsContact` sigue en false.
+  - Se suma al editor.
+- **D5:** en el PUT de `flows/[flowId]`, si el flujo está publicado se valida con `edges` y `{publishing:true}`. Si no pasa, 422 con el motivo. Test.
+
+#### 7. Migraciones (números reales, a confirmar con `list_migrations`)
+
+| # | Qué | Cuándo se aplica | Cómo volver atrás |
+|---|---|---|---|
+| 00216 | `receive_inbound_webhook` con lock | Antes del deploy (aditiva) | `DROP FUNCTION` |
+| 00217 | Claves nuevas de `trigger_fires` para webhooks | Antes (solo inserta) | `DELETE` de las claves sin `:n` |
+| 00218 | `source_type`/`source_id`, trigger, backfill, CHECK superconjunto | Antes (el código viejo sigue andando) | Recrear los CHECK viejos de la cabecera, `DROP TRIGGER`, `DROP COLUMN` |
+| 00219 | `ads_crm_metrics_v2` + `ads_crm_cell_detail` | Antes | `DROP FUNCTION` (la v1 queda) |
+| 00220 | Recalcular `leads`/`purchases` de Meta | **Después del deploy**, con respaldo | `UPDATE` desde `respaldo-leads-meta.json` |
+| 00221 | `enrich_touch_ad_origin` | Antes | `DROP FUNCTION` |
+| 00222 | `flow_send_claims` | Antes | `DROP TABLE` |
+
+Para todas:
+- Idempotentes, con "Cómo volver atrás" en la cabecera.
+- Se aplican con `supabase db query --linked -f` y se registran en `schema_migrations`.
+- Después, `node scripts/build-all-migrations.mjs`.
+- `verify-*` con las huellas de `record_contact_touch`, `find_or_link_contact`, `find_contact_for_form`, `submit_form_response`, `create_booking` y `find_or_create_contact` iguales a las del Tirón 1.
+- Si una verificación falla: PARO y lo anoto en `docs/PENDIENTE-atribucion.md`.
+
+#### 8. Riesgos
+
+- **Cambiar el CHECK de tablas en producción (00218):** se mitiga porque el CHECK nuevo es un superconjunto del viejo, el trigger completa el origen, se crea con `NOT VALID` + `VALIDATE`, y hay caracterización del motor antes de tocar.
+- **Clave de webhooks:** sin la 00217, un reproceso después del deploy correría de nuevo lo que ya corrió.
+- **Recalcular leads (00220):** cambia números que la gente ya vio; los nuevos son los correctos. Tiene respaldo y se aplica después del deploy.
+- **Supabase inestable hoy:** los `verify-*` y las migraciones esperan a que esté estable. Si el pooler sigue bloqueado, PARO y aviso.
+- **Revisión visual:** necesita sesión en el navegador integrado. Si pide login, lo anoto y no escribo credenciales.
+
+#### 9. Verificación
+
+- `npx vitest run` después de cada requisito.
+- `npm run build` y `npm run lint` al cerrar cada bloque.
+- `verify-inbound-webhooks` (lock, reproceso, una vez por contacto), `verify-ads-attribution` (v2, detalle = celda, medición B4, huellas), `verify-eod`, `verify-tasks`, `verify-forms`, `verify-sales`, `verify-rls`, `verify-roles` y `verify-permissions-matrix`, de a uno y con candado.
+- **Revisión visual** a 1440 y 390 px, en tema claro y oscuro:
+  - la tabla con los dos CPL, el panel y el detalle;
+  - las columnas por defecto, el selector con buscador y una columna nueva;
+  - el dashboard de Ads;
+  - la pieza con y sin anuncio;
+  - los menús "⋯";
+  - el reproceso con la casilla;
+  - el paso de WhatsApp;
+  - "Enviar email" con variable.
+- **Cierre:**
+  - actualizar `docs/webhooks.md`, `docs/atribucion.md` (con la lista de columnas), `docs/flow-registry.md` (tabla D2) y `docs/PENDIENTE-atribucion.md` (tachar lo resuelto);
+  - en el `CLAUDE.md`: la regla de origen, "un envío nunca dispara dos veces el mismo flujo" y la próxima migración libre (00223);
+  - `gh pr create` sin mergear.
+
 ## Punto de partida
 Medido el 12/10/2026, antes de tocar nada. Base: proyecto `knrxjnmxnmjavivyuwew`, última migración
 aplicada y registrada **00185** (`00185_eod_reminder_cron`); archivos locales hasta la 00185; **primera libre: 00186**.

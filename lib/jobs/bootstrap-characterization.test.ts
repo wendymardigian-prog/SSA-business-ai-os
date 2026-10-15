@@ -54,6 +54,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       // Tareas (Extra A, F18): el barrido de vencimientos.
       "tasks_due_sweep",
       "transcribe_audio",
+      // Atribucion (Extra L, Tiron 2, A1): el anuncio de origen de una conversacion de Instagram, desde Zernio.
+      "zernio_ad_origin",
     ]);
   });
 

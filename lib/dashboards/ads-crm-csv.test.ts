@@ -25,24 +25,47 @@ describe("toCsv", () => {
       { level: "ad", objectId: "a1", objectName: "Video, testimonio", parentName: null, campaignId: null, adsetId: null, date: "2026-10-01", spend: 100, impressions: 1000, reach: 500, clicks: 20, outboundClicks: null, linkClicks: null, leads: 4, purchases: null, purchaseValue: null, status: null, effectiveStatus: null, qualityRanking: null, engagementRanking: null, conversionRanking: null, videoP25: null, videoP50: null, videoP75: null, videoP95: null, videoP100: null, thruplays: null, videoAvgTimeSeconds: null, actions: {}, updatedAt: null },
     ],
     level: "ad",
-    metrics: [{ objectId: "a1", leadsFirst: 1, leadsTotal: 5, leadsWithBooking: 2, bookings: 2, bookingsAttended: 1, sales: 0, revenueCents: 0, cashCents: 0 }],
+    metrics: [{ objectId: "a1", leadsNew: 1, leadsTotal: 5, leadsWithBooking: 2, bookings: 2, bookingsAttended: 1, sales: 0, revenueCents: 0, cashCents: 0, ufCashCents: 0 }],
     catalog: { a1: { name: "Video, testimonio", effectiveStatus: "ACTIVE" } },
   });
 
   it("lleva las columnas visibles en orden, una fila por objeto y el total", () => {
-    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("spend"), col("leadsCrm"), col("cplReal"), col("roas")], rows, total: totalRow(rows) });
+    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("spend"), col("leadsTotal"), col("cplTotal"), col("roas")], rows, total: totalRow(rows) });
     const lines = csv.replace("﻿", "").trim().split("\r\n");
-    expect(lines[0]).toBe("Anuncio,Estado,Gasto,Leads CRM,CPL real,ROAS");
-    expect(lines[1]).toBe('"Video, testimonio",ACTIVE,100,5,20,0');
-    expect(lines[2]).toBe("Total,,100,5,20,0");
+    expect(lines[0]).toBe("Anuncio,Gasto,Leads totales,CPL total,ROAS");
+    expect(lines[1]).toBe('"Video, testimonio",100,5,20,0');
+    expect(lines[2]).toBe("Total,100,5,20,0");
     expect(csv.startsWith("﻿")).toBe(true);
   });
 
+  it("exporta EN EL ORDEN ELEGIDO, no el del catalogo", () => {
+    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("roas"), col("spend")], rows, total: totalRow(rows) });
+    expect(csv.replace("﻿", "").split("\r\n")[0]).toBe("Anuncio,ROAS,Gasto");
+  });
+
+  it("«Estado» ya no es una columna fija: sale solo si esta entre las visibles", () => {
+    const sin = toCsv({ firstColumnLabel: "Anuncio", columns: [col("spend")], rows, total: totalRow(rows) });
+    expect(sin.replace("﻿", "").split("\r\n")[0]).toBe("Anuncio,Gasto");
+    const con = toCsv({ firstColumnLabel: "Anuncio", columns: [col("status"), col("spend")], rows, total: totalRow(rows) });
+    const lines = con.replace("﻿", "").trim().split("\r\n");
+    expect(lines[0]).toBe("Anuncio,Estado,Gasto");
+    expect(lines[1]).toBe('"Video, testimonio",Activo,100');
+    // El total no tiene estado.
+    expect(lines[2]).toBe("Total,Sin estado,100");
+  });
+
   it("lo que no se puede calcular va vacio (no 0)", () => {
-    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("cac"), col("costPerBooking")], rows, total: totalRow(rows) });
+    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("costPerNewDeal"), col("costPerBooking")], rows, total: totalRow(rows) });
     const lines = csv.replace("﻿", "").trim().split("\r\n");
-    // 0 ventas: CAC vacio; 2 agendas: costo por agenda 50.
-    expect(lines[1]).toBe('"Video, testimonio",ACTIVE,,50');
+    // 0 ventas: costo por nuevo deal vacio; 2 agendas: costo por agenda 50.
+    expect(lines[1]).toBe('"Video, testimonio",,50');
+  });
+
+  it("las columnas nuevas: video y conversiones salen vacias si Meta no las manda, y los textos como texto", () => {
+    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("hookRate"), col("applications"), col("qualityRanking"), col("campaignName")], rows, total: totalRow(rows) });
+    const lines = csv.replace("﻿", "").trim().split("\r\n");
+    expect(lines[0]).toBe("Anuncio,Hook rate,Aplicaciones,Ranking de calidad,Campaña");
+    expect(lines[1]).toBe('"Video, testimonio",,,,');
   });
 });
 

@@ -523,6 +523,206 @@ try {
     check(jan1["a-X"]?.leads_total === 1, "las fechas son del workspace: un toque de las 03:00 UTC del 2/1 cae el 1/1 en Costa Rica", JSON.stringify(jan1));
     check(jan2["a-X"] === undefined, "y NO cae el 2/1");
     await svc.from("workspaces").update({ timezone: "UTC" }).eq("id", wsC.id);
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Tiron 2, B (00219): ads_crm_items, ads_crm_metrics_v2 y ads_crm_cell_detail
+    // ══════════════════════════════════════════════════════════════════════════
+    console.log("\n— Tiron 2, B: ads_crm_metrics_v2 = la vieja, mas lo nuevo —");
+    {
+      const since = dateOf(5);
+      const until = dateOf(-1);
+      const v2 = async (client, level, account = null, objectIds = null) => {
+        const { data, error } = await client.rpc("ads_crm_metrics_v2", { p_level: level, p_since: since, p_until: until, p_ad_account_id: account, p_workspace_id: wsC.id, p_object_ids: objectIds });
+        if (error) throw new Error(`ads_crm_metrics_v2(${level}): ${error.message}`);
+        const rows = data ?? [];
+        return { byObject: Object.fromEntries(rows.filter((r) => !r.is_total).map((r) => [r.object_id, r])), total: rows.find((r) => r.is_total) ?? null, raw: rows };
+      };
+
+      // Un pago extra para probar el PRIMER pago: la venta de k2 sobre el anuncio X cobra 40 hace dos dias y 60 hoy.
+      const { data: tXrow } = await svc.from("contact_touches").select("id").eq("contact_id", k2).eq("meta_ad_id", "a-X").limit(1).single();
+      const sX = await mkSale(tXrow.id, "paid", 100, { contact_id: k2 });
+      await svc.from("payments").insert([
+        { workspace_id: wsC.id, sale_id: sX.data.id, type: "installment", amount: 60, status: "paid", paid_at: new Date().toISOString(), paid_on: dateOf(0) },
+        { workspace_id: wsC.id, sale_id: sX.data.id, type: "installment", amount: 40, status: "paid", paid_at: ago(2), paid_on: dateOf(2) },
+      ]);
+
+      // 1. Los numeros que ya existian son EXACTAMENTE los de la funcion vieja (en los tres niveles, con y sin cuenta).
+      for (const level of ["ad", "adset", "campaign"]) {
+        for (const account of [null, ACC]) {
+          const old = await metrics(adminC.client, level, since, until, account);
+          const nuevo = await v2(adminC.client, level, account);
+          const fields = ["leads_first", "leads_total", "leads_with_booking", "bookings", "bookings_attended", "sales", "revenue_cents", "cash_cents"];
+          const same = Object.keys(old).sort().join() === Object.keys(nuevo.byObject).sort().join()
+            && Object.keys(old).every((id) => fields.every((f) => Number(old[id][f]) === Number(nuevo.byObject[id][f])));
+          check(same, `v2 = la vieja en ${level}${account ? " (con cuenta)" : ""}: mismas filas y mismos numeros`, JSON.stringify({ old: Object.keys(old), nuevo: Object.keys(nuevo.byObject) }));
+        }
+      }
+
+      // 2. La fila de total cuenta PERSONAS DISTINTAS.
+      const adV2 = await v2(adminC.client, "ad", ACC);
+      check(adV2.raw.filter((r) => r.is_total).length === 1 && adV2.total.object_id === null, "hay UNA fila de total (is_total) y su object_id es NULL");
+      const sumTotal = Object.values(adV2.byObject).reduce((a, r) => a + r.leads_total, 0);
+      check(sumTotal === 3 && adV2.total.leads_total === 2, "k1 toco A y B, k2 toco X: la suma de las filas da 3 pero el total son 2 PERSONAS", JSON.stringify({ sumTotal, total: adV2.total.leads_total }));
+      const sumBookers = Object.values(adV2.byObject).reduce((a, r) => a + r.leads_with_booking, 0);
+      check(sumBookers === 2 && adV2.total.leads_with_booking === 1, "las agendas de A y B son del mismo contacto: la suma da 2 y el total 1 persona con agenda", JSON.stringify({ sumBookers, total: adV2.total.leads_with_booking }));
+      const sumNew = Object.values(adV2.byObject).reduce((a, r) => a + r.leads_first, 0);
+      check(sumNew === 3, "los leads nuevos SI se suman (cada persona tiene un solo primer toque): A 1 + X 2 (k2 y k3) = 3", String(sumNew));
+      const campV2 = await v2(adminC.client, "campaign", ACC);
+      check(campV2.total.leads_total === 2 && Object.values(campV2.byObject).reduce((a, r) => a + r.leads_total, 0) === 2, "en campañas k1 es de una sola campaña: la suma y el distinto coinciden (2)");
+
+      // 3. El primer pago de cada venta (UF cash).
+      check(Number(adV2.byObject["a-X"]?.uf_cash_cents) === 4000, "uf_cash(X) = el PRIMER pago cobrado (40) y no la suma (100)", String(adV2.byObject["a-X"]?.uf_cash_cents));
+      check(Number(adV2.byObject["a-X"]?.cash_cents) === 10000, "y el cash de X sigue siendo la suma de lo cobrado (100)", String(adV2.byObject["a-X"]?.cash_cents));
+      check(Number(adV2.byObject["a-B"]?.uf_cash_cents) === 10050, "uf_cash(B) = 100,50: el reembolso (negativo) no es un primer pago", String(adV2.byObject["a-B"]?.uf_cash_cents));
+      check(Number(adV2.byObject["a-A"]?.uf_cash_cents) === 0, "un anuncio sin ventas tiene uf_cash 0");
+      const adAll = await v2(adminC.client, "ad", ACC, ["a-A"]);
+      check(Object.keys(adAll.byObject).join() === "a-A" && adAll.total.leads_total === 1, "p_object_ids restringe las filas y el total distinto a esos objetos", JSON.stringify(adAll.raw));
+
+      // 4. La lista de cada celda es EXACTAMENTE el numero (para cada metrica, cada objeto y el total).
+      const detail = async (client, level, metric, objectId = null, objectIds = null, limit = 200, offset = 0, account = ACC) => {
+        const { data, error } = await client.rpc("ads_crm_cell_detail", { p_level: level, p_metric: metric, p_since: since, p_until: until, p_ad_account_id: account, p_workspace_id: wsC.id, p_object_id: objectId, p_object_ids: objectIds, p_limit: limit, p_offset: offset });
+        if (error) throw new Error(`ads_crm_cell_detail(${metric}): ${error.message}`);
+        return data ?? [];
+      };
+      const field = { leads_new: "leads_first", leads_total: "leads_total", bookings: "bookings", sales: "sales" };
+      let cellsChecked = 0;
+      for (const level of ["ad", "adset", "campaign"]) {
+        const m = await v2(adminC.client, level, ACC);
+        for (const metric of Object.keys(field)) {
+          for (const [id, row] of Object.entries(m.byObject)) {
+            const list = await detail(adminC.client, level, metric, id);
+            const total = list.length ? Number(list[0].total_count) : 0;
+            if (list.length !== Number(row[field[metric]]) || total !== Number(row[field[metric]])) fail(`la lista de ${metric} de ${level}:${id} no coincide con su numero`, `lista ${list.length}, total_count ${total}, numero ${row[field[metric]]}`);
+            cellsChecked++;
+          }
+          // La fila de TOTAL: personas distintas para leads_total; la suma para lo demas.
+          const list = await detail(adminC.client, level, metric, null);
+          const expected = metric === "leads_total" ? m.total.leads_total : Object.values(m.byObject).reduce((a, r) => a + Number(r[field[metric]]), 0);
+          if (list.length !== expected) fail(`la lista del TOTAL de ${metric} (${level}) no coincide`, `lista ${list.length}, esperado ${expected}`);
+          cellsChecked++;
+        }
+      }
+      ok(`la lista de cada celda coincide con su numero (${cellsChecked} celdas: 4 metricas x los tres niveles, cada objeto y el total)`);
+
+      // 5. Lo que muestra cada item.
+      const leadList = await detail(adminC.client, "ad", "leads_total", "a-A");
+      check(leadList.length === 1 && leadList[0].contact_id === k1 && leadList[0].contact_name === "zz-test k1" && !!leadList[0].occurred_at && leadList[0].origin === "booking",
+        "un lead trae el contacto, su nombre, la fecha de su ultimo toque en el periodo y su origen", JSON.stringify(leadList));
+      const bookList = await detail(adminC.client, "ad", "bookings", "a-A");
+      check(bookList.length === 2 && bookList.every((r) => r.contact_id === k1 && !!r.detail_at && !!r.item_id), "una agenda trae su id, el contacto y la fecha de la reunion", JSON.stringify(bookList));
+      const saleList = await detail(adminC.client, "ad", "sales", "a-B");
+      check(saleList.length === 1 && Number(saleList[0].amount_cents) === 10050 && saleList[0].item_id === sPaid.data.id && !!saleList[0].detail_at, "una venta trae su id, el monto en centavos y la fecha", JSON.stringify(saleList));
+
+      // 6. Paginado: de a N, con el total de TODA la lista en cada fila.
+      const page1 = await detail(adminC.client, "ad", "leads_total", null, null, 1, 0);
+      const page2 = await detail(adminC.client, "ad", "leads_total", null, null, 1, 1);
+      const page3 = await detail(adminC.client, "ad", "leads_total", null, null, 1, 2);
+      check(page1.length === 1 && page2.length === 1 && page3.length === 0 && Number(page1[0].total_count) === 2 && Number(page2[0].total_count) === 2, "paginado: de a 1, el total es de toda la lista (2) y despues de la ultima pagina no hay nada", JSON.stringify([page1.length, page2.length, page3.length]));
+      check(page1[0].contact_id !== page2[0].contact_id, "las paginas no se repiten");
+      const capped = await detail(adminC.client, "ad", "leads_total", null, null, 99999, 0);
+      check(capped.length <= 200, "el limite se topa en 200");
+      const byIds = await detail(adminC.client, "ad", "leads_total", null, ["a-X"]);
+      check(byIds.length === 1 && byIds[0].contact_id === k2, "con p_object_ids (los objetos que se ven con un filtro de estado) la lista es solo de esos", JSON.stringify(byIds));
+
+      // 7. RLS (INVOKER): cada quien ve lo suyo.
+      // (Sin cuenta: el catalogo lo lee quien tiene `dashboards.ads.view`; un Member de sistema no, y la pantalla no es suya.)
+      const ownDetail = await detail(memberC.client, "ad", "leads_total", null, null, 200, 0, null);
+      check(ownDetail.length === 1 && ownDetail[0].contact_id === k1, "un Member con alcance `own` solo ve en el panel a sus contactos (k1), no a k2", JSON.stringify(ownDetail));
+      const ownMetrics = await v2(memberC.client, "ad", null);
+      check(ownMetrics.total?.leads_total === 1, "y su total son sus personas distintas (1)", JSON.stringify(ownMetrics.raw));
+      const outsiderDetail = await outsider.client.rpc("ads_crm_cell_detail", { p_level: "ad", p_metric: "leads_total", p_since: since, p_until: until, p_workspace_id: wsC.id });
+      check(!outsiderDetail.error && (outsiderDetail.data ?? []).length === 0, "quien es de otro workspace no recibe nada");
+      const anonDetail = await createClient(URL, ANON, { auth: { persistSession: false } }).rpc("ads_crm_cell_detail", { p_level: "ad", p_metric: "leads_total", p_since: since, p_until: until, p_workspace_id: wsC.id });
+      check(!!anonDetail.error, "sin sesion no se puede llamar al detalle");
+      const anonItems = await createClient(URL, ANON, { auth: { persistSession: false } }).rpc("ads_crm_items", { p_level: "ad", p_metric: "leads_total", p_since: since, p_until: until, p_workspace_id: wsC.id });
+      check(!!anonItems.error, "ni a ads_crm_items");
+      check(!!(await adminC.client.rpc("ads_crm_cell_detail", { p_level: "ad", p_metric: "uf_cash", p_since: since, p_until: until, p_workspace_id: wsC.id })).error, "una metrica que no es de las cuatro se rechaza en el detalle");
+      check(!!(await adminC.client.rpc("ads_crm_items", { p_level: "ad", p_metric: "inventada", p_since: since, p_until: until, p_workspace_id: wsC.id })).error, "y una inventada en ads_crm_items");
+      check(!!(await adminC.client.rpc("ads_crm_metrics_v2", { p_level: "otro", p_since: since, p_until: until, p_workspace_id: wsC.id })).error, "un nivel invalido se rechaza en v2");
+      check(!!(await adminC.client.rpc("ads_crm_metrics_v2", { p_level: "ad", p_since: until, p_until: since, p_workspace_id: wsC.id })).error, "un rango al reves se rechaza en v2");
+      const noWs2 = await adminC.client.rpc("ads_crm_metrics_v2", { p_level: "ad", p_since: since, p_until: until });
+      check(!noWs2.error && (noWs2.data ?? []).length === 0, "sin workspace v2 devuelve vacio");
+
+      // 8. Con el catalogo VACIO (todavia no sincronizo) la vieja descartaba todo el CRM; v2 usa tambien los insights de la cuenta.
+      const ACC2 = "act_zzc_vacio";
+      const kz = await mkC("kz");
+      const tZ = await touchC(kz, { ad_id: "a-Z", occurred_at: ago(2) });
+      // Sin catalogo no hay con que vincular por si solo (el trigger necesita el anuncio en `meta_ads`): se deja el vinculo hecho,
+      // que es el caso de una cuenta cuyo catalogo todavia no se sincronizo pero ya tiene toques vinculados a mano o de antes.
+      await svc.from("contact_touches").update({ meta_ad_id: "a-Z", meta_match_status: "manual" }).eq("id", tZ.data.touch_id);
+      await svc.from("meta_ads_insights_daily").insert({ workspace_id: wsC.id, ad_account_id: ACC2, level: "ad", object_id: "a-Z", object_name: "Anuncio Z", date: dateOf(2), spend: 25, impressions: 100 });
+      const viejoVacio = await metrics(adminC.client, "ad", since, until, ACC2);
+      const nuevoVacio = await v2(adminC.client, "ad", ACC2);
+      check(Object.keys(viejoVacio).length === 0, "la vieja, con una cuenta sin catalogo, no devuelve ningun objeto del CRM (el problema)");
+      check(Object.keys(nuevoVacio.byObject).join() === "a-Z" && nuevoVacio.byObject["a-Z"].leads_total === 1, "v2 toma los objetos de la cuenta tambien de los insights: devuelve a-Z con su lead", JSON.stringify(nuevoVacio.raw));
+      const detailVacio = await detail(adminC.client, "ad", "leads_total", "a-Z");
+      check(detailVacio.length === 0, "(el detalle se pide con la cuenta ACC; a-Z es de otra: no aparece)");
+      const { data: dz } = await adminC.client.rpc("ads_crm_cell_detail", { p_level: "ad", p_metric: "leads_total", p_since: since, p_until: until, p_ad_account_id: ACC2, p_workspace_id: wsC.id, p_object_id: "a-Z", p_limit: 50, p_offset: 0 });
+      check((dz ?? []).length === 1 && Number(dz[0].total_count) === 1, "y con SU cuenta el detalle de a-Z tiene su lead", JSON.stringify(dz));
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Tiron 2, A1 (00221): enrich_touch_ad_origin — el anuncio de origen recuperado de la conversacion de Zernio
+    // ══════════════════════════════════════════════════════════════════════════
+    console.log("\n— Tiron 2, A1: enrich_touch_ad_origin completa el toque de un mensaje —");
+    {
+      const enrich = (ws, key, ad, title = null, post = null) =>
+        svc.rpc("enrich_touch_ad_origin", { p_workspace_id: ws, p_dedupe_key: key, p_ad_id: ad, ...(title ? { p_title: title } : {}), ...(post ? { p_post_id: post } : {}) });
+      const dmTouch = (contactId, key) => touchC(contactId, { source: "instagram", medium: "dm", origin: "dm", dedupe_key: key, occurred_at: ago(1) });
+      const touchRow = async (key) => (await svc.from("contact_touches").select("*").eq("workspace_id", wsC.id).eq("dedupe_key", key).single()).data;
+
+      // 1. Un mensaje directo sin anuncio: queda sin vincular. Con el anuncio recuperado, queda vinculado con su campaña y conjunto.
+      const ka1 = await mkC("ka1");
+      await dmTouch(ka1, "msg:zz-a1");
+      const before = await touchRow("msg:zz-a1");
+      check(!before.ad_id && before.meta_match_status === "none" && before.medium === "dm", "antes: el toque del mensaje no trae anuncio, queda `none` y con medio `dm`");
+      const r1 = await enrich(wsC.id, "msg:zz-a1", "a-A", "Anuncio A", "p-1");
+      check(r1.data?.ok === true && r1.data?.changed === true, "enrich_touch_ad_origin completa el toque", JSON.stringify(r1));
+      const after = await touchRow("msg:zz-a1");
+      check(after.ad_id === "a-A" && after.content_label === "Anuncio A" && after.medium === "paid_social", "queda con el anuncio, su titulo y el medio de un anuncio", JSON.stringify({ ad: after.ad_id, label: after.content_label, medium: after.medium }));
+      check(after.meta_match_status === "matched" && after.meta_ad_id === "a-A" && after.meta_adset_id === "s-1" && after.meta_campaign_id === "c-1", "y se vincula con el catalogo: anuncio, conjunto y campaña", JSON.stringify({ s: after.meta_match_status, a: after.meta_ad_id, c: after.meta_campaign_id }));
+      check(after.raw?.referral?.ad_id === "a-A" && after.raw?.referral?.recovered_from === "zernio_conversation" && after.raw?.referral?.post_id === "p-1", "y deja en `raw` de donde salio el dato", JSON.stringify(after.raw));
+      const { data: ca1 } = await svc.from("contacts").select("attribution").eq("id", ka1).single();
+      check(ca1.attribution?.first_touch?.meta_ad_id === "a-A" && ca1.attribution?.last_touch?.meta_ad_id === "a-A", "y la atribucion del contacto se recalcula (primer y ultimo toque)", JSON.stringify(ca1.attribution?.first_touch));
+
+      // 2. Idempotente: la segunda vez no cambia nada.
+      const r2 = await enrich(wsC.id, "msg:zz-a1", "a-B", "Otro");
+      check(r2.data?.ok === true && r2.data?.changed === false && r2.data?.reason === "already_has_ad", "una segunda llamada no pisa el anuncio que ya tiene", JSON.stringify(r2.data));
+      check((await touchRow("msg:zz-a1")).ad_id === "a-A", "y el toque sigue con el primero");
+
+      // 3. Un anuncio que todavia no esta en el catalogo: queda con su id y `unmatched` (el re-vinculo lo resuelve despues del sync).
+      const ka2 = await mkC("ka2");
+      await dmTouch(ka2, "msg:zz-a2");
+      const r3 = await enrich(wsC.id, "msg:zz-a2", "a-todavia-no-esta");
+      const t3 = await touchRow("msg:zz-a2");
+      check(r3.data?.changed === true && t3.ad_id === "a-todavia-no-esta" && t3.meta_ad_id === null && t3.meta_match_status === "unmatched", "un anuncio fuera del catalogo queda `unmatched`, con su id guardado", JSON.stringify({ s: t3.meta_match_status, ad: t3.ad_id }));
+      const { data: rem } = await svc.rpc("rematch_meta_touches", { p_workspace_id: wsC.id, p_since: "2000-01-01T00:00:00Z" });
+      check(typeof rem === "number", "y rematch_meta_touches lo sigue tomando (es un toque con datos de Meta)", String(rem));
+      await svc.from("meta_ads").insert({ workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-2", adset_id: "s-2", ad_id: "a-todavia-no-esta", name: "Llego despues", name_key: "llego despues" });
+      await svc.rpc("rematch_meta_touches", { p_workspace_id: wsC.id, p_since: "2000-01-01T00:00:00Z" });
+      const t3b = await touchRow("msg:zz-a2");
+      check(t3b.meta_match_status === "matched" && t3b.meta_ad_id === "a-todavia-no-esta" && t3b.meta_campaign_id === "c-2", "cuando el anuncio aparece en el catalogo, el re-vinculo lo vincula solo", JSON.stringify({ s: t3b.meta_match_status, c: t3b.meta_campaign_id }));
+
+      // 4. Lo que una persona decidio no se toca.
+      const ka3 = await mkC("ka3");
+      await dmTouch(ka3, "msg:zz-a3");
+      await svc.from("contact_touches").update({ meta_match_status: "ignored" }).eq("workspace_id", wsC.id).eq("dedupe_key", "msg:zz-a3");
+      const r4 = await enrich(wsC.id, "msg:zz-a3", "a-A", "Anuncio A");
+      const t4 = await touchRow("msg:zz-a3");
+      check(r4.data?.changed === false && r4.data?.reason === "decided_by_person" && !t4.ad_id && t4.meta_match_status === "ignored", "un toque `ignored` (o `manual`) no se toca", JSON.stringify(r4.data));
+
+      // 5. Casos de borde y permisos.
+      const nf = await enrich(wsC.id, "msg:no-existe", "a-A");
+      check(nf.data?.ok === false && nf.data?.error === "touch_not_found", "un toque que no existe devuelve touch_not_found (sin lanzar)", JSON.stringify(nf));
+      const empty = await svc.rpc("enrich_touch_ad_origin", { p_workspace_id: wsC.id, p_dedupe_key: "msg:zz-a1", p_ad_id: "  " });
+      check(empty.data?.ok === false && empty.data?.error === "nothing_to_enrich", "sin id de anuncio no hace nada", JSON.stringify(empty.data));
+      const wsOther = await makeWorkspace("ads-a1-otro");
+      const cross = await enrich(wsOther.id, "msg:zz-a1", "a-A");
+      check(cross.data?.ok === false && cross.data?.error === "touch_not_found", "el toque de OTRO workspace no se puede completar aunque se conozca la clave", JSON.stringify(cross.data));
+      check((await touchRow("msg:zz-a1")).ad_id === "a-A", "(y el toque original sigue igual)");
+      check(!!(await adminC.client.rpc("enrich_touch_ad_origin", { p_workspace_id: wsC.id, p_dedupe_key: "msg:zz-a1", p_ad_id: "a-A" })).error, "un Admin con sesion no puede llamarla (solo service_role)");
+      check(!!(await createClient(URL, ANON, { auth: { persistSession: false } }).rpc("enrich_touch_ad_origin", { p_workspace_id: wsC.id, p_dedupe_key: "msg:zz-a1", p_ad_id: "a-A" })).error, "ni sin sesion");
+    }
   }
 
   console.log("\n— AT4: el costo con 10.000 toques —");
@@ -545,6 +745,14 @@ try {
       inserted += 500;
     }
     check(inserted === 10000, "se cargan 10.000 toques de prueba");
+    // Las tablas de produccion ya tienen estadisticas del planificador; unas filas recien cargadas no, hasta que pasa el autoanalisis
+    // (a veces antes de la primera medicion, a veces despues: la misma consulta daba 150 ms o 350 ms segun el momento). Se las damos
+    // para medir la consulta con el plan que tendria en produccion, y no el azar del autoanalisis.
+    try {
+      sql("ANALYZE public.contact_touches; ANALYZE public.contacts;");
+    } catch (err) {
+      fail("no pude correr ANALYZE antes de medir", err instanceof Error ? err.message.slice(0, 200) : String(err));
+    }
     const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
     const until = new Date().toISOString().slice(0, 10);
     const t0 = Date.now();
@@ -559,6 +767,20 @@ try {
       const line = plan.map((r) => r["QUERY PLAN"] ?? Object.values(r)[0]).find((l) => /Execution Time/.test(String(l)));
       const exec = Number(String(line).match(/([\d.]+) ms/)?.[1] ?? NaN);
       check(Number.isFinite(exec) && exec < 300, `EXPLAIN ANALYZE: ${exec} ms de ejecucion (el plano pide < 300 ms)`, String(line));
+
+      // Tiron 2, B4: cuanto cuesta de mas contar PERSONAS DISTINTAS (la fila `is_total` de v2) contra la consulta de siempre. Regla: si lo que suma
+      // pasa de 300 ms o la consulta nueva cuesta mas del doble, se usa la suma simple con un aviso. Se mide la mediana de 3 corridas de cada una.
+      const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+      const time = (query) => {
+        const plan = sql(`EXPLAIN (ANALYZE, FORMAT TEXT) ${query}`).map((r) => r["QUERY PLAN"]).join("\n");
+        return Number(/Execution Time: ([\d.]+) ms/.exec(plan)?.[1]);
+      };
+      const oldRuns = [1, 2, 3].map(() => time(`SELECT * FROM public.ads_crm_metrics('ad', '${since}', '${until}', NULL, '${wsP.id}')`));
+      const newRuns = [1, 2, 3].map(() => time(`SELECT * FROM public.ads_crm_metrics_v2('ad', '${since}', '${until}', NULL, '${wsP.id}')`));
+      const tOld = median(oldRuns);
+      const tNew = median(newRuns);
+      console.log(`  --   B4: ads_crm_metrics ${tOld} ms (${oldRuns.join(", ")}) · ads_crm_metrics_v2 ${tNew} ms (${newRuns.join(", ")}) · de mas: ${(tNew - tOld).toFixed(1)} ms · x${(tNew / tOld).toFixed(2)}`);
+      check(Number.isFinite(tOld) && Number.isFinite(tNew) && tNew - tOld <= 300 && tNew <= 2 * tOld, "B4: contar personas distintas no suma mas de 300 ms ni duplica el costo de la consulta de siempre", `vieja ${tOld} ms, nueva ${tNew} ms`);
     } catch (err) {
       fail("no pude correr EXPLAIN ANALYZE", err instanceof Error ? err.message.slice(0, 200) : String(err));
     }

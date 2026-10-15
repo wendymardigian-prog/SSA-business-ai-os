@@ -37871,3 +37871,990 @@ BEGIN
   RETURN jsonb_build_object('inserted', true, 'touch_id', v_id);
 END;
 $function$;
+
+-- ============================================================
+-- MIGRATION 216: INBOUND RECEIVE LOCK
+-- ============================================================
+-- ============================================================================
+-- 00216 — Recepción de webhooks sin carrera: `receive_inbound_webhook`  (Tirón 2, C2)
+-- ============================================================================
+-- Hoy `lib/webhooks/receive.ts` hace dos cosas separadas: un SELECT por `body_hash` ("¿llegó lo mismo en los
+-- últimos 10 minutos?") y después un INSERT. Dos entregas idénticas SIMULTÁNEAS pasan las dos el SELECT, antes
+-- de que ninguna se haya guardado, y las dos quedan `received`: el mismo envío dispara dos veces los flujos
+-- (dos bienvenidas). Con un id de envío configurado ya había un índice único (`uq_inbound_webhooks_event`),
+-- pero sin id no había nada que lo frenara.
+--
+-- Esta función hace la verificación y el insert en UNA transacción, serializados con un candado de la base
+-- (`pg_advisory_xact_lock`) por (endpoint, id del envío si lo hay, o `body_hash`):
+--   - con id del envío: el índice único sigue siendo el que decide; el candado solo ordena la cola;
+--   - sin id: la segunda entrega espera a la primera, la ve y se guarda como `ignored` ("Repetido…").
+-- Devuelve `{ kind: 'inserted', id, status }` (el estado FINAL: puede ser `ignored` aunque se pidiera otro)
+-- o `{ kind: 'duplicate' }` (el mismo id de envío por segunda vez). Las demás reglas del receptor (token,
+-- secreto, tope, tamaño, parseo, el estado `paused`/`error`/`captured`/`received`) siguen en TypeScript.
+--
+-- - SECURITY INVOKER: la llama el servidor con el cliente de servicio. `authenticated` y `anon` no pueden.
+-- - `SET search_path = ''`. Idempotente (CREATE OR REPLACE).
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.receive_inbound_webhook(jsonb, integer);
+--   (y volver el código de `lib/webhooks/server-ports.ts` al SELECT + INSERT de antes).
+-- Riesgo: bajo (aditiva: una función nueva; la tabla no cambia).
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.receive_inbound_webhook(
+  p_row jsonb,
+  p_duplicate_window_seconds integer DEFAULT 600
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_endpoint uuid := (p_row ->> 'endpoint_id')::uuid;
+  v_event    text := nullif(p_row ->> 'external_event_id', '');
+  v_hash     text := nullif(p_row ->> 'body_hash', '');
+  v_status   text := p_row ->> 'status';
+  v_summary  text := nullif(p_row ->> 'summary', '');
+  v_error    text := nullif(p_row ->> 'error_message', '');
+  v_id       uuid;
+BEGIN
+  IF v_endpoint IS NULL OR v_status IS NULL THEN
+    RAISE EXCEPTION 'receive_inbound_webhook: faltan endpoint_id o status' USING ERRCODE = '22023';
+  END IF;
+
+  -- Dos entregas del mismo envío (mismo id, o mismo cuerpo) se atienden una atrás de la otra.
+  -- Sin id ni huella no hay nada que serializar: la clave es única por llamada.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(v_endpoint::text || ':' || coalesce(v_event, v_hash, gen_random_uuid()::text), 0)
+  );
+
+  -- Sin id de envío, el mismo cuerpo en la ventana es un repetido (ya está guardado, o lo estaba la entrega
+  -- que acaba de soltar el candado). Con id, decide el índice único de abajo.
+  IF v_event IS NULL AND v_hash IS NOT NULL AND p_duplicate_window_seconds > 0 AND EXISTS (
+       SELECT 1
+         FROM public.inbound_webhooks w
+        WHERE w.endpoint_id = v_endpoint
+          AND w.body_hash = v_hash
+          AND w.received_at >= now() - make_interval(secs => p_duplicate_window_seconds)
+     ) THEN
+    v_status  := 'ignored';
+    v_summary := 'Repetido: igual a un envío de los últimos 10 minutos';
+    v_error   := NULL;
+  END IF;
+
+  BEGIN
+    INSERT INTO public.inbound_webhooks (
+      workspace_id, endpoint_id, status, payload, query, content_type, size_bytes,
+      ip_prefix, user_agent, external_event_id, body_hash, error_message, result
+    ) VALUES (
+      (p_row ->> 'workspace_id')::uuid, v_endpoint, v_status, p_row -> 'payload', p_row -> 'query',
+      p_row ->> 'content_type', nullif(p_row ->> 'size_bytes', '')::integer,
+      p_row ->> 'ip_prefix', p_row ->> 'user_agent', v_event, v_hash, v_error,
+      CASE WHEN v_summary IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('summary', v_summary) END
+    )
+    RETURNING id INTO v_id;
+  EXCEPTION WHEN unique_violation THEN
+    -- El índice (endpoint, id de envío): el mismo envío por segunda vez.
+    RETURN jsonb_build_object('kind', 'duplicate');
+  END;
+
+  RETURN jsonb_build_object('kind', 'inserted', 'id', v_id, 'status', v_status);
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.receive_inbound_webhook(jsonb, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.receive_inbound_webhook(jsonb, integer) TO service_role;
+
+COMMENT ON FUNCTION public.receive_inbound_webhook(jsonb, integer) IS
+  'Guarda un envío de webhook con un candado por (endpoint, id de envío o huella del cuerpo): dos entregas idénticas simultáneas dan un `received` y un `ignored`. Solo service_role.';
+
+-- ============================================================
+-- MIGRATION 217: WEBHOOK FIRE KEYS
+-- ============================================================
+-- ============================================================================
+-- 00217 — Claves de disparo de webhooks por (envío, flujo)  (Tirón 2, C2)
+-- ============================================================================
+-- Hasta ahora la clave que reclama un flujo en `trigger_fires` era `webhook:<envío>:<flujo>:<reproceso>`:
+-- al reprocesar cambiaba el número y TODOS los flujos volvían a correr (otra bienvenida). Desde este cambio
+-- la clave es `webhook:<envío>:<flujo>` (sin el contador): un envío nunca dispara dos veces el mismo flujo.
+--
+-- Esta migración traslada lo que ya corrió al formato nuevo, para que desplegar el código NO vuelva a correr
+-- ningún flujo de un envío que ya pasó: por cada clave vieja inserta la nueva. Una excepción: si el último
+-- resultado guardado de ese flujo para ese envío fue `failed`, NO se reclama (con el código nuevo un flujo que
+-- falla libera su clave, y reprocesar lo reintenta). Es solo INSERT: no borra ni cambia ninguna fila.
+--
+-- Orden: se aplica ANTES de desplegar el código nuevo (la clave vieja y la nueva conviven sin problema: el
+-- código viejo ignora las nuevas, y el nuevo respeta las viejas porque ya están copiadas).
+--
+-- Como volver atras (borra solo las claves nuevas, sin `:<n>` al final):
+--   DELETE FROM public.trigger_fires
+--    WHERE dedupe_key ~ '^webhook:[0-9a-f-]{36}:[0-9a-f-]{36}$';
+-- Riesgo: bajo (aditiva e idempotente: ON CONFLICT DO NOTHING).
+-- ============================================================================
+
+SET search_path = '';
+
+INSERT INTO public.trigger_fires (trigger_id, workspace_id, dedupe_key, contact_id)
+SELECT DISTINCT old.trigger_id,
+       old.workspace_id,
+       regexp_replace(old.dedupe_key, ':[0-9]+$', ''),
+       NULL::uuid
+  FROM public.trigger_fires old
+ WHERE old.dedupe_key ~ '^webhook:[0-9a-f-]{36}:[0-9a-f-]{36}:[0-9]+$'
+   AND NOT EXISTS (
+         SELECT 1
+           FROM public.inbound_webhooks w
+          WHERE w.id::text = split_part(old.dedupe_key, ':', 2)
+            AND w.result -> 'flows' -> split_part(old.dedupe_key, ':', 3) ->> 'status' = 'failed'
+       )
+ON CONFLICT (trigger_id, dedupe_key) DO NOTHING;
+
+-- ============================================================
+-- MIGRATION 218: AUTOMATION SOURCE
+-- ============================================================
+-- ============================================================================
+-- 00218 — El origen de cada automatización: `source_type` / `source_id`  (Tirón 2, D1)
+-- ============================================================================
+-- Hoy una sesión de flujo (`flow_sessions`) o un evento (`automation_events`) tiene que traer un contacto, o una
+-- persona del equipo, o (solo la sesión) un envío de webhook. Esa lista de excepciones está cableada en un CHECK, y
+-- cualquier disparador nuevo sin contacto —Tareas va a sumar «Tarea completada» y «Tarea vencida», con o sin
+-- contacto— la rompe: hay que tocar la base cada vez.
+--
+-- Esta migración suma el ORIGEN, una sola vez y para siempre:
+--   source_type  qué la disparó: contact | member | webhook | task | form | booking | sale | call | system
+--   source_id    la entidad que la disparó (el envío, el evento, la persona...), como texto
+-- y los CHECK pasan a exigir «contacto, o un origen». Es un SUPERCONJUNTO del que había: todo lo que se aceptaba antes
+-- se sigue aceptando. `member_user_id` e `inbound_webhook_id` se quedan (el código los usa).
+--   - `flow_sessions`: contacto, persona, envío de webhook, o un origen.
+--   - `automation_events`: contacto; o una persona del equipo con uno de los tres tipos que ya admitía (`eod_submitted`,
+--     `task_completed`, `task_overdue`: un evento de CONTACTO —`tag_added`, `booking_created`…— sin contacto sigue
+--     rechazado, aunque traiga una persona); o, lo NUEVO, un evento sin contacto NI persona con un origen declarado
+--     (`system`, `task`…). Así un disparador de sistema no necesita tocar la base, y la protección de los eventos de
+--     contacto no se pierde.
+--
+-- El código viejo sigue andando mientras se despliega el nuevo: un trigger BEFORE INSERT completa el origen cuando no
+-- viene (webhook si trae envío; persona si trae persona y no contacto; contacto si trae contacto). Las filas que ya
+-- existen se completan con el mismo criterio. Todo antes de recrear el CHECK.
+--
+-- Orden: se aplica ANTES de desplegar el código (el motor nuevo escribe `source_type`). Es aditiva.
+--
+-- DEFINICIONES VIGENTES (leídas con pg_get_constraintdef el 14/10/2026), para volver atrás:
+--   flow_sessions_contact_or_member (flow_sessions):
+--     CHECK (((contact_id IS NOT NULL) OR (member_user_id IS NOT NULL) OR (inbound_webhook_id IS NOT NULL)))
+--   automation_events_contact_or_member (automation_events):
+--     CHECK (((contact_id IS NOT NULL) OR ((event_type = ANY (ARRAY['eod_submitted'::text, 'task_completed'::text, 'task_overdue'::text])) AND (member_user_id IS NOT NULL))))
+--
+-- Como volver atras:
+--   ALTER TABLE public.flow_sessions ADD CONSTRAINT flow_sessions_contact_or_member
+--     CHECK (((contact_id IS NOT NULL) OR (member_user_id IS NOT NULL) OR (inbound_webhook_id IS NOT NULL)));
+--   ALTER TABLE public.automation_events ADD CONSTRAINT automation_events_contact_or_member
+--     CHECK (((contact_id IS NOT NULL) OR ((event_type = ANY (ARRAY['eod_submitted'::text, 'task_completed'::text, 'task_overdue'::text])) AND (member_user_id IS NOT NULL))));
+--   ALTER TABLE public.flow_sessions DROP CONSTRAINT IF EXISTS flow_sessions_contact_or_source;
+--   ALTER TABLE public.automation_events DROP CONSTRAINT IF EXISTS automation_events_contact_or_source;
+--   (un evento con origen y sin contacto ni persona que ya se haya guardado impediria recrear el viejo: borrarlo antes)
+--   DROP TRIGGER IF EXISTS fill_source_before_insert ON public.flow_sessions;
+--   DROP TRIGGER IF EXISTS fill_source_before_insert ON public.automation_events;
+--   DROP FUNCTION IF EXISTS private.fill_automation_source();
+--   ALTER TABLE public.flow_sessions DROP CONSTRAINT IF EXISTS flow_sessions_source_type_check, DROP COLUMN IF EXISTS source_type, DROP COLUMN IF EXISTS source_id;
+--   ALTER TABLE public.automation_events DROP CONSTRAINT IF EXISTS automation_events_source_type_check, DROP COLUMN IF EXISTS source_type, DROP COLUMN IF EXISTS source_id;
+-- Riesgo: bajo (aditiva e idempotente; el CHECK nuevo acepta todo lo que aceptaba el viejo).
+-- ============================================================================
+
+SET search_path = '';
+
+-- ------------------------------------------------------------
+-- 1. Las columnas
+-- ------------------------------------------------------------
+ALTER TABLE public.flow_sessions
+  ADD COLUMN IF NOT EXISTS source_type text,
+  ADD COLUMN IF NOT EXISTS source_id text;
+
+ALTER TABLE public.automation_events
+  ADD COLUMN IF NOT EXISTS source_type text,
+  ADD COLUMN IF NOT EXISTS source_id text;
+
+COMMENT ON COLUMN public.flow_sessions.source_type IS
+  'Que disparo la sesion (00218): contact | member | webhook | task | form | booking | sale | call | system. Una sesion sin contacto lo exige.';
+COMMENT ON COLUMN public.flow_sessions.source_id IS 'La entidad que disparo la sesion (el envio, el evento, la persona...), como texto.';
+COMMENT ON COLUMN public.automation_events.source_type IS
+  'Que origino el evento (00218). Un evento sin contacto lo exige: la base lo completa para contacto y persona.';
+COMMENT ON COLUMN public.automation_events.source_id IS 'La entidad que origino el evento, como texto.';
+
+-- ------------------------------------------------------------
+-- 2. Los valores admitidos (la misma lista que `AUTOMATION_SOURCE_TYPES` en lib/flow-engine/registry/types.ts)
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'flow_sessions_source_type_check' AND conrelid = 'public.flow_sessions'::regclass) THEN
+    ALTER TABLE public.flow_sessions ADD CONSTRAINT flow_sessions_source_type_check
+      CHECK (source_type IS NULL OR source_type IN ('contact', 'member', 'webhook', 'task', 'form', 'booking', 'sale', 'call', 'system'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'automation_events_source_type_check' AND conrelid = 'public.automation_events'::regclass) THEN
+    ALTER TABLE public.automation_events ADD CONSTRAINT automation_events_source_type_check
+      CHECK (source_type IS NULL OR source_type IN ('contact', 'member', 'webhook', 'task', 'form', 'booking', 'sale', 'call', 'system'));
+  END IF;
+END $$;
+
+-- ------------------------------------------------------------
+-- 3. Lo que ya existe se completa con el mismo criterio que usa el trigger de abajo
+-- ------------------------------------------------------------
+UPDATE public.flow_sessions
+   SET source_type = CASE
+         WHEN inbound_webhook_id IS NOT NULL THEN 'webhook'
+         WHEN member_user_id IS NOT NULL AND contact_id IS NULL THEN 'member'
+         WHEN contact_id IS NOT NULL THEN 'contact'
+         WHEN member_user_id IS NOT NULL THEN 'member'
+       END,
+       source_id = CASE
+         WHEN inbound_webhook_id IS NOT NULL THEN inbound_webhook_id::text
+         WHEN member_user_id IS NOT NULL AND contact_id IS NULL THEN member_user_id::text
+         WHEN contact_id IS NOT NULL THEN contact_id::text
+         WHEN member_user_id IS NOT NULL THEN member_user_id::text
+       END
+ WHERE source_type IS NULL;
+
+UPDATE public.automation_events
+   SET source_type = CASE
+         WHEN member_user_id IS NOT NULL AND contact_id IS NULL THEN 'member'
+         WHEN contact_id IS NOT NULL THEN 'contact'
+         WHEN member_user_id IS NOT NULL THEN 'member'
+       END,
+       source_id = CASE
+         WHEN member_user_id IS NOT NULL AND contact_id IS NULL THEN member_user_id::text
+         WHEN contact_id IS NOT NULL THEN contact_id::text
+         WHEN member_user_id IS NOT NULL THEN member_user_id::text
+       END
+ WHERE source_type IS NULL;
+
+-- ------------------------------------------------------------
+-- 4. El origen por defecto: el codigo viejo (y los emisores en SQL, como el reporte de fin de dia) no lo mandan
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.fill_automation_source()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $fn$
+DECLARE
+  r jsonb := to_jsonb(NEW);
+BEGIN
+  IF NEW.source_type IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  -- Las dos tablas tienen contacto y persona; solo la sesion tiene envio de webhook (por eso `to_jsonb`).
+  IF r ->> 'inbound_webhook_id' IS NOT NULL THEN
+    NEW.source_type := 'webhook';
+    NEW.source_id := r ->> 'inbound_webhook_id';
+  ELSIF NEW.member_user_id IS NOT NULL AND NEW.contact_id IS NULL THEN
+    NEW.source_type := 'member';
+    NEW.source_id := NEW.member_user_id::text;
+  ELSIF NEW.contact_id IS NOT NULL THEN
+    NEW.source_type := 'contact';
+    NEW.source_id := NEW.contact_id::text;
+  ELSIF NEW.member_user_id IS NOT NULL THEN
+    NEW.source_type := 'member';
+    NEW.source_id := NEW.member_user_id::text;
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION private.fill_automation_source() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS fill_source_before_insert ON public.flow_sessions;
+CREATE TRIGGER fill_source_before_insert
+  BEFORE INSERT ON public.flow_sessions
+  FOR EACH ROW EXECUTE FUNCTION private.fill_automation_source();
+
+DROP TRIGGER IF EXISTS fill_source_before_insert ON public.automation_events;
+CREATE TRIGGER fill_source_before_insert
+  BEFORE INSERT ON public.automation_events
+  FOR EACH ROW EXECUTE FUNCTION private.fill_automation_source();
+
+-- ------------------------------------------------------------
+-- 5. Los CHECK nuevos: contacto, o un origen. Superconjunto de los viejos.
+--    Se crean NOT VALID y se validan (no bloquea escrituras) antes de soltar los viejos.
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'flow_sessions_contact_or_source' AND conrelid = 'public.flow_sessions'::regclass) THEN
+    ALTER TABLE public.flow_sessions ADD CONSTRAINT flow_sessions_contact_or_source
+      CHECK (contact_id IS NOT NULL OR member_user_id IS NOT NULL OR inbound_webhook_id IS NOT NULL OR source_type IS NOT NULL) NOT VALID;
+  END IF;
+END $$;
+
+-- Se recrea siempre (DROP IF EXISTS + ADD): la regla de los eventos de persona vive en esta definicion.
+ALTER TABLE public.automation_events DROP CONSTRAINT IF EXISTS automation_events_contact_or_source;
+ALTER TABLE public.automation_events ADD CONSTRAINT automation_events_contact_or_source
+  CHECK (
+    contact_id IS NOT NULL
+    OR (member_user_id IS NOT NULL AND event_type = ANY (ARRAY['eod_submitted'::text, 'task_completed'::text, 'task_overdue'::text]))
+    OR (member_user_id IS NULL AND source_type IS NOT NULL)
+  ) NOT VALID;
+
+ALTER TABLE public.flow_sessions VALIDATE CONSTRAINT flow_sessions_contact_or_source;
+ALTER TABLE public.automation_events VALIDATE CONSTRAINT automation_events_contact_or_source;
+
+ALTER TABLE public.flow_sessions DROP CONSTRAINT IF EXISTS flow_sessions_contact_or_member;
+ALTER TABLE public.automation_events DROP CONSTRAINT IF EXISTS automation_events_contact_or_member;
+
+-- ============================================================
+-- MIGRATION 219: ADS CRM METRICS V2
+-- ============================================================
+-- ============================================================================
+-- 00219 — Tabla Meta vs CRM v2: sin contar dos veces y con el detalle de cada número  (Tirón 2, B2–B3)
+-- ============================================================================
+-- `ads_crm_metrics` (00195) sigue ahí, sin tocar, para volver atrás. Esta migración suma tres funciones:
+--
+--   public.ads_crm_items(nivel, métrica, período, cuenta, objeto…)   las FILAS que forman cada número
+--   public.ads_crm_metrics_v2(nivel, período, cuenta, workspace)     los números, calculados SOBRE esas filas
+--   public.ads_crm_cell_detail(nivel, métrica, …, límite, desplazamiento)   la lista de una celda, paginada
+--
+-- Una sola definición de «qué cuenta como un lead nuevo, un lead total, una agenda o una venta» (`ads_crm_items`):
+-- el número de la tabla y la lista que abre al hacer clic salen de la MISMA consulta, así que no pueden diferir
+-- (y `verify-ads-attribution.mjs` lo comprueba contra la base: cantidad de la lista = número de la celda).
+--
+-- Qué cambia respecto de `ads_crm_metrics`:
+--   - Una fila extra con `is_total = true` (y `object_id` NULL): `leads_total` = personas DISTINTAS con algún toque de
+--     cualquier objeto del filtro, y `leads_with_booking` = personas distintas con agenda. La tabla suma las filas, y
+--     una persona que tocó dos anuncios cuenta dos veces en esa suma; esta fila la cuenta una. Se calcula dentro de la
+--     misma consulta (sin una llamada extra). Lo demás del total (leads nuevos, agendas, ventas, revenue, cash) se SUMA:
+--     cada persona tiene un solo primer toque, y cada agenda y cada venta caen en un solo objeto por nivel.
+--   - `uf_cash_cents`: el primer pago cobrado (positivo) de cada venta atribuida al objeto, con fecha de cobro en el rango.
+--   - Los objetos de la cuenta salen del catálogo Y de los insights de esa cuenta. Con el catálogo vacío (todavía no
+--     sincronizó) la versión vieja descartaba TODAS las filas del CRM; esta no.
+--   - `p_object_ids`: restringe a una lista de objetos (la tabla con un filtro de estado pide el distinto de los que se ven).
+--
+-- Definiciones (por objeto = el id de Meta del nivel pedido, `contact_touches.meta_<nivel>_id`), las mismas de 00195:
+--   leads_new    contactos (no borrados) cuyo PRIMER toque es del objeto y que se crearon en el rango.
+--   leads_total  contactos distintos con algún toque del objeto cuyo `occurred_at` cae en el rango.
+--   bookings     agendas creadas en el rango, sin las liberadas; el objeto sale del toque `booking:<id>`, o del último
+--                toque del contacto con objeto anterior a la agenda.
+--   sales        ventas con `sale_date` en el rango, sin canceladas ni reembolsadas, cuyo `attribution_touch_id` es del objeto.
+--   uf_cash      el primer pago cobrado (`status = 'paid'`, monto > 0, por fecha de cobro) de cada venta del objeto, si su
+--                `paid_on` cae en el rango.
+--
+-- - SECURITY INVOKER todas: la RLS de quien mira decide qué contactos, toques, agendas, ventas y pagos cuenta (un Member
+--   con alcance `own` solo cuenta lo suyo). STABLE. `anon` no puede llamarlas. `SET search_path = ''`.
+-- - Las fechas son civiles y se interpretan en la zona horaria del workspace (`workspaces.timezone`).
+-- - Sin `p_workspace_id`, o con un workspace que quien llama no ve, devuelven vacío.
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.ads_crm_cell_detail(text, text, date, date, text, uuid, text, text[], integer, integer);
+--   DROP FUNCTION IF EXISTS public.ads_crm_metrics_v2(text, date, date, text, uuid, text[]);
+--   DROP FUNCTION IF EXISTS public.ads_crm_items(text, text, date, date, uuid, text, text, text[]);
+--   (y volver el código a `ads_crm_metrics`, que no se tocó)
+-- Riesgo: bajo (aditiva: tres funciones nuevas; ninguna tabla cambia).
+-- ============================================================================
+
+SET search_path = '';
+
+-- ------------------------------------------------------------
+-- 1. Las filas que forman cada número
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.ads_crm_items(
+  p_level text,
+  p_metric text,
+  p_since date,
+  p_until date,
+  p_workspace_id uuid,
+  p_ad_account_id text DEFAULT NULL,
+  p_object_id text DEFAULT NULL,
+  p_object_ids text[] DEFAULT NULL
+)
+RETURNS TABLE (
+  obj text,
+  contact_id uuid,
+  item_id uuid,
+  occurred_at timestamptz,
+  origin text,
+  detail_at timestamptz,
+  amount_cents bigint
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_col       text;
+  v_cat_table text;
+  v_cat_col   text;
+  v_tz        text;
+  v_lo        timestamptz;
+  v_hi        timestamptz;
+  v_acct      text;
+  v_filter    text;
+  v_sql       text;
+BEGIN
+  v_col := CASE p_level
+    WHEN 'campaign' THEN 'meta_campaign_id'
+    WHEN 'adset'    THEN 'meta_adset_id'
+    WHEN 'ad'       THEN 'meta_ad_id'
+  END;
+  IF v_col IS NULL THEN
+    RAISE EXCEPTION 'ads_crm_items: nivel invalido (%)', p_level USING ERRCODE = '22023';
+  END IF;
+  IF p_metric NOT IN ('leads_new', 'leads_total', 'bookings', 'sales', 'uf_cash') THEN
+    RAISE EXCEPTION 'ads_crm_items: metrica invalida (%)', p_metric USING ERRCODE = '22023';
+  END IF;
+  IF p_since IS NULL OR p_until IS NULL OR p_until < p_since THEN
+    RAISE EXCEPTION 'ads_crm_items: rango de fechas invalido' USING ERRCODE = '22023';
+  END IF;
+  IF p_workspace_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = p_workspace_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  v_tz := coalesce(nullif(btrim(v_tz), ''), 'UTC');
+  v_lo := p_since::timestamp AT TIME ZONE v_tz;
+  v_hi := (p_until + 1)::timestamp AT TIME ZONE v_tz;
+
+  v_cat_table := CASE p_level WHEN 'campaign' THEN 'meta_campaigns' WHEN 'adset' THEN 'meta_adsets' ELSE 'meta_ads' END;
+  v_cat_col   := CASE p_level WHEN 'campaign' THEN 'campaign_id'    WHEN 'adset' THEN 'adset_id'    ELSE 'ad_id' END;
+
+  -- Los objetos de la cuenta: el catálogo Y los insights (con el catálogo vacío, solo el catálogo los dejaba a todos afuera).
+  v_acct := format($q$
+    WITH acct AS (
+      SELECT x.%1$I AS obj FROM public.%2$I x WHERE x.workspace_id = $1 AND x.ad_account_id = $6
+      UNION
+      SELECT i.object_id FROM public.meta_ads_insights_daily i WHERE i.workspace_id = $1 AND i.ad_account_id = $6 AND i.level = $7
+    )
+  $q$, v_cat_col, v_cat_table);
+
+  -- Los mismos tres filtros en cada métrica: cuenta, un objeto, o una lista de objetos.
+  v_filter := $q$
+    ($6::text IS NULL OR x.obj IN (SELECT a.obj FROM acct a))
+    AND ($8::text IS NULL OR x.obj = $8)
+    AND ($9::text[] IS NULL OR x.obj = ANY($9))
+  $q$;
+
+  -- La columna del nivel sale de una lista fija (nunca del pedido): %1$I la cita como identificador, %2$L como texto.
+  IF p_metric = 'leads_new' THEN
+    v_sql := v_acct || format($q$
+      SELECT x.obj, x.contact_id, x.contact_id, x.occurred_at, x.origin, NULL::timestamptz, NULL::bigint
+        FROM (
+          SELECT c.attribution -> 'first_touch' ->> %2$L AS obj,
+                 c.id AS contact_id,
+                 nullif(c.attribution -> 'first_touch' ->> 'occurred_at', '')::timestamptz AS occurred_at,
+                 c.attribution -> 'first_touch' ->> 'origin' AS origin
+            FROM public.contacts c
+           WHERE c.workspace_id = $1 AND c.deleted_at IS NULL
+             AND c.created_at >= $2 AND c.created_at < $3
+             AND c.attribution -> 'first_touch' ->> %2$L IS NOT NULL
+        ) x
+       WHERE %3$s
+    $q$, v_col, v_col, v_filter);
+
+  ELSIF p_metric = 'leads_total' THEN
+    v_sql := v_acct || format($q$
+      SELECT x.obj, x.contact_id, x.contact_id, x.occurred_at, x.origin, NULL::timestamptz, NULL::bigint
+        FROM (
+          SELECT DISTINCT ON (t.%1$I, t.contact_id)
+                 t.%1$I AS obj, t.contact_id, t.occurred_at, t.origin
+            FROM public.contact_touches t
+            JOIN public.contacts c ON c.id = t.contact_id AND c.deleted_at IS NULL
+           WHERE t.workspace_id = $1 AND t.%1$I IS NOT NULL
+             AND t.occurred_at >= $2 AND t.occurred_at < $3
+           ORDER BY t.%1$I, t.contact_id, t.occurred_at DESC, t.created_at DESC, t.id DESC
+        ) x
+       WHERE %2$s
+    $q$, v_col, v_filter);
+
+  ELSIF p_metric = 'bookings' THEN
+    v_sql := v_acct || format($q$
+      SELECT x.obj, x.contact_id, x.id, x.touch_at, x.origin, x.start_at, NULL::bigint
+        FROM (
+          SELECT b.id, b.contact_id, b.start_at,
+                 coalesce(bt.obj, lt.obj) AS obj,
+                 CASE WHEN bt.obj IS NOT NULL THEN bt.occurred_at ELSE lt.occurred_at END AS touch_at,
+                 CASE WHEN bt.obj IS NOT NULL THEN bt.origin ELSE lt.origin END AS origin
+            FROM public.bookings b
+            LEFT JOIN LATERAL (
+              SELECT t.%1$I AS obj, t.occurred_at, t.origin
+                FROM public.contact_touches t
+               WHERE t.workspace_id = $1 AND t.dedupe_key = 'booking:' || b.id::text AND t.%1$I IS NOT NULL
+               LIMIT 1
+            ) bt ON true
+            LEFT JOIN LATERAL (
+              SELECT t.%1$I AS obj, t.occurred_at, t.origin
+                FROM public.contact_touches t
+               WHERE bt.obj IS NULL
+                 AND t.contact_id = b.contact_id AND t.%1$I IS NOT NULL AND t.occurred_at <= b.created_at
+               ORDER BY t.occurred_at DESC, t.created_at DESC, t.id DESC
+               LIMIT 1
+            ) lt ON true
+           WHERE b.workspace_id = $1 AND b.created_at >= $2 AND b.created_at < $3
+             AND b.slot_released_at IS NULL
+        ) x
+       WHERE x.obj IS NOT NULL AND %2$s
+    $q$, v_col, v_filter);
+
+  ELSIF p_metric = 'sales' THEN
+    v_sql := v_acct || format($q$
+      SELECT x.obj, x.contact_id, x.id, x.touch_at, x.origin, (x.sale_date::timestamp AT TIME ZONE 'UTC'), x.amount_cents
+        FROM (
+          SELECT s.id, s.contact_id, s.sale_date, round(s.final_amount * 100)::bigint AS amount_cents,
+                 t.%1$I AS obj, t.occurred_at AS touch_at, t.origin
+            FROM public.sales s
+            JOIN public.contact_touches t ON t.id = s.attribution_touch_id
+           WHERE s.workspace_id = $1 AND s.sale_date >= $4 AND s.sale_date <= $5
+             AND s.status NOT IN ('cancelled', 'refunded')
+             AND t.%1$I IS NOT NULL
+        ) x
+       WHERE %2$s
+    $q$, v_col, v_filter);
+
+  ELSE -- uf_cash
+    v_sql := v_acct || format($q$
+      SELECT x.obj, x.contact_id, x.payment_id, x.touch_at, x.origin, x.paid_at, x.amount_cents
+        FROM (
+          SELECT fp.id AS payment_id, s.contact_id,
+                 t.%1$I AS obj, t.occurred_at AS touch_at, t.origin,
+                 coalesce(fp.paid_at, (fp.paid_on::timestamp AT TIME ZONE 'UTC')) AS paid_at,
+                 round(fp.amount * 100)::bigint AS amount_cents
+            FROM (
+              SELECT DISTINCT ON (p.sale_id) p.id, p.sale_id, p.amount, p.paid_on, p.paid_at
+                FROM public.payments p
+               WHERE p.workspace_id = $1 AND p.status = 'paid' AND p.amount > 0
+               ORDER BY p.sale_id, coalesce(p.paid_at, (p.paid_on::timestamp AT TIME ZONE 'UTC')) ASC, p.id ASC
+            ) fp
+            JOIN public.sales s ON s.id = fp.sale_id
+            JOIN public.contact_touches t ON t.id = s.attribution_touch_id
+           WHERE fp.paid_on >= $4 AND fp.paid_on <= $5 AND t.%1$I IS NOT NULL
+        ) x
+       WHERE %2$s
+    $q$, v_col, v_filter);
+  END IF;
+
+  RETURN QUERY EXECUTE v_sql USING p_workspace_id, v_lo, v_hi, p_since, p_until, p_ad_account_id, p_level, p_object_id, p_object_ids;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.ads_crm_items(text, text, date, date, uuid, text, text, text[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ads_crm_items(text, text, date, date, uuid, text, text, text[]) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 2. Los números de la tabla, calculados sobre esas filas
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.ads_crm_metrics_v2(
+  p_level text,
+  p_since date,
+  p_until date,
+  p_ad_account_id text DEFAULT NULL,
+  p_workspace_id uuid DEFAULT NULL,
+  p_object_ids text[] DEFAULT NULL
+)
+RETURNS TABLE (
+  object_id text,
+  is_total boolean,
+  leads_first integer,
+  leads_total integer,
+  leads_with_booking integer,
+  bookings integer,
+  bookings_attended integer,
+  sales integer,
+  revenue_cents bigint,
+  cash_cents bigint,
+  uf_cash_cents bigint
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_col       text;
+  v_cat_table text;
+  v_cat_col   text;
+  v_tz        text;
+  v_lo        timestamptz;
+  v_hi        timestamptz;
+  v_sql       text;
+BEGIN
+  v_col := CASE p_level
+    WHEN 'campaign' THEN 'meta_campaign_id'
+    WHEN 'adset'    THEN 'meta_adset_id'
+    WHEN 'ad'       THEN 'meta_ad_id'
+  END;
+  IF v_col IS NULL THEN
+    RAISE EXCEPTION 'ads_crm_metrics_v2: nivel invalido (%)', p_level USING ERRCODE = '22023';
+  END IF;
+  IF p_since IS NULL OR p_until IS NULL OR p_until < p_since THEN
+    RAISE EXCEPTION 'ads_crm_metrics_v2: rango de fechas invalido' USING ERRCODE = '22023';
+  END IF;
+  IF p_workspace_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = p_workspace_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  v_tz := coalesce(nullif(btrim(v_tz), ''), 'UTC');
+  v_lo := p_since::timestamp AT TIME ZONE v_tz;
+  v_hi := (p_until + 1)::timestamp AT TIME ZONE v_tz;
+
+  v_cat_table := CASE p_level WHEN 'campaign' THEN 'meta_campaigns' WHEN 'adset' THEN 'meta_adsets' ELSE 'meta_ads' END;
+  v_cat_col   := CASE p_level WHEN 'campaign' THEN 'campaign_id'    WHEN 'adset' THEN 'adset_id'    ELSE 'ad_id' END;
+
+  v_sql := format($q$
+    WITH
+    acct AS (
+      SELECT x.%3$I AS obj FROM public.%4$I x WHERE x.workspace_id = $1 AND x.ad_account_id = $6
+      UNION
+      SELECT i.object_id FROM public.meta_ads_insights_daily i WHERE i.workspace_id = $1 AND i.ad_account_id = $6 AND i.level = $7
+    ),
+    new_items AS (SELECT * FROM public.ads_crm_items($7, 'leads_new',   $4, $5, $1, $6, NULL, $8)),
+    tot_items AS (SELECT * FROM public.ads_crm_items($7, 'leads_total', $4, $5, $1, $6, NULL, $8)),
+    bk_items  AS (
+      SELECT i.obj, i.contact_id, b.status_group
+        FROM public.ads_crm_items($7, 'bookings', $4, $5, $1, $6, NULL, $8) i
+        JOIN public.bookings b ON b.id = i.item_id
+    ),
+    sale_items AS (SELECT * FROM public.ads_crm_items($7, 'sales',    $4, $5, $1, $6, NULL, $8)),
+    uf_items   AS (SELECT * FROM public.ads_crm_items($7, 'uf_cash',  $4, $5, $1, $6, NULL, $8)),
+    new_agg  AS (SELECT obj, count(*)::int AS n FROM new_items GROUP BY obj),
+    tot_agg  AS (SELECT obj, count(*)::int AS n FROM tot_items GROUP BY obj),
+    bk_agg   AS (
+      SELECT obj, count(*)::int AS bookings,
+             (count(*) FILTER (WHERE status_group = 'outcome'))::int AS attended,
+             count(DISTINCT contact_id)::int AS leads
+        FROM bk_items GROUP BY obj
+    ),
+    sale_agg AS (SELECT obj, count(*)::int AS sales, coalesce(sum(amount_cents), 0)::bigint AS revenue FROM sale_items GROUP BY obj),
+    uf_agg   AS (SELECT obj, coalesce(sum(amount_cents), 0)::bigint AS uf FROM uf_items GROUP BY obj),
+    cash_agg AS (
+      SELECT t.%2$I AS obj, coalesce(sum(round(p.amount * 100)), 0)::bigint AS cash
+        FROM public.payments p
+        JOIN public.sales s ON s.id = p.sale_id
+        JOIN public.contact_touches t ON t.id = s.attribution_touch_id
+       WHERE p.workspace_id = $1 AND p.status = 'paid'
+         AND p.paid_on >= $4 AND p.paid_on <= $5
+         AND t.%2$I IS NOT NULL
+       GROUP BY 1
+    ),
+    objs AS (
+      SELECT obj FROM new_agg UNION SELECT obj FROM tot_agg UNION SELECT obj FROM bk_agg
+      UNION SELECT obj FROM sale_agg UNION SELECT obj FROM uf_agg UNION SELECT obj FROM cash_agg
+    )
+    SELECT o.obj, false,
+           coalesce(n.n, 0), coalesce(tl.n, 0), coalesce(ba.leads, 0),
+           coalesce(ba.bookings, 0), coalesce(ba.attended, 0),
+           coalesce(sa.sales, 0), coalesce(sa.revenue, 0)::bigint, coalesce(ca.cash, 0)::bigint, coalesce(ua.uf, 0)::bigint
+      FROM objs o
+      LEFT JOIN new_agg n ON n.obj = o.obj
+      LEFT JOIN tot_agg tl ON tl.obj = o.obj
+      LEFT JOIN bk_agg ba ON ba.obj = o.obj
+      LEFT JOIN sale_agg sa ON sa.obj = o.obj
+      LEFT JOIN uf_agg ua ON ua.obj = o.obj
+      LEFT JOIN cash_agg ca ON ca.obj = o.obj
+     WHERE ($6::text IS NULL OR o.obj IN (SELECT a.obj FROM acct a))
+       AND ($8::text[] IS NULL OR o.obj = ANY($8))
+    UNION ALL
+    -- La fila de total: personas DISTINTAS. Lo demas del total lo suma quien llama (es exacto).
+    SELECT NULL::text, true,
+           NULL::int,
+           (SELECT count(DISTINCT contact_id)::int FROM tot_items),
+           (SELECT count(DISTINCT contact_id)::int FROM bk_items),
+           NULL::int, NULL::int, NULL::int, NULL::bigint, NULL::bigint, NULL::bigint
+    ORDER BY 2, 1
+  $q$, v_col, v_col, v_cat_col, v_cat_table);
+
+  RETURN QUERY EXECUTE v_sql USING p_workspace_id, v_lo, v_hi, p_since, p_until, p_ad_account_id, p_level, p_object_ids;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.ads_crm_metrics_v2(text, date, date, text, uuid, text[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ads_crm_metrics_v2(text, date, date, text, uuid, text[]) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 3. El detalle de una celda: las personas o registros que forman el número, de a 50
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.ads_crm_cell_detail(
+  p_level text,
+  p_metric text,
+  p_since date,
+  p_until date,
+  p_ad_account_id text DEFAULT NULL,
+  p_workspace_id uuid DEFAULT NULL,
+  p_object_id text DEFAULT NULL,
+  p_object_ids text[] DEFAULT NULL,
+  p_limit integer DEFAULT 50,
+  p_offset integer DEFAULT 0
+)
+RETURNS TABLE (
+  item_id uuid,
+  contact_id uuid,
+  contact_name text,
+  occurred_at timestamptz,
+  origin text,
+  detail_at timestamptz,
+  amount_cents bigint,
+  total_count bigint
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $fn$
+BEGIN
+  IF p_metric NOT IN ('leads_new', 'leads_total', 'bookings', 'sales') THEN
+    RAISE EXCEPTION 'ads_crm_cell_detail: metrica invalida (%)', p_metric USING ERRCODE = '22023';
+  END IF;
+
+  -- La lista del TOTAL de «Leads totales» (sin un objeto): una persona que tocó dos anuncios es UNA fila, igual que en el número
+  -- (la fila `is_total` de ads_crm_metrics_v2 cuenta personas distintas). En cualquier otra celda, una fila por registro.
+  RETURN QUERY
+  WITH src AS (
+    SELECT i.item_id AS s_item, i.contact_id AS s_contact, i.occurred_at AS s_occurred, i.origin AS s_origin,
+           i.detail_at AS s_detail, i.amount_cents AS s_amount,
+           CASE WHEN p_metric = 'leads_total' AND p_object_id IS NULL
+                THEN row_number() OVER (PARTITION BY i.contact_id ORDER BY i.occurred_at DESC NULLS LAST, i.obj)
+                ELSE 1
+           END AS rn
+      FROM public.ads_crm_items(p_level, p_metric, p_since, p_until, p_workspace_id, p_ad_account_id, p_object_id, p_object_ids) i
+  )
+  SELECT s.s_item, s.s_contact, c.display_name, s.s_occurred, s.s_origin, s.s_detail, s.s_amount,
+         count(*) OVER ()
+    FROM src s
+    LEFT JOIN public.contacts c ON c.id = s.s_contact
+   WHERE s.rn = 1
+   ORDER BY s.s_occurred DESC NULLS LAST, s.s_item
+   LIMIT least(greatest(coalesce(p_limit, 50), 1), 200)
+  OFFSET greatest(coalesce(p_offset, 0), 0);
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.ads_crm_cell_detail(text, text, date, date, text, uuid, text, text[], integer, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ads_crm_cell_detail(text, text, date, date, text, uuid, text, text[], integer, integer) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 220: META LEADS RECOUNT
+-- ============================================================
+-- ============================================================================
+-- 00220 — Leads y compras de Meta: un nombre por evento  (Tirón 2, E1, decisión 1)
+-- ============================================================================
+-- Meta informa el MISMO lead con varios nombres a la vez (`lead`, `onsite_conversion.lead_grouped`, las variantes
+-- `offsite_*_add_meta_leads`…). El sync sumaba todo lo que contuviera «lead» y cada lead contaba hasta cinco veces: la base guarda
+-- 2.337 leads por nivel cuando Meta informa 468 (la suma de la acción `lead`). Por eso el «Leads Meta» y el «CPL Meta» de todas las
+-- pantallas estaban inflados.
+--
+-- Esta migración recalcula `leads` y `purchases` de TODAS las filas de `meta_ads_insights_daily` desde el jsonb `actions` que ya
+-- está guardado (sin llamar a Meta), con la regla nueva: el PRIMER nombre de la lista de preferencia que venga. Es la gemela en SQL de
+-- `lib/meta/action-counts.ts` (los mismos casos: `lib/meta/action-counts.cases.json`; `verify-ads-attribution.mjs` los corre contra la
+-- función de acá).
+--   leads:    lead › onsite_conversion.lead_grouped › offsite_conversion.fb_pixel_lead › onsite_web_lead › complete_registration ›
+--             offsite_conversion.fb_pixel_complete_registration
+--   compras:  omni_purchase › purchase › offsite_conversion.fb_pixel_purchase
+-- Una fila sin ninguno de esos nombres queda en NULL (Meta no lo informa), no en 0. `purchase_value` no se toca: sale de
+-- `action_values`, que no se guarda crudo.
+--
+-- Orden: se aplica DESPUÉS de desplegar el código nuevo. Si no, el próximo sync con el código viejo vuelve a escribir los últimos días
+-- inflados. Respaldo previo (id, leads y purchases de cada fila): docs/atribucion/respaldo-leads-meta.json.
+--
+-- Como volver atras (con el respaldo):
+--   UPDATE public.meta_ads_insights_daily t SET leads = r.leads, purchases = r.purchases
+--     FROM jsonb_to_recordset('<el arreglo "rows" del respaldo>'::jsonb) AS r(id uuid, leads int, purchases int)
+--    WHERE t.id = r.id;
+--   DROP FUNCTION IF EXISTS public.meta_action_canonical(jsonb, text[]);
+-- Riesgo: bajo (cambia un número derivado de datos crudos que se conservan; con respaldo).
+-- ============================================================================
+
+SET search_path = '';
+
+-- El primer nombre de la lista que venga en `actions` (un mapa {tipo: cantidad}); NULL si ninguno.
+CREATE OR REPLACE FUNCTION public.meta_action_canonical(p_actions jsonb, p_preference text[])
+RETURNS integer
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $fn$
+  SELECT (p_actions ->> pref)::numeric::integer
+    FROM unnest(p_preference) WITH ORDINALITY AS u(pref, ord)
+   WHERE jsonb_typeof(p_actions) = 'object'
+     AND p_actions ? pref
+     AND jsonb_typeof(p_actions -> pref) = 'number'
+   ORDER BY ord
+   LIMIT 1
+$fn$;
+
+REVOKE ALL ON FUNCTION public.meta_action_canonical(jsonb, text[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.meta_action_canonical(jsonb, text[]) TO authenticated, service_role;
+
+UPDATE public.meta_ads_insights_daily t
+   SET leads = public.meta_action_canonical(t.actions, ARRAY[
+         'lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'onsite_web_lead',
+         'complete_registration', 'offsite_conversion.fb_pixel_complete_registration']),
+       purchases = public.meta_action_canonical(t.actions, ARRAY['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'])
+ WHERE jsonb_typeof(t.actions) = 'object'
+   AND (
+     t.leads IS DISTINCT FROM public.meta_action_canonical(t.actions, ARRAY[
+         'lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'onsite_web_lead',
+         'complete_registration', 'offsite_conversion.fb_pixel_complete_registration'])
+     OR t.purchases IS DISTINCT FROM public.meta_action_canonical(t.actions, ARRAY['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'])
+   );
+
+-- ============================================================
+-- MIGRATION 221: TOUCH AD ORIGIN
+-- ============================================================
+-- ============================================================================
+-- 00221 — Recuperar el anuncio de origen de un toque de Instagram desde la conversación de Zernio  (Tirón 2, A1)
+-- ============================================================================
+-- Meta manda los datos del anuncio (`referral`) SOLO en el primer mensaje después del clic. Si ese mensaje llegó sin
+-- ellos (o no se entendió), el toque quedó como «mensaje directo» orgánico. Zernio sí guarda el anuncio en la
+-- conversación (`metadata.meta_ad_id`, una vez, sin pisarlo), así que un job lo pide y esta función completa el toque:
+--
+--   public.enrich_touch_ad_origin(workspace, dedupe_key, ad_id, título, publicación)
+--
+-- Qué hace: busca el toque `msg:<id>` del mensaje; si NO tiene ya un anuncio y una persona no lo decidió a mano
+-- (`manual` / `ignored`), le pone el `ad_id` (y el título del anuncio como `content_label`, el medio `paid_social` y el
+-- `referral` en `raw`, que es lo que habría guardado `recordInboundTouch` con el referral), lo vincula con el catálogo
+-- (`resolve_meta_match_for_touch`, la misma regla de siempre) y recalcula la atribución del contacto
+-- (`private.refresh_contact_attribution`).
+--
+-- Reglas:
+--   - Nunca pisa un anuncio que el toque ya tenía, ni un vínculo `manual` o `ignored`.
+--   - Nunca lanza: ante cualquier error devuelve `{ok:false, error:'exception'}` y deja el toque como estaba.
+--   - Sin catálogo todavía, el toque queda `unmatched` con su `ad_id`; el re-vínculo (`rematch_meta_touches`) lo resuelve
+--     después del próximo sync.
+--   - `record_contact_touch`, `find_or_link_contact` y `create_booking` NO se tocan.
+--
+-- Solo `service_role` la ejecuta (SECURITY DEFINER, `search_path` vacío).
+--
+-- Como volver atras: DROP FUNCTION IF EXISTS public.enrich_touch_ad_origin(uuid, text, text, text, text);
+--   (los toques ya enriquecidos conservan su `ad_id`; para deshacer uno, `set_touch_meta_match(... 'unlink')` o vaciar `ad_id`
+--   y llamar a `rematch_meta_touches`)
+-- Riesgo: bajo (aditiva: una función nueva; ninguna tabla cambia).
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.enrich_touch_ad_origin(
+  p_workspace_id uuid,
+  p_dedupe_key text,
+  p_ad_id text,
+  p_title text DEFAULT NULL,
+  p_post_id text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  t       public.contact_touches%ROWTYPE;
+  v_ad    text := left(nullif(btrim(p_ad_id), ''), 500);
+  v_title text := left(nullif(btrim(p_title), ''), 500);
+  v_post  text := left(nullif(btrim(p_post_id), ''), 500);
+  r       jsonb;
+BEGIN
+  IF p_workspace_id IS NULL OR nullif(btrim(p_dedupe_key), '') IS NULL OR v_ad IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'nothing_to_enrich');
+  END IF;
+
+  BEGIN
+    SELECT * INTO t FROM public.contact_touches
+     WHERE workspace_id = p_workspace_id AND dedupe_key = p_dedupe_key
+     FOR UPDATE;
+    IF NOT FOUND THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'touch_not_found');
+    END IF;
+
+    -- Lo que una persona decidió, o un anuncio que el toque ya traía, no se toca.
+    IF t.meta_match_status IN ('manual', 'ignored') THEN
+      RETURN jsonb_build_object('ok', true, 'changed', false, 'reason', 'decided_by_person');
+    END IF;
+    IF nullif(btrim(t.ad_id), '') IS NOT NULL THEN
+      RETURN jsonb_build_object('ok', true, 'changed', false, 'reason', 'already_has_ad');
+    END IF;
+
+    UPDATE public.contact_touches
+       SET ad_id = v_ad,
+           content_label = coalesce(nullif(btrim(content_label), ''), v_title),
+           medium = 'paid_social',
+           raw = coalesce(raw, '{}'::jsonb) || jsonb_build_object(
+             'referral', jsonb_strip_nulls(jsonb_build_object(
+               'ad_id', v_ad,
+               'headline', v_title,
+               'post_id', v_post,
+               'platform', source,
+               'recovered_from', 'zernio_conversation'
+             ))
+           )
+     WHERE id = t.id
+     RETURNING * INTO t;
+
+    -- El vínculo con el catálogo, con la regla de siempre (con el anuncio ya puesto, sus datos cuentan).
+    r := public.resolve_meta_match_for_touch(t);
+    UPDATE public.contact_touches
+       SET meta_campaign_id = r->>'campaign_id',
+           meta_adset_id = r->>'adset_id',
+           meta_ad_id = r->>'ad_id',
+           meta_match_status = coalesce(r->>'status', 'none'),
+           meta_match_method = r->>'method',
+           meta_match_reason = r->>'reason',
+           meta_matched_at = CASE WHEN r->>'status' = 'matched' THEN now() END
+     WHERE id = t.id;
+
+    PERFORM private.refresh_contact_attribution(t.contact_id);
+
+    RETURN jsonb_build_object(
+      'ok', true, 'changed', true, 'contact_id', t.contact_id,
+      'status', coalesce(r->>'status', 'none'), 'ad_id', r->>'ad_id'
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'enrich_touch_ad_origin: no pude completar el toque (%): %', p_dedupe_key, SQLERRM;
+    RETURN jsonb_build_object('ok', false, 'error', 'exception');
+  END;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.enrich_touch_ad_origin(uuid, text, text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.enrich_touch_ad_origin(uuid, text, text, text, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 222: FLOW SEND CLAIMS
+-- ============================================================
+-- ============================================================================
+-- 00222 — Un paso no manda dos veces al mismo número en la misma sesión  (Tirón 2, D3)
+-- ============================================================================
+-- El paso «Enviar WhatsApp a un número» (a un número que puede no ser de ningún contacto) necesita una garantía que los
+-- demás envíos tienen por la conversación: que un mismo paso, en la misma sesión, nunca mande dos veces al mismo número,
+-- aunque el motor reintente el paso o dos procesos lo corran a la vez. Esta tabla es esa garantía:
+--
+--   public.flow_send_claims (session_id, node_id, target)   UNIQUE
+--
+-- El paso inserta su fila ANTES de mandar; si la fila ya existía (error 23505), no manda. Es una reserva, no un
+-- historial: la fila se borra sola cuando se borra la sesión (ON DELETE CASCADE, y el barrido de webhooks borra las
+-- sesiones viejas).
+--
+-- - Solo la escribe el servidor: RLS activada y SIN policies (service_role se salta la RLS; la app no la toca).
+-- - `target` es el número ya normalizado ("+<dígitos>"); no se guarda el texto del mensaje.
+--
+-- Como volver atras: DROP TABLE IF EXISTS public.flow_send_claims;
+-- Riesgo: bajo (aditiva: una tabla nueva y chica; nada la lee salvo el paso nuevo).
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE TABLE IF NOT EXISTS public.flow_send_claims (
+  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid        NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  session_id   uuid        NOT NULL REFERENCES public.flow_sessions(id) ON DELETE CASCADE,
+  node_id      text        NOT NULL,
+  target       text        NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT uq_flow_send_claims UNIQUE (session_id, node_id, target)
+);
+
+CREATE INDEX IF NOT EXISTS idx_flow_send_claims_workspace ON public.flow_send_claims (workspace_id, created_at);
+
+ALTER TABLE public.flow_send_claims ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.flow_send_claims FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, DELETE ON public.flow_send_claims TO service_role;

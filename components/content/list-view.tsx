@@ -10,6 +10,7 @@ import { drawerHref } from "@/lib/content/drawer-url";
 import { attributionTooltip } from "@/lib/content/board";
 import { NetworkBadges } from "./network-badge";
 import { PillarDot } from "./pillar-tag";
+import { showPaidIndicator } from "@/lib/meta/content-ad-summary";
 
 /**
  * La vista lista (F21): la misma informacion que el tablero, pero ordenable y
@@ -39,12 +40,15 @@ export function ContentList({
   filters,
   authors,
   months,
+  showPaid = false,
 }: {
   rows: ListRow[];
   filters: ContentFilters;
   authors: Array<{ id: string; name: string }>;
   /** Los meses que tienen algo, para el filtro de fecha (C15). */
   months: string[];
+  /** Mostrar el indicador «Pautada» y su filtro: solo para quien puede ver anuncios (A2). */
+  showPaid?: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -98,6 +102,21 @@ export function ContentList({
           onChange={(v) => setFilter("mes", v)}
           options={months.map((m) => ({ value: m, label: monthLabel(m) }))}
         />
+        {showPaid && (
+          <label className="flex items-center gap-1">
+            <span className="sr-only">Pauta</span>
+            <select
+              value={filters.paid ?? ""}
+              onChange={(e) => setFilter("pautada", e.target.value)}
+              aria-label="Pauta"
+              className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+            >
+              <option value="">Pauta: todas</option>
+              <option value="si">Pautadas</option>
+              <option value="no">No pautadas</option>
+            </select>
+          </label>
+        )}
         <span className="text-xs text-muted-foreground">
           {visible.length} de {rows.length}
         </span>
@@ -147,6 +166,14 @@ export function ContentList({
                       <span className="ml-2 text-xs text-muted-foreground">{row.format}</span>
                     )}
                     {row.pillar && <PillarDot tag={row.pillar} />}
+                    {showPaidIndicator(showPaid, row.paid) && (
+                      <span
+                        className="ml-2 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                        title="Tiene al menos un anuncio de Meta vinculado"
+                      >
+                        Pautada
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 pr-3 text-xs text-muted-foreground">
                     {row.isIdea ? <span>—</span> : <NetworkBadges platforms={row.platforms} />}

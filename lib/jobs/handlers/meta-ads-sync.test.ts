@@ -12,8 +12,9 @@ const WS = "ws-1";
 const ACC = "act_1";
 const NOW = new Date("2026-10-13T09:00:00Z");
 
+const tokenState = vi.hoisted(() => ({ token: "token-simulado" as string | null }));
 vi.mock("@/lib/meta/token", () => ({
-  getMetaToken: async () => "token-simulado",
+  getMetaToken: async () => tokenState.token,
 }));
 const scheduled: Array<{ type: string; payload: unknown }> = [];
 vi.mock("@/lib/scheduler", () => ({
@@ -24,7 +25,7 @@ vi.mock("@/lib/scheduler", () => ({
 }));
 
 const { getJobHandler, resetJobHandlers } = await import("@/lib/jobs/registry");
-const { registerMetaAdsHandlers, META_ADS_SYNC_JOB } =
+const { registerMetaAdsHandlers, META_ADS_SYNC_JOB, adAccountsToCatchUp } =
   await import("./meta-ads-sync");
 
 let db: MemoryDb;
@@ -152,6 +153,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   scheduled.length = 0;
+  tokenState.token = "token-simulado";
   rematchCalls.length = 0;
   rematchFails = false;
   resetJobHandlers();
@@ -465,5 +467,93 @@ describe("el catalogo", () => {
       thumbnail_path: "ws-1/a1.png",
       thumbnail_attempts: 1,
     });
+  });
+});
+
+describe("el catálogo no se calla ni se da por completo si algo no se pudo guardar (Tirón 2, E1)", () => {
+  /** La base rechaza el guardado de UNA tabla del catálogo; todo lo demás anda. Devuelve cómo dejarla andar otra vez. */
+  function failUpserts(table: string): () => void {
+    const realFrom = db.client.from.bind(db.client);
+    const original = db.client.from;
+    db.client.from = ((name: string) => {
+      const query = realFrom(name as never) as unknown as Record<string, unknown>;
+      if (name !== table) return query;
+      return new Proxy(query, {
+        get(target, prop) {
+          if (prop === "upsert") return async () => ({ error: { message: "violacion de unicidad" } });
+          const value = Reflect.get(target, prop);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    }) as never;
+    return () => {
+      db.client.from = original;
+    };
+  }
+
+  it("un lote de anuncios que no se guarda deja el catálogo INCOMPLETO y lo dice en la cuenta", async () => {
+    graph({ campaigns: () => res(PAGE.campaigns), adsets: () => res(PAGE.adsets), ads: () => res(PAGE.ads), insights: () => res({ data: [] }) });
+    failUpserts("meta_ads");
+    await run();
+    expect(db.rows("meta_campaigns")).toHaveLength(2);
+    expect(accountConfig().catalog_synced_at ?? null).toBeNull();
+    expect(String(accountConfig().last_error)).toContain("Catálogo (anuncios): no pude guardar");
+    expect(String(accountConfig().last_error)).toContain("violacion de unicidad");
+  });
+
+  it("como no avanzó `catalog_synced_at`, el siguiente sync vuelve a pedir TODO (no es incremental) y recupera las filas", async () => {
+    const g = graph({ campaigns: () => res(PAGE.campaigns), adsets: () => res(PAGE.adsets), ads: () => res(PAGE.ads), insights: () => res({ data: [] }) });
+    const recover = failUpserts("meta_ads");
+    await run();
+    expect(db.rows("meta_ads")).toHaveLength(0);
+
+    recover();
+    g.calls.length = 0;
+    await run();
+    const entityCalls = g.calls.filter((u) => ["campaigns", "adsets", "ads"].includes(u.pathname.split("/").pop()!));
+    expect(entityCalls.every((u) => u.searchParams.get("updated_since") === null)).toBe(true);
+    expect(db.rows("meta_ads").length).toBeGreaterThan(0);
+    expect(accountConfig().catalog_synced_at).toBe(NOW.toISOString());
+    expect(accountConfig().last_error ?? null).toBeNull();
+  });
+});
+
+describe("sin token de Meta la cuenta dice por qué no se sincroniza (Tirón 2, E1)", () => {
+  it("anota el motivo en la cuenta y no pide nada a Meta", async () => {
+    tokenState.token = null;
+    const g = graph({ campaigns: () => res(PAGE.campaigns) });
+    await run();
+    expect(g.stub).not.toHaveBeenCalled();
+    expect(String(accountConfig().last_error)).toContain("Falta el token de Meta");
+    expect(accountConfig().last_synced_at).toBe(NOW.toISOString());
+  });
+});
+
+describe("adAccountsToCatchUp: de todos los workspaces, una sola lectura", () => {
+  const cfg = (accounts: Array<Record<string, unknown>>) => ({ ad_accounts: accounts });
+  const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000).toISOString();
+
+  it("devuelve solo las cuentas encendidas que perdieron su corrida", async () => {
+    const world = memoryDb({
+      integration_configs: [
+        { workspace_id: "ws-a", type: "meta", provider: "meta", config: cfg([{ ad_account_id: "act_1", sync_enabled: true, last_synced_at: hoursAgo(30), catalog_synced_at: hoursAgo(30) }]) },
+        { workspace_id: "ws-b", type: "meta", provider: "meta", config: cfg([{ ad_account_id: "act_2", sync_enabled: true, last_synced_at: hoursAgo(1), catalog_synced_at: hoursAgo(1) }]) },
+        { workspace_id: "ws-c", type: "meta", provider: "meta", config: cfg([{ ad_account_id: "act_3", sync_enabled: false, last_synced_at: null }, { ad_account_id: "act_4", sync_enabled: true, last_synced_at: hoursAgo(7), catalog_synced_at: null }]) },
+        { workspace_id: "ws-d", type: "otro", provider: "meta", config: cfg([{ ad_account_id: "act_5", sync_enabled: true, last_synced_at: null }]) },
+      ],
+    });
+    const out = await adAccountsToCatchUp(world.client, NOW);
+    expect(out).toEqual([
+      { workspaceId: "ws-a", adAccountId: "act_1" },
+      { workspaceId: "ws-c", adAccountId: "act_4" },
+    ]);
+  });
+
+  it("si la lectura falla devuelve vacío y no lanza (el cron sigue con lo de siempre)", async () => {
+    const world = memoryDb({ integration_configs: [] });
+    world.client.from = (() => {
+      throw new Error("base caida");
+    }) as never;
+    await expect(adAccountsToCatchUp(world.client, NOW)).resolves.toEqual([]);
   });
 });

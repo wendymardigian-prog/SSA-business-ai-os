@@ -21,6 +21,7 @@ import { CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
 import { reconcileProviderSchedules } from "@/lib/publishing/reconcile";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
 import { reapInboundWebhooks } from "@/lib/webhooks/reaper";
+import { settleResumedSession } from "@/lib/webhooks/session-result";
 
 // Enchufa los publicadores y los handlers de contenido (F30, F35). Al
 // importar el modulo, no dentro de la corrida: registrarlos por job seria
@@ -372,11 +373,16 @@ async function failJobAndSettleSession({
     }
   }
 
-  const { error: settleError } = await supabase
+  const { data: cancelledRows, error: settleError } = await supabase
     .from("flow_sessions")
     .update({ status: "cancelled" })
     .eq("id", sessionId)
-    .eq("status", "active");
+    .eq("status", "active")
+    .select("id");
+  // Una sesion de webhook que recien se cancela aca (no la habia cancelado ya el catch de processJob): el envio lo anota.
+  if (!settleError && (cancelledRows ?? []).length > 0) {
+    await settleResumedSession(supabase, { sessionId, failure: errorMessage });
+  }
   if (settleError) {
     // The job is already 'failed' and never re-fetched, so this session stays
     // active with no pending job. Requeuing would not help: the retry hits the
@@ -691,6 +697,7 @@ async function processJob(
       // Resume from the node after the delay; resumeSession restores
       // variables from the session row and leaves {{message}} untouched
       // because incomingMessage is empty.
+      const skippedSteps: string[] = [];
       try {
         await resumeSession(supabase, session, {
           triggerId: "",
@@ -705,6 +712,8 @@ async function processJob(
           lateAccountId: payload.lateAccountId || undefined,
           variables: payload.variables || undefined,
           incomingMessage: {},
+          // Los pasos que se saltea por falta de contacto, para anotarlos en el historial del envio (webhooks).
+          ...(session.inbound_webhook_id ? { onStepSkipped: (step: { label: string }) => skippedSteps.push(step.label) } : {}),
         });
       } catch (err) {
         // A FlowLoadError is thrown before resumeSession advances
@@ -734,8 +743,16 @@ async function processJob(
           `Failed to resume flow session ${payload.sessionId} (flow ${session.flow_id}), session cancelled:`,
           err
         );
+        // Un flujo de webhook que falla DESPUES de una pausa: el historial del envio tiene que decirlo (C3).
+        await settleResumedSession(supabase, {
+          sessionId: payload.sessionId,
+          failure: err instanceof Error ? err.message : String(err),
+          skippedSteps,
+        });
         throw err;
       }
+      // Retomado sin fallar: si la sesion es de un webhook, el envio anota si termino o volvio a esperar.
+      await settleResumedSession(supabase, { sessionId: payload.sessionId, skippedSteps });
       break;
     }
 

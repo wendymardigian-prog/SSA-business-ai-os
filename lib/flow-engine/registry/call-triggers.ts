@@ -26,6 +26,7 @@ for (const type of CALL_TRIGGER_TYPES) {
     // Debajo de `crm_event` (50), igual que los de agenda: si un evento de
     // llamada tambien encajara en uno del CRM, primero corre el especifico.
     priority: 45,
+    sourceType: "call",
     eventTypes: [type],
 
     eventMatches: (args) => callEventMatches(type, (args.config ?? {}) as CallTriggerConfig, args.event.payload as unknown as CallEventPayload),

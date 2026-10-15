@@ -76,6 +76,23 @@ Dos salidas: **Listo** y **No se pudo**. Variables de salida: `contact_result` y
 Todo se escribe con el cliente de servicio y **siempre sobre el workspace del endpoint** (nunca el del payload). Un fallo interno de la base
 sí lanza: el envío queda `error` y se puede reprocesar.
 
+## Avisar y escribir sin contacto (Tirón 2, D3–D5)
+
+Un flujo de webhook arranca sin contacto. Dos pasos sirven igual en ese tramo, antes de «Crear o actualizar contacto»:
+
+- **Enviar WhatsApp a un número**: un aviso (por ejemplo, a la dueña cuando entra un lead) a un número fijo o al de una variable
+  (`{{webhook.body.telefono}}`), por un canal de WhatsApp que se elige en el paso. Busca el número entre los contactos pero **no crea nada**:
+  si es de alguien marcado «no contactar» no se manda; si es de un contacto con conversación en ese canal, queda guardado ahí; si no es de
+  nadie, se manda igual y queda en el historial del flujo. Un mismo paso nunca manda dos veces al mismo número en la misma ejecución, y
+  respeta el tope de 200 mensajes automáticos por hora del canal.
+- **Enviar email** con el destino **«la dirección de una variable»** (`{{webhook.body.email}}`): se valida al correr y, si no es un email o es
+  de un contacto «no contactar», se saltea con el motivo.
+
+Los pasos salteados aparecen en el detalle del envío («pasos salteados»).
+
+**Guardar un flujo publicado** por la API (`PUT /api/v1/flows/:id`) se valida igual que al publicar (con las aristas): si el grafo ya no
+cumple la regla del contacto, no se guarda y la respuesta trae el motivo. Un borrador se puede guardar a medias.
+
 ## Dónde está el código
 
 `app/api/hooks/[token]/route.ts` (envoltorio delgado) · `lib/webhooks/*` · `lib/actions/webhook-endpoints.ts` ·

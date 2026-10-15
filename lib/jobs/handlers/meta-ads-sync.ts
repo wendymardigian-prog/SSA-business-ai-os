@@ -20,6 +20,8 @@ import { fetchEntities, MAX_ENTITY_PAGES, updatedSinceFor, type CatalogLevel } f
 import { loadStatuses, persistAdsets, persistAds, persistCampaigns, type StatusMap } from "@/lib/meta/catalog-store";
 import { linkAdsToContent } from "@/lib/meta/content-link";
 import { scheduleThumbnailJob } from "@/lib/meta/thumbnails";
+import { adAccountNeedsCatchUp } from "@/lib/metrics/rules";
+import type { PersistResult } from "@/lib/meta/catalog-store";
 
 type Db = SupabaseClient<Database>;
 
@@ -151,11 +153,20 @@ export async function syncCatalog(
         notes.push("Catálogo incompleto: Meta está cerca de su límite de uso; sigue en el próximo ciclo");
       }
 
-      if (level === "campaign") result.campaigns = await persistCampaigns(supabase, { ...base, rows: fetched.rows as never });
-      if (level === "adset") result.adsets = await persistAdsets(supabase, { ...base, rows: fetched.rows as never });
+      // Un lote que no se pudo guardar deja el catalogo INCOMPLETO y lo dice: si no, `catalog_synced_at` avanzaba igual,
+      // el proximo sync era incremental y esas filas no volvian nunca (Tiron 2, E1).
+      const saved = (stored: PersistResult): number => {
+        if (stored.failed > 0) {
+          result.complete = false;
+          notes.push(`Catálogo (${LEVEL_LABEL[level]}): no pude guardar ${stored.failed} ${stored.failed === 1 ? "fila" : "filas"}${stored.error ? ` (${stored.error})` : ""}`);
+        }
+        return stored.written;
+      };
+      if (level === "campaign") result.campaigns = saved(await persistCampaigns(supabase, { ...base, rows: fetched.rows as never }));
+      if (level === "adset") result.adsets = saved(await persistAdsets(supabase, { ...base, rows: fetched.rows as never }));
       if (level === "ad") {
         const ads = fetched.rows as import("@/lib/meta/entities").AdEntity[];
-        result.ads = await persistAds(supabase, { ...base, rows: ads });
+        result.ads = saved(await persistAds(supabase, { ...base, rows: ads }));
         await linkAdsToContent(supabase, {
           workspaceId: params.workspaceId,
           adAccountId: params.adAccountId,
@@ -187,6 +198,30 @@ export async function syncCatalog(
   return result;
 }
 
+/** Deja anotado en la cuenta que este intento no pudo correr (el motivo queda en `last_error`, que la pantalla muestra). Nunca lanza. */
+async function recordSyncFailure(supabase: Db, workspaceId: string, adAccountId: string, message: string): Promise<void> {
+  try {
+    const { data: row } = await supabase
+      .from("integration_configs")
+      .select("config")
+      .eq("workspace_id", workspaceId)
+      .eq("type", "meta")
+      .eq("provider", "meta")
+      .maybeSingle();
+    const config = parseMetaConfig(row?.config);
+    if (!config.ad_accounts.some((a) => a.ad_account_id === adAccountId)) return;
+    const updated = markSync(config.ad_accounts, adAccountId, { at: new Date().toISOString(), error: message });
+    await supabase
+      .from("integration_configs")
+      .update({ config: { ...config, ad_accounts: updated } as unknown as Json })
+      .eq("workspace_id", workspaceId)
+      .eq("type", "meta")
+      .eq("provider", "meta");
+  } catch (err) {
+    console.error("[meta-ads] no pude anotar el motivo en la cuenta:", err instanceof Error ? err.message : String(err));
+  }
+}
+
 async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
   const payload = (job.payload ?? {}) as MetaAdsSyncPayload;
   if (!payload.workspaceId || !payload.adAccountId) {
@@ -196,6 +231,8 @@ async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
   const token = await getMetaToken(supabase, payload.workspaceId);
   if (!token) {
     console.error("[meta-ads] no hay token de Meta guardado");
+    // Antes volvia sin dejar nada: la cuenta parecia no sincronizarse "porque si". Ahora la cuenta lo dice.
+    await recordSyncFailure(supabase, payload.workspaceId, payload.adAccountId, "Falta el token de Meta: cargalo en Integraciones para sincronizar los anuncios.");
     return;
   }
 
@@ -299,6 +336,26 @@ async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
 
 export function registerMetaAdsHandlers(): void {
   registerJobHandler(META_ADS_SYNC_JOB, handleMetaAdsSync);
+}
+
+/**
+ * Las cuentas que perdieron su corrida (Tiron 2, E1): ver `adAccountNeedsCatchUp`. De TODOS los workspaces, en una sola
+ * lectura. Nunca lanza: si falla, el cron sigue con lo de siempre.
+ */
+export async function adAccountsToCatchUp(supabase: Db, now: Date): Promise<Array<{ workspaceId: string; adAccountId: string }>> {
+  try {
+    const { data } = await supabase.from("integration_configs").select("workspace_id, config").eq("type", "meta").eq("provider", "meta");
+    const out: Array<{ workspaceId: string; adAccountId: string }> = [];
+    for (const row of (data ?? []) as Array<{ workspace_id: string; config: unknown }>) {
+      for (const account of syncedAccounts(parseMetaConfig(row.config).ad_accounts)) {
+        if (adAccountNeedsCatchUp(account, now)) out.push({ workspaceId: row.workspace_id, adAccountId: account.ad_account_id });
+      }
+    }
+    return out;
+  } catch (err) {
+    console.error("[metrics-sync] no pude buscar las cuentas atrasadas:", err instanceof Error ? err.message : String(err));
+    return [];
+  }
 }
 
 /** Las cuentas publicitarias que toca sincronizar de un workspace. */

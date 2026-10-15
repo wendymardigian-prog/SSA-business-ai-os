@@ -461,6 +461,8 @@ export type AuditEntityType =
   | "eod_report"
   /** Webhooks entrantes (00186): el endpoint (Extra L). */
   | "webhook_endpoint"
+  /** Un anuncio del catalogo de Meta (00191): el vinculo manual con una pieza de Contenido (Extra L, Tiron 2, A2). */
+  | "meta_ad"
   /** Tareas (00196). Las RPC de 00197 escriben `task.completed`, `task.date_shifted`, `task.blockers_changed` y `task.deleted`. */
   | "task";
 /** Acciones que registra el audit log (migracion 00023). */
@@ -600,6 +602,9 @@ export type AuditAction =
   | "attribution.meta_linked"
   | "attribution.meta_ignored"
   | "attribution.meta_unlinked"
+  /** Entity meta_ad: una persona vinculo un anuncio con una pieza de Contenido, o lo desvinculo (Tiron 2, A2). */
+  | "content_link.linked"
+  | "content_link.unlinked"
   /** Entity eod_report: una correccion de un reporte enviado (con lo que cambio). */
   | "eod.edited"
   /** Entity contract_signature. */
@@ -1809,6 +1814,10 @@ export interface Database {
           member_user_id: string | null;
           /** El envio de webhook que arranco el flujo (00187): permite una sesion sin contacto ni persona. */
           inbound_webhook_id: string | null;
+          /** Que disparo la sesion (00218): contact | member | webhook | task | form | booking | sale | call | system. */
+          source_type: string | null;
+          /** La entidad que la disparo (el envio, el evento, la persona...). */
+          source_id: string | null;
           flow_id: string;
           channel_id: string | null;
           status: FlowSessionStatus;
@@ -1826,6 +1835,8 @@ export interface Database {
           contact_id: string | null;
           member_user_id?: string | null;
           inbound_webhook_id?: string | null;
+          source_type?: string | null;
+          source_id?: string | null;
           flow_id: string;
           channel_id: string | null;
           status?: FlowSessionStatus;
@@ -2451,6 +2462,9 @@ export interface Database {
           /** Null solo en los eventos de una persona del equipo (`eod_submitted`, 00182). */
           contact_id: string | null;
           member_user_id: string | null;
+          /** Que origino el evento (00218). Un evento sin contacto exige uno: la base lo completa para contacto y persona. */
+          source_type: string | null;
+          source_id: string | null;
           payload: Json;
           created_at: string;
           processed_at: string | null;
@@ -2462,6 +2476,8 @@ export interface Database {
           event_type: string;
           contact_id: string | null;
           member_user_id?: string | null;
+          source_type?: string | null;
+          source_id?: string | null;
           payload?: Json;
           created_at?: string;
           processed_at?: string | null;
@@ -5281,6 +5297,13 @@ export interface Database {
         Update: { count?: number };
         Relationships: [];
       };
+      /** Reserva de «un paso no manda dos veces al mismo numero en la misma sesion» (00222). Solo la escribe el servidor. */
+      flow_send_claims: {
+        Row: { id: string; workspace_id: string; session_id: string; node_id: string; target: string; created_at: string };
+        Insert: { id?: string; workspace_id: string; session_id: string; node_id: string; target: string };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -5301,7 +5324,44 @@ export interface Database {
         Args: { p_workspace_id: string; p_phone: string | null; p_email: string | null; p_social: Json };
         Returns: Json;
       };
+      /** Guarda un envio de webhook con candado por (endpoint, id de envio o huella): dos entregas identicas simultaneas dan un `received` y un `ignored` (00216). Solo service_role. */
+      receive_inbound_webhook: {
+        Args: { p_row: Json; p_duplicate_window_seconds?: number };
+        Returns: Json;
+      };
+      /** Completa con el anuncio de origen el toque de un mensaje de Instagram (00221). Nunca pisa un anuncio ni un vinculo manual. Solo service_role. */
+      enrich_touch_ad_origin: {
+        Args: { p_workspace_id: string; p_dedupe_key: string; p_ad_id: string; p_title?: string; p_post_id?: string };
+        Returns: Json;
+      };
       /** La tabla Meta vs CRM: lo que paso en el CRM por campaña, conjunto o anuncio (00195). SECURITY INVOKER: la RLS de quien mira decide que cuenta. */
+      /** Las filas que forman cada numero de la tabla Meta vs CRM (00219). SECURITY INVOKER. */
+      ads_crm_items: {
+        Args: { p_level: string; p_metric: string; p_since: string; p_until: string; p_workspace_id: string; p_ad_account_id?: string | null; p_object_id?: string | null; p_object_ids?: string[] | null };
+        Returns: Array<{ obj: string; contact_id: string | null; item_id: string | null; occurred_at: string | null; origin: string | null; detail_at: string | null; amount_cents: number | null }>;
+      };
+      /** La tabla Meta vs CRM v2: lo mismo que `ads_crm_metrics` mas una fila `is_total` con personas distintas y el primer pago (00219). SECURITY INVOKER. */
+      ads_crm_metrics_v2: {
+        Args: { p_level: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null; p_object_ids?: string[] | null };
+        Returns: Array<{
+          object_id: string | null;
+          is_total: boolean;
+          leads_first: number | null;
+          leads_total: number | null;
+          leads_with_booking: number | null;
+          bookings: number | null;
+          bookings_attended: number | null;
+          sales: number | null;
+          revenue_cents: number | null;
+          cash_cents: number | null;
+          uf_cash_cents: number | null;
+        }>;
+      };
+      /** El detalle de una celda de la tabla Meta vs CRM, de a 50 (00219). SECURITY INVOKER. */
+      ads_crm_cell_detail: {
+        Args: { p_level: string; p_metric: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null; p_object_id?: string | null; p_object_ids?: string[] | null; p_limit?: number; p_offset?: number };
+        Returns: Array<{ item_id: string | null; contact_id: string | null; contact_name: string | null; occurred_at: string | null; origin: string | null; detail_at: string | null; amount_cents: number | null; total_count: number }>;
+      };
       ads_crm_metrics: {
         Args: { p_level: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null };
         Returns: Array<{

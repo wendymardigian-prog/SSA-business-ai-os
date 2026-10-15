@@ -21,6 +21,7 @@ registerTrigger({
   scope: "event",
   priority: 45,
   subject: "webhook",
+  sourceType: "webhook",
 
   // Lo que se puede comparar en «Solo si…» y en Condiciones: las hojas del ejemplo del endpoint.
   variableSchema: async (config, ctx) => {

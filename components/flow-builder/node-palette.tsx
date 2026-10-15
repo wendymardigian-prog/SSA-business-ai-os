@@ -27,6 +27,7 @@ import {
   CalendarClock,
   Ban,
   UserRoundPlus,
+  Smartphone,
 } from "lucide-react";
 import type { DragEvent } from "react";
 import { isContactFreeNodeType } from "@/lib/flow-engine/contact-free";
@@ -190,6 +191,14 @@ const categories: PaletteCategory[] = [
         label: "Enviar email",
         icon: Mail,
         actionType: "send_email",
+      },
+      // Tirón 2, D3: un aviso por WhatsApp a un número que puede no ser de ningún contacto (sirve sin contacto).
+      {
+        type: "action",
+        nodeType: "send_whatsapp_number",
+        label: "Enviar WhatsApp a un número",
+        icon: Smartphone,
+        actionType: "send_whatsapp_number",
       },
       // E15: un aviso al equipo en la campana (sirve también en flujos sin contacto).
       {

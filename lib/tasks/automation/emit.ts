@@ -28,6 +28,9 @@ export async function emitTaskEvent(db: Db, type: TaskEventType, task: Emittable
       event_type: type,
       contact_id: task.contact_id,
       member_user_id: personId,
+      // Que origino el evento (00218): la tarea. El flujo que dispare queda con ese origen.
+      source_type: "task",
+      source_id: task.id,
       payload: taskEventPayload(task) as unknown as Json,
     });
     if (error) {

@@ -182,7 +182,8 @@ describe("los desgloses (F58)", () => {
       }),
     });
 
-    expect(result.ok && result.data[0]).toMatchObject({ age: "25-34", gender: "female", leads: 5 });
+    // La regla del sync cuenta UN lead por evento (Tiron 2, E1): `lead` (3) y su variante agrupada son el mismo lead.
+    expect(result.ok && result.data[0]).toMatchObject({ age: "25-34", gender: "female", leads: 3 });
     expect(result.ok && result.data[0].actions.link_click).toBe(40);
     // Sin acciones no hay leads que contar: null, no cero.
     expect(result.ok && result.data[1].leads).toBeNull();

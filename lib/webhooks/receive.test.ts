@@ -11,6 +11,7 @@ import {
   type InboundInsert,
   type ReceiveDeps,
   type ReceiveInput,
+  DUPLICATE_WINDOW_MS,
 } from "./receive";
 import { isListening } from "./listen";
 
@@ -48,10 +49,12 @@ function setup(opts: { endpoint?: EndpointRow | null; body?: string; tooLarge?: 
       const text = opts.body ?? "{}";
       return { text, bytes: Buffer.byteLength(text) };
     }),
-    hasRecentSameBody: vi.fn(async () => opts.recentSame ?? false),
+    // Hace lo que hace `receive_inbound_webhook` (00216): sin id de envio, un cuerpo identico dentro de la ventana
+    // queda `ignored`; con id, decide el indice unico y el estado pedido se respeta.
     insertInbound: vi.fn(async (row) => {
       inserted.push(row);
-      return { kind: "inserted" as const, id: "in-1" };
+      const status = !row.externalEventId && opts.recentSame ? ("ignored" as const) : row.status;
+      return { kind: "inserted" as const, id: "in-1", status };
     }),
     captureSample: vi.fn(async () => {}),
   };
@@ -185,19 +188,26 @@ describe("receiveWebhook: estados", () => {
     expect(deps.captureSample).not.toHaveBeenCalled();
   });
 
-  it("sin id de envio, un cuerpo identico en 10 minutos queda ignored (200)", async () => {
+  it("sin id de envio, un cuerpo identico en 10 minutos queda ignored (200) y NO se procesa", async () => {
     const { deps, inserted } = setup({ recentSame: true });
     const res = await receiveWebhook(deps, input());
     expect(res.status).toBe(200);
-    expect(inserted[0].status).toBe("ignored");
+    // El receptor pide la ventana; quien decide el repetido es la base, al guardar (con candado).
+    expect(inserted[0]).toMatchObject({ duplicateWindowMs: DUPLICATE_WINDOW_MS });
     expect(res.process).toBeUndefined();
   });
 
-  it("con id de envio no se mira la huella: el indice unico decide", async () => {
-    const { deps, inserted } = setup({ endpoint: endpoint({ event_id_path: "event_id" }), body: '{"event_id":"e-1"}', recentSame: true });
+  it("si la base lo dejo `ignored`, tampoco se captura como ejemplo aunque se estuviera escuchando", async () => {
+    const { deps } = setup({ recentSame: true, endpoint: endpoint({ listen_until: new Date(NOW.getTime() + 60_000).toISOString() }) });
     await receiveWebhook(deps, input());
-    expect(deps.hasRecentSameBody).not.toHaveBeenCalled();
+    expect(deps.captureSample).not.toHaveBeenCalled();
+  });
+
+  it("con id de envio no cuenta la huella: el indice unico decide y el estado pedido se respeta", async () => {
+    const { deps, inserted } = setup({ endpoint: endpoint({ event_id_path: "event_id" }), body: '{"event_id":"e-1"}', recentSame: true });
+    const res = await receiveWebhook(deps, input());
     expect(inserted[0]).toMatchObject({ status: "received", externalEventId: "e-1" });
+    expect(res.process).toEqual({ inboundId: "in-1", endpointId: "ep-1" });
   });
 
   it("el mismo id de envio por segunda vez responde 200 duplicate y no procesa", async () => {

@@ -1,3 +1,4 @@
+import type { AutomationSource } from "./registry/types";
 import type { NodeType, Platform } from "@/lib/types/database";
 import type { BranchNodeData } from "./condition-eval";
 
@@ -200,6 +201,12 @@ export interface FlowExecutionContext {
    * sin contacto y sin persona: el paso "Crear o actualizar contacto" pone `contactId` después.
    */
   inboundWebhookId?: string | null;
+  /**
+   * Qué disparó este flujo (Tirón 2, D1): se guarda en `flow_sessions.source_type/source_id`. Sin declarar, lo completa
+   * la base según el contacto, la persona o el envío que tenga la sesión. Una REANUDACIÓN lo recupera de la sesión:
+   * el job de «Esperar» no lo manda, y sin él un flujo sin contacto pierde de dónde viene.
+   */
+  source?: AutomationSource;
   /**
    * Un aviso para quien arrancó el flujo cuando el motor saltea un paso por falta de contacto
    * (los flujos de webhook lo anotan en el historial del envío). Nunca lanza.

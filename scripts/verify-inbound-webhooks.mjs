@@ -14,6 +14,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { runCleanup } from "./test-cleanup.mjs";
@@ -215,10 +216,197 @@ try {
     check(!eodTrigger.error, "y sigue aceptando los 31 de antes (eod_submitted)", eodTrigger.error?.message);
     const badTrigger = await svc.from("triggers").insert({ workspace_id: ws.id, flow_id: flow.id, type: "inventado", config: {}, is_active: false });
     check(!!badTrigger.error, "un tipo inventado sigue rechazado");
-    // Borrar el envio deja la sesion SIN contacto fuera del CHECK: por eso la retencion la borra antes.
+    // Borrar el envio deja a la sesion sin envio (FK SET NULL). Antes eso la dejaba SIN contacto, persona ni envio y el CHECK
+    // frenaba el borrado (por eso la retencion la borraba antes). Desde la 00218 la sesion conserva su ORIGEN (`webhook`,
+    // con el id del envio como texto): sigue siendo valida y el borrado ya no se frena (Tiron 2, D1).
     const del = await svc.from("inbound_webhooks").delete().eq("id", inb.id);
-    check(!!del.error, "borrar un envio que sostiene una sesion sin contacto lo frena el CHECK (la retencion la borra antes)", del.error?.message);
-    await svc.from("flow_sessions").delete().eq("inbound_webhook_id", inb.id);
+    check(!del.error, "borrar un envio que sostiene una sesion sin contacto YA NO lo frena el CHECK: la sesion conserva su origen (00218)", del.error?.message);
+    const { data: orphan } = await svc.from("flow_sessions").select("inbound_webhook_id, source_type, source_id").eq("flow_id", flow.id).eq("source_id", inb.id);
+    check((orphan ?? []).length === 1 && orphan[0].inbound_webhook_id === null && orphan[0].source_type === "webhook",
+      "y la sesion queda con el envio en NULL y su origen `webhook` intacto", JSON.stringify(orphan));
+    await svc.from("flow_sessions").delete().eq("flow_id", flow.id);
+  }
+
+  console.log("\n— Recepcion sin carrera: receive_inbound_webhook (Tiron 2, C2, 00216) —");
+  {
+    const { data: epc } = await svc.from("webhook_endpoints").insert({ workspace_id: ws.id, name: "zz-test carrera", token: newToken() }).select("id").single();
+    const row = (extra = {}) => ({ workspace_id: ws.id, endpoint_id: epc.id, status: "received", payload: { email: "a@b.com" }, query: {}, content_type: "application/json", size_bytes: 20, body_hash: "hash-igual", ...extra });
+    const call = (r, window = 600) => svc.rpc("receive_inbound_webhook", { p_row: r, p_duplicate_window_seconds: window });
+
+    // Diez entregas identicas AL MISMO TIEMPO, sin id de envio: antes pasaban todas el SELECT y quedaban todas `received`.
+    const outs = await Promise.all(Array.from({ length: 10 }, () => call(row())));
+    check(outs.every((o) => !o.error), "las diez llamadas responden sin error", JSON.stringify(outs.find((o) => o.error)?.error));
+    const received = outs.filter((o) => o.data?.kind === "inserted" && o.data.status === "received").length;
+    const ignored = outs.filter((o) => o.data?.kind === "inserted" && o.data.status === "ignored").length;
+    check(received === 1 && ignored === 9, "diez entregas identicas SIMULTANEAS: una `received` y nueve `ignored`", JSON.stringify({ received, ignored }));
+    const { data: stored } = await svc.from("inbound_webhooks").select("status, result").eq("endpoint_id", epc.id);
+    check((stored ?? []).filter((r) => r.status === "received").length === 1 && (stored ?? []).filter((r) => r.status === "ignored").length === 9,
+      "y en la tabla: una `received` y nueve `ignored` (ninguna se pierde)", JSON.stringify((stored ?? []).map((r) => r.status)));
+    check((stored ?? []).filter((r) => r.status === "ignored").every((r) => String(r.result?.summary).startsWith("Repetido")), "las ignoradas dicen por que");
+
+    // Con id de envio: una entra y nueve son `duplicate`.
+    const withId = await Promise.all(Array.from({ length: 10 }, () => call(row({ external_event_id: "evt-carrera", body_hash: "otro-hash" }))));
+    check(withId.filter((o) => o.data?.kind === "inserted").length === 1 && withId.filter((o) => o.data?.kind === "duplicate").length === 9,
+      "con id de envio: una entra y nueve son `duplicate`", JSON.stringify(withId.map((o) => o.data?.kind)));
+
+    // Cuerpos DISTINTOS en paralelo: no se confunden entre si.
+    const distinct = await Promise.all(Array.from({ length: 10 }, (_, i) => call(row({ body_hash: `distinto-${i}` }))));
+    check(distinct.every((o) => o.data?.kind === "inserted" && o.data.status === "received"), "diez cuerpos distintos en paralelo: los diez `received`", JSON.stringify(distinct.map((o) => o.data?.status)));
+
+    // El estado pedido (paused, error, captured) se respeta si no es un repetido; y un repetido gana a todos.
+    const paused = await call(row({ status: "paused", body_hash: "pausado" }));
+    check(paused.data?.status === "paused", "un envio nuevo a un endpoint pausado queda `paused`");
+    const pausedAgain = await call(row({ status: "paused", body_hash: "pausado" }));
+    check(pausedAgain.data?.status === "ignored", "y el mismo cuerpo otra vez es un repetido");
+    const noWindow = await call(row({ body_hash: "hash-igual" }), 0);
+    check(noWindow.data?.kind === "inserted" && noWindow.data.status === "received", "con ventana 0 no se deduplica por cuerpo");
+
+    // Quien puede llamarla: solo el servidor.
+    const anon = createClient(URL, ANON, { auth: { persistSession: false } });
+    const asAnon = await anon.rpc("receive_inbound_webhook", { p_row: row({ body_hash: "intruso" }), p_duplicate_window_seconds: 600 });
+    check(!!asAnon.error, "anon no puede llamar a receive_inbound_webhook", asAnon.error?.message);
+    const asAdmin = await admin.client.rpc("receive_inbound_webhook", { p_row: row({ body_hash: "intruso-2" }), p_duplicate_window_seconds: 600 });
+    check(!!asAdmin.error, "ni un Admin con su sesion (solo service_role)", asAdmin.error?.message);
+    const { data: intruders } = await svc.from("inbound_webhooks").select("id").eq("endpoint_id", epc.id).in("body_hash", ["intruso", "intruso-2"]);
+    check((intruders ?? []).length === 0, "y no guardaron nada");
+    const bad = await call({ workspace_id: ws.id });
+    check(!!bad.error, "una llamada sin endpoint ni estado se rechaza", bad.error?.message);
+  }
+
+  console.log("\n— El origen de las automatizaciones (Tiron 2, D1, 00218) —");
+  {
+    const { data: flow } = await svc.from("flows").insert({ workspace_id: ws.id, name: "zz-test flujo origen", status: "draft", nodes: [], edges: [] }).select("id").single();
+    const { data: inb } = await svc.from("inbound_webhooks").insert({ ...base, status: "processed" }).select("id").single();
+    const { data: contact } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test origen" }).select("id").single();
+    const session = (extra) => svc.from("flow_sessions").insert({ flow_id: flow.id, status: "active", variables: {}, ...extra }).select("source_type, source_id").single();
+
+    // La base completa el origen sola (el codigo viejo y los emisores en SQL no lo mandan).
+    let r = await session({ contact_id: contact.id });
+    check(r.data?.source_type === "contact" && r.data?.source_id === contact.id, "una sesion con contacto queda con origen `contact`", JSON.stringify(r));
+    r = await session({ member_user_id: admin.id });
+    check(r.data?.source_type === "member" && r.data?.source_id === admin.id, "una con persona del equipo, `member`", JSON.stringify(r));
+    r = await session({ inbound_webhook_id: inb.id });
+    check(r.data?.source_type === "webhook" && r.data?.source_id === inb.id, "una de un envio de webhook, `webhook`", JSON.stringify(r));
+    r = await session({ inbound_webhook_id: inb.id, contact_id: contact.id });
+    check(r.data?.source_type === "webhook", "un flujo de webhook que ya consiguio contacto sigue siendo `webhook` (el origen es lo que lo disparo)", JSON.stringify(r));
+
+    // Un origen explicito sostiene una sesion sin contacto, ni persona, ni envio (lo que traba a los disparadores nuevos).
+    r = await session({ source_type: "system", source_id: "ev-1" });
+    check(!r.error && r.data?.source_type === "system" && r.data?.source_id === "ev-1", "una sesion SOLO con origen `system` se acepta", r.error?.message);
+    r = await session({});
+    check(!!r.error, "sin contacto, persona, envio ni origen sigue rechazada", r.error?.message);
+    r = await session({ source_type: "inventado" });
+    check(!!r.error, "un origen que no esta en la lista se rechaza", r.error?.message);
+    for (const t of ["contact", "member", "webhook", "task", "form", "booking", "sale", "call", "system"]) {
+      const ok1 = await session({ source_type: t });
+      if (ok1.error) fail(`la base no acepta el origen «${t}»`, ok1.error.message);
+    }
+    ok("los nueve origenes de la lista se aceptan");
+
+    const ev = (extra) => svc.from("automation_events").insert({ workspace_id: ws.id, event_type: "zz_test_event", payload: {}, ...extra }).select("source_type, source_id").single();
+    let e = await ev({ contact_id: contact.id });
+    check(e.data?.source_type === "contact" && e.data?.source_id === contact.id, "un evento con contacto queda con origen `contact`", JSON.stringify(e));
+    e = await ev({ member_user_id: admin.id, event_type: "eod_submitted" });
+    check(e.data?.source_type === "member", "un evento de fin de dia (persona, sin contacto): `member`", JSON.stringify(e));
+    e = await ev({ member_user_id: admin.id, event_type: "task_completed" });
+    check(!e.error && e.data?.source_type === "member", "task_completed sin contacto y con persona sigue aceptandose", e.error?.message);
+    e = await ev({ source_type: "task", source_id: "t-1", contact_id: contact.id });
+    check(e.data?.source_type === "task" && e.data?.source_id === "t-1", "un origen declarado se respeta aunque haya contacto", JSON.stringify(e));
+    e = await ev({ source_type: "system", source_id: "x" });
+    check(!e.error && e.data?.source_type === "system", "un evento sin contacto ni persona, solo con origen `system`, se acepta", e.error?.message);
+    e = await ev({});
+    check(!!e.error, "un evento sin contacto ni origen se rechaza", e.error?.message);
+    // La proteccion de siempre: un evento de CONTACTO sin contacto no se guarda aunque traiga una persona.
+    e = await ev({ member_user_id: admin.id, event_type: "tag_added" });
+    check(!!e.error, "un evento de contacto (tag_added) con persona y SIN contacto sigue rechazado", e.error?.message);
+    e = await ev({ member_user_id: admin.id, event_type: "zz_test_event", source_type: "system" });
+    check(!!e.error, "y con persona, un origen declarado no abre la puerta a otros tipos de evento", e.error?.message);
+    e = await ev({ source_type: "inventado" });
+    check(!!e.error, "un origen de evento inventado se rechaza", e.error?.message);
+
+    // El backfill dejo todo con origen.
+    const noSource = await svc.from("flow_sessions").select("id", { count: "exact", head: true }).is("source_type", null);
+    const noSourceEv = await svc.from("automation_events").select("id", { count: "exact", head: true }).is("source_type", null);
+    check(noSource.count === 0 && noSourceEv.count === 0, "ninguna sesion ni evento quedo sin origen", JSON.stringify({ sesiones: noSource.count, eventos: noSourceEv.count }));
+
+    await svc.from("flow_sessions").delete().eq("flow_id", flow.id);
+    await svc.from("inbound_webhooks").delete().eq("id", inb.id);
+  }
+
+  console.log("\n— La reserva «un paso no manda dos veces al mismo numero» (Tiron 2, D3, 00222) —");
+  {
+    const { data: flow } = await svc.from("flows").insert({ workspace_id: ws.id, name: "zz-test flujo reserva", status: "draft", nodes: [], edges: [] }).select("id").single();
+    const { data: sess } = await svc.from("flow_sessions").insert({ flow_id: flow.id, status: "active", variables: {}, source_type: "system", source_id: "claims" }).select("id").single();
+    const { data: sess2 } = await svc.from("flow_sessions").insert({ flow_id: flow.id, status: "active", variables: {}, source_type: "system", source_id: "claims-2" }).select("id").single();
+    const claim = (session_id, node_id, target) => svc.from("flow_send_claims").insert({ workspace_id: ws.id, session_id, node_id, target });
+
+    const first = await claim(sess.id, "n1", "+5491122334455");
+    check(!first.error, "la primera reserva (sesion, paso, numero) se guarda", first.error?.message);
+    const dup = await claim(sess.id, "n1", "+5491122334455");
+    check(dup.error?.code === "23505", "la misma reserva otra vez choca con el indice unico (23505): el paso no manda de nuevo", JSON.stringify(dup.error));
+    check(!(await claim(sess.id, "n2", "+5491122334455")).error, "otro paso de la misma sesion, el mismo numero: se puede");
+    check(!(await claim(sess.id, "n1", "+5491199998888")).error, "el mismo paso, otro numero: se puede");
+    check(!(await claim(sess2.id, "n1", "+5491122334455")).error, "otra sesion, el mismo paso y numero: se puede");
+
+    // Dos reservas a la vez: gana una sola.
+    const race = await Promise.all(Array.from({ length: 8 }, () => claim(sess.id, "n-carrera", "+5491100000000")));
+    check(race.filter((r) => !r.error).length === 1 && race.filter((r) => r.error?.code === "23505").length === 7, "ocho reservas simultaneas iguales: una gana y siete chocan", JSON.stringify(race.map((r) => r.error?.code ?? "ok")));
+
+    // Solo el servidor.
+    const anon = createClient(URL, ANON, { auth: { persistSession: false } });
+    check(!!(await anon.from("flow_send_claims").insert({ workspace_id: ws.id, session_id: sess.id, node_id: "x", target: "+5491111111111" })).error, "anon no puede escribir en flow_send_claims");
+    const asAdmin = await admin.client.from("flow_send_claims").select("id");
+    check(!!asAdmin.error || (asAdmin.data ?? []).length === 0, "un Admin con sesion no lee ni una reserva", asAdmin.error?.message);
+    check(!!(await admin.client.from("flow_send_claims").insert({ workspace_id: ws.id, session_id: sess.id, node_id: "x", target: "+5491111111111" })).error, "ni un Admin con sesion escribe");
+
+    // Se limpia sola con la sesion.
+    await svc.from("flow_sessions").delete().eq("id", sess.id);
+    const left = await svc.from("flow_send_claims").select("id", { count: "exact", head: true }).eq("session_id", sess.id);
+    check(left.count === 0, "al borrarse la sesion se borran sus reservas (ON DELETE CASCADE)", String(left.count));
+    await svc.from("flow_sessions").delete().eq("id", sess2.id);
+    await svc.from("flows").delete().eq("id", flow.id);
+  }
+
+  console.log("\n— Las claves de disparo por (envio, flujo) (Tiron 2, C2, 00217) —");
+  {
+    const { data: epk } = await svc.from("webhook_endpoints").insert({ workspace_id: ws.id, name: "zz-test claves", token: newToken() }).select("id").single();
+    const mkFlow = async (name) => {
+      const { data: f } = await svc.from("flows").insert({ workspace_id: ws.id, name, status: "published", nodes: [], edges: [] }).select("id").single();
+      const { data: t } = await svc.from("triggers").insert({ workspace_id: ws.id, flow_id: f.id, type: "webhook_received", config: { endpointId: epk.id }, is_active: true }).select("id").single();
+      return { flow: f.id, trigger: t.id };
+    };
+    const okFlow = await mkFlow("zz-test claves ok");
+    const failedFlow = await mkFlow("zz-test claves fallo");
+    const mkInbound = async (flows) => (await svc.from("inbound_webhooks").insert({ workspace_id: ws.id, endpoint_id: epk.id, status: "processed", payload: { a: 1 }, query: {}, result: { flows } }).select("id").single()).data.id;
+    const inOk = await mkInbound({ [okFlow.flow]: { status: "completed" } });
+    const inFailed = await mkInbound({ [failedFlow.flow]: { status: "failed", error: "x" } });
+    // Las claves VIEJAS (con el numero de reproceso al final): el envio del flujo que corrio (dos reprocesos) y el del que fallo.
+    const oldKeys = [
+      { trigger_id: okFlow.trigger, dedupe_key: `webhook:${inOk}:${okFlow.flow}:0` },
+      { trigger_id: okFlow.trigger, dedupe_key: `webhook:${inOk}:${okFlow.flow}:2` },
+      { trigger_id: failedFlow.trigger, dedupe_key: `webhook:${inFailed}:${failedFlow.flow}:0` },
+    ].map((r) => ({ ...r, workspace_id: ws.id, contact_id: null }));
+    const ins = await svc.from("trigger_fires").insert(oldKeys);
+    check(!ins.error, "se cargan claves en el formato viejo", ins.error?.message);
+
+    const migration = "supabase/migrations/00217_webhook_fire_keys.sql";
+    const rerun = () => execFileSync("supabase", ["db", "query", "--linked", "-f", migration], { stdio: "pipe" });
+    rerun();
+    const keysOf = async (trigger) => (await svc.from("trigger_fires").select("dedupe_key").eq("trigger_id", trigger)).data?.map((r) => r.dedupe_key).sort() ?? [];
+    const okKeys = await keysOf(okFlow.trigger);
+    check(okKeys.includes(`webhook:${inOk}:${okFlow.flow}`), "la migracion copia al formato nuevo la clave de lo que YA corrio (no se vuelve a correr al desplegar)", JSON.stringify(okKeys));
+    check(okKeys.length === 3, "las viejas quedan (no se borra nada) y las dos viejas del mismo envio dan UNA clave nueva", JSON.stringify(okKeys));
+    const failedKeys = await keysOf(failedFlow.trigger);
+    check(!failedKeys.includes(`webhook:${inFailed}:${failedFlow.flow}`), "un flujo cuyo ultimo resultado fue `failed` NO se reclama (reprocesar lo reintenta)", JSON.stringify(failedKeys));
+    rerun();
+    check((await keysOf(okFlow.trigger)).length === 3, "aplicarla otra vez no duplica nada (idempotente)");
+
+    // El reclamo concurrente: ocho procesos reclaman el mismo (envio, flujo) a la vez; entra uno.
+    const key = `webhook:${randomUUID()}:${okFlow.flow}`;
+    const claims = await Promise.all(Array.from({ length: 8 }, () => svc.from("trigger_fires").insert({ trigger_id: okFlow.trigger, workspace_id: ws.id, dedupe_key: key, contact_id: null })));
+    const won = claims.filter((c) => !c.error).length;
+    const lost = claims.filter((c) => c.error?.code === "23505").length;
+    check(won === 1 && lost === 7, "ocho procesos reclamando el mismo (envio, flujo): entra UNO y siete reciben 23505", JSON.stringify({ won, lost }));
   }
 
   console.log("\n— Borrar el endpoint se lleva sus envios —");
@@ -274,6 +462,18 @@ try {
     );
     check(processed?.status === "processed" && processed?.result?.summary === "Ningún flujo publicado escucha este webhook",
       "despues de responder, el envio se procesa (sin flujos: processed)", JSON.stringify(processed));
+
+    // Tiron 2, C2: diez entregas IDENTICAS al mismo tiempo (sin id de envio) por el receptor real: una se procesa y nueve se ignoran.
+    {
+      const t5 = newToken();
+      const { data: ep5 } = await svc.from("webhook_endpoints").insert({ workspace_id: ws.id, name: "zz-test carrera real", token: t5 }).select("id").single();
+      const body = JSON.stringify({ email: "carrera@example.com", plan: "pro" });
+      const answers = await Promise.all(Array.from({ length: 10 }, () => hook(t5, { body, headers: { "content-type": "application/json" } })));
+      check(answers.every((a) => a.status === 200), "las diez entregas simultaneas responden 200");
+      const { data: all } = await svc.from("inbound_webhooks").select("status").eq("endpoint_id", ep5.id);
+      const live = (all ?? []).filter((r) => r.status !== "ignored").length;
+      check((all ?? []).length === 10 && live === 1, "se guardan diez y UNA sola es procesable (nueve `ignored`)", JSON.stringify((all ?? []).map((r) => r.status)));
+    }
 
     // Escuchar el proximo envio: se guarda como ejemplo, no se procesa y la escucha se apaga.
     await svc.from("webhook_endpoints").update({ listen_until: new Date(Date.now() + 60_000).toISOString() }).eq("id", ep2.id);

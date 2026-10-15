@@ -28,6 +28,8 @@ import { ActionsCard, DeviceCard, PlacementCard, RankingsCard, VideoCard, type L
 import { buildKpiItems } from "./ads/kpi-items";
 import { KpiRow } from "./ads/kpi-row";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
+import { LinkContentMenu } from "./ads/link-content-menu";
+import type { AdContentLink } from "@/lib/meta/content-ad-summary";
 
 /**
  * El detalle de una campaña, un conjunto o un anuncio (F57).
@@ -94,6 +96,10 @@ export interface AdsDetailViewProps {
     } | null;
     error: string | null;
   };
+  /** La pieza de Contenido vinculada a este anuncio (menú «⋯»), si hay. */
+  contentLink?: AdContentLink | null;
+  /** Mostrar el menú «⋯» para vincular el anuncio con una pieza. */
+  canLinkContent?: boolean;
 }
 
 export function AdsDetailView({
@@ -109,6 +115,8 @@ export function AdsDetailView({
   reach,
   live,
   meta,
+  contentLink = null,
+  canLinkContent = false,
 }: AdsDetailViewProps) {
   const router = useRouter();
   const { pending, navigate, refresh } = useAdsNavigation();
@@ -217,6 +225,10 @@ export function AdsDetailView({
         right={
           <div className="flex items-center gap-2">
             <RefreshButton refreshing={pending} onRefresh={refresh} />
+            {/* «⋯»: vincular el anuncio con una pieza de Contenido (A2). Solo en el nivel anuncio y para quien puede editar piezas. */}
+            {level === "ad" && canLinkContent && (
+              <LinkContentMenu adId={detail.objectId} adName={detail.objectName || detail.objectId} link={contentLink} />
+            )}
           </div>
         }
       />

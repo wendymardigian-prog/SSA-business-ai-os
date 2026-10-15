@@ -7,7 +7,9 @@
  *  - El upsert de anuncios NO manda `social_post_id`, `content_post_id`, `content_link_manual`,
  *    `thumbnail_path` ni `thumbnail_attempts`: un sync no puede borrar un enlace manual ni tirar
  *    una miniatura ya bajada.
- *  - Un lote que falla se anota y se sigue con el siguiente, igual que las metricas.
+ *  - Un lote que falla se anota y se sigue con el siguiente, igual que las metricas. Pero NO se calla: se devuelve
+ *    cuantas filas no se pudieron guardar y por que, para que el sync deje el catalogo como incompleto (si no, la
+ *    proxima corrida seria incremental y esas filas no volverian nunca: Tiron 2, E1).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -18,21 +20,30 @@ type Db = SupabaseClient<Database>;
 
 const CHUNK = 500;
 
-async function upsertChunks(supabase: Db, table: "meta_campaigns" | "meta_adsets" | "meta_ads", rows: Record<string, unknown>[], onConflict: string): Promise<number> {
-  let written = 0;
+/** Lo que paso al guardar: cuantas filas entraron, cuantas no, y el primer motivo. */
+export interface PersistResult {
+  written: number;
+  failed: number;
+  error: string | null;
+}
+
+async function upsertChunks(supabase: Db, table: "meta_campaigns" | "meta_adsets" | "meta_ads", rows: Record<string, unknown>[], onConflict: string): Promise<PersistResult> {
+  const result: PersistResult = { written: 0, failed: 0, error: null };
   for (let i = 0; i < rows.length; i += CHUNK) {
     const chunk = rows.slice(i, i + CHUNK);
     const { error } = await supabase.from(table).upsert(chunk as never, { onConflict });
     if (error) {
       console.error(`[meta-ads] no pude guardar un lote de ${table}:`, error.message);
+      result.failed += chunk.length;
+      result.error ??= error.message;
       continue;
     }
-    written += chunk.length;
+    result.written += chunk.length;
   }
-  return written;
+  return result;
 }
 
-export async function persistCampaigns(supabase: Db, params: { workspaceId: string; adAccountId: string; rows: CampaignEntity[]; at: Date }): Promise<number> {
+export async function persistCampaigns(supabase: Db, params: { workspaceId: string; adAccountId: string; rows: CampaignEntity[]; at: Date }): Promise<PersistResult> {
   const payload = params.rows.map((r) => ({
     workspace_id: params.workspaceId,
     ad_account_id: params.adAccountId,
@@ -53,7 +64,7 @@ export async function persistCampaigns(supabase: Db, params: { workspaceId: stri
   return upsertChunks(supabase, "meta_campaigns", payload, "workspace_id,ad_account_id,campaign_id");
 }
 
-export async function persistAdsets(supabase: Db, params: { workspaceId: string; adAccountId: string; rows: AdsetEntity[]; at: Date }): Promise<number> {
+export async function persistAdsets(supabase: Db, params: { workspaceId: string; adAccountId: string; rows: AdsetEntity[]; at: Date }): Promise<PersistResult> {
   const payload = params.rows.map((r) => ({
     workspace_id: params.workspaceId,
     ad_account_id: params.adAccountId,
@@ -75,7 +86,7 @@ export async function persistAdsets(supabase: Db, params: { workspaceId: string;
   return upsertChunks(supabase, "meta_adsets", payload, "workspace_id,ad_account_id,adset_id");
 }
 
-export async function persistAds(supabase: Db, params: { workspaceId: string; adAccountId: string; rows: AdEntity[]; at: Date }): Promise<number> {
+export async function persistAds(supabase: Db, params: { workspaceId: string; adAccountId: string; rows: AdEntity[]; at: Date }): Promise<PersistResult> {
   const payload = params.rows.map((r) => ({
     workspace_id: params.workspaceId,
     ad_account_id: params.adAccountId,

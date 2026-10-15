@@ -8,6 +8,9 @@
  *
  * No sincroniza: ENCOLA. Cada cuenta es un job aparte, asi una red lenta o
  * caida no deja a las otras sin datos.
+ *
+ * Ponerse al dia (Tiron 2, E1): si la corrida de las 3 de la mañana se perdio (una caida justo a esa hora), las
+ * cuentas publicitarias atrasadas se encolan igual en la hora siguiente. Ver `adAccountNeedsCatchUp`.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,7 +19,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { scheduleJob } from "@/lib/scheduler";
 import { isSyncHour } from "@/lib/metrics/rules";
 import { queueMetricsSync } from "@/lib/metrics/queue";
-import { adAccountsToSync, META_ADS_SYNC_JOB } from "@/lib/jobs/handlers/meta-ads-sync";
+import { adAccountsToCatchUp, adAccountsToSync, META_ADS_SYNC_JOB } from "@/lib/jobs/handlers/meta-ads-sync";
 
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
@@ -33,11 +36,26 @@ export async function GET(request: NextRequest) {
   }
 
   const due = (workspaces ?? []).filter((w) => isSyncHour(now, w.timezone || "UTC"));
-  if (due.length === 0) {
-    return NextResponse.json({ ok: true, queued: 0, skipped: "no es la hora de ningun workspace" });
-  }
 
   let queued = 0;
+  const dueIds = new Set(due.map((w) => w.id));
+
+  // Las cuentas publicitarias que perdieron su corrida (de cualquier workspace; las de los que tocan ya van abajo).
+  let caughtUp = 0;
+  for (const { workspaceId, adAccountId } of await adAccountsToCatchUp(supabase, now)) {
+    if (dueIds.has(workspaceId)) continue;
+    try {
+      await scheduleJob(supabase, META_ADS_SYNC_JOB, { workspaceId, adAccountId }, now, `meta-ads:${adAccountId}:${now.toISOString().slice(0, 13)}`);
+      caughtUp += 1;
+    } catch {
+      // Ya habia uno pendiente.
+    }
+  }
+  queued += caughtUp;
+
+  if (due.length === 0) {
+    return NextResponse.json({ ok: true, queued, caughtUp, skipped: "no es la hora de ningun workspace" });
+  }
 
   for (const workspace of due) {
     const { data: accounts } = await supabase
@@ -82,5 +100,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, queued, workspaces: due.length });
+  return NextResponse.json({ ok: true, queued, caughtUp, workspaces: due.length });
 }

@@ -1250,6 +1250,53 @@ node scripts/verify-ads-attribution.mjs    # catalogo, RLS, paridad SQL↔TS (29
 `verify-rls.mjs --despues-de-00143` y `verify-roles.mjs --despues-de-00136` son los que corresponden hoy. Mismas reglas que los demas: crean y limpian sus datos
 (prefijo `zz-test-`) y no se corren dos en simultaneo.
 
+# Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
+
+Webhooks que no repiten, flujos sin contacto con origen, leads de Meta sin duplicados, la tabla Meta vs CRM con detalle, el anuncio de origen y el vinculo
+anuncio ↔ pieza. Avance y decisiones en `docs/PROGRESS-atribucion.md` ("Correcciones (Tiron 2)") y `docs/PENDIENTE-atribucion.md`; producto en
+[docs/webhooks.md](docs/webhooks.md), [docs/atribucion.md](docs/atribucion.md) y [docs/flow-registry.md](docs/flow-registry.md).
+
+## Migraciones (`00216` a `00222`)
+
+`00216` (`receive_inbound_webhook` con lock), `00217` (claves nuevas de `trigger_fires`), `00218` (`source_type`/`source_id`), `00219` (`ads_crm_items`,
+`ads_crm_metrics_v2`, `ads_crm_cell_detail`), `00221` (`enrich_touch_ad_origin`) y `00222` (`flow_send_claims`): **aplicadas y registradas**. **La `00220`
+(recalcula `leads`/`purchases` de Meta) esta escrita y ensayada pero SIN APLICAR a proposito**: va DESPUES de desplegar el codigo que cuenta el evento
+canonico (si va antes, el proximo sync con el codigo viejo vuelve a escribir los dias recientes inflados); su respaldo esta en
+`docs/atribucion/respaldo-leads-meta.json`. **La proxima libre es la `00223`** (confirmar con `list_migrations`). No cambiaron las huellas de
+`record_contact_touch`, `find_or_link_contact`, `find_contact_for_form`, `submit_form_response`, `create_booking` y `find_or_create_contact`.
+
+## Lo que no se puede romper
+
+- **Un envio de webhook nunca dispara dos veces el mismo flujo.** Dos entregas iguales a la vez dan un `received` y un `ignored`
+  (`receive_inbound_webhook`, `pg_advisory_xact_lock`). La clave de `trigger_fires` es `webhook:<envio>:<flujo>` SIN contador de reproceso: reprocesar
+  corre solo lo que no corrio; un flujo que FALLO libera su clave y se reintenta. Volver a correr uno que ya corrio exige la casilla del reproceso
+  (apagada por defecto, con advertencia) y queda en `audit_log`. La opcion «una sola vez por contacto» de «Webhook recibido» toma su clave en
+  «Crear o actualizar contacto». Los webhooks guardan el toque con la fecha de recepcion (`received_at`), no la del reproceso.
+- **Toda sesion y todo evento de automatizacion lleva su origen** (`source_type`: `contact|member|webhook|task|form|booking|sale|call|system`, y
+  `source_id`). El CHECK pide contacto u origen y es un superconjunto del viejo; **un evento de CONTACTO sin contacto se sigue rechazando aunque traiga
+  una persona** (`verify-eod` y `verify-tasks` lo atajaron). Una reanudacion (`resume_flow`) lee el origen y el contacto de la SESION, no del job: un
+  «Esperar» en un flujo sin contacto ya no lo pierde. Cada disparador declara su `sourceType` (`registry/consistency.test.ts` lo exige); el sujeto
+  `system` existe pero todavia no hay disparadores de ese tipo.
+- **Leads de Meta: un solo evento canonico por nombre** (`lib/meta/action-counts.ts`; la gemela SQL esta en la cabecera de la 00220 y comparten los casos
+  de `action-counts.cases.json`). Sumar variantes del mismo lead inflaba el numero (se guardaban 2.337 y Meta reportaba 468).
+- **Leads nuevos ≠ leads totales.** Nuevos: personas cuyo primer toque es ese anuncio (una persona cuenta una sola vez en la vida). Totales: personas con
+  algun toque en el periodo. Siempre los dos CPL. **El Total cuenta personas DISTINTAS** (`is_total` de `ads_crm_metrics_v2`, dentro de la misma
+  consulta); agendas y ventas se suman (cada una cae en un solo objeto por nivel). La lista que abre un numero sale de la MISMA consulta
+  (`ads_crm_items`): su cantidad es igual al numero de la celda (`verify-ads-attribution` lo comprueba en 40 celdas). `ads_crm_metrics` (v1) queda para volver atras.
+- **Las columnas de la tabla de anuncios son un catalogo** (`lib/dashboards/ads-crm-columns.ts`): las nuevas nacen ocultas, las preferencias guardadas
+  se migran por `REPLACED_COLUMNS` (lo que la persona eligio se conserva), y un dato que Meta no dio es «—», nunca 0.
+- **El anuncio de origen se recupera de la conversacion de Zernio UNA vez** (solo Instagram, solo con el primer mensaje sin anuncio): job
+  `zernio_ad_origin` con reintentos a 1, 5 y 15 minutos, nunca bloquea el webhook y `enrich_touch_ad_origin` nunca pisa un anuncio ni un vinculo `manual`/`ignored`.
+- **El vinculo anuncio ↔ pieza a mano vive solo en dos menus «⋯»** (detalle del anuncio y de la pieza), con `content.create` Y `dashboards.ads.view`, y
+  queda en `audit_log` (entidad `meta_ad`). El automatico (`lib/meta/content-link.ts`) no cambio y no pisa un manual. La seccion «Publicidad» de la
+  pieza solo existe con un anuncio vinculado; «Pautada» y `?pautada=si|no` solo los ve quien puede ver anuncios.
+- **«Enviar WhatsApp a un numero» no necesita contacto y no crea ninguno**: busca el numero con `find_only`; «no contactar» frena; nunca manda dos veces
+  el mismo (sesion, paso, numero) (`flow_send_claims`); respeta los 200 mensajes por hora del canal. «Enviar email» suma el destino «la direccion de una
+  variable» (validada al correr). `PUT /api/v1/flows/:id` valida un flujo publicado como al publicar.
+- **El lienzo guarda DIRECTO en `flows`** (no por la API): la validacion de `PUT` no lo alcanza (ver `docs/PENDIENTE-atribucion.md`).
+- **`verify-ads-attribution` corre `ANALYZE` antes de medir** los 10.000 toques: sin estadisticas del planificador la misma consulta daba 150 o 350 ms segun el
+  momento del autoanalisis. El umbral de 300 ms no se toco.
+
 # Seguridad
 
 ## Autenticacion y sesiones

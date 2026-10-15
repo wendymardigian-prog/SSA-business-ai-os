@@ -7,6 +7,7 @@
 import type { Node, Edge } from "@xyflow/react";
 import { pickPath, type BranchNodeData, type FieldValue } from "./condition-eval";
 import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
+import { resolveWhatsAppTarget } from "./whatsapp-target";
 
 // --- Types ---
 
@@ -529,6 +530,23 @@ export function simulateFlow(
           nodeType: "send_email",
           nodeLabel: label,
           result: { type: "action", actionType: "send_email", detail: `a ${to}: ${subject || "(sin asunto)"}` },
+        });
+        break;
+      }
+
+      // Tirón 2, D3: el aviso por WhatsApp a un número. En la simulación no se manda nada.
+      case "send_whatsapp_number": {
+        const target = resolveWhatsAppTarget(data as never, variables);
+        const text = interpolate((data.text as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "send_whatsapp_number",
+          nodeLabel: label,
+          result: {
+            type: "action",
+            actionType: "send_whatsapp_number",
+            detail: target.ok ? `a ${target.phone}: ${text || "(sin texto)"}` : `se saltearía: ${target.reason}`,
+          },
         });
         break;
       }

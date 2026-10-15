@@ -29,8 +29,13 @@ export interface SendEmailNodeData {
    * sin contacto (E15): `member` (la persona que envió el reporte) o `users` (personas
    * del equipo elegidas); ahí no se ofrece "al contacto".
    */
-  to?: "contact" | "host" | "fixed" | "member" | "users";
+  to?: "contact" | "host" | "fixed" | "member" | "users" | "variable";
   fixedEmail?: string;
+  /**
+   * Solo `to: "variable"` (Tirón 2, D4): la dirección sale de una variable del flujo, por ejemplo
+   * `{{webhook.body.email}}` (también se acepta sin las llaves). No necesita contacto.
+   */
+  toVariable?: string;
   /** Solo `to: "users"`: a quiénes del equipo. */
   userIds?: string[];
   subject?: string;
@@ -80,7 +85,30 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
   }
   // Sin contacto no hay "no contactar" que mirar: el email va a gente del equipo o a una dirección fija.
 
-  const recipients = await resolveRecipients(supabase, data, context, contactEmail);
+  let recipients: string[];
+  if (data.to === "variable") {
+    // Tirón 2, D4: la dirección sale de una variable. Si no sirve, el paso se saltea CON el motivo (no falla).
+    const resolved = await variableRecipient(supabase, data, context);
+    if (!resolved.ok) {
+      console.warn(`[flow-engine] el nodo ${node.id} (send_email) se saltea: ${resolved.reason}`);
+      try {
+        await supabase.from("analytics_events").insert({
+          workspace_id: context.workspaceId,
+          flow_id: context.flowId,
+          contact_id: contactId,
+          event_type: "node_skipped",
+          metadata: { nodeId: node.id, nodeType: "send_email", reason: resolved.reason },
+        });
+        context.onStepSkipped?.({ nodeId: node.id, nodeType: "send_email", label: "Enviar email" });
+      } catch {
+        // Anotar el salto nunca frena el flujo.
+      }
+      return;
+    }
+    recipients = [resolved.address];
+  } else {
+    recipients = await resolveRecipients(supabase, data, context, contactEmail);
+  }
   if (recipients.length === 0) {
     console.warn(`[flow-engine] el nodo ${node.id} no tiene a dónde mandar el email`);
     return;
@@ -156,6 +184,9 @@ async function resolveRecipients(
       return context.memberUserId ? teamEmails(supabase, context.workspaceId, [context.memberUserId]) : [];
     case "users":
       return teamEmails(supabase, context.workspaceId, [...new Set(data.userIds ?? [])]);
+    case "variable":
+      // Lo resuelve `execute` (necesita el motivo para anotar el salto); acá no llega.
+      return [];
     case "contact":
     case "host":
     case "fixed": {
@@ -163,6 +194,41 @@ async function resolveRecipients(
       return one ? [one] : [];
     }
   }
+}
+
+/** Una dirección de email razonable (la misma regla que usan las pantallas de automatizaciones). */
+export const EMAIL_ADDRESS_RE = /^[^\s@,;()<>"]+@[^\s@,;()<>"]+\.[^\s@,;()<>"]+$/;
+
+/**
+ * La dirección de una variable (Tirón 2, D4). Se valida al correr: si no es un email, el paso se saltea con el motivo
+ * (no falla). Si la dirección es de un contacto marcado «no contactar», no se manda; un error de la base al comprobarlo
+ * NO se toma como «no es de nadie».
+ */
+async function variableRecipient(
+  supabase: NodeExecutionArgs<SendEmailNodeData>["supabase"],
+  data: SendEmailNodeData,
+  context: FlowExecutionContext,
+): Promise<{ ok: true; address: string } | { ok: false; reason: string }> {
+  const template = (data.toVariable ?? "").trim();
+  if (!template) return { ok: false, reason: "No elegiste de qué variable sale la dirección." };
+  const wrapped = /\{\{[^}]+\}\}/.test(template) ? template : `{{${template}}}`;
+  const address = interpolateVariables(wrapped, context.variables ?? {}).trim();
+  if (!address) return { ok: false, reason: "La variable de la dirección está vacía." };
+  if (address.length > 254 || !EMAIL_ADDRESS_RE.test(address)) return { ok: false, reason: "La variable de la dirección no tiene un email válido." };
+
+  // El valor va como VALOR de un filtro (nunca armando una cadena de filtros), y se mira el email principal y el segundo.
+  const escaped = address.replace(/[%_\\]/g, (c) => `\\${c}`);
+  const base = () => supabase.from("contacts").select("id, do_not_contact").eq("workspace_id", context.workspaceId).is("deleted_at", null).limit(5);
+  const [byEmail, bySecondary] = await Promise.all([base().ilike("email", escaped), base().ilike("secondary_email", escaped)]);
+  const failed = byEmail.error ?? bySecondary.error;
+  if (failed) {
+    console.error(`[flow-engine] no pude comprobar si la dirección es de un contacto "no contactar" (code=${failed.code ?? "?"})`);
+    return { ok: false, reason: "No pude comprobar si la dirección es de un contacto marcado «no contactar», así que no se mandó." };
+  }
+  if ([...(byEmail.data ?? []), ...(bySecondary.data ?? [])].some((c) => c.do_not_contact)) {
+    return { ok: false, reason: "La dirección es de un contacto marcado «no contactar»: no se mandó." };
+  }
+  return { ok: true, address };
 }
 
 /** A dónde va el email: el contacto, el anfitrión de la reunión o una dirección fija. */

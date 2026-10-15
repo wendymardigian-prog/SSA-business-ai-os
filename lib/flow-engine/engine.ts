@@ -3,7 +3,7 @@ import type { Database, Json } from "@/lib/types/database";
 import type { ContactFlowContext, FlowNode, FlowEdge, FlowExecutionContext } from "./types";
 import { getNode } from "./registry";
 import { messageOriginVariables } from "@/lib/messages/origin-context";
-import type { FlowRuntime } from "./registry/types";
+import type { AutomationSource, FlowRuntime } from "./registry/types";
 
 /**
  * Lo que el motor le presta a los nodos que necesitan arrancar otro flow.
@@ -140,6 +140,8 @@ export async function executeFlow(
       ...(context.contactId ? {} : { member_user_id: context.memberUserId ?? null }),
       // Un flujo de webhook arranca sin contacto ni persona: el envio es lo que lo sostiene (00187).
       ...(context.inboundWebhookId ? { inbound_webhook_id: context.inboundWebhookId } : {}),
+      // Que lo disparo (00218). Sin declarar, la base lo completa segun el contacto, la persona o el envio.
+      ...(context.source ? { source_type: context.source.type, source_id: context.source.id } : {}),
       flow_id: context.flowId,
       // Null y no cadena vacía: `channel_id` es una referencia a `channels`.
       // Antes el cron mandaba "" y el insert fallaba en silencio, así que un
@@ -239,6 +241,12 @@ export async function resumeSession(
     }
   }
 
+  // La SESION sabe de donde viene el flujo; el job de «Esperar» y el mensaje que despierta una espera no lo mandan.
+  // Sin esto, un flujo de webhook o de sistema (sin contacto) que sigue despues de una pausa — y el flujo al que salta
+  // «Ir a otro flujo» — perdia el envio y el origen: su sesion nueva no tenia contacto, persona ni envio y la base la
+  // rechazaba, sin avisar. Con contacto no cambia nada: la sesion trae el mismo que ya traia el contexto.
+  restoreOriginFromSession(context, session);
+
   context.variables = (session.variables as Record<string, string>) || {};
 
   // The resume is driven by a fresh reply; make {{message}} reflect it.
@@ -279,6 +287,22 @@ export async function resumeSession(
   }
 
   await traverseNodes(supabase, session.id, nextNode, nodes, edges, context, 0);
+}
+
+/**
+ * Lo que una reanudacion recupera de la sesion: el contacto, la persona, el envio de webhook y el origen. Solo
+ * completa lo que el contexto NO trae (`??=`): nunca pisa algo que quien reanuda ya sabia.
+ */
+export function restoreOriginFromSession(
+  context: FlowExecutionContext,
+  session: Pick<Database["public"]["Tables"]["flow_sessions"]["Row"], "contact_id" | "member_user_id" | "inbound_webhook_id" | "source_type" | "source_id">
+): void {
+  context.contactId ??= session.contact_id;
+  context.memberUserId ??= session.member_user_id;
+  context.inboundWebhookId ??= session.inbound_webhook_id;
+  if (!context.source && session.source_type) {
+    context.source = { type: session.source_type as AutomationSource["type"], id: session.source_id ?? null };
+  }
 }
 
 async function cancelUnresumableSession(

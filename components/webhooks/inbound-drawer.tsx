@@ -8,6 +8,8 @@ import type { InboundDetailData } from "@/lib/webhooks/action-types";
 import type { FlowResult, InboundResult } from "@/lib/webhooks/types";
 import { JsonTree } from "./json-tree";
 import { StatusChip } from "./status-chip";
+import { ReprocessConfirm } from "./reprocess-confirm";
+import { reprocessDone } from "@/lib/webhooks/reprocess-copy";
 
 /** El detalle de un envío: pestaña Datos (payload y query) y pestaña Resultado (por flujo). */
 export function InboundDrawer({ endpointId, inboundId, timeZone, onClose, onChanged }: {
@@ -17,6 +19,7 @@ export function InboundDrawer({ endpointId, inboundId, timeZone, onClose, onChan
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"data" | "result">("data");
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [pending, start] = useTransition();
 
   useEffect(() => {
@@ -31,14 +34,13 @@ export function InboundDrawer({ endpointId, inboundId, timeZone, onClose, onChan
     };
   }, [inboundId]);
 
-  function reprocess() {
+  function reprocess(rerunCompleted: boolean) {
     if (!detail) return;
-    const sends = "Vuelve a correr los flujos publicados con este webhook. Si mandan mensajes, se mandan de nuevo.";
-    if (!window.confirm(`${sends}${detail.status === "processed" ? "\n\nEste envío ya se procesó bien: se va a procesar otra vez." : ""}\n\n¿Reprocesar?`)) return;
+    setConfirming(false);
     start(async () => {
-      const res = await reprocessWebhookInbounds([{ id: detail.id, reprocessCount: detail.reprocessCount }]);
+      const res = await reprocessWebhookInbounds([{ id: detail.id, reprocessCount: detail.reprocessCount }], { rerunCompleted });
       if (!res.ok) return setError(res.error);
-      setNotice(res.reprocessed > 0 ? "Reprocesado." : "Otro reproceso se adelantó: recargá para ver el resultado.");
+      setNotice(reprocessDone({ reprocessed: res.reprocessed, skipped: res.skipped, rerunCompleted }));
       onChanged();
       const fresh = await getWebhookInboundDetail(inboundId);
       if (fresh.ok) setDetail(fresh.detail);
@@ -75,7 +77,7 @@ export function InboundDrawer({ endpointId, inboundId, timeZone, onClose, onChan
 
             <div className="flex flex-wrap gap-2">
               {canReprocess && (
-                <button type="button" onClick={reprocess} disabled={pending} className="h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-50">Reprocesar</button>
+                <button type="button" onClick={() => setConfirming((v) => !v)} aria-expanded={confirming} disabled={pending} className="h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-50">Reprocesar</button>
               )}
               {detail.hasPayload && (
                 <button type="button" onClick={applyAsSample} disabled={pending} className="h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-50">Usar como ejemplo</button>
@@ -84,6 +86,9 @@ export function InboundDrawer({ endpointId, inboundId, timeZone, onClose, onChan
                 <Link href={`/dashboard/contacts/${detail.contactId}`} className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-accent">Ir al contacto</Link>
               )}
             </div>
+            {confirming && canReprocess && (
+              <ReprocessConfirm count={1} alreadyProcessed={detail.status === "processed"} pending={pending} onConfirm={reprocess} onCancel={() => setConfirming(false)} />
+            )}
             {notice && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{notice}</p>}
 
             <div role="tablist" className="flex gap-1 border-b border-border">

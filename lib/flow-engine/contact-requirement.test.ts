@@ -91,6 +91,7 @@ describe("nodeNeedsContact: más allá de needsContact", () => {
     const go: GraphNode = { id: "g", type: "action", data: { actionType: "goToFlow", flowId: "f-2" } };
     expect(nodeNeedsContact(go, () => "webhook")).toBe(false);
     expect(nodeNeedsContact(go, () => "member")).toBe(false);
+    expect(nodeNeedsContact(go, () => "system")).toBe(false);
     expect(nodeNeedsContact(go, () => "contact")).toBe(true);
     expect(nodeNeedsContact(go)).toBe(true);
   });
@@ -120,5 +121,38 @@ describe("el sujeto del flujo y la validación de publicar", () => {
   it("la validación de EOD sigue rechazando lo mismo: cualquier paso con contacto", () => {
     expect(memberFlowProblems([trigger("eod_submitted"), whatsapp])).toHaveLength(1);
     expect(memberFlowProblems([trigger("webhook_received"), whatsapp])).toEqual([]);
+  });
+});
+
+describe("los pasos de agenda y ventas piden la reunión o la venta del disparador, no un contacto suelto (Tirón 2, D2)", () => {
+  const cancel: GraphNode = { id: "c", type: "action", data: { actionType: "cancel_booking", label: "Cancelar la reunión" } };
+  const markPaid: GraphNode = { id: "p", type: "action", data: { actionType: "mark_payment_paid" } };
+
+  it("un flujo de webhook con «Cancelar la reunión» sin contacto se rechaza, y el mensaje NO manda a poner «Crear o actualizar contacto»", () => {
+    const problems = webhookFlowProblems([trigger(), cancel], [edge("t", "c")]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("actúa sobre la reunión que dispara el flujo");
+    expect(problems[0]).not.toContain("Crear o actualizar contacto");
+    expect(problems[0]).toContain("agenda");
+  });
+
+  it("un paso de pagos habla de la venta", () => {
+    const problems = webhookFlowProblems([trigger(), markPaid], [edge("t", "p")]);
+    expect(problems[0]).toContain("actúa sobre la venta que dispara el flujo");
+    expect(problems[0]).toContain("disparador de venta");
+  });
+
+  it("un paso que sí necesita un contacto sigue diciendo lo de siempre", () => {
+    const problems = webhookFlowProblems([trigger(), whatsapp], [edge("t", "m")]);
+    expect(problems[0]).toBe("«Enviar WhatsApp» necesita un contacto. Poné antes «Crear o actualizar contacto» y conectá este paso a su salida «Listo».");
+  });
+
+  it("en un flujo de persona del equipo o de sistema, el paso de agenda también habla de la reunión", () => {
+    const eod = memberFlowProblems([trigger("eod_submitted"), cancel]);
+    expect(eod).toEqual(["El paso «Cancelar la reunión» actúa sobre la reunión que dispara el flujo, y este flujo es sobre una persona del equipo: no tiene ninguna."]);
+  });
+
+  it("el tipo del paso viaja en lo que devuelve pathsMissingContact", () => {
+    expect(pathsMissingContact([trigger(), cancel], [edge("t", "c")])[0]).toMatchObject({ nodeId: "c", nodeType: "cancel_booking" });
   });
 });

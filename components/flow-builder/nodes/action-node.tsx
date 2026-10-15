@@ -16,6 +16,8 @@ import {
   Library,
   ListTodo,
   ListChecks,
+  Mail,
+  Smartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -43,6 +45,14 @@ export interface ActionNodeProps {
   owner?: string;
   sourceKey?: string;
   /** "Completar tarea": la clave de origen de la(s) tarea(s) que cierra. */
+  /** "Enviar email" y "Enviar WhatsApp a un número": a quién va, que se muestra en la tarjeta. */
+  to?: string;
+  fixedEmail?: string;
+  toVariable?: string;
+  fixedPhone?: string;
+  channelId?: string;
+  text?: string;
+  subject?: string;
 }
 
 const actionConfig: Record<
@@ -134,6 +144,16 @@ const actionConfig: Record<
     label: "Completar tarea",
     color: "bg-gray-500",
   },
+  send_email: {
+    icon: Mail,
+    label: "Enviar email",
+    color: "bg-gray-500",
+  },
+  send_whatsapp_number: {
+    icon: Smartphone,
+    label: "Enviar WhatsApp a un número",
+    color: "bg-gray-500",
+  },
 };
 
 const OWNER_LABELS: Record<string, string> = {
@@ -190,6 +210,16 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       return nodeData.title?.trim() || null;
     case "complete_task" as NodeType:
       return nodeData.sourceKey?.trim() ? `Clave: ${nodeData.sourceKey.trim()}` : null;
+    // Tirón 2, D3/D4: a quién va, en una línea.
+    case "send_whatsapp_number" as NodeType: {
+      if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;
+      return nodeData.fixedPhone?.trim() ? `A ${nodeData.fixedPhone.trim()}` : null;
+    }
+    case "send_email" as NodeType: {
+      if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;
+      if (nodeData.to === "fixed") return nodeData.fixedEmail?.trim() ? `A ${nodeData.fixedEmail.trim()}` : null;
+      return nodeData.subject?.trim() || "Al contacto";
+    }
     default:
       return null;
   }

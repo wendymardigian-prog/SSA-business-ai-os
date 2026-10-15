@@ -24,6 +24,11 @@ export interface ContentFilters {
   count: "pieces" | "publications";
   /** Busqueda por titulo. */
   q: string | null;
+  /**
+   * «Pautadas» (con algún anuncio vinculado) o «No pautadas». Ausente = todas. Es opcional a propósito: el valor por
+   * defecto no existe en el objeto, así que nada que ya armaba filtros cambia (Tirón 2, A2).
+   */
+  paid?: "si" | "no";
 }
 
 const VIEWS: ContentView[] = ["kanban", "calendar", "list"];
@@ -45,6 +50,7 @@ export function parseContentFilters(params: URLSearchParams | Record<string, str
   const status = get("estado");
   const month = get("mes");
   const count = get("contar");
+  const paid = get("pautada");
 
   return {
     view: VIEWS.includes(view as ContentView) ? (view as ContentView) : "kanban",
@@ -56,6 +62,8 @@ export function parseContentFilters(params: URLSearchParams | Record<string, str
     month: month && /^\d{4}-\d{2}$/.test(month) ? month : null,
     count: count === "publications" ? "publications" : "pieces",
     q: get("q"),
+    // Un valor inventado no filtra por nada (igual que el estado): no vacía la lista sin explicación.
+    ...(paid === "si" || paid === "no" ? { paid } : {}),
   };
 }
 
@@ -69,6 +77,7 @@ export function contentFiltersToQuery(filters: ContentFilters): string {
   if (filters.month) params.set("mes", filters.month);
   if (filters.count !== "pieces") params.set("contar", filters.count);
   if (filters.q) params.set("q", filters.q);
+  if (filters.paid) params.set("pautada", filters.paid);
   return params.toString();
 }
 
@@ -88,6 +97,8 @@ export interface FilterablePost {
   platforms: string[];
   /** La fecha más temprana de sus redes, para el filtro de mes (C15). */
   firstAt?: string | null;
+  /** Si tiene al menos un anuncio vinculado (A2). Una idea nunca la tiene. */
+  paid?: boolean;
 }
 
 /** Aplica los filtros a una lista de piezas. */
@@ -102,6 +113,8 @@ export function applyContentFilters<T extends FilterablePost>(
     if (filters.author && post.createdBy !== filters.author) return false;
     if (filters.platform && !post.platforms.includes(filters.platform)) return false;
     if (needle && !post.title.toLowerCase().includes(needle)) return false;
+    if (filters.paid === "si" && !post.paid) return false;
+    if (filters.paid === "no" && post.paid) return false;
 
     // El mes filtra por la primera fecha de la pieza (C15). Una sin fecha no
     // pertenece a ningún mes: no se esconde por eso, se esconde porque no
@@ -123,5 +136,5 @@ export function applyContentFilters<T extends FilterablePost>(
  * filtra, pero ahi se ve su selector con el valor puesto.
  */
 export function activeFilterCount(filters: ContentFilters): number {
-  return [filters.platform, filters.status, filters.author, filters.q].filter(Boolean).length;
+  return [filters.platform, filters.status, filters.author, filters.q, filters.paid].filter(Boolean).length;
 }

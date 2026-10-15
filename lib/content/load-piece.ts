@@ -16,6 +16,8 @@ import type { PermissionContext } from "@/lib/auth/guards";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { loadPieceMeasurement } from "@/lib/dashboards/piece-load";
+import { loadLinkedAds } from "@/lib/meta/content-ads-load";
+import type { LinkedAd } from "@/lib/meta/content-ad-summary";
 import type { PiecePerformance } from "@/lib/dashboards/piece-performance";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { connectedPlatforms } from "./connection";
@@ -74,6 +76,13 @@ export interface PieceData {
   taxonomy: ContentTaxonomy;
   /** Como le fue a cada publicacion (F102). Null si todavia no salio ninguna. */
   measurement: PiecePerformance | null;
+  /**
+   * Los anuncios de Meta vinculados a esta pieza (Tiron 2, A2). Vacio si no hay ninguno, o si quien mira no puede ver
+   * anuncios (la RLS de `meta_ads` pide `dashboards.ads.view`): en los dos casos el detalle queda como siempre.
+   */
+  ads: LinkedAd[];
+  /** Quien mira puede vincular la pieza con un anuncio: `content.create` Y `dashboards.ads.view`. */
+  canLinkAds: boolean;
 }
 
 export async function loadPiece(ctx: PermissionContext, postId: string): Promise<PieceData | null> {
@@ -105,6 +114,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
     taxonomy,
     ideaRes,
     measurement,
+    linkedAds,
   ] =
     await Promise.all([
       supabase
@@ -153,6 +163,8 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
         : Promise.resolve({ data: null }),
       // El rendimiento por red (F102): lo lee con el cliente de quien mira.
       loadPieceMeasurement(supabase, { workspaceId: workspace.id, pieceId: postId }),
+      // Los anuncios vinculados (A2): solo para quien puede ver anuncios.
+      can("dashboards.ads.view") ? loadLinkedAds(supabase, workspace.id, postId) : Promise.resolve([] as LinkedAd[]),
     ]);
 
   // Las plataformas de `channels` y las de `social_accounts` no son el mismo
@@ -275,5 +287,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
     timeZone,
     taxonomy,
     measurement,
+    ads: linkedAds,
+    canLinkAds: can("content.create") && can("dashboards.ads.view"),
   };
 }

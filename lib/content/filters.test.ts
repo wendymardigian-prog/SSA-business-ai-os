@@ -149,3 +149,41 @@ describe("el filtro de Red de la barra superior (F98)", () => {
     expect(matchesPlatform([], "instagram")).toBe(false);
   });
 });
+
+// ── Tirón 2, A2 · «Pautadas / No pautadas» ─────────────────────────────────
+
+describe("A2 · filtro de piezas pautadas (?pautada=)", () => {
+  const base = parseContentFilters(new URLSearchParams());
+  const mk = (id: string, paid: boolean | undefined) => ({ id, title: `Pieza ${id}`, status: "draft" as const, createdBy: "u1", platforms: ["instagram"], paid });
+  const rows = [mk("a", true), mk("b", false), mk("c", undefined), mk("d", true)];
+
+  it("sin el parametro no existe el filtro y no se saca nada", () => {
+    expect("paid" in base && base.paid !== undefined).toBe(false);
+    expect(applyContentFilters(rows, base)).toHaveLength(4);
+  });
+  it("pautada=si deja solo las que tienen un anuncio vinculado", () => {
+    const filters = parseContentFilters(new URLSearchParams("pautada=si"));
+    expect(filters.paid).toBe("si");
+    expect(applyContentFilters(rows, filters).map((p) => p.id)).toEqual(["a", "d"]);
+  });
+  it("pautada=no deja las que no (las que no traen el dato cuentan como no pautadas)", () => {
+    const filters = parseContentFilters(new URLSearchParams("pautada=no"));
+    expect(applyContentFilters(rows, filters).map((p) => p.id)).toEqual(["b", "c"]);
+  });
+  it("un valor inventado se ignora y no vacia la lista", () => {
+    const filters = parseContentFilters(new URLSearchParams("pautada=quizas"));
+    expect(filters.paid).toBeUndefined();
+    expect(applyContentFilters(rows, filters)).toHaveLength(4);
+  });
+  it("ida y vuelta por la URL y cuenta como un filtro puesto", () => {
+    const filters = parseContentFilters(new URLSearchParams("vista=list&pautada=si"));
+    expect(contentFiltersToQuery(filters)).toBe("vista=list&pautada=si");
+    expect(parseContentFilters(new URLSearchParams(contentFiltersToQuery(filters)))).toEqual(filters);
+    expect(activeFilterCount(filters)).toBe(1);
+    expect(activeFilterCount(base)).toBe(0);
+  });
+  it("combina con los demas filtros", () => {
+    const filters = parseContentFilters(new URLSearchParams("pautada=si&q=pieza a"));
+    expect(applyContentFilters(rows, filters).map((p) => p.id)).toEqual(["a"]);
+  });
+});

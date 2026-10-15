@@ -16,6 +16,7 @@ import { getNode } from "./registry";
 import { isContactFree } from "./nodes/branch";
 import { canonicalNodeType } from "./node-outputs";
 import type { BranchCondition } from "./condition-eval";
+import type { TriggerSubject } from "./registry/types";
 
 export interface GraphNode {
   id?: string;
@@ -34,7 +35,7 @@ export const CONTACT_STEP_TYPE = "upsert_contact";
 export const CONTACT_STEP_OK_HANDLE = "ok";
 
 /** De qué se trata otro flujo (para "Ir a otro flujo"): lo da quien llama, que sabe leer la base. */
-export type SubjectOfFlow = (flowId: string) => "contact" | "member" | "webhook" | undefined;
+export type SubjectOfFlow = (flowId: string) => TriggerSubject | undefined;
 
 /** ¿Este paso necesita un contacto para hacer lo suyo? Y si sí, por qué (para el mensaje). */
 export function nodeNeedsContact(node: GraphNode, subjectOfFlow?: SubjectOfFlow): boolean {
@@ -56,8 +57,8 @@ export function nodeNeedsContact(node: GraphNode, subjectOfFlow?: SubjectOfFlow)
       return (data.to ?? "contact") === "contact";
     case "goToFlow": {
       const target = typeof data.flowId === "string" ? subjectOfFlow?.(data.flowId) : undefined;
-      // Solo otro flujo sin contacto (de webhook o de persona) corre bien sin uno.
-      return target !== "webhook" && target !== "member";
+      // Solo otro flujo sin contacto (de webhook, de persona o de sistema) corre bien sin uno.
+      return target !== "webhook" && target !== "member" && target !== "system";
     }
     default:
       return false;
@@ -68,6 +69,28 @@ export interface MissingContact {
   nodeId: string;
   /** El nombre que ve la persona: la etiqueta del paso o su nombre de catálogo. */
   name: string;
+  /** El tipo canónico del paso (para el mensaje: los de agenda y ventas piden la reunión o la venta, no un contacto). */
+  nodeType: string;
+}
+
+/**
+ * Los pasos que actúan sobre LA reunión o LA venta que disparó el flujo (no sobre un contacto suelto): leen
+ * `event_booking_id` / `event_sale_id` y los demás datos del evento. Un flujo que no arrancó por una reunión o una
+ * venta (un webhook, un reporte de fin de día, el sistema) no las tiene, y «Crear o actualizar contacto» no se las da.
+ * Siguen declarando `needsContact: true` (la reunión y la venta tienen contacto); esto solo corrige lo que se le dice
+ * a la persona. Tirón 2, D2.
+ */
+export const TRIGGER_ENTITY_NODES: Readonly<Record<string, "reunión" | "venta">> = {
+  cancel_booking: "reunión",
+  set_booking_status: "reunión",
+  mark_payment_paid: "venta",
+  reschedule_payment: "venta",
+  set_sale_status: "venta",
+};
+
+/** «la reunión» / «la venta» si el paso actúa sobre la del disparador; null si no. */
+export function triggerEntityOf(nodeType: string): "reunión" | "venta" | null {
+  return TRIGGER_ENTITY_NODES[nodeType] ?? null;
 }
 
 const nameOf = (node: GraphNode): string => {
@@ -135,12 +158,18 @@ export function pathsMissingContact(nodes: GraphNode[], edges: GraphEdge[], subj
   for (const id of reachable) {
     const node = byId.get(id)!;
     if (id === trigger.id) continue;
-    if (!hasContact.get(id) && nodeNeedsContact(node, subjectOfFlow)) missing.push({ nodeId: id, name: nameOf(node) });
+    if (!hasContact.get(id) && nodeNeedsContact(node, subjectOfFlow)) {
+      missing.push({ nodeId: id, name: nameOf(node), nodeType: canonicalNodeType({ type: String(node.type ?? ""), data: node.data }) });
+    }
   }
   return missing;
 }
 
 /** El texto para quien edita: qué paso y qué hacer. */
-export function missingContactMessage(name: string): string {
+export function missingContactMessage(name: string, nodeType?: string): string {
+  const entity = nodeType ? triggerEntityOf(nodeType) : null;
+  if (entity) {
+    return `«${name}» actúa sobre la ${entity} que dispara el flujo, y este flujo no arranca por una ${entity}: no tiene ninguna. Solo se puede usar en un flujo que empieza con un disparador de ${entity === "reunión" ? "agenda" : "venta"}.`;
+  }
   return `«${name}» necesita un contacto. Poné antes «Crear o actualizar contacto» y conectá este paso a su salida «Listo».`;
 }

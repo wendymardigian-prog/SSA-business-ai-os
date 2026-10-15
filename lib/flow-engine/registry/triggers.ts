@@ -20,6 +20,7 @@ function payloadMatches(args: TriggerMatchArgs, incoming: string | undefined): b
 
 registerTrigger({
   type: "postback",
+  sourceType: "contact",
   label: "Clic en un boton",
   scope: "message",
   priority: 100,
@@ -28,6 +29,7 @@ registerTrigger({
 
 registerTrigger({
   type: "quick_reply",
+  sourceType: "contact",
   label: "Respuesta rapida",
   scope: "message",
   priority: 90,
@@ -36,6 +38,7 @@ registerTrigger({
 
 registerTrigger({
   type: "keyword",
+  sourceType: "contact",
   label: "Palabra clave",
   scope: "message",
   priority: 80,
@@ -56,6 +59,7 @@ registerTrigger({
 
 registerTrigger({
   type: "welcome",
+  sourceType: "contact",
   label: "Primer mensaje",
   scope: "message",
   priority: 20,
@@ -64,6 +68,7 @@ registerTrigger({
 
 registerTrigger({
   type: "default",
+  sourceType: "contact",
   label: "Respuesta por defecto",
   scope: "message",
   priority: 10,
@@ -72,6 +77,7 @@ registerTrigger({
 
 registerTrigger({
   type: "comment_keyword",
+  sourceType: "contact",
   label: "Palabra clave en un comentario",
   scope: "comment",
   priority: 80,
@@ -115,6 +121,7 @@ export function keywordMatches(args: TriggerMatchArgs): boolean {
 
 registerTrigger({
   type: "new_contact",
+  sourceType: "contact",
   label: "Contacto nuevo",
   scope: "event",
   priority: 60,
@@ -126,6 +133,7 @@ registerTrigger({
 
 registerTrigger({
   type: "crm_event",
+  sourceType: "contact",
   label: "Evento del CRM",
   scope: "event",
   priority: 50,
@@ -137,6 +145,7 @@ registerTrigger({
 
 registerTrigger({
   type: "inactivity",
+  sourceType: "contact",
   label: "Inactividad",
   scope: "scheduled",
   priority: 40,
@@ -148,6 +157,7 @@ registerTrigger({
 // correo no pasa por ahi.
 registerTrigger({
   type: "email_received",
+  sourceType: "contact",
   label: "Email recibido",
   scope: "event",
   priority: 55,

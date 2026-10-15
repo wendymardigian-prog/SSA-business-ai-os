@@ -13,6 +13,8 @@ import type { EndpointDetail, InboundListItem } from "@/lib/webhooks/action-type
 import { InboundDrawer } from "./inbound-drawer";
 import { StatusChip } from "./status-chip";
 import { ListenSection } from "./listen-section";
+import { ReprocessConfirm } from "./reprocess-confirm";
+import { reprocessDone } from "@/lib/webhooks/reprocess-copy";
 
 const STATUS_FILTERS = [
   ["all", "Todos"], ["received", "Recibidos"], ["processed", "Procesados"], ["error", "Con error"],
@@ -36,6 +38,7 @@ export function EndpointDetailScreen({ endpoint, history, filters, timeZone }: {
   const [editing, setEditing] = useState(false);
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, okText?: string, after?: () => void) =>
     start(async () => {
@@ -66,11 +69,17 @@ export function EndpointDetailScreen({ endpoint, history, filters, timeZone }: {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
-  function reprocessSelected() {
+  function reprocessSelected(rerunCompleted: boolean) {
     const items = history.items.filter((i) => selected.has(i.id)).map((i) => ({ id: i.id, reprocessCount: i.reprocessCount }));
+    setConfirming(false);
     if (items.length === 0) return;
-    if (!window.confirm(`Vuelve a correr los flujos publicados con ${items.length === 1 ? "este webhook" : `estos ${items.length} webhooks`}. Si mandan mensajes, se mandan de nuevo.\n\n¿Reprocesar?`)) return;
-    run(() => reprocessWebhookInbounds(items), "Reprocesados.", () => setSelected(new Set()));
+    start(async () => {
+      const res = await reprocessWebhookInbounds(items, { rerunCompleted });
+      if (!res.ok) return setMessage({ tone: "error", text: res.error });
+      setMessage({ tone: "ok", text: reprocessDone({ reprocessed: res.reprocessed, skipped: res.skipped, rerunCompleted }) });
+      setSelected(new Set());
+      router.refresh();
+    });
   }
 
   const totalPages = Math.max(1, Math.ceil(history.total / history.pageSize));
@@ -150,8 +159,13 @@ export function EndpointDetailScreen({ endpoint, history, filters, timeZone }: {
               </label>
               <label className="text-xs text-muted-foreground">Desde <input type="date" value={filters.from} onChange={(e) => setFilter({ from: e.target.value })} className="ml-1 h-8 rounded-lg border border-border bg-background px-2 text-sm text-foreground" /></label>
               <label className="text-xs text-muted-foreground">Hasta <input type="date" value={filters.to} onChange={(e) => setFilter({ to: e.target.value })} className="ml-1 h-8 rounded-lg border border-border bg-background px-2 text-sm text-foreground" /></label>
-              <button type="button" disabled={selected.size === 0 || pending} onClick={reprocessSelected} className="h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-40">Reprocesar ({selected.size})</button>
+              <button type="button" disabled={selected.size === 0 || pending} onClick={() => setConfirming((v) => !v)} aria-expanded={confirming} className="h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-40">Reprocesar ({selected.size})</button>
             </div>
+            {confirming && selected.size > 0 && (
+              <div className="border-b border-border p-4">
+                <ReprocessConfirm count={selected.size} pending={pending} onConfirm={reprocessSelected} onCancel={() => setConfirming(false)} />
+              </div>
+            )}
 
             {history.items.length === 0 ? (
               <p className="p-8 text-center text-sm text-muted-foreground">{filters.status !== "all" || filters.from || filters.to ? "No hay envíos con esos filtros." : "Todavía no llegó ningún envío a este endpoint."}</p>
