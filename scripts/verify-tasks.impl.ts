@@ -784,7 +784,13 @@ try {
     }
     const bAfter = await row(one.b.id);
     const cAfter = await row(one.c.id);
-    check(bAfter.due_date === "2026-10-14" && cAfter.due_date === "2026-10-15", "las fechas de las dependientes ajenas se corrigieron (B al 14, C al 15)", `${bAfter.due_date} ${cAfter.due_date}`);
+    // La regla de fechas corre desde HOY (en la zona del negocio): B queda a un dia de hoy y C a un dia de B. Antes estaba
+    // escrito a fuego («B al 14, C al 15»), que solo era cierto el dia en que se escribio el script (13/10/2026).
+    const todayLocal = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const plusDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+    const wantB = plusDays(todayLocal, 1);
+    const wantC = plusDays(todayLocal, 2);
+    check(bAfter.due_date === wantB && cAfter.due_date === wantC, `las fechas de las dependientes ajenas se corrigieron (B a hoy + 1 = ${wantB}, C a hoy + 2 = ${wantC})`, `${bAfter.due_date} ${cAfter.due_date}`);
     check(bAfter.due_time === "09:15:00" && bAfter.duration_minutes === 30, "y B conservo su hora y su duracion");
     check(((await creator.client.from("tasks").select("id").in("id", [one.b.id, one.c.id])).data ?? []).length === 0, "el Member SIGUE sin poder leerlas");
     const edit = await creator.client.from("tasks").update({ title: "zz-test hackeada" }).eq("id", one.b.id).select("id");

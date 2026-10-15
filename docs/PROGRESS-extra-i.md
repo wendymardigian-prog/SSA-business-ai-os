@@ -402,3 +402,5 @@ Los nombres de archivo son una propuesta; si cambian, se corrige esta tabla en e
 - Las huellas de las ocho funciones protegidas (`scripts/protected-functions.mjs`) se comparan dentro de `verify-expenses`, `verify-organic-attribution` y `verify-commissions`: iguales.
 - `content_posts.assigned_to` y su trigger no se tocaron; «Enviar mensaje» con el interruptor apagado es idéntico (9 casos de caracterización escritos antes del cambio).
 - Migraciones: **00224 a 00232 aplicadas y registradas**; **00233, 00234 y 00235 escritas y ensayadas con `BEGIN … ROLLBACK`, sin aplicar**. `ALL_MIGRATIONS.sql` regenerado (232).
+
+- **Corrección posterior al cierre (15/10/2026).** `verify-tasks` fallaba desde antes por una fecha escrita a fuego («B al 14, C al 15», cierta solo el 13/10); ahora espera «hoy + 1» y «hoy + 2» en la zona del negocio (misma regla, sin relajar nada) y da 0. `verify-attribution` sigue con su fallo previo: 59 contactos «Instagram User» que la sincronización del buzón dio de alta el 6/10/2026 en 24 segundos no tienen primer toque y no hay de dónde sacarlo; no se tocó el script ni los datos (ver PENDIENTE).

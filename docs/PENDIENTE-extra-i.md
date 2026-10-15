@@ -93,3 +93,6 @@ Falta la acción de servidor que arme la vista previa (antes → después) de la
 
 ## Revisión visual con datos
 Las pantallas nuevas se vieron con la base vacía. Falta mirar con datos reales o de prueba: filas de gastos y comisiones, el diálogo «Generar gasto», el panel de reglas y su arrastre, el chip «Vino de…» en la bandeja, la línea de tiempo de toques y «Cargar a mano» en una venta.
+
+## `verify-attribution`: 59 contactos de la sincronización del buzón sin primer toque (anterior al Extra I)
+El check «todos los contactos reales tienen first_touch» falla desde antes de esta corrida: 59 contactos «Instagram User» se dieron de alta el 2026-10-06 entre las 21:56 y las 21:57 UTC (la sincronización del buzón, que no pasa por el receptor ni emite `contact_created`; dos emitieron después un evento con `source: "unknown"` al ponerles nombre). No hay de dónde sacar un toque y no se les inventó uno ni se relajó el check. Decisión pendiente de Wendy: (a) aceptarlo como excepción conocida del script, o (b) darles un toque de origen `import` con fecha de alta como el backfill de la 00115.
