@@ -333,7 +333,7 @@ Marcar `[x]` al cumplir los criterios de la F. Las nice-to-have pueden quedar en
 - [x] Las 8 huellas iguales al punto de partida
 - [x] Docs de §9 (`finanzas.md`, `comisiones.md`, `atribucion.md`, `ventas.md`, `flow-registry.md`, `sitio.md`, `roles.md`)
 - [x] `CLAUDE.md` con las 4 secciones nuevas y el cambio aprobado M9
-- [x] Revisión visual (1440 y 390 px, claro y oscuro) hecha o anotada (hecha a 1440 y 390 px con la base vacía; con datos, anotada en PENDIENTE)
+- [x] Revisión visual (1440 y 390 px, claro y oscuro) hecha o anotada (hecha el 15/10/2026 a 375 y 1440 px, en tema claro y con la sesión ya abierta del panel: Resumen, Gastos, Recurrentes, Proveedores, Comisiones y Reglas, sin desborde horizontal ni errores de consola, todas con su estado vacío; el tema oscuro y las pantallas con datos reales quedan anotados en PENDIENTE)
 - [x] PR abierto de `feat/extra-i` a `main` con la sección "Después del merge" (sin mergear) (PR #63)
 
 ---
@@ -406,3 +406,5 @@ Los nombres de archivo son una propuesta; si cambian, se corrige esta tabla en e
 - **Corrección posterior al cierre (15/10/2026).** `verify-tasks` fallaba desde antes por una fecha escrita a fuego («B al 14, C al 15», cierta solo el 13/10); ahora espera «hoy + 1» y «hoy + 2» en la zona del negocio (misma regla, sin relajar nada) y da 0. `verify-attribution` sigue con su fallo previo: 59 contactos «Instagram User» que la sincronización del buzón dio de alta el 6/10/2026 en 24 segundos no tienen primer toque y no hay de dónde sacarlo; no se tocó el script ni los datos (ver PENDIENTE).
 
 - **Cierre final (15/10/2026).** Segunda pasada completa en esta sesión: tsc, vitest, lint, build y todos los `verify-*` en 0 (`verify-workspace-isolation` con `--despues-de-00143`). `verify-attribution` quedó en 0 después de crear 59 toques `import` para los contactos del buzón (opción (b) de Wendy, con respaldo).
+
+- **Ensayos de las 00233 a 00235 (15/10/2026).** Cada una se corrió dentro de `BEGIN … ROLLBACK`: adentro existían el cron `finance-daily` (`7 * * * *`) y los triggers `contacts_comment_backfill` y `payments_enqueue_commissions`; después del `ROLLBACK` los tres volvieron a 0. Siguen sin aplicarse.
