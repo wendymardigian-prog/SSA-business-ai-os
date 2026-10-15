@@ -265,3 +265,23 @@ describe("describeTouch con el vinculo de Meta (AT3, F21)", () => {
     expect(view.path[0].adLine).toBe("Meta · Campaña Octubre › Video Testimonio");
   });
 });
+
+describe("el canal de cada toque (Extra I, F37)", () => {
+  const row = (over: Record<string, unknown>) => ({ id: "t", occurred_at: "2026-09-01T10:00:00Z", source: "instagram", medium: "comment", content_label: null, content_post_id: null, origin: "comment", ...over });
+
+  it("cada toque del camino lleva su canal y su etiqueta", () => {
+    const view = buildAttributionView({
+      attribution: null,
+      rows: [row({ id: "a", channel: "organic" }), row({ id: "b", occurred_at: "2026-09-05T10:00:00Z", channel: "paid", ad_id: "1" })],
+    });
+    expect(view.path.map((p) => p.channelLabel)).toEqual(["Orgánico", "Pauta"]);
+    expect(view.first?.channel).toBe("organic");
+    expect(view.last?.channel).toBe("paid");
+  });
+
+  it("un toque viejo sin canal no inventa uno (el resultado no tiene las claves)", () => {
+    const view = buildAttributionView({ attribution: null, rows: [row({})] });
+    expect("channel" in view.path[0]).toBe(false);
+    expect("channelLabel" in view.path[0]).toBe(false);
+  });
+});

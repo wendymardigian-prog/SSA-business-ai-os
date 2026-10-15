@@ -31,6 +31,9 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "call_classify",
       "call_index_knowledge",
       "call_summary",
+      // Atribución orgánica (Extra I, AO1): el vínculo retroactivo de comentarios.
+      "comment_backfill",
+      "comment_backfill_workspace",
       "content_copy",
       "content_provider_schedule",
       "content_publish",

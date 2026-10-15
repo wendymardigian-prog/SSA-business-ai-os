@@ -21,6 +21,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { inheritDedupeKey, type InheritedContent } from "@/lib/attribution/inherit";
+import { resolveStoryPiece, type StoryPiece } from "@/lib/attribution/story-piece";
 import { recordTouch, type TouchInput } from "./touch";
 
 type Db = SupabaseClient<Database>;
@@ -184,6 +186,16 @@ export interface InboundTouchParams {
   /** El mensaje es la mención de la cuenta en una historia ajena (`metadata.isStoryMention`). */
   isStoryMention?: boolean;
   referral?: AdReferral | null;
+  /**
+   * La pieza de la historia a la que respondió (F33). Si el receptor ya la resolvió (para guardarla en `origin_context`)
+   * la pasa; si es `undefined` y hay `storyId`, se resuelve acá (una consulta).
+   */
+  storyPiece?: StoryPiece | null;
+  /**
+   * La pieza que hereda de la automatización a la que está respondiendo (F35). Si viene, el toque es ESE: uno por
+   * mensaje de automatización respondido (`content-reply:<id>`), con la pieza.
+   */
+  inherited?: (InheritedContent & { title?: string | null }) | null;
 }
 
 /**
@@ -216,6 +228,27 @@ async function previousInboundAt(supabase: Db, params: InboundTouchParams): Prom
 export async function recordInboundTouch(supabase: Db, params: InboundTouchParams): Promise<void> {
   try {
     const referral = params.referral ?? null;
+
+    // F35: la respuesta a un DM de automatización con pieza es un toque de esa pieza, uno por mensaje respondido.
+    if (params.inherited && !referral) {
+      await recordTouch(supabase, {
+        workspaceId: params.workspaceId,
+        contactId: params.contactId,
+        touch: {
+          occurredAt: params.messageAt,
+          source: params.platform,
+          medium: "dm",
+          origin: "dm",
+          dedupeKey: inheritDedupeKey(params.inherited.outbound_message_id),
+          content: params.inherited.title ?? null,
+          socialPostId: params.inherited.social_post_id,
+          contentPostId: params.inherited.content_post_id,
+          raw: { message_id: params.platformMessageId, content_inherited_from: params.inherited.outbound_message_id, via: "automation_reply" },
+        },
+      });
+      return;
+    }
+
     const isStoryReply = Boolean(params.storyId);
     const isStoryMention = params.isStoryMention === true && !isStoryReply;
 
@@ -243,6 +276,14 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
     }
     if (!reason) return;
 
+    // F33: si respondió a una historia nuestra, el toque lleva la pieza.
+    const storyPiece =
+      reason === "story_reply"
+        ? params.storyPiece !== undefined
+          ? params.storyPiece
+          : await resolveStoryPiece(supabase, { workspaceId: params.workspaceId, platform: params.platform, storyId: params.storyId })
+        : null;
+
     const touch: TouchInput = {
       occurredAt: params.messageAt,
       source: params.platform,
@@ -251,6 +292,7 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
       dedupeKey: params.platformMessageId
         ? `msg:${params.platformMessageId}`
         : `msg:${params.conversationId}:${params.messageAt.toISOString()}`,
+      ...(storyPiece ? { socialPostId: storyPiece.socialPostId, contentPostId: storyPiece.contentPostId, content: storyPiece.title } : {}),
       ...(referral
         ? {
             adId: referral.adId,

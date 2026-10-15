@@ -9,6 +9,7 @@ import { getPaymentTasksState } from "@/lib/tasks/automation-templates";
 import { financeContextOf } from "@/lib/finance/context";
 import { loadCategoryUsage } from "@/lib/finance/totals-load";
 import { loadFinanceAuto } from "@/lib/finance/auto-card-load";
+import { parseAttributionSettings } from "@/lib/attribution/settings";
 import { SettingsView } from "./settings-view";
 
 export default async function SettingsPage() {
@@ -73,6 +74,7 @@ export default async function SettingsPage() {
       financeUsageTruncated={finance.truncated}
       financeAuto={financeAuto}
       paymentTasks={paymentTasks}
+      attributionSettings={parseAttributionSettings((workspace as unknown as { attribution_settings?: unknown }).attribution_settings)}
     />
   );
 }

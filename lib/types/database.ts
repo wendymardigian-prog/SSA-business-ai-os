@@ -614,6 +614,8 @@ export type AuditAction =
   /** Entity workspace: las categorias y la configuracion de Finanzas. */
   | "finance.categories_updated"
   | "finance.settings_updated"
+  /** Entity workspace: la configuración de atribución (Extra I, F31). */
+  | "attribution.settings_updated"
   /** Formularios (entity form, salvo que se aclare). `form.published` lo escribe la funcion SQL. */
   | "form.created"
   | "form.updated"
@@ -1032,6 +1034,8 @@ export interface Database {
       };
       workspaces: {
         Row: {
+          /** Atribución orgánica (00230): comentarios que crean contactos, días de herencia y valores por defecto de los links. */
+          attribution_settings: Json;
           /** Crear los 7 flujos sugeridos al crear un evento (Etapa 4, F49). */
           scheduling_auto_create_flows?: boolean;
           scheduling_public_base_url?: string | null;
@@ -1093,6 +1097,8 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
+          /** Atribución orgánica (00230): comentarios que crean contactos, días de herencia y valores por defecto de los links. */
+          attribution_settings?: Json;
           id?: string;
           name: string;
           slug: string;
@@ -1129,6 +1135,8 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          /** Atribución orgánica (00230): comentarios que crean contactos, días de herencia y valores por defecto de los links. */
+          attribution_settings?: Json;
           id?: string;
           name?: string;
           slug?: string;
@@ -2138,6 +2146,7 @@ export interface Database {
           transcript_error?: string | null;
           transcript_seconds?: number | null;
           transcript_started_at?: string | null;
+          origin_context?: Json | null;
         };
         /**
          * Update era casi vacio a proposito: un mensaje no se edita. La media
@@ -2158,6 +2167,7 @@ export interface Database {
           transcript_error?: string | null;
           transcript_seconds?: number | null;
           transcript_started_at?: string | null;
+          origin_context?: Json | null;
         };
         Relationships: [
           {
@@ -3842,6 +3852,8 @@ export interface Database {
 
       content_posts: {
         Row: {
+          /** Código corto de la pieza para los links (00230; lo completa un trigger). */
+          attribution_code: string;
           id: string;
           workspace_id: string;
           idea_id: string | null;
@@ -3879,6 +3891,8 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
+          /** Código corto de la pieza para los links (00230; lo completa un trigger). */
+          attribution_code?: string;
           id?: string;
           workspace_id: string;
           idea_id?: string | null;
@@ -3903,6 +3917,8 @@ export interface Database {
           created_at?: string;
         };
         Update: {
+          /** Código corto de la pieza para los links (00230; lo completa un trigger). */
+          attribution_code?: string;
           idea_id?: string | null;
           title?: string;
           format?: string | null;
@@ -4218,6 +4234,8 @@ export interface Database {
 
       social_posts: {
         Row: {
+          /** Responsable de una publicación sin pieza (00230). */
+          assigned_to: string | null;
           id: string;
           workspace_id: string;
           content_post_id: string | null;
@@ -4253,6 +4271,8 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
+          /** Responsable de una publicación sin pieza (00230). */
+          assigned_to?: string | null;
           id?: string;
           workspace_id: string;
           content_post_id?: string | null;
@@ -4274,6 +4294,8 @@ export interface Database {
           created_at?: string;
         };
         Update: {
+          /** Responsable de una publicación sin pieza (00230). */
+          assigned_to?: string | null;
           content_post_id?: string | null;
           social_account_id?: string | null;
           publisher?: string | null;
@@ -4786,6 +4808,8 @@ export interface Database {
        */
       contact_touches: {
         Row: {
+          /** El canal del toque (00230; lo calcula un trigger). */
+          channel: "organic" | "paid" | "referral" | "direct" | null;
           id: string;
           workspace_id: string;
           contact_id: string;
@@ -4812,7 +4836,7 @@ export interface Database {
           landing_page: string | null;
           /** La URL de entrada completa, con todos sus parametros menos los sensibles (00215). Puede traer datos de la persona: nunca se loguea. */
           entry_url: string | null;
-          origin: "dm" | "comment" | "booking" | "form" | "manual" | "import";
+          origin: "dm" | "comment" | "booking" | "form" | "manual" | "import" | "webhook" | "link_click";
           dedupe_key: string;
           raw: Json;
           /** El vinculo con el catalogo de Meta (00192). */

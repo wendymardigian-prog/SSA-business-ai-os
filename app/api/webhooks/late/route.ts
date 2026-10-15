@@ -22,6 +22,8 @@ import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webho
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { fromZernioReferral, recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { adOriginOf, buildOriginContext } from "@/lib/messages/origin-context";
+import { inheritedContentContext, resolveInboundOriginExtras } from "@/lib/attribution/inbound-origin";
+import { resolveContentForIncoming } from "@/lib/attribution/content-variables";
 import { maybeEnqueueAdOriginLookup } from "@/lib/meta/zernio-ad-origin";
 import { attributeComment } from "@/lib/comments/attribution";
 import { processComment } from "@/lib/comment-processor";
@@ -343,6 +345,23 @@ async function processMessageEvent(
 
   if (!conversation) return;
 
+  // ── La pieza de la historia y la herencia de una automatización (Extra I, F33 y F35) ──
+  // Se resuelve ANTES de guardar para que `origin_context` quede completo en el mismo insert. No lanza: si falla, el
+  // mensaje se guarda como siempre.
+  const baseOrigin = buildOriginContext({
+    platform: channel.platform,
+    storyReply: metadata?.storyReply ?? null,
+    isStoryMention: metadata?.isStoryMention ?? null,
+    zernioReferral: metadata?.referral ?? null,
+  });
+  const extras = await resolveInboundOriginExtras(supabase, {
+    workspaceId: channel.workspace_id,
+    conversationId: conversation.id,
+    platform: channel.platform,
+    storyId: metadata?.storyReply?.storyId ?? null,
+    baseOriginContext: baseOrigin,
+  });
+
   // ── Guardado del mensaje (F19) ───────────────────────────────────────────
   // Va antes de las automatizaciones para que el agente de la Fase 3 y el nodo
   // AI Response encuentren el mensaje al armar el historial: si se guardara
@@ -375,9 +394,12 @@ async function processMessageEvent(
     // De donde vino (historia, mencion, anuncio): lista blanca. Guardarlo nunca frena el mensaje.
     originContext: buildOriginContext({
       platform: channel.platform,
-      storyReply: metadata?.storyReply ?? null,
+      storyReply: metadata?.storyReply
+        ? { ...metadata.storyReply, socialPostId: extras.storyPiece?.socialPostId, contentPostId: extras.storyPiece?.contentPostId }
+        : null,
       isStoryMention: metadata?.isStoryMention ?? null,
       zernioReferral: metadata?.referral ?? null,
+      content: inheritedContentContext(extras.inherited),
     }),
   });
 
@@ -399,6 +421,8 @@ async function processMessageEvent(
       storyId: metadata?.storyReply?.storyId ?? null,
       isStoryMention: metadata?.isStoryMention === true,
       referral: fromZernioReferral(metadata?.referral),
+      storyPiece: extras.storyPiece,
+      inherited: extras.inherited,
     });
   } catch (err) {
     // `recordInboundTouch` ya atrapa todo; esto es el cinturón de seguridad. Si
@@ -477,6 +501,14 @@ async function processMessageEvent(
 
   // ── Automatizaciones ──────────────────────────────────────────────────────
 
+  // La pieza de la que vino el mensaje, para `{{content.title}}` (Extra I, F34). No lanza.
+  const incomingContent = await resolveContentForIncoming(supabase, {
+    workspaceId: channel.workspace_id,
+    storyPiece: extras.storyPiece,
+    inherited: extras.inherited,
+    adId: adOriginOf(metadata?.referral)?.adId,
+  });
+
   const automation = await runInboundAutomation({
     supabase,
     channel,
@@ -494,6 +526,7 @@ async function processMessageEvent(
       // El origen que leen los filtros "solo si vino de un anuncio" y "solo menciones en historias".
       isStoryMention: metadata?.isStoryMention === true,
       ...(adOriginOf(metadata?.referral) ?? {}),
+      ...(incomingContent ? { content: incomingContent } : {}),
       sender: {
         id: msg.sender.id,
         name: msg.sender.name,

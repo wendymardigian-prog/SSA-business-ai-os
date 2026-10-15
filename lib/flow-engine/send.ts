@@ -7,6 +7,7 @@ import { sendText, sendWhatsAppAudio, sendMedia, EvolutionError, type EvolutionC
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { describeSendError, RATE_LIMIT_REACHED, type FriendlyError } from "@/lib/instagram-errors";
 import { outboundMessageRow } from "@/lib/messages/outbound";
+import { sentContentContext } from "@/lib/attribution/content-variables";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
 /**
@@ -55,6 +56,8 @@ export interface SendContext {
    * `sequence`. Determina `messages.origin`.
    */
   origin?: "flow" | "sequence";
+  /** Las variables del flujo (si el envío nace de uno): de ahí sale la pieza (`content`) que guarda el saliente (F35). */
+  variables?: Record<string, unknown>;
 }
 
 /** Un archivo de nuestro bucket `chat-media`, listo para mandar (F19). */
@@ -561,6 +564,7 @@ export async function recordSend(
       sentByNodeId: context.nodeId ?? null,
       platformMessageId: outcome.platformMessageId ?? null,
       status: outcome.ok ? "sent" : "failed",
+      originContext: sentContentContext(context),
     }),
   );
 

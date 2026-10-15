@@ -46,6 +46,8 @@ function getUpstreamNodeIds(nodeId: string, edges: Edge[]): Set<string> {
   return upstream;
 }
 
+import { CONTENT_VARIABLE_KEYS } from "@/lib/attribution/content-variables";
+
 function getFlowVariables({
   node,
   nodes,
@@ -61,7 +63,7 @@ function getFlowVariables({
   const triggerType = (triggerNode?.data as Record<string, unknown> | undefined)
     ?.triggerType as string | undefined;
   if (triggerType === "comment_keyword") {
-    variables.push("comment_id", "comment_text", "commenter_name", "post_id");
+    variables.push("comment_id", "comment_text", "commenter_name", "post_id", ...CONTENT_VARIABLE_KEYS);
   }
   // Ventas: la venta, el contacto y, si el disparador es de un pago, el pago (las mismas que ofrece el esquema de condiciones).
   if (isSalesTriggerType(triggerType)) {

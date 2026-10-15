@@ -55,3 +55,20 @@ describe("messageOriginVariables", () => {
     expect(messageOriginVariables({})).toBeNull();
   });
 });
+
+describe("la pieza en el origen (Extra I, F33 y F35)", () => {
+  it("una respuesta a una historia nuestra guarda la publicación y la pieza", () => {
+    const out = buildOriginContext({ platform: "instagram", storyReply: { storyId: "s1", storyUrl: "https://x", socialPostId: "sp-1", contentPostId: "cp-1" } });
+    expect(out?.story_reply).toEqual({ story_id: "s1", story_url: "https://x", social_post_id: "sp-1", content_post_id: "cp-1" });
+  });
+
+  it("`content` pasa por una lista blanca: lo que no es pieza o publicación se descarta", () => {
+    const out = buildOriginContext({
+      platform: "instagram",
+      content: { social_post_id: "sp-1", content_post_id: "cp-1", via: "flow", flow_id: "f-1", title: "Reel", token: "secreto", extra: { a: 1 } },
+    });
+    expect(out?.content).toEqual({ social_post_id: "sp-1", content_post_id: "cp-1", via: "flow", flow_id: "f-1", title: "Reel" });
+    expect(buildOriginContext({ platform: "instagram", content: { via: "flow" } })).toBeNull();
+    expect(buildOriginContext({ platform: "instagram", content: "texto" })).toBeNull();
+  });
+});

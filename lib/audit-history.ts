@@ -287,6 +287,8 @@ export const FORM_ACTION_LABELS: Record<
   "attribution.meta_linked": "vinculó un toque con un anuncio de Meta",
   "attribution.meta_ignored": "ignoró un toque para el vínculo con Meta",
   "attribution.meta_unlinked": "quitó el vínculo manual de un toque con Meta",
+  // Extra I (F31): la configuración de Ajustes > General > Atribución (entidad workspace).
+  "attribution.settings_updated": "cambió la configuración de atribución",
   "contract.email_resent": "reenvió la copia del contrato",
   "contract.pdf_regenerated": "regeneró el PDF del contrato",
 };

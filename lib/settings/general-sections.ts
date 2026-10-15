@@ -9,7 +9,7 @@
  */
 
 export interface GeneralSection {
-  id: "workspace" | "conversaciones" | "archivos" | "ventas" | "finanzas" | "ia";
+  id: "workspace" | "conversaciones" | "archivos" | "ventas" | "finanzas" | "ia" | "atribucion";
   label: string;
   /** La clave que hace falta para ver esta seccion (Equipo y roles, F16). */
   permission: "settings.general" | "sales.settings" | "expenses.manage";
@@ -17,7 +17,7 @@ export interface GeneralSection {
 
 /**
  * General se parte por permiso: «General» (nombre, palabras clave, no contactar, zona horaria,
- * retención de archivos) pide `settings.general`; «Ventas y cobranza» (métodos de pago, tope de
+ * retención de archivos y, desde el Extra I, «Atribución») pide `settings.general`; «Ventas y cobranza» (métodos de pago, tope de
  * descuento, días de gracia, flujos de cobranza) pide `sales.settings`; «Finanzas» (categorías de gasto y,
  * más adelante, los gastos automáticos) pide `expenses.manage`.
  */
@@ -28,6 +28,7 @@ export const GENERAL_SECTIONS: GeneralSection[] = [
   { id: "ventas", label: "Ventas y cobranza", permission: "sales.settings" },
   { id: "finanzas", label: "Finanzas", permission: "expenses.manage" },
   { id: "ia", label: "IA", permission: "settings.general" },
+  { id: "atribucion", label: "Atribución", permission: "settings.general" },
 ];
 
 /** Las secciones que ve quien tiene estas claves (Owner y Admin las tienen todas). */

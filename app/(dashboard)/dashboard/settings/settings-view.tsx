@@ -10,6 +10,8 @@ import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
 import { SalesSettings } from "@/components/settings/sales-settings";
 import { FinanceSettings } from "@/components/settings/finance-settings";
+import { AttributionSettingsCard } from "@/components/settings/attribution-settings";
+import type { AttributionSettings } from "@/lib/attribution/settings";
 import type { ExpenseCategory } from "@/lib/finance/categories";
 import type { CategoryUsage } from "@/lib/finance/category-totals";
 import type { FinanceAutoData } from "@/lib/finance/auto-card";
@@ -65,6 +67,7 @@ export function SettingsView({
   financeUsageTruncated,
   financeAuto,
   paymentTasks,
+  attributionSettings,
 }: {
   workspace: WorkspaceSettings;
   canViewAiCosts: boolean;
@@ -82,6 +85,8 @@ export function SettingsView({
   financeUsageTruncated: boolean;
   financeAuto: FinanceAutoData;
   paymentTasks: TaskPaymentState;
+  /** La configuración de «Atribución» (Extra I, F31); solo se muestra con `settings.general`. */
+  attributionSettings: AttributionSettings;
 }) {
   // Lo que cada persona puede ver, serializable desde el servidor: una función `can(key)` real para las secciones.
   const allowed: Record<string, boolean> = { "settings.general": canGeneral, "sales.settings": canSales, "expenses.manage": canFinance };
@@ -357,6 +362,12 @@ export function SettingsView({
                     .
                   </p>
                   <AiRunsLink canView={canViewAiCosts} />
+                </section>
+
+                <hr className="border-border" />
+                {/* Atribución (Extra I, F31) */}
+                <section id="atribucion" className="scroll-mt-20">
+                  <AttributionSettingsCard initial={attributionSettings} />
                 </section>
               </>
             )}

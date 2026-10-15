@@ -7,6 +7,7 @@ import { interpolateVariables } from "../interpolate";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { sendChannelMessage, recordSend } from "../send";
+import { sentContentContext } from "@/lib/attribution/content-variables";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
@@ -180,6 +181,7 @@ async function sendFirstMessageAsPrivateReply(
         sentByFlowId: context.flowId ?? null,
         sentByNodeId: nodeId,
         status: "sent",
+        originContext: sentContentContext(context),
       }),
     );
 

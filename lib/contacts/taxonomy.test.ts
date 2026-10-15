@@ -30,11 +30,14 @@ describe("las listas cerradas (F81)", () => {
     expect([...MEDIUMS]).toEqual([
       "dm", "comment", "story_reply", "story_mention", "mention", "link_in_bio", "paid_social",
       "organic_social", "email", "form", "booking", "qr", "import",
+      // Extra I: se SUMAN dos medios (el clic en un link de un DM y el referido de la venta); los anteriores no cambian.
+      "dm_link", "referral_person",
     ]);
   });
 
   it("orígenes: los que acepta la columna `origin` de la base", () => {
-    expect([...ORIGINS]).toEqual(["dm", "comment", "booking", "form", "manual", "import", "webhook"]);
+    // Extra I (00230): se SUMA `link_click`; los anteriores no cambian.
+    expect([...ORIGINS]).toEqual(["dm", "comment", "booking", "form", "manual", "import", "webhook", "link_click"]);
   });
 });
 

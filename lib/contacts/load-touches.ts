@@ -32,6 +32,11 @@ export async function loadContactTouches(
       .order("occurred_at", { ascending: true })
       .limit(100);
 
+  // `channel` (00230) y `entry_url` (00215) son columnas nuevas: si alguna todavía no está, se repite sin ella.
+  const withChannel = await query(`${BASE_COLUMNS}, entry_url, channel`);
+  if (withChannel.error?.code !== UNDEFINED_COLUMN) {
+    return { data: (withChannel.data as unknown as TouchRow[] | null) ?? null, error: withChannel.error };
+  }
   const withEntry = await query(`${BASE_COLUMNS}, entry_url`);
   if (withEntry.error?.code === UNDEFINED_COLUMN) {
     const without = await query(BASE_COLUMNS);

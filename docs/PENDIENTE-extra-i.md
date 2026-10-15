@@ -71,3 +71,10 @@ Al reactivar una plantilla pausada la pantalla avisa qué fechas de pago se salt
 ## Gastos automáticos: dos cosas a mirar en vivo
 - Con Whop en 0 % (hasta que Wendy cargue el real) encender «Comisiones de procesadores» no crea ningún gasto: es lo esperado.
 - La pantalla de Recurrentes y la de Ajustes > Finanzas > Gastos automáticos no se vieron en un navegador (pide sesión): revisar a 1440 y 390 px.
+
+## F33 — historias: confirmar en vivo
+`resolveStoryPiece` busca `social_posts.external_post_id = storyId` (una sola fila, mismo workspace y red). No se pudo verificar que el id de la historia que manda Zernio en `metadata.storyReply.storyId` coincida con el `external_post_id` que guarda el sistema para una historia publicada: si no coincide, el toque queda como antes (sin pieza). Probar con una historia real.
+
+## Mensajes con pieza (F34/F35)
+- `{{content.title}}` y `{{content.code}}` salen en los flujos de comentario y en los de mensaje que vienen de una historia propia, de la respuesta a un DM de automatización o de un anuncio vinculado a una pieza. Si no hay pieza, el token queda escrito tal cual (así funciona la interpolación para cualquier variable).
+- La herencia de pieza mira el último DM saliente con `origin_context.content` en la conversación; se prueba con datos sembrados, no con Zernio real.

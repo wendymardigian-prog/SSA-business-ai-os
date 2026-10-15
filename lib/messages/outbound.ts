@@ -1,4 +1,4 @@
-import type { Database } from "@/lib/types/database";
+import type { Database, Json } from "@/lib/types/database";
 
 /**
  * Origen de un saliente (F2, Bloque 1). Es la respuesta a "de dónde salió este
@@ -47,6 +47,8 @@ export interface OutboundRowInput {
   createdAt?: string | null;
   /** Se omite si no se pasa: lo completa el trigger messages_fill_workspace_id. */
   workspaceId?: string | null;
+  /** De dónde vino lo que se mandó (hoy solo `{ content }`, F35). Se omite si no se pasa: la columna queda en null. */
+  originContext?: Record<string, unknown> | null;
 }
 
 /**
@@ -106,5 +108,6 @@ export function outboundMessageRow(input: OutboundRowInput): MessageInsert {
   };
   if (input.createdAt != null) row.created_at = input.createdAt;
   if (input.workspaceId != null) row.workspace_id = input.workspaceId;
+  if (input.originContext != null) row.origin_context = input.originContext as Json;
   return row;
 }
