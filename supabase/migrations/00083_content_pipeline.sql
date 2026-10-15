@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS public.content_ideas (
   score             numeric,
   target_audience   text,
   awareness_level   text,
-  embedding         vector(1024),
+  embedding         extensions.vector(1024),
   deleted_at        timestamptz,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()

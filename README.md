@@ -56,14 +56,17 @@ Después de eso, el resto del equipo entra por invitación (`Ajustes → Equipo`
 
 2. **Correr las migraciones**
 
-   Cada archivo numerado de `supabase/migrations/`, en orden, desde `00001`. Con la CLI de Supabase:
+   Con la CLI de Supabase, que aplica cada archivo de `supabase/migrations/` en orden y anota cuáles ya aplicó (sirve igual para las actualizaciones):
 
    ```bash
-   supabase db query --linked -f supabase/migrations/00001_initial_schema.sql
-   # ... y así con cada archivo siguiente, en orden
+   supabase login
+   supabase link --project-ref <ID del proyecto>
+   supabase db push
    ```
 
-   O pegando `supabase/migrations/ALL_MIGRATIONS.sql` entero en el editor SQL del panel de Supabase.
+   Los precios de los modelos de IA no viajan en las migraciones: están en `supabase/seeds/` y se corren una vez, después de crear el primer usuario (paso 4).
+
+   No conviene pegar `ALL_MIGRATIONS.sql` en el editor SQL del panel: pesa casi 2 MB y Supabase lo rechaza por demasiado grande.
 
 3. **Configurar el entorno**
 
