@@ -47,7 +47,7 @@ function fail(message) {
 
 const templateArg = arg("template");
 if (!templateArg) {
-  fail("Falta --template=<carpeta>: la copia local de la plantilla (por ejemplo ../business-os-template).");
+  fail("Falta --template=<carpeta>: la copia local de la plantilla (por ejemplo ../BAIOS-b2b).");
 }
 const TEMPLATE = resolve(process.cwd(), templateArg);
 
