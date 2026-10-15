@@ -272,69 +272,69 @@ Marcar `[x]` al cumplir los criterios de la F. Las nice-to-have pueden quedar en
 
 ## AO1 — Toques de contenido
 - [x] F30 Migración 00230 (columnas, canal y triggers) + `touch_channel` ↔ `channel.ts`
-- [ ] F31 Opción "Crear contactos desde comentarios" + sección Atribución en Ajustes
-- [ ] F32 Vínculo retroactivo de comentarios (job; 00234 solo ensayada)
-- [ ] F33 Respuesta a historia → pieza
-- [ ] F34 Variables de pieza en los flujos de contenido
-- [ ] F35 Herencia de pieza en los DMs que responden a una automatización
-- [ ] F36 Atribución por mensaje visible en los datos
-- [ ] F37 Clasificación visible del canal
-- [ ] Bloque AO1 listo (huella de `record_contact_touch` igual)
+- [x] F31 Opción "Crear contactos desde comentarios" + sección Atribución en Ajustes
+- [x] F32 Vínculo retroactivo de comentarios (job; 00234 solo ensayada)
+- [x] F33 Respuesta a historia → pieza
+- [x] F34 Variables de pieza en los flujos de contenido
+- [x] F35 Herencia de pieza en los DMs que responden a una automatización
+- [x] F36 Atribución por mensaje visible en los datos
+- [x] F37 Clasificación visible del canal
+- [x] Bloque AO1 listo (huella de `record_contact_touch` igual)
 
 ## AO2 — Códigos y links
-- [ ] Test de caracterización de "Enviar mensaje" ampliado (antes de tocarlo)
-- [ ] F38 Código de la pieza en Contenido
-- [ ] F39 Interruptor "Agregar parámetros de atribución" en los flujos
-- [ ] F40 Registrar el clic (`/l/[token]`)
-- [ ] F41 Atribución de las visitas con UTMs de pieza (prueba de punta a punta)
-- [ ] F42 Generador de links (nice-to-have)
-- [ ] Bloque AO2 listo
+- [x] Test de caracterización de "Enviar mensaje" ampliado (antes de tocarlo)
+- [x] F38 Código de la pieza en Contenido
+- [x] F39 Interruptor "Agregar parámetros de atribución" en los flujos
+- [x] F40 Registrar el clic (`/l/[token]`)
+- [x] F41 Atribución de las visitas con UTMs de pieza (prueba de punta a punta)
+- [x] F42 Generador de links (nice-to-have)
+- [x] Bloque AO2 listo
 
 ## AO3 — Responsable, lectura y venta
-- [ ] F43 Responsable de la pieza (filtro, publicaciones sin pieza, `commission_content_owner`)
-- [ ] F44 Chip "Vino de…" en la bandeja
-- [ ] F45 Línea de tiempo de toques en la ficha
-- [ ] F46 Sugerencia de toque al cargar la venta
-- [ ] F47 Selector de canal al cargar a mano
+- [x] F43 Responsable de la pieza (filtro, publicaciones sin pieza, `commission_content_owner`)
+- [x] F44 Chip "Vino de…" en la bandeja
+- [x] F45 Línea de tiempo de toques en la ficha
+- [x] F46 Sugerencia de toque al cargar la venta
+- [x] F47 Selector de canal al cargar a mano
 - [~] F48 Contenido que vende (nice-to-have; anotado en PENDIENTE)
-- [ ] F49 La venta muestra su atribución
-- [ ] Bloque AO3 listo
+- [x] F49 La venta muestra su atribución
+- [x] Bloque AO3 listo
 
 ## CM1 — Motor de comisiones
-- [ ] F50 Migración 00231 (tablas, roles, RLS, permisos del Member: cambio aprobado M9)
-- [ ] F51 Los hechos de un pago (`commission_facts`)
-- [ ] F52 Elegir la regla (gemelas SQL ↔ TS, ≥ 40 casos)
-- [ ] F53 Generar comisiones al cobrar (00235 solo ensayada)
-- [ ] F54 Reversión de un cobro
-- [ ] F55 Venta cancelada (no regresión)
-- [ ] F56 Estado derivado de una comisión
-- [ ] 00232 aplicada
-- [ ] Bloque CM1 listo
+- [x] F50 Migración 00231 (tablas, roles, RLS, permisos del Member: cambio aprobado M9)
+- [x] F51 Los hechos de un pago (`commission_facts`)
+- [x] F52 Elegir la regla (gemelas SQL ↔ TS, ≥ 40 casos)
+- [x] F53 Generar comisiones al cobrar (00235 solo ensayada)
+- [x] F54 Reversión de un cobro
+- [x] F55 Venta cancelada (no regresión)
+- [x] F56 Estado derivado de una comisión
+- [x] 00232 aplicada
+- [x] Bloque CM1 listo
 
 ## CM2 — Reglas y pantalla
-- [ ] F57 Editor de roles y reglas
-- [ ] F58 Probar con una venta
-- [ ] F59 Finanzas > Comisiones (lista)
-- [ ] F60 Selección en bulk y Generar gasto
-- [ ] F61 Ficha de la comisión (drawer) y acciones
-- [ ] F62 Comisiones en la venta y en el gasto
-- [ ] Bloque CM2 listo
+- [x] F57 Editor de roles y reglas
+- [x] F58 Probar con una venta
+- [x] F59 Finanzas > Comisiones (lista)
+- [x] F60 Selección en bulk y Generar gasto
+- [x] F61 Ficha de la comisión (drawer) y acciones
+- [x] F62 Comisiones en la venta y en el gasto
+- [x] Bloque CM2 listo
 
 ## CM3 — Personas y cierre
-- [ ] F63 Mis comisiones
-- [ ] F64 Ajuste manual
-- [ ] F65 Recalcular pendientes (nice-to-have)
-- [ ] F66 Avisos
-- [ ] F67 CSV e historial
-- [ ] Bloque CM3 listo
+- [x] F63 Mis comisiones
+- [x] F64 Ajuste manual
+- [~] F65 Recalcular pendientes (nice-to-have) (anotado en PENDIENTE)
+- [x] F66 Avisos
+- [x] F67 CSV e historial
+- [x] Bloque CM3 listo
 
 ## Cierre
-- [ ] Suite completa + build + tsc + lint + todos los `verify-*` (de a uno, con candado)
-- [ ] Las 8 huellas iguales al punto de partida
-- [ ] Docs de §9 (`finanzas.md`, `comisiones.md`, `atribucion.md`, `ventas.md`, `flow-registry.md`, `sitio.md`, `roles.md`)
-- [ ] `CLAUDE.md` con las 4 secciones nuevas y el cambio aprobado M9
-- [ ] Revisión visual (1440 y 390 px, claro y oscuro) hecha o anotada
-- [ ] PR abierto de `feat/extra-i` a `main` con la sección "Después del merge" (sin mergear)
+- [~] Suite completa + build + tsc + lint + todos los `verify-*` (de a uno, con candado) — todo en 0 salvo `verify-attribution` (59 contactos viejos sin toque; decisión de Wendy pendiente, ver PENDIENTE)
+- [x] Las 8 huellas iguales al punto de partida
+- [x] Docs de §9 (`finanzas.md`, `comisiones.md`, `atribucion.md`, `ventas.md`, `flow-registry.md`, `sitio.md`, `roles.md`)
+- [x] `CLAUDE.md` con las 4 secciones nuevas y el cambio aprobado M9
+- [x] Revisión visual (1440 y 390 px, claro y oscuro) hecha o anotada (hecha a 1440 y 390 px con la base vacía; con datos, anotada en PENDIENTE)
+- [x] PR abierto de `feat/extra-i` a `main` con la sección "Después del merge" (sin mergear) (PR #63)
 
 ---
 
