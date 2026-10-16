@@ -32,14 +32,20 @@ interface Option {
 }
 
 export function InsertAssetButton({
-  targetId,
-  value,
+  targetId = "",
+  value = "",
   onChange,
+  onInsertText,
   disabled = false,
 }: {
-  targetId: string;
-  value: string;
-  onChange: (next: string) => void;
+  targetId?: string;
+  value?: string;
+  onChange?: (next: string) => void;
+  /**
+   * Para un editor que no es un campo de texto (el de texto enriquecido): en
+   * vez de leer el cursor del DOM, entrega el texto y el editor lo mete.
+   */
+  onInsertText?: (snippet: string) => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -100,6 +106,11 @@ export function InsertAssetButton({
   }, [open]);
 
   function insert(snippet: string) {
+    if (onInsertText) {
+      onInsertText(snippet);
+      setOpen(false);
+      return;
+    }
     const field = document.getElementById(targetId) as
       HTMLTextAreaElement | HTMLInputElement | null;
     const result = insertAtCursor(
@@ -108,7 +119,7 @@ export function InsertAssetButton({
       field?.selectionEnd,
       snippet,
     );
-    onChange(result.value);
+    onChange?.(result.value);
     setOpen(false);
     // Despues del render, el cursor queda justo despues de lo insertado.
     requestAnimationFrame(() => {

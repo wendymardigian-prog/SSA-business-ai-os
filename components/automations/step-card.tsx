@@ -6,6 +6,7 @@ import { PopoverMenu, type MenuItem } from "@/components/automations/popover-men
 import { useStepEditor } from "@/components/automations/step-tree-context";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
 import { FieldEmojiButton } from "@/components/ui/emoji-picker";
+import { RichTextEditor } from "@/components/editor/rich-text-editor";
 import { actionProblem, describeAction, emailRecipientsFor, kindOfStep, type EmailRecipient } from "@/lib/automations/step-catalog";
 import { canDuplicate, canMove, duplicateStep, moveStep, patchStepData, removeStep } from "@/lib/automations/step-tree-edit";
 import type { ActionStep, NodeData, Step } from "@/lib/automations/step-tree";
@@ -87,7 +88,7 @@ interface EditorProps {
 }
 
 function EmailEditor({ name, step, patch, disabled }: EditorProps) {
-  const { screen } = useStepEditor();
+  const { screen, variableKeys } = useStepEditor();
   const d = step.data;
   const to = String(d.to ?? "contact");
   const subject = String(d.subject ?? "");
@@ -140,12 +141,16 @@ function EmailEditor({ name, step, patch, disabled }: EditorProps) {
           <label htmlFor={`${name}-body`} className="text-xs text-muted-foreground">
             Texto
           </label>
-          <span className="flex items-center gap-1.5">
-            <FieldEmojiButton targetId={`${name}-body`} value={body} disabled={disabled} onChange={(next) => patch({ body: next })} />
-            <InsertAssetButton targetId={`${name}-body`} value={body} disabled={disabled} onChange={(next) => patch({ body: next })} />
-          </span>
         </div>
-        <textarea id={`${name}-body`} value={body} disabled={disabled} rows={8} onChange={(e) => patch({ body: e.target.value })} className={`${textareaClass} font-mono text-xs`} />
+        <RichTextEditor
+          id={`${name}-body`}
+          label="Texto del email"
+          value={body}
+          disabled={disabled}
+          variables={variableKeys}
+          onChange={(next) => patch({ body: next })}
+          extraToolbar={(api) => <InsertAssetButton onInsertText={api.insertText} disabled={disabled} />}
+        />
       </div>
     </>
   );

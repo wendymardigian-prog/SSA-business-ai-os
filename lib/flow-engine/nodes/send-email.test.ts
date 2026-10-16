@@ -79,3 +79,49 @@ describe("send_email: texto de la banca insertado", () => {
     );
   });
 });
+
+describe("send_email: cuerpo con formato (editor de texto enriquecido)", () => {
+  function withVariables(body: string, variables: Record<string, unknown>) {
+    const base = args({ body }) as unknown as { context: { variables: Record<string, unknown> } };
+    base.context.variables = variables;
+    return base as never;
+  }
+  const lastHtml = () => (sendTransactionalEmail.mock.calls.at(-1) as unknown as [{ html: string }])[0].html;
+
+  it("un cuerpo HTML conserva el formato y suma estilos en linea", async () => {
+    await sendEmailNode.execute(withVariables("<h2>Hola</h2><p>Esto es <strong>importante</strong> 😀</p>", {}));
+    expect(lastHtml()).toContain("<strong>importante</strong>");
+    expect(lastHtml()).toContain('<h2 style="');
+    expect(lastHtml()).toContain("😀");
+  });
+
+  it("los valores de las variables se escapan: un nombre con HTML no se vuelve una etiqueta", async () => {
+    await sendEmailNode.execute(withVariables("<p>Hola {{lead.name}}</p>", { lead: { name: '<a href="https://malo.com">click</a><script>x()</script>' } }));
+    expect(lastHtml()).not.toContain("<script");
+    expect(lastHtml()).not.toContain("malo.com\"");
+    expect(lastHtml()).toContain("&lt;a href=");
+  });
+
+  it("un cuerpo en texto plano NUNCA pasa por HTML aunque un valor traiga etiquetas", async () => {
+    await sendEmailNode.execute(withVariables("Hola {{lead.name}}", { lead: { name: "<b>Ana</b>" } }));
+    expect(lastHtml()).toContain("&lt;b&gt;Ana&lt;/b&gt;");
+    expect(lastHtml()).not.toContain("<b>");
+  });
+
+  it("un link javascript: del cuerpo se descarta", async () => {
+    await sendEmailNode.execute(withVariables('<p><a href="javascript:alert(1)">ver</a></p>', {}));
+    expect(lastHtml()).not.toContain("javascript:");
+  });
+
+  it("las variables de la banca ({{contact.display_name}}) se escapan en un cuerpo HTML", async () => {
+    const a = args({ body: "<p>{{contact.display_name}}</p>" }) as unknown as { supabase: { from: (t: string) => unknown } };
+    const original = a.supabase.from.bind(a.supabase);
+    a.supabase.from = (t: string) => {
+      const chain = original(t) as { maybeSingle: () => Promise<unknown> };
+      if (t === "contacts") chain.maybeSingle = async () => ({ data: { email: "ana@x.com", display_name: "<i>Ana</i>", phone: null, do_not_contact: false }, error: null });
+      return chain;
+    };
+    await sendEmailNode.execute(a as never);
+    expect(lastHtml()).toContain("&lt;i&gt;Ana&lt;/i&gt;");
+  });
+});

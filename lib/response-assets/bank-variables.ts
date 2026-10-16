@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { interpolateTemplate } from "@/lib/templates/interpolate";
 import { appUrl } from "@/lib/app-url";
+import { escapeHtml } from "@/lib/email/html";
 import { formLinkSlugs, hasFormLinkVariables, linkIdsFromVariables, replaceFormLinks } from "@/lib/forms/link-variables";
 
 type Db = SupabaseClient<Database>;
@@ -37,6 +38,11 @@ export async function resolveBankVariables(
     contactId: string;
     /** Las variables del flujo: de ahi salen `service.id` y `sale.id` para el link firmado. Opcional. */
     variables?: Record<string, unknown>;
+    /**
+     * Los valores del contacto y del negocio se pegan escapados (para un cuerpo
+     * que es HTML: un nombre con `<` no puede terminar siendo una etiqueta).
+     */
+    escapeHtmlValues?: boolean;
   },
   texts: string[],
 ): Promise<string[]> {
@@ -50,7 +56,10 @@ export async function resolveBankVariables(
       supabase.from("contacts").select("display_name, email, phone").eq("id", context.contactId).maybeSingle(),
       supabase.from("workspaces").select("name").eq("id", context.workspaceId).maybeSingle(),
     ]);
-    resolved = resolved.map((text) => interpolateTemplate(text, { contact, workspace }));
+    const esc = (value: string | null | undefined) => (context.escapeHtmlValues && value ? escapeHtml(value) : value);
+    const safeContact = contact ? { display_name: esc(contact.display_name), email: esc(contact.email), phone: esc(contact.phone) } : contact;
+    const safeWorkspace = workspace ? { name: esc(workspace.name) } : workspace;
+    resolved = resolved.map((text) => interpolateTemplate(text, { contact: safeContact, workspace: safeWorkspace }));
   }
 
   // Segundo pase, solo si el texto trae `{{form_link.`: el link firmado para ESTE contacto.

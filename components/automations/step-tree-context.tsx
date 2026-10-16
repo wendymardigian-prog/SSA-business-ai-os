@@ -34,6 +34,8 @@ export interface StepEditorContextValue {
   ask: (request: ConfirmRequest, onConfirm: () => void) => void;
   /** Las personas del equipo (para un email o un aviso a personas elegidas). */
   members: Array<{ userId: string; name: string }>;
+  /** Las variables que se pueden usar en esta pantalla (para insertarlas como ficha en el email). */
+  variableKeys: string[];
 }
 
 const StepEditorContext = createContext<StepEditorContextValue | null>(null);

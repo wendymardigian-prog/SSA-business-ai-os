@@ -76,7 +76,7 @@ const TREE: StepTree = {
 };
 
 function context(tree: StepTree, screen: "forms" | "agenda" = "forms"): StepEditorContextValue {
-  return { screen, tree, edit: () => {}, disabled: false, catalog, sendStepTest: () => {}, canSendTest: true, announce: () => {}, ask: () => {}, members: [] };
+  return { screen, tree, edit: () => {}, disabled: false, catalog, sendStepTest: () => {}, canSendTest: true, announce: () => {}, ask: () => {}, members: [], variableKeys: [] };
 }
 
 function render(tree: StepTree, screen: "forms" | "agenda" = "forms"): string {

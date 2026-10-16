@@ -17,6 +17,7 @@
 import type { FlowExecutionContext } from "../types";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
+import { finalizeEmailHtml, interpolateHtml, isHtmlTemplate } from "@/lib/email/html";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { computeQuota } from "@/lib/email/quota";
 import { createNotification } from "@/lib/notifications/create";
@@ -43,28 +44,34 @@ export interface SendEmailNodeData {
   body?: string;
 }
 
-/** El texto plano se vuelve HTML respetando los saltos de línea. */
+/**
+ * Un cuerpo ya armado (con sus valores pegados) pasa a HTML de email: el texto
+ * plano se escapa y respeta los saltos; el HTML pasa por la lista blanca de
+ * etiquetas y recibe estilos en línea. Nunca devuelve HTML sin limpiar.
+ */
 export function bodyToHtml(body: string): string {
-  if (/<[a-z][\s\S]*>/i.test(body)) return body;
-  const escaped = body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return escaped.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("\n");
+  return finalizeEmailHtml(body, isHtmlTemplate(body));
 }
 
 async function execute({ supabase, data, context, node }: NodeExecutionArgs<SendEmailNodeData, FlowExecutionContext>) {
+  // Si el cuerpo es HTML se decide mirando la PLANTILLA, antes de pegar valores:
+  // así un nombre con "<b>" en un texto plano nunca se vuelve una etiqueta.
+  const bodyIsHtml = isHtmlTemplate(data.body ?? "");
   const interpolated = {
     subject: interpolateVariables(data.subject ?? "", context.variables ?? {}).trim(),
-    body: interpolateVariables(data.body ?? "", context.variables ?? {}).trim(),
+    body: (bodyIsHtml ? interpolateHtml(data.body ?? "", context.variables ?? {}) : interpolateVariables(data.body ?? "", context.variables ?? {})).trim(),
   };
   // Un texto de la banca insertado en el email trae sus variables
   // ({{contact.display_name}}...): las que quedaron sin resolver se completan
   // con los datos reales (lib/response-assets/bank-variables.ts). Sin contacto
   // (un flujo sobre una persona del equipo) no hay con qué completarlas.
   const contactId = context.contactId;
-  const [subject, body] = (
+  const resolveTexts = (texts: string[], escapeHtmlValues: boolean) =>
     contactId
-      ? await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId, variables: context.variables }, [interpolated.subject, interpolated.body])
-      : [interpolated.subject, interpolated.body]
-  ).map((text) => text.trim());
+      ? resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId, variables: context.variables, escapeHtmlValues }, texts)
+      : Promise.resolve(texts);
+  const subject = ((await resolveTexts([interpolated.subject], false))[0] ?? "").trim();
+  const body = ((await resolveTexts([interpolated.body], bodyIsHtml))[0] ?? "").trim();
   if (!subject && !body) return;
 
   let contactEmail: string | null = null;
@@ -145,7 +152,7 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
       workspaceId: context.workspaceId,
       to,
       subject: subject || "(sin asunto)",
-      html: bodyToHtml(body),
+      html: finalizeEmailHtml(body, bodyIsHtml),
       // `flow` lo distingue de los transaccionales del sistema y de la prueba
       // que manda el editor (`flow_test`), que no cuenta como envío al contacto.
       kind: "flow",

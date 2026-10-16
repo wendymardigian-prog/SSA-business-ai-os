@@ -196,6 +196,7 @@ export function StepTreeEditor({
         announce,
         ask,
         members,
+        variableKeys,
       }
     : null;
 
