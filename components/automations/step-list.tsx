@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import { Plus, Split } from "lucide-react";
+import { Lock, Plus, Split } from "lucide-react";
 import { PopoverMenu, type MenuItem } from "@/components/automations/popover-menu";
 import { ActionCard } from "@/components/automations/step-card";
 import { BranchCard, GateCard } from "@/components/automations/branch-card";
@@ -9,6 +9,7 @@ import { useStepEditor } from "@/components/automations/step-tree-context";
 import { actionKindsFor, newActionStep } from "@/lib/automations/step-catalog";
 import { canAddBranchAt, canInsertAt, insertMovesTail, insertNewBranch, insertStep, newBranchStep, type ListRef } from "@/lib/automations/step-tree-edit";
 import { allIds, MAX_BRANCH_DEPTH, type Step } from "@/lib/automations/step-tree";
+import { missingFor, needsText, requirementsOfNode } from "@/lib/flow-engine/node-requirements";
 
 /**
  * Una lista de pasos, uno debajo del otro, con "+ Agregar paso" entre cada uno
@@ -34,7 +35,7 @@ export function StepList({ steps, listRef, emptyText }: { steps: Step[]; listRef
 }
 
 function AddStep({ listRef, index, steps, variant }: { listRef: ListRef; index: number; steps: Step[]; variant: "between" | "end" | "empty" }) {
-  const { screen, tree, edit, catalog, disabled, announce } = useStepEditor();
+  const { screen, tree, edit, catalog, disabled, announce, capabilities } = useStepEditor();
 
   // Entre dos pasos solo se ofrece cuando hay algo antes (arriba del primero tambien: "al principio").
   const kinds = actionKindsFor(screen);
@@ -42,13 +43,24 @@ function AddStep({ listRef, index, steps, variant }: { listRef: ListRef; index: 
   const movesTail = insertMovesTail(steps, index, newBranchStep([]));
 
   const items: MenuItem[] = [
-    ...kinds.map(
-      (kind): MenuItem => ({
+    ...kinds.map((kind): MenuItem => {
+      // Una accion sin su conexion SIGUE en el menu (descubrir lo que se puede hacer es parte del producto), pero se ve
+      // bloqueada y dice que falta. Se puede agregar: el borrador se guarda, y se publica al conectar (G1).
+      const missing = missingFor(requirementsOfNode({ type: kind.nodeType, data: kind.blank() }), capabilities);
+      return {
         key: kind.key,
-        label: kind.menuLabel,
+        label:
+          missing.length === 0 ? (
+            kind.menuLabel
+          ) : (
+            <span className="flex items-center gap-1.5">
+              {kind.menuLabel} <Lock className="h-3 w-3 text-amber-700 dark:text-amber-400" aria-label="Bloqueado" />
+            </span>
+          ),
+        hint: missing.length === 0 ? undefined : `${needsText(missing)}. Podés armarlo y publicarlo al conectarlo.`,
         onSelect: () => edit((t) => insertStep(t, listRef, index, newActionStep(kind, allIds(t), undefined, screen))),
-      }),
-    ),
+      };
+    }),
     { key: "sep", separator: true },
     {
       key: "branch",

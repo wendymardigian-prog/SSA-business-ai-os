@@ -6,6 +6,15 @@ import { CreateFlowButton } from "@/components/create-flow-button";
 import { ImportFlowButton, ExportFlowButton, DeleteFlowButton } from "@/components/flow-actions";
 import type { FlowStatus } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
+import { createServiceClient } from "@/lib/supabase/server";
+import { loadAutomationCapabilities } from "@/lib/flow-engine/capabilities";
+import {
+  REQUIREMENT_INFO,
+  blockedNodes,
+  requirementsOfNode,
+  type GraphEdgeLike,
+  type GraphNodeLike,
+} from "@/lib/flow-engine/node-requirements";
 
 const statusConfig: Record<FlowStatus, { label: string; classes: string }> = {
   draft: {
@@ -52,6 +61,17 @@ export default async function FlowsPage() {
       .eq("workspace_id", workspace.id)
       .eq("is_active", true),
   ]);
+
+  // Un flujo YA publicado al que se le desconecto algo no se despublica solo, pero se avisa que pasos no se van a
+  // ejecutar (G1.6). Solo se consultan las conexiones si algun flujo publicado tiene una accion que las necesita.
+  const published = (flows ?? []).filter((f) => f.status === "published" && Array.isArray(f.nodes) && (f.nodes as unknown as GraphNodeLike[]).some((n) => requirementsOfNode(n).length > 0));
+  const capabilities = published.length > 0 ? await loadAutomationCapabilities(await createServiceClient(), workspace.id) : null;
+  const blockedById = new Map(
+    published.flatMap((f) => {
+      const blocked = capabilities ? blockedNodes(f.nodes as unknown as GraphNodeLike[], (Array.isArray(f.edges) ? f.edges : []) as unknown as GraphEdgeLike[], capabilities) : [];
+      return blocked.length > 0 ? [[f.id, blocked] as const] : [];
+    }),
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -142,6 +162,12 @@ export default async function FlowsPage() {
                     <DeleteFlowButton flow={flow} />
                   </div>
                 </div>
+                {blockedById.get(flow.id) && (
+                  <p className="mt-3 rounded-md border border-amber-300/60 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                    {blockedById.get(flow.id)!.length === 1 ? "1 paso no se va a ejecutar" : `${blockedById.get(flow.id)!.length} pasos no se van a ejecutar`}: falta{" "}
+                    {[...new Set(blockedById.get(flow.id)!.flatMap((b) => b.missing))].map((r) => REQUIREMENT_INFO[r].label).join(", ")}.
+                  </p>
+                )}
                 <p className="mt-4 text-xs text-muted-foreground">
                   Updated {formatDate(flow.updated_at)}
                 </p>

@@ -265,6 +265,7 @@ async function resolveRecipient(
 
 export const sendEmailNode: NodeDefinition<SendEmailNodeData> = {
   needsContact: false,
+  requires: ["email"],
   type: "send_email",
   label: "Enviar email",
   aliases: [{ nodeType: "action", actionType: "send_email" }],

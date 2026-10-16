@@ -16,6 +16,7 @@ vi.mock("@/components/page-header", () => ({
   PageHeader: ({ title, left, right }: { title: string; left?: unknown; right?: unknown }) => createElement("header", null, title, left as never, right as never),
 }));
 
+import { ALL_CONNECTED } from "@/lib/flow-engine/node-requirements";
 import { StepList } from "@/components/automations/step-list";
 import { StepTreeEditor } from "@/components/automations/step-tree-editor";
 import { StepEditorProvider, type StepEditorContextValue } from "@/components/automations/step-tree-context";
@@ -76,7 +77,7 @@ const TREE: StepTree = {
 };
 
 function context(tree: StepTree, screen: "forms" | "agenda" = "forms"): StepEditorContextValue {
-  return { screen, tree, edit: () => {}, disabled: false, catalog, sendStepTest: () => {}, canSendTest: true, announce: () => {}, ask: () => {}, members: [], variableKeys: [] };
+  return { screen, tree, edit: () => {}, disabled: false, catalog, sendStepTest: () => {}, canSendTest: true, announce: () => {}, ask: () => {}, members: [], variableKeys: [], capabilities: ALL_CONNECTED };
 }
 
 function render(tree: StepTree, screen: "forms" | "agenda" = "forms"): string {

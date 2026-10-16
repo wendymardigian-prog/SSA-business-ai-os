@@ -31,6 +31,15 @@ import { newPathId, pathsOf } from "@/lib/flow-engine/branch-paths";
 import { pruneBranchEdges } from "@/lib/automations/branch-edit";
 
 import { NodePalette } from "./node-palette";
+import { FlowCapabilitiesProvider, FlowConnectionBanner, useFlowCapabilities } from "./capabilities-context";
+import {
+  ALL_CONNECTED,
+  blockedNodes,
+  requirementProblems,
+  type Capabilities,
+  type GraphEdgeLike,
+  type GraphNodeLike,
+} from "@/lib/flow-engine/node-requirements";
 import { TriggerNode } from "./nodes/trigger-node";
 import { SendMessageNode } from "./nodes/send-message-node";
 import { ConditionNode } from "./nodes/condition-node";
@@ -60,6 +69,11 @@ const nodeTypes: NodeTypes = {
 
 interface FlowCanvasProps {
   flow: Flow;
+  /**
+   * Las conexiones del negocio hoy (G1): deciden que acciones se ven bloqueadas. Se calculan en el servidor al abrir la
+   * pantalla; sin esto todo se ve habilitado (como antes).
+   */
+  capabilities?: Capabilities;
   /** Los valores por defecto de atribución del negocio (Ajustes → Atribución). Sin esto, los nodos nuevos nacen sin atribución. */
   attributionDefaults?: AttributionDefaults;
 }
@@ -101,6 +115,14 @@ function getDefaultData(type: string, actionType?: string, attributionDefaults?:
 
 function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }: FlowCanvasProps) {
   const router = useRouter();
+  const capabilities = useFlowCapabilities();
+  // Los pasos bloqueados que YA tenia lo guardado: un flujo publicado se puede seguir editando aunque a un paso se le
+  // haya desconectado algo; lo que no se deja es guardar un paso NUEVO sin su conexion (saldria en vivo sin ejecutarse).
+  const savedGraph = useRef<{ nodes: unknown[]; edges: unknown[] }>({
+    nodes: Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : [],
+    edges: Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [],
+  });
+  const [publishProblems, setPublishProblems] = useState<string[]>([]);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
   const supabase = createClient();
@@ -240,7 +262,19 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   );
 
   const saveFlow = useCallback(
-    async (status?: FlowStatus) => {
+    async (status?: FlowStatus): Promise<boolean> => {
+      // Un flujo ya publicado esta en vivo: guardar un paso nuevo sin su conexion lo dejaria "activo" sin ejecutarse (G1.4).
+      if (flow.status === "published") {
+        const before = new Set(blockedNodes(savedGraph.current.nodes as GraphNodeLike[], savedGraph.current.edges as GraphEdgeLike[], capabilities).map((b) => b.nodeId));
+        const added = blockedNodes(nodes as unknown as GraphNodeLike[], edges as unknown as GraphEdgeLike[], capabilities).filter((b) => !before.has(b.nodeId));
+        if (added.length > 0) {
+          setPublishProblems(requirementProblems(added).map((p) => p.replace(/ y volvé a publicar\.$/, ". Conectalo para guardar este cambio en un flujo publicado.")));
+          setSaveError("No se guardó");
+          setTimeout(() => setSaveError(null), 3000);
+          return false;
+        }
+      }
+
       if (status === "published") {
         setPublishing(true);
       } else {
@@ -271,18 +305,20 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
           console.error("Failed to save flow:", error);
           setSaveError("Failed to save");
           setTimeout(() => setSaveError(null), 3000);
-          return;
+          return false;
         }
 
         setSaveError(null);
         setLastSaved(new Date());
         markSaved();
+        savedGraph.current = { nodes: nodes as unknown[], edges: edges as unknown[] };
+        return true;
       } finally {
         setSaving(false);
         setPublishing(false);
       }
     },
-    [flowName, nodes, edges, flow.id, supabase, markSaved]
+    [flowName, nodes, edges, flow.id, flow.status, supabase, markSaved, capabilities]
   );
 
   const handleSave = useCallback(() => saveFlow(), [saveFlow]);
@@ -310,15 +346,23 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   const handlePublish = useCallback(async () => {
     setPublishing(true);
     try {
+      setPublishProblems([]);
       // First save the current state
-      await saveFlow();
+      if (!(await saveFlow())) return;
       // Then call the publish API which increments version and saves snapshot
       const res = await fetch(`/api/v1/flows/${flow.id}/publish`, {
         method: "POST",
       });
       if (!res.ok) {
-        console.error("Failed to publish flow");
-        setSaveError("Failed to publish");
+        // El servidor dice QUE falta (una conexion, un contacto...): se muestra, no un "Failed to publish" mudo (G1).
+        const body = (await res.json().catch(() => null)) as { error?: unknown; problems?: unknown } | null;
+        const problems = Array.isArray(body?.problems)
+          ? body.problems.filter((p): p is string => typeof p === "string")
+          : typeof body?.error === "string"
+            ? [body.error]
+            : [];
+        setPublishProblems(problems.length > 0 ? problems : ["No se pudo publicar. Probá de nuevo en un momento."]);
+        setSaveError("No se publicó");
         setTimeout(() => setSaveError(null), 3000);
         return;
       }
@@ -498,6 +542,25 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
         </div>
       </div>
 
+      {/* Los pasos que no se van a ejecutar por una conexion que falta (G1.6): un flujo publicado no se despublica solo. */}
+      <FlowConnectionBanner nodes={nodes as unknown as GraphNodeLike[]} edges={edges as unknown as GraphEdgeLike[]} published={flow.status === "published"} />
+
+      {publishProblems.length > 0 && (
+        <div role="alert" className="flex items-start gap-3 border-b border-red-300/60 bg-red-50 px-4 py-2.5 text-xs text-red-900 dark:bg-red-950/30 dark:text-red-200">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">{publishProblems.length === 1 ? "No se pudo publicar por esto:" : `No se pudo publicar por estas ${publishProblems.length} cosas:`}</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              {publishProblems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          </div>
+          <button type="button" onClick={() => setPublishProblems([])} className="shrink-0 rounded-md px-2 py-1 font-medium hover:bg-red-100 dark:hover:bg-red-900/40">
+            Entendido
+          </button>
+        </div>
+      )}
+
       {/* Canvas area */}
       <div className="flex flex-1 overflow-hidden">
         <NodePalette memberFlow={nodes.some((n) => n.type === "trigger" && isNoContactTriggerType((n.data as { triggerType?: unknown } | undefined)?.triggerType))} />
@@ -568,10 +631,12 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   );
 }
 
-export function FlowCanvas({ flow, attributionDefaults }: FlowCanvasProps) {
+export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNECTED }: FlowCanvasProps) {
   return (
     <ReactFlowProvider>
-      <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
+      <FlowCapabilitiesProvider capabilities={capabilities}>
+        <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
+      </FlowCapabilitiesProvider>
     </ReactFlowProvider>
   );
 }

@@ -10,6 +10,7 @@ import { appUrl } from "@/lib/app-url";
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { bodyToHtml } from "@/lib/flow-engine/nodes/send-email";
+import { connectionProblemsForGraph } from "@/lib/flow-engine/connection-problems";
 import { interpolateVariables } from "@/lib/flow-engine/interpolate";
 import { flowToLinear, linearToFlow, type LinearFlow } from "@/lib/scheduling/automation/linear-flow";
 import { prepareTreeSave } from "@/lib/automations/step-tree-save";
@@ -207,6 +208,13 @@ export async function toggleFormFlow(input: { flowId: string; enabled: boolean }
   const owned = await ownedFlow(input.flowId);
   if (owned.error !== undefined) return { ok: false, error: owned.error };
   const { ctx, found } = owned;
+
+  // Prender un flujo con un paso que necesita una conexion que falta seria prometer algo que no se va a ejecutar (G1.4).
+  // Apagarlo siempre se puede. El borrador se guarda igual; esto solo se mira al prender.
+  if (input.enabled) {
+    const problems = await connectionProblemsForGraph(createServiceClient, ctx.workspace.id, found.nodes as unknown[], found.edges as unknown[]);
+    if (problems.length > 0) return { ok: false, error: problems.join(" ") };
+  }
 
   const { error } = await ctx.supabase.from("flows").update({ status: input.enabled ? "published" : "draft" }).eq("id", input.flowId);
   if (error) return { ok: false, error: "No pude guardar el cambio. Probá de nuevo." };

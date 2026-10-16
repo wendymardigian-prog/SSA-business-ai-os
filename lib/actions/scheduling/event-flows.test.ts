@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeDb, type FakeDb } from "@/lib/testing/fake-db";
 
-const mocks = vi.hoisted(() => ({ permission: vi.fn(), service: vi.fn(), audit: vi.fn(), revalidate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ permission: vi.fn(), service: vi.fn(), audit: vi.fn(), revalidate: vi.fn(), emailConfigured: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: mocks.permission }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: mocks.service }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
-vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: vi.fn() }));
+vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: vi.fn(), isEmailConfigured: mocks.emailConfigured }));
 
-import { saveEventFlowTree } from "./event-flows";
+import { saveEventFlowTree, toggleEventFlow } from "./event-flows";
 import { FLOW_TEMPLATES, templateGraph } from "@/lib/scheduling/automation/templates";
 import { flowToTree } from "@/lib/automations/step-tree";
 
@@ -23,6 +23,8 @@ function setup(opts: { status?: string; flow?: Record<string, unknown> | null; n
     "triggers:insert": { data: null },
   });
   mocks.permission.mockResolvedValue({ workspace: { id: "ws1" }, user: { id: "u1", email: "yo@ejemplo.com" }, supabase: db.client, can: () => true });
+  // Las conexiones del negocio (G1): por defecto sin IA, canales ni agentes; el email segun cada test.
+  mocks.service.mockResolvedValue(fakeDb({ "integration_configs:select": { data: [] }, "channels:select": { data: [] }, "agents:select": { data: [] } }).client);
   return db;
 }
 
@@ -93,5 +95,23 @@ describe("saveEventFlowTree", () => {
     const other = setup({ flow: { workspace_id: "otro" } });
     expect((await saveEventFlowTree({ flowId: FLOW, tree: { steps: [] } })).ok).toBe(false);
     expect(other.writes()).toHaveLength(0);
+  });
+});
+
+describe("toggleEventFlow: prender un flujo con una accion sin su conexion (G1)", () => {
+  // El flujo de la plantilla "reminder_1h" tiene un email y un mensaje de WhatsApp: con canales sin conectar, no se prende.
+  it("sin Resend ni canales conectados NO se prende y no escribe nada", async () => {
+    mocks.emailConfigured.mockResolvedValue(false);
+    const db = setup();
+    const out = await toggleEventFlow({ flowId: FLOW, enabled: true });
+    expect(out.ok).toBe(false);
+    expect(db.writes()).toHaveLength(0);
+  });
+
+  it("apagarlo siempre se puede", async () => {
+    mocks.emailConfigured.mockResolvedValue(false);
+    const db = setup({ status: "published" });
+    expect((await toggleEventFlow({ flowId: FLOW, enabled: false })).ok).toBe(true);
+    expect(db.writesTo("flows")[0].values).toEqual({ status: "draft" });
   });
 });

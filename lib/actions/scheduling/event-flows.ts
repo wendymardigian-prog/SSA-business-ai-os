@@ -14,6 +14,7 @@ import { isRelativeTrigger } from "@/lib/scheduling/automation/triggers";
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { bodyToHtml } from "@/lib/flow-engine/nodes/send-email";
+import { connectionProblemsForGraph } from "@/lib/flow-engine/connection-problems";
 import { interpolateVariables } from "@/lib/flow-engine/interpolate";
 import { emptyBookingVariables } from "@/lib/scheduling/automation/variables";
 
@@ -49,6 +50,13 @@ export async function toggleEventFlow(input: { flowId: string; enabled: boolean 
   const owned = await ownedFlow(input.flowId);
   if (owned.error !== undefined) return { ok: false, error: owned.error };
   const { ctx, found } = owned;
+
+  // Prender un flujo con un paso que necesita una conexion que falta seria prometer algo que no se va a ejecutar (G1.4).
+  // Apagarlo siempre se puede. El borrador se guarda igual; esto solo se mira al prender.
+  if (input.enabled) {
+    const problems = await connectionProblemsForGraph(createServiceClient, ctx.workspace.id, found.nodes as unknown[], found.edges as unknown[]);
+    if (problems.length > 0) return { ok: false, error: problems.join(" ") };
+  }
 
   const { error } = await ctx.supabase
     .from("flows")

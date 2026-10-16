@@ -1,11 +1,13 @@
 "use client";
 
-import { MoreHorizontal } from "lucide-react";
+import Link from "next/link";
+import { Lock, MoreHorizontal } from "lucide-react";
 import { InsertAssetButton } from "@/components/response-assets/insert-asset-button";
 import { PopoverMenu, type MenuItem } from "@/components/automations/popover-menu";
 import { useStepEditor } from "@/components/automations/step-tree-context";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
 import { FieldEmojiButton } from "@/components/ui/emoji-picker";
+import { REQUIREMENT_INFO, missingFor, requirementsOfNode } from "@/lib/flow-engine/node-requirements";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
 import { actionProblem, describeAction, emailRecipientsFor, kindOfStep, type EmailRecipient } from "@/lib/automations/step-catalog";
 import { canDuplicate, canMove, duplicateStep, moveStep, patchStepData, removeStep } from "@/lib/automations/step-tree-edit";
@@ -32,9 +34,11 @@ const RECIPIENT_OPTION: Record<EmailRecipient, string> = {
 const CANCEL_STATUSES = ["cancelled_other", "cancelled_no_response", "cancelled_not_qualified"] as const;
 
 export function ActionCard({ step, index, steps }: { step: ActionStep; index: number; steps: Step[] }) {
-  const { screen, edit, disabled, sendStepTest, canSendTest } = useStepEditor();
+  const { screen, edit, disabled, sendStepTest, canSendTest, capabilities } = useStepEditor();
   const kind = kindOfStep(step, screen);
   const problem = actionProblem(step, screen);
+  // Una accion sin su conexion se puede armar, pero NO se confunde con una que va a ejecutarse (G1).
+  const missing = missingFor(requirementsOfNode({ type: step.nodeType, data: step.data }), capabilities);
 
   const patch = (data: NodeData) => edit((t) => patchStepData(t, step.id, data));
 
@@ -76,6 +80,18 @@ export function ActionCard({ step, index, steps }: { step: ActionStep; index: nu
       {!kind && <p className="text-xs text-muted-foreground">Este paso se edita en el canvas. Acá se puede mover o borrar.</p>}
 
       {problem && <p className="text-[11px] text-amber-700 dark:text-amber-300">{problem}</p>}
+
+      {missing.length > 0 && (
+        <p role="alert" className="flex items-start gap-1.5 rounded-md border border-amber-300/60 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <Lock className="mt-px h-3 w-3 shrink-0" aria-hidden />
+          <span>
+            No se va a ejecutar: falta {missing.map((r) => REQUIREMENT_INFO[r].label).join(" y ")}. Podés guardar el borrador, pero no activar la automatización hasta conectarlo.{" "}
+            <Link href={REQUIREMENT_INFO[missing[0]].href} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+              {REQUIREMENT_INFO[missing[0]].cta}
+            </Link>
+          </span>
+        </p>
+      )}
     </div>
   );
 }

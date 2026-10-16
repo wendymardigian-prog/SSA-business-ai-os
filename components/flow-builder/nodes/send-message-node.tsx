@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NodeBlockedNotice } from "../capabilities-context";
 
 export interface SendMessageNodeProps {
   label?: string;
@@ -67,6 +68,7 @@ export function SendMessageNode({ data, selected }: NodeProps) {
           )}
         </div>
       </div>
+      <NodeBlockedNotice node={{ type: "sendMessage" }} />
       <Handle
         type="source"
         position={Position.Bottom}

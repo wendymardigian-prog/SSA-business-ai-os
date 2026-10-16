@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import type { DragEvent } from "react";
 import { isContactFreeNodeType } from "@/lib/flow-engine/contact-free";
+import { requirementsOfType } from "@/lib/flow-engine/node-requirements";
+import { PaletteBlockedNote, useMissingFor } from "./capabilities-context";
 
 interface PaletteItem {
   type: string;
@@ -275,6 +277,30 @@ function onDragStart(event: DragEvent, item: PaletteItem) {
 }
 
 /**
+ * Una accion de la paleta. Si le falta una conexion (Resend, WhatsApp, una IA...) SIGUE APARECIENDO y se puede
+ * arrastrar (el borrador se guarda), pero se ve atenuada, con el candado y "Necesita: ..." a la vista y el link
+ * para conectarlo. No se oculta: descubrir lo que el sistema sabe hacer antes de conectar todo es parte del producto (G1).
+ */
+function PaletteEntry({ item }: { item: PaletteItem }) {
+  const Icon = item.icon;
+  const missing = useMissingFor(requirementsOfType(item.actionType ?? item.nodeType));
+  const blocked = missing.length > 0;
+  return (
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, item)}
+      className="cursor-grab rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground active:cursor-grabbing"
+    >
+      <div className={blocked ? "flex items-center gap-2.5 opacity-70" : "flex items-center gap-2.5"}>
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="text-xs font-medium">{item.label}</span>
+      </div>
+      <PaletteBlockedNote missing={missing} />
+    </div>
+  );
+}
+
+/**
  * `memberFlow`: el flujo es sobre una persona del equipo (reporte de fin de día, E15). Se
  * ocultan los pasos que necesitan un contacto; guardar uno igual lo rechaza el servidor.
  */
@@ -302,20 +328,9 @@ export function NodePalette({ memberFlow = false }: { memberFlow?: boolean }) {
               {category.name}
             </h3>
             <div className="space-y-1">
-              {category.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <div
-                    key={item.nodeType}
-                    draggable
-                    onDragStart={(e) => onDragStart(e, item)}
-                    className="flex cursor-grab items-center gap-2.5 rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground active:cursor-grabbing"
-                  >
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="text-xs font-medium">{item.label}</span>
-                  </div>
-                );
-              })}
+              {category.items.map((item) => (
+                <PaletteEntry key={item.nodeType} item={item} />
+              ))}
             </div>
           </div>
         ))}

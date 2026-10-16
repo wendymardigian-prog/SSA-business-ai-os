@@ -19,8 +19,16 @@ const trigger = (triggerType: string) => ({ id: "t", type: "trigger", data: { tr
 const whatsapp = { id: "m", type: "sendMessage", data: { label: "Enviar WhatsApp", messages: [] } };
 const upsert = { id: "u", type: "upsert_contact", data: {} };
 
-function setup(nodes: unknown[], edges: unknown[]) {
+const ACTIVE_CHANNEL = { id: "ch-1", workspace_id: WS, platform: "instagram", provider: "zernio", evolution_instance: null, is_active: true };
+const RESEND = { workspace_id: WS, type: "email_provider", provider: "resend", is_active: true };
+
+function setup(nodes: unknown[], edges: unknown[], extra: Record<string, Array<Record<string, unknown>>> = {}) {
   const db = memoryDb({
+    // Con un canal conectado: «Enviar WhatsApp» (un sendMessage) necesita al menos uno (G1).
+    channels: [ACTIVE_CHANNEL],
+    integration_configs: [],
+    agents: [],
+    ...extra,
     workspace_members: [{ user_id: "u-1", workspace_id: WS }],
     flows: [{ id: "f-1", workspace_id: WS, version: 0, status: "draft", name: "Flujo", nodes, edges, viewport: null }],
     flow_versions: [],
@@ -73,5 +81,49 @@ describe("POST /api/v1/flows/[flowId]/publish con el disparador de webhook", () 
     const db = setup([trigger("keyword"), whatsapp], [{ id: "e1", source: "t", target: "m" }]);
     expect((await publish()).status).toBe(200);
     expect(db.rows("flows")[0].status).toBe("published");
+  });
+});
+
+describe("POST /api/v1/flows/[flowId]/publish: una accion sin su conexion no se publica (G1)", () => {
+  const email = { id: "e", type: "action", data: { actionType: "send_email", label: "Aviso por email", to: "fixed", fixedEmail: "a@b.com", subject: "x", body: "y" } };
+  const edges = [{ id: "e1", source: "t", target: "e" }];
+
+  it("«Enviar email» sin Resend conectado: rechaza, dice que falta y no publica (el borrador queda intacto)", async () => {
+    const db = setup([trigger("keyword"), email], edges);
+    const res = await publish();
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("«Aviso por email» no se va a poder ejecutar");
+    expect(body.error).toContain("Email saliente (Resend)");
+    expect(body.problems).toHaveLength(1);
+    expect(db.rows("flows")[0].status).toBe("draft");
+    expect(db.rows("flow_versions")).toHaveLength(0);
+  });
+
+  it("al conectar Resend, el MISMO flujo se publica sin tocarlo", async () => {
+    const db = setup([trigger("keyword"), email], edges, { integration_configs: [RESEND] });
+    expect((await publish()).status).toBe(200);
+    expect(db.rows("flows")[0].status).toBe("published");
+  });
+
+  it("sin ningun canal, un mensaje tampoco se publica", async () => {
+    const db = setup([trigger("keyword"), whatsapp], [{ id: "e1", source: "t", target: "m" }], { channels: [] });
+    expect((await publish()).status).toBe(400);
+    expect(db.rows("flows")[0].status).toBe("draft");
+  });
+
+  it("un paso bloqueado que no se alcanza desde el disparador no frena la publicacion", async () => {
+    const db = setup([trigger("keyword"), email], []);
+    expect((await publish()).status).toBe(200);
+    expect(db.rows("flows")[0].status).toBe("published");
+  });
+
+  it("devuelve TODOS los problemas, no solo el primero", async () => {
+    const ai = { id: "a", type: "aiResponse", data: {} };
+    const db = setup([trigger("keyword"), email, ai], [{ id: "e1", source: "t", target: "e" }, { id: "e2", source: "e", target: "a" }]);
+    const res = await publish();
+    expect(res.status).toBe(400);
+    expect((await res.json()).problems).toHaveLength(2);
+    expect(db.rows("flows")[0].status).toBe("draft");
   });
 });

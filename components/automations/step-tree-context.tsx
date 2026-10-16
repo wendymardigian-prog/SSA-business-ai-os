@@ -4,6 +4,7 @@ import { createContext, useContext } from "react";
 import type { ConditionCatalogInputs } from "@/lib/automations/condition-catalog-inputs";
 import type { EditorScreen } from "@/lib/automations/step-catalog";
 import type { ActionStep, StepTree } from "@/lib/automations/step-tree";
+import type { Capabilities } from "@/lib/flow-engine/node-requirements";
 
 /**
  * Lo que comparten todas las piezas del editor de pasos (la lista, las
@@ -36,6 +37,8 @@ export interface StepEditorContextValue {
   members: Array<{ userId: string; name: string }>;
   /** Las variables que se pueden usar en esta pantalla (para insertarlas como ficha en el email). */
   variableKeys: string[];
+  /** Las conexiones del negocio hoy (G1): una accion sin la suya se ofrece, pero se ve bloqueada. */
+  capabilities: Capabilities;
 }
 
 const StepEditorContext = createContext<StepEditorContextValue | null>(null);

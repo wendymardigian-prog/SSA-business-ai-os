@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
+import { NodeBlockedNotice } from "../capabilities-context";
 
 export interface ActionNodeProps {
   label?: string;
@@ -271,6 +272,7 @@ export function ActionNode({ data, selected }: NodeProps) {
         )}
         {detail && <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{detail}</p>}
       </div>
+      <NodeBlockedNotice node={{ type: "action", data: { actionType } }} />
       {isAbSplit && paths.length > 0 ? (
         <>
           {paths.map((path, i) => (
