@@ -15,6 +15,7 @@
  */
 
 import { z } from "zod";
+import { cleanCollaborators } from "./network-accounts";
 
 // ── Instagram (A9) ─────────────────────────────────────────────────────────
 
@@ -26,7 +27,9 @@ import { z } from "zod";
 export const instagramOptionsSchema = z.object({
   /** Un Reel tambien aparece en el feed. */
   shareToFeed: z.boolean().optional(),
-  collaborators: z.array(z.string()).max(3).optional(),
+  // Colaboracion: hasta 3 usuarios que reciben la invitacion de Instagram. Se limpian (sin @, validos, sin repetidos) en
+  // vez de rechazar: una lista con un usuario mal escrito no puede tirar todas las opciones de la red.
+  collaborators: z.preprocess(cleanCollaborators, z.array(z.string()).max(3)).optional(),
   coverOffsetMs: z.number().int().min(0).optional(),
 });
 

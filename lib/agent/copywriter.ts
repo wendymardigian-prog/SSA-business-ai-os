@@ -350,6 +350,9 @@ async function gatherContext(
     .select("channel_id")
     .eq("workspace_id", post.workspace_id)
     .eq("platform", principal as never)
+    // Varias cuentas de la red (00236): la mas antigua, siempre la misma.
+    .order("created_at", { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   const keywords = offerableKeywords(rules, principal, account?.channel_id ?? null);

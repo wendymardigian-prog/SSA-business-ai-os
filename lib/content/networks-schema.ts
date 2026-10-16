@@ -58,6 +58,7 @@ const networkEntrySchema = z
       .record(z.string(), z.unknown(), { message: "Las opciones de la red tienen que ser un objeto" })
       .optional(),
     publisher: z.string().max(60).nullable().optional(),
+    account_id: z.string().uuid({ message: "La cuenta elegida no es valida" }).nullable().optional(),
     youtube_title: z.string().max(500).nullable().optional(),
     needs_review: z.boolean().optional(),
     // Contenido v4. Los escribe solo el servidor: lo que mande el navegador se

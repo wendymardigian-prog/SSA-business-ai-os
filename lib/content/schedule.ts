@@ -26,6 +26,8 @@ export interface NetworkPlan {
   /** La fecha tentativa. */
   plannedAt: string | null;
   publisher?: string | null;
+  /** La cuenta principal elegida para esta red (`networks[].account_id`); null = la de siempre. */
+  accountId?: string | null;
 }
 
 export interface ExistingPublication {
@@ -53,6 +55,12 @@ export interface ScheduleContext {
    * para siempre.
    */
   defaultPublishers?: Record<string, string | null>;
+  /**
+   * Las cuentas activas, con su publicador (varias por red, 00236). Si viene, una red con cuenta elegida se valida
+   * contra ella: si ya no esta conectada o no tiene por donde publicar, no se programa (publicar en la cuenta
+   * equivocada no se deshace). Sin pasar, rige solo lo de arriba.
+   */
+  accounts?: Array<{ id: string; platform: string; defaultPublisher: string | null }>;
   existing: ExistingPublication[];
   now?: Date;
   /**
@@ -98,8 +106,17 @@ export function canScheduleNetwork(
     };
   }
 
-  const publisher =
-    network.publisher ?? context.defaultPublishers?.[network.platform] ?? null;
+  const chosen = network.accountId
+    ? context.accounts?.find((a) => a.id === network.accountId && a.platform === network.platform)
+    : undefined;
+  if (network.accountId && context.accounts && !chosen) {
+    return {
+      ok: false,
+      error: `La cuenta elegida para ${network.platform} ya no esta conectada. Elegi otra.`,
+    };
+  }
+  // Con cuenta elegida, el respaldo es el publicador DE ESA cuenta, nunca el de otra de la misma red.
+  const publisher = network.publisher ?? (chosen ? chosen.defaultPublisher : context.defaultPublishers?.[network.platform]) ?? null;
   if (!publisher) {
     return {
       ok: false,

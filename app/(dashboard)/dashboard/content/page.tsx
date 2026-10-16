@@ -252,7 +252,8 @@ export default async function ContentPage({
     .eq("workspace_id", workspace.id)
     .eq("is_active", true);
 
-  const platforms = (accountsRes ?? []).map((a) => a.platform as string);
+  // Sin repetir: con varias cuentas de la misma red (00236) hay una fila por cuenta.
+  const platforms = [...new Set((accountsRes ?? []).map((a) => a.platform as string))];
   const copywriter = {
     available: canUseAi && aiProviders.length > 0,
     reason: !canUseAi

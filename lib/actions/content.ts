@@ -1,5 +1,6 @@
 "use server";
 
+import { checkNetworkAccounts } from "@/lib/content/network-accounts";
 import { revalidatePath } from "next/cache";
 import { getPermissionAction, getPermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
@@ -600,6 +601,16 @@ export async function savePostDraft(input: {
       (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
     );
     if (!checked.ok) return { ok: false, error: checked.error };
+
+    // La cuenta principal de cada red tiene que ser de este workspace, estar conectada y ser de esa red.
+    if (checked.networks.some((n) => n.account_id)) {
+      const { data: accountRows } = await supabase
+        .from("social_accounts")
+        .select("id, platform, is_active")
+        .eq("workspace_id", workspace.id);
+      const accountError = checkNetworkAccounts(checked.networks, accountRows ?? []);
+      if (accountError) return { ok: false, error: accountError };
+    }
     // Como se publica cada red y lo marcado a mano lo escribe solo el
     // servidor, con su permiso (Contenido v4): se conserva lo guardado.
     networks = keepServerFields(

@@ -1,6 +1,8 @@
 import { requirePermission } from "@/lib/auth/guards";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { SocialView, type SocialTile } from "@/components/social/social-view";
+import { accountsOf, type SocialAccountOption } from "@/lib/social/account-select";
+import { accountName } from "@/lib/social/account-choice";
 import {
   SOCIAL_PLATFORMS,
   buildUpcoming,
@@ -34,12 +36,21 @@ export default async function SocialPage() {
 
   const { data: accounts } = await supabase
     .from("social_accounts")
-    .select("id, platform, username, display_name, bio, website, avatar_url, profile_url, profile_synced_at, profile_sync_error")
+    .select("id, platform, username, display_name, bio, website, avatar_url, profile_url, profile_synced_at, profile_sync_error, created_at")
     .eq("workspace_id", workspace.id)
     .eq("is_active", true)
-    .order("platform");
+    .order("platform")
+    // Varias cuentas por red (00236): la mas antigua primero, siempre en el mismo orden.
+    .order("created_at", { ascending: true })
+    .order("id");
 
-  const platforms = (accounts ?? []).map((a) => a.platform as string);
+  // Las redes conectadas, sin repetir, y una opcion por cuenta para el selector.
+  const platforms = [...new Set((accounts ?? []).map((a) => a.platform as string))];
+  const accountOptions: SocialAccountOption[] = (accounts ?? []).map((a) => ({
+    id: a.id,
+    platform: a.platform as string,
+    label: accountName({ username: a.username, display_name: a.display_name, platform: a.platform as string }),
+  }));
   const accountIds = (accounts ?? []).map((a) => a.id);
 
   // Los ultimos 30 dias de seguidores, para el mini grafico de tendencia.
@@ -58,7 +69,7 @@ export default async function SocialPage() {
         }),
     supabase
       .from("social_posts")
-      .select("id, platform, media_type, thumbnail_url, caption, url, published_at, origin")
+      .select("id, platform, media_type, thumbnail_url, caption, url, published_at, origin, social_account_id")
       .eq("workspace_id", workspace.id)
       .is("deleted_at", null)
       .not("published_at", "is", null)
@@ -90,32 +101,31 @@ export default async function SocialPage() {
   const latest = new Map<string, Snapshot>();
   for (const row of metricRows ?? []) latest.set(row.social_post_id, row);
 
-  const platformById = new Map((accounts ?? []).map((a) => [a.id, a.platform as string]));
+  // Por CUENTA (00236): dos Instagram no se mezclan en una misma serie de seguidores.
+  const knownAccountIds = new Set((accounts ?? []).map((a) => a.id));
 
   const followerPoints: Record<string, Array<{ date: string; followers: number | null }>> = {};
   for (const row of followerRows ?? []) {
-    const platform = platformById.get(row.social_account_id);
-    if (!platform) continue;
-    (followerPoints[platform] ??= []).push({ date: row.date, followers: row.followers });
+    if (!knownAccountIds.has(row.social_account_id)) continue;
+    (followerPoints[row.social_account_id] ??= []).push({ date: row.date, followers: row.followers });
   }
 
   // Las cifras de perfil que no son una serie (seguidos, publicaciones, videos,
   // vistas, me gusta): salen del `extra` de la lectura diaria (F75).
-  const extraByPlatform: Record<string, Array<{ date: string; extra: unknown }>> = {};
+  const extraByAccount: Record<string, Array<{ date: string; extra: unknown }>> = {};
   for (const row of followerRows ?? []) {
-    const platform = platformById.get(row.social_account_id);
-    if (!platform) continue;
-    (extraByPlatform[platform] ??= []).push({ date: row.date, extra: row.extra });
+    if (!knownAccountIds.has(row.social_account_id)) continue;
+    (extraByAccount[row.social_account_id] ??= []).push({ date: row.date, extra: row.extra });
   }
 
   const profiles: Record<string, ProfileSource> = {};
   for (const account of accounts ?? []) {
     const platform = account.platform as string;
-    const points = followerPoints[platform] ?? [];
+    const points = followerPoints[account.id] ?? [];
     const lastFollowers = [...points].reverse().find((p) => p.followers !== null)?.followers ?? null;
-    const figures = latestProfileStats(extraByPlatform[platform] ?? []);
+    const figures = latestProfileStats(extraByAccount[account.id] ?? []);
 
-    profiles[platform] = {
+    profiles[account.id] = {
       platform,
       username: account.username,
       displayName: account.display_name,
@@ -144,6 +154,7 @@ export default async function SocialPage() {
 
     return {
       socialPostId: post.id,
+      socialAccountId: post.social_account_id,
       platform: post.platform,
       mediaType: post.media_type,
       thumbnailUrl: post.thumbnail_url,
@@ -176,7 +187,7 @@ export default async function SocialPage() {
       .limit(300),
     supabase
       .from("social_posts")
-      .select("content_post_id, platform, status, scheduled_at")
+      .select("content_post_id, platform, status, scheduled_at, social_account_id")
       .eq("workspace_id", workspace.id)
       .is("deleted_at", null)
       .not("content_post_id", "is", null)
@@ -202,7 +213,7 @@ export default async function SocialPage() {
         title: p.title,
         format: p.format,
         status: p.status,
-        networks: (Array.isArray(p.networks) ? p.networks : []) as Array<{ platform?: string; planned_at?: string | null }>,
+        networks: (Array.isArray(p.networks) ? p.networks : []) as Array<{ platform?: string; planned_at?: string | null; account_id?: string | null }>,
         archivedAt: p.archived_at,
       })),
       publications: (queueRows ?? []).map((q) => ({
@@ -210,10 +221,37 @@ export default async function SocialPage() {
         platform: q.platform,
         status: q.status,
         scheduledAt: q.scheduled_at,
+        socialAccountId: q.social_account_id,
       })),
       platform,
       now,
     });
+    // Una red con varias cuentas: lo que viene de CADA una (clave = id de la cuenta).
+    const ofPlatform = accountsOf(accountOptions, platform);
+    if (ofPlatform.length > 1) {
+      for (const account of ofPlatform) {
+        upcoming[account.id] = buildUpcoming({
+          posts: (pieceRows ?? []).map((p) => ({
+            id: p.id,
+            title: p.title,
+            format: p.format,
+            status: p.status,
+            networks: (Array.isArray(p.networks) ? p.networks : []) as Array<{ platform?: string; planned_at?: string | null; account_id?: string | null }>,
+            archivedAt: p.archived_at,
+          })),
+          publications: (queueRows ?? []).map((q) => ({
+            contentPostId: q.content_post_id as string,
+            platform: q.platform,
+            status: q.status,
+            scheduledAt: q.scheduled_at,
+            socialAccountId: q.social_account_id,
+          })),
+          platform,
+          now,
+          account: { id: account.id, defaultId: ofPlatform[0].id },
+        });
+      }
+    }
   }
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
@@ -232,6 +270,7 @@ export default async function SocialPage() {
   return (
     <SocialView
       platforms={platforms}
+      accounts={accountOptions}
       profiles={profiles}
       tiles={tiles}
       followerPoints={followerPoints}

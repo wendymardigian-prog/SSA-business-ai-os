@@ -46,6 +46,12 @@ export interface NetworkEntry {
   cta?: { type: CtaType; keyword?: string | null } | null;
   options?: Record<string, unknown>;
   publisher?: string | null;
+  /**
+   * La cuenta PRINCIPAL desde la que sale esta red (`social_accounts.id`), cuando el workspace tiene varias de la
+   * misma red (00236). Ausente o null = la cuenta de siempre (la mas antigua con publicador): lo que ya estaba
+   * guardado no cambia de cuenta.
+   */
+  account_id?: string | null;
   youtube_title?: string | null;
   /**
    * Como se publica esta red (Contenido v4, C2): `true` = el sistema la

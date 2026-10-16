@@ -23,6 +23,12 @@ const THREADS_REPLY_CONTROL_LABELS: Record<(typeof THREADS_REPLY_CONTROL)[number
 import { createAutomationHref, checkCta, type AutomationRule, type CtaType } from "@/lib/content/keywords";
 import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
 import { getFormat } from "@/lib/content/network-format";
+import {
+  collaboratorsToText,
+  formatAllowsCollaborators,
+  textToCollaborators,
+  type NetworkAccountView,
+} from "@/lib/content/network-accounts";
 import type { NetworkEntry } from "@/lib/content/redistribution";
 import type { NetworkSummary } from "@/lib/content/editor";
 import type { NetworkValidation } from "@/lib/content/validation";
@@ -105,6 +111,11 @@ export interface NetworkRowProps {
   defaultPublisher: string | null;
   /** La biblioteca de archivos de la pieza (F92). */
   library: MediaEntry[];
+  /**
+   * La cuenta principal de la red (varias cuentas por red, 00236). Con `options`, el editor ofrece "Cuenta principal";
+   * sin ellas (una sola cuenta) no muestra nada nuevo.
+   */
+  accountView?: NetworkAccountView;
   /** La fecha de esta red es la general de la pieza: se avisa, y cambiarla da una propia. */
   usesGeneralDate?: boolean;
   onToggle: () => void;
@@ -160,6 +171,8 @@ export function NetworkRow(props: NetworkRowProps) {
   // "la subo yo" lleva su fecha tentativa sin ellos. El servidor sigue
   // exigiendo todo al programar; esto es lo que se le muestra a la persona.
   const system = systemPublishes({ network, publication: props.publication, connected: props.connected });
+  // Una vez en la cola o publicada, la cuenta no se cambia desde aca.
+  const accountLocked = ["scheduled", "uploading", "publishing", "published"].includes(props.publicationStatus ?? "");
   const filesMissing = lacksFiles(props.validation);
   const validation = visibleValidation(props.validation, system);
 
@@ -356,6 +369,37 @@ export function NetworkRow(props: NetworkRowProps) {
           {/* ── Opciones de [red], plegado y cerrado por defecto (C10) ──
               LinkedIn no tiene opciones propias (su "tipo" ya lo decide el
               formato): no se muestra un desplegable vacio. */}
+          {/* ── Cuenta principal (varias cuentas de la misma red, 00236) ──
+              Solo aparece cuando la red tiene mas de una cuenta conectada. Una vez programada o publicada, la cuenta
+              ya no se cambia desde aca: hay que sacarla de la cola primero (publicar en otra cuenta no se deshace). */}
+          {props.accountView && props.accountView.options.length > 0 && (
+            <Field
+              label="Cuenta principal"
+              hint={
+                props.accountView.stale
+                  ? "La cuenta que habías elegido ya no está conectada: elegí otra."
+                  : accountLocked
+                    ? "Ya está en la cola o publicada: para cambiar de cuenta, primero sacala de la cola."
+                    : "Es la cuenta desde la que se publica esta red."
+              }
+            >
+              <select
+                aria-label={`Cuenta principal de ${network.platform}`}
+                value={props.accountView.stale ? "" : (network.account_id ?? props.accountView.effective?.id ?? "")}
+                disabled={!editable || accountLocked}
+                onChange={(e) => props.onChange({ account_id: e.target.value || null })}
+                className={field}
+              >
+                {props.accountView.stale && <option value="">Elegí una cuenta…</option>}
+                {props.accountView.options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
           {network.platform !== "linkedin" && (
             <details className="rounded-lg border border-border">
               <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-muted-foreground">
@@ -365,6 +409,8 @@ export function NetworkRow(props: NetworkRowProps) {
                 <NetworkOptions
                   platform={network.platform}
                   options={options}
+                  format={network.format ?? null}
+                  accountLabel={props.accountView?.effective?.label ?? null}
                   disabled={!editable}
                   onChange={setOption}
                 />
@@ -587,22 +633,40 @@ function isFormatError(message: string): boolean {
 function NetworkOptions({
   platform,
   options,
+  format,
+  accountLabel,
   disabled,
   onChange,
 }: {
   platform: string;
   options: Record<string, unknown>;
+  /** El formato de la red: las historias no admiten colaboradores. */
+  format: string | null;
+  /** La cuenta principal desde la que sale, para decirlo en la ayuda de la colaboracion. */
+  accountLabel: string | null;
   disabled: boolean;
   onChange: (key: string, value: unknown) => void;
 }) {
   if (platform === "instagram") {
     return (
-      <Check
-        label="Compartir también en el feed"
-        checked={options.shareToFeed !== false}
-        disabled={disabled}
-        onChange={(v) => onChange("shareToFeed", v)}
-      />
+      <div className="space-y-3">
+        <Check
+          label="Compartir también en el feed"
+          checked={options.shareToFeed !== false}
+          disabled={disabled}
+          onChange={(v) => onChange("shareToFeed", v)}
+        />
+        {formatAllowsCollaborators(format) ? (
+          <CollaboratorsField
+            value={options.collaborators}
+            accountLabel={accountLabel}
+            disabled={disabled}
+            onCommit={(list) => onChange("collaborators", list.length > 0 ? list : undefined)}
+          />
+        ) : (
+          <p className="text-[11px] text-muted-foreground">Las historias no admiten colaboración.</p>
+        )}
+      </div>
     );
   }
 
@@ -735,6 +799,54 @@ function NetworkOptions({
   }
 
   return null;
+}
+
+/**
+ * Colaboracion de Instagram: la publicacion sale de la cuenta principal y se invita a hasta 3 usuarios, que la
+ * aceptan desde Instagram. Se escribe como texto y se limpia al salir del campo (sin @, sin repetidos, validos).
+ */
+function CollaboratorsField({
+  value,
+  accountLabel,
+  disabled,
+  onCommit,
+}: {
+  value: unknown;
+  accountLabel: string | null;
+  disabled: boolean;
+  onCommit: (list: string[]) => void;
+}) {
+  const saved = collaboratorsToText(value);
+  const [text, setText] = useState(saved);
+  const [lastSaved, setLastSaved] = useState(saved);
+  // Si el valor guardado cambia desde afuera (otra pestaña, restaurar una version), el campo lo sigue.
+  if (saved !== lastSaved) {
+    setLastSaved(saved);
+    setText(saved);
+  }
+
+  return (
+    <Field
+      label="Colaboradores (opcional)"
+      hint={`Hasta 3 usuarios de Instagram, separados por coma. Se publica como colaboración${
+        accountLabel ? ` desde ${accountLabel}` : ""
+      } y cada uno recibe la invitación; solo en publicaciones del feed y Reels.`}
+    >
+      <input
+        type="text"
+        value={text}
+        disabled={disabled}
+        placeholder="@otra_cuenta, @otra_mas"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          const list = textToCollaborators(text);
+          setText(list.join(", "));
+          if (list.join(", ") !== saved) onCommit(list);
+        }}
+        className={field}
+      />
+    </Field>
+  );
 }
 
 function Field({

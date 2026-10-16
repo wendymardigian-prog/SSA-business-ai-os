@@ -22,6 +22,14 @@ import {
   type UpcomingItem,
 } from "@/lib/social/profile-page";
 import { drawerHref } from "@/lib/content/drawer-url";
+import {
+  accountsOf,
+  activeAccountOf,
+  parseSelection,
+  selectionValue,
+  tileBelongsToAccount,
+  type SocialAccountOption,
+} from "@/lib/social/account-select";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,6 +50,8 @@ import { cn } from "@/lib/utils";
 
 export interface SocialTile {
   socialPostId: string;
+  /** La cuenta con la que se publico (varias por red, 00236). Null en lo de antes o lo marcado a mano sin cuenta. */
+  socialAccountId?: string | null;
   platform: string;
   mediaType: string | null;
   thumbnailUrl: string | null;
@@ -60,6 +70,7 @@ export interface SocialTile {
 
 export function SocialView({
   platforms,
+  accounts = [],
   profiles,
   tiles,
   followerPoints,
@@ -71,10 +82,14 @@ export function SocialView({
 }: {
   /** Las redes conectadas. */
   platforms: string[];
+  /** Cada cuenta conectada (varias por red): una opcion del selector. Mas antigua primero. */
+  accounts?: SocialAccountOption[];
+  /** El perfil de cada CUENTA (por id). */
   profiles: Record<string, ProfileSource>;
   tiles: SocialTile[];
+  /** Los seguidores de cada CUENTA (por id). */
   followerPoints: Record<string, Array<{ date: string; followers: number | null }>>;
-  /** Lo programado y lo tentativo, por red (F100). */
+  /** Lo programado y lo tentativo, por red (F100); en una red con varias cuentas, por el id de cada cuenta. */
   upcoming: Record<string, UpcomingItem[]>;
   /** Lo publicado desde el sistema en LinkedIn, que no entrega metricas. */
   linkedin: LinkedinSource[];
@@ -85,7 +100,13 @@ export function SocialView({
   /** La zona del negocio: las fechas se cuentan ahi y no en la del navegador. */
   timeZone: string;
 }) {
-  const [platform, setPlatform] = useState(defaultPlatform(platforms));
+  const [selection, setSelection] = useState<{ platform: string; accountId: string | null }>({
+    platform: defaultPlatform(platforms),
+    accountId: null,
+  });
+  const platform = selection.platform;
+  const activeAccount = activeAccountOf(accounts, selection);
+  const multiAccount = accountsOf(accounts, platform).length > 1;
   const [format, setFormat] = useState<string | null>(null);
   // La pestaña de contenido (YouTube: Videos / Shorts). Null = la primera.
   const [tab, setTab] = useState<string | null>(null);
@@ -94,13 +115,13 @@ export function SocialView({
   const [notice, setNotice] = useState<string | null>(null);
 
   const profile = useMemo(
-    () => (profiles[platform] ? buildProfile(profiles[platform]) : null),
-    [profiles, platform],
+    () => (activeAccount && profiles[activeAccount.id] ? buildProfile(profiles[activeAccount.id]) : null),
+    [profiles, activeAccount],
   );
 
   const trend = useMemo(
-    () => followerTrend(followerPoints[platform] ?? []),
-    [followerPoints, platform],
+    () => followerTrend(activeAccount ? (followerPoints[activeAccount.id] ?? []) : []),
+    [followerPoints, activeAccount],
   );
 
   const tabs = contentTabs(platform);
@@ -108,7 +129,9 @@ export function SocialView({
 
   // Sin useMemo: son a lo sumo 120 baldosas, y filtrarlas es mas barato que
   // lo que el compilador de React pierde al no poder conservar la memoria.
-  const ofPlatform = tiles.filter((tile) => tile.platform === platform);
+  const ofPlatform = tiles.filter(
+    (tile) => tile.platform === platform && tileBelongsToAccount(tile, accounts, platform, activeAccount),
+  );
   const visible = ofPlatform.filter(
     (tile) =>
       (!format || tile.mediaType === format) &&
@@ -120,7 +143,7 @@ export function SocialView({
   const openIndex = openPostId ? visible.findIndex((t) => t.socialPostId === openPostId) : -1;
 
   const connected = platforms.includes(platform);
-  const next = upcoming[platform] ?? [];
+  const next = (multiAccount && activeAccount ? upcoming[activeAccount.id] : upcoming[platform]) ?? [];
   const linkedinList = useMemo(() => linkedinRows(linkedin), [linkedin]);
 
   return (
@@ -131,9 +154,9 @@ export function SocialView({
           <div className="flex items-center gap-2">
             <select
               aria-label="Red"
-              value={platform}
+              value={selectionValue(multiAccount && activeAccount ? { platform, accountId: activeAccount.id } : { platform, accountId: null })}
               onChange={(e) => {
-                setPlatform(e.target.value);
+                setSelection(parseSelection(e.target.value, accounts, platform));
                 setFormat(null);
                 setTab(null);
                 // El aviso era de la red anterior.
@@ -141,12 +164,28 @@ export function SocialView({
               }}
               className="rounded-md border border-input bg-background px-2 py-1 text-sm"
             >
-              {networkTabs(platforms).map((tab) => (
-                <option key={tab.platform} value={tab.platform}>
-                  {platformLabel(tab.platform)}
-                  {tab.connected ? "" : " (sin conectar)"}
-                </option>
-              ))}
+              {networkTabs(platforms).map((tab) => {
+                const own = accountsOf(accounts, tab.platform);
+                // Una red con varias cuentas: una opcion por cuenta, agrupadas bajo el nombre de la red.
+                if (own.length > 1) {
+                  return (
+                    <optgroup key={tab.platform} label={platformLabel(tab.platform)}>
+                      {own.map((account) => (
+                        <option key={account.id} value={selectionValue({ platform: tab.platform, accountId: account.id })}>
+                          {platformLabel(tab.platform)} · {account.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                }
+                return (
+                  <option key={tab.platform} value={tab.platform}>
+                    {platformLabel(tab.platform)}
+                    {own[0] ? ` · ${own[0].label}` : ""}
+                    {tab.connected ? "" : " (sin conectar)"}
+                  </option>
+                );
+              })}
             </select>
 
             {connected && platform !== "linkedin" && formatFilters(platform).length > 0 && (

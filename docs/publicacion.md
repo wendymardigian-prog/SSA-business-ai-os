@@ -285,3 +285,14 @@ iba a pasar más seguido. Ahora, para una fila agendada del lado del
 proveedor, reprogramar le pide a Zernio que mueva **su propio** post
 (`updatePost`), igual que ya hacía "Programar" cuando la fila tenía
 referencia (`lib/publishing/reschedule.ts`).
+
+## Varias cuentas de la misma red (16/10/2026, migración 00236)
+
+`social_accounts` pasó de una cuenta por red a **una fila por cuenta** (índices únicos parciales `(workspace, platform, external_id)` y `(workspace, platform)` sin id). Aplica a Instagram y TikTok por Zernio; YouTube, LinkedIn y Threads siguen con la conexión OAuth única del negocio.
+
+- **Sincronización** (`syncSocialAccounts`): cada cuenta de Zernio es una fila, identificada por `(red, external_id)` y **buscar-y-escribir** (los índices son parciales: PostgREST no los puede apuntar). Una cuenta que Zernio ya no lista queda «no disponible» (no se borra); una cuenta única que se reconectó con otro id sigue siendo la misma fila.
+- **Cuenta principal por red** (`networks[].account_id`): la cuenta desde la que sale. Sin ella (todo lo guardado antes) vale la cuenta por defecto: la más antigua con publicador (`lib/social/account-choice.ts`). Una cuenta elegida que ya no está conectada, es de otra red o no tiene publicador **no se reemplaza en silencio**: se rechaza al guardar (`checkNetworkAccounts`) y al programar (`canScheduleNetwork` con `accounts`). La fila de `social_posts` guarda la cuenta, así que el despachador y las métricas ya la leen de ahí.
+- **Colaboración de Instagram** (`options.collaborators`, hasta 3 usuarios, solo feed y Reels): el publicador ya lo mandaba a Zernio; el editor suma el campo y se limpia (sin `@`, válidos, sin repetidos) sin descartar el resto de las opciones.
+- **Social:** el selector de red ofrece una opción por cuenta cuando la red tiene varias; el perfil, los seguidores, la grilla y «Próximas» son de la cuenta elegida. Lo publicado antes de conectar la segunda cuenta, sin cuenta guardada, se muestra en la primera.
+- **Dashboards:** los seguidores de las cuentas de una red se **suman** por día (`sumAccountsByDay`); con una sola cuenta el resultado es idéntico.
+- **La migración se aplica antes o después del código sin romper nada**: sin ella, conectar una segunda cuenta de la misma red falla al guardar (queda en el log) y todo lo demás sigue igual.

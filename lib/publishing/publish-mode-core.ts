@@ -18,6 +18,7 @@
  * tabla es solo del servidor (00083).
  */
 
+import { defaultAccountOf, resolveNetworkAccount } from "@/lib/social/account-choice";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit } from "@/lib/audit";
 import { cleanExternalUrl } from "@/lib/content/networks-schema";
@@ -189,14 +190,16 @@ export async function runMarkPublished(
 
   // La cuenta de esa red, si existe: es lo que deja que la sincronizacion
   // encuentre despues el post real y complete ESTA fila (no otra).
-  const { data: account } = await ctx.service
+  // Con varias cuentas de la red (00236): la elegida en la pieza o, si no hay, la de siempre. Una cuenta elegida que ya
+  // no esta conectada no frena el "marcar como publicado": se hizo a mano y se registra sin cuenta.
+  const { data: platformAccounts } = await ctx.service
     .from("social_accounts")
-    .select("id")
+    .select("id, platform, is_active, default_publisher, created_at")
     .eq("workspace_id", ctx.workspaceId)
     .eq("platform", input.platform as SocialPlatform)
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
+    .eq("is_active", true);
+  const choice = resolveNetworkAccount(platformAccounts ?? [], input.platform, network.account_id);
+  const account = choice.ok ? choice.account : defaultAccountOf(platformAccounts ?? [], input.platform);
 
   const fields = {
     origin: "manual" as const,

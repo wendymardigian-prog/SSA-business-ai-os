@@ -70,7 +70,7 @@ export default async function ContentDashboardPage({
       accounts={current.accounts}
       lastDataByPlatform={[...current.lastDataByPlatform.entries()]}
       postDetails={[...current.postDetails.entries()]}
-      connectedPlatforms={(accountsRes.data ?? []).map((a) => a.platform as string)}
+      connectedPlatforms={[...new Set((accountsRes.data ?? []).map((a) => a.platform as string))]}
       period={period}
       platform={platform}
       pieces={[...current.pieces.values()]}

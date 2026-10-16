@@ -1,5 +1,6 @@
 "use client";
 
+import { networkAccountView } from "@/lib/content/network-accounts";
 import {
   useCallback,
   useEffect,
@@ -113,6 +114,7 @@ export function PieceDrawer({
 }) {
   const { post, perms, publications, connected, automations, channelIdByPlatform, publishersByPlatform } = data;
   const { defaultPublisherByPlatform } = data;
+  const accounts = data.accounts ?? [];
   const { versions, authorNames, aiAvailable, timeZone, taxonomy } = data;
 
   const router = useRouter();
@@ -1005,6 +1007,8 @@ export function PieceDrawer({
                   warnings: shown.warnings.length,
                 });
 
+                const accountView = networkAccountView(accounts, network);
+
                 return (
                   <NetworkRow
                     key={network.platform}
@@ -1032,9 +1036,12 @@ export function PieceDrawer({
                     pending={pending}
                     timeZone={timeZone}
                     automations={automations}
-                    channelId={channelIdByPlatform[network.platform] ?? null}
-                    publishers={publishersByPlatform[network.platform] ?? []}
-                    defaultPublisher={defaultPublisherByPlatform[network.platform] ?? null}
+                    // Con varias cuentas de la red (00236), lo de la red sale de la cuenta PRINCIPAL elegida;
+                    // con una sola, es lo mismo de siempre.
+                    channelId={accountView.effective?.channelId ?? channelIdByPlatform[network.platform] ?? null}
+                    publishers={accountView.effective?.publishers ?? publishersByPlatform[network.platform] ?? []}
+                    defaultPublisher={accountView.effective?.defaultPublisher ?? defaultPublisherByPlatform[network.platform] ?? null}
+                    accountView={accountView}
                     library={library}
                     usesGeneralDate={
                       generalDate.mode === "general" && Boolean(generalDate.at) && !closedPlatforms.has(network.platform)

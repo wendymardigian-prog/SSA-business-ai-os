@@ -21,6 +21,7 @@ import type { LinkedAd } from "@/lib/meta/content-ad-summary";
 import type { PiecePerformance } from "@/lib/dashboards/piece-performance";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { connectedPlatforms } from "./connection";
+import { accountName, defaultAccountOf } from "@/lib/social/account-choice";
 import { authorshipLine } from "./classification";
 import type { PublicationSummary } from "./detail";
 import type { EditorPermissions } from "./editor";
@@ -31,6 +32,18 @@ import { canWritePost } from "./piece-drawer";
 import { canReassign, isAuthorOrAssignee } from "./assignee";
 import type { NetworkEntry } from "./redistribution";
 import type { StoredVersion } from "./versions";
+
+/** Una cuenta social conectada, para el editor de redes (varias por red, 00236). */
+export interface PieceAccount {
+  id: string;
+  platform: string;
+  /** "@usuario" o el nombre de la cuenta. */
+  label: string;
+  channelId: string | null;
+  defaultPublisher: string | null;
+  /** Los publicadores usables de ESTA cuenta. */
+  publishers: string[];
+}
 
 export interface PiecePost {
   id: string;
@@ -85,6 +98,11 @@ export interface PieceData {
   publishersByPlatform: Record<string, string[]>;
   /** El publicador real de cada cuenta, el que usa el despachador (F13). */
   defaultPublisherByPlatform: Record<string, string | null>;
+  /**
+   * Cada cuenta conectada (varias por red, 00236), la mas antigua primero. El editor ofrece "Cuenta principal" cuando
+   * una red tiene mas de una; con una sola no cambia nada.
+   */
+  accounts: PieceAccount[];
   versions: StoredVersion[];
   authorNames: Record<string, string>;
   aiAvailable: boolean;
@@ -143,9 +161,12 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
         .order("platform"),
       supabase
         .from("social_accounts")
-        .select("platform, channel_id, username, display_name, publishers, default_publisher")
+        .select("id, platform, channel_id, username, display_name, publishers, default_publisher, created_at")
         .eq("workspace_id", workspace.id)
-        .eq("is_active", true),
+        .eq("is_active", true)
+        // Varias cuentas por red (00236): la mas antigua primero, siempre en el mismo orden.
+        .order("created_at", { ascending: true })
+        .order("id"),
       supabase
         .from("channels")
         .select("id, platform")
@@ -214,17 +235,30 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
     };
   });
 
-  // Por donde puede salir cada red: llena "Publicar por" (C8).
-  const publishersByPlatform: Record<string, string[]> = {};
-  for (const account of accountsRes.data ?? []) {
-    const entries = (Array.isArray(account.publishers) ? account.publishers : []) as Array<{
-      publisher?: string;
-      status?: string;
-    }>;
-    publishersByPlatform[account.platform as string] = entries
+  // Por donde puede salir cada cuenta, y las cuentas en si (varias por red, 00236).
+  const usablePublishers = (publishers: unknown): string[] =>
+    ((Array.isArray(publishers) ? publishers : []) as Array<{ publisher?: string; status?: string }>)
       .filter((e) => e.publisher && e.status !== "unavailable")
       .map((e) => e.publisher as string);
-  }
+
+  const pieceAccounts: PieceAccount[] = (accountsRes.data ?? []).map((a) => ({
+    id: a.id as string,
+    platform: a.platform as string,
+    label: accountName({ username: a.username, display_name: a.display_name, platform: a.platform as string }),
+    channelId: (a.channel_id as string | null) ?? null,
+    defaultPublisher: (a.default_publisher as string | null) ?? null,
+    publishers: usablePublishers(a.publishers),
+  }));
+  const platformsWithAccounts = [...new Set(pieceAccounts.map((a) => a.platform))];
+  // Las cifras "por red" de siempre salen de la cuenta por defecto de cada red (la mas antigua con publicador).
+  const defaultAccount = (platform: string) =>
+    defaultAccountOf(
+      pieceAccounts.map((a) => ({ ...a, default_publisher: a.defaultPublisher, is_active: true })),
+      platform,
+    );
+  const publishersByPlatform: Record<string, string[]> = Object.fromEntries(
+    platformsWithAccounts.map((p) => [p, defaultAccount(p)?.publishers ?? []]),
+  );
 
   const labels = memberLabels(members);
   const idea = ideaRes.data as { id: string; title: string; content: string | null } | null;
@@ -294,15 +328,13 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
     ),
     automations,
     channelIdByPlatform: Object.fromEntries(
-      (accountsRes.data ?? []).map((a) => [
-        a.platform,
-        a.channel_id ?? channelByPlatform.get(a.platform as string) ?? null,
-      ]),
+      platformsWithAccounts.map((p) => [p, defaultAccount(p)?.channelId ?? channelByPlatform.get(p) ?? null]),
     ),
     publishersByPlatform,
     defaultPublisherByPlatform: Object.fromEntries(
-      (accountsRes.data ?? []).map((a) => [a.platform as string, (a.default_publisher as string | null) ?? null]),
+      platformsWithAccounts.map((p) => [p, defaultAccount(p)?.defaultPublisher ?? null]),
     ),
+    accounts: pieceAccounts,
     versions: (versionsRes.data ?? []) as unknown as StoredVersion[],
     authorNames: Object.fromEntries(labels),
     aiAvailable: aiProviders.length > 0,

@@ -244,3 +244,30 @@ describe("como se muestra el estado de cada red", () => {
     ).toBe("tentative");
   });
 });
+
+describe("programar con varias cuentas de la red (00236)", () => {
+  const accounts = [
+    { id: "a1", platform: "instagram", defaultPublisher: "zernio" },
+    { id: "a2", platform: "instagram", defaultPublisher: "postproxy" },
+  ];
+  const withAccount = (accountId: string | null) => ({ ...network("instagram"), accountId });
+
+  it("sin cuenta elegida, igual que siempre", () => {
+    expect(canScheduleNetwork(withAccount(null), context({ accounts }))).toMatchObject({ ok: true, publisher: "zernio" });
+  });
+
+  it("con cuenta elegida, sale por el publicador DE ESA cuenta y no por el de otra de la red", () => {
+    expect(canScheduleNetwork(withAccount("a2"), context({ accounts }))).toMatchObject({ ok: true, publisher: "postproxy" });
+  });
+
+  it("una cuenta elegida que ya no esta conectada no se programa, y lo dice", () => {
+    const result = canScheduleNetwork(withAccount("borrada"), context({ accounts }));
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/ya no esta conectada/) });
+  });
+
+  it("una cuenta elegida sin publicador no cae al publicador de otra cuenta", () => {
+    const sinPublicador = [{ id: "a3", platform: "instagram", defaultPublisher: null }];
+    const result = canScheduleNetwork(withAccount("a3"), context({ accounts: sinPublicador }));
+    expect(result.ok).toBe(false);
+  });
+});

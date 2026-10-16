@@ -49,6 +49,9 @@ export interface ConnectionSource {
 
 /** Lo que ya esta guardado, para no perder lo que se eligio a mano. */
 export interface ExistingAccount {
+  /** La fila (varias cuentas de la misma red, 00236). Sin pasar, se identifica por la red. */
+  id?: string;
+  is_active?: boolean | null;
   platform: SocialPlatform;
   default_publisher: string | null;
   publishers: unknown;
@@ -102,6 +105,8 @@ export interface AccountSources {
 }
 
 export interface ComputedAccount {
+  /** La fila que ya existia para esta cuenta, si hay: se actualiza esa y no se crea otra. */
+  existingId?: string | null;
   platform: SocialPlatform;
   externalId: string | null;
   username: string | null;
@@ -138,9 +143,27 @@ const entry = (
   ...extra,
 });
 
+/**
+ * La fila que ya existe para una cuenta. Por su `external_id`; si no hay (o no coincide) y la red tiene UNA sola
+ * cuenta en cada lado, es la misma que se reconecto con otro id (lo que pasaba antes de las varias cuentas). Sin
+ * `externalId` (YouTube, LinkedIn, Threads) se identifica por la red.
+ */
+function matchExisting(
+  sources: AccountSources,
+  platform: SocialPlatform,
+  externalId: string | null,
+  listedInPlatform = 1,
+): ExistingAccount | undefined {
+  const same = sources.existing.filter((e) => e.platform === platform);
+  if (externalId === null) return same.find((e) => !e.external_id) ?? (same.length === 1 ? same[0] : undefined);
+  const exact = same.find((e) => e.external_id === externalId);
+  if (exact) return exact;
+  if (listedInPlatform === 1 && same.length === 1) return same[0];
+  return undefined;
+}
+
 /** Lo que se eligio a mano y lo que ya se habia verificado, para conservarlo. */
-function previous(sources: AccountSources, platform: SocialPlatform) {
-  const row = sources.existing.find((e) => e.platform === platform);
+function previous(row: ExistingAccount | undefined) {
   const parsed = row ? parsePublishers(row.publishers) : null;
   return {
     defaultPublisher: row?.default_publisher ?? null,
@@ -168,9 +191,10 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
   const finish = (
     platform: SocialPlatform,
     fresh: PublisherEntry[],
-    data: Omit<ComputedAccount, "platform" | "publishers" | "defaultPublisher" | "defaultChanged">,
+    data: Omit<ComputedAccount, "platform" | "publishers" | "defaultPublisher" | "defaultChanged" | "existingId">,
+    row?: ExistingAccount,
   ) => {
-    const before = previous(sources, platform);
+    const before = previous(row);
     const publishers = keepDecisions(fresh, before.entries);
     const { publisher, changed } = resolveDefaultPublisher(publishers, before.defaultPublisher);
 
@@ -184,7 +208,14 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
       );
     }
 
-    accounts.push({ platform, publishers, defaultPublisher: publisher, defaultChanged: changed, ...data });
+    accounts.push({
+      platform,
+      publishers,
+      defaultPublisher: publisher,
+      defaultChanged: changed,
+      existingId: row?.id ?? null,
+      ...data,
+    });
   };
 
   // ── Lo que llega por Zernio: Instagram y TikTok ──────────────────────────
@@ -195,15 +226,15 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
     // lado y programar seguia pareciendo posible. La cuenta NO se borra: se
     // marca y se conserva todo lo demas, para que reconectar la deje como
     // estaba.
-    for (const platform of ["instagram", "tiktok"] as const) {
-      const row = sources.existing.find((e) => e.platform === platform);
-      const before = previous(sources, platform);
+    // Cada cuenta de Instagram y de TikTok (puede haber varias por red) queda marcada por separado.
+    for (const row of sources.existing.filter((e) => e.platform === "instagram" || e.platform === "tiktok")) {
+      const before = previous(row);
       const usedZernio =
         before.entries.some((e) => e.publisher === "zernio") || before.defaultPublisher === "zernio";
-      if (!row || !usedZernio) continue;
+      if (!usedZernio) continue;
 
       finish(
-        platform,
+        row.platform,
         [
           entry("zernio", "unavailable", {
             account_ref: before.entries.find((e) => e.publisher === "zernio")?.account_ref ?? null,
@@ -216,11 +247,18 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
           displayName: row.display_name ?? null,
           channelId: row.channel_id ?? null,
         },
+        row,
       );
     }
   } else if (sources.zernioAccounts) {
     // Camino nuevo (F73): la lista que devuelve Zernio. Cada cuenta es una
     // fila; si además hay un canal de bandeja con ese mismo id, se enlaza.
+    const listedByPlatform = new Map<string, number>();
+    for (const a of sources.zernioAccounts) {
+      if (a.isActive) listedByPlatform.set(a.platform, (listedByPlatform.get(a.platform) ?? 0) + 1);
+    }
+    const matchedIds = new Set<string>();
+
     for (const account of sources.zernioAccounts) {
       if (!account.isActive) continue;
       if (!SOCIAL_PLATFORMS.includes(account.platform as SocialPlatform)) {
@@ -235,17 +273,53 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
         (c) => c.late_account_id === account._id && c.platform === "instagram",
       );
 
-      finish(platform, [entry("zernio", "available", { account_ref: account._id })], {
-        externalId: account._id,
-        username: account.username,
-        displayName: account.displayName,
-        // Solo Instagram tiene canal de bandeja; TikTok queda sin canal (F73).
-        channelId: platform === "instagram" ? (channel?.id ?? null) : null,
-        // El perfil viene de la misma lista: no se inventa nada que no traiga.
-        avatarUrl: account.profilePicture,
-        profileUrl: account.profileUrl,
-        profileSynced: true,
-      });
+      const row = matchExisting(sources, platform, account._id, listedByPlatform.get(account.platform) ?? 1);
+      if (row?.id) matchedIds.add(row.id);
+
+      finish(
+        platform,
+        [entry("zernio", "available", { account_ref: account._id })],
+        {
+          externalId: account._id,
+          username: account.username,
+          displayName: account.displayName,
+          // Solo Instagram tiene canal de bandeja; TikTok queda sin canal (F73).
+          channelId: platform === "instagram" ? (channel?.id ?? null) : null,
+          // El perfil viene de la misma lista: no se inventa nada que no traiga.
+          avatarUrl: account.profilePicture,
+          profileUrl: account.profileUrl,
+          profileSynced: true,
+        },
+        row,
+      );
+    }
+
+    // Una cuenta que Zernio ya no lista (la desconectaron de su lado) no se borra ni se pisa: queda "no disponible",
+    // como cuando se desconecta Zernio entero, y reconectarla la deja como estaba.
+    for (const row of sources.existing) {
+      if (row.platform !== "instagram" && row.platform !== "tiktok") continue;
+      if (!row.id || matchedIds.has(row.id)) continue;
+      const before = previous(row);
+      const usedZernio =
+        before.entries.some((e) => e.publisher === "zernio") || before.defaultPublisher === "zernio";
+      if (!usedZernio) continue;
+
+      finish(
+        row.platform,
+        [
+          entry("zernio", "unavailable", {
+            account_ref: before.entries.find((e) => e.publisher === "zernio")?.account_ref ?? null,
+            status_reason: "Esta cuenta ya no figura en Zernio. Volve a conectarla ahi.",
+          }),
+        ],
+        {
+          externalId: row.external_id ?? null,
+          username: row.username ?? null,
+          displayName: row.display_name ?? null,
+          channelId: row.channel_id ?? null,
+        },
+        row,
+      );
     }
   } else {
     // Respaldo: lo de siempre, armado desde los canales de la bandeja.
@@ -253,13 +327,19 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
       if (channel.platform !== "instagram" && channel.platform !== "tiktok") continue;
       const platform = channel.platform as SocialPlatform;
 
-      finish(platform, [entry("zernio", "available", { account_ref: channel.late_account_id })], {
-        externalId: channel.late_account_id,
-        username: channel.username,
-        displayName: channel.display_name,
-        // Instagram ademas conversa: es la misma cuenta.
-        channelId: channel.id,
-      });
+      const siblings = sources.zernioChannels.filter((c) => c.platform === channel.platform).length;
+      finish(
+        platform,
+        [entry("zernio", "available", { account_ref: channel.late_account_id })],
+        {
+          externalId: channel.late_account_id,
+          username: channel.username,
+          displayName: channel.display_name,
+          // Instagram ademas conversa: es la misma cuenta.
+          channelId: channel.id,
+        },
+        matchExisting(sources, platform, channel.late_account_id, siblings),
+      );
     }
   }
 
@@ -302,14 +382,20 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
   }
 
   if (youtube.length > 0) {
-    finish("youtube", youtube, {
-      externalId: sources.google?.external_account_id ?? null,
-      // El @ lo escribe la lectura de metricas (lo trae la API del canal):
-      // recalcular las cuentas no lo borra.
-      username: sources.existing.find((e) => e.platform === "youtube")?.username ?? null,
-      displayName: sources.google?.account_label ?? "YouTube",
-      channelId: null,
-    });
+    const youtubeRow = sources.existing.find((e) => e.platform === "youtube");
+    finish(
+      "youtube",
+      youtube,
+      {
+        externalId: sources.google?.external_account_id ?? null,
+        // El @ lo escribe la lectura de metricas (lo trae la API del canal):
+        // recalcular las cuentas no lo borra.
+        username: youtubeRow?.username ?? null,
+        displayName: sources.google?.account_label ?? "YouTube",
+        channelId: null,
+      },
+      youtubeRow,
+    );
   }
 
   // ── LinkedIn y Threads: un solo camino, el suyo ──────────────────────────
@@ -333,6 +419,7 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
         displayName: connection.account_label,
         channelId: null,
       },
+      sources.existing.find((e) => e.platform === platform),
     );
   }
 
@@ -355,7 +442,7 @@ export interface SyncResult {
  * Recalcula las cuentas sociales del workspace y las guarda.
  *
  * Se llama al conectar o desconectar algo. Es idempotente: correrla dos veces
- * deja lo mismo, porque escribe por `(workspace, red)`.
+ * deja lo mismo, porque cada cuenta se identifica por `(workspace, red, external_id)` (varias por red, 00236).
  */
 export async function syncSocialAccounts(supabase: Db, workspaceId: string): Promise<SyncResult> {
   // Lo que dice Zernio de sus cuentas (F73). Si no hay clave o la llamada
@@ -381,14 +468,12 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
       .eq("type", "publishing_service"),
     supabase
       .from("social_accounts")
-      .select("platform, default_publisher, publishers, external_id, username, display_name, channel_id, is_active")
+      .select("id, platform, default_publisher, publishers, external_id, username, display_name, channel_id, is_active")
       .eq("workspace_id", workspaceId),
   ]);
 
   // Lo que ya estaba activo antes de esta corrida: todo lo demas es nuevo.
-  const activeBefore = new Set(
-    (existing.data ?? []).filter((row) => row.is_active).map((row) => row.platform),
-  );
+  const activeBefore = new Set((existing.data ?? []).filter((row) => row.is_active).map((row) => row.id));
   const newAccountIds: string[] = [];
 
   const connectionOf = (provider: string): ConnectionSource | null => {
@@ -429,33 +514,39 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
       profile_url: account.profileUrl ?? undefined,
       profile_synced_at: account.profileSynced ? new Date().toISOString() : undefined,
     };
-    const { data: saved, error } = await supabase.from("social_accounts").upsert(
-      {
-        workspace_id: workspaceId,
-        platform: account.platform,
-        external_id: account.externalId,
-        username: account.username,
-        display_name: account.displayName,
-        channel_id: account.channelId,
-        default_publisher: account.defaultPublisher,
-        publishers: account.publishers as unknown as Database["public"]["Tables"]["social_accounts"]["Insert"]["publishers"],
-        is_active: true,
-        ...profile,
-      },
-      { onConflict: "workspace_id,platform" },
-    ).select("id").maybeSingle();
+    const values = {
+      external_id: account.externalId,
+      username: account.username,
+      display_name: account.displayName,
+      channel_id: account.channelId,
+      default_publisher: account.defaultPublisher,
+      publishers: account.publishers as unknown as Database["public"]["Tables"]["social_accounts"]["Insert"]["publishers"],
+      is_active: true,
+      ...profile,
+    };
+
+    // Buscar-y-escribir y no `upsert`: con varias cuentas por red la identidad es (red, external_id) y esos indices
+    // son PARCIALES (00236), que PostgREST no puede apuntar con un `on_conflict`. La fila ya la encontro
+    // `computeAccounts` (`existingId`).
+    const { data: saved, error } = account.existingId
+      ? await supabase.from("social_accounts").update(values).eq("id", account.existingId).select("id").maybeSingle()
+      : await supabase
+          .from("social_accounts")
+          .insert({ workspace_id: workspaceId, platform: account.platform, ...values })
+          .select("id")
+          .maybeSingle();
 
     if (error) {
       console.error(`[social] no pude guardar la cuenta de ${account.platform}:`, error.message);
-    } else if (saved && !activeBefore.has(account.platform)) {
+    } else if (saved && !activeBefore.has(saved.id)) {
       newAccountIds.push(saved.id);
     }
   }
 
   // Con la cuenta ya creada, los comentarios que entraron antes (huerfanos) se
   // vinculan a su publicacion cuando esta existe (F76). Nunca lanza.
-  for (const account of computed.accounts) {
-    await adoptOrphanComments(supabase, workspaceId, account.platform);
+  for (const platform of new Set(computed.accounts.map((a) => a.platform))) {
+    await adoptOrphanComments(supabase, workspaceId, platform);
   }
 
   const warnings = [...computed.warnings, ...(zernio.warning ? [zernio.warning] : [])];

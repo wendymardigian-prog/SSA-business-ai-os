@@ -20,6 +20,7 @@ import { socialMediaTypeFor } from "@/lib/content/media-type";
 import type { MediaEntry } from "@/lib/content/media";
 import { validateNetwork, type NetworkContent } from "@/lib/content/validation";
 import { countPublicationsForDay } from "./daily-count";
+import { defaultAccountOf, resolveNetworkAccount, type ChoosableAccount } from "@/lib/social/account-choice";
 import { cancelOnProvider } from "./provider-dispatch";
 import { refreshPostStatus as refreshPieceStatus } from "./settled";
 import type { ContentPostStatus, Database, SocialPlatform, SocialPostStatus } from "@/lib/types/database";
@@ -122,6 +123,7 @@ async function loadPost(
       platform: String(n.platform ?? ""),
       plannedAt: n.planned_at ?? null,
       publisher: n.publisher ?? null,
+      accountId: n.account_id ?? null,
     })),
     // Con el formato ya aplicado (F93): lo que el editor muestra, lo que se
     // valida aca y lo que se publica salen de las mismas opciones.
@@ -154,10 +156,25 @@ async function loadPost(
   };
 }
 
+const toChoosable = (a: ActiveAccount): ChoosableAccount => ({
+  id: a.id,
+  platform: a.platform,
+  is_active: true,
+  default_publisher: a.defaultPublisher,
+  created_at: a.createdAt ?? null,
+});
+
+/** El id de la cuenta con la que sale una red. Una cuenta elegida que ya no sirve ya se rechazo en `canScheduleNetwork`. */
+function defaultAccountId(accounts: ChoosableAccount[], platform: string, requestedId?: string | null): string | null {
+  const choice = resolveNetworkAccount(accounts, platform, requestedId);
+  return choice.ok ? (choice.account?.id ?? null) : null;
+}
+
 interface ActiveAccount {
   id: string;
   platform: string;
   defaultPublisher: string | null;
+  createdAt?: string | null;
 }
 
 /**
@@ -176,7 +193,7 @@ async function activeAccounts(
 ): Promise<ActiveAccount[]> {
   const { data } = await supabase
     .from("social_accounts")
-    .select("id, platform, default_publisher")
+    .select("id, platform, default_publisher, created_at")
     .eq("workspace_id", workspaceId)
     .eq("is_active", true);
 
@@ -184,6 +201,7 @@ async function activeAccounts(
     id: a.id as string,
     platform: a.platform as string,
     defaultPublisher: (a.default_publisher as string | null) ?? null,
+    createdAt: (a.created_at as string | null) ?? null,
   }));
 }
 
@@ -257,7 +275,14 @@ export async function runScheduleNetworks(
     postStatus: post.status,
     perms,
     connected: accounts.map((a) => a.platform),
-    defaultPublishers: Object.fromEntries(accounts.map((a) => [a.platform, a.defaultPublisher])),
+    // El publicador de la cuenta por defecto de cada red (varias por red, 00236): la mas antigua con publicador.
+    defaultPublishers: Object.fromEntries(
+      [...new Set(accounts.map((a) => a.platform))].map((platform) => [
+        platform,
+        defaultAccountOf(accounts.map(toChoosable), platform)?.default_publisher ?? null,
+      ]),
+    ),
+    accounts,
     existing: post.publications,
     mode: input.now ? ("now" as const) : ("scheduled" as const),
   };
@@ -328,7 +353,7 @@ export async function runScheduleNetworks(
 
   // Las filas y los jobs los escribe el servidor: social_posts no la toca
   // ningun usuario (00083).
-  const accountByPlatform = new Map<string, string>(accounts.map((a) => [a.platform, a.id]));
+  const choosable = accounts.map(toChoosable);
 
   const scheduled: string[] = [];
 
@@ -342,7 +367,9 @@ export async function runScheduleNetworks(
     const fields = {
       workspace_id: workspace.id,
       content_post_id: post.id,
-      social_account_id: accountByPlatform.get(entry.platform) ?? null,
+      // La cuenta principal de la red: la elegida en la pieza, o la de siempre (la mas antigua con publicador).
+      social_account_id:
+        defaultAccountId(choosable, entry.platform, post.networks.find((n) => n.platform === entry.platform)?.accountId),
       platform: entry.platform as SocialPlatform,
       publisher: entry.publisher,
       origin: "system" as const,
