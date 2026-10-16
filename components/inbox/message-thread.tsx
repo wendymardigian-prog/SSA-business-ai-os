@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useReducer } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Sparkles } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -27,6 +27,10 @@ import { ConversationMenu } from "@/components/inbox/conversation-menu";
 import { planHeaderActions } from "@/lib/inbox/header-actions";
 import { planComposerActions } from "@/lib/inbox/composer-actions";
 import { ComposerMoreMenu } from "@/components/inbox/composer-more-menu";
+import { requestSuggestionAction } from "@/lib/actions/agent-drafts";
+import { loadConversationActivity, type ConversationActivityData } from "@/lib/actions/message-activity";
+import { buildActivity, type MessageActivity } from "@/lib/inbox/message-activity";
+import { ActivityTrigger } from "@/components/inbox/message-activity-panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError } from "@/components/contacts/ui";
 import type { Database, ConversationStatus } from "@/lib/types/database";
@@ -91,7 +95,19 @@ function shouldShowDateSeparator(
   return currentDate !== previousDate;
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  activity,
+  showMarker = false,
+  runsHref = null,
+}: {
+  message: Message;
+  /** Lo que hizo el agente con este mensaje (A1), si hay corrida. */
+  activity?: MessageActivity;
+  /** Dibuja la linea "Agente: ..." bajo el mensaje (solo el ultimo del contacto de cada rafaga). */
+  showMarker?: boolean;
+  runsHref?: string | null;
+}) {
   const isInbound = message.direction === "inbound";
   const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
@@ -151,6 +167,11 @@ function MessageBubble({ message }: { message: Message }) {
           {!isInbound && message.status === "delivered" && <span>Entregado</span>}
         </div>
         {isInbound && message.origin_chip && <OriginChip chip={message.origin_chip} />}
+        {isInbound && showMarker && activity && (
+          <div className="mt-0.5">
+            <ActivityTrigger activity={activity} variant="marker" runsHref={runsHref} />
+          </div>
+        )}
       </div>
 
       {!isInbound && !isBot && (
@@ -159,8 +180,14 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
       )}
       {!isInbound && isBot && (
-        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-          <Bot className="h-3.5 w-3.5 text-primary" />
+        <div className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+          {activity && message.sent_by_agent_id ? (
+            <ActivityTrigger activity={activity} variant="bot" runsHref={runsHref}>
+              <Bot className="h-3.5 w-3.5 text-primary" />
+            </ActivityTrigger>
+          ) : (
+            <Bot className="h-3.5 w-3.5 text-primary" />
+          )}
         </div>
       )}
     </div>
@@ -221,6 +248,7 @@ export function MessageThread({
   assets = [],
   canManageAssets = false,
   canCreateTask = false,
+  canViewAgentRuns = false,
   canReply = true,
   workspaceName = "",
   agentInfo = null,
@@ -237,6 +265,8 @@ export function MessageThread({
   canManageAssets?: boolean;
   /** Puede crear tareas (`tasks.edit`): muestra «Crear tarea» en el encabezado. */
   canCreateTask?: boolean;
+  /** Puede ver las corridas del agente (`agents.view`): el panel de actividad ofrece abrir la corrida. */
+  canViewAgentRuns?: boolean;
   /** `inbox.<canal>.reply`: sin esto la conversacion se ve pero no se escribe (Equipo y roles, F20). */
   canReply?: boolean;
   workspaceName?: string;
@@ -277,6 +307,51 @@ export function MessageThread({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // "Sugerir respuesta" (A1): hay un borrador vivo (lo informa PendingDraft) y se esta esperando uno.
+  const [hasLiveDraft, setHasLiveDraft] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onLiveDraftChange = useCallback((live: boolean) => {
+    setHasLiveDraft(live);
+    if (live) {
+      setSuggesting(false);
+      if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    }
+  }, []);
+  useEffect(() => () => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+  }, []);
+  // Lo que hizo el agente con cada mensaje (A1.2). Se pide al abrir la conversacion y cuando entra o sale un
+  // mensaje; un fallo deja la bandeja igual, solo sin indicadores.
+  const activityConversationId = conversation?.id ?? null;
+  const [activityData, setActivityData] = useState<{ conversationId: string; data: ConversationActivityData } | null>(null);
+  useEffect(() => {
+    if (!activityConversationId) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      loadConversationActivity(activityConversationId)
+        .then((data) => {
+          if (alive) setActivityData({ conversationId: activityConversationId, data });
+        })
+        .catch((err) => console.error("[inbox] no pude leer la actividad del agente:", err instanceof Error ? err.message : "error"));
+    }, 600);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [activityConversationId, messages.length]);
+  const activityMap = useMemo(() => {
+    if (!activityData || activityData.conversationId !== activityConversationId) return new Map<string, MessageActivity>();
+    return buildActivity({
+      messages: messages.map((m) => ({ id: m.id, direction: m.direction, created_at: m.created_at, agent_run_id: m.agent_run_id })),
+      ...activityData.data,
+    });
+  }, [activityData, activityConversationId, messages]);
+  // El indicador va bajo el mensaje del contacto al que se ancla cada corrida (el ultimo de su rafaga).
+  const markerMessageIds = useMemo(
+    () => new Set(messages.filter((m) => m.direction === "inbound" && activityMap.has(m.id)).map((m) => m.id)),
+    [messages, activityMap],
+  );
   // "Crear tarea" se abre desde el menu "⋯" de la cabecera y su panel se ancla a ese boton.
   const [taskOpen, setTaskOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -297,6 +372,35 @@ export function MessageThread({
    * cuenta su uso. Se olvida si el composer queda vacio.
    */
   const insertedAssetIdRef = useRef<string | null>(null);
+
+  /** Una sugerencia descartada que se recupera: el texto vuelve al campo de escritura (editable, no se envia). */
+  const recoverSuggestion = useCallback((body: string) => {
+    setInput(body);
+    insertedAssetIdRef.current = null;
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      // El texto recuperado suele tener varias lineas: se vuelve a medir el campo.
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+    });
+  }, []);
+
+  async function requestSuggest() {
+    if (!conversation || suggesting) return;
+    setMediaError(null);
+    setSuggesting(true);
+    const result = await requestSuggestionAction(conversation.id);
+    if (!result.ok) {
+      setSuggesting(false);
+      setMediaError(result.error);
+      return;
+    }
+    // Si en un minuto y medio no aparecio nada (el agente decidio no responder), se libera el boton.
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    suggestTimer.current = setTimeout(() => setSuggesting(false), 90_000);
+  }
 
   // Dias sin respuesta del lead. Sale de contacts.last_interaction_at y no del
   // ultimo mensaje del hilo: es el dato que marcan los dos receptores al
@@ -730,7 +834,12 @@ export function MessageThread({
     );
   }
 
-  const composerPlan = planComposerActions({ hasAttachment: !!attachedFile, hasText: !!input.trim(), canSuggest: false });
+  const composerPlan = planComposerActions({
+    hasAttachment: !!attachedFile,
+    hasText: !!input.trim(),
+    // Solo si hay un agente prendido para este canal y no hay ya un borrador esperando.
+    canSuggest: !!agentInfo?.available && !hasLiveDraft,
+  });
   const headerPlan = planHeaderActions({
     status: conversation.status,
     canCreateTask,
@@ -890,7 +999,12 @@ export function MessageThread({
                   <div className="h-px flex-1 bg-border" />
                 </div>
               )}
-              <MessageBubble message={message} />
+              <MessageBubble
+                message={message}
+                activity={activityMap.get(message.id)}
+                showMarker={markerMessageIds.has(message.id)}
+                runsHref={canViewAgentRuns ? "/dashboard/agents/runs" : null}
+              />
             </div>
           ))}
           <div ref={messagesEndRef} />
@@ -908,7 +1022,12 @@ export function MessageThread({
       ) : (
       <>
       {/* Bloque 2c: el borrador del agente, arriba del campo de escritura. */}
-      <PendingDraft key={conversation.id} conversationId={conversation.id} />
+      <PendingDraft
+        key={conversation.id}
+        conversationId={conversation.id}
+        onRecover={recoverSuggestion}
+        onLiveChange={onLiveDraftChange}
+      />
 
       {/* Composer */}
       <div className="border-t border-border p-3 md:p-4">
@@ -1033,8 +1152,21 @@ export function MessageThread({
                   showSuggest={composerPlan.showSuggest}
                   onLibrary={() => (widget.view === "closed" ? openWidget(false) : closeWidget(false))}
                   onAttach={() => fileInputRef.current?.click()}
-                  onSuggest={() => {}}
+                  onSuggest={() => void requestSuggest()}
+                  suggesting={suggesting}
                 />
+              )}
+              {composerPlan.showSuggest && (
+                <button
+                  type="button"
+                  onClick={() => void requestSuggest()}
+                  disabled={suggesting}
+                  aria-label={suggesting ? "Preparando una sugerencia" : "Sugerir respuesta"}
+                  title={suggesting ? "Preparando una sugerencia…" : "Sugerir respuesta con el agente"}
+                  className="hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-60 sm:flex"
+                >
+                  {suggesting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+                </button>
               )}
               {composerPlan.showLibrary && (
                 <button

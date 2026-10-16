@@ -216,6 +216,7 @@ export default async function InboxPage({
   const canManageAssets = permissionCtx.can("templates.manage");
   // Crear una tarea sobre la conversacion (Tareas, F20): con `tasks.edit`.
   const canCreateTask = permissionCtx.can("tasks.edit");
+  const canViewAgentRuns = permissionCtx.can("agents.view");
 
   let conversations = toRows(conversationsRes.data);
 
@@ -302,6 +303,7 @@ export default async function InboxPage({
       assets={assets}
       canManageAssets={canManageAssets}
       canCreateTask={canCreateTask}
+      canViewAgentRuns={canViewAgentRuns}
       replyPlatforms={[...new Set<string>([...allPlatforms, ...INBOX_CHANNELS])].filter((p) => canReplyOn(access.can, p))}
       filters={filters}
       dateRange={range}

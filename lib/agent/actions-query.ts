@@ -3,6 +3,7 @@ import type { AuditAction, Database, Json } from "@/lib/types/database";
 import { DATE_PRESETS, resolveDateRange, type DatePreset } from "@/lib/dates";
 import { firstParam, pickEnum, pickPage, type SearchParams } from "@/lib/url-params";
 import { REVERTIBLE_ACTIONS } from "./revert";
+import { AGENT_ACTION_LABELS } from "./action-labels";
 import type { ActionFilters, ActionRow } from "./screen";
 
 /**
@@ -20,19 +21,7 @@ type Db = SupabaseClient<Database>;
 export const ACTIONS_PAGE_SIZE = 25;
 
 /** Las acciones que el agente ejecuta, con su etiqueta para el filtro. */
-export const AGENT_ACTION_LABELS: Record<string, string> = {
-  tag: "Etiquetó",
-  temperature: "Cambió la temperatura",
-  followup: "Programó el seguimiento",
-  assign: "Asignó la conversación",
-  human_takeover: "Derivó a una persona",
-  agent_paused: "Se pausó",
-  summary: "Guardó el resumen",
-  whatsapp_handoff: "Pasó el lead a WhatsApp",
-  update: "Se apagó por tope de gasto",
-  // Tareas (Extra A): lo que el agente deja pendiente para el equipo.
-  "task.created": "Creó una tarea",
-};
+export { AGENT_ACTION_LABELS };
 
 export const REVERTED_VALUES = ["si", "no"] as const;
 

@@ -118,6 +118,25 @@ export function extractBurst(
 }
 
 /**
+ * "Sugerir respuesta" (A1): a que se le sugiere una respuesta. Si hay mensajes
+ * sin responder, es la rafaga de siempre. Si no (alguien ya contesto, o el
+ * agente estaba apagado), es el ULTIMO grupo de mensajes del contacto: los
+ * entrantes seguidos, sin una salida de por medio, antes de la ultima salida.
+ * Vacio solo si el contacto nunca escribio. Pura.
+ */
+export function suggestBurst(messages: StoredMessage[]): StoredMessage[] {
+  const pending = extractBurst(messages);
+  if (pending.length > 0) return pending;
+  let end = messages.length - 1;
+  // Se salta lo que haya salido despues del ultimo entrante.
+  while (end >= 0 && messages[end].direction !== "inbound") end -= 1;
+  if (end < 0) return [];
+  let start = end;
+  while (start - 1 >= 0 && messages[start - 1].direction === "inbound") start -= 1;
+  return messages.slice(start, end + 1);
+}
+
+/**
  * El historial para el modelo.
  *
  * Usa el TEXTO EFECTIVO (F9): un mensaje sin texto propio entra con su

@@ -7,7 +7,8 @@ import { isAdminRole } from "@/lib/auth/roles";
 import { getMemberAction } from "@/lib/auth/guards";
 import { canReplyOn } from "@/lib/inbox/channel-access";
 import { approveDraft, discardDraft, regenerateDraft, type DraftActionResult } from "@/lib/agent/drafts/actions";
-import { draftOwner, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
+import { requestSuggestion } from "@/lib/agent/drafts/suggest";
+import { draftOwner, loadLastDiscardedDraft, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
 import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
 
 /**
@@ -129,4 +130,45 @@ export async function loadConversationDraft(conversationId: string): Promise<Dra
   const { supabase, user } = await session();
   if (!user) return null;
   return loadLiveDraft(supabase, conversationId);
+}
+
+/** La ultima sugerencia que una persona descarto en esta conversacion (A1), si todavia se puede recuperar. */
+export async function loadConversationDiscardedDraft(conversationId: string): Promise<DraftQueueRow | null> {
+  if (typeof conversationId !== "string" || !conversationId) return null;
+  const { supabase, user } = await session();
+  if (!user) return null;
+  return loadLastDiscardedDraft(supabase, conversationId);
+}
+
+/**
+ * "Sugerir respuesta" (A1): pide a mano que el agente redacte una respuesta. Deja un borrador, nunca envia.
+ * Pide poder responder por el canal de la conversacion (`inbox.<canal>.reply`); la RLS acota cuales conversaciones se ven.
+ */
+export async function requestSuggestionAction(conversationId: string): Promise<DraftActionResult> {
+  if (typeof conversationId !== "string" || !conversationId) {
+    return { ok: false, code: "not_found", error: "No encontré esa conversación." };
+  }
+  const { supabase, user } = await session();
+  if (!user) return SESSION_EXPIRED;
+  const access = await getMemberAction();
+  if (!access) return NO_REPLY;
+  const { data } = await supabase
+    .from("conversations")
+    .select("id, workspace_id, channel_id, contact_id, deleted_at, channels(platform)")
+    .eq("id", conversationId)
+    .maybeSingle();
+  const conversation = data as unknown as {
+    id: string;
+    workspace_id: string;
+    channel_id: string;
+    contact_id: string;
+    deleted_at: string | null;
+    channels?: { platform?: string } | null;
+  } | null;
+  if (!conversation || conversation.deleted_at) return { ok: false, code: "not_found", error: "No encontré esa conversación." };
+  if (!canReplyOn(access.can, conversation.channels?.platform ?? null)) return NO_REPLY;
+  const service = await createServiceClient();
+  const result = await requestSuggestion({ service, conversation });
+  revalidate();
+  return result;
 }

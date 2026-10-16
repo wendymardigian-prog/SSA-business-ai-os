@@ -52,6 +52,14 @@ export interface AgentBurstPayload {
    * ventana de silencio antes de la primera mirada).
    */
   media_wait_started_at?: string | null;
+  /**
+   * "Sugerir respuesta" (A1): una persona pidio una sugerencia a mano. El turno
+   * siempre deja un BORRADOR (nunca envia), no espera la ventana de silencio,
+   * no se retira porque alguien ya haya respondido y no mira las palancas de la
+   * conversacion (la persona lo pidio ahora). VOLATIL: si el lead escribe
+   * mientras tanto, el turno vuelve a ser el normal.
+   */
+  suggest?: boolean;
 }
 
 /**
@@ -69,7 +77,7 @@ export interface AgentBurstPayload {
  * esta `processing` cuando rescheduleForMedia inserta el siguiente, asi que
  * ahi el valor se arrastra entero.
  */
-export const AGENT_BURST_VOLATILE_KEYS = ["regenerate_instruction", "media_wait_started_at"] as const;
+export const AGENT_BURST_VOLATILE_KEYS = ["regenerate_instruction", "media_wait_started_at", "suggest"] as const;
 
 /**
  * Cuando tiene que correr el turno del agente para una ventana de silencio.
