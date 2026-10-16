@@ -315,7 +315,7 @@ La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e
 
 Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`.
 
-**Extra I (15/10/2026).** `00224` a `00232` estan **aplicadas y registradas** (metodos de pago, gastos y finanzas, atribucion organica y comisiones); `00233`, `00234` y `00235` estan escritas y ensayadas pero **se aplican DESPUES del merge** (ver las cuatro secciones del Extra I mas abajo). **La proxima libre es la `00236`.**
+**Extra I (15/10/2026).** `00224` a `00232` estan **aplicadas y registradas** (metodos de pago, gastos y finanzas, atribucion organica y comisiones); `00233`, `00234` y `00235` se aplicaron el **15/10/2026, despues del merge** y estan **aplicadas y registradas** (versiones `20261015232110`, `20261015232347` y `20261015232649`; ver las cuatro secciones del Extra I mas abajo). **La proxima libre es la `00236`.**
 
 **Permisos de tablas en un proyecto nuevo (15/10/2026).** Desde el 30/5/2026 Supabase no le da acceso automatico a las tablas nuevas de `public` a `anon`, `authenticated` y `service_role` (el 30/10/2026 el cambio llega a los proyectos existentes, solo para objetos nuevos). Las migraciones viejas se escribieron con el comportamiento anterior (casi sin `GRANT`, con ~230 `REVOKE ALL`), asi que la **`00000_default_privileges`** restaura el acceso por defecto ANTES de crear ninguna tabla y deja los permisos como en produccion. Es la primera migracion; en una base que ya existe se marca con `supabase migration repair --status applied 00000`. **Desde la `00224`, cada migracion que crea una tabla declara sus `GRANT`** (a `service_role` siempre, y a `authenticated`/`anon` lo que corresponda): `lib/migrations-grants.test.ts` lo exige. Ese test tambien prohibe un tipo de extension sin esquema (`vector(N)` en vez de `extensions.vector(N)`): la CLI (`db push`) no tiene `extensions` en su `search_path` y el panel si; asi fallo la `00083` en el primer cliente de prueba. El `/setup` comprueba el acceso de la app a las tablas justo despues de aplicar las migraciones.
 
@@ -1332,7 +1332,7 @@ Gastos, proveedores, gastos que se repiten, gastos automáticos (comisiones de p
 
 ## Migraciones
 
-`00225` a `00229` aplicadas y registradas. `00233` (el cron): **escrita y ensayada, sin aplicar**.
+`00225` a `00229` aplicadas y registradas. `00233` (el cron `finance-daily`, `7 * * * *`): **aplicada y registrada** el 15/10/2026, despues del merge.
 
 # Atribución orgánica (Extra I, bloques AO1 a AO3, 15/10/2026)
 
@@ -1351,7 +1351,7 @@ Qué contenido trajo a cada persona y por qué canal, con links que se miden. Re
 
 ## Migraciones
 
-`00230` aplicada y registrada. `00234` (el trigger del vínculo de comentarios): **escrita y ensayada, sin aplicar**.
+`00230` aplicada y registrada. `00234` (el trigger del vínculo de comentarios y el barrido inicial): **aplicada y registrada** el 15/10/2026, despues del merge.
 
 # Comisiones (Extra I, bloques CM1 a CM3, 15/10/2026)
 
@@ -1369,9 +1369,9 @@ Roles, reglas, comisiones por cada pago cobrado y su liquidación en gastos. Res
 
 ## Migraciones
 
-`00231` y `00232` aplicadas y registradas (la 00231 se corrigió el mismo día; el SQL registrado es el corregido). `00235` (el trigger de `payments` que encola las comisiones): **escrita y ensayada, sin aplicar**.
+`00231` y `00232` aplicadas y registradas (la 00231 se corrigió el mismo día; el SQL registrado es el corregido). `00235` (el trigger de `payments` que encola las comisiones): **aplicada y registrada** el 15/10/2026, despues del merge.
 
-## Después del merge (lo aplica Wendy, en este orden)
+## Después del merge (ya hecho el 15/10/2026)
 
 `00233` (cron de Finanzas), `00234` (trigger del vínculo de comentarios) y `00235` (trigger de comisiones); después `verify-expenses --despues-de-00233`, `verify-organic-attribution --despues-de-00234`, `verify-commissions --despues-de-00235` y `verify-contacts-single-entry`. **La próxima migración disponible es la `00236`** (confirmar con `list_migrations`).
 

@@ -6,7 +6,9 @@ Formato de cada entrada: **qué quedó**, **por qué**, **qué se decidió**. Av
 
 ## Para después del merge
 
-### 00233, 00234 y 00235 (se escriben y se ensayan, NO se aplican en la corrida)
+### 00233, 00234 y 00235 — APLICADAS el 15/10/2026, después del merge
+
+**Estado:** aplicadas y registradas (`20261015232110`, `20261015232347`, `20261015232649`). Verificadas una por una: `verify-expenses --despues-de-00233`, `verify-organic-attribution --despues-de-00234`, `verify-contacts-single-entry`, `verify-commissions --despues-de-00235` y `verify-sales`, todas en 0 (punto de partida de `verify-contacts-single-entry` y `verify-sales` también en 0). `finance-daily` corre en `7 * * * *`. Barrido de comentarios: 632 trabajos `comment_backfill` y 4 `comment_backfill_workspace` completados, 0 pendientes y 0 fallidos. El texto que sigue es el plan original, que se conserva por el «cómo se vuelve atrás».
 
 - **Qué quedó:** tres migraciones que encolan trabajos en producción.
   - `00233` — programa la tarea de `pg_cron` `finance-daily` (cada hora, minuto 7).
