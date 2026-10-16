@@ -60,7 +60,7 @@ export function IntegrationCard({
   const missingAuthorization = provider.connection === "oauth_app" && connected && !data.oauth;
 
   return (
-    <div className="flex flex-col rounded-xl border border-border bg-card p-4">
+    <div className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold">{provider.label}</h3>
         <StatusBadge status={data.status} />
@@ -148,12 +148,15 @@ export function IntegrationCard({
         </div>
       )}
 
-      <Link
-        href={detailHref}
-        className="mt-4 flex h-9 w-full items-center justify-center rounded-lg border border-border text-sm font-medium hover:bg-accent"
-      >
-        {connected ? "Configurar" : "Conectar"}
-      </Link>
+      {/* El boton siempre abajo: las tarjetas de una fila miden lo mismo aunque una tenga menos texto. */}
+      <div className="mt-auto pt-4">
+        <Link
+          href={detailHref}
+          className="flex h-9 w-full items-center justify-center rounded-lg border border-border text-sm font-medium hover:bg-accent"
+        >
+          {connected ? "Configurar" : "Conectar"}
+        </Link>
+      </div>
     </div>
   );
 }

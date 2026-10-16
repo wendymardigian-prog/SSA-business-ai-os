@@ -4,8 +4,6 @@ import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
-import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
-import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import {
   providersBySection,
   CHIP_ORDER,
@@ -13,10 +11,8 @@ import {
   type IntegrationChip,
 } from "@/lib/integrations/providers";
 import { filterSections, countByChip } from "@/lib/integrations/grid-filter";
-import { missingEssentials } from "@/lib/integrations/onboarding";
 import { IntegrationCard } from "./integration-card";
 import { CHANNEL_PROVIDER_IDS, type IntegrationSections } from "@/lib/integrations/sections";
-import { OnboardingBanner } from "./onboarding-banner";
 import type { IntegrationCardData } from "./types";
 
 /**
@@ -32,12 +28,20 @@ const CHIP_COUNTS = countByChip(ALL_SECTIONS);
 
 export function IntegrationsGrid({
   integrations,
+  fathom,
+  fathomNeedsAttention = false,
   extra,
   mine,
   access,
 }: {
   integrations: Record<string, IntegrationCardData>;
-  /** Cards propias que no pasan por el catalogo (Fathom): se muestran sin filtros activos. */
+  /**
+   * La card de Fathom (la app OAuth del negocio): no esta en el catalogo, pero se muestra en "Conexiones" junto a las
+   * demas, con el mismo diseno. Respeta los chips (sin chip) y "Requiere atencion" (solo si necesita atencion).
+   */
+  fathom?: React.ReactNode;
+  fathomNeedsAttention?: boolean;
+  /** Cards propias que no pasan por el catalogo (Webhooks): se muestran sin filtros activos. */
   extra?: React.ReactNode;
   /** «Mis conexiones»: el Google Calendar y el Fathom de la propia persona. Lo ve todo el equipo. */
   mine?: React.ReactNode;
@@ -86,10 +90,9 @@ export function IntegrationsGrid({
   );
   const hasShared = access.channels !== null || access.business !== null;
 
-  const missing = useMemo(
-    () => missingEssentials((id) => integrations[id]?.status),
-    [integrations],
-  );
+  // Fathom no tiene chip: aparece con "Todos" y, con "Requiere atencion", solo si la necesita.
+  const showFathom = Boolean(fathom) && chip === null && (!onlyAttention || fathomNeedsAttention);
+  const nothingConnectedYet = !Object.values(integrations).some((data) => data.status !== "not_connected");
 
   function detailHrefFor(providerId: string): string {
     const params = new URLSearchParams();
@@ -122,8 +125,6 @@ export function IntegrationsGrid({
         }
       />
       <SettingsTabs />
-
-      {hasShared && access.business === "edit" && <OnboardingBanner missing={missing} />}
 
       {hasShared && (
         <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 md:px-6">
@@ -176,26 +177,31 @@ export function IntegrationsGrid({
                 <h2 id="negocio" className="text-sm font-semibold">Integraciones del negocio</h2>
                 {access.business === "view" && <ReadOnlyBadge />}
               </div>
-              {businessSections.length === 0 ? (
-                onlyAttention ? (
-                  <p className="mt-3 rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
-                    Todo en orden: ninguna integración necesita que hagas nada.
-                  </p>
-                ) : (
-                  <div className="mt-3"><SettingsEmptyState description={SETTINGS_EMPTY_STATES.integrations} /></div>
-                )
+              {businessSections.length === 0 && !showFathom ? (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {onlyAttention ? "Todo en orden: ninguna integración necesita que hagas nada." : "No hay integraciones de este tipo."}
+                </p>
               ) : (
                 <div className="mt-3 space-y-8">
-                  {businessSections.map((section) => (
+                  {/* Sin nada conectado no se arma una tarjeta grande ni se recomienda nada: una linea y las tarjetas. */}
+                  {nothingConnectedYet && !onlyAttention && chip === null && (
+                    <p className="text-xs text-muted-foreground">Todavía no conectaste nada.</p>
+                  )}
+                  {businessSections.map((section, index) => (
                     <div key={section.section}>
                       <h3 className="text-xs font-semibold text-muted-foreground">{section.label}</h3>
                       <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                         {section.providers.map((provider) => (
                           <IntegrationCard key={provider.id} provider={provider} data={integrations[provider.id]} detailHref={detailHrefFor(provider.id)} />
                         ))}
+                        {/* Fathom va con las demas conexiones, en la primera seccion (Conexiones). */}
+                        {index === 0 && showFathom && fathom}
                       </div>
                     </div>
                   ))}
+                  {businessSections.length === 0 && showFathom && (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{fathom}</div>
+                  )}
                   {extra && chip === null && !onlyAttention && <div aria-label="Otras conexiones">{extra}</div>}
                 </div>
               )}

@@ -27,9 +27,15 @@ export function MiFathomCard({
   view,
   connectionId,
   flash,
+  embedded = false,
 }: {
   view: FathomCardView;
   connectionId: string | null;
+  /**
+   * Dentro de otra pantalla (Integraciones > Mis conexiones): sin el envoltorio de pagina (ancho maximo, centrado y
+   * margenes), para alinearse con las demas tarjetas. Como pagina propia (Llamadas > Mi Fathom) queda como siempre.
+   */
+  embedded?: boolean;
   /** Lo que dejo el retorno de Fathom: `?connected=1` o `?error=...`. */
   flash: { kind: "connected" } | { kind: "error"; message: string } | null;
 }) {
@@ -66,7 +72,7 @@ export function MiFathomCard({
   const iconTone = view.state === "connected" ? "text-emerald-600 dark:text-emerald-400" : view.state === "error" ? "text-red-600 dark:text-red-400" : view.state === "not_closer" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
 
   return (
-    <div className="mx-auto w-full max-w-xl p-4 md:p-6">
+    <div className={embedded ? "w-full" : "mx-auto w-full max-w-xl p-4 md:p-6"}>
       {flash?.kind === "connected" && (
         <p role="status" className="mb-4 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
           Listo, conectaste tu Fathom. Las llamadas nuevas entran en unos minutos.

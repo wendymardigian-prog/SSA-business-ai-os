@@ -148,10 +148,13 @@ export function SocialView({
 
   return (
     <div className="flex h-full flex-col">
+      {/* Red y Formato van como FILTROS: debajo de 860 px bajan a una segunda franja que se desplaza de costado, en vez de
+          apretarse en la barra de arriba junto al titulo y cortarse. A la derecha quedan Analiticas y Actualizar, solo con
+          icono en pantallas chicas. */}
       <PageHeader
         route="/dashboard/social"
-        right={
-          <div className="flex items-center gap-2">
+        filters={
+          <div className="flex shrink-0 items-center gap-2">
             <select
               aria-label="Red"
               value={selectionValue(multiAccount && activeAccount ? { platform, accountId: activeAccount.id } : { platform, accountId: null })}
@@ -162,7 +165,7 @@ export function SocialView({
                 // El aviso era de la red anterior.
                 setNotice(null);
               }}
-              className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+              className="h-9 shrink-0 rounded-md border border-input bg-background px-2 text-sm sm:h-auto sm:py-1"
             >
               {networkTabs(platforms).map((tab) => {
                 const own = accountsOf(accounts, tab.platform);
@@ -193,7 +196,7 @@ export function SocialView({
                 aria-label="Formato"
                 value={format ?? "all"}
                 onChange={(e) => setFormat(e.target.value === "all" ? null : e.target.value)}
-                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                className="h-9 shrink-0 rounded-md border border-input bg-background px-2 text-sm sm:h-auto sm:py-1"
               >
                 <option value="all">Todos los formatos</option>
                 {formatFilters(platform).map((f) => (
@@ -204,13 +207,19 @@ export function SocialView({
               </select>
             )}
 
+          </div>
+        }
+        right={
+          <div className="flex items-center gap-2">
             {connected && (
               <Link
                 href={`/dashboard/dashboards/content?red=${platform}`}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs"
+                aria-label="Analíticas"
+                title="Analíticas"
+                className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border px-2 text-xs sm:h-8 sm:px-2.5"
               >
                 <BarChart3 className="h-3.5 w-3.5" aria-hidden />
-                Analiticas
+                <span className="hidden sm:inline">Analíticas</span>
               </Link>
             )}
 
@@ -224,14 +233,16 @@ export function SocialView({
                     setNotice(result.ok ? "Se esta actualizando. Recarga en un minuto." : result.error);
                   })
                 }
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs disabled:opacity-60"
+                aria-label="Actualizar"
+                title="Actualizar métricas"
+                className="inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg border border-border px-2 text-xs disabled:opacity-60 sm:h-8 sm:px-2.5"
               >
                 {pending ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 ) : (
                   <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                 )}
-                Actualizar
+                <span className="hidden sm:inline">Actualizar</span>
               </button>
             )}
           </div>
