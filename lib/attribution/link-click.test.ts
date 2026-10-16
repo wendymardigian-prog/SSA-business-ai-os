@@ -9,7 +9,7 @@ const P = "44444444-4444-4444-8444-444444444444";
 const S = "55555555-5555-4555-8555-555555555555";
 const SECRET = "secreto-de-prueba";
 const NOW = Date.parse("2026-10-10T15:00:00Z");
-const DEST = "https://wendy.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f";
+const DEST = "https://example.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f";
 const APP = "https://app.example.test";
 const BROWSER = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1";
 

@@ -15,7 +15,7 @@ const C = "22222222-2222-4222-8222-222222222222";
 const F = "33333333-3333-4333-8333-333333333333";
 const P = "44444444-4444-4444-8444-444444444444";
 const S = "55555555-5555-4555-8555-555555555555";
-const DEST = "https://wendy.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f";
+const DEST = "https://example.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f";
 const NOW = Date.UTC(2026, 9, 15);
 const DAY = 86_400_000;
 
@@ -173,12 +173,12 @@ describe("safeRedirectTarget", () => {
   const FALLBACK = "https://app.example.com";
 
   it("deja pasar http y https", () => {
-    expect(safeRedirectTarget("https://wendy.com/programa?x=1#y", FALLBACK)).toBe("https://wendy.com/programa?x=1#y");
-    expect(safeRedirectTarget("http://wendy.com/", FALLBACK)).toBe("http://wendy.com/");
+    expect(safeRedirectTarget("https://example.com/programa?x=1#y", FALLBACK)).toBe("https://example.com/programa?x=1#y");
+    expect(safeRedirectTarget("http://example.com/", FALLBACK)).toBe("http://example.com/");
   });
 
   it("cualquier otra cosa va al fallback", () => {
-    for (const bad of ["javascript:alert(1)", "data:text/html,hola", "file:///etc/passwd", "mailto:a@b.com", "//evil.com", "/ruta", "", "   ", null, undefined, 5, "no es url", "https://", "https://wendy.com/\nSet-Cookie: x=1", "https://user:pass@evil.com/"]) {
+    for (const bad of ["javascript:alert(1)", "data:text/html,hola", "file:///etc/passwd", "mailto:a@b.com", "//evil.com", "/ruta", "", "   ", null, undefined, 5, "no es url", "https://", "https://example.com/\nSet-Cookie: x=1", "https://user:pass@evil.com/"]) {
       expect(safeRedirectTarget(bad, FALLBACK), String(bad)).toBe(FALLBACK);
     }
   });

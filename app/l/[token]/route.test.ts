@@ -7,7 +7,7 @@ const C = "22222222-2222-4222-8222-222222222222";
 const F = "33333333-3333-4333-8333-333333333333";
 const P = "44444444-4444-4444-8444-444444444444";
 const SECRET = "secreto-de-prueba";
-const DEST = "https://wendy.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f";
+const DEST = "https://example.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f";
 const BROWSER = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1";
 
 let db: MemoryDb;
