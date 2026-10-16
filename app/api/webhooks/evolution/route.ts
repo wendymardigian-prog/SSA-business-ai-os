@@ -34,6 +34,7 @@ import { getEvolutionConfig } from "@/lib/evolution-config";
 import { fetchProfilePictureUrl } from "@/lib/evolution-client";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { jidToPhone } from "@/lib/phone";
+import { handleWhatsappReaction, parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import {
   describeAttachment,
   extractText,
@@ -151,6 +152,18 @@ async function handleWebhook(request: NextRequest) {
   // asi que no hay un lead a quien atribuirle el mensaje.
   if (!phone) {
     return NextResponse.json({ ok: true, skipped: "sin telefono utilizable" });
+  }
+
+  // Una reaccion NO es un mensaje (A3): se guarda aparte y el camino termina aca. Si siguiera, entraria como un
+  // entrante vacio, sumaria un no leido y le daria turno al flow o al agente por algo que nadie dijo.
+  const reaction = parseBaileysReaction(payload.data?.message);
+  if (reaction) {
+    const outcome = await handleWhatsappReaction(supabase, channel, {
+      phone,
+      reaction,
+      fromMe: payload.data?.key?.fromMe === true,
+    });
+    return NextResponse.json({ ok: true, handled: "reaction", outcome });
   }
 
   const messageId = payload.data?.key?.id ?? null;

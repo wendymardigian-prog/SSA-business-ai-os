@@ -2208,6 +2208,35 @@ export interface Database {
           },
         ];
       };
+      /** Reacciones (emoji) a mensajes (migracion 00237). Solo las escribe el servidor; no son mensajes. */
+      message_reactions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          conversation_id: string;
+          /** null si el mensaje no esta guardado en `messages` (el hilo de Instagram se lee en vivo de Zernio). */
+          message_id: string | null;
+          platform_message_id: string;
+          emoji: string;
+          direction: "in" | "out";
+          actor_key: "business" | "contact";
+          reacted_by_user_id: string | null;
+          created_at: string;
+          updated_at: string;
+          removed_at: string | null;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_conversation_id_fkey";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       broadcasts: {
         Row: {
           id: string;

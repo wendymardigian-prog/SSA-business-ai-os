@@ -401,6 +401,34 @@ export async function sendText(
   return { id: raw?.key?.id ?? raw?.messageId ?? null };
 }
 
+/**
+ * Reacciona a un mensaje de WhatsApp con un emoji (A3). Un `reaction` vacio
+ * QUITA la reaccion que habia.
+ *
+ * `messageId` es el id del mensaje en WhatsApp (el `key.id` que Evolution nos
+ * dio en el webhook) y `fromMe` dice de quien es: false cuando se reacciona a
+ * un mensaje del contacto. `remoteJid` se arma con el telefono del contacto.
+ *
+ * Como `sendText`, tiene dos formas segun la version de Evolution: la v2 recibe
+ * `{ key, reaction }` y la v1, `{ reactionMessage: { key, reaction } }`.
+ */
+export async function sendReaction(
+  config: EvolutionConfig,
+  instanceName: string,
+  args: { to: string; messageId: string; fromMe: boolean; reaction: string },
+): Promise<void> {
+  const number = toEvolutionNumber(args.to);
+  if (!number) {
+    throw new EvolutionError(`Numero de WhatsApp invalido: "${args.to}"`);
+  }
+  const key = { remoteJid: `${number}@s.whatsapp.net`, fromMe: args.fromMe, id: args.messageId };
+
+  const major = await getMajorVersion(config);
+  const body = major === 2 ? { key, reaction: args.reaction } : { reactionMessage: { key, reaction: args.reaction } };
+
+  await request(config, "POST", `/message/sendReaction/${encodeURIComponent(instanceName)}`, body);
+}
+
 // ── Media ────────────────────────────────────────────────────────────────────
 
 /** Lo que devuelve Evolution cuando se le pide el archivo de un mensaje. */

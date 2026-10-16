@@ -134,62 +134,77 @@ export function EmojiButton({
               placement === "top" ? "sm:bottom-full sm:mb-2" : "sm:top-full sm:mt-2"
             } ${align === "end" ? "sm:right-0" : "sm:left-0"}`}
           >
-            <EmojiPicker.Root
-              locale="es"
-              emojibaseUrl="/emoji"
-              columns={8}
-              onEmojiSelect={({ emoji }) => onPick(emoji)}
-              className="isolate flex h-[min(24rem,70vh)] w-full flex-col"
-            >
-              <EmojiPicker.Search
-                autoFocus
-                aria-label="Buscar emoji"
-                placeholder="Buscar (corazón, risa, fuego…)"
-                className="m-2 h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-              />
-              <EmojiPicker.Viewport className="relative flex-1 outline-none">
-                <EmojiPicker.Loading className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-                  Cargando…
-                </EmojiPicker.Loading>
-                <EmojiPicker.Empty className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
-                  No encontramos ese emoji.
-                </EmojiPicker.Empty>
-                <EmojiPicker.List
-                  className="select-none pb-2"
-                  components={{
-                    CategoryHeader: ({ category, ...props }) => (
-                      <div {...props} className="bg-popover px-3 pb-1 pt-3 text-xs font-medium text-muted-foreground">
-                        {category.label}
-                      </div>
-                    ),
-                    Row: ({ children, ...props }) => (
-                      <div {...props} className="scroll-my-1 px-2">
-                        {children}
-                      </div>
-                    ),
-                    Emoji: ({ emoji, ...props }) => (
-                      <button
-                        {...props}
-                        className="flex size-9 items-center justify-center rounded-md text-xl data-[active]:bg-accent"
-                      >
-                        {emoji.emoji}
-                      </button>
-                    ),
-                  }}
-                />
-              </EmojiPicker.Viewport>
-              <button
-                type="button"
-                onClick={close}
-                className="border-t border-border px-3 py-2 text-xs text-muted-foreground hover:bg-accent sm:hidden"
-              >
-                Listo
-              </button>
-            </EmojiPicker.Root>
+            <EmojiPickerPanel onPick={onPick} onDone={close} />
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * El selector en si (busqueda en espanol, categorias y lista), sin boton ni
+ * popover: lo usa `EmojiButton` y cualquier panel que ya tenga su propio
+ * contenedor (el menu de reacciones de la bandeja).
+ */
+export function EmojiPickerPanel({
+  onPick,
+  onDone,
+  className = "h-[min(24rem,70vh)]",
+}: {
+  onPick: (emoji: string) => void;
+  /** Muestra un boton "Listo" en pantallas chicas (la hoja inferior lo necesita para cerrarse). */
+  onDone?: () => void;
+  className?: string;
+}) {
+  return (
+    <EmojiPicker.Root
+      locale="es"
+      emojibaseUrl="/emoji"
+      columns={8}
+      onEmojiSelect={({ emoji }) => onPick(emoji)}
+      className={`isolate flex w-full flex-col ${className}`}
+    >
+      <EmojiPicker.Search
+        autoFocus
+        aria-label="Buscar emoji"
+        placeholder="Buscar (corazón, risa, fuego…)"
+        className="m-2 h-9 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+      />
+      <EmojiPicker.Viewport className="relative flex-1 outline-none">
+        <EmojiPicker.Loading className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+          Cargando…
+        </EmojiPicker.Loading>
+        <EmojiPicker.Empty className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+          No encontramos ese emoji.
+        </EmojiPicker.Empty>
+        <EmojiPicker.List
+          className="select-none pb-2"
+          components={{
+            CategoryHeader: ({ category, ...props }) => (
+              <div {...props} className="bg-popover px-3 pb-1 pt-3 text-xs font-medium text-muted-foreground">
+                {category.label}
+              </div>
+            ),
+            Row: ({ children, ...props }) => (
+              <div {...props} className="scroll-my-1 px-2">
+                {children}
+              </div>
+            ),
+            Emoji: ({ emoji, ...props }) => (
+              <button {...props} className="flex size-9 items-center justify-center rounded-md text-xl data-[active]:bg-accent">
+                {emoji.emoji}
+              </button>
+            ),
+          }}
+        />
+      </EmojiPicker.Viewport>
+      {onDone && (
+        <button type="button" onClick={onDone} className="border-t border-border px-3 py-2 text-xs text-muted-foreground hover:bg-accent sm:hidden">
+          Listo
+        </button>
+      )}
+    </EmojiPicker.Root>
   );
 }
 

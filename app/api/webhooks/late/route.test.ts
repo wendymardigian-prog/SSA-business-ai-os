@@ -766,3 +766,73 @@ describe("webhook de Zernio: la atribución del comentario (F86)", () => {
     expect(processComment).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("webhook de Zernio: reacciones (A3)", () => {
+  const reaction = (over: { action?: string; emoji?: string } = {}) => ({
+    id: "evt-r1",
+    event: "reaction.received",
+    account: { id: ACCOUNT, platform: "instagram", username: "minegocio" },
+    conversation: { id: "zconv-1" },
+    reaction: {
+      emoji: over.emoji ?? "❤️",
+      action: over.action ?? "added",
+      platformMessageId: "aWdfbmF0aXZv",
+      sender: { id: "sender-1" },
+    },
+  });
+
+  function withConversation() {
+    const memory = db();
+    memory.rows("conversations").push({ id: "conv-1", channel_id: "ch-1", late_conversation_id: "zconv-1", deleted_at: null });
+    memory.rows("messages").push({ id: "m-1", conversation_id: "conv-1", platform_message_id: "6ab5aaaaaaaaaaaaaaaaaaaa", platform_native_message_id: "aWdfbmF0aXZv" });
+    memory.rows("message_reactions");
+    return memory;
+  }
+
+  beforeEach(() => {
+    claimWebhookEvent.mockResolvedValue(true);
+  });
+
+  it("se guarda como reaccion y NO toca mensajes, contactos, flows ni al agente", async () => {
+    const memory = withConversation();
+    const res = await callRoute(post(reaction()));
+    await runAfter();
+
+    expect(res.status).toBe(200);
+    expect(memory.rows("message_reactions")).toHaveLength(1);
+    expect(memory.rows("message_reactions")[0]).toMatchObject({ conversation_id: "conv-1", message_id: "m-1", emoji: "❤️", actor_key: "contact" });
+    expect(persistInboundMessage).not.toHaveBeenCalled();
+    expect(upsertContactForSender).not.toHaveBeenCalled();
+    expect(upsertConversation).not.toHaveBeenCalled();
+    expect(runInboundAutomation).not.toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it("action removed la quita", async () => {
+    const memory = withConversation();
+    await callRoute(post(reaction()));
+    await runAfter();
+    await callRoute(post(reaction({ action: "removed" })));
+    await runAfter();
+    expect(memory.rows("message_reactions")).toHaveLength(1);
+    expect(memory.rows("message_reactions")[0].removed_at).not.toBeNull();
+  });
+
+  it("con la firma mala responde 401 y no guarda nada", async () => {
+    const memory = withConversation();
+    const res = await callRoute(post(reaction(), { signature: "mala" }));
+    await runAfter();
+    expect(res.status).toBe(401);
+    expect(memory.rows("message_reactions")).toHaveLength(0);
+  });
+
+  it("un aviso repetido no se procesa dos veces", async () => {
+    const memory = withConversation();
+    claimWebhookEvent.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await callRoute(post(reaction()));
+    const second = await callRoute(post(reaction({ emoji: "🔥" })));
+    await runAfter();
+    expect(await second.json()).toMatchObject({ skipped: "evento repetido" });
+    expect(memory.rows("message_reactions")[0].emoji).toBe("❤️");
+  });
+});

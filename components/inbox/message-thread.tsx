@@ -31,6 +31,10 @@ import { requestSuggestionAction } from "@/lib/actions/agent-drafts";
 import { loadConversationActivity, type ConversationActivityData } from "@/lib/actions/message-activity";
 import { buildActivity, type MessageActivity } from "@/lib/inbox/message-activity";
 import { ActivityTrigger } from "@/components/inbox/message-activity-panel";
+import { ReactButton, ReactionChips } from "@/components/inbox/message-reactions";
+import { loadConversationReactions, reactToMessage } from "@/lib/actions/reactions";
+import { canReactToMessage, reactionCapability as capabilityFor, type ReactionCapability } from "@/lib/channels/reactions";
+import { myReaction, reactionsForMessage, type MessageReactionView, type ReactionRow } from "@/lib/messages/reactions";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError } from "@/components/contacts/ui";
 import type { Database, ConversationStatus } from "@/lib/types/database";
@@ -100,8 +104,24 @@ function MessageBubble({
   activity,
   showMarker = false,
   runsHref = null,
+  reactions = [],
+  reactionCapability: reactionCap = null,
+  myReactionEmoji = null,
+  canReact = false,
+  reacting = false,
+  onReact,
 }: {
   message: Message;
+  /** Las reacciones de este mensaje (A3), ya agrupadas por emoji. */
+  reactions?: MessageReactionView[];
+  /** Lo que admite el canal; null = no se ofrece reaccionar. */
+  reactionCapability?: ReactionCapability | null;
+  myReactionEmoji?: string | null;
+  /** Se puede reaccionar a ESTE mensaje (canal, direccion, id del proveedor, permiso de responder). */
+  canReact?: boolean;
+  reacting?: boolean;
+  /** Emoji vacio = quitar la reaccion. */
+  onReact?: (emoji: string) => void;
   /** Lo que hizo el agente con este mensaje (A1), si hay corrida. */
   activity?: MessageActivity;
   /** Dibuja la linea "Agente: ..." bajo el mensaje (solo el ultimo del contacto de cada rafaga). */
@@ -115,7 +135,7 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "flex gap-2",
+        "group flex gap-2",
         isInbound ? "justify-start" : "justify-end"
       )}
     >
@@ -154,6 +174,7 @@ function MessageBubble({
           <MessageAttachments message={message} />
           {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
         </div>
+        <ReactionChips reactions={reactions} inbound={isInbound} busy={reacting} onRemoveMine={() => onReact?.("")} />
         <div
           className={cn(
             "mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground",
@@ -165,6 +186,9 @@ function MessageBubble({
           )}
           <span>{formatMessageTime(message.created_at)}</span>
           {!isInbound && message.status === "delivered" && <span>Entregado</span>}
+          {canReact && reactionCap && onReact && (
+            <ReactButton capability={reactionCap} mine={myReactionEmoji} busy={reacting} onReact={onReact} />
+          )}
         </div>
         {isInbound && message.origin_chip && <OriginChip chip={message.origin_chip} />}
         {isInbound && showMarker && activity && (
@@ -352,6 +376,46 @@ export function MessageThread({
     () => new Set(messages.filter((m) => m.direction === "inbound" && activityMap.has(m.id)).map((m) => m.id)),
     [messages, activityMap],
   );
+  // Reacciones (A3): las de la conversacion, al dia con Realtime, y el mensaje que se esta reaccionando.
+  const [reactions, setReactions] = useState<ReactionRow[]>([]);
+  const [reactingId, setReactingId] = useState<string | null>(null);
+  const reactionConversationId = conversation?.id ?? null;
+  const reloadReactions = useCallback(async () => {
+    if (!reactionConversationId) return;
+    try {
+      setReactions(await loadConversationReactions(reactionConversationId));
+    } catch (err) {
+      console.error("[inbox] no pude leer las reacciones:", err instanceof Error ? err.message : "error");
+    }
+  }, [reactionConversationId]);
+  useEffect(() => {
+    if (!reactionConversationId) return;
+    let cancelled = false;
+    const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    (async () => {
+      await reloadReactions();
+      if (cancelled) return;
+      channel = supabase
+        .channel(`conversation-reactions-${reactionConversationId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "message_reactions", filter: `conversation_id=eq.${reactionConversationId}` },
+          () => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => void reloadReactions(), 400);
+          },
+        )
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [reactionConversationId, reloadReactions]);
+  const reactionCap: ReactionCapability | null = channelProvider && capabilityFor(channelProvider).supported ? capabilityFor(channelProvider) : null;
   // "Crear tarea" se abre desde el menu "⋯" de la cabecera y su panel se ancla a ese boton.
   const [taskOpen, setTaskOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -386,6 +450,26 @@ export function MessageThread({
       el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
     });
   }, []);
+
+  async function handleReact(message: Message, emoji: string) {
+    if (!conversation || reactingId) return;
+    setMediaError(null);
+    setReactingId(message.id);
+    try {
+      const result = await reactToMessage({
+        conversationId: conversation.id,
+        // Los mensajes que vienen en vivo de Zernio no tienen fila propia: su id no es un uuid.
+        messageId: /^[0-9a-f-]{36}$/i.test(message.id) ? message.id : null,
+        platformMessageId: message.platform_message_id,
+        platformNativeMessageId: message.platform_native_message_id,
+        emoji,
+      });
+      if (!result.ok) setMediaError(result.error);
+      await reloadReactions();
+    } finally {
+      setReactingId(null);
+    }
+  }
 
   async function requestSuggest() {
     if (!conversation || suggesting) return;
@@ -1004,6 +1088,19 @@ export function MessageThread({
                 activity={activityMap.get(message.id)}
                 showMarker={markerMessageIds.has(message.id)}
                 runsHref={canViewAgentRuns ? "/dashboard/agents/runs" : null}
+                reactions={reactionsForMessage(reactions, message)}
+                reactionCapability={reactionCap}
+                myReactionEmoji={myReaction(reactions, message)}
+                canReact={
+                  canReply &&
+                  canReactToMessage({
+                    provider: channelProvider,
+                    direction: message.direction,
+                    platformMessageId: message.platform_message_id ?? message.platform_native_message_id,
+                  }).ok
+                }
+                reacting={reactingId === message.id}
+                onReact={(emoji) => void handleReact(message, emoji)}
               />
             </div>
           ))}
