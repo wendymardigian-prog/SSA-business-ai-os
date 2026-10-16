@@ -24,10 +24,15 @@ export const CATEGORY_NAME_MAX = 40;
 /** Colores de las áreas (la misma paleta que los eventos). */
 export const AREA_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0d9488"] as const;
 
-/** Las áreas y tipos que se precargan por workspace (00097). */
+/**
+ * Las áreas y tipos que se precargan por workspace (00097 y 00240). Las entrevistas de candidatos van en Equipo
+ * (es trabajo de armar el equipo). `lib/scheduling/categories-seed.test.ts` compara esta lista con la migración.
+ */
 export const SYSTEM_AREAS = [
   { name: "Ventas", color: "#2563eb", types: ["Triaje", "Cierre", "Seguimiento"] },
   { name: "Servicio", color: "#0d9488", types: ["Onboarding", "Uno a uno"] },
+  { name: "Equipo", color: "#7c3aed", types: ["Reunión interna", "Uno a uno", "Entrevista"] },
+  { name: "Otros", color: "#ca8a04", types: ["General"] },
 ] as const;
 
 /**
@@ -107,7 +112,7 @@ export function validateCategoryName(
 /** Puede archivarse: nunca un área de sistema (se renombra, no se borra). */
 export function canArchive(category: Pick<CategoryRow, "is_system" | "parent_id">): { ok: boolean; reason?: string } {
   if (category.is_system && category.parent_id === null) {
-    return { ok: false, reason: "Ventas y Servicio vienen creadas: se renombran pero no se archivan" };
+    return { ok: false, reason: "Ventas, Servicio, Equipo y Otros vienen creadas: se renombran pero no se archivan" };
   }
   return { ok: true };
 }

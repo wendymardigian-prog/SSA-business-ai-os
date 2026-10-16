@@ -10,7 +10,7 @@ import { archiveCategory, createCategory, renameCategory, reorderCategory } from
 
 /**
  * Configuracion de agenda > Categorias (F50): areas con sus tipos debajo.
- * Nada se borra: se archiva. Ventas y Servicio se renombran, no se archivan.
+ * Nada se borra: se archiva. Ventas, Servicio, Equipo y Otros se renombran, no se archivan.
  */
 export function CategoriesView({
   categories,
@@ -143,7 +143,7 @@ export function CategoriesView({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Ventas y Servicio vienen creadas: se renombran pero no se archivan. Nada se borra: un área o tipo se <strong>archiva</strong> y lo existente conserva su categoría.
+        Ventas, Servicio, Equipo y Otros vienen creadas: se renombran pero no se archivan. Nada se borra: un área o tipo se <strong>archiva</strong> y lo existente conserva su categoría.
       </p>
 
       {modal && (
