@@ -23,6 +23,7 @@ import {
   countAgentReplies,
   exchangeStart,
   extractBurst,
+  suggestBurst,
   lastHumanReplyAt,
   loadContactContext,
   loadRecentMessages,
@@ -157,11 +158,13 @@ export async function runAgentTurn(
   const previousDraft = payload.regenerate_of
     ? await loadPreviousDraft(supabase, payload.regenerate_of, conversation.id)
     : null;
+  // "Sugerir respuesta" (A1): lo pidio una persona ahora. Deja un borrador, nunca envia.
+  const suggest = payload.suggest === true && previousDraft === null;
 
   const runBase: OpenRunInput = {
     workspaceId: conversation.workspace_id,
     source: "agent",
-    trigger: previousDraft ? "manual" : "inbound_message",
+    trigger: previousDraft || suggest ? "manual" : "inbound_message",
     conversationId: conversation.id,
     contactId: conversation.contact_id,
     channelId: conversation.channel_id,
@@ -175,7 +178,16 @@ export async function runAgentTurn(
   // 1. Idempotencia: la rafaga sin responder. Los entrantes mas viejos que
   // burst_max_age_hours no se responden (siguen en el contexto).
   const burstOf = (msgs: StoredMessage[]) =>
-    previousDraft?.burst_started_at
+    suggest
+      ? // Lo sin responder (con el corte por antiguedad) o, si no hay, el ultimo grupo del contacto.
+        (() => {
+          const pending = extractBurst(msgs, {
+            maxAgeMs: (agentForRun?.burstMaxAgeHours ?? DEFAULT_BURST_MAX_AGE_HOURS) * 3_600_000,
+            now: deps.now(),
+          });
+          return pending.length > 0 ? pending : suggestBurst(msgs);
+        })()
+      : previousDraft?.burst_started_at
       ? // Regenerar: lo mismo que respondia el borrador anterior (mas lo que el
         // lead haya escrito despues), sin el corte por antiguedad.
         extractBurst(msgs).filter((m) => ms(m.created_at) >= ms(previousDraft.burst_started_at as string))
@@ -201,7 +213,7 @@ export async function runAgentTurn(
   // normal (con la cadena enlazada) y la instruccion ya no vale.
   const newerThanPrevious =
     previousDraft !== null && ms(lastInbound.created_at) > ms(previousDraft.burst_last_inbound_at ?? lastInbound.created_at);
-  const skipWindow = previousDraft !== null && !newerThanPrevious;
+  const skipWindow = suggest || (previousDraft !== null && !newerThanPrevious);
 
   if (skipWindow) {
     windowEnd = nowMs;
@@ -235,24 +247,26 @@ export async function runAgentTurn(
     conversation: fresh,
     now: deps.now(),
   });
-  if (state.state !== "active") {
+  // Una sugerencia a mano se hace aunque la conversacion tenga el agente apagado o pausado: la persona la
+  // pidio ahora. Lo que no se salta es que no haya agente para este canal (o que el agente este apagado).
+  const suggestAllowed = suggest && (state.state === "conversation_off" || state.state === "paused");
+  if (state.state !== "active" && !suggestAllowed) {
     // Hubo un turno agendado, asi que alguien esperaba que el agente actuara:
     // la abstencion deja rastro (por ejemplo, una persona respondio y el
     // toggle se apago mientras corria la ventana).
     const runId = await recordRunOutcome(supabase, { ...runBase, status: "skipped", statusDetail: state.state });
     return { kind: "run", status: "skipped", detail: state.state, runId };
   }
-  const agent = state.agent;
+  const agent = (state as Extract<typeof state, { agent: AgentConfig }>).agent;
   runBase.agentId = agent.id;
   runBase.promptVersion = agent.promptVersion;
 
   // Coexistencia. Si un flow o una persona ya respondieron, la rafaga quedo
   // cerrada por esa salida y el turno ya se retiro arriba (nada que responder).
   // Lo que queda por mirar es un flow esperando la respuesta del lead.
-  const waitingFlow = await findWaitingSession(supabase, {
-    contactId: fresh.contact_id,
-    channelId: fresh.channel_id,
-  });
+  const waitingFlow = suggest
+    ? null // un borrador no pisa a ningun flow: la persona decide si lo usa
+    : await findWaitingSession(supabase, { contactId: fresh.contact_id, channelId: fresh.channel_id });
   if (waitingFlow) {
     const runId = await recordRunOutcome(supabase, { ...runBase, status: "skipped_automation", statusDetail: "flow_session" });
     return { kind: "run", status: "skipped_automation", detail: "flow_session", runId };
@@ -274,7 +288,7 @@ export async function runAgentTurn(
   if (refresh1.inserted > 0) {
     messages = await loadRecentMessages(supabase, fresh.id);
   }
-  if (await alreadyAnsweredSince(supabase, { conversationId: fresh.id, inboundAt: lastInbound.created_at })) {
+  if (!suggest && (await alreadyAnsweredSince(supabase, { conversationId: fresh.id, inboundAt: lastInbound.created_at }))) {
     const runId = await recordRunOutcome(supabase, {
       ...runBase,
       status: "already_answered",
@@ -286,6 +300,7 @@ export async function runAgentTurn(
   // 4. Espera tras respuesta externa (F7). Si otra herramienta (ManyChat)
   // respondió hace menos de N minutos, el agente no se mete.
   if (
+    !suggest &&
     withinExternalCooldown({
       lastInboundAt: lastInbound.created_at,
       lastExternalAt: await lastExternalOutboundAt(supabase, fresh.id),
@@ -303,7 +318,7 @@ export async function runAgentTurn(
 
   // Una regeneracion siempre deja borrador, aunque el canal haya vuelto a
   // envio directo en el medio: nadie pidio que salga sin revisar.
-  const mode = previousDraft ? "draft" : channelMode(agent, fresh.channel_id);
+  const mode = previousDraft || suggest ? "draft" : channelMode(agent, fresh.channel_id);
   const revision: TurnRevision | null = previousDraft
     ? {
         previousDraftId: previousDraft.id,
@@ -883,15 +898,16 @@ async function continueTurn(
   // 8. Nadie tomo la conversacion mientras se generaba. Un "forzado apagado"
   // (false) es lo que dejan Human Takeover y una respuesta manual; "heredar"
   // (null) sigue siendo del agente.
+  // Una sugerencia a mano no se retira por nada de esto: la pidio una persona sobre un mensaje que quiza
+  // ya tenia respuesta, y lo unico que deja es un borrador.
   const latest = await loadTurnConversation(supabase, conversation.id);
   const humanAfter = await lastHumanReplyAt(supabase, conversation.id);
-  if (!latest || latest.agent_enabled === false || (humanAfter && isAfter(humanAfter, burst[0].created_at))) {
+  if (!latest || (!args.payload.suggest && (latest.agent_enabled === false || (humanAfter && isAfter(humanAfter, burst[0].created_at))))) {
     return close("skipped", "human_took_over_during_generation");
   }
-  const waiting = await findWaitingSession(supabase, {
-    contactId: conversation.contact_id,
-    channelId: conversation.channel_id,
-  });
+  const waiting = args.payload.suggest
+    ? null
+    : await findWaitingSession(supabase, { contactId: conversation.contact_id, channelId: conversation.channel_id });
   if (waiting) return close("skipped_automation", "flow_session_during_generation");
 
   // 9. Momento 2 (F5): refrescar contra Zernio y verificar de nuevo, junto con
@@ -907,7 +923,7 @@ async function continueTurn(
     sinceIso: burst[0].created_at,
     runId,
   });
-  if (await claimAgentReply(supabase, { conversationId: conversation.id, inboundAt, runId })) {
+  if (!args.payload.suggest && (await claimAgentReply(supabase, { conversationId: conversation.id, inboundAt, runId }))) {
     run.setRouting({ check: "already_answered", moment: 2, refresh: refresh2.ok ? "ok" : "failed" });
     return close("already_answered", "after_generation");
   }

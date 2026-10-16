@@ -23,6 +23,7 @@ import { canActivate } from "@/lib/sequences/validate";
 import { sequenceStatusStyle } from "@/lib/sequences/labels";
 import { sequenceFingerprint } from "@/lib/unsaved-changes";
 import { useUnsavedChanges } from "@/lib/hooks/use-unsaved-changes";
+import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import type { SequenceStatus, SequenceStep } from "@/lib/types/database";
 
 export interface AiProviderOption {
@@ -371,9 +372,13 @@ function StepCard({
 
       {step.type === "message" && (
         <>
-          <label htmlFor={`step-${index}-content`} className="sr-only">
-            Mensaje del paso {index + 1}
-          </label>
+          <div className="mt-3 flex items-center justify-between">
+            <label htmlFor={`step-${index}-content`} className="sr-only">
+              Mensaje del paso {index + 1}
+            </label>
+            <span aria-hidden className="text-xs text-muted-foreground">Mensaje</span>
+            <FieldEmojiButton targetId={`step-${index}-content`} value={step.content || ""} disabled={!canEdit} onChange={(content) => onChange({ content })} />
+          </div>
           <textarea
             id={`step-${index}-content`}
             value={step.content || ""}
@@ -381,7 +386,7 @@ function StepCard({
             disabled={!canEdit}
             rows={3}
             placeholder="Lo que se le manda al contacto. Podés usar {{contact.display_name}}."
-            className="mt-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-default disabled:opacity-70"
+            className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-default disabled:opacity-70"
           />
         </>
       )}

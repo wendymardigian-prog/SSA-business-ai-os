@@ -1,4 +1,5 @@
 import { getAgentType } from "./agent-types";
+import { agentAvailability } from "./availability";
 import type { AgentChannelMode } from "@/lib/types/database";
 
 /**
@@ -11,7 +12,7 @@ import type { AgentChannelMode } from "@/lib/types/database";
  * Sin dependencias de servidor: lo importan paginas y componentes.
  */
 
-export const AGENT_PUBLIC_COLUMNS = "id, name, type, is_enabled, enabled_channel_ids, channel_modes, deleted_at" as const;
+export const AGENT_PUBLIC_COLUMNS = "id, name, type, is_enabled, enabled_channel_ids, channel_modes, provider, model, deleted_at" as const;
 
 /**
  * Columnas de agent_runs sin tokens ni costo: TODAS las que tienen GRANT de
@@ -40,10 +41,13 @@ export interface PublicAgent {
   enabled_channel_ids: string[];
   /** { channel_id: "send" | "draft" } (00070). Opcional para filas armadas a mano. */
   channel_modes?: unknown;
+  /** El proveedor y el modelo que eligio el agente (E1: para saber si su IA sigue conectada). Opcionales para filas armadas a mano. */
+  provider?: string | null;
+  model?: string | null;
   deleted_at: string | null;
 }
 
-export type ChannelAgentReason = "no_agent" | "agent_off" | "channel_off";
+export type ChannelAgentReason = "no_agent" | "agent_off" | "channel_off" | "no_provider" | "provider_disconnected" | "no_model";
 
 export interface ChannelAgentInfo {
   /** Si el agente atiende este canal (maestro prendido y agente encendido). */
@@ -76,6 +80,13 @@ export function publicChannelMode(agent: PublicAgent, channelId: string): AgentC
 export function channelAgentInfo(
   agents: PublicAgent[],
   channel: { id: string; label: string },
+  /**
+   * Las IAs de texto conectadas hoy (E1). Sin esto (undefined) no se mira la IA
+   * y el resultado es el de siempre; con esto, un agente encendido cuya IA no
+   * esta conectada deja de figurar como disponible: no puede responder, y
+   * decir lo contrario es mostrar informacion engañosa.
+   */
+  connectedProviders?: readonly string[],
 ): ChannelAgentInfo {
   const live = agents.filter((a) => !a.deleted_at && getAgentType(a.type)?.conversational);
   if (live.length === 0) {
@@ -108,6 +119,25 @@ export function channelAgentInfo(
       message: `"${forChannel.name}" esta apagado. Se enciende desde Agentes.`,
       mode: publicChannelMode(forChannel, channel.id),
     };
+  }
+  if (connectedProviders) {
+    const ai = agentAvailability({
+      isEnabled: true,
+      provider: forChannel.provider ?? null,
+      model: forChannel.model ?? null,
+      conversational: true,
+      connectedProviders,
+    });
+    if (ai.blockedBy) {
+      return {
+        available: false,
+        reason: ai.blockedBy,
+        agentName: forChannel.name,
+        channelLabel: channel.label,
+        message: `"${forChannel.name}" no puede responder: ${(ai.message ?? "").replace(/^./, (c) => c.toLowerCase())}`,
+        mode: publicChannelMode(forChannel, channel.id),
+      };
+    }
   }
   return {
     available: true,

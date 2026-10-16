@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { ContactFlowContext, FlowNode, FlowExecutionContext, IncomingMessage } from "../types";
 import type { ConditionFieldSpec, FieldValue } from "../condition-eval";
+import type { Requirement } from "../node-requirements";
 
 // ------------------------------------------------------------
 // Nodos
@@ -90,6 +91,14 @@ interface NodeDefinitionBase<TData> {
    * de condiciones, que corre en el navegador. La fuente es `node-outputs.ts`.
    */
   outputs?(data: TData): ConditionFieldSpec[];
+  /**
+   * Que conexion necesita este nodo para poder ejecutarse (G1): Resend, un numero de
+   * WhatsApp, una IA... El editor lo muestra bloqueado si falta y el servidor no deja
+   * PUBLICAR un flujo con un paso bloqueado. Sin esto, el nodo siempre puede correr.
+   * La copia del navegador es `node-requirements.ts` (`NODE_REQUIREMENTS`):
+   * `registry/consistency.test.ts` exige que digan lo mismo.
+   */
+  requires?: readonly Requirement[];
 }
 
 /**

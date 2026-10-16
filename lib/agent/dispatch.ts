@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { InboundAutomationOutcome } from "@/lib/inbound";
 import { recordRunOutcome } from "@/lib/ai/run";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
 import {
   AGENT_BURST_JOB,
   agentBurstKey,
@@ -11,6 +12,7 @@ import {
   type AgentBurstPayload,
 } from "@/lib/scheduler";
 import { loadWorkspaceAgents, resolveAgentState, type AgentAvailability } from "./config";
+import { agentAvailability } from "./availability";
 
 /**
  * El despacho del agente ante un mensaje entrante (F30, F31, F32).
@@ -44,7 +46,7 @@ export type AgentDispatchOutcome =
   | { scheduled: true; jobId: string; runAt: string; created: boolean }
   | {
       scheduled: false;
-      reason: AgentAvailability["state"] | "automation_claimed" | "not_enabled_here" | "error";
+      reason: AgentAvailability["state"] | "automation_claimed" | "not_enabled_here" | "provider_unavailable" | "error";
       runId?: string | null;
     };
 
@@ -109,6 +111,25 @@ export async function maybeScheduleAgentTurn(
     }
 
     const agent = state.agent;
+
+    // La IA del agente tiene que seguir conectada (E1). Si se desconecto, el turno fallaria igual con "fallaron los
+    // dos modelos" y escalaria la conversacion a una persona en CADA mensaje: mejor no agendarlo. No se apaga
+    // ni se toca el agente: reconectar la IA lo deja funcionando como antes.
+    const aiProviders = await listConnectedAiProviders(args.workspaceId, supabase);
+    const ai = agentAvailability({
+      isEnabled: true,
+      provider: agent.provider,
+      model: agent.model,
+      conversational: true,
+      connectedProviders: aiProviders.map((p) => p.provider),
+    });
+    if (ai.blockedBy) {
+      // En "heredar" nadie pidio que atienda: sin run (la bandeja ya dice que no puede responder).
+      if (state.inherited) return { scheduled: false, reason: "provider_unavailable" };
+      const runId = await recordRunOutcome(supabase, { ...runBase, status: "skipped", statusDetail: "no_ai_connection" });
+      return { scheduled: false, reason: "provider_unavailable", runId };
+    }
+
     const timing = agentBurstTiming({
       lastMessageAt: now,
       bundleWindowSeconds: agent.bundleWindowSeconds,

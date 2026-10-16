@@ -575,3 +575,81 @@ describe("webhook de Evolution: el toque de atribución del mensaje (F85)", () =
     expect(recordInboundTouch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("webhook de Evolution: reacciones (A3)", () => {
+  const PHONE = "+5491122223333";
+  const reactionPayload = (over: { text?: string; fromMe?: boolean; targetId?: string } = {}) => ({
+    event: "messages.upsert",
+    instance: INSTANCE,
+    data: {
+      key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: over.fromMe ?? false, id: "react-evt-1" },
+      pushName: "Lead de prueba",
+      message: { reactionMessage: { key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: true, id: over.targetId ?? "msg-orig" }, text: over.text ?? "❤️" } },
+      messageType: "reactionMessage",
+      messageTimestamp: 1_760_000_000,
+    },
+  });
+
+  function withConversation() {
+    const memory = memoryDb({
+      channels: [channelRow()],
+      contact_channels: [{ id: "cc-1", channel_id: CHANNEL_ID, contact_id: "contact-1", platform_sender_id: PHONE }],
+      conversations: [{ id: "conv-1", channel_id: CHANNEL_ID, contact_id: "contact-1", deleted_at: null, created_at: "2026-10-01T00:00:00Z" }],
+      messages: [{ id: "m-1", conversation_id: "conv-1", platform_message_id: "msg-orig", platform_native_message_id: null }],
+      message_reactions: [],
+    });
+    createServiceClient.mockResolvedValue(memory.client);
+    return memory;
+  }
+
+  it("se guarda como reaccion, NO como mensaje: nada de no leidos, flows, agente ni toques", async () => {
+    const memory = withConversation();
+    const res = await callRoute(post(reactionPayload()));
+    await runAfter();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, handled: "reaction", outcome: "saved" });
+    expect(memory.rows("message_reactions")).toHaveLength(1);
+    expect(memory.rows("message_reactions")[0]).toMatchObject({ conversation_id: "conv-1", message_id: "m-1", emoji: "❤️", actor_key: "contact", direction: "in" });
+
+    expect(insertMessage).not.toHaveBeenCalled();
+    expect(upsertConversation).not.toHaveBeenCalled();
+    expect(upsertContactForSender).not.toHaveBeenCalled();
+    expect(applyOptOut).not.toHaveBeenCalled();
+    expect(runInboundAutomation).not.toHaveBeenCalled();
+    expect(pauseSequencesOnReply).not.toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
+    expect(recordInboundTouch).not.toHaveBeenCalled();
+    expect(claimWebhookEvent).not.toHaveBeenCalled();
+  });
+
+  it("quitar la reaccion (texto vacio) la marca como quitada", async () => {
+    const memory = withConversation();
+    await callRoute(post(reactionPayload({ text: "👍" })));
+    await callRoute(post(reactionPayload({ text: "" })));
+
+    expect(memory.rows("message_reactions")).toHaveLength(1);
+    expect(memory.rows("message_reactions")[0].removed_at).not.toBeNull();
+  });
+
+  it("una reaccion puesta desde el telefono del negocio cuenta como del negocio", async () => {
+    const memory = withConversation();
+    await callRoute(post(reactionPayload({ fromMe: true })));
+    expect(memory.rows("message_reactions")[0]).toMatchObject({ actor_key: "business", direction: "out" });
+  });
+
+  it("de un numero sin conversacion no guarda nada y no falla", async () => {
+    const memory = memoryDb({ channels: [channelRow()], contact_channels: [], conversations: [], messages: [], message_reactions: [] });
+    createServiceClient.mockResolvedValue(memory.client);
+    const res = await callRoute(post(reactionPayload()));
+    expect(res.status).toBe(200);
+    expect(memory.rows("message_reactions")).toHaveLength(0);
+    expect(insertMessage).not.toHaveBeenCalled();
+  });
+
+  it("un mensaje comun sigue el camino de siempre", async () => {
+    db();
+    const res = await callRoute(post(message()));
+    expect(await res.json()).toEqual({ ok: true, queued: true });
+  });
+});

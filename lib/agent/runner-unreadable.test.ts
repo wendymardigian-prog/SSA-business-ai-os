@@ -292,7 +292,7 @@ describe("mientras la transcripcion esta en camino, el turno espera (F10)", () =
       p_payload: { last_message_at: new Date(T0 + 75_000).toISOString() },
       p_run_at: new Date(T0 + 80_000).toISOString(),
       p_deadline: null,
-      p_volatile_keys: ["regenerate_instruction", "media_wait_started_at"],
+      p_volatile_keys: ["regenerate_instruction", "media_wait_started_at", "suggest"],
     });
     expect(merged).toBeTruthy();
 

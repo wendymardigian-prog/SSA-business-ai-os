@@ -45,6 +45,7 @@ const DETAIL_LABELS: Record<string, string> = {
   global_keyword: "era una palabra clave global",
   job_expired: "el turno se descarto por demora",
   provider_unavailable: "fallaron el modelo principal y el de respaldo",
+  no_ai_connection: "la IA del agente no esta conectada",
   skipped_same_provider_auth: "no se intento el respaldo: mismo proveedor, y la key ya habia sido rechazada",
   model_timeout: "el modelo no respondio a tiempo",
   send_failed: "no se pudo enviar la respuesta",

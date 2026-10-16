@@ -13,6 +13,7 @@ import {
   listInstanceNames,
   resetVersionCache,
   sendMedia,
+  sendReaction,
   sendText,
   sendWhatsAppAudio,
   type EvolutionConfig,
@@ -363,5 +364,33 @@ describe("sendMedia (F19)", () => {
     });
 
     expect(calls[0].body).toMatchObject({ fileName: "contrato.pdf" });
+  });
+});
+
+describe("sendReaction (A3)", () => {
+  it("v2: manda key y reaction al endpoint de la instancia", async () => {
+    const calls = mockFetch([v2, { body: {} }]);
+    await sendReaction(config, "ssa-abc", { to: "+54 9 11 2233-4455", messageId: "WAID1", fromMe: false, reaction: "👍" });
+    expect(calls[1].url).toBe("https://evo.test/message/sendReaction/ssa-abc");
+    expect(calls[1].method).toBe("POST");
+    expect(calls[1].body).toEqual({ key: { remoteJid: "5491122334455@s.whatsapp.net", fromMe: false, id: "WAID1" }, reaction: "👍" });
+  });
+
+  it("v1: lo anida en reactionMessage", async () => {
+    const calls = mockFetch([v1, { body: {} }]);
+    await sendReaction(config, "ssa-abc", { to: "+5491122334455", messageId: "WAID1", fromMe: false, reaction: "❤️" });
+    expect(calls[1].body).toEqual({ reactionMessage: { key: { remoteJid: "5491122334455@s.whatsapp.net", fromMe: false, id: "WAID1" }, reaction: "❤️" } });
+  });
+
+  it("una reaccion vacia es la forma de quitarla", async () => {
+    const calls = mockFetch([v2, { body: {} }]);
+    await sendReaction(config, "ssa-abc", { to: "+5491122334455", messageId: "WAID1", fromMe: false, reaction: "" });
+    expect(calls[1].body.reaction).toBe("");
+  });
+
+  it("un numero invalido no llama a Evolution", async () => {
+    const calls = mockFetch([]);
+    await expect(sendReaction(config, "ssa-abc", { to: "1234", messageId: "x", fromMe: false, reaction: "👍" })).rejects.toThrow(/invalido/);
+    expect(calls).toHaveLength(0);
   });
 });

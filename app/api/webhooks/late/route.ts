@@ -54,6 +54,7 @@ import { fromZernioPlatformEvent, settlePublication } from "@/lib/publishing/inb
 import { isOwnComment, storeComment } from "@/lib/comments/store";
 import type { SocialPlatform } from "@/lib/types/database";
 import { supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
+import { handleZernioReaction, parseZernioReaction } from "@/lib/messages/reactions-inbound";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -208,6 +209,11 @@ async function handleWebhook(request: NextRequest) {
   // y la verificación del Bloque 2 lo tenga en cuenta (F2).
   if (parsed.event === "message.sent") {
     return handleMessageSentWebhook(parsed as MessageSentPayload, body, signature, eventId);
+  }
+
+  // Una reaccion del contacto (A3): se guarda aparte, no es un mensaje.
+  if (parsed.event === "reaction.received") {
+    return handleReactionWebhook(parsed as ReactionWebhookPayload, body, signature, eventId);
   }
 
   // Everything else besides message.received is acknowledged and ignored
@@ -642,6 +648,65 @@ async function handleMessageSentWebhook(
     } catch (err) {
       console.error("Webhook message.sent processing error:", err);
     }
+  });
+
+  return NextResponse.json({ ok: true, queued: true });
+}
+
+interface ReactionWebhookPayload {
+  id?: string;
+  event: "reaction.received";
+  reaction?: unknown;
+  conversation?: { id?: string };
+  account: { id: string };
+}
+
+/**
+ * Una reaccion que avisa Zernio (`reaction.received`, A3). Mismo esqueleto que
+ * los otros receptores: encuentra el canal, valida la firma, deduplica y guarda
+ * en `after()`. No toca contactos, conversaciones ni automatizaciones.
+ */
+async function handleReactionWebhook(
+  payload: ReactionWebhookPayload,
+  rawBody: string,
+  signature: string | null,
+  eventId: string | null | undefined
+) {
+  const supabase = await createServiceClient();
+
+  const { data: channel } = await supabase
+    .from("channels")
+    .select("id, workspace_id")
+    .eq("late_account_id", payload.account?.id ?? "")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (!channel) {
+    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+  }
+
+  const secret = await resolveWebhookSecret(supabase, channel);
+  if (!secret) {
+    console.error(
+      `[webhook] el workspace ${channel.workspace_id} no tiene el secreto en Vault; no puedo validar la firma`
+    );
+    return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, rawBody, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  if (!(await claimWebhookEvent(supabase, eventId))) {
+    return NextResponse.json({ ok: true, skipped: "evento repetido" });
+  }
+
+  const reaction = parseZernioReaction(payload);
+  const lateConversationId = payload.conversation?.id;
+  if (!reaction || !lateConversationId) {
+    return NextResponse.json({ ok: true, skipped: "reaccion sin mensaje o conversacion" });
+  }
+
+  after(async () => {
+    await handleZernioReaction(supabase, channel, { lateConversationId, reaction });
   });
 
   return NextResponse.json({ ok: true, queued: true });

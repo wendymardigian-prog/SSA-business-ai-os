@@ -23,6 +23,7 @@ import { getPermissionContext } from "@/lib/auth/guards";
 import { canReplyOn, canViewPlatform, INBOX_CHANNELS, platformFilterFor } from "@/lib/inbox/channel-access";
 import { accountsInfo, buildAccounts, multiAccountPlatforms } from "@/lib/inbox/accounts";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
@@ -62,18 +63,21 @@ export default async function InboxPage({
 
   // Lo que necesitan los filtros para poder validar lo que viene de la URL:
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
-  const [tagsRes, channelsRes, members, agentsRes] = await Promise.all([
+  const [tagsRes, channelsRes, members, agentsRes, aiProviders] = await Promise.all([
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
     supabase.from("channels").select("id, platform, provider, username, display_name").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
     // Columnas explicitas: los topes de gasto no son legibles para el usuario (00060).
     supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", workspace.id).is("deleted_at", null),
+    // Las IAs conectadas (E1): un agente encendido cuya IA no esta conectada no puede responder.
+    listConnectedAiProviders(workspace.id),
   ]);
 
   // Por canal, si el agente lo atiende: decide si el toggle se puede operar.
   const agents = (agentsRes.data ?? []) as PublicAgent[];
+  const connectedAi = aiProviders.map((p) => p.provider);
   const agentByChannel: Record<string, ChannelAgentInfo> = Object.fromEntries(
-    (channelsRes.data ?? []).map((c) => [c.id, channelAgentInfo(agents, { id: c.id, label: platformLabel(c.platform) })]),
+    (channelsRes.data ?? []).map((c) => [c.id, channelAgentInfo(agents, { id: c.id, label: platformLabel(c.platform) }, connectedAi)]),
   );
   // Si el canal de la conversacion abierta acepta media (lib/channels/media.ts):
   // el picker de la bandeja no le ofrece audios a un canal de email.
@@ -216,6 +220,7 @@ export default async function InboxPage({
   const canManageAssets = permissionCtx.can("templates.manage");
   // Crear una tarea sobre la conversacion (Tareas, F20): con `tasks.edit`.
   const canCreateTask = permissionCtx.can("tasks.edit");
+  const canViewAgentRuns = permissionCtx.can("agents.view");
 
   let conversations = toRows(conversationsRes.data);
 
@@ -302,6 +307,7 @@ export default async function InboxPage({
       assets={assets}
       canManageAssets={canManageAssets}
       canCreateTask={canCreateTask}
+      canViewAgentRuns={canViewAgentRuns}
       replyPlatforms={[...new Set<string>([...allPlatforms, ...INBOX_CHANNELS])].filter((p) => canReplyOn(access.can, p))}
       filters={filters}
       dateRange={range}

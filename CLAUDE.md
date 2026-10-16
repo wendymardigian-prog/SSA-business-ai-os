@@ -1375,6 +1375,26 @@ Roles, reglas, comisiones por cada pago cobrado y su liquidación en gastos. Res
 
 `00233` (cron de Finanzas), `00234` (trigger del vínculo de comentarios) y `00235` (trigger de comisiones); después `verify-expenses --despues-de-00233`, `verify-organic-attribution --despues-de-00234`, `verify-commissions --despues-de-00235` y `verify-contacts-single-entry`. **La próxima migración disponible es la `00236`** (confirmar con `list_migrations`).
 
+# Mejoras de Chat, Agentes IA y Automatizaciones (16/10/2026)
+
+Emojis, editor de email con formato, el agente dentro del chat, reacciones, chat más limpio en mobile, agentes sin conexión de IA, documentos pendientes de indexar, acciones bloqueadas en automatizaciones, Integraciones más liviana, Social en mobile y áreas Equipo/Otros en la agenda. Resumen y decisiones en `docs/PROGRESS-mejoras-chat-agentes.md`; lo abierto en `docs/PENDIENTE-mejoras-chat-agentes.md`. **Contratos (H e I1) no se hicieron.**
+
+## Lo que no se puede romper
+
+- **Una reacción NO es un mensaje.** Evolution la manda como un `messages.upsert` común; los dos webhooks (`evolution` y `late`) la atajan ANTES del camino de los mensajes (`lib/messages/reactions-inbound.ts`) y la guardan en `message_reactions`. Si siguiera el camino normal entraría como un entrante vacío (no leído, flows, agente). Los tests lo fijan con espías. Qué admite cada canal lo decide UN solo módulo (`lib/channels/reactions.ts`, rama explícita por proveedor): WhatsApp cualquier emoji, Instagram solo ❤️, email ninguna.
+- **El HTML de un email se limpia DESPUÉS de pegar los valores.** `lib/email/html.ts`: si el cuerpo es HTML se decide mirando la PLANTILLA (nunca el texto ya interpolado), las variables se pegan escapadas (`interpolateHtml`, `escapeHtmlValues` en `resolveBankVariables`) y lo que sale pasa por una lista blanca (`sanitizeEmailHtml`) con estilos en línea. El editor (`components/editor/rich-text-editor.tsx`) no es la defensa.
+- **"Sugerir respuesta" es la segunda puerta que agenda un turno** (`lib/agent/drafts/suggest.ts`; la primera sigue siendo `maybeScheduleAgentTurn`). El flag `suggest` del payload es volátil, siempre deja un BORRADOR (nunca envía), no espera la ventana ni se retira porque alguien ya respondió, y se permite con el agente apagado en la conversación (no si no hay agente para el canal). Una sugerencia descartada a mano se recupera con `loadLastDiscardedDraft`; no cambia de estado al recuperarla.
+- **"Qué hizo el agente" se arma, no se guarda** (`lib/inbox/message-activity.ts`, puro): corridas (`source = 'agent'`, ancladas por `inbound_at`), borradores y acciones. Una sugerencia nunca se confunde con una respuesta enviada (`outcome`: suggested / executed / failed / skipped / pending). `agent_runs` NO tiene `message_id`: no se agregó.
+- **Una sola regla de disponibilidad del agente** (`lib/agent/availability.ts`): interruptor + modelo + IAs conectadas. La usan Agentes IA, `setAgentEnabled`, `channelAgentInfo`, `maybeScheduleAgentTurn`, la cabecera de la bandeja y el dashboard del chat. **Desconectar una IA no apaga ni borra ningún agente**: cambia el estado efectivo (`blocked`), el despacho no agenda turnos que fallarían (antes cada mensaje escalaba a una persona) y Owner/Admin reciben un aviso. La sección "El agente" del dashboard se oculta / invita / avisa (`lib/dashboards/chat/agent-visibility.ts`) y ni consulta sus datos si no se ve.
+- **Una acción sin su conexión se ve bloqueada, no oculta, y NO se puede publicar ni prender un flujo con ella** (`lib/flow-engine/node-requirements.ts`; `requires` en cada nodo del registro; `registry/consistency.test.ts` exige que ambas listas digan lo mismo). Una sola función (`connectionProblemsForGraph`) frena `publishFlow`, el prender de Formularios y el de la Agenda; apagar siempre se puede y un paso suelto que no se alcanza desde el disparador no frena nada. El estado se calcula al abrir la pantalla (`loadAutomationCapabilities`), nunca se guarda en el flujo. Un flujo ya publicado al que se le desconecta algo NO se despublica: se avisa en el lienzo y en la lista.
+- **Subir un documento sin Voyage lo deja `pending`, no `error`** (00239). Se retoma al conectar Voyage (`saveIntegration` → `enqueuePendingDocuments`) o con "Indexar pendientes": cada documento se reclama (`pending → processing`) antes de encolar y el job lleva clave de dedupe por documento. **La 00239 se aplica ANTES de desplegar el código.**
+- **Las áreas de sistema de la agenda son cuatro** (Ventas, Servicio, Equipo, Otros): `SYSTEM_AREAS` y el SQL de la 00240 dicen lo mismo (`lib/scheduling/categories-seed.test.ts`). La migración respeta un área con el mismo nombre que el negocio ya tuviera y no cambia ninguna reunión ni `category_snapshot`.
+- **Los datos de emoji salen de `public/emoji/es`** (copia de `emojibase-data`, sin CDN). Si se sube la versión de `frimousse` o `emojibase-data`, volver a copiar `es/data.json` y `es/messages.json`.
+
+## Migraciones (00237 a 00240, escritas y probadas, **sin aplicar a la base real**)
+
+`00237` (`message_reactions`), `00238` (el copywriter nace apagado), `00239` (estado `pending` de Conocimiento) y `00240` (áreas Equipo y Otros). **La próxima libre es la `00241`** (confirmar con `list_migrations`).
+
 # Seguridad
 
 ## Autenticacion y sesiones

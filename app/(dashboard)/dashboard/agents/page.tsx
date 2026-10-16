@@ -5,6 +5,10 @@ import { getWorkspace } from "@/lib/workspace";
 import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { getAgentType } from "@/lib/agent/agent-types";
+import { agentAvailability } from "@/lib/agent/availability";
+import { NoAiConnection } from "@/components/agents/no-ai-connection";
 import { CreateAgentButton } from "@/components/agents/create-agent-button";
 import { AgentCard } from "@/components/agents/agent-card";
 import { TaskCard } from "@/components/agents/tasks/task-card";
@@ -45,11 +49,15 @@ export default async function AgentsPage({
   // Ver los agentes pide `agents.view`; crear, `agents.edit`; las tareas de IA, `ai_tasks.manage`; los topes, `ai_limits.manage`.
   await requirePermission("agents.view");
   const [{ workspace }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
-  const [agents, permissions, timeZone] = await Promise.all([
+  const [agents, permissions, timeZone, aiProviders] = await Promise.all([
     loadWorkspaceAgents(service, workspace.id),
     getPermissionContext(),
     resolveViewerTimezone(workspace.timezone),
+    listConnectedAiProviders(workspace.id, service),
   ]);
+  const connectedAi = aiProviders.map((p) => p.provider);
+  const hasChatAgent = agents.some((a) => getAgentType(a.type)?.conversational);
+  const canConnectAi = permissions.can("integrations.manage");
   const canViewCosts = permissions.can("ai_costs.view");
   const canCreateAgent = permissions.can("agents.edit");
   const canManageTasks = permissions.can("ai_tasks.manage");
@@ -94,29 +102,43 @@ export default async function AgentsPage({
           </Suspense>
         )}
 
+        {aiProviders.length === 0 && <NoAiConnection canConnect={canConnectAi} />}
+
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Agentes</h2>
-          {agents.length === 0 ? (
-            <div className="mx-auto max-w-lg rounded-xl border border-dashed border-border p-10 text-center">
-              <Bot className="mx-auto h-10 w-10 text-muted-foreground/50" aria-hidden />
-              <h2 className="mt-4 text-base font-semibold">Todavía no hay un agente</h2>
+          {agents.length > 0 && (
+            <ul className="space-y-3">
+              {agents.map((agent) => (
+                <li key={agent.id}>
+                  <AgentCard
+                    agent={agent}
+                    availability={agentAvailability({
+                      isEnabled: agent.isEnabled,
+                      provider: agent.provider,
+                      model: agent.model,
+                      conversational: getAgentType(agent.type)?.conversational ?? false,
+                      connectedProviders: connectedAi,
+                    })}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* El copywriter existe en todos los negocios y cuenta como agente: la invitacion a crear el agente de chat
+              depende de que haya uno que CONVERSE, no de que haya alguno. */}
+          {!hasChatAgent && (
+            <div className={`mx-auto max-w-lg rounded-xl border border-dashed border-border p-8 text-center ${agents.length > 0 ? "mt-4" : ""}`}>
+              <Bot className="mx-auto h-9 w-9 text-muted-foreground/50" aria-hidden />
+              <h3 className="mt-3 text-base font-semibold">Todavía no hay un agente de chat</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                Se crea apagado y sin canales, con un prompt inicial y límites seguros. Lo encendés cuando lo hayas revisado.
+                El agente de chat responde a tus leads por Instagram y WhatsApp. Se crea apagado y sin canales, con un prompt inicial y límites seguros. Lo encendés cuando lo hayas revisado.
               </p>
               {canCreateAgent && (
-                <div className="mt-6 flex justify-center">
+                <div className="mt-5 flex justify-center">
                   <CreateAgentButton />
                 </div>
               )}
             </div>
-          ) : (
-            <ul className="space-y-3">
-              {agents.map((agent) => (
-                <li key={agent.id}>
-                  <AgentCard agent={agent} />
-                </li>
-              ))}
-            </ul>
           )}
         </section>
 

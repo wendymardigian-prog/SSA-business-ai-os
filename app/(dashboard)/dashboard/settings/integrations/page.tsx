@@ -79,7 +79,7 @@ export default async function IntegrationsPage() {
           status: calendarConnectionStatus({ id: c.id, status: c.status, granted_scopes: c.granted_scopes }),
         }))}
       />
-      <MiFathomCard view={fathomView} connectionId={fathomConnectionId} flash={null} />
+      <MiFathomCard view={fathomView} connectionId={fathomConnectionId} flash={null} embedded />
     </>
   );
 
@@ -102,16 +102,10 @@ export default async function IntegrationsPage() {
       integrations={integrations}
       mine={mine}
       access={{ channels: sections.channels, business: sections.business }}
-      extra={
-        sections.business ? (
-          <div className="space-y-4">
-            {sections.business === "edit" && (
-              <FathomAppCard hasApp={hasFathomApp} returnUrl={`${appUrl()}/api/oauth/fathom/callback`} connected={connected} withError={withError} />
-            )}
-            <WebhooksCard active={activeEndpoints} paused={pausedEndpoints} />
-          </div>
-        ) : undefined
-      }
+      // Fathom va con las demas conexiones (Integraciones del negocio > Conexiones), con el mismo diseno.
+      fathom={sections.business === "edit" ? <FathomAppCard hasApp={hasFathomApp} returnUrl={`${appUrl()}/api/oauth/fathom/callback`} connected={connected} withError={withError} /> : undefined}
+      fathomNeedsAttention={withError > 0 || !hasFathomApp}
+      extra={sections.business ? <WebhooksCard active={activeEndpoints} paused={pausedEndpoints} /> : undefined}
     />
   );
 }

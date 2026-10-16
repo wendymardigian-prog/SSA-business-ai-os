@@ -217,8 +217,11 @@ try {
     const { data: cats } = await svc.from("booking_categories").select("id, name, parent_id, is_system").eq("workspace_id", ws.id);
     const areas = (cats ?? []).filter((c) => !c.parent_id);
     const tipos = (cats ?? []).filter((c) => c.parent_id);
-    check(areas.length === 2 && tipos.length === 5, `al crear un workspace hay exactamente 2 areas y 5 tipos (hay ${areas.length} y ${tipos.length})`);
-    check(areas.every((a) => a.is_system) && areas.map((a) => a.name).sort().join(",") === "Servicio,Ventas", "las areas son Ventas y Servicio, de sistema");
+    // 00240 (B1): se sumaron Equipo (3 tipos, con las entrevistas) y Otros (1 tipo).
+    check(areas.length === 4 && tipos.length === 9, `al crear un workspace hay exactamente 4 areas y 9 tipos (hay ${areas.length} y ${tipos.length})`);
+    check(areas.every((a) => a.is_system) && areas.map((a) => a.name).sort().join(",") === "Equipo,Otros,Servicio,Ventas", "las areas son Ventas, Servicio, Equipo y Otros, de sistema");
+    const equipo = areas.find((a) => a.name === "Equipo");
+    check(tipos.some((t) => t.parent_id === equipo?.id && t.name === "Entrevista"), "las entrevistas de candidatos son un tipo del area Equipo");
 
     const ventas = areas.find((a) => a.name === "Ventas");
     const triaje = tipos.find((t) => t.name === "Triaje");

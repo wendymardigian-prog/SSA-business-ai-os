@@ -699,3 +699,54 @@ export function ThreadDraft({ draft, onDone }: { draft: DraftQueueRow; onDone: (
     </section>
   );
 }
+
+/**
+ * Una sugerencia que una persona descarto (A1), todavia recuperable. Se ve gris y
+ * dice "descartada" y "no enviada": nunca con el aspecto del borrador activo (ambar)
+ * ni de un mensaje enviado. "Recuperar" copia el texto al campo de escritura; la
+ * sugerencia sigue descartada, no se envia ni cambia de estado.
+ */
+export function DiscardedSuggestion({
+  draft,
+  onRecover,
+  onClose,
+}: {
+  draft: DraftQueueRow;
+  onRecover: (body: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <section
+      aria-label="Sugerencia descartada, no enviada"
+      className="mx-auto max-w-2xl space-y-2 rounded-xl border-2 border-dashed border-border bg-muted/40 p-3"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+          <Bot className="h-3.5 w-3.5" aria-hidden /> Sugerencia descartada · no enviada
+        </span>
+        <span className="text-[11px] text-muted-foreground">{timeAgo(draft.decidedAt ?? draft.createdAt)}</span>
+      </div>
+      <p className="whitespace-pre-wrap rounded-lg bg-background/60 p-2.5 text-sm text-muted-foreground">{draft.body}</p>
+      {draft.discardReason && !draft.discardReason.startsWith("auto:") && (
+        <p className="text-[11px] text-muted-foreground">Motivo: {draft.discardReason}</p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => draft.body && onRecover(draft.body)}
+          className="inline-flex h-9 items-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
+        >
+          Recuperar en el mensaje
+        </button>
+        <button type="button" onClick={onClose} className="h-9 rounded-lg px-3 text-xs text-muted-foreground hover:text-foreground">
+          Cerrar
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** El texto corto de "hace cuanto" para la linea de una sugerencia descartada. */
+export function discardedAgo(draft: DraftQueueRow): string {
+  return timeAgo(draft.decidedAt ?? draft.createdAt);
+}

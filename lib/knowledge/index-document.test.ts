@@ -205,7 +205,7 @@ describe("el camino feliz", () => {
  * (el runner reintenta con backoff) y lo que no, deja el documento en 'error'.
  */
 describe("fallos permanentes: marcan error y NO se reintentan", () => {
-  it("sin la key de Voyage", async () => {
+  it("sin la key de Voyage: queda PENDIENTE, no en error (F1)", async () => {
     generateEmbeddings.mockResolvedValue({
       ok: false,
       problem: "not_connected",
@@ -216,11 +216,11 @@ describe("fallos permanentes: marcan error y NO se reintentan", () => {
     const { client, updates } = fakeClient({ document: DOC, file: PDF });
     const outcome = await indexDocument(client, PAYLOAD);
 
-    expect(outcome.status).toBe("error");
-    expect(updates.at(-1)?.status).toBe("error");
-    expect(String(updates.at(-1)?.error_detail)).toContain("Voyage");
+    // F1: falta Voyage NO es un error. El documento queda pendiente de indexar y se retoma al conectarlo.
+    expect(outcome.status).toBe("pending");
+    expect(updates.at(-1)).toMatchObject({ status: "pending", error_detail: null });
     expect(runHandle.close).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "error", statusDetail: "permanent" }),
+      expect.objectContaining({ status: "skipped", statusDetail: "voyage_not_connected" }),
     );
     expect(runHandle.addEmbeddingUsage).not.toHaveBeenCalled();
   });

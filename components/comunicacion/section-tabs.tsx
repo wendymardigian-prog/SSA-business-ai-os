@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { MessageSquare, Radio, ListOrdered, Sprout, type LucideIcon } from "lucide-react";
+import { ChevronDown, MessageSquare, Radio, ListOrdered, Sprout, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   comunicacionTabHref,
@@ -26,8 +26,12 @@ import {
  * Bloque I (I2): van en la barra superior, en el `left` del `PageHeader`, como
  * segmented control (el patron de `components/content/view-switcher.tsx`).
  * Son links y no botones: cambian de pantalla, y la activa se anuncia con
- * `aria-current="page"`. A 390 px no entran las cuatro con icono: el control
- * scrollea adentro (min-w-0 + overflow-x-auto) y los iconos aparecen desde `sm`.
+ * `aria-current="page"`.
+ *
+ * Debajo del breakpoint `topbar` (860 px) no entran junto al titulo y a los
+ * botones del celular: ahi se muestra UN boton con la seccion activa que abre
+ * un menu con las cuatro (`SectionTabsDropdown`). Arriba de 860 px siguen
+ * siendo pestañas.
  */
 
 interface Tab {
@@ -86,11 +90,15 @@ export function SectionTabs() {
     nav.scrollLeft = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
   }, [pathname]);
 
+  const hrefFor = (tab: Tab) => comunicacionTabHref(tab.href, pathname, currentQuery, remembered);
+
   return (
+    <>
+    <SectionTabsDropdown pathname={pathname} hrefFor={hrefFor} />
     <nav
       ref={navRef}
       aria-label="Secciones de comunicación"
-      className="relative flex min-w-0 shrink items-center overflow-x-auto rounded-lg border border-border p-0.5"
+      className="relative hidden min-w-0 shrink items-center overflow-x-auto rounded-lg border border-border p-0.5 topbar:flex"
     >
       {COMUNICACION_TABS.map((tab) => {
         // startsWith y no igualdad: el detalle de una secuencia
@@ -114,5 +122,114 @@ export function SectionTabs() {
         );
       })}
     </nav>
+    </>
+  );
+}
+
+/**
+ * El selector de seccion para pantallas chicas: un boton con la seccion activa
+ * (icono y nombre) y un menu con todas. Se abre con un toque, cierra con Esc,
+ * con un toque afuera o al elegir, y se recorre con las flechas.
+ */
+function SectionTabsDropdown({ pathname, hrefFor }: { pathname: string; hrefFor: (tab: Tab) => string }) {
+  const menuId = useId();
+  // El menu se abre "en" una ruta: al cambiar de seccion deja de coincidir y se cierra solo.
+  const [openAt, setOpenAt] = useState<string | null>(null);
+  const open = openAt === pathname;
+  const setOpen = (value: boolean | ((current: boolean) => boolean)) => {
+    const next = typeof value === "function" ? value(open) : value;
+    setOpenAt(next ? pathname : null);
+  };
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const active = COMUNICACION_TABS.find((tab) => isTabActive(tab.href, pathname)) ?? COMUNICACION_TABS[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    return () => document.removeEventListener("pointerdown", onPointer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function focusItem(delta: number | "first" | "last") {
+    const items = Array.from(rootRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const next = delta === "first" ? 0 : delta === "last" ? items.length - 1 : (current + delta + items.length) % items.length;
+    items[next]?.focus();
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative topbar:hidden"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) {
+          event.stopPropagation();
+          setOpen(false);
+          buttonRef.current?.focus();
+        } else if (event.key === "ArrowDown") {
+          event.preventDefault();
+          if (!open) setOpen(true);
+          requestAnimationFrame(() => focusItem(open ? 1 : "first"));
+        } else if (event.key === "ArrowUp" && open) {
+          event.preventDefault();
+          focusItem(-1);
+        } else if (event.key === "Home" && open) {
+          event.preventDefault();
+          focusItem("first");
+        } else if (event.key === "End" && open) {
+          event.preventDefault();
+          focusItem("last");
+        }
+      }}
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={`Sección: ${active.name}. Cambiar de sección`}
+        onClick={() => setOpen((value) => !value)}
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm font-medium hover:bg-accent/50"
+      >
+        <active.icon className="h-4 w-4" aria-hidden="true" />
+        <span className="max-w-[9rem] truncate">{active.name}</span>
+        <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          id={menuId}
+          role="menu"
+          aria-label="Secciones de comunicación"
+          className="absolute left-0 top-full z-50 mt-1 w-56 rounded-xl border border-border bg-popover p-1 shadow-lg"
+        >
+          {COMUNICACION_TABS.map((tab) => {
+            const isActive = tab.href === active.href;
+            return (
+              <Link
+                key={tab.href}
+                role="menuitem"
+                href={hrefFor(tab)}
+                aria-current={isActive ? "page" : undefined}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  "flex h-11 items-center gap-2.5 rounded-lg px-3 text-sm hover:bg-accent focus:bg-accent focus:outline-none",
+                  isActive && "bg-accent/60 font-medium",
+                )}
+              >
+                <tab.icon className="h-4 w-4" aria-hidden="true" />
+                {tab.name}
+                {isActive && <span className="ml-auto text-xs text-muted-foreground">Actual</span>}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

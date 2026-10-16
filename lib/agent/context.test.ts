@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { countAgentReplies, extractBurst, exchangeStart, lastHumanReplyAt, type StoredMessage } from "./context";
+import { countAgentReplies, extractBurst, exchangeStart, lastHumanReplyAt, suggestBurst, type StoredMessage } from "./context";
 import { memoryDb } from "./testing/memory-db";
 
 /**
@@ -102,5 +102,33 @@ describe("lastHumanReplyAt y countAgentReplies con borradores (00070)", () => {
       ],
     });
     expect(await countAgentReplies(db.client, { conversationId: "cv-1", since: "2026-09-15T10:00:00.000Z" })).toBe(2);
+  });
+});
+
+describe("suggestBurst (Sugerir respuesta)", () => {
+  it("con mensajes sin responder es la rafaga de siempre", () => {
+    const messages = [msg("a", "inbound", hoursAgo(3)), msg("b", "outbound", hoursAgo(2)), msg("c", "inbound", hoursAgo(1))];
+    expect(suggestBurst(messages).map((m) => m.id)).toEqual(["c"]);
+  });
+
+  it("si ya se respondio, es el ultimo grupo de mensajes del contacto", () => {
+    const messages = [
+      msg("a", "inbound", hoursAgo(5)),
+      msg("b", "outbound", hoursAgo(4)),
+      msg("c", "inbound", hoursAgo(3)),
+      msg("d", "inbound", hoursAgo(2.9)),
+      msg("e", "outbound", hoursAgo(2)),
+    ];
+    expect(suggestBurst(messages).map((m) => m.id)).toEqual(["c", "d"]);
+  });
+
+  it("se salta varias salidas seguidas", () => {
+    const messages = [msg("a", "inbound", hoursAgo(5)), msg("b", "outbound", hoursAgo(4)), msg("c", "outbound", hoursAgo(3))];
+    expect(suggestBurst(messages).map((m) => m.id)).toEqual(["a"]);
+  });
+
+  it("vacio solo si el contacto nunca escribio", () => {
+    expect(suggestBurst([])).toEqual([]);
+    expect(suggestBurst([msg("a", "outbound", hoursAgo(1))])).toEqual([]);
   });
 });

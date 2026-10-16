@@ -409,7 +409,7 @@ export type AdsLevel = "account" | "campaign" | "adset" | "ad";
 export type SocialPlatform = "instagram" | "tiktok" | "youtube" | "linkedin" | "threads";
 
 /** Estado de procesamiento de un documento de la base de conocimiento (00049). */
-export type KnowledgeStatus = "processing" | "ready" | "error";
+export type KnowledgeStatus = "processing" | "pending" | "ready" | "error";
 /** Por que se vinculo un remitente a un contacto ya existente (migracion 00025). */
 export type ContactLinkReason = "channel" | "phone" | "email" | "username";
 /** Entidades que registra el audit log (migracion 00023). */
@@ -2201,6 +2201,35 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "messages_conversation_id_fkey";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /** Reacciones (emoji) a mensajes (migracion 00237). Solo las escribe el servidor; no son mensajes. */
+      message_reactions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          conversation_id: string;
+          /** null si el mensaje no esta guardado en `messages` (el hilo de Instagram se lee en vivo de Zernio). */
+          message_id: string | null;
+          platform_message_id: string;
+          emoji: string;
+          direction: "in" | "out";
+          actor_key: "business" | "contact";
+          reacted_by_user_id: string | null;
+          created_at: string;
+          updated_at: string;
+          removed_at: string | null;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_conversation_id_fkey";
             columns: ["conversation_id"];
             isOneToOne: false;
             referencedRelation: "conversations";

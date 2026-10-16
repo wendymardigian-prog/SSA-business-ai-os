@@ -48,6 +48,7 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
 
 export const sendAssetNode: NodeDefinition<SendAssetNodeData> = {
   needsContact: true,
+  requires: ["channel"],
   type: "sendAsset",
   label: "Enviar recurso",
   aliases: [{ nodeType: "action", actionType: "sendAsset" }],

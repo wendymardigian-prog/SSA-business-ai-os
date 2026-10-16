@@ -45,8 +45,15 @@ export interface IndexDocumentPayload {
  */
 class PermanentIndexError extends Error {}
 
+/**
+ * Falta conectar Voyage (F1). NO es un error: el archivo y su texto estan bien
+ * guardados y solo falta indexar. El documento queda `pending` y se retoma solo
+ * cuando Voyage se conecta (`lib/knowledge/pending.ts`).
+ */
+class NotConnectedYetError extends Error {}
+
 export interface IndexOutcome {
-  status: "ready" | "error";
+  status: "ready" | "error" | "pending";
   chunks: number;
   detail?: string;
   runId?: string | null;
@@ -118,6 +125,7 @@ export async function indexDocument(
 
     if (!embedded.ok) {
       // Aca vive la distincion que ordena todo el archivo.
+      if (embedded.problem === "not_connected") throw new NotConnectedYetError(embedded.message);
       if (embedded.retryable) throw new Error(embedded.message);
       throw new PermanentIndexError(embedded.message);
     }
@@ -149,6 +157,12 @@ export async function indexDocument(
     return { status: "ready", chunks: chunks.length, runId: run.runId };
   } catch (err) {
     const message = err instanceof Error ? err.message : "error desconocido";
+
+    if (err instanceof NotConnectedYetError) {
+      await run?.close({ status: "skipped", statusDetail: "voyage_not_connected" });
+      await markPending(supabase, documentId);
+      return { status: "pending", chunks: 0, detail: err.message, runId: run?.runId ?? null };
+    }
 
     if (err instanceof PermanentIndexError) {
       await run?.close({ status: "error", statusDetail: "permanent", error: message });
@@ -294,6 +308,15 @@ export async function writeChunks(
       throw new Error(`No se pudieron guardar los fragmentos: ${error.message}`);
     }
   }
+}
+
+/** Pendiente de indexar: sin motivo de error (no hay nada roto) y sin fragmentos. */
+async function markPending(supabase: Db, documentId: string): Promise<void> {
+  const { error } = await supabase
+    .from("knowledge_base")
+    .update({ status: "pending", error_detail: null, chunk_count: 0 })
+    .eq("id", documentId);
+  if (error) console.error(`[kb] no pude marcar el documento ${documentId} como pendiente:`, error.message);
 }
 
 async function markFailed(supabase: Db, documentId: string, detail: string): Promise<void> {

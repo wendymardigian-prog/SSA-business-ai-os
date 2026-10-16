@@ -19,7 +19,7 @@
  * Todo lo que decide algo vive en `lib/automations/`; esto compone.
  */
 
-import { useCallback, useMemo, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Send } from "lucide-react";
@@ -38,6 +38,8 @@ import type { EditorScreen } from "@/lib/automations/step-catalog";
 import { actionTypeOf, allSteps, firstEmailStep, type ActionStep, type StepTree } from "@/lib/automations/step-tree";
 import { ROOT, conditionGroupsFor } from "@/lib/automations/step-tree-edit";
 import { treeConditionProblems } from "@/lib/automations/step-tree-problems";
+import { loadFlowCapabilities } from "@/lib/actions/flow-capabilities";
+import { ALL_CONNECTED, type Capabilities } from "@/lib/flow-engine/node-requirements";
 
 export type EditorActionResult = { ok: true } | { ok: false; error: string };
 
@@ -123,6 +125,19 @@ export function StepTreeEditor({
 }: StepTreeEditorProps) {
   const router = useRouter();
   const [tree, setTree] = useState<StepTree | null>(initialTree);
+  // Las conexiones del negocio (G1). Se piden al abrir; mientras llegan (o si falla) todo se ve habilitado, como antes.
+  const [capabilities, setCapabilities] = useState<Capabilities>(ALL_CONNECTED);
+  useEffect(() => {
+    let alive = true;
+    loadFlowCapabilities()
+      .then((loaded) => {
+        if (alive && loaded) setCapabilities(loaded);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [onlyIfValue, setOnlyIfValue] = useState<VisibilityConfig | undefined>(onlyIf?.value);
   const [saved, setSaved] = useState(() => snapshot(initialTree, onlyIf?.value));
   const [savedOnlyIf, setSavedOnlyIf] = useState<VisibilityConfig | undefined>(onlyIf?.value);
@@ -196,6 +211,8 @@ export function StepTreeEditor({
         announce,
         ask,
         members,
+        variableKeys,
+        capabilities,
       }
     : null;
 

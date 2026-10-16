@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useReducer } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Tag as TagIcon, Workflow } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Sparkles } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -19,10 +19,22 @@ import {
 import { markAssetUsed, prepareAssetSend } from "@/lib/actions/response-assets";
 import type { AssetChatCopy } from "@/lib/response-assets/send-copy";
 import { cn } from "@/lib/utils";
-import { Tip } from "@/components/ui/tooltip";
+import { EmojiButton, useEmojiInsert } from "@/components/ui/emoji-picker";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { CreateTaskButton } from "@/components/tasks/create-task-button";
+import { ConversationMenu } from "@/components/inbox/conversation-menu";
+import { planHeaderActions } from "@/lib/inbox/header-actions";
+import { planComposerActions } from "@/lib/inbox/composer-actions";
+import { ComposerMoreMenu } from "@/components/inbox/composer-more-menu";
+import { requestSuggestionAction } from "@/lib/actions/agent-drafts";
+import { loadConversationActivity, type ConversationActivityData } from "@/lib/actions/message-activity";
+import { buildActivity, type MessageActivity } from "@/lib/inbox/message-activity";
+import { ActivityTrigger } from "@/components/inbox/message-activity-panel";
+import { ReactButton, ReactionChips } from "@/components/inbox/message-reactions";
+import { loadConversationReactions, reactToMessage } from "@/lib/actions/reactions";
+import { canReactToMessage, reactionCapability as capabilityFor, type ReactionCapability } from "@/lib/channels/reactions";
+import { myReaction, reactionsForMessage, type MessageReactionView, type ReactionRow } from "@/lib/messages/reactions";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError } from "@/components/contacts/ui";
 import type { Database, ConversationStatus } from "@/lib/types/database";
@@ -87,7 +99,35 @@ function shouldShowDateSeparator(
   return currentDate !== previousDate;
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  activity,
+  showMarker = false,
+  runsHref = null,
+  reactions = [],
+  reactionCapability: reactionCap = null,
+  myReactionEmoji = null,
+  canReact = false,
+  reacting = false,
+  onReact,
+}: {
+  message: Message;
+  /** Las reacciones de este mensaje (A3), ya agrupadas por emoji. */
+  reactions?: MessageReactionView[];
+  /** Lo que admite el canal; null = no se ofrece reaccionar. */
+  reactionCapability?: ReactionCapability | null;
+  myReactionEmoji?: string | null;
+  /** Se puede reaccionar a ESTE mensaje (canal, direccion, id del proveedor, permiso de responder). */
+  canReact?: boolean;
+  reacting?: boolean;
+  /** Emoji vacio = quitar la reaccion. */
+  onReact?: (emoji: string) => void;
+  /** Lo que hizo el agente con este mensaje (A1), si hay corrida. */
+  activity?: MessageActivity;
+  /** Dibuja la linea "Agente: ..." bajo el mensaje (solo el ultimo del contacto de cada rafaga). */
+  showMarker?: boolean;
+  runsHref?: string | null;
+}) {
   const isInbound = message.direction === "inbound";
   const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
@@ -95,7 +135,7 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div
       className={cn(
-        "flex gap-2",
+        "group flex gap-2",
         isInbound ? "justify-start" : "justify-end"
       )}
     >
@@ -134,6 +174,7 @@ function MessageBubble({ message }: { message: Message }) {
           <MessageAttachments message={message} />
           {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
         </div>
+        <ReactionChips reactions={reactions} inbound={isInbound} busy={reacting} onRemoveMine={() => onReact?.("")} />
         <div
           className={cn(
             "mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground",
@@ -145,8 +186,16 @@ function MessageBubble({ message }: { message: Message }) {
           )}
           <span>{formatMessageTime(message.created_at)}</span>
           {!isInbound && message.status === "delivered" && <span>Entregado</span>}
+          {canReact && reactionCap && onReact && (
+            <ReactButton capability={reactionCap} mine={myReactionEmoji} busy={reacting} onReact={onReact} />
+          )}
         </div>
         {isInbound && message.origin_chip && <OriginChip chip={message.origin_chip} />}
+        {isInbound && showMarker && activity && (
+          <div className="mt-0.5">
+            <ActivityTrigger activity={activity} variant="marker" runsHref={runsHref} />
+          </div>
+        )}
       </div>
 
       {!isInbound && !isBot && (
@@ -155,8 +204,14 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
       )}
       {!isInbound && isBot && (
-        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-          <Bot className="h-3.5 w-3.5 text-primary" />
+        <div className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+          {activity && message.sent_by_agent_id ? (
+            <ActivityTrigger activity={activity} variant="bot" runsHref={runsHref}>
+              <Bot className="h-3.5 w-3.5 text-primary" />
+            </ActivityTrigger>
+          ) : (
+            <Bot className="h-3.5 w-3.5 text-primary" />
+          )}
         </div>
       )}
     </div>
@@ -217,6 +272,7 @@ export function MessageThread({
   assets = [],
   canManageAssets = false,
   canCreateTask = false,
+  canViewAgentRuns = false,
   canReply = true,
   workspaceName = "",
   agentInfo = null,
@@ -233,6 +289,8 @@ export function MessageThread({
   canManageAssets?: boolean;
   /** Puede crear tareas (`tasks.edit`): muestra «Crear tarea» en el encabezado. */
   canCreateTask?: boolean;
+  /** Puede ver las corridas del agente (`agents.view`): el panel de actividad ofrece abrir la corrida. */
+  canViewAgentRuns?: boolean;
   /** `inbox.<canal>.reply`: sin esto la conversacion se ve pero no se escribe (Equipo y roles, F20). */
   canReply?: boolean;
   workspaceName?: string;
@@ -273,6 +331,95 @@ export function MessageThread({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // "Sugerir respuesta" (A1): hay un borrador vivo (lo informa PendingDraft) y se esta esperando uno.
+  const [hasLiveDraft, setHasLiveDraft] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onLiveDraftChange = useCallback((live: boolean) => {
+    setHasLiveDraft(live);
+    if (live) {
+      setSuggesting(false);
+      if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    }
+  }, []);
+  useEffect(() => () => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+  }, []);
+  // Lo que hizo el agente con cada mensaje (A1.2). Se pide al abrir la conversacion y cuando entra o sale un
+  // mensaje; un fallo deja la bandeja igual, solo sin indicadores.
+  const activityConversationId = conversation?.id ?? null;
+  const [activityData, setActivityData] = useState<{ conversationId: string; data: ConversationActivityData } | null>(null);
+  useEffect(() => {
+    if (!activityConversationId) return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      loadConversationActivity(activityConversationId)
+        .then((data) => {
+          if (alive) setActivityData({ conversationId: activityConversationId, data });
+        })
+        .catch((err) => console.error("[inbox] no pude leer la actividad del agente:", err instanceof Error ? err.message : "error"));
+    }, 600);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [activityConversationId, messages.length]);
+  const activityMap = useMemo(() => {
+    if (!activityData || activityData.conversationId !== activityConversationId) return new Map<string, MessageActivity>();
+    return buildActivity({
+      messages: messages.map((m) => ({ id: m.id, direction: m.direction, created_at: m.created_at, agent_run_id: m.agent_run_id })),
+      ...activityData.data,
+    });
+  }, [activityData, activityConversationId, messages]);
+  // El indicador va bajo el mensaje del contacto al que se ancla cada corrida (el ultimo de su rafaga).
+  const markerMessageIds = useMemo(
+    () => new Set(messages.filter((m) => m.direction === "inbound" && activityMap.has(m.id)).map((m) => m.id)),
+    [messages, activityMap],
+  );
+  // Reacciones (A3): las de la conversacion, al dia con Realtime, y el mensaje que se esta reaccionando.
+  const [reactions, setReactions] = useState<ReactionRow[]>([]);
+  const [reactingId, setReactingId] = useState<string | null>(null);
+  const reactionConversationId = conversation?.id ?? null;
+  const reloadReactions = useCallback(async () => {
+    if (!reactionConversationId) return;
+    try {
+      setReactions(await loadConversationReactions(reactionConversationId));
+    } catch (err) {
+      console.error("[inbox] no pude leer las reacciones:", err instanceof Error ? err.message : "error");
+    }
+  }, [reactionConversationId]);
+  useEffect(() => {
+    if (!reactionConversationId) return;
+    let cancelled = false;
+    const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    (async () => {
+      await reloadReactions();
+      if (cancelled) return;
+      channel = supabase
+        .channel(`conversation-reactions-${reactionConversationId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "message_reactions", filter: `conversation_id=eq.${reactionConversationId}` },
+          () => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => void reloadReactions(), 400);
+          },
+        )
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [reactionConversationId, reloadReactions]);
+  const reactionCap: ReactionCapability | null = channelProvider && capabilityFor(channelProvider).supported ? capabilityFor(channelProvider) : null;
+  // "Crear tarea" se abre desde el menu "⋯" de la cabecera y su panel se ancla a ese boton.
+  const [taskOpen, setTaskOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const insertEmoji = useEmojiInsert(textareaRef, input, setInput);
   useEffect(() => {
     if (!searchParams.get("texto")) return;
     const next = new URLSearchParams(searchParams.toString());
@@ -289,6 +436,55 @@ export function MessageThread({
    * cuenta su uso. Se olvida si el composer queda vacio.
    */
   const insertedAssetIdRef = useRef<string | null>(null);
+
+  /** Una sugerencia descartada que se recupera: el texto vuelve al campo de escritura (editable, no se envia). */
+  const recoverSuggestion = useCallback((body: string) => {
+    setInput(body);
+    insertedAssetIdRef.current = null;
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      // El texto recuperado suele tener varias lineas: se vuelve a medir el campo.
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+    });
+  }, []);
+
+  async function handleReact(message: Message, emoji: string) {
+    if (!conversation || reactingId) return;
+    setMediaError(null);
+    setReactingId(message.id);
+    try {
+      const result = await reactToMessage({
+        conversationId: conversation.id,
+        // Los mensajes que vienen en vivo de Zernio no tienen fila propia: su id no es un uuid.
+        messageId: /^[0-9a-f-]{36}$/i.test(message.id) ? message.id : null,
+        platformMessageId: message.platform_message_id,
+        platformNativeMessageId: message.platform_native_message_id,
+        emoji,
+      });
+      if (!result.ok) setMediaError(result.error);
+      await reloadReactions();
+    } finally {
+      setReactingId(null);
+    }
+  }
+
+  async function requestSuggest() {
+    if (!conversation || suggesting) return;
+    setMediaError(null);
+    setSuggesting(true);
+    const result = await requestSuggestionAction(conversation.id);
+    if (!result.ok) {
+      setSuggesting(false);
+      setMediaError(result.error);
+      return;
+    }
+    // Si en un minuto y medio no aparecio nada (el agente decidio no responder), se libera el boton.
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    suggestTimer.current = setTimeout(() => setSuggesting(false), 90_000);
+  }
 
   // Dias sin respuesta del lead. Sale de contacts.last_interaction_at y no del
   // ultimo mensaje del hilo: es el dato que marcan los dos receptores al
@@ -722,11 +918,25 @@ export function MessageThread({
     );
   }
 
+  const composerPlan = planComposerActions({
+    hasAttachment: !!attachedFile,
+    hasText: !!input.trim(),
+    // Solo si hay un agente prendido para este canal y no hay ya un borrador esperando.
+    canSuggest: !!agentInfo?.available && !hasLiveDraft,
+  });
+  const headerPlan = planHeaderActions({
+    status: conversation.status,
+    canCreateTask,
+    isAutomationPaused: !!conversation.is_automation_paused,
+    agentDisabledByTag: !!conversation.agent_disabled_by_tag_id,
+    draftMode: !!(agentInfo?.available && agentInfo.mode === "draft"),
+  });
+
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* Header. En el telefono se parte en dos renglones en vez de cortarse. */}
-      <div className="flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-2 py-1.5 md:flex-nowrap md:px-4 md:py-0">
-        <div className="flex min-w-0 items-center gap-2 md:gap-3">
+      {/* Header: una sola fila tambien en el telefono (lo secundario va en el menu "⋯"). */}
+      <div className="flex min-h-14 items-center justify-between gap-x-2 border-b border-border px-2 py-1.5 md:gap-x-3 md:px-4 md:py-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
           {onBack && (
             <button
               type="button"
@@ -771,23 +981,23 @@ export function MessageThread({
           </div>
         </div>
 
-        {/* Todo en una linea (en la compu): lo que no es el estado de la
-            conversacion es un icono con tooltip, y el agente es un desplegable
-            con la explicacion adentro. */}
-        <div className="flex flex-wrap items-center gap-1.5 md:flex-shrink-0 md:flex-nowrap">
+        {/* A la vista: el interruptor del agente y la accion mas frecuente (cerrar o
+            reabrir). El resto (posponer, crear tarea y los avisos de estado) vive
+            en el menu "⋯": ver `planHeaderActions`. */}
+        <div className="flex flex-shrink-0 items-center gap-1.5">
           {onOpenContact && (
             <button
               type="button"
               onClick={onOpenContact}
               aria-label="Ver datos del contacto"
-              className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
             >
               <UserRound className="h-4 w-4" aria-hidden />
             </button>
           )}
           <span
             className={cn(
-              "whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium",
+              "hidden whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium sm:inline",
               conversation.status === "open"
                 ? "bg-green-100 text-green-700"
                 : conversation.status === "snoozed"
@@ -797,54 +1007,16 @@ export function MessageThread({
           >
             {STATUS_LABELS[conversation.status] ?? conversation.status}
           </span>
-          {conversation.is_automation_paused && (
-            <Tip content="Flows pausados: las automatizaciones no corren en esta conversación." side="bottom">
-              <span
-                tabIndex={0}
-                aria-label="Flows pausados"
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-orange-700"
-              >
-                <Workflow className="h-3.5 w-3.5" aria-hidden />
-              </span>
-            </Tip>
-          )}
-          {conversation.agent_disabled_by_tag_id && (
-            <Tip
-              content="Apagado por etiqueta: el contacto tiene una etiqueta que apaga el agente (por ejemplo es-conocido). Prenderlo a mano acá gana sobre la etiqueta."
-              side="bottom"
-            >
-              <span
-                tabIndex={0}
-                aria-label="Agente apagado por etiqueta"
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300"
-              >
-                <TagIcon className="h-3.5 w-3.5" aria-hidden />
-              </span>
-            </Tip>
-          )}
-          {agentInfo?.available && agentInfo.mode === "draft" && (
-            <Tip
-              content="Modo borrador: en este canal el agente deja borradores para aprobar. Nada sale sin que alguien lo envíe."
-              side="bottom"
-            >
-              <span
-                tabIndex={0}
-                aria-label="Modo borrador"
-                className="flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-amber-400 text-amber-700 dark:text-amber-300"
-              >
-                <FileText className="h-3.5 w-3.5" aria-hidden />
-              </span>
-            </Tip>
-          )}
           {/* F11: el aviso completo va en la barra de abajo; acá alcanza un
               pill, para que se vea sin desplazar el hilo. */}
           {needsHumanBadge(conversation).show && (
             <span
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
               title={needsHumanBadge(conversation).title}
+              aria-label={needsHumanBadge(conversation).title}
             >
               <UserRoundSearch className="h-3 w-3" aria-hidden />
-              Necesita humano
+              <span className="hidden sm:inline">Necesita humano</span>
             </span>
           )}
           <ConversationAgentToggle
@@ -853,44 +1025,42 @@ export function MessageThread({
             pausedUntil={conversation.agent_paused_until}
             info={agentInfo}
           />
-          <div className="flex flex-shrink-0 items-center gap-1">
-            {canCreateTask && (
-              <CreateTaskButton contactId={conversation.contact_id} conversationId={conversation.id} contactName={conversation.contacts?.display_name ?? null} />
+          <button
+            type="button"
+            onClick={() => updateConversationStatus(headerPlan.primary === "close" ? "closed" : "open")}
+            disabled={!!statusUpdating}
+            title={headerPlan.primary === "close" ? "Cerrar conversación" : "Reabrir conversación"}
+            aria-label={headerPlan.primary === "close" ? "Cerrar conversación" : "Reabrir conversación"}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            {statusUpdating === (headerPlan.primary === "close" ? "closed" : "open") ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : headerPlan.primary === "close" ? (
+              <CheckCircle className="h-4 w-4" aria-hidden />
+            ) : (
+              <RotateCcw className="h-4 w-4" aria-hidden />
             )}
-            {conversation.status !== "closed" && (
-              <button
-                onClick={() => updateConversationStatus("closed")}
-                disabled={!!statusUpdating}
-                title="Cerrar conversación"
-                aria-label="Cerrar conversación"
-                className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
-              >
-                {statusUpdating === "closed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
-              </button>
-            )}
-            {conversation.status !== "snoozed" && (
-              <button
-                onClick={() => updateConversationStatus("snoozed")}
-                disabled={!!statusUpdating}
-                title="Posponer conversación"
-                aria-label="Posponer conversación"
-                className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
-              >
-                {statusUpdating === "snoozed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
-              </button>
-            )}
-            {conversation.status !== "open" && (
-              <button
-                onClick={() => updateConversationStatus("open")}
-                disabled={!!statusUpdating}
-                title="Reabrir conversación"
-                aria-label="Reabrir conversación"
-                className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
-              >
-                {statusUpdating === "open" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-              </button>
-            )}
-          </div>
+            <span className="hidden md:inline">{headerPlan.primary === "close" ? "Cerrar" : "Reabrir"}</span>
+          </button>
+          <ConversationMenu
+            plan={headerPlan}
+            statusLabel={STATUS_LABELS[conversation.status] ?? conversation.status}
+            buttonRef={menuButtonRef}
+            disabled={!!statusUpdating}
+            onAction={(action) => {
+              if (action === "snooze") void updateConversationStatus("snoozed");
+              else if (action === "reopen") void updateConversationStatus("open");
+              else setTaskOpen(true);
+            }}
+          />
+          {canCreateTask && (
+            <CreateTaskButton
+              contactId={conversation.contact_id}
+              conversationId={conversation.id}
+              contactName={conversation.contacts?.display_name ?? null}
+              controlled={{ open: taskOpen, onOpenChange: setTaskOpen, anchor: menuButtonRef }}
+            />
+          )}
         </div>
       </div>
 
@@ -913,7 +1083,25 @@ export function MessageThread({
                   <div className="h-px flex-1 bg-border" />
                 </div>
               )}
-              <MessageBubble message={message} />
+              <MessageBubble
+                message={message}
+                activity={activityMap.get(message.id)}
+                showMarker={markerMessageIds.has(message.id)}
+                runsHref={canViewAgentRuns ? "/dashboard/agents/runs" : null}
+                reactions={reactionsForMessage(reactions, message)}
+                reactionCapability={reactionCap}
+                myReactionEmoji={myReaction(reactions, message)}
+                canReact={
+                  canReply &&
+                  canReactToMessage({
+                    provider: channelProvider,
+                    direction: message.direction,
+                    platformMessageId: message.platform_message_id ?? message.platform_native_message_id,
+                  }).ok
+                }
+                reacting={reactingId === message.id}
+                onReact={(emoji) => void handleReact(message, emoji)}
+              />
             </div>
           ))}
           <div ref={messagesEndRef} />
@@ -931,7 +1119,12 @@ export function MessageThread({
       ) : (
       <>
       {/* Bloque 2c: el borrador del agente, arriba del campo de escritura. */}
-      <PendingDraft key={conversation.id} conversationId={conversation.id} />
+      <PendingDraft
+        key={conversation.id}
+        conversationId={conversation.id}
+        onRecover={recoverSuggestion}
+        onLiveChange={onLiveDraftChange}
+      />
 
       {/* Composer */}
       <div className="border-t border-border p-3 md:p-4">
@@ -1048,7 +1241,31 @@ export function MessageThread({
                   setAttachedFile(file);
                 }}
               />
-              {!attachedFile && (
+              <EmojiButton onPick={insertEmoji} focusRef={textareaRef} />
+              {composerPlan.hasMoreMenu && (
+                <ComposerMoreMenu
+                  showLibrary={composerPlan.showLibrary}
+                  showAttach={composerPlan.showAttach}
+                  showSuggest={composerPlan.showSuggest}
+                  onLibrary={() => (widget.view === "closed" ? openWidget(false) : closeWidget(false))}
+                  onAttach={() => fileInputRef.current?.click()}
+                  onSuggest={() => void requestSuggest()}
+                  suggesting={suggesting}
+                />
+              )}
+              {composerPlan.showSuggest && (
+                <button
+                  type="button"
+                  onClick={() => void requestSuggest()}
+                  disabled={suggesting}
+                  aria-label={suggesting ? "Preparando una sugerencia" : "Sugerir respuesta"}
+                  title={suggesting ? "Preparando una sugerencia…" : "Sugerir respuesta con el agente"}
+                  className="hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-60 sm:flex"
+                >
+                  {suggesting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+                </button>
+              )}
+              {composerPlan.showLibrary && (
                 <button
                   type="button"
                   data-asset-widget-toggle
@@ -1058,24 +1275,24 @@ export function MessageThread({
                   aria-haspopup="dialog"
                   title={`Recursos guardados (${shortcutLabel} o escribí /)`}
                   className={cn(
-                    "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent",
+                    "hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent sm:flex",
                     widget.view !== "closed" && "bg-accent text-foreground",
                   )}
                 >
                   <Library className="h-4 w-4" />
                 </button>
               )}
-              {!attachedFile && (
+              {composerPlan.showAttach && (
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   aria-label="Adjuntar archivo"
-                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
+                  className="hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent sm:flex"
                 >
                   <Paperclip className="h-4 w-4" />
                 </button>
               )}
-              {!attachedFile && !input.trim() && (
+              {composerPlan.showMic && (
                 <button
                   type="button"
                   onClick={() => {

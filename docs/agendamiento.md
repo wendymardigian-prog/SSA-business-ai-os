@@ -199,3 +199,10 @@ Lo que no se puede romper sin que algo avise:
 - `lib/embed/build.test.ts` — el script compilado está commiteado y no creció.
 - `lib/flow-engine/registry/consistency.test.ts` — el editor, el simulador y el registro dicen lo mismo.
 - `lib/vault-boundary.test.ts` — ningún componente de navegador llega a Vault.
+
+## Áreas de sistema: Ventas, Servicio, Equipo y Otros (00240, 16/10/2026)
+
+Equipo (tipos: Reunión interna, Uno a uno, Entrevista) y Otros (General) se suman a Ventas y Servicio. Las entrevistas
+de candidatos son un tipo del área **Equipo**. Se precargan en los workspaces nuevos y se agregan a los existentes con
+`seed_booking_categories_for_workspace`: idempotente, respeta un área con el mismo nombre que el negocio ya tuviera y
+no cambia ninguna reunión ni el `category_snapshot` ya congelado. Se renombran pero no se archivan.

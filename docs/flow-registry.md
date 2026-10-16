@@ -604,3 +604,15 @@ Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CH
 - **Variables de pieza:** `{{content.title}}` y `{{content.code}}` (más los ids `content.social_post_id` y `content.content_post_id`) en los flujos disparados por un comentario (`comment_keyword`), por la respuesta a una historia propia, por un anuncio vinculado a una pieza y por la respuesta a un DM de una automatización. Si no hay pieza, el token queda escrito tal cual (como cualquier variable que no resuelve).
 - **Lo que guarda el saliente:** un DM de un flujo con pieza guarda `messages.origin_context.content = { social_post_id, content_post_id, via: "flow", flow_id, title }`; es lo que usa la herencia de pieza cuando la persona responde.
 - **Jobs nuevos** (registrados en `registerPublishing()`): `finance_daily`, `comment_backfill`, `comment_backfill_workspace` y `commissions_payment`. El de comisiones lo encola el trigger de `payments` (00235, después del merge).
+
+## Conexiones que necesita cada acción (G1, 16/10/2026)
+
+Un nodo puede declarar `requires: Requirement[]` (`email`, `whatsapp_channel`, `ai`, `agent`, `channel`). El editor
+muestra la acción bloqueada si falta (atenuada, con candado, "Necesita: …" y el link para conectarlo) pero se puede
+agregar y guardar en borrador; **publicar o prender un flujo con un paso bloqueado que se alcanza desde el disparador
+se rechaza** (`publishFlow`, `toggleFormFlow`, `toggleEventFlow`, todos por `connectionProblemsForGraph`).
+
+La copia del navegador es `lib/flow-engine/node-requirements.ts` (`NODE_REQUIREMENTS`); `registry/consistency.test.ts`
+exige que diga lo mismo que el registro. Sumar un requisito: declararlo en el nodo, en esa lista y en
+`REQUIREMENT_INFO` (texto y a dónde conectar), y enseñarle a `loadAutomationCapabilities` cómo saber si está conectado.
+El estado se calcula al abrir la pantalla: no se guarda en el flujo.

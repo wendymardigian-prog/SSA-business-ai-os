@@ -353,3 +353,47 @@ export async function loadLiveDraft(user: Db, conversationId: string, now: Date 
   const messages = await loadBurstMessages(user, [raw]);
   return toRow(raw, now, messages);
 }
+
+/**
+ * La ultima sugerencia que una PERSONA descarto (A1), para poder recuperarla.
+ *
+ * Solo cuentan las descartadas a mano y con texto: las que se retiraron solas
+ * (alguien respondio, se cerro la conversacion: motivo `auto:`) o fueron
+ * reemplazadas por otra no sirven, y una sin texto no tiene nada que recuperar.
+ * Si despues entro un mensaje nuevo del contacto, la sugerencia respondia a
+ * otra cosa: tampoco se ofrece.
+ */
+export async function loadLastDiscardedDraft(user: Db, conversationId: string, now: Date = new Date()): Promise<DraftQueueRow | null> {
+  const { data, error } = await user
+    .from("agent_drafts")
+    .select(QUEUE_COLUMNS)
+    .eq("conversation_id", conversationId)
+    .eq("status", "discarded")
+    .not("body", "is", null)
+    .order("decided_at", { ascending: false, nullsFirst: false })
+    .limit(5);
+  if (error) {
+    console.error("[drafts] no pude leer la sugerencia descartada:", error.message);
+    return null;
+  }
+  const raw = ((data ?? []) as unknown as RawDraft[]).find(
+    (d) => (d.body ?? "").trim() !== "" && !(d.discard_reason ?? "").startsWith("auto:"),
+  );
+  if (!raw) return null;
+
+  const { data: newer, error: newerError } = await user
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .eq("direction", "inbound")
+    .gt("created_at", raw.created_at)
+    .limit(1);
+  if (newerError) {
+    console.error("[drafts] no pude comprobar si hay mensajes nuevos:", newerError.message);
+    return null;
+  }
+  if ((newer ?? []).length > 0) return null;
+
+  const messages = await loadBurstMessages(user, [raw]);
+  return toRow(raw, now, messages);
+}

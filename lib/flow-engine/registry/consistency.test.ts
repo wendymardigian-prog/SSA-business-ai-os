@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { listNodes, resolveNodeType, listTriggers } from "./index";
 import { CONTACT_FREE_NODE_TYPES, MEMBER_TRIGGER_TYPES, SYSTEM_TRIGGER_TYPES } from "../contact-free";
 import { AUTOMATION_SOURCE_TYPES } from "./types";
+import { NODE_REQUIREMENTS } from "../node-requirements";
 
 /**
  * Guardia contra la desincronizacion entre la UI y el motor.
@@ -150,6 +151,25 @@ describe("cada nodo declara si necesita un contacto (EOD, E15)", () => {
 
   it("los disparadores sin contacto son los de la lista del navegador", () => {
     expect(listTriggers().filter((t) => t.subject === "member").map((t) => t.type)).toEqual([...MEMBER_TRIGGER_TYPES]);
+  });
+});
+
+describe("que conexion necesita cada accion (G1)", () => {
+  // El navegador pinta una accion como bloqueada y el servidor frena la publicacion con la MISMA lista: si el registro
+  // y la copia del navegador se separan, la pantalla diria una cosa y el servidor haria otra.
+  it("la lista del navegador dice lo mismo que `requires` de cada nodo del registro", () => {
+    const delRegistro = Object.fromEntries(
+      listNodes()
+        .filter((n) => (n.requires ?? []).length > 0)
+        .map((n) => [n.type, [...(n.requires ?? [])].sort()]),
+    );
+    const delNavegador = Object.fromEntries(Object.entries(NODE_REQUIREMENTS).map(([type, req]) => [type, [...req].sort()]));
+    expect(delNavegador).toEqual(delRegistro);
+  });
+
+  it("toda accion con requisitos esta registrada (no hay un nombre inventado en la lista)", () => {
+    const tipos = new Set(listNodes().map((n) => n.type));
+    expect(Object.keys(NODE_REQUIREMENTS).filter((t) => !tipos.has(t))).toEqual([]);
   });
 });
 

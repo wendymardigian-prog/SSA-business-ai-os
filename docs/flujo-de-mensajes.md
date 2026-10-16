@@ -237,3 +237,10 @@ OS, WenOS y Agente Chat). No genera duplicados acá —cada sistema tiene su bas
 pero desde la Fase 3 este sistema **guarda el contenido** de esos DMs. Va junto
 con la confirmación de los términos de Zernio y Meta, porque es la misma
 conversación.
+
+## Reacciones (00237, 16/10/2026)
+
+Una reacción NO es un mensaje: vive en `message_reactions` (una por actor y mensaje; quitarla pone `removed_at`).
+Se guarda por el id con el que el PROVEEDOR conoce el mensaje, porque el hilo de Instagram se lee en vivo de Zernio y
+muchos mensajes no tienen fila propia. Los dos webhooks la atajan antes del camino de los mensajes. Enviar: Evolution
+(`sendReaction`, v1 y v2) y Zernio (`addMessageReaction` / `removeMessageReaction`, probando el id nativo y el propio).

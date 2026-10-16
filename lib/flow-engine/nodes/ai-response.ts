@@ -97,6 +97,7 @@ async function executeAiResponse(
  */
 export const aiResponseNode: NodeDefinition<AiResponseNodeData> = {
   needsContact: true,
+  requires: ["ai"],
   type: "aiResponse",
   label: "Respuesta con IA",
   persistsVariables: true,

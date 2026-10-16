@@ -19,6 +19,7 @@ import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative";
 import { isRelativeSalesTrigger, SALES_TRIGGER_TYPES } from "@/lib/sales/automation/triggers";
 import type { Database } from "@/lib/types/database";
 import { checkMemberFlow } from "./member-flow-db";
+import { connectionProblemsForGraph } from "./connection-problems";
 
 type Db = SupabaseClient<Database>;
 type FlowRow = Database["public"]["Tables"]["flows"]["Row"];
@@ -50,8 +51,14 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   const nodes = Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : [];
   const edges = Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [];
 
-  // Un flujo sin contacto (reporte de fin de día, E15) no se publica con pasos que necesiten uno.
-  const problems = [...(await checkMemberFlow(db, workspaceId, nodes, edges, { publishing: true })), ...(args.extraProblems?.(nodes, edges) ?? [])];
+  // Un flujo sin contacto (reporte de fin de día, E15) no se publica con pasos que necesiten uno. Tampoco con pasos
+  // que necesitan una conexion que falta (Resend, WhatsApp, una IA...): se puede armar y guardar el borrador, pero
+  // publicarlo seria prometer algo que no se va a ejecutar (G1).
+  const problems = [
+    ...(await checkMemberFlow(db, workspaceId, nodes, edges, { publishing: true })),
+    ...(await connectionProblemsForGraph(args.getServiceClient, workspaceId, nodes, edges)),
+    ...(args.extraProblems?.(nodes, edges) ?? []),
+  ];
   if (problems.length > 0) return { ok: false, status: 400, error: problems[0], problems };
 
   // Update flow status to published and increment version

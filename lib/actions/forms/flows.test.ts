@@ -7,12 +7,13 @@ const mocks = vi.hoisted(() => ({
   audit: vi.fn(),
   revalidate: vi.fn(),
   sendEmail: vi.fn(),
+  emailConfigured: vi.fn(),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: mocks.permission }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: mocks.service }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
-vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: mocks.sendEmail }));
+vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: mocks.sendEmail, isEmailConfigured: mocks.emailConfigured }));
 
 import { createFormFlow, createFormFlowFromTemplate, saveFormFlowTree, saveFormLinearFlow, sendFormFlowTestEmail, toggleFormFlow } from "./flows";
 import { flowToTree } from "@/lib/automations/step-tree";
@@ -29,6 +30,8 @@ interface Opts {
   existingNames?: string[];
   /** Las preguntas del formulario (borrador, sin version publicada), para la plantilla que pide una. */
   fields?: Array<Record<string, unknown>>;
+  /** Resend conectado (G1): por defecto si, para que el flujo de la plantilla se pueda encender. */
+  resend?: boolean;
 }
 
 function setup(opts: Opts = {}): FakeDb {
@@ -57,7 +60,15 @@ function setup(opts: Opts = {}): FakeDb {
     supabase: db.client,
     can: opts.can ?? (() => true),
   });
-  mocks.service.mockResolvedValue(fakeDb().client);
+  // Las conexiones del negocio, para prender un flujo (G1): Resend segun `opts.resend`; sin IA, sin canales ni agentes.
+  mocks.emailConfigured.mockResolvedValue(opts.resend !== false);
+  mocks.service.mockResolvedValue(
+    fakeDb({
+      "integration_configs:select": { data: [] },
+      "channels:select": { data: [] },
+      "agents:select": { data: [] },
+    }).client,
+  );
   return db;
 }
 
@@ -185,6 +196,21 @@ describe("toggleFormFlow", () => {
     expect(db.writesTo("flows")[0].values).toEqual({ status: "draft" });
     const inserted = db.writesTo("triggers").find((c) => c.op === "insert")!.values as Array<Record<string, unknown>>;
     expect(inserted[0]).toMatchObject({ is_active: false });
+  });
+  it("sin Resend conectado, un flujo con «Enviar email» NO se prende y no escribe nada (G1)", async () => {
+    const db = setup({ resend: false });
+    const out = await toggleFormFlow({ flowId: FLOW, enabled: true });
+    expect(out).toMatchObject({ ok: false, error: expect.stringContaining("Email saliente (Resend)") });
+    expect(db.writes()).toHaveLength(0);
+  });
+  it("con Resend conectado, el mismo flujo se prende sin tocarlo (G1)", async () => {
+    setup({ resend: true });
+    expect(await toggleFormFlow({ flowId: FLOW, enabled: true })).toEqual({ ok: true });
+  });
+  it("apagar un flujo siempre se puede, aunque falte una conexion (G1)", async () => {
+    const db = setup({ resend: false });
+    expect(await toggleFormFlow({ flowId: FLOW, enabled: false })).toEqual({ ok: true });
+    expect(db.writesTo("flows")[0].values).toEqual({ status: "draft" });
   });
   it("un flow que no es de un formulario no se toca", async () => {
     const db = setup({ flow: { form_id: null } });

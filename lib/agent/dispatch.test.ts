@@ -10,9 +10,18 @@ import { agentRow } from "./testing/fixtures";
 
 const NOW = new Date("2026-09-15T16:00:00.000Z");
 
-function world(opts: { agent?: Parameters<typeof agentRow>[0] | null; agentEnabled?: boolean | null; paused?: string | null} = {}) {
+function world(
+  opts: {
+    agent?: Parameters<typeof agentRow>[0] | null;
+    agentEnabled?: boolean | null;
+    paused?: string | null;
+    /** Las IAs conectadas (E1). Por defecto, la que usa el agente de prueba (anthropic). */
+    ai?: string[];
+  } = {},
+) {
   return memoryDb(
     {
+      integration_configs: (opts.ai ?? ["anthropic"]).map((provider) => ({ workspace_id: "ws-1", type: "ai_provider", provider, is_active: true, config: {} })),
       agents: opts.agent === null ? [] : [agentRow({ enabled_channel_ids: ["ch-1"], ...opts.agent })],
       conversations: [
         { id: "cv-1", agent_enabled: opts.agentEnabled === undefined ? true : opts.agentEnabled, agent_paused_until: opts.paused ?? null },
@@ -145,9 +154,55 @@ describe("las palancas", () => {
   });
 
   it("nunca lanza: si agendar falla, devuelve error y la recepcion del mensaje sigue", async () => {
-    const db = memoryDb({ agents: [agentRow()], conversations: [{ id: "cv-1", agent_enabled: true, agent_paused_until: null }] });
+    const db = memoryDb({
+      agents: [agentRow()],
+      conversations: [{ id: "cv-1", agent_enabled: true, agent_paused_until: null }],
+      integration_configs: [{ workspace_id: "ws-1", type: "ai_provider", provider: "anthropic", is_active: true, config: {} }],
+    });
     await expect(
       maybeScheduleAgentTurn(db.client, { ...base, automation: { claimed: false, reason: "no_trigger" } }),
     ).resolves.toMatchObject({ scheduled: false, reason: "error" });
+  });
+});
+
+describe("la IA del agente tiene que estar conectada (E1)", () => {
+  const free = { claimed: false, reason: "no_trigger" } as const;
+
+  it("sin ninguna IA conectada no agenda el turno (antes escalaba la conversacion a una persona en cada mensaje)", async () => {
+    const db = world({ ai: [] });
+    const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: free });
+    expect(outcome).toMatchObject({ scheduled: false, reason: "provider_unavailable" });
+    expect(db.rpcCalls.filter((c) => c.name === "push_debounced_job")).toHaveLength(0);
+  });
+
+  it("se desconecto la IA de ESTE agente (hay otra conectada): tampoco agenda", async () => {
+    const db = world({ ai: ["openai"] });
+    const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: free });
+    expect(outcome).toMatchObject({ scheduled: false, reason: "provider_unavailable" });
+  });
+
+  it("en 'heredar' no deja un run (nadie pidio que atienda); la bandeja ya dice que no puede responder", async () => {
+    const db = world({ ai: [], agentEnabled: null });
+    await maybeScheduleAgentTurn(db.client, { ...base, automation: free });
+    expect(db.rows("agent_runs")).toHaveLength(0);
+  });
+
+  it("forzado prendido deja un run que dice por que no actuo", async () => {
+    const db = world({ ai: [], agentEnabled: true });
+    const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: free });
+    expect(outcome).toMatchObject({ scheduled: false, reason: "provider_unavailable" });
+    expect(db.rows("agent_runs")[0]).toMatchObject({ status: "skipped", status_detail: "no_ai_connection" });
+  });
+
+  it("no toca la configuracion del agente: sigue encendido", async () => {
+    const db = world({ ai: [] });
+    await maybeScheduleAgentTurn(db.client, { ...base, automation: free });
+    expect(db.rows("agents")[0].is_enabled).toBe(true);
+  });
+
+  it("al reconectar la IA, vuelve a agendar sin tocar nada mas", async () => {
+    const db = world({ ai: ["anthropic"] });
+    const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: free });
+    expect(outcome).toMatchObject({ scheduled: true });
   });
 });

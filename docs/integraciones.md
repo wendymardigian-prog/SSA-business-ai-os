@@ -151,3 +151,10 @@ tres posts agendados para el jueves los deja fallando el jueves, y enterarse
 ese día es tarde.
 
 Desconectar borra las claves de Vault. No borra los datos ya recolectados.
+
+## Pantalla de Integraciones (16/10/2026)
+
+Se sacó la franja "Para arrancar, conviene conectar…" y la tarjeta grande del estado vacío. La tarjeta de la app de
+Fathom ya no está debajo de "Inteligencia artificial": va en **Conexiones**, con el mismo diseño que las demás, y sus
+campos (redirect URI, Client ID, Client Secret) aparecen solo al tocar "Conectar". Respeta los chips y "Requiere
+atención". Conectar **Voyage** retoma los documentos de Conocimiento que quedaron pendientes de indexar.

@@ -24,6 +24,7 @@ const VALID_MEDIA_KINDS = new Set<AttachmentKind>(["image", "video", "audio", "v
  */
 export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
   needsContact: true,
+  requires: ["channel"],
   type: "sendMessage",
   label: "Enviar mensaje",
   async execute({ supabase, data, context, node }: NodeExecutionArgs<SendMessageNodeData>) {

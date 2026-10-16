@@ -170,6 +170,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
 
 export const sendWhatsAppNumberNode: NodeDefinition<SendWhatsAppNumberData> = {
   needsContact: false,
+  requires: ["whatsapp_channel"],
   type: SEND_WHATSAPP_NUMBER_TYPE,
   label: "Enviar WhatsApp a un número",
   aliases: [{ nodeType: "action", actionType: SEND_WHATSAPP_NUMBER_TYPE }],

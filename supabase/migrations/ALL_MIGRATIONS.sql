@@ -41734,3 +41734,317 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_social_accounts_ws_platform_noext
 
 COMMENT ON TABLE public.social_accounts IS
   'Una fila por cuenta social del workspace (varias por red si la red lo permite, por ejemplo dos Instagram por Zernio): por donde se publica y que se muestra en la pagina Social.';
+
+-- ============================================================
+-- MIGRATION 237: MESSAGE REACTIONS
+-- ============================================================
+-- ============================================================
+-- 00237 — Reacciones a mensajes (A3)
+-- ============================================================
+-- Una reaccion es un emoji que alguien le pone a UN mensaje. Se guarda aparte de
+-- `messages` a proposito: una reaccion NO es un mensaje. Si entrara como una fila
+-- de `messages` (que es lo que pasaba con WhatsApp: Evolution la manda como un
+-- `messages.upsert`), contaria como un entrante vacio, sumaria un no leido,
+-- dispararia las automatizaciones y le daria turno al agente.
+--
+--   direction 'in'  : la puso el contacto sobre un mensaje nuestro (o suyo).
+--   direction 'out' : la pusimos nosotros (desde el sistema o desde el telefono).
+--
+-- Una reaccion por actor y por mensaje (WhatsApp e Instagram reemplazan la
+-- anterior). Quitarla pone `removed_at`, no borra la fila (soft delete).
+--
+-- `message_id` es null cuando el mensaje no esta guardado en `messages` (el hilo
+-- de Instagram se lee en vivo de Zernio): se identifica por `platform_message_id`,
+-- el id con el que el proveedor lo conoce.
+--
+-- Escribe SOLO el servidor (service role). La app lee con la RLS de siempre: se
+-- ve si se ve la conversacion.
+--
+-- Para volver atras: DROP TABLE public.message_reactions;
+
+CREATE TABLE IF NOT EXISTS public.message_reactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  conversation_id uuid NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  message_id uuid REFERENCES public.messages(id) ON DELETE CASCADE,
+  platform_message_id text NOT NULL,
+  emoji text NOT NULL,
+  direction text NOT NULL,
+  -- Quien reacciono: 'business' (nosotros) o 'contact' (el lead). Con una sola
+  -- persona en cada chat alcanza; deja lugar a un grupo si algun dia hace falta.
+  actor_key text NOT NULL,
+  reacted_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  removed_at timestamptz
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'message_reactions_direction_values') THEN
+    ALTER TABLE public.message_reactions ADD CONSTRAINT message_reactions_direction_values
+      CHECK (direction IN ('in', 'out'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'message_reactions_actor_values') THEN
+    ALTER TABLE public.message_reactions ADD CONSTRAINT message_reactions_actor_values
+      CHECK (actor_key IN ('business', 'contact'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'message_reactions_emoji_length') THEN
+    ALTER TABLE public.message_reactions ADD CONSTRAINT message_reactions_emoji_length
+      CHECK (char_length(emoji) BETWEEN 1 AND 32);
+  END IF;
+END $$;
+
+-- Una reaccion por actor y mensaje: poner otra la reemplaza (upsert).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_message_reactions_actor
+  ON public.message_reactions (conversation_id, platform_message_id, actor_key);
+
+CREATE INDEX IF NOT EXISTS idx_message_reactions_conversation
+  ON public.message_reactions (conversation_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_message_reactions_message
+  ON public.message_reactions (message_id) WHERE message_id IS NOT NULL;
+
+ALTER TABLE public.message_reactions ENABLE ROW LEVEL SECURITY;
+
+-- Se ven las reacciones de las conversaciones que se ven (de ahi sale el scope de leads).
+DROP POLICY IF EXISTS "message_reactions_select" ON public.message_reactions;
+CREATE POLICY "message_reactions_select" ON public.message_reactions
+  FOR SELECT USING (
+    public.is_workspace_member(workspace_id)
+    AND EXISTS (
+      SELECT 1 FROM public.conversations conv
+      WHERE conv.id = message_reactions.conversation_id
+    )
+  );
+
+-- Sin policies de INSERT, UPDATE ni DELETE: solo el service role escribe.
+DROP POLICY IF EXISTS "message_reactions_insert" ON public.message_reactions;
+DROP POLICY IF EXISTS "message_reactions_update" ON public.message_reactions;
+DROP POLICY IF EXISTS "message_reactions_delete" ON public.message_reactions;
+
+REVOKE ALL ON TABLE public.message_reactions FROM anon, authenticated;
+GRANT SELECT ON TABLE public.message_reactions TO authenticated;
+GRANT ALL ON TABLE public.message_reactions TO service_role;
+
+COMMENT ON TABLE public.message_reactions IS
+  'Reacciones (emoji) a mensajes. No son mensajes: no cuentan como entrantes, no suman no leidos, no disparan flows ni al agente. Una por actor (business/contact) y mensaje. Solo el servidor escribe.';
+
+-- Realtime: la reaccion de un contacto aparece sola en la conversacion abierta.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'message_reactions'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.message_reactions;
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 238: COPYWRITER SEED OFF
+-- ============================================================
+-- ============================================================
+-- 00238 — El copywriter nace APAGADO (E1)
+-- ============================================================
+-- La 00094 crea un "Copywriter de contenido" por workspace, y el trigger lo
+-- creaba ENCENDIDO (`is_enabled = true`) aunque su propio comentario dijera
+-- "apagado". Resultado: una instalacion nueva, sin ninguna IA conectada,
+-- mostraba un agente "Encendido" en Agentes IA, y la pantalla de "todavia no
+-- hay un agente" (con su boton para crear el agente de chat) quedaba
+-- inalcanzable porque ese agente ya contaba como agente.
+--
+-- Desde esta migracion, el workspace nuevo arranca con el copywriter apagado:
+-- una instalacion nueva no tiene nada encendido por accidente. El copywriter
+-- no depende de este interruptor para generar a mano (no lo lee); es solo lo
+-- que ve la pantalla.
+--
+-- NO toca los workspaces que ya existen: sus copywriters siguen como estan
+-- (en produccion hay una IA conectada y se usa).
+--
+-- Para volver atras (solo cambia lo que nace de ahora en adelante): reponer
+-- `true` en el INSERT de `seed_copywriter_agent()` (ver la 00094).
+
+CREATE OR REPLACE FUNCTION public.seed_copywriter_agent()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  -- Apagado y sin prompt propio: la voz de marca se carga desde la pantalla.
+  INSERT INTO public.agents (workspace_id, name, type, is_enabled, system_prompt)
+  VALUES (
+    NEW.id,
+    'Copywriter de contenido',
+    'copywriter',
+    false,
+    ''
+  )
+  ON CONFLICT DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+-- ============================================================
+-- MIGRATION 239: KNOWLEDGE PENDING
+-- ============================================================
+-- ============================================================
+-- 00239 — Documentos "pendientes de indexar" (F1)
+-- ============================================================
+-- Subir un documento tiene que seguir siendo posible aunque Voyage AI (lo que
+-- indexa la base de conocimiento) todavia no este conectado. Hasta ahora ese
+-- documento terminaba en 'error' para siempre, con un boton "Reprocesar" que
+-- tampoco servia hasta conectar Voyage, y nada lo retomaba solo al conectarlo.
+--
+-- Un estado nuevo, 'pending': el archivo y su texto estan guardados y solo falta
+-- indexar. Se retoma solo cuando se conecta Voyage (o con "Indexar pendientes").
+-- No es un error: no hay nada roto, falta una conexion.
+--
+-- Tambien pasa a 'pending' lo que HOY esta en 'error' por esa misma causa (se
+-- reconoce por el texto del motivo): es lo mismo, solo estaba mal clasificado.
+-- No se toca ningun otro error.
+--
+-- Estados: processing (el job corre) | pending (falta Voyage) | ready | error.
+--
+-- La restriccion vieja, para volver atras:
+--   CHECK (status IN ('processing', 'ready', 'error'))
+-- (antes de volver, pasar los 'pending' a 'error' o 'processing').
+
+ALTER TABLE public.knowledge_base DROP CONSTRAINT IF EXISTS knowledge_base_status_check;
+ALTER TABLE public.knowledge_base
+  ADD CONSTRAINT knowledge_base_status_check
+  CHECK (status IN ('processing', 'ready', 'error', 'pending'));
+
+UPDATE public.knowledge_base
+SET status = 'pending', error_detail = NULL
+WHERE status = 'error'
+  AND deleted_at IS NULL
+  AND source_file_path IS NOT NULL
+  AND error_detail ILIKE 'Voyage AI no esta conectado%';
+
+COMMENT ON COLUMN public.knowledge_base.status IS
+  'processing = el job async todavia corre; pending = guardado, falta conectar Voyage para indexarlo (se retoma solo al conectarlo); ready = indexado; error = fallo, el motivo esta en error_detail.';
+
+-- ============================================================
+-- MIGRATION 240: BOOKING AREAS TEAM OTHER
+-- ============================================================
+-- ============================================================================
+-- 00240 — Areas "Equipo" y "Otros" en la agenda (B1)
+-- ============================================================================
+-- Las areas de sistema eran dos (Ventas y Servicio). Se suman:
+--
+--   Equipo  (reuniones internas, uno a uno, entrevistas a candidatos)
+--           tipos: Reunión interna, Uno a uno, Entrevista
+--   Otros   (lo que no entra en las otras tres)
+--           tipos: General
+--
+-- Las entrevistas de candidatos son del area Equipo: es trabajo de armar el equipo.
+--
+-- NO TOCA NADA DE LO EXISTENTE:
+--   - Ninguna reunion ni evento cambia de categoria: el `category_snapshot` que
+--     cada agenda congelo al crearse sigue igual (renombrar o sumar areas nunca
+--     cambia el significado de un informe viejo).
+--   - Una area que el negocio ya hubiera creado con el mismo nombre (por ejemplo
+--     un "Equipo" propio) NO se pisa ni se convierte en de sistema: se la respeta y
+--     no se le agregan tipos. Solo se crea lo que falta.
+--   - Ventas y Servicio quedan como estan, con los tipos que cada negocio les haya dejado.
+--
+-- Las areas de sistema se renombran pero no se archivan (como Ventas y Servicio).
+-- No hay una cuarta categoria "personalizada" nueva: se pueden seguir creando areas
+-- propias como hasta hoy.
+--
+-- La logica de crear va en una funcion que se llama para un workspace (`...for_workspace`):
+-- la usan el trigger de los workspaces nuevos y el backfill de los que ya existen, asi las
+-- dos hacen exactamente lo mismo. Idempotente: correrla dos veces no duplica nada.
+--
+-- Las mismas areas y tipos que SYSTEM_AREAS en lib/scheduling/categories.ts
+-- (lib/scheduling/categories-seed.test.ts compara las dos listas).
+--
+-- Para volver atras: dejar de crearlas (reponer la funcion de la 00097) y archivar a
+-- mano las dos areas nuevas; ninguna reunion las usa hasta que alguien las elija.
+
+CREATE OR REPLACE FUNCTION public.seed_booking_categories_for_workspace(p_workspace uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_area uuid;
+  v_pos integer;
+  a record;
+  t text;
+  t_pos integer;
+BEGIN
+  FOR a IN
+    SELECT * FROM (VALUES
+      ('Ventas',   '#2563eb', ARRAY['Triaje', 'Cierre', 'Seguimiento']),
+      ('Servicio', '#0d9488', ARRAY['Onboarding', 'Uno a uno']),
+      ('Equipo',   '#7c3aed', ARRAY['Reunión interna', 'Uno a uno', 'Entrevista']),
+      ('Otros',    '#ca8a04', ARRAY['General'])
+    ) AS x(name, color, types)
+  LOOP
+    SELECT id INTO v_area
+    FROM public.booking_categories
+    WHERE workspace_id = p_workspace AND parent_id IS NULL AND archived_at IS NULL AND lower(name) = lower(a.name)
+    LIMIT 1;
+
+    -- Ya existe (de sistema o creada por el negocio): se respeta tal cual, sin tocar sus tipos.
+    IF v_area IS NOT NULL THEN
+      CONTINUE;
+    END IF;
+
+    SELECT coalesce(max(position), -1) + 1 INTO v_pos
+    FROM public.booking_categories
+    WHERE workspace_id = p_workspace AND parent_id IS NULL;
+
+    INSERT INTO public.booking_categories (workspace_id, name, color, position, is_system)
+    VALUES (p_workspace, a.name, a.color, v_pos, true)
+    ON CONFLICT DO NOTHING
+    RETURNING id INTO v_area;
+
+    IF v_area IS NULL THEN
+      CONTINUE;
+    END IF;
+
+    t_pos := 0;
+    FOREACH t IN ARRAY a.types LOOP
+      INSERT INTO public.booking_categories (workspace_id, parent_id, name, position, is_system)
+      VALUES (p_workspace, v_area, t, t_pos, true)
+      ON CONFLICT DO NOTHING;
+      t_pos := t_pos + 1;
+    END LOOP;
+  END LOOP;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.seed_booking_categories_for_workspace(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.seed_booking_categories_for_workspace(uuid) TO service_role;
+
+-- El trigger de los workspaces nuevos (la 00097 lo definia con las dos areas): ahora crea las cuatro.
+CREATE OR REPLACE FUNCTION public.seed_booking_categories()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  PERFORM public.seed_booking_categories_for_workspace(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+-- Los workspaces que ya existen: se suman las dos areas que les faltan.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT id FROM public.workspaces LOOP
+    PERFORM public.seed_booking_categories_for_workspace(r.id);
+  END LOOP;
+END $$;
+
+COMMENT ON COLUMN public.booking_categories.is_system IS
+  'Ventas, Servicio, Equipo y Otros vienen precargadas: se renombran pero no se archivan.';
