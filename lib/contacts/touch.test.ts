@@ -265,3 +265,10 @@ describe("recordTouch (F83)", () => {
     expect(logged).not.toContain("m-privado");
   });
 });
+
+describe("la cuenta del toque en `raw`", () => {
+  it("guarda la cuenta (id en el proveedor y nombre) y descarta lo que no esta en la lista", () => {
+    const raw = sanitizeRaw({ account_id: "zernio_abc", account_label: "@marca_academia", secreto: "x" });
+    expect(raw).toEqual({ account_id: "zernio_abc", account_label: "@marca_academia" });
+  });
+});

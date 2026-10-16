@@ -170,3 +170,31 @@ describe("el filtro 'Necesita humano' (F11)", () => {
     expect(matchesInboxRow(escalada, soloErrores, range)).toBe(false);
   });
 });
+
+describe("filtro por cuenta (channelIds)", () => {
+  it("una categoria multi-valor cuenta como un filtro", () => {
+    expect(countActiveFilters(filtros({ channelIds: ["c1", "c2"] }))).toBe(1);
+  });
+
+  it("una fila entra solo si es de una de las cuentas elegidas", () => {
+    const f = filtros({ channelIds: ["c1"] });
+    expect(matchesInboxRow(fila({ channel_id: "c1" }), f, SIN_RANGO)).toBe(true);
+    expect(matchesInboxRow(fila({ channel_id: "c2" }), f, SIN_RANGO)).toBe(false);
+  });
+
+  it("una fila sin cuenta conocida no cumple un filtro de cuentas", () => {
+    const f = filtros({ channelIds: ["c1"] });
+    expect(matchesInboxRow(fila({ channel_id: null }), f, SIN_RANGO)).toBe(false);
+    expect(matchesInboxRow(fila(), f, SIN_RANGO)).toBe(false);
+  });
+
+  it("sin filtro de cuentas no mira la cuenta", () => {
+    expect(matchesInboxRow(fila({ channel_id: "cualquiera" }), filtros(), SIN_RANGO)).toBe(true);
+  });
+
+  it("cuenta y red juntas: tiene que cumplir las dos", () => {
+    const f = filtros({ channelIds: ["c1"], platforms: ["whatsapp"] });
+    expect(matchesInboxRow(fila({ channel_id: "c1", platform: "instagram" }), f, SIN_RANGO)).toBe(false);
+    expect(matchesInboxRow(fila({ channel_id: "c1", platform: "whatsapp" }), f, SIN_RANGO)).toBe(true);
+  });
+});

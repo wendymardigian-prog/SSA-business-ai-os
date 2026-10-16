@@ -19,6 +19,7 @@ import { scheduleJob } from "@/lib/scheduler";
 import { createZernioClient, type Zernio } from "@/lib/zernio-client";
 import { getZernioKeyState } from "@/lib/integrations/zernio-key";
 import { recordInboundTouch } from "@/lib/contacts/touch-inbound";
+import { touchAccountOf, type TouchAccount } from "@/lib/inbox/accounts";
 
 type Db = SupabaseClient<Database>;
 
@@ -289,10 +290,23 @@ export async function runZernioAdOrigin(db: Db, payload: AdOriginPayload, deps: 
   if (result.error === "touch_not_found") {
     // Un contacto que ya existía y abre una conversación nueva no tiene toque de ese mensaje: se anota uno con el anuncio,
     // fechado cuando llegó el mensaje (el mismo que habría anotado el webhook con el `referral`).
+    // La cuenta por la que entro la conversacion (varias cuentas de Instagram): si no se puede leer, el toque queda sin ella.
+    let account: TouchAccount | null = null;
+    try {
+      const { data: channel } = await db
+        .from("channels")
+        .select("late_account_id, platform, username, display_name")
+        .eq("id", payload.channelId)
+        .maybeSingle();
+      if (channel) account = touchAccountOf(channel);
+    } catch (err) {
+      console.error("[atribucion] no pude leer la cuenta del toque:", err instanceof Error ? err.message : String(err));
+    }
     await recordInboundTouch(db, {
       workspaceId: payload.workspaceId,
       contactId: payload.contactId,
       conversationId: payload.conversationId,
+      account,
       platform: "instagram",
       contactExisted: true,
       messageAt: new Date(payload.messageAt),

@@ -20,6 +20,7 @@ import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { upsertContactForSender } from "@/lib/inbox-sync";
+import { accountLabel, touchAccountOf } from "@/lib/inbox/accounts";
 import { fromZernioReferral, recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { adOriginOf, buildOriginContext } from "@/lib/messages/origin-context";
 import { inheritedContentContext, resolveInboundOriginExtras } from "@/lib/attribution/inbound-origin";
@@ -423,6 +424,7 @@ async function processMessageEvent(
       referral: fromZernioReferral(metadata?.referral),
       storyPiece: extras.storyPiece,
       inherited: extras.inherited,
+      account: touchAccountOf(channel),
     });
   } catch (err) {
     // `recordInboundTouch` ya atrapa todo; esto es el cinturón de seguridad. Si
@@ -731,6 +733,15 @@ async function handleCommentWebhook(
     socialPostId: commentedPostId,
     // Un comentario sobre un anuncio trae `comment.ad.id` (SDK 0.2.519, solo Instagram).
     adId: typeof payload.comment.ad?.id === "string" ? payload.comment.ad.id : null,
+    // La cuenta nuestra donde comentaron (varias cuentas de la misma red): su id en Zernio y su nombre.
+    account: {
+      id: payload.account.id,
+      label: accountLabel({
+        platform: platform ?? socialAccount?.platform ?? "instagram",
+        username: channel?.username ?? socialAccount?.username ?? null,
+        display_name: channel?.display_name ?? null,
+      }),
+    },
   });
 
   // Ack before processing (same 5s delivery budget as messages); processComment

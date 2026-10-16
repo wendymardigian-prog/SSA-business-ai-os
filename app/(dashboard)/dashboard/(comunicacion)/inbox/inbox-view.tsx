@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
+import type { InboxAccountsInfo } from "@/lib/inbox/accounts";
 import { countActiveFilters, type InboxFilters } from "@/lib/inbox/filters";
 import type { DateRange } from "@/lib/dates";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
@@ -36,6 +37,7 @@ export function InboxView({
   members,
   agentByChannel,
   providerByChannel,
+  accounts,
   currentUserId,
   isAdmin,
   draftCounts,
@@ -69,6 +71,8 @@ export function InboxView({
   agentByChannel: Record<string, ChannelAgentInfo>;
   /** Por canal: su `provider` (evolution/zernio/resend), para saber que tipos de recurso se pueden mandar. */
   providerByChannel: Record<string, string>;
+  /** Las cuentas por canal: cuales redes tienen varias y como se llama cada una. */
+  accounts: InboxAccountsInfo;
   /** Para el panel del contacto (Bloque 2c): editar setter y vendedor. */
   currentUserId: string;
   isAdmin: boolean;
@@ -220,6 +224,7 @@ export function InboxView({
           onPageChange={goToPage}
           draftCounts={draftCounts}
           draftConversationIds={draftConversationIds}
+          accounts={accounts}
         />
       </div>
 
@@ -279,6 +284,7 @@ export function InboxView({
               workspaceName={workspaceName}
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
               channelProvider={selected ? providerByChannel[selected.channel_id] ?? null : null}
+              accounts={accounts}
               onBack={selected ? handleBack : undefined}
               onOpenContact={selected?.contact_id ? () => setContactSheetOpen(true) : undefined}
             />
@@ -304,6 +310,7 @@ export function InboxView({
             allTags={tags}
             currentUserId={currentUserId}
             isAdmin={isAdmin}
+            accounts={accounts}
           />
         </div>
       )}

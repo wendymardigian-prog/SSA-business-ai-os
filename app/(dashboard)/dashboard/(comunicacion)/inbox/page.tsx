@@ -20,7 +20,8 @@ import { InboxView } from "./inbox-view";
 import type { InboxAsset } from "@/components/inbox/message-thread";
 import { toBankAsset } from "@/lib/response-assets/list";
 import { getPermissionContext } from "@/lib/auth/guards";
-import { canReplyOn, INBOX_CHANNELS, platformFilterFor } from "@/lib/inbox/channel-access";
+import { canReplyOn, canViewPlatform, INBOX_CHANNELS, platformFilterFor } from "@/lib/inbox/channel-access";
+import { accountsInfo, buildAccounts, multiAccountPlatforms } from "@/lib/inbox/accounts";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
@@ -28,7 +29,7 @@ import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
 import { SectionSearch } from "@/components/comunicacion/section-search";
-import { InboxFiltersMenu, InboxFilterSummary } from "@/components/inbox/inbox-filters";
+import { InboxChannelMenu, InboxFiltersMenu, InboxFilterSummary } from "@/components/inbox/inbox-filters";
 
 /**
  * Bandeja de conversaciones (F16).
@@ -63,7 +64,7 @@ export default async function InboxPage({
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
   const [tagsRes, channelsRes, members, agentsRes] = await Promise.all([
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
-    supabase.from("channels").select("id, platform, provider").eq("workspace_id", workspace.id).eq("is_active", true),
+    supabase.from("channels").select("id, platform, provider, username, display_name").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
     // Columnas explicitas: los topes de gasto no son legibles para el usuario (00060).
     supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", workspace.id).is("deleted_at", null),
@@ -93,6 +94,9 @@ export default async function InboxPage({
   const access = await getPermissionContext();
   const platformRestriction = platformFilterFor(access.can, allPlatforms);
   const platformOptions = platformRestriction ?? allPlatforms;
+  // Cada cuenta conectada es una opcion del menu de Canal; solo las de canales que puede ver (F20).
+  const accounts = buildAccounts((channelsRes.data ?? []).filter((c) => canViewPlatform(access.can, c.platform)));
+  const accountInfo = accountsInfo(accounts);
 
   const search = sanitizeSearch(firstParam(params.q));
   const status = pickEnum<InboxStatus, InboxStatus>(
@@ -103,6 +107,8 @@ export default async function InboxPage({
   const platforms = listParam(params.canal).filter((p) =>
     (platformOptions as string[]).includes(p),
   );
+  // `?cuenta=` solo vale con ids de cuentas que esta persona ve: uno inventado o ajeno se ignora.
+  const channelIds = pickIds(params.cuenta, accounts.map((a) => a.id));
   const tagIds = pickIds(params.tag, tags.map((t) => t.id));
   const assignment = resolveAssignment(firstParam(params.asignado), members.map((m) => m.userId));
   const datePreset = pickEnum<DatePreset>(params.fecha, DATE_PRESETS);
@@ -137,6 +143,7 @@ export default async function InboxPage({
     query = query.in("platform", platformRestriction.length > 0 ? (platformRestriction as Platform[]) : (["__ninguna__"] as unknown as Platform[]));
   }
   if (platforms.length > 0) query = query.in("platform", platforms as Platform[]);
+  if (channelIds.length > 0) query = query.in("channel_id", channelIds);
   if (tagIds.length > 0) query = query.in("tag_match.contact_tags.tag_id", tagIds);
   if (range.from) query = query.gte("last_message_at", range.from);
   if (range.to) query = query.lte("last_message_at", range.to);
@@ -251,6 +258,7 @@ export default async function InboxPage({
     search,
     status,
     platforms,
+    channelIds,
     tagIds,
     assignment,
     datePreset,
@@ -273,13 +281,14 @@ export default async function InboxPage({
         filters={
           <>
             <SectionSearch value={filters.search} placeholder="Buscar por nombre" label="Buscar conversaciones" />
-            <InboxFiltersMenu filters={filters} tags={tags} platforms={platformItems} members={memberItems} />
+            <InboxChannelMenu filters={filters} accounts={accounts} multiPlatforms={multiAccountPlatforms(accounts)} />
+            <InboxFiltersMenu filters={filters} tags={tags} members={memberItems} />
           </>
         }
       />
       <InboxFilterSummary
         filters={filters}
-        catalog={{ platforms: platformItems, tags, members: memberItems }}
+        catalog={{ platforms: platformItems, accounts, multiPlatforms: multiAccountPlatforms(accounts), tags, members: memberItems }}
       />
       <div className="min-h-0 flex-1">
         <InboxView
@@ -300,6 +309,7 @@ export default async function InboxPage({
       members={memberItems}
       agentByChannel={agentByChannel}
       providerByChannel={providerByChannel}
+      accounts={accountInfo}
       currentUserId={user.id}
       isAdmin={isAdminRole(role)}
       draftCounts={draftCounts}

@@ -23,6 +23,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { inheritDedupeKey, type InheritedContent } from "@/lib/attribution/inherit";
 import { resolveStoryPiece, type StoryPiece } from "@/lib/attribution/story-piece";
+import type { TouchAccount } from "@/lib/inbox/accounts";
 import { recordTouch, type TouchInput } from "./touch";
 
 type Db = SupabaseClient<Database>;
@@ -196,6 +197,8 @@ export interface InboundTouchParams {
    * mensaje de automatización respondido (`content-reply:<id>`), con la pieza.
    */
   inherited?: (InheritedContent & { title?: string | null }) | null;
+  /** La cuenta nuestra por la que entro el mensaje (varias cuentas de la misma red). Queda en el toque. */
+  account?: TouchAccount | null;
 }
 
 /**
@@ -243,7 +246,13 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
           content: params.inherited.title ?? null,
           socialPostId: params.inherited.social_post_id,
           contentPostId: params.inherited.content_post_id,
-          raw: { message_id: params.platformMessageId, content_inherited_from: params.inherited.outbound_message_id, via: "automation_reply" },
+          raw: {
+            message_id: params.platformMessageId,
+            content_inherited_from: params.inherited.outbound_message_id,
+            via: "automation_reply",
+            account_id: params.account?.id,
+            account_label: params.account?.label,
+          },
         },
       });
       return;
@@ -303,6 +312,8 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
         : {}),
       raw: {
         message_id: params.platformMessageId,
+        account_id: params.account?.id,
+        account_label: params.account?.label,
         story_id: params.storyId ?? undefined,
         story_mention: isStoryMention ? true : undefined,
         // El `referral` completo (F19): el anuncio, su publicacion y la plataforma por la que llego.

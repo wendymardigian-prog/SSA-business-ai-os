@@ -106,3 +106,31 @@ describe("describeInboxFilters (la linea de resumen, I3)", () => {
     ]);
   });
 });
+
+describe("las cuentas en el resumen y en el contador", () => {
+  const accounts = [
+    { id: "a1", platform: "instagram", label: "@marca_principal" },
+    { id: "a2", platform: "instagram", label: "@marca_academia" },
+    { id: "a3", platform: "whatsapp", label: "WhatsApp" },
+  ];
+  const cat = { ...catalog, accounts, multiPlatforms: ["instagram"] };
+
+  it("el menu de Canal tiene su propio boton: las cuentas no suman al contador de Filtros", () => {
+    const filters = f({ channelIds: ["a1", "a2"] });
+    expect(countActiveFilters(filters)).toBe(1);
+    expect(countMenuFilters(filters)).toBe(0);
+  });
+
+  it("con una o dos cuentas las nombra; con una red de varias cuentas, junto a la red", () => {
+    expect(describeInboxFilters(f({ channelIds: ["a2"] }), cat)).toEqual(["Abiertas", "Instagram @marca_academia"]);
+    expect(describeInboxFilters(f({ channelIds: ["a1", "a3"] }), cat)).toEqual(["Abiertas", "Instagram @marca_principal", "WhatsApp"]);
+  });
+
+  it("con mas de dos, las cuenta", () => {
+    expect(describeInboxFilters(f({ channelIds: ["a1", "a2", "a3"] }), cat)).toEqual(["Abiertas", "3 cuentas"]);
+  });
+
+  it("una cuenta que ya no esta en el catalogo no rompe el resumen", () => {
+    expect(describeInboxFilters(f({ channelIds: ["borrada"] }), cat)).toEqual(["Abiertas", "Cuenta 1"]);
+  });
+});

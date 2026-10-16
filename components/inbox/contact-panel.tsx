@@ -21,6 +21,7 @@ import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/field
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
 import { getDmLink, platformHandles } from "@/lib/contacts/links";
 import { platformLabel } from "@/lib/platforms";
+import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import type { Database, LeadTemperature, Platform } from "@/lib/types/database";
 
 /**
@@ -48,7 +49,7 @@ type Contact = Database["public"]["Tables"]["contacts"]["Row"];
 interface ContactDetails {
   contact: Contact;
   tagIds: string[];
-  channels: { platform: Platform; username: string | null; senderId: string | null }[];
+  channels: { platform: Platform; username: string | null; senderId: string | null; channelId: string | null }[];
 }
 
 function formatDate(dateStr: string | null): string {
@@ -76,6 +77,7 @@ export function ContactPanel({
   allTags = [],
   currentUserId = "",
   isAdmin = false,
+  accounts,
 }: {
   contactId: string | null;
   workspaceId: string;
@@ -84,6 +86,8 @@ export function ContactPanel({
   allTags?: TagOption[];
   currentUserId?: string;
   isAdmin?: boolean;
+  /** Las cuentas por canal: "Canales" dice por cual cuenta nuestra se habla cuando una red tiene varias. */
+  accounts?: InboxAccountsInfo;
 }) {
   const [loadedDetails, setDetails] = useState<ContactDetails | null>(null);
   const [loading, setLoading] = useState(false);
@@ -113,7 +117,7 @@ export function ContactPanel({
       const [contactRes, tagsRes, channelsRes] = await Promise.all([
         supabase.from("contacts").select("*").eq("id", contactId!).single(),
         supabase.from("contact_tags").select("tag_id").eq("contact_id", contactId!),
-        supabase.from("contact_channels").select("platform_username, platform_sender_id, channels(platform)").eq("contact_id", contactId!),
+        supabase.from("contact_channels").select("platform_username, platform_sender_id, channel_id, channels(platform)").eq("contact_id", contactId!),
       ]);
 
       if (contactRes.error && !contactRes.data) {
@@ -130,6 +134,7 @@ export function ContactPanel({
             platform: (cc.channels as unknown as { platform: Platform }).platform,
             username: cc.platform_username,
             senderId: cc.platform_sender_id,
+            channelId: cc.channel_id,
           })),
         });
       }
@@ -219,7 +224,7 @@ export function ContactPanel({
 
           <AgentMemory contact={details.contact} />
 
-          <Channels details={details} />
+          <Channels details={details} accounts={accounts} />
 
           <Activity contact={details.contact} />
 
@@ -338,7 +343,7 @@ function AgentMemory({ contact }: { contact: Contact }) {
   );
 }
 
-function Channels({ details }: { details: ContactDetails }) {
+function Channels({ details, accounts }: { details: ContactDetails; accounts?: InboxAccountsInfo }) {
   const c = details.contact;
   type Extra = { icon: ReactNode; label: string; value: string };
   const extras: Extra[] = ([
@@ -361,6 +366,8 @@ function Channels({ details }: { details: ContactDetails }) {
             const raw = ch.username || (ch.platform === "whatsapp" ? ch.senderId : null);
             const { url } = getDmLink(ch.platform, raw);
             const label = raw ? (isHandle ? `@${raw}` : raw) : "";
+            // Con varias cuentas de la misma red: la nuestra por la que habla.
+            const ourAccount = accountToShow(accounts, { channel_id: ch.channelId, platform: ch.platform });
             return (
               <li key={i} className="flex items-center gap-2">
                 <PlatformIcon platform={ch.platform} className="h-3.5 w-3.5" size={14} />
@@ -371,6 +378,11 @@ function Channels({ details }: { details: ContactDetails }) {
                   </a>
                 ) : (
                   <span className="truncate">{label}</span>
+                )}
+                {ourAccount && (
+                  <span className="truncate text-[11px] text-muted-foreground" title={`Habla con la cuenta ${ourAccount}`}>
+                    · vía {ourAccount}
+                  </span>
                 )}
               </li>
             );

@@ -6,7 +6,7 @@
  * y cada toque se lee solo, con el nombre de la pieza como link.
  */
 import { describe, it, expect } from "vitest";
-import { buildAttributionView, describeTouch, pieceHref, shortDate, type TouchRow } from "./attribution-view";
+import { accountOfRaw, buildAttributionView, describeTouch, pieceHref, shortDate, type TouchRow } from "./attribution-view";
 
 const CP = "22222222-2222-4222-8222-222222222222";
 
@@ -283,5 +283,46 @@ describe("el canal de cada toque (Extra I, F37)", () => {
     const view = buildAttributionView({ attribution: null, rows: [row({})] });
     expect("channel" in view.path[0]).toBe(false);
     expect("channelLabel" in view.path[0]).toBe(false);
+  });
+});
+
+describe("la cuenta nuestra en el toque (varias cuentas de la misma red)", () => {
+  it("un toque con cuenta la dice en su vista y en su frase", () => {
+    const view = describeTouch(
+      { source: "instagram", medium: "dm", occurred_at: "2026-09-12T18:00:00Z" } as never,
+      "UTC",
+      null,
+      undefined,
+      "@marca_academia",
+    );
+    expect(view.account).toBe("@marca_academia");
+    expect(view.text).toContain("@marca_academia");
+    // El origen no cambia: lo usan otras pantallas.
+    expect(view.origin).not.toContain("@marca_academia");
+  });
+
+  it("sin cuenta el resultado es identico al de siempre", () => {
+    const base = describeTouch({ source: "instagram", medium: "dm", occurred_at: "2026-09-12T18:00:00Z" } as never, "UTC");
+    expect(base).not.toHaveProperty("account");
+    expect(base.text).not.toContain("@");
+  });
+
+  it("el camino lee la cuenta del raw de cada toque, y la copia derivada la busca por fecha", () => {
+    const rows = [
+      row({ id: "t1", occurred_at: "2026-09-10T10:00:00Z", raw: { account_label: "@marca_principal" } }),
+      row({ id: "t2", occurred_at: "2026-09-12T18:00:00Z", raw: { message_id: "m1" } }),
+    ];
+    const view = buildAttributionView({ attribution: null, rows });
+    expect(view.path.map((t) => t.account)).toEqual(["@marca_principal", undefined]);
+    expect(view.first?.account).toBe("@marca_principal");
+    expect(view.last?.account).toBeUndefined();
+  });
+
+  it("accountOfRaw ignora un raw sin cuenta o con forma rara", () => {
+    expect(accountOfRaw(null)).toBeNull();
+    expect(accountOfRaw([])).toBeNull();
+    expect(accountOfRaw({ account_label: 5 })).toBeNull();
+    expect(accountOfRaw({ account_label: "  " })).toBeNull();
+    expect(accountOfRaw({ account_label: " @marca " })).toBe("@marca");
   });
 });

@@ -44,6 +44,12 @@ export interface InboxFilters {
   status: InboxStatus;
   /** Plataformas de los canales activos, ej ["instagram", "whatsapp"]. */
   platforms: string[];
+  /**
+   * Ids de CUENTAS (filas de `channels`): "solo la cuenta @marca_academia". Es lo que elige el menu de Canal; las
+   * plataformas de arriba siguen existiendo para los links viejos (`?canal=instagram`). Si hay de las dos, se
+   * piden las dos (la conversacion tiene que cumplir ambas).
+   */
+  channelIds: string[];
   /** Ids de tags; el contacto tiene que tener al menos uno. */
   tagIds: string[];
   /** "", "sin-asignar", "agente-ia" o el id de un miembro. */
@@ -64,6 +70,7 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   search: "",
   status: DEFAULT_INBOX_STATUS,
   platforms: [],
+  channelIds: [],
   tagIds: [],
   assignment: ASSIGNMENT_ANY,
   datePreset: "",
@@ -86,6 +93,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.search) count++;
   if (filters.status !== DEFAULT_INBOX_STATUS) count++;
   if (filters.platforms.length > 0) count++;
+  if (filters.channelIds.length > 0) count++;
   if (filters.tagIds.length > 0) count++;
   if (filters.assignment) count++;
   if (filters.datePreset) count++;
@@ -109,6 +117,8 @@ export function needsServerToFilter(filters: InboxFilters): boolean {
 export interface FilterableRow {
   status: string;
   platform: string;
+  /** La cuenta por la que entro la conversacion. */
+  channel_id?: string | null;
   last_message_at: string | null;
   created_at: string;
   last_message_preview: string | null;
@@ -134,6 +144,9 @@ export function matchesInboxRow(
   if (filters.status !== "all" && row.status !== filters.status) return false;
 
   if (filters.platforms.length > 0 && !filters.platforms.includes(row.platform)) return false;
+
+  // Una fila sin cuenta conocida no puede cumplir un filtro de cuentas.
+  if (filters.channelIds.length > 0 && !(row.channel_id && filters.channelIds.includes(row.channel_id))) return false;
 
   if (filters.agentError && !row.last_agent_error_at) return false;
 

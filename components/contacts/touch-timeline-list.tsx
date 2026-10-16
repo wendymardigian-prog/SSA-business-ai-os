@@ -69,6 +69,7 @@ function TouchRow({ item, timeZone, adHref }: { item: TimelineItem; timeZone: st
 
       <p className="mt-1.5 break-words text-sm">
         <span className="font-medium">{view.origin}</span>
+        {view.account && <span className="text-muted-foreground" title="Cuenta por la que entró"> · {view.account}</span>}
         {view.piece && (
           <>
             <span className="text-muted-foreground"> · </span>

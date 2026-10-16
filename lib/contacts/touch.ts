@@ -121,6 +121,8 @@ const RAW_KEYS = new Set([
   // La venta cargada a mano con canal (Extra I, F47): el canal buscado y quien refirio. Los tres tienen forma
   // validada aparte (ver `RAW_SHAPED`): un valor que no la cumple se descarta.
   "channel", "referrer_contact_id", "referrer_user_id",
+  // La cuenta por la que entro el toque (varias cuentas de la misma red): la clave en el proveedor y su nombre.
+  "account_id", "account_label",
 ]);
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
