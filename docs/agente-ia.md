@@ -984,3 +984,18 @@ El modo Económico solo existe donde hay handler por lote
 Clasificación al cierre mostraban un selector que nadie leía y "Económico"
 encolaba jobs que fallaban a propósito.
 
+
+## "Sugerir respuesta" y "Qué hizo el agente" (16/10/2026)
+
+- **Sugerir respuesta** (botón del composer): una persona pide a mano que el agente redacte. Es la segunda puerta que
+  agenda un turno, aparte de `maybeScheduleAgentTurn`: agenda un job `agent_burst` con `suggest: true`
+  (`lib/agent/drafts/suggest.ts`, acción `requestSuggestionAction`). El turno siempre deja un borrador y nunca envía,
+  aunque el canal esté en envío directo. Se salta lo que hace que el agente se abstenga solo (ya hay respuesta, hay un
+  flow esperando, el agente está apagado en esa conversación). Exige un agente encendido para el canal y una IA conectada.
+- **Sugerencias descartadas**: las que una persona descartó a mano (motivo sin prefijo `auto:`) y no tienen un mensaje
+  nuevo del contacto después se pueden ver y recuperar; "Recuperar" copia el texto al composer y no cambia el borrador.
+- **Qué hizo el agente**: `lib/inbox/message-activity.ts` arma la historia de cada mensaje (analizó, dejó una
+  sugerencia, respondió, no hizo nada y por qué, intervino una automatización, derivó, falló) con corridas, borradores y
+  acciones que ya existían. Se pide con `loadConversationActivity` (cliente del usuario: la RLS decide qué ve).
+- **Disponibilidad**: `lib/agent/availability.ts` es la única regla que mira el interruptor, el modelo y las IAs
+  conectadas. Ver la sección del CLAUDE.md.
