@@ -4,6 +4,7 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getConnectionState } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
+import { refreshWhatsappIdentity } from "@/lib/whatsapp-identity";
 
 /**
  * GET /api/v1/channels/whatsapp/[channelId]/status
@@ -32,7 +33,7 @@ export async function GET(
 
   const { data: channel } = await ctx.supabase
     .from("channels")
-    .select("id, evolution_instance, connection_status")
+    .select("id, evolution_instance, connection_status, display_name")
     .eq("id", channelId)
     .eq("workspace_id", ctx.workspace.id)
     .eq("provider", "evolution")
@@ -75,6 +76,9 @@ export async function GET(
         performedBy: ctx.user.id,
       });
     }
+
+    // Varios numeros: el canal pasa a llamarse por su numero. Nunca lanza.
+    if (connectionStatus === "connected") await refreshWhatsappIdentity(ctx.supabase, config, channel);
 
     return NextResponse.json({ state, connectionStatus });
   } catch (err) {

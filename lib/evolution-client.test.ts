@@ -3,6 +3,7 @@ import {
   EvolutionError,
   createInstance,
   deleteInstance,
+  fetchInstanceOwner,
   fetchProfilePictureUrl,
   getBase64FromMediaMessage,
   getConnectionState,
@@ -187,6 +188,27 @@ describe("borrado de instancia", () => {
     await deleteInstance(config, "ssa-abc");
     expect(calls[0].method).toBe("DELETE");
     expect(calls[0].url).toBe("https://evo.test/instance/delete/ssa-abc");
+  });
+});
+
+describe("fetchInstanceOwner (varios numeros)", () => {
+  it("lee el numero vinculado en los tres lugares donde lo informan las versiones", async () => {
+    const calls = mockFetch([{ body: [{ name: "ssa-abc", ownerJid: "5491122334455@s.whatsapp.net" }] }]);
+    expect(await fetchInstanceOwner(config, "ssa-abc")).toBe("5491122334455@s.whatsapp.net");
+    expect(calls[0].url).toBe("https://evo.test/instance/fetchInstances?instanceName=ssa-abc");
+
+    mockFetch([{ body: [{ instance: { instanceName: "ssa-abc", owner: "541100000000@s.whatsapp.net" } }] }]);
+    expect(await fetchInstanceOwner(config, "ssa-abc")).toBe("541100000000@s.whatsapp.net");
+
+    mockFetch([{ body: { instances: [{ instanceName: "ssa-abc", number: "5400000000" }] } }]);
+    expect(await fetchInstanceOwner(config, "ssa-abc")).toBe("5400000000");
+  });
+
+  it("sin numero vinculado (todavia no escaneo el QR) devuelve null", async () => {
+    mockFetch([{ body: [{ name: "ssa-abc" }] }]);
+    expect(await fetchInstanceOwner(config, "ssa-abc")).toBeNull();
+    mockFetch([{ body: [] }]);
+    expect(await fetchInstanceOwner(config, "ssa-abc")).toBeNull();
   });
 });
 

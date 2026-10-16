@@ -170,8 +170,12 @@ export function resetVersionCache(): void {
 // ── Instancias ───────────────────────────────────────────────────────────────
 
 interface RawInstance {
-  instance?: { instanceName?: string; state?: string; status?: string };
+  instance?: { instanceName?: string; state?: string; status?: string; owner?: string };
   instanceName?: string;
+  /** El JID del numero vinculado: v2 lo trae como `ownerJid`, v1 como `instance.owner`. */
+  ownerJid?: string;
+  owner?: string;
+  number?: string;
   name?: string;
   connectionStatus?: string;
   state?: string;
@@ -201,6 +205,23 @@ export async function listInstanceNames(config: EvolutionConfig): Promise<string
   return list
     .map((i) => i.instance?.instanceName ?? i.instanceName ?? i.name)
     .filter((n): n is string => !!n);
+}
+
+/**
+ * El JID del numero vinculado a una instancia ("5491122334455@s.whatsapp.net"), o null si todavia no escaneo el QR
+ * o el servidor no lo informa. Solo lectura. Evolution cambia el lugar del dato entre versiones, asi que se lee en
+ * los tres sitios conocidos.
+ */
+export async function fetchInstanceOwner(config: EvolutionConfig, instanceName: string): Promise<string | null> {
+  const raw = await request<RawInstance[] | { instances?: RawInstance[] }>(
+    config,
+    "GET",
+    `/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`,
+  );
+  const list = Array.isArray(raw) ? raw : (raw?.instances ?? []);
+  const item = list.find((i) => (i.instance?.instanceName ?? i.instanceName ?? i.name) === instanceName) ?? list[0];
+  const owner = item?.ownerJid ?? item?.instance?.owner ?? item?.owner ?? item?.number ?? null;
+  return typeof owner === "string" && owner ? owner : null;
 }
 
 /**

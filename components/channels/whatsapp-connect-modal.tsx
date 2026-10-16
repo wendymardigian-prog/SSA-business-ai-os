@@ -11,6 +11,8 @@ const POLL_MS = 4000;
 
 interface QrResponse {
   state?: "open" | "close" | "connecting" | "unknown";
+  /** El nombre nuevo del canal (con el numero vinculado), si cambio al conectar. */
+  displayName?: string | null;
   qr?: { base64: string | null; code: string | null; pairingCode: string | null } | null;
   error?: string;
 }
@@ -57,6 +59,7 @@ export function WhatsAppConnectModal({
         connectedRef.current = true;
         onConnected({
           ...channel,
+          display_name: data.displayName ?? channel.display_name,
           connection_status: "connected",
           is_active: true,
           last_error: null,
@@ -97,6 +100,9 @@ export function WhatsAppConnectModal({
             <h2 id="wa-modal-title" className="text-lg font-semibold">
               Conectar WhatsApp
             </h2>
+            {channel.display_name && (
+              <p className="mt-0.5 text-sm font-medium">{channel.display_name}</p>
+            )}
             <p className="mt-1 text-xs text-muted-foreground">
               {connected
                 ? "Listo, tu WhatsApp quedo vinculado."

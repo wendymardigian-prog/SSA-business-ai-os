@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { refreshWhatsappIdentity } from "@/lib/whatsapp-identity";
 import { logAudit } from "@/lib/audit";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -36,7 +37,7 @@ export async function GET(
 
   const { data: channel } = await ctx.supabase
     .from("channels")
-    .select("id, evolution_instance")
+    .select("id, evolution_instance, display_name")
     .eq("id", channelId)
     .eq("workspace_id", ctx.workspace.id)
     .eq("provider", "evolution")
@@ -71,7 +72,10 @@ export async function GET(
         performedBy: ctx.user.id,
       });
 
-      return NextResponse.json({ state, qr: null });
+      // Varios numeros: el canal pasa a llamarse por su numero. Nunca lanza.
+      const displayName = await refreshWhatsappIdentity(ctx.supabase, config, channel);
+
+      return NextResponse.json({ state, qr: null, displayName });
     }
 
     const qr = await getQrCode(config, channel.evolution_instance);

@@ -120,14 +120,19 @@ export function ChannelsPanel({
   /**
    * WhatsApp no pasa por Zernio sino por Evolution API, asi que tiene su
    * propio flujo: se prepara la instancia en el servidor y despues se vincula
-   * escaneando el QR. Es idempotente, asi que este mismo boton sirve para
-   * conectar por primera vez y para reconectar despues de una caida.
+   * escaneando el QR. Un workspace puede tener VARIOS numeros: sin `channelId`
+   * se agrega uno nuevo; con el, se reconecta ese numero (idempotente).
    */
-  async function handleConnectWhatsapp() {
+  async function handleConnectWhatsapp(channelId?: string) {
     setConnectingWhatsapp(true);
     setShowPlatformPicker(false);
     try {
-      const res = await fetch("/api/v1/channels/whatsapp", { method: "POST" });
+      const res = await fetch("/api/v1/channels/whatsapp", {
+        method: "POST",
+        ...(channelId
+          ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ channelId }) }
+          : {}),
+      });
       const data = await res.json();
 
       if (!res.ok || data.error) {
@@ -283,12 +288,12 @@ export function ChannelsPanel({
       )}
       {provider === "evolution" ? (
         <button
-          onClick={handleConnectWhatsapp}
+          onClick={() => handleConnectWhatsapp()}
           disabled={connectingWhatsapp}
           className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {connectingWhatsapp ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-          {visibleChannels.length > 0 ? "Reconectar WhatsApp" : "Conectar WhatsApp"}
+          {visibleChannels.length > 0 ? "Conectar otro número" : "Conectar WhatsApp"}
         </button>
       ) : (
         <div className="relative" ref={pickerRef}>
@@ -487,9 +492,16 @@ export function ChannelsPanel({
                               ? "Conectando"
                               : "Desconectado"}
                         </span>
+                        {/* Un numero conectado solo muestra su QR; uno caido se reconecta
+                            (vuelve a preparar SU instancia, no agrega otro numero). */}
                         <button
-                          onClick={() => setWhatsappChannel(channel)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium hover:bg-muted"
+                          onClick={() =>
+                            channel.connection_status === "connected"
+                              ? setWhatsappChannel(channel)
+                              : handleConnectWhatsapp(channel.id)
+                          }
+                          disabled={connectingWhatsapp}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
                         >
                           <QrCode className="h-3 w-3" />
                           {channel.connection_status === "connected"
