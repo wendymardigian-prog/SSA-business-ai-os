@@ -3,6 +3,7 @@
 import { useCallback, useId, useRef, useState } from "react";
 import { Plus, X, GripVertical, Image, Type, MousePointer, MessageCircle, LayoutGrid, ChevronDown, ChevronRight, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmojiButton, useEmojiInsert } from "@/components/ui/emoji-picker";
 import {
   attributionPanelView,
   nextAttribution,
@@ -355,6 +356,8 @@ function MessageEditor({
     [message, onChange]
   );
 
+  const insertEmoji = useEmojiInsert(textareaRef, message.text || "", (text) => onChange({ ...message, text }));
+
   const toggleMode = useCallback(() => {
     if (isCarouselMode) {
       // Switch to text mode: remove carousel
@@ -479,7 +482,14 @@ function MessageEditor({
             <div>
               <div className="mb-1.5 flex items-center gap-1.5">
                 <Type className="h-3 w-3 text-muted-foreground/60" />
-                <label className="text-xs font-medium text-muted-foreground">Text</label>
+                <label className="flex-1 text-xs font-medium text-muted-foreground">Text</label>
+                <EmojiButton
+                  onPick={insertEmoji}
+                  focusRef={textareaRef}
+                  placement="bottom"
+                  align="end"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                />
               </div>
               <textarea
                 ref={textareaRef}

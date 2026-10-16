@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { loadWhatsAppChannelOptions } from "@/lib/actions/flow-node-options";
 import type { SendWhatsAppNumberData } from "@/lib/flow-engine/nodes/send-whatsapp-number";
+import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import { resolveWhatsAppTarget } from "@/lib/flow-engine/whatsapp-target";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
@@ -92,7 +93,10 @@ export function SendWhatsAppNumberPanel({
       </div>
 
       <div>
-        <label htmlFor="wa-text" className={labelClass}>Mensaje</label>
+        <div className="flex items-center justify-between">
+          <label htmlFor="wa-text" className={labelClass}>Mensaje</label>
+          <FieldEmojiButton targetId="wa-text" value={data.text ?? ""} onChange={(text) => set({ text })} />
+        </div>
         <textarea id="wa-text" rows={4} value={data.text ?? ""} onFocus={() => setTarget("text")} onChange={(e) => set({ text: e.target.value })} placeholder="Nuevo lead: {{webhook.body.nombre}}" className={inputClass} />
         <p className="mt-1.5 text-xs text-muted-foreground">Podés usar variables. Si el número es de un contacto marcado «no contactar», no se manda.</p>
       </div>

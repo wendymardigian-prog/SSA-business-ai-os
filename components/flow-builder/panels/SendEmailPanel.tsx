@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SendEmailNodeData } from "@/lib/flow-engine/nodes/send-email";
+import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -56,7 +57,10 @@ export function SendEmailPanel({
       </div>
 
       <div>
-        <label htmlFor="em-subject" className={labelClass}>Asunto</label>
+        <div className="flex items-center justify-between">
+          <label htmlFor="em-subject" className={labelClass}>Asunto</label>
+          <FieldEmojiButton targetId="em-subject" value={data.subject ?? ""} onChange={(subject) => set({ subject })} />
+        </div>
         <input id="em-subject" type="text" value={data.subject ?? ""} onFocus={() => setTarget("body")} onChange={(e) => set({ subject: e.target.value })} className={inputClass} />
       </div>
 

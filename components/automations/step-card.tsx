@@ -5,6 +5,7 @@ import { InsertAssetButton } from "@/components/response-assets/insert-asset-but
 import { PopoverMenu, type MenuItem } from "@/components/automations/popover-menu";
 import { useStepEditor } from "@/components/automations/step-tree-context";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
+import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import { actionProblem, describeAction, emailRecipientsFor, kindOfStep, type EmailRecipient } from "@/lib/automations/step-catalog";
 import { canDuplicate, canMove, duplicateStep, moveStep, patchStepData, removeStep } from "@/lib/automations/step-tree-edit";
 import type { ActionStep, NodeData, Step } from "@/lib/automations/step-tree";
@@ -129,14 +130,20 @@ function EmailEditor({ name, step, patch, disabled }: EditorProps) {
         <label htmlFor={`${name}-subject`} className="text-xs text-muted-foreground">
           Asunto
         </label>
-        <input id={`${name}-subject`} value={subject} disabled={disabled} onChange={(e) => patch({ subject: e.target.value })} className={inputClass} />
+        <div className="flex items-center gap-1.5">
+          <input id={`${name}-subject`} value={subject} disabled={disabled} onChange={(e) => patch({ subject: e.target.value })} className={inputClass} />
+          <FieldEmojiButton targetId={`${name}-subject`} value={subject} disabled={disabled} onChange={(next) => patch({ subject: next })} />
+        </div>
       </div>
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
           <label htmlFor={`${name}-body`} className="text-xs text-muted-foreground">
             Texto
           </label>
-          <InsertAssetButton targetId={`${name}-body`} value={body} disabled={disabled} onChange={(next) => patch({ body: next })} />
+          <span className="flex items-center gap-1.5">
+            <FieldEmojiButton targetId={`${name}-body`} value={body} disabled={disabled} onChange={(next) => patch({ body: next })} />
+            <InsertAssetButton targetId={`${name}-body`} value={body} disabled={disabled} onChange={(next) => patch({ body: next })} />
+          </span>
         </div>
         <textarea id={`${name}-body`} value={body} disabled={disabled} rows={8} onChange={(e) => patch({ body: e.target.value })} className={`${textareaClass} font-mono text-xs`} />
       </div>
@@ -159,7 +166,10 @@ function MessageEditor({ name, step, patch, disabled }: EditorProps) {
           <label htmlFor={`${name}-text`} className="text-xs text-muted-foreground">
             Mensaje
           </label>
-          <InsertAssetButton targetId={`${name}-text`} value={text} disabled={disabled} onChange={(next) => patch({ messages: [{ ...first, text: next }, ...messages.slice(1)] })} />
+          <span className="flex items-center gap-1.5">
+            <FieldEmojiButton targetId={`${name}-text`} value={text} disabled={disabled} onChange={(next) => patch({ messages: [{ ...first, text: next }, ...messages.slice(1)] })} />
+            <InsertAssetButton targetId={`${name}-text`} value={text} disabled={disabled} onChange={(next) => patch({ messages: [{ ...first, text: next }, ...messages.slice(1)] })} />
+          </span>
         </div>
         <textarea
           id={`${name}-text`}
@@ -309,9 +319,12 @@ function NotifyEditor({ name, step, patch, disabled }: EditorProps) {
         <input id={`${name}-title`} value={String(d.title ?? "")} maxLength={200} disabled={disabled} onChange={(e) => patch({ title: e.target.value })} className={inputClass} />
       </div>
       <div className="space-y-1">
-        <label htmlFor={`${name}-body`} className="text-xs text-muted-foreground">
-          Texto (opcional)
-        </label>
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor={`${name}-body`} className="text-xs text-muted-foreground">
+            Texto (opcional)
+          </label>
+          <FieldEmojiButton targetId={`${name}-body`} value={String(d.body ?? "")} disabled={disabled} onChange={(next) => patch({ body: next })} />
+        </div>
         <textarea id={`${name}-body`} value={String(d.body ?? "")} maxLength={1000} rows={3} disabled={disabled} onChange={(e) => patch({ body: e.target.value })} className={textareaClass} />
       </div>
     </div>

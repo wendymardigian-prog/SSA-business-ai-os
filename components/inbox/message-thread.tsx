@@ -20,6 +20,7 @@ import { markAssetUsed, prepareAssetSend } from "@/lib/actions/response-assets";
 import type { AssetChatCopy } from "@/lib/response-assets/send-copy";
 import { cn } from "@/lib/utils";
 import { Tip } from "@/components/ui/tooltip";
+import { EmojiButton, useEmojiInsert } from "@/components/ui/emoji-picker";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { CreateTaskButton } from "@/components/tasks/create-task-button";
@@ -273,6 +274,7 @@ export function MessageThread({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const insertEmoji = useEmojiInsert(textareaRef, input, setInput);
   useEffect(() => {
     if (!searchParams.get("texto")) return;
     const next = new URLSearchParams(searchParams.toString());
@@ -1048,6 +1050,7 @@ export function MessageThread({
                   setAttachedFile(file);
                 }}
               />
+              <EmojiButton onPick={insertEmoji} focusRef={textareaRef} />
               {!attachedFile && (
                 <button
                   type="button"
