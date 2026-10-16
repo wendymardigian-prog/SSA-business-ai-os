@@ -25,9 +25,9 @@ const world = () => {
 };
 const ctx = (over: Record<string, unknown> = {}) => ({ workspaceId: WS, contactId: CONTACT, flowId: FLOW, platform: "instagram", variables: {}, ...over });
 const message = () => ({
-  text: "Mirá https://wendy.com/programa y escribime a https://wa.me/123",
-  buttons: [{ title: "Ver", type: "url", url: "https://wendy.com/programa" }, { title: "Hola", type: "postback", payload: "p" }],
-  template: { elements: [{ title: "Uno", buttons: [{ type: "url", title: "Abrir", url: "https://wendy.com/a" }] }] },
+  text: "Mirá https://example.com/programa y escribime a https://wa.me/123",
+  buttons: [{ title: "Ver", type: "url", url: "https://example.com/programa" }, { title: "Hola", type: "postback", payload: "p" }],
+  template: { elements: [{ title: "Uno", buttons: [{ type: "url", title: "Abrir", url: "https://example.com/a" }] }] },
 });
 
 beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => undefined));
@@ -53,10 +53,10 @@ describe("attributeOutgoing", () => {
   it("con append: agrega los UTM al link del texto, al botón URL y al del carrusel; no toca wa.me ni los postback", async () => {
     const out = await attributeOutgoing(world(), ctx({ variables: { content: { code: "c8k2f" } } }), { append: true, trackClicks: false }, message());
     const utm = "utm_source=instagram&utm_medium=dm&utm_campaign=info-del-reel&utm_content=c8k2f";
-    expect(out.text).toBe(`Mirá https://wendy.com/programa?${utm} y escribime a https://wa.me/123`);
-    expect(out.buttons?.[0].url).toBe(`https://wendy.com/programa?${utm}`);
+    expect(out.text).toBe(`Mirá https://example.com/programa?${utm} y escribime a https://wa.me/123`);
+    expect(out.buttons?.[0].url).toBe(`https://example.com/programa?${utm}`);
     expect(out.buttons?.[1]).toEqual({ title: "Hola", type: "postback", payload: "p" });
-    expect(out.template?.elements[0].buttons?.[0].url).toBe(`https://wendy.com/a?${utm}`);
+    expect(out.template?.elements[0].buttons?.[0].url).toBe(`https://example.com/a?${utm}`);
   });
 
   it("sin pieza, utm_content es el código del flujo", async () => {
@@ -79,7 +79,7 @@ describe("attributeOutgoing", () => {
     expect(verified.ok).toBe(true);
     if (verified.ok) {
       expect(verified.payload).toMatchObject({ w: WS, c: CONTACT, f: FLOW, p: CP, s: null });
-      expect(verified.payload.u).toBe("https://wendy.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-del-reel&utm_content=c8k2f");
+      expect(verified.payload.u).toBe("https://example.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-del-reel&utm_content=c8k2f");
     }
     expect(out.buttons?.[0].url).toMatch(/^https:\/\/app\.example\.test\/l\//);
     expect(out.template?.elements[0].buttons?.[0].url).toMatch(/^https:\/\/app\.example\.test\/l\//);

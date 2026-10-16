@@ -111,7 +111,7 @@ describe("autoExpensesStep", () => {
   });
 
   it("pauta de Meta: solo nivel cuenta; una cuenta en EUR o sin filas de nivel cuenta no crea nada y se anota", async () => {
-    const metaCfg = (currency: string) => ({ workspace_id: WS, type: "meta", config: { ad_accounts: [{ ad_account_id: "act_1", name: "Wendy", currency, timezone: "America/Costa_Rica", sync_enabled: true }] } });
+    const metaCfg = (currency: string) => ({ workspace_id: WS, type: "meta", config: { ad_accounts: [{ ad_account_id: "act_1", name: "Cuenta de ejemplo", currency, timezone: "America/Costa_Rica", sync_enabled: true }] } });
     const rows = [
       { workspace_id: WS, ad_account_id: "act_1", level: "account", date: "2026-10-03", spend: 300.5 },
       { workspace_id: WS, ad_account_id: "act_1", level: "account", date: "2026-10-04", spend: 211.84 },
@@ -120,7 +120,7 @@ describe("autoExpensesStep", () => {
     seed({ meta_ads: { act_1: { enabled: true, vendor_id: null, category_key: null, charge_mode: "automatic" } } }, [], { integration_configs: [metaCfg("USD")], meta_ads_insights_daily: rows });
     await autoExpensesStep(ctxOf("2026-10-20"));
     const oct = calls().find((c) => c.args.p_month === "2026-10");
-    expect(oct?.args).toMatchObject({ p_auto_key: "meta_ads:act_1:2026-10", p_total_cents: 51234, p_concept: "Pauta Meta (Wendy) · octubre 2026", p_category_key: "ads_meta", p_origin: "meta_ads" });
+    expect(oct?.args).toMatchObject({ p_auto_key: "meta_ads:act_1:2026-10", p_total_cents: 51234, p_concept: "Pauta Meta (Cuenta de ejemplo) · octubre 2026", p_category_key: "ads_meta", p_origin: "meta_ads" });
     expect(calls()).toHaveLength(1); // septiembre y noviembre no tienen filas de nivel cuenta
 
     seed({ meta_ads: { act_1: { enabled: true, vendor_id: null, category_key: null, charge_mode: "automatic" } } }, [], { integration_configs: [metaCfg("EUR")], meta_ads_insights_daily: rows });

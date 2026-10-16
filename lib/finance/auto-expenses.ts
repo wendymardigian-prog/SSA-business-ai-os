@@ -47,7 +47,7 @@ export function parseAutoKey(key: string | null | undefined): { kind: AutoKind; 
 }
 
 /**
- * El concepto del gasto: «Comisión Whop · octubre 2026» y «Pauta Meta (Wendy) · octubre 2026».
+ * El concepto del gasto: «Comisión Whop · octubre 2026» y «Pauta Meta (Cuenta de ejemplo) · octubre 2026».
  * `name` es el nombre a mostrar del método o de la cuenta; lo resuelve quien llama.
  */
 export function autoExpenseConcept(args: { kind: AutoKind; name: string; month: string }): string {

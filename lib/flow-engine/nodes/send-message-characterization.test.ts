@@ -67,7 +67,7 @@ describe("sendMessage (caracterizacion previa a la etapa 4)", () => {
  * privada. Estos casos se escribieron sobre el código anterior al cambio y no se tocan.
  */
 describe("sendMessage: lo que se manda con el interruptor de atribución apagado o ausente (Extra I, F39)", () => {
-  const URL_TEXT = "Mirá https://wendy.com/programa y escribime";
+  const URL_TEXT = "Mirá https://example.com/programa y escribime";
   const base = { triggerId: "tr-1", flowId: "11111111-2222-4333-8444-555555555555", channelId: "ch-1", contactId: "c-1", conversationId: "conv-1", workspaceId: "ws-1", incomingMessage: {}, variables: { nombre: "Ana" } };
 
   async function run(platform: string, data: Record<string, unknown>, contextOver: Record<string, unknown> = {}) {
@@ -87,21 +87,21 @@ describe("sendMessage: lo que se manda con el interruptor de atribución apagado
   for (const attribution of off) {
     const label = attribution ? "con append apagado" : "sin la clave";
     it(`Instagram, link en el texto y botón URL (${label})`, async () => {
-      const [m] = await run("instagram", { attribution, messages: [{ text: URL_TEXT, buttons: [{ title: "Ver", type: "url", url: "https://wendy.com/programa" }, { title: "Hola", type: "postback", payload: "p1" }] }] });
+      const [m] = await run("instagram", { attribution, messages: [{ text: URL_TEXT, buttons: [{ title: "Ver", type: "url", url: "https://example.com/programa" }, { title: "Hola", type: "postback", payload: "p1" }] }] });
       expect(m).toEqual({
         text: URL_TEXT, mediaUrl: undefined, mediaType: undefined, quickReplies: undefined, template: undefined, replyMarkup: undefined,
-        buttons: [{ title: "Ver", type: "url", url: "https://wendy.com/programa" }, { title: "Hola", type: "postback", payload: "p1" }],
+        buttons: [{ title: "Ver", type: "url", url: "https://example.com/programa" }, { title: "Hola", type: "postback", payload: "p1" }],
       });
     });
 
     it(`Instagram, carrusel con botón URL (${label})`, async () => {
-      const [m] = await run("instagram", { attribution, messages: [{ text: "x", carousel: { elements: [{ title: "Uno", buttons: [{ type: "url", title: "Abrir", url: "https://wendy.com/a?x=1" }] }] } }] });
-      expect(m.template).toEqual({ type: "generic", elements: [{ title: "Uno", subtitle: undefined, imageUrl: undefined, buttons: [{ type: "url", title: "Abrir", url: "https://wendy.com/a?x=1", payload: undefined }] }] });
+      const [m] = await run("instagram", { attribution, messages: [{ text: "x", carousel: { elements: [{ title: "Uno", buttons: [{ type: "url", title: "Abrir", url: "https://example.com/a?x=1" }] }] } }] });
+      expect(m.template).toEqual({ type: "generic", elements: [{ title: "Uno", subtitle: undefined, imageUrl: undefined, buttons: [{ type: "url", title: "Abrir", url: "https://example.com/a?x=1", payload: undefined }] }] });
     });
 
     it(`WhatsApp, el botón URL baja a texto con el link tal cual (${label})`, async () => {
-      const [m] = await run("whatsapp", { attribution, messages: [{ text: "Hola", buttons: [{ title: "Ver", type: "url", url: "https://wendy.com/programa" }] }] });
-      expect(m.text).toBe("Hola\n\n1. Ver: https://wendy.com/programa");
+      const [m] = await run("whatsapp", { attribution, messages: [{ text: "Hola", buttons: [{ title: "Ver", type: "url", url: "https://example.com/programa" }] }] });
+      expect(m.text).toBe("Hola\n\n1. Ver: https://example.com/programa");
       expect(m.buttons).toBeUndefined();
     });
 
@@ -110,7 +110,7 @@ describe("sendMessage: lo que se manda con el interruptor de atribución apagado
       await sendMessageNode.execute({
         supabase: db.client,
         node: { id: "n-1", type: "sendMessage", data: {} } as never,
-        data: { attribution, messages: [{ text: URL_TEXT, buttons: [{ title: "Ver", type: "url", url: "https://wendy.com/programa" }] }, { text: "segundo" }] } as never,
+        data: { attribution, messages: [{ text: URL_TEXT, buttons: [{ title: "Ver", type: "url", url: "https://example.com/programa" }] }, { text: "segundo" }] } as never,
         context: { ...base, variables: { comment_id: "cm-1", post_id: "po-1" } } as never,
         sessionId: "s-1",
         runtime: { executeFlow: async () => {} },

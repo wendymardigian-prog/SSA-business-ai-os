@@ -106,7 +106,7 @@ describe("claves y textos", () => {
   });
   it("concepto", () => {
     expect(autoExpenseConcept({ kind: "processor_fee", name: "Whop", month: "2026-10" })).toBe("Comisión Whop · octubre 2026");
-    expect(autoExpenseConcept({ kind: "meta_ads", name: "Wendy", month: "2026-10" })).toBe("Pauta Meta (Wendy) · octubre 2026");
+    expect(autoExpenseConcept({ kind: "meta_ads", name: "Cuenta de ejemplo", month: "2026-10" })).toBe("Pauta Meta (Cuenta de ejemplo) · octubre 2026");
   });
   it("motivo de anulación por cero", () => {
     expect(zeroVoidReason("processor_fee")).toBe("La comisión del mes quedó en cero");

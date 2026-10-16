@@ -17,8 +17,8 @@ const noPiece: LinkAttributionContext = { ...ctx, contentCode: null };
 
 describe("buildAttributedUrl", () => {
   it("agrega los cuatro parametros", () => {
-    expect(buildAttributedUrl("https://wendy.com/programa", ctx)).toBe(
-      "https://wendy.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f",
+    expect(buildAttributedUrl("https://example.com/programa", ctx)).toBe(
+      "https://example.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f",
     );
   });
 
@@ -76,9 +76,9 @@ describe("buildAttributedUrl", () => {
       "https://wa.me/123",
       "https://wa.me/5491100000000?text=hola",
       "https://m.me/mi-pagina",
-      "https://www.instagram.com/wendy/",
+      "https://www.instagram.com/ejemplo/",
       "https://instagram.com/p/abc",
-      "https://ig.me/m/wendy",
+      "https://ig.me/m/ejemplo",
       "https://api.whatsapp.com/send?phone=1",
     ]) {
       expect(buildAttributedUrl(url, ctx), url).toBe(url);
@@ -172,18 +172,18 @@ describe("attributeText / mapUrlsInText", () => {
 
 describe("describeAttributionExample", () => {
   it("con pieza: el ejemplo del plano", () => {
-    const ex = describeAttributionExample({ ctx, exampleUrl: "https://wendy.com/programa", pieceTitle: "Reel: 3 errores al vender" });
+    const ex = describeAttributionExample({ ctx, exampleUrl: "https://example.com/programa", pieceTitle: "Reel: 3 errores al vender" });
     expect(ex.text).toBe(
-      "Con un comentario en «Reel: 3 errores al vender», el link `https://wendy.com/programa` sale como `https://wendy.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f`.",
+      "Con un comentario en «Reel: 3 errores al vender», el link `https://example.com/programa` sale como `https://example.com/programa?utm_source=instagram&utm_medium=dm&utm_campaign=info-reel&utm_content=c8k2f`.",
     );
     expect(ex.contentNote).toBeNull();
     expect(ex.params.map((p) => p.key)).toEqual(["utm_source", "utm_medium", "utm_campaign", "utm_content"]);
-    expect(ex.before).toBe("https://wendy.com/programa");
+    expect(ex.before).toBe("https://example.com/programa");
     expect(ex.after).toContain("utm_content=c8k2f");
   });
 
   it("sin pieza: explica que utm_content es el codigo del flujo", () => {
-    const ex = describeAttributionExample({ ctx: noPiece, exampleUrl: "https://wendy.com/programa" });
+    const ex = describeAttributionExample({ ctx: noPiece, exampleUrl: "https://example.com/programa" });
     expect(ex.contentNote).toBe("utm_content = el código del flujo (`f-9f3a1c7e`) porque este flujo no arranca desde una pieza.");
     expect(ex.text.startsWith("Con un comentario, el link")).toBe(true);
     expect(ex.text.endsWith(ex.contentNote!)).toBe(true);
