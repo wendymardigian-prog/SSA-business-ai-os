@@ -5,6 +5,8 @@ import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { availableDashboards, comingSoonDashboards } from "@/lib/dashboards/available";
 import { isAdminRole } from "@/lib/auth/roles";
 import { platformLabel } from "@/lib/platforms";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { agentSectionVisibility } from "@/lib/dashboards/chat/agent-visibility";
 import { AGENT_PUBLIC_COLUMNS, publicChannelMode, type PublicAgent } from "@/lib/agent/public";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { validateRules } from "@/lib/agent/rules/schema";
@@ -45,12 +47,14 @@ export default async function ChatDashboardPage({
   const timezone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
   const isAdmin = isAdminRole(role);
 
-  const [permissions, members, channelsRes, agentsRes, draftCounts] = await Promise.all([
+  const [permissions, members, channelsRes, agentsRes, draftCounts, aiProviders] = await Promise.all([
     getPermissionContext(),
     isAdmin ? getWorkspaceMembers(workspace.id) : Promise.resolve([]),
     supabase.from("channels").select("id, platform, display_name, username, is_active").eq("workspace_id", workspace.id),
     supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", workspace.id).is("deleted_at", null),
     countPendingDrafts(),
+    // Las IAs conectadas: deciden si la seccion del agente se muestra (O).
+    listConnectedAiProviders(workspace.id),
   ]);
 
   const channels = (
@@ -65,9 +69,15 @@ export default async function ChatDashboardPage({
   const agents = ((agentsRes.data ?? []) as PublicAgent[]).filter((a) => getAgentType(a.type)?.conversational);
   const agent = agents[0] ?? null;
   const drafts = draftChannels(agents);
+  // Cuando se muestra "El agente" (O): sin IA y sin agentes encendidos, ni se dibuja ni se consultan sus datos.
+  const agentVisibility = agentSectionVisibility({
+    agents: agents.map((a) => ({ isEnabled: a.is_enabled, provider: a.provider ?? null, model: a.model ?? null })),
+    connectedProviders: aiProviders.map((p) => p.provider),
+  });
+  const showAgentSection = agentVisibility.mode === "full" || agentVisibility.mode === "full-with-warning";
 
   // Los resultados de reglas solo existen si algún canal decide por reglas.
-  const anyRulesChannel = agents.some((a) =>
+  const anyRulesChannel = showAgentSection && agents.some((a) =>
     (a.enabled_channel_ids ?? []).some((id) => publicChannelMode(a, id) === "rules"),
   );
   // Los nombres de las reglas, para que la tarjeta diga "Regla 3 · menciona
@@ -88,11 +98,15 @@ export default async function ChatDashboardPage({
   const blocks = {
     cards: loadCards(supabase, args),
     trends: loadTrends(supabase, args),
-    agent: loadAgent(supabase, args),
-    firstResponder: loadFirstResponder(supabase, args),
-    escalations: loadEscalationReasons(supabase, args),
-    actions: loadAgentActions(supabase, args),
-    rules: anyRulesChannel ? loadRuleResults(supabase, args, rules) : null,
+    agentSection: showAgentSection
+      ? {
+          agent: loadAgent(supabase, args),
+          firstResponder: loadFirstResponder(supabase, args),
+          escalations: loadEscalationReasons(supabase, args),
+          actions: loadAgentActions(supabase, args),
+          rules: anyRulesChannel ? loadRuleResults(supabase, args, rules) : null,
+        }
+      : null,
     drafts: loadDrafts(supabase, args),
     team: loadTeam(
       supabase,
@@ -117,6 +131,7 @@ export default async function ChatDashboardPage({
       hasDraftChannels={drafts.hasAny}
       draftChannelsLabel={draftChannelLabels(drafts, channels)}
       draftsHref={draftsQueueHref(draftCounts)}
+      agentVisibility={agentVisibility}
       agentHref={agent ? `/dashboard/agents/runs?agente=${agent.id}` : null}
       agentActionsHref={agent ? `/dashboard/agents/${agent.id}?tab=actions` : null}
     />

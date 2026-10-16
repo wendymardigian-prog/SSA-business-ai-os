@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { platformLabel } from "@/lib/platforms";
 import { fromAgentMode, type ConversationAgentMode } from "@/lib/agent/config";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type PublicAgent } from "@/lib/agent/public";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
 
 /**
  * El agente de IA en una conversacion: heredar del canal, forzado prendido o
@@ -64,14 +65,16 @@ export async function setConversationAgent(input: {
 
   let effectiveOn = false;
   if (input.mode !== "off") {
-    const [{ data: agents }, { data: channel }] = await Promise.all([
+    const [{ data: agents }, { data: channel }, aiProviders] = await Promise.all([
       supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", conversation.workspace_id).is("deleted_at", null),
       supabase.from("channels").select("id, platform").eq("id", conversation.channel_id).maybeSingle(),
+      listConnectedAiProviders(conversation.workspace_id),
     ]);
-    const info = channelAgentInfo((agents ?? []) as PublicAgent[], {
-      id: conversation.channel_id,
-      label: platformLabel(channel?.platform ?? ""),
-    });
+    const info = channelAgentInfo(
+      (agents ?? []) as PublicAgent[],
+      { id: conversation.channel_id, label: platformLabel(channel?.platform ?? "") },
+      aiProviders.map((p) => p.provider),
+    );
     if (input.mode === "on" && !info.available) {
       return { ok: false, error: info.message ?? "El agente no esta disponible en este canal." };
     }

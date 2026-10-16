@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { setAgentEnabled } from "@/lib/actions/agents";
+import { agentAvailability, availabilityBadge } from "@/lib/agent/availability";
 import { tabsForViewer, type AgentTypeDefinition } from "@/lib/agent/agent-types";
 import type { AgentScreenData, HeaderKpis } from "@/lib/agent/screen";
 import { ConfigTab } from "./config-tab";
@@ -60,6 +61,16 @@ export function AgentDetailView({
   const { tabs } = tabsForViewer(typeDef, (key) => data.viewer.permissionKeys?.includes(key) ?? isAdmin);
 
   const providerConnected = data.providers.some((p) => p.provider === agent.provider);
+  // La regla unica de disponibilidad (E1): no se enciende un agente sin una IA conectada, y uno encendido sin IA dice por que no responde.
+  const availability = agentAvailability({
+    isEnabled: agent.isEnabled,
+    provider: agent.provider,
+    model: agent.model,
+    conversational: typeDef.conversational,
+    connectedProviders: data.providers.map((p) => p.provider),
+  });
+  const badge = availabilityBadge(availability);
+  const cannotEnable = !agent.isEnabled && !availability.canEnable;
   const modelLabel = agent.model
     ? `${data.providerLabels[agent.provider ?? ""] ?? agent.provider} / ${agent.model}`
     : "Sin modelo elegido";
@@ -105,11 +116,29 @@ export function AgentDetailView({
           {isAdmin ? (
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-3">
-              <span className={cn("text-sm font-medium", agent.isEnabled ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
-                {agent.isEnabled ? "Encendido" : "Apagado"}
+              <span
+                className={cn(
+                  "text-sm font-medium",
+                  badge.tone === "ok" && "text-emerald-700 dark:text-emerald-400",
+                  badge.tone === "warn" && "text-amber-700 dark:text-amber-400",
+                  badge.tone === "off" && "text-muted-foreground",
+                )}
+              >
+                {badge.label}
               </span>
-              <Switch checked={agent.isEnabled} disabled={pending} onChange={toggleEnabled} label="Encendido global del agente" />
+              <Switch checked={agent.isEnabled} disabled={pending || cannotEnable} onChange={toggleEnabled} label="Encendido global del agente" />
             </div>
+            {/* No se puede encender sin una IA, y uno encendido sin IA dice por que no responde: el motivo va escrito, no solo en un tooltip. */}
+            {availability.message && (cannotEnable || availability.state === "blocked") && (
+              <p className="max-w-xs text-right text-[11px] text-amber-800 dark:text-amber-300">
+                {availability.message}{" "}
+                {availability.blockedBy !== "no_model" && (
+                  <Link href="/dashboard/settings/integrations" className="font-medium underline underline-offset-2">
+                    Ir a Integraciones
+                  </Link>
+                )}
+              </p>
+            )}
             {/* Solo tiene sentido para un agente que atiende conversaciones:
                 el copywriter no atiende a nadie (E1). */}
             {typeDef.conversational && agent.isEnabled && agent.enabledChannelIds.length === 0 && (

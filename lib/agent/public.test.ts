@@ -127,3 +127,41 @@ describe("modo del canal en la bandeja (00070)", () => {
     expect(channelAgentInfo([agent], { id: "ch-ig", label: "Instagram" }).mode).toBe("draft");
   });
 });
+
+describe("el toggle de la bandeja y las IAs conectadas (E1)", () => {
+  const agent = {
+    id: "a",
+    name: "Asistente",
+    type: "chat",
+    is_enabled: true,
+    enabled_channel_ids: ["ch-ig"],
+    provider: "anthropic",
+    model: "m",
+    deleted_at: null,
+  };
+  const ig = { id: "ch-ig", label: "Instagram" };
+
+  it("sin pasar las IAs conectadas no se mira la IA: igual que siempre", () => {
+    expect(channelAgentInfo([agent], ig)).toMatchObject({ available: true });
+  });
+
+  it("con su IA conectada, disponible", () => {
+    expect(channelAgentInfo([agent], ig, ["anthropic"])).toMatchObject({ available: true, reason: null });
+  });
+
+  it("sin ninguna IA conectada, no disponible aunque este encendido (no se muestra algo que no funciona)", () => {
+    const info = channelAgentInfo([agent], ig, []);
+    expect(info).toMatchObject({ available: false, reason: "no_provider" });
+    expect(info.message).toMatch(/no puede responder/);
+  });
+
+  it("se desconecto la IA del agente pero hay otra: lo dice con el nombre", () => {
+    const info = channelAgentInfo([agent], ig, ["openai"]);
+    expect(info).toMatchObject({ available: false, reason: "provider_disconnected" });
+    expect(info.message).toMatch(/Anthropic/);
+  });
+
+  it("un agente apagado sigue diciendo que esta apagado, antes que lo de la IA", () => {
+    expect(channelAgentInfo([{ ...agent, is_enabled: false }], ig, [])).toMatchObject({ reason: "agent_off" });
+  });
+});

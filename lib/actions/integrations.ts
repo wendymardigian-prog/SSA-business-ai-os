@@ -11,6 +11,10 @@ import { sectionOfProvider } from "@/lib/integrations/sections";
 import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { loadWorkspaceAgents } from "@/lib/agent/config";
+import { getAgentType } from "@/lib/agent/agent-types";
+import { agentsLeftWithoutAi } from "@/lib/agent/availability";
+import { notifyIntegrationAttention } from "@/lib/notifications/integration-alerts";
 import { validateSecretValue } from "@/lib/integrations/secret-validation";
 import type { Json } from "@/lib/types/database";
 import { testConnection } from "@/lib/integrations/test-connection";
@@ -363,8 +367,39 @@ export async function disconnectIntegration(
     ? await syncAccountsAfterChange(supabase, workspace.id, `desconectar ${provider.id}`)
     : [];
 
+  // Una IA desconectada deja sin poder responder a los agentes que la usaban (E1). No se apaga ni se borra nada
+  // (reconectar los deja como estaban), pero quien administra tiene que enterarse. Nunca frena la desconexion.
+  if (provider.type === "ai_provider") {
+    await warnAgentsLeftWithoutAi(workspace.id, provider.id, provider.label);
+  }
+
   revalidatePath(INTEGRATIONS_PATH);
   return warnings.length ? { ok: true, warnings } : { ok: true };
+}
+
+/** Avisa en la campana (a Owner y Admin) que agentes quedaron sin IA despues de desconectar una. No lanza. */
+async function warnAgentsLeftWithoutAi(workspaceId: string, providerId: string, providerLabel: string): Promise<void> {
+  try {
+    const service = await createServiceClient();
+    const [agents, connected] = await Promise.all([loadWorkspaceAgents(service, workspaceId), listConnectedAiProviders(workspaceId, service)]);
+    const names = agentsLeftWithoutAi(
+      agents.map((a) => ({ name: a.name, isEnabled: a.isEnabled, provider: a.provider, model: a.model, conversational: getAgentType(a.type)?.conversational ?? false })),
+      connected.map((p) => p.provider),
+    );
+    if (names.length === 0) return;
+    await notifyIntegrationAttention({
+      supabase: service,
+      workspaceId,
+      providerId,
+      providerLabel,
+      cause: "revoked",
+      detail:
+        `Estos agentes quedaron sin IA y no van a responder hasta que reconectes ${providerLabel} o elijas otra: ${names.join(", ")}. ` +
+        "No se apagó ni se borró nada: al reconectar siguen como estaban.",
+    });
+  } catch (err) {
+    console.error("[integrations] no pude avisar de los agentes sin IA:", err instanceof Error ? err.message : "error");
+  }
 }
 
 /**

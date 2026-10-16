@@ -12,6 +12,7 @@ import { dashboardFiltersToParams, type DashboardFilters } from "@/lib/dashboard
 import { formatAgo } from "@/lib/dashboards/chat/comparisons";
 import { formatCivil, isoRangeToCivil } from "@/lib/dashboards/chat/date-range";
 import { agentSectionMode, hiddenAuthorNotice } from "@/lib/dashboards/chat/agent";
+import type { AgentVisibilityResult } from "@/lib/dashboards/chat/agent-visibility";
 import { showDraftAlert } from "@/lib/dashboards/chat/drafts";
 import type { RepliesPanel } from "@/lib/dashboards/chat/patterns";
 import type { BlockResult } from "@/lib/dashboards/chat/types";
@@ -28,7 +29,7 @@ import { PeriodPopover } from "./filters/period-popover";
 import { KpiCards } from "./kpi-cards";
 import { DraftAlert } from "./draft-alert";
 import { TrendsBlock } from "./trends-block";
-import { AgentActionsCard, AgentHidden, AgentNoRuns, AgentRates, ApprovalCard, EscalationReasonsCard, FirstResponderCard, RuleResultsCard } from "./agent-block";
+import { AgentActionsCard, AgentConnectionWarning, AgentHidden, AgentInvite, AgentNoRuns, AgentRates, ApprovalCard, EscalationReasonsCard, FirstResponderCard, RuleResultsCard } from "./agent-block";
 import { TeamBlock } from "./team-block";
 import { PatternsSection, QualityLineRow } from "./patterns-block";
 import { fetchRepliesAction } from "@/lib/actions/chat-dashboard";
@@ -43,14 +44,19 @@ import { fetchRepliesAction } from "@/lib/actions/chat-dashboard";
  * Los filtros viven en la URL: compartir un link es compartir la vista.
  */
 
-export interface ChatDashboardBlocks {
-  cards: Promise<BlockResult<CardsBlock>>;
-  trends: Promise<BlockResult<TrendsData>>;
+/** Los bloques de la seccion "El agente". null cuando la seccion no se muestra: ni se consultan (O). */
+export interface AgentSectionBlocks {
   agent: Promise<BlockResult<AgentData>>;
   firstResponder: Promise<BlockResult<FirstResponderBlock>>;
   escalations: Promise<BlockResult<EscalationReason[]>>;
   actions: Promise<BlockResult<AgentActionRow[]>>;
   rules: Promise<BlockResult<RuleResultRow[]>> | null;
+}
+
+export interface ChatDashboardBlocks {
+  cards: Promise<BlockResult<CardsBlock>>;
+  trends: Promise<BlockResult<TrendsData>>;
+  agentSection: AgentSectionBlocks | null;
   drafts: Promise<BlockResult<DraftsCard>>;
   team: Promise<BlockResult<TeamRow[]>>;
   patterns: Promise<BlockResult<PatternsBlock>>;
@@ -69,6 +75,7 @@ export function ChatDashboardShell({
   draftChannelsLabel,
   hasDraftChannels,
   draftsHref,
+  agentVisibility,
   agentHref,
   agentActionsHref,
 }: {
@@ -83,12 +90,15 @@ export function ChatDashboardShell({
   draftChannelsLabel: string;
   hasDraftChannels: boolean;
   draftsHref: string;
+  /** Cuando se muestra la seccion del agente y con que aviso (O). */
+  agentVisibility: AgentVisibilityResult;
   agentHref: string | null;
   agentActionsHref: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [pending, start] = useTransition();
+  const agentSection = blocks.agentSection;
 
   function setFilter(patch: Partial<DashboardFilters>) {
     const next = { ...filters, ...patch };
@@ -185,63 +195,71 @@ export function ChatDashboardShell({
             {(data) => <TrendsBlock data={data} filteredByAuthor={filters.author !== null} />}
           </Block>
 
-          {/* El agente */}
-          <SectionHeading
-            title="El agente"
-            subtitle="Cómo trabaja con las conversaciones nuevas"
-            action={
-              agentHref ? (
-                <Link href={agentHref} className="text-xs font-medium text-primary underline-offset-2 hover:underline">
-                  Ver runs y acciones en Agentes →
-                </Link>
-              ) : null
-            }
-          />
-          <Block promise={blocks.agent} label="las métricas del agente" skeleton={<BlockSkeleton kind="cards3" />}>
-            {(data) => {
-              const mode = agentSectionMode(filters.author, data.newConversations);
-              if (mode === "hidden-author") {
-                return <AgentHidden notice={hiddenAuthorNotice(authorName ?? "esa persona")} onClear={() => setFilter({ author: null })} />;
+          {/* El agente: se muestra segun el estado real del sistema (O). Oculta, invitacion, completa o completa con aviso. */}
+          {agentVisibility.mode !== "hidden" && (
+            <SectionHeading
+              title="El agente"
+              subtitle="Cómo trabaja con las conversaciones nuevas"
+              action={
+                agentHref ? (
+                  <Link href={agentHref} className="text-xs font-medium text-primary underline-offset-2 hover:underline">
+                    Ver runs y acciones en Agentes →
+                  </Link>
+                ) : null
               }
-              if (mode === "no-runs") return <AgentNoRuns agentHref={agentHref} />;
-              return <AgentRates data={data} />;
-            }}
-          </Block>
-
-          {/* El resto de la seccion del agente se esconde con el filtro puesto:
-              son numeros del agente y no dicen nada sobre lo que se filtró. */}
-          {agentSectionMode(filters.author, 1) === "full" && (
+            />
+          )}
+          {agentVisibility.mode === "invite" && <AgentInvite />}
+          {agentSection && (
             <>
-              <div className="row2">
-                <Block promise={blocks.firstResponder} label="quién respondió primero" skeleton={<BlockSkeleton kind="panel" />}>
-                  {(data) => <FirstResponderCard data={data} />}
-                </Block>
-                <Block promise={blocks.escalations} label="por qué derivó" skeleton={<BlockSkeleton kind="panel" />}>
-                  {(reasons) => <EscalationReasonsCard reasons={reasons} />}
-                </Block>
-              </div>
+              {agentVisibility.warning && <AgentConnectionWarning message={agentVisibility.warning} />}
+              <Block promise={agentSection.agent} label="las métricas del agente" skeleton={<BlockSkeleton kind="cards3" />}>
+                {(data) => {
+                  const mode = agentSectionMode(filters.author, data.newConversations);
+                  if (mode === "hidden-author") {
+                    return <AgentHidden notice={hiddenAuthorNotice(authorName ?? "esa persona")} onClear={() => setFilter({ author: null })} />;
+                  }
+                  if (mode === "no-runs") return <AgentNoRuns agentHref={agentHref} />;
+                  return <AgentRates data={data} />;
+                }}
+              </Block>
 
-              <div className="row2">
-                <Block promise={blocks.drafts} label="la aprobación de respuestas" skeleton={<BlockSkeleton kind="panel" />}>
-                  {(card) => (
-                    <ApprovalCard
-                      card={card}
-                      channelsLabel={draftChannelsLabel}
-                      hasDraftChannels={hasDraftChannels}
-                      queueHref={draftsHref}
-                      agentHref={agentHref}
-                    />
+              {/* El resto de la seccion del agente se esconde con el filtro puesto:
+                  son numeros del agente y no dicen nada sobre lo que se filtró. */}
+              {agentSectionMode(filters.author, 1) === "full" && (
+                <>
+                  <div className="row2">
+                    <Block promise={agentSection.firstResponder} label="quién respondió primero" skeleton={<BlockSkeleton kind="panel" />}>
+                      {(data) => <FirstResponderCard data={data} />}
+                    </Block>
+                    <Block promise={agentSection.escalations} label="por qué derivó" skeleton={<BlockSkeleton kind="panel" />}>
+                      {(reasons) => <EscalationReasonsCard reasons={reasons} />}
+                    </Block>
+                  </div>
+
+                  <div className="row2">
+                    <Block promise={blocks.drafts} label="la aprobación de respuestas" skeleton={<BlockSkeleton kind="panel" />}>
+                      {(card) => (
+                        <ApprovalCard
+                          card={card}
+                          channelsLabel={draftChannelsLabel}
+                          hasDraftChannels={hasDraftChannels}
+                          queueHref={draftsHref}
+                          agentHref={agentHref}
+                        />
+                      )}
+                    </Block>
+                    <Block promise={agentSection.actions} label="las acciones del agente" skeleton={<BlockSkeleton kind="panel" />}>
+                      {(actions) => <AgentActionsCard actions={actions} actionsHref={agentActionsHref} />}
+                    </Block>
+                  </div>
+
+                  {agentSection.rules && (
+                    <Block promise={agentSection.rules} label="los resultados de las reglas" skeleton={<BlockSkeleton kind="panel" />}>
+                      {(rows) => <RuleResultsCard rows={rows} />}
+                    </Block>
                   )}
-                </Block>
-                <Block promise={blocks.actions} label="las acciones del agente" skeleton={<BlockSkeleton kind="panel" />}>
-                  {(actions) => <AgentActionsCard actions={actions} actionsHref={agentActionsHref} />}
-                </Block>
-              </div>
-
-              {blocks.rules && (
-                <Block promise={blocks.rules} label="los resultados de las reglas" skeleton={<BlockSkeleton kind="panel" />}>
-                  {(rows) => <RuleResultsCard rows={rows} />}
-                </Block>
+                </>
               )}
             </>
           )}

@@ -8,6 +8,7 @@ import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from "@/lib/agent/prompt";
 import { loadAgentById, loadWorkspaceAgents } from "@/lib/agent/config";
 import { getAgentType } from "@/lib/agent/agent-types";
+import { agentAvailability } from "@/lib/agent/availability";
 import { validateAgentConfig, validateSystemPrompt } from "@/lib/agent/validate";
 import { normalizeToolsConfig } from "@/lib/agent/tools/config";
 import { agentUsableTagIds } from "@/lib/tags/effects";
@@ -324,7 +325,7 @@ export async function restorePromptVersion(agentId: string, version: number): Pr
   return { ok: true, agentId: agent.id };
 }
 
-/** Encendido global. Para encender hace falta un modelo con proveedor conectado. */
+/** Encendido global. Para encender hace falta una IA conectada (y, en un agente de chat, su proveedor y modelo). */
 export async function setAgentEnabled(agentId: string, enabled: boolean): Promise<AgentActionResult> {
   const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
@@ -335,10 +336,18 @@ export async function setAgentEnabled(agentId: string, enabled: boolean): Promis
   if (!agent) return { ok: false, error: "El agente no existe." };
 
   if (enabled) {
-    if (!agent.provider || !agent.model) return { ok: false, error: "Antes de encenderlo, elegi el proveedor y el modelo." };
+    // La regla unica de disponibilidad (E1): un agente no se enciende sin una IA conectada. El de chat necesita ademas
+    // su proveedor y modelo; el copywriter usa el del negocio y le alcanza con que haya cualquiera.
     const service = await createServiceClient();
-    const connected = (await listConnectedAiProviders(workspace.id, service)).some((p) => p.provider === agent.provider);
-    if (!connected) return { ok: false, error: "El proveedor configurado no esta conectado. Conectalo en Integraciones o elegi otro." };
+    const connected = (await listConnectedAiProviders(workspace.id, service)).map((p) => p.provider);
+    const availability = agentAvailability({
+      isEnabled: false,
+      provider: agent.provider,
+      model: agent.model,
+      conversational: getAgentType(agent.type)?.conversational ?? false,
+      connectedProviders: connected,
+    });
+    if (!availability.canEnable) return { ok: false, error: availability.message ?? "No se puede encender este agente." };
   }
 
   const { error } = await supabase.from("agents").update({ is_enabled: enabled }).eq("id", agent.id);
