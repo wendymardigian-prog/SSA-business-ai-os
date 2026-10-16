@@ -12,6 +12,8 @@ import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
+import { enqueuePendingDocuments } from "@/lib/knowledge/pending";
+import { VOYAGE_PROVIDER_ID } from "@/lib/knowledge/embeddings";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { agentsLeftWithoutAi } from "@/lib/agent/availability";
 import { notifyIntegrationAttention } from "@/lib/notifications/integration-alerts";
@@ -245,6 +247,18 @@ export async function saveIntegration(
     },
     performedBy: ctx.user.id,
   });
+
+  // Conectar Voyage retoma los documentos que se subieron cuando todavia no estaba (F1). No lanza: guardar la
+  // integracion no puede fallar por esto, y si algo no se encola, queda pendiente y se ve en Conocimiento.
+  if (provider.id === VOYAGE_PROVIDER_ID) {
+    try {
+      const service = await createServiceClient();
+      const resumed = await enqueuePendingDocuments(service, workspace.id);
+      if (resumed.queued > 0) revalidatePath("/dashboard/knowledge");
+    } catch (err) {
+      console.error("[integrations] no pude retomar los documentos pendientes:", err instanceof Error ? err.message : "error");
+    }
+  }
 
   revalidatePath(INTEGRATIONS_PATH);
   return warnings.length ? { ok: true, warnings } : { ok: true };

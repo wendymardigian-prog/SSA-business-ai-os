@@ -409,7 +409,7 @@ export type AdsLevel = "account" | "campaign" | "adset" | "ad";
 export type SocialPlatform = "instagram" | "tiktok" | "youtube" | "linkedin" | "threads";
 
 /** Estado de procesamiento de un documento de la base de conocimiento (00049). */
-export type KnowledgeStatus = "processing" | "ready" | "error";
+export type KnowledgeStatus = "processing" | "pending" | "ready" | "error";
 /** Por que se vinculo un remitente a un contacto ya existente (migracion 00025). */
 export type ContactLinkReason = "channel" | "phone" | "email" | "username";
 /** Entidades que registra el audit log (migracion 00023). */

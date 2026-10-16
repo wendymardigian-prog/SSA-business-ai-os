@@ -16,6 +16,7 @@ import {
 } from "@/lib/knowledge/validate";
 import { INDEX_DOCUMENT_JOB, KNOWLEDGE_BUCKET } from "@/lib/knowledge/index-document";
 import { isEmbeddingProviderConnected } from "@/lib/knowledge/embeddings";
+import { enqueuePendingDocuments } from "@/lib/knowledge/pending";
 
 /**
  * Server Actions de la base de conocimiento (F16, F17).
@@ -37,7 +38,14 @@ const KNOWLEDGE_PATH = "/dashboard/knowledge";
 /** Cuanto vive el link de descarga del original. */
 const SIGNED_URL_SECONDS = 60;
 
-export type KnowledgeResult = { ok: true; documentId?: string } | { ok: false; error: string };
+export type KnowledgeResult =
+  | {
+      ok: true;
+      documentId?: string;
+      /** Se guardo, pero falta conectar Voyage para indexarlo: queda pendiente y se retoma solo (F1). */
+      pending?: boolean;
+    }
+  | { ok: false; error: string };
 
 /**
  * Sube un documento y lo encola para indexar.
@@ -80,6 +88,10 @@ export async function uploadDocument(formData: FormData): Promise<KnowledgeResul
 
   const tags = normalizeTags(String(formData.get("tags") ?? ""));
 
+  // Subir un documento tiene que seguir siendo posible aunque Voyage (lo que indexa) todavia no este conectado:
+  // queda "pendiente de indexar" con su archivo guardado y se retoma solo cuando se conecte (F1).
+  const voyageConnected = await isEmbeddingProviderConnected(workspace.id, supabase);
+
   const { data: created, error: insertError } = await supabase
     .from("knowledge_base")
     .insert({
@@ -89,7 +101,7 @@ export async function uploadDocument(formData: FormData): Promise<KnowledgeResul
       source_mime: detected.mime,
       source_size_bytes: buffer.byteLength,
       source_filename: file.name,
-      status: "processing",
+      status: voyageConnected ? "processing" : "pending",
       created_by: user.id,
     })
     .select("id")
@@ -146,6 +158,12 @@ export async function uploadDocument(formData: FormData): Promise<KnowledgeResul
     performedBy: user.id,
   });
 
+  if (!voyageConnected) {
+    // Nada que encolar: el archivo ya esta guardado y se indexa al conectar Voyage.
+    revalidatePath(KNOWLEDGE_PATH);
+    return { ok: true, documentId: created.id, pending: true };
+  }
+
   const queued = await enqueueIndexing(service, created.id, workspace.id);
   if (!queued) {
     await supabase
@@ -159,6 +177,29 @@ export async function uploadDocument(formData: FormData): Promise<KnowledgeResul
 
   revalidatePath(KNOWLEDGE_PATH);
   return { ok: true, documentId: created.id };
+}
+
+export type IndexPendingResult =
+  | { ok: true; queued: number; failed: number; remaining: number }
+  | { ok: false; error: string };
+
+/**
+ * "Indexar pendientes": pone en cola los documentos que se subieron sin Voyage (F1). Sin duplicados (cada
+ * uno se reclama antes de encolar) y sin reprocesar lo que ya esta listo.
+ */
+export async function indexPendingDocuments(): Promise<IndexPendingResult> {
+  const ctx = await getPermissionAction("knowledge.edit");
+  if (!ctx) return { ok: false, error: "No tenés permiso para gestionar la base de conocimiento" };
+  const { workspace, supabase } = ctx;
+
+  if (!(await isEmbeddingProviderConnected(workspace.id, supabase))) {
+    return { ok: false, error: "Falta conectar Voyage AI en Ajustes > Integraciones: es lo que indexa la base de conocimiento." };
+  }
+
+  const service = await createServiceClient();
+  const result = await enqueuePendingDocuments(service, workspace.id);
+  revalidatePath(KNOWLEDGE_PATH);
+  return { ok: true, ...result };
 }
 
 /** Encola el indexado. Devuelve si se pudo. */

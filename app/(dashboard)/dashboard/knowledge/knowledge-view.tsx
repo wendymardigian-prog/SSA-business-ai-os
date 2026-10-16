@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useRef } from "react";
+import { useEffect, useState, useTransition, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,6 +13,8 @@ import {
   Trash2,
   RefreshCw,
   FileText,
+  Clock,
+  Play,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { formatDateTime } from "@/components/contacts/ui";
@@ -21,7 +23,9 @@ import {
   updateDocumentMetadata,
   deleteDocument,
   reprocessDocument,
+  indexPendingDocuments,
 } from "@/lib/actions/knowledge";
+import { countPending } from "@/lib/knowledge/pending-count";
 import {
   validateFileSize,
   formatBytes,
@@ -63,6 +67,38 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
   const [deleting, setDeleting] = useState<KnowledgeDocument | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pendingCount = countPending(documents);
+  const hasProcessing = documents.some((d) => d.status === "processing");
+
+  // Mientras algo se procesa, la lista se refresca sola (antes habia que recargar a mano para ver "Listo").
+  // Tope de ~3 minutos: si un documento sigue "procesando" mas que eso, pasa algo y recargar no lo arregla.
+  useEffect(() => {
+    if (!hasProcessing) return;
+    let ticks = 0;
+    const id = setInterval(() => {
+      ticks += 1;
+      router.refresh();
+      if (ticks >= 45) clearInterval(id);
+    }, 4000);
+    return () => clearInterval(id);
+  }, [hasProcessing, router]);
+
+  function handleIndexPending() {
+    setError(null);
+    setNotice(null);
+    startTransition(async () => {
+      const result = await indexPendingDocuments();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      const parts = [`Se pusieron ${result.queued} documento${result.queued === 1 ? "" : "s"} en cola para indexar.`];
+      if (result.failed > 0) parts.push(`${result.failed} no se pudo${result.failed === 1 ? "" : "ieron"} encolar: siguen pendientes, probá de nuevo.`);
+      if (result.remaining > 0) parts.push(`Quedan ${result.remaining} más: volvé a apretar el botón.`);
+      setNotice(parts.join(" "));
+      router.refresh();
+    });
+  }
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -75,6 +111,7 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
     setUploading(true);
     const errores: string[] = [];
     let subidos = 0;
+    let pendientes = 0;
 
     for (const file of Array.from(files)) {
       // El tamano se puede chequear aca y ahorrar la subida entera. El tipo
@@ -89,8 +126,10 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
       data.set("file", file);
 
       const result = await uploadDocument(data);
-      if (result.ok) subidos++;
-      else errores.push(`${file.name}: ${result.error}`);
+      if (result.ok) {
+        subidos++;
+        if (result.pending) pendientes++;
+      } else errores.push(`${file.name}: ${result.error}`);
     }
 
     setUploading(false);
@@ -99,9 +138,13 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
     if (errores.length > 0) setError(errores.join(" · "));
     if (subidos > 0) {
       setNotice(
-        subidos === 1
-          ? "Documento subido. Se esta procesando: en un momento pasa a listo."
-          : `${subidos} documentos subidos. Se estan procesando.`,
+        pendientes === subidos
+          ? subidos === 1
+            ? "Documento guardado. Queda pendiente de indexar: se indexa solo cuando conectes Voyage AI."
+            : `${subidos} documentos guardados. Quedan pendientes de indexar: se indexan solos cuando conectes Voyage AI.`
+          : subidos === 1
+            ? "Documento subido. Se esta procesando: en un momento pasa a listo."
+            : `${subidos} documentos subidos. Se estan procesando.`,
       );
       router.refresh();
     }
@@ -143,19 +186,32 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
       <PageHeader
         route="/dashboard/knowledge"
         right={
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {uploading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Upload className="h-4 w-4" aria-hidden="true" />
+          <div className="flex items-center gap-2">
+            {pendingCount > 0 && voyageConnected && (
+              <button
+                type="button"
+                onClick={handleIndexPending}
+                disabled={pending || uploading}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                <Play className="h-4 w-4" aria-hidden="true" />
+                Indexar pendientes ({pendingCount})
+              </button>
             )}
-            {uploading ? "Subiendo..." : "Subir documento"}
-          </button>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Upload className="h-4 w-4" aria-hidden="true" />
+              )}
+              {uploading ? "Subiendo..." : "Subir documento"}
+            </button>
+          </div>
         }
       />
 
@@ -193,8 +249,8 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
                 Falta conectar Voyage AI para poder indexar
               </p>
               <p className="mt-1 text-amber-800 dark:text-amber-300">
-                Podes subir documentos igual y se guardan, pero no se van a poder buscar hasta que
-                cargues la key.{" "}
+                Podés subir documentos igual: quedan guardados como pendientes de indexar y se
+                indexan solos cuando conectes Voyage AI. Hasta entonces no se pueden buscar.{" "}
                 <Link
                   href="/dashboard/settings/integrations"
                   className="font-medium underline underline-offset-2"
@@ -236,6 +292,7 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
                 key={document.id}
                 document={document}
                 disabled={pending || uploading}
+                voyageConnected={voyageConnected}
                 onEdit={() => setEditing(document)}
                 onDelete={() => setDeleting(document)}
                 onReprocess={() => handleReprocess(document)}
@@ -301,12 +358,14 @@ function EmptyState({ onPick }: { onPick: () => void }) {
 function DocumentRow({
   document,
   disabled,
+  voyageConnected,
   onEdit,
   onDelete,
   onReprocess,
 }: {
   document: KnowledgeDocument;
   disabled: boolean;
+  voyageConnected: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onReprocess: () => void;
@@ -358,6 +417,15 @@ function DocumentRow({
             </div>
           )}
 
+          {document.status === "pending" && (
+            <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Clock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+              {voyageConnected
+                ? "Guardado y listo para indexar: tocá “Indexar pendientes” o el botón de este documento."
+                : "Guardado. Se indexa solo cuando conectes Voyage AI; hasta entonces no se puede buscar."}
+            </p>
+          )}
+
           {document.status === "error" && document.errorDetail && (
             <p className="mt-2 flex items-start gap-1.5 text-xs text-red-700 dark:text-red-400">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
@@ -367,8 +435,8 @@ function DocumentRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          {document.status === "error" && (
-            <IconButton label="Reprocesar" onClick={onReprocess} disabled={disabled}>
+          {(document.status === "error" || (document.status === "pending" && voyageConnected)) && (
+            <IconButton label={document.status === "pending" ? "Indexar ahora" : "Reprocesar"} onClick={onReprocess} disabled={disabled}>
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
             </IconButton>
           )}
@@ -423,6 +491,15 @@ export function StatusBadge({ status }: { status: KnowledgeStatus }) {
       <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
         <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden="true" />
         Procesando
+      </span>
+    );
+  }
+
+  if (status === "pending") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/30 dark:text-amber-300">
+        <Clock className="h-2.5 w-2.5" aria-hidden="true" />
+        Pendiente de indexar
       </span>
     );
   }
