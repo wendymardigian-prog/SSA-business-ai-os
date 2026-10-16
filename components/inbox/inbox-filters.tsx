@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { SlidersHorizontal, X, Loader2, FileText } from "lucide-react";
+import { SlidersHorizontal, X, Loader2, FileText, Check, Inbox } from "lucide-react";
 import { DATE_PRESETS, DATE_PRESET_LABELS } from "@/lib/dates";
 import {
   INBOX_STATUS_VALUES,
@@ -15,6 +15,8 @@ import { countMenuFilters, describeInboxFilters, type FilterSummaryCatalog } fro
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { cn } from "@/lib/utils";
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
+import { PlatformIcon } from "@/components/platform-icon";
+import { accountFilterLabel, groupAccounts, type InboxAccount } from "@/lib/inbox/accounts";
 import { useInboxUrl } from "@/components/inbox/use-inbox-url";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
@@ -23,8 +25,10 @@ import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 /**
  * Los filtros de la Bandeja (F16), repartidos en el Bloque I:
  *
- * - `InboxFiltersMenu`: el boton de la barra superior y su popover (I3). Canal,
- *   tags, agente, asignacion y fecha. Flota: no empuja la lista.
+ * - `InboxChannelMenu`: el menu de Canal. Una opcion por CUENTA conectada,
+ *   agrupadas por red (dos Instagram son dos lineas). Se pueden marcar varias.
+ * - `InboxFiltersMenu`: el boton de la barra superior y su popover (I3). Tags,
+ *   agente, asignacion y fecha. Flota: no empuja la lista.
  * - `InboxFilterSummary`: la linea de abajo de la barra, con lo que esta
  *   filtrado en palabras y una `×` para limpiar. Sin filtros no se dibuja.
  * - `InboxStatusBar`: las pastillas de estado y el link a borradores, arriba de
@@ -35,15 +39,112 @@ import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
  * `useInboxUrl`: el estado vive ahi y no en los componentes.
  */
 
+/**
+ * El menu de Canal: todas las cuentas conectadas, agrupadas por red, una por linea.
+ *
+ * Se marcan varias a la vez (por ejemplo las dos cuentas de Instagram y nada mas) y el menu NO se cierra al elegir,
+ * como los chips del popover de Filtros. "Todos los canales" limpia las cuentas y tambien el `?canal=` de un link
+ * viejo. Sin cuentas conectadas el menu no se dibuja: no hay nada que elegir.
+ */
+export function InboxChannelMenu({
+  filters,
+  accounts,
+  multiPlatforms,
+}: {
+  filters: InboxFilters;
+  accounts: InboxAccount[];
+  /** Las redes con mas de una cuenta: ahi el boton nombra la cuenta ("Instagram @marca"). */
+  multiPlatforms: string[];
+}) {
+  const { pending, setParams, toggle } = useInboxUrl();
+  if (accounts.length === 0) return null;
+
+  const selected = filters.channelIds;
+  const legacyPlatforms = filters.platforms.length;
+  const active = selected.length > 0 || legacyPlatforms > 0;
+  const groups = groupAccounts(accounts);
+
+  let value: string;
+  if (selected.length === 0 && legacyPlatforms === 0) value = "Todos";
+  else if (selected.length === 1) {
+    const account = accounts.find((a) => a.id === selected[0]);
+    value = account ? accountFilterLabel(account, multiPlatforms) : "1 cuenta";
+  } else if (selected.length > 1) value = `${selected.length} cuentas`;
+  else value = legacyPlatforms === 1 ? "1 red" : `${legacyPlatforms} redes`;
+
+  return (
+    <FilterMenu
+      label="Canal"
+      active={active}
+      icon={
+        pending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />
+        ) : (
+          <Inbox className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+        )
+      }
+      value={<span className="max-w-[9rem] truncate">{value}</span>}
+      menuClassName="topbar:w-[300px]"
+    >
+      <div className="space-y-0.5 pb-1">
+        <AccountRow
+          checked={!active}
+          onClick={() => setParams({ cuenta: "", canal: "" })}
+          title="Todos los canales"
+        />
+        {groups.map((group) => (
+          <div key={group.platform}>
+            <MenuGroupLabel>{group.platformLabel}</MenuGroupLabel>
+            {group.accounts.map((account) => (
+              <AccountRow
+                key={account.id}
+                checked={selected.includes(account.id)}
+                onClick={() => toggle("cuenta", account.id)}
+                title={account.label}
+                leading={<PlatformIcon platform={account.platform} className="h-4 w-4" size={16} />}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </FilterMenu>
+  );
+}
+
+/** Una cuenta del menu: una casilla que se prende y se apaga sin cerrar el menu. */
+function AccountRow({
+  checked,
+  onClick,
+  title,
+  leading,
+}: {
+  checked: boolean;
+  onClick: () => void;
+  title: string;
+  leading?: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={checked}
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent focus:bg-accent focus:outline-none"
+    >
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center">{leading}</span>
+      <span className={cn("min-w-0 flex-1 truncate", checked && "font-medium")}>{title}</span>
+      {checked && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden />}
+    </button>
+  );
+}
+
 export function InboxFiltersMenu({
   filters,
   tags,
-  platforms,
   members,
 }: {
   filters: InboxFilters;
   tags: { id: string; name: string; color: string | null }[];
-  platforms: { value: string; label: string }[];
   members: { userId: string; label: string }[];
 }) {
   const { pending, setParam, toggle, clearAll } = useInboxUrl();
@@ -77,24 +178,6 @@ export function InboxFiltersMenu({
       menuClassName="topbar:w-[340px]"
     >
       <div className="space-y-1 pb-1.5">
-        <FilterGroup label="Canal">
-          {platforms.length === 0 ? (
-            <p className="text-xs text-muted-foreground/70">No hay canales conectados.</p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {platforms.map((p) => (
-                <Chip
-                  key={p.value}
-                  active={filters.platforms.includes(p.value)}
-                  onClick={() => toggle("canal", p.value)}
-                >
-                  {p.label}
-                </Chip>
-              ))}
-            </div>
-          )}
-        </FilterGroup>
-
         <FilterGroup label="Tags">
           {tags.length === 0 ? (
             <p className="text-xs text-muted-foreground/70">Todavía no hay tags.</p>

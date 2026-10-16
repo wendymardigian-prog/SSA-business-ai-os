@@ -6,6 +6,7 @@
  */
 
 import { DATE_PRESET_LABELS } from "@/lib/dates";
+import { accountFilterLabel, type InboxAccount } from "@/lib/inbox/accounts";
 import {
   ASSIGNMENT_AI,
   ASSIGNMENT_ANY,
@@ -18,6 +19,10 @@ import {
 
 export interface FilterSummaryCatalog {
   platforms: { value: string; label: string }[];
+  /** Las cuentas conectadas (el menu de Canal). Opcional: un catalogo sin ellas nombra solo las plataformas. */
+  accounts?: InboxAccount[];
+  /** Las plataformas con mas de una cuenta: ahi la cuenta se nombra junto a la red. */
+  multiPlatforms?: string[];
   tags: { id: string; name: string }[];
   members: { userId: string; label: string }[];
 }
@@ -27,12 +32,12 @@ export interface FilterSummaryCatalog {
  *
  * `countActiveFilters` cuenta tambien la busqueda y el estado, que desde el
  * Bloque I viven afuera (la busqueda en la barra, el estado en las pastillas
- * arriba de la lista). Si el boton los contara, diria "4" con tres cosas
- * marcadas adentro. Se neutralizan esos dos y se cuenta el resto con la misma
- * funcion de siempre.
+ * arriba de la lista), y las cuentas, que tienen su propio menu de Canal. Si el
+ * boton los contara, diria "4" con tres cosas marcadas adentro. Se neutralizan
+ * esos tres y se cuenta el resto con la misma funcion de siempre.
  */
 export function countMenuFilters(filters: InboxFilters): number {
-  return countActiveFilters({ ...filters, search: "", status: DEFAULT_INBOX_STATUS });
+  return countActiveFilters({ ...filters, search: "", status: DEFAULT_INBOX_STATUS, channelIds: [] });
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -75,6 +80,17 @@ export function describeInboxFilters(filters: InboxFilters, catalog: FilterSumma
   const parts: string[] = [INBOX_STATUS_LABELS[filters.status]];
 
   if (filters.search) parts.push(`"${filters.search}"`);
+
+  if (filters.channelIds.length > 0) {
+    const accounts = filters.channelIds.map((id) => catalog.accounts?.find((a) => a.id === id));
+    if (filters.channelIds.length <= 2) {
+      accounts.forEach((account, i) => {
+        parts.push(account ? accountFilterLabel(account, catalog.multiPlatforms ?? []) : `Cuenta ${i + 1}`);
+      });
+    } else {
+      parts.push(plural(filters.channelIds.length, "cuenta", "cuentas"));
+    }
+  }
 
   if (filters.platforms.length > 0) {
     if (filters.platforms.length <= 2) {

@@ -38,6 +38,16 @@ export function useInboxUrl() {
     apply(next);
   }
 
+  /** Cambia varios parametros de una sola navegacion (una por cada uno se pisarian entre si). */
+  function setParams(values: Record<string, string>) {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(values)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    apply(next);
+  }
+
   function toggle(key: string, value: string) {
     apply(toggleListParam(new URLSearchParams(searchParams.toString()), key, value));
   }
@@ -51,5 +61,5 @@ export function useInboxUrl() {
     start(() => router.replace(`${pathname}?${next.toString()}`, { scroll: false }));
   }
 
-  return { pending, setParam, toggle, clearAll };
+  return { pending, setParam, setParams, toggle, clearAll };
 }

@@ -29,6 +29,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import type { TouchAccount } from "@/lib/inbox/accounts";
 import { findContact, findOrCreateContact } from "@/lib/contacts/find-or-create";
 import { shouldCreateFromComment, type AttributionSettings } from "@/lib/attribution/settings";
 import { loadAttributionSettings } from "@/lib/attribution/settings-load";
@@ -61,6 +62,8 @@ export interface CommentAttributionParams {
    * El toque lleva ese `ad_id` y medio `paid_social`: el comentario viene de un anuncio (Extra L, F19).
    */
   adId?: string | null;
+  /** La cuenta nuestra donde comentaron (varias cuentas de la misma red). Queda en el toque. */
+  account?: TouchAccount | null;
   /** La configuración ya leída (los tests y el job la pasan); si falta, se lee del workspace. */
   settings?: AttributionSettings;
 }
@@ -127,6 +130,7 @@ export async function attributeComment(
         commentedAt: params.commentedAt,
         socialPostId: params.socialPostId,
         adId: params.adId,
+        account: params.account,
       },
     });
 

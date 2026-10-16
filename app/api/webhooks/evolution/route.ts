@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { upsertContactForSender } from "@/lib/inbox-sync";
+import { touchAccountOf } from "@/lib/inbox/accounts";
 import { previewForMessage } from "@/lib/message-preview";
 import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attachments";
 import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-media";
@@ -332,6 +333,7 @@ async function processMessage(
         messageId: inserted.id ?? null,
         referral: fromBaileysMessage(data?.message),
         inherited: extras.inherited,
+        account: touchAccountOf(channel),
       });
     } catch (err) {
       // Cinturón de seguridad: la función ya atrapa todo, pero el lead no se

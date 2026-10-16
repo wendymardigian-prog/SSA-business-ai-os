@@ -113,6 +113,7 @@ function TouchText({ touch }: { touch: TouchView }) {
   return (
     <span>
       <span className="font-medium">{touch.origin}</span>
+      {touch.account && <span className="text-muted-foreground" title="Cuenta por la que entró"> · {touch.account}</span>}
       {touch.rawMedium && (
         <span className="text-muted-foreground" title="Este medio no es de la lista: se guardó tal cual llegó">
           {" "}

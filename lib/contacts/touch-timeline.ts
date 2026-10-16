@@ -15,7 +15,7 @@
  * Modulo PURO.
  */
 import { CHANNEL_LABELS, isOriginChannel, touchChannel, TOUCH_CHANNELS, type TouchChannel } from "@/lib/attribution/channel";
-import { describeTouch, type MetaNames, type TouchRow, type TouchView } from "./attribution-view";
+import { accountOfRaw, describeTouch, type MetaNames, type TouchRow, type TouchView } from "./attribution-view";
 import type { AttributionTouch } from "./attribution";
 
 /** Una fila de `contact_touches` con lo que la linea de tiempo necesita (todo lo de la ficha mas el orden y el canal). */
@@ -189,7 +189,7 @@ export function buildTimeline(touches: readonly TimelineTouch[], options: Timeli
     if (newest && touch.id === newest.id) marks.push("last");
     if (lastOrigin && touch.id === lastOrigin.id) marks.push("last_origin");
 
-    const view = describeTouch(asAttributionTouch(touch), options.timeZone, formNameOf(touch, options.formNames), options.names);
+    const view = describeTouch(asAttributionTouch(touch), options.timeZone, formNameOf(touch, options.formNames), options.names, accountOfRaw(touch.raw));
     return {
       id: touch.id,
       occurredAt: touch.occurred_at,

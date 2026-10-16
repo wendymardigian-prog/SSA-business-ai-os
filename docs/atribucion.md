@@ -277,6 +277,13 @@ Cada toque tiene `channel`: **organic**, **paid**, **referral** o **direct**. Lo
 ### La venta
 La atribución de la venta sugiere el último toque **con origen** cuando el último fue directo; «Cargar a mano» es un selector de canal (contenido orgánico con buscador de piezas, anuncio del catálogo de Meta, referido, evento, otro) que crea un toque `manual` (con `create_sale` en modo `touch`, que no se tocó); la ficha tiene «De dónde vino» (con el responsable de la pieza leído en vivo) y la lista de ventas una columna «Origen» y filtros por canal y por pieza.
 
+### Varias cuentas de la misma red (16/10/2026)
+Zernio permite conectar más de una cuenta por red (dos Instagram, por ejemplo); cada una es una fila de `channels` y cada conversación guarda su `channel_id`. Lo que se sumó para diferenciarlas, **sin migración**:
+
+- **Bandeja:** el menú **Canal** (`InboxChannelMenu`) lista una opción por cuenta, agrupadas por red y con selección múltiple (`?cuenta=<id>,<id>`; el `?canal=` viejo sigue funcionando). La lista de conversaciones y el encabezado del hilo dicen la cuenta ("@marca_academia", "Vía @marca_academia") y el panel del contacto dice "· vía @cuenta" — **solo cuando esa red tiene más de una cuenta**: con una sola no hay nada que diferenciar. Las reglas son puras (`lib/inbox/accounts.ts`).
+- **Atribución:** cada toque que entra por una cuenta nuestra guarda en `contact_touches.raw` `account_id` (la clave de la cuenta en el proveedor: `channels.late_account_id`) y `account_label` (el nombre al momento del toque). Lo guardan los mensajes directos de los tres receptores (Zernio, Evolution y email), los comentarios y el toque del anuncio de origen. Se ve en la ficha y en la línea de tiempo ("Instagram · Mensaje directo · @marca_academia"). Los toques anteriores no la tienen, y el vínculo retroactivo de comentarios (`comment_backfill`) tampoco la conoce.
+- `contact_touches.raw` ya tenía lista blanca (`RAW_KEYS`): las dos claves nuevas están ahí. `record_contact_touch` no se tocó. Si más adelante hace falta filtrar o agrupar métricas por cuenta, el paso siguiente es una columna propia (`channel_id`) con su migración.
+
 ### Verificación
 ```
 node scripts/verify-organic-attribution.mjs                   # paridad del canal, códigos, triggers, errores forzados, relleno

@@ -19,6 +19,7 @@ import {
 import type { DateRange } from "@/lib/dates";
 import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
+import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 type Conversation = ConversationRow;
@@ -56,6 +57,7 @@ export function ConversationList({
   onPageChange,
   draftCounts,
   draftConversationIds = [],
+  accounts,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -71,6 +73,8 @@ export function ConversationList({
   draftCounts?: PendingDraftCounts;
   /** Conversaciones de la pagina con un borrador vivo del agente. */
   draftConversationIds?: string[];
+  /** Las cuentas por canal: la lista dice de cual es cada conversacion cuando una red tiene varias. */
+  accounts?: InboxAccountsInfo;
 }) {
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
@@ -265,6 +269,15 @@ export function ConversationList({
                     {mounted ? formatTime(conversation.last_message_at) : ""}
                   </span>
                 </div>
+                {/* Con varias cuentas de la misma red, la cuenta por la que entro. */}
+                {accountToShow(accounts, conversation) && (
+                  <p
+                    className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground"
+                    title={`Cuenta: ${accountToShow(accounts, conversation)}`}
+                  >
+                    {accountToShow(accounts, conversation)}
+                  </p>
+                )}
                 <div className="flex items-center justify-between">
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
                     {conversation.last_message_preview ?? "Sin mensajes todavía"}

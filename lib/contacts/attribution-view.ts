@@ -86,6 +86,15 @@ export interface TouchView {
   channel?: string;
   /** "Orgánico", "Pauta"… Solo si se conoce. */
   channelLabel?: string;
+  /** La cuenta nuestra por la que entró ("@marca_academia"). Solo si el toque la trae (varias cuentas de la misma red). */
+  account?: string;
+}
+
+/** El nombre de la cuenta que guardó el toque en su `raw` (`account_label`), si lo trae. */
+export function accountOfRaw(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const label = (raw as Record<string, unknown>).account_label;
+  return typeof label === "string" && label.trim() ? label.trim() : null;
 }
 
 /** Suma el canal a un `TouchView` SOLO si se conoce: sin él el resultado es idéntico al de antes (lo fija la caracterización). */
@@ -165,6 +174,8 @@ export function describeTouch(
   formName?: string | null,
   /** Los nombres del catalogo de Meta (AT3, F21). */
   names?: MetaNames,
+  /** La cuenta nuestra por la que entro el toque (`raw.account_label`). Sin ella el resultado es el de siempre. */
+  account?: string | null,
 ): TouchView {
   const source = sourceLabel(touch.source);
   const medium = mediumLabel(touch.medium);
@@ -172,7 +183,7 @@ export function describeTouch(
   const piece = touch.content?.trim() || formName?.trim() || null;
   const when = shortDate(touch.occurred_at, timeZone);
 
-  const text = [origin, piece ? `«${piece}»` : null, when || null].filter(Boolean).join(" · ");
+  const text = [origin, account || null, piece ? `«${piece}»` : null, when || null].filter(Boolean).join(" · ");
 
   // El anuncio: con el vinculo de Meta (ids del catalogo) se dicen los NOMBRES; si no, los ids que trajo el toque.
   const hasMeta = !!(touch.meta_ad_id || touch.meta_adset_id || touch.meta_campaign_id);
@@ -243,6 +254,7 @@ export function describeTouch(
     details,
     // Solo si el toque la trae: sin ella el resultado es identico al de antes (lo fija la caracterizacion).
     ...(touch.entry_url?.trim() ? { entryUrl: touch.entry_url.trim() } : {}),
+    ...(account ? { account } : {}),
   };
 }
 
@@ -315,7 +327,16 @@ export function buildAttributionView(params: {
 
   const path = [...rows]
     .sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime())
-    .map((row) => withChannel(describeTouch(fromRow(row), params.timeZone, formNameOfRow(row), params.names), row.channel));
+    .map((row) =>
+      withChannel(describeTouch(fromRow(row), params.timeZone, formNameOfRow(row), params.names, accountOfRaw(row.raw)), row.channel),
+    );
+
+  // La copia derivada tampoco guarda la cuenta: se busca en la tabla por la fecha del toque.
+  const accountOfTouch = (touch: AttributionTouch): string | null => {
+    const at = new Date(touch.occurred_at ?? 0).getTime();
+    const row = rows.find((r) => new Date(r.occurred_at).getTime() === at);
+    return row ? accountOfRaw(row.raw) : null;
+  };
 
   // La copia derivada no guarda el canal: se busca en la tabla por la fecha del toque.
   const channelOfTouch = (touch: AttributionTouch): string | null => {
@@ -336,8 +357,16 @@ export function buildAttributionView(params: {
 
   return {
     empty: false,
-    first: withChannel(describeTouch(withEntry(firstTouch), params.timeZone, formNameOfTouch(firstTouch), params.names), channelOfTouch(firstTouch)),
-    last: single ? null : withChannel(describeTouch(withEntry(lastTouch), params.timeZone, formNameOfTouch(lastTouch), params.names), channelOfTouch(lastTouch)),
+    first: withChannel(
+      describeTouch(withEntry(firstTouch), params.timeZone, formNameOfTouch(firstTouch), params.names, accountOfTouch(firstTouch)),
+      channelOfTouch(firstTouch),
+    ),
+    last: single
+      ? null
+      : withChannel(
+          describeTouch(withEntry(lastTouch), params.timeZone, formNameOfTouch(lastTouch), params.names, accountOfTouch(lastTouch)),
+          channelOfTouch(lastTouch),
+        ),
     path,
   };
 }

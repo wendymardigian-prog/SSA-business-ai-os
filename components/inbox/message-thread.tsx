@@ -42,6 +42,7 @@ import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
 import { formatBytes } from "@/lib/inbox/media-render";
 import { headBase64Of } from "@/lib/content/media";
+import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"] & {
   /** El chip "Vino de…" que arma el servidor para este mensaje (Extra I, F44). Casi todos no lo traen. */
@@ -220,6 +221,7 @@ export function MessageThread({
   workspaceName = "",
   agentInfo = null,
   channelProvider = null,
+  accounts,
   onBack,
   onOpenContact,
 }: {
@@ -242,6 +244,8 @@ export function MessageThread({
    * los que no, el widget los muestra deshabilitados con el motivo.
    */
   channelProvider?: string | null;
+  /** Las cuentas por canal: el encabezado dice por cual cuenta es la conversacion cuando una red tiene varias. */
+  accounts?: InboxAccountsInfo;
   /** Telefono (Bloque 2d): el hilo ocupa la pantalla y se vuelve a la lista. */
   onBack?: () => void;
   /** Telefono (Bloque 2d): abre los datos del contacto como hoja. */
@@ -747,6 +751,13 @@ export function MessageThread({
             <p className="truncate text-sm font-medium">
               {conversation.contacts?.display_name ?? "Sin nombre"}
             </p>
+            {/* Con varias cuentas de la misma red, por cual cuenta entro: quien
+                contesta tiene que saber desde cual esta hablando. */}
+            {accountToShow(accounts, conversation) && (
+              <p className="truncate text-[11px] text-muted-foreground">
+                Vía {accountToShow(accounts, conversation)}
+              </p>
+            )}
             {/* F18: quien esta por escribir tiene que verlo antes de escribir,
                 no despues de apretar enviar. */}
             {conversation.contacts?.do_not_contact && (

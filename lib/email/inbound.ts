@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { upsertContactForSender } from "@/lib/inbox-sync";
+import { touchAccountOf } from "@/lib/inbox/accounts";
 import { messagePreview } from "@/lib/message-preview";
 import { applyOptOut, insertMessage, upsertConversation, type ChannelRow } from "@/lib/inbound";
 import { detectAutomatic } from "./auto-detect";
@@ -297,6 +298,7 @@ export async function processInboundEmail(
       messageAt: new Date(email.receivedAt),
       platformMessageId: email.emailId,
       messageId: inserted.id ?? null,
+      account: touchAccountOf(channel),
     });
   } catch (err) {
     console.error("[email] el toque de atribución falló:", err instanceof Error ? err.message : err);

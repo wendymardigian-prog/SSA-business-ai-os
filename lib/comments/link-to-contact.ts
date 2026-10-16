@@ -15,6 +15,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { recordTouch } from "@/lib/contacts/touch";
 import type { Database, SocialPlatform } from "@/lib/types/database";
+import type { TouchAccount } from "@/lib/inbox/accounts";
 
 type Db = SupabaseClient<Database>;
 
@@ -49,6 +50,8 @@ export interface LinkableComment {
   socialPostId: string | null;
   /** El id del anuncio de Meta si el comentario es sobre contenido pago. */
   adId?: string | null;
+  /** La cuenta nuestra donde comentaron (varias cuentas de la misma red). Queda en el toque; el job retroactivo no la conoce. */
+  account?: TouchAccount | null;
   /** Solo vincula si el comentario todavía no tiene contacto (el job de vínculo retroactivo). */
   onlyIfUnlinked?: boolean;
 }
@@ -99,7 +102,12 @@ export async function linkCommentToContact(
         adId,
         socialPostId: comment.socialPostId,
         contentPostId: piece?.contentPostId ?? null,
-        raw: { comment_id: comment.externalCommentId, platform: comment.platform },
+        raw: {
+          comment_id: comment.externalCommentId,
+          platform: comment.platform,
+          account_id: comment.account?.id,
+          account_label: comment.account?.label,
+        },
       },
     });
     return { linked, touched: result.recorded };
