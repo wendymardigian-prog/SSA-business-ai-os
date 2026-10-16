@@ -96,6 +96,8 @@ migración 00090 (26/9/2026).
 **Evolution API** conecta WhatsApp por código QR. La instancia corre aparte,
 en su propio proyecto de Railway, así que se comunican por dominio público.
 
+**Varios números de WhatsApp (16/10/2026).** Cada número es su propia instancia de Evolution y su propio canal (`channels`, provider `evolution`), sin migración. «Conectar otro número» (`POST /api/v1/channels/whatsapp` sin cuerpo) crea una instancia nueva: la primera conserva el nombre de siempre (`<prefijo>-<workspace>`) y las demás llevan un sufijo corto (`lib/whatsapp-numbers.ts`); tope de 10 por workspace. «Reconectar» de una tarjeta manda `{ channelId }` y reusa SU instancia sin tocar el nombre. Un canal nuevo se llama «WhatsApp», «WhatsApp 2»…; al quedar la sesión abierta (webhook `connection.update`, el QR, el estado o el chequeo de salud) se lee el número vinculado (`fetchInstanceOwner`) y pasa a «WhatsApp +549…» (`refreshWhatsappIdentity`; un nombre escrito por una persona no se pisa). La bandeja los distingue con el menú Canal y la cuenta de cada conversación (ver `docs/atribucion.md`).
+
 ### Publicación
 
 **Postproxy** publica en YouTube sin pedir un proyecto de Google propio. Su

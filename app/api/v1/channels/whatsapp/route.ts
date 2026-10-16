@@ -7,21 +7,30 @@ import {
   EvolutionError,
   createInstance,
   getConnectionState,
-  instanceNameFor,
 } from "@/lib/evolution-client";
+import {
+  MAX_WHATSAPP_NUMBERS,
+  instanceNameForNumber,
+  pendingWhatsappName,
+  randomInstanceSuffix,
+} from "@/lib/whatsapp-numbers";
 import { getEvolutionConfig, getEvolutionWebhookToken } from "@/lib/evolution-config";
 
 /**
  * POST /api/v1/channels/whatsapp
  *
- * Deja lista la instancia de WhatsApp del workspace y su canal en la base.
- * Es idempotente: si ya existe, la reusa y reconfigura el webhook, asi
- * "Reconectar" y "Crear instancia" hacen lo mismo sin romper nada.
+ * Deja lista una instancia de WhatsApp y su canal en la base. Un workspace puede tener VARIOS numeros: cada uno es
+ * su propia instancia de Evolution y su propio canal.
+ *
+ *  - Sin cuerpo: agrega un numero NUEVO (el primero conserva el nombre de instancia de siempre; los demas llevan un
+ *    sufijo propio). Hay un tope de `MAX_WHATSAPP_NUMBERS`.
+ *  - Con `{ channelId }`: reconecta ESE numero. Es idempotente: reusa la instancia (o la vuelve a crear si la
+ *    borraron del servidor) y reconfigura el webhook, sin tocar el nombre del canal.
  *
  * No devuelve el QR: eso lo pide la UI a /qr, que es lo que se refresca
  * mientras el usuario tiene el modal abierto.
  */
-export async function POST() {
+export async function POST(request: Request) {
   const ctx = await getPermissionAction("channels.manage");
   if (!ctx) {
     return NextResponse.json(
@@ -58,7 +67,45 @@ export async function POST() {
   }
 
   const { workspace, supabase, user } = ctx;
-  const instance = instanceNameFor(config, workspace.id);
+
+  const body = (await request.json().catch(() => null)) as { channelId?: unknown } | null;
+  const channelId = typeof body?.channelId === "string" && body.channelId ? body.channelId : null;
+
+  const { data: existing, error: existingError } = await supabase
+    .from("channels")
+    .select("id, evolution_instance")
+    .eq("workspace_id", workspace.id)
+    .eq("provider", "evolution");
+  if (existingError) {
+    console.error("[whatsapp] no pude leer los numeros conectados:", existingError.message);
+    return NextResponse.json({ error: "No pude leer los numeros de WhatsApp conectados." }, { status: 500 });
+  }
+  const numbers = existing ?? [];
+
+  let instance: string;
+  // Solo un numero nuevo lleva nombre: al reconectar no se pisa el que ya tiene.
+  let newName: string | null = null;
+  if (channelId) {
+    const target = numbers.find((c) => c.id === channelId);
+    if (!target?.evolution_instance) {
+      return NextResponse.json({ error: "Ese numero de WhatsApp no existe." }, { status: 404 });
+    }
+    instance = target.evolution_instance;
+  } else {
+    if (numbers.length >= MAX_WHATSAPP_NUMBERS) {
+      return NextResponse.json(
+        { error: `Llegaste al maximo de ${MAX_WHATSAPP_NUMBERS} numeros de WhatsApp. Elimina uno para agregar otro.` },
+        { status: 400 },
+      );
+    }
+    instance = instanceNameForNumber({
+      prefix: config.instancePrefix,
+      workspaceId: workspace.id,
+      existingCount: numbers.length,
+      suffix: randomInstanceSuffix(),
+    });
+    newName = pendingWhatsappName(numbers.length);
+  }
 
   try {
     await createInstance(config, instance, channelWebhookUrl("evolution"), webhookToken);
@@ -86,7 +133,7 @@ export async function POST() {
         // no viene de Zernio se usa el nombre de la instancia con prefijo.
         late_account_id: `evolution:${instance}`,
         evolution_instance: instance,
-        display_name: "WhatsApp",
+        ...(newName ? { display_name: newName } : {}),
         is_active: true,
         connection_status: connectionStatus,
         last_error: null,
@@ -107,7 +154,7 @@ export async function POST() {
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: channel.id,
     action: "create",
-    metadata: { platform: "whatsapp", provider: "evolution", instance, connection_status: connectionStatus },
+    metadata: { platform: "whatsapp", provider: "evolution", instance, connection_status: connectionStatus, new_number: !channelId },
     performedBy: user.id,
   });
 

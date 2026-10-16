@@ -22,6 +22,7 @@ import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { touchAccountOf } from "@/lib/inbox/accounts";
+import { refreshWhatsappIdentity } from "@/lib/whatsapp-identity";
 import { previewForMessage } from "@/lib/message-preview";
 import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attachments";
 import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-media";
@@ -196,6 +197,9 @@ async function handleConnectionUpdate(
         disconnected_notified_at: null,
       })
       .eq("id", channel.id);
+    // Varios numeros: el canal pasa a llamarse por su numero ("WhatsApp +54..."). Nunca lanza.
+    const config = await getEvolutionConfig(supabase, channel.workspace_id);
+    if (config) await refreshWhatsappIdentity(supabase, config, channel);
   } else if (state === "close") {
     // 401 es "cerraron la sesion desde el telefono": no alcanza con esperar,
     // hay que volver a escanear el QR.

@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getConnectionState, type EvolutionConfig } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
+import { refreshWhatsappIdentity } from "@/lib/whatsapp-identity";
 import { notifyWorkspaceAdmins } from "@/lib/notifications";
 
 /**
@@ -91,6 +92,9 @@ export async function GET(request: NextRequest) {
           performedBy: null,
         });
       }
+      // Varios numeros: un canal que todavia se llama "WhatsApp" (el de antes de esto, o uno recien vinculado)
+      // pasa a llamarse por su numero. Una vez nombrado, no se vuelve a preguntar. Nunca lanza.
+      if (!/\+\d/.test(channel.display_name ?? "")) await refreshWhatsappIdentity(supabase, config, channel);
       continue;
     }
 
