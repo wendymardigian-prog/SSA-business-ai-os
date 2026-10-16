@@ -304,15 +304,17 @@ export async function loadContentDashboard(
     if (to) query = query.lte("date", to);
 
     const { data } = await query;
-    accountDaily = (data ?? [])
-      .map((row) => ({
-        platform: accountPlatform.get(row.social_account_id) ?? "",
-        date: row.date,
-        followers: row.followers,
-        followersGained: row.followers_gained,
-        followersLost: row.followers_lost,
-      }))
-      .filter((row) => !params.platform || row.platform === params.platform);
+    accountDaily = sumAccountsByDay(
+      (data ?? [])
+        .map((row) => ({
+          platform: accountPlatform.get(row.social_account_id) ?? "",
+          date: row.date,
+          followers: row.followers,
+          followersGained: row.followers_gained,
+          followersLost: row.followers_lost,
+        }))
+        .filter((row) => !params.platform || row.platform === params.platform),
+    );
   }
 
   const lastDataByPlatform = new Map<string, string>();
@@ -355,4 +357,28 @@ function uniqueNamed(items: Array<{ id: string | null; name: string | null }>): 
     if (item.id) byId.set(item.id, item.name ?? "Archivado");
   }
   return [...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Con varias cuentas de la misma red (00236) hay una fila por cuenta y dia. El dashboard cuenta por RED, asi que los
+ * seguidores de las cuentas de una red se suman ese dia (el total que tiene el negocio en esa red). Un dato que
+ * ninguna cuenta dio queda en null: nunca se inventa un cero. Con una sola cuenta por red el resultado es identico.
+ */
+export function sumAccountsByDay(rows: AccountDailyRow[]): AccountDailyRow[] {
+  const sum = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+  const byKey = new Map<string, AccountDailyRow>();
+  const order: string[] = [];
+  for (const row of rows) {
+    const key = `${row.platform}|${row.date}`;
+    const current = byKey.get(key);
+    if (!current) {
+      byKey.set(key, { ...row });
+      order.push(key);
+      continue;
+    }
+    current.followers = sum(current.followers, row.followers);
+    current.followersGained = sum(current.followersGained, row.followersGained);
+    current.followersLost = sum(current.followersLost, row.followersLost);
+  }
+  return order.map((key) => byKey.get(key)!);
 }

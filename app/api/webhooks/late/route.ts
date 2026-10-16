@@ -674,13 +674,28 @@ async function handleCommentWebhook(
   // mensajes, asi que no tiene canal, y hasta F46 sus comentarios rebotaban
   // con un 404. Ahora se busca ademas en social_accounts, que es donde
   // viven las cuentas de publicacion y metricas.
-  const { data: socialAccount } = channel && platform
+  // Varias cuentas de la misma red (00236): se busca la cuenta POR SU ID en Zernio, que es la del canal. Para que un
+  // workspace con una sola cuenta siga igual, si no hay coincidencia exacta se cae a "la de esa red" (la mas antigua).
+  const exactAccount = channel && platform
     ? await supabase
         .from("social_accounts")
         .select("id, workspace_id, platform, username, external_id")
         .eq("workspace_id", channel.workspace_id)
         .eq("platform", platform)
+        .eq("external_id", payload.account.id)
         .maybeSingle()
+    : null;
+  const { data: socialAccount } = channel && platform
+    ? exactAccount?.data
+      ? exactAccount
+      : await supabase
+          .from("social_accounts")
+          .select("id, workspace_id, platform, username, external_id")
+          .eq("workspace_id", channel.workspace_id)
+          .eq("platform", platform)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle()
     : await supabase
         .from("social_accounts")
         .select("id, workspace_id, platform, username, external_id")

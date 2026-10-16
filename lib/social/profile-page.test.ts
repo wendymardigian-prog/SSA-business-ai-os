@@ -449,3 +449,29 @@ describe("el link al perfil en la red", () => {
     );
   });
 });
+
+describe("buildUpcoming con varias cuentas de la red (00236)", () => {
+  const now = new Date("2026-10-16T12:00:00Z");
+  const posts = [
+    { id: "p1", title: "Principal", status: "approved", format: "reel", networks: [{ platform: "instagram", planned_at: "2026-10-20T10:00:00Z", account_id: "a1" }] },
+    { id: "p2", title: "Academia", status: "approved", format: "reel", networks: [{ platform: "instagram", planned_at: "2026-10-21T10:00:00Z", account_id: "a2" }] },
+    { id: "p3", title: "Sin cuenta elegida", status: "approved", format: "reel", networks: [{ platform: "instagram", planned_at: "2026-10-22T10:00:00Z" }] },
+  ];
+
+  it("cada cuenta ve lo suyo; lo que no tiene cuenta elegida es de la cuenta por defecto", () => {
+    const base = { posts, publications: [], platform: "instagram", now };
+    expect(buildUpcoming({ ...base, account: { id: "a1", defaultId: "a1" } }).map((i) => i.title)).toEqual(["Principal", "Sin cuenta elegida"]);
+    expect(buildUpcoming({ ...base, account: { id: "a2", defaultId: "a1" } }).map((i) => i.title)).toEqual(["Academia"]);
+  });
+
+  it("lo programado se asigna por la cuenta de la publicacion", () => {
+    const publications = [{ contentPostId: "p2", platform: "instagram", status: "scheduled", scheduledAt: "2026-10-25T10:00:00Z", socialAccountId: "a1" }];
+    const out = buildUpcoming({ posts, publications, platform: "instagram", now, account: { id: "a1", defaultId: "a1" } });
+    expect(out.find((i) => i.contentPostId === "p2")?.kind).toBe("scheduled");
+    expect(buildUpcoming({ posts, publications, platform: "instagram", now, account: { id: "a2", defaultId: "a1" } })).toEqual([]);
+  });
+
+  it("sin cuenta (una sola en la red) entra todo, como antes", () => {
+    expect(buildUpcoming({ posts, publications: [], platform: "instagram", now })).toHaveLength(3);
+  });
+});

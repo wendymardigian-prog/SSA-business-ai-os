@@ -305,3 +305,117 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
   });
 
 });
+
+describe("varias cuentas de la misma red (00236)", () => {
+  beforeEach(() => {
+    getZernioKeyState.mockReset();
+    listAccounts.mockReset();
+    getZernioKeyState.mockResolvedValue({ state: "present", key: "key-simulada" });
+  });
+
+  const dosInstagram = () => [
+    zernioAccount({ _id: "zr-ig-1", username: "marca_principal" }),
+    zernioAccount({ _id: "zr-ig-2", username: "marca_academia" }),
+  ];
+  const baseSeed = (social_accounts: Array<Record<string, unknown>> = []) => ({
+    channels: [],
+    oauth_connections: [],
+    integration_configs: [],
+    social_accounts,
+  });
+
+  it("dos cuentas de Instagram dan dos filas, cada una con la suya", () => {
+    const out = computeAccounts(sources({ zernioAccounts: dosInstagram() }));
+    expect(out.accounts.map((a) => [a.platform, a.externalId, a.username])).toEqual([
+      ["instagram", "zr-ig-1", "marca_principal"],
+      ["instagram", "zr-ig-2", "marca_academia"],
+    ]);
+    expect(out.accounts.every((a) => a.defaultPublisher === "zernio")).toBe(true);
+  });
+
+  it("cada cuenta conserva SU publicador elegido, no el de la otra", () => {
+    const out = computeAccounts(
+      sources({
+        zernioAccounts: dosInstagram(),
+        existing: [
+          { id: "sa-1", platform: "instagram", external_id: "zr-ig-1", default_publisher: "zernio", publishers: [{ publisher: "zernio", account_ref: "zr-ig-1", status: "available", status_reason: null, verified_at: "2026-10-01T00:00:00Z", manually_enabled: false }] },
+          { id: "sa-2", platform: "instagram", external_id: "zr-ig-2", default_publisher: "zernio", publishers: [] },
+        ],
+      }),
+    );
+    expect(out.accounts.map((a) => a.existingId)).toEqual(["sa-1", "sa-2"]);
+    expect(out.accounts[0].publishers[0].verified_at).toBe("2026-10-01T00:00:00Z");
+    expect(out.accounts[1].publishers[0].verified_at).toBeNull();
+  });
+
+  it("una cuenta que se reconecto con otro id sigue siendo la misma fila si es la unica de la red", () => {
+    const out = computeAccounts(
+      sources({
+        zernioAccounts: [zernioAccount({ _id: "zr-nuevo" })],
+        existing: [{ id: "sa-1", platform: "instagram", external_id: "zr-viejo", default_publisher: "zernio", publishers: [] }],
+      }),
+    );
+    expect(out.accounts).toHaveLength(1);
+    expect(out.accounts[0].existingId).toBe("sa-1");
+    expect(out.accounts[0].externalId).toBe("zr-nuevo");
+  });
+
+  it("una cuenta que Zernio ya no lista queda 'no disponible', no se borra ni se pisa", () => {
+    const out = computeAccounts(
+      sources({
+        zernioAccounts: [zernioAccount({ _id: "zr-ig-1", username: "marca_principal" })],
+        existing: [
+          { id: "sa-1", platform: "instagram", external_id: "zr-ig-1", default_publisher: "zernio", publishers: [] },
+          { id: "sa-2", platform: "instagram", external_id: "zr-ig-2", username: "marca_academia", default_publisher: "zernio", publishers: [{ publisher: "zernio", account_ref: "zr-ig-2", status: "available", status_reason: null, verified_at: null, manually_enabled: false }] },
+        ],
+      }),
+    );
+    const gone = out.accounts.find((a) => a.existingId === "sa-2")!;
+    expect(gone.username).toBe("marca_academia");
+    expect(gone.defaultPublisher).toBeNull();
+    expect(gone.publishers[0].status).toBe("unavailable");
+    expect(out.accounts.find((a) => a.existingId === "sa-1")!.defaultPublisher).toBe("zernio");
+  });
+
+  it("al desconectar Zernio, cada cuenta de la red queda marcada", () => {
+    const out = computeAccounts(
+      sources({
+        zernioConnected: false,
+        existing: [
+          { id: "sa-1", platform: "instagram", external_id: "zr-ig-1", default_publisher: "zernio", publishers: [] },
+          { id: "sa-2", platform: "instagram", external_id: "zr-ig-2", default_publisher: "zernio", publishers: [] },
+        ],
+      }),
+    );
+    expect(out.accounts.map((a) => a.existingId)).toEqual(["sa-1", "sa-2"]);
+    expect(out.accounts.every((a) => a.defaultPublisher === null)).toBe(true);
+  });
+
+  it("sincronizar dos cuentas de Instagram crea dos filas, y dos corridas no duplican", async () => {
+    listAccounts.mockResolvedValue({ data: { accounts: dosInstagram(), hasAnalyticsAccess: true } });
+    const db = memoryDb(baseSeed());
+
+    const first = await syncSocialAccounts(db.client as never, WS);
+    const second = await syncSocialAccounts(db.client as never, WS);
+
+    const rows = db.rows("social_accounts");
+    expect(rows.map((r) => r.external_id).sort()).toEqual(["zr-ig-1", "zr-ig-2"]);
+    expect(first.newAccountIds).toHaveLength(2);
+    expect(second.newAccountIds).toEqual([]);
+  });
+
+  it("sumar una segunda cuenta no toca la primera", async () => {
+    listAccounts.mockResolvedValue({ data: { accounts: dosInstagram(), hasAnalyticsAccess: true } });
+    const db = memoryDb(
+      baseSeed([{ id: "sa-1", workspace_id: WS, platform: "instagram", external_id: "zr-ig-1", username: "marca_principal", is_active: true, default_publisher: "zernio", publishers: [] }]),
+    );
+
+    const result = await syncSocialAccounts(db.client as never, WS);
+
+    const rows = db.rows("social_accounts");
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.id === "sa-1")?.external_id).toBe("zr-ig-1");
+    expect(result.newAccountIds).toHaveLength(1);
+    expect(result.newAccountIds).not.toContain("sa-1");
+  });
+});

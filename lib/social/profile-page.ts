@@ -331,7 +331,7 @@ export function buildUpcoming(params: {
     title: string;
     status: string;
     format: string | null;
-    networks: Array<{ platform?: string; planned_at?: string | null }>;
+    networks: Array<{ platform?: string; planned_at?: string | null; account_id?: string | null }>;
     archivedAt?: string | null;
   }>;
   publications: Array<{
@@ -339,11 +339,20 @@ export function buildUpcoming(params: {
     platform: string;
     status: string | null;
     scheduledAt: string | null;
+    /** La cuenta con la que sale (`social_posts.social_account_id`). */
+    socialAccountId?: string | null;
   }>;
   platform: string;
   now: Date;
+  /**
+   * Varias cuentas en la red (00236): solo lo que sale desde ESTA cuenta. Lo que no tiene cuenta elegida es de la
+   * cuenta por defecto (`defaultId`), que es con la que sale. Sin pasar, entra todo lo de la red.
+   */
+  account?: { id: string; defaultId: string };
 }): UpcomingItem[] {
   const items: UpcomingItem[] = [];
+  const mine = (accountId: string | null | undefined) =>
+    !params.account || (accountId ?? params.account.defaultId) === params.account.id;
 
   for (const post of params.posts) {
     if (post.archivedAt) continue;
@@ -356,6 +365,7 @@ export function buildUpcoming(params: {
     if (publication?.status === "published") continue;
 
     if (publication?.status && IN_FLIGHT.includes(publication.status) && publication.scheduledAt) {
+      if (!mine(publication.socialAccountId)) continue;
       items.push({
         contentPostId: post.id,
         title: post.title,
@@ -367,8 +377,9 @@ export function buildUpcoming(params: {
       continue;
     }
 
-    const planned = post.networks.find((n) => n.platform === params.platform)?.planned_at;
-    if (planned && new Date(planned).getTime() > params.now.getTime()) {
+    const network = post.networks.find((n) => n.platform === params.platform);
+    const planned = network?.planned_at;
+    if (planned && mine(network?.account_id) && new Date(planned).getTime() > params.now.getTime()) {
       items.push({
         contentPostId: post.id,
         title: post.title,
