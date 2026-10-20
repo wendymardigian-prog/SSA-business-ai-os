@@ -19,6 +19,7 @@ import { calendarsForResolve } from "./event-context";
 import { getBusy, type BusyInterval } from "@/lib/google-calendar/client";
 import { GoogleCalendarError } from "@/lib/google-calendar/errors";
 import { isUserBookable, type NotBookableReason } from "@/lib/scheduling/bookable";
+import { settingsForHost } from "@/lib/scheduling/host-settings";
 
 type Db = SupabaseClient<Database>;
 
@@ -96,7 +97,11 @@ export async function buildSlotsInput(
 ): Promise<SlotsInputResult> {
   const now = options.now ?? new Date();
   const workspaceId = event.workspace_id;
-  const hostId = event.owner_user_id;
+  // El anfitrión es el del perfil que se pasa: el dueño del evento al ofrecer
+  // horarios y al crear, o el anfitrión de HOY al reagendar una reunión que se
+  // reasignó. Lo que el evento eligió (horario, calendarios) es del dueño.
+  const hostId = profile.user_id;
+  const own = settingsForHost(event, hostId);
 
   const [{ data: scheduleRows }, { data: oooRows }, calendars, { data: connections }] = await Promise.all([
     service.from("availability_schedules").select("*").eq("user_id", hostId).is("deleted_at", null),
@@ -106,10 +111,10 @@ export async function buildSlotsInput(
   ]);
 
   const schedules = (scheduleRows ?? []).map((r) => toSchedule(r as never));
-  const schedule = event.schedule_id ? schedules.find((s) => s.id === event.schedule_id) ?? null : schedules.find((s) => s.is_default) ?? null;
+  const schedule = own.schedule_id ? schedules.find((s) => s.id === own.schedule_id) ?? null : schedules.find((s) => s.is_default) ?? null;
 
   const resolved = resolveEventCalendars(
-    { destination_calendar_id: event.destination_calendar_id, conflict_calendar_ids: event.conflict_calendar_ids },
+    { destination_calendar_id: own.destination_calendar_id, conflict_calendar_ids: own.conflict_calendar_ids },
     { default_destination_calendar_id: profile.default_destination_calendar_id },
     calendars,
   );
@@ -118,7 +123,7 @@ export async function buildSlotsInput(
     profile: { is_active: profile.is_active },
     connections: (connections ?? []).map((c) => ({ id: c.id, status: c.status, granted_scopes: c.granted_scopes })),
     calendars: calendars.map((c) => ({ id: c.id, connection_id: c.connection_id ?? "", check_conflicts: c.check_conflicts, is_active: c.is_active })),
-    calendarIdsInUse: [...(event.conflict_calendar_ids ?? []), ...(event.destination_calendar_id ? [event.destination_calendar_id] : [])],
+    calendarIdsInUse: [...(own.conflict_calendar_ids ?? []), ...(own.destination_calendar_id ? [own.destination_calendar_id] : [])],
     defaultDestinationCalendarId: profile.default_destination_calendar_id,
   });
   if (!bookable.ok) return { ok: false, reason: "temporarily_unavailable", detail: bookable.reason };

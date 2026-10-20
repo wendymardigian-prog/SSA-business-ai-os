@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getPermissionContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { canOpenConfig } from "@/lib/scheduling/config-sections";
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { eventDefaults } from "@/lib/scheduling/data/event-context";
@@ -266,10 +267,12 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   ]);
 
   // El link público de cada evento necesita el usuario de su dueño. De paso,
-  // quién tiene perfil de agenda (para reasignar) y quién conectó Google.
+  // quién tiene perfil de agenda (para reasignar) y quién conectó Google. Lo
+  // segundo (solo el user_id) lo lee el servidor: la RLS de las conexiones se
+  // las muestra solo a Owner y Admin, y un rol que reasigna no veia a nadie.
   const [{ data: profileRows }, { data: googleRows }] = await Promise.all([
     ctx.supabase.from("scheduling_profiles").select("user_id, username").eq("workspace_id", ctx.workspace.id),
-    ctx.supabase.from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active"),
+    (await createServiceClient()).from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active"),
   ]);
   const usernameByUser = new Map((profileRows ?? []).map((p) => [p.user_id, p.username]));
   const hasGoogleByUser = new Set((googleRows ?? []).map((c) => c.user_id));

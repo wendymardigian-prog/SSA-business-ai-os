@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import type { Json } from "@/lib/types/database";
 import {
@@ -458,11 +459,15 @@ export async function deleteEventType(input: { eventId: string; confirm?: boolea
 
 /** El contexto del chequeo "Listo para activar" (F18), leido de la base. */
 async function activationContext(ctx: PermissionContext, row: NonNullable<Awaited<ReturnType<typeof getEventType>>>) {
+  // Las cuentas de Google de otra persona: solo su estado, leido por el
+  // servidor (la RLS se las muestra solo a Owner y Admin; quien llega aca ya
+  // paso \`ownerOf\`, o sea es el dueno o gestiona agendas de otros).
+  const connectionsDb = row.owner_user_id === ctx.user.id ? ctx.supabase : await createServiceClient();
   const [profile, schedules, calendars, connections, flowsResult] = await Promise.all([
     getProfileForUser(ctx.supabase, ctx.workspace.id, row.owner_user_id),
     listSchedules(ctx.supabase, ctx.workspace.id, row.owner_user_id),
     listUserCalendars(ctx.supabase, ctx.workspace.id, row.owner_user_id),
-    listCalendarConnections(ctx.supabase, ctx.workspace.id, row.owner_user_id),
+    listCalendarConnections(connectionsDb, ctx.workspace.id, row.owner_user_id),
     ctx.supabase.from("flows").select("id, status").eq("event_type_id", row.id).eq("status", "published"),
   ]);
 

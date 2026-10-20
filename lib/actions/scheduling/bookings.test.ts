@@ -17,11 +17,12 @@ let db: ReturnType<typeof schedulingWorld>;
 let allowed = true;
 let scopeAll = true;
 const OTRO = "user-2";
+let actor = HOST;
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/guards", () => ({
   getPermissionAction: async (key: string) =>
-    allowed ? { user: { id: HOST }, workspace: { id: WS }, supabase: db.client, can: () => true, scope: () => (scopeAll ? "all" : "own"), key } : null,
+    allowed ? { user: { id: actor }, workspace: { id: WS }, supabase: db.client, can: () => true, scope: () => (scopeAll ? "all" : "own"), key } : null,
 }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
 vi.mock("@/lib/workspace-members", () => ({
@@ -85,6 +86,7 @@ function seed(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   allowed = true;
+  actor = HOST;
   scopeAll = true;
   vi.setSystemTime(NOW);
   seed();
@@ -310,6 +312,34 @@ describe("bookManually", () => {
     expect(result.ok).toBe(true);
     expect(db.rows("contacts")).toHaveLength(1);
     expect(db.rows("bookings")[0].contact_id).toBe("c-1");
+  });
+
+  it("un setter que agenda en el evento de otro queda como setter del contacto (si no tenía)", async () => {
+    db.tables.bookings = [];
+    actor = OTRO;
+    const result = await bookManually({
+      eventTypeId: EVENT,
+      startUtc: "2026-10-02T16:00:00.000Z",
+      timezone: "America/Costa_Rica",
+      responses: { name: "Juan", email: "juan@ejemplo.com" },
+      contactId: "c-1",
+    });
+    expect(result.ok).toBe(true);
+    expect(db.rows("contacts").find((c) => c.id === "c-1")?.setter_id).toBe(OTRO);
+  });
+
+  it("nunca pisa un setter que ya estaba, y el anfitrión que se agenda a sí mismo no se vuelve setter", async () => {
+    db.tables.bookings = [];
+    (db.tables.contacts as Array<Record<string, unknown>>)[0].setter_id = "setter-elegido";
+    actor = OTRO;
+    await bookManually({ eventTypeId: EVENT, startUtc: "2026-10-02T16:00:00.000Z", timezone: "America/Costa_Rica", responses: { name: "Juan", email: "juan@ejemplo.com" }, contactId: "c-1" });
+    expect(db.rows("contacts").find((c) => c.id === "c-1")?.setter_id).toBe("setter-elegido");
+
+    seed();
+    db.tables.bookings = [];
+    actor = HOST;
+    await bookManually({ eventTypeId: EVENT, startUtc: "2026-10-02T16:00:00.000Z", timezone: "America/Costa_Rica", responses: { name: "Juan", email: "juan@ejemplo.com" }, contactId: "c-1" });
+    expect(db.rows("contacts").find((c) => c.id === "c-1")?.setter_id ?? null).toBeNull();
   });
 
   it("sin permiso, nada", async () => {

@@ -41,7 +41,20 @@ async function ownedFlow(flowId: string): Promise<OwnedFlow> {
   const ctx = await getPermissionAction("scheduling.use");
   if (!ctx) return { error: "No tenés permiso para tocar los flujos." };
   const found = await flowGraph(ctx.supabase, flowId);
-  if (!found || found.flow.workspace_id !== ctx.workspace.id) return { error: "No encontré ese flujo." };
+  if (!found || found.flow.workspace_id !== ctx.workspace.id || !found.flow.event_type_id) return { error: "No encontré ese flujo." };
+  // El flujo es del evento: lo toca quien puede editar ese evento (su dueño, o
+  // quien gestiona agendas de otros), igual que \`ownerOf\` en event-types.ts.
+  // Sin esto, cualquiera con la agenda prendía o editaba los flujos de otro.
+  const { data: event } = await ctx.supabase
+    .from("event_types")
+    .select("owner_user_id")
+    .eq("id", found.flow.event_type_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!event) return { error: "No encontré ese flujo." };
+  if (event.owner_user_id !== ctx.user.id && !ctx.can("scheduling.manage_others")) {
+    return { error: "No tenés permiso para tocar los flujos de un evento de otra persona." };
+  }
   return { ctx, found };
 }
 
