@@ -24,6 +24,7 @@ import { PERIOD_TYPES } from "@/lib/scheduling/limits/validation";
 import { CONTACT_ASSIGNMENT_LABELS } from "@/lib/scheduling/assignment";
 import { categoryTree, resolveCategory, type CategoryRow } from "@/lib/scheduling/categories";
 import { slugify } from "@/lib/scheduling/slug";
+import { firstTextIssue } from "@/lib/scheduling/booking-fields";
 import { summarizeSchedule } from "@/lib/scheduling/schedules";
 import { RESOLVE_WARNING_TEXT } from "@/lib/scheduling/resolve-calendars";
 import type { BookingField, EventType, WeeklyHours } from "@/lib/scheduling/types";
@@ -207,7 +208,15 @@ export function EventEditorView({
   const saveBySection: Record<string, (() => void) | null> = {
     details: () => saveDetails(),
     availability: () => run(() => saveEventAvailability({ eventId: event.id, scheduleId, destinationCalendarId: destinationId, conflictCalendarIds: conflictMode === "custom" ? conflictIds : [] })),
-    form: () => run(() => saveEventForm({ eventId: event.id, fields })),
+    form: () => {
+      // Un texto pasado de largo ya está marcado en rojo: se avisa acá sin ir al servidor.
+      const tooLong = firstTextIssue(fields);
+      if (tooLong) {
+        setError(tooLong);
+        return;
+      }
+      run(() => saveEventForm({ eventId: event.id, fields }));
+    },
     limits: () =>
       run(() =>
         saveEventLimits({

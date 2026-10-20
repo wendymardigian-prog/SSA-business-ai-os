@@ -7,7 +7,9 @@ import {
   FIELD_TYPE_LABELS,
   MAX_OPTIONS,
   MIN_OPTIONS,
+  OPTION_MAX,
   VISIBILITIES,
+  fieldTextIssues,
   identifierFromLabel,
   uniqueIdentifier,
 } from "@/lib/scheduling/booking-fields";
@@ -23,6 +25,16 @@ import type { BookingField, BookingFieldType, BookingFieldVisibility } from "@/l
  * obligatorio; email o telefono tiene que ser obligatorio (lo valida el
  * nucleo y lo avisa la pantalla).
  */
+
+/** El aviso de un texto pasado de largo, debajo del input que lo tiene. */
+function TooLong({ id, message }: { id: string; message: string | null }) {
+  if (!message) return null;
+  return (
+    <span id={id} role="alert" className="mt-1 block text-xs font-normal text-red-600 dark:text-red-400">
+      {message}
+    </span>
+  );
+}
 
 const VISIBILITY_LABELS: Record<BookingFieldVisibility, string> = {
   required: "Obligatorio",
@@ -74,6 +86,8 @@ export function FormBuilder({
   const systemFields = fields.filter((f) => f.system);
   const customFields = fields.filter((f) => !f.system);
   const inputClass = "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm";
+  const invalidClass = "border-red-500 focus-visible:outline-red-500 dark:border-red-500";
+  const cls = (invalid: boolean) => (invalid ? `${inputClass} ${invalidClass}` : inputClass);
 
   return (
     <div className="space-y-4">
@@ -105,8 +119,11 @@ export function FormBuilder({
           </li>
         ))}
 
-        {customFields.map((f, i) => (
-          <li key={f.id} className="rounded-lg border border-border p-2">
+        {customFields.map((f, i) => {
+          const issues = fieldTextIssues(f);
+          const hasIssue = Boolean(issues.label || issues.help || issues.placeholder || issues.options.some(Boolean));
+          return (
+          <li key={f.id} className={`rounded-lg border p-2 ${hasIssue ? "border-red-500" : "border-border"}`}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="flex flex-col">
                 <button type="button" disabled={disabled || i === 0} aria-label={`Subir ${f.label}`} onClick={() => move(i, -1)} className="text-muted-foreground disabled:opacity-30"><ChevronUp className="h-3.5 w-3.5" /></button>
@@ -115,6 +132,7 @@ export function FormBuilder({
               <button type="button" onClick={() => setEditing(editing === f.id ? null : f.id)} className="min-w-0 flex-1 text-left">
                 <span className="block text-sm font-medium">{f.label}</span>
                 <span className="block text-xs text-muted-foreground">{FIELD_TYPE_LABELS[f.type]} · {VISIBILITY_LABELS[f.visibility]} · {`{{answers.${f.identifier}}}`}</span>
+                {hasIssue && editing !== f.id && <span className="block text-xs text-red-600 dark:text-red-400">Hay un texto demasiado largo: abrí la pregunta para verlo</span>}
               </button>
               <button type="button" disabled={disabled} aria-label={`Quitar ${f.label}`} onClick={() => onChange(fields.filter((x) => x.id !== f.id))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-red-600">
                 <Trash2 className="h-4 w-4" />
@@ -134,9 +152,11 @@ export function FormBuilder({
                       const auto = uniqueIdentifier(identifierFromLabel(label), fields.filter((x) => x.id !== f.id).map((x) => x.identifier));
                       update(f.id, { label, identifier: f.identifier === identifierFromLabel(f.label) || !f.identifier ? auto : f.identifier });
                     }}
-                    maxLength={120}
-                    className={`${inputClass} mt-1 font-normal`}
+                    aria-invalid={Boolean(issues.label)}
+                    aria-describedby={issues.label ? `${f.id}-label-err` : undefined}
+                    className={`${cls(Boolean(issues.label))} mt-1 font-normal`}
                   />
+                  <TooLong id={`${f.id}-label-err`} message={issues.label} />
                 </label>
                 <label className="block text-xs font-medium">
                   Identificador <span className="font-normal text-muted-foreground">(va en las variables)</span>
@@ -144,7 +164,15 @@ export function FormBuilder({
                 </label>
                 <label className="block text-xs font-medium">
                   Texto de ayuda
-                  <input value={f.help ?? ""} disabled={disabled} onChange={(e) => update(f.id, { help: e.target.value })} maxLength={200} className={`${inputClass} mt-1 font-normal`} />
+                  <input
+                    value={f.help ?? ""}
+                    disabled={disabled}
+                    onChange={(e) => update(f.id, { help: e.target.value })}
+                    aria-invalid={Boolean(issues.help)}
+                    aria-describedby={issues.help ? `${f.id}-help-err` : undefined}
+                    className={`${cls(Boolean(issues.help))} mt-1 font-normal`}
+                  />
+                  <TooLong id={`${f.id}-help-err`} message={issues.help} />
                 </label>
                 <label className="block text-xs font-medium">
                   Visibilidad
@@ -156,18 +184,23 @@ export function FormBuilder({
                 </label>
                 {(f.type === "select" || f.type === "multiselect") && (
                   <div className="sm:col-span-2">
-                    <p className="text-xs font-medium">Opciones <span className="font-normal text-muted-foreground">({MIN_OPTIONS} a {MAX_OPTIONS})</span></p>
+                    <p className="text-xs font-medium">Opciones <span className="font-normal text-muted-foreground">({MIN_OPTIONS} a {MAX_OPTIONS}, hasta {OPTION_MAX} caracteres cada una)</span></p>
                     <div className="mt-1 space-y-1">
                       {(f.options ?? []).map((opt, oi) => (
-                        <div key={oi} className="flex items-center gap-1.5">
+                        <div key={oi}>
+                        <div className="flex items-center gap-1.5">
                           <input
                             value={opt}
                             disabled={disabled}
                             aria-label={`Opción ${oi + 1}`}
+                            aria-invalid={Boolean(issues.options[oi])}
+                            aria-describedby={issues.options[oi] ? `${f.id}-opt-${oi}-err` : undefined}
                             onChange={(e) => update(f.id, { options: (f.options ?? []).map((o, j) => (j === oi ? e.target.value : o)) })}
-                            className={inputClass}
+                            className={cls(Boolean(issues.options[oi]))}
                           />
                           <button type="button" disabled={disabled || (f.options ?? []).length <= MIN_OPTIONS} aria-label={`Quitar opción ${oi + 1}`} onClick={() => update(f.id, { options: (f.options ?? []).filter((_, j) => j !== oi) })} className="text-xs text-muted-foreground disabled:opacity-30">✕</button>
+                        </div>
+                        <TooLong id={`${f.id}-opt-${oi}-err`} message={issues.options[oi]} />
                         </div>
                       ))}
                       <button type="button" disabled={disabled || (f.options ?? []).length >= MAX_OPTIONS} onClick={() => update(f.id, { options: [...(f.options ?? []), `Opción ${(f.options ?? []).length + 1}`] })} className="text-xs text-primary disabled:opacity-40">
@@ -179,7 +212,8 @@ export function FormBuilder({
               </div>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
 
       <div className="flex flex-wrap items-center gap-2">

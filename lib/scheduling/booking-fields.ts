@@ -51,6 +51,55 @@ export const MIN_OPTIONS = 2;
 export const SHORT_TEXT_MAX = 500;
 export const LONG_TEXT_MAX = 5000;
 
+/**
+ * Topes de lo que escribe quien arma el formulario. Son amplios a propósito
+ * (una opción puede ser una frase entera): solo cortan lo absurdo. El editor
+ * los avisa mientras se escribe (`fieldTextIssues`), no recién al guardar.
+ */
+export const LABEL_MAX = 300;
+export const HELP_MAX = 500;
+export const PLACEHOLDER_MAX = 200;
+export const OPTION_MAX = 500;
+
+const tooLong = (what: string, max: number) => `${what} puede tener hasta ${max} caracteres`;
+
+export type FieldTextIssues = {
+  label: string | null;
+  help: string | null;
+  placeholder: string | null;
+  /** Una entrada por opción, en el mismo orden (null = está bien). */
+  options: (string | null)[];
+};
+
+function overBy(text: string | undefined, max: number): string | null {
+  const len = (text ?? "").trim().length;
+  return len > max ? `Te pasaste por ${len - max} (máximo ${max} caracteres)` : null;
+}
+
+/** Qué textos de una pregunta pasan su tope, para marcarlos en rojo mientras se escribe. */
+export function fieldTextIssues(f: BookingField): FieldTextIssues {
+  return {
+    label: overBy(f.label, LABEL_MAX),
+    help: overBy(f.help, HELP_MAX),
+    placeholder: overBy(f.placeholder, PLACEHOLDER_MAX),
+    options: (f.options ?? []).map((o) => overBy(o, OPTION_MAX)),
+  };
+}
+
+/** El primer texto pasado de largo del formulario, con la pregunta donde está; null si no hay. */
+export function firstTextIssue(fields: BookingField[]): string | null {
+  for (const f of fields) {
+    const issues = fieldTextIssues(f);
+    const where = `"${f.label.trim() || "Pregunta sin etiqueta"}"`;
+    if (issues.label) return `La etiqueta de ${where} es muy larga: ${issues.label.toLowerCase()}`;
+    if (issues.help) return `El texto de ayuda de ${where} es muy largo: ${issues.help.toLowerCase()}`;
+    if (issues.placeholder) return `El texto de ejemplo de ${where} es muy largo: ${issues.placeholder.toLowerCase()}`;
+    const oi = issues.options.findIndex(Boolean);
+    if (oi >= 0) return `La opción ${oi + 1} de ${where} es muy larga: ${issues.options[oi]!.toLowerCase()}`;
+  }
+  return null;
+}
+
 /** Formulario base con el que nace cada evento (F17). */
 export function defaultBookingFields(): BookingField[] {
   return [
@@ -79,7 +128,7 @@ export function uniqueIdentifier(base: string, existing: string[]): string {
 }
 
 const optionsSchema = z
-  .array(z.string().trim().min(1, "Una opción está vacía").max(100))
+  .array(z.string().trim().min(1, "Una opción está vacía").max(OPTION_MAX, tooLong("Cada opción", OPTION_MAX)))
   .min(MIN_OPTIONS, `Cargá al menos ${MIN_OPTIONS} opciones`)
   .max(MAX_OPTIONS, `Como máximo ${MAX_OPTIONS} opciones`)
   .refine((opts) => new Set(opts.map((o) => o.toLowerCase())).size === opts.length, "Hay opciones repetidas");
@@ -89,9 +138,9 @@ export const bookingFieldSchema = z
     id: z.string().min(1).max(64),
     type: z.enum(BOOKING_FIELD_TYPES as [BookingFieldType, ...BookingFieldType[]]),
     system: z.boolean(),
-    label: z.string().trim().min(1, "La etiqueta es obligatoria").max(80),
-    help: z.string().max(200).optional(),
-    placeholder: z.string().max(100).optional(),
+    label: z.string().trim().min(1, "La etiqueta es obligatoria").max(LABEL_MAX, tooLong("La etiqueta", LABEL_MAX)),
+    help: z.string().trim().max(HELP_MAX, tooLong("El texto de ayuda", HELP_MAX)).optional(),
+    placeholder: z.string().trim().max(PLACEHOLDER_MAX, tooLong("El texto de ejemplo", PLACEHOLDER_MAX)).optional(),
     visibility: z.enum(VISIBILITIES as [BookingFieldVisibility, ...BookingFieldVisibility[]]),
     options: optionsSchema.optional(),
     identifier: z.string().regex(IDENTIFIER_RE, "Identificador inválido: minúsculas, números y guión bajo, empieza con letra"),
