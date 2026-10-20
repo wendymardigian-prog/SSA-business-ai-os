@@ -8,6 +8,10 @@ import {
   visibleFields,
   contactDataFromResponses,
   EMAIL_OR_PHONE_REQUIRED,
+  fieldTextIssues,
+  firstTextIssue,
+  OPTION_MAX,
+  LABEL_MAX,
 } from "./booking-fields";
 import { normalizePhoneWithCountry, isE164, findPhoneCountry, PHONE_COUNTRIES } from "./phone-countries";
 import type { BookingField } from "./types";
@@ -66,10 +70,42 @@ describe("validateBookingFields (F20, guardar el formulario)", () => {
     expect(validateBookingFields([...base, pregunta({ type: "select", options: Array.from({ length: 51 }, (_, i) => `o${i}`) })]).ok).toBe(false);
   });
 
+  it("una opción larga (una frase entera) se acepta; el tope es amplio y el aviso en español", () => {
+    // El caso real que fallaba con el tope viejo de 100 caracteres.
+    const larga = "Tengo nociones básicas de IA o Automatización, pero aún no tengo experiencia real ni pude monetizar la habilidad";
+    expect(larga.length).toBeGreaterThan(100);
+    expect(validateBookingFields([...base, pregunta({ type: "select", options: [larga, "Otra"] })]).ok).toBe(true);
+    expect(validateBookingFields([...base, pregunta({ type: "select", options: ["x".repeat(OPTION_MAX), "Otra"] })]).ok).toBe(true);
+
+    const r = validateBookingFields([...base, pregunta({ type: "select", options: ["x".repeat(OPTION_MAX + 1), "Otra"] })]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors[0].message).toBe(`Cada opción puede tener hasta ${OPTION_MAX} caracteres`);
+
+    expect(validateBookingFields([...base, pregunta({ label: "¿".padEnd(LABEL_MAX, "a") })]).ok).toBe(true);
+    expect(validateBookingFields([...base, pregunta({ label: "a".repeat(LABEL_MAX + 1) })]).ok).toBe(false);
+  });
+
   it("identificadores: solo minúsculas, números y guión bajo, empiezan con letra", () => {
     expect(validateBookingFields([...base, pregunta({ identifier: "1abc" })]).ok).toBe(false);
     expect(validateBookingFields([...base, pregunta({ identifier: "Presupuesto" })]).ok).toBe(false);
     expect(validateBookingFields([...base, pregunta({ identifier: "presupuesto_2" })]).ok).toBe(true);
+  });
+});
+
+describe("textos pasados de largo (aviso mientras se escribe)", () => {
+  it("marca solo lo que pasa su tope, con cuánto se pasó", () => {
+    const f = pregunta({ type: "select", options: ["Bien", "x".repeat(OPTION_MAX + 3)] });
+    const issues = fieldTextIssues(f);
+    expect(issues.label).toBeNull();
+    expect(issues.options[0]).toBeNull();
+    expect(issues.options[1]).toBe(`Te pasaste por 3 (máximo ${OPTION_MAX} caracteres)`);
+  });
+
+  it("firstTextIssue dice qué pregunta y qué opción; null si todo está bien", () => {
+    expect(firstTextIssue([...base, pregunta({ type: "select", options: ["a", "b"] })])).toBeNull();
+    const msg = firstTextIssue([...base, pregunta({ label: "¿Situación?", type: "select", options: ["a", "x".repeat(OPTION_MAX + 1)] })]);
+    expect(msg).toContain("La opción 2");
+    expect(msg).toContain("¿Situación?");
   });
 });
 
