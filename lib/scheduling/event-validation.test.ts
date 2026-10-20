@@ -6,6 +6,7 @@ import {
   canActivate,
   meetRequiresWritableGoogleCalendar,
   MEET_NEEDS_GOOGLE_CALENDAR,
+  SYSTEM_ONLY_WARNING,
   validateEventLimits,
   EVENT_COLORS,
   type ActivationContext,
@@ -93,11 +94,22 @@ describe("Listo para activar (F18)", () => {
     expect(meetRequiresWritableGoogleCalendar({ location_type: "manual" }, sinEscritura)).toBeNull();
   });
 
-  it("sin horario ni calendario, 'Activar evento' queda deshabilitado con los motivos; formulario y flujos no bloquean", () => {
-    const list = activationChecklist(event, { ...ctx, scheduleName: null, destinationCalendar: null, formValid: false });
+  it("sin horario, 'Activar evento' queda deshabilitado; calendario, formulario y flujos no bloquean", () => {
+    const list = activationChecklist({ ...event, location_type: "manual", location_text: "Zoom" }, { ...ctx, scheduleName: null, destinationCalendar: null, formValid: false });
     const r = canActivate(list);
     expect(r.ok).toBe(false);
-    expect(r.blockers).toEqual(["Elegí un horario o creá el horario por defecto", "Elegí un calendario destino"]);
+    expect(r.blockers).toEqual(["Elegí un horario o creá el horario por defecto"]);
+  });
+
+  it("sin calendario se activa igual, con el aviso de 'solo en el sistema' (decisión del 20/10/2026)", () => {
+    const list = activationChecklist({ ...event, location_type: "manual", location_text: "Zoom" }, { ...ctx, destinationCalendar: null });
+    expect(canActivate(list).ok).toBe(true);
+    expect(list.find((i) => i.key === "calendar")).toMatchObject({ required: false, ok: false, reason: SYSTEM_ONLY_WARNING });
+  });
+
+  it("con Google Meet el calendario sí es obligatorio: sin él no hay link", () => {
+    const list = activationChecklist({ ...event, location_type: "google_meet" }, { ...ctx, destinationCalendar: null });
+    expect(canActivate(list)).toEqual({ ok: false, blockers: [MEET_NEEDS_GOOGLE_CALENDAR] });
   });
 
   it("detalles inválidos bloquean con el primer error", () => {

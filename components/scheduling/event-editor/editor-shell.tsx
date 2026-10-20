@@ -42,6 +42,8 @@ export function EditorShell({
   children: ReactNode;
 }) {
   const params = useSearchParams();
+  // El calendario es un aviso (no bloquea) salvo con Google Meet: "solo en el sistema".
+  const systemOnly = checklist.find((i) => i.key === "calendar" && !i.ok && !i.required) ?? null;
 
   // Cambiar de seccion NO va al servidor: la pagina ya trajo los datos de las
   // siete, y antes cada clic volvia a correr toda la carga del evento (unas
@@ -107,6 +109,15 @@ export function EditorShell({
               ))}
             </div>
           </section>
+        )}
+
+        {systemOnly && (
+          // Activo o no: sin calendario el evento funciona solo dentro del
+          // sistema, y eso tiene que verse siempre, no solo antes de activarlo.
+          <p className="mb-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-200">
+            {systemOnly.reason}{" "}
+            <Link href="/dashboard/agenda/configuracion/calendarios" className="underline">Conectar Google Calendar</Link>
+          </p>
         )}
 
         <div className="flex flex-col gap-4 md:flex-row md:gap-8">

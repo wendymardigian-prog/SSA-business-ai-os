@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { GoogleCalendarError } from "@/lib/google-calendar/errors";
 import { syncCalendars, disconnectCalendarConnection } from "@/lib/scheduling/data/calendars";
+import { notifyEventsNowOnGoogle } from "@/lib/scheduling/data/calendar-switch";
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { isWritable } from "@/lib/scheduling/calendars";
 
@@ -44,6 +45,7 @@ export async function resyncCalendars(connectionId: string): Promise<CalendarAct
   if (!ctx) return { ok: false, error };
   try {
     const result = await syncCalendars({ supabase: service }, connection.id);
+    if (result.destinationSet) await notifyEventsNowOnGoogle(service, ctx.workspace.id, ctx.user.id);
     revalidatePath(CALENDARS_PATH);
     return { ok: true, data: { inserted: result.inserted, deactivated: result.deactivated } };
   } catch (err) {

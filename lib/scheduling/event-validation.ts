@@ -131,6 +131,10 @@ export interface ChecklistItem {
   reason: string | null;
 }
 
+/** El aviso de un evento sin calendario destino: funciona, pero solo dentro del sistema. */
+export const SYSTEM_ONLY_WARNING =
+  "Sin calendario: las reuniones quedan solo en el sistema. No se crean en Google y no se miran tus otros compromisos de Google.";
+
 export const MEET_NEEDS_GOOGLE_CALENDAR = "No se puede crear Meet sin un calendario destino de Google con permiso de escritura";
 
 /** null si está bien; el texto de la advertencia si el evento usa Meet sin calendario de Google con escritura. */
@@ -144,7 +148,11 @@ export function meetRequiresWritableGoogleCalendar(
   return null;
 }
 
-/** La tarjeta "Listo para activar" (F18): tres obligatorios y dos recomendaciones. */
+/**
+ * La tarjeta "Listo para activar" (F18): detalles y horario son obligatorios;
+ * el calendario, solo con Google Meet (sin Meet es un aviso); formulario y
+ * flujos son recomendaciones.
+ */
 export function activationChecklist(eventType: EventType, ctx: ActivationContext): ChecklistItem[] {
   const details = validateEventDetails(eventType);
   const meetWarning = meetRequiresWritableGoogleCalendar(eventType, ctx);
@@ -167,12 +175,17 @@ export function activationChecklist(eventType: EventType, ctx: ActivationContext
       reason: ctx.scheduleName ? null : "Elegí un horario o creá el horario por defecto",
     },
     {
+      // Sin calendario el evento se puede activar igual: funciona "solo dentro
+      // del sistema" (decision del 20/10/2026). La base ya impide dos reuniones
+      // del mismo anfitrion a la misma hora; lo que se pierde es ver los
+      // compromisos de Google y crear el evento alla. Solo Google Meet lo exige,
+      // porque sin calendario no hay link.
       key: "calendar",
       label: ctx.destinationCalendar ? `Calendario: ${ctx.destinationCalendar.name}` : "Calendario",
       section: "availability",
-      required: true,
+      required: eventType.location_type === "google_meet",
       ok: !!ctx.destinationCalendar && !meetWarning,
-      reason: !ctx.destinationCalendar ? "Elegí un calendario destino" : meetWarning,
+      reason: meetWarning ?? (ctx.destinationCalendar ? null : SYSTEM_ONLY_WARNING),
     },
     {
       key: "form",

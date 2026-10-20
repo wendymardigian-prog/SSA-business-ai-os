@@ -460,6 +460,13 @@ sus automatizaciones y la habilidad del agente. El detalle en
   renombrar un area no cambia el significado de los informes viejos.
 - **El codigo publico de una reunion (22 caracteres) es una credencial**: con
   el se cancela sin sesion. Nunca se le pasa al agente ni se muestra de mas.
+- **Un evento se activa sin calendario** ("solo en el sistema", 20/10/2026):
+  solo Google Meet lo exige. Conectar Google lo vincula solo (con aviso) y
+  desconectar limpia sus referencias (`clearEventCalendarRefs`). Una conexion
+  ROTA sigue cortando los horarios. Ver "Eventos sin calendario" en
+  docs/agendamiento.md.
+- **Una reunion la ve tambien el setter de su contacto** (00241, `can_see_booking`).
+  Los flujos de un evento los toca solo quien puede editar ese evento.
 
 ## Google Calendar
 
@@ -1393,7 +1400,7 @@ Emojis, editor de email con formato, el agente dentro del chat, reacciones, chat
 
 ## Migraciones (00237 a 00240, escritas y probadas, **sin aplicar a la base real**)
 
-`00237` (`message_reactions`), `00238` (el copywriter nace apagado), `00239` (estado `pending` de Conocimiento) y `00240` (áreas Equipo y Otros). **La próxima libre es la `00241`** (confirmar con `list_migrations`).
+`00237` (`message_reactions`), `00238` (el copywriter nace apagado), `00239` (estado `pending` de Conocimiento) y `00240` (áreas Equipo y Otros). La `00241` es de la Agenda (el setter ve las reuniones de sus contactos, 20/10/2026). **La próxima libre es la `00242`** (confirmar con `list_migrations`).
 
 # Seguridad
 

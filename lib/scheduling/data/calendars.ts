@@ -11,6 +11,7 @@ import { listCalendars, type GoogleCalendarItem } from "@/lib/google-calendar/cl
 import type { GoogleDeps } from "@/lib/google-calendar/auth";
 import { planCalendarSync, suggestDefaultDestination, type CalendarRow } from "@/lib/scheduling/calendars";
 import { deleteSecret, oauthSecretName } from "@/lib/vault";
+import { clearEventCalendarRefs } from "./calendar-switch";
 
 type Db = SupabaseClient<Database>;
 
@@ -120,14 +121,13 @@ export async function syncCalendars(
 
 /**
  * Desconecta una cuenta: borra los tokens de Vault, apaga sus calendarios y
- * saca las referencias que apuntaban a ellos (destino del perfil; los eventos
- * se limpian cuando exista event_types, B3). Devuelve cuantos calendarios
- * quedaron inactivos.
+ * saca las referencias que apuntaban a ellos (destino del perfil y de los
+ * eventos). Devuelve cuantos calendarios quedaron inactivos.
  */
 export async function disconnectCalendarConnection(
   supabase: Db,
   connection: { id: string; workspace_id: string; user_id: string; vault_secret_prefix: string },
-): Promise<{ calendars: number; destinationCleared: boolean }> {
+): Promise<{ calendars: number; destinationCleared: boolean; eventsCleared: number }> {
   await Promise.all([
     deleteSecret(supabase, connection.workspace_id, oauthSecretName(connection.vault_secret_prefix, "access_token")),
     deleteSecret(supabase, connection.workspace_id, oauthSecretName(connection.vault_secret_prefix, "refresh_token")),
@@ -137,6 +137,17 @@ export async function disconnectCalendarConnection(
   const ids = (cals ?? []).map((c) => c.id);
   if (ids.length > 0) {
     await supabase.from("calendars").update({ is_active: false, check_conflicts: false }).in("id", ids);
+  }
+
+  // Los eventos que habían elegido calendarios de esta cuenta vuelven a los
+  // del perfil (o quedan "solo en el sistema" si no le queda ninguno).
+  // Un fallo acá no frena la desconexión (los tokens ya se borraron): el
+  // evento seguiría apuntando a un calendario apagado, como antes.
+  let eventsCleared = 0;
+  try {
+    eventsCleared = await clearEventCalendarRefs(supabase, connection.workspace_id, connection.user_id, ids);
+  } catch (err) {
+    console.error("[calendars] no pude limpiar los eventos de la cuenta desconectada", err instanceof Error ? err.message : "error");
   }
 
   let destinationCleared = false;
@@ -154,5 +165,5 @@ export async function disconnectCalendarConnection(
   }
 
   await supabase.from("oauth_connections").delete().eq("id", connection.id);
-  return { calendars: ids.length, destinationCleared };
+  return { calendars: ids.length, destinationCleared, eventsCleared };
 }
