@@ -238,7 +238,9 @@ try {
     const { error: eMember } = await member.client.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-member" });
     check(!!eMember, "un Member sin scheduling.manage_categories no crea categorias");
     const { data: verMember } = await member.client.from("booking_categories").select("id").eq("workspace_id", ws.id);
-    check((verMember ?? []).length === 7, "pero SI las ve (hacen falta para elegir y filtrar)");
+    // Todas las del workspace (las de sistema crecieron con la 00240: no se fija un numero).
+    const { count: todas } = await svc.from("booking_categories").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id);
+    check((verMember ?? []).length === todas && todas > 0, "pero SI las ve (hacen falta para elegir y filtrar)", `ve ${(verMember ?? []).length} de ${todas}`);
     const { data: nueva, error: eOwner } = await owner.client.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-comunidad", color: "#16a34a" }).select("id").single();
     check(!eOwner, "el Owner si crea un area", eOwner?.message);
     const { error: eDel } = await owner.client.from("booking_categories").delete().eq("id", nueva.id);
@@ -471,6 +473,19 @@ try {
     check((verOwner ?? []).length >= 1, "el Owner ve todas");
     const { data: verAjeno } = await ajeno.client.from("bookings").select("id").eq("workspace_id", ws.id);
     check((verAjeno ?? []).length === 0, "otro workspace no ve ninguna agenda");
+
+    // 00241: el setter del contacto ve las reuniones de ese contacto aunque no sea el anfitrion.
+    if (r1?.contact_id) {
+      const { data: antes } = await svc.from("contacts").select("setter_id").eq("id", r1.contact_id).single();
+      await svc.from("contacts").update({ setter_id: otro.id }).eq("id", r1.contact_id);
+      const { data: delContacto } = await svc.from("bookings").select("id").eq("contact_id", r1.contact_id);
+      const { data: verSetter } = await otro.client.from("bookings").select("id, contact_id").eq("workspace_id", ws.id);
+      check((verSetter ?? []).length === (delContacto ?? []).length && (verSetter ?? []).every((b) => b.contact_id === r1.contact_id),
+        "el setter del contacto ve las reuniones de ese contacto, y solo esas (00241)", JSON.stringify(verSetter));
+      await svc.from("contacts").update({ setter_id: antes.setter_id }).eq("id", r1.contact_id);
+      const { data: yaNo } = await otro.client.from("bookings").select("id").eq("workspace_id", ws.id);
+      check((yaNo ?? []).length === 0, "al dejar de ser setter, deja de verlas");
+    }
 
     // El historial sigue la misma regla.
     const { data: histOtro } = await otro.client.from("audit_log").select("id").eq("entity_type", "booking");
