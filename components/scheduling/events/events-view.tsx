@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Notice } from "@/components/agents/fields";
 import { Switch } from "@/components/ui/switch";
 import { categoryTree, categoryLabel, resolveCategory, type CategoryRow } from "@/lib/scheduling/categories";
-import { EVENT_STATUS_LABELS } from "@/lib/scheduling/event-validation";
+import { EVENT_STATUS_LABELS, SYSTEM_ONLY_WARNING } from "@/lib/scheduling/event-validation";
 import type { EventTypeStatus } from "@/lib/types/database";
 import { deleteEventType, duplicateEventType, setEventStatus } from "@/lib/actions/scheduling/event-types";
 
@@ -25,6 +25,8 @@ export interface EventCard {
   ownerUserId: string;
   ownerLabel: string;
   ownerUsername: string | null;
+  /** Sin calendario destino que funcione: sus reuniones quedan solo en el sistema. */
+  systemOnly: boolean;
 }
 
 /**
@@ -140,8 +142,8 @@ export function EventsView({
           </p>
           {!hasCalendar && (
             <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
-              Conectá tu Google Calendar primero:{" "}
-              <Link href="/dashboard/agenda/configuracion/calendarios" className="underline">ir a Calendarios</Link>
+              Sin Google Calendar tus eventos funcionan solo dentro del sistema (no ven tus otros compromisos).{" "}
+              <Link href="/dashboard/agenda/configuracion/calendarios" className="underline">Conectarlo en Calendarios</Link>
             </p>
           )}
           {canCreate && hasProfile && (
@@ -183,6 +185,11 @@ export function EventsView({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {e.ownerLabel} · <span className={e.status === "active" ? "text-emerald-600" : ""}>{EVENT_STATUS_LABELS[e.status]}</span>
                       </p>
+                      {e.systemOnly && (
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400" title={SYSTEM_ONLY_WARNING}>
+                          Solo en el sistema: sin calendario de Google
+                        </p>
+                      )}
                       <p className="mt-2 truncate rounded-lg bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground" title={linkOf(e)}>{linkOf(e)}</p>
                       <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
                         <button type="button" onClick={() => { navigator.clipboard?.writeText(linkOf(e)); flash("Link copiado"); }} className="rounded-lg border border-border px-2 py-1 hover:bg-muted">Copiar link</button>

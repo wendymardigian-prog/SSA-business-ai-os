@@ -23,11 +23,19 @@ export interface EventDefaults {
   hasCalendar: boolean;
 }
 
-/** Los calendarios de la persona, ya marcados si su conexion esta caida. */
-export async function calendarsForResolve(supabase: Db, workspaceId: string, userId: string): Promise<CalendarForResolve[]> {
+/**
+ * Los calendarios de la persona, ya marcados si su conexion esta caida.
+ *
+ * `connectionsDb`: con que cliente se lee el ESTADO de sus cuentas de Google.
+ * La RLS de `oauth_connections` deja ver las ajenas solo a Owner y Admin; un
+ * rol personalizado con `scheduling.manage_others` (ya chequeado por quien
+ * llama) necesita el cliente de servicio para saber si la cuenta de la otra
+ * persona esta rota. Nunca sale de aca nada mas que si esta rota o no.
+ */
+export async function calendarsForResolve(supabase: Db, workspaceId: string, userId: string, connectionsDb: Db = supabase): Promise<CalendarForResolve[]> {
   const [calendars, connections] = await Promise.all([
     listUserCalendars(supabase, workspaceId, userId),
-    listCalendarConnections(supabase, workspaceId, userId),
+    listCalendarConnections(connectionsDb, workspaceId, userId),
   ]);
   const broken = new Set(connections.filter((c) => c.status === "revoked" || c.status === "error").map((c) => c.id));
   return calendars.map((c) => ({

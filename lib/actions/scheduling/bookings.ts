@@ -10,6 +10,7 @@ import { evaluateTransition, groupOf, isBookingStatus, TRANSITION_REASON_TEXT } 
 import { cancelBooking, type CancelStatus } from "@/lib/scheduling/booking/cancel";
 import { rescheduleBooking } from "@/lib/scheduling/booking/reschedule";
 import { createBooking } from "@/lib/scheduling/booking/create";
+import { assignSetterIfEmpty } from "@/lib/scheduling/booking/setter";
 import { occupyBookingSlot, releaseBookingSlot } from "@/lib/scheduling/booking/release";
 import { reassignBookingHost } from "@/lib/scheduling/booking/reassign";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -341,7 +342,7 @@ export async function bookManually(input: {
   if (!ctx) return { ok: false, error: "No tenés permiso para agendar." };
 
   const service = await createServiceClient();
-  const { data: event } = await ctx.supabase.from("event_types").select("id").eq("id", input.eventTypeId).maybeSingle();
+  const { data: event } = await ctx.supabase.from("event_types").select("id, owner_user_id").eq("id", input.eventTypeId).maybeSingle();
   if (!event) return { ok: false, error: "No encontré ese evento." };
 
   const result = await createBooking(service, {
@@ -357,6 +358,18 @@ export async function bookManually(input: {
 
   if (!result.ok) return { ok: false, error: result.message ?? messageFor(result.reason) };
   if (!result.uid) return { ok: false, error: "No pude agendar." };
+
+  // Agendar en el evento de OTRA persona (un setter que le pone la llamada al
+  // closer): si el contacto no tiene setter, queda quien agendó. Así la sigue
+  // viendo (\`can_see_booking\`, 00241: el setter del contacto ve sus reuniones).
+  // Nunca pisa un setter que ya estaba, y un fallo no tumba la reunión.
+  if (event.owner_user_id !== ctx.user.id) {
+    try {
+      await assignSetterIfEmpty(service, ctx.workspace.id, result.contactId, ctx.user.id);
+    } catch (err) {
+      console.error("[bookManually] no pude asignar el setter", err instanceof Error ? err.message : "error");
+    }
+  }
 
   // El anfitrión se entera, salvo que sea quien agendó.
   await notifyBooking(service, result.bookingId, "booking_created", { actorUserId: ctx.user.id });

@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getPermissionContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getEventType, listCategories, toCategoryRow, toEventType } from "@/lib/scheduling/data/event-types";
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { listSchedules, toSchedule } from "@/lib/scheduling/data/schedules";
@@ -31,13 +32,17 @@ export default async function AgendaEventoPage({
   const row = await getEventType(ctx.supabase, id);
   if (!row || row.workspace_id !== ctx.workspace.id) notFound();
   if (row.owner_user_id !== ctx.user.id && !ctx.can("scheduling.manage_others")) redirect("/dashboard/agenda/configuracion/eventos");
+  // El estado de las cuentas de Google de OTRA persona lo lee el servidor: la
+  // RLS solo se lo muestra a Owner y Admin, y un rol con manage_others (ya
+  // chequeado arriba) veia "sin calendario" o no detectaba una cuenta rota.
+  const connectionsDb = row.owner_user_id === ctx.user.id ? ctx.supabase : await createServiceClient();
 
   const [categories, profile, schedules, calendars, connections, flows] = await Promise.all([
     listCategories(ctx.supabase, ctx.workspace.id),
     getProfileForUser(ctx.supabase, ctx.workspace.id, row.owner_user_id),
     listSchedules(ctx.supabase, ctx.workspace.id, row.owner_user_id),
-    calendarsForResolve(ctx.supabase, ctx.workspace.id, row.owner_user_id),
-    listCalendarConnections(ctx.supabase, ctx.workspace.id, row.owner_user_id),
+    calendarsForResolve(ctx.supabase, ctx.workspace.id, row.owner_user_id, connectionsDb),
+    listCalendarConnections(connectionsDb, ctx.workspace.id, row.owner_user_id),
     ctx.supabase.from("flows").select("id").eq("event_type_id", row.id).eq("status", "published"),
   ]);
 

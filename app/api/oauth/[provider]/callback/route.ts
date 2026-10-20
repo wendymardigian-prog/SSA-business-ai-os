@@ -19,6 +19,7 @@ import { oauthCallbackUrl } from "@/lib/webhook-url";
 import { syncSocialAccounts } from "@/lib/social/accounts";
 import { queueFirstRead } from "@/lib/social/sync-hook";
 import { syncCalendars } from "@/lib/scheduling/data/calendars";
+import { notifyEventsNowOnGoogle } from "@/lib/scheduling/data/calendar-switch";
 import { appUrl } from "@/lib/app-url";
 import { queueFathomSyncNow } from "@/lib/fathom/queue";
 import { logAudit } from "@/lib/audit";
@@ -63,7 +64,10 @@ export async function GET(
       // Rama explicita por proveedor: un proveedor por persona nuevo no cae
       // por defecto en la sincronizacion de calendarios.
       if (adapter.provider === "google_calendar") {
-        await syncCalendars({ supabase: service }, result.connectionId);
+        const synced = await syncCalendars({ supabase: service }, result.connectionId);
+        // El perfil recibió su primer calendario por defecto: los eventos que
+        // estaban "solo en el sistema" ya lo usan. Se le avisa cuáles.
+        if (synced.destinationSet) await notifyEventsNowOnGoogle(service, ctx.workspace.id, ctx.user.id);
       } else if (adapter.provider === "fathom") {
         // La primera consulta no espera a la vuelta del cron (F8): se encola ya.
         await queueFathomSyncNow(service, result.connectionId);

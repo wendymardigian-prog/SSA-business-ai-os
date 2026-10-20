@@ -86,6 +86,46 @@ perdida.
 - Un 403 por cuota es temporal y se reintenta; un 403 por permisos es
   permanente y no. Eso sale de la documentación, no del plano.
 
+## Eventos sin calendario ("solo en el sistema", 20/10/2026)
+
+Un evento se puede **activar sin calendario**. Funciona solo dentro del
+sistema: ofrece horarios según el horario de la persona y sus otras reuniones
+del sistema, la base impide dos reuniones del mismo anfitrión a la misma hora
+(`bookings_no_overlap`), y la sincronización con Google queda en
+`not_applicable`. Lo que se pierde: no se crea el evento en Google y no se miran
+los compromisos de Google de la persona.
+
+- **Solo Google Meet exige calendario** (sin calendario no hay link): el ítem
+  "Calendario" del chequeo "Listo para activar" es obligatorio solo con Meet;
+  si no, es un aviso (`SYSTEM_ONLY_WARNING`, `lib/scheduling/event-validation.ts`).
+  El editor lo muestra siempre, activo o no, y la lista de eventos marca
+  "Solo en el sistema" (`isSystemOnly`, `lib/scheduling/system-only.ts`).
+- **Se vincula solo al conectar Google**: un evento sin calendario propio usa el
+  del perfil, y conectar la primera cuenta le pone uno al perfil (`syncCalendars`).
+  La persona recibe un aviso con los eventos que pasaron a usar Google
+  (`notifyEventsNowOnGoogle`, `lib/scheduling/data/calendar-switch.ts`).
+- **Desconectar una cuenta limpia los eventos** (`clearEventCalendarRefs`): el
+  destino y los calendarios de conflicto que apuntaban a esa cuenta se sacan, así
+  vuelven a los del perfil (o a "solo en el sistema") y se vinculan solos al
+  reconectar. Antes quedaban apuntando a un calendario apagado para siempre.
+- **Una conexión ROTA (`invalid_grant`) sigue cortando los horarios**: ahí el
+  evento prometió mirar Google y no puede; hasta reconectar, no se ofrece nada.
+
+## Quién ve qué
+
+- Owner/Admin: todo, de todos. Un rol personalizado con `scheduling.manage_others`
+  gestiona eventos, horarios y perfil de otros; el **estado** de sus cuentas de
+  Google lo lee el servidor (la RLS de `oauth_connections` solo se las muestra a
+  Owner/Admin).
+- **Nadie conecta, desconecta ni cambia los calendarios de la cuenta de Google de
+  otra persona**: Google pide que cada quien inicie sesión con la suya.
+- Los flujos de un evento los toca quien puede editar ese evento (su dueño o
+  `manage_others`), no cualquiera con la agenda (`ownedFlow`).
+- Una reunión la ve el anfitrión, Owner/Admin, `bookings.view` con alcance `all`
+  y **el setter de su contacto** (00241). Un setter puede agendar en el evento de
+  un closer: si el contacto no tenía setter, queda él (`assignSetterIfEmpty`), así
+  no pierde de vista lo que agendó.
+
 ## Liberar espacio (Agenda v2)
 
 La agenda sigue existiendo, activa, con su lead y su link de Meet; lo único
@@ -133,6 +173,9 @@ alguien que ya tiene perfil de agenda en el workspace —
 - **El closer y el setter del contacto pasan al nuevo SOLO si eran el
   anfitrión original** (`transferAssignment`, tildado por default en el
   diálogo).
+- **Reagendar una reunión reasignada mira la agenda del anfitrión de HOY**, con
+  sus valores por defecto (horario y calendarios de su perfil), no los que el
+  dueño del evento eligió (`settingsForHost`, `lib/scheduling/host-settings.ts`).
 - **Choque con otra agenda activa de la nueva persona**: se revisa antes de
   intentar (mensaje claro) y la base lo vuelve a proteger con la misma
   exclusión de siempre (23P01) si alguien gana la carrera justo en el medio.

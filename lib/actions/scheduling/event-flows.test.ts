@@ -14,15 +14,16 @@ import { flowToTree } from "@/lib/automations/step-tree";
 
 const FLOW = "22222222-2222-4222-8222-222222222222";
 
-function setup(opts: { status?: string; flow?: Record<string, unknown> | null; nodes?: unknown[]; edges?: unknown[] } = {}): FakeDb {
+function setup(opts: { status?: string; flow?: Record<string, unknown> | null; nodes?: unknown[]; edges?: unknown[]; eventOwner?: string; manageOthers?: boolean } = {}): FakeDb {
   const graph = templateGraph(FLOW_TEMPLATES.find((t) => t.key === "reminder_1h")!, "ev-1");
   const db = fakeDb({
     "flows:select": { data: opts.flow === null ? null : { id: FLOW, name: "A", status: opts.status ?? "draft", event_type_id: "ev-1", template_key: null, workspace_id: "ws1", nodes: opts.nodes ?? graph.nodes, edges: opts.edges ?? graph.edges, ...(opts.flow ?? {}) } },
+    "event_types:select": { data: { owner_user_id: opts.eventOwner ?? "u1" } },
     "flows:update": { data: null },
     "triggers:delete": { data: null },
     "triggers:insert": { data: null },
   });
-  mocks.permission.mockResolvedValue({ workspace: { id: "ws1" }, user: { id: "u1", email: "yo@ejemplo.com" }, supabase: db.client, can: () => true });
+  mocks.permission.mockResolvedValue({ workspace: { id: "ws1" }, user: { id: "u1", email: "yo@ejemplo.com" }, supabase: db.client, can: (key: string) => key !== "scheduling.manage_others" || (opts.manageOthers ?? true) });
   // Las conexiones del negocio (G1): por defecto sin IA, canales ni agentes; el email segun cada test.
   mocks.service.mockResolvedValue(fakeDb({ "integration_configs:select": { data: [] }, "channels:select": { data: [] }, "agents:select": { data: [] } }).client);
   return db;
@@ -95,6 +96,28 @@ describe("saveEventFlowTree", () => {
     const other = setup({ flow: { workspace_id: "otro" } });
     expect((await saveEventFlowTree({ flowId: FLOW, tree: { steps: [] } })).ok).toBe(false);
     expect(other.writes()).toHaveLength(0);
+  });
+});
+
+describe("los flujos del evento de otra persona", () => {
+  it("un Member (sin gestionar agendas de otros) no los prende ni los edita", async () => {
+    mocks.emailConfigured.mockResolvedValue(true);
+    const db = setup({ eventOwner: "otra", manageOthers: false });
+    const toggled = await toggleEventFlow({ flowId: FLOW, enabled: false });
+    expect(toggled).toEqual({ ok: false, error: expect.stringContaining("otra persona") });
+    expect((await saveEventFlowTree({ flowId: FLOW, tree: { steps: stepsOf() } })).ok).toBe(false);
+    expect(db.writes()).toHaveLength(0);
+  });
+
+  it("quien gestiona agendas de otros (Owner, Admin o el permiso) si", async () => {
+    setup({ eventOwner: "otra", manageOthers: true, status: "published" });
+    expect((await toggleEventFlow({ flowId: FLOW, enabled: false })).ok).toBe(true);
+  });
+
+  it("un flujo que no es de ningun evento no se toca desde aca", async () => {
+    const db = setup({ flow: { event_type_id: null } });
+    expect((await toggleEventFlow({ flowId: FLOW, enabled: false })).ok).toBe(false);
+    expect(db.writes()).toHaveLength(0);
   });
 });
 

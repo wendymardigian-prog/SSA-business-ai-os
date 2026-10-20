@@ -1,8 +1,10 @@
 import { getPermissionContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { publicBaseUrl } from "@/lib/scheduling/public-url";
+import { isSystemOnly } from "@/lib/scheduling/system-only";
 import { EventsView, type EventCard } from "@/components/scheduling/events/events-view";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +17,7 @@ export default async function AgendaEventosPage({ searchParams }: { searchParams
   // Sin manage_others solo se ven los propios; con el permiso, "Todo el equipo".
   const targetUserId = canManageOthers ? (params.persona ?? null) : ctx.user.id;
 
-  const [categories, events, defaults, members, profiles, googleRows] = await Promise.all([
+  const [categories, events, defaults, members, profiles, googleRows, activeCalendars] = await Promise.all([
     listCategories(ctx.supabase, ctx.workspace.id),
     listEventTypes(ctx.supabase, ctx.workspace.id, { ownerUserId: targetUserId }),
     // Creando para otra persona (manage_others), el diálogo tiene que mostrar
@@ -23,15 +25,22 @@ export default async function AgendaEventosPage({ searchParams }: { searchParams
     // está mirando. Con "Todo el equipo" (targetUserId null) cae en uno mismo.
     eventDefaults(ctx.supabase, ctx.workspace as { id: string; scheduling_auto_create_flows?: boolean }, targetUserId ?? ctx.user.id),
     canManageOthers ? getWorkspaceMembers(ctx.workspace.id) : Promise.resolve([]),
-    ctx.supabase.from("scheduling_profiles").select("user_id, username, display_name").eq("workspace_id", ctx.workspace.id),
+    ctx.supabase.from("scheduling_profiles").select("user_id, username, display_name, default_destination_calendar_id").eq("workspace_id", ctx.workspace.id),
+    // Quien tiene Google conectado (solo el user_id): lo lee el servidor,
+    // porque la RLS se lo muestra solo a Owner y Admin y un rol con
+    // manage_others veia a todos "sin Google Calendar".
     canManageOthers
-      ? ctx.supabase.from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active")
+      ? createServiceClient().then((service) => service.from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active"))
       : Promise.resolve({ data: [] }),
+    // Los calendarios que funcionan (la RLS deja ver los propios, o los de
+    // todos a quien gestiona agendas de otros): para marcar "Solo en el sistema".
+    ctx.supabase.from("calendars").select("id").eq("workspace_id", ctx.workspace.id).eq("is_active", true),
   ]);
 
   const byUser = new Map((profiles.data ?? []).map((p) => [p.user_id, p]));
   const memberLabel = new Map(members.map((m) => [m.userId, m.name || m.email]));
   const hasGoogleByUser = new Set((googleRows.data ?? []).map((c) => c.user_id));
+  const activeCalendarIds = new Set((activeCalendars.data ?? []).map((c) => c.id));
 
   const cards: EventCard[] = events.map((e) => ({
     id: e.id,
@@ -45,6 +54,7 @@ export default async function AgendaEventosPage({ searchParams }: { searchParams
     ownerUserId: e.owner_user_id,
     ownerLabel: byUser.get(e.owner_user_id)?.display_name ?? memberLabel.get(e.owner_user_id) ?? "Anfitrión",
     ownerUsername: byUser.get(e.owner_user_id)?.username ?? null,
+    systemOnly: isSystemOnly(e, byUser.get(e.owner_user_id)?.default_destination_calendar_id, activeCalendarIds),
   }));
 
   return (

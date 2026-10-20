@@ -206,7 +206,7 @@ export function CalendarsView({
         title={`Desconectar ${disconnecting?.account.label ?? ""}`}
         message={
           disconnecting
-            ? `${disconnecting.events === 0 ? "Ningún evento usa calendarios de esta cuenta." : `${disconnecting.events} evento(s) usan calendarios de esta cuenta y van a volver a usar los de tu perfil.`} Se borran los tokens y sus calendarios dejan de revisarse.`
+            ? `${disconnecting.events === 0 ? "Ningún evento usa calendarios de esta cuenta." : `${disconnecting.events} evento(s) usan calendarios de esta cuenta y van a volver a usar los de tu perfil. Si no te queda ningún calendario, siguen activos pero solo dentro del sistema (los que usan Google Meet no van a tener link).`} Se borran los tokens y sus calendarios dejan de revisarse.`
             : ""
         }
         confirmLabel="Desconectar"
