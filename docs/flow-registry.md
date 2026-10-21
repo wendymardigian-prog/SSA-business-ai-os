@@ -616,3 +616,13 @@ La copia del navegador es `lib/flow-engine/node-requirements.ts` (`NODE_REQUIREM
 exige que diga lo mismo que el registro. Sumar un requisito: declararlo en el nodo, en esa lista y en
 `REQUIREMENT_INFO` (texto y a dónde conectar), y enseñarle a `loadAutomationCapabilities` cómo saber si está conectado.
 El estado se calcula al abrir la pantalla: no se guarda en el flujo.
+
+## Pipeline de contactos (00245, 00246)
+
+- **Disparador:** "Evento del CRM" con `event: "status_changed"`. El valor es el rol (`setter` / `closer`: cualquier cambio de ese estado)
+  o rol y estado (`setter:calificado`: cuando pasa a ese estado); vacío, cualquier cambio. Lo resuelve `crmEventMatches`. El evento lo
+  emite `set_contact_status` con `{ role, status, previous_status, change_id }`. No hizo falta tocar el CHECK de `triggers.type`.
+- **Condiciones:** `contact.setter_status`, `contact.closer_status`, `contact.last_status` (`rol:clave`) y `contact.interest_product`
+  (id del producto). El catálogo las ofrece con las listas del workspace (`getConditionCatalogInputs`).
+- **"Definir campo"** valida por tipo con `normalizeCustomValue`: vacío borra el valor, una variable sin resolver o un valor que no
+  corresponde al tipo no se escriben. El panel elige el campo de una lista.

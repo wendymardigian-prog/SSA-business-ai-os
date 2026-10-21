@@ -66,7 +66,7 @@ borran** (la base mezcla con `||`).
 | El contacto escribe por DM (Instagram, WhatsApp) o por email | **Solo los que suman información** (abajo) | id del mensaje |
 | Alguien comenta una publicación | Sí, si es (o pasa a ser) contacto (abajo) | `comment:<id del comentario>` |
 | Alta a mano | Sí | `manual:<contacto>` |
-| Importación de CSV | Solo a los contactos **nuevos** | `import:<importación>:<contacto>` |
+| Importación de CSV | Solo a los contactos **nuevos** (los que ya existían quedan con una entrada en su historial, no un toque) | `import:<importación>:<contacto>` |
 | Reserva desde la página pública o el embed | Sí (lo hace `create_booking`, también para un contacto que ya existía) | `booking:<reserva>` |
 | Reserva a mano o por el agente de IA | **No** (Agenda v2, 00129): no hay forma de saber de dónde vino el lead, y un toque inventado `web/booking` pisaría el toque real (el DM o el comentario que lo trajo) | — |
 | Los contactos de antes de este bloque | Un toque por su evento de alta, solo donde la atribución estaba vacía (backfill de la 00115) | `event:<evento>` |
@@ -289,3 +289,17 @@ Zernio permite conectar más de una cuenta por red (dos Instagram, por ejemplo);
 node scripts/verify-organic-attribution.mjs                   # paridad del canal, códigos, triggers, errores forzados, relleno
 node scripts/verify-organic-attribution.mjs --despues-de-00234
 ```
+
+## Contactos importados (CSV)
+
+- **Un contacto nuevo** queda con un toque de origen **"Importación"** (`origin = 'import'`). Si la planilla no trae datos de
+  atribución, la fuente es `csv`, el medio `import`, la fecha es la de la importación y el canal sale **Directo**. En la ficha se ve
+  "Importación · importación · fecha"; filtrando la lista por fuente `csv` aparecen todos los importados. No cuenta como lead de ningún
+  anuncio ni pieza de contenido. Si después escribe por un canal, el primer toque sigue siendo la importación.
+- **Columnas de atribución opcionales**: fuente, medio, campaña y "fecha del primer contacto" (`ATTRIBUTION_TARGETS`, `lib/csv/map.ts`).
+  Si vienen, el toque las lleva (`importTouch`) y el canal se calcula con ellas (un medio `cpc` es Pauta); el origen sigue siendo
+  "Importación". La fecha queda al mediodía UTC de ese día (ninguna zona horaria la corre al día de al lado) y no puede ser futura.
+- **Un contacto que ya existía** no recibe un toque (la importación no fue su origen) ni cambia su atribución: queda una entrada en su
+  historial ("lo encontró en la importación «archivo.csv»") con los datos que se completaron.
+- No hay un canal "Importación": el canal es una clasificación de cuatro valores con gemela SQL/TS y reglas de comisiones; el origen ya
+  distingue a un importado.
