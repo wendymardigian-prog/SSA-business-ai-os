@@ -1,14 +1,15 @@
 # Pipeline de contactos
 
 Cada contacto tiene un **estado de setter** y un **estado de vendedor** (closer), un **producto de interés** con variante opcional, y
-campos personalizados que se comportan según su tipo. Migraciones `00244` a `00247`.
+campos personalizados que se comportan según su tipo. Migraciones `00244` a `00248` (aplicadas el 21/10/2026).
 
 ## Estados de setter y de vendedor (00245)
 
 - **Dos estados, una lista cada uno.** Viven en `workspaces.contact_status_settings` (`{ setter: [...], closer: [...] }`, cada estado
   `{ key, name, color, archived_at }`). Se editan en **Ajustes → Estados** (permiso `contact_statuses.manage`). La `key` no cambia nunca;
   un estado no se borra, se archiva (el contacto que ya lo tiene lo conserva y se ve "(archivado)"). Los estados por defecto son los de
-  `DEFAULT_CONTACT_STATUSES` (`lib/contacts/statuses.ts`) y la misma lista es el default de la columna: `statuses.test.ts` las compara.
+  `DEFAULT_CONTACT_STATUSES` (`lib/contacts/statuses.ts`) y la misma lista es el default de la columna, como literal (00248):
+  `statuses.test.ts` las compara.
 - **El último estado** es el que se cambió más recientemente de los dos (empatados, el del vendedor). Es lo que se ve en la cabecera de la
   ficha y en la columna "Estado" de la lista. Se guarda en `contacts.last_status_role` / `last_status` / `last_status_at`.
 - **Un solo camino para cambiar un estado: `set_contact_status`** (solo `service_role`). En una transacción bloquea el contacto, valida el

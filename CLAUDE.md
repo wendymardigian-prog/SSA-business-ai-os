@@ -1447,11 +1447,13 @@ Estado de setter y de vendedor con su historial, producto de interés y campos p
 - **Importación:** un contacto nuevo nace con el toque de origen `import` (con la atribución de la planilla si la trae); uno que ya existía
   no recibe toque, solo una entrada en su historial.
 
-## Migraciones (`00244` a `00247`, escritas y probadas, **sin aplicar a la base real**)
+## Migraciones (`00244` a `00248`, todas aplicadas y registradas el 21/10/2026)
 
-`00244` (valores tipados), `00245` (estados, historial, función y guardia), `00246` (producto de interés) y `00247` (`merge_contacts`
-con estados y producto; la definición vieja completa en su cabecera). Todas aditivas: se pueden aplicar antes de desplegar el código, en
-orden. **La próxima libre es la `00248`** (confirmar con `list_migrations`).
+`00244` (valores tipados), `00245` (estados, historial, función y guardia), `00246` (producto de interés), `00247` (`merge_contacts`
+con estados y producto; la definición vieja completa en su cabecera) y `00248` (corrige la 00245: el DEFAULT de
+`contact_status_settings` pasa a ser un literal; llamar a una función sin permisos desde un DEFAULT rompía el alta de un workspace).
+**Un DEFAULT de columna se evalúa con los permisos de quien inserta: nunca una función de `private`.** **La próxima libre es la `00249`**
+(confirmar con `list_migrations`).
 
 ## Verificación
 

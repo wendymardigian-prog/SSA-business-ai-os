@@ -17,8 +17,10 @@ import {
 } from "./statuses";
 
 describe("los estados por defecto", () => {
-  it("son los mismos en el código y en la migración 00245", () => {
-    const sql = readFileSync(join(process.cwd(), "supabase/migrations/00245_contact_statuses.sql"), "utf8");
+  // La 00245 los tiene en su funcion; la 00248, como literal del DEFAULT de la columna (un DEFAULT
+  // que llama a una funcion sin permisos rompia el alta de un workspace).
+  it.each(["00245_contact_statuses.sql", "00248_contact_status_settings_default.sql"])("son los mismos en el código y en %s", (file) => {
+    const sql = readFileSync(join(process.cwd(), "supabase/migrations", file), "utf8");
     const match = /\$defaults\$([\s\S]*?)\$defaults\$/.exec(sql);
     expect(match).not.toBeNull();
     expect(JSON.parse(match![1])).toEqual(DEFAULT_CONTACT_STATUSES);
