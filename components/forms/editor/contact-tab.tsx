@@ -190,7 +190,7 @@ export function ContactTab({
       {linking && (
       <Section title="Pregunta → dato del contacto" description="Elegí a qué dato del contacto va cada respuesta. Lo que no se mapea queda solo en la respuesta. Es el mismo dato que “Se guarda en el contacto” en el panel de cada pregunta.">
         {fields.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Todavía no hay campos. Sumalos en la pestaña Campos.</p>
+          <p className="text-sm text-muted-foreground">Todavía no hay campos. Sumalos en la pestaña Diseño.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">

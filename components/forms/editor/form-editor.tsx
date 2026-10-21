@@ -13,7 +13,6 @@ import { publishIssues } from "@/lib/forms/publish-issues";
 import { typeChecks } from "@/lib/forms/type-checks";
 import { fingerprint } from "@/lib/unsaved-changes";
 import { AutomationsTab } from "./automations-tab";
-import { ContractEditor } from "./contract-editor";
 import { ContactTab } from "./contact-tab";
 import { FieldsTab } from "./fields-tab";
 import { PublishTab } from "./publish-tab";
@@ -342,9 +341,8 @@ export function FormEditor({
                 issues={disabled ? NO_ISSUES : issues}
                 focusRequest={focusRequest}
                 onOpenContact={() => setSection("contacto")}
+                contract={form.type === "contract" && contractConfig ? { formId: form.id, config: contractConfig, onConfigSaved: setContractConfig, canManage } : undefined}
               />
-            ) : section === "contrato" && form.type === "contract" && contractConfig ? (
-              <ContractEditor form={form} draft={draft} onDraftChange={setDraft} config={contractConfig} onSaved={setContractConfig} canManage={canManage} />
             ) : section === "contacto" ? (
               <ContactTab
                 form={{ ...form, contactConfig }}

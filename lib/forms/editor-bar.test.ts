@@ -13,20 +13,20 @@ const FORM = (over: Partial<BarForm>): BarForm => ({
 const labels = (view: ReturnType<typeof editorBarView>) => view.tabs.map((t) => t.label);
 
 describe("pestañas por tipo (F7)", () => {
-  it("personalizado: Campos · Contacto · Flows · Publicar · Respuestas", () => {
-    expect(labels(editorBarView(FORM({}), { canManage: true, route: "editor" }))).toEqual(["Campos", "Contacto", "Flows", "Publicar", "Respuestas"]);
+  it("personalizado: Diseño · Contacto · Flows · Publicar · Respuestas", () => {
+    expect(labels(editorBarView(FORM({}), { canManage: true, route: "editor" }))).toEqual(["Diseño", "Contacto", "Flows", "Publicar", "Respuestas"]);
   });
 
-  it("encuesta: la pestaña Encuesta va despues de Campos y es una ruta propia", () => {
+  it("encuesta: la pestaña Encuesta va despues de Diseño y es una ruta propia", () => {
     const view = editorBarView(FORM({ type: "survey" }), { canManage: true, route: "editor" });
-    expect(labels(view)).toEqual(["Campos", "Encuesta", "Contacto", "Flows", "Publicar", "Respuestas"]);
+    expect(labels(view)).toEqual(["Diseño", "Encuesta", "Contacto", "Flows", "Publicar", "Respuestas"]);
     expect(view.tabs.find((t) => t.label === "Encuesta")).toMatchObject({ kind: "route", href: "/dashboard/formularios/f1/encuesta" });
   });
 
-  it("contrato: Contrato (dentro del editor) despues de Campos", () => {
+  it("contrato: el texto y la firma viven en Diseño (no hay pestaña Contrato aparte)", () => {
     const view = editorBarView(FORM({ type: "contract" }), { canManage: true, route: "editor" });
-    expect(labels(view)).toEqual(["Campos", "Contrato", "Contacto", "Flows", "Publicar", "Respuestas"]);
-    expect(view.tabs.find((t) => t.label === "Contrato")).toMatchObject({ kind: "section", href: "/dashboard/formularios/f1?tab=contrato" });
+    expect(labels(view)).toEqual(["Diseño", "Contacto", "Flows", "Publicar", "Respuestas"]);
+    expect(view.tabs.find((t) => t.label === "Diseño")).toMatchObject({ kind: "section", href: "/dashboard/formularios/f1" });
   });
 
   it("fin de dia de setters: Configuración · Preguntas · Canales · Flows · Publicar · Reportes", () => {
@@ -79,7 +79,8 @@ describe("?tab= (F7)", () => {
 
   it("acepta las pestañas del tipo, tambien si el valor llega como lista", () => {
     expect(parseEditorTab("custom", null, "publicar")).toBe("publicar");
-    expect(parseEditorTab("contract", null, "contrato")).toBe("contrato");
+    // Un link viejo a la pestaña Contrato abre Diseño.
+    expect(parseEditorTab("contract", null, "contrato")).toBe("campos");
     expect(parseEditorTab("eod", "setter", "canales")).toBe("canales");
     expect(parseEditorTab("custom", null, ["flows", "x"])).toBe("flows");
   });

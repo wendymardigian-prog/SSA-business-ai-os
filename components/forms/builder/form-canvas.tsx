@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Check } from "lucide-react";
 import { previewEnding } from "@/lib/forms/preview-view";
 import { conditionChip, emptyShortcuts, mappingChip } from "@/lib/forms/canvas-view";
@@ -40,6 +41,8 @@ export function FormCanvas({
   issues,
   addLabel,
   emptyText,
+  beforeFields,
+  afterFields,
 }: {
   mode: "form" | "eod";
   formType: FormType;
@@ -59,6 +62,10 @@ export function FormCanvas({
   issues?: PublishIssues;
   addLabel?: string;
   emptyText?: string;
+  /** Lo que va entre el título y las preguntas (en un contrato, el texto). */
+  beforeFields?: ReactNode;
+  /** Lo que va entre las preguntas y el botón de enviar (en un contrato, la aceptación y la firma). */
+  afterFields?: ReactNode;
 }) {
   const isForm = mode === "form";
   const atLimit = fields.length >= MAX_FIELDS;
@@ -98,6 +105,8 @@ export function FormCanvas({
           </div>
         )}
 
+        {beforeFields}
+
         {fields.length === 0 ? (
           <div className="space-y-3 rounded-xl border border-dashed border-border p-4 text-center">
             <p className="text-sm text-muted-foreground">{emptyText ?? "Todavía no hay preguntas. Empezá por una de las más comunes:"}</p>
@@ -134,6 +143,8 @@ export function FormCanvas({
 
         {!disabled && <AddQuestionPicker formType={formType} onPick={onAdd} disabled={atLimit} label={addLabel} />}
         {atLimit && <p className="text-center text-xs text-muted-foreground">Llegaste al máximo de {MAX_FIELDS} preguntas.</p>}
+
+        {afterFields}
 
         {isForm && design && onDesign && (
           <div className="pt-1">

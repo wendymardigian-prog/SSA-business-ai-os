@@ -1,11 +1,16 @@
 /**
- * Que esta elegido en el constructor (plano formularios-ui, F9-F11): el formulario entero, una pregunta o la
- * pantalla final. La seleccion guarda el `id` de la pregunta (no su posicion), asi sobrevive a mover, duplicar o
+ * Que esta elegido en el constructor (plano formularios-ui, F9-F11): el formulario entero, una pregunta, la
+ * pantalla final o, en un contrato, el bloque del texto o el de la aceptacion y la firma. La seleccion guarda el `id` de la pregunta (no su posicion), asi sobrevive a mover, duplicar o
  * agregar otras. Puro.
  */
 import type { FormField } from "./fields";
 
-export type BuilderSelection = { kind: "form" } | { kind: "field"; id: string } | { kind: "end" };
+export type BuilderSelection =
+  | { kind: "form" }
+  | { kind: "field"; id: string }
+  | { kind: "end" }
+  | { kind: "contract_text" }
+  | { kind: "contract_signing" };
 
 export const FORM_SELECTION: BuilderSelection = { kind: "form" };
 
