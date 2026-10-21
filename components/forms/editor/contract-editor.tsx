@@ -5,13 +5,18 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Checkbox, Field, Notice, Section, inputClass } from "@/components/agents/fields";
 import { MAX_CONTRACT_TEXT } from "@/lib/forms/definition-schema";
-import { ContractText } from "@/components/forms/public/contract-block";
+import { RichTextEditor, type RichTextFormat } from "@/components/editor/rich-text-editor";
+import { editorDocToMarkdown, markdownToEditorDoc } from "@/lib/forms/contract/editor-markdown";
+import { unsupportedPdfChars } from "@/lib/forms/contract/pdf-charset";
 import { saveContractConfig } from "@/lib/actions/forms/config";
 import { parseCcInput, MAX_CC_EMAILS, validateContractConfig, signerEmailField, type ContractConfig } from "@/lib/forms/contract/config";
 import type { Draft, EditorForm } from "./types";
 
+/** El contrato se guarda en Markdown acotado: el editor lo abre y lo vuelve a armar (constante: no cambia entre dibujos). */
+const CONTRACT_FORMAT: RichTextFormat = { load: markdownToEditorDoc, save: editorDocToMarkdown };
+
 /**
- * La pestaña Contrato (F24): el texto (Markdown acotado, con vista previa), el título,
+ * La pestaña Contrato (F24): el texto (editor con formato que guarda Markdown acotado), el título,
  * la casilla de aceptación, si la firma es obligatoria y las copias por email.
  *
  * El TEXTO es parte del borrador (se guarda solo, como los campos) y se congela, con su
@@ -42,6 +47,8 @@ export function ContractEditor({
 
   const disabled = !canManage || form.status === "archived";
   const text = draft.definition.contractText ?? "";
+  const unsupported = useMemo(() => unsupportedPdfChars(text), [text]);
+  const tooLong = text.length > MAX_CONTRACT_TEXT;
   const hasSignerEmail = useMemo(() => !!signerEmailField(draft.definition.fields), [draft.definition.fields]);
   const cc = parseCcInput(ccText);
   const next = { title, acceptLabel, signatureRequired, ccEmails: cc };
@@ -65,27 +72,30 @@ export function ContractEditor({
     <div className="mx-auto max-w-[900px] space-y-4">
       {!hasSignerEmail && <Notice tone="warning">El contrato necesita un campo de email obligatorio: ahí se manda la copia firmada. Sumalo en la pestaña Campos.</Notice>}
 
-      <Section title="El texto del contrato" description="Se puede usar # y ## para títulos, **negrita**, *cursiva* y listas. No hay HTML, links ni imágenes. Al publicar, el texto queda congelado con su huella: una firma siempre se refiere al texto exacto que se firmó.">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Field label="Texto (Markdown)">
-            {(id) => (
-              <textarea
-                id={id}
-                className={`${inputClass} min-h-[360px] font-mono text-xs`}
-                disabled={disabled}
-                value={text}
-                maxLength={MAX_CONTRACT_TEXT}
-                onChange={(e) => onDraftChange({ ...draft, definition: { ...draft.definition, contractText: e.target.value } })}
-              />
-            )}
-          </Field>
-          <div>
-            <p className="mb-1.5 text-sm font-medium">Así lo ve quien firma</p>
-            <div className="max-h-[420px] overflow-y-auto rounded-lg border border-border bg-card p-4" aria-label="Vista previa del contrato">
-              {text.trim() ? <ContractText text={text} /> : <p className="text-sm text-muted-foreground">Escribí el texto para ver cómo queda.</p>}
-            </div>
+      <Section title="El texto del contrato" description="Usá la barra para los títulos, la negrita, las listas y los links. Al publicar, el texto queda congelado con su huella: una firma siempre se refiere al texto exacto que se firmó.">
+        <RichTextEditor
+          id={`contract-text-${form.id}`}
+          label="Texto del contrato"
+          value={text}
+          disabled={disabled}
+          minHeight={360}
+          format={CONTRACT_FORMAT}
+          underline={false}
+          emoji={false}
+          onChange={(next) => onDraftChange({ ...draft, definition: { ...draft.definition, contractText: next } })}
+        />
+        {unsupported.length > 0 && (
+          <div className="mt-2">
+            <Notice tone="warning">
+              Estos símbolos no se pueden escribir en el PDF y van a salir como «?»: {unsupported.slice(0, 8).join(" ")}. Sacalos del texto.
+            </Notice>
           </div>
-        </div>
+        )}
+        {tooLong && (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            El texto es demasiado largo ({text.length.toLocaleString("es")} de {MAX_CONTRACT_TEXT.toLocaleString("es")} caracteres).
+          </p>
+        )}
       </Section>
 
       <Section title="La firma y la aceptación">

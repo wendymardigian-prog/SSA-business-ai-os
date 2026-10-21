@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { renderContractMarkdown, type InlineRun } from "@/lib/forms/contract/markdown";
 import { SignatureCanvas } from "./signature-canvas";
 
@@ -24,10 +24,18 @@ function Runs({ runs }: { runs: InlineRun[] }) {
             {line}
           </Fragment>
         ));
-        if (run.bold && run.italic) return <strong key={index}><em>{content}</em></strong>;
-        if (run.bold) return <strong key={index}>{content}</strong>;
-        if (run.italic) return <em key={index}>{content}</em>;
-        return <Fragment key={index}>{content}</Fragment>;
+        let node: ReactNode = content;
+        if (run.italic) node = <em>{node}</em>;
+        if (run.bold) node = <strong>{node}</strong>;
+        // `href` ya pasó `safeHref` (solo http, https, mailto y tel): nunca un `javascript:`.
+        if (run.href) {
+          node = (
+            <a href={run.href} target="_blank" rel="noopener noreferrer nofollow" className="text-primary underline underline-offset-2">
+              {node}
+            </a>
+          );
+        }
+        return <Fragment key={index}>{node}</Fragment>;
       })}
     </>
   );
@@ -39,14 +47,24 @@ export function ContractText({ text }: { text: string }) {
     <div className="space-y-3 text-sm leading-relaxed">
       {blocks.map((block, index) => {
         if (block.type === "heading") {
-          return block.level === 1 ? (
-            <h2 key={index} className="pt-1 text-lg font-bold">
+          if (block.level === 1) {
+            return (
+              <h2 key={index} className="pt-1 text-lg font-bold">
+                <Runs runs={block.runs} />
+              </h2>
+            );
+          }
+          if (block.level === 2) {
+            return (
+              <h3 key={index} className="pt-1 text-base font-semibold">
+                <Runs runs={block.runs} />
+              </h3>
+            );
+          }
+          return (
+            <h4 key={index} className="pt-1 text-sm font-semibold">
               <Runs runs={block.runs} />
-            </h2>
-          ) : (
-            <h3 key={index} className="pt-1 text-base font-semibold">
-              <Runs runs={block.runs} />
-            </h3>
+            </h4>
           );
         }
         if (block.type === "list") {

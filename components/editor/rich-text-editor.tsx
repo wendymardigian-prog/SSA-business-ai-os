@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { EditorContent, Node, mergeAttributes, useEditor, type Editor } from "@tiptap/react";
+import { EditorContent, Node, mergeAttributes, useEditor, type Editor, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, Underline as UnderlineIcon, Unlink } from "lucide-react";
 import { EmojiButton } from "@/components/ui/emoji-picker";
@@ -47,6 +47,15 @@ const VariableChip = Node.create({
   },
 });
 
+/**
+ * Cómo se guarda lo que escribe la persona. Sin esto, HTML (el cuerpo de un email). El contrato guarda Markdown
+ * acotado (`lib/forms/contract/editor-markdown.ts`): abre el texto como documento y lo vuelve a armar al cambiar.
+ */
+export interface RichTextFormat {
+  load: (value: string) => JSONContent;
+  save: (doc: JSONContent) => string;
+}
+
 export interface RichTextEditorApi {
   /** Mete un texto (un recurso de la banca, por ejemplo) donde esta el cursor. */
   insertText: (text: string) => void;
@@ -61,6 +70,9 @@ export function RichTextEditor({
   disabled = false,
   minHeight = 160,
   extraToolbar,
+  format,
+  underline = true,
+  emoji = true,
 }: {
   id: string;
   value: string;
@@ -72,6 +84,11 @@ export function RichTextEditor({
   disabled?: boolean;
   minHeight?: number;
   extraToolbar?: (api: RichTextEditorApi) => ReactNode;
+  format?: RichTextFormat;
+  /** El botón de subrayado (el Markdown del contrato no lo tiene). */
+  underline?: boolean;
+  /** El selector de emojis (el PDF del contrato no los puede escribir). */
+  emoji?: boolean;
 }) {
   const lastEmitted = useRef<string>(value);
 
@@ -87,10 +104,11 @@ export function RichTextEditor({
         horizontalRule: false,
         blockquote: false,
         link: { openOnClick: false, autolink: true, HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" } },
+        ...(underline ? {} : { underline: false as const }),
       }),
       VariableChip,
     ],
-    content: bodyToEditorHtml(value),
+    content: format ? format.load(value) : bodyToEditorHtml(value),
     editorProps: {
       attributes: {
         id,
@@ -102,7 +120,7 @@ export function RichTextEditor({
       },
     },
     onUpdate: ({ editor: ed }) => {
-      const next = editorHtmlToBody(ed.getHTML());
+      const next = format ? format.save(ed.getJSON()) : editorHtmlToBody(ed.getHTML());
       lastEmitted.current = next;
       onChange(next);
     },
@@ -114,8 +132,8 @@ export function RichTextEditor({
     if (!editor) return;
     if (value === lastEmitted.current) return;
     lastEmitted.current = value;
-    editor.commands.setContent(bodyToEditorHtml(value), { emitUpdate: false });
-  }, [value, editor]);
+    editor.commands.setContent(format ? format.load(value) : bodyToEditorHtml(value), { emitUpdate: false });
+  }, [value, editor, format]);
 
   useEffect(() => {
     editor?.setEditable(!disabled, false);
@@ -131,7 +149,7 @@ export function RichTextEditor({
 
   return (
     <div className="rounded-lg border border-input bg-background focus-within:ring-2 focus-within:ring-ring">
-      <Toolbar editor={editor} variables={variables} disabled={disabled} extra={extraToolbar?.(api)} />
+      <Toolbar editor={editor} variables={variables} disabled={disabled} extra={extraToolbar?.(api)} underline={underline} emoji={emoji} />
       <div
         className={`px-3 py-2 text-sm [&_.rich-text-body_h1]:mb-2 [&_.rich-text-body_h1]:text-xl [&_.rich-text-body_h1]:font-bold [&_.rich-text-body_h2]:mb-2 [&_.rich-text-body_h2]:text-lg [&_.rich-text-body_h2]:font-bold [&_.rich-text-body_h3]:mb-1.5 [&_.rich-text-body_h3]:text-base [&_.rich-text-body_h3]:font-bold [&_.rich-text-body_p]:mb-2 [&_.rich-text-body_ul]:mb-2 [&_.rich-text-body_ul]:list-disc [&_.rich-text-body_ul]:pl-6 [&_.rich-text-body_ol]:mb-2 [&_.rich-text-body_ol]:list-decimal [&_.rich-text-body_ol]:pl-6 [&_.rich-text-body_a]:text-blue-600 [&_.rich-text-body_a]:underline [&_[data-variable]]:rounded [&_[data-variable]]:bg-muted [&_[data-variable]]:px-1 [&_[data-variable]]:font-mono [&_[data-variable]]:text-xs ${
           disabled ? "opacity-70" : ""
@@ -175,7 +193,21 @@ function ToolButton({
   );
 }
 
-function Toolbar({ editor, variables, disabled, extra }: { editor: Editor; variables?: string[]; disabled: boolean; extra?: ReactNode }) {
+function Toolbar({
+  editor,
+  variables,
+  disabled,
+  extra,
+  underline,
+  emoji,
+}: {
+  editor: Editor;
+  variables?: string[];
+  disabled: boolean;
+  extra?: ReactNode;
+  underline: boolean;
+  emoji: boolean;
+}) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkValue, setLinkValue] = useState("");
   const [linkError, setLinkError] = useState(false);
@@ -221,9 +253,11 @@ function Toolbar({ editor, variables, disabled, extra }: { editor: Editor; varia
         <ToolButton label="Cursiva" active={editor.isActive("italic")} disabled={disabled} onClick={run(() => editor.chain().focus().toggleItalic().run())}>
           <Italic className="h-4 w-4" aria-hidden />
         </ToolButton>
-        <ToolButton label="Subrayado" active={editor.isActive("underline")} disabled={disabled} onClick={run(() => editor.chain().focus().toggleUnderline().run())}>
-          <UnderlineIcon className="h-4 w-4" aria-hidden />
-        </ToolButton>
+        {underline && (
+          <ToolButton label="Subrayado" active={editor.isActive("underline")} disabled={disabled} onClick={run(() => editor.chain().focus().toggleUnderline().run())}>
+            <UnderlineIcon className="h-4 w-4" aria-hidden />
+          </ToolButton>
+        )}
         <span className="mx-1 h-5 w-px bg-border" aria-hidden />
         <ToolButton label="Título grande" active={editor.isActive("heading", { level: 1 })} disabled={disabled} onClick={run(() => editor.chain().focus().toggleHeading({ level: 1 }).run())}>
           <Heading1 className="h-4 w-4" aria-hidden />
@@ -250,15 +284,17 @@ function Toolbar({ editor, variables, disabled, extra }: { editor: Editor; varia
             <Unlink className="h-4 w-4" aria-hidden />
           </ToolButton>
         )}
-        <EmojiButton
-          // El emoji va donde estaba el cursor; el foco se queda en el selector para elegir varios.
-          onPick={(emoji) => editor.commands.insertContent(emoji)}
-          focusRef={undefined}
-          placement="bottom"
-          align="start"
-          disabled={disabled}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-        />
+        {emoji && (
+          <EmojiButton
+            // El emoji va donde estaba el cursor; el foco se queda en el selector para elegir varios.
+            onPick={(picked) => editor.commands.insertContent(picked)}
+            focusRef={undefined}
+            placement="bottom"
+            align="start"
+            disabled={disabled}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+          />
+        )}
         {variables && variables.length > 0 && (
           <select
             aria-label="Insertar variable"

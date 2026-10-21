@@ -9,32 +9,21 @@
  *
  * Fuentes estándar (Helvetica) con codificación WinAnsi, que cubre el español
  * (á é í ó ú ñ ü ¿ ¡). Lo que no entra (un emoji, por ejemplo) se reemplaza por `?`
- * con `toWinAnsi`: la generación nunca se rompe por un carácter raro.
+ * con `toWinAnsi` (`pdf-charset.ts`): la generación nunca se rompe por un carácter raro.
+ * Los links del texto salen subrayados y se pueden tocar (una anotación por palabra).
  */
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, PDFString, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { renderContractMarkdown, type InlineRun } from "./markdown";
+import { toWinAnsi } from "./pdf-charset";
 
 const PAGE = { width: 595.28, height: 841.89 };
 const MARGIN = { left: 56, right: 56, top: 64, bottom: 64 };
 const CONTENT_WIDTH = PAGE.width - MARGIN.left - MARGIN.right;
 const GRAY = rgb(0.4, 0.4, 0.4);
 const BLACK = rgb(0.1, 0.1, 0.1);
+const LINK = rgb(0.1, 0.3, 0.75);
 
-/** Los caracteres que WinAnsi sabe escribir: Latin-1 más unos pocos símbolos de Windows-1252. */
-const WIN_ANSI_EXTRA = new Set("€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ");
-
-/** Reemplaza por `?` lo que WinAnsi no puede escribir (y quita saltos y controles que romperían `drawText`). */
-export function toWinAnsi(text: string): string {
-  let out = "";
-  for (const char of text) {
-    const code = char.codePointAt(0) ?? 0;
-    if (char === "\n" || char === "\t") out += char === "\t" ? "    " : "\n";
-    else if (code < 32 || code === 127) out += " ";
-    else if (code <= 255 || WIN_ANSI_EXTRA.has(char)) out += char;
-    else out += "?";
-  }
-  return out;
-}
+export { toWinAnsi };
 
 export interface ContractPdfInput {
   businessName: string;
@@ -105,7 +94,7 @@ class Writer {
     const maxWidth = CONTENT_WIDTH - indent;
 
     // Cada palabra con su fuente, respetando los saltos de línea del texto.
-    type Word = { text: string; font: PDFFont; newline?: boolean };
+    type Word = { text: string; font: PDFFont; newline?: boolean; href?: string };
     const words: Word[] = [];
     for (const run of runs) {
       const font = this.fontFor(run);
@@ -113,7 +102,7 @@ class Writer {
       lines.forEach((line, lineIndex) => {
         if (lineIndex > 0) words.push({ text: "", font, newline: true });
         for (const part of line.split(/(\s+)/)) {
-          if (part !== "") words.push({ text: part, font });
+          if (part !== "") words.push({ text: part, font, ...(run.href ? { href: run.href } : {}) });
         }
       });
     }
@@ -125,8 +114,10 @@ class Writer {
       let x = MARGIN.left + indent;
       for (const word of line) {
         if (!word.text) continue;
-        this.page.drawText(word.text, { x, y: this.y - size, size, font: word.font, color: options.color ?? BLACK });
-        x += word.font.widthOfTextAtSize(word.text, size);
+        const wordWidth = word.font.widthOfTextAtSize(word.text, size);
+        this.page.drawText(word.text, { x, y: this.y - size, size, font: word.font, color: word.href ? LINK : (options.color ?? BLACK) });
+        if (word.href && !/^\s+$/.test(word.text)) this.link(x, this.y - size, wordWidth, size, word.href);
+        x += wordWidth;
       }
       this.y -= lineHeight;
       line = [];
@@ -150,7 +141,7 @@ class Writer {
       if (!isSpace && w > maxWidth) {
         for (const chunk of splitToWidth(word.text, word.font, size, maxWidth)) {
           if (line.length > 0) flush();
-          line.push({ text: chunk, font: word.font });
+          line.push({ text: chunk, font: word.font, ...(word.href ? { href: word.href } : {}) });
           width = word.font.widthOfTextAtSize(chunk, size);
         }
         continue;
@@ -159,6 +150,21 @@ class Writer {
       width += w;
     }
     if (line.length > 0) flush();
+  }
+
+  /** Subraya una palabra de un link y la hace clicable (anotación URI). */
+  link(x: number, baseline: number, width: number, size: number, href: string) {
+    this.page.drawLine({ start: { x, y: baseline - 1.5 }, end: { x: x + width, y: baseline - 1.5 }, thickness: 0.5, color: LINK });
+    const annotation = this.doc.context.register(
+      this.doc.context.obj({
+        Type: "Annot",
+        Subtype: "Link",
+        Rect: [x, baseline - 3, x + width, baseline + size],
+        Border: [0, 0, 0],
+        A: { Type: "Action", S: "URI", URI: PDFString.of(href) },
+      }),
+    );
+    this.page.node.addAnnot(annotation);
   }
 
   space(points: number) {
@@ -185,6 +191,8 @@ function splitToWidth(text: string, font: PDFFont, size: number, maxWidth: numbe
   if (current) chunks.push(current);
   return chunks;
 }
+
+const HEADING_SIZE = { 1: 15, 2: 12.5, 3: 11 } as const;
 
 const dateTime = (date: Date, timeZone: string): string => {
   try {
@@ -216,8 +224,8 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
   // El texto del contrato, con el mismo renderizador que la página.
   for (const block of renderContractMarkdown(input.text)) {
     if (block.type === "heading") {
-      w.space(block.level === 1 ? 8 : 5);
-      w.runs(block.runs.map((r) => ({ ...r, bold: true })), block.level === 1 ? 15 : 12.5);
+      w.space(block.level === 1 ? 8 : block.level === 2 ? 5 : 4);
+      w.runs(block.runs.map((r) => ({ ...r, bold: true })), HEADING_SIZE[block.level]);
       w.space(3);
     } else if (block.type === "paragraph") {
       w.runs(block.runs, 10.5);

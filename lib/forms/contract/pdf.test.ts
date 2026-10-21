@@ -58,6 +58,26 @@ describe("buildContractPdf", () => {
     expect(all).toContain("Acme");
   });
 
+  it("un link sale en el texto y se puede tocar (anotación con su dirección); un título 3 también sale", async () => {
+    const bytes = await buildContractPdf(base({ text: "### Contacto\n\nEscribinos a [nuestro soporte](mailto:soporte@x.com) o mirá [la web](https://x.com/terminos)." }));
+    const { all } = await read(bytes);
+    expect(all).toContain("Contacto");
+    expect(all).toContain("nuestro soporte");
+    const doc = await PDFDocument.load(bytes);
+    const uris = doc.getPages().flatMap((page) => {
+      const annots = page.node.Annots();
+      if (!annots) return [];
+      return annots.asArray().map((ref) => {
+        const annot = doc.context.lookup(ref) as unknown as { get: (k: PDFName) => unknown };
+        const action = doc.context.lookup(annot.get(PDFName.of("A")) as never) as unknown as { get: (k: PDFName) => { decodeText: () => string } };
+        return action.get(PDFName.of("URI")).decodeText();
+      });
+    });
+    // Una anotación por palabra del link.
+    expect(uris.filter((u) => u === "mailto:soporte@x.com")).toHaveLength(2);
+    expect(uris.filter((u) => u === "https://x.com/terminos")).toHaveLength(2);
+  });
+
   it("la ñ y el ¿ aparecen en el texto extraído; un emoji no rompe la generación", async () => {
     const bytes = await buildContractPdf(base({ text: "Cláusula única: ¿España? Mañana 😀 se firma." }));
     const { all } = await read(bytes);
