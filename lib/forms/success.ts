@@ -12,7 +12,14 @@ import { z } from "zod";
 import { UTM_KEYS } from "@/lib/attribution/keys";
 
 export type SuccessConfig =
-  | { mode: "message"; title?: string; body?: string; button?: { label: string; url: string } }
+  | {
+      mode: "message";
+      title?: string;
+      body?: string;
+      button?: { label: string; url: string };
+      /** Solo contratos: el botón "Descargar contrato" con la copia firmada (link de 24 h, `contract/copy-link.ts`). */
+      downloadContract?: boolean;
+    }
   | { mode: "redirect"; url: string; passParams: boolean };
 
 export const DEFAULT_SUCCESS: SuccessConfig = {
@@ -43,6 +50,7 @@ const successSchema = z.discriminatedUnion("mode", [
     title: z.string().max(200).optional(),
     body: z.string().max(2000).optional(),
     button: z.object({ label: z.string().trim().min(1).max(60), url: buttonUrl }).optional(),
+    downloadContract: z.boolean().optional(),
   }),
   z.object({
     mode: z.literal("redirect"),
@@ -83,6 +91,8 @@ export interface RenderedSuccess {
   body?: string;
   button?: { label: string; url: string };
   url?: string;
+  /** Solo un contrato con "Descargar contrato" prendido: dónde bajar la copia firmada. */
+  download?: { url: string };
 }
 
 const TOKEN_RE = /\{\{\s*(answer\.[a-z][a-z0-9_]*|form\.name)\s*\}\}/g;

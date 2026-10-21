@@ -58,6 +58,26 @@ describe("buildContractPdf", () => {
     expect(all).toContain("Acme");
   });
 
+  it("un link sale en el texto y se puede tocar (anotación con su dirección); un título 3 también sale", async () => {
+    const bytes = await buildContractPdf(base({ text: "### Contacto\n\nEscribinos a [nuestro soporte](mailto:soporte@x.com) o mirá [la web](https://x.com/terminos)." }));
+    const { all } = await read(bytes);
+    expect(all).toContain("Contacto");
+    expect(all).toContain("nuestro soporte");
+    const doc = await PDFDocument.load(bytes);
+    const uris = doc.getPages().flatMap((page) => {
+      const annots = page.node.Annots();
+      if (!annots) return [];
+      return annots.asArray().map((ref) => {
+        const annot = doc.context.lookup(ref) as unknown as { get: (k: PDFName) => unknown };
+        const action = doc.context.lookup(annot.get(PDFName.of("A")) as never) as unknown as { get: (k: PDFName) => { decodeText: () => string } };
+        return action.get(PDFName.of("URI")).decodeText();
+      });
+    });
+    // Una anotación por palabra del link.
+    expect(uris.filter((u) => u === "mailto:soporte@x.com")).toHaveLength(2);
+    expect(uris.filter((u) => u === "https://x.com/terminos")).toHaveLength(2);
+  });
+
   it("la ñ y el ¿ aparecen en el texto extraído; un emoji no rompe la generación", async () => {
     const bytes = await buildContractPdf(base({ text: "Cláusula única: ¿España? Mañana 😀 se firma." }));
     const { all } = await read(bytes);
@@ -148,5 +168,45 @@ describe("el firmante no se repite en la lista de respuestas (R10)", () => {
     const everything = orderedAnswers(stored, fields.map((f) => f.key)).map(([, a]) => ({ label: a.label, value: answerToText(a.value) }));
     const { all } = await read(await buildContractPdf(base({ answers: everything })));
     expect(all.split("ana@example.com").length).toBeGreaterThan(2);
+  });
+});
+
+describe("modo Contrato: firmas abajo y certificado aparte", () => {
+  const RENDERED = "d".repeat(64);
+  const JPG_1X1 = Uint8Array.from(
+    Buffer.from(
+      "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=",
+      "base64",
+    ),
+  );
+
+  it("las dos firmas con sus nombres, el certificado en otra página y la huella del documento al pie", async () => {
+    const bytes = await buildContractPdf(
+      base({
+        text: "# Acuerdo\n\nEntre **Acme SA** y Mi Negocio, por 1500.00.",
+        signaturePng: PNG_1X1,
+        contract: { renderedSha256: RENDERED, businessSigner: { name: "Wendy Mardigian", role: "Directora", image: PNG_1X1 } },
+      }),
+    );
+    const { pages, totalPages } = await read(bytes);
+    expect(totalPages).toBe(2);
+    expect(pages[0]).toContain("Acme SA");
+    expect(pages[0]).toContain("Firmas");
+    expect(pages[0]).toContain("Wendy Mardigian");
+    expect(pages[0]).toContain("Directora");
+    expect(pages[0]).toContain("Ana Pérez");
+    expect(pages[1]).toContain("Certificado de firma");
+    expect(pages[1]).toContain(RENDERED);
+    expect(pages[1]).toContain(SHA);
+    // Al pie de cada página, la huella del documento firmado (no la de la plantilla).
+    expect(pages[0]).toContain(`SHA-256: ${RENDERED}`);
+  });
+
+  it("sin la firma del negocio, solo la de la persona; una firma del negocio en JPG también sirve", async () => {
+    const solo = await read(await buildContractPdf(base({ signaturePng: PNG_1X1, contract: { renderedSha256: RENDERED, businessSigner: null } })));
+    expect(solo.pages[0]).toContain("Ana Pérez");
+    expect(solo.pages[0]).not.toContain("Por Mi Negocio");
+    const jpg = await buildContractPdf(base({ contract: { renderedSha256: RENDERED, businessSigner: { name: "W", role: "", image: JPG_1X1 } } }));
+    expect(Buffer.from(jpg.slice(0, 5)).toString()).toBe("%PDF-");
   });
 });

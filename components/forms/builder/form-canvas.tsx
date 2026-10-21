@@ -1,6 +1,7 @@
 "use client";
 
-import { Check } from "lucide-react";
+import type { ReactNode } from "react";
+import { Check, Download } from "lucide-react";
 import { previewEnding } from "@/lib/forms/preview-view";
 import { conditionChip, emptyShortcuts, mappingChip } from "@/lib/forms/canvas-view";
 import type { ContactConfig, CustomFieldDef } from "@/lib/forms/contact-config";
@@ -40,6 +41,8 @@ export function FormCanvas({
   issues,
   addLabel,
   emptyText,
+  beforeFields,
+  afterFields,
 }: {
   mode: "form" | "eod";
   formType: FormType;
@@ -59,6 +62,10 @@ export function FormCanvas({
   issues?: PublishIssues;
   addLabel?: string;
   emptyText?: string;
+  /** Lo que va entre el título y las preguntas (en un contrato, el texto). */
+  beforeFields?: ReactNode;
+  /** Lo que va entre las preguntas y el botón de enviar (en un contrato, la aceptación y la firma). */
+  afterFields?: ReactNode;
 }) {
   const isForm = mode === "form";
   const atLimit = fields.length >= MAX_FIELDS;
@@ -98,6 +105,8 @@ export function FormCanvas({
           </div>
         )}
 
+        {beforeFields}
+
         {fields.length === 0 ? (
           <div className="space-y-3 rounded-xl border border-dashed border-border p-4 text-center">
             <p className="text-sm text-muted-foreground">{emptyText ?? "Todavía no hay preguntas. Empezá por una de las más comunes:"}</p>
@@ -135,6 +144,8 @@ export function FormCanvas({
         {!disabled && <AddQuestionPicker formType={formType} onPick={onAdd} disabled={atLimit} label={addLabel} />}
         {atLimit && <p className="text-center text-xs text-muted-foreground">Llegaste al máximo de {MAX_FIELDS} preguntas.</p>}
 
+        {afterFields}
+
         {isForm && design && onDesign && (
           <div className="pt-1">
             <div className="inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
@@ -169,6 +180,11 @@ export function FormCanvas({
               <span className="min-w-0">
                 {ending.title && <span className="block text-base font-semibold">{ending.title}</span>}
                 <span className="block whitespace-pre-line text-sm text-muted-foreground">{ending.body}</span>
+                {formType === "contract" && success?.mode === "message" && success.downloadContract && (
+                  <span className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium">
+                    <Download className="h-3.5 w-3.5" aria-hidden /> Descargar contrato
+                  </span>
+                )}
               </span>
             </span>
           </button>

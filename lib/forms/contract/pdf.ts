@@ -9,32 +9,21 @@
  *
  * Fuentes estándar (Helvetica) con codificación WinAnsi, que cubre el español
  * (á é í ó ú ñ ü ¿ ¡). Lo que no entra (un emoji, por ejemplo) se reemplaza por `?`
- * con `toWinAnsi`: la generación nunca se rompe por un carácter raro.
+ * con `toWinAnsi` (`pdf-charset.ts`): la generación nunca se rompe por un carácter raro.
+ * Los links del texto salen subrayados y se pueden tocar (una anotación por palabra).
  */
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, PDFString, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { renderContractMarkdown, type InlineRun } from "./markdown";
+import { toWinAnsi } from "./pdf-charset";
 
 const PAGE = { width: 595.28, height: 841.89 };
 const MARGIN = { left: 56, right: 56, top: 64, bottom: 64 };
 const CONTENT_WIDTH = PAGE.width - MARGIN.left - MARGIN.right;
 const GRAY = rgb(0.4, 0.4, 0.4);
 const BLACK = rgb(0.1, 0.1, 0.1);
+const LINK = rgb(0.1, 0.3, 0.75);
 
-/** Los caracteres que WinAnsi sabe escribir: Latin-1 más unos pocos símbolos de Windows-1252. */
-const WIN_ANSI_EXTRA = new Set("€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ");
-
-/** Reemplaza por `?` lo que WinAnsi no puede escribir (y quita saltos y controles que romperían `drawText`). */
-export function toWinAnsi(text: string): string {
-  let out = "";
-  for (const char of text) {
-    const code = char.codePointAt(0) ?? 0;
-    if (char === "\n" || char === "\t") out += char === "\t" ? "    " : "\n";
-    else if (code < 32 || code === 127) out += " ";
-    else if (code <= 255 || WIN_ANSI_EXTRA.has(char)) out += char;
-    else out += "?";
-  }
-  return out;
-}
+export { toWinAnsi };
 
 export interface ContractPdfInput {
   businessName: string;
@@ -60,6 +49,15 @@ export interface ContractPdfInput {
     locale?: string | null;
     acceptedLabel?: string | null;
   };
+  /**
+   * Modo Contrato: `text` es el texto que se firmó (con las variables completadas) y `renderedSha256` su huella; las
+   * firmas van abajo del texto, una al lado de la otra, y la evidencia en una página aparte ("Certificado de firma").
+   * Sin esto, el PDF es el de Aceptación de términos de siempre.
+   */
+  contract?: {
+    renderedSha256: string;
+    businessSigner: { name: string; role: string; image: Uint8Array } | null;
+  } | null;
 }
 
 interface Fonts {
@@ -105,7 +103,7 @@ class Writer {
     const maxWidth = CONTENT_WIDTH - indent;
 
     // Cada palabra con su fuente, respetando los saltos de línea del texto.
-    type Word = { text: string; font: PDFFont; newline?: boolean };
+    type Word = { text: string; font: PDFFont; newline?: boolean; href?: string };
     const words: Word[] = [];
     for (const run of runs) {
       const font = this.fontFor(run);
@@ -113,7 +111,7 @@ class Writer {
       lines.forEach((line, lineIndex) => {
         if (lineIndex > 0) words.push({ text: "", font, newline: true });
         for (const part of line.split(/(\s+)/)) {
-          if (part !== "") words.push({ text: part, font });
+          if (part !== "") words.push({ text: part, font, ...(run.href ? { href: run.href } : {}) });
         }
       });
     }
@@ -125,8 +123,10 @@ class Writer {
       let x = MARGIN.left + indent;
       for (const word of line) {
         if (!word.text) continue;
-        this.page.drawText(word.text, { x, y: this.y - size, size, font: word.font, color: options.color ?? BLACK });
-        x += word.font.widthOfTextAtSize(word.text, size);
+        const wordWidth = word.font.widthOfTextAtSize(word.text, size);
+        this.page.drawText(word.text, { x, y: this.y - size, size, font: word.font, color: word.href ? LINK : (options.color ?? BLACK) });
+        if (word.href && !/^\s+$/.test(word.text)) this.link(x, this.y - size, wordWidth, size, word.href);
+        x += wordWidth;
       }
       this.y -= lineHeight;
       line = [];
@@ -150,7 +150,7 @@ class Writer {
       if (!isSpace && w > maxWidth) {
         for (const chunk of splitToWidth(word.text, word.font, size, maxWidth)) {
           if (line.length > 0) flush();
-          line.push({ text: chunk, font: word.font });
+          line.push({ text: chunk, font: word.font, ...(word.href ? { href: word.href } : {}) });
           width = word.font.widthOfTextAtSize(chunk, size);
         }
         continue;
@@ -159,6 +159,21 @@ class Writer {
       width += w;
     }
     if (line.length > 0) flush();
+  }
+
+  /** Subraya una palabra de un link y la hace clicable (anotación URI). */
+  link(x: number, baseline: number, width: number, size: number, href: string) {
+    this.page.drawLine({ start: { x, y: baseline - 1.5 }, end: { x: x + width, y: baseline - 1.5 }, thickness: 0.5, color: LINK });
+    const annotation = this.doc.context.register(
+      this.doc.context.obj({
+        Type: "Annot",
+        Subtype: "Link",
+        Rect: [x, baseline - 3, x + width, baseline + size],
+        Border: [0, 0, 0],
+        A: { Type: "Action", S: "URI", URI: PDFString.of(href) },
+      }),
+    );
+    this.page.node.addAnnot(annotation);
   }
 
   space(points: number) {
@@ -184,6 +199,120 @@ function splitToWidth(text: string, font: PDFFont, size: number, maxWidth: numbe
   }
   if (current) chunks.push(current);
   return chunks;
+}
+
+const HEADING_SIZE = { 1: 15, 2: 12.5, 3: 11 } as const;
+
+/** Una imagen de firma (PNG del lienzo, o PNG/JPG subido para la del negocio). */
+async function embedSignature(doc: PDFDocument, bytes: Uint8Array) {
+  return bytes[0] === 0xff && bytes[1] === 0xd8 ? doc.embedJpg(bytes) : doc.embedPng(bytes);
+}
+
+/**
+ * Modo Contrato: las firmas abajo del texto, como en papel (la del negocio a la izquierda y la de la persona a la
+ * derecha; sin la del negocio, la de la persona sola), lo que completó la persona y, en una página aparte, el
+ * "Certificado de firma" con la evidencia.
+ */
+async function contractSignaturesAndCertificate(
+  doc: PDFDocument,
+  w: Writer,
+  fonts: Fonts,
+  input: ContractPdfInput,
+  contract: NonNullable<ContractPdfInput["contract"]>,
+) {
+  const BOX_W = (CONTENT_WIDTH - 24) / 2;
+  const BOX_H = 70;
+  w.space(14);
+  w.ensure(BOX_H + 80);
+  w.runs([{ text: "Firmas", bold: true }], 13);
+  w.space(6);
+  const top = w.y;
+
+  const column = async (x: number, image: Uint8Array | null, lines: Array<{ text: string; bold?: boolean }>, emptyText: string) => {
+    if (image) {
+      const embedded = await embedSignature(doc, image);
+      const scale = Math.min(BOX_W / embedded.width, BOX_H / embedded.height, 1);
+      const width = embedded.width * scale;
+      const height = embedded.height * scale;
+      w.page.drawImage(embedded, { x, y: top - BOX_H + (BOX_H - height) / 2, width, height });
+    } else {
+      w.page.drawText(toWinAnsi(emptyText), { x, y: top - BOX_H / 2, size: 9, font: fonts.italic, color: GRAY });
+    }
+    w.page.drawLine({ start: { x, y: top - BOX_H - 4 }, end: { x: x + BOX_W, y: top - BOX_H - 4 }, thickness: 0.6, color: BLACK });
+    let y = top - BOX_H - 18;
+    for (const line of lines) {
+      const font = line.bold ? fonts.bold : fonts.regular;
+      const text = toWinAnsi(line.text);
+      const fitted = splitToWidth(text, font, 9.5, BOX_W)[0] ?? "";
+      w.page.drawText(fitted, { x, y, size: 9.5, font, color: line.bold ? BLACK : GRAY });
+      y -= 13;
+    }
+  };
+
+  const signedOn = dateTime(input.signedAt, input.timeZone);
+  const person = [
+    { text: input.signer.name || "-", bold: true },
+    { text: input.signer.email || "-" },
+    { text: `Firmó: ${signedOn}` },
+  ];
+  if (contract.businessSigner) {
+    await column(MARGIN.left, contract.businessSigner.image, [
+      { text: contract.businessSigner.name, bold: true },
+      ...(contract.businessSigner.role ? [{ text: contract.businessSigner.role }] : []),
+      { text: `Por ${input.businessName}` },
+    ], "");
+    await column(MARGIN.left + BOX_W + 24, input.signaturePng, person, "Sin firma dibujada (no era obligatoria)");
+  } else {
+    await column(MARGIN.left, input.signaturePng, person, "Sin firma dibujada (no era obligatoria)");
+  }
+  w.y = top - BOX_H - 18 - 13 * 3 - 8;
+
+  if (input.answers.length > 0) {
+    w.space(8);
+    w.ensure(40);
+    w.runs([{ text: "Datos que completó la persona", bold: true }], 11);
+    w.space(2);
+    for (const answer of input.answers) w.runs([{ text: `${answer.label}: `, bold: true }, { text: answer.value || "-" }], 9.5);
+  }
+
+  // El certificado, en su propia página.
+  w.newPage();
+  w.runs([{ text: "Certificado de firma", bold: true }], 16);
+  w.space(4);
+  w.runs([{ text: `${input.title} · ${input.businessName}`, italic: true }], 10, { color: GRAY });
+  w.space(10);
+  const rows: Array<[string, string]> = [
+    ["Firmante", `${input.signer.name || "-"} (${input.signer.email || "-"})`],
+    ...(contract.businessSigner ? ([["Firma del negocio", `${contract.businessSigner.name}${contract.businessSigner.role ? `, ${contract.businessSigner.role}` : ""}`]] as Array<[string, string]>) : []),
+    ["Fecha y hora (servidor)", `${signedOn} (${input.timeZone})`],
+    ["Fecha y hora (UTC)", input.signedAt.toISOString()],
+    ["Dirección IP", input.legal.ip || "-"],
+    ["Dispositivo", input.legal.device || "-"],
+    ["Sistema operativo", input.legal.os || "-"],
+    ["Navegador", input.legal.browser || "-"],
+    ["Zona horaria declarada por el navegador", input.legal.timezone || "-"],
+    ["Idioma declarado por el navegador", input.legal.locale || "-"],
+    ["Casilla de aceptación", input.legal.acceptedLabel || "-"],
+    ["Firma dibujada", input.signaturePng ? "Sí" : "No (no era obligatoria)"],
+    ["Versión de la plantilla", `Versión ${input.versionNumber}`],
+    ["Huella SHA-256 del documento firmado", contract.renderedSha256],
+    ["Huella SHA-256 de la plantilla", input.sha256],
+  ];
+  for (const [label, value] of rows) {
+    w.runs([{ text: `${label}: `, bold: true }, { text: value }], 9.5);
+    w.space(2);
+  }
+  w.space(8);
+  w.runs(
+    [
+      {
+        text: "La huella del documento firmado identifica el texto exacto que vio y aceptó la persona: cualquier cambio en una sola letra da otra huella. La de la plantilla identifica la versión publicada del contrato de la que salió.",
+        italic: true,
+      },
+    ],
+    8.5,
+    { color: GRAY },
+  );
 }
 
 const dateTime = (date: Date, timeZone: string): string => {
@@ -216,8 +345,8 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
   // El texto del contrato, con el mismo renderizador que la página.
   for (const block of renderContractMarkdown(input.text)) {
     if (block.type === "heading") {
-      w.space(block.level === 1 ? 8 : 5);
-      w.runs(block.runs.map((r) => ({ ...r, bold: true })), block.level === 1 ? 15 : 12.5);
+      w.space(block.level === 1 ? 8 : block.level === 2 ? 5 : 4);
+      w.runs(block.runs.map((r) => ({ ...r, bold: true })), HEADING_SIZE[block.level]);
       w.space(3);
     } else if (block.type === "paragraph") {
       w.runs(block.runs, 10.5);
@@ -239,59 +368,63 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     }
   }
 
-  // El firmante y lo que respondió.
-  w.space(10);
-  w.ensure(60);
-  w.runs([{ text: "Firmante", bold: true }], 13);
-  w.space(3);
-  w.runs([{ text: "Nombre: ", bold: true }, { text: input.signer.name || "-" }], 10.5);
-  w.runs([{ text: "Email: ", bold: true }, { text: input.signer.email || "-" }], 10.5);
-  for (const answer of input.answers) {
-    w.runs([{ text: `${answer.label}: `, bold: true }, { text: answer.value || "-" }], 10.5);
-  }
-
-  // La firma dibujada.
-  w.space(10);
-  if (input.signaturePng) {
-    const image = await doc.embedPng(input.signaturePng);
-    const maxWidth = 220;
-    const scale = Math.min(1, maxWidth / image.width);
-    const width = image.width * scale;
-    const height = image.height * scale;
-    w.ensure(height + 22);
-    w.runs([{ text: "Firma", bold: true }], 11);
-    w.space(2);
-    w.page.drawImage(image, { x: MARGIN.left, y: w.y - height, width, height });
-    w.page.drawRectangle({ x: MARGIN.left, y: w.y - height, width, height, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.5 });
-    w.y -= height + 8;
+  if (input.contract) {
+    await contractSignaturesAndCertificate(doc, w, fonts, input, input.contract);
   } else {
-    w.runs([{ text: "Firma: ", bold: true }, { text: "sin firma dibujada (no era obligatoria)", italic: true }], 10.5);
-  }
+    // El firmante y lo que respondió.
+    w.space(10);
+    w.ensure(60);
+    w.runs([{ text: "Firmante", bold: true }], 13);
+    w.space(3);
+    w.runs([{ text: "Nombre: ", bold: true }, { text: input.signer.name || "-" }], 10.5);
+    w.runs([{ text: "Email: ", bold: true }, { text: input.signer.email || "-" }], 10.5);
+    for (const answer of input.answers) {
+      w.runs([{ text: `${answer.label}: `, bold: true }, { text: answer.value || "-" }], 10.5);
+    }
 
-  // Datos de aceptación: lo que sirve de evidencia.
-  w.space(12);
-  w.ensure(110);
-  w.runs([{ text: "Datos de aceptación", bold: true }], 13);
-  w.space(3);
-  const rows: Array<[string, string]> = [
-    ["Fecha y hora (servidor)", `${dateTime(input.signedAt, input.timeZone)} (${input.timeZone})`],
-    ["Fecha y hora (UTC)", input.signedAt.toISOString()],
-    ["Dirección IP", input.legal.ip || "-"],
-    ["Dispositivo", input.legal.device || "-"],
-    ["Sistema operativo", input.legal.os || "-"],
-    ["Navegador", input.legal.browser || "-"],
-    ["Zona horaria declarada por el navegador", input.legal.timezone || "-"],
-    ["Idioma declarado por el navegador", input.legal.locale || "-"],
-    ["Casilla de aceptación", input.legal.acceptedLabel || "-"],
-    ["Versión del texto", `Versión ${input.versionNumber}`],
-    ["Huella SHA-256 del texto", input.sha256],
-  ];
-  for (const [label, value] of rows) w.runs([{ text: `${label}: `, bold: true }, { text: value }], 9.5);
+    // La firma dibujada.
+    w.space(10);
+    if (input.signaturePng) {
+      const image = await doc.embedPng(input.signaturePng);
+      const maxWidth = 220;
+      const scale = Math.min(1, maxWidth / image.width);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      w.ensure(height + 22);
+      w.runs([{ text: "Firma", bold: true }], 11);
+      w.space(2);
+      w.page.drawImage(image, { x: MARGIN.left, y: w.y - height, width, height });
+      w.page.drawRectangle({ x: MARGIN.left, y: w.y - height, width, height, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.5 });
+      w.y -= height + 8;
+    } else {
+      w.runs([{ text: "Firma: ", bold: true }, { text: "sin firma dibujada (no era obligatoria)", italic: true }], 10.5);
+    }
+
+    // Datos de aceptación: lo que sirve de evidencia.
+    w.space(12);
+    w.ensure(110);
+    w.runs([{ text: "Datos de aceptación", bold: true }], 13);
+    w.space(3);
+    const rows: Array<[string, string]> = [
+      ["Fecha y hora (servidor)", `${dateTime(input.signedAt, input.timeZone)} (${input.timeZone})`],
+      ["Fecha y hora (UTC)", input.signedAt.toISOString()],
+      ["Dirección IP", input.legal.ip || "-"],
+      ["Dispositivo", input.legal.device || "-"],
+      ["Sistema operativo", input.legal.os || "-"],
+      ["Navegador", input.legal.browser || "-"],
+      ["Zona horaria declarada por el navegador", input.legal.timezone || "-"],
+      ["Idioma declarado por el navegador", input.legal.locale || "-"],
+      ["Casilla de aceptación", input.legal.acceptedLabel || "-"],
+      ["Versión del texto", `Versión ${input.versionNumber}`],
+      ["Huella SHA-256 del texto", input.sha256],
+    ];
+    for (const [label, value] of rows) w.runs([{ text: `${label}: `, bold: true }, { text: value }], 9.5);
+  }
 
   // Pie de cada página: la huella y la versión.
   const total = w.pages.length;
   w.pages.forEach((page, index) => {
-    const footer = toWinAnsi(`Versión ${input.versionNumber}  |  SHA-256: ${input.sha256}`);
+    const footer = toWinAnsi(`Versión ${input.versionNumber}  |  SHA-256: ${input.contract?.renderedSha256 ?? input.sha256}`);
     page.drawLine({ start: { x: MARGIN.left, y: 44 }, end: { x: PAGE.width - MARGIN.right, y: 44 }, thickness: 0.4, color: rgb(0.8, 0.8, 0.8) });
     page.drawText(footer, { x: MARGIN.left, y: 30, size: 6.5, font: fonts.regular, color: GRAY });
     const label = `${index + 1} de ${total}`;

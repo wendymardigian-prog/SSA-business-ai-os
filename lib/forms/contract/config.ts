@@ -6,11 +6,11 @@
  * no cambia).
  */
 import { z } from "zod";
-import { DEFAULT_ACCEPT_LABEL, type ContractConfig } from "@/lib/forms/defaults";
+import { DEFAULT_ACCEPT_LABEL, NO_BUSINESS_SIGNER, type BusinessSigner, type ContractConfig } from "@/lib/forms/defaults";
 import type { FormField } from "@/lib/forms/fields";
 
-export { DEFAULT_ACCEPT_LABEL };
-export type { ContractConfig };
+export { DEFAULT_ACCEPT_LABEL, NO_BUSINESS_SIGNER };
+export type { BusinessSigner, ContractConfig };
 
 export const MAX_CC_EMAILS = 3;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -20,6 +20,17 @@ const schema = z.object({
   signatureRequired: z.boolean(),
   acceptLabel: z.string().trim().min(1).max(200),
   ccEmails: z.array(z.string().trim().toLowerCase().regex(EMAIL_RE, "Una de las direcciones de copia no es válida")).max(MAX_CC_EMAILS, `Hasta ${MAX_CC_EMAILS} direcciones de copia`),
+  // Una configuración guardada antes de que existiera esta opción la tiene prendida.
+  copyToOwner: z.boolean().default(true),
+  mode: z.enum(["terms", "contract"]).default("terms"),
+  businessSigner: z
+    .object({
+      enabled: z.boolean(),
+      name: z.string().trim().max(120),
+      role: z.string().trim().max(120),
+      signaturePath: z.string().max(500).nullable(),
+    })
+    .default(NO_BUSINESS_SIGNER),
 });
 
 export type ContractConfigResult = { ok: true; config: ContractConfig } | { ok: false; errors: string[] };
@@ -27,7 +38,17 @@ export type ContractConfigResult = { ok: true; config: ContractConfig } | { ok: 
 export function validateContractConfig(input: unknown): ContractConfigResult {
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, errors: [...new Set(parsed.error.issues.map((i) => i.message))] };
+  const signer = parsed.data.businessSigner;
+  // La firma de ambas partes solo existe en modo Contrato, y prendida necesita la firma y el nombre.
+  if (signer.enabled && parsed.data.mode !== "contract") return { ok: false, errors: ["La firma de ambas partes solo se usa en modo Contrato"] };
+  if (signer.enabled && !signer.signaturePath) return { ok: false, errors: ["Dibujá o subí tu firma para usar la firma de ambas partes"] };
+  if (signer.enabled && !signer.name) return { ok: false, errors: ["Escribí el nombre de quien firma por el negocio"] };
   return { ok: true, config: { ...parsed.data, ccEmails: [...new Set(parsed.data.ccEmails)] } };
+}
+
+/** La ruta de una firma del negocio de ESTE formulario (la sube `uploadBusinessSignature`). */
+export function isBusinessSignaturePath(path: string, workspaceId: string, formId: string): boolean {
+  return path.startsWith(`${workspaceId}/${formId}/business-signer/`) && /^[\w/-]+\.(png|jpg)$/.test(path) && !path.includes("..");
 }
 
 /** La configuración guardada con valores por defecto si falta algo (nunca lanza). */
@@ -40,6 +61,20 @@ export function parseStoredContractConfig(raw: unknown, fallbackTitle = "Contrat
     signatureRequired: typeof obj.signatureRequired === "boolean" ? obj.signatureRequired : true,
     acceptLabel: typeof obj.acceptLabel === "string" && obj.acceptLabel.trim() ? obj.acceptLabel.trim().slice(0, 200) : DEFAULT_ACCEPT_LABEL,
     ccEmails: Array.isArray(obj.ccEmails) ? obj.ccEmails.filter((e): e is string => typeof e === "string" && EMAIL_RE.test(e)).slice(0, MAX_CC_EMAILS) : [],
+    copyToOwner: typeof obj.copyToOwner === "boolean" ? obj.copyToOwner : true,
+    mode: obj.mode === "contract" ? "contract" : "terms",
+    businessSigner: parseSigner(obj.businessSigner),
+  };
+}
+
+function parseSigner(raw: unknown): BusinessSigner {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Partial<BusinessSigner>;
+  const text = (value: unknown) => (typeof value === "string" ? value.trim().slice(0, 120) : "");
+  return {
+    enabled: obj.enabled === true,
+    name: text(obj.name),
+    role: text(obj.role),
+    signaturePath: typeof obj.signaturePath === "string" && obj.signaturePath ? obj.signaturePath.slice(0, 500) : null,
   };
 }
 

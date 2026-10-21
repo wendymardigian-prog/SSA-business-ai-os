@@ -1,3 +1,4 @@
+import type { EmailReadiness } from "@/lib/email/readiness";
 import type { FormDesign } from "@/lib/forms/defaults";
 import type { FormDefinition, FormStatus, FormType } from "@/lib/forms/fields";
 import type { SuccessConfig } from "@/lib/forms/success";
@@ -44,6 +45,10 @@ export interface EditorExtras {
   roles: Array<{ id: string; name: string }>;
   /** Respuestas (o reportes) que esta persona ve: el numerito de la pestaña Respuestas / Reportes. */
   responseCount: number | null;
+  /** Solo un contrato: si la copia firmada por correo va a salir (Resend conectado y sin rechazos). */
+  emailReadiness?: EmailReadiness;
+  /** Solo un contrato con la firma del negocio cargada: un link temporal para verla en el editor. */
+  businessSignatureUrl?: string | null;
 }
 
 export interface EditorVersion {

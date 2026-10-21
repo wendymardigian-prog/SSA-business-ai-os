@@ -20,6 +20,15 @@ import { emailJobKey, nextEmailRetryAt } from "./email-retry";
 import { answerToText, orderedAnswers, type StoredAnswer } from "@/lib/forms/responses";
 import { fieldsOf } from "@/lib/forms/server-ports";
 import { pdfSkippedKeys } from "./config";
+import { contractTextSha256 } from "@/lib/forms/contract-hash";
+
+/** La firma del negocio guardada en la firma (`business_signer`), o null si no hubo o no tiene forma. */
+export function parseSignerSnapshot(raw: unknown): { name: string; role: string; signature_path: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.name !== "string" || !obj.name || typeof obj.signature_path !== "string" || !obj.signature_path) return null;
+  return { name: obj.name, role: typeof obj.role === "string" ? obj.role : "", signature_path: obj.signature_path };
+}
 
 type Db = SupabaseClient<Database>;
 
@@ -85,6 +94,9 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
     if (!version || !form || !submission || version.contract_text === null) return fail("faltan datos de la firma");
     // La huella guardada tiene que seguir siendo la del texto: si no, no se firma nada con este PDF.
     if (version.contract_text_sha256 !== sig.text_sha256) return fail("la huella no coincide con la versión");
+    // Modo Contrato: el PDF sale del texto que se FIRMÓ (con las variables completadas), y su huella tiene que cerrar.
+    const rendered = sig.rendered_text ?? null;
+    if (rendered !== null && contractTextSha256(rendered) !== sig.rendered_sha256) return fail("la huella del texto firmado no coincide");
 
     const { data: workspace } = await db.from("workspaces").select("timezone").eq("id", sig.workspace_id).maybeSingle();
     const config = (form.contract_config ?? {}) as { title?: string };
@@ -95,6 +107,14 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
     if (sig.signature_path) {
       signaturePng = await storage.download(sig.signature_path);
       if (!signaturePng) return fail("no pude leer la imagen de la firma");
+    }
+    // La firma del negocio que se estampó al firmar (la imagen de ESE momento, aunque después se cambie).
+    const signer = parseSignerSnapshot(sig.business_signer);
+    let businessSigner: { name: string; role: string; image: Uint8Array } | null = null;
+    if (signer) {
+      const image = await storage.download(signer.signature_path);
+      if (!image) return fail("no pude leer la imagen de la firma del negocio");
+      businessSigner = { name: signer.name, role: signer.role, image };
     }
 
     const definitionFields = fieldsOf(version.definition);
@@ -108,7 +128,7 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
     const bytes = await (deps.build ?? buildContractPdf)({
       businessName: (deps.businessName ?? brandName)(),
       title: config.title?.trim() || form.name,
-      text: version.contract_text,
+      text: rendered ?? version.contract_text,
       versionNumber: version.version_number,
       sha256: sig.text_sha256,
       signer: { name: sig.signer_name, email: sig.signer_email },
@@ -125,6 +145,7 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
         locale: str("locale"),
         acceptedLabel: str("accepted_label"),
       },
+      contract: rendered !== null && sig.rendered_sha256 ? { renderedSha256: sig.rendered_sha256, businessSigner } : null,
     });
 
     const path = `${sig.workspace_id}/${sig.form_id}/${sig.id}/contrato-v${version.version_number}.pdf`;

@@ -3,8 +3,10 @@
  *
  * Lo llama el job `contract_email` (y "Reenviar copia" de la respuesta).
  *  - Baja el PDF del bucket y lo manda como adjunto con `sendTransactionalEmail`
- *    (`kind: "contract_copy"`); las direcciones de copia (`ccEmails`) reciben un envío
- *    aparte cada una.
+ *    (`kind: "contract_copy"`) a quien firmó. Las direcciones de copia (`ccEmails`) y, con
+ *    `copyToOwner` (por defecto), el Owner del negocio reciben un envío aparte cada una, con
+ *    otro texto ("se firmó…"), sin repetir una dirección.
+ *  - La fecha va en la zona del negocio (`workspaces.timezone`).
  *  - Un fallo TRANSITORIO (429, 5xx, red) agenda otro intento a +5, +15 y +30 minutos
  *    (NO lanza: la cola reintentaría a los 10 s encima). Uno permanente (un 4xx que no
  *    sea 429), Resend sin conectar o agotados los reintentos deja `not_sent` con el motivo.
@@ -29,6 +31,47 @@ export interface EmailRunDeps {
   now?: () => Date;
   send?: (params: Parameters<typeof sendTransactionalEmail>[0]) => Promise<SendEmailResult>;
   schedule?: (type: string, payload: Record<string, unknown>, runAt: Date, dedupeKey: string) => Promise<void>;
+  /** Los emails del/los Owner del workspace (para "Mandarme una copia"). Nunca lanza: sin dato, lista vacía. */
+  ownerEmails?: (workspaceId: string) => Promise<string[]>;
+}
+
+/** Los Owner del workspace, con el cliente de servicio (`auth.admin`). Sin dato o con un error, ninguno. */
+async function defaultOwnerEmails(db: Db, workspaceId: string): Promise<string[]> {
+  try {
+    const { data: owners } = await db.from("workspace_members").select("user_id").eq("workspace_id", workspaceId).eq("role", "owner");
+    const emails: string[] = [];
+    for (const owner of owners ?? []) {
+      const { data } = await db.auth.admin.getUserById(owner.user_id);
+      if (data?.user?.email) emails.push(data.user.email.toLowerCase());
+    }
+    return emails;
+  } catch {
+    return [];
+  }
+}
+
+/** La fecha de la firma en la zona del negocio ("21 de octubre de 2026, 10:30"), con UTC si la zona no sirve. */
+export function signedAtText(signedAt: string, timeZone: string | null | undefined): string {
+  const date = new Date(signedAt);
+  try {
+    if (timeZone) return `${new Intl.DateTimeFormat("es", { dateStyle: "long", timeStyle: "short", timeZone }).format(date)} (${timeZone})`;
+  } catch {
+    // Una zona inválida cae a UTC.
+  }
+  return `${new Intl.DateTimeFormat("es", { dateStyle: "long", timeStyle: "short", timeZone: "UTC" }).format(date)} (UTC)`;
+}
+
+/** A quién va cada copia aparte: las direcciones configuradas y los Owner, sin la del firmante ni repetidas. */
+export function copyRecipients(signerEmail: string, ccEmails: string[], ownerEmails: string[]): string[] {
+  const seen = new Set([signerEmail.trim().toLowerCase()]);
+  const out: string[] = [];
+  for (const email of [...ccEmails, ...ownerEmails]) {
+    const clean = email.trim().toLowerCase();
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    out.push(clean);
+  }
+  return out;
 }
 
 async function defaultSchedule(db: Db, type: string, payload: Record<string, unknown>, runAt: Date, dedupeKey: string) {
@@ -88,26 +131,32 @@ export async function runContractEmail(deps: EmailRunDeps, input: { signatureId:
   const pdf = await storage.download(sig.pdf_path);
   if (!pdf) return markNotSent("No pude leer el PDF para adjuntarlo");
 
-  const [{ data: form }, { data: version }] = await Promise.all([
+  const [{ data: form }, { data: version }, { data: workspace }] = await Promise.all([
     db.from("forms").select("name, contract_config").eq("id", sig.form_id).maybeSingle(),
     db.from("form_versions").select("version_number").eq("id", sig.form_version_id).maybeSingle(),
+    db.from("workspaces").select("timezone").eq("id", sig.workspace_id).maybeSingle(),
   ]);
   const config = parseStoredContractConfig(form?.contract_config, form?.name ?? "Contrato");
   const title = config.title || form?.name || "Contrato";
-  const signedAt = new Intl.DateTimeFormat("es", { dateStyle: "long", timeStyle: "short", timeZone: "UTC" }).format(new Date(sig.signed_at));
+  const signedAt = signedAtText(sig.signed_at, (workspace as { timezone?: string } | null)?.timezone);
+  const fingerprint = `${sig.text_sha256.slice(0, 16)}…`;
   const subject = `Tu copia firmada: ${title}`;
   const html = bodyToHtml(
-    `Hola${sig.signer_name ? ` ${sig.signer_name}` : ""},\n\nAdjuntamos la copia firmada de «${title}».\n\nFecha de la firma: ${signedAt} (UTC).\nLa huella del documento es ${sig.text_sha256.slice(0, 16)}…\n\nGuardá este archivo: es tu constancia.`,
+    `Hola${sig.signer_name ? ` ${sig.signer_name}` : ""},\n\nAdjuntamos la copia firmada de «${title}».\n\nFecha de la firma: ${signedAt}.\nLa huella del documento es ${fingerprint}\n\nGuardá este archivo: es tu constancia.`,
+  );
+  const copySubject = `Se firmó: ${title}`;
+  const copyHtml = bodyToHtml(
+    `Se firmó «${title}».\n\nFirmante: ${sig.signer_name || "(sin nombre)"} (${sig.signer_email}).\nFecha de la firma: ${signedAt}.\nLa huella del documento es ${fingerprint}\n\nAdjuntamos el PDF firmado.`,
   );
   const filename = `contrato-${safeFileName(title)}-v${version?.version_number ?? 1}.pdf`;
   const attachments = [{ filename, content: Buffer.from(pdf).toString("base64") }];
 
-  const sendTo = (to: string) =>
+  const sendTo = (to: string, copy = false) =>
     send({
       workspaceId: sig.workspace_id,
       to,
-      subject,
-      html,
+      subject: copy ? copySubject : subject,
+      html: copy ? copyHtml : html,
       kind: "contract_copy",
       relatedEntityType: "contract_signature",
       relatedEntityId: sig.id,
@@ -123,8 +172,11 @@ export async function runContractEmail(deps: EmailRunDeps, input: { signatureId:
       .from("contract_signatures")
       .update({ email_status: "sent", email_sent_at: now().toISOString(), email_attempts: attempt, email_next_retry_at: null, email_last_error: null })
       .eq("id", sig.id);
-    // Las copias van aparte y no cambian el estado: si una falla, queda en email_log.
-    for (const cc of config.ccEmails) await sendTo(cc).catch(() => undefined);
+    // Las copias van aparte y no cambian el estado: si una falla, queda en email_log. Un reenvío manual ("Reenviar
+    // copia") no le vuelve a llegar al Owner: ya la tiene.
+    const owners =
+      config.copyToOwner && !input.manual ? await (deps.ownerEmails ?? ((id: string) => defaultOwnerEmails(db, id)))(sig.workspace_id).catch(() => []) : [];
+    for (const to of copyRecipients(sig.signer_email, config.ccEmails, owners)) await sendTo(to, true).catch(() => undefined);
     return "sent";
   }
 

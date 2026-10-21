@@ -63,7 +63,7 @@ export function SurveyTab({
   return (
     <div className="mx-auto max-w-[900px] space-y-4">
       {candidates.length === 0 && (
-        <Notice tone="warning">Para publicar la encuesta hace falta un campo de estrellas o de NPS obligatorio. Sumalo en la pestaña Campos.</Notice>
+        <Notice tone="warning">Para publicar la encuesta hace falta un campo de estrellas o de NPS obligatorio. Sumalo en la pestaña Diseño.</Notice>
       )}
 
       <Section title="El puntaje" description="El campo cuyo valor cuenta para el NPS o el promedio. Tiene que ser de estrellas o de NPS, y obligatorio.">

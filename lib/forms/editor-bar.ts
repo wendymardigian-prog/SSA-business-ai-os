@@ -6,7 +6,11 @@
 import { FORM_STATUS_LABELS, type FormStatus, type FormType } from "./fields";
 
 /** Las pestañas que viven dentro del editor y se eligen con `?tab=`. */
-export type EditorSection = "campos" | "contacto" | "flows" | "publicar" | "contrato" | "configuracion" | "canales";
+/**
+ * `campos` es la pestaña Diseño (el lienzo con las preguntas y, en un contrato, el texto y la firma). La clave no
+ * cambió para no romper links; `contrato` ya no es una pestaña: un link viejo con `?tab=contrato` abre Diseño.
+ */
+export type EditorSection = "campos" | "contacto" | "flows" | "publicar" | "configuracion" | "canales";
 
 /** Donde esta parado el editor: la pantalla principal o una de sus rutas hermanas. */
 export type EditorRoute = "editor" | "respuestas" | "metricas" | "encuesta" | "reportes";
@@ -65,8 +69,7 @@ export function sectionsFor(type: FormType, eodVariant?: "setter" | "general" | 
     ];
   }
   return [
-    { key: "campos", label: "Campos" },
-    ...(type === "contract" ? [{ key: "contrato" as const, label: "Contrato" }] : []),
+    { key: "campos", label: "Diseño" },
     { key: "contacto", label: "Contacto" },
     { key: "flows", label: "Flows" },
     { key: "publicar", label: "Publicar" },
@@ -77,7 +80,9 @@ export function sectionsFor(type: FormType, eodVariant?: "setter" | "general" | 
 export function parseEditorTab(type: FormType, eodVariant: "setter" | "general" | null | undefined, raw: unknown): EditorSection {
   const sections = sectionsFor(type, eodVariant);
   const value = Array.isArray(raw) ? raw[0] : raw;
-  return sections.find((s) => s.key === value)?.key ?? sections[0].key;
+  // La vieja pestaña Contrato vive ahora dentro de Diseño.
+  const wanted = value === "contrato" ? "campos" : value;
+  return sections.find((s) => s.key === wanted)?.key ?? sections[0].key;
 }
 
 /** La direccion de una pestaña del editor: la primera es la pantalla sin `?tab=`. */
@@ -115,7 +120,7 @@ export function editorBarView(
   const tabs: BarTab[] = [];
   for (const s of sections) {
     tabs.push({ key: s.key, label: s.label, href: sectionHref(form.id, s.key, first), active: active === s.key, kind: "section" });
-    // La encuesta es una ruta propia (su panel de NPS y su configuracion); va justo despues de Campos.
+    // La encuesta es una ruta propia (su panel de NPS y su configuracion); va justo despues de Diseño.
     if (form.type === "survey" && s.key === "campos") {
       tabs.push({ key: "encuesta", label: "Encuesta", href: `${base}/encuesta`, active: options.route === "encuesta", kind: "route" });
     }

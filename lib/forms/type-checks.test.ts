@@ -26,6 +26,14 @@ describe("contrato", () => {
     expect(contractChecks()({ fields: [{ ...newField("email", "email"), required: false }], contractText: "Texto" })).toHaveLength(1);
     expect(contractChecks()({ fields: [{ ...newField("email", "email"), required: true }], contractText: "Texto" })).toEqual([]);
   });
+  it("variables: en Aceptación de términos no se publican; en modo Contrato, solo las que existen", () => {
+    const fields = [{ ...newField("email", "email"), required: true }, { ...newField("short_text", "empresa"), required: true }];
+    const terms = contractChecks({ title: "A", mode: "terms" });
+    expect(terms({ fields, contractText: "Entre {{respuesta.empresa}} y nosotros" })[0]).toContain("solo funcionan en modo Contrato");
+    const contract = contractChecks({ title: "A", mode: "contract" });
+    expect(contract({ fields, contractText: "Entre {{respuesta.empresa}} y {{negocio.nombre}}, el {{fecha}}" })).toEqual([]);
+    expect(contract({ fields, contractText: "Entre {{respuesta.cuit}} y {{venta.precio}}" })[0]).toBe("El contrato usa variables que no existen: {{respuesta.cuit}}, {{venta.precio}}");
+  });
 });
 
 describe("typeChecks", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateContractConfig, parseStoredContractConfig, parseCcInput, signerEmailField, signerNameFromAnswers } from "./config";
+import { validateContractConfig, parseStoredContractConfig, parseCcInput, signerEmailField, signerNameFromAnswers, isBusinessSignaturePath } from "./config";
 import { newField } from "@/lib/forms/fields";
 
 const ok = (over = {}) => ({ title: "Acuerdo", signatureRequired: true, acceptLabel: "Acepto", ccEmails: [], ...over });
@@ -22,8 +22,12 @@ describe("validateContractConfig", () => {
 
 describe("parseStoredContractConfig", () => {
   it("completa lo que falta con los valores por defecto y nunca lanza", () => {
-    expect(parseStoredContractConfig(null, "Mi contrato")).toEqual({ title: "Mi contrato", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [] });
+    expect(parseStoredContractConfig(null, "Mi contrato")).toEqual({ title: "Mi contrato", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [], copyToOwner: true, mode: "terms", businessSigner: { enabled: false, name: "", role: "", signaturePath: null } });
     expect(parseStoredContractConfig({ title: "T", signatureRequired: false, ccEmails: ["x@y.com", "roto"] }).ccEmails).toEqual(["x@y.com"]);
+  });
+  it("la copia al Owner: prendida si la configuración es de antes de la opción, y se respeta si se apagó", () => {
+    expect(parseStoredContractConfig({ title: "T", signatureRequired: true, acceptLabel: "A", ccEmails: [] }).copyToOwner).toBe(true);
+    expect(parseStoredContractConfig({ title: "T", signatureRequired: true, acceptLabel: "A", ccEmails: [], copyToOwner: false }).copyToOwner).toBe(false);
   });
 });
 
@@ -42,5 +46,36 @@ describe("signer", () => {
     expect(signerNameFromAnswers(fields, { empresa: "Acme", nombre_firmante: " Ana Pérez " })).toBe("Ana Pérez");
     expect(signerNameFromAnswers([newField("short_text", "empresa", "Empresa")], { empresa: "Acme" })).toBe("Acme");
     expect(signerNameFromAnswers(fields, {})).toBe("");
+  });
+});
+
+describe("modo y firma de ambas partes", () => {
+  const base = { title: "Acuerdo", signatureRequired: true, acceptLabel: "Acepto", ccEmails: [] };
+  const signer = { enabled: true, name: "Wendy Mardigian", role: "Directora", signaturePath: "ws/form/business-signer/a.png" };
+
+  it("una configuración de antes queda en Aceptación de términos y sin firma del negocio", () => {
+    const parsed = parseStoredContractConfig(base);
+    expect(parsed.mode).toBe("terms");
+    expect(parsed.businessSigner).toEqual({ enabled: false, name: "", role: "", signaturePath: null });
+    const checked = validateContractConfig(base);
+    expect(checked.ok && checked.config.mode).toBe("terms");
+  });
+
+  it("la firma de ambas partes necesita el modo Contrato, la imagen y el nombre", () => {
+    expect(validateContractConfig({ ...base, mode: "terms", businessSigner: signer }).ok).toBe(false);
+    expect(validateContractConfig({ ...base, mode: "contract", businessSigner: { ...signer, signaturePath: null } }).ok).toBe(false);
+    expect(validateContractConfig({ ...base, mode: "contract", businessSigner: { ...signer, name: " " } }).ok).toBe(false);
+    expect(validateContractConfig({ ...base, mode: "contract", businessSigner: signer }).ok).toBe(true);
+    // Apagada, no pide nada.
+    expect(validateContractConfig({ ...base, mode: "contract", businessSigner: { enabled: false, name: "", role: "", signaturePath: null } }).ok).toBe(true);
+  });
+
+  it("solo una imagen de la firma de ESTE formulario", () => {
+    expect(isBusinessSignaturePath("ws1/f1/business-signer/abc-123.png", "ws1", "f1")).toBe(true);
+    expect(isBusinessSignaturePath("ws1/f1/business-signer/abc.jpg", "ws1", "f1")).toBe(true);
+    expect(isBusinessSignaturePath("ws2/f1/business-signer/abc.png", "ws1", "f1")).toBe(false);
+    expect(isBusinessSignaturePath("ws1/f1/business-signer/../../x.png", "ws1", "f1")).toBe(false);
+    expect(isBusinessSignaturePath("ws1/f1/sig/abc.png", "ws1", "f1")).toBe(false);
+    expect(isBusinessSignaturePath("ws1/f1/business-signer/abc.svg", "ws1", "f1")).toBe(false);
   });
 });

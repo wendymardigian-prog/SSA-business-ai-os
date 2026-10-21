@@ -9,9 +9,9 @@ describe("renderContractMarkdown", () => {
     expect(blocks[1]).toEqual({ type: "paragraph", runs: [{ text: "hola", bold: true }, { text: " <script>x</script>" }] });
   });
 
-  it("## es un título de segundo nivel y los más profundos también", () => {
-    const blocks = renderContractMarkdown("## Cláusula\n\n### Subcláusula");
-    expect(blocks.map((b) => (b.type === "heading" ? b.level : 0))).toEqual([2, 2]);
+  it("## es un título de segundo nivel, ### de tercero y los más profundos también de tercero", () => {
+    const blocks = renderContractMarkdown("## Cláusula\n\n### Subcláusula\n\n#### Más adentro");
+    expect(blocks.map((b) => (b.type === "heading" ? b.level : 0))).toEqual([2, 3, 3]);
   });
 
   it("listas con viñetas y numeradas, cada una en su bloque", () => {
@@ -37,9 +37,19 @@ describe("renderContractMarkdown", () => {
     expect(renderContractMarkdown("# A\r\n\r\nB")).toEqual(renderContractMarkdown("# A\n\nB"));
   });
 
-  it("links e imágenes no se interpretan: quedan como texto", () => {
+  it("un link es link; una imagen queda como texto", () => {
     const [p] = renderContractMarkdown("[click](http://x.com) ![img](http://x.com/a.png)");
-    expect(plainText((p as { runs: { text: string }[] }).runs)).toBe("[click](http://x.com) ![img](http://x.com/a.png)");
+    expect((p as { runs: unknown[] }).runs).toEqual([
+      { text: "click", href: "http://x.com" },
+      { text: " ![img](http://x.com/a.png)" },
+    ]);
+  });
+
+  it("un link a javascript: o data: no es link: queda como texto", () => {
+    for (const bad of ["[x](javascript:alert(1))", "[x](data:text/html,hola)", "[x](  )", "[](https://a.com)"]) {
+      const [p] = renderContractMarkdown(bad);
+      expect((p as { runs: Array<{ href?: string }> }).runs.every((r) => !r.href)).toBe(true);
+    }
   });
 
   it("HTML suelto queda como texto, nunca como marcado", () => {
@@ -72,6 +82,24 @@ describe("parseInline", () => {
   it("lo que no cierra queda literal", () => {
     expect(parseInline("5 * 3 y **sin cerrar")).toEqual([{ text: "5 * 3 y **sin cerrar" }]);
     expect(parseInline("snake_case_name")).toEqual([{ text: "snake_case_name" }]);
+  });
+  it("negrita y cursiva a la vez, en los dos órdenes", () => {
+    expect(parseInline("***todo***")).toEqual([{ text: "todo", bold: true, italic: true }]);
+    expect(parseInline("**a *b***")).toEqual([{ text: "a ", bold: true }, { text: "b", bold: true, italic: true }]);
+    expect(parseInline("**_a_ b**")).toEqual([{ text: "a", bold: true, italic: true }, { text: " b", bold: true }]);
+  });
+  it("un link con formato adentro, y formato alrededor de un link", () => {
+    expect(parseInline("[**Ver** acá](mailto:ana@x.com)")).toEqual([
+      { text: "Ver", bold: true, href: "mailto:ana@x.com" },
+      { text: " acá", href: "mailto:ana@x.com" },
+    ]);
+    expect(parseInline("**[web](https://a.com)**")).toEqual([{ text: "web", bold: true, href: "https://a.com" }]);
+  });
+  it("la barra invertida deja literal el carácter que sigue", () => {
+    expect(parseInline("5 \\* 3 \\_x\\_ \\[no](https://a.com) \\\\")).toEqual([{ text: "5 * 3 _x_ [no](https://a.com) \\" }]);
+    expect(parseInline("**a \\*\\* b**")).toEqual([{ text: "a ** b", bold: true }]);
+    // Una barra antes de algo que no se escapa queda como está.
+    expect(parseInline("C:\\carpeta")).toEqual([{ text: "C:\\carpeta" }]);
   });
   it("sin marcas devuelve un solo tramo", () => {
     expect(parseInline("hola")).toEqual([{ text: "hola" }]);

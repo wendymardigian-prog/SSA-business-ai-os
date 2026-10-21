@@ -23,10 +23,23 @@ const signature = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function setup(over: { sig?: Record<string, unknown> | null; ccEmails?: string[]; sendResults?: Array<{ ok: boolean; reason?: string; error?: string }>; pdf?: Uint8Array | null } = {}) {
+function setup(
+  over: {
+    sig?: Record<string, unknown> | null;
+    ccEmails?: string[];
+    copyToOwner?: boolean;
+    owners?: string[];
+    timezone?: string;
+    sendResults?: Array<{ ok: boolean; reason?: string; error?: string }>;
+    pdf?: Uint8Array | null;
+  } = {},
+) {
   const db = fakeDb({
     "contract_signatures:select": { data: over.sig === null ? null : signature(over.sig ?? {}) },
-    "forms:select": { data: { name: "Mi contrato", contract_config: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Acepto", ccEmails: over.ccEmails ?? [] } } },
+    "forms:select": {
+      data: { name: "Mi contrato", contract_config: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Acepto", ccEmails: over.ccEmails ?? [], ...(over.copyToOwner === undefined ? {} : { copyToOwner: over.copyToOwner }) } },
+    },
+    "workspaces:select": { data: { timezone: over.timezone ?? "America/Costa_Rica" } },
     "form_versions:select": { data: { version_number: 1 } },
     "contract_signatures:update": { data: null },
   });
@@ -43,6 +56,7 @@ function setup(over: { sig?: Record<string, unknown> | null; ccEmails?: string[]
     storage: { download: vi.fn(async () => (over.pdf === undefined ? new Uint8Array([0x25, 0x50, 0x44, 0x46]) : over.pdf)), upload: vi.fn(async () => true) },
     now: () => NOW,
     send: send as never,
+    ownerEmails: vi.fn(async () => over.owners ?? []),
     schedule: async (type: string, payload: Record<string, unknown>, runAt: Date, key: string) => {
       scheduled.push({ type, payload, runAt, key });
     },
@@ -53,6 +67,31 @@ function setup(over: { sig?: Record<string, unknown> | null; ccEmails?: string[]
 const lastUpdate = (db: ReturnType<typeof setup>["db"]) => db.writesTo("contract_signatures").at(-1)!.values as Record<string, unknown>;
 
 describe("runContractEmail", () => {
+  it("la fecha del correo va en la zona del negocio", async () => {
+    const { deps, sent } = setup();
+    await runContractEmail(deps, { signatureId: SIG });
+    // 11:00 UTC = 05:00 en Costa Rica.
+    expect(String(sent[0].html)).toContain("5:00");
+    expect(String(sent[0].html)).toContain("America/Costa_Rica");
+  });
+
+  it("el Owner recibe su copia con otro texto; sin repetir direcciones ni mandársela al firmante dos veces", async () => {
+    const { deps, sent } = setup({ ccEmails: ["legal@x.com"], owners: ["wendy@x.com", "LEGAL@x.com", "ana@x.com"] });
+    expect(await runContractEmail(deps, { signatureId: SIG })).toBe("sent");
+    expect(sent.map((s) => s.to)).toEqual(["ana@x.com", "legal@x.com", "wendy@x.com"]);
+    expect(sent[1]).toMatchObject({ subject: "Se firmó: Acuerdo" });
+    expect(String(sent[2].html)).toContain("Ana Pérez");
+  });
+
+  it("con la copia al Owner apagada, o en un reenvío manual, el Owner no la recibe", async () => {
+    const off = setup({ owners: ["wendy@x.com"], copyToOwner: false });
+    await runContractEmail(off.deps, { signatureId: SIG });
+    expect(off.sent.map((s) => s.to)).toEqual(["ana@x.com"]);
+    const manual = setup({ owners: ["wendy@x.com"], sig: { email_status: "sent" } });
+    await runContractEmail(manual.deps, { signatureId: SIG, manual: true });
+    expect(manual.sent.map((s) => s.to)).toEqual(["ana@x.com"]);
+  });
+
   it("manda el PDF adjunto al firmante, lo marca enviado y registra el contacto", async () => {
     const { db, deps, sent } = setup();
     expect(await runContractEmail(deps, { signatureId: SIG })).toBe("sent");

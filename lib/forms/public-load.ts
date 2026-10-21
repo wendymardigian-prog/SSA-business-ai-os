@@ -12,6 +12,8 @@ import { SLUG_PATTERN } from "./list";
 import { fieldsOf } from "./server-ports";
 import { toPublicFields } from "./public-definition";
 import { verifyFormLink } from "./signed-link";
+import { CONTRACTS_BUCKET } from "./contract/storage";
+import { loadContractLinkContext } from "./contract/link-context";
 import type { PublicFormData, PublicFormResult } from "./public-client";
 
 type Db = SupabaseClient<Database>;
@@ -21,7 +23,47 @@ export async function loadPublicFormData(service: Db, slug: string): Promise<Pub
   const { data, error } = await service.rpc("get_public_form", { p_slug: slug });
   if (error || !data || typeof data !== "object") return { status: "unavailable" };
   const result = data as unknown as PublicFormResult;
-  return result.status === "available" ? result : { status: "unavailable" };
+  if (result.status !== "available") return { status: "unavailable" };
+  return withSignerUrl(service, result);
+}
+
+/**
+ * La firma del negocio (modo Contrato) sale de `get_public_form` con la RUTA de su imagen en el bucket privado: acá
+ * se cambia por un link temporal (1 hora) y la ruta no llega al navegador. Sin poder firmar el link, la firma se
+ * muestra sin imagen (el PDF la lleva igual).
+ */
+async function withSignerUrl(service: Db, form: PublicFormData): Promise<PublicFormData> {
+  const signer = form.contract?.business_signer as (NonNullable<NonNullable<PublicFormData["contract"]>["business_signer"]> & { signature_path?: string }) | null | undefined;
+  if (!form.contract || !signer) return form;
+  const { signature_path: path, ...rest } = signer;
+  let url: string | null = null;
+  if (typeof path === "string" && path) {
+    try {
+      const { data } = await service.storage.from(CONTRACTS_BUCKET).createSignedUrl(path, 60 * 60);
+      url = data?.signedUrl ?? null;
+    } catch {
+      url = null;
+    }
+  }
+  return { ...form, contract: { ...form.contract, business_signer: { ...rest, signature_url: url } } };
+}
+
+/**
+ * Modo Contrato con un link firmado (`?c=`): los datos del contacto y de la venta para MOSTRAR las variables del paso
+ * 2. El token se verifica igual que al enviar; uno inválido no da error, solo no completa nada. El texto que se firma
+ * lo vuelve a armar el servidor al enviar.
+ */
+export async function loadPublicContractContext(service: Db, slug: string, token: string | null | undefined, verify: typeof verifyFormLink = verifyFormLink) {
+  if (!token || !SLUG_PATTERN.test(slug)) return null;
+  const { data: form } = await service.from("forms").select("id, workspace_id, type, status, contract_config").ilike("slug", slug).eq("status", "published").maybeSingle();
+  if (!form || form.type !== "contract" || (form.contract_config as { mode?: string } | null)?.mode !== "contract") return null;
+  const link = await verify(service, token, { workspaceId: form.workspace_id, formId: form.id });
+  if (!link.ok) return null;
+  try {
+    return await loadContractLinkContext(service, form.workspace_id, link);
+  } catch {
+    return null;
+  }
 }
 
 /** El borrador tal como lo vería quien responde. Con el cliente del usuario: la RLS decide. */
@@ -36,7 +78,7 @@ export async function loadPreviewFormData(userClient: Db, slug: string): Promise
   if (!form || form.type === "eod") return null;
 
   const design = (form.design ?? {}) as PublicFormData["design"];
-  const contract = form.contract_config as { title?: string; acceptLabel?: string; signatureRequired?: boolean } | null;
+  const contract = form.contract_config as { title?: string; acceptLabel?: string; signatureRequired?: boolean; mode?: string; businessSigner?: { enabled?: boolean; name?: string; role?: string; signaturePath?: string | null } } | null;
   const draft = form.draft_definition as { contractText?: string } | null;
 
   return {
@@ -53,7 +95,17 @@ export async function loadPreviewFormData(userClient: Db, slug: string): Promise
     fields: toPublicFields(fieldsOf(form.draft_definition)),
     contract:
       form.type === "contract"
-        ? { text: draft?.contractText ?? "", version_number: 0, title: contract?.title ?? null, accept_label: contract?.acceptLabel ?? null }
+        ? {
+            text: draft?.contractText ?? "",
+            version_number: 0,
+            title: contract?.title ?? null,
+            accept_label: contract?.acceptLabel ?? null,
+            mode: contract?.mode === "contract" ? "contract" : "terms",
+            business_signer:
+              contract?.mode === "contract" && contract.businessSigner?.enabled && contract.businessSigner.name
+                ? { name: contract.businessSigner.name, role: contract.businessSigner.role ?? null, signature_url: null }
+                : null,
+          }
         : null,
     signature_required: form.type === "contract" ? (contract?.signatureRequired ?? true) : false,
     survey: form.type === "survey" ? { scoreFieldKey: (form.survey_config as { scoreFieldKey?: string } | null)?.scoreFieldKey ?? null } : null,

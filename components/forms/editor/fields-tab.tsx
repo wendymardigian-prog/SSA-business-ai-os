@@ -6,6 +6,10 @@ import { FormCanvas } from "@/components/forms/builder/form-canvas";
 import { InspectorEnd } from "@/components/forms/builder/inspector-end";
 import { InspectorField } from "@/components/forms/builder/inspector-field";
 import { InspectorForm } from "@/components/forms/builder/inspector-form";
+import { InspectorContract } from "@/components/forms/builder/inspector-contract";
+import { ContractSigningBlock, ContractStepLabel, ContractTextBlock } from "@/components/forms/builder/contract-blocks";
+import { signerEmailField, type ContractConfig } from "@/lib/forms/contract/config";
+import type { EmailReadiness } from "@/lib/email/readiness";
 import { useBuilderActions } from "@/components/forms/builder/use-builder-actions";
 import { FIELD_TYPE_LABELS, FORM_TYPE_LABELS, type FormField, type PublicFormType } from "@/lib/forms/fields";
 import { FORM_SELECTION, normalizeSelection, selectedIndex, type BuilderSelection } from "@/lib/forms/builder-selection";
@@ -14,7 +18,7 @@ import type { ContactConfig, CustomFieldDef } from "@/lib/forms/contact-config";
 import type { Draft } from "./types";
 
 /**
- * La pestaña Campos (plano formularios-ui, F9-F11): el formulario como lo ve quien responde, con las preguntas
+ * La pestaña Diseño (plano formularios-ui, F9-F11; antes "Campos"): el formulario como lo ve quien responde, con las preguntas
  * editables en el lugar, y a la derecha el panel de lo que esta elegido (el formulario, una pregunta o la pantalla
  * final). Ya no hay vista previa al costado: la vista previa es el boton de la barra de arriba.
  *
@@ -32,6 +36,7 @@ export function FieldsTab({
   issues,
   focusRequest,
   onOpenContact,
+  contract,
 }: {
   draft: Draft;
   onChange: (next: Draft) => void;
@@ -47,6 +52,15 @@ export function FieldsTab({
   /** Pedido de la barra: "llevame al primer problema" (la `nonce` cambia en cada pedido). */
   focusRequest: { fieldKey: string | null; nonce: number } | null;
   onOpenContact: () => void;
+  /** Solo un contrato: su texto va en el lienzo y sus ajustes en el panel (antes, la pestaña Contrato). */
+  contract?: {
+    formId: string;
+    config: ContractConfig;
+    onConfigSaved: (config: ContractConfig) => void;
+    canManage: boolean;
+    emailReadiness?: EmailReadiness;
+    signatureUrl?: string | null;
+  };
 }) {
   const fields = draft.definition.fields;
   const [rawSelection, setSelection] = useState<BuilderSelection>(FORM_SELECTION);
@@ -85,9 +99,37 @@ export function FieldsTab({
   const index = selectedIndex(selection, fields);
   const current = index >= 0 ? fields[index] : null;
 
-  const title = selection.kind === "end" ? "Después de enviar" : current ? `Pregunta · ${FIELD_TYPE_LABELS[current.type]}` : "El formulario";
+  const TITLES: Partial<Record<BuilderSelection["kind"], string>> = {
+    end: "Después de enviar",
+    contract_text: "El texto del contrato",
+    contract_signing: "Aceptación y firma",
+  };
+  const title = TITLES[selection.kind] ?? (current ? `Pregunta · ${FIELD_TYPE_LABELS[current.type]}` : "El formulario");
 
-  const panel = current ? (
+  const contractPanel = contract ? (
+    <div className="space-y-4">
+      {selection.kind === "contract_text" && (
+        <p className="text-xs text-muted-foreground">
+          Escribí el texto directo en el lienzo. Usá la barra para los títulos, la negrita, las listas y los links. Al publicar, el texto queda congelado con
+          su huella: una firma siempre se refiere al texto exacto que se firmó.
+        </p>
+      )}
+      <InspectorContract
+        formId={contract.formId}
+        config={contract.config}
+        onSaved={contract.onConfigSaved}
+        canManage={contract.canManage}
+        disabled={disabled}
+        hasSignerEmail={!!signerEmailField(fields)}
+        emailReadiness={contract.emailReadiness}
+        signatureUrl={contract.signatureUrl}
+      />
+    </div>
+  ) : null;
+
+  const panel = contractPanel && (selection.kind === "contract_text" || selection.kind === "contract_signing") ? (
+    contractPanel
+  ) : current ? (
     <InspectorField
       field={current}
       index={index}
@@ -109,7 +151,7 @@ export function FieldsTab({
       actions={builder.actions}
     />
   ) : selection.kind === "end" ? (
-    <InspectorEnd success={draft.success} onChange={(success) => onChange({ ...draft, success })} fields={fields} disabled={disabled} />
+    <InspectorEnd success={draft.success} onChange={(success) => onChange({ ...draft, success })} fields={fields} disabled={disabled} isContract={type === "contract"} />
   ) : (
     <InspectorForm
       name={draft.name}
@@ -122,6 +164,19 @@ export function FieldsTab({
       onOpenContact={onOpenContact}
     />
   );
+
+  const contractTextBlock = contract ? (
+    <ContractTextBlock
+      formId={contract.formId}
+      title={contract.config.title}
+      text={draft.definition.contractText ?? ""}
+      onText={(contractText) => onChange({ ...draft, definition: { ...draft.definition, contractText } })}
+      selected={selection.kind === "contract_text"}
+      onSelect={() => setSelection({ kind: "contract_text" })}
+      disabled={disabled}
+      fieldKeys={contract.config.mode === "contract" ? fields.filter((f) => f.type !== "hidden").map((f) => f.key) : undefined}
+    />
+  ) : null;
 
   return (
     <div className="space-y-4">
@@ -167,6 +222,33 @@ export function FieldsTab({
             contactConfig={contactConfig}
             customFields={customFields}
             issues={issues}
+            beforeFields={
+              contract ? (
+                contract.config.mode === "contract" ? (
+                  <ContractStepLabel step={1} text="Paso 1 · los datos de la persona" />
+                ) : (
+                  contractTextBlock
+                )
+              ) : undefined
+            }
+            afterFields={
+              contract ? (
+                <>
+                  {contract.config.mode === "contract" && (
+                    <>
+                      <ContractStepLabel step={2} text="Paso 2 · el contrato con esos datos, y la firma" />
+                      {contractTextBlock}
+                    </>
+                  )}
+                  <ContractSigningBlock
+                    config={contract.config}
+                    selected={selection.kind === "contract_signing"}
+                    onSelect={() => setSelection({ kind: "contract_signing" })}
+                    signatureUrl={contract.signatureUrl}
+                  />
+                </>
+              ) : undefined
+            }
           />
         }
         panel={panel}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { attributionFromParams, parseCookieHeader, sanitizeAttribution } from "@/lib/attribution/collect";
 import { effectiveAttribution, preferEmbeddedEntryUrl } from "@/lib/attribution/merge";
@@ -27,7 +27,10 @@ import { submitOriginFields } from "@/lib/forms/site-submit";
 import { useEmbedBridge } from "@/components/scheduling/booker/use-embed-bridge";
 import { FIELD_RENDERERS } from "./fields/registry";
 import { ContractReader, ContractSigning } from "./contract-block";
+import { ContractCopyButton } from "./contract-copy-button";
 import { canSign } from "@/lib/forms/contract/signature-input";
+import { contractDate, contractValues, renderContractTemplate, type ContractLinkContext } from "@/lib/forms/contract/variables";
+import { brandName } from "@/lib/brand";
 
 /**
  * El formulario público (F9). Se usa igual en `/f/[slug]`, dentro de un embed y
@@ -44,6 +47,8 @@ export interface RenderedSuccess {
   body?: string;
   button?: { label: string; url: string };
   url?: string;
+  /** Solo un contrato con "Descargar contrato": la copia firmada (link de 24 h). */
+  download?: { url: string };
 }
 
 export interface PublicFormProps {
@@ -65,6 +70,11 @@ export interface PublicFormProps {
   sitePath?: string;
   /** Link firmado por contacto (`?c=`), ya verificado o no: el servidor lo vuelve a verificar. */
   linkToken?: string;
+  /**
+   * Solo un contrato en modo Contrato con un link firmado válido: los datos del contacto y la venta para mostrar las
+   * variables en el paso 2. Es solo para MOSTRAR: el texto que se guarda lo arma el servidor.
+   */
+  contractContext?: ContractLinkContext | null;
   className?: string;
 }
 
@@ -103,7 +113,7 @@ function sendBeacon(slug: string, kind: "view" | "start", sid: string, origin: F
   }
 }
 
-export function PublicForm({ form, params, mode, explicitPrefill, preview = false, onPreviewSubmit, sitePath, linkToken, className }: PublicFormProps) {
+export function PublicForm({ form, params, mode, explicitPrefill, preview = false, onPreviewSubmit, sitePath, linkToken, contractContext, className }: PublicFormProps) {
   const fields = useMemo(() => toFormFields(form.fields), [form.fields]);
   const prefill = useMemo(() => prefillFromParams(fields, params, { explicit: explicitPrefill }), [fields, params, explicitPrefill]);
 
@@ -124,6 +134,9 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
   const [signature, setSignature] = useState<{ dataUrl: string | null; strokes: number }>({ dataUrl: null, strokes: 0 });
   const isContract = form.type === "contract";
   const contractReady = !isContract || canSign({ accepted, signatureRequired: form.signature_required, drawn: !!signature.dataUrl });
+  // Modo Contrato: paso 1, los datos; paso 2, el contrato con esos datos y la firma.
+  const contractMode = isContract && form.contract?.mode === "contract";
+  const [step, setStep] = useState<1 | 2>(1);
 
   const idempotencyKey = useRef<string>(newUuid());
   const sid = useRef<string | null>(null);
@@ -203,12 +216,8 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
     }
   }, [params, mode]);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    if (submitting || (preview && !onPreviewSubmit)) return;
-    setGlobalError(null);
-
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  /** Valida las preguntas (lo mismo que el servidor); marca los errores y lleva a la primera. */
+  function fieldsAreValid(timezone: string): boolean {
     const fileCounts = Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v.length]));
     const result = validateSubmission(fields, answersForSubmit(fields, answers), {
       defaultCountry: countryFromTimezone(timezone) ?? null,
@@ -220,10 +229,39 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
       const problem = checkClientFiles(field, files[field.key] ?? []);
       if (problem) nextErrors[field.key] = problem;
     }
-    if (Object.keys(nextErrors).length > 0) {
-      setErrors(nextErrors);
-      const first = fields.find((f) => nextErrors[f.key]);
+    if (Object.keys(nextErrors).length === 0) return true;
+    setErrors(nextErrors);
+    const first = fields.find((f) => nextErrors[f.key]);
+    window.requestAnimationFrame(() => {
       if (first) formRef.current?.querySelector<HTMLElement>(`[data-field="${first.key}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return false;
+  }
+
+  /** El contrato con los datos de la persona, para MOSTRAR en el paso 2 (el que se guarda lo arma el servidor). */
+  const renderedContract = useMemo(() => {
+    if (!contractMode || !form.contract?.text) return form.contract?.text ?? "";
+    const texts: Record<string, string> = {};
+    for (const [key, value] of Object.entries(answersForSubmit(fields, answers))) texts[key] = answerToText(value);
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return renderContractTemplate(form.contract.text, contractValues({ answers: texts, link: contractContext, businessName: brandName(), date: contractDate(new Date(), timeZone) }));
+  }, [contractMode, form.contract?.text, fields, answers, contractContext]);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (submitting || (preview && !onPreviewSubmit)) return;
+    setGlobalError(null);
+
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!fieldsAreValid(timezone)) {
+      if (contractMode) setStep(1);
+      return;
+    }
+    // Modo Contrato, paso 1: los datos están bien, se pasa a ver el contrato.
+    if (contractMode && step === 1) {
+      setStep(2);
+      onInteract();
+      window.requestAnimationFrame(() => formRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
       return;
     }
     if (isContract && !contractReady) {
@@ -273,6 +311,8 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
       if (failure.kind === "fields") {
         setErrors(failure.fields);
         setGlobalError(failure.message);
+        // Un dato mal escrito se corrige en el paso 1.
+        if (contractMode && Object.keys(failure.fields).length > 0) setStep(1);
       } else if (failure.kind === "already_answered") {
         setAlreadyAnswered(true);
       } else if (failure.kind === "form_changed") {
@@ -332,6 +372,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
             <ExternalLink className="h-4 w-4" aria-hidden="true" />
           </a>
         )}
+        {done.download && <ContractCopyButton url={done.download.url} />}
         {preview && (
           <div>
             <button type="button" onClick={() => setDone(null)} className="text-sm font-medium text-primary hover:underline">
@@ -360,9 +401,20 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
         </p>
       )}
 
-      {isContract && form.contract && <ContractReader title={form.contract.title} text={form.contract.text ?? ""} />}
+      {isContract && form.contract && !contractMode && <ContractReader title={form.contract.title} text={form.contract.text ?? ""} />}
 
-      <div className="space-y-5">
+      {contractMode && <ContractSteps step={step} />}
+
+      {contractMode && step === 2 && (
+        <>
+          <button type="button" onClick={() => setStep(1)} disabled={submitting} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-4 w-4" aria-hidden /> Volver a mis datos
+          </button>
+          <ContractReader title={form.contract?.title} text={renderedContract} />
+        </>
+      )}
+
+      <div className={cn("space-y-5", contractMode && step === 2 && "hidden")}>
         {fields.map((field) => {
           const Renderer = FIELD_RENDERERS[field.type];
           if (!Renderer || !visible.has(field.key) || prefill.hiddenByPrefill.has(field.key)) return null;
@@ -383,8 +435,9 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
         })}
       </div>
 
-      {isContract && form.contract && (
+      {isContract && form.contract && (!contractMode || step === 2) && (
         <ContractSigning
+          businessSigner={contractMode ? form.contract.business_signer ?? null : null}
           acceptLabel={form.contract.accept_label || "Leí y acepto el contrato"}
           signatureRequired={form.signature_required}
           accepted={accepted}
@@ -416,7 +469,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
 
       <button
         type="submit"
-        disabled={submitting || (preview && !onPreviewSubmit) || (isContract && !contractReady)}
+        disabled={submitting || (preview && !onPreviewSubmit) || (isContract && (!contractMode || step === 2) && !contractReady)}
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
       >
         {submitting ? (
@@ -424,10 +477,30 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
             Enviando...
           </>
+        ) : contractMode && step === 1 ? (
+          "Continuar"
         ) : (
           submitLabelOf(design, form.type)
         )}
       </button>
     </form>
+  );
+}
+
+/** "Paso 1 de 2 · Tus datos" / "Paso 2 de 2 · Revisá y firmá". */
+function ContractSteps({ step }: { step: 1 | 2 }) {
+  return (
+    <ol aria-label="Pasos" className="flex items-center gap-2 text-xs">
+      {[
+        { n: 1, label: "Tus datos" },
+        { n: 2, label: "Revisá y firmá" },
+      ].map((s) => (
+        <li key={s.n} aria-current={s.n === step ? "step" : undefined} className={cn("flex items-center gap-1.5", s.n === step ? "font-semibold text-foreground" : "text-muted-foreground")}>
+          <span className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[11px]", s.n === step ? "bg-primary text-primary-foreground" : "bg-muted")}>{s.n}</span>
+          {s.label}
+          {s.n === 1 && <span aria-hidden className="mx-1 h-px w-6 bg-border" />}
+        </li>
+      ))}
+    </ol>
   );
 }

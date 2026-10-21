@@ -1230,8 +1230,16 @@ try {
   check(sent[0]?.to === "ana.firma@example.test" && sent[0]?.kind === "contract_copy" && sent[0]?.relatedEntityId === sig1!.id, "va al firmante, con kind contract_copy y la firma como entidad");
   const { data: sentRow } = await svc.from("contract_signatures").select("email_status, email_sent_at").eq("id", sig1!.id).single();
   check(sentRow?.email_status === "sent" && !!sentRow?.email_sent_at, "queda 'sent' con la hora");
+  // Copia al Owner (prendida por defecto, 21/10/2026): un envío aparte, con otro asunto, nunca al firmante otra vez.
+  const ownerCopies = sent.slice(1);
+  check(
+    ownerCopies.length >= 1 && ownerCopies.every((m) => m.to !== "ana.firma@example.test" && String(m.subject).startsWith("Se firmó:")),
+    "el Owner recibe su copia aparte, con otro asunto",
+    ownerCopies.map((m) => m.subject).join(" | "),
+  );
+  const sentBefore = sent.length;
   const resentAfter = await runContractEmail({ db: svc, send: okSend as never }, { signatureId: sig1!.id, attempt: 1 });
-  check(resentAfter === "already" && sent.length === 1, "un reintento viejo no vuelve a mandar lo que ya salio");
+  check(resentAfter === "already" && sent.length === sentBefore, "un reintento viejo no vuelve a mandar lo que ya salio");
 
   // Reintentos con la cola real: un fallo transitorio agenda el siguiente a +5 minutos.
   const secondPdf = await runContractPdf(pdfDeps, sig2!.id);

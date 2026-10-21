@@ -12,6 +12,7 @@ import { effectivePrefill } from "@/lib/forms/prefill";
 import type { FormField } from "@/lib/forms/fields";
 import { fromCents, toCents } from "./money";
 import { snapshotText } from "./sale-text";
+import type { ContractLinkContext } from "@/lib/forms/contract/variables";
 
 export type ContractConceptKey = "name" | "email" | "phone" | "product" | "variant" | "amount" | "service_start";
 
@@ -55,6 +56,30 @@ function valueOf(key: ContractConceptKey, sale: ContractSale, contact: ContractC
     case "amount": return fromCents(toCents(sale.final_amount)).toFixed(2);
     case "service_start": return sale.service_starts_at || null;
   }
+}
+
+/**
+ * Los datos de la venta y del contacto para las variables del contrato en modo Contrato (`{{contacto.*}}`,
+ * `{{venta.*}}`, `lib/forms/contract/variables.ts`). Los mismos valores que el prellenado de siempre.
+ */
+export function contractLinkValues(sale: ContractSale | null, contact: ContractContact | null): ContractLinkContext {
+  const empty: ContractContact = { display_name: null, email: null, phone: null };
+  const c = contact ?? empty;
+  return {
+    contacto: { nombre: valueOf("name", saleOrEmpty(sale), c), email: valueOf("email", saleOrEmpty(sale), c), telefono: valueOf("phone", saleOrEmpty(sale), c) },
+    venta: sale
+      ? {
+          producto: valueOf("product", sale, c),
+          variante: valueOf("variant", sale, c),
+          monto: valueOf("amount", sale, c),
+          inicio_servicio: valueOf("service_start", sale, c),
+        }
+      : {},
+  };
+}
+
+function saleOrEmpty(sale: ContractSale | null): ContractSale {
+  return sale ?? { product_snapshot: null, final_amount: null, service_starts_at: null };
 }
 
 export function buildContractPrefill(sale: ContractSale, contact: ContractContact, fields: readonly FormField[]): ContractPrefill {

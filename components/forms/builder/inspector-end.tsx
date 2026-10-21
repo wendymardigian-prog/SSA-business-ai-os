@@ -8,7 +8,20 @@ import type { SuccessConfig } from "@/lib/forms/success";
  * El panel de "Después de enviar" (plano formularios-ui, F11): un mensaje o llevar a otra página. Las mismas reglas
  * y los mismos campos de siempre (antes vivian en una tarjeta plegable al pie de Campos).
  */
-export function InspectorEnd({ success, onChange, fields, disabled }: { success: SuccessConfig; onChange: (next: SuccessConfig) => void; fields: FormField[]; disabled: boolean }) {
+export function InspectorEnd({
+  success,
+  onChange,
+  fields,
+  disabled,
+  isContract = false,
+}: {
+  success: SuccessConfig;
+  onChange: (next: SuccessConfig) => void;
+  fields: FormField[];
+  disabled: boolean;
+  /** Un contrato suma el botón "Descargar contrato" (solo con mensaje). */
+  isContract?: boolean;
+}) {
   const redirect = success.mode === "redirect";
   const keys = fields.filter((f) => f.type !== "hidden").map((f) => f.key);
   return (
@@ -16,7 +29,13 @@ export function InspectorEnd({ success, onChange, fields, disabled }: { success:
       <fieldset className="space-y-1.5 text-sm">
         <legend className="mb-1 text-xs font-semibold">Qué pasa al enviar</legend>
         <label className="flex items-center gap-2">
-          <input type="radio" name="success-mode" disabled={disabled} checked={!redirect} onChange={() => onChange({ mode: "message", title: "¡Gracias!", body: "Recibimos tu respuesta." })} />
+          <input
+            type="radio"
+            name="success-mode"
+            disabled={disabled}
+            checked={!redirect}
+            onChange={() => onChange({ mode: "message", title: "¡Gracias!", body: "Recibimos tu respuesta.", ...(isContract ? { downloadContract: true } : {}) })}
+          />
           Mostrar un mensaje
         </label>
         <label className="flex items-center gap-2">
@@ -27,6 +46,14 @@ export function InspectorEnd({ success, onChange, fields, disabled }: { success:
 
       {success.mode === "message" ? (
         <>
+          {isContract && (
+            <Checkbox
+              checked={success.downloadContract === true}
+              onChange={(downloadContract) => onChange({ ...success, downloadContract })}
+              label="Mostrar el botón «Descargar contrato»"
+              description="Quien firma baja su copia en PDF en el momento. El link sirve 24 horas y solo para esa persona; la copia también le llega por correo."
+            />
+          )}
           <Field label="Título" hint="Podés usar {{answer.clave}} y {{form.name}}.">
             {(id) => <input id={id} className={inputClass} disabled={disabled} maxLength={200} value={success.title ?? ""} onChange={(e) => onChange({ ...success, title: e.target.value })} />}
           </Field>

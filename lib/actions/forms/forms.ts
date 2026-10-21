@@ -111,6 +111,8 @@ export async function createForm(input: {
           ? { ...DEFAULT_CONTACT_CONFIG, mode: "none", map: [] }
           : { ...DEFAULT_CONTACT_CONFIG, map: suggestContactMap(parts.definition.fields) }) as unknown as Json,
         ...(isEod ? { eod_config: eodConfig as unknown as Json, success: EOD_SUCCESS as unknown as Json } : {}),
+        // Un contrato nuevo ofrece "Descargar contrato" al terminar (los que ya existían lo prenden a mano).
+        ...(input.type === "contract" ? { success: { mode: "message", downloadContract: true } as unknown as Json } : {}),
         // Un EOD avisa por su propia configuración (`eod_config.notify`), no por la de los formularios.
         notify_user_ids: isEod ? [] : [ctx.user.id],
         created_by: ctx.user.id,

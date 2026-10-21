@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { renderContractMarkdown, type InlineRun } from "@/lib/forms/contract/markdown";
 import { SignatureCanvas } from "./signature-canvas";
 
@@ -24,10 +24,18 @@ function Runs({ runs }: { runs: InlineRun[] }) {
             {line}
           </Fragment>
         ));
-        if (run.bold && run.italic) return <strong key={index}><em>{content}</em></strong>;
-        if (run.bold) return <strong key={index}>{content}</strong>;
-        if (run.italic) return <em key={index}>{content}</em>;
-        return <Fragment key={index}>{content}</Fragment>;
+        let node: ReactNode = content;
+        if (run.italic) node = <em>{node}</em>;
+        if (run.bold) node = <strong>{node}</strong>;
+        // `href` ya pasó `safeHref` (solo http, https, mailto y tel): nunca un `javascript:`.
+        if (run.href) {
+          node = (
+            <a href={run.href} target="_blank" rel="noopener noreferrer nofollow" className="text-primary underline underline-offset-2">
+              {node}
+            </a>
+          );
+        }
+        return <Fragment key={index}>{node}</Fragment>;
       })}
     </>
   );
@@ -39,14 +47,24 @@ export function ContractText({ text }: { text: string }) {
     <div className="space-y-3 text-sm leading-relaxed">
       {blocks.map((block, index) => {
         if (block.type === "heading") {
-          return block.level === 1 ? (
-            <h2 key={index} className="pt-1 text-lg font-bold">
+          if (block.level === 1) {
+            return (
+              <h2 key={index} className="pt-1 text-lg font-bold">
+                <Runs runs={block.runs} />
+              </h2>
+            );
+          }
+          if (block.level === 2) {
+            return (
+              <h3 key={index} className="pt-1 text-base font-semibold">
+                <Runs runs={block.runs} />
+              </h3>
+            );
+          }
+          return (
+            <h4 key={index} className="pt-1 text-sm font-semibold">
               <Runs runs={block.runs} />
-            </h2>
-          ) : (
-            <h3 key={index} className="pt-1 text-base font-semibold">
-              <Runs runs={block.runs} />
-            </h3>
+            </h4>
           );
         }
         if (block.type === "list") {
@@ -88,8 +106,12 @@ export function ContractReader({ title, text }: { title: string | null | undefin
   );
 }
 
-/** La casilla de aceptación (siempre obligatoria) y la firma. Va ABAJO, después de los campos. */
+/**
+ * La casilla de aceptación (siempre obligatoria) y la firma. Va ABAJO, después de los campos. Con la firma de ambas
+ * partes (modo Contrato), la del negocio va al lado, ya estampada.
+ */
 export function ContractSigning({
+  businessSigner,
   acceptLabel,
   signatureRequired,
   accepted,
@@ -99,6 +121,7 @@ export function ContractSigning({
   signatureError,
   disabled,
 }: {
+  businessSigner?: { name: string; role?: string | null; signature_url?: string | null } | null;
   acceptLabel: string;
   signatureRequired: boolean;
   accepted: boolean;
@@ -109,7 +132,7 @@ export function ContractSigning({
   disabled?: boolean;
 }) {
   return (
-    <section className="space-y-4" aria-label="Aceptación y firma">
+    <section className="@container space-y-4" aria-label="Aceptación y firma">
       <div>
         <label className="flex cursor-pointer items-start gap-3 text-sm">
           <input type="checkbox" checked={accepted} onChange={(e) => onAccepted(e.target.checked)} disabled={disabled} className="mt-0.5 h-4 w-4 flex-shrink-0" aria-invalid={!!acceptedError} />
@@ -122,16 +145,36 @@ export function ContractSigning({
         )}
       </div>
 
-      <div>
-        <p className="mb-2 text-sm font-medium">
-          Firma {signatureRequired ? <span aria-hidden="true">*</span> : <span className="text-xs font-normal text-muted-foreground">(opcional)</span>}
-        </p>
-        <SignatureCanvas onChange={onSignature} disabled={disabled} invalid={!!signatureError} />
-        {signatureError && (
-          <p role="alert" className="mt-1 text-xs text-destructive">
-            {signatureError}
-          </p>
+      {/* Lado a lado solo si el FORMULARIO es ancho (no la pantalla): en un embed angosto o un teléfono, una abajo de la otra. */}
+      <div className={businessSigner ? "grid gap-4 @lg:grid-cols-2" : undefined}>
+        {businessSigner && (
+          <div>
+            <p className="mb-2 text-sm font-medium">Por {businessSigner.name}</p>
+            <div className="flex h-[120px] items-center justify-center rounded-lg border border-border bg-white">
+              {businessSigner.signature_url ? (
+                // eslint-disable-next-line @next/next/no-img-element -- link temporal a un bucket privado
+                <img src={businessSigner.signature_url} alt={`Firma de ${businessSigner.name}`} className="h-full w-full object-contain p-2" />
+              ) : (
+                <span className="text-xs text-muted-foreground">Firma del negocio</span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {businessSigner.name}
+              {businessSigner.role ? ` · ${businessSigner.role}` : ""}
+            </p>
+          </div>
         )}
+        <div>
+          <p className="mb-2 text-sm font-medium">
+            {businessSigner ? "Tu firma" : "Firma"} {signatureRequired ? <span aria-hidden="true">*</span> : <span className="text-xs font-normal text-muted-foreground">(opcional)</span>}
+          </p>
+          <SignatureCanvas onChange={onSignature} disabled={disabled} invalid={!!signatureError} />
+          {signatureError && (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              {signatureError}
+            </p>
+          )}
+        </div>
       </div>
     </section>
   );

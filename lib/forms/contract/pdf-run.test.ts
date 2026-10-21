@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { fakeDb } from "@/lib/testing/fake-db";
 import { runContractPdf, pdfJobKey } from "./pdf-run";
 import { newField } from "@/lib/forms/fields";
@@ -150,5 +151,34 @@ describe("runContractPdf", () => {
     const { deps, scheduled } = setup({ sig: { email_status: "sent", pdf_status: "failed" } });
     expect(await runContractPdf(deps, SIG)).toBe("generated");
     expect(scheduled).toEqual([]);
+  });
+});
+
+describe("runContractPdf en modo Contrato", () => {
+  const RENDERED = "# Acuerdo\n\nEntre **Acme** y Mi Negocio.";
+  const renderedSha = createHash("sha256").update(RENDERED, "utf8").digest("hex");
+
+  it("el PDF sale del texto FIRMADO, con su huella y la firma del negocio que se usó", async () => {
+    const { deps, build, storage } = setup({
+      sig: { rendered_text: RENDERED, rendered_sha256: renderedSha, business_signer: { name: "Wendy", role: "Directora", signature_path: "ws1/form1/business-signer/a.png" } },
+    });
+    expect(await runContractPdf(deps, SIG)).toBe("generated");
+    const input = build.mock.calls[0][0];
+    expect(input.text).toBe(RENDERED);
+    expect(input.contract).toMatchObject({ renderedSha256: renderedSha, businessSigner: { name: "Wendy", role: "Directora" } });
+    expect(storage.download).toHaveBeenCalledWith("ws1/form1/business-signer/a.png");
+  });
+
+  it("si el texto firmado no coincide con su huella, no genera nada", async () => {
+    const { deps, build } = setup({ sig: { rendered_text: RENDERED, rendered_sha256: "0".repeat(64) } });
+    expect(await runContractPdf(deps, SIG)).toBe("retry_scheduled");
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it("Aceptación de términos (sin texto armado): el PDF de siempre", async () => {
+    const { deps, build } = setup();
+    await runContractPdf(deps, SIG);
+    expect(build.mock.calls[0][0].contract).toBeNull();
+    expect(build.mock.calls[0][0].text).toBe("# Acuerdo\n\nTexto");
   });
 });

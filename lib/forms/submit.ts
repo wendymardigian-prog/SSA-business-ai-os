@@ -57,6 +57,9 @@ import { validateSignature } from "./contract/signature";
 import { buildLegal } from "./contract/legal";
 import { signerEmailField, signerNameFromAnswers } from "./contract/config";
 import { contractSuccess } from "./contract/success";
+import { copyDownloadPath } from "./contract/copy-link";
+import { contractDate, contractValues, renderContractTemplate, templateVariables, type ContractLinkContext } from "./contract/variables";
+import { brandName } from "@/lib/brand";
 
 // ── Lo que el servidor necesita de afuera ────────────────────────────────────
 
@@ -82,6 +85,8 @@ export interface LoadedForm {
   notifyUserIds: string[];
   /** Solo en un contrato: título, casilla, firma y copias. */
   contract: ContractConfig | null;
+  /** Solo en un contrato: el texto congelado de la versión vigente (la plantilla, con sus variables). */
+  contractText?: string | null;
 }
 
 export interface ExistingSubmission {
@@ -156,6 +161,16 @@ export interface SubmitPorts {
     contactCreated: boolean;
   }): Promise<void>;
   newId(): string;
+  /**
+   * El link de 24 h para bajar la copia firmada ("Descargar contrato"). `null` si no se pudo armar: la pantalla de
+   * éxito sale igual, sin el botón. Opcional para los puertos de prueba que no lo necesitan.
+   */
+  contractCopyToken?(form: LoadedForm, submissionId: string): Promise<string | null>;
+  /**
+   * Modo Contrato: los datos del contacto y de la venta de un link firmado YA verificado (para `{{contacto.*}}` y
+   * `{{venta.*}}`). `null` si no hay. Opcional para los puertos de prueba.
+   */
+  contractLinkContext?(form: LoadedForm, link: VerifiedLink): Promise<ContractLinkContext | null>;
 }
 
 // ── Entrada y salida ─────────────────────────────────────────────────────────
@@ -227,13 +242,13 @@ export function safeFileName(name: string): string {
   return cleaned || "archivo";
 }
 
-function successBody(form: LoadedForm, submissionId: string, values: Record<string, unknown>, attribution: Record<string, unknown>) {
+async function successBody(ports: SubmitPorts, form: LoadedForm, submissionId: string, values: Record<string, unknown>, attribution: Record<string, unknown>) {
   const texts: Record<string, string> = {};
   for (const [key, value] of Object.entries(values)) texts[key] = answerToText(value);
   // Un contrato dice a dónde va la copia firmada (si la persona no escribió su propio mensaje).
   const emailField = form.type === "contract" ? signerEmailField(form.fields) : undefined;
   const success = form.type === "contract" ? contractSuccess(form.success, emailField ? texts[emailField.key] ?? "" : "") : form.success;
-  return renderSuccess(
+  const rendered = renderSuccess(
     success,
     {
       formName: form.name,
@@ -243,9 +258,19 @@ function successBody(form: LoadedForm, submissionId: string, values: Record<stri
     },
     { escape: false },
   );
+  // "Descargar contrato": solo un contrato, solo con mensaje, solo si está prendido y solo para una respuesta real.
+  if (form.type === "contract" && success.mode === "message" && success.downloadContract && submissionId && ports.contractCopyToken) {
+    try {
+      const token = await ports.contractCopyToken(form, submissionId);
+      if (token) rendered.download = { url: copyDownloadPath(form.slug, token) };
+    } catch {
+      console.error(`[forms] no pude armar el link de la copia (form=${form.id})`);
+    }
+  }
+  return rendered;
 }
 
-function duplicateOutcome(form: LoadedForm, existing: ExistingSubmission): SubmitOutcome {
+async function duplicateOutcome(ports: SubmitPorts, form: LoadedForm, existing: ExistingSubmission): Promise<SubmitOutcome> {
   const values: Record<string, unknown> = {};
   for (const [key, answer] of Object.entries(existing.answers ?? {})) values[key] = answer.value;
   return {
@@ -254,7 +279,7 @@ function duplicateOutcome(form: LoadedForm, existing: ExistingSubmission): Submi
       ok: true,
       duplicate: true,
       submission_id: existing.id,
-      success: successBody(form, existing.id, values, existing.attribution ?? {}),
+      success: await successBody(ports, form, existing.id, values, existing.attribution ?? {}),
     },
   };
 }
@@ -295,7 +320,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   const already = await ports.findSubmission(form.id, payload.idempotency_key);
   if (already) {
     logResult(form.id, "duplicate", already.id);
-    return duplicateOutcome(form, already);
+    return await duplicateOutcome(ports, form, already);
   }
 
   // 5. Honeypot: éxito falso, sin guardar.
@@ -304,7 +329,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     logResult(form.id, "rejected_honeypot");
     return {
       status: 200,
-      body: { ok: true, submission_id: ports.newId(), success: successBody(form, "", {}, {}) },
+      body: { ok: true, submission_id: ports.newId(), success: await successBody(ports, form, "", {}, {}) },
     };
   }
 
@@ -447,21 +472,26 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   const linksContacts = form.contactConfig.mode !== "none";
   const mapped = linksContacts ? applyContactMappingDetailed(form.fields, form.contactConfig, values, form.customFields) : null;
   const contactHint: Record<string, unknown> = mapped ? { ...mapped.hint } : {};
-  if (linksContacts && payload.link_token) {
-    const link = await ports.verifyLink(form, payload.link_token);
-    if (link) {
-      contactHint.signed_contact_id = link.contactId;
-      if (link.serviceId) contactHint.signed_service_id = link.serviceId;
-      if (link.saleId) contactHint.signed_sale_id = link.saleId;
-    }
+  const rendersContract = contractNeedsRender(form);
+  // El link firmado se verifica si sirve para algo: vincular el contacto o completar las variables del contrato.
+  const link = payload.link_token && (linksContacts || rendersContract) ? await ports.verifyLink(form, payload.link_token) : null;
+  if (linksContacts && link) {
+    contactHint.signed_contact_id = link.contactId;
+    if (link.serviceId) contactHint.signed_service_id = link.serviceId;
+    if (link.saleId) contactHint.signed_sale_id = link.saleId;
   }
+
+  // 10c. Modo Contrato: el texto que se firma lo arma el SERVIDOR con la plantilla congelada y las respuestas ya
+  // validadas (nunca el navegador). La base comprueba que sea esa plantilla con solo los huecos completados (00242).
+  const meta = buildMeta(ports, input, payload, mapped?.notes ?? []);
+  if (rendersContract) meta.contract_render = await buildContractRender(ports, form, values, link);
 
   const saved = await ports.save({
     form,
     idempotencyKey: payload.idempotency_key,
     answers: toLabeledAnswers(form.fields, values),
     attribution,
-    meta: buildMeta(ports, input, payload, mapped?.notes ?? []),
+    meta,
     uploadPrefix: pendingUploads.length > 0 ? uploadPrefix : null,
     contactHint,
     contract: contractSave,
@@ -485,12 +515,47 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
       ok: true,
       duplicate: saved.duplicate,
       submission_id: saved.submissionId,
-      success: successBody(form, saved.submissionId, values, attribution),
+      success: await successBody(ports, form, saved.submissionId, values, attribution),
     },
   };
 }
 
 // ── Piezas ───────────────────────────────────────────────────────────────────
+
+/** ¿Este contrato se arma con variables? En modo Contrato siempre; en otro modo, solo si la plantilla tiene alguna. */
+export function contractNeedsRender(form: Pick<LoadedForm, "type" | "contract" | "contractText">): boolean {
+  if (form.type !== "contract" || !form.contractText) return false;
+  return form.contract?.mode === "contract" || templateVariables(form.contractText).length > 0;
+}
+
+/** El texto final y la firma del negocio que viajan en `meta.contract_render` (lo guarda `record_contract_signature`). */
+async function buildContractRender(
+  ports: SubmitPorts,
+  form: LoadedForm,
+  values: Record<string, unknown>,
+  link: VerifiedLink | null,
+): Promise<{ text: string; business_signer: { name: string; role: string; signature_path: string } | null }> {
+  const answers: Record<string, string> = {};
+  for (const field of form.fields) answers[field.key] = answerToText(values[field.key]);
+  let linkContext: ContractLinkContext | null = null;
+  if (link && ports.contractLinkContext) {
+    try {
+      linkContext = await ports.contractLinkContext(form, link);
+    } catch {
+      // Sin los datos del link, esas variables quedan en «—»: la firma sale igual.
+      console.error(`[forms] no pude leer los datos del link para el contrato (form=${form.id})`);
+    }
+  }
+  const text = renderContractTemplate(
+    form.contractText ?? "",
+    contractValues({ answers, link: linkContext, businessName: brandName(), date: contractDate(new Date(), form.workspaceTimezone) }),
+  );
+  const signer = form.contract?.mode === "contract" && form.contract.businessSigner.enabled ? form.contract.businessSigner : null;
+  return {
+    text,
+    business_signer: signer?.signaturePath && signer.name ? { name: signer.name, role: signer.role, signature_path: signer.signaturePath } : null,
+  };
+}
 
 async function afterSave(
   ports: SubmitPorts,

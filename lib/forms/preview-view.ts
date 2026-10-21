@@ -8,13 +8,23 @@ import type { PublicFormData } from "./public-client";
 import { toPublicFields } from "./public-definition";
 import { renderSuccess, validateSuccess, type RenderedSuccess, type SuccessConfig } from "./success";
 
+/** Lo del contrato que necesita la vista previa (la configuración guardada y el link temporal a la firma del negocio). */
+export interface PreviewContract {
+  title: string;
+  acceptLabel: string;
+  signatureRequired: boolean;
+  mode?: "terms" | "contract";
+  businessSigner?: { enabled: boolean; name: string; role: string };
+  signatureUrl?: string | null;
+}
+
 /** Lo que `get_public_form` entregaria, pero armado desde el borrador: lo que el editor muestra es lo que se publicaria. */
 export function buildPreviewData(input: {
   type: PublicFormType;
   slug: string;
   design: FormDesign;
   definition: FormDefinition;
-  contract?: { title: string; acceptLabel: string; signatureRequired: boolean } | null;
+  contract?: PreviewContract | null;
 }): PublicFormData {
   const { type, contract } = input;
   return {
@@ -26,7 +36,17 @@ export function buildPreviewData(input: {
     fields: toPublicFields(input.definition.fields),
     contract:
       type === "contract" && contract
-        ? { text: input.definition.contractText ?? "", version_number: 0, title: contract.title, accept_label: contract.acceptLabel }
+        ? {
+            text: input.definition.contractText ?? "",
+            version_number: 0,
+            title: contract.title,
+            accept_label: contract.acceptLabel,
+            mode: contract.mode ?? "terms",
+            business_signer:
+              contract.mode === "contract" && contract.businessSigner?.enabled && contract.businessSigner.name
+                ? { name: contract.businessSigner.name, role: contract.businessSigner.role, signature_url: contract.signatureUrl ?? null }
+                : null,
+          }
         : null,
     signature_required: type === "contract" ? (contract?.signatureRequired ?? true) : false,
     survey: null,

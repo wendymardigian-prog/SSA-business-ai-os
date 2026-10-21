@@ -24,7 +24,28 @@ export interface ContractConfig {
   signatureRequired: boolean;
   acceptLabel: string;
   ccEmails: string[];
+  /** Mandarle también la copia firmada al Owner del negocio (por defecto, sí). */
+  copyToOwner: boolean;
+  /**
+   * `terms` (Aceptación de términos, el de siempre): texto → preguntas → casilla y firma, igual para todos.
+   * `contract` (Contrato): primero las preguntas, después el texto con esos datos (variables) y las firmas.
+   */
+  mode: ContractMode;
+  /** "Firma de ambas partes" (solo en modo Contrato): la firma del negocio que se estampa abajo del texto. */
+  businessSigner: BusinessSigner;
 }
+
+export type ContractMode = "terms" | "contract";
+
+export interface BusinessSigner {
+  enabled: boolean;
+  name: string;
+  role: string;
+  /** La imagen en el bucket privado `contracts` (`<workspace>/<form>/business-signer/<id>.png|jpg`). */
+  signaturePath: string | null;
+}
+
+export const NO_BUSINESS_SIGNER: BusinessSigner = { enabled: false, name: "", role: "", signaturePath: null };
 
 export const DEFAULT_ACCEPT_LABEL = "Leí y acepto el contrato";
 
@@ -37,7 +58,7 @@ export function defaultSurveyConfig(): SurveyConfig {
 }
 
 export function defaultContractConfig(name: string): ContractConfig {
-  return { title: name, signatureRequired: true, acceptLabel: DEFAULT_ACCEPT_LABEL, ccEmails: [] };
+  return { title: name, signatureRequired: true, acceptLabel: DEFAULT_ACCEPT_LABEL, ccEmails: [], copyToOwner: true, mode: "terms", businessSigner: NO_BUSINESS_SIGNER };
 }
 
 export interface NewFormParts {

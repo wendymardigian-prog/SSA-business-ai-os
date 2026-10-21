@@ -21,8 +21,19 @@ describe("buildPreviewData (F8)", () => {
       definition: { fields: [], contractText: "1. Objeto" },
       contract: { title: "Acuerdo", acceptLabel: "Acepto", signatureRequired: false },
     });
-    expect(data.contract).toEqual({ text: "1. Objeto", version_number: 0, title: "Acuerdo", accept_label: "Acepto" });
+    expect(data.contract).toEqual({ text: "1. Objeto", version_number: 0, title: "Acuerdo", accept_label: "Acepto", mode: "terms", business_signer: null });
     expect(data.signature_required).toBe(false);
+  });
+
+  it("modo Contrato con la firma de ambas partes: lleva el modo y la firma del negocio (con su link temporal)", () => {
+    const data = buildPreviewData({
+      type: "contract",
+      slug: "c",
+      design: defaultDesign("C"),
+      definition: { fields: [], contractText: "Entre {{respuesta.empresa}}" },
+      contract: { title: "A", acceptLabel: "Acepto", signatureRequired: true, mode: "contract", businessSigner: { enabled: true, name: "Wendy", role: "Directora" }, signatureUrl: "https://x/firma.png" },
+    });
+    expect(data.contract).toMatchObject({ mode: "contract", business_signer: { name: "Wendy", role: "Directora", signature_url: "https://x/firma.png" } });
   });
 
   it("un contrato sin configuracion pide firma por defecto; un personalizado nunca", () => {

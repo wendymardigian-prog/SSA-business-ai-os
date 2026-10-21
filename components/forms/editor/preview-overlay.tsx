@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Eye, Monitor, Smartphone, X } from "lucide-react";
 import { PublicForm } from "@/components/forms/public/public-form";
-import { buildPreviewData, previewEnding } from "@/lib/forms/preview-view";
+import { buildPreviewData, previewEnding, type PreviewContract } from "@/lib/forms/preview-view";
 import type { FormDesign } from "@/lib/forms/defaults";
 import type { FormDefinition, PublicFormType } from "@/lib/forms/fields";
 import type { SuccessConfig } from "@/lib/forms/success";
@@ -30,7 +30,7 @@ export function PreviewOverlay({
   design: FormDesign;
   definition: FormDefinition;
   success: SuccessConfig;
-  contract?: { title: string; acceptLabel: string; signatureRequired: boolean } | null;
+  contract?: PreviewContract | null;
   onClose: () => void;
 }) {
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
