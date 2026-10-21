@@ -14,6 +14,7 @@ import { checkRows, defaultStep3, paymentsForServer, planFromState, type Step3St
 import { buildSummary } from "@/lib/sales/wizard/summary";
 import type { PlannedPayment } from "@/lib/sales/payment-plan";
 import type { WizardVariant } from "@/lib/sales/wizard/catalog";
+import { initialProduct } from "@/lib/sales/wizard/initial-product";
 import { DEFAULT_ATTRIBUTION_STATE } from "@/lib/sales/attribution-field";
 import { formatMoney } from "@/lib/sales/format";
 
@@ -39,7 +40,13 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
     bookingId: initial?.bookingId ?? null,
   });
   const [ctx, setCtx] = useState<{ id: string; data: SaleContactContext | null } | null>(null);
-  const [s2, setS2] = useState<Step2Values>({ productId: "", variantId: "", discountType: "amount", discountValue: "", discountReason: "", serviceStartsAt: "" });
+  const [s2, setS2] = useState<Step2Values>(() => ({
+    ...initialProduct(config, initial),
+    discountType: "amount",
+    discountValue: "",
+    discountReason: "",
+    serviceStartsAt: "",
+  }));
   const [s3, setS3] = useState<Step3State>(() => defaultStep3(config.today));
   const [rows, setRows] = useState<PlannedPayment[]>([]);
   const [rowsFor, setRowsFor] = useState<string | null>(null);
@@ -253,3 +260,4 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
     </SaleModal>
   );
 }
+

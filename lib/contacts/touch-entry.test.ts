@@ -48,6 +48,23 @@ describe("el toque de la importación (F87)", () => {
   it("es un toque válido para la base", () => {
     expect(parseTouch(importTouch("imp-1", "ct-1")).ok).toBe(true);
   });
+
+  it("con la atribución de la planilla: la lleva, pero el origen sigue siendo import", () => {
+    const t = importTouch("imp-1", "ct-1", { source: "facebook", medium: "cpc", campaign: "verano", firstTouchDate: "2025-03-05" });
+    expect(t).toMatchObject({
+      source: "facebook", medium: "cpc", campaign: "verano", origin: "import",
+      occurredAt: "2025-03-05T12:00:00.000Z", dedupeKey: "import:imp-1:ct-1",
+    });
+    expect(parseTouch(t).ok).toBe(true);
+  });
+
+  it("sin medio en la planilla, el medio sigue siendo import", () => {
+    expect(importTouch("imp-1", "ct-1", { source: "referido" })).toMatchObject({ medium: "import", origin: "import" });
+  });
+
+  it("una fecha mal formada se ignora (queda la de la importación)", () => {
+    expect(importTouch("imp-1", "ct-1", { firstTouchDate: "05/03/2025" }).occurredAt).toBeUndefined();
+  });
 });
 
 describe("escribir los toques (F87)", () => {

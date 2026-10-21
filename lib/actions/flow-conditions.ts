@@ -5,6 +5,7 @@ import { buildDesiredTriggers } from "@/lib/flow-triggers";
 import { getTrigger } from "@/lib/flow-engine/registry";
 import type { ConditionFieldSpec } from "@/lib/flow-engine/condition-eval";
 import type { ConditionCatalogInputs } from "@/lib/automations/condition-catalog-inputs";
+import { parseStatusSettings } from "@/lib/contacts/statuses";
 
 /**
  * Lo que el servidor sabe y el navegador no, para armar "Condiciones" (canvas y
@@ -58,10 +59,14 @@ export async function getConditionCatalogInputs(input: {
     console.error("[flow-conditions] no pude leer los campos del disparador:", error instanceof Error ? error.message : error);
   }
 
-  const [customFields, tags, sequences] = await Promise.all([
+  const [customFields, tags, sequences, statusRow, products] = await Promise.all([
     supabase.from("custom_field_definitions").select("slug, name, type").eq("workspace_id", workspace.id).is("deleted_at", null).order("name"),
     supabase.from("tags").select("name").eq("workspace_id", workspace.id).order("name"),
     supabase.from("sequences").select("id, name").eq("workspace_id", workspace.id).order("name"),
+    // Pipeline (00245): las listas de estados. Cualquier miembro ve su workspace.
+    supabase.from("workspaces").select("contact_status_settings").eq("id", workspace.id).maybeSingle(),
+    // Producto de interes (00246): los productos (los archivados tambien: hay contactos que los tienen).
+    supabase.from("products").select("id, name").eq("workspace_id", workspace.id).order("name"),
   ]);
 
   return {
@@ -71,6 +76,8 @@ export async function getConditionCatalogInputs(input: {
       customFields: (customFields.data ?? []).map((f) => ({ slug: f.slug, name: f.name, type: f.type })),
       tags: (tags.data ?? []).map((t) => ({ name: t.name })),
       sequences: (sequences.data ?? []).map((s) => ({ id: s.id, name: s.name })),
+      statusSettings: parseStatusSettings((statusRow.data as { contact_status_settings?: unknown } | null)?.contact_status_settings),
+      products: (products.data ?? []).map((p) => ({ id: p.id, name: p.name })),
     },
   };
 }

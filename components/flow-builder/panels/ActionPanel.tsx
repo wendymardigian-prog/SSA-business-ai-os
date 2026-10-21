@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -132,34 +133,93 @@ function TagConfig({ data, onChange }: ActionSubPanelProps) {
 }
 
 /* ───────── Set Custom Field Config ───────── */
+interface FieldOption {
+  slug: string;
+  name: string;
+  type: string;
+}
+
+const VALUE_HINTS: Record<string, string> = {
+  number: "Un número (3 o 3,5) o una {{variable}}.",
+  boolean: "Sí o No, o una {{variable}}.",
+  date: "AAAA-MM-DD o DD/MM/AAAA, o una {{variable}}.",
+  url: "Una dirección que empiece con https://, o una {{variable}}.",
+  email: "Un email, o una {{variable}}.",
+};
+
 function SetFieldConfig({ data, onChange }: ActionSubPanelProps) {
+  const [fields, setFields] = useState<FieldOption[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const supabase = createClient();
+    void supabase
+      .from("custom_field_definitions")
+      .select("slug, name, type")
+      .is("deleted_at", null)
+      .order("name", { ascending: true })
+      .then(({ data: rows }) => {
+        if (alive) setFields(rows ?? []);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const slug = data.fieldSlug || "";
+  const selected = fields?.find((f) => f.slug === slug) ?? null;
+  // Un slug guardado que ya no existe (campo borrado o tipeado a mano) se sigue viendo.
+  const orphan = slug !== "" && fields !== null && !selected;
+
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-2 block text-xs font-semibold text-foreground">
-          Field Name (slug)
+        <label htmlFor="set-field-slug" className="mb-2 block text-xs font-semibold text-foreground">
+          Campo
         </label>
-        <input
-          type="text"
-          value={data.fieldSlug || ""}
-          onChange={(e) => onChange({ ...data, fieldSlug: e.target.value })}
-          placeholder="e.g. favorite_color"
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+        {fields === null ? (
+          <p className="text-xs text-muted-foreground">Cargando campos…</p>
+        ) : fields.length === 0 && !orphan ? (
+          <p className="text-xs text-muted-foreground">
+            No hay campos personalizados. Se crean en Ajustes → Campos personalizados.
+          </p>
+        ) : (
+          <select
+            id="set-field-slug"
+            value={slug}
+            onChange={(e) => onChange({ ...data, fieldSlug: e.target.value })}
+            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">Elegí un campo</option>
+            {fields.map((f) => (
+              <option key={f.slug} value={f.slug}>
+                {f.name}
+              </option>
+            ))}
+            {orphan && <option value={slug}>{slug} (ya no existe)</option>}
+          </select>
+        )}
+        {orphan && (
+          <p className="mt-1.5 text-[11px] text-destructive">
+            Ese campo ya no existe: el paso no va a escribir nada hasta que elijas otro.
+          </p>
+        )}
       </div>
       <div>
-        <label className="mb-2 block text-xs font-semibold text-foreground">
-          Value
+        <label htmlFor="set-field-value" className="mb-2 block text-xs font-semibold text-foreground">
+          Valor
         </label>
         <input
+          id="set-field-value"
           type="text"
           value={data.value || ""}
           onChange={(e) => onChange({ ...data, value: e.target.value })}
-          placeholder="Value or {{variable}}"
+          placeholder="Valor o {{variable}}"
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-[11px] text-muted-foreground/60">
-          Use {"{{variable}}"} for dynamic values
+          {(selected && VALUE_HINTS[selected.type]) ?? "Un texto o una {{variable}}."} Vacío borra el valor; uno que no
+          corresponde al tipo no se guarda.
         </p>
       </div>
     </div>

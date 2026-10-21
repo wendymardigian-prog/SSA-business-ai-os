@@ -482,6 +482,10 @@ export type AuditEntityType =
 export type AuditAction =
   | "create"
   | "update"
+  /** Pipeline (00245): el agente de IA cambió el estado de setter (se puede revertir). */
+  | "setter_status"
+  /** Pipeline (00245): cambiaron las listas de estados del negocio. */
+  | "contact_statuses.updated"
   | "delete"
   | "restore"
   | "assign"
@@ -1107,6 +1111,8 @@ export interface Database {
           enabled_payment_methods: string[];
           payment_methods: Json;
           finance_settings: Json;
+          /** Pipeline de contactos (00245): las listas de estados de setter y de vendedor. */
+          contact_status_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */
           max_discount_percent: number | null;
           overdue_grace_days: number;
@@ -1151,6 +1157,7 @@ export interface Database {
           enabled_payment_methods?: string[];
           payment_methods?: Json;
           finance_settings?: Json;
+          contact_status_settings?: Json;
           max_discount_percent?: number | null;
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
@@ -1191,6 +1198,7 @@ export interface Database {
           enabled_payment_methods?: string[];
           payment_methods?: Json;
           finance_settings?: Json;
+          contact_status_settings?: Json;
           max_discount_percent?: number | null;
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
@@ -1471,6 +1479,21 @@ export interface Database {
           ai_summary_updated_at: string | null;
           lead_temperature: LeadTemperature | null;
           attribution: Json;
+          /**
+           * Pipeline (00245). Solo lectura: se escriben con `set_contact_status`
+           * (un trigger rechaza cualquier otro cambio), por eso no estan en Insert ni en Update.
+           */
+          setter_status: string | null;
+          setter_status_at: string | null;
+          setter_status_by_agent: boolean;
+          closer_status: string | null;
+          closer_status_at: string | null;
+          last_status_role: "setter" | "closer" | null;
+          last_status: string | null;
+          last_status_at: string | null;
+          /** Producto de interes y su variante opcional (00246). */
+          interest_product_id: string | null;
+          interest_variant_id: string | null;
           /** Notas internas del contacto, en un solo texto (migracion 00033). */
           notes: string | null;
           /**
@@ -1519,6 +1542,8 @@ export interface Database {
           ai_summary_updated_at?: string | null;
           lead_temperature?: LeadTemperature | null;
           attribution?: Json;
+          interest_product_id?: string | null;
+          interest_variant_id?: string | null;
           notes?: string | null;
           deleted_at?: string | null;
           created_at?: string;
@@ -1558,6 +1583,8 @@ export interface Database {
           ai_summary_updated_at?: string | null;
           lead_temperature?: LeadTemperature | null;
           attribution?: Json;
+          interest_product_id?: string | null;
+          interest_variant_id?: string | null;
           notes?: string | null;
           deleted_at?: string | null;
           updated_at?: string;
@@ -1723,6 +1750,9 @@ export interface Database {
           field_id: string;
           value: string;
           updated_at: string;
+          /** 00244: el valor como número / fecha (lo llena un trigger; null si no se puede convertir). */
+          value_number: number | null;
+          value_date: string | null;
         };
         Insert: {
           contact_id: string;
@@ -2213,6 +2243,32 @@ export interface Database {
         ];
       };
       /** Reacciones (emoji) a mensajes (migracion 00237). Solo las escribe el servidor; no son mensajes. */
+      contact_status_changes: {
+        /** Pipeline (00245): el historial de los estados. Escribe solo `set_contact_status`. */
+        Row: {
+          id: string;
+          workspace_id: string;
+          contact_id: string;
+          role: "setter" | "closer";
+          old_status: string | null;
+          new_status: string | null;
+          changed_by: string | null;
+          changed_by_agent_id: string | null;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "contact_status_changes_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "contacts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       message_reactions: {
         Row: {
           id: string;
@@ -5809,6 +5865,20 @@ export interface Database {
         Returns: Json;
       };
       /** Tareas × CRM (00207): la fusion de contactos, en una transaccion. Solo service_role. */
+      /** Pipeline (00245): la unica forma de cambiar el estado de setter o de vendedor. Solo service_role. */
+      set_contact_status: {
+        Args: {
+          p_workspace_id: string;
+          p_contact_id: string;
+          p_role: "setter" | "closer";
+          p_status: string | null;
+          p_actor_user?: string | null;
+          p_actor_agent?: string | null;
+          p_reason?: string | null;
+          p_respect_human?: boolean;
+        };
+        Returns: Json;
+      };
       merge_contacts: {
         Args: { p_workspace_id: string; p_main: string; p_duplicate: string; p_actor: string | null };
         Returns: Json;

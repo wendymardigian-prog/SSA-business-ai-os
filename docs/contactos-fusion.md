@@ -5,11 +5,11 @@ hace la función de base `merge_contacts` (migración **00207**); `linkContacts`
 permiso y que los dos contactos se vean y le delega con el cliente de servicio. La función solo la ejecuta `service_role`: ni el Owner
 con su sesión la puede llamar directo.
 
-## Qué se mueve (las 24 relaciones con `contacts`)
+## Qué se mueve (las 25 relaciones con `contacts`)
 
 `CONTACT_MERGE_TABLES` (`lib/contacts/merge.ts`): `agent_drafts`, `agent_runs`, `analytics_events`, `automation_events`, `bookings`,
 `broadcast_recipients`, `calls`, `contact_channels`, `contact_custom_fields`, `contact_notes`, `contact_tags`, `contact_touches`,
-`contacts` (`referred_by_contact_id`), `contract_signatures`, `conversations` (y los mensajes de las que se unifican), `email_log`,
+`contacts` (`referred_by_contact_id`), `contact_status_changes` (el historial de estados, desde la 00247), `contract_signatures`, `conversations` (y los mensajes de las que se unifican), `email_log`,
 `flow_sessions`, `form_submissions`, `inbound_webhooks`, `sales` (los pagos y demás cuelgan de la venta y la siguen),
 `sequence_enrollments`, `social_post_comments`, `tasks`, `trigger_fires`.
 
@@ -18,6 +18,10 @@ una relación que no esté en esa lista ni en `CONTACT_MERGE_EXCLUSIONS` (con su
 `merge_contacts` y a `CONTACT_MERGE_TABLES` en el mismo cambio.**
 
 ## Reglas de conflicto
+
+- **Estados y producto de interés (00247):** el estado de setter y el de vendedor del principal se conservan; el que le falte se completa
+  con el del duplicado (con su fecha) y el último estado se recalcula. El producto de interés del principal gana; si no tiene, se toma el
+  del duplicado con su variante. Ver [pipeline-contactos.md](pipeline-contactos.md).
 
 | Qué | Regla |
 |---|---|

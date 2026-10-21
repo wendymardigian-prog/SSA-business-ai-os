@@ -58,6 +58,32 @@ describe("F4 — que evento del CRM dispara que flow", () => {
   });
 });
 
+describe("Pipeline (00245) — cambió el estado del contacto", () => {
+  const aCalificado = { event_type: "status_changed", payload: { role: "setter", status: "calificado", previous_status: "contactado" } };
+
+  it("sin valor, cualquier cambio de estado", () => {
+    expect(crmEventMatches({ event: "status_changed" }, aCalificado)).toBe(true);
+  });
+
+  it("con el rol, cualquier cambio de ESE estado", () => {
+    expect(crmEventMatches({ event: "status_changed", value: "setter" }, aCalificado)).toBe(true);
+    expect(crmEventMatches({ event: "status_changed", value: "closer" }, aCalificado)).toBe(false);
+  });
+
+  it("con rol y estado, cuando pasa a ese estado", () => {
+    expect(crmEventMatches({ event: "status_changed", value: "setter:calificado" }, aCalificado)).toBe(true);
+    expect(crmEventMatches({ event: "status_changed", value: "setter:perdido" }, aCalificado)).toBe(false);
+    // El mismo nombre de estado en el otro rol no dispara.
+    expect(crmEventMatches({ event: "status_changed", value: "closer:calificado" }, aCalificado)).toBe(false);
+  });
+
+  it("quitar el estado no dispara un 'pasó a X'", () => {
+    const quitado = { event_type: "status_changed", payload: { role: "setter", status: null, previous_status: "calificado" } };
+    expect(crmEventMatches({ event: "status_changed", value: "setter:calificado" }, quitado)).toBe(false);
+    expect(crmEventMatches({ event: "status_changed", value: "setter" }, quitado)).toBe(true);
+  });
+});
+
 describe("F6 — palabra clave en respuesta a historia", () => {
   const keyword = listTriggers("message").find((t) => t.type === "keyword")!;
   const base = { trigger: {} as never, isFirstMessage: false };

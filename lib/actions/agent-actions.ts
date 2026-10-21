@@ -33,10 +33,10 @@ export async function revertAgentAction(auditId: string): Promise<{ ok: true } |
   if (!entry.performed_by_agent_id) return { ok: false, error: "Solo se revierten acciones del agente." };
   if (entry.reverted_at) return { ok: false, error: "Esa accion ya fue revertida." };
 
-  const result = await applyRevert(supabase, entry as AuditEntry, { userId: user.id });
+  const service = await createServiceClient();
+  const result = await applyRevert(supabase, entry as AuditEntry, { userId: user.id, service });
   if (!result.ok) return result;
 
-  const service = await createServiceClient();
   const { error } = await service
     .from("audit_log")
     .update({ reverted_at: new Date().toISOString(), reverted_by_audit_id: result.revertAuditId })

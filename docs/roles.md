@@ -296,6 +296,11 @@ La base repite el permiso aunque alguien se saltee la pantalla. Migraciones 0020
 `contact_notes`, `agent_runs`, `agent_drafts`, `content_*`, `meta_ads_insights_daily` y `booking_categories`. Las conexiones personales (Google Calendar,
 Fathom) no cambian: son de cada persona.
 
+## Estados del pipeline (`contact_statuses.manage`)
+
+Editar las listas de estados de setter y de vendedor (Ajustes → Estados). Owner y Admin la tienen; el Member de sistema no. Cambiar el
+estado de UN contacto es de `contacts.edit` (y que la persona vea el contacto). Ver [pipeline-contactos.md](pipeline-contactos.md).
+
 ## Cómo sumar una clave nueva (5 pasos)
 
 1. **Catálogo**: agregarla a `PERMISSION_KEYS` en `lib/auth/permissions.ts` (etiqueta y descripción con tildes). Si el Member la tiene, sumarla también a

@@ -182,6 +182,14 @@ export function crmEventMatches(
   const expected = config.value;
   if (expected === undefined || expected === null || expected === "") return true;
 
+  // Pipeline (00245): el valor es el rol ("setter": cualquier cambio de ese
+  // estado) o rol y estado ("setter:calificado": cuando pasa a ese estado).
+  if (event.event_type === "status_changed") {
+    const [role, status] = String(expected).toLowerCase().trim().split(":");
+    if (role !== String(event.payload.role ?? "").toLowerCase()) return false;
+    return !status || status === String(event.payload.status ?? "").toLowerCase();
+  }
+
   const actual = valueForEvent(event.event_type, event.payload);
   if (actual === undefined) return false;
 
@@ -208,6 +216,9 @@ function valueForEvent(
       return payload.source;
     case "do_not_contact":
       return payload.reason;
+    case "status_changed":
+      // (lo resuelve crmEventMatches: rol, o rol:estado)
+      return payload.role;
     default:
       return undefined;
   }

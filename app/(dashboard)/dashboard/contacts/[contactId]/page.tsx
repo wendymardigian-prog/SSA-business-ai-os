@@ -32,6 +32,11 @@ import { FollowupField } from "@/components/contacts/followup-field";
 import { TagsEditor } from "@/components/contacts/tags-editor";
 import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
+import { LastStatusBadge, StatusFields } from "@/components/contacts/status-fields";
+import { InterestFields } from "@/components/contacts/interest-fields";
+import { loadInterestCatalog } from "@/lib/contacts/interest-load";
+import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
+import { isStatusRole } from "@/lib/contacts/statuses";
 import { AttributionSection } from "@/components/contacts/attribution-section";
 import { HistorySection } from "@/components/contacts/history-section";
 import { buildContactHistory } from "@/lib/contacts/history";
@@ -108,6 +113,9 @@ export default async function ContactDetailPage({
     touchesRes,
     flowEventsRes,
     emailLogRes,
+    statusChangesRes,
+    statusSettings,
+    interestCatalog,
   ] = await Promise.all([
       supabase
         .from("contacts")
@@ -192,6 +200,18 @@ export default async function ContactDetailPage({
         .eq("workspace_id", workspace.id)
         .order("created_at", { ascending: false })
         .limit(HISTORY_FETCH),
+      // ...y los cambios de estado del pipeline (00245). La RLS deja verlos a
+      // quien ve el contacto (el setter ve tambien los del vendedor).
+      supabase
+        .from("contact_status_changes")
+        .select("id, role, old_status, new_status, changed_by, changed_by_agent_id, reason, created_at")
+        .eq("contact_id", contactId)
+        .eq("workspace_id", workspace.id)
+        .order("created_at", { ascending: false })
+        .limit(HISTORY_FETCH),
+      loadContactStatusSettings(workspace.id),
+      // El producto de interes (00246): el catalogo lo lee cualquier miembro.
+      loadInterestCatalog(supabase, workspace.id),
     ]);
 
   const contact = contactRes.data;
@@ -323,6 +343,14 @@ export default async function ContactDetailPage({
     ? await supabase.from("flows").select("id, name").eq("workspace_id", workspace.id).in("id", [...flowIds])
     : { data: [] as Array<{ id: string; name: string }> };
 
+  // Los nombres de los agentes que cambiaron un estado (solo id y nombre).
+  const statusRows = statusChangesRes.data ?? [];
+  const agentIds = [...new Set(statusRows.map((r) => r.changed_by_agent_id).filter((id): id is string => Boolean(id)))];
+  const { data: agentRows } = agentIds.length
+    ? await supabase.from("agents").select("id, name").eq("workspace_id", workspace.id).in("id", agentIds)
+    : { data: [] as Array<{ id: string; name: string }> };
+  const agentNames = new Map((agentRows ?? []).map((a) => [a.id, a.name]));
+
   const history = buildContactHistory({
     audit: (auditRes.data ?? []).map((a) => ({
       id: a.id,
@@ -344,6 +372,22 @@ export default async function ContactDetailPage({
       createdAt: m.created_at,
     })),
     flowNames: new Map((flowRows ?? []).map((f) => [f.id, f.name])),
+    statusSettings,
+    statusChanges: statusRows
+      .filter((r) => isStatusRole(r.role))
+      .map((r) => ({
+        id: r.id,
+        role: r.role,
+        oldStatus: r.old_status,
+        newStatus: r.new_status,
+        createdAt: r.created_at,
+        reason: r.reason,
+        actorLabel: r.changed_by_agent_id
+          ? `Agente IA${agentNames.get(r.changed_by_agent_id) ? ` · ${agentNames.get(r.changed_by_agent_id)}` : ""}`
+          : r.changed_by
+            ? (labels.get(r.changed_by) ?? "Alguien del equipo")
+            : "El sistema",
+      })),
     limit: HISTORY_LIMIT,
   });
 
@@ -389,6 +433,12 @@ export default async function ContactDetailPage({
                   label="Nombre"
                   placeholder="Sin nombre"
                   variant="title"
+                />
+                <LastStatusBadge
+                  settings={statusSettings}
+                  role={contact.last_status_role}
+                  status={contact.last_status}
+                  at={contact.last_status_at}
                 />
                 <TemperatureBadge value={temperature} />
                 {contact.do_not_contact && <DoNotContactBadge />}
@@ -513,6 +563,7 @@ export default async function ContactDetailPage({
                 contact={{ id: contact.id, name: contact.display_name || contact.email || "Contacto" }}
                 wizard={salesWizard && salesWizard.catalog.length > 0 ? salesWizard : null}
                 paymentHealth={describePaymentHealth((contact as unknown as { payment_health?: Record<string, unknown> | null }).payment_health as never)}
+                interest={{ productId: contact.interest_product_id, variantId: contact.interest_variant_id }}
               />
             )}
 
@@ -525,6 +576,26 @@ export default async function ContactDetailPage({
 
           {/* Barra lateral */}
           <aside className="space-y-8">
+            {/* Pipeline (00245): el contacto muestra arriba el ultimo de los dos. */}
+            <Section title="Estado">
+              <StatusFields
+                contactId={contact.id}
+                settings={statusSettings}
+                values={contact}
+                canEdit={perms.can("contacts.edit")}
+              />
+            </Section>
+
+            <Section title="Producto de interés">
+              <InterestFields
+                contactId={contact.id}
+                catalog={interestCatalog}
+                productId={contact.interest_product_id}
+                variantId={contact.interest_variant_id}
+                canEdit={perms.can("contacts.edit")}
+              />
+            </Section>
+
             <Section title="Asignación">
               <AssignmentFields
                 contactId={contact.id}
@@ -608,6 +679,7 @@ export default async function ContactDetailPage({
                   value: valuesByField.get(f.id) ?? "",
                 }))}
                 canManage={perms.can("custom_fields.manage")}
+                canEdit={perms.can("contacts.edit")}
               />
             </Section>
 

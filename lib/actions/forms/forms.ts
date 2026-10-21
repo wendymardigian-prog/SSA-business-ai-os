@@ -301,7 +301,7 @@ export async function saveFormDraft(input: SaveDraftInput): Promise<FormActionRe
   const patch: Record<string, unknown> = { draft_definition: definition, updated_by: ctx.user.id };
 
   if (input.contactConfig !== undefined && form.type !== "eod") {
-    const { data: defs } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", ctx.workspace.id);
+    const { data: defs } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", ctx.workspace.id).is("deleted_at", null);
     const fields = (Array.isArray(definition.fields) ? definition.fields : []) as FormField[];
     patch.contact_config = pruneContactConfig(parseStoredContactConfig(input.contactConfig), fields, (defs ?? []) as CustomFieldDef[]) as unknown as Json;
   }

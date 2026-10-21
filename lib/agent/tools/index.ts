@@ -11,6 +11,7 @@ import { escalateTool } from "./escalate";
 import { searchKnowledgeTool } from "./search-knowledge";
 import { tagContactTool } from "./tag-contact";
 import { leadTemperatureTool } from "./lead-temperature";
+import { setterStatusTool } from "./setter-status";
 import { followupTool } from "./followup";
 import { assignConversationTool } from "./assign-conversation";
 import { crmLookupTool } from "./crm-lookup";
@@ -25,6 +26,8 @@ registerAgentTool(escalateTool);
 registerAgentTool(searchKnowledgeTool);
 registerAgentTool(tagContactTool);
 registerAgentTool(leadTemperatureTool);
+// Pipeline (00245): el estado de setter. Nace apagada; el de vendedor no lo toca nunca.
+registerAgentTool(setterStatusTool);
 registerAgentTool(followupTool);
 registerAgentTool(assignConversationTool);
 registerAgentTool(crmLookupTool);

@@ -97,7 +97,9 @@ export type ToolOptionSource =
   | "members"
   | "contact_fields"
   /** Etapa 4: los eventos activos u ocultos, con su categoria. */
-  | "event_types";
+  | "event_types"
+  /** Pipeline (00245): los estados de setter activos. */
+  | "setter_statuses";
 
 export interface ToolConfigOption {
   value: string;

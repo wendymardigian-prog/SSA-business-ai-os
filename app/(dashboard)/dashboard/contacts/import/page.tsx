@@ -16,15 +16,22 @@ export default async function ImportPage() {
   await requirePermission("contacts.import");
   const { workspace, supabase } = await getWorkspace();
 
-  const [tagsRes, members] = await Promise.all([
+  const [tagsRes, members, fieldsRes] = await Promise.all([
     supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name"),
     getWorkspaceMembers(workspace.id),
+    supabase
+      .from("custom_field_definitions")
+      .select("id, name, type")
+      .eq("workspace_id", workspace.id)
+      .is("deleted_at", null)
+      .order("name"),
   ]);
 
   return (
     <ImportView
       tags={(tagsRes.data ?? []).map((t) => t.name)}
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
+      customFields={fieldsRes.data ?? []}
     />
   );
 }

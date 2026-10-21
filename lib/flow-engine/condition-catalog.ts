@@ -25,6 +25,7 @@ import {
 import { CONDITION_FIELDS, splitConditionField } from "./condition-fields";
 import { nodeOutputs, type RawFlowNode } from "./node-outputs";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
+import { STATUS_ROLE_LABELS, statusName, type ContactStatusSettings } from "@/lib/contacts/statuses";
 
 // ------------------------------------------------------------
 // Entrada y salida
@@ -40,6 +41,10 @@ export interface CatalogInput {
   customFields?: Array<{ slug: string; name: string; type: CustomFieldKind | string }>;
   tags?: Array<{ name: string }>;
   sequences?: Array<{ id: string; name: string }>;
+  /** Las listas de estados del pipeline (00245). Sin esto, las condiciones de estado no aparecen. */
+  statusSettings?: ContactStatusSettings;
+  /** Los productos, para "Producto de interés" (00246). */
+  products?: Array<{ id: string; name: string }>;
 }
 
 export interface ConditionFieldGroup {
@@ -127,6 +132,44 @@ export function availableConditionFields(input: CatalogInput): ConditionFieldGro
     },
     seen,
   );
+
+  // El pipeline (00245): el estado de cada rol y el ultimo de los dos. Un estado
+  // archivado se sigue ofreciendo (hay contactos que lo tienen).
+  if (input.statusSettings) {
+    const settings = input.statusSettings;
+    const optionsFor = (role: "setter" | "closer"): FieldOption[] =>
+      settings[role].map((st) => ({ value: st.key, label: statusName(settings[role], st.key) }));
+    pushUnique(groups, GROUP_CONTACT, { path: "contact.setter_status", label: "Estado de setter", type: "single_select", options: optionsFor("setter") }, seen);
+    pushUnique(groups, GROUP_CONTACT, { path: "contact.closer_status", label: "Estado de vendedor", type: "single_select", options: optionsFor("closer") }, seen);
+    pushUnique(
+      groups,
+      GROUP_CONTACT,
+      {
+        path: "contact.last_status",
+        label: "Último estado",
+        type: "single_select",
+        options: (["setter", "closer"] as const).flatMap((role) =>
+          settings[role].map((st) => ({ value: `${role}:${st.key}`, label: `${statusName(settings[role], st.key)} (${STATUS_ROLE_LABELS[role].toLowerCase()})` })),
+        ),
+        hint: "El que se cambió más recientemente, sea el de setter o el de vendedor.",
+      },
+      seen,
+    );
+  }
+
+  if (input.products && input.products.length > 0) {
+    pushUnique(
+      groups,
+      GROUP_CONTACT,
+      {
+        path: "contact.interest_product",
+        label: "Producto de interés",
+        type: "single_select",
+        options: input.products.map((p) => ({ value: p.id, label: p.name })),
+      },
+      seen,
+    );
+  }
 
   // El nodo viejo: los campos de siempre (canal, suscripto, llamadas, ventas...), con su tipo.
   for (const option of CONDITION_FIELDS) {

@@ -42702,3 +42702,1186 @@ BEGIN
   );
 END;
 $function$;
+
+-- ============================================================
+-- MIGRATION 244: CUSTOM FIELD TYPED VALUES
+-- ============================================================
+-- ============================================================
+-- 00244_custom_field_typed_values
+-- ============================================================
+-- Los valores de los campos personalizados se guardan como texto
+-- (`contact_custom_fields.value`). Comparar "mas de 3 viajeros" sobre texto
+-- es alfabetico: "10" < "9". Esta migracion suma dos columnas derivadas que
+-- llena un trigger:
+--
+--   value_number numeric  -- el valor como numero, si el campo es `number`
+--   value_date   date     -- el valor como fecha,  si el campo es `date`
+--
+-- La conversion NUNCA lanza: lo que no se puede convertir queda en NULL. Un
+-- valor viejo cargado a mano ("3 personas") no rompe un insert ni un update.
+-- La app normaliza los valores nuevos antes de guardarlos
+-- (`normalizeCustomValue`, lib/custom-fields.ts): numero con punto decimal,
+-- fecha AAAA-MM-DD. La conversion de aca acepta ademas la coma decimal y
+-- DD/MM/AAAA, por los valores que ya estaban.
+--
+-- El backfill escribe solo las columnas nuevas: `value` no cambia, asi que
+-- el trigger `contact_custom_fields_automation` (00039) no emite ningun
+-- `field_changed` (compara OLD.value con NEW.value).
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS contact_custom_fields_typed ON public.contact_custom_fields;
+--   DROP FUNCTION IF EXISTS private.contact_custom_fields_typed();
+--   DROP FUNCTION IF EXISTS private.custom_value_number(text);
+--   DROP FUNCTION IF EXISTS private.custom_value_date(text);
+--   ALTER TABLE public.contact_custom_fields DROP COLUMN IF EXISTS value_number,
+--                                            DROP COLUMN IF EXISTS value_date;
+--
+-- Idempotente: IF NOT EXISTS, CREATE OR REPLACE y DROP TRIGGER IF EXISTS.
+-- ============================================================
+
+ALTER TABLE public.contact_custom_fields ADD COLUMN IF NOT EXISTS value_number numeric;
+ALTER TABLE public.contact_custom_fields ADD COLUMN IF NOT EXISTS value_date date;
+
+CREATE SCHEMA IF NOT EXISTS private;
+
+-- "3", "3.5", "3,5", "-2". Con los dos separadores, el ultimo es el decimal.
+CREATE OR REPLACE FUNCTION private.custom_value_number(p_raw text)
+RETURNS numeric
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v text := regexp_replace(coalesce(p_raw, ''), '\s', '', 'g');
+  v_comma int;
+  v_dot int;
+BEGIN
+  IF v = '' THEN
+    RETURN NULL;
+  END IF;
+  v_comma := length(v) - position(',' IN reverse(v)) + 1;
+  v_dot   := length(v) - position('.' IN reverse(v)) + 1;
+  IF position(',' IN v) > 0 AND position('.' IN v) > 0 THEN
+    IF v_comma > v_dot THEN
+      v := replace(replace(v, '.', ''), ',', '.');
+    ELSE
+      v := replace(v, ',', '');
+    END IF;
+  ELSIF position(',' IN v) > 0 THEN
+    v := replace(v, ',', '.');
+  END IF;
+  IF v !~ '^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)$' THEN
+    RETURN NULL;
+  END IF;
+  RETURN v::numeric;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NULL;
+END;
+$$;
+
+-- "AAAA-MM-DD" (tambien al principio de una fecha con hora) o "DD/MM/AAAA".
+CREATE OR REPLACE FUNCTION private.custom_value_date(p_raw text)
+RETURNS date
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v text := btrim(coalesce(p_raw, ''));
+  m text[];
+BEGIN
+  m := regexp_match(v, '^([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})($|[T ])');
+  IF m IS NOT NULL THEN
+    RETURN make_date(m[1]::int, m[2]::int, m[3]::int);
+  END IF;
+  m := regexp_match(v, '^([0-9]{1,2})[/.-]([0-9]{1,2})[/.-]([0-9]{4})$');
+  IF m IS NOT NULL THEN
+    RETURN make_date(m[3]::int, m[2]::int, m[1]::int);
+  END IF;
+  RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+  -- make_date con un dia que no existe (31/02) lanza: queda NULL.
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.custom_value_number(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.custom_value_date(text) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION private.contact_custom_fields_typed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_type text;
+BEGIN
+  SELECT type INTO v_type FROM public.custom_field_definitions WHERE id = NEW.field_id;
+  NEW.value_number := CASE WHEN v_type = 'number' THEN private.custom_value_number(NEW.value) END;
+  NEW.value_date   := CASE WHEN v_type = 'date'   THEN private.custom_value_date(NEW.value)   END;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Nunca tumba el guardado de un valor.
+  RAISE WARNING 'contact_custom_fields_typed: %', SQLERRM;
+  NEW.value_number := NULL;
+  NEW.value_date := NULL;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.contact_custom_fields_typed() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contact_custom_fields_typed ON public.contact_custom_fields;
+CREATE TRIGGER contact_custom_fields_typed
+  BEFORE INSERT OR UPDATE OF value, field_id ON public.contact_custom_fields
+  FOR EACH ROW EXECUTE FUNCTION private.contact_custom_fields_typed();
+
+-- Backfill: solo las columnas nuevas (no cambia `value`, no emite eventos).
+UPDATE public.contact_custom_fields cf
+   SET value_number = CASE WHEN d.type = 'number' THEN private.custom_value_number(cf.value) END,
+       value_date   = CASE WHEN d.type = 'date'   THEN private.custom_value_date(cf.value)   END
+  FROM public.custom_field_definitions d
+ WHERE d.id = cf.field_id
+   AND d.type IN ('number', 'date');
+
+CREATE INDEX IF NOT EXISTS idx_contact_custom_fields_number
+  ON public.contact_custom_fields (field_id, value_number)
+  WHERE value_number IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_contact_custom_fields_date
+  ON public.contact_custom_fields (field_id, value_date)
+  WHERE value_date IS NOT NULL;
+
+-- ============================================================
+-- MIGRATION 245: CONTACT STATUSES
+-- ============================================================
+-- ============================================================
+-- 00245_contact_statuses
+-- ============================================================
+-- El pipeline de contactos: cada contacto tiene un estado de SETTER y un
+-- estado de VENDEDOR (closer), y muestra siempre su ULTIMO estado (el que se
+-- cambio mas recientemente de los dos). Cada cambio queda en el historial.
+--
+-- Lo que suma:
+--
+--  1. `workspaces.contact_status_settings` (jsonb): las dos listas editables
+--     `{ setter: [...], closer: [...] }`, cada estado `{ key, name, color,
+--     archived_at }`. La `key` no cambia nunca (la guardan los contactos y el
+--     historial); un estado no se borra, se archiva. El valor por defecto es
+--     la MISMA lista que `DEFAULT_CONTACT_STATUSES` (lib/contacts/statuses.ts;
+--     `lib/contacts/statuses.test.ts` las compara).
+--  2. Columnas en `contacts`: el estado de cada rol con su fecha, si el de
+--     setter lo puso el agente de IA, y el ultimo estado (rol, clave, fecha).
+--  3. `contact_status_changes`: el historial. Lo lee quien ve el contacto
+--     (`can_see_contact`), asi el setter ve tambien los cambios del vendedor
+--     (con `audit_log` no pasaria: un Member ve solo sus propias entradas).
+--     Escribe solo el servidor.
+--  4. `set_contact_status(...)`: la UNICA forma de cambiar un estado. En una
+--     transaccion bloquea el contacto, valida el estado contra la lista,
+--     escribe, recalcula el ultimo estado, anota el cambio y emite el evento
+--     de automatizacion `status_changed`. Solo `service_role`: quien llama ya
+--     chequeo el permiso (`contacts.edit`) y que la persona ve el contacto.
+--  5. `contacts_status_guard`: rechaza un cambio DIRECTO a esas columnas que
+--     no venga de la funcion (marca de transaccion
+--     `app.contact_status_internal`, mismo patron que
+--     `app.commissions_internal`). Asi ningun estado queda sin historial.
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS contacts_status_guard ON public.contacts;
+--   DROP FUNCTION IF EXISTS private.contacts_status_guard();
+--   DROP FUNCTION IF EXISTS public.set_contact_status(uuid, uuid, text, text, uuid, uuid, text, boolean);
+--   DROP TABLE IF EXISTS public.contact_status_changes;
+--   ALTER TABLE public.contacts
+--     DROP COLUMN IF EXISTS setter_status, DROP COLUMN IF EXISTS setter_status_at,
+--     DROP COLUMN IF EXISTS setter_status_by_agent, DROP COLUMN IF EXISTS closer_status,
+--     DROP COLUMN IF EXISTS closer_status_at, DROP COLUMN IF EXISTS last_status_role,
+--     DROP COLUMN IF EXISTS last_status, DROP COLUMN IF EXISTS last_status_at;
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS contact_status_settings;
+--   DROP FUNCTION IF EXISTS private.default_contact_status_settings();
+--
+-- Idempotente: IF NOT EXISTS, CREATE OR REPLACE, DROP ... IF EXISTS.
+-- ============================================================
+
+CREATE SCHEMA IF NOT EXISTS private;
+
+-- ------------------------------------------------------------
+-- 1. Las listas
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.default_contact_status_settings()
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $fn$
+  SELECT $defaults${
+    "setter": [
+      {"key": "nuevo", "name": "Nuevo", "color": "#64748b", "archived_at": null},
+      {"key": "contactado", "name": "Contactado", "color": "#2563eb", "archived_at": null},
+      {"key": "en_conversacion", "name": "En conversación", "color": "#0891b2", "archived_at": null},
+      {"key": "calificado", "name": "Calificado", "color": "#16a34a", "archived_at": null},
+      {"key": "agendado", "name": "Agendado", "color": "#7c3aed", "archived_at": null},
+      {"key": "no_calificado", "name": "No calificado", "color": "#ca8a04", "archived_at": null},
+      {"key": "perdido", "name": "Perdido", "color": "#e11d48", "archived_at": null}
+    ],
+    "closer": [
+      {"key": "llamada_agendada", "name": "Llamada agendada", "color": "#7c3aed", "archived_at": null},
+      {"key": "no_se_presento", "name": "No se presentó", "color": "#ca8a04", "archived_at": null},
+      {"key": "en_seguimiento", "name": "En seguimiento", "color": "#0891b2", "archived_at": null},
+      {"key": "propuesta_enviada", "name": "Propuesta enviada", "color": "#2563eb", "archived_at": null},
+      {"key": "ganado", "name": "Ganado", "color": "#16a34a", "archived_at": null},
+      {"key": "perdido", "name": "Perdido", "color": "#e11d48", "archived_at": null}
+    ]
+  }$defaults$::jsonb;
+$fn$;
+
+REVOKE ALL ON FUNCTION private.default_contact_status_settings() FROM PUBLIC, anon, authenticated;
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS contact_status_settings jsonb NOT NULL DEFAULT private.default_contact_status_settings();
+
+-- ------------------------------------------------------------
+-- 2. Las columnas del contacto
+-- ------------------------------------------------------------
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS setter_status text;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS setter_status_at timestamptz;
+-- true si el estado de setter ACTUAL lo puso el agente de IA (la herramienta
+-- `cambiar_estado_setter` no pisa por defecto uno puesto por una persona).
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS setter_status_by_agent boolean NOT NULL DEFAULT false;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS closer_status text;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS closer_status_at timestamptz;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS last_status_role text;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS last_status text;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS last_status_at timestamptz;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contacts_last_status_role_check') THEN
+    ALTER TABLE public.contacts
+      ADD CONSTRAINT contacts_last_status_role_check
+      CHECK (last_status_role IS NULL OR last_status_role IN ('setter', 'closer'));
+  END IF;
+  -- Un estado sin fecha (o una fecha sin estado) no tiene sentido.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contacts_status_dates_check') THEN
+    ALTER TABLE public.contacts
+      ADD CONSTRAINT contacts_status_dates_check
+      CHECK (
+        (setter_status IS NULL) = (setter_status_at IS NULL)
+        AND (closer_status IS NULL) = (closer_status_at IS NULL)
+        AND (last_status IS NULL) = (last_status_role IS NULL)
+        AND (last_status IS NULL) = (last_status_at IS NULL)
+      );
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_contacts_setter_status
+  ON public.contacts (workspace_id, setter_status) WHERE deleted_at IS NULL AND setter_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_closer_status
+  ON public.contacts (workspace_id, closer_status) WHERE deleted_at IS NULL AND closer_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_last_status
+  ON public.contacts (workspace_id, last_status_role, last_status) WHERE deleted_at IS NULL AND last_status IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 3. El historial
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.contact_status_changes (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id        uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  contact_id          uuid NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
+  role                text NOT NULL CHECK (role IN ('setter', 'closer')),
+  old_status          text,
+  new_status          text,
+  -- Quien lo cambio: una persona, el agente de IA, o ninguno (una automatizacion o el sistema).
+  changed_by          uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  changed_by_agent_id uuid REFERENCES public.agents(id) ON DELETE SET NULL,
+  -- Lo que dijo el agente para justificarlo (nunca un mensaje del lead).
+  reason              text CHECK (reason IS NULL OR char_length(reason) <= 300),
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  CHECK (old_status IS DISTINCT FROM new_status)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contact_status_changes_contact
+  ON public.contact_status_changes (contact_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contact_status_changes_workspace
+  ON public.contact_status_changes (workspace_id, created_at DESC);
+
+ALTER TABLE public.contact_status_changes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS contact_status_changes_select ON public.contact_status_changes;
+CREATE POLICY contact_status_changes_select ON public.contact_status_changes
+  FOR SELECT TO authenticated
+  USING (
+    (SELECT public.is_workspace_member(workspace_id))
+    AND EXISTS (
+      SELECT 1 FROM public.contacts c
+       WHERE c.id = contact_status_changes.contact_id
+         AND c.workspace_id = contact_status_changes.workspace_id
+         AND public.can_see_contact(c)
+    )
+  );
+-- Sin politicas de INSERT/UPDATE/DELETE: escribe solo `set_contact_status`.
+
+REVOKE ALL ON TABLE public.contact_status_changes FROM anon, authenticated;
+GRANT SELECT ON TABLE public.contact_status_changes TO authenticated;
+GRANT ALL ON TABLE public.contact_status_changes TO service_role;
+
+-- ------------------------------------------------------------
+-- 4. El guardia: ningun estado sin pasar por la funcion
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.contacts_status_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF coalesce(current_setting('app.contact_status_internal', true), '') = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.setter_status IS NOT NULL OR NEW.closer_status IS NOT NULL OR NEW.last_status IS NOT NULL
+       OR NEW.setter_status_by_agent THEN
+      RAISE EXCEPTION 'El estado de un contacto se cambia con set_contact_status' USING ERRCODE = 'CS001';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.setter_status IS DISTINCT FROM OLD.setter_status
+     OR NEW.setter_status_at IS DISTINCT FROM OLD.setter_status_at
+     OR NEW.setter_status_by_agent IS DISTINCT FROM OLD.setter_status_by_agent
+     OR NEW.closer_status IS DISTINCT FROM OLD.closer_status
+     OR NEW.closer_status_at IS DISTINCT FROM OLD.closer_status_at
+     OR NEW.last_status_role IS DISTINCT FROM OLD.last_status_role
+     OR NEW.last_status IS DISTINCT FROM OLD.last_status
+     OR NEW.last_status_at IS DISTINCT FROM OLD.last_status_at THEN
+    RAISE EXCEPTION 'El estado de un contacto se cambia con set_contact_status' USING ERRCODE = 'CS001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.contacts_status_guard() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contacts_status_guard ON public.contacts;
+CREATE TRIGGER contacts_status_guard
+  BEFORE INSERT OR UPDATE ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION private.contacts_status_guard();
+
+-- ------------------------------------------------------------
+-- 5. La funcion
+-- ------------------------------------------------------------
+-- Devuelve jsonb:
+--   { result: 'changed' | 'unchanged' | 'not_found' | 'invalid_status' | 'protected',
+--     old_status, new_status, last_status_role, last_status, last_status_at, change_id }
+--
+-- p_status NULL quita el estado de ese rol.
+-- p_respect_human: para el agente. Si el estado de setter actual lo puso una
+--   PERSONA, no se pisa ('protected').
+CREATE OR REPLACE FUNCTION public.set_contact_status(
+  p_workspace_id uuid,
+  p_contact_id   uuid,
+  p_role         text,
+  p_status       text,
+  p_actor_user   uuid DEFAULT NULL,
+  p_actor_agent  uuid DEFAULT NULL,
+  p_reason       text DEFAULT NULL,
+  p_respect_human boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_contact  public.contacts%ROWTYPE;
+  v_settings jsonb;
+  v_list     jsonb;
+  v_old      text;
+  v_status   text := nullif(btrim(coalesce(p_status, '')), '');
+  v_now      timestamptz := now();
+  v_setter   text;
+  v_setter_at timestamptz;
+  v_closer   text;
+  v_closer_at timestamptz;
+  v_by_agent boolean;
+  v_last_role text;
+  v_last     text;
+  v_last_at  timestamptz;
+  v_change   uuid;
+BEGIN
+  IF p_role IS NULL OR p_role NOT IN ('setter', 'closer') THEN
+    RAISE EXCEPTION 'Rol de estado invalido: %', p_role USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_contact
+    FROM public.contacts
+   WHERE id = p_contact_id
+     AND workspace_id = p_workspace_id
+     AND deleted_at IS NULL
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('result', 'not_found');
+  END IF;
+
+  v_old := CASE WHEN p_role = 'setter' THEN v_contact.setter_status ELSE v_contact.closer_status END;
+
+  IF v_old IS NOT DISTINCT FROM v_status THEN
+    RETURN jsonb_build_object('result', 'unchanged', 'old_status', v_old, 'new_status', v_status,
+      'last_status_role', v_contact.last_status_role, 'last_status', v_contact.last_status,
+      'last_status_at', v_contact.last_status_at);
+  END IF;
+
+  -- El estado tiene que existir en la lista de ese rol y no estar archivado.
+  -- Sin la lista guardada, los estados por defecto (igual que parseStatusSettings).
+  IF v_status IS NOT NULL THEN
+    SELECT contact_status_settings INTO v_settings FROM public.workspaces WHERE id = p_workspace_id;
+    IF v_settings IS NULL OR jsonb_typeof(v_settings) <> 'object' OR NOT (v_settings ? p_role) THEN
+      v_list := private.default_contact_status_settings() -> p_role;
+    ELSE
+      v_list := v_settings -> p_role;
+    END IF;
+    IF jsonb_typeof(v_list) <> 'array' OR NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_list) e
+       WHERE e ->> 'key' = v_status
+         AND (e -> 'archived_at' IS NULL OR jsonb_typeof(e -> 'archived_at') = 'null')
+    ) THEN
+      RETURN jsonb_build_object('result', 'invalid_status', 'old_status', v_old, 'new_status', v_status);
+    END IF;
+  END IF;
+
+  IF p_respect_human AND p_role = 'setter' AND v_old IS NOT NULL AND NOT v_contact.setter_status_by_agent THEN
+    RETURN jsonb_build_object('result', 'protected', 'old_status', v_old, 'new_status', v_status);
+  END IF;
+
+  v_setter := v_contact.setter_status;
+  v_setter_at := v_contact.setter_status_at;
+  v_closer := v_contact.closer_status;
+  v_closer_at := v_contact.closer_status_at;
+  v_by_agent := v_contact.setter_status_by_agent;
+
+  IF p_role = 'setter' THEN
+    v_setter := v_status;
+    v_setter_at := CASE WHEN v_status IS NULL THEN NULL ELSE v_now END;
+    v_by_agent := v_status IS NOT NULL AND p_actor_agent IS NOT NULL;
+  ELSE
+    v_closer := v_status;
+    v_closer_at := CASE WHEN v_status IS NULL THEN NULL ELSE v_now END;
+  END IF;
+
+  -- El ultimo: el de fecha mas reciente; con la misma fecha, el del vendedor
+  -- (gemela de `deriveLastStatus`, lib/contacts/statuses.ts).
+  IF v_closer IS NOT NULL AND (v_setter IS NULL OR v_closer_at >= v_setter_at) THEN
+    v_last_role := 'closer'; v_last := v_closer; v_last_at := v_closer_at;
+  ELSIF v_setter IS NOT NULL THEN
+    v_last_role := 'setter'; v_last := v_setter; v_last_at := v_setter_at;
+  ELSE
+    v_last_role := NULL; v_last := NULL; v_last_at := NULL;
+  END IF;
+
+  PERFORM set_config('app.contact_status_internal', 'on', true);
+  UPDATE public.contacts
+     SET setter_status = v_setter,
+         setter_status_at = v_setter_at,
+         setter_status_by_agent = v_by_agent,
+         closer_status = v_closer,
+         closer_status_at = v_closer_at,
+         last_status_role = v_last_role,
+         last_status = v_last,
+         last_status_at = v_last_at,
+         updated_at = v_now
+   WHERE id = p_contact_id;
+  PERFORM set_config('app.contact_status_internal', 'off', true);
+
+  INSERT INTO public.contact_status_changes
+    (workspace_id, contact_id, role, old_status, new_status, changed_by, changed_by_agent_id, reason, created_at)
+  VALUES
+    (p_workspace_id, p_contact_id, p_role, v_old, v_status, p_actor_user, p_actor_agent,
+     left(nullif(btrim(coalesce(p_reason, '')), ''), 300), v_now)
+  RETURNING id INTO v_change;
+
+  -- El evento de automatizacion nunca tumba el cambio.
+  BEGIN
+    PERFORM public.emit_automation_event(
+      p_workspace_id, 'status_changed', p_contact_id,
+      jsonb_build_object('role', p_role, 'status', v_status, 'previous_status', v_old, 'change_id', v_change)
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'set_contact_status: no pude emitir el evento: %', SQLERRM;
+  END;
+
+  RETURN jsonb_build_object('result', 'changed', 'old_status', v_old, 'new_status', v_status,
+    'last_status_role', v_last_role, 'last_status', v_last, 'last_status_at', v_last_at,
+    'change_id', v_change);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_contact_status(uuid, uuid, text, text, uuid, uuid, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_contact_status(uuid, uuid, text, text, uuid, uuid, text, boolean) TO service_role;
+
+-- ============================================================
+-- MIGRATION 246: CONTACT INTEREST PRODUCT
+-- ============================================================
+-- ============================================================
+-- 00246_contact_interest_product
+-- ============================================================
+-- El producto que le interesa a un contacto, con su variante opcional.
+--
+--   contacts.interest_product_id  -> products(id)
+--   contacts.interest_variant_id  -> product_variants(id)  (opcional)
+--
+-- Los productos y las variantes no se borran (se archivan), y el FK lo
+-- respalda: un producto que un contacto tiene de interes no se puede borrar
+-- (NO ACTION, el default). Es NO ACTION y no RESTRICT a proposito: se revisa al
+-- final de la sentencia, asi borrar un workspace entero (que se lleva por
+-- cascade sus contactos Y sus productos) no choca en el medio. El cambio lo escribe la app con el cliente
+-- de quien edita (RLS de contactos, `contacts.edit`); el trigger de abajo
+-- valida la forma venga de donde venga:
+--   - la variante tiene que ser DE ESE producto;
+--   - producto y variante tienen que ser del mismo workspace que el contacto;
+--   - una variante sin producto no tiene sentido.
+-- Un producto archivado se puede CONSERVAR (el contacto ya lo tenia), pero la
+-- app no lo ofrece para elegir.
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS contacts_interest_check ON public.contacts;
+--   DROP FUNCTION IF EXISTS private.contacts_interest_check();
+--   ALTER TABLE public.contacts DROP COLUMN IF EXISTS interest_variant_id,
+--                               DROP COLUMN IF EXISTS interest_product_id;
+--
+-- Idempotente: IF NOT EXISTS, CREATE OR REPLACE y DROP TRIGGER IF EXISTS.
+-- ============================================================
+
+ALTER TABLE public.contacts
+  ADD COLUMN IF NOT EXISTS interest_product_id uuid REFERENCES public.products(id);
+ALTER TABLE public.contacts
+  ADD COLUMN IF NOT EXISTS interest_variant_id uuid REFERENCES public.product_variants(id);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_interest_product
+  ON public.contacts (workspace_id, interest_product_id)
+  WHERE deleted_at IS NULL AND interest_product_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_interest_variant
+  ON public.contacts (interest_variant_id)
+  WHERE interest_variant_id IS NOT NULL;
+
+CREATE SCHEMA IF NOT EXISTS private;
+
+CREATE OR REPLACE FUNCTION private.contacts_interest_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_product_ws uuid;
+  v_variant_product uuid;
+BEGIN
+  IF TG_OP = 'UPDATE'
+     AND NEW.interest_product_id IS NOT DISTINCT FROM OLD.interest_product_id
+     AND NEW.interest_variant_id IS NOT DISTINCT FROM OLD.interest_variant_id THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.interest_variant_id IS NOT NULL AND NEW.interest_product_id IS NULL THEN
+    RAISE EXCEPTION 'Una variante de interes necesita su producto' USING ERRCODE = 'CI001';
+  END IF;
+
+  IF NEW.interest_product_id IS NOT NULL THEN
+    SELECT workspace_id INTO v_product_ws FROM public.products WHERE id = NEW.interest_product_id;
+    IF v_product_ws IS DISTINCT FROM NEW.workspace_id THEN
+      RAISE EXCEPTION 'El producto de interes no es de este workspace' USING ERRCODE = 'CI002';
+    END IF;
+  END IF;
+
+  IF NEW.interest_variant_id IS NOT NULL THEN
+    SELECT product_id INTO v_variant_product FROM public.product_variants WHERE id = NEW.interest_variant_id;
+    IF v_variant_product IS DISTINCT FROM NEW.interest_product_id THEN
+      RAISE EXCEPTION 'La variante de interes no es de ese producto' USING ERRCODE = 'CI003';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.contacts_interest_check() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contacts_interest_check ON public.contacts;
+CREATE TRIGGER contacts_interest_check
+  BEFORE INSERT OR UPDATE OF interest_product_id, interest_variant_id ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION private.contacts_interest_check();
+
+-- ============================================================
+-- MIGRATION 247: MERGE CONTACTS STATUSES INTEREST
+-- ============================================================
+-- ============================================================
+-- 00247_merge_contacts_statuses_interest
+-- ============================================================
+-- La fusion de contactos (`merge_contacts`, 00207) suma lo nuevo del pipeline:
+--
+--  1. `contact_status_changes` (00245): el historial de estados del duplicado
+--     pasa al principal. Sin esto, la guardia de deriva de
+--     `scripts/verify-contact-merge.mjs` falla (la tabla tiene `contact_id`).
+--  2. Los estados de setter y de vendedor (00245): gana el del principal; si no
+--     tiene, se toma el del duplicado (con su fecha). El ultimo estado se
+--     recalcula con la misma regla que `set_contact_status`.
+--  3. El producto de interes (00246): gana el del principal; si no tiene, el
+--     del duplicado con su variante.
+--
+-- Todo lo demas es la 00207 letra por letra. Misma firma, mismos permisos
+-- (solo service_role).
+--
+-- Como volver atras: volver a ejecutar la definicion anterior (00207), que
+-- queda completa aca abajo:
+--
+--   CREATE OR REPLACE FUNCTION public.merge_contacts(
+--     p_workspace_id uuid,
+--     p_main uuid,
+--     p_duplicate uuid,
+--     p_actor uuid
+--   ) RETURNS jsonb
+--   LANGUAGE plpgsql
+--   SECURITY DEFINER
+--   SET search_path = ''
+--   AS $fn$
+--   DECLARE
+--     v_main public.contacts%ROWTYPE;
+--     v_dup public.contacts%ROWTYPE;
+--     v_moved jsonb := '{}'::jsonb;
+--     v_n integer;
+--     v_conv record;
+--     v_merged_convs uuid[] := '{}';
+--     v_convs_merged integer := 0;
+--     v_msgs_moved integer := 0;
+--     v_msgs_left integer := 0;
+--     v_notes text;
+--     v_table text;
+--   BEGIN
+--     IF p_workspace_id IS NULL OR p_main IS NULL OR p_duplicate IS NULL THEN
+--       RAISE EXCEPTION 'merge_invalid' USING ERRCODE = '22023';
+--     END IF;
+--     IF p_main = p_duplicate THEN
+--       RAISE EXCEPTION 'merge_same_contact' USING ERRCODE = '22023';
+--     END IF;
+--
+--     -- Las dos filas, bloqueadas en un orden fijo (sin interbloqueos entre dos fusiones).
+--     PERFORM 1 FROM public.contacts WHERE id IN (p_main, p_duplicate) ORDER BY id FOR UPDATE;
+--     SELECT * INTO v_main FROM public.contacts WHERE id = p_main;
+--     IF NOT FOUND THEN RAISE EXCEPTION 'merge_not_found' USING ERRCODE = 'P0002'; END IF;
+--     SELECT * INTO v_dup FROM public.contacts WHERE id = p_duplicate;
+--     IF NOT FOUND THEN RAISE EXCEPTION 'merge_not_found' USING ERRCODE = 'P0002'; END IF;
+--     IF v_main.workspace_id <> p_workspace_id OR v_dup.workspace_id <> p_workspace_id THEN
+--       RAISE EXCEPTION 'merge_workspace_mismatch' USING ERRCODE = '22023';
+--     END IF;
+--     IF v_main.deleted_at IS NOT NULL OR v_dup.deleted_at IS NOT NULL THEN
+--       RAISE EXCEPTION 'merge_deleted' USING ERRCODE = '22023';
+--     END IF;
+--
+--     -- El duplicado sale de circulacion PRIMERO: asi, si hay indices unicos por telefono o email sobre los contactos vivos,
+--     -- rellenar los datos vacios del principal no choca con el duplicado.
+--     UPDATE public.contacts
+--        SET deleted_at = now(),
+--            metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('merged_into', p_main)
+--      WHERE id = p_duplicate;
+--
+--     -- Canales vinculados (unico por canal + remitente: los remitentes son distintos, no choca).
+--     UPDATE public.contact_channels SET contact_id = p_main WHERE contact_id = p_duplicate;
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_channels', v_n);
+--
+--     -- Conversaciones: UNA por canal y contacto. Si el principal ya tiene una en ese canal, los mensajes de la del
+--     -- duplicado pasan a la del principal (los que repiten el id del mensaje de la plataforma se quedan donde estan y se
+--     -- cuentan), se recalcula su resumen y la del duplicado queda vacia y con borrado logico.
+--     FOR v_conv IN
+--       SELECT d.id AS dup_conv, m.id AS main_conv
+--         FROM public.conversations d
+--         JOIN public.conversations m ON m.channel_id = d.channel_id AND m.contact_id = p_main
+--        WHERE d.contact_id = p_duplicate
+--        ORDER BY d.id
+--     LOOP
+--       -- Un solo borrador abierto por conversacion: si el principal ya tiene uno, el del duplicado se descarta.
+--       IF EXISTS (SELECT 1 FROM public.agent_drafts WHERE conversation_id = v_conv.main_conv AND status IN ('pending', 'sending', 'failed')) THEN
+--         UPDATE public.agent_drafts SET status = 'discarded'
+--          WHERE conversation_id = v_conv.dup_conv AND status IN ('pending', 'sending', 'failed');
+--       END IF;
+--       UPDATE public.agent_drafts SET conversation_id = v_conv.main_conv WHERE conversation_id = v_conv.dup_conv;
+--
+--       UPDATE public.messages msg SET conversation_id = v_conv.main_conv
+--        WHERE msg.conversation_id = v_conv.dup_conv
+--          AND (msg.platform_message_id IS NULL OR NOT EXISTS (
+--                SELECT 1 FROM public.messages o
+--                 WHERE o.conversation_id = v_conv.main_conv AND o.platform_message_id = msg.platform_message_id));
+--       GET DIAGNOSTICS v_n = ROW_COUNT; v_msgs_moved := v_msgs_moved + v_n;
+--       SELECT count(*) INTO v_n FROM public.messages WHERE conversation_id = v_conv.dup_conv;
+--       v_msgs_left := v_msgs_left + v_n;
+--
+--       UPDATE public.conversations m SET
+--         last_message_preview = CASE WHEN d.last_message_at IS NOT NULL AND (m.last_message_at IS NULL OR d.last_message_at > m.last_message_at)
+--                                     THEN d.last_message_preview ELSE m.last_message_preview END,
+--         last_message_at = GREATEST(m.last_message_at, d.last_message_at),
+--         unread_count = COALESCE(m.unread_count, 0) + COALESCE(d.unread_count, 0),
+--         status = CASE WHEN m.status = 'open' OR d.status = 'open' THEN 'open' ELSE m.status END,
+--         assigned_to = COALESCE(m.assigned_to, d.assigned_to),
+--         needs_human_reason = CASE WHEN NOT COALESCE(m.needs_human, false) AND COALESCE(d.needs_human, false) THEN d.needs_human_reason ELSE m.needs_human_reason END,
+--         needs_human_at = CASE WHEN NOT COALESCE(m.needs_human, false) AND COALESCE(d.needs_human, false) THEN d.needs_human_at ELSE m.needs_human_at END,
+--         needs_human = COALESCE(m.needs_human, false) OR COALESCE(d.needs_human, false),
+--         deleted_at = CASE WHEN m.deleted_at IS NOT NULL AND d.deleted_at IS NULL THEN NULL ELSE m.deleted_at END
+--        FROM public.conversations d
+--       WHERE m.id = v_conv.main_conv AND d.id = v_conv.dup_conv;
+--
+--       UPDATE public.agent_runs SET conversation_id = v_conv.main_conv WHERE conversation_id = v_conv.dup_conv;
+--       UPDATE public.tasks SET conversation_id = v_conv.main_conv WHERE conversation_id = v_conv.dup_conv;
+--       UPDATE public.conversations SET deleted_at = COALESCE(deleted_at, now()), unread_count = 0 WHERE id = v_conv.dup_conv;
+--
+--       v_merged_convs := v_merged_convs || v_conv.dup_conv;
+--       v_convs_merged := v_convs_merged + 1;
+--     END LOOP;
+--
+--     -- Las demas conversaciones se mueven enteras.
+--     UPDATE public.conversations SET contact_id = p_main
+--      WHERE contact_id = p_duplicate AND NOT (id = ANY (v_merged_convs));
+--     GET DIAGNOSTICS v_n = ROW_COUNT;
+--     v_moved := v_moved || jsonb_build_object('conversations', v_n, 'conversations_merged', v_convs_merged, 'messages_moved', v_msgs_moved, 'messages_left', v_msgs_left);
+--
+--     -- Etiquetas: se mueven las que el principal no tiene (PK contact_id + tag_id).
+--     UPDATE public.contact_tags SET contact_id = p_main
+--      WHERE contact_id = p_duplicate
+--        AND NOT EXISTS (SELECT 1 FROM public.contact_tags o WHERE o.contact_id = p_main AND o.tag_id = public.contact_tags.tag_id);
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_tags', v_n);
+--
+--     -- Campos personalizados: en uno que ambos tienen, gana el del principal.
+--     UPDATE public.contact_custom_fields SET contact_id = p_main
+--      WHERE contact_id = p_duplicate
+--        AND NOT EXISTS (SELECT 1 FROM public.contact_custom_fields o WHERE o.contact_id = p_main AND o.field_id = public.contact_custom_fields.field_id);
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_custom_fields', v_n);
+--
+--     -- Secuencias: una inscripcion viva por secuencia. Si el principal ya esta activo o pausado en esa secuencia, la viva del
+--     -- duplicado se cancela (con el motivo); el resto se mueve.
+--     UPDATE public.sequence_enrollments d SET status = 'cancelled', paused_reason = 'fusion de contactos', next_step_at = NULL, locked_at = NULL
+--      WHERE d.contact_id = p_duplicate AND d.status IN ('active', 'paused')
+--        AND EXISTS (SELECT 1 FROM public.sequence_enrollments m WHERE m.contact_id = p_main AND m.sequence_id = d.sequence_id AND m.status IN ('active', 'paused'));
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('sequence_enrollments_cancelled', v_n);
+--     UPDATE public.sequence_enrollments SET contact_id = p_main WHERE contact_id = p_duplicate;
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('sequence_enrollments', v_n);
+--
+--     -- Sesiones de flujo: las activas del duplicado se mueven, salvo que el principal ya tenga una activa del mismo flujo (la
+--     -- del duplicado se cancela). El historial se mueve siempre.
+--     UPDATE public.flow_sessions d SET status = 'cancelled'
+--      WHERE d.contact_id = p_duplicate AND d.status = 'active'
+--        AND EXISTS (SELECT 1 FROM public.flow_sessions m WHERE m.contact_id = p_main AND m.status = 'active' AND m.flow_id = d.flow_id);
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('flow_sessions_cancelled', v_n);
+--     UPDATE public.flow_sessions SET contact_id = p_main WHERE contact_id = p_duplicate;
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('flow_sessions', v_n);
+--
+--     -- Eventos de automatizacion: los pendientes del duplicado NO se mueven (podrian disparar otra vez un flujo para el
+--     -- principal): se marcan como cancelados. Los ya procesados (historial) se mueven.
+--     UPDATE public.automation_events SET processed_at = now(), error = 'fusion de contactos'
+--      WHERE contact_id = p_duplicate AND processed_at IS NULL;
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('automation_events_cancelled', v_n);
+--     UPDATE public.automation_events SET contact_id = p_main
+--      WHERE contact_id = p_duplicate AND processed_at IS NOT NULL AND error IS DISTINCT FROM 'fusion de contactos';
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('automation_events', v_n);
+--
+--     -- Tareas: si los dos tienen un seguimiento para la misma fecha, el del duplicado pasa como tarea normal (sin la clave).
+--     UPDATE public.tasks d SET source_ref = NULL
+--      WHERE d.contact_id = p_duplicate AND d.source_ref LIKE 'followup:%' AND d.deleted_at IS NULL
+--        AND EXISTS (SELECT 1 FROM public.tasks m WHERE m.workspace_id = d.workspace_id AND m.contact_id = p_main AND m.source_ref = d.source_ref AND m.deleted_at IS NULL);
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('tasks_detached', v_n);
+--     UPDATE public.tasks SET contact_id = p_main WHERE contact_id = p_duplicate;
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('tasks', v_n);
+--
+--     -- Toques de atribucion: se mueven todos y la atribucion del principal se recalcula con TODOS (primer y ultimo toque).
+--     UPDATE public.contact_touches SET contact_id = p_main WHERE contact_id = p_duplicate;
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_touches', v_n);
+--     IF v_n > 0 THEN PERFORM private.refresh_contact_attribution(p_main); END IF;
+--
+--     -- Formularios: "una vez por contacto" guarda `contact:<id>`; la respuesta que se mueve pasa a `contact:<principal>` salvo
+--     -- que el principal ya tenga una para ese formulario (el indice unico no deja dos).
+--     UPDATE public.form_submissions fs SET once_key = 'contact:' || p_main::text
+--      WHERE fs.contact_id = p_duplicate AND fs.once_key = 'contact:' || p_duplicate::text
+--        AND NOT EXISTS (SELECT 1 FROM public.form_submissions o WHERE o.form_id = fs.form_id AND o.once_key = 'contact:' || p_main::text AND o.status <> 'spam' AND fs.status <> 'spam');
+--     UPDATE public.form_submissions SET contact_id = p_main WHERE contact_id = p_duplicate;
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('form_submissions', v_n);
+--
+--     -- Lo que solo cambia de dueno (sin indices unicos que dependan del contacto). Las ventas llevan sus pagos; las agendas y
+--     -- las llamadas no cambian de estado ni de monto.
+--     FOREACH v_table IN ARRAY ARRAY[
+--       'agent_drafts', 'agent_runs', 'analytics_events', 'bookings', 'broadcast_recipients', 'calls', 'contact_notes',
+--       'contract_signatures', 'email_log', 'inbound_webhooks', 'sales', 'social_post_comments', 'trigger_fires'
+--     ] LOOP
+--       EXECUTE format('UPDATE public.%I SET contact_id = $1 WHERE contact_id = $2', v_table) USING p_main, p_duplicate;
+--       GET DIAGNOSTICS v_n = ROW_COUNT;
+--       v_moved := v_moved || jsonb_build_object(v_table, v_n);
+--     END LOOP;
+--
+--     -- Los contactos que el duplicado habia referido pasan a ser referidos por el principal.
+--     UPDATE public.contacts SET referred_by_contact_id = NULL WHERE id = p_main AND referred_by_contact_id = p_duplicate;
+--     UPDATE public.contacts SET referred_by_contact_id = p_main WHERE referred_by_contact_id = p_duplicate;
+--     GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('referred_contacts', v_n);
+--
+--     -- Los datos de identidad que el principal tiene vacios se completan con los del duplicado (nunca al reves), mas la fecha
+--     -- del proximo seguimiento.
+--     UPDATE public.contacts SET
+--       display_name = CASE WHEN NULLIF(btrim(COALESCE(display_name, '')), '') IS NULL THEN COALESCE(v_dup.display_name, display_name) ELSE display_name END,
+--       email = CASE WHEN NULLIF(btrim(COALESCE(email, '')), '') IS NULL THEN COALESCE(v_dup.email, email) ELSE email END,
+--       secondary_email = CASE WHEN NULLIF(btrim(COALESCE(secondary_email, '')), '') IS NULL THEN COALESCE(v_dup.secondary_email, secondary_email) ELSE secondary_email END,
+--       phone = CASE WHEN NULLIF(btrim(COALESCE(phone, '')), '') IS NULL THEN COALESCE(v_dup.phone, phone) ELSE phone END,
+--       whatsapp_phone = CASE WHEN NULLIF(btrim(COALESCE(whatsapp_phone, '')), '') IS NULL THEN COALESCE(v_dup.whatsapp_phone, whatsapp_phone) ELSE whatsapp_phone END,
+--       country = CASE WHEN NULLIF(btrim(COALESCE(country, '')), '') IS NULL THEN COALESCE(v_dup.country, country) ELSE country END,
+--       instagram_username = CASE WHEN NULLIF(btrim(COALESCE(instagram_username, '')), '') IS NULL THEN COALESCE(v_dup.instagram_username, instagram_username) ELSE instagram_username END,
+--       tiktok_username = CASE WHEN NULLIF(btrim(COALESCE(tiktok_username, '')), '') IS NULL THEN COALESCE(v_dup.tiktok_username, tiktok_username) ELSE tiktok_username END,
+--       twitter_username = CASE WHEN NULLIF(btrim(COALESCE(twitter_username, '')), '') IS NULL THEN COALESCE(v_dup.twitter_username, twitter_username) ELSE twitter_username END,
+--       facebook_id = CASE WHEN NULLIF(btrim(COALESCE(facebook_id, '')), '') IS NULL THEN COALESCE(v_dup.facebook_id, facebook_id) ELSE facebook_id END,
+--       youtube_channel_id = CASE WHEN NULLIF(btrim(COALESCE(youtube_channel_id, '')), '') IS NULL THEN COALESCE(v_dup.youtube_channel_id, youtube_channel_id) ELSE youtube_channel_id END,
+--       linkedin_profile_url = CASE WHEN NULLIF(btrim(COALESCE(linkedin_profile_url, '')), '') IS NULL THEN COALESCE(v_dup.linkedin_profile_url, linkedin_profile_url) ELSE linkedin_profile_url END,
+--       setter_id = COALESCE(setter_id, v_dup.setter_id),
+--       vendedor_id = COALESCE(vendedor_id, v_dup.vendedor_id),
+--       next_followup_date = COALESCE(next_followup_date, v_dup.next_followup_date)
+--      WHERE id = p_main;
+--
+--     -- Las notas de los dos se juntan (dos textos de personas distintas sobre el mismo lead: quedarse con uno tira el otro).
+--     v_notes := concat_ws(E'\n\n---\n\n', NULLIF(btrim(COALESCE(v_main.notes, '')), ''), NULLIF(btrim(COALESCE(v_dup.notes, '')), ''));
+--     IF v_notes <> '' AND v_notes IS DISTINCT FROM btrim(COALESCE(v_main.notes, '')) THEN
+--       UPDATE public.contacts SET notes = v_notes WHERE id = p_main;
+--     END IF;
+--
+--     -- La sugerencia de vinculacion ya no corresponde.
+--     UPDATE public.contacts SET metadata = jsonb_set(
+--         COALESCE(metadata, '{}'::jsonb), '{link_suggestions}',
+--         COALESCE((SELECT jsonb_agg(s) FROM jsonb_array_elements(metadata -> 'link_suggestions') s WHERE s ->> 'contact_id' IS DISTINCT FROM p_duplicate::text), '[]'::jsonb))
+--      WHERE id = p_main AND jsonb_typeof(metadata -> 'link_suggestions') = 'array';
+--
+--     -- El historial del contacto principal, en la misma transaccion (sin datos sensibles: solo cuentas).
+--     INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+--     VALUES (p_workspace_id, 'contact', p_main, 'link', NULL,
+--             jsonb_build_object('merged_from', p_duplicate, 'automatic', false, 'moved', v_moved), p_actor);
+--
+--     RETURN jsonb_build_object('ok', true, 'main', p_main, 'duplicate', p_duplicate, 'moved', v_moved);
+--   END;
+--   $fn$;
+--
+--   REVOKE ALL ON FUNCTION public.merge_contacts(uuid, uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+--   GRANT EXECUTE ON FUNCTION public.merge_contacts(uuid, uuid, uuid, uuid) TO service_role;
+--
+-- Idempotente: CREATE OR REPLACE.
+-- ============================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.merge_contacts(
+  p_workspace_id uuid,
+  p_main uuid,
+  p_duplicate uuid,
+  p_actor uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_main public.contacts%ROWTYPE;
+  v_dup public.contacts%ROWTYPE;
+  v_moved jsonb := '{}'::jsonb;
+  v_n integer;
+  v_conv record;
+  v_merged_convs uuid[] := '{}';
+  v_convs_merged integer := 0;
+  v_msgs_moved integer := 0;
+  v_msgs_left integer := 0;
+  v_notes text;
+  v_table text;
+  -- Pipeline (00245): el estado de cada rol despues de fusionar, y el ultimo.
+  v_setter text;
+  v_setter_at timestamptz;
+  v_setter_by_agent boolean;
+  v_closer text;
+  v_closer_at timestamptz;
+  v_last_role text;
+  v_last text;
+  v_last_at timestamptz;
+BEGIN
+  IF p_workspace_id IS NULL OR p_main IS NULL OR p_duplicate IS NULL THEN
+    RAISE EXCEPTION 'merge_invalid' USING ERRCODE = '22023';
+  END IF;
+  IF p_main = p_duplicate THEN
+    RAISE EXCEPTION 'merge_same_contact' USING ERRCODE = '22023';
+  END IF;
+
+  -- Las dos filas, bloqueadas en un orden fijo (sin interbloqueos entre dos fusiones).
+  PERFORM 1 FROM public.contacts WHERE id IN (p_main, p_duplicate) ORDER BY id FOR UPDATE;
+  SELECT * INTO v_main FROM public.contacts WHERE id = p_main;
+  IF NOT FOUND THEN RAISE EXCEPTION 'merge_not_found' USING ERRCODE = 'P0002'; END IF;
+  SELECT * INTO v_dup FROM public.contacts WHERE id = p_duplicate;
+  IF NOT FOUND THEN RAISE EXCEPTION 'merge_not_found' USING ERRCODE = 'P0002'; END IF;
+  IF v_main.workspace_id <> p_workspace_id OR v_dup.workspace_id <> p_workspace_id THEN
+    RAISE EXCEPTION 'merge_workspace_mismatch' USING ERRCODE = '22023';
+  END IF;
+  IF v_main.deleted_at IS NOT NULL OR v_dup.deleted_at IS NOT NULL THEN
+    RAISE EXCEPTION 'merge_deleted' USING ERRCODE = '22023';
+  END IF;
+
+  -- El duplicado sale de circulacion PRIMERO: asi, si hay indices unicos por telefono o email sobre los contactos vivos,
+  -- rellenar los datos vacios del principal no choca con el duplicado.
+  UPDATE public.contacts
+     SET deleted_at = now(),
+         metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('merged_into', p_main)
+   WHERE id = p_duplicate;
+
+  -- Canales vinculados (unico por canal + remitente: los remitentes son distintos, no choca).
+  UPDATE public.contact_channels SET contact_id = p_main WHERE contact_id = p_duplicate;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_channels', v_n);
+
+  -- Conversaciones: UNA por canal y contacto. Si el principal ya tiene una en ese canal, los mensajes de la del
+  -- duplicado pasan a la del principal (los que repiten el id del mensaje de la plataforma se quedan donde estan y se
+  -- cuentan), se recalcula su resumen y la del duplicado queda vacia y con borrado logico.
+  FOR v_conv IN
+    SELECT d.id AS dup_conv, m.id AS main_conv
+      FROM public.conversations d
+      JOIN public.conversations m ON m.channel_id = d.channel_id AND m.contact_id = p_main
+     WHERE d.contact_id = p_duplicate
+     ORDER BY d.id
+  LOOP
+    -- Un solo borrador abierto por conversacion: si el principal ya tiene uno, el del duplicado se descarta.
+    IF EXISTS (SELECT 1 FROM public.agent_drafts WHERE conversation_id = v_conv.main_conv AND status IN ('pending', 'sending', 'failed')) THEN
+      UPDATE public.agent_drafts SET status = 'discarded'
+       WHERE conversation_id = v_conv.dup_conv AND status IN ('pending', 'sending', 'failed');
+    END IF;
+    UPDATE public.agent_drafts SET conversation_id = v_conv.main_conv WHERE conversation_id = v_conv.dup_conv;
+
+    UPDATE public.messages msg SET conversation_id = v_conv.main_conv
+     WHERE msg.conversation_id = v_conv.dup_conv
+       AND (msg.platform_message_id IS NULL OR NOT EXISTS (
+             SELECT 1 FROM public.messages o
+              WHERE o.conversation_id = v_conv.main_conv AND o.platform_message_id = msg.platform_message_id));
+    GET DIAGNOSTICS v_n = ROW_COUNT; v_msgs_moved := v_msgs_moved + v_n;
+    SELECT count(*) INTO v_n FROM public.messages WHERE conversation_id = v_conv.dup_conv;
+    v_msgs_left := v_msgs_left + v_n;
+
+    UPDATE public.conversations m SET
+      last_message_preview = CASE WHEN d.last_message_at IS NOT NULL AND (m.last_message_at IS NULL OR d.last_message_at > m.last_message_at)
+                                  THEN d.last_message_preview ELSE m.last_message_preview END,
+      last_message_at = GREATEST(m.last_message_at, d.last_message_at),
+      unread_count = COALESCE(m.unread_count, 0) + COALESCE(d.unread_count, 0),
+      status = CASE WHEN m.status = 'open' OR d.status = 'open' THEN 'open' ELSE m.status END,
+      assigned_to = COALESCE(m.assigned_to, d.assigned_to),
+      needs_human_reason = CASE WHEN NOT COALESCE(m.needs_human, false) AND COALESCE(d.needs_human, false) THEN d.needs_human_reason ELSE m.needs_human_reason END,
+      needs_human_at = CASE WHEN NOT COALESCE(m.needs_human, false) AND COALESCE(d.needs_human, false) THEN d.needs_human_at ELSE m.needs_human_at END,
+      needs_human = COALESCE(m.needs_human, false) OR COALESCE(d.needs_human, false),
+      deleted_at = CASE WHEN m.deleted_at IS NOT NULL AND d.deleted_at IS NULL THEN NULL ELSE m.deleted_at END
+     FROM public.conversations d
+    WHERE m.id = v_conv.main_conv AND d.id = v_conv.dup_conv;
+
+    UPDATE public.agent_runs SET conversation_id = v_conv.main_conv WHERE conversation_id = v_conv.dup_conv;
+    UPDATE public.tasks SET conversation_id = v_conv.main_conv WHERE conversation_id = v_conv.dup_conv;
+    UPDATE public.conversations SET deleted_at = COALESCE(deleted_at, now()), unread_count = 0 WHERE id = v_conv.dup_conv;
+
+    v_merged_convs := v_merged_convs || v_conv.dup_conv;
+    v_convs_merged := v_convs_merged + 1;
+  END LOOP;
+
+  -- Las demas conversaciones se mueven enteras.
+  UPDATE public.conversations SET contact_id = p_main
+   WHERE contact_id = p_duplicate AND NOT (id = ANY (v_merged_convs));
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  v_moved := v_moved || jsonb_build_object('conversations', v_n, 'conversations_merged', v_convs_merged, 'messages_moved', v_msgs_moved, 'messages_left', v_msgs_left);
+
+  -- Etiquetas: se mueven las que el principal no tiene (PK contact_id + tag_id).
+  UPDATE public.contact_tags SET contact_id = p_main
+   WHERE contact_id = p_duplicate
+     AND NOT EXISTS (SELECT 1 FROM public.contact_tags o WHERE o.contact_id = p_main AND o.tag_id = public.contact_tags.tag_id);
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_tags', v_n);
+
+  -- Campos personalizados: en uno que ambos tienen, gana el del principal.
+  UPDATE public.contact_custom_fields SET contact_id = p_main
+   WHERE contact_id = p_duplicate
+     AND NOT EXISTS (SELECT 1 FROM public.contact_custom_fields o WHERE o.contact_id = p_main AND o.field_id = public.contact_custom_fields.field_id);
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_custom_fields', v_n);
+
+  -- Secuencias: una inscripcion viva por secuencia. Si el principal ya esta activo o pausado en esa secuencia, la viva del
+  -- duplicado se cancela (con el motivo); el resto se mueve.
+  UPDATE public.sequence_enrollments d SET status = 'cancelled', paused_reason = 'fusion de contactos', next_step_at = NULL, locked_at = NULL
+   WHERE d.contact_id = p_duplicate AND d.status IN ('active', 'paused')
+     AND EXISTS (SELECT 1 FROM public.sequence_enrollments m WHERE m.contact_id = p_main AND m.sequence_id = d.sequence_id AND m.status IN ('active', 'paused'));
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('sequence_enrollments_cancelled', v_n);
+  UPDATE public.sequence_enrollments SET contact_id = p_main WHERE contact_id = p_duplicate;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('sequence_enrollments', v_n);
+
+  -- Sesiones de flujo: las activas del duplicado se mueven, salvo que el principal ya tenga una activa del mismo flujo (la
+  -- del duplicado se cancela). El historial se mueve siempre.
+  UPDATE public.flow_sessions d SET status = 'cancelled'
+   WHERE d.contact_id = p_duplicate AND d.status = 'active'
+     AND EXISTS (SELECT 1 FROM public.flow_sessions m WHERE m.contact_id = p_main AND m.status = 'active' AND m.flow_id = d.flow_id);
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('flow_sessions_cancelled', v_n);
+  UPDATE public.flow_sessions SET contact_id = p_main WHERE contact_id = p_duplicate;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('flow_sessions', v_n);
+
+  -- Eventos de automatizacion: los pendientes del duplicado NO se mueven (podrian disparar otra vez un flujo para el
+  -- principal): se marcan como cancelados. Los ya procesados (historial) se mueven.
+  UPDATE public.automation_events SET processed_at = now(), error = 'fusion de contactos'
+   WHERE contact_id = p_duplicate AND processed_at IS NULL;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('automation_events_cancelled', v_n);
+  UPDATE public.automation_events SET contact_id = p_main
+   WHERE contact_id = p_duplicate AND processed_at IS NOT NULL AND error IS DISTINCT FROM 'fusion de contactos';
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('automation_events', v_n);
+
+  -- Tareas: si los dos tienen un seguimiento para la misma fecha, el del duplicado pasa como tarea normal (sin la clave).
+  UPDATE public.tasks d SET source_ref = NULL
+   WHERE d.contact_id = p_duplicate AND d.source_ref LIKE 'followup:%' AND d.deleted_at IS NULL
+     AND EXISTS (SELECT 1 FROM public.tasks m WHERE m.workspace_id = d.workspace_id AND m.contact_id = p_main AND m.source_ref = d.source_ref AND m.deleted_at IS NULL);
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('tasks_detached', v_n);
+  UPDATE public.tasks SET contact_id = p_main WHERE contact_id = p_duplicate;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('tasks', v_n);
+
+  -- Toques de atribucion: se mueven todos y la atribucion del principal se recalcula con TODOS (primer y ultimo toque).
+  UPDATE public.contact_touches SET contact_id = p_main WHERE contact_id = p_duplicate;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_touches', v_n);
+  IF v_n > 0 THEN PERFORM private.refresh_contact_attribution(p_main); END IF;
+
+  -- Pipeline (00245): el historial de estados del duplicado pasa al principal (los cambios siguen siendo de quien los hizo).
+  UPDATE public.contact_status_changes SET contact_id = p_main WHERE contact_id = p_duplicate;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('contact_status_changes', v_n);
+
+  -- Formularios: "una vez por contacto" guarda `contact:<id>`; la respuesta que se mueve pasa a `contact:<principal>` salvo
+  -- que el principal ya tenga una para ese formulario (el indice unico no deja dos).
+  UPDATE public.form_submissions fs SET once_key = 'contact:' || p_main::text
+   WHERE fs.contact_id = p_duplicate AND fs.once_key = 'contact:' || p_duplicate::text
+     AND NOT EXISTS (SELECT 1 FROM public.form_submissions o WHERE o.form_id = fs.form_id AND o.once_key = 'contact:' || p_main::text AND o.status <> 'spam' AND fs.status <> 'spam');
+  UPDATE public.form_submissions SET contact_id = p_main WHERE contact_id = p_duplicate;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('form_submissions', v_n);
+
+  -- Lo que solo cambia de dueno (sin indices unicos que dependan del contacto). Las ventas llevan sus pagos; las agendas y
+  -- las llamadas no cambian de estado ni de monto.
+  FOREACH v_table IN ARRAY ARRAY[
+    'agent_drafts', 'agent_runs', 'analytics_events', 'bookings', 'broadcast_recipients', 'calls', 'contact_notes',
+    'contract_signatures', 'email_log', 'inbound_webhooks', 'sales', 'social_post_comments', 'trigger_fires'
+  ] LOOP
+    EXECUTE format('UPDATE public.%I SET contact_id = $1 WHERE contact_id = $2', v_table) USING p_main, p_duplicate;
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+    v_moved := v_moved || jsonb_build_object(v_table, v_n);
+  END LOOP;
+
+  -- Los contactos que el duplicado habia referido pasan a ser referidos por el principal.
+  UPDATE public.contacts SET referred_by_contact_id = NULL WHERE id = p_main AND referred_by_contact_id = p_duplicate;
+  UPDATE public.contacts SET referred_by_contact_id = p_main WHERE referred_by_contact_id = p_duplicate;
+  GET DIAGNOSTICS v_n = ROW_COUNT; v_moved := v_moved || jsonb_build_object('referred_contacts', v_n);
+
+  -- Los datos de identidad que el principal tiene vacios se completan con los del duplicado (nunca al reves), mas la fecha
+  -- del proximo seguimiento.
+  UPDATE public.contacts SET
+    display_name = CASE WHEN NULLIF(btrim(COALESCE(display_name, '')), '') IS NULL THEN COALESCE(v_dup.display_name, display_name) ELSE display_name END,
+    email = CASE WHEN NULLIF(btrim(COALESCE(email, '')), '') IS NULL THEN COALESCE(v_dup.email, email) ELSE email END,
+    secondary_email = CASE WHEN NULLIF(btrim(COALESCE(secondary_email, '')), '') IS NULL THEN COALESCE(v_dup.secondary_email, secondary_email) ELSE secondary_email END,
+    phone = CASE WHEN NULLIF(btrim(COALESCE(phone, '')), '') IS NULL THEN COALESCE(v_dup.phone, phone) ELSE phone END,
+    whatsapp_phone = CASE WHEN NULLIF(btrim(COALESCE(whatsapp_phone, '')), '') IS NULL THEN COALESCE(v_dup.whatsapp_phone, whatsapp_phone) ELSE whatsapp_phone END,
+    country = CASE WHEN NULLIF(btrim(COALESCE(country, '')), '') IS NULL THEN COALESCE(v_dup.country, country) ELSE country END,
+    instagram_username = CASE WHEN NULLIF(btrim(COALESCE(instagram_username, '')), '') IS NULL THEN COALESCE(v_dup.instagram_username, instagram_username) ELSE instagram_username END,
+    tiktok_username = CASE WHEN NULLIF(btrim(COALESCE(tiktok_username, '')), '') IS NULL THEN COALESCE(v_dup.tiktok_username, tiktok_username) ELSE tiktok_username END,
+    twitter_username = CASE WHEN NULLIF(btrim(COALESCE(twitter_username, '')), '') IS NULL THEN COALESCE(v_dup.twitter_username, twitter_username) ELSE twitter_username END,
+    facebook_id = CASE WHEN NULLIF(btrim(COALESCE(facebook_id, '')), '') IS NULL THEN COALESCE(v_dup.facebook_id, facebook_id) ELSE facebook_id END,
+    youtube_channel_id = CASE WHEN NULLIF(btrim(COALESCE(youtube_channel_id, '')), '') IS NULL THEN COALESCE(v_dup.youtube_channel_id, youtube_channel_id) ELSE youtube_channel_id END,
+    linkedin_profile_url = CASE WHEN NULLIF(btrim(COALESCE(linkedin_profile_url, '')), '') IS NULL THEN COALESCE(v_dup.linkedin_profile_url, linkedin_profile_url) ELSE linkedin_profile_url END,
+    setter_id = COALESCE(setter_id, v_dup.setter_id),
+    vendedor_id = COALESCE(vendedor_id, v_dup.vendedor_id),
+    next_followup_date = COALESCE(next_followup_date, v_dup.next_followup_date),
+    -- Producto de interes (00246): gana el del principal; si no tiene, el del duplicado con SU variante.
+    interest_variant_id = CASE WHEN interest_product_id IS NULL THEN v_dup.interest_variant_id ELSE interest_variant_id END,
+    interest_product_id = COALESCE(interest_product_id, v_dup.interest_product_id)
+   WHERE id = p_main;
+
+  -- Pipeline (00245): el estado de cada rol es el del principal; si no tiene, el del duplicado. El ultimo se recalcula
+  -- con la misma regla que `set_contact_status` (el mas reciente; empatados, el del vendedor). Las columnas de estado solo
+  -- se escriben con la marca de transaccion (`contacts_status_guard`).
+  IF v_main.setter_status IS NOT NULL THEN
+    v_setter := v_main.setter_status; v_setter_at := v_main.setter_status_at; v_setter_by_agent := v_main.setter_status_by_agent;
+  ELSE
+    v_setter := v_dup.setter_status; v_setter_at := v_dup.setter_status_at; v_setter_by_agent := COALESCE(v_dup.setter_status_by_agent, false);
+  END IF;
+  IF v_main.closer_status IS NOT NULL THEN
+    v_closer := v_main.closer_status; v_closer_at := v_main.closer_status_at;
+  ELSE
+    v_closer := v_dup.closer_status; v_closer_at := v_dup.closer_status_at;
+  END IF;
+  IF v_closer IS NOT NULL AND (v_setter IS NULL OR v_closer_at >= v_setter_at) THEN
+    v_last_role := 'closer'; v_last := v_closer; v_last_at := v_closer_at;
+  ELSIF v_setter IS NOT NULL THEN
+    v_last_role := 'setter'; v_last := v_setter; v_last_at := v_setter_at;
+  ELSE
+    v_last_role := NULL; v_last := NULL; v_last_at := NULL;
+  END IF;
+  IF v_setter IS DISTINCT FROM v_main.setter_status OR v_closer IS DISTINCT FROM v_main.closer_status THEN
+    PERFORM set_config('app.contact_status_internal', 'on', true);
+    UPDATE public.contacts SET
+      setter_status = v_setter, setter_status_at = v_setter_at, setter_status_by_agent = COALESCE(v_setter_by_agent, false),
+      closer_status = v_closer, closer_status_at = v_closer_at,
+      last_status_role = v_last_role, last_status = v_last, last_status_at = v_last_at
+     WHERE id = p_main;
+    PERFORM set_config('app.contact_status_internal', 'off', true);
+  END IF;
+
+  -- Las notas de los dos se juntan (dos textos de personas distintas sobre el mismo lead: quedarse con uno tira el otro).
+  v_notes := concat_ws(E'\n\n---\n\n', NULLIF(btrim(COALESCE(v_main.notes, '')), ''), NULLIF(btrim(COALESCE(v_dup.notes, '')), ''));
+  IF v_notes <> '' AND v_notes IS DISTINCT FROM btrim(COALESCE(v_main.notes, '')) THEN
+    UPDATE public.contacts SET notes = v_notes WHERE id = p_main;
+  END IF;
+
+  -- La sugerencia de vinculacion ya no corresponde.
+  UPDATE public.contacts SET metadata = jsonb_set(
+      COALESCE(metadata, '{}'::jsonb), '{link_suggestions}',
+      COALESCE((SELECT jsonb_agg(s) FROM jsonb_array_elements(metadata -> 'link_suggestions') s WHERE s ->> 'contact_id' IS DISTINCT FROM p_duplicate::text), '[]'::jsonb))
+   WHERE id = p_main AND jsonb_typeof(metadata -> 'link_suggestions') = 'array';
+
+  -- El historial del contacto principal, en la misma transaccion (sin datos sensibles: solo cuentas).
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+  VALUES (p_workspace_id, 'contact', p_main, 'link', NULL,
+          jsonb_build_object('merged_from', p_duplicate, 'automatic', false, 'moved', v_moved), p_actor);
+
+  RETURN jsonb_build_object('ok', true, 'main', p_main, 'duplicate', p_duplicate, 'moved', v_moved);
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.merge_contacts(uuid, uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.merge_contacts(uuid, uuid, uuid, uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 248: CONTACT STATUS SETTINGS DEFAULT
+-- ============================================================
+-- ============================================================
+-- 00248_contact_status_settings_default
+-- ============================================================
+-- Corrige la 00245: el DEFAULT de `workspaces.contact_status_settings` llamaba a
+-- `private.default_contact_status_settings()`, y esa funcion no la puede
+-- ejecutar quien inserta (se le sacaron los permisos a proposito). Un DEFAULT
+-- se evalua con los permisos de quien hace el INSERT, asi que crear un
+-- workspace fallaba con "permission denied for function
+-- default_contact_status_settings" (lo encontro `verify-contact-pipeline.mjs`).
+--
+-- El DEFAULT pasa a ser el MISMO valor escrito como literal: no depende de
+-- ningun permiso. La funcion se queda (la usa `set_contact_status`, que corre
+-- como su duenio). `lib/contacts/statuses.test.ts` compara este literal con
+-- `DEFAULT_CONTACT_STATUSES`.
+--
+-- No cambia ninguna fila: los workspaces que ya existen tienen su valor.
+--
+-- Como volver atras (vuelve al error, no conviene):
+--   ALTER TABLE public.workspaces ALTER COLUMN contact_status_settings
+--     SET DEFAULT private.default_contact_status_settings();
+--
+-- Idempotente: SET DEFAULT se puede repetir.
+-- ============================================================
+
+ALTER TABLE public.workspaces
+  ALTER COLUMN contact_status_settings SET DEFAULT $defaults${
+    "setter": [
+      {"key": "nuevo", "name": "Nuevo", "color": "#64748b", "archived_at": null},
+      {"key": "contactado", "name": "Contactado", "color": "#2563eb", "archived_at": null},
+      {"key": "en_conversacion", "name": "En conversación", "color": "#0891b2", "archived_at": null},
+      {"key": "calificado", "name": "Calificado", "color": "#16a34a", "archived_at": null},
+      {"key": "agendado", "name": "Agendado", "color": "#7c3aed", "archived_at": null},
+      {"key": "no_calificado", "name": "No calificado", "color": "#ca8a04", "archived_at": null},
+      {"key": "perdido", "name": "Perdido", "color": "#e11d48", "archived_at": null}
+    ],
+    "closer": [
+      {"key": "llamada_agendada", "name": "Llamada agendada", "color": "#7c3aed", "archived_at": null},
+      {"key": "no_se_presento", "name": "No se presentó", "color": "#ca8a04", "archived_at": null},
+      {"key": "en_seguimiento", "name": "En seguimiento", "color": "#0891b2", "archived_at": null},
+      {"key": "propuesta_enviada", "name": "Propuesta enviada", "color": "#2563eb", "archived_at": null},
+      {"key": "ganado", "name": "Ganado", "color": "#16a34a", "archived_at": null},
+      {"key": "perdido", "name": "Perdido", "color": "#e11d48", "archived_at": null}
+    ]
+  }$defaults$::jsonb;

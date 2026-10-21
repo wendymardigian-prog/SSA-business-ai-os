@@ -1146,7 +1146,7 @@ hora y duracion, tareas en el calendario, arrastre de agendas y fusion real de c
 
 ## Lo que no se puede romper
 
-- **La fusion de contactos es `merge_contacts` (00207), una sola transaccion, solo `service_role`.** Cubre las 24 relaciones de `CONTACT_MERGE_TABLES`
+- **La fusion de contactos es `merge_contacts` (00207), una sola transaccion, solo `service_role`.** Cubre las 25 relaciones de `CONTACT_MERGE_TABLES` (la 00247 suma `contact_status_changes`)
   (`lib/contacts/merge.ts`). **Una tabla nueva con `contact_id` se suma a la funcion y a esa lista en el mismo cambio**: `verify-contact-merge.mjs`
   lee el catalogo y falla si falta una. `linkContacts` sigue siendo Owner/Admin y delega con el cliente de servicio. Despues de fusionar se va a la ficha
   del principal (el duplicado queda borrado), con el resultado como cuentas en la URL.
@@ -1421,6 +1421,46 @@ Contratos en dos modos (**Aceptación de términos**, el de siempre, y **Contrat
 `00242` (columnas nuevas de `contract_signatures`, `contract_render_matches`, el trigger de evidencia y `record_contract_signature` v2, con las dos definiciones viejas completas en la cabecera) y `00243` (`get_public_form` suma `mode` y `business_signer`, con la vieja en la cabecera). Se ensayaron contra la base real en una transacción que se deshace sola (los 17 casos dan igual que en TypeScript) y se **aplicaron y registraron el 21/10/2026** (versiones `20261021144057` y `20261021144115`), después del merge del PR #74. `verify-forms` (347 ok, con un bloque nuevo del modo Contrato) y las huellas de las 8 funciones protegidas, en verde. **La próxima libre es la `00244`** (confirmar con `list_migrations`).
 
 Ojo: el MCP de Supabase de esta sesión apuntaba a OTRO proyecto (`rutledxu…`), no al de producción (`knrxjnmx…`, el del `.env` y el vinculado con la CLI). Para la base real, `supabase db query --linked` desde una carpeta vinculada.
+
+# Pipeline de contactos (construido, 21/10/2026)
+
+Estado de setter y de vendedor con su historial, producto de interés y campos personalizados confiables. Resumen en
+[docs/pipeline-contactos.md](docs/pipeline-contactos.md); importación y atribución en [docs/atribucion.md](docs/atribucion.md).
+
+## Lo que no se puede romper
+
+- **Un estado solo cambia por `set_contact_status`** (00245, solo `service_role`; núcleo `applyContactStatus`, `lib/contacts/status-core.ts`).
+  La guardia `contacts_status_guard` rechaza (`CS001`) cualquier otro cambio a las columnas de estado, también del service role; solo pasan
+  esa función y `merge_contacts` con la marca `app.contact_status_internal`. Así ningún estado queda sin su fila en `contact_status_changes`.
+- **El último estado es el más reciente de los dos** (empatados, el del vendedor): `deriveLastStatus` (TS) y la función SQL dicen lo mismo.
+- **Las listas viven en `workspaces.contact_status_settings`**: la `key` no cambia nunca, un estado se archiva (no se borra), y el default de
+  la columna es `DEFAULT_CONTACT_STATUSES` (`statuses.test.ts` los compara). Editarlas pide `contact_statuses.manage` y se escriben con el
+  cliente de servicio después del guard; cambiar el estado de un contacto pide `contacts.edit` y que la persona lo vea.
+- **El historial de estados lo ve quien ve el contacto** (`can_see_contact`), no solo quien lo cambió. Nadie lo escribe a mano.
+- **El agente solo mueve el estado de SETTER** (`cambiar_estado_setter`, apagada por defecto, lista blanca, no pisa a una persona salvo que
+  se le permita). Sin la herramienta, el prompt de la clasificación al cierre es idéntico al de antes. Lo que hace se revierte desde Acciones.
+- **Un valor de campo personalizado se valida por tipo en UN lugar** (`normalizeCustomValue`, `lib/custom-fields.ts`): ficha, "Definir
+  campo", importación y webhook. `value_number` / `value_date` (00244) los llena un trigger que nunca lanza; comparar números o fechas va
+  contra esas columnas, nunca contra el texto.
+- **Producto de interés** (00246): el trigger `contacts_interest_check` exige variante del mismo producto y del mismo workspace. Los FK son
+  NO ACTION a propósito (borrar un workspace entero no choca en el medio de la cascada).
+- **Importación:** un contacto nuevo nace con el toque de origen `import` (con la atribución de la planilla si la trae); uno que ya existía
+  no recibe toque, solo una entrada en su historial.
+
+## Migraciones (`00244` a `00248`, todas aplicadas y registradas el 21/10/2026)
+
+`00244` (valores tipados), `00245` (estados, historial, función y guardia), `00246` (producto de interés), `00247` (`merge_contacts`
+con estados y producto; la definición vieja completa en su cabecera) y `00248` (corrige la 00245: el DEFAULT de
+`contact_status_settings` pasa a ser un literal; llamar a una función sin permisos desde un DEFAULT rompía el alta de un workspace).
+**Un DEFAULT de columna se evalúa con los permisos de quien inserta: nunca una función de `private`.** **La próxima libre es la `00249`**
+(confirmar con `list_migrations`).
+
+## Verificación
+
+```
+node scripts/verify-contact-pipeline.mjs   # 00244-00246: valores tipados, estados, guardia, RLS del historial, producto de interés
+node scripts/verify-contact-merge.mjs      # la fusión, con estados y producto de interés
+```
 
 # Seguridad
 

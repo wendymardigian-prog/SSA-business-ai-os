@@ -5,6 +5,7 @@
  */
 
 import type { ConditionFieldSpec } from "@/lib/flow-engine/condition-eval";
+import type { ContactStatusSettings } from "@/lib/contacts/statuses";
 
 export interface ConditionCatalogInputs {
   /** Lo que aporta el disparador (las preguntas del formulario, los datos de la reunion...). */
@@ -12,4 +13,7 @@ export interface ConditionCatalogInputs {
   customFields: Array<{ slug: string; name: string; type: string }>;
   tags: Array<{ name: string }>;
   sequences: Array<{ id: string; name: string }>;
+  /** Pipeline (00245) y producto de interés (00246). Opcionales: el catálogo funciona sin ellos. */
+  statusSettings?: ContactStatusSettings;
+  products?: Array<{ id: string; name: string }>;
 }

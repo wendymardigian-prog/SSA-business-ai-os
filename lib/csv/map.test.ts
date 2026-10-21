@@ -126,3 +126,57 @@ describe("numero de fila del error", () => {
     expect(r.ok && r.row.line).toBe(6);
   });
 });
+
+describe("campos personalizados y atribución en el CSV", () => {
+  const viajeros = { id: "cf-viajeros", name: "Cantidad de viajeros", type: "number" };
+  const vip = { id: "cf-vip", name: "Es VIP", type: "boolean" };
+
+  it("una columna con el nombre del campo va sola a ese campo", () => {
+    const m = suggestMapping(["Email", "Cantidad de viajeros", "es vip"], [viajeros, vip]);
+    expect(m.map((c) => c.target)).toEqual(["email", "custom:cf-viajeros", "custom:cf-vip"]);
+  });
+
+  it("reconoce las columnas de atribución", () => {
+    const m = suggestMapping(["utm_source", "Medio", "Campaña", "Fecha de alta"]);
+    expect(m.map((c) => c.target)).toEqual(["attr:source", "attr:medium", "attr:campaign", "attr:first_touch_at"]);
+  });
+
+  const mapping2: ColumnMapping[] = [
+    { header: "email", target: "email" },
+    { header: "viajeros", target: "custom:cf-viajeros" },
+    { header: "vip", target: "custom:cf-vip" },
+    { header: "fuente", target: "attr:source" },
+    { header: "fecha", target: "attr:first_touch_at" },
+  ];
+
+  it("normaliza el valor por tipo y lee la atribución", () => {
+    const r = mapRow(["ana@x.com", "3", "sí", "facebook", "05/03/2025"], mapping2, 0, [viajeros, vip], "2026-10-21");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.row.custom).toEqual({ "cf-viajeros": "3", "cf-vip": "true" });
+    expect(r.row.attribution).toEqual({ source: "facebook", firstTouchDate: "2025-03-05" });
+  });
+
+  it("un valor que no corresponde al tipo rechaza la fila con un mensaje claro", () => {
+    const r = mapRow(["ana@x.com", "muchos", "", "", ""], mapping2, 0, [viajeros, vip]);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toBe("Cantidad de viajeros tiene que ser un número");
+  });
+
+  it("una fecha de primer contacto futura no vale", () => {
+    const r = mapRow(["ana@x.com", "", "", "", "2030-01-01"], mapping2, 0, [viajeros, vip], "2026-10-21");
+    expect(r.ok).toBe(false);
+  });
+
+  it("sin atribución ni campos, quedan vacíos", () => {
+    const r = mapRow(["ana@x.com", "", "", "", ""], mapping2, 0, [viajeros, vip]);
+    expect(r.ok && r.row.attribution).toEqual({});
+    expect(r.ok && r.row.custom).toEqual({});
+  });
+
+  it("un campo que ya no existe se ignora", () => {
+    const r = mapRow(["ana@x.com", "3", "", "", ""], mapping2, 0, [vip]);
+    expect(r.ok && r.row.custom).toEqual({});
+  });
+});

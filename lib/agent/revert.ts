@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditAction, AuditEntityType, Database, Json } from "@/lib/types/database";
 import { logAudit, type AuditChanges } from "@/lib/audit";
+import { applyContactStatus } from "@/lib/contacts/status-core";
 
 /**
  * Revertir una accion del agente (F28): el inverso de lo que quedo en
@@ -31,10 +32,12 @@ export type RevertPlan =
   | { kind: "tags"; contactId: string; add: string[]; remove: string[] }
   | { kind: "contact"; contactId: string; patch: Record<string, Json> }
   | { kind: "conversation"; conversationId: string; patch: Record<string, Json> }
-  | { kind: "agent"; agentId: string; patch: Record<string, Json> };
+  | { kind: "agent"; agentId: string; patch: Record<string, Json> }
+  /** Pipeline (00245): el estado de setter vuelve al anterior, por `set_contact_status` (queda en el historial). */
+  | { kind: "setter_status"; contactId: string; status: string | null };
 
 /** Las acciones del agente que se pueden deshacer desde la pestana. */
-export const REVERTIBLE_ACTIONS: AuditAction[] = ["tag", "temperature", "followup", "summary", "assign", "human_takeover", "agent_paused", "update"];
+export const REVERTIBLE_ACTIONS: AuditAction[] = ["tag", "temperature", "followup", "summary", "assign", "human_takeover", "agent_paused", "update", "setter_status"];
 
 function change(entry: AuditEntry, field: string): { old: Json; new: Json } | null {
   const changes = entry.changes;
@@ -92,6 +95,10 @@ export function planRevert(entry: AuditEntry): RevertPlan | null {
       const c = change(entry, "agent_paused_until");
       return c ? { kind: "conversation", conversationId: entry.entity_id, patch: { agent_paused_until: c.old } } : null;
     }
+    case "setter_status": {
+      const c = change(entry, "setter_status");
+      return c ? { kind: "setter_status", contactId: entry.entity_id, status: typeof c.old === "string" && c.old ? c.old : null } : null;
+    }
     case "update": {
       // El agente se apago solo por un tope de gasto.
       const c = change(entry, "is_enabled");
@@ -120,7 +127,11 @@ export type RevertResult = { ok: true; revertAuditId: string | null } | { ok: fa
 export async function applyRevert(
   supabase: Db,
   entry: AuditEntry,
-  actor: { userId: string },
+  actor: {
+    userId: string;
+    /** El cliente de servicio: solo para el estado de setter (`set_contact_status` es de service_role). */
+    service?: Db;
+  },
 ): Promise<RevertResult> {
   const plan = planRevert(entry);
   if (!plan) return { ok: false, error: "Esta accion no se puede revertir." };
@@ -139,6 +150,20 @@ export async function applyRevert(
         if (error && error.code !== "23505") return { ok: false, error: "No pude volver a poner las etiquetas." };
       }
     }
+  } else if (plan.kind === "setter_status") {
+    // Que quien revierte VEA el contacto (su RLS); recien ahi, la funcion de la base.
+    const { data: visible } = await supabase.from("contacts").select("id").eq("id", plan.contactId).eq("workspace_id", entry.workspace_id).maybeSingle();
+    if (!visible) return { ok: false, error: "No pude revertir: el contacto no esta a tu alcance o ya no existe." };
+    if (!actor.service) return { ok: false, error: "No pude revertir el estado." };
+    const result = await applyContactStatus(actor.service, {
+      workspaceId: entry.workspace_id,
+      contactId: plan.contactId,
+      role: "setter",
+      status: plan.status,
+      actorUserId: actor.userId,
+    });
+    if (result.kind === "invalid_status") return { ok: false, error: "No pude revertir: el estado anterior ya no existe o esta archivado." };
+    if (result.kind !== "changed" && result.kind !== "unchanged") return { ok: false, error: "No pude revertir el estado." };
   } else if (plan.kind === "contact") {
     const { data, error } = await supabase.from("contacts").update(plan.patch as never).eq("id", plan.contactId).select("id");
     if (error || !data?.length) return { ok: false, error: "No pude revertir: el contacto no esta a tu alcance o ya no existe." };

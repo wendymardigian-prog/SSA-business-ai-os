@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { CustomFieldsView, type FieldRow } from "./custom-fields-view";
 
 /**
@@ -24,14 +25,21 @@ export default async function CustomFieldsPage() {
 
   // Cuantos contactos tienen un valor cargado en cada campo: es lo que decide
   // si el tipo se puede cambiar, y lo que hay que avisar antes de eliminar.
-  const { data: valores } = await supabase
-    .from("contact_custom_fields")
-    .select("field_id");
-
+  // Una cuenta por campo (antes se traian todas las filas y se cortaba en
+  // 1000), con el cliente de servicio filtrado por los campos de ESTE workspace:
+  // la RLS de contactos no tiene que achicar el numero.
+  const service = await createServiceClient();
   const usos = new Map<string, number>();
-  for (const v of valores ?? []) {
-    usos.set(v.field_id, (usos.get(v.field_id) ?? 0) + 1);
-  }
+  await Promise.all(
+    (data ?? []).map(async (f) => {
+      const { count, error: countError } = await service
+        .from("contact_custom_fields")
+        .select("field_id", { count: "exact", head: true })
+        .eq("field_id", f.id);
+      if (countError) console.error("[custom-fields] conteo fallido:", countError.message);
+      usos.set(f.id, count ?? 0);
+    }),
+  );
 
   const fields: FieldRow[] = (data ?? []).map((f) => ({
     id: f.id,

@@ -14,6 +14,10 @@
  *  - `sequence`: se inscribio o completo una secuencia.
  *  - `email`: un email AUTOMATICO que salio (o no pudo salir) para este contacto
  *    (email_log.contact_id, 00135).
+ *  - `status`: un cambio de estado de setter o de vendedor (contact_status_changes,
+ *    00245). Lo ve quien ve el contacto, no solo quien lo cambio (con el audit
+ *    un Member ve solo lo suyo). Lo que hizo el agente deja ademas una entrada
+ *    `setter_status` en el audit, para poder revertirla: esa no se repite aca.
  *
  * Los MENSAJES de chat no van: ya estan en Conversaciones. Un email manual
  * respondido desde la bandeja tampoco (es un mensaje de la conversacion de
@@ -26,6 +30,7 @@
  */
 
 import type { AuditAction, Json } from "@/lib/types/database";
+import { STATUS_ROLE_LABELS, statusName, type ContactStatusSettings, type StatusRole } from "./statuses";
 
 export interface AuditHistoryItem {
   source: "audit";
@@ -68,7 +73,20 @@ export interface EmailHistoryItem {
   flowName: string | null;
 }
 
-export type HistoryItem = AuditHistoryItem | FlowHistoryItem | SequenceHistoryItem | EmailHistoryItem;
+export interface StatusHistoryItem {
+  source: "status";
+  id: string;
+  at: string;
+  role: StatusRole;
+  /** Nombres para mostrar (ya resueltos con la lista del workspace); null = "sin estado". */
+  oldLabel: string | null;
+  newLabel: string | null;
+  actorLabel: string;
+  /** Lo que dijo el agente para justificarlo. */
+  reason: string | null;
+}
+
+export type HistoryItem = AuditHistoryItem | FlowHistoryItem | SequenceHistoryItem | EmailHistoryItem | StatusHistoryItem;
 
 /** Dos huellas de la MISMA automatizacion: el audit y el motor la anotan con segundos de diferencia. */
 const SAME_RUN_WINDOW_MS = 5 * 60 * 1000;
@@ -96,6 +114,18 @@ export interface BuildHistoryInput {
   }>;
   /** id del flow -> nombre. */
   flowNames: Map<string, string>;
+  /** Los cambios de estado (00245), con quien los hizo ya resuelto. */
+  statusChanges?: Array<{
+    id: string;
+    role: StatusRole;
+    oldStatus: string | null;
+    newStatus: string | null;
+    createdAt: string;
+    actorLabel: string;
+    reason: string | null;
+  }>;
+  /** Las listas de estados, para mostrar el nombre y no la clave. */
+  statusSettings?: ContactStatusSettings;
   /** Cuantas entradas como maximo. */
   limit?: number;
 }
@@ -141,6 +171,8 @@ export function buildContactHistory(input: BuildHistoryInput): HistoryItem[] {
   }
 
   for (const entry of input.audit) {
+    // Lo cuenta `contact_status_changes`: el audit del agente queda para revertir.
+    if (entry.action === "setter_status") continue;
     const flowId = entry.action === "automation_triggered" ? flowIdOf(entry.metadata) : null;
 
     // Ya esta contada por el motor (`flow_started`): la del audit no se repite.
@@ -194,6 +226,20 @@ export function buildContactHistory(input: BuildHistoryInput): HistoryItem[] {
     });
   }
 
+  for (const change of input.statusChanges ?? []) {
+    const list = input.statusSettings?.[change.role] ?? [];
+    items.push({
+      source: "status",
+      id: `status:${change.id}`,
+      at: change.createdAt,
+      role: change.role,
+      oldLabel: change.oldStatus ? statusName(list, change.oldStatus) : null,
+      newLabel: change.newStatus ? statusName(list, change.newStatus) : null,
+      actorLabel: change.actorLabel,
+      reason: change.reason,
+    });
+  }
+
   items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   return input.limit ? items.slice(0, input.limit) : items;
 }
@@ -227,6 +273,12 @@ export function describeHistoryItem(item: Exclude<HistoryItem, AuditHistoryItem>
         return { actor: "El sistema", text: `no mandó el email «${item.subject}» a ${item.to}: el correo no está conectado${via}` };
       }
       return { actor: "El sistema", text: `no pudo mandar el email «${item.subject}» a ${item.to}${via}` };
+    }
+    case "status": {
+      const role = STATUS_ROLE_LABELS[item.role].toLowerCase();
+      if (!item.newLabel) return { actor: item.actorLabel, text: `quitó el estado de ${role} (era ${quoted(item.oldLabel, "—")})` };
+      if (!item.oldLabel) return { actor: item.actorLabel, text: `puso el estado de ${role} en ${quoted(item.newLabel, "")}` };
+      return { actor: item.actorLabel, text: `cambió el estado de ${role}: ${quoted(item.oldLabel, "")} → ${quoted(item.newLabel, "")}` };
     }
   }
 }

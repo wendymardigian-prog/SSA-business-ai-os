@@ -230,6 +230,39 @@ registerTypedField({
   value: ({ contact }) => (typeof contact.lead_temperature === "string" ? contact.lead_temperature : undefined),
 });
 
+// Pipeline de contactos (00245). Sin estado = sin valor (el "esta vacio" del evaluador lo atrapa).
+const textColumn = (value: unknown) => (typeof value === "string" && value !== "" ? value : undefined);
+
+registerTypedField({
+  prefix: "contact.setter_status",
+  label: "Estado de setter",
+  value: ({ contact }) => textColumn(contact.setter_status),
+});
+
+registerTypedField({
+  prefix: "contact.closer_status",
+  label: "Estado de vendedor",
+  value: ({ contact }) => textColumn(contact.closer_status),
+});
+
+// El ultimo de los dos, como "rol:clave" (los dos roles pueden tener una clave igual, p. ej. "perdido").
+registerTypedField({
+  prefix: "contact.last_status",
+  label: "Último estado",
+  value: ({ contact }) => {
+    const role = textColumn(contact.last_status_role);
+    const status = textColumn(contact.last_status);
+    return role && status ? `${role}:${status}` : undefined;
+  },
+});
+
+// Producto de interes (00246): el id del producto.
+registerTypedField({
+  prefix: "contact.interest_product",
+  label: "Producto de interés",
+  value: ({ contact }) => textColumn(contact.interest_product_id),
+});
+
 /**
  * La respuesta del formulario que disparo el flujo, junto con las preguntas de
  * la version con la que se respondio. Se carga UNA vez por corrida del nodo.

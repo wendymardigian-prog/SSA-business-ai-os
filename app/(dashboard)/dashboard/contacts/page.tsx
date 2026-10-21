@@ -8,6 +8,9 @@ import { isSupportedPlatform, platformLabel } from "@/lib/platforms";
 import { LEAD_TEMPERATURES } from "@/lib/contacts/fields";
 import { contactOrderClauses, parseContactSort } from "@/lib/contacts/sort";
 import { firstParam, pickEnum, pickPage, sanitizeSearch } from "@/lib/url-params";
+import { customFilterPlan, parseCustomFilter, parsePipelineFilters, pipelineClauses } from "@/lib/contacts/list-filters";
+import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
+import { loadInterestCatalog } from "@/lib/contacts/interest-load";
 
 /**
  * Lista de contactos.
@@ -60,6 +63,20 @@ export default async function ContactsPage({
   // Por PRIMER toque (F88): quien lo trajo, no lo ultimo que hizo. Los valores
   // se validan contra la taxonomia; uno inventado se ignora.
   const attribution = parseAttributionFilters(params);
+  // Pipeline (00245/00246): estado (el ultimo o el de cada rol) y producto de interes.
+  const pipeline = parsePipelineFilters(params);
+
+  // Los campos personalizados (para el filtro y las columnas), las listas de
+  // estados y el catalogo de productos: se piden antes porque el filtro por
+  // campo necesita saber su tipo.
+  const [fieldDefsRes, statusSettings, interestCatalog] = await Promise.all([
+    supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).is("deleted_at", null).order("name"),
+    loadContactStatusSettings(workspace.id),
+    loadInterestCatalog(supabase, workspace.id),
+  ]);
+  const customFields = fieldDefsRes.data ?? [];
+  const customFilter = parseCustomFilter(params, customFields);
+  const customPlan = customFilter ? customFilterPlan(customFilter) : null;
 
   // Los embeds con alias permiten filtrar por tag o por canal sin perder la
   // lista completa de tags de cada contacto: `tag_match` e `channel_match` son
@@ -68,6 +85,9 @@ export default async function ContactsPage({
   let select = "*, contact_tags(tag_id, tags(id, name, color))";
   if (tagId) select += ", tag_match:contact_tags!inner(tag_id)";
   if (platform) select += ", channel_match:contact_channels!inner(channels!inner(platform))";
+  // Por campo personalizado (00244): un join interno con la condicion, o un
+  // anti-join para "esta vacio" (el contacto no tiene fila para ese campo).
+  if (customPlan) select += customPlan.join === "anti" ? ", cf_match:contact_custom_fields(field_id)" : ", cf_match:contact_custom_fields!inner(field_id)";
 
   let query = supabase
     .from("contacts")
@@ -97,6 +117,21 @@ export default async function ContactsPage({
   if (vendedorId) query = query.eq("vendedor_id", vendedorId);
   if (temperature) query = query.eq("lead_temperature", temperature);
   for (const { path, value } of attributionClauses(attribution)) query = query.eq(path, value);
+  for (const clause of pipelineClauses(pipeline)) {
+    query = clause.op === "is_null" ? query.is(clause.column, null) : query.eq(clause.column, clause.value as string);
+  }
+  if (customPlan) {
+    query = query.eq("cf_match.field_id", customPlan.fieldId);
+    if (customPlan.join === "anti") query = query.is("cf_match", null);
+    else {
+      const col = `cf_match.${customPlan.column}`;
+      if (customPlan.op === "not_null") query = query.not(col, "is", null);
+      else if (customPlan.op === "ilike") query = query.ilike(col, String(customPlan.value));
+      else if (customPlan.op === "gt") query = query.gt(col, customPlan.value as string | number);
+      else if (customPlan.op === "lt") query = query.lt(col, customPlan.value as string | number);
+      else query = query.eq(col, customPlan.value as string | number);
+    }
+  }
   if (anon === "solo") query = query.eq("is_anonymous", true);
   else if (anon !== "1") query = query.eq("is_anonymous", false);
 
@@ -140,6 +175,14 @@ export default async function ContactsPage({
     }
   >;
 
+  // Los valores de los campos personalizados de ESTA pagina (para las columnas que la persona elija).
+  const pageIds = rows.map((c) => c.id as string);
+  const customValues: Record<string, Record<string, string>> = {};
+  if (pageIds.length > 0 && customFields.length > 0) {
+    const { data: values } = await supabase.from("contact_custom_fields").select("contact_id, field_id, value").in("contact_id", pageIds);
+    for (const v of values ?? []) (customValues[v.contact_id] ??= {})[v.field_id] = v.value;
+  }
+
   const contacts: ContactRow[] = rows.map((c) => ({
     id: c.id as string,
     displayName: (c.display_name as string | null) ?? null,
@@ -153,6 +196,11 @@ export default async function ContactsPage({
     tags: (c.contact_tags ?? [])
       .map((ct) => ct.tags)
       .filter((t): t is { id: string; name: string; color: string | null } => Boolean(t)),
+    lastStatusRole: c.last_status_role === "setter" || c.last_status_role === "closer" ? c.last_status_role : null,
+    lastStatus: (c.last_status as string | null) ?? null,
+    interestProductId: (c.interest_product_id as string | null) ?? null,
+    interestVariantId: (c.interest_variant_id as string | null) ?? null,
+    custom: customValues[c.id as string] ?? {},
   }));
 
   const platforms = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort();
@@ -172,7 +220,18 @@ export default async function ContactsPage({
       }))}
       platforms={platforms.map((p) => ({ value: p, label: platformLabel(p) }))}
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
-      filters={{ search, tagId, setterId, vendedorId, temperature, platform, anon, source: attribution.source, medium: attribution.medium }}
+      filters={{
+        search, tagId, setterId, vendedorId, temperature, platform, anon, source: attribution.source, medium: attribution.medium,
+        lastStatus: firstParam(params.estado) && pipeline.lastStatus ? `${pipeline.lastStatus.role}:${pipeline.lastStatus.key}` : "",
+        setterStatus: pipeline.setterStatus,
+        closerStatus: pipeline.closerStatus,
+        productId: pipeline.productId,
+        customField: customFilter ? customFilter.field.slug : "",
+      }}
+      customFilter={customFilter ? { slug: customFilter.field.slug, op: customFilter.op, value: firstParam(params.valor) } : null}
+      customFields={customFields}
+      statusSettings={statusSettings}
+      interestCatalog={interestCatalog}
       anonymousCount={anonymousRes.count ?? 0}
       sort={sort}
     />

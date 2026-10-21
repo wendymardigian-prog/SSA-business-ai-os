@@ -6,7 +6,7 @@
  * aca ni en `CONTACT_MERGE_EXCLUSIONS` (con su motivo), asi una tabla futura no queda fuera de la fusion sin que alguien lo note.
  */
 
-/** Las tablas con una relacion a `contacts` que la fusion mueve (24: `contacts` es `referred_by_contact_id`). */
+/** Las tablas con una relacion a `contacts` que la fusion mueve (25: `contacts` es `referred_by_contact_id`). */
 export const CONTACT_MERGE_TABLES = [
   "agent_drafts",
   "agent_runs",
@@ -18,6 +18,7 @@ export const CONTACT_MERGE_TABLES = [
   "contact_channels",
   "contact_custom_fields",
   "contact_notes",
+  "contact_status_changes", // el historial de estados del pipeline (00245, la fusion desde la 00247)
   "contact_tags",
   "contact_touches",
   "contacts", // referred_by_contact_id: los contactos que el duplicado habia referido
