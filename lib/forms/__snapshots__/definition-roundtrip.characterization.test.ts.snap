@@ -189,6 +189,7 @@ exports[`caracterizacion: validateDefinition (los textos de hoy) > la plantilla 
   "contractConfig": {
     "acceptLabel": "Leí y acepto el contrato",
     "ccEmails": [],
+    "copyToOwner": true,
     "signatureRequired": true,
     "title": "Formulario",
   },

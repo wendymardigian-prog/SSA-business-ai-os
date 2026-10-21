@@ -24,6 +24,8 @@ export interface ContractConfig {
   signatureRequired: boolean;
   acceptLabel: string;
   ccEmails: string[];
+  /** Mandarle también la copia firmada al Owner del negocio (por defecto, sí). */
+  copyToOwner: boolean;
 }
 
 export const DEFAULT_ACCEPT_LABEL = "Leí y acepto el contrato";
@@ -37,7 +39,7 @@ export function defaultSurveyConfig(): SurveyConfig {
 }
 
 export function defaultContractConfig(name: string): ContractConfig {
-  return { title: name, signatureRequired: true, acceptLabel: DEFAULT_ACCEPT_LABEL, ccEmails: [] };
+  return { title: name, signatureRequired: true, acceptLabel: DEFAULT_ACCEPT_LABEL, ccEmails: [], copyToOwner: true };
 }
 
 export interface NewFormParts {

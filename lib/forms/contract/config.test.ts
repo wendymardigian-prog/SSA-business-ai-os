@@ -22,8 +22,12 @@ describe("validateContractConfig", () => {
 
 describe("parseStoredContractConfig", () => {
   it("completa lo que falta con los valores por defecto y nunca lanza", () => {
-    expect(parseStoredContractConfig(null, "Mi contrato")).toEqual({ title: "Mi contrato", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [] });
+    expect(parseStoredContractConfig(null, "Mi contrato")).toEqual({ title: "Mi contrato", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [], copyToOwner: true });
     expect(parseStoredContractConfig({ title: "T", signatureRequired: false, ccEmails: ["x@y.com", "roto"] }).ccEmails).toEqual(["x@y.com"]);
+  });
+  it("la copia al Owner: prendida si la configuración es de antes de la opción, y se respeta si se apagó", () => {
+    expect(parseStoredContractConfig({ title: "T", signatureRequired: true, acceptLabel: "A", ccEmails: [] }).copyToOwner).toBe(true);
+    expect(parseStoredContractConfig({ title: "T", signatureRequired: true, acceptLabel: "A", ccEmails: [], copyToOwner: false }).copyToOwner).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Check } from "lucide-react";
+import { Check, Download } from "lucide-react";
 import { previewEnding } from "@/lib/forms/preview-view";
 import { conditionChip, emptyShortcuts, mappingChip } from "@/lib/forms/canvas-view";
 import type { ContactConfig, CustomFieldDef } from "@/lib/forms/contact-config";
@@ -180,6 +180,11 @@ export function FormCanvas({
               <span className="min-w-0">
                 {ending.title && <span className="block text-base font-semibold">{ending.title}</span>}
                 <span className="block whitespace-pre-line text-sm text-muted-foreground">{ending.body}</span>
+                {formType === "contract" && success?.mode === "message" && success.downloadContract && (
+                  <span className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium">
+                    <Download className="h-3.5 w-3.5" aria-hidden /> Descargar contrato
+                  </span>
+                )}
               </span>
             </span>
           </button>

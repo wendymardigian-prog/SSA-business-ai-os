@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { FormEditor } from "@/components/forms/editor/form-editor";
+import { loadEmailReadiness } from "@/lib/email/readiness";
 import type { EditorExtras, EditorForm, EditorVersion } from "@/components/forms/editor/types";
 import { flowsForForm } from "@/lib/forms/data/form-flows";
 import { countResponses } from "@/lib/forms/editor-bar-load";
@@ -41,7 +42,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
 
   const service = await createServiceClient();
   const isEod = form.type === "eod";
-  const [{ data: customRows }, { data: tagRows }, flows, { data: roleRows }, responseCount] = await Promise.all([
+  const [{ data: customRows }, { data: tagRows }, flows, { data: roleRows }, responseCount, emailReadiness] = await Promise.all([
     supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     flowsForForm(supabase, id, { [id]: form.name }),
@@ -49,6 +50,8 @@ export default async function FormularioEditorPage({ params }: { params: Promise
       ? service.from("workspace_roles").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true })
       : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
     countResponses(supabase, workspace.id, id, form.type as FormType),
+    // Después de comprobar que la persona ve el formulario; filtrado por el workspace de la sesión.
+    form.type === "contract" ? loadEmailReadiness(service, workspace.id) : Promise.resolve(undefined),
   ]);
 
   const names = new Map(members.map((m) => [m.userId, m.name]));
@@ -95,6 +98,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     canFlows: ctx.can("flows.edit"),
     roles: roleRows ?? [],
     responseCount,
+    emailReadiness,
   };
 
   return (

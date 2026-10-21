@@ -57,6 +57,7 @@ import { validateSignature } from "./contract/signature";
 import { buildLegal } from "./contract/legal";
 import { signerEmailField, signerNameFromAnswers } from "./contract/config";
 import { contractSuccess } from "./contract/success";
+import { copyDownloadPath } from "./contract/copy-link";
 
 // ── Lo que el servidor necesita de afuera ────────────────────────────────────
 
@@ -156,6 +157,11 @@ export interface SubmitPorts {
     contactCreated: boolean;
   }): Promise<void>;
   newId(): string;
+  /**
+   * El link de 24 h para bajar la copia firmada ("Descargar contrato"). `null` si no se pudo armar: la pantalla de
+   * éxito sale igual, sin el botón. Opcional para los puertos de prueba que no lo necesitan.
+   */
+  contractCopyToken?(form: LoadedForm, submissionId: string): Promise<string | null>;
 }
 
 // ── Entrada y salida ─────────────────────────────────────────────────────────
@@ -227,13 +233,13 @@ export function safeFileName(name: string): string {
   return cleaned || "archivo";
 }
 
-function successBody(form: LoadedForm, submissionId: string, values: Record<string, unknown>, attribution: Record<string, unknown>) {
+async function successBody(ports: SubmitPorts, form: LoadedForm, submissionId: string, values: Record<string, unknown>, attribution: Record<string, unknown>) {
   const texts: Record<string, string> = {};
   for (const [key, value] of Object.entries(values)) texts[key] = answerToText(value);
   // Un contrato dice a dónde va la copia firmada (si la persona no escribió su propio mensaje).
   const emailField = form.type === "contract" ? signerEmailField(form.fields) : undefined;
   const success = form.type === "contract" ? contractSuccess(form.success, emailField ? texts[emailField.key] ?? "" : "") : form.success;
-  return renderSuccess(
+  const rendered = renderSuccess(
     success,
     {
       formName: form.name,
@@ -243,9 +249,19 @@ function successBody(form: LoadedForm, submissionId: string, values: Record<stri
     },
     { escape: false },
   );
+  // "Descargar contrato": solo un contrato, solo con mensaje, solo si está prendido y solo para una respuesta real.
+  if (form.type === "contract" && success.mode === "message" && success.downloadContract && submissionId && ports.contractCopyToken) {
+    try {
+      const token = await ports.contractCopyToken(form, submissionId);
+      if (token) rendered.download = { url: copyDownloadPath(form.slug, token) };
+    } catch {
+      console.error(`[forms] no pude armar el link de la copia (form=${form.id})`);
+    }
+  }
+  return rendered;
 }
 
-function duplicateOutcome(form: LoadedForm, existing: ExistingSubmission): SubmitOutcome {
+async function duplicateOutcome(ports: SubmitPorts, form: LoadedForm, existing: ExistingSubmission): Promise<SubmitOutcome> {
   const values: Record<string, unknown> = {};
   for (const [key, answer] of Object.entries(existing.answers ?? {})) values[key] = answer.value;
   return {
@@ -254,7 +270,7 @@ function duplicateOutcome(form: LoadedForm, existing: ExistingSubmission): Submi
       ok: true,
       duplicate: true,
       submission_id: existing.id,
-      success: successBody(form, existing.id, values, existing.attribution ?? {}),
+      success: await successBody(ports, form, existing.id, values, existing.attribution ?? {}),
     },
   };
 }
@@ -295,7 +311,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   const already = await ports.findSubmission(form.id, payload.idempotency_key);
   if (already) {
     logResult(form.id, "duplicate", already.id);
-    return duplicateOutcome(form, already);
+    return await duplicateOutcome(ports, form, already);
   }
 
   // 5. Honeypot: éxito falso, sin guardar.
@@ -304,7 +320,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     logResult(form.id, "rejected_honeypot");
     return {
       status: 200,
-      body: { ok: true, submission_id: ports.newId(), success: successBody(form, "", {}, {}) },
+      body: { ok: true, submission_id: ports.newId(), success: await successBody(ports, form, "", {}, {}) },
     };
   }
 
@@ -485,7 +501,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
       ok: true,
       duplicate: saved.duplicate,
       submission_id: saved.submissionId,
-      success: successBody(form, saved.submissionId, values, attribution),
+      success: await successBody(ports, form, saved.submissionId, values, attribution),
     },
   };
 }

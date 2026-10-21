@@ -514,7 +514,7 @@ describe("submitForm: contratos (FO3)", () => {
   const contractForm = (over: Partial<LoadedForm> = {}) =>
     makeForm([{ ...field("short_text", "nombre", { required: true, label: "Nombre del firmante" }) }, { ...field("email", "email", { required: true, label: "Email" }) }], {
       type: "contract",
-      contract: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [] },
+      contract: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [], copyToOwner: true },
       success: { mode: "message", title: "¡Gracias!", body: "Recibimos tu respuesta." },
       ...over,
     });
@@ -524,6 +524,31 @@ describe("submitForm: contratos (FO3)", () => {
     signature: goodSignature,
     signature_strokes: 3,
     ...extra,
+  });
+
+  it("con «Descargar contrato» prendido, la pantalla de éxito trae el link de la copia; apagado, no", async () => {
+    const contractCopyToken = vi.fn(async () => "tok.en");
+    const on = makePorts(contractForm({ slug: "acuerdo", success: { mode: "message", downloadContract: true } }), { contractCopyToken });
+    const out = await submitForm(on.ports, baseInput(signed()));
+    expect(out.status).toBe(200);
+    expect((out.body.success as { download?: { url: string } }).download).toEqual({ url: "/api/public/forms/acuerdo/copy?t=tok.en" });
+    expect(contractCopyToken).toHaveBeenCalledTimes(1);
+
+    const off = makePorts(contractForm(), { contractCopyToken });
+    const outOff = await submitForm(off.ports, baseInput(signed()));
+    expect(outOff.body.success).not.toHaveProperty("download");
+    expect(contractCopyToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("si el link de la copia no se puede armar, la firma sale igual (sin el botón)", async () => {
+    const { ports } = makePorts(contractForm({ success: { mode: "message", downloadContract: true } }), {
+      contractCopyToken: vi.fn(async () => {
+        throw new Error("vault caído");
+      }),
+    });
+    const out = await submitForm(ports, baseInput(signed()));
+    expect(out.status).toBe(200);
+    expect(out.body.success).not.toHaveProperty("download");
   });
 
   it("sin aceptar la casilla: 400 y no guarda ni sube nada", async () => {
@@ -564,7 +589,7 @@ describe("submitForm: contratos (FO3)", () => {
   });
 
   it("firma opcional y sin dibujar: se firma sin imagen", async () => {
-    const form = contractForm({ contract: { title: "A", signatureRequired: false, acceptLabel: "Acepto", ccEmails: [] } });
+    const form = contractForm({ contract: { title: "A", signatureRequired: false, acceptLabel: "Acepto", ccEmails: [], copyToOwner: true } });
     const { ports, saves } = makePorts(form);
     const out = await submitForm(ports, baseInput(signed({ signature: undefined, signature_strokes: undefined })));
     expect(out.status).toBe(200);

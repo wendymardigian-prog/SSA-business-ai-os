@@ -9,6 +9,7 @@ import { InspectorForm } from "@/components/forms/builder/inspector-form";
 import { InspectorContract } from "@/components/forms/builder/inspector-contract";
 import { ContractSigningBlock, ContractTextBlock } from "@/components/forms/builder/contract-blocks";
 import { signerEmailField, type ContractConfig } from "@/lib/forms/contract/config";
+import type { EmailReadiness } from "@/lib/email/readiness";
 import { useBuilderActions } from "@/components/forms/builder/use-builder-actions";
 import { FIELD_TYPE_LABELS, FORM_TYPE_LABELS, type FormField, type PublicFormType } from "@/lib/forms/fields";
 import { FORM_SELECTION, normalizeSelection, selectedIndex, type BuilderSelection } from "@/lib/forms/builder-selection";
@@ -52,7 +53,7 @@ export function FieldsTab({
   focusRequest: { fieldKey: string | null; nonce: number } | null;
   onOpenContact: () => void;
   /** Solo un contrato: su texto va en el lienzo y sus ajustes en el panel (antes, la pestaña Contrato). */
-  contract?: { formId: string; config: ContractConfig; onConfigSaved: (config: ContractConfig) => void; canManage: boolean };
+  contract?: { formId: string; config: ContractConfig; onConfigSaved: (config: ContractConfig) => void; canManage: boolean; emailReadiness?: EmailReadiness };
 }) {
   const fields = draft.definition.fields;
   const [rawSelection, setSelection] = useState<BuilderSelection>(FORM_SELECTION);
@@ -113,6 +114,7 @@ export function FieldsTab({
         canManage={contract.canManage}
         disabled={disabled}
         hasSignerEmail={!!signerEmailField(fields)}
+        emailReadiness={contract.emailReadiness}
       />
     </div>
   ) : null;
@@ -141,7 +143,7 @@ export function FieldsTab({
       actions={builder.actions}
     />
   ) : selection.kind === "end" ? (
-    <InspectorEnd success={draft.success} onChange={(success) => onChange({ ...draft, success })} fields={fields} disabled={disabled} />
+    <InspectorEnd success={draft.success} onChange={(success) => onChange({ ...draft, success })} fields={fields} disabled={disabled} isContract={type === "contract"} />
   ) : (
     <InspectorForm
       name={draft.name}

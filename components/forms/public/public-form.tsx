@@ -27,6 +27,7 @@ import { submitOriginFields } from "@/lib/forms/site-submit";
 import { useEmbedBridge } from "@/components/scheduling/booker/use-embed-bridge";
 import { FIELD_RENDERERS } from "./fields/registry";
 import { ContractReader, ContractSigning } from "./contract-block";
+import { ContractCopyButton } from "./contract-copy-button";
 import { canSign } from "@/lib/forms/contract/signature-input";
 
 /**
@@ -44,6 +45,8 @@ export interface RenderedSuccess {
   body?: string;
   button?: { label: string; url: string };
   url?: string;
+  /** Solo un contrato con "Descargar contrato": la copia firmada (link de 24 h). */
+  download?: { url: string };
 }
 
 export interface PublicFormProps {
@@ -332,6 +335,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
             <ExternalLink className="h-4 w-4" aria-hidden="true" />
           </a>
         )}
+        {done.download && <ContractCopyButton url={done.download.url} />}
         {preview && (
           <div>
             <button type="button" onClick={() => setDone(null)} className="text-sm font-medium text-primary hover:underline">

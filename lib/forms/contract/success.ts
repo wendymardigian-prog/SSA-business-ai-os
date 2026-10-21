@@ -25,5 +25,7 @@ export function contractSuccess(success: SuccessConfig, signerEmail: string): Su
     mode: "message",
     title: "Listo",
     body: email ? `Te mandamos la copia firmada a ${email} en unos minutos.` : "Te mandamos la copia firmada por email en unos minutos.",
+    // El botón de descarga se conserva aunque el mensaje sea el de siempre.
+    ...(success.mode === "message" && success.downloadContract ? { downloadContract: true } : {}),
   };
 }

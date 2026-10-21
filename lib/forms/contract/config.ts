@@ -20,6 +20,8 @@ const schema = z.object({
   signatureRequired: z.boolean(),
   acceptLabel: z.string().trim().min(1).max(200),
   ccEmails: z.array(z.string().trim().toLowerCase().regex(EMAIL_RE, "Una de las direcciones de copia no es válida")).max(MAX_CC_EMAILS, `Hasta ${MAX_CC_EMAILS} direcciones de copia`),
+  // Una configuración guardada antes de que existiera esta opción la tiene prendida.
+  copyToOwner: z.boolean().default(true),
 });
 
 export type ContractConfigResult = { ok: true; config: ContractConfig } | { ok: false; errors: string[] };
@@ -40,6 +42,7 @@ export function parseStoredContractConfig(raw: unknown, fallbackTitle = "Contrat
     signatureRequired: typeof obj.signatureRequired === "boolean" ? obj.signatureRequired : true,
     acceptLabel: typeof obj.acceptLabel === "string" && obj.acceptLabel.trim() ? obj.acceptLabel.trim().slice(0, 200) : DEFAULT_ACCEPT_LABEL,
     ccEmails: Array.isArray(obj.ccEmails) ? obj.ccEmails.filter((e): e is string => typeof e === "string" && EMAIL_RE.test(e)).slice(0, MAX_CC_EMAILS) : [],
+    copyToOwner: typeof obj.copyToOwner === "boolean" ? obj.copyToOwner : true,
   };
 }
 

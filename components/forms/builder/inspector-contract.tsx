@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Checkbox, Field, Notice, inputClass } from "@/components/agents/fields";
 import { saveContractConfig } from "@/lib/actions/forms/config";
 import { MAX_CC_EMAILS, parseCcInput, validateContractConfig, type ContractConfig } from "@/lib/forms/contract/config";
+import type { EmailReadiness } from "@/lib/email/readiness";
 
 /**
  * El panel del contrato en Diseño (antes, la pestaña Contrato): el título, la casilla de aceptación, si la firma es
@@ -18,6 +19,7 @@ export function InspectorContract({
   canManage,
   disabled,
   hasSignerEmail,
+  emailReadiness,
 }: {
   formId: string;
   config: ContractConfig;
@@ -26,16 +28,19 @@ export function InspectorContract({
   disabled: boolean;
   /** El contrato necesita un email obligatorio (ahí va la copia firmada). */
   hasSignerEmail: boolean;
+  /** Si la copia por correo va a salir; sin dato, no se avisa nada. */
+  emailReadiness?: EmailReadiness;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(config.title);
   const [acceptLabel, setAcceptLabel] = useState(config.acceptLabel);
   const [signatureRequired, setSignatureRequired] = useState(config.signatureRequired);
   const [ccText, setCcText] = useState(config.ccEmails.join(", "));
+  const [copyToOwner, setCopyToOwner] = useState(config.copyToOwner);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [saving, start] = useTransition();
 
-  const next = { ...config, title, acceptLabel, signatureRequired, ccEmails: parseCcInput(ccText) };
+  const next = { ...config, title, acceptLabel, signatureRequired, ccEmails: parseCcInput(ccText), copyToOwner };
   const validation = validateContractConfig(next);
 
   function save() {
@@ -55,6 +60,7 @@ export function InspectorContract({
   return (
     <div className="space-y-4">
       {!hasSignerEmail && <Notice tone="warning">El contrato necesita una pregunta de email obligatoria: ahí se manda la copia firmada.</Notice>}
+      {emailReadiness && !emailReadiness.ok && <Notice tone="warning">{emailReadiness.message}</Notice>}
 
       <Field label="Título del contrato" hint="Aparece arriba del texto y en el PDF.">
         {(id) => <input id={id} className={inputClass} disabled={disabled} value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />}
@@ -71,6 +77,12 @@ export function InspectorContract({
       <Field label="Copias por email" hint={`Quien firma recibe su copia. Sumá hasta ${MAX_CC_EMAILS} direcciones más, separadas por coma.`}>
         {(id) => <input id={id} className={inputClass} disabled={disabled} value={ccText} onChange={(e) => setCcText(e.target.value)} placeholder="legal@tuempresa.com" />}
       </Field>
+      <Checkbox
+        checked={copyToOwner}
+        onChange={setCopyToOwner}
+        label="Mandarme una copia firmada"
+        description="Cada vez que alguien firma, el Owner del negocio recibe el PDF por correo."
+      />
       {!validation.ok && <p className="text-xs text-destructive">{validation.errors[0]}</p>}
 
       {message && (

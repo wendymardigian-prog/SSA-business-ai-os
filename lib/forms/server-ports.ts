@@ -10,7 +10,8 @@ import { checkLimit, formsKeys } from "@/lib/antispam/rate-limit";
 import { hashIp } from "@/lib/scheduling/antispam";
 import { validateSuccess, DEFAULT_SUCCESS } from "./success";
 import { parseStoredContactConfig, isCustomTarget, customSlugOf, type CustomFieldDef } from "./contact-config";
-import { verifyFormLink } from "./signed-link";
+import { createCopyToken } from "./contract/copy-link";
+import { getOrCreateLinkSecret, verifyFormLink } from "./signed-link";
 import { notifyRecipients, contactOutcome, notificationContent } from "./notify";
 import { parseStoredContractConfig } from "./contract/config";
 import { CONTRACTS_BUCKET } from "./contract/storage";
@@ -211,6 +212,11 @@ export function createSubmitPorts(service: Db): SubmitPorts {
     },
 
     newId: () => randomUUID(),
+
+    async contractCopyToken(form, submissionId) {
+      const secret = await getOrCreateLinkSecret(service, form.workspaceId);
+      return createCopyToken({ submissionId, formId: form.id }, secret);
+    },
   };
 }
 
