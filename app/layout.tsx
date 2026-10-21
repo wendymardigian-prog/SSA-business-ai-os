@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { brandName, brandColorHex } from "@/lib/brand";
 import { appUrl } from "@/lib/app-url";
+import { DatePickerOpener } from "@/components/ui/date-picker-opener";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -63,7 +64,10 @@ try{if(localStorage.getItem("nav-tools-open")==="1")document.documentElement.cla
           />
         )}
       </head>
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        {children}
+        <DatePickerOpener />
+      </body>
     </html>
   );
 }

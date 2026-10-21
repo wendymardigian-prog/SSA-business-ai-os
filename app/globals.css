@@ -320,6 +320,10 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Un clic en cualquier parte del campo abre el calendario (components/ui/date-picker-opener.tsx). */
+  input:is([type="date"], [type="datetime-local"], [type="month"], [type="week"], [type="time"]):not(:disabled):not([readonly]) {
+    cursor: pointer;
+  }
 }
 
 /*
