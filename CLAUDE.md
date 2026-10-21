@@ -1398,9 +1398,30 @@ Emojis, editor de email con formato, el agente dentro del chat, reacciones, chat
 - **Las áreas de sistema de la agenda son cuatro** (Ventas, Servicio, Equipo, Otros): `SYSTEM_AREAS` y el SQL de la 00240 dicen lo mismo (`lib/scheduling/categories-seed.test.ts`). La migración respeta un área con el mismo nombre que el negocio ya tuviera y no cambia ninguna reunión ni `category_snapshot`.
 - **Los datos de emoji salen de `public/emoji/es`** (copia de `emojibase-data`, sin CDN). Si se sube la versión de `frimousse` o `emojibase-data`, volver a copiar `es/data.json` y `es/messages.json`.
 
-## Migraciones (00237 a 00240, escritas y probadas, **sin aplicar a la base real**)
+## Migraciones (00237 a 00240)
 
-`00237` (`message_reactions`), `00238` (el copywriter nace apagado), `00239` (estado `pending` de Conocimiento) y `00240` (áreas Equipo y Otros). La `00241` es de la Agenda (el setter ve las reuniones de sus contactos, 20/10/2026). **La próxima libre es la `00242`** (confirmar con `list_migrations`).
+`00237` (`message_reactions`), `00238` (el copywriter nace apagado), `00239` (estado `pending` de Conocimiento) y `00240` (áreas Equipo y Otros): **aplicadas y registradas** (comprobado el 21/10/2026 en `supabase_migrations.schema_migrations`). La `00241` es de la Agenda (el setter ve las reuniones de sus contactos, 20/10/2026), también aplicada.
+
+# Contratos: dos modos, firma de ambas partes y fechas (21/10/2026)
+
+Contratos en dos modos (**Aceptación de términos**, el de siempre, y **Contrato**: primero los datos, después el texto con esos datos), **Firma de ambas partes**, editor con formato, PDF con certificado, copia al Owner, «Descargar contrato» y la pestaña **Diseño** (Campos + Contrato). Además, **un clic en cualquier parte de cualquier campo de fecha abre el calendario** en todo el sistema. Resumen en [docs/formularios.md](docs/formularios.md) («Contrato y su huella»).
+
+## Lo que no se puede romper
+
+- **El texto del contrato se guarda en Markdown acotado**, aunque se escriba con el editor con formato (`lib/forms/contract/editor-markdown.ts` es la ida y vuelta; su test prueba 5000 combinaciones al azar). La huella, la página y el PDF leen ese texto con `renderContractMarkdown`. Links solo `http`, `https`, `mailto` y `tel` (`safeHref`).
+- **El texto que se firma en modo Contrato lo arma el SERVIDOR** (`buildContractRender` en `lib/forms/submit.ts`) con la plantilla congelada de la versión y las respuestas ya validadas, y viaja en `meta.contract_render`. Nunca se toma un texto del navegador. La base lo comprueba con `contract_render_matches` (gemela de `renderMatchesTemplate`, casos en `lib/forms/contract/render-match.cases.json`): si se cambia una regla, se cambia en las dos y se suma el caso.
+- **`record_contract_signature` v2 tiene la MISMA firma**: así `submit_form_response` (protegida) no se toca. Sin `contract_render` y sin variables hace exactamente lo de antes; una plantilla con variables sin texto armado se rechaza.
+- **La evidencia nueva (`rendered_text`, `rendered_sha256`, `business_signer`) tampoco se puede cambiar** (trigger `contract_signatures_protect_evidence`).
+- **La firma del negocio** se sube con `uploadBusinessSignature` (PNG o JPG por sus bytes, ≤ 500 KB) a una ruta NUEVA por imagen (`<workspace>/<form>/business-signer/<id>`), nunca se pisa, y `saveContractConfig` solo acepta una ruta de ese formulario (`isBusinessSignaturePath`). La página pública recibe un link temporal, nunca la ruta.
+- **«Descargar contrato»**: link firmado de 24 h con la clave de Vault de los formularios (`lib/forms/contract/copy-link.ts`), para una respuesta de un formulario. Solo lo recibe el navegador que acaba de firmar.
+- **El calendario de las fechas** lo abre un único escuchador en `app/layout.tsx` (`DatePickerOpener`, regla en `lib/ui/date-picker-click.ts`): no hace falta tocar cada campo, y un navegador sin `showPicker` sigue funcionando como antes.
+- **La pestaña Diseño** conserva la clave `campos` en la URL; `?tab=contrato` abre Diseño (`parseEditorTab`).
+
+## Migraciones (00242 y 00243, escritas y ensayadas, **SIN aplicar**)
+
+`00242` (columnas nuevas de `contract_signatures`, `contract_render_matches`, el trigger de evidencia y `record_contract_signature` v2, con las dos definiciones viejas completas en la cabecera) y `00243` (`get_public_form` suma `mode` y `business_signer`, con la vieja en la cabecera). Se ensayaron el 21/10/2026 contra la base real en una transacción que se deshace sola (los 17 casos dan igual que en TypeScript). **Son aditivas: se pueden aplicar antes de desplegar** (el código viejo no manda `contract_render` y no lee las claves nuevas). **La próxima libre es la `00244`** (confirmar con `list_migrations`).
+
+Ojo: el MCP de Supabase de esta sesión apuntaba a OTRO proyecto (`rutledxu…`), no al de producción (`knrxjnmx…`, el del `.env` y el vinculado con la CLI). Para la base real, `supabase db query --linked` desde una carpeta vinculada.
 
 # Seguridad
 

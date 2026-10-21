@@ -26,9 +26,9 @@ Plano: `requerimientos-formularios-ui-menu.md`; avance en [PROGRESS-formularios-
 - **Menú:** Formularios vive en la sección colapsable **Herramientas** (Automatizaciones, Formularios, Agentes IA, Ajustes). Conocimiento sale del menú (es un botón de la pantalla de Agentes IA) y Recursos e Integraciones se llegan desde Ajustes.
 - **Lista** (`/dashboard/formularios`): tarjetas con buscador, Estado y Tipo en la barra superior (se guardan en la URL); por defecto muestra **todos**, también los archivados. La lógica de qué mostrar vive en `lib/forms/list.ts` y `form-card.ts`.
 - **Barra del editor** (`components/forms/editor/editor-bar.tsx`, reglas en `lib/forms/editor-bar.ts`): ← Volver, ícono del tipo, nombre interno, pestañas, estado, guardado, Métricas, Vista previa y Publicar. La pestaña vive en `?tab=`. Respuestas, Métricas, Encuesta y Reportes usan la misma barra.
-- **Campos = lienzo + panel** (`components/forms/builder/`): el formulario como lo ve quien responde, con las preguntas editables en el lugar (arrastrar con HTML5 nativo, duplicar, borrar, "+ Agregar pregunta" dentro del lienzo) y a la derecha el panel de lo elegido: el formulario, una pregunta o "Después de enviar". No hay vista previa al costado (es el botón de la barra) ni `<details>`: `components/forms/no-details.test.ts` lo cuida. Las operaciones son puras (`lib/forms/builder-ops.ts`, `contact-map.ts`, `publish-issues.ts`, `canvas-view.ts`) y el reporte de fin de día usa el mismo lienzo.
+- **Diseño = lienzo + panel** (`components/forms/builder/`; antes la pestaña se llamaba Campos y el contrato tenía la suya, Contrato: las dos se unieron el 21/10/2026 y un link viejo `?tab=contrato` abre Diseño): el formulario como lo ve quien responde, con las preguntas editables en el lugar (arrastrar con HTML5 nativo, duplicar, borrar, "+ Agregar pregunta" dentro del lienzo) y a la derecha el panel de lo elegido: el formulario, una pregunta o "Después de enviar". No hay vista previa al costado (es el botón de la barra) ni `<details>`: `components/forms/no-details.test.ts` lo cuida. Las operaciones son puras (`lib/forms/builder-ops.ts`, `contact-map.ts`, `publish-issues.ts`, `canvas-view.ts`) y el reporte de fin de día usa el mismo lienzo.
 - **"Se guarda en el contacto"** (panel de la pregunta) y la tabla de la pestaña Contacto son **el mismo dato** (`contactConfig.map`, `setFieldMapping`): un dato del contacto lo usa una sola pregunta.
-- **Publicar con algo pendiente** lleva a Campos, elige la primera pregunta con un problema y la muestra; cada pregunta con un problema se marca en rojo.
+- **Publicar con algo pendiente** lleva a Diseño, elige la primera pregunta con un problema y la muestra; cada pregunta con un problema se marca en rojo.
 - **Flows** (antes "Automatizaciones" dentro del formulario): la lógica no cambió.
 - **Publicar** en dos columnas: link, insertar en tu web, atribución (siempre activa), seguimiento y link para un contacto (con el armador de links con datos cargados) a la izquierda; Estado (Pausar, Reanudar, Archivar, Restaurar) y Versiones a la derecha.
 - **Sin logo:** el formulario público ya no muestra el logo de la marca (`design.showLogo` sigue guardado pero nadie lo usa).
@@ -138,12 +138,31 @@ El puntaje es un campo de estrellas o de NPS **obligatorio** (se valida al publi
 
 ## Contrato y su huella
 
-- El texto es Markdown acotado (títulos, negrita, cursiva, listas; **nada de HTML, links ni imágenes**) y se renderiza con el mismo `renderContractMarkdown` en la página y en el PDF.
-- Al publicar, el texto se congela en `form_versions.contract_text` con su **SHA-256, calculado en la base**. **Nada de lo que manda el navegador entra en la huella**: el pedido ni siquiera trae el texto. La RPC la vuelve a calcular al firmar; si no coincide con la guardada, la firma falla y no queda ni respuesta, ni contacto, ni firma, ni job.
-- La firma guarda la versión, la huella, el firmante, la hora **del servidor**, la imagen y la metadata legal (la IP va en claro **solo acá**: es evidencia; en el resto del sistema va hasheada). Publicar una versión nueva **no toca** las firmas de la anterior.
-- El **PDF** (`pdf-lib`, solo servidor) lleva el título, el texto, el firmante, sus respuestas (sin repetir el nombre ni el email del firmante), la firma, los "Datos de aceptación" y, **al pie de cada página, la huella y la versión**. Se genera en un job (`contract_pdf`) que se encola en la misma transacción que la firma.
-- La **copia por email** (`contract_email`) manda el PDF adjunto al firmante y un envío aparte a cada dirección de copia. Los jobs **no lanzan por un fallo de un proveedor**: reintentan a los 5, 15 y 30 minutos (`scheduleJob`, no la cola) y después quedan visibles (**No se pudo generar** / **No enviado**) con "Regenerar PDF" y "Reenviar copia". **La firma queda guardada igual.**
-- Ver el PDF es un link firmado de 60 segundos, solo para quien ve la respuesta (la RLS de `contract_signatures`).
+### Dos modos (21/10/2026)
+
+| | **Aceptación de términos** (`mode: "terms"`, el de siempre) | **Contrato** (`mode: "contract"`) |
+|---|---|---|
+| Orden | Texto → preguntas → casilla y firma | **Paso 1**: las preguntas → **Paso 2**: el contrato con esos datos, «Volver a mis datos», casilla y firma |
+| Texto | Igual para todos (sin variables: no deja publicar con `{{…}}`) | Con **variables**: `{{respuesta.<clave>}}`, `{{contacto.*}}` y `{{venta.*}}` (solo con un link firmado de una venta), `{{negocio.nombre}}`, `{{fecha}}` (`lib/forms/contract/variables.ts`). Una variable que no existe no deja publicar |
+| Firmas | La de quien acepta | La de la persona y, con **«Firma de ambas partes»**, la del negocio (dibujada o subida una vez, con nombre y cargo), lado a lado abajo del texto |
+| PDF | Texto, firmante, respuestas, firma y «Datos de aceptación» | Texto firmado, las firmas abajo, lo que completó la persona y una página **«Certificado de firma»** con la evidencia y las dos huellas |
+
+El modo, la firma del negocio y las copias viven en `forms.contract_config` (`lib/forms/contract/config.ts`); los contratos que ya existían quedan en Aceptación de términos. Se configuran en la pestaña **Diseño**: el texto se escribe en el lienzo y la casilla y la firma son un bloque con sus ajustes en el panel.
+
+### El texto y su huella
+
+- El texto se escribe con un **editor con formato** (títulos 1 a 3, negrita, cursiva, viñetas, numeradas y links; `components/editor/rich-text-editor.tsx`) pero **se guarda en Markdown acotado**, el de siempre: el editor lo abre y lo vuelve a armar (`lib/forms/contract/editor-markdown.ts`, con 5000 combinaciones al azar en su test). La página y el PDF lo dibujan con el mismo `renderContractMarkdown`. Links: solo `http`, `https`, `mailto` y `tel` (clicables en el PDF). Sin HTML ni imágenes. Un emoji no sale en el PDF (Helvetica/WinAnsi): el editor avisa (`pdf-charset.ts`).
+- Al publicar, el texto (la **plantilla**, con sus variables) se congela en `form_versions.contract_text` con su **SHA-256, calculado en la base**. La RPC la vuelve a calcular al firmar; si no coincide, la firma falla y no queda nada.
+- **Modo Contrato:** el texto que se firma lo arma **el servidor** al enviar (`lib/forms/submit.ts`, `buildContractRender`) con la plantilla congelada y las respuestas YA validadas, y viaja en `meta.contract_render`. **Nada de lo que manda el navegador entra.** La base (`record_contract_signature` v2, 00242) comprueba con `contract_render_matches` que sea la plantilla con **solo los huecos completados** (gemela de `renderMatchesTemplate`, casos en `render-match.cases.json`), calcula su huella y guarda `rendered_text`, `rendered_sha256` y la firma del negocio usada (`business_signer`), todo protegido por el trigger de evidencia. El paso 2 de la página muestra lo mismo armado en el navegador, solo para leer.
+- La firma guarda la versión, las huellas, el firmante, la hora **del servidor**, la imagen y la metadata legal (la IP va en claro **solo acá**). Publicar una versión nueva **no toca** las firmas de la anterior. Cambiar la firma del negocio tampoco: cada firma guarda la imagen que se usó (una ruta nueva por imagen, nunca se pisa).
+
+### PDF, correo y descarga
+
+- El **PDF** (`pdf-lib`, solo servidor) se genera en un job (`contract_pdf`) encolado en la misma transacción que la firma; al pie de cada página, la versión y la huella (la del documento firmado en modo Contrato).
+- La **copia por email** (`contract_email`) va a quien firmó, a las copias (hasta 3) y, con **«Mandarme una copia firmada»** (prendido por defecto), al Owner, con otro texto y sin repetir direcciones; la fecha en la zona del negocio. Los jobs **no lanzan por un fallo de un proveedor**: reintentan a 5, 15 y 30 minutos y después quedan visibles (**No se pudo generar** / **No enviado**) con «Regenerar PDF» y «Reenviar copia». **La firma queda guardada igual.**
+- El editor avisa si la copia no va a salir (`lib/email/readiness.ts`): Resend sin conectar, sin remitente o **rechazando los envíos** (por ejemplo, un dominio sin verificar en resend.com → Domains).
+- **«Descargar contrato»** (Después de enviar → Mostrar un mensaje; prendido por defecto en los contratos nuevos): el envío devuelve un link firmado (`lib/forms/contract/copy-link.ts`, la clave de Vault de los formularios, **24 horas**, una respuesta de un formulario) a `/api/public/forms/<slug>/copy`; si el PDF todavía no está, se arma en el momento.
+- Ver el PDF desde el panel es un link firmado de 60 segundos, solo para quien ve la respuesta (la RLS de `contract_signatures`).
 
 ## Embed y sitio
 
@@ -152,7 +171,7 @@ El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante
 ## Lo que no se puede romper
 
 - La definición pública **solo** por `get_public_form`.
-- La huella sobre el texto **guardado**, calculada en la base.
+- La huella sobre el texto **guardado**, calculada en la base. En modo Contrato, el texto firmado lo arma el servidor y la base comprueba que sea la plantilla con solo los huecos completados.
 - La idempotencia es un índice único, no una comprobación previa.
 - La protección anti-spam es honeypot + tope por IP + idempotencia (el captcha está en `docs/pendientes/turnstile-captcha.md`).
 - Una versión publicada no se puede cambiar (trigger `form_versions_protect`, también para el service role).
