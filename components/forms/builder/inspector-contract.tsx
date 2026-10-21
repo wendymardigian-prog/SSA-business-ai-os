@@ -254,7 +254,7 @@ function BusinessSignerSection({
             </p>
           )}
           <Field label="Nombre de quien firma por el negocio">
-            {(id) => <input id={id} className={inputClass} disabled={disabled} maxLength={120} value={signer.name} onChange={(e) => onChange({ ...signer, name: e.target.value })} placeholder="Wendy Mardigian" />}
+            {(id) => <input id={id} className={inputClass} disabled={disabled} maxLength={120} value={signer.name} onChange={(e) => onChange({ ...signer, name: e.target.value })} placeholder="Laura Méndez" />}
           </Field>
           <Field label="Cargo (opcional)">
             {(id) => <input id={id} className={inputClass} disabled={disabled} maxLength={120} value={signer.role} onChange={(e) => onChange({ ...signer, role: e.target.value })} placeholder="Directora" />}

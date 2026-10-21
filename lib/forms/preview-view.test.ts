@@ -31,9 +31,9 @@ describe("buildPreviewData (F8)", () => {
       slug: "c",
       design: defaultDesign("C"),
       definition: { fields: [], contractText: "Entre {{respuesta.empresa}}" },
-      contract: { title: "A", acceptLabel: "Acepto", signatureRequired: true, mode: "contract", businessSigner: { enabled: true, name: "Wendy", role: "Directora" }, signatureUrl: "https://x/firma.png" },
+      contract: { title: "A", acceptLabel: "Acepto", signatureRequired: true, mode: "contract", businessSigner: { enabled: true, name: "Laura", role: "Directora" }, signatureUrl: "https://x/firma.png" },
     });
-    expect(data.contract).toMatchObject({ mode: "contract", business_signer: { name: "Wendy", role: "Directora", signature_url: "https://x/firma.png" } });
+    expect(data.contract).toMatchObject({ mode: "contract", business_signer: { name: "Laura", role: "Directora", signature_url: "https://x/firma.png" } });
   });
 
   it("un contrato sin configuracion pide firma por defecto; un personalizado nunca", () => {

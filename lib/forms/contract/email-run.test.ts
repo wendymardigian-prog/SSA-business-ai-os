@@ -76,18 +76,18 @@ describe("runContractEmail", () => {
   });
 
   it("el Owner recibe su copia con otro texto; sin repetir direcciones ni mandársela al firmante dos veces", async () => {
-    const { deps, sent } = setup({ ccEmails: ["legal@x.com"], owners: ["wendy@x.com", "LEGAL@x.com", "ana@x.com"] });
+    const { deps, sent } = setup({ ccEmails: ["legal@x.com"], owners: ["laura@x.com", "LEGAL@x.com", "ana@x.com"] });
     expect(await runContractEmail(deps, { signatureId: SIG })).toBe("sent");
-    expect(sent.map((s) => s.to)).toEqual(["ana@x.com", "legal@x.com", "wendy@x.com"]);
+    expect(sent.map((s) => s.to)).toEqual(["ana@x.com", "legal@x.com", "laura@x.com"]);
     expect(sent[1]).toMatchObject({ subject: "Se firmó: Acuerdo" });
     expect(String(sent[2].html)).toContain("Ana Pérez");
   });
 
   it("con la copia al Owner apagada, o en un reenvío manual, el Owner no la recibe", async () => {
-    const off = setup({ owners: ["wendy@x.com"], copyToOwner: false });
+    const off = setup({ owners: ["laura@x.com"], copyToOwner: false });
     await runContractEmail(off.deps, { signatureId: SIG });
     expect(off.sent.map((s) => s.to)).toEqual(["ana@x.com"]);
-    const manual = setup({ owners: ["wendy@x.com"], sig: { email_status: "sent" } });
+    const manual = setup({ owners: ["laura@x.com"], sig: { email_status: "sent" } });
     await runContractEmail(manual.deps, { signatureId: SIG, manual: true });
     expect(manual.sent.map((s) => s.to)).toEqual(["ana@x.com"]);
   });

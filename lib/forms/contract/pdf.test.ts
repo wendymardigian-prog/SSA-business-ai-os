@@ -185,14 +185,14 @@ describe("modo Contrato: firmas abajo y certificado aparte", () => {
       base({
         text: "# Acuerdo\n\nEntre **Acme SA** y Mi Negocio, por 1500.00.",
         signaturePng: PNG_1X1,
-        contract: { renderedSha256: RENDERED, businessSigner: { name: "Wendy Mardigian", role: "Directora", image: PNG_1X1 } },
+        contract: { renderedSha256: RENDERED, businessSigner: { name: "Laura Méndez", role: "Directora", image: PNG_1X1 } },
       }),
     );
     const { pages, totalPages } = await read(bytes);
     expect(totalPages).toBe(2);
     expect(pages[0]).toContain("Acme SA");
     expect(pages[0]).toContain("Firmas");
-    expect(pages[0]).toContain("Wendy Mardigian");
+    expect(pages[0]).toContain("Laura Méndez");
     expect(pages[0]).toContain("Directora");
     expect(pages[0]).toContain("Ana Pérez");
     expect(pages[1]).toContain("Certificado de firma");
