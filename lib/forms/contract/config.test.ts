@@ -51,7 +51,7 @@ describe("signer", () => {
 
 describe("modo y firma de ambas partes", () => {
   const base = { title: "Acuerdo", signatureRequired: true, acceptLabel: "Acepto", ccEmails: [] };
-  const signer = { enabled: true, name: "Wendy Mardigian", role: "Directora", signaturePath: "ws/form/business-signer/a.png" };
+  const signer = { enabled: true, name: "Laura Méndez", role: "Directora", signaturePath: "ws/form/business-signer/a.png" };
 
   it("una configuración de antes queda en Aceptación de términos y sin firma del negocio", () => {
     const parsed = parseStoredContractConfig(base);

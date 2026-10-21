@@ -551,7 +551,7 @@ describe("submitForm: contratos (FO3)", () => {
           ccEmails: [],
           copyToOwner: true,
           mode: "contract",
-          businessSigner: { enabled: true, name: "Wendy", role: "Directora", signaturePath: "ws-1/form-1/business-signer/a.png" },
+          businessSigner: { enabled: true, name: "Laura", role: "Directora", signaturePath: "ws-1/form-1/business-signer/a.png" },
         },
         contractText: "Entre **{{respuesta.nombre}}** y {{negocio.nombre}}, por {{venta.monto}}. Cliente: {{contacto.nombre}}.",
         ...over,
@@ -563,7 +563,7 @@ describe("submitForm: contratos (FO3)", () => {
       expect(out.status).toBe(200);
       const render = saves[0].meta.contract_render as { text: string; business_signer: unknown };
       expect(render.text).toMatch(/^Entre \*\*Ana \\\*Pérez\\\*\*\* y .+, por —\. Cliente: —\.$/);
-      expect(render.business_signer).toEqual({ name: "Wendy", role: "Directora", signature_path: "ws-1/form-1/business-signer/a.png" });
+      expect(render.business_signer).toEqual({ name: "Laura", role: "Directora", signature_path: "ws-1/form-1/business-signer/a.png" });
     });
 
     it("lo que mande el navegador como texto no entra", async () => {

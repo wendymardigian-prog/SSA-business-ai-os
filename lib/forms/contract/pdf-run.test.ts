@@ -160,12 +160,12 @@ describe("runContractPdf en modo Contrato", () => {
 
   it("el PDF sale del texto FIRMADO, con su huella y la firma del negocio que se usó", async () => {
     const { deps, build, storage } = setup({
-      sig: { rendered_text: RENDERED, rendered_sha256: renderedSha, business_signer: { name: "Wendy", role: "Directora", signature_path: "ws1/form1/business-signer/a.png" } },
+      sig: { rendered_text: RENDERED, rendered_sha256: renderedSha, business_signer: { name: "Laura", role: "Directora", signature_path: "ws1/form1/business-signer/a.png" } },
     });
     expect(await runContractPdf(deps, SIG)).toBe("generated");
     const input = build.mock.calls[0][0];
     expect(input.text).toBe(RENDERED);
-    expect(input.contract).toMatchObject({ renderedSha256: renderedSha, businessSigner: { name: "Wendy", role: "Directora" } });
+    expect(input.contract).toMatchObject({ renderedSha256: renderedSha, businessSigner: { name: "Laura", role: "Directora" } });
     expect(storage.download).toHaveBeenCalledWith("ws1/form1/business-signer/a.png");
   });
 
