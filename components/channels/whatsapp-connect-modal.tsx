@@ -8,6 +8,10 @@ type Channel = Database["public"]["Tables"]["channels"]["Row"];
 
 /** El QR de WhatsApp caduca; Evolution genera uno nuevo cada ~30 segundos. */
 const POLL_MS = 4000;
+/** Consultas seguidas sin codigo (≈20 s) para dar el QR por trabado. */
+const MAX_POLLS_WITHOUT_QR = 5;
+/** Un QR vivo cambia cada ~30 s: si es el mismo durante mas de esto, Evolution dejo de renovarlo. */
+const STALE_QR_MS = 90_000;
 
 interface QrResponse {
   state?: "open" | "close" | "connecting" | "unknown";
@@ -37,9 +41,16 @@ export function WhatsAppConnectModal({
   const [state, setState] = useState<QrResponse["state"]>("unknown");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** El QR vencio y Evolution no genera otro solo: hay que pedirle uno nuevo (reconectar la MISMA instancia). */
+  const [expired, setExpired] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const connectedRef = useRef(false);
+  const pollsWithoutQrRef = useRef(0);
+  const expiredRef = useRef(false);
+  const lastQrRef = useRef<{ base64: string; since: number } | null>(null);
 
   const poll = useCallback(async () => {
+    if (expiredRef.current) return;
     try {
       const res = await fetch(`/api/v1/channels/whatsapp/${channel.id}/qr`, {
         cache: "no-store",
@@ -54,6 +65,24 @@ export function WhatsAppConnectModal({
       setError(null);
       setState(data.state);
       setQr(data.qr ?? null);
+
+      if (data.state !== "open") {
+        const base64 = data.qr?.base64 ?? null;
+        const now = Date.now();
+        if (!base64) {
+          pollsWithoutQrRef.current += 1;
+        } else {
+          pollsWithoutQrRef.current = 0;
+          if (lastQrRef.current?.base64 !== base64) lastQrRef.current = { base64, since: now };
+        }
+        const stuck =
+          pollsWithoutQrRef.current >= MAX_POLLS_WITHOUT_QR ||
+          (!!lastQrRef.current && now - lastQrRef.current.since > STALE_QR_MS);
+        if (stuck) {
+          expiredRef.current = true;
+          setExpired(true);
+        }
+      }
 
       if (data.state === "open" && !connectedRef.current) {
         connectedRef.current = true;
@@ -77,6 +106,38 @@ export function WhatsAppConnectModal({
     const timer = setInterval(poll, POLL_MS);
     return () => clearInterval(timer);
   }, [poll]);
+
+  /**
+   * Pide un QR nuevo para ESTE numero: es el mismo POST que el boton "Reconectar" (con el channelId), que reusa la
+   * instancia y la destraba si hace falta. Nunca agrega otro numero.
+   */
+  async function regenerate() {
+    setRegenerating(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/v1/channels/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId: channel.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok || data.error) {
+        setError(data.error ?? "No pude generar un código nuevo. Probá de nuevo en un minuto.");
+        return;
+      }
+      pollsWithoutQrRef.current = 0;
+      lastQrRef.current = null;
+      expiredRef.current = false;
+      setExpired(false);
+      setQr(null);
+      setLoading(true);
+      await poll();
+    } catch {
+      setError("No pude contactar al servidor. Revisa tu conexion.");
+    } finally {
+      setRegenerating(false);
+    }
+  }
 
   // Cerrar con Escape, como cualquier modal.
   useEffect(() => {
@@ -137,13 +198,32 @@ export function WhatsAppConnectModal({
               </p>
               <button
                 onClick={() => {
+                  // Con el QR vencido, consultar de nuevo no alcanza: hay que pedir uno nuevo.
+                  if (expiredRef.current) return void regenerate();
                   setLoading(true);
                   poll();
                 }}
-                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                disabled={regenerating}
+                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
               >
                 <RefreshCw className="h-3 w-3" />
                 Reintentar
+              </button>
+            </div>
+          ) : expired ? (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Smartphone className="h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm font-medium">El código venció</p>
+              <p className="text-xs text-muted-foreground">
+                WhatsApp dejó de generar códigos para este número. Pedí uno nuevo y escanealo.
+              </p>
+              <button
+                onClick={regenerate}
+                disabled={regenerating}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Generar un código nuevo
               </button>
             </div>
           ) : loading ? (

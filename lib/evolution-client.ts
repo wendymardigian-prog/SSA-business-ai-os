@@ -60,11 +60,24 @@ export type EvolutionState = "open" | "close" | "connecting" | "unknown";
 
 // ── Transporte ───────────────────────────────────────────────────────────────
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** 5xx y errores de red se reintentan; 4xx no, porque reintentar no los arregla. */
 function isRetriable(status: number | undefined): boolean {
   return status === undefined || status >= 500 || status === 429;
+}
+
+/**
+ * Lo que dijo Evolution en un error. La v2 lo anida: `{ status, error: "Forbidden", response: { message: [...] } }`;
+ * otras versiones lo ponen arriba (`{ message }` o `{ error }`). Primero el texto concreto, despues el generico: si
+ * se tomara `error` primero, un "ya existe" se leeria como un "Forbidden" a secas.
+ */
+function errorDetail(parsed: unknown): unknown {
+  if (typeof parsed !== "object" || parsed === null) return parsed;
+  const obj = parsed as { message?: unknown; error?: unknown; response?: { message?: unknown } | null };
+  const nested = obj.response?.message;
+  const pick = (v: unknown) => (Array.isArray(v) ? (v.length ? v.join("; ") : undefined) : v);
+  return pick(obj.message) ?? pick(nested) ?? obj.error ?? parsed;
 }
 
 async function request<T>(
@@ -72,10 +85,12 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  opts: { attempts?: number } = {},
 ): Promise<T> {
   let lastError: EvolutionError | null = null;
+  const maxAttempts = opts.attempts ?? MAX_ATTEMPTS;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const res = await fetch(`${config.baseUrl}${path}`, {
         method,
@@ -101,31 +116,26 @@ async function request<T>(
       if (!res.ok) {
         // El mensaje de Evolution se muestra al usuario; la apikey no viaja en
         // el cuerpo asi que no hay riesgo de filtrarla aca.
-        const detail =
-          typeof parsed === "object" && parsed !== null
-            ? ((parsed as { message?: unknown; error?: unknown }).message ??
-               (parsed as { error?: unknown }).error ??
-               parsed)
-            : parsed;
+        const detail = errorDetail(parsed);
         const err = new EvolutionError(
           `Evolution API respondio ${res.status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`,
           res.status,
           detail,
         );
-        if (!isRetriable(res.status) || attempt === MAX_ATTEMPTS) throw err;
+        if (!isRetriable(res.status) || attempt === maxAttempts) throw err;
         lastError = err;
       } else {
         return parsed as T;
       }
     } catch (err) {
       if (err instanceof EvolutionError) {
-        if (!isRetriable(err.status) || attempt === MAX_ATTEMPTS) throw err;
+        if (!isRetriable(err.status) || attempt === maxAttempts) throw err;
         lastError = err;
       } else {
         const wrapped = new EvolutionError(
           `No se pudo contactar a Evolution API: ${err instanceof Error ? err.message : String(err)}`,
         );
-        if (attempt === MAX_ATTEMPTS) throw wrapped;
+        if (attempt === maxAttempts) throw wrapped;
         lastError = wrapped;
       }
     }
@@ -225,6 +235,18 @@ export async function fetchInstanceOwner(config: EvolutionConfig, instanceName: 
 }
 
 /**
+ * Si un error de /instance/create es "ese nombre ya esta en uso". La v2 lo dice como un 403 con el texto en
+ * `response.message` (y `error: "Forbidden"` arriba): se mira el detalle Y el mensaje, que lo incluye.
+ */
+function isAlreadyExistsError(err: unknown): boolean {
+  return (
+    err instanceof EvolutionError &&
+    (err.status === 403 || err.status === 409) &&
+    /already in use|already exists|ya existe/i.test(`${JSON.stringify(err.detail ?? null)} ${err.message}`)
+  );
+}
+
+/**
  * Crea la instancia si no existe. Idempotente: si Evolution contesta que ya
  * existe, se toma como exito, porque el estado que importa es "existe y es
  * nuestra", no "la cree yo en esta llamada".
@@ -253,11 +275,7 @@ export async function createInstance(
   try {
     await request(config, "POST", "/instance/create", body);
   } catch (err) {
-    const alreadyExists =
-      err instanceof EvolutionError &&
-      (err.status === 403 || err.status === 409) &&
-      /already in use|already exists|ya existe/i.test(JSON.stringify(err.detail ?? err.message));
-    if (!alreadyExists) throw err;
+    if (!isAlreadyExistsError(err)) throw err;
   }
 
   // El webhook se configura aparte a proposito: asi la forma del cuerpo de
@@ -332,13 +350,119 @@ export async function getConnectionState(
   }
 }
 
+/**
+ * Si la instancia existe en el servidor y en que estado esta. A diferencia de `getConnectionState`, un 404 NO se
+ * disfraza de "close": reconectar necesita saber si hay algo a que conectarse o si hay que volver a crearla.
+ */
+export async function getInstanceStatus(
+  config: EvolutionConfig,
+  instanceName: string,
+): Promise<{ exists: boolean; state: EvolutionState }> {
+  try {
+    const raw = await request<RawInstance>(
+      config,
+      "GET",
+      `/instance/connectionState/${encodeURIComponent(instanceName)}`,
+    );
+    return { exists: true, state: readState(raw) };
+  } catch (err) {
+    if (err instanceof EvolutionError && err.status === 404) return { exists: false, state: "close" };
+    throw err;
+  }
+}
+
+/**
+ * Reinicia la conexion de la instancia sin borrarla (v2 `POST`, v1 `PUT`). Un solo intento: se usa como paso de
+ * mejor esfuerzo al reconectar, y un 500 repetido solo demoraria al siguiente paso.
+ */
+export async function restartInstance(config: EvolutionConfig, instanceName: string): Promise<void> {
+  const major = await getMajorVersion(config);
+  await request(
+    config,
+    major === 2 ? "POST" : "PUT",
+    `/instance/restart/${encodeURIComponent(instanceName)}`,
+    undefined,
+    { attempts: 1 },
+  );
+}
+
+/** El paso de la reconexion que dejo la instancia lista para escanear (o ya conectada). */
+export type ReconnectStep = "created" | "open" | "connect" | "restart" | "logout" | "recreated";
+
+/** Espera entre pedir un reinicio y volver a pedir el QR: Evolution tarda un poco en generar el codigo nuevo. */
+const RECONNECT_SETTLE_MS = 2000;
+
+/**
+ * Reconecta un numero que ya existe: reusa SU instancia y nunca inventa un nombre nuevo. Solo "Conectar otro numero"
+ * crea una instancia distinta.
+ *
+ * Va de lo mas suave a lo mas fuerte y corta apenas Evolution entrega un QR:
+ *  1. Si la instancia no existe (la borraron del servidor) se crea con el MISMO nombre: no hay otra cosa a que conectarse.
+ *  2. Si existe, se reconfigura el webhook; si ya esta abierta, listo.
+ *  3. Se pide el QR (`/instance/connect`).
+ *  4. Sin QR: se reinicia la conexion y se vuelve a pedir.
+ *  5. Sin QR: se cierra la sesion (una instancia trabada en "connecting" despues de que vencio el QR) y se vuelve a pedir.
+ *  6. Ultimo recurso: se borra y se crea de nuevo con el mismo nombre (el canal y sus conversaciones no cambian).
+ *
+ * Los pasos 4 y 5 son de mejor esfuerzo: si fallan, se sigue con el proximo. `sleepMs` es solo para los tests.
+ */
+export async function reconnectInstance(
+  config: EvolutionConfig,
+  instanceName: string,
+  webhookUrl: string,
+  webhookToken: string,
+  sleepMs: (ms: number) => Promise<void> = sleep,
+): Promise<ReconnectStep> {
+  const status = await getInstanceStatus(config, instanceName);
+  if (!status.exists) {
+    await createInstance(config, instanceName, webhookUrl, webhookToken);
+    return "created";
+  }
+
+  await setWebhook(config, instanceName, webhookUrl, webhookToken);
+  if (status.state === "open") return "open";
+
+  const hasQr = async () => {
+    try {
+      const qr = await getQrCode(config, instanceName);
+      return !!(qr.base64 || qr.code || qr.pairingCode);
+    } catch (err) {
+      console.error("[evolution] reconectar: no pude pedir el QR:", (err as Error).message);
+      return false;
+    }
+  };
+
+  if (await hasQr()) return "connect";
+
+  try {
+    await restartInstance(config, instanceName);
+    await sleepMs(RECONNECT_SETTLE_MS);
+    if (await hasQr()) return "restart";
+  } catch (err) {
+    console.error("[evolution] reconectar: no pude reiniciar la instancia:", (err as Error).message);
+  }
+
+  try {
+    await logoutInstance(config, instanceName, { attempts: 1 });
+    await sleepMs(RECONNECT_SETTLE_MS);
+    if (await hasQr()) return "logout";
+  } catch (err) {
+    console.error("[evolution] reconectar: no pude cerrar la sesion:", (err as Error).message);
+  }
+
+  await deleteInstance(config, instanceName);
+  await createInstance(config, instanceName, webhookUrl, webhookToken);
+  return "recreated";
+}
+
 /** Cierra la sesion de WhatsApp pero conserva la instancia, para reconectar por QR. */
 export async function logoutInstance(
   config: EvolutionConfig,
   instanceName: string,
+  opts: { attempts?: number } = {},
 ): Promise<void> {
   try {
-    await request(config, "DELETE", `/instance/logout/${encodeURIComponent(instanceName)}`);
+    await request(config, "DELETE", `/instance/logout/${encodeURIComponent(instanceName)}`, undefined, opts);
   } catch (err) {
     // Ya estaba desconectada: el resultado buscado igual se cumple.
     if (err instanceof EvolutionError && (err.status === 404 || err.status === 400)) return;

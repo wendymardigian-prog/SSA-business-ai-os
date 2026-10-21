@@ -224,6 +224,16 @@ async function handleConnectionUpdate(
       .from("channels")
       .update({ connection_status: "disconnected", last_error: reason })
       .eq("id", channel.id);
+  } else if (state === "refused") {
+    // Evolution corta despues de N codigos QR sin escanear y avisa con "refused". Sin esto el canal quedaba
+    // "Conectando" para siempre, y la unica salida es generar un QR nuevo.
+    await supabase
+      .from("channels")
+      .update({
+        connection_status: "disconnected",
+        last_error: "El código QR venció sin escanearse. Tocá Reconectar para generar uno nuevo.",
+      })
+      .eq("id", channel.id);
   } else if (state === "connecting") {
     await supabase
       .from("channels")

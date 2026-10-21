@@ -7,6 +7,8 @@ import {
   EvolutionError,
   createInstance,
   getConnectionState,
+  reconnectInstance,
+  type ReconnectStep,
 } from "@/lib/evolution-client";
 import {
   MAX_WHATSAPP_NUMBERS,
@@ -24,8 +26,9 @@ import { getEvolutionConfig, getEvolutionWebhookToken } from "@/lib/evolution-co
  *
  *  - Sin cuerpo: agrega un numero NUEVO (el primero conserva el nombre de instancia de siempre; los demas llevan un
  *    sufijo propio). Hay un tope de `MAX_WHATSAPP_NUMBERS`.
- *  - Con `{ channelId }`: reconecta ESE numero. Es idempotente: reusa la instancia (o la vuelve a crear si la
- *    borraron del servidor) y reconfigura el webhook, sin tocar el nombre del canal.
+ *  - Con `{ channelId }`: reconecta ESE numero con `reconnectInstance`: reusa SU instancia (nunca crea otra con
+ *    otro nombre; solo la vuelve a crear con el mismo si la borraron del servidor), reconfigura el webhook y, si
+ *    quedo trabada sin QR, la reinicia. No toca el nombre del canal. Se puede tocar las veces que haga falta.
  *
  * No devuelve el QR: eso lo pide la UI a /qr, que es lo que se refresca
  * mientras el usuario tiene el modal abierto.
@@ -107,13 +110,22 @@ export async function POST(request: Request) {
     newName = pendingWhatsappName(numbers.length);
   }
 
+  let step: ReconnectStep | null = null;
   try {
-    await createInstance(config, instance, channelWebhookUrl("evolution"), webhookToken);
+    if (channelId) {
+      step = await reconnectInstance(config, instance, channelWebhookUrl("evolution"), webhookToken);
+    } else {
+      await createInstance(config, instance, channelWebhookUrl("evolution"), webhookToken);
+    }
   } catch (err) {
     const message = err instanceof EvolutionError ? err.message : String(err);
-    console.error("[whatsapp] no pude preparar la instancia:", message);
+    console.error(channelId ? "[whatsapp] no pude reconectar el numero:" : "[whatsapp] no pude preparar la instancia:", message);
     return NextResponse.json(
-      { error: `No pude preparar la instancia de WhatsApp: ${message}` },
+      {
+        error: channelId
+          ? `No pude reconectar este número. Probá de nuevo en un minuto; si sigue, revisá que Evolution esté funcionando. Detalle: ${message}`
+          : `No pude preparar la instancia de WhatsApp: ${message}`,
+      },
       { status: 502 },
     );
   }
@@ -153,8 +165,12 @@ export async function POST(request: Request) {
   // un mensaje.
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: channel.id,
-    action: "create",
-    metadata: { platform: "whatsapp", provider: "evolution", instance, connection_status: connectionStatus, new_number: !channelId },
+    // Reconectar no es dar de alta: queda como un cambio del canal, con el paso que lo destrabo.
+    action: channelId ? "update" : "create",
+    metadata: {
+      platform: "whatsapp", provider: "evolution", instance, connection_status: connectionStatus, new_number: !channelId,
+      ...(step ? { via: "reconnect", step } : {}),
+    },
     performedBy: user.id,
   });
 

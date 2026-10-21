@@ -7,10 +7,12 @@ import {
   fetchProfilePictureUrl,
   getBase64FromMediaMessage,
   getConnectionState,
+  getInstanceStatus,
   getMajorVersion,
   getQrCode,
   instanceNameFor,
   listInstanceNames,
+  reconnectInstance,
   resetVersionCache,
   sendMedia,
   sendReaction,
@@ -150,9 +152,14 @@ describe("estado de la conexion", () => {
 
 describe("creacion de instancia", () => {
   it("crear una que ya existe no es un error, y reconfigura el webhook", async () => {
+    // La forma REAL de la v2: el texto viene anidado en response.message y arriba solo dice "Forbidden". El test viejo
+    // usaba { message } arriba de todo, una forma que Evolution no manda, y por eso no atrapaba el bug de "Reconectar".
     const calls = mockFetch([
       v2,
-      { status: 403, body: { message: "This name ssa-abc is already in use." } },
+      {
+        status: 403,
+        body: { status: 403, error: "Forbidden", response: { message: ['This name "ssa-abc" is already in use.'] } },
+      },
       { body: { webhook: {} } },
     ]);
     await createInstance(config, "ssa-abc", "https://x.test/hook", "token123");
@@ -165,6 +172,16 @@ describe("creacion de instancia", () => {
     expect(webhookCall!.body.webhook.headers["x-webhook-token"]).toBe("token123");
     expect(webhookCall!.body.webhook.events).toContain("MESSAGES_UPSERT");
     expect(webhookCall!.body.webhook.events).toContain("CONNECTION_UPDATE");
+  });
+
+  it("tambien reconoce la forma vieja, con el mensaje arriba", async () => {
+    mockFetch([v2, { status: 403, body: { message: "This name ssa-abc is already in use." } }, { body: {} }]);
+    await expect(createInstance(config, "ssa-abc", "https://x.test/hook", "t")).resolves.toBeUndefined();
+  });
+
+  it("el error muestra lo que dijo Evolution, no un 'Forbidden' a secas", async () => {
+    mockFetch([v2, { status: 403, body: { status: 403, error: "Forbidden", response: { message: ["apikey invalida"] } } }]);
+    await expect(createInstance(config, "ssa-abc", "https://x.test/hook", "t")).rejects.toThrow(/apikey invalida/);
   });
 
   it("un 403 que no es 'ya existe' si es un error", async () => {
@@ -392,5 +409,91 @@ describe("sendReaction (A3)", () => {
     const calls = mockFetch([]);
     await expect(sendReaction(config, "ssa-abc", { to: "1234", messageId: "x", fromMe: false, reaction: "👍" })).rejects.toThrow(/invalido/);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("getInstanceStatus", () => {
+  it("distingue 'no existe' de 'desconectada'", async () => {
+    mockFetch([{ status: 404, body: { status: 404, error: "Not Found", response: { message: ["does not exist"] } } }]);
+    expect(await getInstanceStatus(config, "ssa-abc")).toEqual({ exists: false, state: "close" });
+
+    mockFetch([{ body: { instance: { instanceName: "ssa-abc", state: "close" } } }]);
+    expect(await getInstanceStatus(config, "ssa-abc")).toEqual({ exists: true, state: "close" });
+  });
+});
+
+describe("reconnectInstance (reconectar reusa la instancia)", () => {
+  const noWait = async () => {};
+  const qr = { body: { base64: "data:image/png;base64,QR", code: "2@abc" } };
+  const noQr = { body: { count: 0 } };
+  const run = () => reconnectInstance(config, "ssa-abc", "https://x.test/hook", "tok", noWait);
+  type Call = { url: string; method: string; body: any };
+  const creates = (calls: Call[]) => calls.filter((c) => c.url.endsWith("/instance/create"));
+  /** Ninguna llamada nombra otra instancia: reconectar nunca inventa un nombre nuevo. */
+  const onlySameName = (calls: Array<Call & { body: any }>) => {
+    for (const c of calls) {
+      const m = c.url.match(/\/(?:instance|webhook)\/[a-zA-Z]+\/([^/?]+)/);
+      if (m) expect(decodeURIComponent(m[1])).toBe("ssa-abc");
+      if (c.body?.instanceName) expect(c.body.instanceName).toBe("ssa-abc");
+    }
+  };
+
+  it("si Evolution la borro, la crea con el MISMO nombre", async () => {
+    const calls = mockFetch([{ status: 404, body: { message: "not found" } }, v2, { body: {} }, { body: {} }]);
+    expect(await run()).toBe("created");
+    expect(creates(calls)).toHaveLength(1);
+    expect(creates(calls)[0].body.instanceName).toBe("ssa-abc");
+  });
+
+  it("si existe y esta abierta, solo reconfigura el webhook: no crea nada", async () => {
+    const calls = mockFetch([{ body: { instance: { state: "open" } } }, v2, { body: {} }]);
+    expect(await run()).toBe("open");
+    expect(creates(calls)).toHaveLength(0);
+    expect(calls.some((c) => c.url.includes("/webhook/set/ssa-abc"))).toBe(true);
+  });
+
+  it("si existe y da QR, no crea, no reinicia ni cierra sesion", async () => {
+    const calls = mockFetch([{ body: { instance: { state: "close" } } }, v2, { body: {} }, qr]);
+    expect(await run()).toBe("connect");
+    expect(creates(calls)).toHaveLength(0);
+    expect(calls.some((c) => c.url.includes("/restart/") || c.url.includes("/logout/"))).toBe(false);
+    onlySameName(calls);
+  });
+
+  it("trabada sin QR: reinicia y vuelve a pedir", async () => {
+    const calls = mockFetch([{ body: { instance: { state: "connecting" } } }, v2, { body: {} }, noQr, { body: {} }, qr]);
+    expect(await run()).toBe("restart");
+    const restart = calls.find((c) => c.url.includes("/instance/restart/ssa-abc"));
+    expect(restart?.method).toBe("POST");
+    expect(creates(calls)).toHaveLength(0);
+  });
+
+  it("si reiniciar no alcanza (o falla), cierra la sesion y vuelve a pedir", async () => {
+    const calls = mockFetch([
+      { body: { instance: { state: "connecting" } } }, v2, { body: {} },
+      noQr,
+      { status: 500, body: { message: "boom" } }, // restart: un solo intento, se sigue
+      { body: {} }, // logout
+      qr,
+    ]);
+    expect(await run()).toBe("logout");
+    expect(calls.filter((c) => c.url.includes("/restart/"))).toHaveLength(1);
+    expect(calls.some((c) => c.method === "DELETE" && c.url.includes("/instance/logout/ssa-abc"))).toBe(true);
+    expect(creates(calls)).toHaveLength(0);
+  });
+
+  it("ultimo recurso: borra y crea la MISMA instancia, nunca otra", async () => {
+    const calls = mockFetch([
+      { body: { instance: { state: "connecting" } } }, v2, { body: {} },
+      noQr,
+      { body: {} }, noQr, // restart sin QR
+      { body: {} }, noQr, // logout sin QR
+      { body: {} }, // delete
+      { body: {} }, { body: {} }, // create + webhook
+    ]);
+    expect(await run()).toBe("recreated");
+    expect(calls.some((c) => c.method === "DELETE" && c.url.endsWith("/instance/delete/ssa-abc"))).toBe(true);
+    expect(creates(calls)).toHaveLength(1);
+    onlySameName(calls);
   });
 });
