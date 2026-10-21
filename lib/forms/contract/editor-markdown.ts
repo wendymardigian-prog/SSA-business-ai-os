@@ -24,7 +24,8 @@ export interface DocNode {
 }
 
 /** Una variable del contrato: `{{respuesta.empresa}}`, `{{contacto.nombre}}`. */
-export const VARIABLE_PATTERN = /\{\{\s*([a-zA-Z][\w.]*)\s*\}\}/g;
+// La lista de variables y su patrón viven en `variables.ts`.
+import { VARIABLE_PATTERN } from "./variables";
 
 // ---------------------------------------------------------------------------
 // Markdown → editor

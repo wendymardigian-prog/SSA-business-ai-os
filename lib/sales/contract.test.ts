@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FormField } from "@/lib/forms/fields";
-import { buildContractPrefill, contractMessage, unsignedContracts } from "./contract";
+import { buildContractPrefill, contractLinkValues, contractMessage, unsignedContracts } from "./contract";
 
 const field = (key: string, params?: string[]): FormField => ({
   id: key, key, type: "short_text", label: key, required: false, ...(params ? { prefill: { params, behavior: "editable" } } : {}),
@@ -56,5 +56,19 @@ describe("contractMessage", () => {
   it("saluda por el primer nombre y lleva el link", () => {
     expect(contractMessage({ contactName: "Ana Pérez", formName: "Contrato de servicios", url: "https://x.test/f/c?c=t" })).toBe("Hola Ana! Te dejo el link para firmar Contrato de servicios: https://x.test/f/c?c=t");
     expect(contractMessage({ contactName: null, formName: "C", url: "u" })).toBe("Hola! Te dejo el link para firmar C: u");
+  });
+});
+
+describe("contractLinkValues (variables del contrato en modo Contrato)", () => {
+  it("los mismos valores que el prellenado, con los nombres de las variables", () => {
+    expect(contractLinkValues(sale, contact)).toEqual({
+      contacto: { nombre: "Ana Pérez", email: "ana@x.co", telefono: "+50688887777" },
+      venta: { producto: "Mentoría", variante: "Premium", monto: "1297.00", inicio_servicio: "2026-11-01" },
+    });
+  });
+
+  it("sin venta, solo el contacto; sin nada, todo vacío", () => {
+    expect(contractLinkValues(null, contact).venta).toEqual({});
+    expect(contractLinkValues(null, null).contacto).toEqual({ nombre: null, email: null, telefono: null });
   });
 });

@@ -188,8 +188,15 @@ exports[`caracterizacion: validateDefinition (los textos de hoy) > la plantilla 
 {
   "contractConfig": {
     "acceptLabel": "Leí y acepto el contrato",
+    "businessSigner": {
+      "enabled": false,
+      "name": "",
+      "role": "",
+      "signaturePath": null,
+    },
     "ccEmails": [],
     "copyToOwner": true,
+    "mode": "terms",
     "signatureRequired": true,
     "title": "Formulario",
   },

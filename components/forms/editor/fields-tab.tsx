@@ -7,7 +7,7 @@ import { InspectorEnd } from "@/components/forms/builder/inspector-end";
 import { InspectorField } from "@/components/forms/builder/inspector-field";
 import { InspectorForm } from "@/components/forms/builder/inspector-form";
 import { InspectorContract } from "@/components/forms/builder/inspector-contract";
-import { ContractSigningBlock, ContractTextBlock } from "@/components/forms/builder/contract-blocks";
+import { ContractSigningBlock, ContractStepLabel, ContractTextBlock } from "@/components/forms/builder/contract-blocks";
 import { signerEmailField, type ContractConfig } from "@/lib/forms/contract/config";
 import type { EmailReadiness } from "@/lib/email/readiness";
 import { useBuilderActions } from "@/components/forms/builder/use-builder-actions";
@@ -53,7 +53,14 @@ export function FieldsTab({
   focusRequest: { fieldKey: string | null; nonce: number } | null;
   onOpenContact: () => void;
   /** Solo un contrato: su texto va en el lienzo y sus ajustes en el panel (antes, la pestaña Contrato). */
-  contract?: { formId: string; config: ContractConfig; onConfigSaved: (config: ContractConfig) => void; canManage: boolean; emailReadiness?: EmailReadiness };
+  contract?: {
+    formId: string;
+    config: ContractConfig;
+    onConfigSaved: (config: ContractConfig) => void;
+    canManage: boolean;
+    emailReadiness?: EmailReadiness;
+    signatureUrl?: string | null;
+  };
 }) {
   const fields = draft.definition.fields;
   const [rawSelection, setSelection] = useState<BuilderSelection>(FORM_SELECTION);
@@ -115,6 +122,7 @@ export function FieldsTab({
         disabled={disabled}
         hasSignerEmail={!!signerEmailField(fields)}
         emailReadiness={contract.emailReadiness}
+        signatureUrl={contract.signatureUrl}
       />
     </div>
   ) : null;
@@ -156,6 +164,19 @@ export function FieldsTab({
       onOpenContact={onOpenContact}
     />
   );
+
+  const contractTextBlock = contract ? (
+    <ContractTextBlock
+      formId={contract.formId}
+      title={contract.config.title}
+      text={draft.definition.contractText ?? ""}
+      onText={(contractText) => onChange({ ...draft, definition: { ...draft.definition, contractText } })}
+      selected={selection.kind === "contract_text"}
+      onSelect={() => setSelection({ kind: "contract_text" })}
+      disabled={disabled}
+      fieldKeys={contract.config.mode === "contract" ? fields.filter((f) => f.type !== "hidden").map((f) => f.key) : undefined}
+    />
+  ) : null;
 
   return (
     <div className="space-y-4">
@@ -203,20 +224,29 @@ export function FieldsTab({
             issues={issues}
             beforeFields={
               contract ? (
-                <ContractTextBlock
-                  formId={contract.formId}
-                  title={contract.config.title}
-                  text={draft.definition.contractText ?? ""}
-                  onText={(contractText) => onChange({ ...draft, definition: { ...draft.definition, contractText } })}
-                  selected={selection.kind === "contract_text"}
-                  onSelect={() => setSelection({ kind: "contract_text" })}
-                  disabled={disabled}
-                />
+                contract.config.mode === "contract" ? (
+                  <ContractStepLabel step={1} text="Paso 1 · los datos de la persona" />
+                ) : (
+                  contractTextBlock
+                )
               ) : undefined
             }
             afterFields={
               contract ? (
-                <ContractSigningBlock config={contract.config} selected={selection.kind === "contract_signing"} onSelect={() => setSelection({ kind: "contract_signing" })} />
+                <>
+                  {contract.config.mode === "contract" && (
+                    <>
+                      <ContractStepLabel step={2} text="Paso 2 · el contrato con esos datos, y la firma" />
+                      {contractTextBlock}
+                    </>
+                  )}
+                  <ContractSigningBlock
+                    config={contract.config}
+                    selected={selection.kind === "contract_signing"}
+                    onSelect={() => setSelection({ kind: "contract_signing" })}
+                    signatureUrl={contract.signatureUrl}
+                  />
+                </>
               ) : undefined
             }
           />

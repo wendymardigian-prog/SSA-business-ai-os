@@ -11,6 +11,7 @@ import { hashIp } from "@/lib/scheduling/antispam";
 import { validateSuccess, DEFAULT_SUCCESS } from "./success";
 import { parseStoredContactConfig, isCustomTarget, customSlugOf, type CustomFieldDef } from "./contact-config";
 import { createCopyToken } from "./contract/copy-link";
+import { loadContractLinkContext } from "./contract/link-context";
 import { getOrCreateLinkSecret, verifyFormLink } from "./signed-link";
 import { notifyRecipients, contactOutcome, notificationContent } from "./notify";
 import { parseStoredContractConfig } from "./contract/config";
@@ -48,7 +49,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
   if (!isPublicFormType(form.type)) return null;
 
   const [{ data: version }, { data: workspace }] = await Promise.all([
-    service.from("form_versions").select("id, version_number, definition").eq("id", form.current_version_id).maybeSingle(),
+    service.from("form_versions").select("id, version_number, definition, contract_text").eq("id", form.current_version_id).maybeSingle(),
     service.from("workspaces").select("timezone").eq("id", form.workspace_id).maybeSingle(),
   ]);
   if (!version) return null;
@@ -71,6 +72,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
     notifyEnabled: form.notify_enabled,
     notifyUserIds: form.notify_user_ids ?? [],
     contract: form.type === "contract" ? parseStoredContractConfig(form.contract_config, form.name) : null,
+    contractText: form.type === "contract" ? version.contract_text ?? null : null,
   };
 }
 
@@ -212,6 +214,10 @@ export function createSubmitPorts(service: Db): SubmitPorts {
     },
 
     newId: () => randomUUID(),
+
+    async contractLinkContext(form, link) {
+      return loadContractLinkContext(service, form.workspaceId, link);
+    },
 
     async contractCopyToken(form, submissionId) {
       const secret = await getOrCreateLinkSecret(service, form.workspaceId);

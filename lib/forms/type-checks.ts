@@ -6,6 +6,8 @@ import type { FormDefinition, FormType } from "./fields";
 import { isScoreType } from "./fields";
 import { eodPublishChecks } from "@/lib/eod/definition";
 import { parseStoredEodConfig } from "@/lib/eod/config";
+import { parseStoredContractConfig } from "./contract/config";
+import { templateVariables, unknownVariables } from "./contract/variables";
 
 export interface TypeConfigs {
   surveyConfig?: unknown;
@@ -30,10 +32,18 @@ export function surveyChecks(config: unknown, contactMode?: string): (definition
   };
 }
 
-export function contractChecks(): (definition: FormDefinition) => string[] {
+export function contractChecks(config?: unknown): (definition: FormDefinition) => string[] {
+  const mode = parseStoredContractConfig(config).mode;
   return (definition) => {
     const reasons: string[] = [];
     if (!definition.contractText || definition.contractText.trim() === "") reasons.push("El contrato necesita un texto");
+    const text = definition.contractText ?? "";
+    if (mode === "contract") {
+      const unknown = unknownVariables(text, definition.fields.filter((f) => f.type !== "hidden").map((f) => f.key));
+      if (unknown.length > 0) reasons.push(`El contrato usa variables que no existen: ${unknown.map((n) => `{{${n}}}`).join(", ")}`);
+    } else if (templateVariables(text).length > 0) {
+      reasons.push("El texto tiene variables ({{…}}): solo funcionan en modo Contrato. Cambiá el modo o sacalas del texto");
+    }
     const hasRequiredEmail = definition.fields.some((f) => f.type === "email" && f.required);
     if (!hasRequiredEmail) reasons.push("El contrato necesita un campo de email obligatorio: ahí se manda la copia firmada");
     return reasons;
@@ -42,7 +52,7 @@ export function contractChecks(): (definition: FormDefinition) => string[] {
 
 export function typeChecks(type: FormType, configs: TypeConfigs): Array<(definition: FormDefinition) => string[]> {
   if (type === "survey") return [surveyChecks(configs.surveyConfig, configs.contactMode)];
-  if (type === "contract") return [contractChecks()];
+  if (type === "contract") return [contractChecks(configs.contractConfig)];
   if (type === "eod") return [eodPublishChecks(parseStoredEodConfig(configs.eodConfig)?.variant)];
   return [];
 }

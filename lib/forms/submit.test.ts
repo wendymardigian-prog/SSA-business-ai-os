@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { submitForm, safeFileName, buildAttribution, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
 import { newField, type FormField } from "./fields";
+import { NO_BUSINESS_SIGNER } from "./defaults";
 
 const KEY = "3f0c1c2e-0000-4000-8000-000000000001";
 const VERSION = "3f0c1c2e-0000-4000-8000-0000000000aa";
@@ -514,7 +515,7 @@ describe("submitForm: contratos (FO3)", () => {
   const contractForm = (over: Partial<LoadedForm> = {}) =>
     makeForm([{ ...field("short_text", "nombre", { required: true, label: "Nombre del firmante" }) }, { ...field("email", "email", { required: true, label: "Email" }) }], {
       type: "contract",
-      contract: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [], copyToOwner: true },
+      contract: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [], copyToOwner: true, mode: "terms", businessSigner: NO_BUSINESS_SIGNER },
       success: { mode: "message", title: "¡Gracias!", body: "Recibimos tu respuesta." },
       ...over,
     });
@@ -538,6 +539,64 @@ describe("submitForm: contratos (FO3)", () => {
     const outOff = await submitForm(off.ports, baseInput(signed()));
     expect(outOff.body.success).not.toHaveProperty("download");
     expect(contractCopyToken).toHaveBeenCalledTimes(1);
+  });
+
+  describe("modo Contrato: el texto que se firma lo arma el servidor", () => {
+    const contractMode = (over: Partial<LoadedForm> = {}) =>
+      contractForm({
+        contract: {
+          title: "Acuerdo",
+          signatureRequired: true,
+          acceptLabel: "Acepto",
+          ccEmails: [],
+          copyToOwner: true,
+          mode: "contract",
+          businessSigner: { enabled: true, name: "Wendy", role: "Directora", signaturePath: "ws-1/form-1/business-signer/a.png" },
+        },
+        contractText: "Entre **{{respuesta.nombre}}** y {{negocio.nombre}}, por {{venta.monto}}. Cliente: {{contacto.nombre}}.",
+        ...over,
+      });
+
+    it("con las respuestas validadas, sin datos de venta (—) y con la firma del negocio", async () => {
+      const { ports, saves } = makePorts(contractMode());
+      const out = await submitForm(ports, baseInput(signed({ answers: { nombre: "Ana *Pérez*", email: "ana@x.com" } })));
+      expect(out.status).toBe(200);
+      const render = saves[0].meta.contract_render as { text: string; business_signer: unknown };
+      expect(render.text).toMatch(/^Entre \*\*Ana \\\*Pérez\\\*\*\* y .+, por —\. Cliente: —\.$/);
+      expect(render.business_signer).toEqual({ name: "Wendy", role: "Directora", signature_path: "ws-1/form-1/business-signer/a.png" });
+    });
+
+    it("lo que mande el navegador como texto no entra", async () => {
+      const { ports, saves } = makePorts(contractMode());
+      await submitForm(ports, baseInput(signed({ contract_text: "OTRO TEXTO", rendered_text: "OTRO" })));
+      expect((saves[0].meta.contract_render as { text: string }).text.startsWith("Entre **")).toBe(true);
+    });
+
+    it("con un link firmado de una venta, completa contacto y venta (aunque el vínculo con contactos esté apagado)", async () => {
+      const contractLinkContext = vi.fn(async () => ({ contacto: { nombre: "Ana Pérez" }, venta: { monto: "1500.00" } }));
+      const form = contractMode({ contactConfig: { ...contractMode().contactConfig, mode: "none" } });
+      const { ports, saves } = makePorts(form, {
+        verifyLink: vi.fn(async () => ({ contactId: "c1", serviceId: null, saleId: "s1" })),
+        contractLinkContext,
+      });
+      await submitForm(ports, baseInput(signed({ link_token: "tok" })));
+      expect((saves[0].meta.contract_render as { text: string }).text).toContain("por 1500.00. Cliente: Ana Pérez.");
+      // Con el vínculo apagado, el link no se usa para el contacto.
+      expect(saves[0].contactHint).not.toHaveProperty("signed_contact_id");
+    });
+
+    it("Aceptación de términos sin variables: no viaja nada nuevo (igual que antes)", async () => {
+      const { ports, saves } = makePorts(contractForm({ contractText: "Texto fijo." }));
+      await submitForm(ports, baseInput(signed()));
+      expect(saves[0].meta).not.toHaveProperty("contract_render");
+    });
+
+    it("la firma del negocio apagada no viaja", async () => {
+      const base = contractMode();
+      const { ports, saves } = makePorts(contractMode({ contract: { ...base.contract!, businessSigner: { ...base.contract!.businessSigner, enabled: false } } }));
+      await submitForm(ports, baseInput(signed()));
+      expect((saves[0].meta.contract_render as { business_signer: unknown }).business_signer).toBeNull();
+    });
   });
 
   it("si el link de la copia no se puede armar, la firma sale igual (sin el botón)", async () => {
@@ -589,7 +648,7 @@ describe("submitForm: contratos (FO3)", () => {
   });
 
   it("firma opcional y sin dibujar: se firma sin imagen", async () => {
-    const form = contractForm({ contract: { title: "A", signatureRequired: false, acceptLabel: "Acepto", ccEmails: [], copyToOwner: true } });
+    const form = contractForm({ contract: { title: "A", signatureRequired: false, acceptLabel: "Acepto", ccEmails: [], copyToOwner: true, mode: "terms", businessSigner: NO_BUSINESS_SIGNER } });
     const { ports, saves } = makePorts(form);
     const out = await submitForm(ports, baseInput(signed({ signature: undefined, signature_strokes: undefined })));
     expect(out.status).toBe(200);

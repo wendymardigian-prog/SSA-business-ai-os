@@ -1,0 +1,19 @@
+[
+  { "name": "sin variables: tiene que ser igual", "template": "Texto fijo.", "rendered": "Texto fijo.", "matches": true },
+  { "name": "sin variables y distinto", "template": "Texto fijo.", "rendered": "Texto fijo!", "matches": false },
+  { "name": "una variable en el medio", "template": "Entre {{respuesta.empresa}} y nosotros.", "rendered": "Entre Acme SA y nosotros.", "matches": true },
+  { "name": "una variable vacía (—)", "template": "Monto: {{venta.monto}}.", "rendered": "Monto: —.", "matches": true },
+  { "name": "variable al principio y al final", "template": "{{contacto.nombre}} acepta. Fecha: {{fecha}}", "rendered": "Ana acepta. Fecha: 21 de octubre de 2026", "matches": true },
+  { "name": "dos variables pegadas", "template": "A{{respuesta.a}}{{respuesta.b}}B", "rendered": "AxyzB", "matches": true },
+  { "name": "con espacios dentro de las llaves", "template": "Hola {{ contacto.nombre }}!", "rendered": "Hola Ana!", "matches": true },
+  { "name": "el valor contiene el pedazo que sigue", "template": "A{{respuesta.x}}B{{respuesta.y}}C", "rendered": "A1B2BC", "matches": true },
+  { "name": "cambiaron una cláusula fija", "template": "Pagás {{venta.monto}} por mes.", "rendered": "Pagás 100 por año.", "matches": false },
+  { "name": "agregaron texto después del final fijo", "template": "Fin {{fecha}} (fin del contrato).", "rendered": "Fin hoy (fin del contrato). Y una cláusula nueva.", "matches": false },
+  { "name": "lo que cae en el lugar de una variable no se distingue (por eso lo arma solo el servidor)", "template": "Fin {{fecha}}.", "rendered": "Fin hoy. Y una cláusula nueva.", "matches": true },
+  { "name": "una variable al principio", "template": "{{contacto.nombre}} firma.", "rendered": "Ana firma.", "matches": true },
+  { "name": "sacaron el principio", "template": "Contrato: {{contacto.nombre}}", "rendered": "Ana", "matches": false },
+  { "name": "pedazos fuera de orden", "template": "uno {{respuesta.a}} dos {{respuesta.b}} tres", "rendered": "uno x tres y dos", "matches": false },
+  { "name": "el último pedazo no puede pisar al anterior", "template": "ab{{respuesta.a}}bc", "rendered": "abc", "matches": false },
+  { "name": "Markdown con formato alrededor", "template": "# Contrato\n\nEntre **{{respuesta.empresa}}** y [nosotros](https://a.com).", "rendered": "# Contrato\n\nEntre **Acme \\*SA\\*** y [nosotros](https://a.com).", "matches": true },
+  { "name": "llaves que no son variables quedan fijas", "template": "Un {{1}} y {{respuesta.a}}", "rendered": "Un {{1}} y x", "matches": true }
+]

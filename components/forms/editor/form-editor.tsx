@@ -343,7 +343,7 @@ export function FormEditor({
                 onOpenContact={() => setSection("contacto")}
                 contract={
                   form.type === "contract" && contractConfig
-                    ? { formId: form.id, config: contractConfig, onConfigSaved: setContractConfig, canManage, emailReadiness: extras.emailReadiness }
+                    ? { formId: form.id, config: contractConfig, onConfigSaved: setContractConfig, canManage, emailReadiness: extras.emailReadiness, signatureUrl: extras.businessSignatureUrl }
                     : undefined
                 }
               />

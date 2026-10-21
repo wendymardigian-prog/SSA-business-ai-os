@@ -47,6 +47,8 @@ export interface EditorExtras {
   responseCount: number | null;
   /** Solo un contrato: si la copia firmada por correo va a salir (Resend conectado y sin rechazos). */
   emailReadiness?: EmailReadiness;
+  /** Solo un contrato con la firma del negocio cargada: un link temporal para verla en el editor. */
+  businessSignatureUrl?: string | null;
 }
 
 export interface EditorVersion {

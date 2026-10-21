@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -7,7 +8,9 @@ import { logAudit } from "@/lib/audit";
 import { appUrl } from "@/lib/app-url";
 import { validateSurveyConfig } from "@/lib/forms/survey";
 import { parseStoredContactConfig } from "@/lib/forms/contact-config";
-import { validateContractConfig } from "@/lib/forms/contract/config";
+import { isBusinessSignaturePath, validateContractConfig } from "@/lib/forms/contract/config";
+import { businessSignaturePath, parseBusinessSignature } from "@/lib/forms/contract/business-signer";
+import { CONTRACTS_BUCKET } from "@/lib/forms/contract/storage";
 import { signFormLink } from "@/lib/forms/signed-link";
 import { isPublicFormType, type FormDefinition, type FormField } from "@/lib/forms/fields";
 import { mergeEodConfig, parseStoredEodConfig } from "@/lib/eod/config";
@@ -89,6 +92,11 @@ export async function saveContractConfig(input: { formId: string; config: unknow
 
   const checked = validateContractConfig(input.config);
   if (!checked.ok) return { ok: false, error: checked.errors[0] ?? "La configuración no es válida" };
+  // La imagen de la firma del negocio tiene que ser una que se subió para ESTE formulario (nunca una ruta cualquiera).
+  const signaturePath = checked.config.businessSigner.signaturePath;
+  if (signaturePath && !isBusinessSignaturePath(signaturePath, ctx.workspace.id, form.id)) {
+    return { ok: false, error: "La imagen de la firma no es válida: volvé a dibujarla o subirla" };
+  }
 
   const { error } = await service
     .from("forms")
@@ -110,6 +118,33 @@ export async function saveContractConfig(input: { formId: string; config: unknow
   });
   revalidatePath(`/dashboard/formularios/${form.id}`);
   return { ok: true };
+}
+
+/**
+ * Sube la imagen de la firma del negocio ("Firma de ambas partes"): dibujada en el editor (PNG) o una imagen PNG/JPG.
+ * Pide `forms.manage`; se guarda con el cliente de servicio en el bucket privado de contratos, en una ruta NUEVA (una
+ * firma ya hecha sigue apuntando a la imagen que se usó). No cambia la configuración: la ruta vuelve al editor y se
+ * guarda con "Guardar los ajustes del contrato".
+ */
+export async function uploadBusinessSignature(input: { formId: string; dataUrl: string }): Promise<ConfigActionResult<{ path: string; url: string | null }>> {
+  const ctx = await getPermissionAction("forms.manage");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const loaded = await loadForm(input.formId, ctx.workspace.id);
+  if (!loaded) return { ok: false, error: "No encontré ese formulario" };
+  const { service, form } = loaded;
+  if (form.type !== "contract") return { ok: false, error: "Este formulario no es un contrato" };
+  if (form.status === "archived") return { ok: false, error: "El formulario está archivado: restauralo para editarlo." };
+
+  const parsed = parseBusinessSignature(input.dataUrl);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const path = businessSignaturePath(ctx.workspace.id, form.id, randomUUID(), parsed.ext);
+  const { error } = await service.storage.from(CONTRACTS_BUCKET).upload(path, parsed.bytes, { contentType: parsed.mime, upsert: false });
+  if (error) {
+    console.error("[forms] uploadBusinessSignature fallo:", error.message);
+    return { ok: false, error: "No pudimos subir la firma. Probá de nuevo." };
+  }
+  const { data: signed } = await service.storage.from(CONTRACTS_BUCKET).createSignedUrl(path, 60 * 60);
+  return { ok: true, path, url: signed?.signedUrl ?? null };
 }
 
 /**

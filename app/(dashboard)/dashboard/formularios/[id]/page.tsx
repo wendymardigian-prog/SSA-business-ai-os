@@ -5,6 +5,7 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { FormEditor } from "@/components/forms/editor/form-editor";
 import { loadEmailReadiness } from "@/lib/email/readiness";
+import { CONTRACTS_BUCKET } from "@/lib/forms/contract/storage";
 import type { EditorExtras, EditorForm, EditorVersion } from "@/components/forms/editor/types";
 import { flowsForForm } from "@/lib/forms/data/form-flows";
 import { countResponses } from "@/lib/forms/editor-bar-load";
@@ -90,6 +91,10 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     eodConfig: isEod ? parseStoredEodConfig(form.eod_config) : null,
   };
 
+  // La firma del negocio guardada, para verla en el editor (link temporal: el bucket es privado).
+  const signerPath = editorForm.contractConfig?.businessSigner.signaturePath;
+  const businessSignatureUrl = signerPath ? ((await service.storage.from(CONTRACTS_BUCKET).createSignedUrl(signerPath, 60 * 60)).data?.signedUrl ?? null) : null;
+
   const extras: EditorExtras = {
     customFields: (customRows ?? []) as CustomFieldDef[],
     tags: tagRows ?? [],
@@ -99,6 +104,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     roles: roleRows ?? [],
     responseCount,
     emailReadiness,
+    businessSignatureUrl,
   };
 
   return (
