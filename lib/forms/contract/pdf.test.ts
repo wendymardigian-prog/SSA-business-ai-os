@@ -170,3 +170,43 @@ describe("el firmante no se repite en la lista de respuestas (R10)", () => {
     expect(all.split("ana@example.com").length).toBeGreaterThan(2);
   });
 });
+
+describe("modo Contrato: firmas abajo y certificado aparte", () => {
+  const RENDERED = "d".repeat(64);
+  const JPG_1X1 = Uint8Array.from(
+    Buffer.from(
+      "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=",
+      "base64",
+    ),
+  );
+
+  it("las dos firmas con sus nombres, el certificado en otra página y la huella del documento al pie", async () => {
+    const bytes = await buildContractPdf(
+      base({
+        text: "# Acuerdo\n\nEntre **Acme SA** y Mi Negocio, por 1500.00.",
+        signaturePng: PNG_1X1,
+        contract: { renderedSha256: RENDERED, businessSigner: { name: "Wendy Mardigian", role: "Directora", image: PNG_1X1 } },
+      }),
+    );
+    const { pages, totalPages } = await read(bytes);
+    expect(totalPages).toBe(2);
+    expect(pages[0]).toContain("Acme SA");
+    expect(pages[0]).toContain("Firmas");
+    expect(pages[0]).toContain("Wendy Mardigian");
+    expect(pages[0]).toContain("Directora");
+    expect(pages[0]).toContain("Ana Pérez");
+    expect(pages[1]).toContain("Certificado de firma");
+    expect(pages[1]).toContain(RENDERED);
+    expect(pages[1]).toContain(SHA);
+    // Al pie de cada página, la huella del documento firmado (no la de la plantilla).
+    expect(pages[0]).toContain(`SHA-256: ${RENDERED}`);
+  });
+
+  it("sin la firma del negocio, solo la de la persona; una firma del negocio en JPG también sirve", async () => {
+    const solo = await read(await buildContractPdf(base({ signaturePng: PNG_1X1, contract: { renderedSha256: RENDERED, businessSigner: null } })));
+    expect(solo.pages[0]).toContain("Ana Pérez");
+    expect(solo.pages[0]).not.toContain("Por Mi Negocio");
+    const jpg = await buildContractPdf(base({ contract: { renderedSha256: RENDERED, businessSigner: { name: "W", role: "", image: JPG_1X1 } } }));
+    expect(Buffer.from(jpg.slice(0, 5)).toString()).toBe("%PDF-");
+  });
+});

@@ -106,8 +106,12 @@ export function ContractReader({ title, text }: { title: string | null | undefin
   );
 }
 
-/** La casilla de aceptación (siempre obligatoria) y la firma. Va ABAJO, después de los campos. */
+/**
+ * La casilla de aceptación (siempre obligatoria) y la firma. Va ABAJO, después de los campos. Con la firma de ambas
+ * partes (modo Contrato), la del negocio va al lado, ya estampada.
+ */
 export function ContractSigning({
+  businessSigner,
   acceptLabel,
   signatureRequired,
   accepted,
@@ -117,6 +121,7 @@ export function ContractSigning({
   signatureError,
   disabled,
 }: {
+  businessSigner?: { name: string; role?: string | null; signature_url?: string | null } | null;
   acceptLabel: string;
   signatureRequired: boolean;
   accepted: boolean;
@@ -140,16 +145,35 @@ export function ContractSigning({
         )}
       </div>
 
-      <div>
-        <p className="mb-2 text-sm font-medium">
-          Firma {signatureRequired ? <span aria-hidden="true">*</span> : <span className="text-xs font-normal text-muted-foreground">(opcional)</span>}
-        </p>
-        <SignatureCanvas onChange={onSignature} disabled={disabled} invalid={!!signatureError} />
-        {signatureError && (
-          <p role="alert" className="mt-1 text-xs text-destructive">
-            {signatureError}
-          </p>
+      <div className={businessSigner ? "grid gap-4 sm:grid-cols-2" : undefined}>
+        {businessSigner && (
+          <div>
+            <p className="mb-2 text-sm font-medium">Por {businessSigner.name}</p>
+            <div className="flex h-[120px] items-center justify-center rounded-lg border border-border bg-white">
+              {businessSigner.signature_url ? (
+                // eslint-disable-next-line @next/next/no-img-element -- link temporal a un bucket privado
+                <img src={businessSigner.signature_url} alt={`Firma de ${businessSigner.name}`} className="h-full w-full object-contain p-2" />
+              ) : (
+                <span className="text-xs text-muted-foreground">Firma del negocio</span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {businessSigner.name}
+              {businessSigner.role ? ` · ${businessSigner.role}` : ""}
+            </p>
+          </div>
         )}
+        <div>
+          <p className="mb-2 text-sm font-medium">
+            {businessSigner ? "Tu firma" : "Firma"} {signatureRequired ? <span aria-hidden="true">*</span> : <span className="text-xs font-normal text-muted-foreground">(opcional)</span>}
+          </p>
+          <SignatureCanvas onChange={onSignature} disabled={disabled} invalid={!!signatureError} />
+          {signatureError && (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              {signatureError}
+            </p>
+          )}
+        </div>
       </div>
     </section>
   );

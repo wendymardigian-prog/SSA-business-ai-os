@@ -265,6 +265,10 @@ export type ContractSignatureRow = {
   email_last_error: string | null;
   sale_id: string | null;
   service_id: string | null;
+  /** Modo Contrato (00242): el texto exacto que se firmó, su huella y la firma del negocio estampada. */
+  rendered_text: string | null;
+  rendered_sha256: string | null;
+  business_signer: Json | null;
   created_at: string;
   updated_at: string;
 };

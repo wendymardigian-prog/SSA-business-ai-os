@@ -13,7 +13,16 @@ export interface PublicFormData {
   version_id: string;
   design: { title?: string; intro?: string; submitLabel?: string; showLogo?: boolean };
   fields: PublicField[];
-  contract: { text: string | null; version_number: number; title?: string | null; accept_label?: string | null } | null;
+  contract: {
+    text: string | null;
+    version_number: number;
+    title?: string | null;
+    accept_label?: string | null;
+    /** `terms` (Aceptación de términos) o `contract` (primero los datos, después el contrato). Sin dato, `terms`. */
+    mode?: "terms" | "contract";
+    /** Firma de ambas partes: la del negocio, con un link temporal a su imagen (nunca la ruta del bucket). */
+    business_signer?: { name: string; role?: string | null; signature_url?: string | null } | null;
+  } | null;
   signature_required: boolean;
   survey: { scoreFieldKey?: string | null } | null;
 }

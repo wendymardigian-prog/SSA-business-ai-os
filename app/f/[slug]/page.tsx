@@ -5,7 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/supabase/auth-user";
 import { PublicForm } from "@/components/forms/public/public-form";
 import { AttributionTracker } from "@/components/attribution/attribution-tracker";
-import { isAlreadyAnswered, loadPreviewFormData, loadPublicFormData } from "@/lib/forms/public-load";
+import { isAlreadyAnswered, loadPreviewFormData, loadPublicContractContext, loadPublicFormData } from "@/lib/forms/public-load";
 import { isAvailable } from "@/lib/forms/public-client";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +64,8 @@ export default async function PublicFormPage({
   }
 
   const embed = query.embed === "1" || query.embed === "true";
+  // Modo Contrato con un link firmado: los datos del contacto y la venta para mostrar las variables del paso 2.
+  const contractContext = !preview && isAvailable(form) && form.contract?.mode === "contract" ? await loadPublicContractContext(service, slug, query.c) : null;
 
   if (!isAvailable(form)) {
     return (
@@ -91,7 +93,7 @@ export default async function PublicFormPage({
     <main className={embed ? "px-1 py-1" : "px-4 py-8"}>
       {/* Fuera de un iframe, la página anota de dónde vino la persona (cookie `ssa_attr`). */}
       {!embed && !preview && <AttributionTracker />}
-      <PublicForm form={form} params={query} mode={embed ? "embed" : "public_page"} preview={preview} linkToken={query.c} />
+      <PublicForm form={form} params={query} mode={embed ? "embed" : "public_page"} preview={preview} linkToken={query.c} contractContext={contractContext} />
     </main>
   );
 }

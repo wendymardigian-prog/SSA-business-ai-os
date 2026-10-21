@@ -385,7 +385,18 @@ export function FormEditor({
           design={draft.design}
           definition={draft.definition}
           success={draft.success}
-          contract={contractConfig ? { title: contractConfig.title, acceptLabel: contractConfig.acceptLabel, signatureRequired: contractConfig.signatureRequired } : null}
+          contract={
+            contractConfig
+              ? {
+                  title: contractConfig.title,
+                  acceptLabel: contractConfig.acceptLabel,
+                  signatureRequired: contractConfig.signatureRequired,
+                  mode: contractConfig.mode,
+                  businessSigner: contractConfig.businessSigner,
+                  signatureUrl: extras.businessSignatureUrl ?? null,
+                }
+              : null
+          }
           onClose={() => setPreviewOpen(false)}
         />
       )}
