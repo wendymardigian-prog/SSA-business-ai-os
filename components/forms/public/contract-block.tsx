@@ -132,7 +132,7 @@ export function ContractSigning({
   disabled?: boolean;
 }) {
   return (
-    <section className="space-y-4" aria-label="Aceptación y firma">
+    <section className="@container space-y-4" aria-label="Aceptación y firma">
       <div>
         <label className="flex cursor-pointer items-start gap-3 text-sm">
           <input type="checkbox" checked={accepted} onChange={(e) => onAccepted(e.target.checked)} disabled={disabled} className="mt-0.5 h-4 w-4 flex-shrink-0" aria-invalid={!!acceptedError} />
@@ -145,7 +145,8 @@ export function ContractSigning({
         )}
       </div>
 
-      <div className={businessSigner ? "grid gap-4 sm:grid-cols-2" : undefined}>
+      {/* Lado a lado solo si el FORMULARIO es ancho (no la pantalla): en un embed angosto o un teléfono, una abajo de la otra. */}
+      <div className={businessSigner ? "grid gap-4 @lg:grid-cols-2" : undefined}>
         {businessSigner && (
           <div>
             <p className="mb-2 text-sm font-medium">Por {businessSigner.name}</p>
