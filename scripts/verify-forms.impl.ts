@@ -38,6 +38,9 @@ import { recordVisit, serializeStored, parseStored } from "../lib/attribution/st
 import { attributionFromParams } from "../lib/attribution/collect";
 import { runContractPdf } from "../lib/forms/contract/pdf-run";
 import { runContractEmail } from "../lib/forms/contract/email-run";
+import { loadContractCopy } from "../lib/forms/contract/copy-download";
+import { createCopyToken } from "../lib/forms/contract/copy-link";
+import { contractStorage } from "../lib/forms/contract/storage";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -1270,6 +1273,94 @@ try {
   check(!!ownerSees?.pdf_path && !blindSees, "quien ve la respuesta obtiene la firma (y el link de su PDF); quien no la ve, nada");
   const { data: directPdf } = await member.client.storage.from("contracts").download(String(ownerSees?.pdf_path));
   check(!directPdf, "nadie baja un PDF directo del bucket (privado, sin policies)");
+
+  // ── Contratos v2 (00242/00243): modo Contrato y firma de ambas partes ────
+  console.log("\n— Modo Contrato y firma de ambas partes (00242/00243) —");
+  const template = "# Contrato\n\nEntre **{{respuesta.empresa}}**, representada por {{respuesta.nombre}}, y {{negocio.nombre}}.\n\nMonto: {{venta.monto}}. Firmado el {{fecha}}.";
+  const templateHash = hashContractText(template);
+  const mcFields: FormField[] = [
+    field("short_text", "nombre", { required: true, label: "Nombre del firmante" }),
+    field("email", "email", { required: true, label: "Email" }),
+    field("short_text", "empresa", { required: true, label: "Empresa" }),
+  ];
+  const mcSlug = `zz-test-modo-contrato-${Date.now()}`;
+  const { data: mcForm } = await svc
+    .from("forms")
+    .insert({ workspace_id: ws.id, name: "zz-test modo contrato", type: "contract", slug: mcSlug, draft_definition: { fields: mcFields, contractText: templateHash.text } as unknown as Json, contract_config: {} as Json, notify_enabled: false })
+    .select("id")
+    .single();
+  const signerPath = `${ws.id}/${mcForm!.id}/business-signer/${randomUUID()}.png`;
+  const { error: signerUpErr } = await svc.storage.from("contracts").upload(signerPath, PNG, { contentType: "image/png" });
+  check(!signerUpErr, "se sube la firma del negocio al bucket privado", signerUpErr?.message);
+  contractFiles.push(signerPath);
+  const mcConfig = {
+    title: "Contrato zz-test",
+    signatureRequired: true,
+    acceptLabel: "Leí y acepto",
+    ccEmails: [],
+    copyToOwner: false,
+    mode: "contract",
+    businessSigner: { enabled: true, name: "zz-test Negocio", role: "Directora", signaturePath: signerPath },
+  };
+  await svc.from("forms").update({ contract_config: mcConfig as unknown as Json }).eq("id", mcForm!.id);
+  await svc.rpc("publish_form_version", { p_form_id: mcForm!.id, p_actor: owner.id });
+  await svc.from("forms").update({ status: "published" }).eq("id", mcForm!.id);
+  const { data: mcPub } = await svc.from("forms").select("current_version_id").eq("id", mcForm!.id).single();
+
+  const { data: mcPublic } = await svc.rpc("get_public_form", { p_slug: mcSlug });
+  const mcContract = (mcPublic as { contract?: { mode?: string; business_signer?: { name?: string; role?: string; signature_path?: string } } } | null)?.contract;
+  check(mcContract?.mode === "contract", "get_public_form dice el modo (00243)", JSON.stringify(mcContract?.mode));
+  check(mcContract?.business_signer?.name === "zz-test Negocio" && mcContract?.business_signer?.signature_path === signerPath, "...y la firma del negocio (nombre y ruta, que la página cambia por un link temporal)");
+  const { data: kPublic } = await svc.rpc("get_public_form", { p_slug: contractSlug });
+  check((kPublic as { contract?: { mode?: string; business_signer?: unknown } } | null)?.contract?.mode === "terms" && !(kPublic as { contract?: { business_signer?: unknown } }).contract?.business_signer, "un contrato de antes sale como Aceptación de términos y sin firma del negocio");
+
+  const mcSend = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    submitForm(ctPorts(), { ...input(mcSlug, { idempotency_key: randomUUID(), version_id: mcPub!.current_version_id, answers, honeypot: "", attribution: {}, client_meta: { timezone: "America/Costa_Rica" }, origin: "public_page", ...extra }, [], nextIp()), userAgent: "Mozilla/5.0" });
+  const mcOk = await mcSend({ nombre: "Ana Contrato", email: "ana.contrato@example.test", empresa: "Acme *SA*" }, sig({ contract_text: "TEXTO DEL NAVEGADOR", rendered_text: "OTRO" }));
+  check(mcOk.status === 200, "el modo Contrato se firma", JSON.stringify(mcOk.body));
+  const { data: mcSig } = await svc.from("contract_signatures").select("*").eq("submission_id", String(mcOk.body.submission_id)).single();
+  const rendered = String(mcSig?.rendered_text ?? "");
+  check(rendered.includes("Entre **Acme \\*SA\\***, representada por Ana Contrato") && !rendered.includes("{{") && rendered.includes("Monto: —."), "la firma guarda el texto armado por el servidor (respuestas escapadas, sin variables crudas)", rendered.slice(0, 120));
+  check(!rendered.includes("NAVEGADOR") && !rendered.includes("OTRO"), "...y nada de lo que mandó el navegador");
+  check(mcSig?.rendered_sha256 === contractTextSha256(rendered), "la huella del texto firmado la calcula la base y cierra con el texto");
+  check(mcSig?.text_sha256 === templateHash.sha256, "la huella de la plantilla sigue siendo la de la versión");
+  check(JSON.stringify(mcSig?.business_signer) === JSON.stringify({ name: "zz-test Negocio", role: "Directora", signature_path: signerPath }), "guarda la firma del negocio que se usó", JSON.stringify(mcSig?.business_signer));
+  const { error: tamperEvidence } = await svc.from("contract_signatures").update({ rendered_text: "cambiado" }).eq("id", mcSig!.id);
+  check(!!tamperEvidence, "el texto firmado no se puede cambiar después (ni con el service role)");
+
+  const { data: matchOk } = await svc.rpc("contract_render_matches" as never, { p_template: template, p_rendered: rendered } as never);
+  const { data: matchBad } = await svc.rpc("contract_render_matches" as never, { p_template: template, p_rendered: rendered.replace("Monto", "Precio") } as never);
+  check(matchOk === true && matchBad === false, "contract_render_matches: el armado pasa; una cláusula fija cambiada, no");
+
+  // La base rechaza un texto que no corresponde a la plantilla, y una plantilla con variables sin texto armado.
+  const realPorts = createSubmitPorts(svc);
+  const mcLoaded = await realPorts.loadForm(mcSlug);
+  const saveWith = (meta: Record<string, unknown>) =>
+    realPorts.save({ form: mcLoaded!, idempotencyKey: randomUUID(), answers: {}, attribution: {}, meta, uploadPrefix: null, contactHint: {}, contract: { signaturePath: null, legal: {}, signerName: "x", signerEmail: "x@example.test" } });
+  const forged = await saveWith({ contract_render: { text: "# Contrato\n\nOtro contrato cualquiera." } });
+  check(!forged.ok, "un texto que no es la plantilla con los huecos completados se rechaza (y no queda la respuesta)");
+  const noRender = await saveWith({});
+  check(!noRender.ok, "una plantilla con variables sin texto armado se rechaza");
+  const { count: mcRows } = await svc.from("form_submissions").select("id", { count: "exact", head: true }).eq("form_id", mcForm!.id);
+  check(mcRows === 1, "solo quedó la respuesta válida", String(mcRows));
+
+  const mcPdf = await runContractPdf(pdfDeps, mcSig!.id);
+  check(mcPdf === "generated", "el PDF del modo Contrato se genera", mcPdf);
+  const { data: mcSigPdf } = await svc.from("contract_signatures").select("pdf_path").eq("id", mcSig!.id).single();
+  if (mcSigPdf?.pdf_path) contractFiles.push(mcSigPdf.pdf_path);
+  const { data: mcBlob } = await svc.storage.from("contracts").download(String(mcSigPdf?.pdf_path));
+  const mcText = String((await extractText(await getDocumentProxy(new Uint8Array(await mcBlob!.arrayBuffer())), { mergePages: true })).text);
+  check(mcText.includes("Acme *SA*") && mcText.includes("zz-test Negocio") && mcText.includes("Certificado de firma") && mcText.includes(String(mcSig?.rendered_sha256)), "el PDF trae el texto firmado, la firma del negocio y el certificado con la huella");
+  const { data: mcJobs } = await svc.from("scheduled_jobs").select("id").or(`dedupe_key.eq.contract_pdf:${mcSig!.id},dedupe_key.eq.contract_email:${mcSig!.id}:0`);
+  for (const j of mcJobs ?? []) jobIds.push(j.id);
+
+  // «Descargar contrato»: el link de 24 h baja el PDF; con otro formulario, no.
+  const linkSecret = await getOrCreateLinkSecret(svc, ws.id);
+  const copyDeps = { db: svc, storage: contractStorage(svc), readLinkSecret: async () => linkSecret, runPdf: (id: string) => runContractPdf(pdfDeps, id) };
+  const copyOk = await loadContractCopy(copyDeps, { slug: mcSlug, token: createCopyToken({ submissionId: String(mcOk.body.submission_id), formId: mcForm!.id }, linkSecret) });
+  check(copyOk.kind === "pdf" && copyOk.bytes.byteLength > 1000, "«Descargar contrato» entrega el PDF con el link firmado", copyOk.kind);
+  const copyOther = await loadContractCopy(copyDeps, { slug: contractSlug, token: createCopyToken({ submissionId: String(mcOk.body.submission_id), formId: mcForm!.id }, linkSecret) });
+  check(copyOther.kind === "not_found", "...y el mismo link en otro formulario no entrega nada");
 
   // Limpieza propia de FO3: jobs de la cola y archivos del bucket.
   const oursByKey = await svc.from("scheduled_jobs").delete().or(`dedupe_key.like.contract_pdf:%,dedupe_key.like.contract_email:%`).in("id", jobIds).select("id");

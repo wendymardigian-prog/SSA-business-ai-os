@@ -1131,11 +1131,11 @@ Todo contacto nuevo nace en UN solo lugar, con bloqueo por dato: dos llegadas si
 - **Un telefono o email que ya es de OTRO contacto no se escribe** al completar (formulario, agenda, CSV, webhook, mensaje entrante); se anota el conflicto. En la ficha, al restaurar y al fusionar, error claro (`lib/contacts/unique-errors.ts`). `linkContacts` borra al duplicado ANTES de rellenar el principal.
 - **El alta manual de un Member** con un dato que es de un contacto que no ve responde sin enlace ni nombre ("Pedile a un Admin que te lo asigne").
 - **Funciones reescritas a proposito**: `find_or_link_contact` (00202), `create_booking` (00203) y `submit_form_response` (00204), cada una con la definicion vieja completa en la cabecera y `lib/contacts/c2-migrations-diff.test.ts` fijando el diff. `record_contact_touch` NO se toco (`verify-forms` y `verify-ads-attribution` controlan su huella).
-- **Indices unicos del telefono y el email principal** (`00205`, `uq_contacts_workspace_phone` / `_email`, solo contactos vivos): se aplican DESPUES de desplegar el PR (ver PENDIENTE). Antes: la consulta de duplicados de PENDIENTE tiene que dar 0 por telefono y por email.
+- **Indices unicos del telefono y el email principal** (`00205`, `uq_contacts_workspace_phone` / `_email`, solo contactos vivos): **aplicados y registrados** (version `20261013235958`; comprobado en la base el 21/10/2026).
 
 ## Migraciones
 
-`00200` (la central y `normalize_phone`), `00201` (los buscadores sobre la busqueda compartida), `00202` (`find_or_link_contact` v3), `00203` (`create_booking` v3) y `00204` (`submit_form_response` v6), **aplicadas y registradas**. La `00205` (indices unicos) esta escrita y ensayada, **sin aplicar**. La `00206` y la `00207` son de Tareas. **La proxima migracion disponible es la `00208`** (confirmar con `list_migrations`).
+`00200` (la central y `normalize_phone`), `00201` (los buscadores sobre la busqueda compartida), `00202` (`find_or_link_contact` v3), `00203` (`create_booking` v3) y `00204` (`submit_form_response` v6), **aplicadas y registradas**. La `00205` (indices unicos) tambien esta **aplicada y registrada** (version `20261013235958`). La `00206` y la `00207` son de Tareas. **La proxima migracion disponible es la `00208`** (confirmar con `list_migrations`).
 
 # Tareas × CRM (construido, 13/10/2026)
 
@@ -1271,9 +1271,8 @@ anuncio ↔ pieza. Avance y decisiones en `docs/PROGRESS-atribucion.md` ("Correc
 
 `00216` (`receive_inbound_webhook` con lock), `00217` (claves nuevas de `trigger_fires`), `00218` (`source_type`/`source_id`), `00219` (`ads_crm_items`,
 `ads_crm_metrics_v2`, `ads_crm_cell_detail`), `00221` (`enrich_touch_ad_origin`) y `00222` (`flow_send_claims`): **aplicadas y registradas**. **La `00220`
-(recalcula `leads`/`purchases` de Meta) esta escrita y ensayada pero SIN APLICAR a proposito**: va DESPUES de desplegar el codigo que cuenta el evento
-canonico (si va antes, el proximo sync con el codigo viejo vuelve a escribir los dias recientes inflados); su respaldo esta en
-`docs/atribucion/respaldo-leads-meta.json`. **La proxima libre es la `00223`** (confirmar con `list_migrations`). No cambiaron las huellas de
+(recalcula `leads`/`purchases` de Meta) tambien esta aplicada y registrada** (version `20261015011619`, despues de desplegar el codigo que cuenta el
+evento canonico; comprobado en la base el 21/10/2026); su respaldo esta en `docs/atribucion/respaldo-leads-meta.json`. **La proxima libre es la `00223`** (confirmar con `list_migrations`). No cambiaron las huellas de
 `record_contact_touch`, `find_or_link_contact`, `find_contact_for_form`, `submit_form_response`, `create_booking` y `find_or_create_contact`.
 
 ## Lo que no se puede romper
@@ -1417,9 +1416,9 @@ Contratos en dos modos (**Aceptación de términos**, el de siempre, y **Contrat
 - **El calendario de las fechas** lo abre un único escuchador en `app/layout.tsx` (`DatePickerOpener`, regla en `lib/ui/date-picker-click.ts`): no hace falta tocar cada campo, y un navegador sin `showPicker` sigue funcionando como antes.
 - **La pestaña Diseño** conserva la clave `campos` en la URL; `?tab=contrato` abre Diseño (`parseEditorTab`).
 
-## Migraciones (00242 y 00243, escritas y ensayadas, **SIN aplicar**)
+## Migraciones (00242 y 00243, aplicadas y registradas)
 
-`00242` (columnas nuevas de `contract_signatures`, `contract_render_matches`, el trigger de evidencia y `record_contract_signature` v2, con las dos definiciones viejas completas en la cabecera) y `00243` (`get_public_form` suma `mode` y `business_signer`, con la vieja en la cabecera). Se ensayaron el 21/10/2026 contra la base real en una transacción que se deshace sola (los 17 casos dan igual que en TypeScript). **Son aditivas: se pueden aplicar antes de desplegar** (el código viejo no manda `contract_render` y no lee las claves nuevas). **La próxima libre es la `00244`** (confirmar con `list_migrations`).
+`00242` (columnas nuevas de `contract_signatures`, `contract_render_matches`, el trigger de evidencia y `record_contract_signature` v2, con las dos definiciones viejas completas en la cabecera) y `00243` (`get_public_form` suma `mode` y `business_signer`, con la vieja en la cabecera). Se ensayaron contra la base real en una transacción que se deshace sola (los 17 casos dan igual que en TypeScript) y se **aplicaron y registraron el 21/10/2026** (versiones `20261021144057` y `20261021144115`), después del merge del PR #74. `verify-forms` (347 ok, con un bloque nuevo del modo Contrato) y las huellas de las 8 funciones protegidas, en verde. **La próxima libre es la `00244`** (confirmar con `list_migrations`).
 
 Ojo: el MCP de Supabase de esta sesión apuntaba a OTRO proyecto (`rutledxu…`), no al de producción (`knrxjnmx…`, el del `.env` y el vinculado con la CLI). Para la base real, `supabase db query --linked` desde una carpeta vinculada.
 
