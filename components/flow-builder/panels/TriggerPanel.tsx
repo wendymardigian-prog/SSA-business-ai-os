@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { STATUS_ROLES, STATUS_ROLE_LABELS, isStatusRole, parseStatusSettings, statusName, type ContactStatusSettings, type StatusRole } from "@/lib/contacts/statuses";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TriggerType } from "@/lib/types/database";
@@ -159,6 +161,8 @@ const CRM_EVENTS: Array<{ value: string; label: string; valueLabel: string; valu
   { value: "field_changed", label: "Cambio un campo personalizado", valueLabel: "Solo este campo", valuePlaceholder: "presupuesto" },
   { value: "assignment_changed", label: "Se asigno setter o vendedor", valueLabel: "Solo este rol", valuePlaceholder: "vendedor" },
   { value: "do_not_contact", label: 'Se marco "no contactar"', valueLabel: "Solo por este motivo", valuePlaceholder: "" },
+  // Pipeline (00245): el valor lo arma su propio selector (rol, o rol:estado).
+  { value: "status_changed", label: "Cambio el estado del contacto", valueLabel: "Que estado", valuePlaceholder: "" },
 ];
 
 const matchTypes: Array<{ value: "exact" | "contains" | "startsWith"; label: string }> = [
@@ -480,6 +484,9 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
             </select>
           </div>
 
+          {data.event === "status_changed" ? (
+            <StatusChangedPicker flowId={flowId} value={typeof data.value === "string" ? data.value : ""} onChange={(value) => onChange({ ...data, value })} />
+          ) : (
           <div>
             <label className="mb-2 block text-xs font-semibold text-foreground">
               {selectedEvent.valueLabel}
@@ -495,6 +502,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
               Dejalo vacio para que dispare con cualquier valor.
             </p>
           </div>
+          )}
         </div>
       )}
 
@@ -755,6 +763,77 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
           <p className="mt-1.5 text-xs text-muted-foreground">
             The payload value to match when a {triggerType === "postback" ? "button is clicked" : "quick reply is tapped"}.
           </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Cambió el estado del contacto" (pipeline, 00245): qué rol y, opcionalmente,
+ * a qué estado. Guarda `setter`, `closer`, `setter:<clave>` o vacío (cualquiera).
+ * Las listas se leen del workspace (cualquier miembro lo ve).
+ */
+function StatusChangedPicker({ flowId, value, onChange }: { flowId?: string; value: string; onChange: (value: string) => void }) {
+  const [settings, setSettings] = useState<ContactStatusSettings | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const supabase = createClient();
+    // El workspace del flujo (con la RLS de quien edita); sin flujo, el suyo (single-tenant).
+    const load = flowId
+      ? supabase.from("flows").select("workspaces(contact_status_settings)").eq("id", flowId).maybeSingle()
+          .then(({ data }) => (data as { workspaces?: { contact_status_settings?: unknown } | null } | null)?.workspaces?.contact_status_settings)
+      : supabase.from("workspaces").select("contact_status_settings").limit(1).maybeSingle()
+          .then(({ data }) => (data as { contact_status_settings?: unknown } | null)?.contact_status_settings);
+    void load.then((raw) => {
+      if (alive) setSettings(parseStatusSettings(raw));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [flowId]);
+
+  const [rawRole, status = ""] = value.split(":");
+  const role: StatusRole | "" = isStatusRole(rawRole) ? rawRole : "";
+  const options = role && settings ? settings[role] : [];
+  const selectClass =
+    "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor="status-trigger-role" className="mb-2 block text-xs font-semibold text-foreground">
+          Que estado
+        </label>
+        <select id="status-trigger-role" value={role} onChange={(e) => onChange(e.target.value)} className={selectClass}>
+          <option value="">Cualquiera (setter o vendedor)</option>
+          {STATUS_ROLES.map((r) => (
+            <option key={r} value={r}>
+              Estado de {STATUS_ROLE_LABELS[r].toLowerCase()}
+            </option>
+          ))}
+        </select>
+      </div>
+      {role && (
+        <div>
+          <label htmlFor="status-trigger-status" className="mb-2 block text-xs font-semibold text-foreground">
+            Cuando pasa a
+          </label>
+          <select
+            id="status-trigger-status"
+            value={status}
+            onChange={(e) => onChange(e.target.value ? `${role}:${e.target.value}` : role)}
+            className={selectClass}
+          >
+            <option value="">Cualquier estado</option>
+            {options.map((st) => (
+              <option key={st.key} value={st.key}>
+                {statusName(options, st.key)}
+              </option>
+            ))}
+            {status && !options.some((st) => st.key === status) && <option value={status}>{status} (ya no existe)</option>}
+          </select>
+          {settings === null && <p className="mt-1 text-[11px] text-muted-foreground/60">Cargando estados…</p>}
         </div>
       )}
     </div>

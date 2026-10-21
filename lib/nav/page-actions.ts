@@ -304,6 +304,11 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Campos personalizados",
     tooltip: "Los datos propios que se guardan de cada contacto.",
   },
+  "/dashboard/settings/estados": {
+    title: "Estados del pipeline",
+    tooltip:
+      "Los estados que puede tener un contacto: uno del setter y uno del vendedor. El contacto muestra siempre el último que se cambió. No se borran: se archivan.",
+  },
   "/dashboard/settings/recursos": {
     title: "Banca de recursos",
     tooltip: "Textos, audios, videos, imágenes, archivos y enlaces guardados para mandar desde la bandeja con un clic, o para que el asistente los use solo.",

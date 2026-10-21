@@ -44,7 +44,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
   const service = await createServiceClient();
   const isEod = form.type === "eod";
   const [{ data: customRows }, { data: tagRows }, flows, { data: roleRows }, responseCount, emailReadiness] = await Promise.all([
-    supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).order("name", { ascending: true }),
+    supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).is("deleted_at", null).order("name", { ascending: true }),
     supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     flowsForForm(supabase, id, { [id]: form.name }),
     isEod

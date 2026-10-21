@@ -50,7 +50,7 @@ export async function saveContactSettings(input: SaveContactSettingsInput): Prom
   if (form.status === "archived") return { ok: false, error: "El formulario está archivado: restauralo para editarlo." };
 
   const fields = ((form.draft_definition as unknown as FormDefinition | null)?.fields ?? []) as FormField[];
-  const { data: defs } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", ctx.workspace.id);
+  const { data: defs } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", ctx.workspace.id).is("deleted_at", null);
   const customFields = (defs ?? []) as CustomFieldDef[];
 
   const checked = validateContactConfig(input.contactConfig, fields, customFields);

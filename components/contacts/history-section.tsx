@@ -32,6 +32,10 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "payment_methods.updated": "cambió los métodos de pago",
   "content_link.linked": "vinculó el anuncio con una pieza de contenido",
   "content_link.unlinked": "desvinculó el anuncio de su pieza de contenido",
+  // Pipeline (00245): el cambio de estado se ve con su propia entrada (contact_status_changes);
+  // la del agente queda en el audit para poder revertirla.
+  setter_status: "cambió el estado de setter",
+  "contact_statuses.updated": "cambió las listas de estados",
   create: "creó el contacto",
   update: "editó el contacto",
   delete: "eliminó el contacto",
@@ -150,6 +154,7 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                   <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at)}</p>
                   {renderChanges(item.changes)}
                   {renderLinkNote(item)}
+                  {renderImportNote(item)}
                   {renderTagEffectNote(item)}
                 </li>
               ) : (
@@ -158,6 +163,9 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                     <span className="font-medium">{describeHistoryItem(item).actor}</span> {describeHistoryItem(item).text}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at)}</p>
+                  {item.source === "status" && item.reason && (
+                    <p className="mt-1 text-xs text-muted-foreground">Motivo: {item.reason}</p>
+                  )}
                 </li>
               ),
             )}
@@ -182,6 +190,9 @@ function auditText(entry: HistoryEntry): string {
   if (entry.action === "automation_triggered" && entry.flowName) {
     return `disparó la automatización «${entry.flowName}»`;
   }
+  // Un contacto que ya existía y vino en una planilla (lib/actions/csv-import.ts).
+  const fileName = importFileName(entry);
+  if (fileName) return `lo encontró en la importación «${fileName}»`;
   return ACTION_LABELS[entry.action as AuditAction] ?? entry.action;
 }
 
@@ -205,6 +216,29 @@ function renderChanges(changes: Json | null) {
         );
       })}
     </ul>
+  );
+}
+
+function importFileName({ action, metadata }: HistoryEntry): string | null {
+  if (action !== "import" || !metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const name = (metadata as Record<string, unknown>).file_name;
+  return typeof name === "string" && name ? name : null;
+}
+
+/**
+ * La importación sobre un contacto que ya existía: qué datos completó. No es
+ * su origen (no cambia la atribución), solo deja constancia.
+ */
+function renderImportNote(entry: HistoryEntry) {
+  if (!importFileName(entry)) return null;
+  const meta = entry.metadata as Record<string, unknown>;
+  const filled = Array.isArray(meta.filled) ? (meta.filled as unknown[]).filter((f): f is string => typeof f === "string") : [];
+  const labels = filled.map((f) => FIELD_LABELS[f] ?? f.replace(/^custom:/, ""));
+  return (
+    <p className="mt-1 text-xs text-muted-foreground">
+      {labels.length > 0 ? `Completó: ${labels.join(", ")}.` : "No completó ningún dato (ya los tenía)."} La atribución
+      no cambia: la importación no fue su origen.
+    </p>
   );
 }
 

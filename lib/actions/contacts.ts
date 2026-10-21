@@ -14,6 +14,7 @@ import { describeContactUniqueViolation } from "@/lib/contacts/unique-errors";
 import type { Json } from "@/lib/types/database";
 import { BULK_TAG_LIMIT } from "@/lib/tags/effects";
 import { mergeErrorMessage, mergeNotes, summarizeMerge } from "@/lib/contacts/merge";
+import { CUSTOM_VALUE_ERROR_MESSAGES, normalizeCustomValue } from "@/lib/custom-fields";
 
 /**
  * Server Actions de contactos.
@@ -753,7 +754,7 @@ export async function setContactCustomField(
 
   const { data: field } = await supabase
     .from("custom_field_definitions")
-    .select("id, name")
+    .select("id, name, type")
     .eq("id", fieldId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
@@ -761,7 +762,23 @@ export async function setContactCustomField(
 
   if (!field) return { ok: false, error: "Ese campo personalizado no existe en este workspace" };
 
-  const clean = value.trim();
+  // El tipo manda: la misma regla que la importación, los flujos y el webhook.
+  let clean = value.trim();
+  if (clean) {
+    const normalized = normalizeCustomValue(field.type, clean);
+    if (!normalized.ok) return { ok: false, error: `"${field.name}" ${CUSTOM_VALUE_ERROR_MESSAGES[normalized.reason]}` };
+    clean = normalized.value;
+  }
+
+  // El valor anterior, para que el historial diga "antes → después".
+  const { data: previous } = await supabase
+    .from("contact_custom_fields")
+    .select("value")
+    .eq("contact_id", contactId)
+    .eq("field_id", fieldId)
+    .maybeSingle();
+  const oldValue = previous?.value ?? null;
+  if ((oldValue ?? "") === clean) return { ok: true, contactId };
 
   // El valor es NOT NULL en la tabla, asi que "vaciar" un campo es borrar la
   // fila, no guardar un string vacio.
@@ -783,7 +800,7 @@ export async function setContactCustomField(
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "contact", entityId: contactId,
-    action: "update", changes: { [`custom:${field.name}`]: { old: null, new: clean || null } },
+    action: "update", changes: { [`custom:${field.name}`]: { old: oldValue, new: clean || null } },
     performedBy: user.id,
   });
 

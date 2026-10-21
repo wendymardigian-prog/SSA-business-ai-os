@@ -104,6 +104,20 @@ describe("clasificación al cierre — criterios editables en la misma llamada q
     expect(sinSeguimiento).toContain("seguimiento_dias: siempre null");
   });
 
+  it("pipeline (00245): sin la herramienta de estado de setter, el prompt no cambia ni un caracter", () => {
+    const tools = { temperature: true, followup: true };
+    expect(buildSummarySystemPrompt("n1", ["Interesado"], true, undefined, undefined, tools)).toBe(base);
+    expect(buildSummarySystemPrompt("n1", ["Interesado"], true, undefined, undefined, { ...tools, setterStatuses: [] })).toBe(base);
+  });
+
+  it("pipeline (00245): con la herramienta, pide estado_setter con los nombres permitidos", () => {
+    const got = buildSummarySystemPrompt("n1", ["Interesado"], true, undefined, undefined, { temperature: true, followup: true, setterStatuses: ["Contactado", "Calificado"] });
+    expect(got).toContain('"estado_setter"');
+    expect(got).toContain("Contactado, Calificado");
+    // Sin clasificacion, ni se menciona.
+    expect(buildSummarySystemPrompt("n1", [], false, undefined, undefined, { temperature: true, followup: true, setterStatuses: ["Calificado"] })).not.toContain("estado_setter");
+  });
+
   it("el texto por defecto habla de las tres partes", () => {
     expect(CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS).toMatch(/^Etiquetas:/m);
     expect(CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS).toMatch(/^Temperatura:/m);

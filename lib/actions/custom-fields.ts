@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit, diffFields } from "@/lib/audit";
 import { isCustomFieldType, uniqueSlug } from "@/lib/custom-fields";
 import type { CustomFieldType } from "@/lib/types/database";
@@ -114,8 +115,23 @@ export async function updateCustomField(
 
   if (!before) return { ok: false, error: "No encontre ese campo" };
 
+  // Otro campo vivo con el mismo nombre (lo mismo que se exige al crear).
+  if (name.toLowerCase() !== before.name.toLowerCase()) {
+    const { data: sameName } = await supabase
+      .from("custom_field_definitions")
+      .select("id, name")
+      .eq("workspace_id", workspace.id)
+      .is("deleted_at", null)
+      .neq("id", fieldId);
+    if ((sameName ?? []).some((f) => f.name.toLowerCase() === name.toLowerCase())) {
+      return { ok: false, error: `Ya hay un campo que se llama "${name}"` };
+    }
+  }
+
   if (before.type !== rawType) {
-    const { count } = await supabase
+    // Con el cliente de servicio: la cuenta tiene que ver TODOS los contactos,
+    // no solo los que la RLS le muestra a quien edita (el permiso ya se chequeó).
+    const { count } = await (await createServiceClient())
       .from("contact_custom_fields")
       .select("field_id", { count: "exact", head: true })
       .eq("field_id", fieldId);

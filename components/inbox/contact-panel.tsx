@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { AssignmentFields } from "@/components/contacts/assignment-fields";
+import { StatusFields } from "@/components/contacts/status-fields";
+import { parseStatusSettings, type ContactStatusSettings } from "@/lib/contacts/statuses";
 import { FollowupField } from "@/components/contacts/followup-field";
 import { NotesSection } from "@/components/contacts/notes-section";
 import { TagsEditor, type TagOption } from "@/components/contacts/tags-editor";
@@ -48,6 +50,8 @@ type Contact = Database["public"]["Tables"]["contacts"]["Row"];
 
 interface ContactDetails {
   contact: Contact;
+  /** Las listas de estados del workspace (00245). */
+  statusSettings: ContactStatusSettings;
   tagIds: string[];
   channels: { platform: Platform; username: string | null; senderId: string | null; channelId: string | null }[];
 }
@@ -114,10 +118,12 @@ export function ContactPanel({
       // dice que el contacto no existe.
       await supabase.auth.getSession();
 
-      const [contactRes, tagsRes, channelsRes] = await Promise.all([
+      const [contactRes, tagsRes, channelsRes, settingsRes] = await Promise.all([
         supabase.from("contacts").select("*").eq("id", contactId!).single(),
         supabase.from("contact_tags").select("tag_id").eq("contact_id", contactId!),
         supabase.from("contact_channels").select("platform_username, platform_sender_id, channel_id, channels(platform)").eq("contact_id", contactId!),
+        // Las listas de estados no son un secreto: cualquier miembro ve su workspace.
+        supabase.from("workspaces").select("contact_status_settings").eq("id", workspaceId).maybeSingle(),
       ]);
 
       if (contactRes.error && !contactRes.data) {
@@ -129,6 +135,7 @@ export function ContactPanel({
       if (contactRes.data) {
         setDetails({
           contact: contactRes.data,
+          statusSettings: parseStatusSettings((settingsRes.data as { contact_status_settings?: unknown } | null)?.contact_status_settings),
           tagIds: (tagsRes.data ?? []).map((t) => t.tag_id),
           channels: (channelsRes.data ?? []).map((cc) => ({
             platform: (cc.channels as unknown as { platform: Platform }).platform,
@@ -186,6 +193,13 @@ export function ContactPanel({
           <Identity details={details} />
 
           <PanelSection title="Estado del lead">
+            <StatusFields
+              contactId={details.contact.id}
+              settings={details.statusSettings}
+              values={details.contact}
+              canEdit
+              onSaved={reload}
+            />
             <TemperatureSelect contactId={details.contact.id} value={details.contact.lead_temperature} onSaved={reload} />
             <FollowupField contactId={details.contact.id} value={details.contact.next_followup_date} onSaved={reload} />
             <AssignmentFields

@@ -146,6 +146,7 @@ export async function loadActions(
 const FIELD_LABELS: Record<string, string> = {
   tags: "Etiquetas",
   lead_temperature: "Temperatura",
+  setter_status: "Estado de setter",
   next_followup_date: "Próximo seguimiento",
   ai_conversation_summary: "Resumen",
   assigned_to: "Asignada a",

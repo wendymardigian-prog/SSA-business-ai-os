@@ -30,6 +30,8 @@ export const SETTINGS_TABS: SettingsTab[] = [
     permissions: ["team.view", "team.invite", "team.manage", "roles.view", "roles.manage"],
   },
   { name: "Campos personalizados", href: "/dashboard/settings/custom-fields", permissions: ["custom_fields.manage"] },
+  // Pipeline de contactos (00245): las listas de estados de setter y de vendedor.
+  { name: "Estados", href: "/dashboard/settings/estados", permissions: ["contact_statuses.manage"] },
   {
     // Las dos rutas de `also` solo redirigen (F17/F20 se unificaron en
     // /recursos): un marcador o un link viejo que llegue ahí tiene que

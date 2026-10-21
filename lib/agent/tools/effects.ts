@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json, LeadTemperature } from "@/lib/types/database";
 import { logAudit } from "@/lib/audit";
+import { applyContactStatus } from "@/lib/contacts/status-core";
+import { activeStatuses, parseStatusSettings, type ContactStatus } from "@/lib/contacts/statuses";
 
 /**
  * Los efectos de negocio que el agente puede producir sobre el CRM.
@@ -191,6 +193,101 @@ export async function setTemperature(
     performedByAgentId: ctx.agentId,
   });
   return { ok: true, message: `Listo: temperatura ${current ?? "sin definir"} → ${input.temperature}.`, auditLogId };
+}
+
+// ---------------------------------------------------------------------------
+// Estado de setter (pipeline, 00245)
+// ---------------------------------------------------------------------------
+
+export interface SetterStatusEffectConfig {
+  /** Las claves de los estados de setter que puede poner (lista blanca). */
+  allowedStatuses: string[];
+  /** Si puede pisar un estado que puso una PERSONA. Apagado por defecto. */
+  canOverrideHuman: boolean;
+}
+
+const foldName = (text: string) =>
+  text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+/**
+ * Los estados que el agente puede poner: los de la lista blanca que siguen
+ * activos en Ajustes → Estados (uno archivado deja de ofrecerse solo).
+ */
+export function allowedSetterStatuses(list: readonly ContactStatus[], allowedKeys: readonly string[]): ContactStatus[] {
+  const allowed = new Set(allowedKeys);
+  return activeStatuses(list).filter((s) => allowed.has(s.key));
+}
+
+/** El estado que pidió el modelo, por su clave o por su nombre (sin tildes ni mayúsculas). */
+export function resolveSetterStatusRequest(allowed: readonly ContactStatus[], requested: string): ContactStatus | null {
+  const wanted = foldName(requested);
+  if (!wanted) return null;
+  return allowed.find((s) => s.key === requested.trim() || foldName(s.name) === wanted || s.key === wanted) ?? null;
+}
+
+/**
+ * Cambia el estado de SETTER del contacto. Pasa por `set_contact_status` (la
+ * misma función que usa una persona desde la ficha): la base valida el estado,
+ * recalcula el último estado, lo anota en el historial con el agente como
+ * autor y emite `status_changed`. Además deja su entrada `setter_status` en el
+ * audit, que es lo que arma la pestaña Acciones y permite revertirlo.
+ *
+ * Con `canOverrideHuman` apagado, un estado que puso una persona no se pisa.
+ */
+export async function setSetterStatus(
+  ctx: EffectContext,
+  config: SetterStatusEffectConfig,
+  input: { status: string; reason?: string | null },
+): Promise<EffectResult> {
+  if (!ctx.contactId) return { ok: false, message: "No hay un contacto." };
+
+  const { data: row } = await ctx.supabase.from("workspaces").select("contact_status_settings").eq("id", ctx.workspaceId).maybeSingle();
+  const list = parseStatusSettings((row as { contact_status_settings?: unknown } | null)?.contact_status_settings).setter;
+  const allowed = allowedSetterStatuses(list, config.allowedStatuses);
+  if (allowed.length === 0) return { ok: false, message: "No tenés estados de setter permitidos." };
+
+  const target = resolveSetterStatusRequest(allowed, input.status);
+  if (!target) {
+    return { ok: false, message: `Ese estado no está entre los que podés poner. Podés usar: ${allowed.map((s) => s.name).join(", ")}.` };
+  }
+
+  const result = await applyContactStatus(ctx.supabase, {
+    workspaceId: ctx.workspaceId,
+    contactId: ctx.contactId,
+    role: "setter",
+    status: target.key,
+    actorAgentId: ctx.agentId,
+    reason: input.reason ?? null,
+    respectHuman: !config.canOverrideHuman,
+  });
+
+  if (result.kind === "unchanged") return { ok: true, message: `El estado de setter ya era «${target.name}».` };
+  if (result.kind === "protected") {
+    return { ok: false, message: "El estado de setter lo puso una persona del equipo: no lo cambiás. Si hace falta, avisale a una persona." };
+  }
+  if (result.kind !== "changed") return { ok: false, message: "No pude cambiar el estado de setter." };
+
+  const oldName = result.oldStatus ? (list.find((s) => s.key === result.oldStatus)?.name ?? result.oldStatus) : null;
+  const auditLogId = await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspaceId,
+    entityType: "contact",
+    entityId: ctx.contactId,
+    action: "setter_status",
+    changes: { setter_status: { old: result.oldStatus, new: target.key } },
+    metadata: auditMeta(ctx, { reason: input.reason ?? null, change_id: result.changeId }),
+    performedByAgentId: ctx.agentId,
+  });
+  return {
+    ok: true,
+    message: `Listo: estado de setter ${oldName ? `«${oldName}»` : "sin estado"} → «${target.name}».`,
+    auditLogId,
+    detail: { old: result.oldStatus, new: target.key },
+  };
 }
 
 // ---------------------------------------------------------------------------

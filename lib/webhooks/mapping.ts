@@ -17,6 +17,7 @@ import { resolveCountry } from "@/lib/contacts/country";
 import { normalizeSocialHandle } from "@/lib/contacts/social";
 import { normalizePhoneWithCountry } from "@/lib/scheduling/phone-countries";
 import { CUSTOM_PREFIX, customSlugOf, isCustomTarget, socialPlatformOf, type CustomFieldDef } from "@/lib/forms/contact-config";
+import { normalizeCustomValue } from "@/lib/custom-fields";
 import { getByPath, scalarText } from "./paths";
 import type { MapRow, MapSource, Transform, UpsertContactConfig } from "./upsert-config";
 
@@ -144,29 +145,6 @@ function applyTransform(text: string, transform: Transform | undefined, target: 
   }
 }
 
-function customValue(raw: string, type: CustomFieldDef["type"]): { ok: true; value: string } | { ok: false; reason: string } {
-  switch (type) {
-    case "number":
-      return Number.isFinite(Number(raw.replace(",", "."))) && raw.trim() !== "" ? { ok: true, value: String(Number(raw.replace(",", "."))) } : { ok: false, reason: "no_es_un_numero" };
-    case "boolean": {
-      const t = raw.trim().toLowerCase();
-      if (["true", "1", "si", "sí", "yes", "y"].includes(t)) return { ok: true, value: "true" };
-      if (["false", "0", "no", "n"].includes(t)) return { ok: true, value: "false" };
-      return { ok: false, reason: "no_es_si_no" };
-    }
-    case "date": {
-      const time = Date.parse(raw.trim());
-      return Number.isNaN(time) ? { ok: false, reason: "fecha_invalida" } : { ok: true, value: new Date(time).toISOString().slice(0, 10) };
-    }
-    case "url":
-      return /^https?:\/\/\S+$/i.test(raw.trim()) ? { ok: true, value: raw.trim() } : { ok: false, reason: "url_invalida" };
-    case "email":
-      return EMAIL.test(raw.trim()) ? { ok: true, value: raw.trim().toLowerCase() } : { ok: false, reason: "email_invalido" };
-    default:
-      return { ok: true, value: raw };
-  }
-}
-
 // ---------------------------------------------------------------------------
 // El mapeo
 // ---------------------------------------------------------------------------
@@ -258,7 +236,7 @@ export function applyContactMapping(payload: unknown, query: unknown, config: Pi
               fail(row, raw, "campo_personalizado_inexistente");
               break;
             }
-            const value = customValue(text, def.type);
+            const value = normalizeCustomValue(def.type, text);
             if (!value.ok) fail(row, raw, value.reason);
             else {
               result.custom[slug] = value.value;

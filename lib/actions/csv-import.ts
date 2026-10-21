@@ -4,10 +4,10 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
-import { recordImportTouches } from "@/lib/contacts/touch-entry";
+import { recordImportTouches, type ImportTouchAttribution } from "@/lib/contacts/touch-entry";
 import { logAudit } from "@/lib/audit";
 import { findOrCreateContact, type FindOrCreateResult } from "@/lib/contacts/find-or-create";
-import { mapRow, type ColumnMapping } from "@/lib/csv/map";
+import { mapRow, type ColumnMapping, type ImportCustomField } from "@/lib/csv/map";
 import type { ContactFieldKey } from "@/lib/contacts/fields";
 import type { Json } from "@/lib/types/database";
 // Los limites viven en su propio modulo: un archivo "use server" solo puede
@@ -143,12 +143,21 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
   // filas a la importacion de otro.
   const { data: registro } = await supabase
     .from("csv_imports")
-    .select("id, imported, updated, errors, error_details")
+    .select("id, file_name, imported, updated, errors, error_details")
     .eq("id", importId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
 
   if (!registro) return { ok: false, error: "No encontre esa importacion" };
+
+  // Los campos personalizados vivos de ESTE workspace: una columna mapeada a un
+  // campo que no esta aca (de otro workspace, o borrado) no se importa.
+  const { data: fieldDefs } = await supabase
+    .from("custom_field_definitions")
+    .select("id, name, type")
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null);
+  const customFields: ImportCustomField[] = fieldDefs ?? [];
 
   const setterId = await validMember(supabase, workspace.id, input.setterId);
   const vendedorId = await validMember(supabase, workspace.id, input.vendedorId);
@@ -156,7 +165,7 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
   // Las filas se validan primero para poder resolver TODOS los tags de la
   // tanda de una vez. Resolverlos fila por fila haria una consulta por cada
   // "vip" de una planilla de 500 contactos etiquetados igual.
-  const validadas = rows.map((row, i) => mapRow(row, mapping, offset + i));
+  const validadas = rows.map((row, i) => mapRow(row, mapping, offset + i, customFields));
 
   const nombresDeTags = new Set(input.extraTags ?? []);
   for (const r of validadas) {
@@ -172,6 +181,8 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
   // Los contactos NUEVOS de esta tanda: son los unicos que entraron por la
   // importacion. Actualizar uno que ya existia no es un origen nuevo (F87).
   const nuevos: string[] = [];
+  // La atribucion que trajo la planilla para cada contacto nuevo (F: importacion).
+  const atribucion: Record<string, ImportTouchAttribution> = {};
 
   for (const result of validadas) {
     if (!result.ok) {
@@ -180,7 +191,7 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
       continue;
     }
 
-    const { patch, tags } = result.row;
+    const { patch, tags, custom, attribution } = result.row;
 
     try {
       const central = await resolveRow(service, workspace.id, patch, setterId, vendedorId);
@@ -193,9 +204,10 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
 
       const existing = !central.created;
       let skipped = 0;
+      let filled: string[] = [];
       if (existing) {
-        const updatedId = await updateExisting(supabase, workspace.id, central.contactId, patch, setterId, vendedorId, central);
-        if (!updatedId) {
+        const updated = await updateExisting(supabase, workspace.id, central.contactId, patch, setterId, vendedorId, central);
+        if (!updated) {
           // Existe, pero quien importa no lo ve (su RLS): no se toca ni se crea un duplicado.
           counters.errors++;
           counters.details.push({
@@ -205,8 +217,17 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
           continue;
         }
         skipped = skippedConflictCount(patch, central);
+        filled = updated.filled;
       }
       const contactId = central.contactId;
+
+      // Campos personalizados: en uno nuevo, todos (lo creo la importacion, con
+      // el cliente de servicio); en uno que ya existia, solo los que estaban
+      // vacios y con el cliente de quien importa (su RLS).
+      if (Object.keys(custom).length > 0) {
+        const filledCustom = await writeCustomValues(existing ? supabase : service, contactId, custom, existing);
+        filled = [...filled, ...filledCustom.map((id) => `custom:${customFields.find((f) => f.id === id)?.name ?? id}`)];
+      }
 
       // Los de la columna de tags de esta fila, mas los que se eligieron para
       // todo el archivo.
@@ -222,6 +243,14 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
       }
 
       if (existing) {
+        // La marca de la importacion en la ficha de un contacto que ya existia:
+        // no es un toque (no fue su origen), es una entrada del historial.
+        await logAudit({
+          supabase, workspaceId: workspace.id, entityType: "contact", entityId: contactId,
+          action: "import",
+          metadata: { import_id: importId, file_name: registro.file_name, filled },
+          performedBy: user.id,
+        });
         counters.updated++;
         counters.skippedConflicts += skipped;
         const by = central.matchedBy;
@@ -231,6 +260,7 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
       } else {
         counters.imported++;
         nuevos.push(contactId);
+        if (Object.keys(attribution).length > 0) atribucion[contactId] = attribution;
       }
     } catch (err) {
       counters.errors++;
@@ -248,6 +278,7 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
       workspaceId: workspace.id,
       importId,
       contactIds: nuevos,
+      attribution: atribucion,
     });
   }
 
@@ -271,7 +302,6 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
     console.error("[csv-import] no pude actualizar los contadores:", updateError.message);
   }
 
-  void user;
   return { ok: true, counters };
 }
 
@@ -428,7 +458,7 @@ async function updateExisting(
   setterId: string | null,
   vendedorId: string | null,
   central: FindOrCreateResult,
-): Promise<string | null> {
+): Promise<{ contactId: string; filled: string[] } | null> {
   const conflicted = conflictedKeys(central);
   const { data: actual } = await supabase
     .from("contacts")
@@ -460,5 +490,42 @@ async function updateExisting(
     if (error) throw new Error(error.message);
   }
 
-  return contactId;
+  return { contactId, filled: Object.keys(cambios) };
+}
+
+/**
+ * Escribe los campos personalizados de una fila. En un contacto que ya existia
+ * solo completa los vacios (la misma regla que los datos del contacto: una
+ * planilla vieja no pisa lo que alguien cargo a mano). Devuelve los ids de los
+ * campos que se escribieron.
+ */
+async function writeCustomValues(
+  client: Client | Awaited<ReturnType<typeof createServiceClient>>,
+  contactId: string,
+  custom: Record<string, string>,
+  onlyEmpty: boolean,
+): Promise<string[]> {
+  let ids = Object.keys(custom);
+  if (onlyEmpty) {
+    const { data: actuales } = await client
+      .from("contact_custom_fields")
+      .select("field_id")
+      .eq("contact_id", contactId)
+      .in("field_id", ids);
+    const tomados = new Set((actuales ?? []).map((r) => r.field_id));
+    ids = ids.filter((id) => !tomados.has(id));
+  }
+  if (ids.length === 0) return [];
+  const now = new Date().toISOString();
+  const { error } = await client.from("contact_custom_fields").upsert(
+    ids.map((fieldId) => ({ contact_id: contactId, field_id: fieldId, value: custom[fieldId], updated_at: now })),
+    { onConflict: "contact_id,field_id", ignoreDuplicates: onlyEmpty },
+  );
+  if (error) {
+    // El contacto ya quedo escrito: no se lo cuenta como error de la fila (se
+    // crearia de nuevo al reintentar). Se loguea sin los valores.
+    console.error("[csv-import] no pude guardar los campos personalizados:", error.message);
+    return [];
+  }
+  return ids;
 }

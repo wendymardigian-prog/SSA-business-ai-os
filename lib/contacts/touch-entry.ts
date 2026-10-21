@@ -41,11 +41,32 @@ export function manualTouch(contactId: string, tracking: AttributionClick | null
   };
 }
 
-/** El toque de un contacto que entró en una importación de CSV. */
-export function importTouch(importId: string, contactId: string): TouchInput {
+/** Lo que el archivo puede decir sobre el origen de una persona (todo opcional). */
+export interface ImportTouchAttribution {
+  source?: string | null;
+  medium?: string | null;
+  campaign?: string | null;
+  /** AAAA-MM-DD: el día en que esa persona llegó de verdad, si la planilla lo sabe. */
+  firstTouchDate?: string | null;
+}
+
+/**
+ * El toque de un contacto que entró en una importación de CSV.
+ *
+ * El ORIGEN es siempre "import": eso no cambia aunque la planilla traiga UTM.
+ * Si trae fuente, medio o campaña, el toque las lleva y el canal se calcula con
+ * ellas (un medio `cpc` es pauta); si no, la fuente es "csv" y el medio
+ * "import", como siempre. Con fecha del primer contacto, el toque queda en ese
+ * día (al mediodía UTC, para que ninguna zona horaria lo pase al día de al lado);
+ * sin fecha, en el momento de la importación.
+ */
+export function importTouch(importId: string, contactId: string, attribution?: ImportTouchAttribution | null): TouchInput {
+  const date = attribution?.firstTouchDate && /^\d{4}-\d{2}-\d{2}$/.test(attribution.firstTouchDate) ? attribution.firstTouchDate : null;
   return {
-    source: "csv",
-    medium: "import",
+    source: normalizeSource(attribution?.source) ?? "csv",
+    medium: attribution?.medium?.trim() || "import",
+    ...(attribution?.campaign?.trim() ? { campaign: attribution.campaign.trim() } : {}),
+    ...(date ? { occurredAt: `${date}T12:00:00.000Z` } : {}),
     origin: "import",
     // La clave lleva la importación: el mismo contacto en dos planillas
     // distintas son dos entradas, y reintentar una tanda no duplica.
@@ -74,7 +95,13 @@ const IMPORT_CONCURRENCY = 10;
  */
 export async function recordImportTouches(
   supabase: Db,
-  params: { workspaceId: string; importId: string; contactIds: string[] },
+  params: {
+    workspaceId: string;
+    importId: string;
+    contactIds: string[];
+    /** La atribución que trajo cada fila, por contacto (si no trajo nada, no está). */
+    attribution?: Record<string, ImportTouchAttribution>;
+  },
 ): Promise<void> {
   for (let i = 0; i < params.contactIds.length; i += IMPORT_CONCURRENCY) {
     const chunk = params.contactIds.slice(i, i + IMPORT_CONCURRENCY);
@@ -83,7 +110,7 @@ export async function recordImportTouches(
         recordTouch(supabase, {
           workspaceId: params.workspaceId,
           contactId,
-          touch: importTouch(params.importId, contactId),
+          touch: importTouch(params.importId, contactId, params.attribution?.[contactId] ?? null),
         }),
       ),
     );

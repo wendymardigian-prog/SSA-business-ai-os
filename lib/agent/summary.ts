@@ -7,7 +7,16 @@ import { logAudit } from "@/lib/audit";
 import { agentForChannel, loadWorkspaceAgents, type AgentConfig } from "./config";
 import { describeAttempts, generateWithFallback, toolLoopRunner, type ModelResolver, type ModelRunner } from "./fallback";
 import { notifyProviderAuthFailure } from "./errors";
-import { applyTags, setFollowup, setTemperature, type EffectContext } from "./tools/effects";
+import {
+  allowedSetterStatuses,
+  applyTags,
+  setFollowup,
+  setSetterStatus,
+  setTemperature,
+  type EffectContext,
+  type SetterStatusEffectConfig,
+} from "./tools/effects";
+import { parseStatusSettings } from "@/lib/contacts/statuses";
 import { getAgentTool } from "./tools/index";
 import { newNonce, wrapUntrusted } from "./untrusted";
 import { effectiveMessageText } from "./effective-text";
@@ -71,8 +80,10 @@ const outputSchema = z.object({
       quitar_tags: z.array(z.string()).default([]),
       temperatura: z.enum(["cold", "warm", "hot"]).nullable().default(null),
       seguimiento_dias: z.number().int().min(0).max(3650).nullable().default(null),
+      // Pipeline (00245): solo se pide si el agente tiene `cambiar_estado_setter`.
+      estado_setter: z.string().max(80).nullable().default(null),
     })
-    .default({ agregar_tags: [], quitar_tags: [], temperatura: null, seguimiento_dias: null }),
+    .default({ agregar_tags: [], quitar_tags: [], temperatura: null, seguimiento_dias: null, estado_setter: null }),
 });
 export type SummaryModelOutput = z.infer<typeof outputSchema>;
 
@@ -98,6 +109,12 @@ export function parseSummaryOutput(text: string): SummaryModelOutput | null {
 export interface ClassificationTools {
   temperature: boolean;
   followup: boolean;
+  /**
+   * Pipeline (00245): los nombres de los estados de setter que puede poner,
+   * si tiene la herramienta `cambiar_estado_setter`. Sin esto (o vacío), el
+   * prompt es exactamente el de antes.
+   */
+  setterStatuses?: string[];
 }
 
 const ALL_CLASSIFICATION_TOOLS: ClassificationTools = { temperature: true, followup: true };
@@ -157,6 +174,12 @@ export function buildSummaryTechnicalPrompt(
         ? "seguimiento_dias: en cuantos dias conviene volver a contactar, o null si no corresponde."
         : "seguimiento_dias: siempre null (este agente no agenda seguimientos).",
     );
+    // Solo con la herramienta habilitada: sin ella, el prompt no cambia ni un caracter.
+    if (tools.setterStatuses && tools.setterStatuses.length > 0) {
+      rules.push(
+        `Ademas, agrega en clasificacion la clave "estado_setter": el estado de setter que corresponde segun la conversacion, tal cual, de estos: ${tools.setterStatuses.join(", ")}. O null si no cambia.`,
+      );
+    }
   } else {
     rules.push("La clasificacion no esta habilitada: deja las listas vacias, temperatura null y seguimiento_dias null.");
   }
@@ -222,6 +245,18 @@ export async function summarizeConversationOnClose(
     allowedTagNames = (tags ?? []).filter((t) => !t.disables_agent && !t.assigns_to).map((t) => t.name);
   }
 
+  // Pipeline (00245): los estados de setter que puede poner, si tiene la herramienta.
+  const setterTool = getAgentTool("cambiar_estado_setter");
+  const setterConfig = setterTool && agent.allowedTools.includes("cambiar_estado_setter")
+    ? (setterTool.configSchema.safeParse(agent.toolsConfig["cambiar_estado_setter"] ?? {}).data as SetterStatusEffectConfig | undefined) ?? null
+    : null;
+  let setterStatusNames: string[] = [];
+  if (canClassify && setterConfig && setterConfig.allowedStatuses.length > 0) {
+    const { data: wsRow } = await supabase.from("workspaces").select("contact_status_settings").eq("id", conversation.workspace_id).maybeSingle();
+    const list = parseStatusSettings((wsRow as { contact_status_settings?: unknown } | null)?.contact_status_settings).setter;
+    setterStatusNames = allowedSetterStatuses(list, setterConfig.allowedStatuses).map((st) => st.name);
+  }
+
   const run = await openAiRun(
     supabase,
     {
@@ -248,6 +283,7 @@ export async function summarizeConversationOnClose(
     const system = buildSummarySystemPrompt(nonce, allowedTagNames, canClassify, instructions.text, closeCriteria?.text, {
       temperature: agent.allowedTools.includes("cambiar_temperatura"),
       followup: agent.allowedTools.includes("programar_seguimiento"),
+      ...(setterStatusNames.length > 0 ? { setterStatuses: setterStatusNames } : {}),
     });
     const transcript = messages
       .map((m) => `${m.direction === "inbound" ? "Lead" : "Negocio"} (${m.created_at.slice(0, 16)}): ${m.text}`)
@@ -353,7 +389,7 @@ export async function summarizeConversationOnClose(
     }
 
     if (canClassify) {
-      await applyClassification(run, agent, effectCtx, output.clasificacion, tagConfig, deps.now());
+      await applyClassification(run, agent, effectCtx, output.clasificacion, tagConfig, deps.now(), setterStatusNames.length > 0 ? setterConfig : null);
       details.push("classified");
     }
 
@@ -380,6 +416,7 @@ async function applyClassification(
   proposal: SummaryModelOutput["clasificacion"],
   tagConfig: { allowedTagIds: string[]; canRemove: boolean } | null,
   now: Date,
+  setterConfig: SetterStatusEffectConfig | null = null,
 ): Promise<void> {
   const record = async (name: string, input: unknown, result: { ok: boolean; message: string; auditLogId?: string | null; detail?: unknown }) => {
     await run.step({ kind: "tool_call", name, input, output: result.detail ?? { ok: result.ok, mensaje: result.message }, auditLogId: result.auditLogId ?? null, error: result.ok ? null : result.message });
@@ -402,5 +439,11 @@ async function applyClassification(
     const config = followTool.configSchema.parse(agent.toolsConfig["programar_seguimiento"] ?? {}) as { maxDaysAhead: number; canOverrideManual: boolean };
     const result = await setFollowup(ctx, config, { days: proposal.seguimiento_dias, reason: "clasificacion al cierre", now });
     await record("programar_seguimiento", { dias: proposal.seguimiento_dias }, result);
+  }
+
+  // Pipeline (00245): el mismo efecto y la misma lista blanca que la herramienta.
+  if (proposal.estado_setter && setterConfig) {
+    const result = await setSetterStatus(ctx, setterConfig, { status: proposal.estado_setter, reason: "clasificacion al cierre" });
+    await record("cambiar_estado_setter", { estado: proposal.estado_setter }, result);
   }
 }

@@ -80,7 +80,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
 async function loadCustomFields(service: Db, workspaceId: string, targets: string[]): Promise<CustomFieldDef[]> {
   const slugs = targets.filter(isCustomTarget).map(customSlugOf);
   if (slugs.length === 0) return [];
-  const { data } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspaceId).in("slug", slugs);
+  const { data } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspaceId).is("deleted_at", null).in("slug", slugs);
   return (data ?? []) as CustomFieldDef[];
 }
 

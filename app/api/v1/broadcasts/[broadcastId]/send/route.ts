@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { scheduleBroadcastDelivery } from "@/lib/scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json, Platform } from "@/lib/types/database";
+import { comparisonFor, parseCustomFieldRule } from "@/lib/segments/custom-field-rule";
 
 interface SegmentRule {
   field: string;
@@ -356,13 +357,12 @@ async function evaluateRule(
     }
 
     case "custom_field": {
-      // rule.value format: "field_slug:actual_value"
-      const [slug, ...rest] = rule.value.split(":");
-      const fieldValue = rest.join(":");
+      // El editor guarda "slug::valor" (lib/segments/custom-field-rule.ts).
+      const { slug, value: fieldValue } = parseCustomFieldRule(rule.value);
 
       const { data: fieldDef } = await supabase
         .from("custom_field_definitions")
-        .select("id")
+        .select("id, type")
         .eq("workspace_id", workspaceId)
         .eq("slug", slug)
         .is("deleted_at", null)
@@ -376,22 +376,26 @@ async function evaluateRule(
         .eq("field_id", fieldDef.id)
         .in("contact_id", contactIds);
 
-      switch (rule.operator) {
-        case "equals":
-          cfQuery = cfQuery.eq("value", fieldValue);
-          break;
-        case "not_equals":
-          cfQuery = cfQuery.neq("value", fieldValue);
-          break;
-        case "contains":
-          cfQuery = cfQuery.ilike("value", `%${fieldValue}%`);
-          break;
-        case "gt":
-          cfQuery = cfQuery.gt("value", fieldValue);
-          break;
-        case "lt":
-          cfQuery = cfQuery.lt("value", fieldValue);
-          break;
+      if (rule.operator === "contains") {
+        cfQuery = cfQuery.ilike("value", `%${fieldValue.trim()}%`);
+      } else {
+        // Un número se compara como número y una fecha como fecha (00244).
+        const cmp = comparisonFor(fieldDef.type, fieldValue);
+        if (!cmp) return rule.operator === "not_equals" ? new Set(contactIds) : new Set();
+        switch (rule.operator) {
+          case "equals":
+            cfQuery = cfQuery.eq(cmp.column, cmp.value);
+            break;
+          case "not_equals":
+            cfQuery = cfQuery.neq(cmp.column, cmp.value);
+            break;
+          case "gt":
+            cfQuery = cfQuery.gt(cmp.column, cmp.value);
+            break;
+          case "lt":
+            cfQuery = cfQuery.lt(cmp.column, cmp.value);
+            break;
+        }
       }
 
       const { data } = await cfQuery;

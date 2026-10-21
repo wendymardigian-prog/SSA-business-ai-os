@@ -6,6 +6,8 @@
 export const AGENT_ACTION_LABELS: Record<string, string> = {
   tag: "Etiquetó",
   temperature: "Cambió la temperatura",
+  // Pipeline (00245).
+  setter_status: "Cambió el estado de setter",
   followup: "Programó el seguimiento",
   assign: "Asignó la conversación",
   human_takeover: "Derivó a una persona",

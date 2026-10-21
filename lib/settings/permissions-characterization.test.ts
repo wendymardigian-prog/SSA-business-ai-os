@@ -23,6 +23,8 @@ const PAGES: Record<string, { file: string; guardMarker: string }> = {
   team: { file: "team/page.tsx", guardMarker: 'requirePermission("team.view")' },
   roles: { file: "roles/page.tsx", guardMarker: "listRoles" },
   "custom-fields": { file: "custom-fields/page.tsx", guardMarker: 'requirePermission("custom_fields.manage")' },
+  // Pipeline de contactos (00245): por permiso fino, como Productos.
+  estados: { file: "estados/page.tsx", guardMarker: 'requirePermission("contact_statuses.manage")' },
   // Banca v2 (F4): sin guard de pagina (la abre cualquier miembro), pero ahora
   // con los permisos resueltos para decidir si ofrece crear y editar.
   recursos: { file: "recursos/page.tsx", guardMarker: "getPermissionContext" },
@@ -57,6 +59,7 @@ function visibleTabs(role: "owner" | "admin" | "member", permissions: RolePermis
     team: can(permissions, "team.view"),
     roles: can(permissions, "roles.manage"),
     "custom-fields": can(permissions, "custom_fields.manage"),
+    estados: can(permissions, "contact_statuses.manage"),
     recursos: true,
     productos: can(permissions, "products.manage"),
     asignacion: can(permissions, "assignment.manage"),
@@ -70,6 +73,7 @@ const ALL_VISIBLE = {
   team: true,
   roles: true,
   "custom-fields": true,
+  estados: true,
   recursos: true,
   productos: true,
   asignacion: true,
@@ -91,6 +95,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       team: false,
       roles: false,
       "custom-fields": false,
+      estados: false,
       recursos: true,
       productos: false,
       asignacion: false,
@@ -115,6 +120,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       team: false,
       roles: true,
       "custom-fields": false,
+      estados: false,
       recursos: true,
       productos: false,
       asignacion: false,
@@ -133,6 +139,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       team: false,
       roles: false,
       "custom-fields": false,
+      estados: false,
       recursos: true,
       productos: true,
       // Reglas de asignacion (Ventas): tambien por permiso, como Productos.

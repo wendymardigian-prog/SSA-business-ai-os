@@ -117,6 +117,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "contacts.merge", module: "contacts", label: "Fusionar contactos", description: "Unir dos fichas en una. No se puede deshacer." },
   { key: "tags.manage", module: "contacts", label: "Administrar etiquetas", description: "Renombrar y borrar etiquetas, y definir las que apagan el agente o asignan." },
   { key: "custom_fields.manage", module: "contacts", label: "Administrar campos personalizados", description: "Crear, editar y borrar los campos de la ficha. Completar su valor es de «Editar contactos»." },
+  { key: "contact_statuses.manage", module: "contacts", label: "Administrar estados del pipeline", description: "Crear, renombrar, ordenar y archivar los estados de setter y de vendedor. Cambiar el estado de un contacto es de «Editar contactos»." },
   { key: "assignment.manage", module: "contacts", label: "Administrar reglas de asignación", description: "Quién recibe cada lead nuevo." },
 
   // ── Automatizaciones ────────────────────────────────────────────────────

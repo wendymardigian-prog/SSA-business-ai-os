@@ -5,7 +5,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Upload, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { parseCsv } from "@/lib/csv/parse";
-import { suggestMapping, type ColumnMapping, type ImportColumnTarget } from "@/lib/csv/map";
+import {
+  ATTRIBUTION_TARGETS,
+  ATTRIBUTION_TARGET_LABELS,
+  customTarget,
+  suggestMapping,
+  type ColumnMapping,
+  type ImportColumnTarget,
+  type ImportCustomField,
+} from "@/lib/csv/map";
+import { CUSTOM_FIELD_TYPE_LABELS, isCustomFieldType } from "@/lib/custom-fields";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { startImport, importBatch, finishImport } from "@/lib/actions/csv-import";
 import { IMPORT_BATCH_SIZE, MAX_IMPORT_ROWS, MAX_IMPORT_BYTES } from "@/lib/csv/limits";
@@ -33,9 +42,8 @@ interface Resultado {
 
 const PREVIEW_ROWS = 5;
 
-/** Las opciones del desplegable de cada columna. */
-const TARGET_OPTIONS: { value: ImportColumnTarget; label: string }[] = [
-  { value: "", label: "No importar" },
+/** Las opciones fijas del desplegable de cada columna (los datos del contacto). */
+const CONTACT_OPTIONS: { value: ImportColumnTarget; label: string }[] = [
   ...CONTACT_FIELDS.filter((f) => f.key !== "ai_conversation_summary").map((f) => ({
     value: f.key as ImportColumnTarget,
     label: f.label,
@@ -43,12 +51,21 @@ const TARGET_OPTIONS: { value: ImportColumnTarget; label: string }[] = [
   { value: "tags", label: "Tags" },
 ];
 
+/** La atribución es opcional: sin estas columnas, el contacto nuevo queda como "Importación". */
+const ATTRIBUTION_OPTIONS: { value: ImportColumnTarget; label: string }[] = ATTRIBUTION_TARGETS.map((t) => ({
+  value: t,
+  label: ATTRIBUTION_TARGET_LABELS[t],
+}));
+
 export function ImportView({
   tags,
   members,
+  customFields = [],
 }: {
   tags: string[];
   members: { userId: string; label: string }[];
+  /** Los campos personalizados vivos del workspace: cada uno es un destino posible. */
+  customFields?: ImportCustomField[];
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("upload");
@@ -90,7 +107,7 @@ export function ImportView({
     setFileName(file.name);
     setHeaders(parsed.headers);
     setRows(parsed.rows);
-    setMapping(suggestMapping(parsed.headers));
+    setMapping(suggestMapping(parsed.headers, customFields));
     setTruncated(parsed.truncated);
     setStep("map");
   }
@@ -180,6 +197,7 @@ export function ImportView({
 
         {step === "map" && (
           <MapStep
+            customFields={customFields}
             fileName={fileName}
             headers={headers}
             rows={rows}
@@ -238,8 +256,9 @@ function MapStep({
   fileName, headers, rows, mapping, truncated, onTarget,
   members, tags, setterId, vendedorId, extraTags, newTag,
   onSetter, onVendedor, onNewTag, onAddTag, onRemoveTag,
-  canRun, onRun, onBack,
+  canRun, onRun, onBack, customFields,
 }: {
+  customFields: ImportCustomField[];
   fileName: string;
   headers: string[];
   rows: string[][];
@@ -281,6 +300,10 @@ function MapStep({
         <p className="mt-1 text-xs text-muted-foreground">
           Revisá a qué campo va cada columna. Las que no reconocí quedan sin importar.
         </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Los contactos nuevos quedan con origen <strong>Importación</strong>. Si la planilla dice de dónde vino cada
+          persona (fuente, medio, campaña o la fecha del primer contacto), mapealo en «Atribución» y se guarda con ese dato.
+        </p>
 
         <div className="mt-3 overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
@@ -297,9 +320,26 @@ function MapStep({
                       aria-label={`Campo para la columna ${header || i + 1}`}
                       className="mt-1 w-full rounded-lg border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                     >
-                      {TARGET_OPTIONS.map((o) => (
-                        <option key={o.value || "none"} value={o.value}>{o.label}</option>
-                      ))}
+                      <option value="">No importar</option>
+                      <optgroup label="Datos del contacto">
+                        {CONTACT_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </optgroup>
+                      {customFields.length > 0 && (
+                        <optgroup label="Campos personalizados">
+                          {customFields.map((f) => (
+                            <option key={f.id} value={customTarget(f.id)}>
+                              {f.name} ({isCustomFieldType(f.type) ? CUSTOM_FIELD_TYPE_LABELS[f.type] : f.type})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="Atribución (opcional)">
+                        {ATTRIBUTION_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </optgroup>
                     </select>
                   </th>
                 ))}

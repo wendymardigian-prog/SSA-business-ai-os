@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { activeSettingsTab, settingsEntryHref, SETTINGS_TABS, visibleSettingsTabs } from "./tabs";
 
 describe("SETTINGS_TABS", () => {
-  it("tiene las siete pestañas en orden (Tareas se mudo a Agentes IA; Asignación se suma con Ventas)", () => {
+  it("tiene las ocho pestañas en orden (Tareas se mudo a Agentes IA; Asignación se suma con Ventas; Estados con el pipeline)", () => {
     expect(SETTINGS_TABS.map((t) => t.name)).toEqual([
       "General",
       "Equipo y roles",
       "Campos personalizados",
+      "Estados",
       "Recursos",
       "Productos",
       "Asignación",
@@ -79,7 +80,7 @@ describe("activeSettingsTab", () => {
 describe("visibleSettingsTabs (plano formularios-ui, D4; por permiso desde Equipo y roles)", () => {
   const can = (keys: string[]) => (key: string) => keys.includes(key);
 
-  it("Owner y Admin ven las siete pestañas", () => {
+  it("Owner y Admin ven las ocho pestañas", () => {
     expect(visibleSettingsTabs(() => true)).toEqual(SETTINGS_TABS);
   });
 

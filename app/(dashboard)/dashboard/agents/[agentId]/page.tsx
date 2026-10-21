@@ -17,6 +17,8 @@ import { loadCostsTab, loadHeaderKpis, parseCostFilters } from "@/lib/agent/cost
 import { loadRuns, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
 import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
+import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
+import { activeStatuses } from "@/lib/contacts/statuses";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
 
@@ -135,6 +137,8 @@ export default async function AgentDetailPage({
       })
     : undefined;
 
+  // En paralelo con todo lo de abajo: solo lo usa la pestaña Herramientas.
+  const setterStatusSettingsPromise = loadContactStatusSettings(workspace.id);
   const [versionsRes, providers, pricingRes, channelsRes, docsRes, triggersRes, members, tagsRes, eventTypesForAgent, runs, costs, tagCountsRes, copywriterRaw] =
     await Promise.all([
       need.versions
@@ -293,6 +297,7 @@ export default async function AgentDetailPage({
       })()
     : undefined;
 
+  const setterStatusSettings = await setterStatusSettingsPromise;
   const data: AgentScreenData = {
     viewer: { isAdmin: canEdit, permissionKeys: permissions.permissions.keys },
     copywriter,
@@ -311,6 +316,8 @@ export default async function AgentDetailPage({
       // Los eventos que el agente puede ofrecer (Etapa 4, F52). Los inactivos
       // no entran: ofrecer un evento apagado da un link que no agenda.
       event_types: eventTypesForAgent,
+      // Pipeline (00245): los estados de setter activos (Ajustes → Estados).
+      setter_statuses: activeStatuses(setterStatusSettings.setter).map((st) => ({ value: st.key, label: st.name })),
     },
     versions: ((versionsRes.data ?? []) as Array<{ version: number; system_prompt: string; note: string | null; created_at: string; created_by: string | null }>).map((v) => ({
       version: v.version,

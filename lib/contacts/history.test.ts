@@ -182,3 +182,54 @@ describe("por que camino fue una automatizacion (branch_taken)", () => {
     expect(items.map((i) => (i.source === "flow" ? i.phase : i.source))).toEqual(["branch", "started"]);
   });
 });
+
+describe("los cambios de estado (00245)", () => {
+  const settings = {
+    setter: [
+      { key: "contactado", name: "Contactado", color: "#2563eb", archived_at: null },
+      { key: "calificado", name: "Calificado", color: "#16a34a", archived_at: null },
+    ],
+    closer: [{ key: "ganado", name: "Ganado", color: "#16a34a", archived_at: "2026-01-01T00:00:00Z" }],
+  };
+
+  it("entran con el nombre del estado y quién lo cambió, en orden", () => {
+    const items = buildContactHistory(
+      base({
+        audit: [audit("a1", "2026-10-09T10:00:00Z")],
+        statusSettings: settings,
+        statusChanges: [
+          { id: "s1", role: "setter", oldStatus: "contactado", newStatus: "calificado", createdAt: "2026-10-09T11:00:00Z", actorLabel: "Ana", reason: null },
+          { id: "s2", role: "closer", oldStatus: null, newStatus: "ganado", createdAt: "2026-10-09T12:00:00Z", actorLabel: "Beto", reason: null },
+        ],
+      }),
+    );
+    expect(items.map((i) => i.source)).toEqual(["status", "status", "audit"]);
+    const [closer, setter] = items;
+    if (closer.source !== "status" || setter.source !== "status") throw new Error("esperaba estados");
+    expect(describeHistoryItem(setter)).toEqual({ actor: "Ana", text: "cambió el estado de setter: «Contactado» → «Calificado»" });
+    expect(describeHistoryItem(closer)).toEqual({ actor: "Beto", text: "puso el estado de vendedor en «Ganado (archivado)»" });
+  });
+
+  it("quitar un estado se dice así", () => {
+    const [item] = buildContactHistory(
+      base({
+        statusSettings: settings,
+        statusChanges: [{ id: "s1", role: "setter", oldStatus: "calificado", newStatus: null, createdAt: "2026-10-09T11:00:00Z", actorLabel: "Ana", reason: null }],
+      }),
+    );
+    if (item.source !== "status") throw new Error("esperaba un estado");
+    expect(describeHistoryItem(item).text).toBe("quitó el estado de setter (era «Calificado»)");
+  });
+
+  it("lo del agente no se repite: el audit `setter_status` queda solo para revertir", () => {
+    const items = buildContactHistory(
+      base({
+        audit: [audit("a1", "2026-10-09T11:00:00Z", "setter_status")],
+        statusSettings: settings,
+        statusChanges: [{ id: "s1", role: "setter", oldStatus: null, newStatus: "calificado", createdAt: "2026-10-09T11:00:00Z", actorLabel: "Agente IA · Sofi", reason: "Dijo que tiene presupuesto" }],
+      }),
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ source: "status", reason: "Dijo que tiene presupuesto" });
+  });
+});
