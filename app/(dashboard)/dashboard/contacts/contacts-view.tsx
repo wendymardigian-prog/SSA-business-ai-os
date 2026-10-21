@@ -22,6 +22,12 @@ import type { LeadTemperature } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
 import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
+import { LastStatusBadge } from "@/components/contacts/status-fields";
+import { ColumnsMenu, CustomFieldFilter, useVisibleColumns } from "@/components/contacts/list-pipeline-controls";
+import { NONE, type CustomFieldRef, type CustomFilterOp } from "@/lib/contacts/list-filters";
+import { STATUS_ROLE_LABELS, activeStatuses, statusName, type ContactStatusSettings } from "@/lib/contacts/statuses";
+import { interestLabel, offeredProducts, type InterestCatalog } from "@/lib/contacts/interest";
+import { displayCustomValue } from "@/lib/custom-fields";
 import {
   CONTACT_SORTS,
   CONTACT_SORT_HINTS,
@@ -49,6 +55,14 @@ export interface ContactRow {
   setterId: string | null;
   vendedorId: string | null;
   tags: { id: string; name: string; color: string | null }[];
+  /** Pipeline (00245): el ultimo estado. */
+  lastStatusRole: "setter" | "closer" | null;
+  lastStatus: string | null;
+  /** Producto de interes (00246). */
+  interestProductId: string | null;
+  interestVariantId: string | null;
+  /** Campos personalizados: id del campo -> valor guardado. */
+  custom: Record<string, string>;
 }
 
 interface Filters {
@@ -63,6 +77,13 @@ interface Filters {
   /** Fuente y medio del PRIMER toque de atribucion (F88). */
   source: string;
   medium: string;
+  /** Pipeline (00245/00246): `rol:clave`, la clave o "ninguno", el id del producto o "ninguno". */
+  lastStatus: string;
+  setterStatus: string;
+  closerStatus: string;
+  productId: string;
+  /** El slug del campo personalizado por el que se filtra. */
+  customField: string;
 }
 
 export function ContactsView({
@@ -76,6 +97,10 @@ export function ContactsView({
   filters,
   anonymousCount,
   sort,
+  customFilter,
+  customFields,
+  statusSettings,
+  interestCatalog,
 }: {
   contacts: ContactRow[];
   total: number;
@@ -89,6 +114,10 @@ export function ContactsView({
   anonymousCount: number;
   /** El orden de la lista (`?orden=`). */
   sort: ContactSort;
+  customFilter: { slug: string; op: CustomFilterOp; value: string } | null;
+  customFields: CustomFieldRef[];
+  statusSettings: ContactStatusSettings;
+  interestCatalog: InterestCatalog;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -97,6 +126,9 @@ export function ContactsView({
   const [creating, setCreating] = useState(false);
 
   const memberLabel = new Map(members.map((m) => [m.userId, m.label]));
+  // Las columnas opcionales (Estado, Producto, campos personalizados): preferencia de cada persona.
+  const { columns: visibleColumns, toggle: toggleColumn } = useVisibleColumns(customFields.map((f) => f.id));
+  const customColumns = customFields.filter((f) => visibleColumns.includes(`cf:${f.id}`));
 
   // Seleccion para la accion masiva (Bloque 2d-A). Vale para la pagina que se
   // esta mirando: lo que ya no esta en pantalla no cuenta.
@@ -132,6 +164,17 @@ export function ContactsView({
     start(() => router.replace(`${pathname}?${next.toString()}`));
   }
 
+  /** Varios parametros a la vez (el filtro por campo escribe tres). Vuelve a la pagina 1. */
+  function setParams(patch: Record<string, string>) {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    next.delete("page");
+    start(() => router.replace(`${pathname}?${next.toString()}`));
+  }
+
   function clearAll() {
     start(() => router.replace(pathname));
   }
@@ -139,7 +182,7 @@ export function ContactsView({
   /** Quita los filtros del menu y deja la busqueda y el orden como estan. */
   function clearMenuFilters() {
     const next = new URLSearchParams(searchParams.toString());
-    for (const key of ["tag", "setter", "vendedor", "temp", "fuente", "medio", "canal", "anon", "page"]) next.delete(key);
+    for (const key of ["tag", "setter", "vendedor", "temp", "fuente", "medio", "canal", "anon", "estado", "estado_setter", "estado_vendedor", "producto", "campo", "op", "valor", "page"]) next.delete(key);
     const query = next.toString();
     start(() => router.replace(query ? `${pathname}?${query}` : pathname));
   }
@@ -206,6 +249,43 @@ export function ContactsView({
                   options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
                 />
 
+                {/* Pipeline (00245/00246): el ultimo estado, el de cada rol y el producto de interes. */}
+                <MenuGroupLabel>Pipeline</MenuGroupLabel>
+                <MenuField
+                  label="Último estado"
+                  value={filters.lastStatus}
+                  onChange={(v) => setParam("estado", v)}
+                  options={(["setter", "closer"] as const).flatMap((role) =>
+                    activeStatuses(statusSettings[role]).map((st) => ({ value: `${role}:${st.key}`, label: `${st.name} (${STATUS_ROLE_LABELS[role].toLowerCase()})` })),
+                  )}
+                />
+                <MenuField
+                  label="Estado de setter"
+                  value={filters.setterStatus}
+                  onChange={(v) => setParam("estado_setter", v)}
+                  options={[{ value: NONE, label: "Sin estado" }, ...statusSettings.setter.map((st) => ({ value: st.key, label: statusName(statusSettings.setter, st.key) }))]}
+                />
+                <MenuField
+                  label="Estado de vendedor"
+                  value={filters.closerStatus}
+                  onChange={(v) => setParam("estado_vendedor", v)}
+                  options={[{ value: NONE, label: "Sin estado" }, ...statusSettings.closer.map((st) => ({ value: st.key, label: statusName(statusSettings.closer, st.key) }))]}
+                />
+                {interestCatalog.length > 0 && (
+                  <MenuField
+                    label="Producto de interés"
+                    value={filters.productId}
+                    onChange={(v) => setParam("producto", v)}
+                    options={[{ value: NONE, label: "Sin producto" }, ...offeredProducts(interestCatalog, null).map((p) => ({ value: p.id, label: p.name }))]}
+                  />
+                )}
+                <CustomFieldFilter
+                  key={customFilter ? `${customFilter.slug}:${customFilter.op}:${customFilter.value}` : "none"}
+                  fields={customFields}
+                  current={customFilter}
+                  onApply={(next) => setParams(next)}
+                />
+
                 {/* Por el PRIMER toque, y el nombre lo dice: "entraron por un comentario"
                     no es "alguna vez comentaron". */}
                 <MenuGroupLabel>De dónde vinieron</MenuGroupLabel>
@@ -264,6 +344,8 @@ export function ContactsView({
                 )}
               </div>
             </FilterMenu>
+
+            <ColumnsMenu fields={customFields} columns={visibleColumns} onToggle={toggleColumn} />
 
             {/* Los ajustes de la tabla: hoy, el orden. */}
             <FilterMenu
@@ -335,9 +417,14 @@ export function ContactsView({
                   />
                 </th>
                 <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Nombre</th>
+                {visibleColumns.includes("status") && <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Estado</th>}
                 <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Contacto</th>
                 <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Setter</th>
                 <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Vendedor</th>
+                {visibleColumns.includes("product") && <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Producto</th>}
+                {customColumns.map((f) => (
+                  <th key={f.id} className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">{f.name}</th>
+                ))}
                 <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Tags</th>
                 <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Última</th>
               </tr>
@@ -368,6 +455,15 @@ export function ContactsView({
                       </span>
                     </Link>
                   </td>
+                  {visibleColumns.includes("status") && (
+                    <td className="px-4 py-3">
+                      {contact.lastStatus ? (
+                        <LastStatusBadge settings={statusSettings} role={contact.lastStatusRole} status={contact.lastStatus} compact />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <Link href={`/dashboard/contacts/${contact.id}`} className="block text-sm">
                       <span className="block text-muted-foreground">{contact.email ?? "—"}</span>
@@ -382,6 +478,16 @@ export function ContactsView({
                   <td className="px-4 py-3 text-sm text-muted-foreground">
                     {contact.vendedorId ? (memberLabel.get(contact.vendedorId) ?? "—") : "—"}
                   </td>
+                  {visibleColumns.includes("product") && (
+                    <td className="max-w-48 truncate px-4 py-3 text-sm text-muted-foreground">
+                      {interestLabel(interestCatalog, contact.interestProductId, contact.interestVariantId)}
+                    </td>
+                  )}
+                  {customColumns.map((f) => (
+                    <td key={f.id} className="max-w-48 truncate px-4 py-3 text-sm text-muted-foreground">
+                      {displayCustomValue(f.type, contact.custom[f.id]) || "—"}
+                    </td>
+                  ))}
                   <td className="px-4 py-3">
                     <span className="flex flex-wrap gap-1">
                       {contact.tags.map((tag) => (

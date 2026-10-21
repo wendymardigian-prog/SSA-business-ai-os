@@ -33,6 +33,7 @@ export function ContactSalesSection({
   contact,
   wizard,
   paymentHealth,
+  interest,
 }: {
   sales: ContactSaleRow[];
   total: number;
@@ -41,6 +42,8 @@ export function ContactSalesSection({
   wizard: WizardConfig | null;
   /** «7 pagos: 5 puntuales, 2 tarde · promedio +3 días · sin mora activa», o null si no hay nada que decir. */
   paymentHealth?: string | null;
+  /** El producto de interés del contacto (00246): «Nueva venta» arranca con él elegido. */
+  interest?: { productId: string | null; variantId: string | null };
 }) {
   const [open, setOpen] = useState(false);
   if (sales.length === 0 && !wizard) return null;
@@ -75,7 +78,7 @@ export function ContactSalesSection({
           <Link href={`/dashboard/ventas?q=${encodeURIComponent(contact.name)}`} className="text-primary underline-offset-2 hover:underline">Ver todas ({total})</Link>
         </p>
       )}
-      {open && wizard && <SaleWizard config={wizard} initial={{ contact }} onClose={() => setOpen(false)} />}
+      {open && wizard && <SaleWizard config={wizard} initial={{ contact, productId: interest?.productId ?? null, variantId: interest?.variantId ?? null }} onClose={() => setOpen(false)} />}
     </Section>
   );
 }

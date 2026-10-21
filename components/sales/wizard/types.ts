@@ -28,4 +28,7 @@ export interface WizardInitial {
   contact?: { id: string; name: string };
   bookingId?: string | null;
   vendedorId?: string | null;
+  /** El producto de interés del contacto (00246): se preselecciona si se puede vender. */
+  productId?: string | null;
+  variantId?: string | null;
 }

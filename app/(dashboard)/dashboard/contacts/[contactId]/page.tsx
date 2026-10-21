@@ -33,6 +33,8 @@ import { TagsEditor } from "@/components/contacts/tags-editor";
 import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
 import { LastStatusBadge, StatusFields } from "@/components/contacts/status-fields";
+import { InterestFields } from "@/components/contacts/interest-fields";
+import { loadInterestCatalog } from "@/lib/contacts/interest-load";
 import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
 import { isStatusRole } from "@/lib/contacts/statuses";
 import { AttributionSection } from "@/components/contacts/attribution-section";
@@ -113,6 +115,7 @@ export default async function ContactDetailPage({
     emailLogRes,
     statusChangesRes,
     statusSettings,
+    interestCatalog,
   ] = await Promise.all([
       supabase
         .from("contacts")
@@ -207,6 +210,8 @@ export default async function ContactDetailPage({
         .order("created_at", { ascending: false })
         .limit(HISTORY_FETCH),
       loadContactStatusSettings(workspace.id),
+      // El producto de interes (00246): el catalogo lo lee cualquier miembro.
+      loadInterestCatalog(supabase, workspace.id),
     ]);
 
   const contact = contactRes.data;
@@ -558,6 +563,7 @@ export default async function ContactDetailPage({
                 contact={{ id: contact.id, name: contact.display_name || contact.email || "Contacto" }}
                 wizard={salesWizard && salesWizard.catalog.length > 0 ? salesWizard : null}
                 paymentHealth={describePaymentHealth((contact as unknown as { payment_health?: Record<string, unknown> | null }).payment_health as never)}
+                interest={{ productId: contact.interest_product_id, variantId: contact.interest_variant_id }}
               />
             )}
 
@@ -576,6 +582,16 @@ export default async function ContactDetailPage({
                 contactId={contact.id}
                 settings={statusSettings}
                 values={contact}
+                canEdit={perms.can("contacts.edit")}
+              />
+            </Section>
+
+            <Section title="Producto de interés">
+              <InterestFields
+                contactId={contact.id}
+                catalog={interestCatalog}
+                productId={contact.interest_product_id}
+                variantId={contact.interest_variant_id}
                 canEdit={perms.can("contacts.edit")}
               />
             </Section>

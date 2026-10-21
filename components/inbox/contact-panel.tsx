@@ -12,6 +12,9 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { AssignmentFields } from "@/components/contacts/assignment-fields";
 import { StatusFields } from "@/components/contacts/status-fields";
+import { InterestFields } from "@/components/contacts/interest-fields";
+import { loadInterestCatalog } from "@/lib/contacts/interest-load";
+import type { InterestCatalog } from "@/lib/contacts/interest";
 import { parseStatusSettings, type ContactStatusSettings } from "@/lib/contacts/statuses";
 import { FollowupField } from "@/components/contacts/followup-field";
 import { NotesSection } from "@/components/contacts/notes-section";
@@ -52,6 +55,8 @@ interface ContactDetails {
   contact: Contact;
   /** Las listas de estados del workspace (00245). */
   statusSettings: ContactStatusSettings;
+  /** Los productos, para el producto de interes (00246). */
+  interestCatalog: InterestCatalog;
   tagIds: string[];
   channels: { platform: Platform; username: string | null; senderId: string | null; channelId: string | null }[];
 }
@@ -118,12 +123,13 @@ export function ContactPanel({
       // dice que el contacto no existe.
       await supabase.auth.getSession();
 
-      const [contactRes, tagsRes, channelsRes, settingsRes] = await Promise.all([
+      const [contactRes, tagsRes, channelsRes, settingsRes, interestCatalog] = await Promise.all([
         supabase.from("contacts").select("*").eq("id", contactId!).single(),
         supabase.from("contact_tags").select("tag_id").eq("contact_id", contactId!),
         supabase.from("contact_channels").select("platform_username, platform_sender_id, channel_id, channels(platform)").eq("contact_id", contactId!),
         // Las listas de estados no son un secreto: cualquier miembro ve su workspace.
         supabase.from("workspaces").select("contact_status_settings").eq("id", workspaceId).maybeSingle(),
+        loadInterestCatalog(supabase, workspaceId),
       ]);
 
       if (contactRes.error && !contactRes.data) {
@@ -136,6 +142,7 @@ export function ContactPanel({
         setDetails({
           contact: contactRes.data,
           statusSettings: parseStatusSettings((settingsRes.data as { contact_status_settings?: unknown } | null)?.contact_status_settings),
+          interestCatalog,
           tagIds: (tagsRes.data ?? []).map((t) => t.tag_id),
           channels: (channelsRes.data ?? []).map((cc) => ({
             platform: (cc.channels as unknown as { platform: Platform }).platform,
@@ -197,6 +204,14 @@ export function ContactPanel({
               contactId={details.contact.id}
               settings={details.statusSettings}
               values={details.contact}
+              canEdit
+              onSaved={reload}
+            />
+            <InterestFields
+              contactId={details.contact.id}
+              catalog={details.interestCatalog}
+              productId={details.contact.interest_product_id}
+              variantId={details.contact.interest_variant_id}
               canEdit
               onSaved={reload}
             />

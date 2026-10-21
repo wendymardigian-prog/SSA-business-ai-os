@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { CONTACT_MERGE_EXCLUSIONS, CONTACT_MERGE_TABLES, decodeMergeParam, encodeMergeParam, findMergeDrift, mergeErrorMessage, mergeNotes, summarizeMerge } from "./merge";
 
 describe("CONTACT_MERGE_TABLES (R9)", () => {
-  it("son 24, sin duplicados, y ninguna esta tambien en las exclusiones", () => {
-    expect(CONTACT_MERGE_TABLES).toHaveLength(24);
+  it("son 25 (la 00247 suma el historial de estados), sin duplicados, y ninguna esta tambien en las exclusiones", () => {
+    expect(CONTACT_MERGE_TABLES).toHaveLength(25);
     expect(new Set(CONTACT_MERGE_TABLES).size).toBe(CONTACT_MERGE_TABLES.length);
     for (const t of CONTACT_MERGE_TABLES) expect(Object.keys(CONTACT_MERGE_EXCLUSIONS)).not.toContain(t);
   });

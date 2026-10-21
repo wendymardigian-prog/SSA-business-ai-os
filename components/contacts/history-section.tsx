@@ -128,6 +128,7 @@ const FIELD_LABELS: Record<string, string> = {
   assignment_locked_at: "Asignado a mano",
   do_not_contact: "No contactar",
   do_not_contact_reason: "Motivo de no contactar",
+  interest_product: "Producto de interés",
   tags: "Tags",
 };
 

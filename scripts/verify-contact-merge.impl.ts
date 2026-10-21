@@ -94,7 +94,7 @@ try {
   const drift = findMergeDrift(relationsInDb());
   check(drift.missing.length === 0, "no hay ninguna relacion con contacts que la fusion no cubra ni excluya con motivo", `faltan: ${drift.missing.join(", ")}`);
   check(drift.stale.length === 0, "y todas las de la lista existen", `sobran: ${drift.stale.join(", ")}`);
-  check(CONTACT_MERGE_TABLES.length === 24, "son las 24 de siempre");
+  check(CONTACT_MERGE_TABLES.length === 25, "son las 25 (la 00247 suma el historial de estados)");
   // Una tabla nueva con contact_id hace fallar la guardia (se crea una de prueba y se saca).
   sql(`create table public.zz_test_merge_drift (id int, contact_id uuid references public.contacts(id) on delete cascade)`);
   tempArtifacts = true;
@@ -227,6 +227,15 @@ try {
   if (saleRes.error || !saleRes.data?.sale_id) throw new Error(`no pude crear la venta: ${saleRes.error?.message}`);
   const saleId = saleRes.data.sale_id as string;
 
+  // Pipeline (00245/00246): el duplicado tiene estado de setter y producto de interes; el principal, estado de vendedor.
+  const setStatus = async (contactId: string, role: string, status: string) => {
+    const r = await svc.rpc("set_contact_status", { p_workspace_id: ws.id, p_contact_id: contactId, p_role: role, p_status: status, p_actor_user: owner.id });
+    if (r.error || r.data?.result !== "changed") throw new Error(`no pude poner el estado: ${r.error?.message ?? JSON.stringify(r.data)}`);
+  };
+  await setStatus(dup.id, "setter", "contactado");
+  await setStatus(main.id, "closer", "ganado");
+  await svc.from("contacts").update({ interest_product_id: product.id, interest_variant_id: variant.id }).eq("id", dup.id);
+
   // ═══ Foto de antes ══════════════════════════════════════════════════════════════════════════════════════════════
   const countBy = async (table: string, ids: string[], column = "contact_id") => ((await svc.from(table).select(column, { count: "exact", head: true }).in(column, ids)).count ?? 0) as number;
   const SIMPLE = ["agent_drafts", "agent_runs", "analytics_events", "bookings", "broadcast_recipients", "calls", "contact_notes", "contract_signatures", "email_log", "inbound_webhooks", "sales", "social_post_comments", "trigger_fires"];
@@ -308,6 +317,14 @@ try {
   }
   for (const t of SIMPLE) check((await countBy(t, [main.id])) === before[t], `${t}: lo del duplicado paso al principal, sin perder ninguna fila`, `${await countBy(t, [main.id])} de ${before[t]}`);
   check((await countBy("contact_channels", [main.id])) === 2, "contact_channels: los dos canales cuelgan del principal");
+
+  // Pipeline (00245/00246).
+  check((await countBy("contact_status_changes", [dup.id])) === 0 && (await countBy("contact_status_changes", [main.id])) === 2, "contact_status_changes: el historial de estados del duplicado paso al principal");
+  const mainAfter = (await svc.from("contacts").select("setter_status, closer_status, last_status_role, last_status, interest_product_id, interest_variant_id").eq("id", main.id).single()).data as any;
+  check(mainAfter.setter_status === "contactado", "el estado de setter que faltaba en el principal se completa con el del duplicado");
+  check(mainAfter.closer_status === "ganado", "el de vendedor del principal se conserva");
+  check(mainAfter.last_status_role === "closer" && mainAfter.last_status === "ganado", "el ultimo estado se recalcula (el mas reciente)", JSON.stringify(mainAfter));
+  check(mainAfter.interest_product_id === product.id && mainAfter.interest_variant_id === variant.id, "el producto de interes del duplicado pasa al principal, con su variante");
 
   // Conversaciones y mensajes.
   const convOf = async (id: string) => (await svc.from("conversations").select("*").eq("id", id).single()).data as any;
