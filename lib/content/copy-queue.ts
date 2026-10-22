@@ -45,7 +45,7 @@ export async function enqueueCopy(
     return { ok: false, error: "No encontre el copywriter de este negocio." };
   }
   if (!agent.is_enabled) {
-    return { ok: false, error: "El copywriter esta apagado. Prendelo en Agentes." };
+    return { ok: false, error: "El copywriter esta apagado. Prendelo en Agentes IA." };
   }
 
   // Marcar ANTES de encolar: si se encola y no se marca, la pantalla no

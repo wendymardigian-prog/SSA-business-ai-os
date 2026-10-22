@@ -53,6 +53,26 @@ función caída se veía igual que un período sin actividad, todo en cero. Un c
 es una afirmación ("ese día no pasó nada") y era falsa. Ahora el bloque que falla
 dice qué falló y ofrece Reintentar, y los demás siguen andando.
 
+### Cuándo existe la sección "El agente"
+
+La decide `agentSectionVisibility` (`lib/dashboards/chat/agent-visibility.ts`,
+pura y con test). La sección **solo existe si el agente está o estuvo actuando**:
+
+| Estado | Sección |
+|---|---|
+| El agente nunca actuó y no hay uno encendido, con canales y con IA | oculta (sin invitación) |
+| Hay un agente encendido, con al menos un canal, que puede responder | completa |
+| Actuó alguna vez y hoy está apagado | completa (los números del período son reales) |
+| Actuó alguna vez, o está encendido con canales, y no puede responder (sin IA, proveedor desconectado, sin modelo) | completa con aviso |
+
+"Actuó alguna vez" = hay una corrida con `agent_runs.source = 'agent'`
+(`chatAgentEverActed`, `lib/agent/usage.ts`), leída con el cliente de servicio:
+un Member ve la misma sección que un Admin. Usa el índice
+`(workspace_id, source, created_at)` de la 00251. Oculta, la página ni consulta
+los datos del agente. Hasta el 22/10/2026 había un modo "invitación" (IA
+conectada y ningún agente encendido): se sacó, porque un negocio que todavía no
+prendió el agente no tiene nada que medir.
+
 ## Funciones
 
 | Función | Qué devuelve |

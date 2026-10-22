@@ -1,10 +1,11 @@
 "use client";
 
+import { Suspense, use, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
-import { LinkPending } from "@/components/ui/link-pending";
+import { DetailTabs } from "@/components/agents/detail-tabs";
 import { AiPeriodControl } from "@/components/agents/ai-dashboard/period-control";
 import { RunsScreen } from "@/components/agents/runs-screen";
 import { TaskIcon } from "./task-icon";
@@ -20,6 +21,9 @@ import { MODE_LABELS, formatSpend, lastRunLabel } from "@/lib/background/screen"
 import { controlLabel } from "@/lib/ai-tasks/catalog";
 import { TASK_TABS, resolveTaskTab } from "@/lib/ai-tasks/tabs";
 import type { TaskScreenData } from "@/lib/ai-tasks/screen";
+import type { AiTaskDef } from "@/lib/ai-tasks/catalog";
+import type { TaskRunInfo } from "@/lib/background/screen";
+import type { TaskMode } from "@/lib/background/settings";
 
 /**
  * El detalle de una tarea de IA (Bloque Agentes IA). Las mismas cinco
@@ -27,11 +31,29 @@ import type { TaskScreenData } from "@/lib/ai-tasks/screen";
  * del catálogo (`task.control`, `task.instructions`, `task.modelSource`), no
  * de un `if` por tarea. La única tarea con paneles propios es la
  * clasificación de mensajes (calidad y textos de botón), en Configuración.
+ *
+ * Esto es el armazón (encabezado y pestañas) y se dibuja apenas se hace clic:
+ * la línea de la última corrida y el gasto llega aparte (`lastRun`, una
+ * promesa) y el contenido de la pestaña viene como `children`, en su propio
+ * `<Suspense>` (ver la página). Antes nada se veía hasta que terminaban TODAS
+ * las consultas, incluido el reporte de costos del mes.
  */
-export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; tab: string; timeZone: string }) {
-  const { task } = data;
+export function TaskDetailView({
+  task,
+  mode,
+  tab,
+  timeZone,
+  lastRun,
+  children,
+}: {
+  task: AiTaskDef;
+  mode: TaskMode | null;
+  tab: string;
+  timeZone: string;
+  lastRun: Promise<TaskRunInfo | null>;
+  children: ReactNode;
+}) {
   const activeTab = resolveTaskTab(tab);
-  const mode = data.settings && task.backgroundTask ? data.settings[task.backgroundTask].mode : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -61,72 +83,84 @@ export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; 
             <p className="mt-1 text-xs text-muted-foreground">
               {mode ? MODE_LABELS[mode] : controlLabel(task)}
               {" · "}
-              Última corrida: {mode === "off" ? "Apagada" : data.lastRun?.at ? lastRunLabel(data.lastRun.at) : "Sin corridas todavía"}
-              {" · "}
-              Gasto del mes: {formatSpend(data.lastRun?.monthSpendUsd ?? null)}
+              <Suspense fallback={<span className="text-muted-foreground/60">Última corrida: …</span>}>
+                <LastRunLine mode={mode} lastRun={lastRun} />
+              </Suspense>
             </p>
           </div>
         </div>
 
-        <nav className="mt-5 flex gap-1 overflow-x-auto" aria-label="Secciones de la tarea">
-          {TASK_TABS.map((t) => (
-            <Link
-              key={t.key}
-              href={`/dashboard/agents/tareas/${task.id}?tab=${t.key}`}
-              aria-current={activeTab === t.key ? "page" : undefined}
-              className={cn(
-                "whitespace-nowrap border-b-2 px-3 pb-3 text-sm font-medium transition-colors",
-                activeTab === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t.label}
-              <LinkPending className="ml-1.5 align-middle" />
-            </Link>
-          ))}
-        </nav>
+        <div className="mt-5">
+          <DetailTabs
+            label="Secciones de la tarea"
+            active={activeTab}
+            tabs={TASK_TABS.map((t) => ({ key: t.key, label: t.label, href: `/dashboard/agents/tareas/${task.id}?tab=${t.key}` }))}
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto px-4 py-6 md:px-8">
-        <div className={cn("mx-auto space-y-6", activeTab === "runs" ? "max-w-5xl" : "max-w-3xl")}>
-          {activeTab === "como" && <HowItWorks task={task} about={data.about} agentClose={data.agentClose} />}
-
-          {activeTab === "config" && <ConfigTab data={data} />}
-
-          {activeTab === "instrucciones" &&
-            (task.instructions.editable ? (
-              data.instructions && (
-                <TaskInstructionsPanel
-                  taskId={task.id}
-                  taskName={task.name}
-                  defaultText={data.instructions.defaultText}
-                  activeVersion={data.instructions.activeVersion}
-                  activeText={data.instructions.activeText}
-                  versions={data.instructions.versions}
-                  technical={data.instructions.technical}
-                  variables={task.instructions.variables}
-                  testPanel={
-                    data.callConfig?.task === "call_analysis"
-                      ? (draft) => (
-                          <PromptTestPanel
-                            calls={data.callConfig && data.callConfig.task === "call_analysis" ? data.callConfig.testableCalls : []}
-                            what="las instrucciones"
-                            getDraft={() => ({ instructionsText: draft })}
-                          />
-                        )
-                      : undefined
-                  }
-                />
-              )
-            ) : (
-              <Notice title="Esta tarea no usa instrucciones">{task.instructions.whyNot}</Notice>
-            ))}
-
-          {activeTab === "runs" && data.runs && <RunsScreen {...data.runs} currentOrigen={task.id} />}
-
-          {activeTab === "costos" && <CostsTab data={data} />}
-        </div>
+        <div className={cn("mx-auto space-y-6", activeTab === "runs" ? "max-w-5xl" : "max-w-3xl")}>{children}</div>
       </div>
     </div>
+  );
+}
+
+/** "Última corrida · Gasto del mes": sale del reporte de costos del mes, lo más lento de la pantalla, así que llega solo. */
+function LastRunLine({ mode, lastRun }: { mode: TaskMode | null; lastRun: Promise<TaskRunInfo | null> }) {
+  const run = use(lastRun);
+  return (
+    <>
+      Última corrida: {mode === "off" ? "Apagada" : run?.at ? lastRunLabel(run.at) : "Sin corridas todavía"}
+      {" · "}
+      Gasto del mes: {formatSpend(run?.monthSpendUsd ?? null)}
+    </>
+  );
+}
+
+/** El contenido de la pestaña abierta, con los datos que cargó la página solo para ella. */
+export function TaskTabBody({ data, tab }: { data: TaskScreenData; tab: string }) {
+  const { task } = data;
+  const activeTab = resolveTaskTab(tab);
+  return (
+    <>
+      {activeTab === "como" && <HowItWorks task={task} about={data.about} agentClose={data.agentClose} />}
+
+      {activeTab === "config" && <ConfigTab data={data} />}
+
+      {activeTab === "instrucciones" &&
+        (task.instructions.editable ? (
+          data.instructions && (
+            <TaskInstructionsPanel
+              taskId={task.id}
+              taskName={task.name}
+              defaultText={data.instructions.defaultText}
+              activeVersion={data.instructions.activeVersion}
+              activeText={data.instructions.activeText}
+              versions={data.instructions.versions}
+              technical={data.instructions.technical}
+              variables={task.instructions.variables}
+              testPanel={
+                data.callConfig?.task === "call_analysis"
+                  ? (draft) => (
+                      <PromptTestPanel
+                        calls={data.callConfig && data.callConfig.task === "call_analysis" ? data.callConfig.testableCalls : []}
+                        what="las instrucciones"
+                        getDraft={() => ({ instructionsText: draft })}
+                      />
+                    )
+                  : undefined
+              }
+            />
+          )
+        ) : (
+          <Notice title="Esta tarea no usa instrucciones">{task.instructions.whyNot}</Notice>
+        ))}
+
+      {activeTab === "runs" && data.runs && <RunsScreen {...data.runs} currentOrigen={task.id} />}
+
+      {activeTab === "costos" && <CostsTab data={data} />}
+    </>
   );
 }
 

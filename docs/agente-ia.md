@@ -24,6 +24,39 @@ modo borrador (el agente redacta y una persona aprueba antes de que salga).
   dos autorías (agente y quien aprobó) y el agente sigue encendido. Una
   respuesta escrita a mano sí lo apaga.
 
+## Sin IA conectada y la configuración inicial (22/10/2026)
+
+**Empty state.** Si el negocio no tiene ninguna IA de texto conectada (Anthropic,
+OpenAI o Google) y nunca la usó (`agent_runs` vacío), Agentes IA es solo la
+invitación a conectar la primera (`ConnectFirstAi`); el agente, las tareas y las
+corridas redirigen a esa pantalla. Si se desconectan las IAs DESPUÉS de haberlas
+usado, la pantalla sigue entera con el aviso de arriba (`NoAiConnection`): nada
+se borra ni se esconde. La regla es `agentsPageMode` (`lib/agent/page-mode.ts`).
+
+**Los agentes nacen configurados.** Al conectar una IA (`saveIntegration`) y al
+abrir Agentes IA con una IA conectada, `ensureDefaultAgents`
+(`lib/agent/defaults.ts`) llama a `ensure_default_agents` (00252, solo
+`service_role`, candado por workspace):
+
+- crea el **agente de chat** si el negocio nunca tuvo uno (tampoco uno borrado):
+  apagado, sin canales, con `DEFAULT_AGENT_SYSTEM_PROMPT` como versión 1 y el
+  modelo por defecto de la primera IA conectada;
+- le pone proveedor y modelo al chat y al copywriter que no tienen (nunca pisa uno
+  elegido, aunque su IA esté desconectada);
+- le pone al **copywriter** sus instrucciones iniciales
+  (`DEFAULT_COPYWRITER_INSTRUCTIONS`, `lib/content/copywriter.ts`) como versión 1
+  si nunca se escribieron. **No lo prende**: se prende a mano.
+
+En un negocio ya completo, la pantalla ni llama a la base (`agentsNeedDefaults`).
+Las tareas de IA no necesitan nada de esto: ya tienen sus instrucciones en el
+código ("texto del sistema") y usan el modelo por defecto de la primera IA.
+
+**Pestañas.** El detalle de un agente y de una tarea responde con el armazón
+(encabezado y pestañas) sin esperar los datos: la pestaña se marca en el clic
+(`DetailTabs`) y su contenido llega en un `<Suspense key={tab}>` con esqueleto.
+La línea de última corrida y gasto de una tarea (el reporte de costos del mes)
+viaja como promesa.
+
 ## Qué pasa con un mensaje entrante
 
 ```

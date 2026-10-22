@@ -16,6 +16,7 @@ import { enqueuePendingDocuments } from "@/lib/knowledge/pending";
 import { VOYAGE_PROVIDER_ID } from "@/lib/knowledge/embeddings";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { agentsLeftWithoutAi } from "@/lib/agent/availability";
+import { ensureDefaultAgents } from "@/lib/agent/defaults";
 import { notifyIntegrationAttention } from "@/lib/notifications/integration-alerts";
 import { validateSecretValue } from "@/lib/integrations/secret-validation";
 import type { Json } from "@/lib/types/database";
@@ -47,6 +48,7 @@ import {
  */
 
 const INTEGRATIONS_PATH = "/dashboard/settings/integrations";
+const AGENTS_PATH = "/dashboard/agents";
 
 export type IntegrationActionResult =
   | { ok: true; warnings?: string[] }
@@ -265,6 +267,17 @@ export async function saveIntegration(
     }
   }
 
+  // Conectar una IA deja los agentes listos (00252): el agente de chat (apagado), el modelo de los que no tienen y las
+  // instrucciones del copywriter. No lanza: guardar la integracion no puede fallar por esto.
+  if (provider.type === "ai_provider") {
+    try {
+      await ensureDefaultAgents(await createServiceClient(), workspace.id);
+    } catch (err) {
+      console.error("[integrations] no pude preconfigurar los agentes:", err instanceof Error ? err.message : "error");
+    }
+    revalidatePath(AGENTS_PATH, "layout");
+  }
+
   revalidatePath(INTEGRATIONS_PATH);
   return warnings.length ? { ok: true, warnings } : { ok: true };
 }
@@ -390,6 +403,7 @@ export async function disconnectIntegration(
   // (reconectar los deja como estaban), pero quien administra tiene que enterarse. Nunca frena la desconexion.
   if (provider.type === "ai_provider") {
     await warnAgentsLeftWithoutAi(workspace.id, provider.id, provider.label);
+    revalidatePath(AGENTS_PATH, "layout");
   }
 
   revalidatePath(INTEGRATIONS_PATH);

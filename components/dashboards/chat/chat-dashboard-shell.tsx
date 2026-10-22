@@ -29,7 +29,7 @@ import { PeriodPopover } from "./filters/period-popover";
 import { KpiCards } from "./kpi-cards";
 import { DraftAlert } from "./draft-alert";
 import { TrendsBlock } from "./trends-block";
-import { AgentActionsCard, AgentConnectionWarning, AgentHidden, AgentInvite, AgentNoRuns, AgentRates, ApprovalCard, EscalationReasonsCard, FirstResponderCard, RuleResultsCard } from "./agent-block";
+import { AgentActionsCard, AgentConnectionWarning, AgentHidden, AgentNoRuns, AgentRates, ApprovalCard, EscalationReasonsCard, FirstResponderCard, RuleResultsCard } from "./agent-block";
 import { TeamBlock } from "./team-block";
 import { PatternsSection, QualityLineRow } from "./patterns-block";
 import { fetchRepliesAction } from "@/lib/actions/chat-dashboard";
@@ -195,7 +195,7 @@ export function ChatDashboardShell({
             {(data) => <TrendsBlock data={data} filteredByAuthor={filters.author !== null} />}
           </Block>
 
-          {/* El agente: se muestra segun el estado real del sistema (O). Oculta, invitacion, completa o completa con aviso. */}
+          {/* El agente: se muestra segun el estado real del sistema (O). Oculta, completa o completa con aviso. */}
           {agentVisibility.mode !== "hidden" && (
             <SectionHeading
               title="El agente"
@@ -209,7 +209,6 @@ export function ChatDashboardShell({
               }
             />
           )}
-          {agentVisibility.mode === "invite" && <AgentInvite />}
           {agentSection && (
             <>
               {agentVisibility.warning && <AgentConnectionWarning message={agentVisibility.warning} />}
