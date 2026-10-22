@@ -20,6 +20,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import path from "node:path";
 import { SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { NAV_ITEMS, visibleNavItems } from "@/lib/nav/items";
+import { canUseInbox } from "@/lib/inbox/channel-access";
 import { pageActions } from "@/lib/nav/page-actions";
 import { AGENT_TYPES, tabsForViewer } from "@/lib/agent/agent-types";
 
@@ -207,7 +208,8 @@ const ROLES: Role[] = ["owner", "admin", "member"];
 /** Adaptadores: si cambia la firma de una funcion, se cambia ESTO, no la foto. */
 function navFor(role: Role): string[] {
   const perms = SYSTEM_ROLE_PERMISSIONS[role];
-  return visibleNavItems(NAV_ITEMS, { permissionKeys: perms.keys, flags: { eod: true, settings: true } }).map((i) => i.name);
+  // La Bandeja ya no pide claves: aparece si el rol ve alguna cuenta (00249). Los tres roles de sistema ven todas.
+  return visibleNavItems(NAV_ITEMS, { permissionKeys: perms.keys, flags: { eod: true, settings: true, inbox: canUseInbox(perms) } }).map((i) => i.name);
 }
 
 const ACTION_ROUTES = [

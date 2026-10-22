@@ -19,6 +19,10 @@
  * Los roles que crea cuelgan del workspace de prueba (`zz-test-`), asi que los
  * borra la limpieza con el workspace. Sin permisos (`keys: []`) a proposito:
  * el alcance de leads es lo unico que tiene que diferir del Member de sistema.
+ *
+ * La bandeja (00249) va por cuenta: el rol ve todas las cuentas con el MISMO
+ * alcance que los leads (lo que antes salia de delegar en `can_see_contact`),
+ * como el Member de sistema.
  */
 export function leadScopeHelper(svc) {
   const roles = new Map(); // `${wsId}:${mode}` -> id
@@ -32,7 +36,11 @@ export function leadScopeHelper(svc) {
         workspace_id: wsId,
         name: `zz-test-alcance-${mode}`,
         description: "Rol de prueba: solo cambia el alcance de leads",
-        permissions: { keys: [], scopes: { leads: mode, conversations: "own", bookings: "own" } },
+        permissions: {
+          keys: [],
+          scopes: { leads: mode, bookings: "own" },
+          channels: { mode: "all", all: { scope: mode, reply: true } },
+        },
       })
       .select("id")
       .single();

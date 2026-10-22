@@ -33,11 +33,14 @@ const { createClient, createServiceClient } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient, createServiceClient }));
 
-// Equipo y roles (F20): escribir por un canal pide `inbox.<canal>.reply`. Por defecto estas pruebas responden con todas las
-// claves (no-regresion); las de abajo del todo achican la lista.
-const access = vi.hoisted(() => ({ keys: null as string[] | null }));
+// Escribir pide "puede responder" en la CUENTA de la conversacion (00249). Por defecto estas pruebas responden en todas
+// (no-regresion); las de abajo del todo achican la bandeja.
+const access = vi.hoisted(() => ({ channels: null as unknown }));
 vi.mock("@/lib/auth/guards", () => ({
-  getMemberAction: async () => ({ workspace: { id: "ws-1" }, can: (key: string) => (access.keys === null ? true : access.keys.includes(key)) }),
+  getMemberAction: async () => ({
+    workspace: { id: "ws-1" },
+    permissions: { channels: access.channels ?? { mode: "all", all: { scope: "own", reply: true } } },
+  }),
 }));
 
 import { POST } from "./route";
@@ -106,6 +109,7 @@ function conversation(over: Record<string, unknown> = {}) {
     id: CONV,
     workspace_id: WS,
     contact_id: "c-1",
+    channel_id: "ch-1",
     late_conversation_id: "late-cv-1",
     channels: { id: "ch-1", workspace_id: WS, provider: "evolution", platform: "whatsapp", evolution_instance: "ssa-1", late_account_id: null, email_address: null, is_active: true },
     contacts: { do_not_contact: false, do_not_contact_reason: null },
@@ -117,7 +121,7 @@ const call = (body: Record<string, unknown>) =>
   POST(new NextRequest("https://app.test/api/v1/messages", { method: "POST", body: JSON.stringify(body) }));
 
 beforeEach(() => {
-  access.keys = null;
+  access.channels = null;
   vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
   sendChannelMessage.mockResolvedValue({ ok: true, platformMessageId: "pm-1" });
@@ -303,41 +307,51 @@ describe("POST /api/v1/messages: con media (F19)", () => {
 });
 
 
-describe("POST /api/v1/messages: permiso por canal (F20)", () => {
+describe("POST /api/v1/messages: permiso por cuenta (00249)", () => {
   const instagram = () => conversation({
+    channel_id: "ch-ig",
     channels: { id: "ch-ig", workspace_id: WS, provider: "late", platform: "instagram", late_account_id: "acc-1", evolution_instance: null, email_address: null, is_active: true },
   });
+  const custom = (byChannel: Record<string, { scope: string; reply: boolean }>) => ({ mode: "custom", byChannel });
 
-  it("un rol sin inbox.instagram.reply recibe 403 y NO se llama al proveedor", async () => {
+  it("un rol que ve esa cuenta pero no responde recibe 403 y NO se llama al proveedor", async () => {
     const { client, inserts } = fakeClient({ conversation: instagram() });
     createClient.mockResolvedValue(client);
-    access.keys = ["inbox.instagram.view", "inbox.whatsapp.reply"]; // ve Instagram y responde solo WhatsApp
+    access.channels = custom({ "ch-ig": { scope: "all", reply: false }, "ch-1": { scope: "all", reply: true } }); // ve Instagram, responde solo WhatsApp
     const response = await call({ conversationId: CONV, text: "hola" });
     expect(response.status).toBe(403);
     expect(sendChannelMessage).not.toHaveBeenCalled();
     expect(inserts).toHaveLength(0);
   });
 
-  it("con inbox.instagram.reply manda por Instagram", async () => {
+  it("con «responde» en esa cuenta manda por Instagram", async () => {
     const { client } = fakeClient({ conversation: instagram() });
     createClient.mockResolvedValue(client);
-    access.keys = ["inbox.instagram.reply"];
+    access.channels = custom({ "ch-ig": { scope: "own", reply: true } });
     expect((await call({ conversationId: CONV, text: "hola" })).status).toBe(201);
     expect(sendChannelMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("la clave de otro canal no sirve: WhatsApp pide inbox.whatsapp.reply", async () => {
-    const { client } = fakeClient({ conversation: conversation() }); // WhatsApp
+  it("responder en OTRA cuenta de la misma red no sirve (dos Instagram)", async () => {
+    const { client } = fakeClient({ conversation: instagram() });
     createClient.mockResolvedValue(client);
-    access.keys = ["inbox.instagram.reply", "inbox.email.reply"];
+    access.channels = custom({ "ch-ig-2": { scope: "all", reply: true } });
     expect((await call({ conversationId: CONV, text: "hola" })).status).toBe(403);
     expect(sendChannelMessage).not.toHaveBeenCalled();
   });
 
-  it("tampoco manda media (un recurso) sin la clave", async () => {
+  it("«todas las cuentas» sin responder tampoco manda", async () => {
     const { client } = fakeClient({ conversation: conversation() });
     createClient.mockResolvedValue(client);
-    access.keys = ["inbox.whatsapp.view"];
+    access.channels = { mode: "all", all: { scope: "all", reply: false } };
+    expect((await call({ conversationId: CONV, text: "hola" })).status).toBe(403);
+    expect(sendChannelMessage).not.toHaveBeenCalled();
+  });
+
+  it("tampoco manda media (un recurso) sin «responde»", async () => {
+    const { client } = fakeClient({ conversation: conversation() });
+    createClient.mockResolvedValue(client);
+    access.channels = custom({ "ch-1": { scope: "own", reply: false } });
     const response = await call({ conversationId: CONV, media: { kind: "image", storagePath: `${WS}/${CONV}/x.jpg` } });
     expect(response.status).toBe(403);
     expect(sendChannelMessage).not.toHaveBeenCalled();

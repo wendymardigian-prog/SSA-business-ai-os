@@ -108,7 +108,7 @@ Cada bloque es una corrida de Claude Code. El orden importa: B1 es prerequisito 
 ### 5.1 Base de permisos (B1)
 - **Qué hace:** catálogo de §9 en `lib/auth/permissions.ts` (fuente única); copia del Member en SQL comparada por test; `has_permission` v2; claves reservadas que no se muestran; retiro de `settings.manage` con migración del jsonb; menú lateral y pestañas de Ajustes filtrados por permiso.
 - **Hasta dónde llega:** la infraestructura y el catálogo. La aplicación módulo por módulo es B4/B5.
-- **No hace:** permisos por registro individual (ACL), permisos por canal específico (una cuenta de WhatsApp vs otra), horarios de acceso, roles temporales.
+- **No hace:** permisos por registro individual (ACL), horarios de acceso, roles temporales. (Los permisos por cuenta de canal se sumaron después, el 22/10/2026: ver `docs/roles.md`, «La bandeja por cuenta».)
 - **Dónde va lo que queda afuera:** fuera del proyecto, salvo pedido.
 
 ### 5.2 Equipo e invitaciones (B2)
@@ -550,4 +550,4 @@ Sin feature flag: cada bloque se despliega y su RLS se aplica justo después. La
 Migraciones idempotentes y sin datos de SSA; la 00202 y 00203 corren bien en una base vacía. Sin variables de entorno nuevas (Resend ya existe). `scripts/create-owner.mjs` no cambia.
 
 ## 14. Fuera de alcance
-Transferir la propiedad · eventos de equipo · invitaciones masivas · links multiuso · SSO/2FA · permisos por cuenta de canal · permisos por registro · horarios de acceso · roles con vencimiento · historial versionado de roles con restaurar · limpieza de workspaces y roles `zz-test` huérfanos (va a PENDIENTE) · claves del Asistente, CX y Gastos (las suma cada módulo).
+Transferir la propiedad · eventos de equipo · invitaciones masivas · links multiuso · SSO/2FA · permisos por registro · horarios de acceso · roles con vencimiento · historial versionado de roles con restaurar · limpieza de workspaces y roles `zz-test` huérfanos (va a PENDIENTE) · claves del Asistente, CX y Gastos (las suma cada módulo).

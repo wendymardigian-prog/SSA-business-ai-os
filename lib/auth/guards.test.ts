@@ -113,7 +113,7 @@ describe("resolver los permisos (F70)", () => {
           system_role: null,
           permissions: {
             keys: ["dashboards.content.view", "content.publish"],
-            scopes: { leads: "all", conversations: "own" },
+            scopes: { leads: "all" },
           },
         },
       ],

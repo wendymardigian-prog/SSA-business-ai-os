@@ -1,4 +1,5 @@
 import { getWorkspace } from "@/lib/workspace";
+import { canUseInbox } from "@/lib/inbox/channel-access";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { countUnreadNotifications } from "@/lib/actions/notifications";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
@@ -36,7 +37,11 @@ export default async function DashboardLayout({
   ]);
   // "Ajustes" se ve para quien tenga al menos una pestaña (plano formularios-ui, D4): Recursos e
   // Integraciones ya no son items del menu, se llega por ahi.
-  const navFlags = { eod: hasEod, settings: visibleSettingsTabs(permissionContext.can).length > 0 };
+  const navFlags = {
+    eod: hasEod,
+    settings: visibleSettingsTabs(permissionContext.can).length > 0,
+    inbox: canUseInbox(permissionContext.permissions),
+  };
   const permissionKeys = permissionContext.permissions.keys;
   const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
 

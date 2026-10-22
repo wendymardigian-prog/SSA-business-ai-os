@@ -42,7 +42,7 @@ function customRole(keys: string[]) {
     id: "rol-1",
     workspace_id: WS,
     system_role: null,
-    permissions: { keys, scopes: { leads: "all", conversations: "all" } },
+    permissions: { keys, scopes: { leads: "all" } },
   });
 }
 

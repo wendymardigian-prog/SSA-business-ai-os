@@ -15,10 +15,14 @@
  *  - El Owner no se da: es único y se transfiere, no se asigna.
  *  - Una clave `ownerOnly` o reservada no entra en un rol (la tiene el Owner y nadie más).
  *  - Para el resto: cada clave y cada alcance tienen que estar ya en poder de quien da.
+ *  - Lo mismo con la bandeja, cuenta por cuenta: no se da una cuenta que no ves, un alcance más
+ *    ancho que el tuyo en esa cuenta, ni "responder" si no respondés. "Todas las cuentas" (que
+ *    incluye las que se conecten después) solo la da quien la tiene (`canGrantChannels`).
  *  - Nadie se cambia su propio rol. Nadie edita el rol que tiene asignado (salvo Owner y Admin,
  *    que no dependen de un rol personalizado para tener lo que tienen).
  *  - Nadie toca al Owner.
  */
+import { canGrantChannels, type ChannelsConfig } from "@/lib/auth/channel-permissions";
 import {
   OWNER_ONLY_KEYS,
   PERMISSION_KEYS,
@@ -78,7 +82,12 @@ const RESERVED_KEYS = PERMISSION_KEYS.filter((p) => p.reserved).map((p) => p.key
  */
 export function assertCanGrant(
   actor: GrantActor,
-  grant: { keys: string[]; scopes?: Partial<Record<ScopedModule, PermissionScope>> },
+  grant: {
+    keys: string[];
+    scopes?: Partial<Record<ScopedModule, PermissionScope>>;
+    /** La bandeja que se quiere dar, y la que ya tenía el rol (al editar). */
+    channels?: { wanted: ChannelsConfig; before: ChannelsConfig | null };
+  },
 ): GrantResult {
   const forbidden = grant.keys.filter((k) => OWNER_ONLY_KEYS.includes(k) || RESERVED_KEYS.includes(k));
   if (forbidden.length > 0) {
@@ -95,6 +104,10 @@ export function assertCanGrant(
     if (!wanted) continue;
     const mine = actor.permissions.scopes[scoped] ?? "own";
     if (SCOPE_RANK[wanted] > SCOPE_RANK[mine]) return deny("scope_too_wide", CANNOT_GRANT_MESSAGE);
+  }
+
+  if (grant.channels && !canGrantChannels(actor.permissions.channels, grant.channels.wanted, grant.channels.before)) {
+    return deny("scope_too_wide", CANNOT_GRANT_MESSAGE);
   }
   return { ok: true };
 }
@@ -141,7 +154,11 @@ export function assertCanAssignRole(
     return isAdminLike(actor) ? { ok: true } : deny("admin_role", CANNOT_GRANT_MESSAGE);
   }
   // Member de sistema y roles personalizados: lo que tiene el rol tiene que estar en poder de quien lo da.
-  return assertCanGrant(actor, { keys: role.permissions.keys, scopes: role.permissions.scopes });
+  return assertCanGrant(actor, {
+    keys: role.permissions.keys,
+    scopes: role.permissions.scopes,
+    channels: { wanted: role.permissions.channels, before: null },
+  });
 }
 
 /**
@@ -159,5 +176,5 @@ export function assertCanEditRole(
     return deny("own_role", "No podés editar el rol que tenés asignado.");
   }
   const added = diffGrant(role.permissions, after);
-  return assertCanGrant(actor, added);
+  return assertCanGrant(actor, { ...added, channels: { wanted: after.channels, before: role.permissions.channels } });
 }

@@ -1,0 +1,41 @@
+{
+  "_doc": "Casos compartidos de la bandeja por cuenta (00249). Los corre channel-permissions.test.ts contra grantFor / canGrantChannels (TypeScript) y verify-roles.mjs contra private.role_channel_grant y public.can_grant_channels (SQL). Los ids de cuenta son uuid fijos: A y B son dos Instagram, C un WhatsApp. En canGrant, actor es owner | admin | member (rol de sistema) o la configuracion de bandeja de un rol personalizado. Si se cambia una regla, se cambia en las dos y se suma el caso.",
+  "ids": {
+    "A": "aaaaaaaa-0000-4000-8000-000000000001",
+    "B": "bbbbbbbb-0000-4000-8000-000000000002",
+    "C": "cccccccc-0000-4000-8000-000000000003"
+  },
+  "grantFor": [
+    { "name": "todas las cuentas da lo mismo en cualquiera", "channels": { "mode": "all", "all": { "scope": "own_unassigned", "reply": true } }, "channel": "A", "expected": { "scope": "own_unassigned", "reply": true } },
+    { "name": "todas las cuentas vale tambien para una cuenta que no conoce (las futuras)", "channels": { "mode": "all", "all": { "scope": "all", "reply": false } }, "channel": "C", "expected": { "scope": "all", "reply": false } },
+    { "name": "por cuenta: la que figura", "channels": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": true } } }, "channel": "A", "expected": { "scope": "all", "reply": true } },
+    { "name": "por cuenta: la que no figura no se ve (el otro Instagram)", "channels": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": true } } }, "channel": "B", "expected": null },
+    { "name": "por cuenta vacia: ninguna", "channels": { "mode": "custom", "byChannel": {} }, "channel": "A", "expected": null },
+    { "name": "un alcance que no existe es sin acceso", "channels": { "mode": "custom", "byChannel": { "A": { "scope": "algunas", "reply": true } } }, "channel": "A", "expected": null },
+    { "name": "responder que no es true es false", "channels": { "mode": "custom", "byChannel": { "A": { "scope": "own", "reply": "si" } } }, "channel": "A", "expected": { "scope": "own", "reply": false } },
+    { "name": "sin reply es false", "channels": { "mode": "all", "all": { "scope": "own" } }, "channel": "B", "expected": { "scope": "own", "reply": false } },
+    { "name": "un modo que no existe es sin acceso", "channels": { "mode": "algunas", "all": { "scope": "all", "reply": true } }, "channel": "A", "expected": null },
+    { "name": "todas con un permiso roto es sin acceso", "channels": { "mode": "all", "all": { "scope": "todo" } }, "channel": "A", "expected": null },
+    { "name": "sin configuracion es sin acceso", "channels": null, "channel": "A", "expected": null }
+  ],
+  "canGrant": [
+    { "name": "el Owner da todas las cuentas", "actor": "owner", "wanted": { "mode": "all", "all": { "scope": "all", "reply": true } }, "before": null, "allowed": true },
+    { "name": "el Admin da cualquier cuenta", "actor": "admin", "wanted": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": true } } }, "before": null, "allowed": true },
+    { "name": "el Member de sistema da todas las cuentas con su alcance", "actor": "member", "wanted": { "mode": "all", "all": { "scope": "own", "reply": true } }, "before": null, "allowed": true },
+    { "name": "el Member de sistema no da todas con un alcance mas ancho", "actor": "member", "wanted": { "mode": "all", "all": { "scope": "own_unassigned", "reply": false } }, "before": null, "allowed": false },
+    { "name": "el Member de sistema da una cuenta con su alcance", "actor": "member", "wanted": { "mode": "custom", "byChannel": { "B": { "scope": "own", "reply": true } } }, "before": null, "allowed": true },
+    { "name": "quien tiene solo A da A", "actor": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": true } } }, "wanted": { "mode": "custom", "byChannel": { "A": { "scope": "own", "reply": true } } }, "before": null, "allowed": true },
+    { "name": "quien tiene solo A no da B (el otro Instagram)", "actor": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": true } } }, "wanted": { "mode": "custom", "byChannel": { "B": { "scope": "own", "reply": false } } }, "before": null, "allowed": false },
+    { "name": "quien tiene todas sus cuentas una por una no da todas (incluye las futuras)", "actor": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": true }, "B": { "scope": "all", "reply": true }, "C": { "scope": "all", "reply": true } } }, "wanted": { "mode": "all", "all": { "scope": "own", "reply": false } }, "before": null, "allowed": false },
+    { "name": "quien tiene todas da una cuenta suelta", "actor": { "mode": "all", "all": { "scope": "own_unassigned", "reply": true } }, "wanted": { "mode": "custom", "byChannel": { "C": { "scope": "own_unassigned", "reply": true } } }, "before": null, "allowed": true },
+    { "name": "no se sube el alcance de una cuenta por encima del propio", "actor": { "mode": "custom", "byChannel": { "A": { "scope": "own_unassigned", "reply": true } } }, "wanted": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": false } } }, "before": null, "allowed": false },
+    { "name": "no se da responder si no se responde", "actor": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": false } } }, "wanted": { "mode": "custom", "byChannel": { "A": { "scope": "own", "reply": true } } }, "before": null, "allowed": false },
+    { "name": "al editar, lo que ya tenia el rol no cuenta como dado", "actor": { "mode": "custom", "byChannel": { "A": { "scope": "own", "reply": false } } }, "wanted": { "mode": "custom", "byChannel": { "A": { "scope": "own", "reply": false }, "B": { "scope": "all", "reply": true } } }, "before": { "mode": "custom", "byChannel": { "B": { "scope": "all", "reply": true } } }, "allowed": true },
+    { "name": "bajar el alcance de una cuenta siempre se puede", "actor": { "mode": "custom", "byChannel": {} }, "wanted": { "mode": "custom", "byChannel": { "B": { "scope": "own", "reply": false } } }, "before": { "mode": "custom", "byChannel": { "B": { "scope": "all", "reply": true } } }, "allowed": true },
+    { "name": "pasar de todas a por cuenta con lo mismo no da nada nuevo", "actor": { "mode": "custom", "byChannel": {} }, "wanted": { "mode": "custom", "byChannel": { "A": { "scope": "own", "reply": true }, "C": { "scope": "own", "reply": true } } }, "before": { "mode": "all", "all": { "scope": "own", "reply": true } }, "allowed": true },
+    { "name": "pasar de por cuenta a todas exige tener todas", "actor": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": true } } }, "wanted": { "mode": "all", "all": { "scope": "own", "reply": false } }, "before": { "mode": "custom", "byChannel": { "A": { "scope": "all", "reply": true } } }, "allowed": false },
+    { "name": "sacar todas siempre se puede", "actor": { "mode": "custom", "byChannel": {} }, "wanted": { "mode": "custom", "byChannel": {} }, "before": { "mode": "all", "all": { "scope": "all", "reply": true } }, "allowed": true },
+    { "name": "un rol sin bandeja no da nada", "actor": { "mode": "custom", "byChannel": {} }, "wanted": { "mode": "custom", "byChannel": { "A": { "scope": "own", "reply": false } } }, "before": null, "allowed": false },
+    { "name": "dar ninguna cuenta siempre se puede", "actor": { "mode": "custom", "byChannel": {} }, "wanted": { "mode": "custom", "byChannel": {} }, "before": null, "allowed": true }
+  ]
+}

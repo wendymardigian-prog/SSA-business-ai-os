@@ -378,12 +378,16 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 - **Las conexiones personales no cambian** (Google Calendar y Fathom, `lib/oauth/*`, `claim_oauth_refresh`): las ve y las conecta cada persona. `oauthRouteContext` tiene tres ramas y un test las fija; la del negocio pide `integrations.manage`.
 - **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
-- **La bandeja respeta el canal**: `inbox.<canal>.view` filtra lo que se ve y `inbox.<canal>.reply` habilita el composer, `POST /api/v1/messages` (403 sin llamar al proveedor) y los borradores del agente.
+- **La bandeja va por CUENTA conectada (00249)**: cada rol guarda en `permissions.channels` «todas las cuentas» (incluye las futuras) o una lista por cuenta, cada una con su alcance (solo asignadas / + sin asignar / todas) y «responde». Lo aplica la base (`can_see_conversation` decide por la cuenta; ver un chat deja ver la ficha del contacto) y la pantalla usa las mismas reglas (`lib/auth/channel-permissions.ts`, gemelas SQL con `channel-permissions.cases.json`): el menú de cuentas, el composer y los 403 de envío, borradores, reacciones, adjuntos y recursos. Las seis claves `inbox.<red>.*` y el alcance `conversations` se retiraron. Resumen en `docs/roles.md`, «La bandeja por cuenta».
 - **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones". Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
 
 ## Migraciones (00208 a 00214, todas aplicadas y registradas)
 
 `00208` (`has_permission` v2, `member_permission_keys`, `owner_only_keys`; las politicas de webhooks pasan a `webhooks.manage`), `00209` (diez columnas de `workspace_invites`), `00210` (backfill de `role_id`), `00211` (retiro de `settings.manage` y sucesoras en el jsonb de los roles), `00212` (RLS de equipo, `can_grant_permissions`, `can_give_role`, `is_own_role` y el trigger de roles), `00213` (RLS de Ajustes) y `00214` (RLS de modulos). **La proxima migracion disponible es la `00215`** (confirmar con `list_migrations`; ya paso que el numero de este archivo quedo viejo).
+
+## La bandeja por cuenta (22/10/2026)
+
+`00249` (aditiva: `permissions.channels`, backfill exacto desde las claves viejas, `can_see_conversation` por cuenta, `can_see_contact` + «ver un chat deja ver la ficha», `can_grant_channels` y el trigger `workspace_roles_channels_default`) y `00250` (la que BORRA las claves `inbox.*` y `scopes.conversations`, y saca esas claves de `private.member_permission_keys()`). **Orden: la 00249 ANTES de desplegar el código, la 00250 DESPUÉS** (con su respaldo y las consultas de su cabecera en 0). **La próxima libre es la `00251`** (confirmar con `list_migrations`).
 
 ## Verificacion de equipo y roles
 
@@ -1452,7 +1456,7 @@ Estado de setter y de vendedor con su historial, producto de interés y campos p
 `00244` (valores tipados), `00245` (estados, historial, función y guardia), `00246` (producto de interés), `00247` (`merge_contacts`
 con estados y producto; la definición vieja completa en su cabecera) y `00248` (corrige la 00245: el DEFAULT de
 `contact_status_settings` pasa a ser un literal; llamar a una función sin permisos desde un DEFAULT rompía el alta de un workspace).
-**Un DEFAULT de columna se evalúa con los permisos de quien inserta: nunca una función de `private`.** **La próxima libre es la `00249`**
+**Un DEFAULT de columna se evalúa con los permisos de quien inserta: nunca una función de `private`.** **La próxima libre era la `00249`**
 (confirmar con `list_migrations`).
 
 ## Verificación

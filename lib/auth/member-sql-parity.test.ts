@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { MEMBER_PERMISSION_KEYS, OWNER_ONLY_KEYS, PERMISSION_KEYS, SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
+import { MEMBER_CHANNELS } from "@/lib/auth/channel-permissions";
 
 const DIR = path.join(process.cwd(), "supabase/migrations");
 
@@ -49,6 +50,25 @@ describe("paridad de permisos TypeScript ↔ SQL", () => {
     const { keys, file } = latestKeys("ungrantable_keys");
     const expected = PERMISSION_KEYS.filter((p) => p.ownerOnly || p.reserved).map((p) => p.key);
     expect([...keys].sort(), `ultima definicion: ${file}`).toEqual([...expected].sort());
+  });
+
+  it("private.member_channels() (00249) es la bandeja del Member de sistema (MEMBER_CHANNELS)", () => {
+    const files = readdirSync(DIR).filter((f) => /^\d{5}_.*\.sql$/.test(f)).sort().reverse();
+    let found: { file: string; value: unknown } | null = null;
+    for (const file of files) {
+      const code = readFileSync(path.join(DIR, file), "utf8")
+        .split("\n")
+        .filter((l) => !l.trimStart().startsWith("--"))
+        .join("\n");
+      const m = code.match(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+private\.member_channels\(\)[\s\S]*?SELECT\s+'([^']+)'::jsonb/i);
+      if (m) {
+        found = { file, value: JSON.parse(m[1]) };
+        break;
+      }
+    }
+    expect(found, "No encontre private.member_channels() en supabase/migrations/").not.toBeNull();
+    expect(found!.value, `ultima definicion: ${found!.file}`).toEqual(MEMBER_CHANNELS);
+    expect(SYSTEM_ROLE_PERMISSIONS.member.channels).toEqual(MEMBER_CHANNELS);
   });
 
   it("el Admin de sistema no tiene ninguna clave solo-Owner, y el Owner si", () => {

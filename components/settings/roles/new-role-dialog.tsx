@@ -40,14 +40,14 @@ export function NewRoleDialog({
     if (from === "duplicate") {
       const source = roles.find((r) => r.id === duplicateId);
       if (source) {
-        template = { id: "blank", name: source.name, description: "", keys: source.permissions.keys, scopes: source.permissions.scopes };
+        template = { id: "blank", name: source.name, description: "", keys: source.permissions.keys, scopes: source.permissions.scopes, channels: source.permissions.channels };
         description = source.description ?? undefined;
       }
     } else {
       template = ROLE_TEMPLATES.find((t) => t.id === from);
       description = template && template.id !== "blank" ? template.description : undefined;
     }
-    const { permissions, dropped } = template ? applyTemplate(template, viewer) : { permissions: { keys: [], scopes: undefined }, dropped: 0 };
+    const { permissions, dropped } = template ? applyTemplate(template, viewer) : { permissions: { keys: [], scopes: undefined, channels: undefined }, dropped: 0 };
     const scopes = permissions.scopes;
 
     const result = await createRole({
@@ -55,12 +55,12 @@ export function NewRoleDialog({
       description,
       keys: permissions.keys,
       leadsScope: scopes?.leads,
-      conversationsScope: scopes?.conversations,
       bookingsScope: scopes?.bookings,
       callsScope: scopes?.calls,
       salesScope: scopes?.sales,
       commissionsScope: scopes?.commissions,
       tasksScope: scopes?.tasks,
+      channels: permissions.channels,
     });
     setPending(false);
     if (!result.ok) {
