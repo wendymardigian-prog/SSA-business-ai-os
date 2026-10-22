@@ -1468,7 +1468,7 @@ con estados y producto; la definición vieja completa en su cabecera) y `00248` 
 (confirmar con `list_migrations`).
 
 La `00249` a la `00252` son de otras sesiones (bandeja por cuenta y agentes IA); la `00253` es de Contenido (una pieza se edita en
-cualquier estado). **La próxima libre es la `00254`** (confirmar con `list_migrations` y las ramas locales).
+cualquier estado), **aplicada y registrada** el 22/10/2026 (version `20261022202705`), con `verify-content.mjs --despues-de-00253` en verde. **La próxima libre es la `00254`** (confirmar con `list_migrations` y las ramas locales).
 
 ## Verificación
 
@@ -1554,7 +1554,7 @@ completo en `docs/PROGRESS-CV4.md`.
   siempre el `default_publisher` de la cuenta (F13), nunca algo elegido por
   pieza.
 - **Una pieza se edita en cualquier estado** (M10, 22/10/2026, migracion
-  `00253`): la politica `content_posts_update` ya no mira el estado; el
+  `00253`, aplicada y registrada): la politica `content_posts_update` ya no mira el estado; el
   trigger `content_posts_status_guard` conserva que un Member no mueve el
   ESTADO fuera de los tres de autor. Lo agendado en Zernio se reenvia al
   guardar, agregar o sacar un archivo (`lib/publishing/content-resync.ts`,
