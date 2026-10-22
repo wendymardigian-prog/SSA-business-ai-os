@@ -19,7 +19,7 @@ vi.mock("@/lib/zernio-client", () => ({
   createZernioClient: () => ({ accounts: { listAccounts } }),
 }));
 
-import { computeAccounts, syncSocialAccounts } from "./accounts";
+import { computeAccounts, saveFailureWarning, syncSocialAccounts } from "./accounts";
 
 const WS = "ws-1";
 
@@ -417,5 +417,53 @@ describe("varias cuentas de la misma red (00236)", () => {
     expect(rows.find((r) => r.id === "sa-1")?.external_id).toBe("zr-ig-1");
     expect(result.newAccountIds).toHaveLength(1);
     expect(result.newAccountIds).not.toContain("sa-1");
+  });
+});
+
+describe("una cuenta que no se pudo guardar se avisa", () => {
+  beforeEach(() => {
+    getZernioKeyState.mockReset();
+    listAccounts.mockReset();
+    getZernioKeyState.mockResolvedValue({ state: "present", key: "key-simulada" });
+  });
+
+  it("una base sin la 00236 (una cuenta por red) dice que falta la migracion, no que salio todo bien", async () => {
+    listAccounts.mockResolvedValue({
+      data: {
+        accounts: [
+          zernioAccount({ _id: "zr-ig-1", username: "marca_principal" }),
+          zernioAccount({ _id: "zr-ig-2", username: "marca_academia" }),
+        ],
+        hasAnalyticsAccess: true,
+      },
+    });
+    const db = memoryDb(
+      {
+        channels: [],
+        oauth_connections: [],
+        integration_configs: [],
+        social_accounts: [
+          { id: "sa-1", workspace_id: WS, platform: "instagram", external_id: "zr-ig-1", is_active: true, default_publisher: "zernio", publishers: [] },
+        ],
+      },
+      // El indice viejo de la 00082: (workspace_id, platform).
+      { unique: { social_accounts: (a, b) => a.workspace_id === b.workspace_id && a.platform === b.platform } },
+    );
+
+    const result = await syncSocialAccounts(db.client as never, WS);
+
+    expect(db.rows("social_accounts")).toHaveLength(1);
+    expect(result.newAccountIds).toEqual([]);
+    expect(result.warnings).toEqual([
+      "No pude guardar @marca_academia de Instagram: la base solo admite una cuenta por red. Falta aplicar la migración 00236 (varias cuentas por red).",
+    ]);
+  });
+
+  it("otro error dice que se pruebe de nuevo, sin el detalle de la base", () => {
+    const warning = saveFailureWarning(
+      { platform: "tiktok", username: null, displayName: "Marca", existingId: "sa-1" },
+      { code: "23505" },
+    );
+    expect(warning).toBe('No pude guardar Marca de TikTok. Probá "Sincronizar cuentas" de nuevo en un rato.');
   });
 });

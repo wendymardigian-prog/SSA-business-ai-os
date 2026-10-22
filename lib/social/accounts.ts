@@ -24,6 +24,7 @@ import { canUploadToYouTube } from "./google";
 import { adoptOrphanComments } from "@/lib/comments/adopt";
 import { getZernioKeyState } from "@/lib/integrations/zernio-key";
 import { createZernioClient } from "@/lib/zernio-client";
+import { platformLabel } from "@/lib/platforms";
 
 type Db = SupabaseClient<Database>;
 
@@ -505,6 +506,7 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
     existing: (existing.data ?? []) as ExistingAccount[],
   });
 
+  const saveWarnings: string[] = [];
   for (const account of computed.accounts) {
     // Los datos de perfil se escriben solo si la fuente los entregó. Un campo
     // ausente no se pisa (undefined no viaja en el JSON) y no se inventa cero.
@@ -538,6 +540,9 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
 
     if (error) {
       console.error(`[social] no pude guardar la cuenta de ${account.platform}:`, error.message);
+      // Antes quedaba solo en el log y la pantalla decia que todo habia salido bien: la segunda cuenta de una red
+      // no aparecia en ningun lado y nadie sabia por que.
+      saveWarnings.push(saveFailureWarning(account, error));
     } else if (saved && !activeBefore.has(saved.id)) {
       newAccountIds.push(saved.id);
     }
@@ -549,13 +554,31 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
     await adoptOrphanComments(supabase, workspaceId, platform);
   }
 
-  const warnings = [...computed.warnings, ...(zernio.warning ? [zernio.warning] : [])];
+  const warnings = [...computed.warnings, ...saveWarnings, ...(zernio.warning ? [zernio.warning] : [])];
   return {
     accounts: computed.accounts,
     warnings,
     zernioHasAnalytics: zernio.hasAnalytics,
     newAccountIds,
   };
+}
+
+/**
+ * El aviso cuando una cuenta no se pudo guardar, en palabras. Sin el error crudo de la base (puede traer valores).
+ *
+ * Un `23505` al CREAR una cuenta es casi siempre la base sin la 00236: el indice viejo `(workspace_id, platform)`
+ * admite una sola cuenta por red, y la segunda Instagram choca contra la primera.
+ */
+export function saveFailureWarning(
+  account: Pick<ComputedAccount, "platform" | "username" | "displayName" | "existingId">,
+  error: { code?: string | null },
+): string {
+  const name = account.username ? `@${account.username}` : (account.displayName ?? "una cuenta");
+  const red = platformLabel(account.platform);
+  if (!account.existingId && error.code === "23505") {
+    return `No pude guardar ${name} de ${red}: la base solo admite una cuenta por red. Falta aplicar la migración 00236 (varias cuentas por red).`;
+  }
+  return `No pude guardar ${name} de ${red}. Probá "Sincronizar cuentas" de nuevo en un rato.`;
 }
 
 /**
