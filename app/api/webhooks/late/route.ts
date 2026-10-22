@@ -55,6 +55,12 @@ import { isOwnComment, storeComment } from "@/lib/comments/store";
 import type { SocialPlatform } from "@/lib/types/database";
 import { supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 import { handleZernioReaction, parseZernioReaction } from "@/lib/messages/reactions-inbound";
+import {
+  findWorkspaceForSignedEvent,
+  isAccountEvent,
+  parseAccountEvent,
+  refreshZernioAccounts,
+} from "@/lib/channels/zernio-account-events";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -214,6 +220,12 @@ async function handleWebhook(request: NextRequest) {
   // Una reaccion del contacto (A3): se guarda aparte, no es un mensaje.
   if (parsed.event === "reaction.received") {
     return handleReactionWebhook(parsed as ReactionWebhookPayload, body, signature, eventId);
+  }
+
+  // Una cuenta conectada o desconectada en Zernio: se vuelven a armar los canales
+  // y las cuentas sociales del negocio.
+  if (isAccountEvent(parsed.event)) {
+    return handleAccountWebhook(parsed, body, signature, eventId);
   }
 
   // Everything else besides message.received is acknowledged and ignored
@@ -950,4 +962,39 @@ async function handlePostPlatformWebhook(
 
   const settled = await settlePublication(supabase, event);
   return NextResponse.json({ ok: true, settled });
+}
+
+/**
+ * `account.connected` / `account.disconnected`: una cuenta que se conecto o
+ * desconecto en Zernio.
+ *
+ * La cuenta nueva no tiene canal, asi que el negocio se identifica por la firma
+ * (`findWorkspaceForSignedEvent`): sin firma valida, 401. Se responde enseguida y
+ * el trabajo (leer la lista de Zernio, armar canales y cuentas) va en el
+ * `after()`, que nunca lanza.
+ */
+async function handleAccountWebhook(
+  parsed: { event?: string; id?: string },
+  rawBody: string,
+  signature: string | null,
+  eventId: string | null | undefined,
+) {
+  const event = parseAccountEvent(parsed);
+  if (!event) {
+    return NextResponse.json({ ok: true, skipped: parsed.event ?? "sin evento" });
+  }
+
+  const supabase = await createServiceClient();
+
+  const workspaceId = await findWorkspaceForSignedEvent(supabase, rawBody, signature, event.accountId);
+  if (!workspaceId) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  if (!(await claimWebhookEvent(supabase, eventId))) {
+    return NextResponse.json({ ok: true, skipped: "evento repetido" });
+  }
+
+  after(() => refreshZernioAccounts(supabase, workspaceId, `webhook ${event.event}`));
+  return NextResponse.json({ ok: true, accepted: event.event });
 }
