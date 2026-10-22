@@ -6,8 +6,10 @@
  * mantener por cada negocio, y las zonas con medias horas (India, Nepal)
  * entran igual porque se compara la hora local, no el desfase.
  *
- * No sincroniza: ENCOLA. Cada cuenta es un job aparte, asi una red lenta o
- * caida no deja a las otras sin datos.
+ * No lee las metricas: las ENCOLA. Cada cuenta es un job aparte, asi una red
+ * lenta o caida no deja a las otras sin datos. Antes de encolar si vuelve a
+ * leer QUE cuentas hay (`syncSocialAccounts`): una cuenta conectada en Zernio
+ * despues de guardar la clave aparece sola a la mañana siguiente.
  *
  * Ponerse al dia (Tiron 2, E1): si la corrida de las 3 de la mañana se perdio (una caida justo a esa hora), las
  * cuentas publicitarias atrasadas se encolan igual en la hora siguiente. Ver `adAccountNeedsCatchUp`.
@@ -19,6 +21,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { scheduleJob } from "@/lib/scheduler";
 import { isSyncHour } from "@/lib/metrics/rules";
 import { queueMetricsSync } from "@/lib/metrics/queue";
+import { syncSocialAccounts } from "@/lib/social/accounts";
 import { adAccountsToCatchUp, adAccountsToSync, META_ADS_SYNC_JOB } from "@/lib/jobs/handlers/meta-ads-sync";
 
 export async function GET(request: NextRequest) {
@@ -58,6 +61,19 @@ export async function GET(request: NextRequest) {
   }
 
   for (const workspace of due) {
+    // Antes de leer las metricas, que cuentas hay. Una cuenta que se conecto en Zernio DESPUES de guardar la clave
+    // (la segunda Instagram) no existia para el sistema hasta que alguien apretara "Sincronizar cuentas": no
+    // aparecia en Social ni se le leia nada. Un fallo aca no frena las metricas de las cuentas que ya estaban.
+    try {
+      const synced = await syncSocialAccounts(supabase, workspace.id);
+      for (const warning of synced.warnings) console.warn(`[metrics-sync] cuentas del workspace ${workspace.id}: ${warning}`);
+    } catch (err) {
+      console.error(
+        `[metrics-sync] no pude sincronizar las cuentas del workspace ${workspace.id}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     const { data: accounts } = await supabase
       .from("social_accounts")
       .select("id")

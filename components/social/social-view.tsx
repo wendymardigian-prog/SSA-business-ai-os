@@ -230,7 +230,10 @@ export function SocialView({
                 onClick={() =>
                   start(async () => {
                     const result = await refreshMetricsNow(platform);
-                    setNotice(result.ok ? "Se esta actualizando. Recarga en un minuto." : result.error);
+                    // Los avisos de la sincronizacion de cuentas (una cuenta que no se pudo guardar) van tambien.
+                    setNotice(
+                      [result.ok ? "Se esta actualizando. Recarga en un minuto." : result.error, ...(result.warnings ?? [])].join(" "),
+                    );
                   })
                 }
                 aria-label="Actualizar"

@@ -7,6 +7,7 @@ import { canRefreshNow } from "@/lib/metrics/sync";
 import { queueMetricsSync } from "@/lib/metrics/queue";
 import { SOCIAL_PLATFORMS } from "@/lib/social/profile-page";
 import { platformLabel } from "@/lib/platforms";
+import { syncSocialAccounts } from "@/lib/social/accounts";
 import type { SocialPlatform } from "@/lib/types/database";
 
 /**
@@ -21,14 +22,20 @@ import type { SocialPlatform } from "@/lib/types/database";
  * haya leido hace un minuto no dice nada de YouTube, y una red recien
  * conectada no puede quedar trabada por la espera de las otras.
  *
- * - Con `platform`: solo la cuenta de esa red (hay una por red).
+ * - Con `platform`: las cuentas de esa red (puede haber varias, 00236).
  * - Sin `platform` ("Todas"): cada cuenta cuya propia espera ya paso; las
  *   demas se saltean.
+ *
+ * Antes de encolar vuelve a leer QUE cuentas hay (`syncSocialAccounts`): una
+ * segunda Instagram conectada en Zernio despues de guardar la clave no existia
+ * para el sistema hasta apretar "Sincronizar cuentas" en Integraciones, y desde
+ * Social no habia forma de traerla. Lo que la sincronizacion tenga para decir
+ * (una cuenta que no se pudo guardar) vuelve en `warnings`.
  */
 
 export type RefreshResult =
-  | { ok: true; queued: number }
-  | { ok: false; error: string };
+  | { ok: true; queued: number; warnings?: string[] }
+  | { ok: false; error: string; warnings?: string[] };
 
 function minutesText(seconds: number): string {
   const minutes = Math.max(1, Math.ceil(seconds / 60));
@@ -42,6 +49,16 @@ export async function refreshMetricsNow(platform?: string | null): Promise<Refre
   if (platform && !(SOCIAL_PLATFORMS as readonly string[]).includes(platform)) {
     return { ok: false, error: "Esa red no existe" };
   }
+
+  // Un fallo aca no frena la actualizacion de las cuentas que ya estaban.
+  let warnings: string[] = [];
+  try {
+    warnings = (await syncSocialAccounts(ctx.supabase, ctx.workspace.id)).warnings;
+  } catch (err) {
+    console.error("[metricas] no pude sincronizar las cuentas:", err instanceof Error ? err.message : err);
+  }
+  const withWarnings = <T extends RefreshResult>(result: T): T =>
+    warnings.length > 0 ? { ...result, warnings } : result;
 
   let query = ctx.supabase
     .from("social_accounts")
@@ -57,12 +74,12 @@ export async function refreshMetricsNow(platform?: string | null): Promise<Refre
   }
 
   if (!accounts || accounts.length === 0) {
-    return {
+    return withWarnings({
       ok: false,
       error: platform
         ? `${platformLabel(platform)} no esta conectada`
         : "Todavia no hay ninguna cuenta conectada",
-    };
+    });
   }
 
   const now = new Date();
@@ -80,12 +97,12 @@ export async function refreshMetricsNow(platform?: string | null): Promise<Refre
 
   if (ready.length === 0) {
     const wait = minutesText(soonestWait ?? 60);
-    return {
+    return withWarnings({
       ok: false,
       error: platform
         ? `${platformLabel(platform)} se actualizo hace poco. Proba de nuevo en ${wait}.`
         : `Todas las redes se actualizaron hace poco. Proba de nuevo en ${wait}.`,
-    };
+    });
   }
 
   // La cola es interna y esta cerrada a los usuarios (00046): encola el
@@ -100,14 +117,14 @@ export async function refreshMetricsNow(platform?: string | null): Promise<Refre
       "[metricas] no pude encolar la actualizacion:",
       err instanceof Error ? err.message : err,
     );
-    return { ok: false, error: "No pude pedir la actualizacion. Proba de nuevo en un momento." };
+    return withWarnings({ ok: false, error: "No pude pedir la actualizacion. Proba de nuevo en un momento." });
   }
 
   if (queued === 0) {
-    return { ok: false, error: "Ya se esta actualizando. Espera un momento y recarga." };
+    return withWarnings({ ok: false, error: "Ya se esta actualizando. Espera un momento y recarga." });
   }
 
   revalidatePath("/dashboard/dashboards");
   revalidatePath("/dashboard/social");
-  return { ok: true, queued };
+  return withWarnings({ ok: true, queued });
 }
