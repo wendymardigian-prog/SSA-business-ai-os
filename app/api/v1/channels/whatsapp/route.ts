@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
+import { notifyNewChannelAccess } from "@/lib/channels/new-channel-access";
+import { accountLabel } from "@/lib/inbox/accounts";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import {
   EvolutionError,
@@ -173,6 +175,11 @@ export async function POST(request: Request) {
     },
     performedBy: user.id,
   });
+
+  // Un numero nuevo: los roles que eligen cuenta por cuenta no lo ven (00249). Nunca lanza.
+  if (!channelId) {
+    await notifyNewChannelAccess(service, { workspaceId: workspace.id, channelId: channel.id, label: accountLabel(channel) });
+  }
 
   return NextResponse.json({ channel, state });
 }

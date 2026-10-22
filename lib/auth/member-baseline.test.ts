@@ -337,7 +337,7 @@ describe("caracterizacion: el menu (F68)", () => {
   const memberMenu = () =>
     visibleNavItems(NAV_ITEMS, {
       permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys,
-      flags: { eod: true, settings: true },
+      flags: { eod: true, settings: true, inbox: true },
     })
       .map((item) => item.name)
       .sort();

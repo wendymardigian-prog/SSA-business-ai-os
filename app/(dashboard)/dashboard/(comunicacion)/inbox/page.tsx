@@ -20,7 +20,7 @@ import { InboxView } from "./inbox-view";
 import type { InboxAsset } from "@/components/inbox/message-thread";
 import { toBankAsset } from "@/lib/response-assets/list";
 import { getPermissionContext } from "@/lib/auth/guards";
-import { canReplyOn, canViewPlatform, INBOX_CHANNELS, platformFilterFor } from "@/lib/inbox/channel-access";
+import { canViewChannel, channelFilterFor, replyFilterFor } from "@/lib/inbox/channel-access";
 import { accountsInfo, buildAccounts, multiAccountPlatforms } from "@/lib/inbox/accounts";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
@@ -93,13 +93,16 @@ export default async function InboxPage({
     assignsTo: t.assigns_to,
   }));
   const allPlatforms = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort() as Platform[];
-  // Equipo y roles (F20): cada canal se ve con su `inbox.<canal>.view`. El alcance (cuales de esas
-  // conversaciones) lo sigue aplicando la RLS.
+  // La bandeja por cuenta (00249): cada rol dice que cuentas ve. Cuales conversaciones de cada una
+  // (asignadas, + sin asignar, todas) lo aplica la RLS (`can_see_conversation`).
   const access = await getPermissionContext();
-  const platformRestriction = platformFilterFor(access.can, allPlatforms);
-  const platformOptions = platformRestriction ?? allPlatforms;
-  // Cada cuenta conectada es una opcion del menu de Canal; solo las de canales que puede ver (F20).
-  const accounts = buildAccounts((channelsRes.data ?? []).filter((c) => canViewPlatform(access.can, c.platform)));
+  const channelRestriction = channelFilterFor(access.permissions);
+  const visibleChannelRows = (channelsRes.data ?? []).filter((c) => canViewChannel(access.permissions, c.id));
+  const platformOptions = channelRestriction
+    ? ([...new Set(visibleChannelRows.map((c) => c.platform))].sort() as Platform[])
+    : allPlatforms;
+  // Cada cuenta conectada es una opcion del menu de Canal; solo las que puede ver.
+  const accounts = buildAccounts(visibleChannelRows);
   const accountInfo = accountsInfo(accounts);
 
   const search = sanitizeSearch(firstParam(params.q));
@@ -142,9 +145,9 @@ export default async function InboxPage({
 
   const statusValue = statusForQuery(status);
   if (statusValue) query = query.eq("status", statusValue);
-  if (platformRestriction) {
-    // Una lista vacia es "no ve ningun canal": no existe una plataforma con este nombre.
-    query = query.in("platform", platformRestriction.length > 0 ? (platformRestriction as Platform[]) : (["__ninguna__"] as unknown as Platform[]));
+  if (channelRestriction) {
+    // Una lista vacia es "no ve ninguna cuenta": un id que no existe no trae nada.
+    query = query.in("channel_id", channelRestriction.length > 0 ? channelRestriction : ["00000000-0000-0000-0000-000000000000"]);
   }
   if (platforms.length > 0) query = query.in("platform", platforms as Platform[]);
   if (channelIds.length > 0) query = query.in("channel_id", channelIds);
@@ -247,8 +250,9 @@ export default async function InboxPage({
       .is("deleted_at", null)
       .maybeSingle();
     selected = toRows(data ? [data] : [])[0] ?? null;
-    // Un link a una conversacion de un canal que no puede ver no la abre (F20).
-    if (selected && platformRestriction && !platformRestriction.includes(selected.platform)) selected = null;
+    // Un link a una conversacion de una cuenta que no puede ver no la abre (la RLS ya la corta; esto la
+    // corta tambien antes de que se aplique la 00249).
+    if (selected && !canViewChannel(access.permissions, selected.channel_id)) selected = null;
   }
 
   // Las conversaciones de esta pagina con un borrador del agente esperando
@@ -308,7 +312,7 @@ export default async function InboxPage({
       canManageAssets={canManageAssets}
       canCreateTask={canCreateTask}
       canViewAgentRuns={canViewAgentRuns}
-      replyPlatforms={[...new Set<string>([...allPlatforms, ...INBOX_CHANNELS])].filter((p) => canReplyOn(access.can, p))}
+      replyChannelIds={replyFilterFor(access.permissions)}
       filters={filters}
       dateRange={range}
       tags={tags}

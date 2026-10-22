@@ -238,7 +238,7 @@ describe("A20 · programar pide el permiso, no el cargo", () => {
       system_role: null,
       permissions: {
         keys: ["content.view", "content.create", "content.publish"],
-        scopes: { leads: "all", conversations: "all" },
+        scopes: { leads: "all" },
       },
     });
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAnyPermissionAction, getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
+import { canonicalChannels, parseChannels, sameChannels, type ChannelsConfig } from "@/lib/auth/channel-permissions";
 import {
   parsePermissions,
   systemRolePermissions,
@@ -15,6 +16,7 @@ import {
   applyKeyToggle,
   canDeleteRole,
   canEditRole,
+  describeChannels,
   validateRole,
   type RoleRow,
 } from "@/lib/auth/roles-admin";
@@ -44,12 +46,13 @@ export interface RoleFormInput {
   description?: string | null;
   keys: string[];
   leadsScope?: PermissionScope;
-  conversationsScope?: PermissionScope;
   bookingsScope?: PermissionScope;
   callsScope?: PermissionScope;
   salesScope?: PermissionScope;
   commissionsScope?: PermissionScope;
   tasksScope?: PermissionScope;
+  /** La bandeja por cuenta (00249). Sin esto, el rol no ve ninguna cuenta. */
+  channels?: ChannelsConfig;
 }
 
 export async function createRole(
@@ -62,12 +65,17 @@ export async function createRole(
     name: input.name,
     description: input.description,
     keys: input.keys,
-    scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope },
+    scopes: { leads: input.leadsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope },
+    channels: input.channels ? parseChannels(input.channels) : undefined,
   });
   if (!checked.ok) return checked;
 
-  // No podes dar lo que no tenes: ni claves ni alcances mas anchos que los tuyos (lib/team/grant.ts).
-  const granted = assertCanGrant(grantActorOf(ctx), { keys: checked.role.permissions.keys, scopes: checked.role.permissions.scopes });
+  // No podes dar lo que no tenes: ni claves, ni alcances, ni cuentas de la bandeja mas anchos que los tuyos (lib/team/grant.ts).
+  const granted = assertCanGrant(grantActorOf(ctx), {
+    keys: checked.role.permissions.keys,
+    scopes: checked.role.permissions.scopes,
+    channels: { wanted: checked.role.permissions.channels, before: null },
+  });
   if (!granted.ok) return { ok: false, error: granted.error };
 
   const { data, error } = await ctx.supabase
@@ -135,7 +143,8 @@ export async function updateRole(
     name: input.name,
     description: input.description,
     keys: input.keys,
-    scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope },
+    scopes: { leads: input.leadsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope },
+    channels: input.channels ? parseChannels(input.channels) : parsePermissions(existing.permissions).channels,
   });
   if (!checked.ok) return checked;
 
@@ -276,6 +285,8 @@ export interface RolePatch {
   addKeys?: string[];
   removeKeys?: string[];
   scopes?: Partial<Record<ScopedModule, PermissionScope>>;
+  /** La bandeja entera, ya armada por la pantalla (`lib/auth/channel-permissions.ts`). */
+  channels?: ChannelsConfig;
   name?: string;
   description?: string | null;
 }
@@ -316,6 +327,7 @@ export async function patchRole(
     description: patch.description !== undefined ? patch.description : row.description,
     keys,
     scopes: { ...current.scopes, ...(patch.scopes ?? {}) },
+    channels: patch.channels ? parseChannels(patch.channels) : current.channels,
   });
   if (!checked.ok) {
     return { ok: false, error: checked.error, field: patch.name !== undefined ? "name" : patch.description !== undefined ? "description" : "permissions" };
@@ -357,7 +369,7 @@ export async function patchRole(
   };
 }
 
-const sortedPermissions = (p: RolePermissions) => ({ keys: [...p.keys].sort(), scopes: p.scopes });
+const sortedPermissions = (p: RolePermissions) => ({ keys: [...p.keys].sort(), scopes: p.scopes, channels: canonicalChannels(p.channels) });
 
 /**
  * Deja el cambio en el historial, agrupado por sesion de edicion: si esta misma persona ya toco este
@@ -379,6 +391,8 @@ async function recordRoleEdit(
     for (const [module, value] of Object.entries(after.scopes)) {
       if (before.scopes[module as ScopedModule] !== value) scopes[module] = value;
     }
+    // La bandeja no se lista cuenta por cuenta: queda el resumen final ("todas las cuentas (todas)", "2 cuentas").
+    if (!sameChannels(before.channels, after.channels)) scopes.bandeja = describeChannels(after.channels);
     const now = new Date();
     const service = await createServiceClient();
 

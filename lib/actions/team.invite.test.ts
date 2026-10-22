@@ -39,7 +39,7 @@ function seed(over: Record<string, Array<Record<string, unknown>>> = {}) {
         { id: ROLE.owner, workspace_id: WS, name: "Owner", system_role: "owner", permissions: { keys: [], scopes: {} } },
         { id: ROLE.admin, workspace_id: WS, name: "Admin", system_role: "admin", permissions: { keys: [], scopes: {} } },
         { id: ROLE.member, workspace_id: WS, name: "Member", system_role: "member", permissions: { keys: [], scopes: {} } },
-        { id: ROLE.custom, workspace_id: WS, name: "Closer", system_role: null, permissions: { keys: closerKeys, scopes: { leads: "own", conversations: "own" } } },
+        { id: ROLE.custom, workspace_id: WS, name: "Closer", system_role: null, permissions: { keys: closerKeys, scopes: { leads: "own" } } },
       ],
       ...over,
     },
@@ -59,7 +59,8 @@ function actor(kind: "owner" | "admin" | RolePermissions = "owner") {
 
 const custom = (keys: string[], scopes: Partial<RolePermissions["scopes"]> = {}): RolePermissions => ({
   keys,
-  scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", ...scopes },
+  scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", ...scopes },
+  channels: { mode: "custom", byChannel: {} },
 });
 
 const invites = () => db.rows("workspace_invites");

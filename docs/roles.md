@@ -35,7 +35,7 @@ Cada fila tiene su test y el comentario «cambio aprobado».
 | M10 | Editar el contenido de su pieza (o la que tiene asignada) después de aprobada (22/10/2026) | solo hasta «En revisión» | **sí, en cualquier estado**. Cambiar el ESTADO sigue igual: un Member lo mueve solo entre Borrador, En producción y En revisión (trigger `content_posts_status_guard`, 00253) |
 | M4, M5 | Reasignar los leads que ve; publicar flujos | podía | sin cambios |
 
-## El catálogo: 78 claves
+## El catálogo: 72 claves
 
 La fuente es `lib/auth/permissions.ts`. Los permisos de Owner, Admin y Member **salen de ahí**, no de la base: la fila de un rol de sistema
 tiene los permisos vacíos a propósito. Las claves *reservadas* existen pero no se muestran ni se dan todavía; las *solo Owner* no viajan en
@@ -59,14 +59,8 @@ ningún rol (ni el Owner las da).
 
 ### Bandeja
 
-| Clave | Qué permite | Member |
-|---|---|---|
-| `inbox.instagram.view` | Ver conversaciones de Instagram | sí |
-| `inbox.instagram.reply` | Responder por Instagram | sí |
-| `inbox.whatsapp.view` | Ver conversaciones de WhatsApp | sí |
-| `inbox.whatsapp.reply` | Responder por WhatsApp | sí |
-| `inbox.email.view` | Ver conversaciones de email | sí |
-| `inbox.email.reply` | Responder emails | sí |
+No tiene claves: se da **por cuenta conectada** (ver «La bandeja por cuenta», abajo). Las seis claves `inbox.<red>.view/.reply` se
+retiraron en la 00249/00250.
 
 ### Contactos
 
@@ -218,7 +212,7 @@ El menú «Finanzas» se ve con `expenses.view` **o** `commissions.view` (`FINAN
 
 ## Alcances
 
-Además de *qué* puede hacer, un rol define *cuánto ve* en siete módulos: `leads`, `conversations`, `bookings`, `calls`, `sales`, `commissions`, `tasks`. Un rol sin alcance de comisiones queda en `own` (lo más angosto).
+Además de *qué* puede hacer, un rol define *cuánto ve* en seis módulos: `leads`, `bookings`, `calls`, `sales`, `commissions`, `tasks`. Un rol sin alcance de comisiones queda en `own` (lo más angosto). Las conversaciones no tienen un alcance global: se eligen por cuenta (abajo).
 
 | Alcance | Qué significa |
 |---|---|
@@ -229,13 +223,41 @@ Además de *qué* puede hacer, un rol define *cuánto ve* en siete módulos: `le
 **El alcance lo aplica la base** (`can_see_contact`, `can_see_conversation`, `can_see_booking`, `can_see_call`, `can_see_sale`, `can_see_task`, y la política de lectura de comisiones), no la
 pantalla. En la pantalla de Roles el selector de alcance vive dentro de su grupo y se activa recién cuando el rol tiene la clave «ver» de ese grupo.
 
+## La bandeja por cuenta (00249)
+
+Cada rol dice, en `workspace_roles.permissions.channels`, qué conversaciones ve **de cada cuenta conectada** y si puede responder.
+Con dos Instagram conectados, se puede dar uno sin el otro.
+
+```json
+{ "mode": "all", "all": { "scope": "own_unassigned", "reply": true } }
+{ "mode": "custom", "byChannel": { "<channel_id>": { "scope": "all", "reply": false } } }
+```
+
+- **Dos modos.** «Todas las cuentas» incluye las que se conecten después. «Elegir por cuenta» es una fila por cuenta: una cuenta que no
+  figura no se ve, y una cuenta nueva no la ve nadie hasta que se la den (al conectarla, Owner y Admin reciben un aviso en la campana con
+  el link a Roles: `lib/channels/new-channel-access.ts`).
+- **Qué conversaciones**, por cuenta: Solo asignadas (`own`: la conversación está a su cargo o el contacto lo tiene de setter o
+  vendedor), Asignadas + sin asignar (`own_unassigned`: además, las de contactos que no tiene nadie) o Todas (`all`). «Responder» exige ver.
+- **Ver un chat deja ver la ficha de ese contacto**, aunque el alcance de Contactos sea «solo asignados» (`can_see_contact` lo suma).
+- **Owner y Admin**: todo. **Member de sistema**: todas las cuentas, solo asignadas, responde (lo de siempre; `MEMBER_CHANNELS` y su
+  copia SQL `private.member_channels()`, comparadas por `member-sql-parity.test.ts`).
+- **Lo aplica la base**: `can_see_conversation` decide por la cuenta (ya no delega en el alcance de contactos), así que vale para la
+  bandeja, el dashboard de chat, los borradores, la ficha y los mensajes. La pantalla usa las mismas reglas
+  (`lib/auth/channel-permissions.ts`, `lib/inbox/channel-access.ts`) para el menú de cuentas, el composer y los 403 de envío,
+  borradores, reacciones, adjuntos y recursos.
+- **Gemelas**: `grantFor` / `private.role_channel_grant` y `canGrantChannels` / `public.can_grant_channels`, con los casos de
+  `lib/auth/channel-permissions.cases.json` (vitest y `verify-roles.mjs --despues-de-00249`).
+- **Un rol que se guarda sin `channels`** (código anterior, un script) no pierde la bandeja: el trigger `workspace_roles_channels_default`
+  conserva la que tenía, o la arma desde sus claves viejas si es nuevo.
+
 ## Quién puede dar qué («no podés dar lo que no tenés»)
 
 Quien puede invitar, asignar roles o armar roles **no puede, por ese camino, darle a nadie más de lo que tiene**. Es la regla que impide que un rol
 con `team.invite` invite como Admin o que uno con `roles.manage` se arme un rol con todo.
 
 - Una clave solo-Owner o reservada no entra en ningún rol.
-- Un Owner o un Admin pueden dar todo lo demás; el resto, solo las claves y alcances que ya tiene.
+- Un Owner o un Admin pueden dar todo lo demás; el resto, solo las claves y alcances que ya tiene, y en la bandeja solo las cuentas que ya
+  ve, con un alcance y un «responder» que no superen los suyos. «Todas las cuentas» solo la da quien la tiene.
 - El rol Admin lo dan solo un Owner o un Admin. El rol Owner no se da (se transfiere).
 - Nadie se cambia su propio rol; nadie edita el rol que tiene asignado (salvo Owner y Admin, que no dependen de uno); nadie toca al Owner.
 - Al editar un rol solo hay que poder dar lo que se **agrega**: sacar permisos nunca es una escalada.
@@ -329,7 +351,7 @@ estado de UN contacto es de `contacts.edit` (y que la persona vea el contacto). 
 - Verificaciones contra la base real (de a una, con prefijo `zz-test-`):
 
 ```
-node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212
+node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212 --despues-de-00249
 node scripts/verify-permissions-matrix.mjs
 node scripts/verify-rls.mjs --despues-de-00143 --despues-de-00208
 node scripts/verify-workspace-isolation.mjs --despues-de-00143

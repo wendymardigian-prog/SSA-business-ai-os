@@ -2,7 +2,7 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getMemberAction } from "@/lib/auth/guards";
-import { canReplyOn } from "@/lib/inbox/channel-access";
+import { canReplyChannel } from "@/lib/inbox/channel-access";
 import { sendReactionToProvider } from "@/lib/channels/send-reaction";
 import { recordReaction } from "@/lib/messages/reactions-store";
 import type { ReactionRow } from "@/lib/messages/reactions";
@@ -62,8 +62,8 @@ export async function reactToMessage(input: {
     channels?: { platform?: string } | null;
   } | null;
   if (!conversation || conversation.deleted_at) return { ok: false, error: "No encontré esa conversación." };
-  if (!canReplyOn(access.can, conversation.channels?.platform ?? null)) {
-    return { ok: false, error: "Tu rol no puede responder por este canal." };
+  if (!canReplyChannel(access.permissions, conversation.channel_id)) {
+    return { ok: false, error: "Tu rol no puede responder por esta cuenta." };
   }
 
   // Lo que dice la base manda sobre lo que dice el navegador.

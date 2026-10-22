@@ -71,8 +71,14 @@ async function makeUser(tag) {
 const FIXED_TYPES = ["contact", "conversation", "booking"];
 
 try {
-  const { data: distinct } = await svc.from("audit_log").select("entity_type");
-  const types = [...new Set([...(distinct ?? []).map((r) => r.entity_type), ...FIXED_TYPES])]
+  // De a paginas: PostgREST devuelve como mucho 1000 filas por consulta, y con mas un tipo puede quedar afuera.
+  const distinct = [];
+  for (let from = 0; ; from += 1000) {
+    const { data } = await svc.from("audit_log").select("entity_type").order("id").range(from, from + 999);
+    distinct.push(...(data ?? []));
+    if ((data ?? []).length < 1000) break;
+  }
+  const types = [...new Set([...distinct.map((r) => r.entity_type), ...FIXED_TYPES])]
     .filter((t) => t !== "call")
     .sort();
 

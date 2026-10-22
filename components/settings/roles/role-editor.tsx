@@ -16,6 +16,8 @@ import {
 import { applyKeyToggle, eodSelectorValue, moduleState, scopeFieldState, SCOPE_GROUP, toggleModule, type RoleRow } from "@/lib/auth/roles-admin";
 import { createSaveQueue } from "@/lib/roles/save-queue";
 import { assertCanGrant, type GrantActor } from "@/lib/team/grant";
+import type { ChannelsConfig } from "@/lib/auth/channel-permissions";
+import { ChannelAccessSection, type RoleChannelAccount } from "./channel-access-section";
 
 const NAME_DEBOUNCE_MS = 700;
 
@@ -34,17 +36,23 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 export function RoleEditor({
   role,
   viewer,
+  accounts,
   readOnly,
   onRoleChange,
 }: {
   role: RoleRow;
   viewer: GrantActor;
+  /** Las cuentas conectadas del workspace, para la bandeja por cuenta (00249). */
+  accounts: RoleChannelAccount[];
   readOnly: boolean;
   /** El servidor devolvió el rol resultante: la tarjeta se actualiza en el lugar. */
   onRoleChange: (role: RoleRow) => void;
 }) {
   const [keys, setKeys] = useState(role.permissions.keys);
   const [scopes, setScopes] = useState(role.permissions.scopes);
+  const [channels, setChannels] = useState<ChannelsConfig>(role.permissions.channels);
+  // Lo ultimo que el servidor confirmo: solo hay que poder dar lo que se agrega sobre eso.
+  const [savedChannels, setSavedChannels] = useState<ChannelsConfig>(role.permissions.channels);
   const [name, setName] = useState(role.name);
   const [description, setDescription] = useState(role.description ?? "");
   const [state, setState] = useState<SaveState>("idle");
@@ -53,11 +61,11 @@ export function RoleEditor({
   const queue = useRef(createSaveQueue((pending) => setState((s) => (pending > 0 ? "saving" : s === "saving" ? "saved" : s)))).current;
   const lastFailed = useRef<(() => void) | null>(null);
   const timers = useRef<{ name?: ReturnType<typeof setTimeout>; description?: ReturnType<typeof setTimeout> }>({});
-  const latest = useRef({ keys, scopes });
+  const latest = useRef({ keys, scopes, channels });
   // Lo ultimo que se ve en pantalla, para que los handlers lean el valor vigente (no el de su cierre).
   useEffect(() => {
-    latest.current = { keys, scopes };
-  }, [keys, scopes]);
+    latest.current = { keys, scopes, channels };
+  }, [keys, scopes, channels]);
 
   useEffect(() => {
     const t = timers.current;
@@ -79,7 +87,9 @@ export function RoleEditor({
           if (queue.pending() <= 1) {
             setKeys(result.data.role.permissions.keys);
             setScopes(result.data.role.permissions.scopes);
+            setChannels(result.data.role.permissions.channels);
           }
+          setSavedChannels(result.data.role.permissions.channels);
           onRoleChange(result.data.role);
           lastFailed.current = null;
           setState("saved");
@@ -127,6 +137,13 @@ export function RoleEditor({
     save({ scopes: { [scoped]: value } }, () => setScopes((s) => ({ ...s, [scoped]: before })), () => setScope(scoped, value));
   }
 
+  function changeChannels(next: ChannelsConfig) {
+    if (readOnly) return;
+    const before = latest.current.channels;
+    setChannels(next);
+    save({ channels: next }, () => setChannels(before), () => changeChannels(next));
+  }
+
   function saveText(field: "name" | "description", value: string) {
     if (readOnly) return;
     clearTimeout(timers.current[field]);
@@ -160,7 +177,8 @@ export function RoleEditor({
 
   const groups = useMemo(
     () =>
-      PERMISSION_MODULES.map((group) => ({ group, perms: visiblePermissionsOfModule(group) })).filter((g) => g.perms.length > 0),
+      // La Bandeja no tiene claves (se da por cuenta) pero tiene su grupo.
+      PERMISSION_MODULES.map((group) => ({ group, perms: visiblePermissionsOfModule(group) })).filter((g) => g.perms.length > 0 || g.group === "inbox"),
     [],
   );
 
@@ -240,6 +258,21 @@ export function RoleEditor({
       {/* Permisos por grupo; en los grupos con alcance, la primera fila es el selector */}
       <div className="space-y-3">
         {groups.map(({ group, perms }) => {
+          if (group === "inbox") {
+            return (
+              <fieldset key={group} className="rounded-lg border border-border bg-card p-3">
+                <legend className="px-1 text-xs font-semibold">{MODULE_LABELS[group]}</legend>
+                <ChannelAccessSection
+                  channels={channels}
+                  accounts={accounts}
+                  viewer={viewer}
+                  before={savedChannels}
+                  readOnly={readOnly}
+                  onChange={changeChannels}
+                />
+              </fieldset>
+            );
+          }
           const moduleKeys = perms.map((p) => p.key);
           const toggleable = moduleKeys.filter((k) => k !== "eod.view_all");
           const stateOfGroup = moduleState(keys, toggleable);

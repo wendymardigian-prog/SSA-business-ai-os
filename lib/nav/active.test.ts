@@ -113,7 +113,7 @@ describe("exactamente un item activo en cualquier ruta real del dashboard (N4)",
   const rutaDeEjemplo = (patron: string) => patron.replace(/\[[^\]]+\]/g, "muestra");
 
   // Un admin que además está en la audiencia de un EOD: ve el menú entero.
-  const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true, settings: true } });
+  const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true, settings: true, inbox: true } });
   const member = visibleNavItems(NAV_ITEMS, { permissionKeys: [], flags: { settings: true } });
 
   for (const patron of Object.keys(PAGE_META)) {

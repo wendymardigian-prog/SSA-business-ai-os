@@ -26,9 +26,7 @@ describe("Member de sistema", () => {
     expect([...SYSTEM_ROLE_PERMISSIONS.member.keys].sort()).toEqual(
       [
         "dashboards.chat.view",
-        "inbox.instagram.view", "inbox.instagram.reply",
-        "inbox.whatsapp.view", "inbox.whatsapp.reply",
-        "inbox.email.view", "inbox.email.reply",
+        // La bandeja ya no son claves (00249/00250): ver `channels` abajo.
         "contacts.view", "contacts.edit",
         // Cambio aprobado, plano §9.3: reasignar los leads que ve (ya podia, sin que hubiera una clave).
         "contacts.assign",
@@ -55,15 +53,19 @@ describe("Member de sistema", () => {
     );
   });
 
+  it("ve y responde en todas las cuentas de la bandeja, solo lo asignado (lo mismo que con las seis claves de antes)", () => {
+    expect(SYSTEM_ROLE_PERMISSIONS.member.channels).toEqual({ mode: "all", all: { scope: "own", reply: true } });
+  });
+
   it("tiene alcance 'own' en todo lo que tiene alcance", () => {
-    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" });
+    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" });
   });
 });
 
 describe("Owner y Admin", () => {
   it("el Owner tiene todas las claves y el alcance 'all'", () => {
     expect(SYSTEM_ROLE_PERMISSIONS.owner.keys).toEqual(ALL_PERMISSION_KEYS);
-    expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" });
+    expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" });
   });
 
   it("el Admin tiene todas menos las dos solo-Owner: transferir la propiedad y quitar personas", () => {
