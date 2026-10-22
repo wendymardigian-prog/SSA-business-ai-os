@@ -387,7 +387,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 
 ## La bandeja por cuenta (22/10/2026)
 
-`00249` (aditiva: `permissions.channels`, backfill exacto desde las claves viejas, `can_see_conversation` por cuenta, `can_see_contact` + «ver un chat deja ver la ficha», `can_grant_channels` y el trigger `workspace_roles_channels_default`) y `00250` (la que BORRA las claves `inbox.*` y `scopes.conversations`, y saca esas claves de `private.member_permission_keys()`). **Las dos aplicadas y registradas el 22/10/2026** (versiones `20261022191356` y `20261022195239`): la 00249 antes del deploy y la 00250 despues, con su respaldo en `docs/roles/respaldo-inbox-keys.json`. **En un clon nuevo: la 00249 ANTES de desplegar el codigo y la 00250 DESPUES.** La `00251` y la `00252` son de otra sesion (agentes). **La proxima libre es la `00253`** (confirmar con `list_migrations`).
+`00249` (aditiva: `permissions.channels`, backfill exacto desde las claves viejas, `can_see_conversation` por cuenta, `can_see_contact` + «ver un chat deja ver la ficha», `can_grant_channels` y el trigger `workspace_roles_channels_default`) y `00250` (la que BORRA las claves `inbox.*` y `scopes.conversations`, y saca esas claves de `private.member_permission_keys()`). **Las dos aplicadas y registradas el 22/10/2026** (versiones `20261022191356` y `20261022195239`): la 00249 antes del deploy y la 00250 despues, con su respaldo en `docs/roles/respaldo-inbox-keys.json`. **En un clon nuevo: la 00249 ANTES de desplegar el codigo y la 00250 DESPUES.** La `00251` y la `00252` son de Agentes IA (otra sesion). **La proxima libre es la `00253`** (confirmar con `list_migrations`).
 
 ## Verificacion de equipo y roles
 
@@ -1456,7 +1456,7 @@ Estado de setter y de vendedor con su historial, producto de interés y campos p
 `00244` (valores tipados), `00245` (estados, historial, función y guardia), `00246` (producto de interés), `00247` (`merge_contacts`
 con estados y producto; la definición vieja completa en su cabecera) y `00248` (corrige la 00245: el DEFAULT de
 `contact_status_settings` pasa a ser un literal; llamar a una función sin permisos desde un DEFAULT rompía el alta de un workspace).
-**Un DEFAULT de columna se evalúa con los permisos de quien inserta: nunca una función de `private`.** **La próxima libre era la `00249`**
+**Un DEFAULT de columna se evalúa con los permisos de quien inserta: nunca una función de `private`.** **La próxima libre era la `00249`; desde el 22/10/2026 están ocupadas hasta la `00252` (ver "Agentes IA" más abajo): la próxima libre es la `00253`**
 (confirmar con `list_migrations`).
 
 ## Verificación
@@ -1601,6 +1601,17 @@ Tareas, que ahora solo redirige). Rama `feat/agentes-ia-tareas`.
 - **Catálogo, `DEFAULT_TEXT` y el CHECK de `ai_task_prompt_versions.task`
   listan las mismas tareas** (`store.test.ts` lo fija): sumar instrucciones a
   una tarea es tocar los tres, con su migración.
+
+## Sin IA, configuración inicial y pestañas (22/10/2026)
+
+Detalle en [docs/agente-ia.md](docs/agente-ia.md) ("Sin IA conectada y la configuración inicial") y [docs/dashboards.md](docs/dashboards.md) ("Cuándo existe la sección El agente").
+
+- **Sin ninguna IA conectada y sin haberla usado nunca, Agentes IA es solo el empty state** (`ConnectFirstAi`) y el agente, las tareas y las corridas redirigen a la lista. Si se desconectan las IAs después de usarlas, la pantalla sigue entera con el aviso. Regla pura: `agentsPageMode` (`lib/agent/page-mode.ts`); "uso previo" = alguna fila en `agent_runs`, leída con el cliente de servicio (`lib/agent/usage.ts`).
+- **Los agentes nacen configurados con `ensure_default_agents` (00252, solo `service_role`)**, llamada desde `ensureDefaultAgents` (`lib/agent/defaults.ts`) al guardar una IA y al abrir Agentes IA. Idempotente, con candado por workspace: crea el agente de chat apagado si el negocio NUNCA tuvo uno, completa el modelo donde no hay ninguno y las instrucciones del copywriter (`DEFAULT_COPYWRITER_INSTRUCTIONS`) si nunca se escribieron. **Nunca pisa algo elegido por una persona y nunca prende nada.** Los textos viven en el código, no en la migración.
+- **La sección "El agente" del dashboard de Chat existe solo si el agente actuó alguna vez** (`agent_runs.source = 'agent'`) **o hay uno encendido con canales**. Ya no hay modo "invitación".
+- **Las pestañas del detalle (agente y tarea) no esperan los datos**: el armazón responde con el permiso y la zona horaria (pedida en paralelo), la pestaña se marca en el clic (`DetailTabs`) y el contenido va en `<Suspense key={tab}>`. Nada pesado (el reporte de costos del mes, el chequeo de IA) va antes de responder.
+- **`AGENT_RUN_SOURCES` (`lib/agent/runs-query.ts`) lista todos los `source`**; no compila si falta uno del tipo. Los orígenes con corridas salen de una consulta `limit 1` por origen sobre el índice de la 00251.
+- Migraciones `00251` (índice de `agent_runs` por origen) y `00252` (`ensure_default_agents`), **aplicadas y registradas** el 22/10/2026. La `00249` y la `00250` son de la sesión de permisos de la bandeja por canal.
 
 # Buenas practicas de desarrollo
 

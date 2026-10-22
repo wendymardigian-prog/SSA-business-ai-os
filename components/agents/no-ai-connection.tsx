@@ -3,11 +3,11 @@ import { KeyRound, Plug } from "lucide-react";
 import { getProvider } from "@/lib/integrations/providers";
 
 /**
- * Lo que se ve en Agentes IA cuando no hay NINGUNA IA conectada (E1): los
- * agentes no pueden responder hasta que haya una, asi que en vez de una lista
- * de agentes "encendidos" que no funcionan, se explica que falta y se ofrecen
- * las tres opciones con un acceso directo a cada una (sin buscar a mano la
- * pagina correcta en Integraciones).
+ * El aviso de Agentes IA cuando se desconectaron TODAS las IAs despues de
+ * haberlas usado (E1, `full-with-warning` en lib/agent/page-mode.ts): la
+ * pantalla sigue entera (historial, costos, configuracion) y arriba se explica
+ * que falta, con las tres opciones y un acceso directo a cada una. Quien nunca
+ * conecto una ve el empty state (`ConnectFirstAi`), no esto.
  *
  * Las claves son del propio negocio (BYOK): el consumo se factura a su cuenta.
  */
@@ -23,39 +23,44 @@ export function NoAiConnection({ canConnect }: { canConnect: boolean }) {
         </div>
         <div className="min-w-0">
           <h2 id="no-ai-title" className="text-sm font-semibold">
-            Para usar los agentes falta conectar una IA
+            Los agentes y las tareas de IA están frenados: no hay ninguna IA conectada
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Los agentes necesitan el modelo de una IA para responder. Todavía no hay ninguna conectada, así que no se pueden encender. Conectá una con tu propia cuenta (el consumo se factura a tu cuenta) y ya podés usarlos.
+            Sin una IA no pueden responder ni correr. Su configuración y lo que ya hicieron siguen acá: conectá una con tu propia cuenta (el consumo se factura a tu cuenta) y vuelven a funcionar como estaban.
           </p>
         </div>
       </div>
 
-      {canConnect ? (
-        <ul className="mt-4 grid gap-2 sm:grid-cols-3">
-          {OPTIONS.map((id) => {
-            const provider = getProvider(id);
-            if (!provider) return null;
-            return (
-              <li key={id} className="flex flex-col justify-between gap-3 rounded-lg border border-border bg-card p-3">
-                <div>
-                  <p className="text-sm font-medium">{provider.label}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{provider.description}</p>
-                </div>
-                <Link
-                  href={`/dashboard/settings/integrations/${id}`}
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
-                >
-                  <Plug className="h-3.5 w-3.5" aria-hidden />
-                  Conectar {provider.label.split(" ")[0]}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="mt-3 text-sm text-muted-foreground">Pedile a quien administra el negocio que la conecte desde Ajustes → Integraciones.</p>
-      )}
+      <AiProviderOptions canConnect={canConnect} />
     </section>
+  );
+}
+
+/** Las tres IAs con su acceso directo a Integraciones; quien no puede conectarlas ve a quien pedirselo. */
+export function AiProviderOptions({ canConnect }: { canConnect: boolean }) {
+  return canConnect ? (
+    <ul className="mt-4 grid gap-2 sm:grid-cols-3">
+      {OPTIONS.map((id) => {
+        const provider = getProvider(id);
+        if (!provider) return null;
+        return (
+          <li key={id} className="flex flex-col justify-between gap-3 rounded-lg border border-border bg-card p-3">
+            <div>
+              <p className="text-sm font-medium">{provider.label}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{provider.description}</p>
+            </div>
+            <Link
+              href={`/dashboard/settings/integrations/${id}`}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
+            >
+              <Plug className="h-3.5 w-3.5" aria-hidden />
+              Conectar {provider.label.split(" ")[0]}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  ) : (
+    <p className="mt-3 text-sm text-muted-foreground">Pedile a quien administra el negocio que la conecte desde Ajustes → Integraciones.</p>
   );
 }
