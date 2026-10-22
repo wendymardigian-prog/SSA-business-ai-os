@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import type { ContentPermissions } from "./status";
-import { canApprove, canEditContent, canRequestReview, canReturn, statusAfterReview } from "./review";
+import { canApprove, canRequestReview, canReturn, statusAfterReview } from "./review";
 
 const perms = (over: Partial<ContentPermissions> = {}): ContentPermissions => ({
   create: true,
@@ -56,38 +56,6 @@ describe("devolver (F37)", () => {
 
   it("una aprobada tambien se puede devolver", () => {
     expect(canReturn(perms({ approve: true }), "approved", "Me equivoque").ok).toBe(true);
-  });
-});
-
-describe("editar el contenido (F37)", () => {
-  it("con redes programadas se bloquea, y dice como destrabarlo", () => {
-    // Si no, saldria algo distinto de lo que se aprobo.
-    const result = canEditContent({
-      perms: perms({ approve: true }),
-      status: "scheduled",
-      hasScheduledNetworks: true,
-    });
-
-    expect(result).toMatchObject({ ok: false });
-    expect(result.ok === false && result.reason).toContain("Desprogramalas");
-  });
-
-  it("aprobada pero sin programar todavia se edita", () => {
-    expect(
-      canEditContent({ perms: perms({ approve: true }), status: "approved", hasScheduledNetworks: false }),
-    ).toEqual({ ok: true });
-  });
-
-  it("una publicada no se edita", () => {
-    expect(
-      canEditContent({ perms: perms({ approve: true }), status: "published", hasScheduledNetworks: false }).ok,
-    ).toBe(false);
-  });
-
-  it("un Member no edita la pieza de otro", () => {
-    expect(
-      canEditContent({ perms: perms({ isAuthor: false }), status: "draft", hasScheduledNetworks: false }).ok,
-    ).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { applyContentResync, planContentResync } from "@/lib/publishing/content-resync";
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -137,7 +138,7 @@ export async function attachMedia(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, media")
+    .select("id, media, caption, networks")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -146,13 +147,26 @@ export async function attachMedia(input: {
 
   // Al escribir, tambien les queda el id a los archivos de antes.
   const library = ensureMediaIds((Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[]);
+  const media = [...library, parsed.entry];
+
+  // Una red agendada en Zernio que usa la biblioteca base cambia con este
+  // archivo: se valida y despues se le reenvia (M10, lib/publishing/content-resync.ts).
+  const service = await createServiceClient();
+  const resync = await planContentResync(service, {
+    postId: input.postId,
+    before: post,
+    after: { caption: post.caption, media, networks: post.networks },
+  });
+  if (!resync.ok) return { ok: false, error: resync.error };
 
   const { error } = await supabase
     .from("content_posts")
-    .update({ media: [...library, parsed.entry] as never })
+    .update({ media: media as never })
     .eq("id", input.postId);
 
   if (error) return { ok: false, error: "No pude guardar el archivo en la pieza" };
+
+  await applyContentResync(service, { workspaceId: workspace.id, targets: resync.targets });
 
   revalidatePath(CONTENT_PATH);
   return { ok: true, data: { id: parsed.entry.id! } };
@@ -178,7 +192,7 @@ export async function removeMedia(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, media, networks, status")
+    .select("id, media, networks, status, caption")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -199,6 +213,18 @@ export async function removeMedia(input: {
   const networks = (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[];
   const stripped = removeFileFromNetworks(networks, input.fileId);
 
+  const service = await createServiceClient();
+  const resync = await planContentResync(service, {
+    postId: input.postId,
+    before: post,
+    after: {
+      caption: post.caption,
+      media: plan.media,
+      networks: stripped.affected.length > 0 ? stripped.networks : post.networks,
+    },
+  });
+  if (!resync.ok) return { ok: false, error: resync.error };
+
   const { error } = await supabase
     .from("content_posts")
     .update({
@@ -209,8 +235,9 @@ export async function removeMedia(input: {
 
   if (error) return { ok: false, error: "No pude actualizar la pieza" };
 
+  await applyContentResync(service, { workspaceId: workspace.id, targets: resync.targets });
+
   if (plan.deleteFromBucket) {
-    const service = await createServiceClient();
     const { error: storageError } = await service.storage
       .from("content-media")
       .remove([target.storage_path]);

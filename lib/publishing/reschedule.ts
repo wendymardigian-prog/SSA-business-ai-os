@@ -93,3 +93,66 @@ export async function reschedulePublication(
 
   return true;
 }
+
+/**
+ * Reenviarle al proveedor una publicacion que ya tiene agendada, porque cambio
+ * su contenido (caption, archivos, formato) y no su fecha (cambio aprobado M10:
+ * una pieza programada se sigue editando).
+ *
+ * Mismo camino que mover la fecha: la fila vuelve a `uploading` y el job de
+ * agenda del proveedor corre ya, lee la pieza tal como quedo guardada y le
+ * pide a Zernio que actualice SU post (`scheduler.update`). Sin esto Zernio
+ * publicaba el texto viejo y la pantalla mostraba el nuevo.
+ *
+ * Devuelve si la reenvio. Una fila que ya estaba en camino (`uploading`, por
+ * ejemplo porque en el mismo guardado cambio la fecha) no se toca: su job
+ * todavia no corrio y va a leer la version nueva igual.
+ */
+export async function resyncProviderPublication(
+  supabase: Db,
+  params: { socialPostId: string; workspaceId: string },
+): Promise<boolean> {
+  const { data: moved, error } = await supabase
+    .from("social_posts")
+    .update({ status: "uploading", last_error: null, last_error_kind: null })
+    .eq("id", params.socialPostId)
+    .eq("status", "scheduled")
+    .not("publisher_ref", "is", null)
+    .select("id");
+
+  if (error) {
+    console.error("[publishing] no pude reenviar la publicacion:", error.message);
+    return false;
+  }
+  if (!moved || moved.length === 0) return true;
+
+  await supabase
+    .from("scheduled_jobs")
+    .delete()
+    .eq("type", CONTENT_PROVIDER_SCHEDULE_JOB)
+    .eq("status", "pending")
+    .contains("payload", { socialPostId: params.socialPostId });
+
+  try {
+    await scheduleJob(
+      supabase,
+      CONTENT_PROVIDER_SCHEDULE_JOB,
+      { socialPostId: params.socialPostId, workspaceId: params.workspaceId },
+      new Date(),
+    );
+  } catch (err) {
+    console.error("[publishing] no pude agendar el reenvio:", err);
+    // Sin job la fila diria "actualizando" para siempre y Zernio seguiria con
+    // la version vieja: se marca para que se vea y se pueda reintentar.
+    await supabase
+      .from("social_posts")
+      .update({
+        status: "failed",
+        last_error: "No pude mandarle a Zernio la versión nueva. Reintentá o programala de nuevo.",
+        last_error_kind: "temporary",
+      })
+      .eq("id", params.socialPostId);
+    return false;
+  }
+  return true;
+}

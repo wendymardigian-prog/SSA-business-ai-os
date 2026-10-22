@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   canWritePost,
+  editNotices,
   copyJustFinished,
   draftFromPost,
   draftPayload,
   shouldPollCopy,
-  isEditableStatus,
   pieceButtons,
   publicationsVisible,
   statusChangeAction,
@@ -96,16 +96,6 @@ describe("que hace cada cambio del dropdown", () => {
   });
 });
 
-
-describe("que se puede editar", () => {
-  it("solo Borrador, Produccion y Revision", () => {
-    expect(isEditableStatus("draft")).toBe(true);
-    expect(isEditableStatus("in_production")).toBe(true);
-    expect(isEditableStatus("in_review")).toBe(true);
-    expect(isEditableStatus("approved")).toBe(false);
-    expect(isEditableStatus("published")).toBe(false);
-  });
-});
 
 describe("la seccion de estado por red", () => {
   it("aparece cuando alguna red tiene publicacion viva", () => {
@@ -265,18 +255,55 @@ describe("el copywriter escribiendo", () => {
 describe("quien puede escribir la pieza (lo mismo que la politica de la base; `isAuthor` = autor o responsable)", () => {
   it("owner y admin siempre", () => {
     for (const role of ["owner", "admin"]) {
-      expect(canWritePost({ role, isAuthor: false, status: "in_production" })).toBe(true);
-      expect(canWritePost({ role, isAuthor: false, status: "approved" })).toBe(true);
+      expect(canWritePost({ role, isAuthor: false })).toBe(true);
     }
   });
 
-  it("un Member, la suya o la que tiene asignada, y solo hasta revision", () => {
-    expect(canWritePost({ role: "member", isAuthor: true, status: "draft" })).toBe(true);
-    expect(canWritePost({ role: "member", isAuthor: true, status: "in_review" })).toBe(true);
-    expect(canWritePost({ role: "member", isAuthor: true, status: "approved" })).toBe(false);
+  it("un Member, la suya o la que tiene asignada, en cualquier estado (cambio aprobado M10)", () => {
+    // Antes solo hasta revision: una aprobada o publicada no se podia corregir.
+    expect(canWritePost({ role: "member", isAuthor: true })).toBe(true);
   });
 
   it("un Member no escribe la pieza de otra persona (ni autor ni responsable): se le dice, no se le deja fallar al guardar", () => {
-    expect(canWritePost({ role: "member", isAuthor: false, status: "in_production" })).toBe(false);
+    expect(canWritePost({ role: "member", isAuthor: false })).toBe(false);
+  });
+});
+
+describe("los avisos al editar una pieza que ya salio o esta agendada (M10)", () => {
+  const pub = (over: Record<string, unknown>) =>
+    ({
+      platform: "instagram",
+      status: "published",
+      scheduledAt: null,
+      publishedAt: null,
+      url: null,
+      lastError: null,
+      lastErrorKind: null,
+      attempts: 0,
+      warning: null,
+      actualVisibility: null,
+      ...over,
+    }) as Parameters<typeof editNotices>[0][number];
+
+  it("sin publicaciones no dice nada", () => {
+    expect(editNotices([])).toEqual([]);
+  });
+
+  it("publicada: avisa que el post de la red no cambia", () => {
+    const [notice] = editNotices([pub({ platform: "linkedin" })]);
+    expect(notice).toContain("Ya está publicada en LinkedIn");
+    expect(notice).toContain("no cambia el post publicado");
+  });
+
+  it("agendada en Zernio: avisa que se le manda la version nueva; nuestra cola no necesita aviso", () => {
+    const notices = editNotices([
+      pub({ status: "scheduled", onProvider: true }),
+      pub({ platform: "youtube", status: "scheduled", onProvider: false }),
+    ]);
+    expect(notices).toEqual(["Programada en Instagram: al guardar, la versión nueva se manda también a Zernio."]);
+  });
+
+  it("una cancelada no cuenta", () => {
+    expect(editNotices([pub({ status: "cancelled" })])).toEqual([]);
   });
 });

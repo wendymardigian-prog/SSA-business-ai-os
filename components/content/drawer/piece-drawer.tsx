@@ -48,7 +48,7 @@ import {
   copyJustFinished,
   draftFromPost,
   draftPayload,
-  isEditableStatus,
+  editNotices,
   pieceButtons,
   publicationsVisible,
   shouldPollCopy,
@@ -163,7 +163,7 @@ export function PieceDrawer({
   const generating = post.copyStatus === "generating";
   // Mientras el copywriter escribe nada se edita: lo que escribiera una
   // persona en ese rato se pisaria cuando el job termina.
-  const editable = isEditableStatus(post.status) && !generating && data.canEdit;
+  const editable = !generating && data.canEdit;
   const library = useMemo(() => liveMedia(ensureMediaIds(post.media)), [post.media]);
 
   // ── Guardar ─────────────────────────────────────────────────────────────
@@ -720,13 +720,13 @@ export function PieceDrawer({
             taxonomy={taxonomy}
             disabled={!editable}
           />
-          {!isEditableStatus(post.status) && (
-            <p className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
-              Esta pieza ya pasó a revisión final o a publicación: el contenido solo lo cambian quienes aprueban y
-              publican.
-            </p>
-          )}
-          {isEditableStatus(post.status) && !data.canEdit && (
+          {data.canEdit &&
+            editNotices(publications).map((notice) => (
+              <p key={notice} role="status" className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
+                {notice}
+              </p>
+            ))}
+          {!data.canEdit && (
             <p role="status" className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
               Solo podés mirarla: esta pieza la edita quien la creó o un administrador.
             </p>

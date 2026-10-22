@@ -8,26 +8,26 @@
  */
 
 import type { ContentPostStatus } from "@/lib/types/database";
+import { platformLabel } from "@/lib/platforms";
+import type { PublicationSummary } from "./detail";
 import { editorActions, type EditorButton, type EditorPermissions } from "./editor";
 import type { NetworkEntry } from "./redistribution";
 import { STATUS_LABELS, canTransition, type ContentPermissions } from "./status";
 
-/** Los estados que una persona puede tocar: lo demas lo pone el sistema. */
-export const EDITABLE_STATUSES: ContentPostStatus[] = ["draft", "in_production", "in_review"];
-
-export function isEditableStatus(status: ContentPostStatus): boolean {
-  return EDITABLE_STATUSES.includes(status);
-}
-
 /**
  * Si quien mira puede escribir la pieza: lo mismo que la politica de
- * `content_posts` (00223). Un administrador siempre; un Member la que creo o la
- * que tiene asignada, mientras este en borrador, produccion o revision. Cualquier
- * otra cosa la base la rechaza, asi que la pantalla no puede ofrecerla como editable.
+ * `content_posts` (00253). Un administrador siempre; un Member la que creo o la
+ * que tiene asignada. **En cualquier estado** (cambio aprobado M10, 22/10/2026):
+ * antes un Member solo editaba hasta revision y la pantalla bloqueaba a todos
+ * desde Aprobado, aunque la base dejaba a Owner y Admin. Una pieza aprobada,
+ * programada o publicada se sigue corrigiendo (un caption con un error, el
+ * guion para reusarlo); lo programado en Zernio se le reenvia solo al guardar.
+ * Cualquier otra cosa la base la rechaza, asi que la pantalla no puede
+ * ofrecerla como editable.
  */
-export function canWritePost(params: { role: string; isAuthor: boolean; status: ContentPostStatus }): boolean {
+export function canWritePost(params: { role: string; isAuthor: boolean }): boolean {
   if (params.role === "owner" || params.role === "admin") return true;
-  return params.isAuthor && isEditableStatus(params.status);
+  return params.isAuthor;
 }
 
 /**
@@ -97,6 +97,32 @@ export function statusChangeAction(from: ContentPostStatus, to: ContentPostStatu
   return "move";
 }
 
+
+/**
+ * Lo que conviene saber antes de editar una pieza que ya salio o ya esta
+ * agendada (cambio aprobado M10): editar se puede siempre, pero no todo cambio
+ * llega a todos lados.
+ *
+ * - Publicada: el post de la red ya es lo que es; cambiar aca no lo cambia.
+ * - Agendada en Zernio: al guardar se le reenvia la version nueva.
+ */
+export function editNotices(publications: PublicationSummary[]): string[] {
+  const live = publications.filter((p) => p.status && p.status !== "cancelled");
+  const names = (list: PublicationSummary[]) => list.map((p) => platformLabel(p.platform)).join(", ");
+
+  const notices: string[] = [];
+  const published = live.filter((p) => p.status === "published");
+  if (published.length > 0) {
+    notices.push(
+      `Ya está publicada en ${names(published)}: lo que cambies acá queda en la pieza, pero no cambia el post publicado.`,
+    );
+  }
+  const onProvider = live.filter((p) => p.onProvider && (p.status === "scheduled" || p.status === "uploading"));
+  if (onProvider.length > 0) {
+    notices.push(`Programada en ${names(onProvider)}: al guardar, la versión nueva se manda también a Zernio.`);
+  }
+  return notices;
+}
 
 /** Si hay algo que mostrar en "estado por red": una publicacion viva, no cancelada. */
 export function publicationsVisible(publications: Array<{ status: string | null }>): boolean {
