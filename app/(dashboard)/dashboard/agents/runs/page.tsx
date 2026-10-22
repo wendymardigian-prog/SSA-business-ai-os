@@ -1,6 +1,7 @@
 import { getWorkspace } from "@/lib/workspace";
 import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
+import { redirectIfAgentsEmpty } from "@/lib/agent/usage";
 import { RUNS_PAGE_SIZE, loadRuns } from "@/lib/agent/runs-query";
 import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { PageHeader } from "@/components/page-header";
@@ -23,11 +24,14 @@ export default async function AgentRunsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requirePermission("agents.view");
-  const { workspace, supabase } = await getWorkspace();
-  const service = await createServiceClient();
-  const permissions = await getPermissionContext();
+  const [{ workspace, supabase }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
+  // Sin IA conectada y sin haberla usado nunca, Agentes IA es solo la invitacion a conectarla (lib/agent/page-mode.ts).
+  const [permissions, timeZone] = await Promise.all([
+    getPermissionContext(),
+    resolveViewerTimezone((workspace as { timezone?: string }).timezone),
+    redirectIfAgentsEmpty(service, workspace.id),
+  ]);
   const includeCost = permissions.can("ai_costs.view");
-  const timeZone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
 
   const sp = await searchParams;
   const urlParams = new URLSearchParams();

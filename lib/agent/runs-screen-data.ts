@@ -44,10 +44,11 @@ export async function loadRunsScreenInputs(args: {
       ? { from: periodFilter.from, to: periodFilter.to }
       : resolvePeriod(periodFilter.period, new Date(), args.timeZone);
 
-  const [agentConfigs, channelsRes, sources] = await Promise.all([
+  const [agentConfigs, channelsRes, sources, pricingRes] = await Promise.all([
     loadWorkspaceAgents(args.service, args.workspaceId),
     args.userClient.from("channels").select("id, platform, username, display_name").eq("workspace_id", args.workspaceId),
     loadActiveSources(client, { workspaceId: args.workspaceId, dateRange }),
+    args.includeCost ? args.service.from("model_pricing").select("provider, model").eq("workspace_id", args.workspaceId) : null,
   ]);
 
   const channelsRaw = (channelsRes.data ?? []) as Array<{ id: string; platform: string; username: string | null; display_name: string | null }>;
@@ -55,9 +56,7 @@ export async function loadRunsScreenInputs(args: {
   const channels = channelsRaw.map((c) => ({ id: c.id, label: channelLabel(c) }));
 
   const tools = serializeToolsForScreen().map((t) => ({ name: t.name, label: t.label }));
-  const pricing = args.includeCost
-    ? (await args.service.from("model_pricing").select("provider, model").eq("workspace_id", args.workspaceId)).data ?? []
-    : [];
+  const pricing = pricingRes?.data ?? [];
   const models = [
     ...new Set([...agentConfigs.flatMap((a) => [a.model, a.fallbackModel]), ...pricing.map((p) => p.model)].filter((m): m is string => Boolean(m))),
   ].sort();

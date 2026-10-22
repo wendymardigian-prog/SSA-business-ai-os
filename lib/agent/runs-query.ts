@@ -205,21 +205,54 @@ interface RawRun {
 }
 
 /**
+ * Todos los `source` que puede tener una corrida (el CHECK de agent_runs). Si
+ * se suma uno al tipo y no aca, no compila (`_EVERY_SOURCE_LISTED`).
+ */
+export const AGENT_RUN_SOURCES = [
+  "agent",
+  "flow_ai_node",
+  "sequence_ai_step",
+  "kb_indexing",
+  "conversation_summary",
+  "message_classification",
+  "message_classification_eval",
+  "content_copy",
+  "ads_analysis",
+  "audio_transcription",
+  "media_description",
+  "call_classification",
+  "call_analysis",
+  "call_correction",
+  "call_summary",
+  "call_prompt_test",
+] as const satisfies readonly AgentRunSource[];
+const _EVERY_SOURCE_LISTED: [Exclude<AgentRunSource, (typeof AGENT_RUN_SOURCES)[number]>] extends [never] ? true : never = true;
+void _EVERY_SOURCE_LISTED;
+
+/**
  * Los `source` con al menos una corrida en el rango (R1): desde los datos,
  * nunca de la lista de valores del CHECK. `message_classification_eval` esta
  * en el CHECK y nadie lo escribe (docs/PENDIENTE.md); listarla igual seria un
  * filtro que nunca devuelve nada.
+ *
+ * Una consulta `limit 1` por origen, en paralelo, sobre el indice
+ * (workspace_id, source, created_at) de la 00251. Antes se traian hasta 5.000
+ * corridas para quedarse con los distintos: era lo mas lento de la pestaña.
  */
 export async function loadActiveSources(client: Db, args: { workspaceId: string; dateRange: { from: string | null; to: string | null } }): Promise<string[]> {
-  let query = client.from("agent_runs").select("source").eq("workspace_id", args.workspaceId).neq("status", "running");
-  if (args.dateRange.from) query = query.gte("created_at", args.dateRange.from);
-  if (args.dateRange.to) query = query.lte("created_at", args.dateRange.to);
-  const { data, error } = await query.limit(5000);
-  if (error) {
-    console.error("[runs] no pude leer los origenes del periodo:", error.message);
-    return [];
-  }
-  return [...new Set((data ?? []).map((r) => r.source))].sort();
+  const hasRun = async (source: AgentRunSource): Promise<boolean> => {
+    let query = client.from("agent_runs").select("id").eq("workspace_id", args.workspaceId).eq("source", source).neq("status", "running");
+    if (args.dateRange.from) query = query.gte("created_at", args.dateRange.from);
+    if (args.dateRange.to) query = query.lte("created_at", args.dateRange.to);
+    const { data, error } = await query.limit(1);
+    if (error) {
+      console.error("[runs] no pude leer los origenes del periodo:", error.message);
+      return false;
+    }
+    return (data ?? []).length > 0;
+  };
+  const found = await Promise.all(AGENT_RUN_SOURCES.map(hasRun));
+  return AGENT_RUN_SOURCES.filter((_, i) => found[i]).sort();
 }
 
 export async function loadRuns(

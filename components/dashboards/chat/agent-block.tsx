@@ -100,25 +100,6 @@ export function AgentNoRuns({ agentHref }: { agentHref: string | null }) {
   );
 }
 
-/**
- * Hay IA conectada pero ningun agente de chat esta encendido (O): no se muestran
- * cinco tarjetas vacias de algo que no esta andando, se invita a encenderlo.
- */
-export function AgentInvite() {
-  return (
-    <EmptyBlock
-      icon={<Bot className="h-6 w-6" aria-hidden />}
-      title="Todavía no hay un agente respondiendo"
-      text="Cuando enciendas un agente, acá vas a ver en cuántas conversaciones actuó, cuántas tomó desde el primer mensaje y cuántas derivó."
-      action={
-        <Link href="/dashboard/agents" className="rounded-lg border border-input px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent">
-          Ir a Agentes IA
-        </Link>
-      }
-    />
-  );
-}
-
 /** Hay agentes encendidos pero su IA no esta conectada: los numeros son historicos y no se hacen pasar por actuales. */
 export function AgentConnectionWarning({ message }: { message: string }) {
   return (

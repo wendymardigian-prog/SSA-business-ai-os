@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireAnyPermission, getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -16,10 +17,13 @@ import { loadBackgroundScreen, loadReviewCategories } from "@/lib/background/scr
 import { loadRuns, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
 import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
-import { resolveViewerTimezone } from "@/lib/user-timezone";
+import { getSavedViewerTimezone, resolveViewerTimezone } from "@/lib/user-timezone";
 import type { TaskScreenData } from "@/lib/ai-tasks/screen";
 import { loadCallConfig } from "@/lib/calls/config-data";
-import { TaskDetailView } from "@/components/agents/tasks/task-detail-view";
+import { TaskDetailView, TaskTabBody } from "@/components/agents/tasks/task-detail-view";
+import { TabBodySkeleton } from "@/components/agents/detail-tabs";
+import { redirectIfAgentsEmpty } from "@/lib/agent/usage";
+import type { TaskRunInfo } from "@/lib/background/screen";
 
 /**
  * El detalle de una tarea de IA (Bloque Agentes IA). Las mismas cinco
@@ -27,6 +31,12 @@ import { TaskDetailView } from "@/components/agents/tasks/task-detail-view";
  * Instrucciones, Corridas y Costos. Qué muestra cada una sale del catálogo
  * (`AI_TASKS`), no de un `if` por tarea. Solo Owner/Admin, igual que antes el
  * tab de Ajustes → Tareas.
+ *
+ * Cambiar de pestaña tiene que sentirse inmediato: la página solo espera lo
+ * minimo (permiso, zona horaria) y responde con el armazón. La línea de la
+ * última corrida viaja como promesa y el contenido de la pestaña va en un
+ * `<Suspense key={tab}>`: al hacer clic se ve su esqueleto enseguida en vez de
+ * quedar todo congelado hasta la última consulta.
  */
 export default async function TaskDetailPage({
   params,
@@ -40,7 +50,14 @@ export default async function TaskDetailPage({
   const task = getAiTask(taskParam);
   if (!task) notFound();
 
-  const [{ workspace, supabase }, service] = await Promise.all([requireAnyPermission(["ai_tasks.manage", "calls.configure"]), createServiceClient()]);
+  // La zona guardada de quien mira se pide junto con el permiso (no depende de el); despues `resolveViewerTimezone`
+  // la toma del cache del request.
+  const [{ workspace, supabase }, service] = await Promise.all([
+    requireAnyPermission(["ai_tasks.manage", "calls.configure"]),
+    createServiceClient(),
+    getSavedViewerTimezone(),
+  ]);
+  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
   // Una pestaña que no existe cae en la primera, igual que la vista: asi se
   // cargan sus datos.
   const tab = resolveTaskTab(query.tab);
@@ -126,34 +143,56 @@ export default async function TaskDetailPage({
 
   const isClassification = task.id === "message_classification";
   const byAgent = task.control.kind === "agent";
-  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
-  const [lastRun, backgroundScreen, instructions, model, runs, categories, agentClose, callConfig] = await Promise.all([
-    loadTaskRunSummary(service, workspace.id, task),
-    isClassification && tab === "config" ? loadBackgroundScreen(workspace.id, workspace.timezone) : Promise.resolve(null),
-    taskIsVersioned(task.id) && tab === "instrucciones" ? loadInstructions() : Promise.resolve(undefined),
-    task.hasModelPicker && tab === "config" ? loadModel() : Promise.resolve(undefined),
-    tab === "runs" ? loadRunsTab(viewerTimezone) : Promise.resolve(undefined),
-    isClassification && tab === "config" ? loadReviewCategories(workspace.id) : Promise.resolve(undefined),
-    byAgent && (tab === "como" || tab === "config") ? loadAgentCloseSettings(service, workspace.id) : Promise.resolve(undefined),
-    needsCallConfig ? loadCall() : Promise.resolve(undefined),
-  ]);
+  // El reporte de costos del mes (lo mas pesado): lo usan la cabecera y, si estan abiertas, Configuracion y Costos.
+  // Una sola consulta compartida; nadie la espera antes de responder.
+  const lastRun: Promise<TaskRunInfo | null> = loadTaskRunSummary(service, workspace.id, task).catch((error: unknown) => {
+    console.error("[ai-tasks] no pude leer la ultima corrida:", error instanceof Error ? error.message : error);
+    return null;
+  });
 
-  const data: TaskScreenData = {
-    task,
-    about: taskAbout(task.id),
-    lastRun,
-    agentClose,
-    settings,
-    canTurnOff: task.canTurnOff,
-    canBatch: task.canTurnOff,
-    batchWarning: null,
-    quality: backgroundScreen ?? undefined,
-    categories,
-    callConfig,
-    instructions,
-    model,
-    runs,
+  const loadTab = async (): Promise<TaskScreenData> => {
+    const [, runInfo, backgroundScreen, instructions, model, runs, categories, agentClose, callConfig] = await Promise.all([
+      // Sin IA conectada y sin haberla usado nunca, Agentes IA es solo la invitacion a conectarla
+      // (lib/agent/page-mode.ts). Va aca y no antes de responder: asi no demora el encabezado.
+      redirectIfAgentsEmpty(service, workspace.id),
+      tab === "config" || tab === "costos" ? lastRun : Promise.resolve(null),
+      isClassification && tab === "config" ? loadBackgroundScreen(workspace.id, workspace.timezone) : Promise.resolve(null),
+      taskIsVersioned(task.id) && tab === "instrucciones" ? loadInstructions() : Promise.resolve(undefined),
+      task.hasModelPicker && tab === "config" ? loadModel() : Promise.resolve(undefined),
+      tab === "runs" ? loadRunsTab(viewerTimezone) : Promise.resolve(undefined),
+      isClassification && tab === "config" ? loadReviewCategories(workspace.id) : Promise.resolve(undefined),
+      byAgent && (tab === "como" || tab === "config") ? loadAgentCloseSettings(service, workspace.id) : Promise.resolve(undefined),
+      needsCallConfig ? loadCall() : Promise.resolve(undefined),
+    ]);
+    return {
+      task,
+      about: taskAbout(task.id),
+      lastRun: runInfo,
+      agentClose,
+      settings,
+      canTurnOff: task.canTurnOff,
+      canBatch: task.canTurnOff,
+      batchWarning: null,
+      quality: backgroundScreen ?? undefined,
+      categories,
+      callConfig,
+      instructions,
+      model,
+      runs,
+    };
   };
 
-  return <TaskDetailView data={data} tab={tab} timeZone={viewerTimezone} />;
+  const mode = settings && task.backgroundTask ? settings[task.backgroundTask].mode : null;
+  return (
+    <TaskDetailView task={task} mode={mode} tab={tab} timeZone={viewerTimezone} lastRun={lastRun}>
+      <Suspense key={tab} fallback={<TabBodySkeleton />}>
+        <TaskTab load={loadTab} tab={tab} />
+      </Suspense>
+    </TaskDetailView>
+  );
+}
+
+/** El contenido de la pestaña: espera solo sus datos, dentro de su `<Suspense>`. */
+async function TaskTab({ load, tab }: { load: () => Promise<TaskScreenData>; tab: string }) {
+  return <TaskTabBody data={await load()} tab={tab} />;
 }

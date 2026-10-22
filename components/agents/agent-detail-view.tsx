@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, use, useState, useTransition } from "react";
+import { Suspense, use, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -21,7 +21,7 @@ import { RunsScreen } from "./runs-screen";
 import { AiPeriodControl } from "./ai-dashboard/period-control";
 import { formatUsd } from "./filters";
 import { PageHeader } from "@/components/page-header";
-import { LinkPending } from "@/components/ui/link-pending";
+import { DetailTabs } from "./detail-tabs";
 
 /**
  * Detalle de un agente. Las pestanas salen del registro de tipos: la vista no
@@ -41,17 +41,27 @@ const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: Agen
   tags: (p) => <TagsTab {...p} />,
 };
 
+/** Lo que necesita el armazón (encabezado y pestañas): se calcula rápido, sin esperar la pestaña. */
+export type AgentHeaderData = Pick<AgentScreenData, "viewer" | "kpis" | "agent" | "providers" | "providerLabels">;
+
+/**
+ * El armazón del detalle: encabezado, interruptor y pestañas. Se dibuja apenas
+ * se hace clic; el contenido de la pestaña llega como `children`, en su propio
+ * `<Suspense key={tab}>` (ver la página).
+ */
 export function AgentDetailView({
-  data,
+  header: data,
   typeDef,
   tab,
   timeZone,
+  children,
 }: {
-  data: AgentScreenData;
+  header: AgentHeaderData;
   typeDef: AgentTypeDefinition;
   tab: string;
   /** Para el selector de período de la pestaña Runs (Bloque Agentes IA). */
   timeZone: string;
+  children: ReactNode;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -83,8 +93,6 @@ export function AgentDetailView({
       else router.refresh();
     });
   }
-
-  const content = TAB_CONTENT[tab];
 
   return (
     <div className="flex h-full flex-col">
@@ -163,22 +171,16 @@ export function AgentDetailView({
           </Suspense>
         )}
 
-        <nav className="mt-5 flex gap-1 overflow-x-auto" aria-label="Secciones del agente">
-          {tabs.map((t) =>
-            t.available ? (
-              <Link
-                key={t.key}
-                href={`/dashboard/agents/${agent.id}?tab=${t.key}`}
-                aria-current={tab === t.key ? "page" : undefined}
-                className={cn(
-                  "whitespace-nowrap border-b-2 px-3 pb-3 text-sm font-medium transition-colors",
-                  tab === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t.label}
-                <LinkPending className="ml-1.5 align-middle" />
-              </Link>
-            ) : (
+        {/* Una pestaña marcada como no disponible en el tipo se ve apagada, al final. */}
+        <div className="mt-5 flex items-end gap-1 overflow-x-auto">
+          <DetailTabs
+            label="Secciones del agente"
+            active={tab}
+            tabs={tabs.filter((t) => t.available).map((t) => ({ key: t.key, label: t.label, href: `/dashboard/agents/${agent.id}?tab=${t.key}` }))}
+          />
+          {tabs
+            .filter((t) => !t.available)
+            .map((t) => (
               <span
                 key={t.key}
                 title="Llega en el Bloque 2b"
@@ -186,18 +188,23 @@ export function AgentDetailView({
               >
                 {t.label} <span className="text-[10px]">· próximamente</span>
               </span>
-            ),
-          )}
-        </nav>
+            ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">
         <div className={cn("mx-auto space-y-6", tab === "runs" || tab === "actions" || tab === "costs" ? "max-w-5xl" : "max-w-3xl")}>
-          {content ? content({ data, typeDef }) : null}
+          {children}
         </div>
       </div>
     </div>
   );
+}
+
+/** El contenido de la pestaña abierta, con los datos que cargó la página solo para ella. */
+export function AgentTabBody({ data, typeDef, tab }: { data: AgentScreenData; typeDef: AgentTypeDefinition; tab: string }) {
+  const content = TAB_CONTENT[tab];
+  return <>{content ? content({ data, typeDef }) : null}</>;
 }
 
 /** La fila de indicadores de la cabecera. Llega despues que el resto: ver `loadHeaderKpis`. */

@@ -6,6 +6,8 @@ import { availableDashboards, comingSoonDashboards } from "@/lib/dashboards/avai
 import { isAdminRole } from "@/lib/auth/roles";
 import { platformLabel } from "@/lib/platforms";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { chatAgentEverActed } from "@/lib/agent/usage";
+import { createServiceClient } from "@/lib/supabase/server";
 import { agentSectionVisibility } from "@/lib/dashboards/chat/agent-visibility";
 import { AGENT_PUBLIC_COLUMNS, publicChannelMode, type PublicAgent } from "@/lib/agent/public";
 import { getAgentType } from "@/lib/agent/agent-types";
@@ -47,7 +49,8 @@ export default async function ChatDashboardPage({
   const timezone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
   const isAdmin = isAdminRole(role);
 
-  const [permissions, members, channelsRes, agentsRes, draftCounts, aiProviders] = await Promise.all([
+  const service = await createServiceClient();
+  const [permissions, members, channelsRes, agentsRes, draftCounts, aiProviders, everActed] = await Promise.all([
     getPermissionContext(),
     isAdmin ? getWorkspaceMembers(workspace.id) : Promise.resolve([]),
     supabase.from("channels").select("id, platform, display_name, username, is_active").eq("workspace_id", workspace.id),
@@ -55,6 +58,8 @@ export default async function ChatDashboardPage({
     countPendingDrafts(),
     // Las IAs conectadas: deciden si la seccion del agente se muestra (O).
     listConnectedAiProviders(workspace.id),
+    // Si el agente actuo alguna vez: sin historia y sin un agente andando, la seccion no existe.
+    chatAgentEverActed(service, workspace.id),
   ]);
 
   const channels = (
@@ -69,10 +74,16 @@ export default async function ChatDashboardPage({
   const agents = ((agentsRes.data ?? []) as PublicAgent[]).filter((a) => getAgentType(a.type)?.conversational);
   const agent = agents[0] ?? null;
   const drafts = draftChannels(agents);
-  // Cuando se muestra "El agente" (O): sin IA y sin agentes encendidos, ni se dibuja ni se consultan sus datos.
+  // Cuando se muestra "El agente" (O): si nunca actuo y no hay uno andando, ni se dibuja ni se consultan sus datos.
   const agentVisibility = agentSectionVisibility({
-    agents: agents.map((a) => ({ isEnabled: a.is_enabled, provider: a.provider ?? null, model: a.model ?? null })),
+    agents: agents.map((a) => ({
+      isEnabled: a.is_enabled,
+      provider: a.provider ?? null,
+      model: a.model ?? null,
+      channelCount: (a.enabled_channel_ids ?? []).length,
+    })),
     connectedProviders: aiProviders.map((p) => p.provider),
+    everActed,
   });
   const showAgentSection = agentVisibility.mode === "full" || agentVisibility.mode === "full-with-warning";
 
