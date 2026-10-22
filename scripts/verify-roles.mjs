@@ -19,6 +19,7 @@
  *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208   # has_permission v2 (Member, Admin, Owner)
  *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211   # y el retiro de settings.manage
  *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212   # y la RLS de equipo (invitar, asignar, editar roles)
+ *   ... --despues-de-00249   # y la bandeja por cuenta (dos Instagram, alcances por cuenta, "todas", la ficha y "no podes dar")
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -40,6 +41,7 @@ const URL = env.NEXT_PUBLIC_SUPABASE_URL, ANON = env.NEXT_PUBLIC_SUPABASE_ANON_K
 const POST_00208 = process.argv.includes("--despues-de-00208");
 const POST_00211 = process.argv.includes("--despues-de-00211");
 const POST_00212 = process.argv.includes("--despues-de-00212");
+const POST_00249 = process.argv.includes("--despues-de-00249");
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 let failures = 0;
@@ -101,7 +103,9 @@ try {
       description: "Ve todos los leads del negocio",
       permissions: {
         keys: ["contacts.view", "dashboards.content.view"],
-        scopes: { leads: "all", conversations: "all" },
+        scopes: { leads: "all" },
+        // La bandeja por cuenta (00249): todas las cuentas, todas las conversaciones.
+        channels: { mode: "all", all: { scope: "all", reply: true } },
       },
     }).select("id").single();
     check(!error && !!data, "se puede crear un rol personalizado", error?.message);
@@ -149,8 +153,9 @@ try {
 
   console.log("\n— Bajarle el alcance a `own` lo vuelve a acotar —");
   {
+    // Contactos Y bandeja: desde la 00249 ver un chat con "todas" deja ver la ficha de ese contacto.
     await svc.from("workspace_roles").update({
-      permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own" } },
+      permissions: { keys: ["contacts.view"], scopes: { leads: "own" }, channels: { mode: "all", all: { scope: "own", reply: true } } },
     }).eq("id", rolAmplio.id);
 
     check(await contactCount(amplio, ws.id) === 0,
@@ -508,6 +513,146 @@ try {
       check(!!(await svc.from("workspace_roles").select("id").eq("id", borrable.id).maybeSingle()).data, "un Member de sistema no borra roles");
       await gestor.client.from("workspace_roles").delete().eq("id", borrable.id);
       check(!(await svc.from("workspace_roles").select("id").eq("id", borrable.id).maybeSingle()).data, "un rol con roles.manage borra un rol personalizado que no es el suyo");
+    }
+  }
+  if (POST_00249) {
+    console.log("\n— La bandeja por cuenta (00249) —");
+    const casos = JSON.parse(readFileSync("lib/auth/channel-permissions.cases.json", "utf8"));
+    const resolver = (v) => {
+      if (Array.isArray(v)) return v.map(resolver);
+      if (!v || typeof v !== "object") return v;
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [casos.ids[k] ?? k, resolver(x)]));
+    };
+    const lit = (v) => (v === null ? "NULL::jsonb" : `'${JSON.stringify(v).replace(/'/g, "''")}'::jsonb`);
+
+    // 1) grantFor contra la gemela SQL (pura: se pregunta con la CLI).
+    {
+      const sql = casos.grantFor
+        .map((c, i) => `select ${i} as i, (private.role_channel_grant(${lit(resolver(c.channels))}, '${casos.ids[c.channel]}') is not distinct from ${lit(c.expected)}) as ok`)
+        .join(" union all ");
+      try {
+        const out = execFileSync("supabase", ["db", "query", "--linked", "-o", "json", `select json_agg(x) as r from (${sql}) x`], { stdio: "pipe" }).toString();
+        const rows = JSON.parse(out).rows[0].r;
+        for (const row of rows) check(row.ok, `role_channel_grant: ${casos.grantFor[row.i].name}`);
+      } catch (e) { fail("no pude correr los casos de role_channel_grant (¿esta la CLI de Supabase?)", String(e.message).slice(0, 200)); }
+    }
+
+    // 2) canGrant contra public.can_grant_channels, con usuarios de verdad.
+    const dueno = await makeUser("roles-owner-249");
+    await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: dueno.id, role: "owner" });
+    const mkRol = async (name, channels, keys = []) => {
+      const { data, error } = await svc.from("workspace_roles")
+        .insert({ workspace_id: ws.id, name, permissions: { keys, scopes: { leads: "own" }, channels } }).select("id").single();
+      if (error) throw new Error(`no pude crear el rol ${name}: ${error.message}`);
+      return data.id;
+    };
+    const conRol = async (tag, roleId) => {
+      const u = await makeUser(tag);
+      await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: u.id, role: "member", role_id: roleId });
+      return u;
+    };
+    {
+      const actores = new Map();
+      const actor = async (a) => {
+        if (a === "owner") return dueno;
+        if (a === "admin") return admin;
+        if (a === "member") return acotado;
+        const k = JSON.stringify(a);
+        if (!actores.has(k)) actores.set(k, await conRol(`roles-ch-actor-${actores.size}`, await mkRol(`zz-test Bandeja ${actores.size}`, resolver(a))));
+        return actores.get(k);
+      };
+      for (const c of casos.canGrant) {
+        const u = await actor(c.actor);
+        const { data, error } = await u.client.rpc("can_grant_channels", {
+          p_workspace_id: ws.id, p_wanted: resolver(c.wanted), p_before: c.before ? resolver(c.before) : null,
+        });
+        check(!error && data === c.allowed, `can_grant_channels: ${c.name}`, error?.message ?? `esperaba ${c.allowed}, dio ${data}`);
+      }
+    }
+
+    // 3) Dos Instagram: cada rol ve las cuentas que tiene, con su alcance.
+    const canal = async (tag) => (await svc.from("channels").insert({
+      workspace_id: ws.id, platform: "instagram", late_account_id: `zz-test-249-${tag}-${Date.now()}`,
+      username: `zztest249${tag}`, display_name: `zz test ${tag}`, is_active: true,
+    }).select("id").single()).data.id;
+    const ig1 = await canal("a");
+    const ig2 = await canal("b");
+
+    const lector1 = await conRol("roles-ch-ig1", await mkRol("zz-test Solo IG1", { mode: "custom", byChannel: { [ig1]: { scope: "all", reply: true } } }));
+    const lector2 = await conRol("roles-ch-ig1-libres", await mkRol("zz-test IG1 sin asignar", { mode: "custom", byChannel: { [ig1]: { scope: "own_unassigned", reply: false } } }));
+    const todas = await conRol("roles-ch-todas", await mkRol("zz-test Todas", { mode: "all", all: { scope: "all", reply: true } }));
+
+    const contacto = async (name, extra = {}) => (await svc.from("contacts").insert({ workspace_id: ws.id, display_name: `zz-test ${name}`, ...extra }).select("id").single()).data.id;
+    const libre = await contacto("libre");
+    const deOtro = await contacto("de otro", { setter_id: admin.id });
+    const soloIg2 = await contacto("solo en ig2");
+    const conv = async (channelId, contactId) => (await svc.from("conversations").insert({ workspace_id: ws.id, channel_id: channelId, contact_id: contactId, platform: "instagram" }).select("id").single()).data.id;
+    const cLibre1 = await conv(ig1, libre);
+    const cLibre2 = await conv(ig2, libre);
+    const cOtro1 = await conv(ig1, deOtro);
+    const cSolo2 = await conv(ig2, soloIg2);
+
+    const convsDe = async (u) => new Set(((await u.client.from("conversations").select("id").eq("workspace_id", ws.id)).data ?? []).map((r) => r.id));
+    const contactosDe = async (u) => new Set(((await u.client.from("contacts").select("id").eq("workspace_id", ws.id)).data ?? []).map((r) => r.id));
+
+    {
+      const v = await convsDe(lector1);
+      check(v.has(cLibre1) && v.has(cOtro1), "un rol con IG1 «todas» ve las conversaciones de IG1, de quien sean");
+      check(!v.has(cLibre2) && !v.has(cSolo2), "...y ninguna del otro Instagram, ni siquiera por consulta directa");
+      const c = await contactosDe(lector1);
+      check(c.has(libre) && c.has(deOtro), "ver un chat deja ver la ficha de ese contacto (con «Contactos: solo asignados»)");
+      check(!c.has(soloIg2), "...pero no la de un contacto que solo escribe por la cuenta que no tiene");
+      for (const [cid, tag] of [[cSolo2, "ig2"], [cLibre1, "ig1"]]) {
+        await svc.from("messages").insert({ workspace_id: ws.id, conversation_id: cid, direction: "inbound", text: `zz-test-249-${tag}`, platform_message_id: `zz-249-${tag}-${Date.now()}`, status: "delivered" });
+      }
+      const { data: msgs2 } = await lector1.client.from("messages").select("id").eq("conversation_id", cSolo2);
+      const { data: msgs1 } = await lector1.client.from("messages").select("id").eq("conversation_id", cLibre1);
+      check((msgs2 ?? []).length === 0 && (msgs1 ?? []).length === 1, "los mensajes siguen a la conversacion: los del otro Instagram no se leen");
+    }
+    {
+      const v = await convsDe(lector2);
+      check(v.has(cLibre1), "con «asignadas + sin asignar» ve la de un contacto que no tiene nadie");
+      check(!v.has(cOtro1), "...y no la de un contacto que tiene setter");
+      check(!v.has(cLibre2), "...ni la del mismo contacto en la otra cuenta");
+      const c = await contactosDe(lector2);
+      check(c.has(libre) && !c.has(deOtro), "la ficha sigue la misma regla");
+    }
+    {
+      const ig3 = await canal("c"); // se conecta DESPUES de crear los roles
+      const cNueva = await conv(ig3, deOtro);
+      check((await convsDe(todas)).has(cNueva), "«todas las cuentas» incluye una cuenta conectada despues");
+      check(!(await convsDe(lector1)).has(cNueva), "«elegir por cuenta» no la ve hasta que se la den");
+      check((await convsDe(acotado)).size === 0, "el Member de sistema sigue viendo solo lo suyo");
+    }
+
+    // 4) El trigger: un rol que se guarda sin `channels` no pierde la bandeja; uno nuevo la arma de sus claves viejas.
+    {
+      const { data: viejo } = await svc.from("workspace_roles").insert({
+        workspace_id: ws.id, name: "zz-test Rol de antes",
+        permissions: { keys: ["inbox.whatsapp.view", "inbox.instagram.view", "inbox.instagram.reply"], scopes: { leads: "own_unassigned" } },
+      }).select("id, permissions").single();
+      const ch = viejo?.permissions?.channels;
+      check(ch?.mode === "custom" && ch.byChannel?.[ig1]?.scope === "own_unassigned" && ch.byChannel?.[ig1]?.reply === true,
+        "un rol con claves viejas recibe cada cuenta de esas redes, con su alcance y su «responder»", JSON.stringify(ch));
+      await svc.from("workspace_roles").update({ permissions: { keys: ["contacts.view"], scopes: { leads: "own" } } }).eq("id", viejo.id);
+      const { data: despues } = await svc.from("workspace_roles").select("permissions").eq("id", viejo.id).single();
+      check(JSON.stringify(despues.permissions.channels) === JSON.stringify(ch), "guardarlo sin `channels` conserva la bandeja que tenia");
+    }
+
+    // 5) La base frena dar una cuenta que no se tiene (editar y crear).
+    {
+      const gestorIg1 = await conRol("roles-ch-gestor", await mkRol("zz-test Gestor IG1", { mode: "custom", byChannel: { [ig1]: { scope: "all", reply: true } } }, ["roles.manage", "team.invite"]));
+      const objetivo = await mkRol("zz-test Objetivo", { mode: "custom", byChannel: {} });
+      const editar = (channels) => gestorIg1.client.from("workspace_roles").update({ permissions: { keys: [], scopes: { leads: "own" }, channels } }).eq("id", objetivo).select("id");
+      check(!!(await editar({ mode: "custom", byChannel: { [ig2]: { scope: "own", reply: false } } })).error, "quien tiene solo IG1 no le da IG2 a otro rol");
+      check(!!(await editar({ mode: "all", all: { scope: "own", reply: false } })).error, "...ni «todas las cuentas»");
+      const ok = await editar({ mode: "custom", byChannel: { [ig1]: { scope: "own", reply: true } } });
+      check(!ok.error && (ok.data ?? []).length === 1, "...y si le da IG1, que tiene", ok.error?.message);
+      const crear = await gestorIg1.client.from("workspace_roles").insert({ workspace_id: ws.id, name: "zz-test Creado", permissions: { keys: [], scopes: { leads: "own" }, channels: { mode: "custom", byChannel: { [ig2]: { scope: "all", reply: true } } } } }).select("id");
+      check(!!crear.error, "tampoco crea un rol con una cuenta que no tiene");
+      const rolIg2 = await mkRol("zz-test Con IG2", { mode: "custom", byChannel: { [ig2]: { scope: "own", reply: false } } });
+      const inv = await gestorIg1.client.from("workspace_invites").insert({ workspace_id: ws.id, email: `zz-test-inv-${randomUUID().slice(0, 8)}@example.test`, invited_by: gestorIg1.id, delivery: "link", role: "member", role_id: rolIg2 }).select("id");
+      check(!!inv.error, "ni invita con un rol que tiene una cuenta que no tiene");
     }
   }
 } catch (err) {

@@ -119,7 +119,7 @@ describe("quien puede pedir copy y cuando", () => {
       id: "rol-1",
       workspace_id: WS,
       system_role: null,
-      permissions: { keys: ["content.view", "content.ai"], scopes: { leads: "all", conversations: "all" } },
+      permissions: { keys: ["content.view", "content.ai"], scopes: { leads: "all" } },
     });
 
     expect((await requestCopy({ postId: POST })).ok).toBe(true);

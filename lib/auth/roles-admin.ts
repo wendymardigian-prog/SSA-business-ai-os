@@ -17,6 +17,12 @@
  */
 
 import {
+  CHANNEL_SCOPE_LABELS,
+  hasAnyChannel,
+  NO_CHANNELS,
+  type ChannelsConfig,
+} from "./channel-permissions";
+import {
   ALL_PERMISSION_KEYS,
   isEmptyRole,
   parsePermissions,
@@ -48,6 +54,8 @@ export interface RoleInput {
   description?: string | null;
   keys: string[];
   scopes: Partial<Record<(typeof SCOPED_MODULES)[number], PermissionScope>>;
+  /** La bandeja por cuenta. Sin esto, el rol no ve ninguna cuenta. */
+  channels?: ChannelsConfig;
 }
 
 export interface ValidatedRole {
@@ -90,13 +98,15 @@ export function validateRole(input: RoleInput): RoleValidation {
     keys: input.keys,
     scopes: {
       leads: input.scopes.leads ?? "own",
-      conversations: input.scopes.conversations ?? "own",
       bookings: input.scopes.bookings ?? "own",
       calls: input.scopes.calls ?? "own",
       sales: input.scopes.sales ?? "own",
       commissions: input.scopes.commissions ?? "own",
       tasks: input.scopes.tasks ?? "own",
     },
+    // `parsePermissions` normaliza: "responder" sin un alcance no existe (un permiso de cuenta siempre trae
+    // "que conversaciones ve"), y un valor que no se entiende es "sin acceso".
+    channels: input.channels ?? NO_CHANNELS,
   });
 
   const warnings: string[] = [];
@@ -110,19 +120,6 @@ export function validateRole(input: RoleInput): RoleValidation {
   const descartadas = input.keys.filter((key) => !ALL_PERMISSION_KEYS.includes(key));
   if (descartadas.length > 0) {
     warnings.push(`Se ignoraron ${descartadas.length} permiso(s) que ya no existen.`);
-  }
-
-  // Ver sin poder responder es una combinacion valida (alguien que supervisa),
-  // pero responder sin poder ver no tiene sentido.
-  for (const channel of ["instagram", "whatsapp", "email"]) {
-    const puedeResponder = permissions.keys.includes(`inbox.${channel}.reply`);
-    const puedeVer = permissions.keys.includes(`inbox.${channel}.view`);
-    if (puedeResponder && !puedeVer) {
-      warnings.push(
-        `Marcaste "responder" en ${channel} sin "ver": se agrego "ver", porque sin eso no se llega a la conversacion.`,
-      );
-      permissions.keys.push(`inbox.${channel}.view`);
-    }
   }
 
   // Lo mismo con editar sin ver.
@@ -218,18 +215,25 @@ const SCOPE_SHORT: Record<PermissionScope, { masc: string; fem: string }> = {
 };
 
 /**
- * Lo que se muestra debajo del nombre: cuantos permisos y los dos alcances que mas importan
- * («21 permisos · contactos: todos · conversaciones: todas»).
+ * Lo que se muestra debajo del nombre: cuantos permisos, el alcance de contactos y la bandeja
+ * («21 permisos · contactos: todos · bandeja: todas las cuentas»).
  */
 export function describeRole(role: RoleRow): string {
   if (role.systemRole === "owner") return "Puede todo.";
   if (role.systemRole === "admin") return "Puede todo menos transferir la propiedad y quitar personas.";
 
   const count = role.permissions.keys.length;
-  if (count === 0) return "Sin permisos.";
+  if (count === 0 && !hasAnyChannel(role.permissions.channels)) return "Sin permisos.";
   const leads = SCOPE_SHORT[role.permissions.scopes.leads].masc;
-  const conversations = SCOPE_SHORT[role.permissions.scopes.conversations].fem;
-  return `${count} ${count === 1 ? "permiso" : "permisos"} · contactos: ${leads} · conversaciones: ${conversations}`;
+  return `${count} ${count === 1 ? "permiso" : "permisos"} · contactos: ${leads} · bandeja: ${describeChannels(role.permissions.channels)}`;
+}
+
+/** La bandeja en pocas palabras: «todas las cuentas (solo asignadas)», «2 cuentas» o «ninguna cuenta». */
+export function describeChannels(channels: ChannelsConfig): string {
+  if (channels.mode === "all") return `todas las cuentas (${CHANNEL_SCOPE_LABELS[channels.all.scope].toLowerCase()})`;
+  const n = Object.keys(channels.byChannel).length;
+  if (n === 0) return "ninguna cuenta";
+  return n === 1 ? "1 cuenta" : `${n} cuentas`;
 }
 
 // ── Pantalla de roles: alcances dentro de cada grupo y tildes que se arrastran (B3) ─────────────
@@ -238,7 +242,6 @@ export function describeRole(role: RoleRow): string {
 /** Qué permiso de "ver" gobierna el alcance de cada módulo, y qué dice el aviso cuando falta. */
 const SCOPE_GATES: Record<ScopedModule, { keys: string[]; label: string; hint: string; hintSelector: string }> = {
   leads: { keys: ["contacts.view"], label: "Qué contactos ve", hint: "Activá «Ver contactos» para elegir el alcance", hintSelector: "contacts.view" },
-  conversations: { keys: ["inbox.instagram.view", "inbox.whatsapp.view", "inbox.email.view"], label: "Qué conversaciones ve", hint: "Activá «Ver» en algún canal para elegir el alcance", hintSelector: "inbox" },
   bookings: { keys: ["bookings.view"], label: "Qué agendas ve", hint: "Activá «Ver agendas» para elegir el alcance", hintSelector: "bookings.view" },
   calls: { keys: ["calls.view"], label: "Qué llamadas ve", hint: "Activá «Ver las llamadas» para elegir el alcance", hintSelector: "calls.view" },
   sales: { keys: ["sales.view"], label: "Qué ventas ve", hint: "Activá «Ver las ventas» para elegir el alcance", hintSelector: "sales.view" },
@@ -249,7 +252,6 @@ const SCOPE_GATES: Record<ScopedModule, { keys: string[]; label: string; hint: s
 /** En qué grupo de la pantalla va el selector de cada alcance. */
 export const SCOPE_GROUP: Record<ScopedModule, string> = {
   leads: "contacts",
-  conversations: "inbox",
   bookings: "scheduling",
   calls: "calls",
   sales: "sales",
@@ -282,9 +284,6 @@ export function scopeFieldState(module: ScopedModule, keys: string[]): ScopeFiel
 
 /** Pares ver ⇒ editar/responder: tildar lo segundo tilda lo primero, y destildar lo primero destilda lo segundo. */
 const IMPLIES: Array<[view: string, dependent: string]> = [
-  ["inbox.instagram.view", "inbox.instagram.reply"],
-  ["inbox.whatsapp.view", "inbox.whatsapp.reply"],
-  ["inbox.email.view", "inbox.email.reply"],
   ["contacts.view", "contacts.edit"],
   ["flows.view", "flows.edit"],
   // Publicar escribe los disparadores del flujo, y la base los deja escribir con `flows.edit` (00214).

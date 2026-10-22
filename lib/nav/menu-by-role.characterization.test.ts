@@ -18,11 +18,12 @@ import { SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 
 const keysOf = (role: "owner" | "admin" | "member") => SYSTEM_ROLE_PERMISSIONS[role].keys;
 
-function menuFor(viewer: { permissionKeys: string[]; eod?: boolean }) {
+function menuFor(viewer: { permissionKeys: string[]; eod?: boolean; inbox?: boolean }) {
   const items = visibleNavItems(NAV_ITEMS, {
     permissionKeys: viewer.permissionKeys,
     // `settings`: el layout la calcula con `visibleSettingsTabs`; todos ven al menos Recursos, que no pide permiso.
-    flags: { eod: viewer.eod ?? false, settings: true },
+    // `inbox`: el layout la calcula con `canUseInbox` (ve alguna cuenta, 00249); los tres roles de sistema, si.
+    flags: { eod: viewer.eod ?? false, settings: true, inbox: viewer.inbox ?? true },
   });
   return navSections(items).map((s) => ({
     group: s.group,
@@ -76,7 +77,7 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
   it("un rol personalizado sin ninguna clave solo ve lo que no pide permiso (plano formularios-ui, D1-D4)", () => {
     // Equipo y roles (B1): cada item pide su clave, asi que sin ninguna solo queda Ajustes (que pide la bandeja
     // `settings`: todos llegan a Recursos).
-    expect(menuFor({ permissionKeys: [] })).toEqual([
+    expect(menuFor({ permissionKeys: [], inbox: false })).toEqual([
       { group: "herramientas", title: "Herramientas", separatorBefore: false, items: ["Ajustes"] },
     ]);
   });

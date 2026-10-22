@@ -72,7 +72,7 @@ describe("los tres roles de sistema (F68)", () => {
 
   it("Owner y Admin ven todo el negocio", () => {
     expect(scopeFor(SYSTEM_ROLE_PERMISSIONS.owner, "leads")).toBe("all");
-    expect(scopeFor(SYSTEM_ROLE_PERMISSIONS.admin, "conversations")).toBe("all");
+    expect(SYSTEM_ROLE_PERMISSIONS.admin.channels).toEqual({ mode: "all", all: { scope: "all", reply: true } });
   });
 });
 
@@ -81,17 +81,11 @@ describe("el Member es exactamente el de hoy (F68)", () => {
 
   it("ve solo lo suyo", () => {
     expect(scopeFor(member, "leads")).toBe("own");
-    expect(scopeFor(member, "conversations")).toBe("own");
+    expect(member.channels.mode === "all" && member.channels.all.scope).toBe("own");
   });
 
-  it("responde en los tres canales de la bandeja", () => {
-    expect(
-      canAll(member, [
-        "inbox.instagram.reply",
-        "inbox.whatsapp.reply",
-        "inbox.email.reply",
-      ]),
-    ).toBe(true);
+  it("ve y responde en todas las cuentas de la bandeja, tambien las que se conecten despues (00249)", () => {
+    expect(member.channels).toEqual({ mode: "all", all: { scope: "own", reply: true } });
   });
 
   it("ve y edita contactos, pero no importa ni borra", () => {
@@ -141,7 +135,7 @@ describe("el Member es exactamente el de hoy (F68)", () => {
   it("coincide con lo que el menu le muestra hoy", () => {
     // Lo que el Member NO ve en el menu es justo lo que no tiene permiso de ver (Social). Plano formularios-ui (D3):
     // Conocimiento ya no es un item; se abre con un boton de la barra de Agentes IA que pide `knowledge.view`.
-    const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true, settings: true } }).map((i) => i.name);
+    const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true, settings: true, inbox: true } }).map((i) => i.name);
     const ocultos = NAV_ITEMS.map((i) => i.name).filter((n) => !visibles.includes(n)).sort();
     // Cambio aprobado M9 (Extra I): Finanzas se ve con expenses.view O commissions.view; el Member de sistema
     // tiene commissions.view (sus comisiones), asi que lo ve. Sigue sin Social.
@@ -194,7 +188,7 @@ describe("preguntar por un permiso (F68)", () => {
     // Un permiso mal escrito no puede abrir una puerta, y renombrar una
     // clave cierra el acceso en vez de abrirlo.
     expect(can(role, "telepatia.usar")).toBe(false);
-    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", conversations: "all", bookings: "all", calls: "own", sales: "own", commissions: "own", tasks: "own" } }, "telepatia.usar")).toBe(false);
+    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", bookings: "all", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } }, "telepatia.usar")).toBe(false);
   });
 
   it("sin rol, nada", () => {
@@ -220,19 +214,27 @@ describe("leer un rol guardado (F68)", () => {
     expect(parsed.keys).toEqual(["contacts.view"]);
   });
 
+  it("la bandeja guardada se lee por cuenta; sin ella, ninguna cuenta (00249)", () => {
+    expect(parsePermissions({ keys: [] }).channels).toEqual({ mode: "custom", byChannel: {} });
+    expect(parsePermissions({ channels: { mode: "all", all: { scope: "own_unassigned", reply: true } } }).channels).toEqual({
+      mode: "all",
+      all: { scope: "own_unassigned", reply: true },
+    });
+    // Las claves viejas de la bandeja ya no existen: se descartan al leer.
+    expect(parsePermissions({ keys: ["inbox.whatsapp.view", "contacts.view"] }).keys).toEqual(["contacts.view"]);
+  });
+
   it("un alcance invalido cae al mas restrictivo", () => {
     expect(parsePermissions({ scopes: { leads: "todos" } }).scopes.leads).toBe("own");
     expect(parsePermissions({ scopes: { leads: "all" } }).scopes.leads).toBe("all");
   });
 
   it("'own_unassigned' (los suyos + los sin asignar) solo existe para los leads (00136)", () => {
-    const parsed = parsePermissions({ scopes: { leads: "own_unassigned", conversations: "own_unassigned", bookings: "own_unassigned" } });
+    const parsed = parsePermissions({ scopes: { leads: "own_unassigned", bookings: "own_unassigned" } });
     expect(parsed.scopes.leads).toBe("own_unassigned");
-    // En conversaciones y agendas no significa nada: se trata como 'own', lo mas angosto.
-    expect(parsed.scopes.conversations).toBe("own");
+    // En agendas no significa nada: se trata como 'own', lo mas angosto.
     expect(parsed.scopes.bookings).toBe("own");
     expect(scopeOptionsFor("leads")).toEqual(["own", "own_unassigned", "all"]);
-    expect(scopeOptionsFor("conversations")).toEqual(["own", "all"]);
     expect(scopeOptionsFor("bookings")).toEqual(["own", "all"]);
   });
 

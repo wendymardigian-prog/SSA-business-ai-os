@@ -21,7 +21,7 @@ const role = (over: Partial<RoleRow> = {}): RoleRow => ({
   name: "Setter senior",
   description: null,
   systemRole: null,
-  permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } },
+  permissions: { keys: ["contacts.view"], scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } },
   members: 0,
   ...over,
 });
@@ -71,11 +71,14 @@ describe("validar un rol (F71)", () => {
     expect(result.ok && result.role.warnings.some((w) => w.includes("ya no existen"))).toBe(true);
   });
 
-  it("responder sin ver se corrige: sin ver no se llega a la conversacion", () => {
-    const result = validateRole({ name: "Setter", keys: ["inbox.whatsapp.reply"], scopes: {} });
+  it("la bandeja va por cuenta: sin elegir ninguna, ninguna; «responder» siempre viaja con un alcance (00249)", () => {
+    const sin = validateRole({ name: "Setter", keys: [], scopes: {} });
+    expect(sin.ok && sin.role.permissions.channels).toEqual({ mode: "custom", byChannel: {} });
 
-    expect(result.ok && result.role.permissions.keys).toContain("inbox.whatsapp.view");
-    expect(result.ok && result.role.warnings.some((w) => w.includes("se agrego"))).toBe(true);
+    const con = validateRole({ name: "Setter", keys: [], scopes: {}, channels: { mode: "custom", byChannel: { c1: { scope: "own", reply: true } } } });
+    expect(con.ok && con.role.permissions.channels).toEqual({ mode: "custom", byChannel: { c1: { scope: "own", reply: true } } });
+    // Con al menos una cuenta el rol no esta vacio.
+    expect(con.ok && con.role.warnings.some((w) => w.includes("ningun permiso"))).toBe(false);
   });
 
   it("editar sin ver tambien se corrige", () => {
@@ -88,7 +91,7 @@ describe("validar un rol (F71)", () => {
   it("sin alcance elegido, el mas restrictivo", () => {
     const result = validateRole({ name: "Setter", keys: ["contacts.view"], scopes: {} });
 
-    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" });
+    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" });
   });
 });
 
@@ -176,18 +179,28 @@ describe("como se muestran (F71)", () => {
     expect(
       describeRole(
         role({
-          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } },
+          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } },
         }),
       ),
-    ).toBe("2 permisos · contactos: todos · conversaciones: solo las suyas");
+    ).toBe("2 permisos · contactos: todos · bandeja: ninguna cuenta");
   });
 
   it("el alcance 'los suyos + los sin asignar' se nombra", () => {
     expect(
       describeRole(
-        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } } }),
+        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } } }),
       ),
-    ).toBe("1 permiso · contactos: los suyos + los sin asignar · conversaciones: solo las suyas");
+    ).toBe("1 permiso · contactos: los suyos + los sin asignar · bandeja: ninguna cuenta");
+  });
+
+  it("la bandeja se resume: todas las cuentas con su alcance, o cuantas cuentas (00249)", () => {
+    const scopes = { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } as const;
+    expect(
+      describeRole(role({ permissions: { keys: [], scopes, channels: { mode: "all", all: { scope: "own_unassigned", reply: true } } } })),
+    ).toBe("0 permisos · contactos: solo los suyos · bandeja: todas las cuentas (asignadas + sin asignar)");
+    expect(
+      describeRole(role({ permissions: { keys: ["contacts.view"], scopes, channels: { mode: "custom", byChannel: { a: { scope: "all", reply: true }, b: { scope: "own", reply: false } } } } })),
+    ).toBe("1 permiso · contactos: solo los suyos · bandeja: 2 cuentas");
   });
 
   it("los de sistema se describen por lo que son", () => {
@@ -197,7 +210,7 @@ describe("como se muestran (F71)", () => {
 
   it("uno vacio lo dice", () => {
     expect(
-      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" } } })),
+      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, channels: { mode: "custom", byChannel: {} } } })),
     ).toBe("Sin permisos.");
   });
 });
@@ -224,12 +237,6 @@ describe("scopeFieldState (F12)", () => {
     expect(scopeFieldState("leads", ["contacts.edit"]).enabled).toBe(false);
   });
 
-  it("el de conversaciones se habilita con «ver» en CUALQUIER canal; solo «responder» no alcanza", () => {
-    expect(scopeFieldState("conversations", ["inbox.whatsapp.reply"]).enabled).toBe(false);
-    expect(scopeFieldState("conversations", ["inbox.email.view"]).enabled).toBe(true);
-    expect(scopeFieldState("conversations", []).hint).toContain("algún canal");
-  });
-
   it("cada módulo se gobierna por su permiso de ver", () => {
     const gates: Array<["bookings" | "calls" | "sales" | "tasks", string]> = [["bookings", "bookings.view"], ["calls", "calls.view"], ["sales", "sales.view"], ["tasks", "tasks.view"]];
     for (const [module, key] of gates) {
@@ -244,13 +251,13 @@ describe("scopeFieldState (F12)", () => {
   });
 
   it("cada alcance vive dentro de su grupo", () => {
-    expect(SCOPE_GROUP).toEqual({ leads: "contacts", conversations: "inbox", bookings: "scheduling", calls: "calls", sales: "sales", commissions: "commissions", tasks: "tasks" });
+    expect(SCOPE_GROUP).toEqual({ leads: "contacts", bookings: "scheduling", calls: "calls", sales: "sales", commissions: "commissions", tasks: "tasks" });
   });
 });
 
 describe("applyKeyToggle (F13): las correcciones automáticas se aplican en el tilde", () => {
-  it("tildar «responder» tilda «ver» en el acto", () => {
-    expect(applyKeyToggle([], "inbox.whatsapp.reply", true)).toEqual({ keys: ["inbox.whatsapp.reply", "inbox.whatsapp.view"], alsoAdded: ["inbox.whatsapp.view"], alsoRemoved: [] });
+  it("tildar «editar» tilda «ver» en el acto", () => {
+    expect(applyKeyToggle([], "contacts.edit", true)).toEqual({ keys: ["contacts.edit", "contacts.view"], alsoAdded: ["contacts.view"], alsoRemoved: [] });
   });
 
   it("destildar «ver» destilda lo que dependía de él", () => {

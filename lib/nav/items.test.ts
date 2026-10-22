@@ -118,7 +118,8 @@ describe("Agenda en el menu (F8)", () => {
     // Antes: ["Dashboards","Flows","Contenido","Inbox","Contacts","Agentes"].
     // Los nombres cambiaron (bloque N) y el orden ahora sigue a los grupos.
     // Con SUS permisos reales y no con una lista vacia: ahora cada item pide una clave.
-    const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys }).map((i) => i.name);
+    // La Bandeja pide su bandera (ve alguna cuenta, 00249): el Member de sistema las ve todas.
+    const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { inbox: true } }).map((i) => i.name);
     // Plano formularios-ui (D4): Recursos ya no es un item (se llega por Ajustes) y Ajustes pide su bandera,
     // que aca no se pasa: un viewer sin flags no lo ve.
     expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]);
@@ -127,6 +128,14 @@ describe("Agenda en el menu (F8)", () => {
     expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
     // Con la bandera de Ajustes, el Member suma Ajustes (llega a Recursos).
     expect(visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { settings: true } }).map((i) => i.name)).toContain("Ajustes");
+  });
+});
+
+describe("Bandeja en el menu (00249)", () => {
+  it("aparece si el rol ve al menos una cuenta, sin importar sus claves", () => {
+    const names = (inbox: boolean) => visibleNavItems(NAV_ITEMS, { permissionKeys: [], flags: { inbox } }).map((i) => i.name);
+    expect(names(true)).toEqual(["Bandeja"]);
+    expect(names(false)).toEqual([]);
   });
 });
 

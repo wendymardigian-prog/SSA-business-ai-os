@@ -16,6 +16,8 @@ export const NOTIFICATION_TYPES = [
   "channel_disconnected",
   "channel_reconnected",
   "channel_error",
+  /** Se conectó una cuenta y hay roles que eligen cuenta por cuenta: no la ven hasta que se la den (00249). */
+  "channel_access_needed",
   "sequence_collision",
   "agent_error",
   "agent_spend_limit",
@@ -157,6 +159,12 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     type: "channel_error",
     label: "Problema en un canal",
     tone: "warning",
+    entity: "channel",
+  },
+  channel_access_needed: {
+    type: "channel_access_needed",
+    label: "Cuenta nueva sin acceso",
+    tone: "info",
     entity: "channel",
   },
   sequence_collision: {
@@ -408,7 +416,8 @@ export function linkFor(
       return entityId ? `/dashboard/inbox?c=${entityId}` : "/dashboard/inbox";
 
     case "channel":
-      return "/dashboard/channels";
+      // Una cuenta nueva que algunos roles no ven se resuelve en Roles (00249).
+      return metadata?.target === "roles" ? "/dashboard/settings/roles" : "/dashboard/channels";
 
     case "sequence_enrollment": {
       // La inscripcion no tiene pantalla propia: se va a la secuencia, que es

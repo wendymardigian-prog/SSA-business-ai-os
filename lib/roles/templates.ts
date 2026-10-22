@@ -4,6 +4,7 @@
  * "Nuevo rol → Empezar desde" las usa. Una plantilla se filtra con `assertCanGrant` de quien crea:
  * nadie arma, desde una plantilla, un rol con más de lo que él mismo tiene.
  */
+import { NO_CHANNELS, type ChannelsConfig } from "@/lib/auth/channel-permissions";
 import { ALL_PERMISSION_KEYS, SCOPED_MODULES, type PermissionScope, type RolePermissions, type ScopedModule } from "@/lib/auth/permissions";
 import { assertCanGrant, type GrantActor } from "@/lib/team/grant";
 
@@ -13,23 +14,21 @@ export interface RoleTemplate {
   description: string;
   keys: string[];
   scopes: Partial<Record<ScopedModule, PermissionScope>>;
+  /**
+   * La bandeja. Las plantillas nacen en "todas las cuentas" (también las que se conecten después);
+   * para separar cuentas se pasa a "elegir por cuenta" en el editor.
+   */
+  channels: ChannelsConfig;
 }
 
-const INBOX = [
-  "inbox.instagram.view", "inbox.instagram.reply",
-  "inbox.whatsapp.view", "inbox.whatsapp.reply",
-  "inbox.email.view", "inbox.email.reply",
-];
-
 const SETTER_KEYS = [
-  "dashboards.chat.view", ...INBOX,
+  "dashboards.chat.view",
   "contacts.view", "contacts.edit", "contacts.assign",
   "scheduling.use", "bookings.view", "bookings.manage",
   "forms.view", "tasks.view", "tasks.edit",
 ];
 
 const CLOSER_KEYS = [
-  ...INBOX,
   "contacts.view", "contacts.edit",
   "scheduling.use", "bookings.view", "bookings.manage",
   "calls.view", "calls.edit",
@@ -38,20 +37,22 @@ const CLOSER_KEYS = [
 ];
 
 export const ROLE_TEMPLATES: RoleTemplate[] = [
-  { id: "blank", name: "En blanco", description: "Sin ningún permiso: los elegís vos.", keys: [], scopes: {} },
+  { id: "blank", name: "En blanco", description: "Sin ningún permiso: los elegís vos.", keys: [], scopes: {}, channels: NO_CHANNELS },
   {
     id: "setter",
     name: "Setter",
     description: "Contesta los chats, atiende a los contactos y agenda reuniones.",
     keys: SETTER_KEYS,
-    scopes: { leads: "own_unassigned", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    scopes: { leads: "own_unassigned", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    channels: { mode: "all", all: { scope: "own_unassigned", reply: true } },
   },
   {
     id: "closer",
     name: "Closer",
     description: "Hace las llamadas de venta, carga las ventas y cobra.",
     keys: CLOSER_KEYS,
-    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    channels: { mode: "all", all: { scope: "own", reply: true } },
   },
   {
     id: "content",
@@ -62,14 +63,16 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       "content.view", "content.create", "content.approve", "content.publish", "content.ai",
       "templates.manage", "tasks.view", "tasks.edit",
     ],
-    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    channels: NO_CHANNELS,
   },
   {
     id: "leader",
     name: "Líder de equipo",
     description: "Todo lo del Setter y el Closer, y ve a todo el equipo.",
     keys: [...new Set([...SETTER_KEYS, ...CLOSER_KEYS, "team.view", "eod.view_all", "dashboards.agenda.view", "data.export", "tasks.delete"])],
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    channels: { mode: "all", all: { scope: "all", reply: true } },
   },
 ];
 
@@ -92,7 +95,12 @@ export function applyTemplate(
     const wanted = template.scopes[scoped];
     if (wanted && assertCanGrant(actor, { keys: [], scopes: { [scoped]: wanted } }).ok) scopes[scoped] = wanted;
   }
-  return { permissions: { keys, scopes }, dropped: template.keys.length - keys.length };
+  // La bandeja va entera o no va: una plantilla que da "todas las cuentas" a alguien que no las tiene
+  // arranca sin cuentas (y se cuenta como algo que no se pudo dar).
+  const channelsOk = assertCanGrant(actor, { keys: [], channels: { wanted: template.channels, before: null } }).ok;
+  const channels = channelsOk ? template.channels : NO_CHANNELS;
+  const droppedChannels = channelsOk ? 0 : 1;
+  return { permissions: { keys, scopes, channels }, dropped: template.keys.length - keys.length + droppedChannels };
 }
 
 export const TEMPLATE_KEYS_ARE_VALID = ROLE_TEMPLATES.every((t) => t.keys.every((k) => ALL_PERMISSION_KEYS.includes(k)));

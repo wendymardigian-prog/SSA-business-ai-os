@@ -226,6 +226,11 @@ export async function saveIntegration(
           error: `Los datos se guardaron pero no pude crear el canal de email: ${channel.error}`,
         };
       }
+      // Una cuenta de email nueva: los roles que eligen cuenta por cuenta no la ven (00249). Nunca lanza.
+      if (channel.created) {
+        const { notifyNewChannelAccess } = await import("@/lib/channels/new-channel-access");
+        await notifyNewChannelAccess(await createServiceClient(), { workspaceId: workspace.id, channelId: channel.channelId, label: address });
+      }
     }
   }
 

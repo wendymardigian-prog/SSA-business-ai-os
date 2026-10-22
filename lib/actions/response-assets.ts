@@ -3,7 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
-import { getPermissionAction } from "@/lib/auth/guards";
+import { getPermissionAction, getPermissionContext } from "@/lib/auth/guards";
+import { canReplyChannel } from "@/lib/inbox/channel-access";
 import { logAudit, diffFields } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sniffUploadMime } from "@/lib/content/media";
@@ -643,12 +644,17 @@ export async function prepareAssetSend(
 
   const { data: conversation } = await supabase
     .from("conversations")
-    .select("id")
+    .select("id, channel_id")
     .eq("id", conversationId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
 
   if (!conversation) return { ok: false, error: "No encontré esa conversación" };
+  // Mandar un recurso pide "puede responder" en esa cuenta (00249), como cualquier mensaje.
+  const access = await getPermissionContext();
+  if (!canReplyChannel(access.permissions, conversation.channel_id)) {
+    return { ok: false, error: "Tu rol no puede responder por esta cuenta." };
+  }
 
   const service = await createServiceClient();
   const result = await copyAssetToChat(service, { workspaceId: workspace.id, conversationId, assetId });

@@ -12,7 +12,8 @@ import {
 
 const perms = (keys: string[], scopes: Partial<RolePermissions["scopes"]> = {}): RolePermissions => ({
   keys,
-  scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", ...scopes },
+  scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", ...scopes },
+  channels: { mode: "custom", byChannel: {} },
 });
 
 const owner: GrantActor = { userId: "owner", role: "owner", roleId: null, permissions: SYSTEM_ROLE_PERMISSIONS.owner };
@@ -82,7 +83,21 @@ describe("casos de ataque (plano §12)", () => {
 
   it("un rol con team.invite invita con el Member de sistema solo si tiene todo lo del Member", () => {
     expect(assertCanAssignRole(custom(["team.invite"]), memberRole, null)).toMatchObject({ ok: false });
-    expect(assertCanAssignRole(custom([...SYSTEM_ROLE_PERMISSIONS.member.keys]), memberRole, null)).toEqual({ ok: true });
+    // Todo lo del Member incluye su bandeja (todas las cuentas, solo lo asignado, responde: 00249).
+    expect(assertCanAssignRole(custom([...SYSTEM_ROLE_PERMISSIONS.member.keys]), memberRole, null)).toMatchObject({ ok: false });
+    const conBandeja = custom([...SYSTEM_ROLE_PERMISSIONS.member.keys]);
+    conBandeja.permissions = { ...conBandeja.permissions, channels: SYSTEM_ROLE_PERMISSIONS.member.channels };
+    expect(assertCanAssignRole(conBandeja, memberRole, null)).toEqual({ ok: true });
+  });
+
+  it("un rol con un solo Instagram no invita con un rol que tiene el otro (00249)", () => {
+    const actor = custom(["team.invite", "contacts.view"]);
+    actor.permissions = { ...actor.permissions, channels: { mode: "custom", byChannel: { "ig-1": { scope: "all", reply: true } } } };
+    const conOtro = customRole(["contacts.view"]);
+    conOtro.permissions = { ...conOtro.permissions, channels: { mode: "custom", byChannel: { "ig-2": { scope: "own", reply: false } } } };
+    expect(assertCanAssignRole(actor, conOtro, null)).toMatchObject({ ok: false });
+    conOtro.permissions = { ...conOtro.permissions, channels: { mode: "custom", byChannel: { "ig-1": { scope: "own", reply: true } } } };
+    expect(assertCanAssignRole(actor, conOtro, null)).toEqual({ ok: true });
   });
 
   it("un rol con roles.manage le agrega a otro rol una clave que él no tiene", () => {
