@@ -1,11 +1,12 @@
-import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { notFound, redirect } from "next/navigation";
 import { readWorkspaceSpendSettings } from "@/lib/ai/spend-settings";
 import { getWorkspace } from "@/lib/workspace";
 import { isOwnerRole } from "@/lib/auth/roles";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
 import { getAgentType, tabsForViewer } from "@/lib/agent/agent-types";
-import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { loadAgentsPageMode } from "@/lib/agent/usage";
 import { PROVIDERS } from "@/lib/integrations/providers";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { platformLabel } from "@/lib/platforms";
@@ -19,8 +20,10 @@ import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
 import { activeStatuses } from "@/lib/contacts/statuses";
-import { resolveViewerTimezone } from "@/lib/user-timezone";
-import { AgentDetailView } from "@/components/agents/agent-detail-view";
+import { getSavedViewerTimezone, resolveViewerTimezone } from "@/lib/user-timezone";
+import { AgentDetailView, AgentTabBody } from "@/components/agents/agent-detail-view";
+import { TabBodySkeleton } from "@/components/agents/detail-tabs";
+import type { AgentTypeDefinition } from "@/lib/agent/agent-types";
 
 /**
  * Detalle de un agente (F24, F26, F27, F28, F30).
@@ -39,16 +42,23 @@ export default async function AgentDetailPage({
   const { agentId } = await params;
   const query = await searchParams;
   // Ver el agente pide `agents.view`; configurarlo, `agents.edit`; sus costos, `ai_costs.view` (Equipo y roles, F23).
-  const permissions = await requirePermission("agents.view");
+  // La zona guardada de quien mira se pide junto con el permiso (no depende de el); despues `resolveViewerTimezone`
+  // la toma del cache del request.
+  const [permissions] = await Promise.all([requirePermission("agents.view"), getSavedViewerTimezone()]);
   const [{ workspace, supabase }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
   const viewerCan = permissions.can;
   const canEdit = viewerCan("agents.edit");
   // Costos y topes: la zona del NEGOCIO (consistente con los topes que
   // evalua el agente). La pestana Acciones es un filtro: la de quien mira.
-  const [viewerTimezone, agents] = await Promise.all([
+  const [viewerTimezone, agents, pageMode] = await Promise.all([
     resolveViewerTimezone(workspace.timezone),
     loadWorkspaceAgents(service, workspace.id),
+    loadAgentsPageMode(service, workspace.id),
   ]);
+  // Sin IA conectada y sin haberla usado nunca, Agentes IA es solo la invitacion a conectarla (lib/agent/page-mode.ts).
+  if (pageMode.mode === "empty") redirect("/dashboard/agents");
+  // Los proveedores van siempre (para Owner/Admin): la cabecera avisa si el del agente no esta conectado.
+  const providers = canEdit ? pageMode.providers : [];
   const agent = agents.find((a) => a.id === agentId);
   if (!agent) notFound();
   const typeDef = getAgentType(agent.type);
@@ -126,6 +136,15 @@ export default async function AgentDetailPage({
     });
   };
 
+  const screenAgent = toScreenAgent(agent);
+  if (!canEdit) {
+    // Los topes de gasto no salen del servidor para un Member (00060).
+    screenAgent.dailyCostLimitUsd = null;
+    screenAgent.monthlyCostLimitUsd = null;
+    screenAgent.systemPrompt = "";
+    screenAgent.toolsConfig = {};
+  }
+
   // Costos y los indicadores de la cabecera: solo Owner/Admin, con service
   // role. Los indicadores NO se esperan: viajan como promesa y la vista los
   // pinta cuando llegan (ver `loadHeaderKpis`).
@@ -137,208 +156,222 @@ export default async function AgentDetailPage({
       })
     : undefined;
 
-  // En paralelo con todo lo de abajo: solo lo usa la pestaña Herramientas.
-  const setterStatusSettingsPromise = loadContactStatusSettings(workspace.id);
-  const [versionsRes, providers, pricingRes, channelsRes, docsRes, triggersRes, members, tagsRes, eventTypesForAgent, runs, costs, tagCountsRes, copywriterRaw] =
-    await Promise.all([
-      need.versions
-        ? supabase
-            .from("agent_prompt_versions")
-            .select("version, system_prompt, note, created_at, created_by")
-            .eq("agent_id", agent.id)
-            .order("version", { ascending: false })
-        : none,
-      canEdit ? listConnectedAiProviders(workspace.id, service) : Promise.resolve([]),
-      // model_pricing la leen Owner/Admin; con el cliente del usuario alcanza.
-      need.pricing ? supabase.from("model_pricing").select("provider, model").eq("workspace_id", workspace.id) : none,
-      need.channels
-        ? supabase
-            .from("channels")
-            .select("id, platform, username, display_name, is_active")
-            .eq("workspace_id", workspace.id)
-            .order("created_at", { ascending: true })
-        : none,
-      need.docs
-        ? supabase.from("knowledge_base").select("id, title, tags, internal_only, status").eq("workspace_id", workspace.id).is("deleted_at", null)
-        : none,
-      need.triggers
-        ? supabase
-            .from("triggers")
-            .select("id, config, flows!inner(id, name, status, workspace_id)")
-            .eq("type", "default")
-            .eq("is_active", true)
-            .eq("flows.status", "published")
-            .eq("flows.workspace_id", workspace.id)
-        : none,
-      need.members ? getWorkspaceMembers(workspace.id) : Promise.resolve([]),
-      need.tags
-        ? supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name")
-        : none,
-      need.events ? loadEventTypes() : Promise.resolve([]),
-      on("runs") ? loadRunsTab() : Promise.resolve(undefined),
-      viewerCan("ai_costs.view") && on("costs")
-        ? loadCostsTab(service, {
-            workspaceId: workspace.id,
-            agent,
-            filters: parseCostFilters(query),
-            agentNames: new Map(agents.map((a) => [a.id, a.name])),
-            workspaceSettings: readWorkspaceSpendSettings(workspace),
-            canEditPricing: isOwnerRole(permissions.role),
-            timeZone: workspace.timezone,
-          })
-        : Promise.resolve(undefined),
-      canEdit && on("tags") ? supabase.from("tags").select("id, contact_tags(count)").eq("workspace_id", workspace.id) : Promise.resolve(undefined),
-      // Lo propio del copywriter: su configuracion no encaja en la del agente
-      // de conversacion, asi que viaja aparte (E3).
-      agent.type === "copywriter" && on("config")
-        ? Promise.all([
-            supabase.from("agents").select("config").eq("id", agent.id).maybeSingle(),
-            supabase.from("workspaces").select("content_copy_settings").eq("id", workspace.id).maybeSingle(),
-          ])
-        : Promise.resolve(undefined),
-    ]);
-  const allTags = tagsRes.data ?? [];
-  // La lista blanca del agente nunca ofrece una etiqueta con efecto (00073).
-  const usableTagIds = agentUsableTagIds(allTags.map((t) => ({ id: t.id, disablesAgent: t.disables_agent, assignsTo: t.assigns_to })));
+  // El contenido de la pestaña abierta: todo lo de abajo corre dentro de su `<Suspense key={tab}>`, asi el
+  // encabezado y las pestañas se dibujan sin esperarlo.
+  const loadTab = async (): Promise<AgentScreenData> => {
+    // Solo lo usa la pestaña Herramientas.
+    const setterStatusSettingsPromise = on("tools") ? loadContactStatusSettings(workspace.id) : Promise.resolve(null);
+    const [versionsRes, pricingRes, channelsRes, docsRes, triggersRes, members, tagsRes, eventTypesForAgent, runs, costs, tagCountsRes, copywriterRaw] =
+      await Promise.all([
+        need.versions
+          ? supabase
+              .from("agent_prompt_versions")
+              .select("version, system_prompt, note, created_at, created_by")
+              .eq("agent_id", agent.id)
+              .order("version", { ascending: false })
+          : none,
+        // model_pricing la leen Owner/Admin; con el cliente del usuario alcanza.
+        need.pricing ? supabase.from("model_pricing").select("provider, model").eq("workspace_id", workspace.id) : none,
+        need.channels
+          ? supabase
+              .from("channels")
+              .select("id, platform, username, display_name, is_active")
+              .eq("workspace_id", workspace.id)
+              .order("created_at", { ascending: true })
+          : none,
+        need.docs
+          ? supabase.from("knowledge_base").select("id, title, tags, internal_only, status").eq("workspace_id", workspace.id).is("deleted_at", null)
+          : none,
+        need.triggers
+          ? supabase
+              .from("triggers")
+              .select("id, config, flows!inner(id, name, status, workspace_id)")
+              .eq("type", "default")
+              .eq("is_active", true)
+              .eq("flows.status", "published")
+              .eq("flows.workspace_id", workspace.id)
+          : none,
+        need.members ? getWorkspaceMembers(workspace.id) : Promise.resolve([]),
+        need.tags
+          ? supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name")
+          : none,
+        need.events ? loadEventTypes() : Promise.resolve([]),
+        on("runs") ? loadRunsTab() : Promise.resolve(undefined),
+        viewerCan("ai_costs.view") && on("costs")
+          ? loadCostsTab(service, {
+              workspaceId: workspace.id,
+              agent,
+              filters: parseCostFilters(query),
+              agentNames: new Map(agents.map((a) => [a.id, a.name])),
+              workspaceSettings: readWorkspaceSpendSettings(workspace),
+              canEditPricing: isOwnerRole(permissions.role),
+              timeZone: workspace.timezone,
+            })
+          : Promise.resolve(undefined),
+        canEdit && on("tags") ? supabase.from("tags").select("id, contact_tags(count)").eq("workspace_id", workspace.id) : Promise.resolve(undefined),
+        // Lo propio del copywriter: su configuracion no encaja en la del agente
+        // de conversacion, asi que viaja aparte (E3).
+        agent.type === "copywriter" && on("config")
+          ? Promise.all([
+              supabase.from("agents").select("config").eq("id", agent.id).maybeSingle(),
+              supabase.from("workspaces").select("content_copy_settings").eq("id", workspace.id).maybeSingle(),
+            ])
+          : Promise.resolve(undefined),
+      ]);
+    const allTags = tagsRes.data ?? [];
+    // La lista blanca del agente nunca ofrece una etiqueta con efecto (00073).
+    const usableTagIds = agentUsableTagIds(allTags.map((t) => ({ id: t.id, disablesAgent: t.disables_agent, assignsTo: t.assigns_to })));
 
-  const memberNames = new Map(members.map((m) => [m.userId, m.name]));
-  const flowsCapturingAll = new Map<string, string>();
-  for (const row of (triggersRes.data ?? []) as Array<{ config: unknown; flows: { id: string; name: string } | { id: string; name: string }[] }>) {
-    const config = (row.config ?? {}) as Record<string, unknown>;
-    if (config.only_if_agent_off === true) continue;
-    const flow = Array.isArray(row.flows) ? row.flows[0] : row.flows;
-    if (flow) flowsCapturingAll.set(flow.id, flow.name);
-  }
+    const memberNames = new Map(members.map((m) => [m.userId, m.name]));
+    const flowsCapturingAll = new Map<string, string>();
+    for (const row of (triggersRes.data ?? []) as Array<{ config: unknown; flows: { id: string; name: string } | { id: string; name: string }[] }>) {
+      const config = (row.config ?? {}) as Record<string, unknown>;
+      if (config.only_if_agent_off === true) continue;
+      const flow = Array.isArray(row.flows) ? row.flows[0] : row.flows;
+      if (flow) flowsCapturingAll.set(flow.id, flow.name);
+    }
 
-  const channels = ((channelsRes.data ?? []) as Array<{ id: string; platform: string; username: string | null; display_name: string | null; is_active: boolean }>).map((c) => ({
-    id: c.id,
-    platform: c.platform,
-    label: platformLabel(c.platform),
-    handle: c.username ? `@${c.username}` : c.display_name ?? null,
-    isActive: c.is_active,
-    takenBy: agents.find((a) => a.id !== agent.id && a.enabledChannelIds.includes(c.id))?.name ?? null,
-  }));
-  const pricedModels = ((pricingRes.data ?? []) as Array<{ provider: string; model: string }>).map((p) => `${p.provider}/${p.model}`);
-  const screenAgent = toScreenAgent(agent);
-  if (!canEdit) {
-    // Los topes de gasto no salen del servidor para un Member (00060).
-    screenAgent.dailyCostLimitUsd = null;
-    screenAgent.monthlyCostLimitUsd = null;
-    screenAgent.systemPrompt = "";
-    screenAgent.toolsConfig = {};
-  }
+    const channels = ((channelsRes.data ?? []) as Array<{ id: string; platform: string; username: string | null; display_name: string | null; is_active: boolean }>).map((c) => ({
+      id: c.id,
+      platform: c.platform,
+      label: platformLabel(c.platform),
+      handle: c.username ? `@${c.username}` : c.display_name ?? null,
+      isActive: c.is_active,
+      takenBy: agents.find((a) => a.id !== agent.id && a.enabledChannelIds.includes(c.id))?.name ?? null,
+    }));
+    const pricedModels = ((pricingRes.data ?? []) as Array<{ provider: string; model: string }>).map((p) => `${p.provider}/${p.model}`);
 
-  // Acciones: necesita los canales, las etiquetas y los miembros de arriba
-  // para traducir ids a nombres, asi que va despues.
-  let actions: ActionsTabData | undefined;
-  if (tab === "actions") {
-    const channelLabel = (c: (typeof channels)[number]) => (c.handle ? `${c.label} ${c.handle}` : c.label);
-    const filters = parseActionFilters(query, {
-      currentAgentId: agent.id,
-      agentIds: agents.map((a) => a.id),
-      channelIds: channels.map((c) => c.id),
-    });
-    // Siempre con el cliente del usuario: la policy de la 00068 acota a un
-    // Member a las acciones sobre sus leads; un Admin ve todas.
-    const [{ rows, total }, anyRes] = await Promise.all([
-      loadActions(supabase, {
-        workspaceId: workspace.id,
+    // Acciones: necesita los canales, las etiquetas y los miembros de arriba
+    // para traducir ids a nombres, asi que va despues.
+    let actions: ActionsTabData | undefined;
+    if (tab === "actions") {
+      const channelLabel = (c: (typeof channels)[number]) => (c.handle ? `${c.label} ${c.handle}` : c.label);
+      const filters = parseActionFilters(query, {
+        currentAgentId: agent.id,
+        agentIds: agents.map((a) => a.id),
+        channelIds: channels.map((c) => c.id),
+      });
+      // Siempre con el cliente del usuario: la policy de la 00068 acota a un
+      // Member a las acciones sobre sus leads; un Admin ve todas.
+      const [{ rows, total }, anyRes] = await Promise.all([
+        loadActions(supabase, {
+          workspaceId: workspace.id,
+          filters,
+          agentNames: new Map(agents.map((a) => [a.id, a.name])),
+          channelLabels: new Map(channels.map((c) => [c.id, channelLabel(c)])),
+          tagNames: new Map(allTags.map((t) => [t.id, t.name])),
+          memberNames,
+          timeZone: viewerTimezone,
+        }),
+        supabase.from("audit_log").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).not("performed_by_agent_id", "is", null),
+      ]);
+      actions = {
         filters,
-        agentNames: new Map(agents.map((a) => [a.id, a.name])),
-        channelLabels: new Map(channels.map((c) => [c.id, channelLabel(c)])),
-        tagNames: new Map(allTags.map((t) => [t.id, t.name])),
-        memberNames,
-        timeZone: viewerTimezone,
-      }),
-      supabase.from("audit_log").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).not("performed_by_agent_id", "is", null),
-    ]);
-    actions = {
-      filters,
-      rows,
-      total,
-      pageSize: ACTIONS_PAGE_SIZE,
-      anyActions: (anyRes.count ?? 0) > 0,
-      options: { agents: agents.map((a) => ({ id: a.id, name: a.name })), channels: channels.map((c) => ({ id: c.id, label: channelLabel(c) })) },
-    };
-  }
+        rows,
+        total,
+        pageSize: ACTIONS_PAGE_SIZE,
+        anyActions: (anyRes.count ?? 0) > 0,
+        options: { agents: agents.map((a) => ({ id: a.id, name: a.name })), channels: channels.map((c) => ({ id: c.id, label: channelLabel(c) })) },
+      };
+    }
 
-  // Etiquetas (Bloque 2d-A): el efecto de cada una sobre el agente.
-  let tags: TagsTabData | undefined;
-  if (tagCountsRes) {
-    if (tagCountsRes.error) console.error("[agents] no pude contar los contactos por etiqueta:", tagCountsRes.error.message);
-    const countOf = new Map(
-      ((tagCountsRes.data ?? []) as Array<{ id: string; contact_tags: Array<{ count: number }> | null }>).map((t) => [t.id, t.contact_tags?.[0]?.count ?? 0]),
-    );
-    tags = {
-      tags: allTags.map((t) => ({
-        id: t.id,
-        name: t.name,
-        color: t.color,
-        disablesAgent: t.disables_agent,
-        assignsTo: t.assigns_to,
-        contactCount: countOf.get(t.id) ?? 0,
+    // Etiquetas (Bloque 2d-A): el efecto de cada una sobre el agente.
+    let tags: TagsTabData | undefined;
+    if (tagCountsRes) {
+      if (tagCountsRes.error) console.error("[agents] no pude contar los contactos por etiqueta:", tagCountsRes.error.message);
+      const countOf = new Map(
+        ((tagCountsRes.data ?? []) as Array<{ id: string; contact_tags: Array<{ count: number }> | null }>).map((t) => [t.id, t.contact_tags?.[0]?.count ?? 0]),
+      );
+      tags = {
+        tags: allTags.map((t) => ({
+          id: t.id,
+          name: t.name,
+          color: t.color,
+          disablesAgent: t.disables_agent,
+          assignsTo: t.assigns_to,
+          contactCount: countOf.get(t.id) ?? 0,
+        })),
+        members: members.map((m) => ({ userId: m.userId, label: m.name })),
+      };
+    }
+
+    const copywriter = copywriterRaw
+      ? (() => {
+          const [{ data: raw }, { data: ws }] = copywriterRaw;
+          const docTags = new Set<string>();
+          for (const doc of (docsRes.data ?? []) as Array<{ tags?: string[] | null }>) {
+            for (const tag of doc.tags ?? []) docTags.add(tag);
+          }
+          return {
+            config: raw?.config ?? {},
+            workspaceSettings: ws?.content_copy_settings ?? null,
+            availableTags: [...docTags].sort(),
+          };
+        })()
+      : undefined;
+
+    const setterStatusSettings = await setterStatusSettingsPromise;
+    const data: AgentScreenData = {
+      viewer: { isAdmin: canEdit, permissionKeys: permissions.permissions.keys },
+      copywriter,
+      costs,
+      actions,
+      runs,
+      tags,
+      agent: screenAgent,
+      tools: serializeToolsForScreen(),
+      skills: serializeSkillsForScreen(),
+      toolOptionSources: {
+        tags: allTags.filter((t) => usableTagIds.has(t.id)).map((t) => ({ value: t.id, label: t.name })),
+        members: members.map((m) => ({ value: m.userId, label: m.name, hint: m.role })),
+        contact_fields: [],
+        // Los eventos que el agente puede ofrecer (Etapa 4, F52). Los inactivos
+        // no entran: ofrecer un evento apagado da un link que no agenda.
+        event_types: eventTypesForAgent,
+        // Pipeline (00245): los estados de setter activos (Ajustes → Estados).
+        setter_statuses: setterStatusSettings ? activeStatuses(setterStatusSettings.setter).map((st) => ({ value: st.key, label: st.name })) : [],
+      },
+      versions: ((versionsRes.data ?? []) as Array<{ version: number; system_prompt: string; note: string | null; created_at: string; created_by: string | null }>).map((v) => ({
+        version: v.version,
+        systemPrompt: v.system_prompt,
+        note: v.note,
+        createdAt: v.created_at,
+        authorLabel: v.created_by ? memberNames.get(v.created_by) ?? null : null,
       })),
-      members: members.map((m) => ({ userId: m.userId, label: m.name })),
+      providers,
+      providerLabels: PROVIDER_LABELS,
+      pricedModels,
+      channels,
+      knowledgeDocs: ((docsRes.data ?? []) as Array<{ id: string; title: string; tags: string[] | null; internal_only: boolean | null; status: string }>).map((d) => ({
+        id: d.id,
+        title: d.title,
+        tags: d.tags ?? [],
+        internalOnly: Boolean(d.internal_only),
+        status: d.status,
+      })),
+      flowsCapturingAll: [...flowsCapturingAll].map(([id, name]) => ({ id, name })),
     };
-  }
 
-  const copywriter = copywriterRaw
-    ? (() => {
-        const [{ data: raw }, { data: ws }] = copywriterRaw;
-        const docTags = new Set<string>();
-        for (const doc of (docsRes.data ?? []) as Array<{ tags?: string[] | null }>) {
-          for (const tag of doc.tags ?? []) docTags.add(tag);
-        }
-        return {
-          config: raw?.config ?? {},
-          workspaceSettings: ws?.content_copy_settings ?? null,
-          availableTags: [...docTags].sort(),
-        };
-      })()
-    : undefined;
-
-  const setterStatusSettings = await setterStatusSettingsPromise;
-  const data: AgentScreenData = {
-    viewer: { isAdmin: canEdit, permissionKeys: permissions.permissions.keys },
-    copywriter,
-    kpis,
-    costs,
-    actions,
-    runs,
-    tags,
-    agent: screenAgent,
-    tools: serializeToolsForScreen(),
-    skills: serializeSkillsForScreen(),
-    toolOptionSources: {
-      tags: allTags.filter((t) => usableTagIds.has(t.id)).map((t) => ({ value: t.id, label: t.name })),
-      members: members.map((m) => ({ value: m.userId, label: m.name, hint: m.role })),
-      contact_fields: [],
-      // Los eventos que el agente puede ofrecer (Etapa 4, F52). Los inactivos
-      // no entran: ofrecer un evento apagado da un link que no agenda.
-      event_types: eventTypesForAgent,
-      // Pipeline (00245): los estados de setter activos (Ajustes → Estados).
-      setter_statuses: activeStatuses(setterStatusSettings.setter).map((st) => ({ value: st.key, label: st.name })),
-    },
-    versions: ((versionsRes.data ?? []) as Array<{ version: number; system_prompt: string; note: string | null; created_at: string; created_by: string | null }>).map((v) => ({
-      version: v.version,
-      systemPrompt: v.system_prompt,
-      note: v.note,
-      createdAt: v.created_at,
-      authorLabel: v.created_by ? memberNames.get(v.created_by) ?? null : null,
-    })),
-    providers,
-    providerLabels: Object.fromEntries(PROVIDERS.map((p) => [p.id, p.label])),
-    pricedModels,
-    channels,
-    knowledgeDocs: ((docsRes.data ?? []) as Array<{ id: string; title: string; tags: string[] | null; internal_only: boolean | null; status: string }>).map((d) => ({
-      id: d.id,
-      title: d.title,
-      tags: d.tags ?? [],
-      internalOnly: Boolean(d.internal_only),
-      status: d.status,
-    })),
-    flowsCapturingAll: [...flowsCapturingAll].map(([id, name]) => ({ id, name })),
+    return data;
   };
 
-  return <AgentDetailView data={data} typeDef={typeDef} tab={tab} timeZone={viewerTimezone} />;
+  return (
+    <AgentDetailView
+      header={{ viewer: { isAdmin: canEdit, permissionKeys: permissions.permissions.keys }, kpis, agent: screenAgent, providers, providerLabels: PROVIDER_LABELS }}
+      typeDef={typeDef}
+      tab={tab}
+      timeZone={viewerTimezone}
+    >
+      <Suspense key={tab} fallback={<TabBodySkeleton />}>
+        <AgentTab load={loadTab} typeDef={typeDef} tab={tab} />
+      </Suspense>
+    </AgentDetailView>
+  );
+}
+
+const PROVIDER_LABELS = Object.fromEntries(PROVIDERS.map((p) => [p.id, p.label]));
+
+/** El contenido de la pestaña: espera solo sus datos, dentro de su `<Suspense>`. */
+async function AgentTab({ load, typeDef, tab }: { load: () => Promise<AgentScreenData>; typeDef: AgentTypeDefinition; tab: string }) {
+  return <AgentTabBody data={await load()} typeDef={typeDef} tab={tab} />;
 }

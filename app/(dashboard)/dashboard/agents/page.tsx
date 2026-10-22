@@ -5,10 +5,13 @@ import { getWorkspace } from "@/lib/workspace";
 import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
-import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { loadAgentsPageMode } from "@/lib/agent/usage";
+import { agentsNeedDefaults } from "@/lib/agent/page-mode";
+import { ensureDefaultAgents } from "@/lib/agent/defaults";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { agentAvailability } from "@/lib/agent/availability";
 import { NoAiConnection } from "@/components/agents/no-ai-connection";
+import { ConnectFirstAi } from "@/components/agents/connect-first-ai";
 import { CreateAgentButton } from "@/components/agents/create-agent-button";
 import { AgentCard } from "@/components/agents/agent-card";
 import { TaskCard } from "@/components/agents/tasks/task-card";
@@ -40,6 +43,11 @@ import { pageActions } from "@/lib/nav/page-actions";
  * `ai_costs.view` (D7): para el resto, esta pagina queda como siempre
  * estuvo. El dashboard es un Server Component aparte, en su propio
  * `<Suspense>`, para no demorar la lista de agentes (que no depende de el).
+ *
+ * Sin ninguna IA conectada y sin haberla usado nunca, la pantalla entera es
+ * la invitacion a conectar la primera (lib/agent/page-mode.ts). Con una IA
+ * conectada, los agentes se completan solos (lib/agent/defaults.ts): el de
+ * chat existe y todos tienen modelo e instrucciones.
  */
 export default async function AgentsPage({
   searchParams,
@@ -49,15 +57,35 @@ export default async function AgentsPage({
   // Ver los agentes pide `agents.view`; crear, `agents.edit`; las tareas de IA, `ai_tasks.manage`; los topes, `ai_limits.manage`.
   await requirePermission("agents.view");
   const [{ workspace }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
-  const [agents, permissions, timeZone, aiProviders] = await Promise.all([
-    loadWorkspaceAgents(service, workspace.id),
+  const [permissions, timeZone, { mode, providers: aiProviders }] = await Promise.all([
     getPermissionContext(),
     resolveViewerTimezone(workspace.timezone),
-    listConnectedAiProviders(workspace.id, service),
+    loadAgentsPageMode(service, workspace.id),
   ]);
+  const canConnectAi = permissions.can("integrations.manage");
+
+  if (mode === "empty") {
+    return (
+      <div className="flex h-full flex-col">
+        <PageHeader route="/dashboard/agents" />
+        <div className="flex-1 overflow-auto px-4 py-10 md:px-8">
+          <ConnectFirstAi canConnect={canConnectAi} />
+        </div>
+      </div>
+    );
+  }
+
+  // Con una IA conectada, a los agentes que les falta la configuracion inicial se la completa quien puede
+  // configurarlos (00252, idempotente). Con todo completo no se llama a la base.
+  let agents = await loadWorkspaceAgents(service, workspace.id);
+  if (aiProviders.length > 0 && permissions.can("agents.edit") && agentsNeedDefaults(agents)) {
+    const ensured = await ensureDefaultAgents(service, workspace.id, aiProviders);
+    if (ensured && (ensured.chatAgentCreated || ensured.modelsSet > 0 || ensured.copywriterInstructionsSet)) {
+      agents = await loadWorkspaceAgents(service, workspace.id);
+    }
+  }
   const connectedAi = aiProviders.map((p) => p.provider);
   const hasChatAgent = agents.some((a) => getAgentType(a.type)?.conversational);
-  const canConnectAi = permissions.can("integrations.manage");
   const canViewCosts = permissions.can("ai_costs.view");
   const canCreateAgent = permissions.can("agents.edit");
   const canManageTasks = permissions.can("ai_tasks.manage");
@@ -102,7 +130,7 @@ export default async function AgentsPage({
           </Suspense>
         )}
 
-        {aiProviders.length === 0 && <NoAiConnection canConnect={canConnectAi} />}
+        {mode === "full-with-warning" && <NoAiConnection canConnect={canConnectAi} />}
 
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Agentes</h2>
@@ -131,7 +159,7 @@ export default async function AgentsPage({
               <Bot className="mx-auto h-9 w-9 text-muted-foreground/50" aria-hidden />
               <h3 className="mt-3 text-base font-semibold">Todavía no hay un agente de chat</h3>
               <p className="mt-2 text-sm text-muted-foreground">
-                El agente de chat responde a tus leads por Instagram y WhatsApp. Se crea apagado y sin canales, con un prompt inicial y límites seguros. Lo encendés cuando lo hayas revisado.
+                El agente de chat responde a tus leads por Instagram y WhatsApp. Se crea apagado y sin canales, con un prompt inicial, el modelo de tu IA y límites seguros. Lo encendés cuando lo hayas revisado.
               </p>
               {canCreateAgent && (
                 <div className="mt-5 flex justify-center">

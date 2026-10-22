@@ -5879,6 +5879,17 @@ export interface Database {
         };
         Returns: Json;
       };
+      /** Agentes IA (00252): crea el agente de chat y completa modelo e instrucciones de los agentes. Idempotente. Solo service_role. */
+      ensure_default_agents: {
+        Args: {
+          p_workspace_id: string;
+          p_provider: string | null;
+          p_model: string | null;
+          p_chat_prompt: string;
+          p_copywriter_instructions: string;
+        };
+        Returns: Json;
+      };
       merge_contacts: {
         Args: { p_workspace_id: string; p_main: string; p_duplicate: string; p_actor: string | null };
         Returns: Json;
