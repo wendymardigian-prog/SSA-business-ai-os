@@ -153,8 +153,9 @@ try {
 
   console.log("\n— Bajarle el alcance a `own` lo vuelve a acotar —");
   {
+    // Contactos Y bandeja: desde la 00249 ver un chat con "todas" deja ver la ficha de ese contacto.
     await svc.from("workspace_roles").update({
-      permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own" } },
+      permissions: { keys: ["contacts.view"], scopes: { leads: "own" }, channels: { mode: "all", all: { scope: "own", reply: true } } },
     }).eq("id", rolAmplio.id);
 
     check(await contactCount(amplio, ws.id) === 0,
