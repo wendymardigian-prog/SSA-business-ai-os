@@ -387,7 +387,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 
 ## La bandeja por cuenta (22/10/2026)
 
-`00249` (aditiva: `permissions.channels`, backfill exacto desde las claves viejas, `can_see_conversation` por cuenta, `can_see_contact` + «ver un chat deja ver la ficha», `can_grant_channels` y el trigger `workspace_roles_channels_default`) y `00250` (la que BORRA las claves `inbox.*` y `scopes.conversations`, y saca esas claves de `private.member_permission_keys()`). **Orden: la 00249 ANTES de desplegar el código, la 00250 DESPUÉS** (con su respaldo y las consultas de su cabecera en 0). **La próxima libre es la `00251`** (confirmar con `list_migrations`).
+`00249` (aditiva: `permissions.channels`, backfill exacto desde las claves viejas, `can_see_conversation` por cuenta, `can_see_contact` + «ver un chat deja ver la ficha», `can_grant_channels` y el trigger `workspace_roles_channels_default`) y `00250` (la que BORRA las claves `inbox.*` y `scopes.conversations`, y saca esas claves de `private.member_permission_keys()`). **Las dos aplicadas y registradas el 22/10/2026** (versiones `20261022191356` y `20261022195239`): la 00249 antes del deploy y la 00250 despues, con su respaldo en `docs/roles/respaldo-inbox-keys.json`. **En un clon nuevo: la 00249 ANTES de desplegar el codigo y la 00250 DESPUES.** La `00251` y la `00252` son de otra sesion (agentes). **La proxima libre es la `00253`** (confirmar con `list_migrations`).
 
 ## Verificacion de equipo y roles
 
