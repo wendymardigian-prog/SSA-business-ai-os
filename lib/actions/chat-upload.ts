@@ -5,6 +5,8 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sniffUploadMime } from "@/lib/content/media";
 import { CHAT_MEDIA_BUCKET, MAX_CHAT_UPLOAD_BYTES, extensionForMime } from "@/lib/chat-media/bucket";
 import type { AttachmentKind } from "@/lib/messages/attachments";
+import { getMemberAction } from "@/lib/auth/guards";
+import { canReplyChannel } from "@/lib/inbox/channel-access";
 
 /**
  * Autorizar la subida de un audio grabado o un archivo adjuntado del disco,
@@ -51,11 +53,17 @@ export async function requestChatUpload(input: {
   // hay ruta que firmar.
   const { data: conversation } = await supabase
     .from("conversations")
-    .select("id, workspace_id")
+    .select("id, workspace_id, channel_id")
     .eq("id", input.conversationId)
     .maybeSingle();
 
   if (!conversation) return { ok: false, error: "No encontré esa conversación" };
+
+  // Subir es para mandar: pide "puede responder" en la cuenta de la conversacion (00249), como el envio.
+  const access = await getMemberAction();
+  if (!access || access.workspace.id !== conversation.workspace_id || !canReplyChannel(access.permissions, conversation.channel_id)) {
+    return { ok: false, error: "Tu rol no puede responder por esta cuenta." };
+  }
 
   if (input.sizeBytes <= 0) return { ok: false, error: "El archivo está vacío" };
   if (input.sizeBytes > MAX_CHAT_UPLOAD_BYTES) {

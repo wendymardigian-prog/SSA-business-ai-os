@@ -21,7 +21,11 @@ const { getPermissionAction, getWorkspace, logAudit, scheduleJob, createServiceC
   createServiceClient: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/guards", () => ({ getPermissionAction }));
+vi.mock("@/lib/auth/guards", () => ({
+  getPermissionAction,
+  // Mandar un recurso pide «responde» en la cuenta (00249): en estas pruebas, en todas.
+  getPermissionContext: async () => ({ permissions: { channels: { mode: "all", all: { scope: "own", reply: true } } } }),
+}));
 vi.mock("@/lib/workspace", () => ({ getWorkspace }));
 vi.mock("@/lib/audit", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/audit")>();

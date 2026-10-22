@@ -15,6 +15,11 @@ const { createClient, createServiceClient } = vi.hoisted(() => ({
   createServiceClient: vi.fn(),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient, createServiceClient }));
+// La bandeja de quien sube (00249): por defecto responde en todas las cuentas.
+const bandeja = vi.hoisted(() => ({ channels: { mode: "all", all: { scope: "own", reply: true } } as unknown }));
+vi.mock("@/lib/auth/guards", () => ({
+  getMemberAction: async () => ({ workspace: { id: "ws-1" }, permissions: { channels: bandeja.channels } }),
+}));
 
 import { requestChatUpload } from "./chat-upload";
 import { MAX_CHAT_UPLOAD_BYTES } from "@/lib/chat-media/bucket";
@@ -46,6 +51,7 @@ function setup(options: { user?: boolean; conversation?: Record<string, unknown>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bandeja.channels = { mode: "all", all: { scope: "own", reply: true } };
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -54,6 +60,14 @@ describe("requestChatUpload (F19)", () => {
     setup({ user: false });
     const result = await requestChatUpload({ conversationId: "cv-1", sizeBytes: 100, headBase64: JPEG_HEAD });
     expect(result).toEqual({ ok: false, error: "No autorizado" });
+  });
+
+  it("viendo la cuenta sin «responde», no se firma nada (00249)", async () => {
+    bandeja.channels = { mode: "custom", byChannel: { "ch-1": { scope: "all", reply: false } } };
+    const { createSignedUploadUrl } = setup({ conversation: { id: "cv-1", workspace_id: "ws-1", channel_id: "ch-1" } });
+    const result = await requestChatUpload({ conversationId: "cv-1", sizeBytes: 100, headBase64: JPEG_HEAD });
+    expect(result).toEqual({ ok: false, error: "Tu rol no puede responder por esta cuenta." });
+    expect(createSignedUploadUrl).not.toHaveBeenCalled();
   });
 
   it("si la RLS no deja ver la conversacion, no se firma nada", async () => {

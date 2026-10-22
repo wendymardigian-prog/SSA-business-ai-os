@@ -26,7 +26,7 @@ export function InboxView({
   canManageAssets = false,
   canCreateTask = false,
   canViewAgentRuns = false,
-  replyPlatforms,
+  replyChannelIds,
   workspaceName,
   selected: selectedFromServer,
   total,
@@ -54,8 +54,8 @@ export function InboxView({
   canCreateTask?: boolean;
   /** Puede ver las corridas del agente (`agents.view`): el panel "Qué hizo el agente" ofrece abrir la corrida. */
   canViewAgentRuns?: boolean;
-  /** Las plataformas donde puede responder (`inbox.<canal>.reply`). Sin esto, en todas (compatibilidad). */
-  replyPlatforms?: string[];
+  /** Las cuentas donde puede responder (00249): `null` = en todas las que ve. */
+  replyChannelIds?: string[] | null;
   workspaceName: string;
   /**
    * La conversacion de ?c= resuelta en el servidor al cargar la pagina (F16).
@@ -284,7 +284,7 @@ export function InboxView({
               canManageAssets={canManageAssets}
               canCreateTask={canCreateTask}
               canViewAgentRuns={canViewAgentRuns}
-              canReply={!selected || !replyPlatforms || replyPlatforms.includes(selected.platform)}
+              canReply={!selected || !replyChannelIds || replyChannelIds.includes(selected.channel_id)}
               workspaceName={workspaceName}
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
               channelProvider={selected ? providerByChannel[selected.channel_id] ?? null : null}

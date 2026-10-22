@@ -12,6 +12,8 @@ import { backfillInboxConversations } from "@/lib/inbox-sync";
 import { isSupportedPlatform } from "@/lib/platforms";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
+import { notifyNewChannelAccess } from "@/lib/channels/new-channel-access";
+import { accountLabel } from "@/lib/inbox/accounts";
 
 /**
  * POST /api/v1/channels/sync
@@ -99,7 +101,7 @@ export async function POST() {
           updated++;
         }
       } else {
-        const { error: insertErr } = await supabase.from("channels").insert({
+        const { data: inserted, error: insertErr } = await supabase.from("channels").insert({
           workspace_id: workspace.id,
           platform: account.platform,
           provider: "zernio",
@@ -108,7 +110,7 @@ export async function POST() {
           display_name: account.displayName || account.username || null,
           profile_picture: profilePic,
           is_active: true,
-        });
+        }).select("id").maybeSingle();
         if (insertErr) {
           // Reporting a channel we did not store is how #16 stayed hidden:
           // the platform check constraint rejected the row and the UI said OK.
@@ -117,6 +119,14 @@ export async function POST() {
           continue;
         }
         created++;
+        // Los roles que eligen cuenta por cuenta no la ven: se avisa (00249). Nunca lanza.
+        if (inserted) {
+          await notifyNewChannelAccess(await createServiceClient(), {
+            workspaceId: workspace.id,
+            channelId: inserted.id,
+            label: accountLabel({ platform: account.platform, username: account.username, display_name: account.displayName }),
+          });
+        }
       }
     }
 

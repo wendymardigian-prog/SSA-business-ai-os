@@ -17,9 +17,14 @@ vi.mock("@/lib/auth/guards", () => guards);
 
 const { patchRole, createRole, listRoles, deleteRole } = await import("./roles");
 
-const perms = (keys: string[], scopes: Partial<RolePermissions["scopes"]> = {}): RolePermissions => ({
+const perms = (
+  keys: string[],
+  scopes: Partial<RolePermissions["scopes"]> = {},
+  channels: RolePermissions["channels"] = { mode: "custom", byChannel: {} },
+): RolePermissions => ({
   keys,
-  scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", ...scopes },
+  scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own", ...scopes },
+  channels,
 });
 
 function actor(kind: "owner" | "admin" | RolePermissions, roleId: string | null = null) {
@@ -39,7 +44,7 @@ function actor(kind: "owner" | "admin" | RolePermissions, roleId: string | null 
 
 const roleRow = (over: Record<string, unknown> = {}) => ({
   id: "rol-1", workspace_id: WS, name: "Closer", description: null, system_role: null,
-  permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own" } }, ...over,
+  permissions: { keys: ["contacts.view"], scopes: { leads: "own" } }, ...over,
 });
 
 beforeEach(() => {
@@ -72,9 +77,7 @@ describe("patchRole (F13)", () => {
     expect((stored().permissions as RolePermissions).keys.sort()).toEqual(["contacts.view", "flows.view"]);
   });
 
-  it("aplica las correcciones automaticas: responder agrega ver; sacar ver saca lo que dependia", async () => {
-    const a = await patchRole("rol-1", { addKeys: ["inbox.whatsapp.reply"] });
-    expect(a.ok && a.data.role.permissions.keys).toContain("inbox.whatsapp.view");
+  it("aplica las correcciones automaticas: editar agrega ver; sacar ver saca lo que dependia", async () => {
     const b = await patchRole("rol-1", { addKeys: ["contacts.edit"] });
     expect(b.ok).toBe(true);
     const c = await patchRole("rol-1", { removeKeys: ["contacts.view"] });
@@ -117,6 +120,22 @@ describe("patchRole (F13)", () => {
     actor(perms(["roles.manage", "contacts.view"], { leads: "own" }), "mi-rol");
     expect(await patchRole("rol-1", { scopes: { leads: "all" } })).toMatchObject({ ok: false, field: "permissions" });
     expect((stored().permissions as RolePermissions).scopes.leads).toBe("own");
+  });
+
+  it("cambia la bandeja por cuenta y la guarda (00249)", async () => {
+    const bandeja = { mode: "custom" as const, byChannel: { "ch-a": { scope: "own_unassigned" as const, reply: true } } };
+    const r = await patchRole("rol-1", { channels: bandeja });
+    expect(r.ok && r.data.role.permissions.channels).toEqual(bandeja);
+    expect((stored().permissions as RolePermissions).channels).toEqual(bandeja);
+  });
+
+  it("ataque: quien tiene un solo Instagram no da el otro, ni «todas las cuentas»", async () => {
+    const mia = { mode: "custom" as const, byChannel: { "ch-a": { scope: "all" as const, reply: true } } };
+    actor(perms(["roles.manage", "contacts.view"], {}, mia), "mi-rol");
+    expect(await patchRole("rol-1", { channels: { mode: "custom", byChannel: { "ch-b": { scope: "own", reply: false } } } })).toMatchObject({ ok: false, field: "permissions" });
+    expect(await patchRole("rol-1", { channels: { mode: "all", all: { scope: "own", reply: false } } })).toMatchObject({ ok: false, field: "permissions" });
+    // La que tiene, la da.
+    expect((await patchRole("rol-1", { channels: { mode: "custom", byChannel: { "ch-a": { scope: "own", reply: true } } } })).ok).toBe(true);
   });
 
   it("ataque: un rol con roles.manage edita su propio rol", async () => {
@@ -200,7 +219,8 @@ describe("createRole (F14) y listRoles (F15)", () => {
     const r = await listRoles();
     if (!r.ok) throw new Error("listRoles fallo");
     const member = r.data.roles.find((x) => x.systemRole === "member")!;
-    // 27 + commissions.view (cambio aprobado M9, Extra I).
-    expect(member.permissions.keys).toHaveLength(28);
+    // 27 + commissions.view (cambio aprobado M9, Extra I) - las 6 de la bandeja (00249: va por cuenta).
+    expect(member.permissions.keys).toHaveLength(22);
+    expect(member.permissions.channels).toEqual({ mode: "all", all: { scope: "own", reply: true } });
   });
 });

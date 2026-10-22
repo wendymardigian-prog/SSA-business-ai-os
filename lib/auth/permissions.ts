@@ -20,6 +20,8 @@
  * su propia copia de la parte que le toca (`has_permission`).
  */
 
+import { ALL_CHANNELS, hasAnyChannel, MEMBER_CHANNELS, parseChannels, type ChannelsConfig } from "./channel-permissions";
+
 export const PERMISSION_MODULES = [
   "dashboards",
   "social",
@@ -83,9 +85,10 @@ export interface PermissionDefinition {
  * Todas las claves, con su etiqueta en castellano.
  *
  * La etiqueta importa tanto como la clave: la pantalla de roles la muestra
- * tal cual, y "inbox.whatsapp.reply" no le dice nada a nadie.
+ * tal cual, y "contacts.merge" no le dice nada a nadie.
  *
- * Son 78 claves; 76 visibles (dos estan reservadas). Cada clave nueva se suma
+ * Son 72 claves; 70 visibles (dos estan reservadas). La bandeja no tiene claves: se da por
+ * cuenta conectada (`channels`, 00249). Cada clave nueva se suma
  * aca, en la pantalla, en el guard, en la RLS y en `catalog-usage.test.ts` en el
  * MISMO cambio (ver `docs/roles.md`, "Como sumar una clave nueva").
  */
@@ -100,13 +103,10 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // ── Social ──────────────────────────────────────────────────────────────
   { key: "social.view", module: "social", label: "Ver la página Social", description: "El perfil de cada red y sus publicaciones." },
 
-  // ── Bandeja, por canal ──────────────────────────────────────────────────
-  { key: "inbox.instagram.view", module: "inbox", label: "Ver conversaciones de Instagram", description: "Las ve según el alcance de conversaciones." },
-  { key: "inbox.instagram.reply", module: "inbox", label: "Responder por Instagram", description: "Escribir en esas conversaciones, mandar recursos y aprobar borradores del agente." },
-  { key: "inbox.whatsapp.view", module: "inbox", label: "Ver conversaciones de WhatsApp", description: "Las ve según el alcance de conversaciones." },
-  { key: "inbox.whatsapp.reply", module: "inbox", label: "Responder por WhatsApp", description: "Escribir en esas conversaciones, mandar recursos y aprobar borradores del agente." },
-  { key: "inbox.email.view", module: "inbox", label: "Ver conversaciones de email", description: "Las ve según el alcance de conversaciones." },
-  { key: "inbox.email.reply", module: "inbox", label: "Responder emails", description: "Escribir en esas conversaciones y aprobar borradores del agente." },
+  // ── Bandeja ─────────────────────────────────────────────────────────────
+  // No tiene claves: se da POR CUENTA conectada, con su alcance y "puede responder"
+  // (`RolePermissions.channels`, lib/auth/channel-permissions.ts, 00249). Las seis claves
+  // `inbox.<red>.view/.reply` se retiraron (00250).
 
   // ── Contactos ───────────────────────────────────────────────────────────
   { key: "contacts.view", module: "contacts", label: "Ver contactos", description: "El alcance decide si ve todos o solo los suyos." },
@@ -236,13 +236,14 @@ export function visiblePermissionsOfModule(module: PermissionModule): Permission
 // ── Alcances ──────────────────────────────────────────────────────────────
 
 /** Los modulos donde importa CUANTO se ve, no solo si se ve. */
-export const SCOPED_MODULES = ["leads", "conversations", "bookings", "calls", "sales", "commissions", "tasks"] as const;
+export const SCOPED_MODULES = ["leads", "bookings", "calls", "sales", "commissions", "tasks"] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
 /**
  * `own` = solo donde esta asignado. `all` = todo el workspace.
  * `own_unassigned` = lo suyo + lo que no tiene a nadie asignado: solo existe
- * para los leads (00136); en conversaciones y agendas no significa nada.
+ * para los leads (00136); en agendas y ventas no significa nada. Las conversaciones
+ * no tienen un alcance global: se eligen por cuenta (`channels`, 00249).
  */
 export type PermissionScope = "own" | "own_unassigned" | "all";
 
@@ -267,6 +268,8 @@ export function normalizeScope(module: ScopedModule, value: unknown): Permission
 export interface RolePermissions {
   keys: string[];
   scopes: Record<ScopedModule, PermissionScope>;
+  /** La bandeja, por cuenta conectada (00249). */
+  channels: ChannelsConfig;
 }
 
 /**
@@ -275,8 +278,8 @@ export interface RolePermissions {
  * Sale de la caracterizacion (`member-baseline.test.ts`), no de lo que
  * pareceria razonable:
  *
- *  - Ve la bandeja de todos los canales y responde, pero solo en las
- *    conversaciones donde esta asignado (alcance `own`, aplicado por la RLS).
+ *  - Ve la bandeja de todas las cuentas y responde, pero solo en las
+ *    conversaciones donde esta asignado (`MEMBER_CHANNELS`, aplicado por la RLS).
  *  - Ve y edita contactos con el mismo alcance y reasigna los que ve. NO importa ni borra.
  *  - Ve y edita flows (y los publica) y ve secuencias; NO las edita.
  *  - Ve el dashboard de chat. NO ve el de contenido ni el de anuncios.
@@ -290,12 +293,6 @@ export interface RolePermissions {
  */
 const MEMBER_KEYS = [
   "dashboards.chat.view",
-  "inbox.instagram.view",
-  "inbox.instagram.reply",
-  "inbox.whatsapp.view",
-  "inbox.whatsapp.reply",
-  "inbox.email.view",
-  "inbox.email.reply",
   "contacts.view",
   "contacts.edit",
   // Reasignar los leads que ve: hoy puede hacerlo (nunca hubo un chequeo de rol). Se conserva
@@ -344,16 +341,19 @@ export const MEMBER_PERMISSION_KEYS: readonly string[] = MEMBER_KEYS;
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    channels: ALL_CHANNELS,
   },
   admin: {
     // Todo salvo lo solo-Owner (transferir la propiedad, quitar personas).
     keys: ALL_PERMISSION_KEYS.filter((key) => !OWNER_ONLY_KEYS.includes(key)),
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    channels: ALL_CHANNELS,
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    channels: MEMBER_CHANNELS,
   },
 };
 
@@ -406,7 +406,7 @@ export function scopeFor(
  * rechazaria igual; sacarlas al leer mantiene la fila limpia.
  */
 export function parsePermissions(value: unknown): RolePermissions {
-  const record = (value ?? {}) as { keys?: unknown; scopes?: unknown };
+  const record = (value ?? {}) as { keys?: unknown; scopes?: unknown; channels?: unknown };
   const scopes = (record.scopes ?? {}) as Record<string, unknown>;
 
   const scope = (module: ScopedModule): PermissionScope => normalizeScope(module, scopes[module]);
@@ -415,13 +415,14 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks") },
+    scopes: { leads: scope("leads"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks") },
+    channels: parseChannels(record.channels),
   };
 }
 
-/** Un rol sin ningun permiso no sirve para nada: la pantalla lo advierte. */
+/** Un rol sin ningun permiso (ni una cuenta de la bandeja) no sirve para nada: la pantalla lo advierte. */
 export function isEmptyRole(permissions: RolePermissions): boolean {
-  return permissions.keys.length === 0;
+  return permissions.keys.length === 0 && !hasAnyChannel(permissions.channels);
 }
 
 /** Los permisos de un rol de sistema, por su nombre. */

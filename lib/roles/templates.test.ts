@@ -25,10 +25,15 @@ describe("plantillas de rol", () => {
     expect(ROLE_TEMPLATES.map((t) => t.id)).toEqual(["blank", "setter", "closer", "content", "leader"]);
   });
 
-  it("el Setter lleva los 6 de bandeja, contactos view/edit/assign y los contactos sin asignar", () => {
+  it("el Setter lleva la bandeja de todas las cuentas (asignadas + sin asignar, responde), contactos view/edit/assign y los contactos sin asignar", () => {
     const setter = templateById("setter")!;
-    for (const k of ["inbox.instagram.view", "inbox.email.reply", "contacts.assign", "bookings.manage", "tasks.edit"]) expect(setter.keys).toContain(k);
+    for (const k of ["contacts.assign", "bookings.manage", "tasks.edit"]) expect(setter.keys).toContain(k);
     expect(setter.scopes.leads).toBe("own_unassigned");
+    expect(setter.channels).toEqual({ mode: "all", all: { scope: "own_unassigned", reply: true } });
+  });
+
+  it("el Content Manager no lleva bandeja", () => {
+    expect(templateById("content")!.channels).toEqual({ mode: "custom", byChannel: {} });
   });
 
   it("el Líder de equipo es Setter + Closer + los extras, con alcance 'all'", () => {
@@ -45,18 +50,21 @@ describe("plantillas de rol", () => {
       expect(dropped).toBe(0);
       expect(permissions.keys).toEqual(templateById("leader")!.keys);
       expect(permissions.scopes.leads).toBe("all");
+      expect(permissions.channels).toEqual({ mode: "all", all: { scope: "all", reply: true } });
     }
   });
 
   it("un rol con menos permisos solo recibe lo que puede dar (filtrado por assertCanGrant)", () => {
-    const actor = actorOf("member", { keys: ["roles.manage", "contacts.view", "contacts.edit"], scopes: { ...SYSTEM_ROLE_PERMISSIONS.member.scopes, leads: "own" } });
+    const actor = actorOf("member", { keys: ["roles.manage", "contacts.view", "contacts.edit"], scopes: { ...SYSTEM_ROLE_PERMISSIONS.member.scopes, leads: "own" }, channels: { mode: "custom", byChannel: {} } });
     const { permissions, dropped } = applyTemplate(templateById("setter")!, actor);
     expect(permissions.keys.sort()).toEqual(["contacts.edit", "contacts.view"]);
     expect(dropped).toBeGreaterThan(0);
     // Y lo que recibe, EL MISMO lo puede dar: la plantilla nunca escala.
-    expect(assertCanGrant(actor, { keys: permissions.keys, scopes: permissions.scopes })).toEqual({ ok: true });
+    expect(assertCanGrant(actor, { keys: permissions.keys, scopes: permissions.scopes, channels: { wanted: permissions.channels, before: null } })).toEqual({ ok: true });
     // El alcance mas ancho que el suyo no pasa.
     expect(permissions.scopes.leads).toBe("own");
+    // Y la bandeja de "todas las cuentas" tampoco: no la tiene.
+    expect(permissions.channels).toEqual({ mode: "custom", byChannel: {} });
   });
 
   it("'En blanco' no lleva ningun permiso", () => {

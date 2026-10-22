@@ -1,59 +1,56 @@
 /**
- * La bandeja por canal (Equipo y roles, F20). Puro: lo usan la lista, el filtro de canal, el envío y los
- * borradores del agente.
+ * La bandeja por CUENTA conectada (00249). Puro: lo usan la lista, el menú de cuentas, el envío, los
+ * borradores del agente y las reacciones.
  *
- * `inbox.<canal>.view` decide qué conversaciones de ese canal se ven; `inbox.<canal>.reply`, si se puede
- * escribir en ellas. El ALCANCE (cuáles de esas conversaciones) lo sigue aplicando la RLS.
- *
- * Un canal sin clave propia (cualquier otra plataforma) no se puede gatear por canal: lo ve y contesta
- * quien tenga la clave correspondiente en AL MENOS UN canal.
+ * Cada rol dice, cuenta por cuenta (o para todas, incluidas las futuras), qué conversaciones ve y si
+ * puede responder (`RolePermissions.channels`, `lib/auth/channel-permissions.ts`). CUÁLES conversaciones
+ * de esa cuenta (solo asignadas, + sin asignar, todas) lo aplica la RLS (`can_see_conversation`); acá
+ * solo se decide qué cuentas se piden y dónde aparece el composer.
  */
+import { grantFor, hasAnyChannel, type ChannelRef } from "@/lib/auth/channel-permissions";
+import type { RolePermissions } from "@/lib/auth/permissions";
 
-export const INBOX_CHANNELS = ["instagram", "whatsapp", "email"] as const;
-export type InboxChannel = (typeof INBOX_CHANNELS)[number];
+type Perms = Pick<RolePermissions, "channels"> | null | undefined;
 
-export function inboxChannelOf(platform: string | null | undefined): InboxChannel | null {
-  return (INBOX_CHANNELS as readonly string[]).includes(platform ?? "") ? (platform as InboxChannel) : null;
+/** Si ve alguna conversación de esa cuenta. */
+export function canViewChannel(perms: Perms, channelId: string | null | undefined): boolean {
+  return grantFor(perms?.channels, channelId) !== null;
 }
 
-type Can = (key: string) => boolean;
-
-/** Las claves de cada canal, escritas enteras (un buscador de «quien usa inbox.whatsapp.reply» tiene que encontrarlas). */
-const VIEW_KEY: Record<InboxChannel, string> = {
-  instagram: "inbox.instagram.view",
-  whatsapp: "inbox.whatsapp.view",
-  email: "inbox.email.view",
-};
-const REPLY_KEY: Record<InboxChannel, string> = {
-  instagram: "inbox.instagram.reply",
-  whatsapp: "inbox.whatsapp.reply",
-  email: "inbox.email.reply",
-};
-
-/** Los canales cuyas conversaciones puede ver. */
-export function visibleChannels(can: Can): InboxChannel[] {
-  return INBOX_CHANNELS.filter((c) => can(VIEW_KEY[c]));
+/** Si puede escribir en las conversaciones de esa cuenta. */
+export function canReplyChannel(perms: Perms, channelId: string | null | undefined): boolean {
+  return grantFor(perms?.channels, channelId)?.reply === true;
 }
 
-/** Si puede ver las conversaciones de esta plataforma. */
-export function canViewPlatform(can: Can, platform: string | null | undefined): boolean {
-  const channel = inboxChannelOf(platform);
-  return channel ? can(VIEW_KEY[channel]) : visibleChannels(can).length > 0;
+/** Si la bandeja aparece en el menú: ve al menos una cuenta. */
+export function canUseInbox(perms: Perms): boolean {
+  return hasAnyChannel(perms?.channels);
 }
 
-/** Si puede escribir en las conversaciones de esta plataforma. */
-export function canReplyOn(can: Can, platform: string | null | undefined): boolean {
-  const channel = inboxChannelOf(platform);
-  if (channel) return can(REPLY_KEY[channel]);
-  return INBOX_CHANNELS.some((c) => can(REPLY_KEY[c]));
+/** Las cuentas (de esta lista) cuyas conversaciones ve. */
+export function visibleChannelIds(perms: Perms, channels: ChannelRef[]): string[] {
+  return channels.filter((c) => canViewChannel(perms, c.id)).map((c) => c.id);
 }
 
 /**
- * Las plataformas que se pueden pedir a la consulta de la bandeja: `null` si ve todos los canales
- * conocidos (no hace falta filtrar), o la lista de las que ve. Las plataformas sin clave propia se ven si
- * hay al menos un canal visible, así que quien ve algún canal no pierde una conversación de otra plataforma.
+ * Donde puede responder, para la pantalla: `null` si responde en todas las cuentas que ve, o los ids de
+ * las cuentas donde responde (vacía = en ninguna).
  */
-export function platformFilterFor(can: Can, allPlatforms: string[]): string[] | null {
-  const visible = allPlatforms.filter((p) => canViewPlatform(can, p));
-  return visible.length === allPlatforms.length ? null : visible;
+export function replyFilterFor(perms: Perms): string[] | null {
+  if (!perms) return [];
+  if (perms.channels.mode === "all") return perms.channels.all.reply ? null : [];
+  return Object.entries(perms.channels.byChannel)
+    .filter(([, grant]) => grant.reply)
+    .map(([id]) => id);
+}
+
+/**
+ * Las cuentas que se le piden a la consulta de la bandeja: `null` si ve todas (no hace falta filtrar), o
+ * los ids de las que ve (vacía = ninguna). Sale de la configuración, no de la lista de cuentas activas:
+ * una cuenta desconectada sigue mostrando sus conversaciones viejas a quien la tiene.
+ */
+export function channelFilterFor(perms: Perms): string[] | null {
+  if (!perms) return [];
+  if (perms.channels.mode === "all") return null;
+  return Object.keys(perms.channels.byChannel);
 }

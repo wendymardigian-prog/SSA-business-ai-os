@@ -5,7 +5,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getMemberAction } from "@/lib/auth/guards";
-import { canReplyOn } from "@/lib/inbox/channel-access";
+import { canReplyChannel } from "@/lib/inbox/channel-access";
 import { approveDraft, discardDraft, regenerateDraft, type DraftActionResult } from "@/lib/agent/drafts/actions";
 import { requestSuggestion } from "@/lib/agent/drafts/suggest";
 import { draftOwner, loadLastDiscardedDraft, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
@@ -28,18 +28,17 @@ async function session() {
   return { supabase, user };
 }
 
-const NO_REPLY: DraftActionResult = { ok: false, code: "unknown", error: "Tu rol no puede responder por este canal." };
+const NO_REPLY: DraftActionResult = { ok: false, code: "unknown", error: "Tu rol no puede responder por esta cuenta." };
 
 /**
- * Equipo y roles (F20): mandar, descartar o regenerar un borrador es operar la conversacion, asi que pide
- * `inbox.<canal>.reply` del canal de ESE borrador. La RLS sigue acotando cuales borradores se ven.
+ * Mandar, descartar o regenerar un borrador es operar la conversacion, asi que pide "puede responder" en
+ * la CUENTA de ese borrador (00249). La RLS sigue acotando cuales borradores se ven.
  */
 async function canReplyToDraft(supabase: Awaited<ReturnType<typeof createClient>>, draftId: string): Promise<boolean> {
   const access = await getMemberAction();
   if (!access) return false;
-  const { data } = await supabase.from("agent_drafts").select("channels(platform)").eq("id", draftId).maybeSingle();
-  const channel = (data as { channels?: { platform?: string } | null } | null)?.channels;
-  return canReplyOn(access.can, channel?.platform ?? null);
+  const { data } = await supabase.from("agent_drafts").select("channel_id").eq("id", draftId).maybeSingle();
+  return canReplyChannel(access.permissions, (data as { channel_id?: string | null } | null)?.channel_id ?? null);
 }
 
 const SESSION_EXPIRED: DraftActionResult = { ok: false, code: "unknown", error: "Tu sesión venció. Volvé a entrar." };
@@ -166,7 +165,7 @@ export async function requestSuggestionAction(conversationId: string): Promise<D
     channels?: { platform?: string } | null;
   } | null;
   if (!conversation || conversation.deleted_at) return { ok: false, code: "not_found", error: "No encontré esa conversación." };
-  if (!canReplyOn(access.can, conversation.channels?.platform ?? null)) return NO_REPLY;
+  if (!canReplyChannel(access.permissions, conversation.channel_id)) return NO_REPLY;
   const service = await createServiceClient();
   const result = await requestSuggestion({ service, conversation });
   revalidate();

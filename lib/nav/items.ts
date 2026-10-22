@@ -40,7 +40,7 @@ export const NAV_GROUPS: NavGroupMeta[] = [
 ];
 
 /** Condiciones del menú que se calculan en el servidor (no son un permiso). */
-export type NavFlag = "eod" | "settings";
+export type NavFlag = "eod" | "settings" | "inbox";
 
 export interface NavItemMeta {
   name: string;
@@ -74,7 +74,8 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", permissions: ["dashboards.chat.view", "dashboards.content.view", "dashboards.agenda.view", "dashboards.ads.view", "dashboards.unified.view", "calls.view"], group: "inicio", alsoActiveOn: ["/dashboard/dashboards"] },
   // La cola de borradores y las sub-pestañas de la bandeja (broadcasts,
   // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
-  { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", permissions: ["inbox.instagram.view", "inbox.whatsapp.view", "inbox.email.view"], group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
+  // La bandeja no tiene claves: aparece si el rol ve al menos una cuenta conectada (`canUseInbox`, 00249).
+  { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", requires: "inbox", group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
   // Reporte de fin de día (E10): completarlo no necesita permiso, alcanza con estar en
   // la audiencia de un EOD publicado. Por eso es una condición del servidor y no un permiso.
   { name: "Mi reporte del día", href: "/dashboard/eod", icon: "ListChecks", group: "inicio", requires: "eod" },
