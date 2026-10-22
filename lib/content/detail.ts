@@ -17,6 +17,8 @@ export interface PublicationSummary {
   publishedAt: string | null;
   /** 'manual' = la marco una persona a mano (Contenido v4, C3). */
   origin?: "system" | "external" | "manual" | null;
+  /** Agendada del lado del proveedor (Zernio): un cambio de contenido se le reenvia al guardar. */
+  onProvider?: boolean;
   url: string | null;
   lastError: string | null;
   lastErrorKind: "temporary" | "permanent" | null;

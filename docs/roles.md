@@ -32,6 +32,7 @@ Cada fila tiene su test y el comentario «cambio aprobado».
 | M7 | Que lo que publica se dispare de verdad | el disparador fallaba en silencio | **sí** (`triggers` pide `flows.edit`) |
 | M8 | Entrar a Integraciones por la URL | lo rebotaba | ve solo «Mis conexiones». El menú cambió por el rediseño de Formularios: Integraciones y Recursos son pestañas de Ajustes, y «Ajustes» lo ve cualquiera (entra a Recursos) |
 | M9 | Ver sus propias comisiones (Extra I) | no existía | **sí**, solo `commissions.view` con alcance `own`: ve «Finanzas» en el menú pero ninguna pestaña de gastos. NO tiene `commissions.manage` ni `expenses.*` |
+| M10 | Editar el contenido de su pieza (o la que tiene asignada) después de aprobada (22/10/2026) | solo hasta «En revisión» | **sí, en cualquier estado**. Cambiar el ESTADO sigue igual: un Member lo mueve solo entre Borrador, En producción y En revisión (trigger `content_posts_status_guard`, 00253) |
 | M4, M5 | Reasignar los leads que ve; publicar flujos | podía | sin cambios |
 
 ## El catálogo: 72 claves

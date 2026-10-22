@@ -29,7 +29,7 @@ vi.mock("@/lib/workspace", () => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
 
-const { setNetworkPublishMode, markNetworkPublished, unmarkNetworkPublished } = await import(
+const { setNetworkPublishMode, markNetworkPublished, markPiecePublished, unmarkNetworkPublished } = await import(
   "./content-schedule"
 );
 
@@ -373,5 +373,80 @@ describe("C3 · deshacer el marcado", () => {
     const result = await unmarkNetworkPublished({ postId: POST, platform: "youtube" });
 
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("'Publicado…' desde el estado: varias redes de una vez", () => {
+  it("marca todas las redes elegidas y la pieza queda publicada, sin cuentas conectadas", async () => {
+    seed({
+      status: "approved",
+      networks: [
+        { platform: "linkedin", planned_at: null },
+        { platform: "youtube", planned_at: null },
+      ],
+      accounts: [],
+    });
+
+    const result = await markPiecePublished({
+      postId: POST,
+      items: [
+        { platform: "linkedin", url: "https://www.linkedin.com/posts/abc" },
+        { platform: "youtube", url: null },
+      ],
+      publishedAt: "2026-10-01T15:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({ ok: true, data: { marked: ["linkedin", "youtube"], failed: [] } });
+    expect(liveRows()).toHaveLength(2);
+    expect(liveRows().every((r) => r.origin === "manual" && r.status === "published")).toBe(true);
+    expect(postStatus()).toBe("published");
+  });
+
+  it("una pieza sin redes: suma las que se eligen y las marca", async () => {
+    seed({ status: "approved", networks: [], accounts: [] });
+
+    const result = await markPiecePublished({ postId: POST, items: [{ platform: "linkedin" }] });
+
+    expect(result.ok).toBe(true);
+    expect(network("linkedin")).toMatchObject({ platform: "linkedin", published_manually_at: expect.any(String) });
+    expect(postStatus()).toBe("published");
+  });
+
+  it("si una falla, las demas quedan marcadas y se dice cual fallo", async () => {
+    seed({
+      status: "approved",
+      networks: [
+        { platform: "linkedin", planned_at: null },
+        { platform: "youtube", planned_at: null },
+      ],
+      accounts: [],
+    });
+
+    const result = await markPiecePublished({
+      postId: POST,
+      items: [{ platform: "linkedin" }, { platform: "youtube", url: "esto no es un link" }],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.marked).toEqual(["linkedin"]);
+    expect(result.data.failed.map((f) => f.platform)).toEqual(["youtube"]);
+    expect(postStatus()).toBe("partially_published");
+  });
+
+  it("sin redes elegidas, o con una red que no es de Contenido, no hace nada", async () => {
+    expect((await markPiecePublished({ postId: POST, items: [] })).ok).toBe(false);
+    expect((await markPiecePublished({ postId: POST, items: [{ platform: "whatsapp" }] })).ok).toBe(false);
+    expect(liveRows()).toHaveLength(0);
+  });
+
+  it("un Member no marca como publicado, tampoco por aca", async () => {
+    role = "member";
+    seed({ status: "approved", networks: [{ platform: "linkedin", planned_at: null }], accounts: [] });
+
+    const result = await markPiecePublished({ postId: POST, items: [{ platform: "linkedin" }] });
+
+    expect(result.ok).toBe(false);
+    expect(liveRows()).toHaveLength(0);
   });
 });

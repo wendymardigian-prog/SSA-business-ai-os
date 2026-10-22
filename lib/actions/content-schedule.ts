@@ -12,6 +12,7 @@ import {
   type ScheduleOutcome,
 } from "@/lib/publishing/schedule-core";
 import {
+  runMarkPiecePublished,
   runMarkPublished,
   runSetPublishMode,
   runUnmarkPublished,
@@ -102,6 +103,22 @@ export async function markNetworkPublished(input: {
   url?: string | null;
 }): Promise<ScheduleActionResult<{ postStatus: string }>> {
   const result = await runMarkPublished(await scheduleContext(), input);
+  revalidatePath(CONTENT_PATH);
+  return result;
+}
+
+/**
+ * "Publicado…" desde el estado de la pieza: varias redes de una vez, con una
+ * fecha y un link por red. Mismo nucleo que el boton de cada red.
+ */
+export async function markPiecePublished(input: {
+  postId: string;
+  items: Array<{ platform: string; url?: string | null }>;
+  publishedAt?: string | null;
+}): Promise<
+  ScheduleActionResult<{ postStatus: string; marked: string[]; failed: Array<{ platform: string; error: string }> }>
+> {
+  const result = await runMarkPiecePublished(await scheduleContext(), input);
   revalidatePath(CONTENT_PATH);
   return result;
 }

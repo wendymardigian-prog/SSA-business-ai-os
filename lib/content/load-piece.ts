@@ -29,6 +29,7 @@ import type { AutomationRule } from "./keywords";
 import { loadContentTaxonomy, type ContentTaxonomy } from "./load-taxonomy";
 import type { MediaEntry } from "./media";
 import { canWritePost } from "./piece-drawer";
+import { schedulesOnProvider } from "@/lib/publishing/provider-scheduling";
 import { canReassign, isAuthorOrAssignee } from "./assignee";
 import type { NetworkEntry } from "./redistribution";
 import type { StoredVersion } from "./versions";
@@ -154,7 +155,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       supabase
         .from("social_posts")
         .select(
-          "platform, status, scheduled_at, published_at, url, origin, last_error, last_error_kind, attempts, warning, actual_visibility",
+          "platform, status, scheduled_at, published_at, url, origin, publisher, publisher_ref, last_error, last_error_kind, attempts, warning, actual_visibility",
         )
         .eq("content_post_id", postId)
         .is("deleted_at", null)
@@ -292,7 +293,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       reviewNote: post.review_note,
       updatedAt: post.updated_at,
     },
-    canEdit: canWritePost({ role, isAuthor: isAuthorOrAssignee(user.id, post), status: post.status }),
+    canEdit: canWritePost({ role, isAuthor: isAuthorOrAssignee(user.id, post) }),
     canAssign: canReassign({ role, userId: user.id, piece: post }),
     team: members.map((m) => ({ id: m.userId, name: m.name })),
     perms: {
@@ -309,6 +310,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       scheduledAt: p.scheduled_at,
       publishedAt: p.published_at,
       origin: p.origin,
+      onProvider: schedulesOnProvider(p.publisher) && Boolean(p.publisher_ref),
       url: p.url,
       lastError: p.last_error,
       lastErrorKind: p.last_error_kind,

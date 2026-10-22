@@ -247,6 +247,44 @@ try {
     const { data } = await svc.from("content_posts").select("assigned_to").eq("id", postMember.id).single();
     check(!error && data.assigned_to === member2.id, "quien creo la pieza puede cambiar el responsable", error?.message); }
 
+  if (process.argv.includes("--despues-de-00253")) {
+    console.log("\n— Editar en cualquier estado (00253, cambio aprobado M10) —");
+
+    const { data: aprobada } = await svc.from("content_posts")
+      .insert({ workspace_id: wsA, title: "zz-test aprobada del member", created_by: member.id, status: "approved" })
+      .select("id").single();
+
+    { const { error } = await member.client.from("content_posts")
+        .update({ caption: "zz-test corregido despues de aprobar" }).eq("id", aprobada.id);
+      const { data } = await svc.from("content_posts").select("caption, status").eq("id", aprobada.id).single();
+      check(!error && data.caption === "zz-test corregido despues de aprobar" && data.status === "approved",
+        "un Member edita el caption de su pieza APROBADA, y el estado no cambia", error?.message); }
+
+    { const { error } = await member.client.from("content_posts")
+        .update({ status: "draft" }).eq("id", aprobada.id);
+      const { data } = await svc.from("content_posts").select("status").eq("id", aprobada.id).single();
+      check(!!error && data.status === "approved",
+        "pero no le cambia el estado: sacarla de Aprobado es de quien aprueba (trigger)",
+        error ? undefined : "la movio a borrador"); }
+
+    { await svc.from("content_posts").update({ status: "published" }).eq("id", aprobada.id);
+      const { error } = await member.client.from("content_posts")
+        .update({ script: "zz-test guion despues de publicar" }).eq("id", aprobada.id);
+      const { data } = await svc.from("content_posts").select("script").eq("id", aprobada.id).single();
+      check(!error && data.script === "zz-test guion despues de publicar",
+        "tambien edita una PUBLICADA", error?.message); }
+
+    { await member2.client.from("content_posts").update({ caption: "colada" }).eq("id", aprobada.id);
+      const { data } = await svc.from("content_posts").select("caption").eq("id", aprobada.id).single();
+      check(data.caption !== "colada", "un Member que no es autor ni responsable sigue sin editarla"); }
+
+    { const { error } = await owner.client.from("content_posts")
+        .update({ status: "approved" }).eq("id", aprobada.id);
+      check(!error, "Owner y Admin siguen moviendo el estado como siempre", error?.message); }
+  } else {
+    console.log("\n(sin --despues-de-00253: no se prueba editar en cualquier estado)");
+  }
+
   console.log("\n— social_posts solo la escribe el servidor —");
 
   { const { data: sp } = await svc.from("social_posts").insert({

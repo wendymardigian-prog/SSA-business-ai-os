@@ -10,13 +10,14 @@ import {
   useTransition,
   type MutableRefObject,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ChevronDown, ChevronRight, History, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { savePostDraft, movePostToColumn } from "@/lib/actions/content";
 import { requestCopy } from "@/lib/actions/copywriter";
 import {
   markNetworkPublished,
+  markPiecePublished,
   scheduleNetworks,
   setNetworkPublishMode,
   unmarkNetworkPublished,
@@ -48,7 +49,7 @@ import {
   copyJustFinished,
   draftFromPost,
   draftPayload,
-  isEditableStatus,
+  editNotices,
   pieceButtons,
   publicationsVisible,
   shouldPollCopy,
@@ -68,6 +69,8 @@ import { ClassificationFields } from "../classification-fields";
 import { Drawer } from "./drawer";
 import { PiecePerformanceSection } from "./piece-performance";
 import { LinkAdMenu } from "./link-ad-menu";
+import { MarkPublishedDialog } from "./mark-published-dialog";
+import { MARK_PUBLISHED_PARAM, markPublishedChoices } from "@/lib/content/mark-published";
 import { showAdsSection } from "@/lib/meta/content-ad-summary";
 import { PieceAdsSection } from "./piece-ads-section";
 import { PiecePublications } from "./piece-publications";
@@ -121,6 +124,20 @@ export function PieceDrawer({
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const [view, setView] = useState<"edit" | "history">("edit");
+  // "Publicado…" del estado (o soltar la tarjeta en la columna Publicado, que
+  // abre la pieza con `?marcar=1`).
+  const searchParams = useSearchParams();
+  const [markingPublished, setMarkingPublished] = useState(
+    () => perms.publish && searchParams.has(MARK_PUBLISHED_PARAM),
+  );
+  const closeMarkPublished = useCallback(() => setMarkingPublished(false), []);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(MARK_PUBLISHED_PARAM)) return;
+    url.searchParams.delete(MARK_PUBLISHED_PARAM);
+    // De una sola vez: recargar o volver atras no la vuelve a abrir.
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
   const [openNetwork, setOpenNetwork] = useState<string | null>(null);
   const [draft, setDraft] = useState<PieceDraft>(() => draftFromPost(post));
   // El estado de guardado que ve la persona, siempre: hay un guardado en vuelo,
@@ -163,7 +180,7 @@ export function PieceDrawer({
   const generating = post.copyStatus === "generating";
   // Mientras el copywriter escribe nada se edita: lo que escribiera una
   // persona en ese rato se pisaria cuando el job termina.
-  const editable = isEditableStatus(post.status) && !generating && data.canEdit;
+  const editable = !generating && data.canEdit;
   const library = useMemo(() => liveMedia(ensureMediaIds(post.media)), [post.media]);
 
   // ── Guardar ─────────────────────────────────────────────────────────────
@@ -420,9 +437,32 @@ export function PieceDrawer({
   }
 
   /** Lo escrito se guarda antes de cualquier accion que cambie el estado. */
-  async function saved(then: () => Promise<{ ok: boolean; error?: string }>) {
+  async function saved<T extends { ok: boolean; error?: string }>(
+    then: () => Promise<T>,
+  ): Promise<T | { ok: false; error: string }> {
     if (!(await flush())) return { ok: false, error: "No pude guardar lo que escribiste. Probá de nuevo." };
     return then();
+  }
+
+  function confirmMarkPublished(input: {
+    items: Array<{ platform: string; url: string | null }>;
+    publishedAt: string | null;
+  }) {
+    startTransition(async () => {
+      const result = await saved(() => markPiecePublished({ postId: post.id, ...input }));
+      if (!result.ok || !("data" in result)) {
+        toast.push({ tone: "error", text: result.error ?? "No se pudo" });
+      } else {
+        const { marked, failed } = result.data;
+        setMarkingPublished(false);
+        const names = marked.map(platformLabel).join(", ");
+        toast.push({ tone: "ok", text: `Marcada como publicada en ${names}.` });
+        for (const f of failed) {
+          toast.push({ tone: "error", text: `${platformLabel(f.platform)}: ${f.error}` });
+        }
+      }
+      router.refresh();
+    });
   }
 
   async function close() {
@@ -433,6 +473,11 @@ export function PieceDrawer({
   function changeStatus(to: ContentPostStatus) {
     const kind = statusChangeAction(post.status, to);
     if (!kind) return;
+
+    if (kind === "mark_published") {
+      setMarkingPublished(true);
+      return;
+    }
 
     if (kind === "return") {
       const comment = window.prompt("¿Qué hay que cambiar? (lo ve quien la escribió)");
@@ -720,13 +765,13 @@ export function PieceDrawer({
             taxonomy={taxonomy}
             disabled={!editable}
           />
-          {!isEditableStatus(post.status) && (
-            <p className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
-              Esta pieza ya pasó a revisión final o a publicación: el contenido solo lo cambian quienes aprueban y
-              publican.
-            </p>
-          )}
-          {isEditableStatus(post.status) && !data.canEdit && (
+          {data.canEdit &&
+            editNotices(publications).map((notice) => (
+              <p key={notice} role="status" className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
+                {notice}
+              </p>
+            ))}
+          {!data.canEdit && (
             <p role="status" className="rounded-lg bg-muted p-2 text-xs text-muted-foreground">
               Solo podés mirarla: esta pieza la edita quien la creó o un administrador.
             </p>
@@ -1081,7 +1126,8 @@ export function PieceDrawer({
                     }
                     onMarkPublished={(input) =>
                       run(
-                        () => markNetworkPublished({ postId: post.id, platform: network.platform, ...input }),
+                        // Lo escrito se guarda antes: una red recien sumada todavia no estaria en la pieza.
+                        () => saved(() => markNetworkPublished({ postId: post.id, platform: network.platform, ...input })),
                         `${platformLabel(network.platform)}: marcado como publicado.`,
                       )
                     }
@@ -1126,6 +1172,18 @@ export function PieceDrawer({
           </p>
         )}
       </div>
+      {markingPublished && (
+        <MarkPublishedDialog
+          choices={markPublishedChoices({
+            networks: draft.networks.map((n) => n.platform),
+            publications,
+          })}
+          timeZone={timeZone}
+          pending={pending}
+          onConfirm={confirmMarkPublished}
+          onClose={closeMarkPublished}
+        />
+      )}
     </Drawer>
   );
 }

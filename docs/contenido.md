@@ -24,11 +24,35 @@ parte"**, que es la verdad, en vez de "publicada" o "falló". El chip de
 estado del drawer se tiñe con el color de cada estado; cuando es uno de
 estos cuatro, el dropdown se bloquea con el aviso "Lo definen las redes".
 
+**"Publicado…" en el dropdown** (22/10/2026). Quien puede publicar ve al final
+la opción "Publicado…", también sin cuenta conectada. No cambia el estado en el
+momento: abre una ventanita con las redes de la pieza que faltan (todas
+tildadas; si la pieza no tiene redes, las cinco para elegir), la fecha en que
+salió y un link opcional por red. Confirmar hace lo mismo que "Marcar como
+publicado" en cada red (`markPiecePublished` → `runMarkPublished`), así que el
+estado sigue saliendo de las redes. Soltar una tarjeta en la columna Publicado
+del tablero abre la pieza con esa ventanita (`?marcar=1`).
+
+**Editar en cualquier estado** (cambio aprobado M10, 22/10/2026). El guion, el
+caption, los archivos y las redes se siguen editando después de aprobada,
+programada o publicada. Lo que cambia según el estado es un aviso, no un
+bloqueo:
+- red ya publicada: lo que se cambia queda en la pieza, pero no cambia el post
+  publicado;
+- red programada en Zernio (Instagram, TikTok): al guardar se le reenvía la
+  versión nueva (`lib/publishing/content-resync.ts`, mismo job que mover la
+  fecha). Si la versión nueva no pasa la validación de esa red, el guardado se
+  rechaza con el motivo. Las redes de nuestra cola (YouTube, LinkedIn, Threads)
+  no necesitan nada: leen la pieza al publicar.
+
+Editar no cambia el estado (queda en el historial de versiones). La generación
+con IA sigue solo hasta En revisión.
+
 ## Quién hace qué
 
 | | Member | Owner / Admin |
 |---|---|---|
-| Crear y editar sus piezas | Sí | Sí |
+| Crear y editar sus piezas (o las que tiene asignadas), en cualquier estado | Sí | Sí, cualquiera |
 | Mandar a revisión | Sí | Sí |
 | Moverla entre Borrador, En producción y En revisión | Sí, la suya | Sí, cualquiera |
 | Aprobar y devolver | No | Sí |

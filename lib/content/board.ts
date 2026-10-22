@@ -7,6 +7,7 @@
  * alguien recargue.
  */
 
+import { markPublishedOffer } from "./mark-published";
 import type { ContentIdeaStatus, ContentPostStatus, FunnelStage, SocialPostStatus } from "@/lib/types/database";
 import type { TaxonomyTag } from "./taxonomy";
 import {
@@ -124,7 +125,7 @@ export type DropResult =
   | { ok: true; status: ContentPostStatus }
   | { ok: false; reason: string }
   /** No se puede mover todavia, pero hay algo que hacer: se abre el editor. */
-  | { ok: false; reason: string; openEditor: true };
+  | { ok: false; reason: string; openEditor: true; markPublished?: true };
 
 export interface DropContext {
   perms: ContentPermissions;
@@ -157,8 +158,13 @@ export function evaluateDrop(context: DropContext): DropResult {
   if (target === "ideas") {
     return { ok: false, reason: "Una pieza no vuelve a ser una idea." };
   }
+  // Soltarla en Publicado es decir "ya salio": se abre la pieza con la
+  // ventanita de marcar como publicado (las filas reales las crea eso).
   if (target === "published") {
-    return { ok: false, reason: "Publicar se hace desde el editor, con su fecha." };
+    const offer = markPublishedOffer({ canPublish: perms.publish, status: post.status });
+    if (!offer.offered) return { ok: false, reason: "Esta pieza ya está publicada o publicándose." };
+    if (offer.disabled) return { ok: false, reason: offer.reason };
+    return { ok: false, reason: "Elegí en qué redes salió y cuándo.", openEditor: true, markPublished: true };
   }
 
   const status = statusForColumn(target);

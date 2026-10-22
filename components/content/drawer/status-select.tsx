@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { STATUS_COLOR, type StatusOption } from "@/lib/content/piece-drawer";
 import type { ContentPostStatus } from "@/lib/types/database";
 
@@ -40,12 +41,13 @@ export function StatusSelect({
       title={derived ? "Lo definen las redes: no se elige a mano" : "Cambialo cuando quieras"}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+      {/* `select-bare`: sin la flecha global (app/globals.css), dibuja la suya en el color del estado. */}
       <select
         aria-label="Estado de la pieza"
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value as ContentPostStatus)}
-        className="bg-transparent pr-1 text-xs font-medium outline-none disabled:opacity-90"
+        className="select-bare cursor-pointer bg-transparent pr-0.5 text-xs font-medium outline-none disabled:cursor-default disabled:opacity-90"
         style={{ color }}
       >
         {options.map((o) => (
@@ -54,12 +56,12 @@ export function StatusSelect({
             value={o.value}
             disabled={o.disabled}
             title={o.reason}
-            className="text-foreground"
           >
             {o.label}
           </option>
         ))}
       </select>
+      {!disabled && <ChevronDown className="pointer-events-none -ml-1 h-3.5 w-3.5 shrink-0" aria-hidden />}
     </span>
   );
 }

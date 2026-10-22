@@ -18,6 +18,7 @@ import { readCopywriterConfig } from "@/lib/content/copywriter";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeVersion } from "@/lib/content/save-version";
 import { reschedulePublication } from "@/lib/publishing/reschedule";
+import { applyContentResync, planContentResync } from "@/lib/publishing/content-resync";
 import { canTransition, columnFor, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { canReassign, isAuthorOrAssignee } from "@/lib/content/assignee";
@@ -584,7 +585,7 @@ export async function savePostDraft(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, updated_at, status, pillar_id, offer_id, media, networks, created_by, assigned_to")
+    .select("id, updated_at, status, pillar_id, offer_id, caption, media, networks, created_by, assigned_to")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -674,6 +675,21 @@ export async function savePostDraft(input: {
     return { ok: true, data: { updatedAt: post.updated_at, staleWarning: stale, rescheduleWarnings: [] } };
   }
 
+  // Lo agendado en Zernio se valida ANTES de escribir (M10): ver content-resync.
+  const resync =
+    patch.caption !== undefined || patch.networks !== undefined
+      ? await planContentResync(await createServiceClient(), {
+          postId: input.postId,
+          before: post,
+          after: {
+            caption: patch.caption !== undefined ? (patch.caption as string | null) : post.caption,
+            media: post.media,
+            networks: patch.networks ?? post.networks,
+          },
+        })
+      : { ok: true as const, targets: [] };
+  if (!resync.ok) return { ok: false, error: resync.error };
+
   const { data: updated, error } = await supabase
     .from("content_posts")
     .update(patch)
@@ -699,6 +715,15 @@ export async function savePostDraft(input: {
   const rescheduleWarnings = networks
     ? await applyPlannedDateChanges(workspace.id, input.postId, networks)
     : [];
+
+  // Lo agendado en Zernio se queda con su copia del texto: se le reenvia la
+  // version nueva (despues de mover fechas: si la fecha tambien cambio, ese
+  // job ya lee lo nuevo y no hace falta otro).
+  if (resync.targets.length > 0) {
+    rescheduleWarnings.push(
+      ...(await applyContentResync(await createServiceClient(), { workspaceId: workspace.id, targets: resync.targets })),
+    );
+  }
 
   // La sesion de edicion (Contenido v4, C6): el primer cambio despues de 10
   // minutos crea una version; los siguientes, dentro de la sesion, pisan esa
