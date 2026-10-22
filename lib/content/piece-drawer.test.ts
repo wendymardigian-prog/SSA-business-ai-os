@@ -62,6 +62,19 @@ describe("el estado es un dropdown con lo que se puede elegir (F96)", () => {
     expect(opts.filter((o) => o.value !== "published" && o.value !== "approved").every((o) => o.disabled)).toBe(true);
   });
 
+  it("'Publicado…' aparece al final como atajo para quien puede publicar", () => {
+    const last = statusOptions(admin, "approved").at(-1);
+    expect(last).toMatchObject({ value: "published", label: "Publicado…", disabled: false });
+    // Tambien sin estar aprobada: lo que salio por fuera se marca igual.
+    expect(byValue(statusOptions(admin, "draft")).published?.disabled).toBe(false);
+  });
+
+  it("sin permiso de publicar se ve deshabilitado, con el motivo; publicada ya no se ofrece", () => {
+    const o = byValue(statusOptions(authorMember, "draft"));
+    expect(o.published).toMatchObject({ disabled: true, reason: expect.stringContaining("publicar") });
+    expect(statusOptions(admin, "published").filter((x) => x.value === "published")).toHaveLength(1);
+  });
+
   it("el estado actual siempre esta en la lista y habilitado", () => {
     for (const status of ["draft", "in_production", "in_review", "approved", "scheduled", "failed"] as const) {
       const current = statusOptions(admin, status).find((o) => o.value === status);
@@ -89,6 +102,11 @@ describe("que hace cada cambio del dropdown", () => {
     expect(statusChangeAction("draft", "in_production")).toBe("move");
     expect(statusChangeAction("in_production", "draft")).toBe("move");
     expect(statusChangeAction("approved", "draft")).toBe("move");
+  });
+
+  it("elegir Publicado abre la ventanita, no mueve el estado", () => {
+    expect(statusChangeAction("approved", "published")).toBe("mark_published");
+    expect(statusChangeAction("partially_published", "published")).toBe("mark_published");
   });
 
   it("no cambiar de estado no es una accion", () => {

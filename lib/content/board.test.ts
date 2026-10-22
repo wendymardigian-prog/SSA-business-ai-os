@@ -174,10 +174,16 @@ describe("soltar una tarjeta", () => {
     expect(result).toEqual({ ok: false, reason: expect.stringContaining("publicar") });
   });
 
-  it("publicar no se hace arrastrando", () => {
-    expect(evaluateDrop({ perms: admin, post: post({ status: "scheduled" }), target: "published" }).ok).toBe(
-      false,
-    );
+  it("soltarla en Publicado no la mueve: abre la pieza con la ventanita de marcar como publicado", () => {
+    const result = evaluateDrop({ perms: admin, post: post({ status: "approved" }), target: "published" });
+    expect(result).toMatchObject({ ok: false, openEditor: true, markPublished: true });
+  });
+
+  it("sin permiso de publicar, o ya publicada, soltarla en Publicado solo dice por que", () => {
+    const asMember = evaluateDrop({ perms: member, post: post({ status: "approved" }), target: "published" });
+    expect(asMember).toEqual({ ok: false, reason: expect.stringContaining("publicar") });
+    const already = evaluateDrop({ perms: admin, post: post({ status: "published" }), target: "published" });
+    expect(already).not.toHaveProperty("openEditor");
   });
 });
 

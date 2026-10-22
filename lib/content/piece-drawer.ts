@@ -10,6 +10,7 @@
 import type { ContentPostStatus } from "@/lib/types/database";
 import { platformLabel } from "@/lib/platforms";
 import type { PublicationSummary } from "./detail";
+import { markPublishedOffer } from "./mark-published";
 import { editorActions, type EditorButton, type EditorPermissions } from "./editor";
 import type { NetworkEntry } from "./redistribution";
 import { STATUS_LABELS, canTransition, type ContentPermissions } from "./status";
@@ -65,11 +66,15 @@ const SELECTABLE: ContentPostStatus[] = ["draft", "in_production", "in_review", 
  * se pueden van deshabilitadas CON el motivo, porque "no se puede" sin
  * explicacion obliga a adivinar. "Programado" no se ofrece: programar es elegir
  * fecha por red y apretar el boton del pie, no cambiar un campo.
+ *
+ * "Publicado…" se ofrece al final como ATAJO (22/10/2026): no cambia el estado,
+ * abre la ventanita para marcar las redes que salieron por fuera
+ * (`lib/content/mark-published.ts`). El estado lo siguen calculando las redes.
  */
 export function statusOptions(perms: ContentPermissions, current: ContentPostStatus): StatusOption[] {
   const values = SELECTABLE.includes(current) ? SELECTABLE : [...SELECTABLE, current];
 
-  return values.map((value) => {
+  const options: StatusOption[] = values.map((value) => {
     if (value === current) return { value, label: STATUS_LABELS[value], disabled: false };
 
     const decision = canTransition(perms, current, value);
@@ -77,9 +82,22 @@ export function statusOptions(perms: ContentPermissions, current: ContentPostSta
       ? { value, label: STATUS_LABELS[value], disabled: false }
       : { value, label: STATUS_LABELS[value], disabled: true, reason: decision.reason };
   });
+
+  const offer = markPublishedOffer({ canPublish: perms.publish, status: current });
+  if (offer.offered) {
+    options.push(
+      offer.disabled
+        ? { value: "published", label: MARK_PUBLISHED_LABEL, disabled: true, reason: offer.reason }
+        : { value: "published", label: MARK_PUBLISHED_LABEL, disabled: false },
+    );
+  }
+  return options;
 }
 
-export type StatusChange = "request_review" | "approve" | "return" | "move";
+/** Con los puntos suspensivos: elegirlo abre algo, no cambia el estado en el momento. */
+export const MARK_PUBLISHED_LABEL = "Publicado…";
+
+export type StatusChange = "request_review" | "approve" | "return" | "move" | "mark_published";
 
 /**
  * Que accion dispara un cambio del dropdown.
@@ -91,6 +109,8 @@ export type StatusChange = "request_review" | "approve" | "return" | "move";
  */
 export function statusChangeAction(from: ContentPostStatus, to: ContentPostStatus): StatusChange | null {
   if (from === to) return null;
+  // Publicado no se elige: abre la ventanita para marcar las redes.
+  if (to === "published") return "mark_published";
   if (to === "in_review") return "request_review";
   if (to === "approved") return "approve";
   if (from === "in_review" && (to === "draft" || to === "in_production")) return "return";

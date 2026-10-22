@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CalendarClock, Link2 as LinkIcon, Loader2, Plus, Users } from "lucide-react";
 import { movePostToColumn } from "@/lib/actions/content";
+import { MARK_PUBLISHED_PARAM } from "@/lib/content/mark-published";
 import { drawerHref } from "@/lib/content/drawer-url";
 import {
   attributionTooltip,
@@ -97,9 +98,12 @@ export function ContentKanban({
     const decision = evaluateDrop({ perms: permsFor(card), post: card, target });
 
     if (!decision.ok) {
-      setMessage({ tone: "error", text: decision.reason });
+      const markPublished = "markPublished" in decision && decision.markPublished;
+      // Marcar como publicado no es un error: se abre la ventanita y listo.
+      setMessage(markPublished ? null : { tone: "error", text: decision.reason });
       if ("openEditor" in decision && decision.openEditor) {
-        router.push(drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id }), { scroll: false });
+        const href = drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id });
+        router.push(markPublished ? `${href}&${MARK_PUBLISHED_PARAM}=1` : href, { scroll: false });
       }
       return;
     }

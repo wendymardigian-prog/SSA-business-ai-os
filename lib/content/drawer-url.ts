@@ -10,6 +10,8 @@
  * servidor trae los datos de esa pieza en el mismo viaje.
  */
 
+import { MARK_PUBLISHED_PARAM } from "./mark-published";
+
 export type DrawerTarget = { kind: "idea"; id: string } | { kind: "piece"; id: string } | null;
 
 const BASE = "/dashboard/content";
@@ -43,6 +45,9 @@ export function drawerHref(current: URLSearchParams, target: DrawerTarget): stri
   const next = new URLSearchParams(current.toString());
   next.delete("idea");
   next.delete("piece");
+  // La ventanita de "marcar como publicado" (`?marcar=1`) es de una sola vez:
+  // ir a otra pieza o cerrar no la arrastra.
+  next.delete(MARK_PUBLISHED_PARAM);
   if (target) next.set(target.kind, target.id);
 
   const query = next.toString();
