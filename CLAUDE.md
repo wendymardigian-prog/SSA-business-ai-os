@@ -379,7 +379,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 - **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
 - **La bandeja respeta el canal**: `inbox.<canal>.view` filtra lo que se ve y `inbox.<canal>.reply` habilita el composer, `POST /api/v1/messages` (403 sin llamar al proveedor) y los borradores del agente.
-- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones". Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
+- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones", M10 edita el contenido de su pieza (o la asignada) en cualquier estado, sin poder mover el estado fuera de Borrador / En producción / En revisión (00253). Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
 
 ## Migraciones (00208 a 00214, todas aplicadas y registradas)
 
@@ -634,9 +634,17 @@ componen. El hilo de Instagram **se sigue leyendo en vivo de Zernio** y se cruza
 con nuestra tabla por `platform_message_id`.
 
 **Ojo con dos cosas de CSS** que se midieron y costaron un arreglo: `min-width`
-le gana a `max-width` (un minimo fijo desborda la burbuja), y el `dark:` de
-Tailwind en este proyecto compila a `prefers-color-scheme`, mientras que el tema
-lo maneja la clase `.dark` del `<html>`. Son dos señales distintas.
+le gana a `max-width` (un minimo fijo desborda la burbuja), y el tema lo maneja
+la clase `.dark` del `<html>`, no `prefers-color-scheme`. Desde d72265a el
+`dark:` de Tailwind sigue a esa clase (`@custom-variant dark` en
+`app/globals.css`).
+
+**Desplegables (22/10/2026).** `.dark` declara `color-scheme: dark` (y `:root`
+`light`): sin eso la lista de un `<select>` nativo salia con fondo claro y texto
+blanco. La flecha y el padding derecho de TODOS los `<select>` salen de una
+regla de `app/globals.css` fuera de `@layer` (le gana a `px-*`); las opciones
+usan `--popover`. Un desplegable que dibuja su propia flecha lleva la clase
+`select-bare`. `lib/ui/theme-css.test.ts` lo cuida.
 
 ## Migraciones de los Bloques 1-3
 `00102` (bucket y columnas de media) y `00103` (transcripcion, escalado, el CHECK
@@ -1455,6 +1463,9 @@ con estados y producto; la definición vieja completa en su cabecera) y `00248` 
 **Un DEFAULT de columna se evalúa con los permisos de quien inserta: nunca una función de `private`.** **La próxima libre es la `00249`**
 (confirmar con `list_migrations`).
 
+La `00249` a la `00252` son de otras sesiones (bandeja por cuenta y agentes IA); la `00253` es de Contenido (una pieza se edita en
+cualquier estado). **La próxima libre es la `00254`** (confirmar con `list_migrations` y las ramas locales).
+
 ## Verificación
 
 ```
@@ -1538,6 +1549,17 @@ completo en `docs/PROGRESS-CV4.md`.
 - **`networks[].publisher` no se escribe mas**: el publicador efectivo es
   siempre el `default_publisher` de la cuenta (F13), nunca algo elegido por
   pieza.
+- **Una pieza se edita en cualquier estado** (M10, 22/10/2026, migracion
+  `00253`): la politica `content_posts_update` ya no mira el estado; el
+  trigger `content_posts_status_guard` conserva que un Member no mueve el
+  ESTADO fuera de los tres de autor. Lo agendado en Zernio se reenvia al
+  guardar, agregar o sacar un archivo (`lib/publishing/content-resync.ts`,
+  validado antes de escribir); lo publicado solo lleva un aviso
+  (`editNotices`).
+- **"Publicado…" en el dropdown de estado** es un atajo, no un estado que se
+  elige: abre la ventanita que marca varias redes a la vez
+  (`markPiecePublished` → `runMarkPublished`, las mismas filas `manual`).
+  Soltar en la columna Publicado abre la pieza con `?marcar=1`.
 
 ## Responsable de la pieza (15/10/2026)
 
