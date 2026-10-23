@@ -6,6 +6,7 @@ import { DATE_PRESETS, DATE_PRESET_LABELS } from "@/lib/dates";
 import {
   INBOX_STATUS_VALUES,
   INBOX_STATUS_LABELS,
+  DEFAULT_INBOX_STATUS,
   ASSIGNMENT_UNASSIGNED,
   ASSIGNMENT_AI,
   countActiveFilters,
@@ -31,8 +32,9 @@ import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
  *   agente, asignacion y fecha. Flota: no empuja la lista.
  * - `InboxFilterSummary`: la linea de abajo de la barra, con lo que esta
  *   filtrado en palabras y una `×` para limpiar. Sin filtros no se dibuja.
- * - `InboxStatusBar`: las pastillas de estado y el link a borradores, arriba de
- *   la lista (I6). Es el filtro que mas se usa y no se esconde detras de un clic.
+ * - `InboxStatusControls`: el desplegable de estado y el link a borradores, en
+ *   la linea del titulo de la lista (I6). Es el filtro que mas se usa y no se
+ *   esconde detras de un clic.
  *
  * El buscador es `SectionSearch` (`components/comunicacion/section-search.tsx`),
  * compartido con las otras tres secciones. Todos cambian la URL con
@@ -325,48 +327,59 @@ export function InboxFilterSummary({
   );
 }
 
-/** Las pastillas de estado y el link a borradores, arriba de la lista (I6). */
-export function InboxStatusBar({
+/**
+ * El estado y el link a borradores, en la misma linea que el titulo de la
+ * lista (I6, compactado el 23/10/2026).
+ *
+ * Antes eran cuatro pastillas en una fila propia, debajo del titulo: en el
+ * celular eran dos filas enteras antes del primer chat. El estado sigue afuera
+ * del popover de Filtros —es el que mas se usa y no se esconde detras de un
+ * clic—, pero como un desplegable que entra al lado del titulo.
+ */
+export function InboxStatusControls({
   filters,
   workspaceId,
   draftCounts,
 }: {
   filters: InboxFilters;
   workspaceId: string;
-  /** Valor inicial de la pestana "Borradores (N)"; Realtime la mantiene al dia. */
+  /** Valor inicial del contador de borradores; Realtime lo mantiene al dia. */
   draftCounts?: PendingDraftCounts;
 }) {
   const { setParam } = useInboxUrl();
   const drafts = useDraftCounts(workspaceId, draftCounts, "inbox-drafts");
   const waitingDrafts = visibleDraftCount(drafts);
+  const notDefault = filters.status !== DEFAULT_INBOX_STATUS;
 
   return (
-    <div className="flex flex-wrap gap-1 border-b border-border px-4 py-3">
-      {INBOX_STATUS_VALUES.map((value) => (
-        <button
-          key={value}
-          onClick={() => setParam("estado", value)}
-          aria-pressed={filters.status === value}
-          className={cn(
-            "min-h-9 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors md:min-h-0",
-            filters.status === value
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-accent",
-          )}
-        >
-          {INBOX_STATUS_LABELS[value]}
-        </button>
-      ))}
+    <div className="flex shrink-0 items-center gap-1">
+      <select
+        value={filters.status}
+        onChange={(e) => setParam("estado", e.target.value)}
+        aria-label="Estado de los chats"
+        className={cn(
+          "h-8 rounded-lg border pl-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring",
+          notDefault ? "border-primary bg-primary/10 text-primary" : "border-input bg-background",
+        )}
+      >
+        {INBOX_STATUS_VALUES.map((value) => (
+          <option key={value} value={value}>
+            {INBOX_STATUS_LABELS[value]}
+          </option>
+        ))}
+      </select>
       {/* Bloque 2d: la cola de borradores vive aca y no en el menu. Un
           borrador es una conversacion esperando respuesta, no otra seccion
           del sistema. Con cero no aparece. */}
       {waitingDrafts > 0 && (
         <Link
           href={draftsQueueHref(drafts)}
-          className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-dashed border-amber-400 px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30 md:min-h-0"
+          aria-label={`Borradores: ${waitingDrafts} esperando`}
+          title="Borradores esperando"
+          className="inline-flex h-8 items-center gap-0.5 rounded-lg border border-dashed border-amber-400 px-1.5 text-xs font-medium tabular-nums text-amber-800 transition-colors hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30"
         >
-          <FileText className="h-3 w-3" aria-hidden />
-          Borradores ({waitingDrafts})
+          <FileText className="h-3.5 w-3.5" aria-hidden />
+          {waitingDrafts}
         </Link>
       )}
     </div>

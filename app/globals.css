@@ -426,6 +426,23 @@ select.select-bare {
 }
 
 /*
+ * El zoom del iPhone (23/10/2026).
+ *
+ * Safari en iOS agranda la pantalla sola cuando se toca un campo con letra de
+ * menos de 16 px, y despues NO la vuelve a achicar: el drawer de Contenido
+ * (campos de 12 y 14 px) quedaba "grande" y habia que pellizcar para volver.
+ * En pantallas tactiles los campos de texto van a 16 px. Fuera de `@layer`
+ * para ganarle al `text-sm` / `text-xs` de las utilidades; los que ya son mas
+ * grandes (`text-lg` en adelante) se dejan como estan. En la computadora no
+ * cambia nada.
+ */
+@media (pointer: coarse) {
+  :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]), textarea, select):not([class*="text-lg"], [class*="text-xl"], [class*="text-2xl"], [class*="text-3xl"], [class*="text-4xl"]) {
+    font-size: 16px;
+  }
+}
+
+/*
  * Las grillas del dashboard de Chat (prototipo).
  *
  * Como clases y no como utilidades repetidas en diez componentes: las tres
