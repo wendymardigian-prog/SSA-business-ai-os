@@ -33,6 +33,7 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
   const result = await deliverAsset(supabase, {
     assetId: data.assetId,
     caption: data.caption ?? null,
+    variables: context.variables ?? {},
     context: {
       ...context,
       channelId: context.channelId || null,

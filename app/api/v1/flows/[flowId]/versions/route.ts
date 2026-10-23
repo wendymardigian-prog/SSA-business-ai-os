@@ -13,10 +13,10 @@ export async function GET(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
-  if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   const { data: versions, error } = await supabase
     .from("flow_versions")

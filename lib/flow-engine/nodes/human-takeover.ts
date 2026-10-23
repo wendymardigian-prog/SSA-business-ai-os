@@ -1,5 +1,6 @@
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { createNotification } from "@/lib/notifications/create";
+import { interpolateVariables } from "../interpolate";
 
 /**
  * Deriva la conversacion a una persona.
@@ -22,7 +23,7 @@ export const humanTakeoverNode: NodeDefinition<unknown> = {
   type: "humanTakeover",
   label: "Derivar a una persona",
   aliases: [{ nodeType: "action", actionType: "humanTakeover" }],
-  async execute({ supabase, context, sessionId }: NodeExecutionArgs<unknown>) {
+  async execute({ supabase, context, sessionId, data }: NodeExecutionArgs<unknown>) {
     await supabase
       .from("conversations")
       .update({ is_automation_paused: true, agent_enabled: false })
@@ -33,7 +34,9 @@ export const humanTakeoverNode: NodeDefinition<unknown> = {
       .update({ human_takeover_at: new Date().toISOString(), status: "completed" })
       .eq("id", sessionId);
 
-    await notifyTakeover({ supabase, context });
+    // La nota interna del panel ("Contexto para quien la tome") va en el aviso. Antes se guardaba y nadie la leia.
+    const note = interpolateVariables(String((data as { message?: unknown } | null)?.message ?? ""), context.variables ?? {}).trim().slice(0, 500);
+    await notifyTakeover({ supabase, context, note });
 
     return "pause";
   },
@@ -53,7 +56,8 @@ export const humanTakeoverNode: NodeDefinition<unknown> = {
 async function notifyTakeover({
   supabase,
   context,
-}: Pick<NodeExecutionArgs<unknown>, "supabase" | "context">) {
+  note,
+}: Pick<NodeExecutionArgs<unknown>, "supabase" | "context"> & { note?: string }) {
   try {
     // Dos datos para que el aviso se entienda sin abrirlo: a quien esta
     // asignada y de quien es la conversacion.
@@ -80,7 +84,9 @@ async function notifyTakeover({
       workspaceId: context.workspaceId,
       type: "human_takeover",
       title: `${nombre} necesita que le contesten`,
-      body: "La automatizacion derivo esta conversacion a una persona y quedo pausada. Abrila y segui vos.",
+      body: note
+        ? `${note}\n\nLa automatización derivó esta conversación a una persona y quedó pausada. Abrila y seguí vos.`
+        : "La automatización derivó esta conversación a una persona y quedó pausada. Abrila y seguí vos.",
       entityType: "conversation",
       entityId: context.conversationId,
       recipientId: conversation?.assigned_to ?? null,

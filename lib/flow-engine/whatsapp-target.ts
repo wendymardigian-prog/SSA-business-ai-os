@@ -9,7 +9,7 @@ export interface WhatsAppTargetData {
   to?: "fixed" | "variable";
   /** Solo `to: "fixed"`: el número tal como lo escribió la persona. */
   fixedPhone?: string;
-  /** Solo `to: "variable"`: `{{webhook.body.telefono}}` (también se acepta sin las llaves). */
+  /** Solo `to: "variable"`: `{{webhook.payload.telefono}}` (también se acepta sin las llaves). */
   toVariable?: string;
 }
 

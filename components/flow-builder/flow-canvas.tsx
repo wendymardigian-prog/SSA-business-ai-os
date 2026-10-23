@@ -19,18 +19,21 @@ import "@xyflow/react/dist/style.css";
 
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2 } from "lucide-react";
+import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, Info, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { flowFingerprint } from "@/lib/unsaved-changes";
 import { useUnsavedChanges } from "@/lib/hooks/use-unsaved-changes";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { createClient } from "@/lib/supabase/client";
-import type { Database, FlowStatus, Json } from "@/lib/types/database";
+import type { Database } from "@/lib/types/database";
+import { discardFlowDraft, saveFlowDraft } from "@/lib/actions/flows";
+import { applyTriggerChoice, choiceKeyFor, chosenType, hasTriggerConfig, type TriggerChoice } from "@/lib/flow-engine/trigger-catalog";
+import { FlowDetailsDialog, type FlowDetails } from "@/components/flows/flow-details-dialog";
+import { TriggerPicker } from "./trigger-picker";
 import { conditionToBranch, type ConvertibleEdge, type ConvertibleNode } from "@/lib/flow-engine/convert-condition";
 import { newPathId, pathsOf } from "@/lib/flow-engine/branch-paths";
 import { pruneBranchEdges } from "@/lib/automations/branch-edit";
 
-import { NodePalette } from "./node-palette";
+import { NodePalette, type PaletteItem } from "./node-palette";
 import { FlowCapabilitiesProvider, FlowConnectionBanner, useFlowCapabilities } from "./capabilities-context";
 import {
   ALL_CONNECTED,
@@ -88,7 +91,8 @@ function getNodeId() {
 function getDefaultData(type: string, actionType?: string, attributionDefaults?: AttributionDefaults): Record<string, unknown> {
   switch (type) {
     case "trigger":
-      return { triggerType: "keyword", keywords: [] };
+      // Nace SIN elegir: la persona elige como arranca en el selector (antes nacia como palabra clave).
+      return { triggerType: null };
     case "sendMessage": {
       // Un nodo de envío nuevo nace con la atribución encendida solo si el negocio la tiene así por defecto (F39).
       const attribution = attributionDefaults ? newNodeAttribution(attributionDefaults) : undefined;
@@ -105,7 +109,9 @@ function getDefaultData(type: string, actionType?: string, attributionDefaults?:
     case "delay":
       return { duration: 5, unit: "minutes" };
     case "aiResponse":
-      return { systemPrompt: "", model: "openai/gpt-4o-mini", temperature: 0.7, maxTokens: 500, contextMessages: 10 };
+      // Sin proveedor ni modelo: corre con el modelo por defecto de la IA conectada. Antes nacia con
+      // "openai/gpt-4o-mini", un id del AI Gateway que ningun proveedor acepta, y un nodo sin tocar fallaba.
+      return { systemPrompt: "", temperature: 0.7, maxTokens: 500, contextMessages: 10 };
     case "action":
       return { actionType: actionType || "addTag" };
     default:
@@ -113,26 +119,35 @@ function getDefaultData(type: string, actionType?: string, attributionDefaults?:
   }
 }
 
+const STATUS_LABELS: Record<string, string> = { draft: "Borrador", published: "Publicada", archived: "Archivada" };
+
+/**
+ * El grafo con el que abre el lienzo: los cambios sin publicar si los hay (00254), si no lo guardado. Siempre con UN
+ * disparador: una automatizacion vieja (o vacia) sin disparador recibe uno sin elegir. El disparador no se borra.
+ */
+function initialGraph(flow: Flow): { nodes: Node[]; edges: Edge[] } {
+  const useDraft = Array.isArray(flow.draft_nodes);
+  const rawNodes = useDraft ? flow.draft_nodes : Array.isArray(flow.nodes) ? flow.nodes : [];
+  const rawEdges = useDraft ? (Array.isArray(flow.draft_edges) ? flow.draft_edges : []) : Array.isArray(flow.edges) ? flow.edges : [];
+  let nodes = (rawNodes as unknown as Node[]).map((n) => (n.type === "trigger" ? { ...n, deletable: false } : n));
+  if (!nodes.some((n) => n.type === "trigger")) {
+    nodes = [{ id: "trigger", type: "trigger", position: { x: 0, y: 0 }, data: { triggerType: null }, deletable: false }, ...nodes];
+  }
+  return { nodes, edges: rawEdges as unknown as Edge[] };
+}
+
 function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }: FlowCanvasProps) {
   const router = useRouter();
   const capabilities = useFlowCapabilities();
   // Los pasos bloqueados que YA tenia lo guardado: un flujo publicado se puede seguir editando aunque a un paso se le
   // haya desconectado algo; lo que no se deja es guardar un paso NUEVO sin su conexion (saldria en vivo sin ejecutarse).
-  const savedGraph = useRef<{ nodes: unknown[]; edges: unknown[] }>({
-    nodes: Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : [],
-    edges: Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [],
-  });
+  const [initial] = useState(() => initialGraph(flow));
+  const initialNodes = initial.nodes;
+  const initialEdges = initial.edges;
+  const savedGraph = useRef<{ nodes: unknown[]; edges: unknown[] }>({ nodes: initialNodes, edges: initialEdges });
   const [publishProblems, setPublishProblems] = useState<string[]>([]);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
-  const supabase = createClient();
-
-  const initialNodes: Node[] = Array.isArray(flow.nodes)
-    ? (flow.nodes as unknown as Node[])
-    : [];
-  const initialEdges: Edge[] = Array.isArray(flow.edges)
-    ? (flow.edges as unknown as Edge[])
-    : [];
+  const { screenToFlowPosition, getViewport } = useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -144,6 +159,16 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [testPanelOpen, setTestPanelOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Una automatizacion publicada con cambios que todavia no corren (00254).
+  const [hasDraft, setHasDraft] = useState(flow.status === "published" && Array.isArray(flow.draft_nodes));
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [details, setDetails] = useState<FlowDetails>({ name: flow.name, description: flow.description ?? null, categories: flow.categories ?? [] });
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  // El selector de disparador: se abre solo si todavia no se eligio como arranca.
+  const triggerNode = nodes.find((n) => n.type === "trigger");
+  const triggerChosen = chosenType((triggerNode?.data ?? {}) as Record<string, unknown>) !== null;
+  const [pickerOpen, setPickerOpen] = useState(() => !triggerChosen);
+  const [pendingChoice, setPendingChoice] = useState<TriggerChoice | null>(null);
 
   const unsaved = useUnsavedChanges({
     current: flowFingerprint(nodes, edges, flowName),
@@ -191,6 +216,9 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
         actionType?: string;
       };
 
+      // Un solo disparador por automatizacion, y los pasos recien despues de elegirlo.
+      if (type === "trigger" || !triggerChosen) return;
+
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
@@ -205,7 +233,22 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
 
       setNodes((nds) => [...nds, newNode]);
     },
-    [screenToFlowPosition, setNodes, attributionDefaults]
+    [screenToFlowPosition, setNodes, attributionDefaults, triggerChosen]
+  );
+
+  // Tocar un paso de la paleta (o Enter): se suma debajo del ultimo paso, sin arrastrar.
+  const addFromPalette = useCallback(
+    (item: PaletteItem) => {
+      if (!triggerChosen) return;
+      setNodes((nds) => {
+        const lowest = nds.reduce<Node | null>((acc, n) => (!acc || n.position.y > acc.position.y ? n : acc), null);
+        const { x, y, zoom } = getViewport();
+        const position = lowest ? { x: lowest.position.x, y: lowest.position.y + 140 } : { x: -x / zoom + 200, y: -y / zoom + 120 };
+        const newNode: Node = { id: getNodeId(), type: item.type, position, data: getDefaultData(item.type, item.actionType || item.nodeType, attributionDefaults) };
+        return [...nds, newNode];
+      });
+    },
+    [triggerChosen, setNodes, getViewport, attributionDefaults]
   );
 
   const onNodeClick = useCallback(
@@ -254,16 +297,47 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
 
   const deleteNode = useCallback(
     (nodeId: string) => {
+      // El disparador no se borra: se cambia.
+      if (nodes.find((n) => n.id === nodeId)?.type === "trigger") return;
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
       setSelectedNodeId(null);
     },
-    [setNodes, setEdges]
+    [nodes, setNodes, setEdges]
+  );
+
+  // Elegir (o cambiar) el disparador. Si el que estaba tenia configuracion, se confirma antes de perderla.
+  const applyChoice = useCallback(
+    (choice: TriggerChoice) => {
+      setNodes((nds) =>
+        nds.map((n) => (n.type === "trigger" ? { ...n, deletable: false, data: applyTriggerChoice(n.data as Record<string, unknown>, choice) } : n))
+      );
+      setPickerOpen(false);
+      setPendingChoice(null);
+      const id = nodes.find((n) => n.type === "trigger")?.id;
+      if (id) setSelectedNodeId(id);
+    },
+    [setNodes, nodes]
+  );
+  const handlePick = useCallback(
+    (choice: TriggerChoice) => {
+      const data = (triggerNode?.data ?? {}) as Record<string, unknown>;
+      if (choiceKeyFor(data) === choice.key) {
+        setPickerOpen(false);
+        return;
+      }
+      if (chosenType(data) && hasTriggerConfig(data)) {
+        setPendingChoice(choice);
+        return;
+      }
+      applyChoice(choice);
+    },
+    [triggerNode, applyChoice]
   );
 
   const saveFlow = useCallback(
-    async (status?: FlowStatus): Promise<boolean> => {
-      // Un flujo ya publicado esta en vivo: guardar un paso nuevo sin su conexion lo dejaria "activo" sin ejecutarse (G1.4).
+    async (): Promise<boolean> => {
+      // Un flujo publicado: guardar un paso NUEVO sin su conexion lo dejaria listo para publicarse sin poder ejecutarse (G1.4).
       if (flow.status === "published") {
         const before = new Set(blockedNodes(savedGraph.current.nodes as GraphNodeLike[], savedGraph.current.edges as GraphEdgeLike[], capabilities).map((b) => b.nodeId));
         const added = blockedNodes(nodes as unknown as GraphNodeLike[], edges as unknown as GraphEdgeLike[], capabilities).filter((b) => !before.has(b.nodeId));
@@ -275,51 +349,48 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
         }
       }
 
-      if (status === "published") {
-        setPublishing(true);
-      } else {
-        setSaving(true);
-      }
-
+      setSaving(true);
       try {
-        const update: Database["public"]["Tables"]["flows"]["Update"] = {
-          name: flowName,
-          nodes: nodes as unknown as Json,
-          edges: edges as unknown as Json,
-          updated_at: new Date().toISOString(),
-        };
-
-        if (status) {
-          update.status = status;
-          if (status === "published") {
-            update.published_at = new Date().toISOString();
-          }
-        }
-
-        const { error } = await supabase
-          .from("flows")
-          .update(update)
-          .eq("id", flow.id);
-
-        if (error) {
-          console.error("Failed to save flow:", error);
-          setSaveError("Failed to save");
-          setTimeout(() => setSaveError(null), 3000);
+        // Por el servidor (no directo a la base): en una automatizacion PUBLICADA esto va a los cambios sin publicar y
+        // lo que corre no cambia hasta "Publicar cambios".
+        const res = await saveFlowDraft({ flowId: flow.id, name: flowName, nodes: nodes as unknown[], edges: edges as unknown[] });
+        if (!res.ok) {
+          setSaveError(res.error);
+          setTimeout(() => setSaveError(null), 4000);
           return false;
         }
-
+        setHasDraft(res.unpublishedChanges);
         setSaveError(null);
         setLastSaved(new Date());
         markSaved();
         savedGraph.current = { nodes: nodes as unknown[], edges: edges as unknown[] };
         return true;
+      } catch {
+        setSaveError("No se pudo guardar. Probá de nuevo.");
+        setTimeout(() => setSaveError(null), 4000);
+        return false;
       } finally {
         setSaving(false);
-        setPublishing(false);
       }
     },
-    [flowName, nodes, edges, flow.id, flow.status, supabase, markSaved, capabilities]
+    [flowName, nodes, edges, flow.id, flow.status, markSaved, capabilities]
   );
+
+  const handleDiscard = useCallback(async () => {
+    const res = await discardFlowDraft(flow.id);
+    if (!res.ok) {
+      setSaveError(res.error);
+      setTimeout(() => setSaveError(null), 4000);
+      return;
+    }
+    const restored = initialGraph({ ...flow, draft_nodes: null, draft_edges: null, nodes: res.nodes as never, edges: res.edges as never });
+    setNodes(restored.nodes);
+    setEdges(restored.edges);
+    savedGraph.current = { nodes: restored.nodes, edges: restored.edges };
+    setHasDraft(false);
+    setSelectedNodeId(null);
+    router.refresh();
+  }, [flow, setNodes, setEdges, router]);
 
   const handleSave = useCallback(() => saveFlow(), [saveFlow]);
   const handleDelete = useCallback(async () => {
@@ -329,16 +400,16 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
         method: "DELETE",
       });
       if (!res.ok) {
-        console.error("Failed to delete flow");
-        setSaveError("Failed to delete");
+        console.error("[flows] no se pudo borrar la automatizacion");
+        setSaveError("No se pudo borrar");
         setTimeout(() => setSaveError(null), 3000);
         setDeleting(false);
         return;
       }
       router.push("/dashboard/flows");
     } catch (err) {
-      console.error("Failed to delete flow:", err);
-      setSaveError("Failed to delete");
+      console.error("[flows] no se pudo borrar la automatizacion:", err);
+      setSaveError("No se pudo borrar");
       setTimeout(() => setSaveError(null), 3000);
       setDeleting(false);
     }
@@ -368,11 +439,12 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
       }
       setSaveError(null);
       setLastSaved(new Date());
+      setHasDraft(false);
       router.refresh();
     } finally {
       setPublishing(false);
     }
-  }, [saveFlow, flow.id]);
+  }, [saveFlow, flow.id, router]);
 
   return (
     <div className="flex h-full flex-col">
@@ -385,7 +457,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            Volver
           </button>
           <div className="h-5 w-px bg-border" />
           <input
@@ -394,7 +466,8 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             onChange={(e) => setFlowName(e.target.value)}
             className="w-auto max-w-[200px] border-none bg-transparent text-sm font-semibold outline-none focus:ring-0"
             style={{ width: `${Math.max(flowName.length, 8)}ch` }}
-            placeholder="Flow name"
+            placeholder="Nombre de la automatización"
+            aria-label="Nombre de la automatización"
           />
           <span
             className={cn(
@@ -406,8 +479,22 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
                   : "bg-muted text-muted-foreground"
             )}
           >
-            {flow.status}
+            {STATUS_LABELS[flow.status] ?? flow.status}
           </span>
+          {hasDraft && (
+            <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200" title="Lo que corre es la última versión publicada. Publicá para que los cambios empiecen a correr.">
+              Cambios sin publicar
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setDetailsOpen(true)}
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            title="Nombre, descripción y categorías"
+          >
+            <Info className="h-3.5 w-3.5" />
+            Detalles
+          </button>
         </div>
         <div className="flex items-center gap-2">
           {saveError && (
@@ -446,7 +533,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             )}
           >
             <Play className="h-3.5 w-3.5" />
-            Test
+            Probar
           </button>
           <button
             onClick={() => {
@@ -464,13 +551,14 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             )}
           >
             <History className="h-3.5 w-3.5" />
-            History
+            Versiones
           </button>
           <button
             onClick={() => {
               const exportData = {
                 name: flowName,
-                description: flow.description || null,
+                description: details.description || null,
+                categories: details.categories,
                 nodes,
                 edges,
                 version: flow.version || 1,
@@ -488,7 +576,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
           >
             <Download className="h-3.5 w-3.5" />
-            Export
+            Exportar
           </button>
           <button
             onClick={handleSave}
@@ -500,8 +588,18 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             ) : (
               <Save className="h-3.5 w-3.5" />
             )}
-            Save
+            {flow.status === "published" ? "Guardar borrador" : "Guardar"}
           </button>
+          {hasDraft && (
+            <button
+              onClick={() => setConfirmDiscard(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
+              title="Volver a la versión que está corriendo"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+              Descartar cambios
+            </button>
+          )}
           <button
             onClick={handlePublish}
             disabled={publishing}
@@ -512,13 +610,14 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             ) : (
               <Rocket className="h-3.5 w-3.5" />
             )}
-            Publish
+            {flow.status === "published" ? "Publicar cambios" : "Publicar"}
           </button>
           <button
             onClick={() => setConfirmDelete(true)}
             disabled={deleting}
             className="rounded-lg p-2 text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-            title="Delete flow"
+            title="Borrar automatización"
+            aria-label="Borrar automatización"
           >
             {deleting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -528,10 +627,30 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
           </button>
           <ConfirmDialog {...unsaved.confirmProps} />
           <ConfirmDialog
+            open={confirmDiscard}
+            title="Descartar los cambios sin publicar"
+            message="Vuelve a la versión que está corriendo ahora. Lo que cambiaste desde la última publicación se pierde."
+            confirmLabel="Descartar"
+            destructive
+            onConfirm={() => {
+              setConfirmDiscard(false);
+              void handleDiscard();
+            }}
+            onCancel={() => setConfirmDiscard(false)}
+          />
+          <ConfirmDialog
+            open={pendingChoice !== null}
+            title="Cambiar el disparador"
+            message={`Lo que configuraste en el disparador actual (palabras clave, filtros…) se pierde. ¿Cambiar a «${pendingChoice?.label ?? ""}»?`}
+            confirmLabel="Cambiar"
+            onConfirm={() => pendingChoice && applyChoice(pendingChoice)}
+            onCancel={() => setPendingChoice(null)}
+          />
+          <ConfirmDialog
             open={confirmDelete}
-            title="Delete flow"
-            message={`"${flowName}" and its triggers, versions, and run history will be permanently deleted. This cannot be undone.`}
-            confirmLabel="Delete"
+            title="Borrar automatización"
+            message={`«${flowName}» se borra con sus disparadores, versiones e historial de ejecuciones. No se puede deshacer.`}
+            confirmLabel="Borrar"
             destructive
             onConfirm={() => {
               setConfirmDelete(false);
@@ -563,7 +682,11 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
 
       {/* Canvas area */}
       <div className="flex flex-1 overflow-hidden">
-        <NodePalette memberFlow={nodes.some((n) => n.type === "trigger" && isNoContactTriggerType((n.data as { triggerType?: unknown } | undefined)?.triggerType))} />
+        <NodePalette
+          memberFlow={nodes.some((n) => n.type === "trigger" && isNoContactTriggerType((n.data as { triggerType?: unknown } | undefined)?.triggerType))}
+          locked={!triggerChosen}
+          onAdd={addFromPalette}
+        />
         <div ref={reactFlowWrapper} className="flex-1">
           <ReactFlow
             nodes={nodes}
@@ -604,6 +727,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             onClose={closeSidebar}
             onDelete={deleteNode}
             onConvert={convertCondition}
+            onChangeTrigger={() => setPickerOpen(true)}
           />
         )}
         {versionPanelOpen && (
@@ -614,6 +738,24 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             onRestore={() => router.refresh()}
           />
         )}
+        <TriggerPicker
+          open={pickerOpen}
+          currentKey={choiceKeyFor((triggerNode?.data ?? {}) as Record<string, unknown>)}
+          onPick={handlePick}
+          // Sin disparador elegido no se puede cerrar: primero se decide como arranca.
+          onClose={triggerChosen ? () => setPickerOpen(false) : undefined}
+        />
+        <FlowDetailsDialog
+          open={detailsOpen}
+          flowId={flow.id}
+          initial={{ ...details, name: flowName }}
+          onClose={() => setDetailsOpen(false)}
+          onSaved={(saved) => {
+            setDetails(saved);
+            setFlowName(saved.name);
+            router.refresh();
+          }}
+        />
         {testPanelOpen && (
           <TestPanel
             nodes={nodes}

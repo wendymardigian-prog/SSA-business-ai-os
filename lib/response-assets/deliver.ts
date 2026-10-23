@@ -32,6 +32,7 @@ import type { Database } from "@/lib/types/database";
 import { sendChannelMessage, recordSend, type SendContext } from "@/lib/flow-engine/send";
 import { channelAccepts } from "@/lib/channels/media";
 import { interpolateTemplate } from "@/lib/templates/interpolate";
+import { interpolateVariables } from "@/lib/flow-engine/interpolate";
 import { emptyAttachment, toAttachmentsColumn } from "@/lib/messages/attachments";
 import { copyAssetToChat } from "@/lib/response-assets/send-copy";
 import { touchAssetUsage } from "@/lib/response-assets/usage";
@@ -73,12 +74,22 @@ export function plainAssetText(
   return [lead, asset.url ?? ""].filter(Boolean).join("\n");
 }
 
+/** Completa con las variables del flujo lo que la banca no resolvio. */
+function withFlowVariables(text: string, variables: Record<string, unknown> | undefined): string {
+  return variables ? interpolateVariables(text, variables).trim() : text;
+}
+
 export async function deliverAsset(
   supabase: Db,
   args: {
     assetId: string;
     /** Un texto propio que acompaña al recurso: reemplaza al del recurso. Admite las variables de la banca. */
     caption?: string | null;
+    /**
+     * Las variables del flujo (`{{booking.*}}`, `{{ai_response}}`…), para lo que quede sin resolver despues de las de la
+     * banca. Sin esto, un recurso enviado desde una automatizacion de agenda mandaba `{{booking.start_invitee}}` literal.
+     */
+    variables?: Record<string, unknown>;
     context: Omit<SendContext, "channelId" | "conversationId"> & {
       channelId: string | null;
       conversationId: string | null;
@@ -121,7 +132,7 @@ export async function deliverAsset(
 
     // Texto y enlace: no llevan archivo.
     if (!hasFile(row.kind)) {
-      const text = plainAssetText(row, args.caption, data);
+      const text = withFlowVariables(plainAssetText(row, args.caption, data), args.variables);
       if (!text) return skipped("El recurso no tiene texto para mandar.");
 
       const outcome = await sendChannelMessage(supabase, send, { text });
@@ -146,7 +157,7 @@ export async function deliverAsset(
     // Un audio sale solo; lo demas lleva su texto (el del paso, o el del recurso).
     const wireText = isAudio
       ? ""
-      : interpolateTemplate(((args.caption ?? "").trim() || (copied.copy.caption ?? "")).trim(), data).trim();
+      : withFlowVariables(interpolateTemplate(((args.caption ?? "").trim() || (copied.copy.caption ?? "")).trim(), data).trim(), args.variables);
     // Lo que se guarda como texto del mensaje: la transcripcion de un audio (para el historial).
     const storedText = isAudio ? (row.transcript_status === "ready" ? (row.transcript ?? "") : "") : wireText;
 

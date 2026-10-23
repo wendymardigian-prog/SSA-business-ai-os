@@ -103,10 +103,32 @@ export async function getWorkspaceModel(
     };
   }
 
-  const chosen =
-    rows.find((r) => r.provider === options.preferredProvider) ?? rows[0];
+  const requested = normalizeRequestedModel(options.preferredProvider, options.modelId);
+  const chosen = rows.find((r) => r.provider === requested.provider) ?? rows[0];
 
-  return instantiateModel(supabase, workspaceId, chosen, options.modelId);
+  // Si se cae a OTRO proveedor (el pedido no esta conectado), su modelo no sirve: se usa el por defecto del que si
+  // esta. Antes viajaba el modelo del otro proveedor ("gpt-4o-mini" a Anthropic) y la llamada fallaba.
+  // Sin proveedor pedido, el modelo se respeta tal cual (quien lo eligio ya sabe de cual es).
+  const modelId = !requested.provider || chosen.provider === requested.provider ? requested.modelId : undefined;
+  return instantiateModel(supabase, workspaceId, chosen, modelId);
+}
+
+/** Los prefijos del AI Gateway que guardaban los nodos viejos ("openai/gpt-4o-mini") y su proveedor BYOK. */
+const GATEWAY_PREFIXES: Record<string, string> = { openai: "openai", anthropic: "anthropic", google: "google_ai" };
+
+/**
+ * Lo que pidio quien llama, entendiendo el formato viejo "proveedor/modelo" del AI Gateway: un nodo de IA viejo (o uno
+ * recien creado antes de la auditoria) guardaba `model: "openai/gpt-4o-mini"` sin proveedor, y ningun proveedor acepta
+ * ese id.
+ */
+export function normalizeRequestedModel(provider: string | undefined, modelId: string | undefined): { provider?: string; modelId?: string } {
+  const model = modelId?.trim() || undefined;
+  if (model && model.includes("/")) {
+    const [prefix, ...rest] = model.split("/");
+    const mapped = GATEWAY_PREFIXES[prefix];
+    if (mapped && (!provider || provider === mapped)) return { provider: mapped, modelId: rest.join("/") || undefined };
+  }
+  return { provider: provider || undefined, modelId: model };
 }
 
 /**

@@ -10,6 +10,7 @@ import { outboundMessageRow } from "@/lib/messages/outbound";
 import { sentContentContext } from "@/lib/attribution/content-variables";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
+import { foldOptionsIntoText } from "./platform-adapter";
 /**
  * La unica puerta de salida del motor de flows.
  *
@@ -25,6 +26,8 @@ import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/a
 
 /** Tope de mensajes automatizados por hora que impone Instagram. */
 const INSTAGRAM_HOURLY_LIMIT = 200;
+/** El tope por hora de los envios automaticos por WhatsApp, por canal. */
+const WHATSAPP_HOURLY_LIMIT = 200;
 
 /**
  * Lo minimo que hace falta para mandar un mensaje y dejarlo registrado.
@@ -181,11 +184,20 @@ async function claimSend(
   supabase: SupabaseClient<Database>,
   channel: ChannelRow
 ): Promise<boolean> {
-  if (channel.platform !== "instagram" && channel.platform !== "facebook") return true;
+  // WhatsApp tambien (auditoria de automatizaciones): un numero conectado por QR que manda cientos de mensajes por hora
+  // corre riesgo de bloqueo, y un flujo en ciclo con un "Esperar" no tenia ningun freno. Es el mismo tope que ya usa
+  // «Enviar WhatsApp a un número».
+  const limit =
+    channel.platform === "instagram" || channel.platform === "facebook"
+      ? INSTAGRAM_HOURLY_LIMIT
+      : channel.platform === "whatsapp"
+        ? WHATSAPP_HOURLY_LIMIT
+        : null;
+  if (limit === null) return true;
 
   const { data, error } = await supabase.rpc("claim_automated_send", {
     p_channel_id: channel.id,
-    p_limit: INSTAGRAM_HOURLY_LIMIT,
+    p_limit: limit,
   });
 
   if (error) {
@@ -474,8 +486,13 @@ export async function sendEvolutionDirect(
   config: EvolutionConfig,
   instance: string,
   number: string,
-  message: OutboundMessage
+  rawMessage: OutboundMessage
 ): Promise<SendOutcome> {
+  // Evolution manda texto o media, nada interactivo: los botones y las respuestas rapidas van como lista numerada.
+  const message: OutboundMessage =
+    rawMessage.buttons?.length || rawMessage.quickReplies?.length
+      ? { ...rawMessage, text: foldOptionsIntoText(rawMessage.text ?? "", rawMessage.buttons, rawMessage.quickReplies), buttons: undefined, quickReplies: undefined }
+      : rawMessage;
   try {
     if (message.media) {
       const signedUrl = await chatMediaSignedUrl(supabase, message.media.storagePath, EVOLUTION_MEDIA_URL_SECONDS);

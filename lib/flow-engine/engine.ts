@@ -3,6 +3,7 @@ import type { Database, Json } from "@/lib/types/database";
 import type { ContactFlowContext, FlowNode, FlowEdge, FlowExecutionContext } from "./types";
 import { getNode } from "./registry";
 import { messageOriginVariables } from "@/lib/messages/origin-context";
+import { seedContactVariables } from "./variable-catalog";
 import type { AutomationSource, FlowRuntime } from "./registry/types";
 
 /**
@@ -65,7 +66,9 @@ export async function executeFlow(
 ) {
   // Ensure variables always exists so nodes (aiResponse, httpRequest) can write
   // outputs even when the trigger passed none (e.g. DM-triggered flows).
-  context.variables ??= {};
+  // Una copia: quien llama puede reusar el mismo objeto para varios flujos (un evento que dispara dos), y la cadena de
+  // saltos de un flujo no puede contaminar al siguiente.
+  context.variables = { ...(context.variables ?? {}) };
 
   // Seed {{message}} from the incoming message text so the variable offered in
   // the builder resolves in production, not just in the simulator (which seeds
@@ -86,21 +89,35 @@ export async function executeFlow(
   // ya la trae en `variables.content`; no se pisa.
   if (context.incomingMessage.content) context.variables.content ??= context.incomingMessage.content;
 
-  // Check for active session waiting for input
-  const activeSession = await findWaitingSession(supabase, {
-    contactId: context.contactId,
-    channelId: context.channelId,
-  });
+  // Arrancar un flujo NO retoma una sesion en espera. Antes se buscaba aca una sesion parada en "Esperar respuesta" del
+  // mismo contacto y canal y, si habia, se la retomaba en vez de arrancar este flujo: un evento (una etiqueta, una
+  // reunion, una inactividad, un comentario) despertaba OTRA automatizacion con un mensaje vacio, y la que correspondia
+  // se perdia para siempre (su `trigger_fires` ya estaba reclamado). Retomar con un mensaje entrante lo hace el receptor
+  // (`lib/inbound.ts`), antes de buscar disparadores: es el unico lugar donde un mensaje es una respuesta.
 
-  if (activeSession) {
-    return resumeSession(supabase, activeSession, context);
+  // Un salto entre flujos ("Ir a otro flujo") que vuelve a uno ya visitado es un ciclo: se corta (A -> B -> A mandaria
+  // mensajes sin fin). La cadena viaja en las variables para sobrevivir a una pausa.
+  const chain = flowChainOf(context.variables);
+  if (chain.includes(context.flowId) || chain.length >= MAX_FLOW_JUMPS) {
+    console.error(`[flow-engine] "Ir a otro flujo" formaria un ciclo o pasa de ${MAX_FLOW_JUMPS} saltos (flujo ${context.flowId}): se corta`);
+    await supabase.from("analytics_events").insert({
+      workspace_id: context.workspaceId,
+      flow_id: context.flowId,
+      contact_id: context.contactId,
+      event_type: "flow_loop_blocked",
+      metadata: { chainLength: chain.length },
+    });
+    return;
   }
+  context.variables[FLOW_CHAIN_KEY] = [...chain, context.flowId];
 
-  // Load flow
+  // Load flow. Siempre del workspace del contexto: "Ir a otro flujo" guarda un id, y sin este filtro podia correr un
+  // flujo de OTRO negocio con los datos de este.
   const { data: flow } = await supabase
     .from("flows")
     .select("*")
     .eq("id", context.flowId)
+    .eq("workspace_id", context.workspaceId)
     .eq("status", "published")
     .single();
 
@@ -109,16 +126,24 @@ export async function executeFlow(
   const nodes = flow.nodes as unknown as FlowNode[];
   const edges = flow.edges as unknown as FlowEdge[];
 
-  // Get channel platform and late_account_id
-  const { data: channel } = await supabase
-    .from("channels")
-    .select("platform, late_account_id")
-    .eq("id", context.channelId)
-    .single();
+  // Los datos del contacto y del negocio como variables (`{{contact.display_name}}`, `{{workspace.name}}`), en TODOS
+  // los pasos. Antes solo los resolvian Enviar mensaje, Enviar email y Enviar recurso (con una segunda pasada propia);
+  // en una tarea, un aviso, una Llamada HTTP o el prompt de la IA quedaban como texto literal.
+  context.variables = await withContactVariables(supabase, context.variables, context.contactId, context.workspaceId);
 
-  context.platform = channel?.platform as FlowExecutionContext["platform"];
-  if (channel?.late_account_id && !context.lateAccountId) {
-    context.lateAccountId = channel.late_account_id;
+  // Get channel platform and late_account_id. Sin canal (agenda, formularios, webhooks) no se pregunta: un `id=""`
+  // es un error de uuid que solo ensuciaba el log.
+  if (context.channelId) {
+    const { data: channel } = await supabase
+      .from("channels")
+      .select("platform, late_account_id")
+      .eq("id", context.channelId)
+      .single();
+
+    context.platform = channel?.platform as FlowExecutionContext["platform"];
+    if (channel?.late_account_id && !context.lateAccountId) {
+      context.lateAccountId = channel.late_account_id;
+    }
   }
 
   // Resolve late_conversation_id from the conversation record if not already set
@@ -169,16 +194,81 @@ export async function executeFlow(
 
   // Find the trigger node (entry point)
   const triggerNode = nodes.find((n) => n.type === "trigger");
-  if (!triggerNode) return;
+  const firstEdge = triggerNode ? edges.find((e) => e.source === triggerNode.id) : undefined;
+  const startNode = firstEdge ? nodes.find((n) => n.id === firstEdge.target) : undefined;
+  // Un flujo sin disparador o con el disparador sin pasos conectados: la sesion se cierra (antes quedaba `active` para
+  // siempre, y sumaba una sesion viva por cada vez que se disparaba).
+  if (!startNode) {
+    await completeSession(supabase, session.id);
+    return;
+  }
 
-  // Get the first connected node
-  const firstEdge = edges.find((e) => e.source === triggerNode.id);
-  if (!firstEdge) return;
+  await runTraversal(supabase, session.id, startNode, nodes, edges, context);
+}
 
-  const startNode = nodes.find((n) => n.id === firstEdge.target);
-  if (!startNode) return;
+/** Lee y siembra las variables del contacto y del negocio. Un fallo de lectura no frena el flujo: siguen sin sembrar. */
+async function withContactVariables(
+  supabase: SupabaseClient<Database>,
+  variables: Record<string, unknown>,
+  contactId: string | null,
+  workspaceId: string
+): Promise<Record<string, unknown>> {
+  try {
+    const [contact, workspace] = await Promise.all([
+      contactId
+        ? supabase.from("contacts").select("display_name, email, phone").eq("id", contactId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from("workspaces").select("name").eq("id", workspaceId).maybeSingle(),
+    ]);
+    return seedContactVariables(
+      variables,
+      (contact.data as { display_name?: string | null; email?: string | null; phone?: string | null } | null) ?? null,
+      (workspace.data as { name?: string | null } | null) ?? null
+    );
+  } catch (err) {
+    console.error("[flow-engine] no pude leer los datos del contacto para las variables:", err instanceof Error ? err.message : "error");
+    return variables;
+  }
+}
 
-  await traverseNodes(supabase, session.id, startNode, nodes, edges, context, 0);
+/** Cuantos saltos de "Ir a otro flujo" seguidos se permiten antes de cortar. */
+const MAX_FLOW_JUMPS = 10;
+/** La cadena de flujos visitados, en las variables (sobrevive a una pausa). */
+const FLOW_CHAIN_KEY = "__flow_chain";
+
+function flowChainOf(variables: Record<string, unknown> | undefined): string[] {
+  const value = variables?.[FLOW_CHAIN_KEY];
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+/**
+ * Recorre los pasos y, si uno lanza, CANCELA la sesion y anota el fallo antes de devolver el error. Antes la sesion
+ * quedaba `active` para siempre (nadie la despierta: no espera respuesta ni tiene un job), y el siguiente flujo del
+ * contacto la encontraba en el medio.
+ */
+async function runTraversal(
+  supabase: SupabaseClient<Database>,
+  sessionId: string,
+  startNode: FlowNode,
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  context: FlowExecutionContext
+) {
+  try {
+    await traverseNodes(supabase, sessionId, startNode, nodes, edges, context, 0);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[flow-engine] el flujo ${context.flowId} fallo en la sesion ${sessionId}: ${message}`);
+    await supabase.from("flow_sessions").update({ status: "cancelled" }).eq("id", sessionId).eq("status", "active");
+    await supabase.from("analytics_events").insert({
+      workspace_id: context.workspaceId,
+      flow_id: context.flowId,
+      contact_id: context.contactId,
+      event_type: "flow_failed",
+      metadata: { sessionId },
+    });
+    throw err;
+  }
 }
 
 const MAX_TRAVERSAL_DEPTH = 50;
@@ -187,10 +277,20 @@ const MAX_TRAVERSAL_DEPTH = 50;
 // without cancelling the session.
 export class FlowLoadError extends Error {}
 
+/**
+ * Por que salida sigue una sesion retomada en un "Esperar respuesta": `reply` (llego un mensaje, la salida de siempre)
+ * o `timeout` (vencio el tiempo maximo: la salida "Si no responde a tiempo"). Una pausa de "Esperar" no la usa.
+ */
+export type ResumeExit = "reply" | "timeout";
+
+/** La salida del "Esperar respuesta" que se toma cuando vence el tiempo. */
+export const WAIT_TIMEOUT_HANDLE = "timeout";
+
 export async function resumeSession(
   supabase: SupabaseClient<Database>,
   session: Database["public"]["Tables"]["flow_sessions"]["Row"],
-  context: FlowExecutionContext
+  context: FlowExecutionContext,
+  exit: ResumeExit = "reply"
 ) {
   const { data: flow, error: flowError } = await supabase
     .from("flows")
@@ -217,18 +317,42 @@ export async function resumeSession(
     return;
   }
 
+  // Un flujo despublicado (o archivado) no sigue: antes una sesion parada en un "Esperar" seguia corriendo despues de
+  // apagar la automatizacion.
+  if (flow.status !== "published") {
+    await cancelUnresumableSession(supabase, session.id, `flow ${session.flow_id} is not published`);
+    return;
+  }
+
+  // Retomar un "Esperar respuesta" es un reclamo: dos mensajes que llegan juntos (pasa seguido en Instagram) encontraban
+  // los dos la misma sesion esperando y los dos corrian el resto del flujo, asi que todo salia dos veces. Ahora solo
+  // sigue quien cambia `waiting_for_input` de true a false.
+  if (session.waiting_for_input) {
+    const { data: claimed, error: claimError } = await supabase
+      .from("flow_sessions")
+      .update({ waiting_for_input: false, waiting_until: null })
+      .eq("id", session.id)
+      .eq("status", "active")
+      .eq("waiting_for_input", true)
+      .select("id");
+    if (claimError) throw new FlowLoadError(`session ${session.id} could not be claimed: ${claimError.message}`);
+    if (!claimed || claimed.length === 0) return;
+  }
+
   const nodes = flow.nodes as unknown as FlowNode[];
   const edges = flow.edges as unknown as FlowEdge[];
 
-  const { data: channel } = await supabase
-    .from("channels")
-    .select("platform, late_account_id")
-    .eq("id", context.channelId)
-    .single();
+  if (context.channelId) {
+    const { data: channel } = await supabase
+      .from("channels")
+      .select("platform, late_account_id")
+      .eq("id", context.channelId)
+      .single();
 
-  context.platform = channel?.platform as FlowExecutionContext["platform"];
-  if (channel?.late_account_id && !context.lateAccountId) {
-    context.lateAccountId = channel.late_account_id;
+    context.platform = channel?.platform as FlowExecutionContext["platform"];
+    if (channel?.late_account_id && !context.lateAccountId) {
+      context.lateAccountId = channel.late_account_id;
+    }
   }
 
   // Resolve late_conversation_id if not set
@@ -257,11 +381,13 @@ export async function resumeSession(
     context.variables.message = context.incomingMessage.text;
   }
 
-  // Update session
-  await supabase
-    .from("flow_sessions")
-    .update({ waiting_for_input: false, waiting_until: null })
-    .eq("id", session.id);
+  // Una pausa de "Esperar" (sin reclamo de arriba): se limpia la marca de tiempo, como siempre.
+  if (!session.waiting_for_input) {
+    await supabase
+      .from("flow_sessions")
+      .update({ waiting_for_input: false, waiting_until: null })
+      .eq("id", session.id);
+  }
 
   // Continue from current node
   const currentNode = nodes.find((n) => n.id === session.current_node_id);
@@ -276,8 +402,12 @@ export async function resumeSession(
     return;
   }
 
-  // Get next node after the current one
-  const nextEdge = edges.find((e) => e.source === currentNode.id);
+  // Get next node after the current one. Un "Esperar respuesta" tiene dos salidas: la de siempre (respondio) y
+  // "Si no responde a tiempo" (`timeout`). Respondio nunca toma la de timeout; timeout solo toma la suya.
+  const outgoing = edges.filter((e) => e.source === currentNode.id);
+  // Vencido sin la salida "Si no responde a tiempo" conectada, sigue por la de siempre (lo que el panel prometia).
+  const mainEdge = outgoing.find((e) => e.sourceHandle !== WAIT_TIMEOUT_HANDLE);
+  const nextEdge = exit === "timeout" ? (outgoing.find((e) => e.sourceHandle === WAIT_TIMEOUT_HANDLE) ?? mainEdge) : mainEdge;
   if (!nextEdge) {
     await completeSession(supabase, session.id);
     return;
@@ -289,7 +419,7 @@ export async function resumeSession(
     return;
   }
 
-  await traverseNodes(supabase, session.id, nextNode, nodes, edges, context, 0);
+  await runTraversal(supabase, session.id, nextNode, nodes, edges, context);
 }
 
 /**
@@ -340,6 +470,14 @@ async function traverseNodes(
 ) {
   if (depth >= MAX_TRAVERSAL_DEPTH) {
     console.error(`Flow traversal exceeded max depth (${MAX_TRAVERSAL_DEPTH}), stopping. Flow: ${context.flowId}`);
+    // Que quede anotado: un flujo de mas de 50 pasos seguidos (o un ciclo sin pausa) se cortaba sin que nadie se entere.
+    await supabase.from("analytics_events").insert({
+      workspace_id: context.workspaceId,
+      flow_id: context.flowId,
+      contact_id: context.contactId,
+      event_type: "flow_depth_limit",
+      metadata: { nodeId: node.id, limit: MAX_TRAVERSAL_DEPTH },
+    });
     await completeSession(supabase, sessionId);
     return;
   }
@@ -464,6 +602,25 @@ async function executeNode(
     sessionId,
     runtime,
   });
+}
+
+/**
+ * Cierra un "Esperar respuesta" que vencio sin tiempo maximo configurado: no sigue por ninguna salida. Es un reclamo
+ * (solo si sigue esperando), asi una respuesta que llega justo en el mismo momento gana o pierde limpio.
+ */
+export async function expireWaitingSession(supabase: SupabaseClient<Database>, sessionId: string, nodeId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("flow_sessions")
+    .update({ waiting_for_input: false })
+    .eq("id", sessionId)
+    .eq("status", "active")
+    .eq("waiting_for_input", true)
+    .eq("current_node_id", nodeId)
+    .select("id");
+  if (error) throw new FlowLoadError(`session ${sessionId} could not be expired: ${error.message}`);
+  if (!data || data.length === 0) return false;
+  await completeSession(supabase, sessionId);
+  return true;
 }
 
 async function completeSession(

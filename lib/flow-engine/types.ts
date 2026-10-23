@@ -91,6 +91,8 @@ export interface ConditionNodeData {
 export interface DelayNodeData {
   duration: number;
   unit: "seconds" | "minutes" | "hours" | "days";
+  /** "Esperar hasta": una fecha y hora en ISO (con zona). Si esta, gana sobre la duracion. */
+  waitUntil?: string;
 }
 
 export interface TagNodeData {
@@ -125,8 +127,10 @@ export interface ABSplitNodeData {
 }
 
 export interface SmartDelayNodeData {
-  timeout: number;
-  timeoutUnit: "minutes" | "hours" | "days";
+  /** Si tiene tiempo maximo. Sin esto, `timeout` se ignora (los nodos viejos lo guardaban sin que hiciera nada). */
+  timeoutEnabled?: boolean;
+  timeout?: number;
+  timeoutUnit?: "minutes" | "hours" | "days";
 }
 
 export interface SubscribeNodeData {

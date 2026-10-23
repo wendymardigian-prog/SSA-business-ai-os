@@ -39,28 +39,31 @@ function world(status: "draft" | "published", nodes: unknown[] = goodNodes, edge
     flows: [{ id: "f1", workspace_id: "ws-1", name: "Mi flujo", status, nodes, edges, updated_at: "2026-10-01T00:00:00Z" }],
   });
 }
-const stored = () => db.rows("flows")[0] as { nodes: unknown[]; edges: unknown[]; name: string };
+const stored = () => db.rows("flows")[0] as { nodes: unknown[]; edges: unknown[]; name: string; draft_nodes?: unknown[]; draft_edges?: unknown[]; draft_updated_at?: string };
 
 beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
-describe("PUT /flows/:id · flujo publicado (D5)", () => {
-  it("un grafo que no pasa la validación de publicar NO se guarda y devuelve el motivo", async () => {
+describe("PUT /flows/:id · flujo publicado (borrador, auditoria de automatizaciones)", () => {
+  // Antes (D5) un grafo de una automatizacion publicada se validaba como al publicar y se escribia en `nodes`, que el
+  // motor lee en vivo. Desde la 00254 va a los cambios sin publicar: lo que corre no cambia, y la validacion completa
+  // la hace "Publicar cambios".
+  it("un grafo a medias va al borrador: lo que corre no cambia", async () => {
     world("published");
     const res = await put({ nodes: brokenNodes, edges: brokenEdges });
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain("Bienvenida");
-    expect(body.error).toMatch(/contacto/);
+    expect(res.status).toBe(200);
     expect(stored().nodes).toEqual(goodNodes);
+    expect(stored().draft_nodes).toEqual(brokenNodes);
+    expect(stored().draft_updated_at).toBeTruthy();
   });
 
-  it("un grafo válido se guarda", async () => {
+  it("un grafo válido tambien va al borrador", async () => {
     world("published");
     const res = await put({ nodes: [...goodNodes, whatsapp], edges: [...goodEdges, edge("m", "w")] });
     expect(res.status).toBe(200);
-    expect(stored().nodes).toHaveLength(4);
+    expect(stored().nodes).toHaveLength(3);
+    expect(stored().draft_nodes).toHaveLength(4);
   });
 
   it("el paso «Enviar WhatsApp a un número» no necesita contacto: puede ir antes de «Crear o actualizar contacto»", async () => {
@@ -69,11 +72,12 @@ describe("PUT /flows/:id · flujo publicado (D5)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("si solo cambian las aristas (se corta la unión con el contacto), se valida con lo guardado", async () => {
+  it("si solo cambian las aristas, las aristas van al borrador", async () => {
     world("published");
     const res = await put({ edges: [edge("t", "m"), edge("t", "u")] });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     expect(stored().edges).toEqual(goodEdges);
+    expect(stored().draft_edges).toEqual([edge("t", "m"), edge("t", "u")]);
   });
 
   it("un cambio de nombre (sin nodos ni aristas) no valida nada", async () => {

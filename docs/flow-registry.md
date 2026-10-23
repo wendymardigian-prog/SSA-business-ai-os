@@ -626,3 +626,66 @@ El estado se calcula al abrir la pantalla: no se guarda en el flujo.
   (id del producto). El catálogo las ofrece con las listas del workspace (`getConditionCatalogInputs`).
 - **"Definir campo"** valida por tipo con `normalizeCustomValue`: vacío borra el valor, una variable sin resolver o un valor que no
   corresponde al tipo no se escriben. El panel elige el campo de una lista.
+
+## Auditoría de automatizaciones (octubre 2026)
+
+Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla. Avance y decisiones en
+`docs/PROGRESS-automatizaciones-auditoria.md`; lo que quedó abierto en `docs/PENDIENTE-automatizaciones-auditoria.md`.
+
+### Catálogos que comparten el navegador y el servidor
+
+- **Disparadores**: `lib/flow-engine/trigger-catalog.ts` (tipo, nombre, descripción, grupo, sinónimos). Lo usan el
+  selector de disparador, el panel, el nodo del lienzo y la lista. `registry/consistency.test.ts` exige que diga lo
+  mismo que el registro **y** que el CHECK vigente de `triggers.type` en las migraciones. Sumar un disparador es sumarlo
+  en los tres lugares.
+- **Valores por defecto de un disparador**: `lib/flow-engine/trigger-defaults.ts`. El panel los guarda al elegir el
+  disparador y `buildDesiredTriggers` los completa al publicar (antes se mostraban sin guardarse).
+- **Variables por disparador**: `lib/flow-engine/variable-catalog.ts`. El selector de variables junta lo fijo de cada
+  disparador, el esquema que manda el servidor (`getConditionCatalogInputs`), lo que escriben los pasos anteriores y
+  `contact.*`/`workspace.*`, que el motor siembra al arrancar (`seedContactVariables`). `variable-catalog.test.ts`
+  comprueba que lo que se ofrece se resuelve.
+
+### Reglas del motor que cambiaron
+
+- **Arrancar un flujo no retoma una sesión en espera.** Retomar con un mensaje lo hace solo el receptor
+  (`lib/inbound.ts`). Antes un evento (una etiqueta, una reunión) despertaba otra automatización.
+- **Retomar «Esperar respuesta» es un reclamo** (`waiting_for_input` de true a false): dos mensajes juntos no corren el
+  resto dos veces. Una sesión de un flujo despublicado se cancela al retomar.
+- **«Esperar respuesta» tiene tiempo máximo** (`timeoutEnabled`, `timeout`, `timeoutUnit`): al vencer sigue por la
+  salida `timeout` («No respondió») o, si no está conectada, por la de siempre. Sin tiempo máximo vence a los 7 días y
+  la sesión se cierra. Lo despierta el job `flow_wait_timeout` (`lib/jobs/handlers/flow-wait-timeout.ts`).
+- **«Esperar»** respeta `waitUntil` (ISO con zona) y no pausa con una duración vacía o cero.
+- **A/B split**: el nodo devuelve `handle:split-N`, que es lo que dibuja el lienzo.
+- **«Ir a otra automatización»**: solo del mismo workspace; la cadena de saltos viaja en `variables.__flow_chain` y un
+  ciclo (o más de 10 saltos) se corta con `flow_loop_blocked`.
+- **Una sesión nunca queda activa para siempre**: sin pasos conectados se completa; si un paso lanza, se cancela y queda
+  `flow_failed`. Pasar de 50 pasos seguidos queda como `flow_depth_limit`.
+- **Llamada HTTP** por `lib/net/safe-fetch.ts`: sin direcciones internas, 10 s, 256 KB; deja `<var>_status` y `<var>_ok`.
+- **IA**: el modelo vacío usa el del proveedor conectado; el formato viejo `openai/gpt-4o-mini` se entiende; si se cae a
+  otro proveedor no viaja el modelo del pedido; aplican los topes de gasto; lo del lead va envuelto como no confiable.
+- **Publicar**: un solo disparador, elegido (`triggerType: null` = sin elegir), con lo mínimo de su tipo y un paso
+  conectado (`lib/flow-engine/publish-rules.ts`). Republicar reconcilia TODAS las filas sin canal de los tipos que arma el
+  editor (`persistableTriggerTypes`) y no reactiva filas con canal.
+- **Borrador de una automatización publicada** (00254): guardar escribe `draft_nodes`/`draft_edges`; publicar los copia a
+  `nodes`. Los editores de Formularios, Agenda, EOD y Cobranza siguen escribiendo `nodes` directo.
+
+### Disparadores
+
+- **Palabras clave**: sin tildes ni mayúsculas, «contiene» exige empezar en un borde de palabra, «exacta» ignora los
+  signos de los costados. Empate entre automatizaciones: gana la publicada más reciente. `storyReply` se guarda. «Solo
+  menciones» sin palabras dispara con la mención sola.
+- **Recordatorios de agenda**: la clave del job lleva el trigger (`relativeJobDedupeKey`) y el matcher compara
+  `payload.trigger_id`: «24 h antes» y «1 h antes» salen los dos.
+- **Inactividad**: cuenta lo que quedó inactivo después de crear la fila del disparador, y la clave lleva la última
+  interacción (una inactividad nueva vuelve a disparar).
+- **Email recibido y comentarios**: respetan «no contactar» y la conversación tomada a mano, y reclaman el disparo en
+  `trigger_fires` (`email:<id>`, `comment:<canal>:<id>`).
+
+### Pasos
+
+- **Etiquetas**: agregar o quitar sale del tipo del paso (antes «Agregar etiqueta» del lienzo QUITABA); el nombre acepta
+  variables; quitar no crea etiquetas.
+- **Enviar mensaje**: las variables se reemplazan en todo el mensaje (`interpolateDeep`), una sola vez.
+- **Enviar email**: `attachments: [{ assetId }]`, recursos de la banca con archivo, hasta 10 y 25 MB
+  (`lib/email/attachment-limits.ts`, `lib/email/flow-attachments.ts`).
+- **WhatsApp**: Evolution manda botones y respuestas rápidas como lista numerada; tope de 200 envíos automáticos por hora.

@@ -14,12 +14,13 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BUILDER_TRIGGER_TYPES, buildDesiredTriggers } from "@/lib/flow-triggers";
+import { buildDesiredTriggers, persistableTriggerTypes } from "@/lib/flow-triggers";
 import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative";
-import { isRelativeSalesTrigger, SALES_TRIGGER_TYPES } from "@/lib/sales/automation/triggers";
-import type { Database } from "@/lib/types/database";
+import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers";
+import type { Database, Json } from "@/lib/types/database";
 import { checkMemberFlow } from "./member-flow-db";
 import { connectionProblemsForGraph } from "./connection-problems";
+import { triggerProblems } from "./publish-rules";
 
 type Db = SupabaseClient<Database>;
 type FlowRow = Database["public"]["Tables"]["flows"]["Row"];
@@ -46,18 +47,26 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
 
   // Get current flow
   const { data: flow, error } = await db.from("flows").select("*").eq("id", flowId).eq("workspace_id", workspaceId).single();
-  if (error || !flow) return { ok: false, status: 404, error: error?.message || "Flow not found" };
+  if (error || !flow) return { ok: false, status: 404, error: "No encontré esa automatización." };
 
-  const nodes = Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : [];
-  const edges = Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [];
+  // Una automatizacion publicada con cambios sin publicar (00254): se publica el BORRADOR. Lo que corria hasta ahora
+  // (`nodes`) se reemplaza recien aca, despues de validar.
+  const hasDraft = Array.isArray(flow.draft_nodes);
+  const nodes = hasDraft ? (flow.draft_nodes as unknown[]) : Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : [];
+  const edges = hasDraft
+    ? Array.isArray(flow.draft_edges) ? (flow.draft_edges as unknown[]) : []
+    : Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [];
 
   // Un flujo sin contacto (reporte de fin de día, E15) no se publica con pasos que necesiten uno. Tampoco con pasos
   // que necesitan una conexion que falta (Resend, WhatsApp, una IA...): se puede armar y guardar el borrador, pero
   // publicarlo seria prometer algo que no se va a ejecutar (G1).
   const problems = [
+    // La validacion propia de quien publica (las plantillas del servidor) va primero: su motivo es el mas especifico.
+    ...(args.extraProblems?.(nodes, edges) ?? []),
+    // Un solo disparador, elegido, con lo minimo de su tipo y con un paso conectado (auditoria de automatizaciones).
+    ...triggerProblems(nodes, edges),
     ...(await checkMemberFlow(db, workspaceId, nodes, edges, { publishing: true })),
     ...(await connectionProblemsForGraph(args.getServiceClient, workspaceId, nodes, edges)),
-    ...(args.extraProblems?.(nodes, edges) ?? []),
   ];
   if (problems.length > 0) return { ok: false, status: 400, error: problems[0], problems };
 
@@ -69,6 +78,8 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
       status: "published",
       published_at: new Date().toISOString(),
       version: newVersion,
+      // Lo publicado pasa a ser lo que corre, y el borrador se vacia.
+      ...(hasDraft ? { nodes: nodes as Json, edges: edges as Json, draft_nodes: null, draft_edges: null, draft_updated_at: null } : {}),
     })
     .eq("id", flowId);
 
@@ -76,8 +87,8 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   await db.from("flow_versions").insert({
     flow_id: flowId,
     version: newVersion,
-    nodes: flow.nodes,
-    edges: flow.edges,
+    nodes: nodes as Json,
+    edges: edges as Json,
     viewport: flow.viewport,
     name: flow.name,
     published_by: userId,
@@ -92,7 +103,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   // hence the null-channel guard on the delete below. A comment_keyword node with
   // "also match in DMs" emits a second row typed `keyword` (see below), so both rows
   // are reconciled together on every republish.
-  const flowNodes = Array.isArray(flow.nodes) ? (flow.nodes as Array<Record<string, unknown>>) : [];
+  const flowNodes = nodes as Array<Record<string, unknown>>;
   const desiredTriggers = buildDesiredTriggers(flowNodes, flowId);
 
   // Reconcile: clear the builder-managed trigger rows for this flow, then insert the
@@ -104,8 +115,9 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     .delete()
     .eq("flow_id", flowId)
     .is("channel_id", null)
-    // Los de Ventas tambien se reconcilian: republicar no duplica la fila (y un relativo duplicado mandaria dos recordatorios).
-    .in("type", [...BUILDER_TRIGGER_TYPES, ...SALES_TRIGGER_TYPES]);
+    // TODOS los tipos que arma el editor (mensaje, eventos, programados y Ventas): republicar no duplica ninguna fila.
+    // Antes solo se borraban los de mensaje y Ventas, y un flujo de agenda republicado tres veces corria tres veces.
+    .in("type", persistableTriggerTypes());
 
   if (desiredTriggers.length > 0) {
     const { error: insertError } = await db.from("triggers").insert(desiredTriggers);
@@ -114,8 +126,8 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     }
   }
 
-  // Activate any remaining triggers for this flow (e.g. comment_keyword managed elsewhere).
-  await db.from("triggers").update({ is_active: true }).eq("flow_id", flowId);
+  // Las filas con canal (las de la pestaña Growth) NO se reactivan: si alguien apago una a mano, publicar no la vuelve
+  // a prender. Las que arma el editor ya nacen activas.
 
   // Un flujo con un recordatorio relativo al vencimiento de un pago (Ventas, F37): se agendan los de los
   // pagos que ya existen. Sin esto el recordatorio valdria solo para los pagos nuevos.
@@ -127,7 +139,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     }
   }
 
-  return { ok: true, flow: flow as FlowRow, version: newVersion };
+  return { ok: true, flow: { ...(flow as FlowRow), nodes: nodes as Json, edges: edges as Json }, version: newVersion };
 }
 
 /**
@@ -145,7 +157,7 @@ export async function unpublishFlow(db: Db, workspaceId: string, flowId: string)
     .delete()
     .eq("flow_id", flowId)
     .is("channel_id", null)
-    .in("type", [...BUILDER_TRIGGER_TYPES, ...SALES_TRIGGER_TYPES]);
+    .in("type", persistableTriggerTypes());
   if (triggersError) {
     console.error("[publish] no pude sacar los disparadores del flujo:", triggersError.message);
     return false;

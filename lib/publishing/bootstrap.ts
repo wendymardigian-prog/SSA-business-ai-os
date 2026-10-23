@@ -23,6 +23,7 @@ import { registerMetaAdThumbnailsHandler } from "@/lib/jobs/handlers/meta-ad-thu
 import { registerZernioAdOriginHandler } from "@/lib/jobs/handlers/zernio-ad-origin";
 import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
+import { registerFlowWaitTimeoutHandler } from "@/lib/jobs/handlers/flow-wait-timeout";
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
@@ -99,6 +100,8 @@ export function registerPublishing(): void {
   registerBookingJobHandlers();
   // Los avisos relativos a la hora de la reunion (F44).
   registerBookingRelativeHandler();
+  // El vencimiento de un "Esperar respuesta" (auditoria de automatizaciones).
+  registerFlowWaitTimeoutHandler();
 
   // Las tareas de IA en segundo plano (F24). Despacha por `payload.task`: una
   // tarea sin implementacion falla con el motivo, no completa en silencio.

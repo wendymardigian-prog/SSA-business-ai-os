@@ -11,6 +11,8 @@ import { CreateTaskPanel } from "./CreateTaskPanel";
 import { CompleteTaskPanel } from "./CompleteTaskPanel";
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
 import { SendEmailPanel } from "./SendEmailPanel";
+import { CancelBookingPanel, NotifyTeamPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
+import { VariableChips } from "./variable-chips";
 
 interface ActionPanelData {
   actionType?: NodeType;
@@ -44,6 +46,7 @@ interface ActionPanelProps {
 interface ActionSubPanelProps {
   data: ActionPanelData;
   onChange: (data: Record<string, unknown>) => void;
+  availableVariables?: string[];
 }
 
 export function ActionPanel({ data: rawData, onChange, availableVariables }: ActionPanelProps) {
@@ -53,11 +56,11 @@ export function ActionPanel({ data: rawData, onChange, availableVariables }: Act
   switch (actionType) {
     case "addTag":
     case "removeTag":
-      return <TagConfig data={data} onChange={onChange} />;
+      return <TagConfig data={data} onChange={onChange} availableVariables={availableVariables} />;
     case "setCustomField":
-      return <SetFieldConfig data={data} onChange={onChange} />;
+      return <SetFieldConfig data={data} onChange={onChange} availableVariables={availableVariables} />;
     case "httpRequest":
-      return <HttpRequestConfig data={data} onChange={onChange} />;
+      return <HttpRequestConfig data={data} onChange={onChange} availableVariables={availableVariables} />;
     case "goToFlow":
       return <GoToFlowConfig data={data} onChange={onChange} />;
     case "subscribe":
@@ -96,37 +99,45 @@ export function ActionPanel({ data: rawData, onChange, availableVariables }: Act
       return <ReschedulePaymentConfig data={data} onChange={onChange} />;
     case "set_sale_status" as NodeType:
       return <SetSaleStatusConfig data={data} onChange={onChange} />;
+    // Antes estos tres no tenian panel en el lienzo: decia "No configuration available" y el paso no hacia nada.
+    case "notify_team" as NodeType:
+      return <NotifyTeamPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+    case "cancel_booking" as NodeType:
+      return <CancelBookingPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+    case "set_booking_status" as NodeType:
+      return <SetBookingStatusPanel data={rawData} onChange={onChange} />;
     default:
       return (
         <p className="text-sm text-muted-foreground">
-          No configuration available for this action type.
+          Este paso no tiene nada para configurar.
         </p>
       );
   }
 }
 
 /* ───────── Tag Config ───────── */
-function TagConfig({ data, onChange }: ActionSubPanelProps) {
+function TagConfig({ data, onChange, availableVariables }: ActionSubPanelProps) {
   const isAdd = data.actionType === "addTag";
 
   return (
     <div className="space-y-4">
       <div>
         <label className="mb-2 block text-xs font-semibold text-foreground">
-          Tag Name
+          Etiqueta
         </label>
         <input
           type="text"
           value={data.tagName || ""}
           onChange={(e) => onChange({ ...data, tagName: e.target.value })}
-          placeholder="Enter tag name..."
+          placeholder="Por ejemplo: interesado"
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           {isAdd
-            ? "This tag will be added to the contact when they reach this step."
-            : "This tag will be removed from the contact when they reach this step."}
+            ? "Se le agrega al contacto cuando llega a este paso. Si la etiqueta no existe, se crea."
+            : "Se le quita al contacto cuando llega a este paso."}
         </p>
+        <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, tagName: `${data.tagName ?? ""}${token}` })} />
       </div>
     </div>
   );
@@ -147,7 +158,7 @@ const VALUE_HINTS: Record<string, string> = {
   email: "Un email, o una {{variable}}.",
 };
 
-function SetFieldConfig({ data, onChange }: ActionSubPanelProps) {
+function SetFieldConfig({ data, onChange, availableVariables }: ActionSubPanelProps) {
   const [fields, setFields] = useState<FieldOption[] | null>(null);
 
   useEffect(() => {
@@ -221,13 +232,14 @@ function SetFieldConfig({ data, onChange }: ActionSubPanelProps) {
           {(selected && VALUE_HINTS[selected.type]) ?? "Un texto o una {{variable}}."} Vacío borra el valor; uno que no
           corresponde al tipo no se guarda.
         </p>
+        <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, value: `${data.value ?? ""}${token}` })} />
       </div>
     </div>
   );
 }
 
 /* ───────── HTTP Request Config ───────── */
-function HttpRequestConfig({ data, onChange }: ActionSubPanelProps) {
+function HttpRequestConfig({ data, onChange, availableVariables }: ActionSubPanelProps) {
   const headers = data.headers || {};
   const headerEntries = Object.entries(headers);
 
@@ -267,7 +279,7 @@ function HttpRequestConfig({ data, onChange }: ActionSubPanelProps) {
       {/* Method + URL */}
       <div>
         <label className="mb-2 block text-xs font-semibold text-foreground">
-          Request
+          Llamada
         </label>
         <div className="flex gap-2">
           <select
@@ -278,29 +290,34 @@ function HttpRequestConfig({ data, onChange }: ActionSubPanelProps) {
             <option value="GET">GET</option>
             <option value="POST">POST</option>
             <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
             <option value="DELETE">DELETE</option>
           </select>
           <input
             type="url"
             value={data.url || ""}
             onChange={(e) => onChange({ ...data, url: e.target.value })}
-            placeholder="https://api.example.com/webhook"
+            placeholder="https://api.ejemplo.com/webhook"
             className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
+        <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, url: `${data.url ?? ""}${token}` })} hint="Tocá una variable para sumarla a la dirección." />
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Solo direcciones públicas (http o https). Si no responde en 10 segundos se corta, y se guardan hasta 256 KB de la respuesta.
+        </p>
       </div>
 
       {/* Headers */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs font-semibold text-foreground">Headers</label>
+          <label className="text-xs font-semibold text-foreground">Encabezados (headers)</label>
           <button
             type="button"
             onClick={addHeader}
             className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted"
           >
             <Plus className="h-3 w-3" />
-            Add
+            Agregar
           </button>
         </div>
         {headerEntries.map(([key, value], i) => (
@@ -309,19 +326,20 @@ function HttpRequestConfig({ data, onChange }: ActionSubPanelProps) {
               type="text"
               value={key}
               onChange={(e) => updateHeaderKey(key, e.target.value)}
-              placeholder="Key"
+              placeholder="Nombre"
               className="flex-1 rounded border border-border bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <input
               type="text"
               value={value}
               onChange={(e) => updateHeaderValue(key, e.target.value)}
-              placeholder="Value"
+              placeholder="Valor (acepta {{variables}})"
               className="flex-1 rounded border border-border bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <button
               type="button"
               onClick={() => removeHeader(key)}
+              aria-label="Quitar el encabezado"
               className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
             >
               <X className="h-3 w-3" />
@@ -331,10 +349,10 @@ function HttpRequestConfig({ data, onChange }: ActionSubPanelProps) {
       </div>
 
       {/* Body */}
-      {(data.method === "POST" || data.method === "PUT") && (
+      {(data.method === "POST" || data.method === "PUT" || data.method === "PATCH" || data.method === "DELETE") && (
         <div>
           <label className="mb-2 block text-xs font-semibold text-foreground">
-            Request Body (JSON)
+            Cuerpo (JSON)
           </label>
           <textarea
             value={data.body || ""}
@@ -343,105 +361,95 @@ function HttpRequestConfig({ data, onChange }: ActionSubPanelProps) {
             rows={4}
             className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
+          <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, body: `${data.body ?? ""}${token}` })} hint="Tocá una variable para sumarla al cuerpo." />
         </div>
       )}
 
       {/* Response Variable */}
       <div>
         <label className="mb-2 block text-xs font-semibold text-foreground">
-          Save response to variable
+          Guardar la respuesta en la variable
         </label>
         <input
           type="text"
           value={data.responseVariable || ""}
           onChange={(e) => onChange({ ...data, responseVariable: e.target.value })}
-          placeholder="e.g. api_response"
+          placeholder="por ejemplo: respuesta_api"
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
-          Optional. Store the response body in a variable for later use.
+          Opcional. Los pasos siguientes la leen como {"{{respuesta_api.campo}}"}; además quedan {"{{respuesta_api_status}}"} (el código) y {"{{respuesta_api_ok}}"} («true» si salió bien).
         </p>
       </div>
     </div>
   );
 }
 
-/* ───────── Go To Flow Config ───────── */
+/* ───────── Ir a otra automatización ───────── */
 function GoToFlowConfig({ data, onChange }: ActionSubPanelProps) {
+  // Antes se escribia el id a mano. Ahora se elige de las automatizaciones del negocio (la RLS decide cuales ve).
+  const [flows, setFlows] = useState<Array<{ id: string; name: string; status: string }> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void createClient()
+      .from("flows")
+      .select("id, name, status")
+      .order("name", { ascending: true })
+      .limit(500)
+      .then(({ data: rows }) => {
+        if (alive) setFlows((rows ?? []) as Array<{ id: string; name: string; status: string }>);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const selected = flows?.find((f) => f.id === data.flowId);
+
   return (
     <div className="space-y-4">
       <div>
-        <label className="mb-2 block text-xs font-semibold text-foreground">
-          Target Flow ID
+        <label htmlFor="goto-flow" className="mb-2 block text-xs font-semibold text-foreground">
+          Automatización
         </label>
-        <input
-          type="text"
-          value={data.flowId || ""}
-          onChange={(e) => onChange({ ...data, flowId: e.target.value })}
-          placeholder="Enter flow ID..."
-          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-        />
+        {flows === null ? (
+          <p className="text-xs text-muted-foreground">Cargando automatizaciones…</p>
+        ) : (
+          <select
+            id="goto-flow"
+            value={data.flowId || ""}
+            onChange={(e) => onChange({ ...data, flowId: e.target.value })}
+            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">Elegí una automatización</option>
+            {flows.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+                {f.status !== "published" ? " (no publicada)" : ""}
+              </option>
+            ))}
+            {data.flowId && !selected && <option value={data.flowId}>(ya no existe)</option>}
+          </select>
+        )}
         <p className="mt-1.5 text-xs text-muted-foreground">
-          The contact will be redirected to this flow.
+          Esta automatización termina y el contacto sigue en la elegida, que tiene que estar publicada. Un salto que
+          vuelve a una que ya pasó (un ciclo) se corta solo.
         </p>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <label className="relative inline-flex cursor-not-allowed items-center">
-          <input
-            type="checkbox"
-            checked={false}
-            disabled
-            readOnly
-            className="peer sr-only"
-          />
-          <div className="peer h-5 w-9 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-card after:transition-all peer-checked:bg-muted0 peer-checked:after:translate-x-full peer-focus:ring-2 peer-focus:ring-ring" />
-        </label>
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Volver después</p>
-          <p className="text-xs text-muted-foreground">
-            Todavía no disponible: el salto es de ida y este flow no continúa
-          </p>
-        </div>
       </div>
     </div>
   );
 }
 
-/* ───────── Subscribe / Unsubscribe Config ───────── */
-function SubscribeConfig({ data, onChange }: ActionSubPanelProps) {
+/* ───────── Suscribir / Desuscribir ───────── */
+function SubscribeConfig({ data }: ActionSubPanelProps) {
   const isSubscribe = data.actionType === "subscribe";
-
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-muted p-4">
-        <p className="text-sm font-medium text-foreground">
-          {isSubscribe ? "Subscribe Contact" : "Unsubscribe Contact"}
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {isSubscribe
-            ? "This will mark the contact as subscribed. They will receive broadcasts and automated messages."
-            : "This will mark the contact as unsubscribed. They will stop receiving broadcasts and most automated messages."}
-        </p>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <label className="relative inline-flex cursor-pointer items-center">
-          <input
-            type="checkbox"
-            checked={data.confirmed || false}
-            onChange={(e) => onChange({ ...data, confirmed: e.target.checked })}
-            className="peer sr-only"
-          />
-          <div className="peer h-5 w-9 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-card after:transition-all peer-checked:bg-muted0 peer-checked:after:translate-x-full peer-focus:ring-2 peer-focus:ring-ring" />
-        </label>
-        <div>
-          <p className="text-sm font-medium text-foreground">I confirm this action</p>
-          <p className="text-xs text-muted-foreground">
-            This action will affect the contact&apos;s subscription status
-          </p>
-        </div>
-      </div>
+    <div className="rounded-lg border border-border bg-muted p-4">
+      <p className="text-sm font-medium text-foreground">{isSubscribe ? "Suscribir al contacto" : "Desuscribir al contacto"}</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {isSubscribe
+          ? "Lo marca como suscripto: vuelve a recibir mensajes masivos y automáticos."
+          : "Lo marca como no suscripto: deja de recibir mensajes masivos y la mayoría de los automáticos."}
+      </p>
     </div>
   );
 }
@@ -452,10 +460,10 @@ function PauseAgentConfig({ data, onChange }: ActionSubPanelProps) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted p-4">
-        <p className="text-sm font-medium text-foreground">Pausar el agente de IA en esta conversacion</p>
+        <p className="text-sm font-medium text-foreground">Pausar el agente de IA en esta conversación</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Mientras el flow hace su parte, el agente no responde. Usa &ldquo;Reanudar agente IA&rdquo; al final para devolverle la
-          conversacion. No cambia el interruptor del agente de la bandeja.
+          Mientras la automatización hace su parte, el agente no responde. Usá &ldquo;Reanudar agente IA&rdquo; al final para devolverle la
+          conversación. No cambia el interruptor del agente de la bandeja.
         </p>
       </div>
       <div>
@@ -475,7 +483,7 @@ function PauseAgentConfig({ data, onChange }: ActionSubPanelProps) {
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
-          Vacio: queda pausado hasta que un flow lo reanude. Con minutos: se reanuda solo al vencer.
+          Vacío: queda pausado hasta que una automatización lo reanude. Con minutos: se reanuda solo al vencer.
         </p>
       </div>
     </div>
@@ -487,7 +495,7 @@ function ResumeAgentConfig() {
     <div className="rounded-lg border border-border bg-muted p-4">
       <p className="text-sm font-medium text-foreground">Reanudar el agente de IA</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Levanta la pausa que puso un flow. Si nadie habia encendido el agente en esta conversacion, sigue apagado.
+        Levanta la pausa que puso una automatización. Si nadie había encendido el agente en esta conversación, sigue apagado.
       </p>
     </div>
   );
@@ -498,25 +506,26 @@ function HumanTakeoverConfig({ data, onChange }: ActionSubPanelProps) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted p-4">
-        <p className="text-sm font-medium text-foreground">Hand off to a human agent</p>
+        <p className="text-sm font-medium text-foreground">Derivar a una persona</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          The flow will pause and the conversation will be marked for human takeover. Automation will stop until an agent resumes it.
+          La automatización termina, la conversación queda marcada para que la atienda alguien del equipo y el bot no
+          vuelve a responder hasta que la retomen.
         </p>
       </div>
 
       <div>
         <label className="mb-2 block text-xs font-semibold text-foreground">
-          Internal note (optional)
+          Nota interna (opcional)
         </label>
         <textarea
           value={data.message || ""}
           onChange={(e) => onChange({ ...data, message: e.target.value })}
-          placeholder="Add context for the agent..."
+          placeholder="Contexto para quien la tome…"
           rows={3}
           className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
-          This message will be visible to agents as an internal note.
+          Queda en el aviso que recibe el equipo. No se le manda al contacto.
         </p>
       </div>
     </div>
@@ -569,14 +578,14 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
       <div>
         <div className="mb-2 flex items-center justify-between">
           <label className="text-xs font-semibold text-foreground">
-            Traffic Distribution
+            Reparto
           </label>
           <button
             type="button"
             onClick={distributeEvenly}
             className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
           >
-            Distribute evenly
+            Repartir parejo
           </button>
         </div>
         <div className="flex h-3 overflow-hidden rounded-full bg-muted">
@@ -599,7 +608,7 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
         </div>
         {totalWeight !== 100 && (
           <p className="mt-1 text-[11px] font-medium text-red-500">
-            Total is {totalWeight}% (should be 100%)
+            Suman {totalWeight}% (tienen que sumar 100%)
           </p>
         )}
       </div>
@@ -625,6 +634,7 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
               <input
                 type="text"
                 value={path.name}
+                aria-label="Nombre del camino"
                 onChange={(e) => updatePath(index, { ...path, name: e.target.value })}
                 className="w-16 rounded border border-border bg-muted px-2 py-1.5 text-xs font-medium text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
               />
@@ -632,6 +642,7 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
                 type="range"
                 min={0}
                 max={100}
+                aria-label={`Peso del camino ${path.name}`}
                 value={path.weight}
                 onChange={(e) =>
                   updatePath(index, { ...path, weight: parseInt(e.target.value) })
@@ -645,6 +656,7 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
                 <button
                   type="button"
                   onClick={() => removePath(index)}
+                  aria-label="Quitar el camino"
                   className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
                 >
                   <X className="h-3 w-3" />
@@ -662,52 +674,67 @@ function ABSplitConfig({ data, onChange }: ActionSubPanelProps) {
           className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-muted-foreground hover:text-muted-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add Path
+          Agregar camino
         </button>
       )}
     </div>
   );
 }
 
-/* ───────── Smart Delay Config ───────── */
+/* ───────── Esperar respuesta ───────── */
 function SmartDelayConfig({ data, onChange }: ActionSubPanelProps) {
+  // Un nodo viejo con un tiempo guardado y sin el interruptor: el tiempo vale (es lo que el panel prometia).
+  const enabled = typeof data.timeoutEnabled === "boolean" ? data.timeoutEnabled : data.timeout !== undefined && data.timeout !== null;
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted p-4">
-        <p className="text-sm font-medium text-foreground">Smart Delay</p>
+        <p className="text-sm font-medium text-foreground">Esperar respuesta</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Pause the flow and wait for a user response. If no response is received within the timeout, continue to the next step.
+          La automatización frena hasta que el contacto conteste y sigue por «Respondió». Sin tiempo máximo, la espera
+          vence a los 7 días y la automatización termina (así una respuesta de semanas después no queda atrapada).
         </p>
       </div>
 
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-foreground">
-          Timeout
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="number"
-            min={1}
-            value={data.timeout || 30}
-            onChange={(e) =>
-              onChange({ ...data, timeout: Math.max(1, parseInt(e.target.value) || 1) })
-            }
-            className="w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <select
-            value={data.timeoutUnit || "minutes"}
-            onChange={(e) => onChange({ ...data, timeoutUnit: e.target.value })}
-            className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="minutes">Minutes</option>
-            <option value="hours">Hours</option>
-            <option value="days">Days</option>
-          </select>
+      <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange({ ...data, timeoutEnabled: e.target.checked, timeout: data.timeout ?? 24, timeoutUnit: data.timeoutUnit ?? "hours" })}
+          className="mt-0.5 h-4 w-4 rounded border-input"
+        />
+        <span>
+          <span className="font-medium text-foreground">Si no responde a tiempo, seguir igual</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            Al vencer, sigue por la salida «No respondió». Si esa salida no está conectada, sigue por «Respondió».
+          </span>
+        </span>
+      </label>
+
+      {enabled && (
+        <div>
+          <label className="mb-2 block text-xs font-semibold text-foreground">Tiempo máximo</label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              min={1}
+              aria-label="Cantidad"
+              value={data.timeout ?? 24}
+              onChange={(e) => onChange({ ...data, timeoutEnabled: true, timeout: Math.max(1, parseInt(e.target.value) || 1) })}
+              className="w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <select
+              aria-label="Unidad"
+              value={data.timeoutUnit || "hours"}
+              onChange={(e) => onChange({ ...data, timeoutEnabled: true, timeoutUnit: e.target.value })}
+              className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="minutes">Minutos</option>
+              <option value="hours">Horas</option>
+              <option value="days">Días</option>
+            </select>
+          </div>
         </div>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          If the user does not respond within this time, the flow will continue.
-        </p>
-      </div>
+      )}
     </div>
   );
 }
@@ -721,7 +748,7 @@ function MarkPaymentPaidConfig({ data, onChange }: ActionSubPanelProps) {
       <div className="rounded-lg border border-border bg-muted p-4">
         <p className="text-sm font-medium text-foreground">Marcar el pago como cobrado</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Cobra el pago que disparó el flujo, por su monto programado y con la fecha de hoy. No sube comprobante. Queda en el historial como una acción del flujo.
+          Cobra el pago que disparó la automatización, por su monto programado y con la fecha de hoy. No sube comprobante. Queda en el historial como una acción de la automatización.
         </p>
       </div>
       <div>
@@ -737,7 +764,7 @@ function MarkPaymentPaidConfig({ data, onChange }: ActionSubPanelProps) {
       </div>
       <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3">
         <input type="checkbox" checked={data.confirmed === true} onChange={(e) => onChange({ ...data, confirmed: e.target.checked })} className="mt-0.5 h-4 w-4 rounded border-input" />
-        <span className="text-sm text-foreground">Entiendo que esto marca el pago como cobrado sin comprobante. Sin esta confirmación el nodo no hace nada.</span>
+        <span className="text-sm text-foreground">Entiendo que esto marca el pago como cobrado sin comprobante. Sin esta confirmación el paso no hace nada.</span>
       </label>
     </div>
   );

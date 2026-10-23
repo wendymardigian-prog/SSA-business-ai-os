@@ -1,5 +1,7 @@
 import type { Json, TriggerType } from "@/lib/types/database";
-import { getTrigger } from "@/lib/flow-engine/registry";
+import { getTrigger, listTriggers } from "@/lib/flow-engine/registry";
+import { triggerConfigDefaults } from "@/lib/flow-engine/trigger-defaults";
+import { chosenType } from "@/lib/flow-engine/trigger-catalog";
 
 /**
  * Los tipos que el editor sabe configurar con campos propios (palabras clave,
@@ -37,6 +39,18 @@ function isPersistableTriggerType(type: string): boolean {
   return definition?.scope === "event" || definition?.scope === "scheduled";
 }
 
+/**
+ * Todos los tipos cuyas filas (sin canal) arma el editor al publicar: son los que
+ * publicar y despublicar reconcilian. Antes se borraban solo los de mensaje y los de
+ * Ventas, y cada republicacion de un flujo de agenda, formulario, CRM, tareas o webhook
+ * dejaba UNA FILA MAS: el flujo corria una vez por cada vez que se habia publicado.
+ */
+export function persistableTriggerTypes(): TriggerType[] {
+  const types = new Set<string>(BUILDER_TRIGGER_TYPES);
+  for (const t of listTriggers()) if (isPersistableTriggerType(t.type)) types.add(t.type);
+  return [...types] as TriggerType[];
+}
+
 export interface DesiredTrigger {
   flow_id: string;
   channel_id: null;
@@ -63,8 +77,10 @@ export function buildDesiredTriggers(
     .flatMap((n) => {
       const data = (n.data ?? {}) as Record<string, any>;
       const nodeConfig = (data.config ?? {}) as Record<string, any>;
-      const type = (data.triggerType ?? "keyword") as string;
-      if (!isPersistableTriggerType(type)) return [];
+      // `null` = el disparador todavia no se eligio (asi nace una automatizacion): no hay fila. Un nodo viejo SIN la clave
+      // sigue siendo palabra clave, como lo guardaba el lienzo de antes.
+      const type = chosenType(data);
+      if (!type || !isPersistableTriggerType(type)) return [];
 
       // The trigger panel stores keywords as data.keywords ([{ value, matchType }]);
       // template-seeded nodes store data.config.keywords ([string]). The matcher
@@ -77,10 +93,11 @@ export function buildDesiredTriggers(
         if (Array.isArray(postIds) && postIds.length > 0) config.postIds = postIds;
         const replyText = data.replyText ?? nodeConfig.replyText;
         if (typeof replyText === "string" && replyText.trim()) config.replyText = replyText;
-        // Extra L (F19): los filtros de origen del mensaje, solo en la palabra clave de un DM. (El filtro
-        // `storyReply` del mismo panel NO se copia aca desde antes de este cambio: no se toca para no cambiar
-        // lo que ya corre en produccion; ver docs/PENDIENTE-atribucion.md.)
+        // Extra L (F19): los filtros de origen del mensaje, solo en la palabra clave de un DM. «Solo respuestas a
+        // historias» (`storyReply`) tambien se copia desde la auditoria de automatizaciones: el panel lo ofrecia y
+        // nunca llegaba a la fila, asi que cualquier DM con la palabra disparaba el flujo.
         if (type === "keyword") {
+          if (data.storyReply === true || nodeConfig.storyReply === true) config.storyReply = true;
           if (data.fromAdOnly === true || nodeConfig.fromAdOnly === true) config.fromAdOnly = true;
           if (data.storyMentionOnly === true || nodeConfig.storyMentionOnly === true) config.storyMentionOnly = true;
         }
@@ -88,6 +105,10 @@ export function buildDesiredTriggers(
         const payload = data.payload ?? nodeConfig.payload;
         if (payload !== undefined) config.payload = payload;
       } else {
+        // Lo que el panel MUESTRA por defecto vale aunque la persona no lo haya tocado (antes se mostraba sin guardarse
+        // y el disparador no andaba: un evento de CRM sin evento, un recordatorio sin cuanto antes, una inactividad
+        // sin ventana).
+        Object.assign(config, triggerConfigDefaults(type));
         // Los tipos que no son de mensaje guardan lo que el panel escribió en
         // el nodo, menos lo que es del canvas (la etiqueta, el tipo elegido).
         // Así sumar un filtro nuevo al panel no pide tocar este archivo.

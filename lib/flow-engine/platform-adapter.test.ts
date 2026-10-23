@@ -75,3 +75,12 @@ describe("adaptMessage for whatsapp", () => {
     expect(adapted.template?.type).toBe("generic");
   });
 });
+
+describe("foldOptionsIntoText (WhatsApp por Evolution)", () => {
+  it("agrega las opciones numeradas al texto, con el link si lo hay", async () => {
+    const { foldOptionsIntoText } = await import("./platform-adapter");
+    expect(foldOptionsIntoText("¿Te interesa?", [{ title: "Sí" }, { title: "Ver web", url: "https://x.com" }])).toBe("¿Te interesa?\n\n1. Sí\n2. Ver web: https://x.com");
+    expect(foldOptionsIntoText("Elegí", undefined, [{ title: "A" }])).toBe("Elegí\n\n1. A");
+    expect(foldOptionsIntoText("Solo texto")).toBe("Solo texto");
+  });
+});

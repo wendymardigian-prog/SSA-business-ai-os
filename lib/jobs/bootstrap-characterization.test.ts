@@ -49,6 +49,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "fathom_sync",
       // Finanzas (Extra I, G1): el trabajo diario.
       "finance_daily",
+      // Auditoria de automatizaciones: el vencimiento de un "Esperar respuesta".
+      "flow_wait_timeout",
       // Catalogo de Meta (Extra L, AT2): las miniaturas de los anuncios.
       "meta_ad_thumbnails",
       "meta_ads_sync",

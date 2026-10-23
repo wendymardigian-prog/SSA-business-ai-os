@@ -46,3 +46,19 @@ export function interpolateVariables(
     return typeof value === "object" ? JSON.stringify(value) : String(value);
   });
 }
+
+/**
+ * Interpola TODOS los textos de un valor (objetos y listas adentro), sin tocar las claves ni lo que no es texto. Lo usa
+ * «Enviar mensaje» para los botones, las respuestas rapidas, los links, el carrusel y la media: antes solo se
+ * interpolaba el texto y un boton «Hola {{contact.first_name}}» llegaba con la llave literal.
+ */
+export function interpolateDeep<T>(value: T, variables: Record<string, unknown>): T {
+  if (typeof value === "string") return interpolateVariables(value, variables) as T;
+  if (Array.isArray(value)) return value.map((item) => interpolateDeep(item, variables)) as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) out[key] = interpolateDeep(item, variables);
+    return out as T;
+  }
+  return value;
+}

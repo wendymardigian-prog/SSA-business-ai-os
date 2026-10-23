@@ -221,7 +221,10 @@ describe("publishFlow", () => {
     const db = world([{ id: "f", workspace_id: WS, name: "x", status: "draft", nodes: [], edges: [] }]);
     const base = { db: db.client, userId: null, workspaceId: WS, getServiceClient: async () => db.client };
     expect(await publishFlow({ ...base, flowId: "no-esta" })).toMatchObject({ ok: false, status: 404 });
-    expect(await publishFlow({ ...base, flowId: "f", extraProblems: () => ["no"] })).toMatchObject({ ok: false, status: 400, error: "no", problems: ["no"] });
+    // La validacion extra va primero; un flujo vacio ademas no tiene disparador (auditoria de automatizaciones).
+    const res = await publishFlow({ ...base, flowId: "f", extraProblems: () => ["no"] });
+    expect(res).toMatchObject({ ok: false, status: 400, error: "no" });
+    expect(!res.ok && res.problems?.[0]).toBe("no");
     expect(db.rows("flows")[0].status).toBe("draft");
     expect(db.rows("flow_versions")).toHaveLength(0);
   });

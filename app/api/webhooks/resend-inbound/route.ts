@@ -174,6 +174,7 @@ async function handle(request: NextRequest) {
           conversationId: result.conversationId,
           subject: email.subject,
           text: email.text ?? "",
+          emailId,
         });
       }
 

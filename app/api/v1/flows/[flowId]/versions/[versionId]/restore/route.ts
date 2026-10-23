@@ -13,10 +13,10 @@ export async function POST(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
-  if (!(await getPermissionAction("flows.publish"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await getPermissionAction("flows.publish"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   // Verify user has access
   const { data: membership } = await supabase
@@ -27,7 +27,7 @@ export async function POST(
     .single();
 
   if (!membership)
-    return NextResponse.json({ error: "No workspace" }, { status: 404 });
+    return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });
 
   // Get the version
   const { data: version, error: vErr } = await supabase
@@ -38,18 +38,26 @@ export async function POST(
     .single();
 
   if (vErr || !version)
-    return NextResponse.json({ error: "Version not found" }, { status: 404 });
+    return NextResponse.json({ error: "No encontré esa versión." }, { status: 404 });
 
-  // Restore: copy nodes/edges/viewport back, set status to draft
+  const { data: current } = await supabase
+    .from("flows")
+    .select("status")
+    .eq("id", flowId)
+    .eq("workspace_id", membership.workspace_id)
+    .maybeSingle();
+  if (!current) return NextResponse.json({ error: "No encontré esa automatización." }, { status: 404 });
+
+  // Restaurar deja esa version como BORRADOR (auditoria de automatizaciones): en una automatizacion publicada va a los
+  // cambios sin publicar y lo que corre sigue igual hasta "Publicar cambios". Antes la pasaba a borrador y dejaba de
+  // correr sin avisar.
   const { error } = await supabase
     .from("flows")
-    .update({
-      nodes: version.nodes,
-      edges: version.edges,
-      viewport: version.viewport,
-      status: "draft",
-      updated_at: new Date().toISOString(),
-    })
+    .update(
+      current.status === "published"
+        ? { draft_nodes: version.nodes, draft_edges: version.edges, draft_updated_at: new Date().toISOString(), viewport: version.viewport }
+        : { nodes: version.nodes, edges: version.edges, viewport: version.viewport, updated_at: new Date().toISOString() },
+    )
     .eq("id", flowId)
     .eq("workspace_id", membership.workspace_id);
 

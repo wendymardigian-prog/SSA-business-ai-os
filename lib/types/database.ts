@@ -1826,6 +1826,12 @@ export interface Database {
           workspace_id: string;
           name: string;
           description: string | null;
+          /** Categorias libres de la automatizacion (00254). */
+          categories?: string[];
+          /** Cambios sin publicar de una automatizacion publicada (00254). Null = no hay. */
+          draft_nodes?: Json | null;
+          draft_edges?: Json | null;
+          draft_updated_at?: string | null;
           status: FlowStatus;
           nodes: Json;
           edges: Json;
@@ -1837,10 +1843,13 @@ export interface Database {
         };
         Insert: {
           form_id?: string | null;
+          event_type_id?: string | null;
+          template_key?: string | null;
           id?: string;
           workspace_id: string;
           name: string;
           description?: string | null;
+          categories?: string[];
           status?: FlowStatus;
           nodes?: Json;
           edges?: Json;
@@ -1853,6 +1862,10 @@ export interface Database {
         Update: {
           name?: string;
           description?: string | null;
+          categories?: string[];
+          draft_nodes?: Json | null;
+          draft_edges?: Json | null;
+          draft_updated_at?: string | null;
           status?: FlowStatus;
           nodes?: Json;
           edges?: Json;

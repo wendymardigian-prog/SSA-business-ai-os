@@ -3,7 +3,7 @@ import type { Database } from "@/lib/types/database";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { FlowExecutionContext, SendMessageNodeData } from "../types";
 import { adaptMessage } from "../platform-adapter";
-import { interpolateVariables } from "../interpolate";
+import { interpolateDeep } from "../interpolate";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { sendChannelMessage, recordSend } from "../send";
@@ -57,14 +57,15 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
       return;
     }
 
-    for (const msg of data.messages) {
+    for (const original of data.messages) {
+      // Las variables se reemplazan en TODO el mensaje (texto, botones, respuestas rapidas, links, carrusel y media)
+      // y una sola vez, antes de adaptarlo a la plataforma. Antes solo el texto: un boton con {{...}} llegaba literal.
+      const msg = interpolateDeep(original, context.variables || {});
       const adapted = adaptMessage(msg, context.platform!);
       // Un texto de la banca pegado en el mensaje trae sus variables
       // ({{contact.display_name}}...): las que quedaron sin resolver se completan
       // con los datos reales. Solo consulta la base si las trae.
-      const [text] = await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId, variables: context.variables }, [
-        interpolateVariables(adapted.text, context.variables || {}),
-      ]);
+      const [text] = await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId, variables: context.variables }, [adapted.text]);
 
       // El multimedia no depende de la plataforma, asi que se lee del mensaje
       // crudo. mediaUrl + mediaType reemplazan al viejo imageUrl.
@@ -171,10 +172,11 @@ async function sendFirstMessageAsPrivateReply(
 
   const zernio = createZernioClient(apiKey);
 
-  const interpolated = interpolateVariables(
-    adaptMessage(first, context.platform ?? "instagram").text,
-    context.variables || {}
-  );
+  // Las mismas variables que el envio normal, y las de la banca (antes este respaldo no las completaba).
+  const firstText = adaptMessage(interpolateDeep(first, context.variables || {}), context.platform ?? "instagram").text;
+  const [interpolated] = context.contactId
+    ? await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId, variables: context.variables }, [firstText])
+    : [firstText];
   // Atribución de los links (Extra I, F39): también en el respaldo por respuesta privada (solo el texto; los botones no viajan).
   const text = (
     await attributeOutgoing(

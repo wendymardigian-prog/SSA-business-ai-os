@@ -48,7 +48,10 @@ export async function matchTrigger(
     .eq("is_active", true)
     .eq("flows.status", "published")
     .eq("flows.workspace_id", workspaceId)
-    .order("priority", { ascending: false });
+    .order("priority", { ascending: false })
+    // Empate (dos automatizaciones con la misma palabra): gana la publicada mas reciente (publicar reescribe la fila).
+    // Antes el orden lo decidia la base y no era predecible.
+    .order("created_at", { ascending: false });
 
   if (!triggers || triggers.length === 0) return null;
 

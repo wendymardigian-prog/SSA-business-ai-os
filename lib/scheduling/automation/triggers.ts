@@ -156,6 +156,16 @@ export function bookingDedupeKey(triggerType: string, bookingId: string, resched
 }
 
 /**
+ * La clave del JOB de un aviso relativo: la del disparo MÁS el trigger. Dos recordatorios del mismo tipo sobre la misma
+ * reunión ("24 h antes" y "1 h antes", las plantillas que trae el sistema) compartían la clave, y como la cola no
+ * admite dos jobs pendientes con la misma clave, el insert de la tanda entera fallaba: la reunión se quedaba SIN
+ * ningún recordatorio.
+ */
+export function relativeJobDedupeKey(triggerType: string, bookingId: string, rescheduleCount: number, triggerId: string): string {
+  return `${bookingDedupeKey(triggerType, bookingId, rescheduleCount)}:${triggerId}`;
+}
+
+/**
  * Cuándo tiene que correr un trigger relativo, en UTC.
  *
  * `booking_before_start` resta de la hora de inicio; `booking_after_end` suma
@@ -223,7 +233,7 @@ export function planRelativeJobs(
       triggerType: trigger.type,
       bookingId: booking.id,
       runAt: runAt.toISOString(),
-      dedupeKey: bookingDedupeKey(trigger.type, booking.id, booking.reschedule_count ?? 0),
+      dedupeKey: relativeJobDedupeKey(trigger.type, booking.id, booking.reschedule_count ?? 0, trigger.id),
     });
   }
 

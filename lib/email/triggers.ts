@@ -46,8 +46,19 @@ export async function runEmailTriggers(
     conversationId: string;
     subject: string | null;
     text: string;
+    /** El id del correo: con el, un mismo correo no dispara dos veces el mismo flujo (reentregas de Resend). */
+    emailId?: string | null;
   },
 ): Promise<number> {
+  // Igual que un mensaje de chat: un contacto marcado «no contactar» o una conversacion que alguien tomo a mano no
+  // arrancan automatizaciones (antes el email las arrancaba igual, aun despues de pedir la baja).
+  const [{ data: contact }, { data: conversation }] = await Promise.all([
+    supabase.from("contacts").select("do_not_contact").eq("id", params.contactId).maybeSingle(),
+    supabase.from("conversations").select("is_automation_paused").eq("id", params.conversationId).maybeSingle(),
+  ]);
+  if ((contact as { do_not_contact?: boolean } | null)?.do_not_contact) return 0;
+  if ((conversation as { is_automation_paused?: boolean } | null)?.is_automation_paused) return 0;
+
   const { data: triggers } = await supabase
     .from("triggers")
     .select("id, flow_id, config")
@@ -67,6 +78,18 @@ export async function runEmailTriggers(
   let started = 0;
 
   for (const trigger of matching) {
+    if (params.emailId) {
+      const { error: claimError } = await supabase.from("trigger_fires").insert({
+        trigger_id: trigger.id,
+        workspace_id: params.channel.workspace_id,
+        dedupe_key: `email:${params.emailId}`,
+        contact_id: params.contactId,
+      });
+      if (claimError) {
+        if (claimError.code !== "23505") console.error("[email] no pude reclamar el disparo:", claimError.message);
+        continue;
+      }
+    }
     try {
       await executeFlow(supabase, {
         triggerId: trigger.id,

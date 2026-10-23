@@ -15,6 +15,13 @@ interface SequenceOption {
   status: string;
 }
 
+/** El estado de la secuencia, como se lee en pantalla. */
+const STATUS_LABELS: Record<string, string> = {
+  active: "activa",
+  draft: "borrador",
+  paused: "pausada",
+};
+
 export function EnrollSequencePanel({ data, onChange }: EnrollSequencePanelProps) {
   const [sequences, setSequences] = useState<SequenceOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,26 +44,26 @@ export function EnrollSequencePanel({ data, onChange }: EnrollSequencePanelProps
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted p-4">
         <p className="text-sm font-medium text-foreground">
-          Enroll in Sequence
+          Inscribir en una secuencia
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          The contact will be enrolled in the selected drip sequence when they
-          reach this step.
+          Cuando el contacto llega a este paso, queda inscripto en la secuencia
+          que elijas.
         </p>
       </div>
 
       <div>
         <label className="mb-2 block text-xs font-semibold text-muted-foreground">
-          Sequence
+          Secuencia
         </label>
         {loading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Loading sequences...
+            Cargando secuencias…
           </div>
         ) : sequences.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No sequences found. Create one in the Sequences section first.
+            No hay secuencias. Creá una primero en la sección Secuencias.
           </p>
         ) : (
           <select
@@ -64,16 +71,16 @@ export function EnrollSequencePanel({ data, onChange }: EnrollSequencePanelProps
             onChange={(e) => onChange({ ...data, sequenceId: e.target.value })}
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="">Select a sequence...</option>
+            <option value="">Elegí una secuencia…</option>
             {sequences.map((seq) => (
               <option key={seq.id} value={seq.id}>
-                {seq.name} ({seq.status})
+                {seq.name} ({STATUS_LABELS[seq.status] ?? seq.status})
               </option>
             ))}
           </select>
         )}
         <p className="mt-1.5 text-xs text-muted-foreground">
-          Only active sequences will actually enroll contacts at runtime.
+          Solo las secuencias activas inscriben contactos de verdad.
         </p>
       </div>
     </div>

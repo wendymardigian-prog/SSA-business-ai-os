@@ -129,7 +129,18 @@ describe("planRelativeJobs", () => {
     const jobs = planRelativeJobs(booking, triggers, now);
     expect(jobs.map((j) => j.triggerId)).toEqual(["t1", "t2"]);
     expect(jobs[0].runAt).toBe("2026-09-30T15:00:00.000Z");
-    expect(jobs[0].dedupeKey).toBe("booking_before_start:bk-1:0");
+    // La clave del job lleva el trigger (auditoria de automatizaciones): dos avisos del mismo tipo no chocan.
+    expect(jobs[0].dedupeKey).toBe("booking_before_start:bk-1:0:t1");
+  });
+
+  it("dos recordatorios del mismo tipo (24 h y 1 h antes) tienen claves distintas", () => {
+    const both = [
+      { id: "t24", type: "booking_before_start", is_active: true, config: { offset_minutes: 1440 } },
+      { id: "t1h", type: "booking_before_start", is_active: true, config: { offset_minutes: 60 } },
+    ];
+    const jobs = planRelativeJobs(booking, both, now);
+    expect(jobs).toHaveLength(2);
+    expect(new Set(jobs.map((j) => j.dedupeKey)).size).toBe(2);
   });
 
   it("un aviso cuya hora ya pasó no se agenda", () => {
@@ -148,7 +159,7 @@ describe("planRelativeJobs", () => {
 
   it("al reagendar, la clave cambia y el aviso se puede volver a mandar", () => {
     const jobs = planRelativeJobs({ ...booking, reschedule_count: 2 }, triggers, now);
-    expect(jobs[0].dedupeKey).toBe("booking_before_start:bk-1:2");
+    expect(jobs[0].dedupeKey).toBe("booking_before_start:bk-1:2:t1");
   });
 });
 
