@@ -146,8 +146,58 @@ async function reactViaZernio(secrets: Db, channel: ChannelRow, target: Reaction
       if (zernioStatus(err) !== 404) break;
     }
   }
-  const failure = describeSendError(lastError);
+  const failure = describeInstagramReactionError(lastError);
   console.error(`[reaction] Instagram rechazó la reacción (${failure.kind}, ${zernioStatus(lastError) ?? "sin codigo"})`);
-  if (zernioStatus(lastError) === 404) return fail("Instagram no encontró ese mensaje: puede ser muy viejo o haberse borrado.");
   return fail(failure.message, failure.retryable);
+}
+
+/**
+ * Por que Instagram no tomo la reaccion, en palabras de la bandeja.
+ *
+ * Se apoya en `describeSendError` (el mismo motivo que un texto) pero con un
+ * texto propio: "No se pudo enviar el mensaje" confundia, porque la persona no
+ * mando ningun mensaje. Puro.
+ */
+export function describeInstagramReactionError(error: unknown): { kind: string; message: string; retryable: boolean } {
+  const status = zernioStatus(error);
+  if (status === 404) {
+    return { kind: "not_found", message: "Instagram no encontró ese mensaje: puede ser muy viejo o haberse borrado.", retryable: false };
+  }
+  const failure = describeSendError(error);
+  switch (failure.kind) {
+    case "not_thread_owner":
+      return {
+        kind: failure.kind,
+        message:
+          "Instagram no deja reaccionar acá: esta conversación la está manejando otra app conectada a tu cuenta (por ejemplo ManyChat). Mientras la tenga esa app, el sistema no puede responder ni reaccionar. Reaccioná desde la app de Instagram o desde esa otra app.",
+        retryable: false,
+      };
+    case "outside_window":
+      return {
+        kind: failure.kind,
+        message: "Instagram solo deja reaccionar dentro de las 24 horas desde el último mensaje del contacto. Cuando vuelva a escribir, vas a poder.",
+        retryable: false,
+      };
+    case "rate_limited":
+      return { kind: failure.kind, message: "Instagram está frenando los envíos de la cuenta por un rato. Probá reaccionar de nuevo en unos minutos.", retryable: true };
+    case "user_unavailable":
+      return { kind: failure.kind, message: "Este contacto no está recibiendo mensajes en Instagram, así que tampoco reacciones.", retryable: false };
+    case "token_expired":
+      return { kind: failure.kind, message: "La conexión con Instagram dejó de ser válida: reconectala desde Canales para poder reaccionar.", retryable: false };
+    case "policy_violation":
+      return { kind: failure.kind, message: "Instagram no aceptó la reacción por sus reglas de uso.", retryable: false };
+    case "unknown":
+      break;
+  }
+  if (status === 403) {
+    return { kind: "forbidden", message: "Tu plan de Zernio no incluye la bandeja de mensajes, y sin eso Instagram no deja reaccionar.", retryable: false };
+  }
+  if (status === 400) {
+    return { kind: "rejected", message: "Instagram no aceptó esa reacción para este mensaje.", retryable: false };
+  }
+  return {
+    kind: "unknown",
+    message: "Instagram no tomó la reacción. Probá de nuevo en un momento; si se repite, reaccioná desde la app de Instagram.",
+    retryable: true,
+  };
 }
