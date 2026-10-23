@@ -8,10 +8,10 @@ export async function GET() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
-  if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   const { data: membership } = await supabase
     .from("workspace_members")
@@ -20,7 +20,7 @@ export async function GET() {
     .limit(1)
     .single();
 
-  if (!membership) return NextResponse.json({ error: "No workspace" }, { status: 404 });
+  if (!membership) return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });
 
   const { data: flows, error } = await supabase
     .from("flows")
@@ -38,10 +38,10 @@ export async function POST(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
-  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   const { data: membership } = await supabase
     .from("workspace_members")
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     .limit(1)
     .single();
 
-  if (!membership) return NextResponse.json({ error: "No workspace" }, { status: 404 });
+  if (!membership) return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });
 
   const body = await request.json();
 

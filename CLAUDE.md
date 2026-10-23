@@ -1466,6 +1466,26 @@ node scripts/verify-contact-pipeline.mjs   # 00244-00246: valores tipados, estad
 node scripts/verify-contact-merge.mjs      # la fusión, con estados y producto de interés
 ```
 
+# Automatizaciones: auditoría (construido, 23/10/2026)
+
+Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con buscador y categorías, borrador para lo publicado, el disparador primero, buscador de pasos, adjuntos en el email y todo en español. Resumen en [docs/flow-registry.md](docs/flow-registry.md) («Auditoría de automatizaciones»); avance en `docs/PROGRESS-automatizaciones-auditoria.md`, pendientes en `docs/PENDIENTE-automatizaciones-auditoria.md`.
+
+## Lo que no se puede romper
+
+- **Arrancar un flujo NO retoma una sesión en espera** (`executeFlow`): solo el receptor de mensajes retoma (`lib/inbound.ts`). Retomar «Esperar respuesta» es un reclamo sobre `waiting_for_input`; un flujo despublicado cancela la sesión al retomar.
+- **Una automatización publicada guarda en `draft_nodes`/`draft_edges`** (00254, `saveFlowDraft`); lo que corre es `nodes` hasta «Publicar cambios». El lienzo ya NO escribe `flows` desde el navegador. Los editores de pasos de Formularios, Agenda, EOD y Cobranza siguen escribiendo `nodes` (publican al guardar).
+- **Un solo disparador, elegido**: `triggerType: null` = sin elegir (así nace una automatización); un nodo viejo sin la clave es palabra clave. Publicar lo exige (`lib/flow-engine/publish-rules.ts`). El disparador no se borra; se cambia con el selector.
+- **Republicar reconcilia todas las filas sin canal** de los tipos que arma el editor (`persistableTriggerTypes`) y no reactiva las filas con canal (Growth).
+- **Tres catálogos, una sola lista cada uno**: disparadores (`trigger-catalog.ts`, comparado con el registro y el CHECK de la base), sus valores por defecto (`trigger-defaults.ts`) y las variables por disparador (`variable-catalog.ts`). El motor siembra `contact.*` y `workspace.*` en todos los pasos.
+- **Categorías**: `flows.categories` (text[], hasta 10, normalizadas en `lib/flows/categories.ts`); las sugerencias salen de las que usan las demás automatizaciones. La lista filtra por URL (`?q=&estado=&origen=&categoria=`, `lib/flows/list.ts`).
+- **Llamada HTTP solo por `lib/net/safe-fetch.ts`** (sin direcciones internas, 10 s, 256 KB). Un test que la use simula el DNS (`vi.mock("node:dns/promises")`).
+- **Adjuntos del email = recursos de la banca** (`attachments: [{ assetId }]`), hasta 10 y 25 MB; se bajan una vez por paso; un recurso que falta no frena el email y avisa en la campana.
+- **«Agregar/Quitar etiqueta» decide por el tipo del paso**, nunca por `data.action` (el lienzo no lo guarda).
+
+## Migraciones
+
+`00254_flows_categories_drafts` (aditiva), **aplicada y registrada** el 23/10/2026 (versión `20261023130139`). **La próxima libre es la `00255`** (confirmar con `list_migrations`).
+
 # Seguridad
 
 ## Autenticacion y sesiones

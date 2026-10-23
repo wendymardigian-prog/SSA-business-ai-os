@@ -13,10 +13,10 @@ export async function POST(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
-  if (!(await getPermissionAction("flows.publish"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await getPermissionAction("flows.publish"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   // Verify user has access
   const { data: membership } = await supabase
@@ -27,7 +27,7 @@ export async function POST(
     .single();
 
   if (!membership)
-    return NextResponse.json({ error: "No workspace" }, { status: 404 });
+    return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });
 
   // Get the version
   const { data: version, error: vErr } = await supabase

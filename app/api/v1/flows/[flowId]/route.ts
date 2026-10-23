@@ -28,10 +28,10 @@ export async function GET(
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
-  if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   const { data: flow, error } = await supabase
     .from("flows")
@@ -41,7 +41,7 @@ export async function GET(
     .single();
 
   if (error || !flow)
-    return NextResponse.json({ error: "Flow not found" }, { status: 404 });
+    return NextResponse.json({ error: "No encontré esa automatización." }, { status: 404 });
 
   return NextResponse.json(flow);
 }
@@ -54,10 +54,10 @@ export async function PUT(
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
-  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   const body = await request.json();
 
@@ -121,10 +121,10 @@ export async function DELETE(
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
-  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   const { error } = await supabase
     .from("flows")

@@ -47,7 +47,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
 
   // Get current flow
   const { data: flow, error } = await db.from("flows").select("*").eq("id", flowId).eq("workspace_id", workspaceId).single();
-  if (error || !flow) return { ok: false, status: 404, error: error?.message || "Flow not found" };
+  if (error || !flow) return { ok: false, status: 404, error: "No encontré esa automatización." };
 
   // Una automatizacion publicada con cambios sin publicar (00254): se publica el BORRADOR. Lo que corria hasta ahora
   // (`nodes`) se reemplaza recien aca, despues de validar.
