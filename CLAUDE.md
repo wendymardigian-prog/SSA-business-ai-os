@@ -1514,7 +1514,7 @@ Responsable de cada conversación (a mano y con reglas por cuenta), la marca «C
 
 ## Migraciones
 
-`00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar. **La próxima libre es la `00259`** (confirmar con `list_migrations`).
+`00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. **La próxima libre es la `00259`** (confirmar con `list_migrations`).
 
 # Seguridad
 
