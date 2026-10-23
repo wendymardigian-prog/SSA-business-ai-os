@@ -686,6 +686,9 @@ export type AuditAction =
   /** Ventas, asignacion (entity assignment_rule; la automatica es entity contact, actor sistema). */
   | "assignment_rule.updated"
   | "assignment.automatic"
+  /** Reglas de asignacion de conversaciones (00255): alta y archivo (entity assignment_rule). */
+  | "assignment_rule.created"
+  | "assignment_rule.archived"
   /** Ventas (entity sale). */
   | "sale.created"
   | "sale.updated"
@@ -4239,6 +4242,55 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Reglas de asignacion de conversaciones por cuenta (00255). Escribe solo el servidor. */
+      conversation_assignment_rules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          position: number;
+          enabled: boolean;
+          channel_ids: string[];
+          mode: "fixed" | "round_robin";
+          member_ids: string[];
+          last_assigned_member_id: string | null;
+          setter_mode: "none" | "if_empty" | "overwrite";
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name?: string;
+          position?: number;
+          enabled?: boolean;
+          channel_ids?: string[];
+          mode?: "fixed" | "round_robin";
+          member_ids?: string[];
+          last_assigned_member_id?: string | null;
+          setter_mode?: "none" | "if_empty" | "overwrite";
+          archived_at?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          position?: number;
+          enabled?: boolean;
+          channel_ids?: string[];
+          mode?: "fixed" | "round_robin";
+          member_ids?: string[];
+          last_assigned_member_id?: string | null;
+          setter_mode?: "none" | "if_empty" | "overwrite";
+          archived_at?: string | null;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+
       /** Catalogo de productos de Ventas (00159). Absorbe content_offers: los migrados conservan el id. */
       products: {
         Row: {
@@ -5902,6 +5954,15 @@ export interface Database {
           p_copywriter_instructions: string;
         };
         Returns: Json;
+      };
+      /** Aplica las reglas de asignacion a una conversacion nueva (00255, solo service_role). */
+      assign_new_conversation: {
+        Args: { p_conversation_id: string };
+        Returns: Json;
+      };
+      conversation_rule_pick: {
+        Args: { p_mode: string; p_member_ids: string[]; p_active_ids: string[]; p_last: string | null };
+        Returns: string | null;
       };
       merge_contacts: {
         Args: { p_workspace_id: string; p_main: string; p_duplicate: string; p_actor: string | null };

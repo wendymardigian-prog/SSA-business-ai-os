@@ -23,6 +23,7 @@ import { EmojiButton, useEmojiInsert } from "@/components/ui/emoji-picker";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { CreateTaskButton } from "@/components/tasks/create-task-button";
+import { ConversationAssignee } from "@/components/inbox/conversation-assignee";
 import { ConversationMenu } from "@/components/inbox/conversation-menu";
 import { planHeaderActions } from "@/lib/inbox/header-actions";
 import { planComposerActions } from "@/lib/inbox/composer-actions";
@@ -278,6 +279,9 @@ export function MessageThread({
   agentInfo = null,
   channelProvider = null,
   accounts,
+  members = [],
+  currentUserId = "",
+  canAssignConversations = false,
   onBack,
   onOpenContact,
 }: {
@@ -304,6 +308,11 @@ export function MessageThread({
   channelProvider?: string | null;
   /** Las cuentas por canal: el encabezado dice por cual cuenta es la conversacion cuando una red tiene varias. */
   accounts?: InboxAccountsInfo;
+  /** El equipo, para el responsable del chat (00255). */
+  members?: { userId: string; label: string }[];
+  currentUserId?: string;
+  /** `contacts.assign`: cambia el responsable; sin la clave, solo "Tomar". */
+  canAssignConversations?: boolean;
   /** Telefono (Bloque 2d): el hilo ocupa la pantalla y se vuelve a la lista. */
   onBack?: () => void;
   /** Telefono (Bloque 2d): abre los datos del contacto como hoja. */
@@ -1018,6 +1027,16 @@ export function MessageThread({
               <UserRoundSearch className="h-3 w-3" aria-hidden />
               <span className="hidden sm:inline">Necesita humano</span>
             </span>
+          )}
+          {currentUserId && (
+            <ConversationAssignee
+              conversationId={conversation.id}
+              assignedTo={conversation.assigned_to ?? null}
+              members={members}
+              currentUserId={currentUserId}
+              canAssign={canAssignConversations}
+              canReply={canReply}
+            />
           )}
           <ConversationAgentToggle
             conversationId={conversation.id}

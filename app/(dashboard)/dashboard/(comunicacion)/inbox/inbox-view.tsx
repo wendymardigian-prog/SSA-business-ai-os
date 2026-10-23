@@ -26,6 +26,7 @@ export function InboxView({
   canManageAssets = false,
   canCreateTask = false,
   canViewAgentRuns = false,
+  canAssignConversations = false,
   replyChannelIds,
   workspaceName,
   selected: selectedFromServer,
@@ -54,6 +55,8 @@ export function InboxView({
   canCreateTask?: boolean;
   /** Puede ver las corridas del agente (`agents.view`): el panel "Qué hizo el agente" ofrece abrir la corrida. */
   canViewAgentRuns?: boolean;
+  /** `contacts.assign`: cambia el responsable de cualquier conversación (sin la clave, solo "Tomar"). */
+  canAssignConversations?: boolean;
   /** Las cuentas donde puede responder (00249): `null` = en todas las que ve. */
   replyChannelIds?: string[] | null;
   workspaceName: string;
@@ -228,6 +231,7 @@ export function InboxView({
           draftCounts={draftCounts}
           draftConversationIds={draftConversationIds}
           accounts={accounts}
+          members={members}
         />
       </div>
 
@@ -289,6 +293,9 @@ export function InboxView({
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
               channelProvider={selected ? providerByChannel[selected.channel_id] ?? null : null}
               accounts={accounts}
+              members={members}
+              currentUserId={currentUserId}
+              canAssignConversations={canAssignConversations}
               onBack={selected ? handleBack : undefined}
               onOpenContact={selected?.contact_id ? () => setContactSheetOpen(true) : undefined}
             />

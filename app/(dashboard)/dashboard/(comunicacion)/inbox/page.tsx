@@ -11,6 +11,7 @@ import {
   ASSIGNMENT_ANY,
   ASSIGNMENT_UNASSIGNED,
   ASSIGNMENT_AI,
+  ASSIGNMENT_MINE,
   statusForQuery,
   type InboxFilters,
   type InboxStatus,
@@ -179,10 +180,11 @@ export default async function InboxPage({
     // el criterio sigue valiendo, porque va a escribir por el mismo camino.
     query = query.is("assigned_to", null);
   } else if (assignment) {
-    query = query.or(
-      `setter_id.eq.${assignment},vendedor_id.eq.${assignment}`,
-      { referencedTable: "contacts" },
-    );
+    // Una persona: el chat a su cargo, o es setter o vendedor del contacto
+    // (campo calculado `conversation_people`, 00255). Antes miraba solo el
+    // contacto y un chat asignado directo no aparecia.
+    const personId = assignment === ASSIGNMENT_MINE ? user.id : assignment;
+    query = query.filter("conversation_people", "cs", `{${personId}}`);
   }
 
   const from = (page - 1) * PAGE_SIZE;
@@ -224,6 +226,8 @@ export default async function InboxPage({
   // Crear una tarea sobre la conversacion (Tareas, F20): con `tasks.edit`.
   const canCreateTask = permissionCtx.can("tasks.edit");
   const canViewAgentRuns = permissionCtx.can("agents.view");
+  // El responsable de cada conversación (00255): con `contacts.assign` se cambia; sin la clave, solo "Tomar".
+  const canAssignConversations = permissionCtx.can("contacts.assign");
 
   let conversations = toRows(conversationsRes.data);
 
@@ -312,6 +316,7 @@ export default async function InboxPage({
       canManageAssets={canManageAssets}
       canCreateTask={canCreateTask}
       canViewAgentRuns={canViewAgentRuns}
+      canAssignConversations={canAssignConversations}
       replyChannelIds={replyFilterFor(access.permissions)}
       filters={filters}
       dateRange={range}
@@ -333,7 +338,7 @@ export default async function InboxPage({
 /** Un id de la URL solo vale si es de alguien del equipo. */
 function resolveAssignment(raw: string, memberIds: string[]): string {
   if (!raw) return ASSIGNMENT_ANY;
-  if (raw === ASSIGNMENT_UNASSIGNED || raw === ASSIGNMENT_AI) return raw;
+  if (raw === ASSIGNMENT_UNASSIGNED || raw === ASSIGNMENT_AI || raw === ASSIGNMENT_MINE) return raw;
   return memberIds.includes(raw) ? raw : ASSIGNMENT_ANY;
 }
 

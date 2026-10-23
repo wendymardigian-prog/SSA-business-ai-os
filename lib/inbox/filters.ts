@@ -38,6 +38,8 @@ export const INBOX_STATUS_LABELS: Record<InboxStatus, string> = {
 export const ASSIGNMENT_ANY = "";
 export const ASSIGNMENT_UNASSIGNED = "sin-asignar";
 export const ASSIGNMENT_AI = "agente-ia";
+/** Las que me tocan: el chat a mi cargo, o soy setter o vendedor del contacto. */
+export const ASSIGNMENT_MINE = "mias";
 
 export interface InboxFilters {
   search: string;
@@ -52,7 +54,7 @@ export interface InboxFilters {
   channelIds: string[];
   /** Ids de tags; el contacto tiene que tener al menos uno. */
   tagIds: string[];
-  /** "", "sin-asignar", "agente-ia" o el id de un miembro. */
+  /** "", "sin-asignar", "agente-ia", "mias" o el id de un miembro. */
   assignment: string;
   datePreset: DatePreset | "";
   dateFrom: string;

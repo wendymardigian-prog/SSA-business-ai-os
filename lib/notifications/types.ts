@@ -43,6 +43,8 @@ export const NOTIFICATION_TYPES = [
   "email_quota_reached",
   /** El asistente no pudo interpretar un mensaje y derivó la conversación (F10). */
   "needs_human",
+  /** Te asignaron una conversación (a mano, por una regla o al marcar un conocido). Va SOLO a esa persona, nunca a quien la asignó. */
+  "conversation_assigned",
   // Llamadas (Fathom + analizador).
   /** Se cayó la conexión de Fathom de una persona: hay que reconectar. Va SOLO a esa persona. */
   "fathom_connection_error",
@@ -363,6 +365,7 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "eod_form",
   },
+  conversation_assigned: { type: "conversation_assigned", label: "Te asignaron una conversación", tone: "info", entity: "conversation" },
   task_assigned: { type: "task_assigned", label: "Te asignaron una tarea", tone: "info", entity: "task" },
   task_follow_added: { type: "task_follow_added", label: "Seguís una tarea", tone: "info", entity: "task" },
   task_changed: { type: "task_changed", label: "Cambió una tarea que seguís", tone: "info", entity: "task" },

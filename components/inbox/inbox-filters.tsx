@@ -9,6 +9,7 @@ import {
   DEFAULT_INBOX_STATUS,
   ASSIGNMENT_UNASSIGNED,
   ASSIGNMENT_AI,
+  ASSIGNMENT_MINE,
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
@@ -226,6 +227,7 @@ export function InboxFiltersMenu({
             className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">Todas</option>
+            <option value={ASSIGNMENT_MINE}>Asignadas a mí</option>
             <option value={ASSIGNMENT_UNASSIGNED}>Sin asignar</option>
             <option value={ASSIGNMENT_AI}>Agente IA</option>
             {members.map((m) => (

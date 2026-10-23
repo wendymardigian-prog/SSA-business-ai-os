@@ -1,0 +1,15 @@
+[
+  { "name": "fija: la primera de la lista", "mode": "fixed", "members": ["a", "b"], "active": ["a", "b"], "last": null, "expected": "a" },
+  { "name": "fija: si la primera ya no está, la siguiente", "mode": "fixed", "members": ["a", "b"], "active": ["b"], "last": null, "expected": "b" },
+  { "name": "fija: ignora el último turno", "mode": "fixed", "members": ["a", "b"], "active": ["a", "b"], "last": "a", "expected": "a" },
+  { "name": "fija sin nadie disponible: ninguna", "mode": "fixed", "members": ["a"], "active": ["z"], "last": null, "expected": null },
+  { "name": "lista vacía: ninguna", "mode": "round_robin", "members": [], "active": ["a"], "last": null, "expected": null },
+  { "name": "turnos sin historia: arranca por la primera", "mode": "round_robin", "members": ["a", "b", "c"], "active": ["a", "b", "c"], "last": null, "expected": "a" },
+  { "name": "turnos: la siguiente a la última", "mode": "round_robin", "members": ["a", "b", "c"], "active": ["a", "b", "c"], "last": "a", "expected": "b" },
+  { "name": "turnos: después de la última da la vuelta", "mode": "round_robin", "members": ["a", "b", "c"], "active": ["a", "b", "c"], "last": "c", "expected": "a" },
+  { "name": "turnos: saltea a quien ya no está en el equipo", "mode": "round_robin", "members": ["a", "b", "c"], "active": ["a", "c"], "last": "a", "expected": "c" },
+  { "name": "turnos: la última ya no está en la lista → arranca de la primera", "mode": "round_robin", "members": ["a", "b"], "active": ["a", "b"], "last": "z", "expected": "a" },
+  { "name": "turnos: la última se fue del equipo pero sigue en la lista → la que le sigue", "mode": "round_robin", "members": ["a", "b", "c"], "active": ["a", "c"], "last": "b", "expected": "c" },
+  { "name": "turnos con una sola persona: siempre esa", "mode": "round_robin", "members": ["a"], "active": ["a"], "last": "a", "expected": "a" },
+  { "name": "turnos sin nadie disponible: ninguna", "mode": "round_robin", "members": ["a", "b"], "active": [], "last": "a", "expected": null }
+]
