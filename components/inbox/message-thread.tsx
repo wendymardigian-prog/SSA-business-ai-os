@@ -27,6 +27,10 @@ import { ConversationAssignee } from "@/components/inbox/conversation-assignee";
 import { canUnmarkKnown, knownLabel } from "@/lib/inbox/known";
 import { assigneeName } from "@/lib/inbox/assignee";
 import { setKnown } from "@/lib/actions/contacts";
+import { prepareStickerSend, saveStickerFromMessage } from "@/lib/actions/stickers";
+import { stickerCapability } from "@/lib/channels/stickers";
+import { StickerPicker } from "@/components/inbox/sticker-picker";
+import { isStickerOnlyMessage } from "@/lib/inbox/media-render";
 import { ConversationMenu } from "@/components/inbox/conversation-menu";
 import { planHeaderActions } from "@/lib/inbox/header-actions";
 import { planComposerActions } from "@/lib/inbox/composer-actions";
@@ -135,6 +139,7 @@ function MessageBubble({
   const isInbound = message.direction === "inbound";
   const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
+  const stickerOnly = isStickerOnlyMessage(message, failed);
 
   return (
     <div
@@ -153,7 +158,10 @@ function MessageBubble({
         <div
           className={cn(
             "rounded-2xl px-4 py-2 text-sm",
-            isInbound
+            // Solo un sticker: sin globo, como en WhatsApp (00257).
+            stickerOnly
+              ? "bg-transparent px-0 py-0 text-foreground"
+              : isInbound
               ? "rounded-tl-md bg-muted text-foreground"
               : failed
               ? // Un envio rechazado no se pinta como un mensaje entregado: el
@@ -837,6 +845,46 @@ export function MessageThread({
   }
 
   /**
+   * Manda un sticker de la biblioteca (00257): el servidor lo copia a la
+   * conversacion (nunca se manda el de la biblioteca) y despues va por la ruta
+   * de siempre, como cualquier adjunto. Sin texto: un sticker va solo.
+   */
+  async function sendStickerFromLibrary(stickerId: string) {
+    if (!conversation || sending) return;
+    setSending(true);
+    setMediaError(null);
+    try {
+      const prepared = await prepareStickerSend({ conversationId: conversation.id, stickerId });
+      if (!prepared.ok) {
+        setMediaError(prepared.error);
+        return;
+      }
+      const res = await fetch("/api/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conversation.id,
+          media: { storagePath: prepared.storagePath, kind: "sticker", mime: "image/webp" },
+          stickerId,
+        }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        setMediaError(errorData.error || `No se pudo enviar (${res.status})`);
+        return;
+      }
+      const confirmedMessage: Message = await res.json();
+      setMessages((prev) => [...prev, confirmedMessage]);
+      if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
+    } catch (err) {
+      console.error("Failed to send sticker:", err);
+      setMediaError("No se pudo enviar el sticker. Probá de nuevo.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /**
    * Manda un recurso con archivo ya copiado a la conversacion
    * (prepareAssetSend). Analogo a sendMediaFile, pero sin pasos de subida: la
    * copia server-side (lib/response-assets/send-copy.ts) ya dejo el archivo
@@ -1301,6 +1349,15 @@ export function MessageThread({
                 }}
               />
               <EmojiButton onPick={insertEmoji} focusRef={textareaRef} />
+              {/* Stickers (00257): solo en un canal que los admite (hoy, WhatsApp). */}
+              {stickerCapability(channelProvider).supported && (
+                <StickerPicker
+                  onPick={(stickerId) => void sendStickerFromLibrary(stickerId)}
+                  canDelete={canManageAssets}
+                  disabled={sending || !!attachedFile || recording || !!conversation.contacts?.do_not_contact}
+                  disabledReason={conversation.contacts?.do_not_contact ? "El contacto está marcado como «no contactar»." : null}
+                />
+              )}
               {composerPlan.hasMoreMenu && (
                 <ComposerMoreMenu
                   showLibrary={composerPlan.showLibrary}
@@ -1440,6 +1497,7 @@ export function MessageThread({
  * del reproductor.
  */
 function MessageAttachments({ message }: { message: Message }) {
+  const isInboundSticker = message.direction === "inbound";
   const items = parseAttachments(message.attachments);
   const [retrying, setRetrying] = useState(false);
 
@@ -1460,7 +1518,17 @@ function MessageAttachments({ message }: { message: Message }) {
   return (
     <div className="space-y-1">
       {items.map((item, index) => (
-        <MediaAttachment key={`${message.id}-${index}`} item={item} onRetry={retryDownload} />
+        <MediaAttachment
+          key={`${message.id}-${index}`}
+          item={item}
+          onRetry={retryDownload}
+          onSaveSticker={
+            // Uno recibido se guarda con un boton; los que se mandan entran solos (00257).
+            isInboundSticker && item.kind === "sticker" && item.storagePath
+              ? () => saveStickerFromMessage({ messageId: message.id, storagePath: item.storagePath! })
+              : undefined
+          }
+        />
       ))}
       <TranscriptBlock messageId={message.id} message={message} />
     </div>

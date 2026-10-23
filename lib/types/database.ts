@@ -4268,6 +4268,50 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Biblioteca de stickers de WhatsApp (00257). Escribe solo el servidor. */
+      stickers: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          storage_path: string;
+          sha256: string;
+          mime_type: string;
+          is_animated: boolean;
+          size_bytes: number | null;
+          source: "uploaded" | "sent" | "saved";
+          is_favorite: boolean;
+          use_count: number;
+          last_used_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          storage_path: string;
+          sha256: string;
+          mime_type?: string;
+          is_animated?: boolean;
+          size_bytes?: number | null;
+          source: "uploaded" | "sent" | "saved";
+          is_favorite?: boolean;
+          use_count?: number;
+          last_used_at?: string | null;
+          created_by?: string | null;
+          deleted_at?: string | null;
+        };
+        Update: {
+          is_favorite?: boolean;
+          use_count?: number;
+          last_used_at?: string | null;
+          deleted_at?: string | null;
+          source?: "uploaded" | "sent" | "saved";
+        };
+        Relationships: [];
+      };
+
       /** Reglas de asignacion de conversaciones por cuenta (00255). Escribe solo el servidor. */
       conversation_assignment_rules: {
         Row: {

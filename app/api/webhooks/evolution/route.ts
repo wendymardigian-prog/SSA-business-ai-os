@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { collectSentSticker } from "@/lib/stickers/library";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { touchAccountOf } from "@/lib/inbox/accounts";
 import { refreshWhatsappIdentity } from "@/lib/whatsapp-identity";
@@ -394,6 +395,17 @@ async function processMessage(
       // descripcion de la imagen (F7, F8). Va ANTES de agendar el turno del
       // agente: asi el turno arranca con la transcripcion ya hecha.
       await afterMediaStored({ supabase, messageId: inserted.id, items: media.items });
+
+      // Un sticker que mandamos nosotros (desde el celular o desde aca) entra
+      // solo a la biblioteca (00257): WhatsApp no deja leer los guardados en el
+      // telefono, asi que la biblioteca se arma con el uso. Nunca lanza.
+      if (fromMe) {
+        for (const item of media.items) {
+          if (item.kind === "sticker" && item.storagePath) {
+            await collectSentSticker(supabase, { workspaceId: channel.workspace_id, storagePath: item.storagePath });
+          }
+        }
+      }
     } else {
       console.error("[evolution] sin configuracion o sin instancia: no puedo traer la media");
     }

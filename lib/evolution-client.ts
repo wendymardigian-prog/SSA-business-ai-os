@@ -705,6 +705,35 @@ export async function sendMedia(
   return { id: raw?.key?.id ?? raw?.messageId ?? null };
 }
 
+/**
+ * Manda un sticker (`POST /message/sendSticker/{instancia}`, Evolution v2).
+ *
+ * `sticker` es una URL o base64; Evolution lo pasa por sharp a webp (animado si
+ * el webp ya lo es). Le mandamos el webp de 512 x 512 que ya dejamos listo
+ * (lib/stickers/normalize.ts), asi lo que se vio en la biblioteca es lo que
+ * llega. Verificado contra el codigo de la 2.3.7 (`mediaSticker`).
+ */
+export async function sendSticker(
+  config: EvolutionConfig,
+  instanceName: string,
+  to: string,
+  sticker: string,
+): Promise<SentMessage> {
+  const number = toEvolutionNumber(to);
+  if (!number) {
+    throw new EvolutionError(`Numero de WhatsApp invalido: "${to}"`);
+  }
+
+  const raw = await request<{ key?: { id?: string }; messageId?: string }>(
+    config,
+    "POST",
+    `/message/sendSticker/${encodeURIComponent(instanceName)}`,
+    { number, sticker },
+  );
+
+  return { id: raw?.key?.id ?? raw?.messageId ?? null };
+}
+
 // ── Avatares ─────────────────────────────────────────────────────────────────
 
 /**
