@@ -66,6 +66,8 @@ export interface InboxFilters {
    * Es distinto de agentError: ahi el agente fallo, aca decidio no responder.
    */
   needsHuman: boolean;
+  /** Esconde los chats de conocidos (00256). Opcional: los links viejos no lo traen. */
+  hideKnown?: boolean;
 }
 
 export const EMPTY_INBOX_FILTERS: InboxFilters = {
@@ -80,7 +82,12 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   dateTo: "",
   agentError: false,
   needsHuman: false,
+  hideKnown: false,
 };
+
+/** El parametro de la URL: `?conocidos=ocultar`. */
+export const HIDE_KNOWN_PARAM = "conocidos";
+export const HIDE_KNOWN_VALUE = "ocultar";
 
 /**
  * Cuantos filtros hay puestos, para el contador del boton.
@@ -101,6 +108,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.datePreset) count++;
   if (filters.agentError) count++;
   if (filters.needsHuman) count++;
+  if (filters.hideKnown) count++;
   return count;
 }
 
@@ -113,7 +121,7 @@ export function countActiveFilters(filters: InboxFilters): number {
  * el cliente y hay que volver a preguntarle al servidor.
  */
 export function needsServerToFilter(filters: InboxFilters): boolean {
-  return filters.tagIds.length > 0 || filters.assignment !== ASSIGNMENT_ANY;
+  return filters.tagIds.length > 0 || filters.assignment !== ASSIGNMENT_ANY || !!filters.hideKnown;
 }
 
 export interface FilterableRow {

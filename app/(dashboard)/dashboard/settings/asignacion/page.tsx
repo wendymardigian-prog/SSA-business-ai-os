@@ -11,6 +11,8 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { ConversationRulesView } from "@/components/inbox/assignment/conversation-rules-view";
 import { orderRules, ruleFromRow } from "@/lib/inbox/assignment-rules";
 import { buildAccounts } from "@/lib/inbox/accounts";
+import { KnownAssignmentView } from "@/components/inbox/assignment/known-assignment-view";
+import { parseKnownSettings } from "@/lib/inbox/known";
 
 /**
  * Ajustes -> Reglas de asignación: quién queda como responsable de cada
@@ -74,6 +76,19 @@ export default async function AsignacionSettingsPage() {
           </p>
         </div>
         <ConversationRulesView rules={conversationRules} accounts={ruleAccounts} members={memberOptions} />
+
+        <div className="border-t border-border pt-6">
+          <h2 className="text-base font-semibold">Conocidos</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Cuando alguien se marca como conocido, sus chats van a la persona de la cuenta por la que escribe (antes que las reglas de arriba).
+          </p>
+        </div>
+        <KnownAssignmentView
+          settings={parseKnownSettings(workspace.known_contacts_settings)}
+          accounts={ruleAccounts}
+          members={memberOptions}
+          ownerName={members.find((m) => m.role === "owner")?.name ?? null}
+        />
 
         <div className="border-t border-border pt-6">
           <h2 id="asignacion-title" className="text-base font-semibold">

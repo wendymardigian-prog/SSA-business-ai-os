@@ -5,6 +5,7 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { checkRuleInput, type RuleInput } from "@/lib/inbox/assignment-rules";
+import { checkKnownSettings, serializeKnownSettings } from "@/lib/inbox/known";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import type { Json } from "@/lib/types/database";
 
@@ -214,6 +215,41 @@ export async function reorderConversationRules(ids: string[]): Promise<Result> {
       return { ok: false, error: "No pude guardar el orden. Probá de nuevo." };
     }
   }
+  revalidatePath(SETTINGS_PATH);
+  return { ok: true };
+}
+
+/**
+ * A quien van los chats de un conocido, por cuenta (00256): una persona por
+ * cuenta y una por defecto; sin nada, el Owner. `workspaces` sigue siendo de
+ * Admin en la base: se escribe con el cliente de servicio DESPUES de la clave,
+ * filtrando por el workspace de la sesion.
+ */
+export async function saveKnownContactsSettings(input: { byChannel?: unknown; defaultUserId?: unknown }): Promise<Result> {
+  const ctx = await getPermissionAction("assignment.manage");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED };
+  const { service, memberIds, channelIds } = await knownIds(ctx.workspace.id);
+  const checked = checkKnownSettings(input ?? {}, { memberIds, channelIds });
+  if (!checked.ok) return checked;
+
+  const { data: before } = await service.from("workspaces").select("known_contacts_settings").eq("id", ctx.workspace.id).maybeSingle();
+  const next = serializeKnownSettings(checked.value);
+  const { error } = await service.from("workspaces").update({ known_contacts_settings: next as unknown as Json }).eq("id", ctx.workspace.id);
+  if (error) {
+    console.error("[conocidos] no pude guardar:", error.message);
+    return { ok: false, error: "No pude guardar. Probá de nuevo." };
+  }
+
+  await logAudit({
+    supabase: service,
+    workspaceId: ctx.workspace.id,
+    entityType: "workspace",
+    entityId: ctx.workspace.id,
+    action: "update",
+    changes: { known_contacts_settings: { old: (before?.known_contacts_settings ?? {}) as Json, new: next as unknown as Json } },
+    metadata: { section: "known_contacts_settings" },
+    performedBy: ctx.user.id,
+  });
   revalidatePath(SETTINGS_PATH);
   return { ok: true };
 }

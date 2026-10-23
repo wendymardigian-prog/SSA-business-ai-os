@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Sparkles } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Sparkles, HeartHandshake } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +24,9 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { CreateTaskButton } from "@/components/tasks/create-task-button";
 import { ConversationAssignee } from "@/components/inbox/conversation-assignee";
+import { canUnmarkKnown, knownLabel } from "@/lib/inbox/known";
+import { assigneeName } from "@/lib/inbox/assignee";
+import { setKnown } from "@/lib/actions/contacts";
 import { ConversationMenu } from "@/components/inbox/conversation-menu";
 import { planHeaderActions } from "@/lib/inbox/header-actions";
 import { planComposerActions } from "@/lib/inbox/composer-actions";
@@ -282,6 +285,8 @@ export function MessageThread({
   members = [],
   currentUserId = "",
   canAssignConversations = false,
+  canEditContacts = false,
+  canDeleteContacts = false,
   onBack,
   onOpenContact,
 }: {
@@ -313,6 +318,10 @@ export function MessageThread({
   currentUserId?: string;
   /** `contacts.assign`: cambia el responsable; sin la clave, solo "Tomar". */
   canAssignConversations?: boolean;
+  /** `contacts.edit`: puede marcar "Conocido". */
+  canEditContacts?: boolean;
+  /** `contacts.delete`: puede quitar la marca de conocido aunque no la haya puesto. */
+  canDeleteContacts?: boolean;
   /** Telefono (Bloque 2d): el hilo ocupa la pantalla y se vuelve a la lista. */
   onBack?: () => void;
   /** Telefono (Bloque 2d): abre los datos del contacto como hoja. */
@@ -939,7 +948,29 @@ export function MessageThread({
     isAutomationPaused: !!conversation.is_automation_paused,
     agentDisabledByTag: !!conversation.agent_disabled_by_tag_id,
     draftMode: !!(agentInfo?.available && agentInfo.mode === "draft"),
+    known: conversation.contact_id
+      ? {
+          isKnown: !!conversation.contacts?.is_known,
+          canMark: canEditContacts,
+          canUnmark: canEditContacts && canUnmarkKnown({ viewerId: currentUserId, markedBy: conversation.contacts?.known_marked_by ?? null, canDeleteContacts }),
+        }
+      : undefined,
   });
+
+  async function toggleKnown(value: boolean) {
+    if (!conversation?.contact_id) return;
+    setStatusUpdating(value ? "known" : "unknown");
+    try {
+      const result = await setKnown(conversation.contact_id, value);
+      if (!result.ok) {
+        setMediaError(result.error);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setStatusUpdating(null);
+    }
+  }
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -985,6 +1016,13 @@ export function MessageThread({
                 title={conversation.contacts.do_not_contact_reason ?? undefined}
               >
                 No contactar
+              </p>
+            )}
+            {/* Conocido (00256): quien lo abrio igual sabe que es personal. */}
+            {conversation.contacts?.is_known && (
+              <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
+                <HeartHandshake className="h-3 w-3" aria-hidden />
+                {knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}
               </p>
             )}
           </div>
@@ -1069,6 +1107,8 @@ export function MessageThread({
             onAction={(action) => {
               if (action === "snooze") void updateConversationStatus("snoozed");
               else if (action === "reopen") void updateConversationStatus("open");
+              else if (action === "markKnown") void toggleKnown(true);
+              else if (action === "unmarkKnown") void toggleKnown(false);
               else setTaskOpen(true);
             }}
           />

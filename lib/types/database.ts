@@ -492,6 +492,8 @@ export type AuditAction =
   | "link"
   | "import"
   | "do_not_contact"
+  /** Se marco o se quito un conocido (00256). Lo escribe el trigger contacts_known_effects. */
+  | "known"
   /** Un evento del CRM disparo un flow (Fase 2, F3/F4). */
   | "automation_triggered"
   /** Se inscribio un contacto en una secuencia (Fase 2, F13/F15). */
@@ -1116,6 +1118,8 @@ export interface Database {
           finance_settings: Json;
           /** Pipeline de contactos (00245): las listas de estados de setter y de vendedor. */
           contact_status_settings: Json;
+          /** A quien van los chats de un conocido, por cuenta (00256). */
+          known_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */
           max_discount_percent: number | null;
           overdue_grace_days: number;
@@ -1161,6 +1165,8 @@ export interface Database {
           payment_methods?: Json;
           finance_settings?: Json;
           contact_status_settings?: Json;
+          /** A quien van los chats de un conocido, por cuenta (00256). */
+          known_contacts_settings?: Json;
           max_discount_percent?: number | null;
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
@@ -1202,6 +1208,8 @@ export interface Database {
           payment_methods?: Json;
           finance_settings?: Json;
           contact_status_settings?: Json;
+          /** A quien van los chats de un conocido, por cuenta (00256). */
+          known_contacts_settings?: Json;
           max_discount_percent?: number | null;
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
@@ -1475,6 +1483,10 @@ export interface Database {
           do_not_contact: boolean;
           do_not_contact_reason: string | null;
           do_not_contact_at: string | null;
+          /** Conocido (00256). */
+          is_known: boolean;
+          known_marked_by: string | null;
+          known_marked_at: string | null;
           /** Zona IANA del contacto (Etapa 4, 00095). La aprende la agenda y la confirma el agente. */
           timezone: string | null;
           ai_conversation_summary: string | null;
@@ -1540,6 +1552,10 @@ export interface Database {
           do_not_contact?: boolean;
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
+          /** Conocido (00256). */
+          is_known?: boolean;
+          known_marked_by?: string | null;
+          known_marked_at?: string | null;
           timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
@@ -1581,6 +1597,10 @@ export interface Database {
           do_not_contact?: boolean;
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
+          /** Conocido (00256). */
+          is_known?: boolean;
+          known_marked_by?: string | null;
+          known_marked_at?: string | null;
           timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
@@ -2056,6 +2076,8 @@ export interface Database {
           needs_human: boolean;
           needs_human_reason: string | null;
           needs_human_at: string | null;
+          /** El agente lo apago la marca de conocido (00256). */
+          agent_disabled_by_known: boolean;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
@@ -2082,6 +2104,8 @@ export interface Database {
           needs_human?: boolean;
           needs_human_reason?: string | null;
           needs_human_at?: string | null;
+          /** El agente lo apago la marca de conocido (00256). */
+          agent_disabled_by_known?: boolean;
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -2092,6 +2116,8 @@ export interface Database {
           needs_human?: boolean;
           needs_human_reason?: string | null;
           needs_human_at?: string | null;
+          /** El agente lo apago la marca de conocido (00256). */
+          agent_disabled_by_known?: boolean;
           late_conversation_id?: string | null;
           status?: ConversationStatus;
           assigned_to?: string | null;

@@ -347,7 +347,7 @@ export async function enrollContact(
   // ademas da un mensaje claro en vez de un error de base.
   const { data: contact } = await supabase
     .from("contacts")
-    .select("id, do_not_contact")
+    .select("id, do_not_contact, is_known")
     .eq("id", contactId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
@@ -359,6 +359,9 @@ export async function enrollContact(
       ok: false,
       error: "El contacto está marcado como «no contactar». Sacale la marca antes de inscribirlo.",
     };
+  }
+  if (contact.is_known) {
+    return { ok: false, error: "El contacto está marcado como conocido. Sacale la marca antes de inscribirlo." };
   }
 
   const collision = await detectSequenceCollision(supabase, {
@@ -589,6 +592,7 @@ export async function searchContactsForEnrollment(query: string): Promise<
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
     .eq("do_not_contact", false)
+    .eq("is_known", false)
     .or(`display_name.ilike.%${escaped}%,email.ilike.%${escaped}%`)
     .limit(10);
 
@@ -653,6 +657,12 @@ export async function resumeEnrollment(enrollmentId: string): Promise<SequenceAc
       ok: false,
       error: "El contacto pidió no ser contactado. Para reanudarla hay que sacarle la marca e inscribirlo de nuevo.",
     };
+  }
+  if (enrollment.paused_reason === "known") {
+    const { data: contact } = await supabase.from("contacts").select("is_known").eq("id", enrollment.contact_id).maybeSingle();
+    if (contact?.is_known) {
+      return { ok: false, error: "El contacto sigue marcado como conocido. Sacale la marca antes de reanudarla." };
+    }
   }
   if (sequence.status !== "active") {
     return {

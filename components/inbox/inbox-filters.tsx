@@ -10,6 +10,8 @@ import {
   ASSIGNMENT_UNASSIGNED,
   ASSIGNMENT_AI,
   ASSIGNMENT_MINE,
+  HIDE_KNOWN_PARAM,
+  HIDE_KNOWN_VALUE,
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
@@ -215,6 +217,17 @@ export function InboxFiltersMenu({
               onClick={() => setParam(NEEDS_HUMAN_PARAM, filters.needsHuman ? "" : "1")}
             >
               Necesita humano
+            </Chip>
+          </div>
+        </FilterGroup>
+
+        <FilterGroup label="Conocidos">
+          <div className="flex flex-wrap gap-1.5">
+            <Chip
+              active={!!filters.hideKnown}
+              onClick={() => setParam(HIDE_KNOWN_PARAM, filters.hideKnown ? "" : HIDE_KNOWN_VALUE)}
+            >
+              Ocultar conocidos
             </Chip>
           </div>
         </FilterGroup>

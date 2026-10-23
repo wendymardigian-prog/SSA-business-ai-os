@@ -15,6 +15,8 @@ import type { Json } from "@/lib/types/database";
 import { BULK_TAG_LIMIT } from "@/lib/tags/effects";
 import { mergeErrorMessage, mergeNotes, summarizeMerge } from "@/lib/contacts/merge";
 import { CUSTOM_VALUE_ERROR_MESSAGES, normalizeCustomValue } from "@/lib/custom-fields";
+import { canUnmarkKnown } from "@/lib/inbox/known";
+import { notifyConversationAssigned } from "@/lib/conversations/assignment";
 
 /**
  * Server Actions de contactos.
@@ -271,19 +273,93 @@ export async function setDoNotContact(
 }
 
 /**
+ * Marca o quita "Conocido" (00256). La base hace el resto en el mismo UPDATE
+ * (trigger `contacts_known_effects`): asigna sus chats a la persona de cada
+ * cuenta, apaga el agente y deja el historial. Aca: el permiso, las secuencias
+ * y el aviso a quien recibe los chats.
+ *
+ * Marcar pide `contacts.edit`; quitar, haberla puesto o `contacts.delete`.
+ */
+export async function setKnown(contactId: string, value: boolean): Promise<ContactActionResult> {
+  if (typeof contactId !== "string" || typeof value !== "boolean") return { ok: false, error: "Pedido inválido." };
+  const ctx = await getPermissionAction("contacts.edit");
+  if (!ctx) return { ok: false, error: "No tenés permiso para editar contactos" };
+  const { workspace, supabase, user } = ctx;
+
+  // Con el cliente del usuario: si la RLS no le deja ver el contacto, no lo toca.
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("id, is_known, known_marked_by")
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!contact) return { ok: false, error: "No encontré ese contacto" };
+  if (contact.is_known === value) return { ok: true, contactId };
+  if (!value && !canUnmarkKnown({ viewerId: user.id, markedBy: contact.known_marked_by, canDeleteContacts: ctx.can("contacts.delete") })) {
+    return { ok: false, error: "Solo quien lo marcó (o un administrador) puede quitar la marca de conocido" };
+  }
+
+  const service = await createServiceClient();
+  const { data: before } = await service.from("conversations").select("id, assigned_to").eq("contact_id", contactId).is("deleted_at", null);
+
+  const { data: updated, error } = await supabase
+    .from("contacts")
+    .update({
+      is_known: value,
+      known_marked_by: value ? user.id : null,
+      known_marked_at: value ? new Date().toISOString() : null,
+    })
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .select("id");
+  if (error || !updated?.length) {
+    console.error("[contacts] no pude cambiar la marca de conocido:", error?.message ?? "sin filas");
+    return { ok: false, error: "No pude cambiar la marca. Probá de nuevo." };
+  }
+
+  if (value) {
+    await pauseSequencesForOptOut(workspace.id, contactId, user.id, "known");
+    // El aviso a quien recibe cada chat (el trigger ya lo asigno).
+    const previous = new Map((before ?? []).map((c) => [c.id, c.assigned_to]));
+    const { data: after } = await service.from("conversations").select("id, assigned_to").eq("contact_id", contactId).is("deleted_at", null);
+    for (const conversation of after ?? []) {
+      if (conversation.assigned_to && conversation.assigned_to !== previous.get(conversation.id)) {
+        await notifyConversationAssigned(service, {
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          assigneeId: conversation.assigned_to,
+          actorId: user.id,
+          reason: "Es un conocido: te llega a vos por la cuenta por la que escribe.",
+        });
+      }
+    }
+  }
+
+  revalidatePath("/dashboard/inbox");
+  revalidatePath(`/dashboard/contacts/${contactId}`);
+  return { ok: true, contactId };
+}
+
+/**
  * Pausa las inscripciones activas del contacto con motivo opt_out (el mismo
  * que usa la deteccion automatica; resumeEnrollment no deja reanudarlas).
  * Service role: sequence_enrollments es de Owner/Admin por RLS y una persona
  * que marca a su lead igual tiene que poder frenarle los drips. El contacto ya
  * paso por la RLS en applyPatch, asi que es de su scope.
  */
-async function pauseSequencesForOptOut(workspaceId: string, contactId: string, userId: string): Promise<void> {
+async function pauseSequencesForOptOut(
+  workspaceId: string,
+  contactId: string,
+  userId: string,
+  reason: "opt_out" | "known" = "opt_out",
+): Promise<void> {
   try {
     const service = await createServiceClient();
     const now = new Date().toISOString();
     const { data, error } = await service
       .from("sequence_enrollments")
-      .update({ status: "paused", paused_reason: "opt_out", paused_at: now, locked_at: null })
+      .update({ status: "paused", paused_reason: reason, paused_at: now, locked_at: null })
       .eq("contact_id", contactId)
       .eq("status", "active")
       .select("id");
@@ -299,7 +375,7 @@ async function pauseSequencesForOptOut(workspaceId: string, contactId: string, u
       entityType: "contact",
       entityId: contactId,
       action: "sequence_paused",
-      metadata: { source: "manual", reason: "opt_out", enrollment_ids: ids, count: ids.length, sequences_paused: ids.length },
+      metadata: { source: "manual", reason, enrollment_ids: ids, count: ids.length, sequences_paused: ids.length },
       performedBy: userId,
     });
   } catch (err) {

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, ChevronLeft, ChevronRight, FileText, UserRoundSearch } from "lucide-react";
+import { MessageSquare, Ban, ChevronLeft, ChevronRight, FileText, HeartHandshake, UserRoundSearch } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import { assigneeName } from "@/lib/inbox/assignee";
+import { knownLabel } from "@/lib/inbox/known";
 import { colorOf, initialsOf } from "@/lib/tasks/people";
 import { Avatar } from "@/components/ui/filter-menu";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
@@ -268,6 +269,15 @@ export function ConversationList({
                         className="h-3.5 w-3.5 flex-shrink-0 text-red-600 dark:text-red-400"
                         aria-label="No contactar"
                       />
+                    )}
+                    {/* Conocido (00256): que el equipo lo reconozca sin abrirlo. */}
+                    {conversation.contacts?.is_known && (
+                      <HeartHandshake
+                        className="h-3.5 w-3.5 flex-shrink-0 text-violet-600 dark:text-violet-400"
+                        aria-label={knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}
+                      >
+                        <title>{knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}</title>
+                      </HeartHandshake>
                     )}
                   </p>
                   <span className="flex flex-shrink-0 items-center gap-1.5">

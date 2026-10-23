@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, type ReactNode } from "react";
 import Link from "next/link";
-import { X, Mail, Phone, Brain, Loader2, ShieldOff, ExternalLink } from "lucide-react";
+import { X, Mail, Phone, Brain, Loader2, ShieldOff, ExternalLink, HeartHandshake } from "lucide-react";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { ContactTasks } from "@/components/tasks/contact-tasks";
 import { ContactTasksLoader } from "@/components/tasks/contact-tasks-loader";
@@ -21,7 +21,8 @@ import { NotesSection } from "@/components/contacts/notes-section";
 import { TagsEditor, type TagOption } from "@/components/contacts/tags-editor";
 import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { TemperatureBadge, ActionError } from "@/components/contacts/ui";
-import { setDoNotContact, updateContact } from "@/lib/actions/contacts";
+import { setDoNotContact, setKnown, updateContact } from "@/lib/actions/contacts";
+import { canUnmarkKnown, knownLabel } from "@/lib/inbox/known";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
 import { getDmLink, platformHandles } from "@/lib/contacts/links";
@@ -257,6 +258,8 @@ export function ContactPanel({
 
           <Activity contact={details.contact} />
 
+          <KnownSection contact={details.contact} currentUserId={currentUserId} isAdmin={isAdmin} members={members} onSaved={reload} />
+
           <DoNotContact contact={details.contact} isAdmin={isAdmin} onSaved={reload} />
         </div>
         </ContactTasksLoader>
@@ -307,6 +310,11 @@ function Identity({ details }: { details: ContactDetails }) {
         {c.do_not_contact && (
           <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300">
             No contactar
+          </span>
+        )}
+        {c.is_known && (
+          <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+            Conocido
           </span>
         )}
       </div>
@@ -454,6 +462,85 @@ function Activity({ contact }: { contact: Contact }) {
         )}
       </dl>
     </PanelSection>
+  );
+}
+
+/**
+ * Conocido (00256): una marca propia del contacto. Marcar lo hace cualquiera que
+ * edite contactos; quitarla, quien la puso o un administrador (el servidor lo
+ * repite en `setKnown`).
+ */
+function KnownSection({
+  contact,
+  currentUserId,
+  isAdmin,
+  members,
+  onSaved,
+}: {
+  contact: Contact;
+  currentUserId: string;
+  isAdmin: boolean;
+  members: { userId: string; label: string }[];
+  onSaved: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const marked = contact.is_known;
+  const byName = members.find((m) => m.userId === contact.known_marked_by)?.label ?? null;
+  const canUnmark = canUnmarkKnown({ viewerId: currentUserId, markedBy: contact.known_marked_by, canDeleteContacts: isAdmin });
+
+  function apply(next: boolean) {
+    start(async () => {
+      const result = await setKnown(contact.id, next);
+      if (!result.ok) return setError(result.error);
+      setError(null);
+      onSaved();
+    });
+  }
+
+  return (
+    <section className="mt-6 space-y-2 border-t border-border p-4">
+      <h4 className="flex items-center gap-1.5 text-xs font-medium uppercase text-violet-700 dark:text-violet-300">
+        <HeartHandshake className="h-3 w-3" aria-hidden />
+        Conocido
+      </h4>
+      {marked ? (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {knownLabel(byName)}
+            {contact.known_marked_at ? `, desde el ${formatDate(contact.known_marked_at)}` : ""}. El agente no le responde y sus secuencias están pausadas.
+          </p>
+          {canUnmark ? (
+            <button
+              type="button"
+              onClick={() => apply(false)}
+              disabled={pending}
+              className="rounded-lg border border-input px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-50"
+            >
+              Quitar la marca
+            </button>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">Solo quien lo marcó o un administrador puede quitar la marca.</p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Para alguien personal: el equipo lo ve con un ícono y no lo abre, el agente no le responde y sus chats van a la persona de cada cuenta.
+          </p>
+          <button
+            type="button"
+            onClick={() => apply(true)}
+            disabled={pending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-900 dark:text-violet-300 dark:hover:bg-violet-950/40"
+          >
+            {pending && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
+            Marcar como conocido
+          </button>
+        </>
+      )}
+      <ActionError message={error} />
+    </section>
   );
 }
 

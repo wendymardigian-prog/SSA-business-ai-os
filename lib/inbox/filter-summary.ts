@@ -119,6 +119,7 @@ export function describeInboxFilters(filters: InboxFilters, catalog: FilterSumma
 
   if (filters.agentError) parts.push("Con error del agente");
   if (filters.needsHuman) parts.push("Necesita humano");
+  if (filters.hideKnown) parts.push("Sin conocidos");
 
   return parts;
 }

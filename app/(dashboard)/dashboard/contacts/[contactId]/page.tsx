@@ -16,6 +16,7 @@ import { getDmLink, platformHandles } from "@/lib/contacts/links";
 
 import {
   DoNotContactBadge,
+  KnownBadge,
   EmptyHint,
   Section,
   TemperatureBadge,
@@ -442,6 +443,7 @@ export default async function ContactDetailPage({
                 />
                 <TemperatureBadge value={temperature} />
                 {contact.do_not_contact && <DoNotContactBadge />}
+                {contact.is_known && <KnownBadge />}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">

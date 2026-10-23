@@ -30,6 +30,9 @@ export interface InboxContact {
    * practicamente perdida.
    */
   last_interaction_at: string | null;
+  /** Conocido (00256): alguien personal. La lista lo marca y abrirlo pide confirmar. */
+  is_known?: boolean;
+  known_marked_by?: string | null;
 }
 
 export type ConversationRow = Database["public"]["Tables"]["conversations"]["Row"] & {

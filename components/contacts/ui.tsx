@@ -73,6 +73,15 @@ export function DoNotContactBadge() {
   );
 }
 
+/** Conocido (00256): alguien personal, no un lead. */
+export function KnownBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-300">
+      Conocido
+    </span>
+  );
+}
+
 export function TagChip({ name, color }: { name: string; color?: string | null }) {
   return (
     <span

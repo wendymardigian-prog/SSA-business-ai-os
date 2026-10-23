@@ -7,7 +7,7 @@ import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, Slider
 
 import { cn } from "@/lib/utils";
 import {
-  DoNotContactBadge,
+  DoNotContactBadge, KnownBadge,
   TagChip,
   TemperatureBadge,
   formatRelative,
@@ -52,6 +52,8 @@ export interface ContactRow {
   lastInteractionAt: string | null;
   temperature: LeadTemperature | null;
   doNotContact: boolean;
+  /** Conocido (00256). */
+  isKnown?: boolean;
   setterId: string | null;
   vendedorId: string | null;
   tags: { id: string; name: string; color: string | null }[];
@@ -452,6 +454,7 @@ export function ContactsView({
                         </span>
                         <TemperatureBadge value={contact.temperature} />
                         {contact.doNotContact && <DoNotContactBadge />}
+                        {contact.isKnown && <KnownBadge />}
                       </span>
                     </Link>
                   </td>
