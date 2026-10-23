@@ -81,16 +81,16 @@ describe("draftAlertText", () => {
   it("habla en plural y en singular", () => {
     const muchos = draftAlertText({ pendingNow: 5, pendingUnder6h: 2, missedLast7d: 2 });
     expect(muchos.headline).toBe("5 respuestas del agente esperando aprobación");
-    expect(muchos.detail).toBe("2 con menos de 6 h de ventana · 2 ventanas perdidas en los últimos 7 días");
+    expect(muchos.detail).toBe("2 con menos de 6 h de ventana · 2 vencieron sin enviarse en los últimos 7 días");
 
     const uno = draftAlertText({ pendingNow: 1, pendingUnder6h: 1, missedLast7d: 1 });
     expect(uno.headline).toBe("1 respuesta del agente esperando aprobación");
-    expect(uno.detail).toBe("1 con menos de 6 h de ventana · 1 ventana perdida en los últimos 7 días");
+    expect(uno.detail).toBe("1 con menos de 6 h de ventana · 1 venció sin enviarse en los últimos 7 días");
   });
 
   it("sin nada por vencer no lo menciona", () => {
     expect(draftAlertText({ pendingNow: 3, pendingUnder6h: 0, missedLast7d: 0 }).detail).toBe(
-      "0 ventanas perdidas en los últimos 7 días",
+      "0 vencieron sin enviarse en los últimos 7 días",
     );
   });
 });

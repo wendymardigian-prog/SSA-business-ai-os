@@ -17,6 +17,7 @@ import {
 } from "@/lib/inbox/filters";
 import { countMenuFilters, describeInboxFilters, type FilterSummaryCatalog } from "@/lib/inbox/filter-summary";
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
+import { AWAITING_FILTER_LABELS, AWAITING_FILTER_VALUES, AWAITING_PARAM } from "@/lib/inbox/awaiting";
 import { cn } from "@/lib/utils";
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -199,6 +200,22 @@ export function InboxFiltersMenu({
               ))}
             </div>
           )}
+        </FilterGroup>
+
+        {/* 00259: el mismo criterio que la tarjeta "Esperando respuesta ahora"
+            del dashboard. Se elige una de las dos o ninguna. */}
+        <FilterGroup label="Respuesta">
+          <div className="flex flex-wrap gap-1.5">
+            {AWAITING_FILTER_VALUES.map((value) => (
+              <Chip
+                key={value}
+                active={filters.awaiting === value}
+                onClick={() => setParam(AWAITING_PARAM, filters.awaiting === value ? "" : value)}
+              >
+                {AWAITING_FILTER_LABELS[value]}
+              </Chip>
+            ))}
+          </div>
         </FilterGroup>
 
         <FilterGroup label="Agente de IA">

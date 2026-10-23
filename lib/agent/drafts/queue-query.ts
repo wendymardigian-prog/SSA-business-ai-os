@@ -397,3 +397,43 @@ export async function loadLastDiscardedDraft(user: Db, conversationId: string, n
   const messages = await loadBurstMessages(user, [raw]);
   return toRow(raw, now, messages);
 }
+
+/**
+ * El ultimo borrador que vencio sin enviarse en esta conversacion (00260), para
+ * mostrarlo en el hilo como "no enviado, la ventana vencio" y poder copiarlo.
+ *
+ * Solo mientras sigue siendo la ultima palabra: si despues entro o salio
+ * cualquier mensaje (el lead volvio a escribir, o alguien le contesto desde la
+ * app), ya no viene al caso y no se muestra.
+ */
+export async function loadLastExpiredDraft(user: Db, conversationId: string, now: Date = new Date()): Promise<DraftQueueRow | null> {
+  const { data, error } = await user
+    .from("agent_drafts")
+    .select(QUEUE_COLUMNS)
+    .eq("conversation_id", conversationId)
+    .eq("status", "expired")
+    .not("body", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.error("[drafts] no pude leer el borrador vencido:", error.message);
+    return null;
+  }
+  const raw = ((data ?? []) as unknown as RawDraft[])[0];
+  if (!raw || (raw.body ?? "").trim() === "") return null;
+
+  const { data: newer, error: newerError } = await user
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .gt("created_at", raw.created_at)
+    .limit(1);
+  if (newerError) {
+    console.error("[drafts] no pude comprobar si hay mensajes nuevos:", newerError.message);
+    return null;
+  }
+  if ((newer ?? []).length > 0) return null;
+
+  const messages = await loadBurstMessages(user, [raw]);
+  return toRow(raw, now, messages);
+}

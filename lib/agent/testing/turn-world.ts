@@ -116,6 +116,8 @@ export function turnWorld(
           jobs.push(job);
           return [{ job_id: job.id, job_run_at: job.run_at, created: true }];
         },
+        // 00259: la marca "no necesita respuesta". Los tests leen rpcCalls.
+        set_conversation_no_reply: () => true,
         // Momento 2 (00077): espeja la lógica del RPC SQL sobre la base en memoria.
         claim_agent_reply: (args, mdb) => {
           const inbound = new Date(args.p_inbound_at as string).getTime();

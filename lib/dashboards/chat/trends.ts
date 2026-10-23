@@ -6,9 +6,10 @@
  *   - **Arriba de 62 dias se agrupa por semana** (§15.2). Noventa barras de un
  *     pixel no son un grafico.
  *   - **La semana arranca el lunes**, como el resto del sistema.
- *   - **Una mediana no se suma ni se promedia a la ligera**: la mediana semanal
- *     se calcula sobre los dias que tienen dato, y una semana sin ninguno queda
- *     en null (hueco), no en cero.
+ *   - **El tiempo de respuesta (00261) se agrupa con suma y cantidad**, nunca
+ *     promediando promedios: un dia con una espera no pesa lo mismo que uno con
+ *     cien. Un grupo sin ninguna espera respondida queda en null (hueco), no en
+ *     cero.
  */
 
 import type { AuthorGroup } from "./types";
@@ -23,7 +24,27 @@ export interface TrendRow {
   sent_team: number;
   sent_automations: number;
   sent_external: number;
-  first_response_median_seconds: number | null;
+  /** Queda en la funcion SQL para volver atras; la app ya no la usa (00261). */
+  first_response_median_seconds?: number | null;
+  /** Las esperas respondidas ese dia y la suma de sus tiempos (de `withResponseTimes`). */
+  response_turns?: number;
+  response_total_seconds?: number;
+}
+
+/** Una fila de `chat_dashboard_response_time_daily` (00261). */
+export interface ResponseDayRow {
+  day: string;
+  turns: number;
+  total_seconds: number | null;
+}
+
+/** Junta la serie del tiempo de respuesta con la diaria, por dia. */
+export function withResponseTimes(rows: TrendRow[], response: ResponseDayRow[]): TrendRow[] {
+  const byDay = new Map(response.map((r) => [r.day, r]));
+  return rows.map((row) => {
+    const r = byDay.get(row.day);
+    return { ...row, response_turns: Number(r?.turns ?? 0), response_total_seconds: Number(r?.total_seconds ?? 0) };
+  });
 }
 
 /** Un grupo del grafico: un dia o una semana. */
@@ -36,8 +57,14 @@ export interface TrendBucket {
   messagesOut: number;
   newConversations: number;
   sent: Record<AuthorGroup, number>;
-  /** Mediana de primera respuesta. null = ese grupo no tuvo episodios. */
-  firstResponseMedianSeconds: number | null;
+  /** Esperas respondidas (por personas, o por el autor filtrado) y la suma de sus tiempos. */
+  responseTurns: number;
+  responseTotalSeconds: number;
+}
+
+/** El promedio de un grupo. Sin esperas respondidas, null (hueco), no cero. */
+export function averageResponse(group: { responseTurns: number; responseTotalSeconds: number }): number | null {
+  return group.responseTurns > 0 ? group.responseTotalSeconds / group.responseTurns : null;
 }
 
 export const WEEKLY_THRESHOLD_DAYS = 62;
@@ -82,10 +109,8 @@ function toBucket(row: TrendRow): TrendBucket {
       automations: Number(row.sent_automations ?? 0),
       external: Number(row.sent_external ?? 0),
     },
-    firstResponseMedianSeconds:
-      row.first_response_median_seconds === null || row.first_response_median_seconds === undefined
-        ? null
-        : Number(row.first_response_median_seconds),
+    responseTurns: Number(row.response_turns ?? 0),
+    responseTotalSeconds: Number(row.response_total_seconds ?? 0),
   };
 }
 
@@ -97,29 +122,24 @@ export function bucketTrends(rows: TrendRow[], weekly: boolean): TrendBucket[] {
   const days = rows.map(toBucket);
   if (!weekly) return days;
 
-  const byWeek = new Map<string, { bucket: TrendBucket; medians: number[] }>();
+  const byWeek = new Map<string, TrendBucket>();
   for (const day of days) {
     const key = mondayOf(day.key);
-    const found = byWeek.get(key);
-    if (!found) {
-      byWeek.set(key, {
-        bucket: { ...day, key, end: day.key, sent: { ...day.sent }, firstResponseMedianSeconds: null },
-        medians: day.firstResponseMedianSeconds === null ? [] : [day.firstResponseMedianSeconds],
-      });
+    const b = byWeek.get(key);
+    if (!b) {
+      byWeek.set(key, { ...day, key, end: day.key, sent: { ...day.sent } });
       continue;
     }
-    const b = found.bucket;
     b.end = day.key;
     b.messagesIn += day.messagesIn;
     b.messagesOut += day.messagesOut;
     b.newConversations += day.newConversations;
     for (const g of Object.keys(b.sent) as AuthorGroup[]) b.sent[g] += day.sent[g];
-    if (day.firstResponseMedianSeconds !== null) found.medians.push(day.firstResponseMedianSeconds);
+    b.responseTurns += day.responseTurns;
+    b.responseTotalSeconds += day.responseTotalSeconds;
   }
 
-  return [...byWeek.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, { bucket, medians }]) => ({ ...bucket, firstResponseMedianSeconds: median(medians) }));
+  return [...byWeek.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, bucket]) => bucket);
 }
 
 /** Totales del periodo, para la linea de arriba del grafico. */
@@ -128,26 +148,29 @@ export function trendTotals(buckets: TrendBucket[]): {
   messagesOut: number;
   newConversations: number;
   sent: Record<AuthorGroup, number>;
-  firstResponseMedianSeconds: number | null;
+  responseTurns: number;
+  responseTotalSeconds: number;
 } {
   const sent = emptySent();
   let messagesIn = 0;
   let messagesOut = 0;
   let newConversations = 0;
-  const medians: number[] = [];
+  let responseTurns = 0;
+  let responseTotalSeconds = 0;
   for (const b of buckets) {
     messagesIn += b.messagesIn;
     messagesOut += b.messagesOut;
     newConversations += b.newConversations;
     for (const g of Object.keys(sent) as AuthorGroup[]) sent[g] += b.sent[g];
-    if (b.firstResponseMedianSeconds !== null) medians.push(b.firstResponseMedianSeconds);
+    responseTurns += b.responseTurns;
+    responseTotalSeconds += b.responseTotalSeconds;
   }
-  return { messagesIn, messagesOut, newConversations, sent, firstResponseMedianSeconds: median(medians) };
+  return { messagesIn, messagesOut, newConversations, sent, responseTurns, responseTotalSeconds };
 }
 
-export type TrendTab = "conversaciones" | "mensajes" | "autores" | "primera-respuesta";
+export type TrendTab = "conversaciones" | "mensajes" | "autores" | "tiempo-respuesta";
 
-export const TREND_TABS: TrendTab[] = ["conversaciones", "mensajes", "autores", "primera-respuesta"];
+export const TREND_TABS: TrendTab[] = ["conversaciones", "mensajes", "autores", "tiempo-respuesta"];
 
 export function isTrendTab(value: string): value is TrendTab {
   return (TREND_TABS as string[]).includes(value);
@@ -162,8 +185,8 @@ export function trendTabLabel(tab: TrendTab, filteredByAuthor: boolean): string 
       return "Mensajes recibidos y enviados";
     case "autores":
       return "Enviados por autor";
-    case "primera-respuesta":
-      return "Primera respuesta";
+    case "tiempo-respuesta":
+      return "Tiempo de respuesta";
   }
 }
 

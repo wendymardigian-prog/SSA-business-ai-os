@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, Ban, Bot, Check, Loader2, MessageSquareReply, MoreHorizontal, Pencil, RefreshCw, Send, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, Ban, Bot, Check, Copy, ExternalLink, Loader2, MessageSquareReply, MoreHorizontal, Pencil, RefreshCw, Send, Trash2, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -13,6 +13,7 @@ import { noReplyReasonLabel, type AppliedAction, type SuggestedAction } from "@/
 import { modelFailureNotice } from "@/lib/agent/drafts/model-failure";
 import { routingSentence } from "@/lib/agent/routing-sentence";
 import type { Platform } from "@/lib/platforms";
+import { getDmLink } from "@/lib/contacts/links";
 import { WindowBadge } from "./window-badge";
 import { MediaAttachment } from "@/components/inbox/media-attachment";
 import { AssetKindIcon } from "@/components/response-assets/asset-kind-icon";
@@ -641,6 +642,7 @@ const STATUS_LABELS: Record<string, string> = {
   discarded: "Descartado",
   superseded: "Reemplazado: el lead volvió a escribir",
   regenerated: "Se pidió otra versión",
+  expired: "Vencido: la ventana se cerró sin enviarlo",
 };
 
 function DecidedSummary({ draft }: { draft: DraftQueueRow }) {
@@ -742,6 +744,82 @@ export function DiscardedSuggestion({
           Cerrar
         </button>
       </div>
+    </section>
+  );
+}
+
+/**
+ * Un borrador del agente que vencio sin enviarse (00260): la ventana de la red
+ * (24 h en Instagram) se cerro antes de que alguien lo aprobara.
+ *
+ * Tenue y con borde punteado, como la sugerencia descartada: nunca con el
+ * aspecto de un mensaje enviado. Desde el sistema ya no se puede mandar, pero
+ * desde la app de la red si (no tiene ese limite): por eso "Copiar" y, si el
+ * contacto tiene usuario, el link para abrir el chat ahi.
+ */
+export function ExpiredSuggestion({ draft, onClose }: { draft: DraftQueueRow; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const dm = getDmLink(draft.channel.platform as Platform, draft.contact.username);
+
+  async function copy() {
+    if (!draft.body) return;
+    try {
+      await navigator.clipboard.writeText(draft.body);
+      setCopied(true);
+      setCopyError(false);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Sin permiso de portapapeles (o en http): el texto queda a la vista para copiarlo a mano.
+      setCopyError(true);
+    }
+  }
+
+  return (
+    <section
+      aria-label="Respuesta sugerida no enviada: la ventana venció"
+      className="mx-auto max-w-2xl space-y-2 rounded-xl border-2 border-dashed border-border bg-muted/40 p-3"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+          <Bot className="h-3.5 w-3.5" aria-hidden /> Respuesta sugerida · no enviada
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          La ventana de {draft.windowHours} h venció {timeAgo(draft.sendableUntil ?? draft.decidedAt ?? draft.createdAt)}
+        </span>
+      </div>
+      <p className="whitespace-pre-wrap rounded-lg bg-background/60 p-2.5 text-sm text-muted-foreground select-text">{draft.body}</p>
+      <p className="text-[11px] text-muted-foreground">
+        Desde acá ya no se puede enviar. Si todavía sirve, copiala y mandala desde la app de {draft.channel.label}.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground hover:opacity-90"
+        >
+          {copied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+          {copied ? "Copiada" : "Copiar"}
+        </button>
+        {dm.url && (
+          <a
+            href={dm.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-accent"
+          >
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Abrir el chat en {draft.channel.label}
+          </a>
+        )}
+        <button type="button" onClick={onClose} className="h-9 rounded-lg px-3 text-xs text-muted-foreground hover:text-foreground">
+          Ocultar
+        </button>
+      </div>
+      {copyError && (
+        <p className="text-[11px] font-medium text-red-700 dark:text-red-300" role="alert">
+          No pude copiar. Seleccioná el texto y copialo a mano.
+        </p>
+      )}
     </section>
   );
 }

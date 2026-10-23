@@ -6,15 +6,17 @@ import { Panel } from "./block";
 import { TrendChart, type TrendMode, type TrendPoint } from "./trend-chart";
 import type { ChartSeries } from "@/components/dashboards/charts";
 import { formatCount, formatDuration } from "@/lib/dashboards/chat/comparisons";
-import { TREND_TABS, trendTabLabel, type TrendBucket, type TrendTab } from "@/lib/dashboards/chat/trends";
+import { TREND_TABS, averageResponse, trendTabLabel, type TrendBucket, type TrendTab } from "@/lib/dashboards/chat/trends";
 import { AUTHOR_GROUP_COLORS, AUTHOR_GROUP_LABELS, AUTHOR_GROUPS } from "@/lib/dashboards/chat/types";
 import type { TrendsBlock as TrendsData } from "@/lib/dashboards/chat/loaders";
 
 /**
  * Tendencias, con sus cuatro pestañas (F16).
  *
- * La cuarta (primera respuesta) es una linea y no barras: es un tiempo, no una
- * cantidad, y la referencia punteada en 1 hora es lo que le da sentido al valor.
+ * La cuarta (tiempo de respuesta, 00261) es una linea y no barras: es un
+ * tiempo, no una cantidad, y la referencia punteada en 1 hora es lo que le da
+ * sentido al valor. Es el promedio de las esperas que respondio una persona (o
+ * el autor filtrado), el mismo numero que la tarjeta de arriba.
  *
  * La pestaña elegida NO va a la URL: es una forma de mirar los mismos datos, no
  * un filtro, y no cambia lo que se pide al servidor.
@@ -77,22 +79,25 @@ export function TrendsBlock({ data, filteredByAuthor }: { data: TrendsData; filt
     totalsLine = AUTHOR_GROUPS.filter((g) => totals.sent[g] > 0).map((g) => `${formatCount(totals.sent[g])} ${AUTHOR_GROUP_LABELS[g].toLowerCase()}`);
   } else {
     mode = "line";
-    // En minutos: en segundos el eje de una mediana de horas es ilegible.
+    // En minutos: en segundos el eje de un promedio de horas es ilegible.
     series = [
       {
-        key: "frt",
-        label: `Mediana ${weekly ? "semanal" : "diaria"}`,
+        key: "rt",
+        label: `Promedio ${weekly ? "semanal" : "diario"}`,
         color: "var(--c-agent)",
-        points: buckets.map((b, i) => ({
-          bucket: points[i].bucket,
-          value: b.firstResponseMedianSeconds === null ? null : b.firstResponseMedianSeconds / 60,
-        })),
+        points: buckets.map((b, i) => {
+          const avg = averageResponse(b);
+          return { bucket: points[i].bucket, value: avg === null ? null : avg / 60 };
+        }),
       },
     ];
     reference = { value: 60, label: "1 hora", color: "var(--warn)" };
     formatValue = (v) => formatDuration(v * 60);
     formatAxis = (v) => (v >= 60 ? `${(v / 60).toFixed(v % 60 ? 1 : 0)} h` : `${Math.round(v)} min`);
-    totalsLine = [`Mediana del período: ${formatDuration(totals.firstResponseMedianSeconds)}`];
+    totalsLine = [
+      `Promedio del período: ${formatDuration(averageResponse(totals))}`,
+      `${formatCount(totals.responseTurns)} ${filteredByAuthor ? "respuestas" : "respuestas de personas"}`,
+    ];
   }
 
   return (

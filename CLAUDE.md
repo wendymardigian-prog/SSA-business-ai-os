@@ -1497,6 +1497,27 @@ Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con b
 
 `00254_flows_categories_drafts` (aditiva), **aplicada y registrada** el 23/10/2026 (versión `20261023130139`). **La próxima libre es la `00255`** (confirmar con `list_migrations`).
 
+# Esperando respuesta y tiempo de respuesta (23/10/2026)
+
+"Esperando respuesta ahora" separa lo que se puede responder de lo que tiene la ventana vencida y de lo que no necesita respuesta; "Tiempo de respuesta" (de personas, en todas las esperas) reemplaza a "Primera respuesta"; los borradores cuya ventana se cerró pasan a `expired`. Detalle en [docs/dashboards.md](docs/dashboards.md) y [docs/agente-ia.md](docs/agente-ia.md).
+
+## Lo que no se puede romper
+
+- **El estado de espera vive en `conversations` y lo mantiene SOLO el trigger de `messages`** (`messages_zz_refresh_awaiting`, `private.refresh_conversation_awaiting`, 00259): `awaiting_reply_since` (primer mensaje del lead sin responder), `awaiting_last_inbound_at`, `reply_window_until` (+ la ventana del canal) y la marca `no_reply_needed_*`. "Responder" es cualquier saliente que no falló. El trigger va en `EXCEPTION WHEN OTHERS`: **nunca puede tumbar el insert de un mensaje**. Toma el lock de la conversación antes de leer (dos mensajes a la vez se recalculan en orden).
+- **La tarjeta y el filtro de la bandeja usan el mismo criterio**: `chat_waiting_now_v2` (SQL) y `lib/inbox/awaiting.ts` + la consulta de `inbox/page.tsx` (`?esperando=responder|vencida`). Abierta, sin "no contactar", sin etiqueta que apague al agente, último mensaje del lead hace más de 1 h, sin la marca. Si se cambia uno, se cambian los dos.
+- **"No necesita respuesta" tiene tres fuentes** (`no_reply_needed_reason`): `rule` (la pone el trigger), `agent` (`no_hace_falta_responder`) y `manual` (menú "⋯"). Las dos últimas pasan por `set_conversation_no_reply` (solo `service_role`; al marcar exige que el lead no haya vuelto a escribir). Se borra sola con un mensaje nuevo o una respuesta.
+- **La regla de cierre tiene gemelas**: `public.chat_is_closure_message` y `lib/messages/closure.ts`, con `closure.cases.json` (corren en vitest y en `scripts/verify-chat-awaiting.mjs`). Conservadora: un "?" pide respuesta; nada cierra después de una pregunta o una PROMESA nuestra ("dame un momento", "ya te lo paso"). Una palabra fuera de la lista alcanza para que pida respuesta.
+- **El agente solo puede no responder si la tanda pasa `canSkipReply`** (`lib/agent/no-reply.ts`): sin "?", sin adjuntos salvo stickers y GIFs, sin pregunta o promesa nuestra pendiente. `no_hace_falta_responder` es obligatoria y no se ofrece cuando una persona pidió la respuesta (sugerir, regenerar).
+- **"Respuesta humana" tiene gemelas**: `public.chat_reply_is_human` y `isHumanReply` (`lib/messages/reply-time.ts`, `reply-time.cases.json`). Persona o borrador aprobado = humana; agente directo, flows, secuencias y broadcasts = automática; desde fuera del sistema, automática si sale en menos de 15 s. La espera se cuenta desde el PRIMER mensaje sin responder; la bandeja (`replyTimesByMessage`) y el dashboard (`chat_response_turns`) hacen el mismo cálculo.
+- **Un borrador vencido es `expired`, no `discarded`** (00260): lo pone el barrido; la métrica "Ventana perdida" sigue saliendo de `window_missed_at`. La bandeja lo muestra (`loadLastExpiredDraft`) solo mientras no entró ni salió ningún mensaje después.
+
+## Migraciones
+
+`00259` (columnas, regla, trigger, `set_conversation_no_reply`, `chat_waiting_now_v2` y el backfill), `00260` (`expired`, el barrido y los 62 que ya estaban vencidos) y `00261` (tiempo de respuesta): **aplicadas y registradas** el 23/10/2026 (versiones `20261023211644`, `...211658` y `...211651`). La regla de cierre de la 00259 se corrigió el mismo día (promesas pendientes) y el SQL registrado es el corregido. La `00255` a la `00258` son de la sesión de WhatsApp (stickers y llamadas). **La próxima libre es la `00262`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-chat-awaiting.mjs   # gemelas SQL<->TS, el trigger, la marca, el contador, el tiempo humano y el barrido
+```
 # Bandeja: asignación, Conocido, stickers y llamadas de WhatsApp (construido, 23/10/2026)
 
 Responsable de cada conversación (a mano y con reglas por cuenta), la marca «Conocido», stickers de WhatsApp y el registro de llamadas. Lo que Evolution puede y no puede está en `docs/pendientes/wavoip-llamadas.md`.
@@ -1514,7 +1535,7 @@ Responsable de cada conversación (a mano y con reglas por cuenta), la marca «C
 
 ## Migraciones
 
-`00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. **La próxima libre es la `00259`** (confirmar con `list_migrations`).
+`00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. La `00259` a la `00261` son de «Esperando respuesta» (ver esa sección): **la próxima libre es la `00262`** (confirmar con `list_migrations`).
 
 # Seguridad
 

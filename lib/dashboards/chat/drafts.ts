@@ -136,10 +136,12 @@ export function draftAlertText(card: Pick<DraftsCard, "pendingNow" | "pendingUnd
   if (card.pendingUnder6h > 0) {
     parts.push(card.pendingUnder6h === 1 ? "1 con menos de 6 h de ventana" : `${card.pendingUnder6h} con menos de 6 h de ventana`);
   }
+  // Desde la 00260 un borrador cuya ventana se cerro pasa a "vencido" y ya no
+  // esta en el numero de arriba: esto es lo que se perdio esta semana.
   parts.push(
     card.missedLast7d === 1
-      ? "1 ventana perdida en los últimos 7 días"
-      : `${card.missedLast7d} ventanas perdidas en los últimos 7 días`,
+      ? "1 venció sin enviarse en los últimos 7 días"
+      : `${card.missedLast7d} vencieron sin enviarse en los últimos 7 días`,
   );
   return { headline, detail: parts.join(" · ") };
 }

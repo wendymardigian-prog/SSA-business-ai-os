@@ -19,6 +19,7 @@ import {
   type InboxStatus,
 } from "@/lib/inbox/filters";
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
+import { AWAITING_PARAM, awaitingQueryBounds, parseAwaitingFilter } from "@/lib/inbox/awaiting";
 import { InboxView } from "./inbox-view";
 import type { InboxAsset } from "@/components/inbox/message-thread";
 import { toBankAsset } from "@/lib/response-assets/list";
@@ -127,6 +128,9 @@ export default async function InboxPage({
   const agentError = firstParam(params["error-agente"]) === "1";
   // F11: las que el agente derivó porque no pudo entender lo que llegó.
   const needsHuman = firstParam(params[NEEDS_HUMAN_PARAM]) === "1";
+  // 00259: esperando respuesta (se puede responder / ventana vencida), el mismo
+  // criterio que la tarjeta del dashboard de Chat.
+  const awaiting = parseAwaitingFilter(firstParam(params[AWAITING_PARAM]));
   // Conocidos (00256): esconderlos de la lista.
   const hideKnown = firstParam(params[HIDE_KNOWN_PARAM]) === HIDE_KNOWN_VALUE;
   const page = pickPage(params.page);
@@ -163,6 +167,23 @@ export default async function InboxPage({
   if (agentError) query = query.not("last_agent_error_at", "is", null);
   // Índice parcial de la 00103.
   if (needsHuman) query = query.eq("needs_human", true);
+  if (awaiting) {
+    // Lo mismo que chat_waiting_now_v2 (00259): el lead espera hace mas de una
+    // hora, nadie marco que no necesita respuesta, ninguna etiqueta apago al
+    // agente y el contacto no esta en "no contactar". El estado "abierta" lo
+    // pone el filtro de estado, que arranca en abiertas.
+    const { waitingBefore, nowIso } = awaitingQueryBounds();
+    query = query
+      .not("awaiting_last_inbound_at", "is", null)
+      .lt("awaiting_last_inbound_at", waitingBefore)
+      .is("no_reply_needed_at", null)
+      .is("agent_disabled_by_tag_id", null)
+      .not("contacts.do_not_contact", "is", true);
+    query =
+      awaiting === "responder"
+        ? query.or(`reply_window_until.is.null,reply_window_until.gt.${nowIso}`)
+        : query.lte("reply_window_until", nowIso);
+  }
   if (hideKnown) query = query.eq("contacts.is_known", false);
 
   if (search) {
@@ -284,6 +305,7 @@ export default async function InboxPage({
     dateTo,
     agentError,
     needsHuman,
+    awaiting,
     hideKnown,
   };
 

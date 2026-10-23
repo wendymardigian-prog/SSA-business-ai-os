@@ -19,7 +19,7 @@
 
 import type { ConversationStatus } from "@/lib/types/database";
 
-export type MenuAction = "snooze" | "reopen" | "createTask" | "markKnown" | "unmarkKnown";
+export type MenuAction = "snooze" | "reopen" | "createTask" | "noReply" | "markKnown" | "unmarkKnown";
 export type NoteKey = "status" | "flowsPaused" | "agentOffByTag" | "draftMode" | "known";
 
 export interface HeaderInput {
@@ -29,6 +29,11 @@ export interface HeaderInput {
   agentDisabledByTag: boolean;
   /** El agente atiende este canal en modo borrador. */
   draftMode: boolean;
+  /**
+   * El lead espera respuesta, nadie marco que no la necesita y la persona puede
+   * responder por esta cuenta (00259). Opcional: sin el dato, no se ofrece.
+   */
+  canMarkNoReply?: boolean;
   /**
    * Conocido (00256): si el contacto lo es y que puede hacer quien mira. Marcar
    * pide `contacts.edit`; quitar, haberla puesto o `contacts.delete`.
@@ -55,6 +60,7 @@ export function planHeaderActions(input: HeaderInput): HeaderPlan {
   // Una pospuesta se reabre desde el menu; una cerrada, desde el boton a la vista.
   if (input.status === "snoozed") menu.push("reopen");
   if (input.canCreateTask) menu.push("createTask");
+  if (input.canMarkNoReply) menu.push("noReply");
   if (input.known && !input.known.isKnown && input.known.canMark) menu.push("markKnown");
   if (input.known?.isKnown && input.known.canUnmark) menu.push("unmarkKnown");
 

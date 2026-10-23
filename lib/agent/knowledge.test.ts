@@ -115,7 +115,7 @@ describe("la herramienta de buscar en el turno", () => {
 
   it("con la KB apagada no existe en la caja de herramientas", async () => {
     const { tools } = await buildToolSet(ctx(false));
-    expect(Object.keys(tools)).toEqual(["derivar_a_humano"]);
+    expect(Object.keys(tools)).toEqual(["derivar_a_humano", "no_hace_falta_responder"]);
   });
 
   it("una busqueda sin resultados no deriva sola: le devuelve al agente que no encontro nada", async () => {
@@ -141,6 +141,6 @@ describe("la herramienta de buscar en el turno", () => {
 
   it("la salida de emergencia no se pierde por una config rota: corre con sus defaults", async () => {
     const { tools } = await buildToolSet(ctx(false, { tools_config: { derivar_a_humano: { reopenConversation: "si" } } as never }));
-    expect(Object.keys(tools)).toEqual(["derivar_a_humano"]);
+    expect(Object.keys(tools)).toEqual(["derivar_a_humano", "no_hace_falta_responder"]);
   });
 });
