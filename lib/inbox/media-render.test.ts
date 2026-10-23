@@ -14,6 +14,7 @@ import {
   formatDuration,
   isCorruptMedia,
   isRetryableMediaError,
+  isStickerOnlyMessage,
   renderPlan,
 } from "./media-render";
 
@@ -46,9 +47,10 @@ describe("renderPlan: los 14 tipos (F12)", () => {
     }
   });
 
-  it("una imagen y un sticker se ven como imagen", () => {
+  it("una imagen se ve como imagen y un sticker como sticker", () => {
     expect(renderPlan(ready("image", { mime: "image/jpeg" })).component).toBe("image");
-    expect(renderPlan(ready("sticker", { mime: "image/webp" })).component).toBe("image");
+    // Desde la 00257 un sticker se pinta como sticker (chico, sin fondo), no como foto.
+    expect(renderPlan(ready("sticker", { mime: "image/webp" })).component).toBe("sticker");
   });
 
   it("un GIF de WhatsApp es un mp4 corto, asi que va como video", () => {
@@ -273,5 +275,19 @@ describe("los formatos que lee una persona (F12)", () => {
     expect(extensionLabel(ready("document", { filename: "presupuesto.pdf" }))).toBe("PDF");
     expect(extensionLabel(ready("document", { filename: null, mime: "application/zip" }))).toBe("ZIP");
     expect(extensionLabel(ready("document", { filename: null, mime: null }))).toBeNull();
+  });
+});
+
+describe("isStickerOnlyMessage (00257)", () => {
+  const sticker = { v: 2, items: [{ kind: "sticker", mime: "image/webp", storagePath: "w/c/s.webp", status: "ready" }] };
+
+  it("solo un sticker listo, sin texto: sin burbuja", () => {
+    expect(isStickerOnlyMessage({ text: "", attachments: sticker }, false)).toBe(true);
+  });
+
+  it("con texto, con fallo o con otra cosa, la burbuja de siempre", () => {
+    expect(isStickerOnlyMessage({ text: "hola", attachments: sticker }, false)).toBe(false);
+    expect(isStickerOnlyMessage({ text: "", attachments: sticker }, true)).toBe(false);
+    expect(isStickerOnlyMessage({ text: "", attachments: { v: 2, items: [{ kind: "image", mime: "image/png", storagePath: "w/c/i.png", status: "ready" }] } }, false)).toBe(false);
   });
 });

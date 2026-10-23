@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, UserRoundSearch } from "lucide-react";
+import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, HeartHandshake, UserRoundSearch } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { noReplyBadge } from "@/lib/inbox/awaiting";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +21,10 @@ import type { DateRange } from "@/lib/dates";
 import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
+import { assigneeName } from "@/lib/inbox/assignee";
+import { knownLabel } from "@/lib/inbox/known";
+import { colorOf, initialsOf } from "@/lib/tasks/people";
+import { Avatar } from "@/components/ui/filter-menu";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 type Conversation = ConversationRow;
@@ -59,6 +63,7 @@ export function ConversationList({
   draftCounts,
   draftConversationIds = [],
   accounts,
+  members = [],
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -76,6 +81,8 @@ export function ConversationList({
   draftConversationIds?: string[];
   /** Las cuentas por canal: la lista dice de cual es cada conversacion cuando una red tiene varias. */
   accounts?: InboxAccountsInfo;
+  /** El equipo: el circulo del responsable de cada conversacion (00255). */
+  members?: { userId: string; label: string }[];
 }) {
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
@@ -264,12 +271,35 @@ export function ConversationList({
                         aria-label="No contactar"
                       />
                     )}
+                    {/* Conocido (00256): que el equipo lo reconozca sin abrirlo. */}
+                    {conversation.contacts?.is_known && (
+                      <HeartHandshake
+                        className="h-3.5 w-3.5 flex-shrink-0 text-violet-600 dark:text-violet-400"
+                        aria-label={knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}
+                      >
+                        <title>{knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}</title>
+                      </HeartHandshake>
+                    )}
                   </p>
-                  <span
-                    suppressHydrationWarning
-                    className="flex-shrink-0 text-[11px] text-muted-foreground"
-                  >
-                    {mounted ? formatTime(conversation.last_message_at) : ""}
+                  <span className="flex flex-shrink-0 items-center gap-1.5">
+                    {/* El responsable del chat (00255): quien la mira sabe de quien es sin abrirla. */}
+                    {conversation.assigned_to && (
+                      <span
+                        role="img"
+                        title={`Responsable: ${assigneeName(members, conversation.assigned_to) ?? "alguien que ya no está en el equipo"}`}
+                        aria-label={`Responsable: ${assigneeName(members, conversation.assigned_to) ?? "alguien que ya no está en el equipo"}`}
+                        className="inline-flex"
+                      >
+                        <Avatar
+                          initials={initialsOf(assigneeName(members, conversation.assigned_to) ?? "?")}
+                          color={colorOf(conversation.assigned_to)}
+                          size="sm"
+                        />
+                      </span>
+                    )}
+                    <span suppressHydrationWarning className="text-[11px] text-muted-foreground">
+                      {mounted ? formatTime(conversation.last_message_at) : ""}
+                    </span>
                   </span>
                 </div>
                 {/* Con varias cuentas de la misma red, la cuenta por la que entro. */}

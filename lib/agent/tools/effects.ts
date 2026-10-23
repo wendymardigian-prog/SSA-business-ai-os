@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json, LeadTemperature } from "@/lib/types/database";
 import { logAudit } from "@/lib/audit";
+import { notifyConversationAssigned } from "@/lib/conversations/assignment";
 import { applyContactStatus } from "@/lib/contacts/status-core";
 import { activeStatuses, parseStatusSettings, type ContactStatus } from "@/lib/contacts/statuses";
 
@@ -467,6 +468,14 @@ export async function assignConversation(
     changes: { assigned_to: { old: previous, new: pick.userId } },
     metadata: auditMeta(ctx, { strategy: config.strategy, why: pick.why, reason: input.reason ?? null }),
     performedByAgentId: ctx.agentId,
+  });
+  // El aviso a la persona (00255). Nunca lanza.
+  await notifyConversationAssigned(ctx.supabase, {
+    workspaceId: ctx.workspaceId,
+    conversationId: ctx.conversationId,
+    assigneeId: pick.userId,
+    actorId: null,
+    reason: "Te la asignó el agente de IA.",
   });
   return { ok: true, message: `Listo: la conversacion quedo asignada (${pick.why}).`, auditLogId, detail: { assigned_to: pick.userId } };
 }

@@ -45122,6 +45122,996 @@ COMMENT ON COLUMN public.flows.draft_nodes IS
   'Cambios sin publicar de una automatizacion publicada. NULL = no hay. Publicar los copia a nodes.';
 
 -- ============================================================
+-- MIGRATION 255: CONVERSATION ASSIGNMENT RULES
+-- ============================================================
+-- ============================================================
+-- 00255_conversation_assignment_rules
+-- ============================================================
+-- Asignar CONVERSACIONES con reglas por cuenta conectada (octubre 2026).
+--
+-- `conversations.assigned_to` existe desde la 00001 y la RLS ya lo usa (que
+-- te asignen un chat hace "tuyo" al contacto: `private.contact_is_mine`, 00249),
+-- pero hasta aca solo lo escribia la herramienta del agente. Esta migracion
+-- suma:
+--
+--   conversation_assignment_rules  Las reglas: "lo que entra por estas cuentas
+--                                  va a esta persona" (fija) o "se reparte por
+--                                  turnos entre estas personas". Gana la
+--                                  PRIMERA activa que coincide (por
+--                                  `position`). `channel_ids` vacio = todas las
+--                                  cuentas. `setter_mode` dice que pasa con el
+--                                  setter del contacto: nada, completarlo si
+--                                  esta vacio, o reemplazarlo siempre.
+--   conversation_rule_pick         La eleccion de la persona, pura (gemela de
+--                                  `pickRuleMember` en lib/inbox/assignment-
+--                                  rules.ts; comparten los casos de
+--                                  lib/inbox/assignment-rules.cases.json).
+--   assign_new_conversation        Aplica las reglas a UNA conversacion recien
+--                                  creada, en una transaccion: bloquea la
+--                                  conversacion y la regla (el turno no se
+--                                  repite con dos mensajes a la vez), solo
+--                                  escribe si sigue sin responsable y nunca
+--                                  elige a alguien que ya no esta en el equipo.
+--   conversation_people            Responsable + setter + vendedor, para que el
+--                                  filtro "Asignación → persona" de la bandeja
+--                                  incluya los chats asignados directo.
+--
+-- No se toca `assignment_rules` (00161, Ventas): esas asignan el CONTACTO por
+-- su atribucion. El setter que pone esta regla no bloquea esas (no escribe
+-- `assignment_locked_at`): si el setter ya esta, Ventas lo saltea por "lleno".
+--
+-- Escribe solo el servidor (las acciones chequean `assignment.manage` y usan el
+-- cliente de servicio). La app lee con la RLS (miembros del workspace).
+-- Nada se borra: una regla se archiva.
+--
+-- Aditiva: se aplica ANTES de desplegar el codigo que la usa.
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.conversation_people(public.conversations);
+--   DROP FUNCTION IF EXISTS public.assign_new_conversation(uuid);
+--   DROP FUNCTION IF EXISTS public.conversation_rule_pick(text, uuid[], uuid[], uuid);
+--   DROP TABLE IF EXISTS public.conversation_assignment_rules;
+--
+-- Idempotente: IF NOT EXISTS, DO para los CHECK, CREATE OR REPLACE.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. La tabla
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.conversation_assignment_rules (
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id            uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name                    text NOT NULL DEFAULT '',
+  position                integer NOT NULL DEFAULT 0,
+  enabled                 boolean NOT NULL DEFAULT true,
+  channel_ids             uuid[] NOT NULL DEFAULT '{}',
+  mode                    text NOT NULL DEFAULT 'fixed',
+  member_ids              uuid[] NOT NULL DEFAULT '{}',
+  last_assigned_member_id uuid,
+  setter_mode             text NOT NULL DEFAULT 'none',
+  archived_at             timestamptz,
+  created_by              uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by              uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  updated_at              timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.conversation_assignment_rules IS
+  'Reglas de asignacion de conversaciones nuevas por cuenta conectada (00255). Gana la primera activa que coincide (position). Escribe solo el servidor.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'conversation_assignment_rules_mode_check') THEN
+    ALTER TABLE public.conversation_assignment_rules ADD CONSTRAINT conversation_assignment_rules_mode_check
+      CHECK (mode IN ('fixed', 'round_robin'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'conversation_assignment_rules_setter_mode_check') THEN
+    ALTER TABLE public.conversation_assignment_rules ADD CONSTRAINT conversation_assignment_rules_setter_mode_check
+      CHECK (setter_mode IN ('none', 'if_empty', 'overwrite'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'conversation_assignment_rules_name_length') THEN
+    ALTER TABLE public.conversation_assignment_rules ADD CONSTRAINT conversation_assignment_rules_name_length
+      CHECK (char_length(name) <= 80);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'conversation_assignment_rules_members_max') THEN
+    ALTER TABLE public.conversation_assignment_rules ADD CONSTRAINT conversation_assignment_rules_members_max
+      CHECK (cardinality(member_ids) <= 50 AND cardinality(channel_ids) <= 100);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_conversation_assignment_rules_workspace
+  ON public.conversation_assignment_rules (workspace_id, position)
+  WHERE archived_at IS NULL;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.conversation_assignment_rules;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.conversation_assignment_rules
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.conversation_assignment_rules ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "conversation_assignment_rules_select" ON public.conversation_assignment_rules;
+CREATE POLICY "conversation_assignment_rules_select" ON public.conversation_assignment_rules
+  FOR SELECT USING ((select public.is_workspace_member(workspace_id)));
+
+-- Sin policies de escritura: escribe el servidor despues de chequear la clave.
+
+REVOKE ALL ON public.conversation_assignment_rules FROM anon, authenticated;
+GRANT SELECT ON public.conversation_assignment_rules TO authenticated;
+GRANT ALL ON public.conversation_assignment_rules TO service_role;
+
+-- ------------------------------------------------------------
+-- 2. La eleccion, pura
+-- ------------------------------------------------------------
+-- fixed:       la primera persona de la lista que sigue en el equipo.
+-- round_robin: la siguiente despues de la ultima que recibio una (dando la
+--              vuelta), salteando a quien ya no esta. Si la ultima ya no esta
+--              en la lista, arranca de la primera.
+-- Sin nadie disponible: NULL (la regla no aplica y se prueba la siguiente).
+
+CREATE OR REPLACE FUNCTION public.conversation_rule_pick(
+  p_mode       text,
+  p_member_ids uuid[],
+  p_active_ids uuid[],
+  p_last       uuid
+)
+RETURNS uuid
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  n     integer := coalesce(cardinality(p_member_ids), 0);
+  start integer := 0;
+  i     integer;
+  cand  uuid;
+BEGIN
+  IF n = 0 THEN
+    RETURN NULL;
+  END IF;
+
+  IF p_mode = 'round_robin' AND p_last IS NOT NULL THEN
+    start := coalesce(array_position(p_member_ids, p_last), 0);
+  END IF;
+
+  FOR k IN 1..n LOOP
+    i := ((start + k - 1) % n) + 1;
+    cand := p_member_ids[i];
+    IF cand IS NOT NULL AND cand = ANY (coalesce(p_active_ids, '{}'::uuid[])) THEN
+      RETURN cand;
+    END IF;
+  END LOOP;
+
+  RETURN NULL;
+END;
+$$;
+
+COMMENT ON FUNCTION public.conversation_rule_pick(text, uuid[], uuid[], uuid) IS
+  'Gemela de pickRuleMember (lib/inbox/assignment-rules.ts). Casos compartidos en lib/inbox/assignment-rules.cases.json.';
+
+REVOKE ALL ON FUNCTION public.conversation_rule_pick(text, uuid[], uuid[], uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.conversation_rule_pick(text, uuid[], uuid[], uuid) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 3. Aplicar las reglas a una conversacion nueva
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.assign_new_conversation(p_conversation_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  conv             public.conversations%ROWTYPE;
+  r                public.conversation_assignment_rules%ROWTYPE;
+  v_active         uuid[];
+  v_pick           uuid;
+  v_setter_old     uuid;
+  v_setter_changed boolean := false;
+BEGIN
+  SELECT * INTO conv FROM public.conversations WHERE id = p_conversation_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+  IF conv.assigned_to IS NOT NULL THEN
+    RETURN jsonb_build_object('status', 'already_assigned', 'assigned_to', conv.assigned_to);
+  END IF;
+
+  SELECT coalesce(array_agg(wm.user_id), '{}'::uuid[]) INTO v_active
+  FROM public.workspace_members wm
+  WHERE wm.workspace_id = conv.workspace_id;
+
+  FOR r IN
+    SELECT *
+    FROM public.conversation_assignment_rules car
+    WHERE car.workspace_id = conv.workspace_id
+      AND car.enabled
+      AND car.archived_at IS NULL
+      AND (cardinality(car.channel_ids) = 0 OR conv.channel_id = ANY (car.channel_ids))
+    ORDER BY car.position, car.created_at, car.id
+    FOR UPDATE
+  LOOP
+    v_pick := public.conversation_rule_pick(r.mode, r.member_ids, v_active, r.last_assigned_member_id);
+    CONTINUE WHEN v_pick IS NULL;
+
+    UPDATE public.conversations SET assigned_to = v_pick WHERE id = conv.id;
+
+    IF r.mode = 'round_robin' THEN
+      UPDATE public.conversation_assignment_rules SET last_assigned_member_id = v_pick WHERE id = r.id;
+    END IF;
+
+    IF r.setter_mode <> 'none' AND conv.contact_id IS NOT NULL THEN
+      SELECT ct.setter_id INTO v_setter_old
+      FROM public.contacts ct
+      WHERE ct.id = conv.contact_id AND ct.deleted_at IS NULL
+      FOR UPDATE;
+      IF FOUND
+         AND v_setter_old IS DISTINCT FROM v_pick
+         AND (r.setter_mode = 'overwrite' OR v_setter_old IS NULL) THEN
+        UPDATE public.contacts SET setter_id = v_pick WHERE id = conv.contact_id;
+        v_setter_changed := true;
+      END IF;
+    END IF;
+
+    RETURN jsonb_build_object(
+      'status', 'assigned',
+      'assigned_to', v_pick,
+      'rule_id', r.id,
+      'rule_name', r.name,
+      'contact_id', conv.contact_id,
+      'setter_changed', v_setter_changed,
+      'setter_old', v_setter_old
+    );
+  END LOOP;
+
+  RETURN jsonb_build_object('status', 'no_rule');
+END;
+$$;
+
+COMMENT ON FUNCTION public.assign_new_conversation(uuid) IS
+  'Aplica conversation_assignment_rules a una conversacion recien creada (00255). Solo service_role. Nunca pisa un responsable que ya tiene.';
+
+REVOKE ALL ON FUNCTION public.assign_new_conversation(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.assign_new_conversation(uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 4. Las personas de una conversacion (filtro "Asignación" de la bandeja)
+-- ------------------------------------------------------------
+-- Campo calculado de PostgREST: el responsable del chat, el setter y el
+-- vendedor del contacto. Hasta aca el filtro por persona miraba solo setter y
+-- vendedor, y una conversacion asignada directo a esa persona no aparecia.
+-- PostgREST no puede combinar con OR una columna propia y una de la tabla
+-- embebida; esto lo resuelve en una sola condicion (`cs`).
+-- SECURITY INVOKER: lee el contacto con la RLS de quien mira.
+
+CREATE OR REPLACE FUNCTION public.conversation_people(conv public.conversations)
+RETURNS uuid[]
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT array_remove(ARRAY[
+    conv.assigned_to,
+    (SELECT c.setter_id FROM public.contacts c WHERE c.id = conv.contact_id),
+    (SELECT c.vendedor_id FROM public.contacts c WHERE c.id = conv.contact_id)
+  ], NULL)
+$$;
+
+COMMENT ON FUNCTION public.conversation_people(public.conversations) IS
+  'Responsable del chat + setter + vendedor del contacto (00255). Lo usa el filtro de asignacion de la bandeja.';
+
+REVOKE ALL ON FUNCTION public.conversation_people(public.conversations) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.conversation_people(public.conversations) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 256: CONTACTS KNOWN
+-- ============================================================
+-- ============================================================
+-- 00256_contacts_known
+-- ============================================================
+-- "Conocido" (octubre 2026): una marca propia del contacto, no una etiqueta.
+--
+-- Un conocido es alguien personal que escribe por la misma cuenta por la que
+-- entran los leads. Hasta aca se resolvia con una etiqueta con efecto (00073,
+-- `es-conocido`): apagaba el agente, pero no se veia en la lista de chats, no
+-- frenaba las secuencias y no decia de quien era el chat. Ahora:
+--
+--   contacts.is_known / known_marked_by / known_marked_at
+--       La marca, quien la puso y cuando.
+--   conversations.agent_disabled_by_known
+--       La marca de "esto lo apago el conocido", igual que
+--       `agent_disabled_by_tag_id` de la 00073: permite prender de nuevo SOLO
+--       lo que apago la marca, nunca un apagado a mano. Se limpia sola si una
+--       persona cambia el estado del agente en esa conversacion.
+--   workspaces.known_contacts_settings
+--       A quien van los chats de un conocido, POR CUENTA:
+--       { "by_channel": { "<channel_id>": "<user_id>" }, "default_user_id": "<user_id>" }.
+--       Sin nada configurado (o si esa persona ya no esta en el equipo), al
+--       Owner. DEFAULT literal: un DEFAULT nunca llama a una funcion de
+--       `private` (lo aprendimos en la 00248).
+--
+-- Al MARCAR (trigger en contacts, venga de donde venga):
+--   - todas sus conversaciones pasan a la persona de la cuenta de cada una,
+--     aunque ya tuvieran responsable (el anterior queda en audit_log);
+--   - el agente queda forzado apagado en las que no lo estaban.
+-- Al QUITAR: se prende de nuevo (vuelve a heredar) lo que apago la marca; si el
+-- contacto conserva una etiqueta con efecto, la marca pasa a esa y nada se
+-- prende. El responsable NO se revierte (no hay forma segura de saber a quien
+-- volver).
+-- Conversaciones NUEVAS de un conocido nacen con el agente apagado (trigger), y
+-- `assign_new_conversation` mira la marca ANTES que las reglas por cuenta.
+-- FUSION: si el duplicado era conocido, el principal pasa a serlo (trigger al
+-- borrar el duplicado con `metadata.merged_into`, sin reescribir
+-- `merge_contacts`); las conversaciones que se mudan al principal heredan el
+-- agente apagado.
+--
+-- Las secuencias se pausan desde la app (`setKnown`), igual que "no
+-- contactar", y el procesador saltea a los conocidos.
+--
+-- Esta migracion REDEFINE `assign_new_conversation` (00255). La definicion de
+-- la 00255 sigue completa en ese archivo; volver atras es reaplicar su bloque 3.
+--
+-- Aditiva: se aplica ANTES de desplegar el codigo que la usa.
+--
+-- Como volver atras:
+--   (reaplicar el bloque 3 de la 00255: assign_new_conversation)
+--   DROP TRIGGER IF EXISTS contacts_known_on_merge ON public.contacts;
+--   DROP TRIGGER IF EXISTS contacts_known_effects ON public.contacts;
+--   DROP TRIGGER IF EXISTS conversations_a2_inherit_known ON public.conversations;
+--   DROP TRIGGER IF EXISTS conversations_b2_keep_known_marker ON public.conversations;
+--   DROP FUNCTION IF EXISTS public.contacts_known_on_merge();
+--   DROP FUNCTION IF EXISTS public.contacts_known_effects();
+--   DROP FUNCTION IF EXISTS public.conversations_inherit_known();
+--   DROP FUNCTION IF EXISTS public.conversations_keep_known_marker();
+--   DROP FUNCTION IF EXISTS private.known_assignee(uuid, uuid);
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS known_contacts_settings;
+--   ALTER TABLE public.conversations DROP COLUMN IF EXISTS agent_disabled_by_known;
+--   ALTER TABLE public.contacts DROP COLUMN IF EXISTS known_marked_at,
+--     DROP COLUMN IF EXISTS known_marked_by, DROP COLUMN IF EXISTS is_known;
+--
+-- Idempotente: IF NOT EXISTS, CREATE OR REPLACE, DROP TRIGGER IF EXISTS.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. Columnas
+-- ------------------------------------------------------------
+
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS is_known boolean NOT NULL DEFAULT false;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS known_marked_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS known_marked_at timestamptz;
+
+COMMENT ON COLUMN public.contacts.is_known IS
+  'Conocido (00256): alguien personal. Apaga el agente, pausa secuencias y sus chats van a la persona de cada cuenta (workspaces.known_contacts_settings).';
+
+CREATE INDEX IF NOT EXISTS idx_contacts_known ON public.contacts (workspace_id) WHERE is_known;
+
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS agent_disabled_by_known boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.conversations.agent_disabled_by_known IS
+  'El agente lo apago la marca de conocido (00256). Se limpia sola si una persona cambia el estado del agente.';
+
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS known_contacts_settings jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+COMMENT ON COLUMN public.workspaces.known_contacts_settings IS
+  'A quien van los chats de un conocido (00256): {"by_channel": {"<channel_id>": "<user_id>"}, "default_user_id": "<user_id>"}. Sin nada, al Owner.';
+
+-- ------------------------------------------------------------
+-- 2. A quien va un chat de un conocido
+-- ------------------------------------------------------------
+-- Gemela de `knownAssignee` (lib/inbox/known.ts). Orden: la persona de esa
+-- cuenta, la por defecto, el Owner. Solo gente que sigue en el equipo.
+
+CREATE OR REPLACE FUNCTION private.known_assignee(p_workspace_id uuid, p_channel_id uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_settings jsonb;
+  v_pick     uuid;
+  v_text     text;
+BEGIN
+  SELECT known_contacts_settings INTO v_settings FROM public.workspaces WHERE id = p_workspace_id;
+  v_settings := coalesce(v_settings, '{}'::jsonb);
+
+  FOREACH v_text IN ARRAY ARRAY[
+    v_settings -> 'by_channel' ->> p_channel_id::text,
+    v_settings ->> 'default_user_id'
+  ] LOOP
+    CONTINUE WHEN v_text IS NULL OR v_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+    SELECT wm.user_id INTO v_pick
+    FROM public.workspace_members wm
+    WHERE wm.workspace_id = p_workspace_id AND wm.user_id = v_text::uuid;
+    IF v_pick IS NOT NULL THEN
+      RETURN v_pick;
+    END IF;
+  END LOOP;
+
+  SELECT wm.user_id INTO v_pick
+  FROM public.workspace_members wm
+  WHERE wm.workspace_id = p_workspace_id AND wm.role = 'owner'
+  ORDER BY wm.created_at
+  LIMIT 1;
+  RETURN v_pick;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.known_assignee(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.known_assignee(uuid, uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 3. Marcar y quitar (trigger en contacts)
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.contacts_known_effects()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_assigned jsonb := '[]'::jsonb;
+  v_forced   jsonb := '[]'::jsonb;
+  v_restored jsonb := '[]'::jsonb;
+  v_moved    jsonb := '[]'::jsonb;
+  v_tag      uuid;
+BEGIN
+  IF NEW.is_known IS NOT DISTINCT FROM OLD.is_known THEN
+    RETURN NULL;
+  END IF;
+
+  IF NEW.is_known THEN
+    -- Responsable: la persona de la cuenta de cada conversacion.
+    WITH target AS (
+      SELECT c.id, c.assigned_to AS previous, private.known_assignee(c.workspace_id, c.channel_id) AS next
+      FROM public.conversations c
+      WHERE c.contact_id = NEW.id AND c.deleted_at IS NULL
+    ), upd AS (
+      UPDATE public.conversations c
+      SET assigned_to = target.next
+      FROM target
+      WHERE c.id = target.id AND target.next IS NOT NULL AND c.assigned_to IS DISTINCT FROM target.next
+      RETURNING c.id, target.previous, target.next
+    )
+    SELECT coalesce(jsonb_agg(jsonb_build_object('id', upd.id, 'old', upd.previous, 'new', upd.next)), '[]'::jsonb)
+      INTO v_assigned FROM upd;
+
+    -- Agente: solo las que no estaban apagadas (un apagado a mano no se reclama).
+    WITH upd AS (
+      UPDATE public.conversations c
+      SET agent_enabled = false, agent_disabled_by_known = true
+      WHERE c.contact_id = NEW.id AND c.deleted_at IS NULL AND c.agent_enabled IS DISTINCT FROM false
+      RETURNING c.id
+    )
+    SELECT coalesce(jsonb_agg(upd.id), '[]'::jsonb) INTO v_forced FROM upd;
+
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+    VALUES (
+      NEW.workspace_id, 'contact', NEW.id, 'known',
+      jsonb_build_object('is_known', jsonb_build_object('old', false, 'new', true)),
+      jsonb_build_object('conversations_assigned', v_assigned, 'conversations_forced_off', v_forced),
+      auth.uid()
+    );
+    RETURN NULL;
+  END IF;
+
+  -- Quitar: si conserva una etiqueta que apaga el agente, la marca pasa a esa.
+  SELECT ct.tag_id INTO v_tag
+  FROM public.contact_tags ct
+  JOIN public.tags t ON t.id = ct.tag_id
+  WHERE ct.contact_id = NEW.id AND t.disables_agent
+  ORDER BY ct.created_at
+  LIMIT 1;
+
+  IF v_tag IS NOT NULL THEN
+    WITH upd AS (
+      UPDATE public.conversations
+      SET agent_disabled_by_known = false, agent_disabled_by_tag_id = v_tag
+      WHERE contact_id = NEW.id AND agent_disabled_by_known
+      RETURNING id
+    )
+    SELECT coalesce(jsonb_agg(upd.id), '[]'::jsonb) INTO v_moved FROM upd;
+  ELSE
+    WITH upd AS (
+      UPDATE public.conversations
+      SET agent_enabled = NULL, agent_disabled_by_known = false
+      WHERE contact_id = NEW.id AND agent_disabled_by_known AND agent_enabled = false
+      RETURNING id
+    )
+    SELECT coalesce(jsonb_agg(upd.id), '[]'::jsonb) INTO v_restored FROM upd;
+  END IF;
+
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+  VALUES (
+    NEW.workspace_id, 'contact', NEW.id, 'known',
+    jsonb_build_object('is_known', jsonb_build_object('old', true, 'new', false)),
+    jsonb_build_object('conversations_restored', v_restored, 'still_disabled_by_tag_id', v_tag, 'conversations_still_disabled', v_moved, 'assignment_kept', true),
+    auth.uid()
+  );
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS contacts_known_effects ON public.contacts;
+CREATE TRIGGER contacts_known_effects
+  AFTER UPDATE OF is_known ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_known_effects();
+
+-- ------------------------------------------------------------
+-- 4. Fusion: el principal hereda la marca del duplicado
+-- ------------------------------------------------------------
+-- `merge_contacts` (00247) borra el duplicado con `metadata.merged_into` antes
+-- de mudar nada. Al ver eso, si el duplicado era conocido y el principal no,
+-- el principal pasa a serlo (y el trigger de arriba hace el resto).
+
+CREATE OR REPLACE FUNCTION public.contacts_known_on_merge()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_main uuid;
+BEGIN
+  IF NOT OLD.is_known OR OLD.deleted_at IS NOT NULL OR NEW.deleted_at IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF NOT (coalesce(NEW.metadata, '{}'::jsonb) ? 'merged_into') THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_main := (NEW.metadata ->> 'merged_into')::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN NULL;
+  END;
+  UPDATE public.contacts
+  SET is_known = true,
+      known_marked_by = coalesce(known_marked_by, OLD.known_marked_by),
+      known_marked_at = coalesce(known_marked_at, OLD.known_marked_at, now())
+  WHERE id = v_main AND workspace_id = NEW.workspace_id AND NOT is_known;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS contacts_known_on_merge ON public.contacts;
+CREATE TRIGGER contacts_known_on_merge
+  AFTER UPDATE OF deleted_at ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_known_on_merge();
+
+-- ------------------------------------------------------------
+-- 5. Conversaciones nuevas o mudadas de un conocido
+-- ------------------------------------------------------------
+-- Corre despues de `conversations_a_inherit_tag_effects` (orden alfabetico):
+-- si una etiqueta ya la apago, no la toca.
+
+CREATE OR REPLACE FUNCTION public.conversations_inherit_known()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_known boolean;
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.contact_id IS NOT DISTINCT FROM OLD.contact_id THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT ct.is_known INTO v_known FROM public.contacts ct WHERE ct.id = NEW.contact_id;
+
+  IF coalesce(v_known, false) THEN
+    IF NEW.agent_enabled IS DISTINCT FROM false THEN
+      NEW.agent_enabled := false;
+      NEW.agent_disabled_by_known := true;
+    END IF;
+  ELSIF TG_OP = 'UPDATE' AND NEW.agent_disabled_by_known THEN
+    -- Se mudo a un contacto que no es conocido: lo que apago la marca se libera.
+    NEW.agent_enabled := NULL;
+    NEW.agent_disabled_by_known := false;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS conversations_a2_inherit_known ON public.conversations;
+CREATE TRIGGER conversations_a2_inherit_known
+  BEFORE INSERT OR UPDATE OF contact_id ON public.conversations
+  FOR EACH ROW EXECUTE FUNCTION public.conversations_inherit_known();
+
+-- Una persona cambio el estado del agente: la marca del conocido deja de valer
+-- (mismo criterio que `conversations_keep_tag_marker`, 00073).
+CREATE OR REPLACE FUNCTION public.conversations_keep_known_marker()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.agent_enabled IS DISTINCT FROM OLD.agent_enabled
+     AND NEW.agent_disabled_by_known IS NOT DISTINCT FROM OLD.agent_disabled_by_known THEN
+    NEW.agent_disabled_by_known := false;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS conversations_b2_keep_known_marker ON public.conversations;
+CREATE TRIGGER conversations_b2_keep_known_marker
+  BEFORE UPDATE OF agent_enabled ON public.conversations
+  FOR EACH ROW EXECUTE FUNCTION public.conversations_keep_known_marker();
+
+REVOKE ALL ON FUNCTION public.contacts_known_effects() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.contacts_known_on_merge() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.conversations_inherit_known() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.conversations_keep_known_marker() FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 6. assign_new_conversation: primero el conocido, despues las reglas
+-- ------------------------------------------------------------
+-- Igual a la 00255 salvo el bloque marcado "00256".
+
+CREATE OR REPLACE FUNCTION public.assign_new_conversation(p_conversation_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  conv             public.conversations%ROWTYPE;
+  r                public.conversation_assignment_rules%ROWTYPE;
+  v_active         uuid[];
+  v_pick           uuid;
+  v_setter_old     uuid;
+  v_setter_changed boolean := false;
+BEGIN
+  SELECT * INTO conv FROM public.conversations WHERE id = p_conversation_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+  IF conv.assigned_to IS NOT NULL THEN
+    RETURN jsonb_build_object('status', 'already_assigned', 'assigned_to', conv.assigned_to);
+  END IF;
+
+  -- 00256: el chat de un conocido va a la persona de esa cuenta, sin reglas y
+  -- sin tocar el setter.
+  IF EXISTS (SELECT 1 FROM public.contacts ct WHERE ct.id = conv.contact_id AND ct.is_known) THEN
+    v_pick := private.known_assignee(conv.workspace_id, conv.channel_id);
+    IF v_pick IS NULL THEN
+      RETURN jsonb_build_object('status', 'no_rule');
+    END IF;
+    UPDATE public.conversations SET assigned_to = v_pick WHERE id = conv.id;
+    RETURN jsonb_build_object('status', 'assigned', 'assigned_to', v_pick, 'rule_id', NULL, 'rule_name', NULL,
+      'source', 'known', 'contact_id', conv.contact_id, 'setter_changed', false, 'setter_old', NULL);
+  END IF;
+
+  SELECT coalesce(array_agg(wm.user_id), '{}'::uuid[]) INTO v_active
+  FROM public.workspace_members wm
+  WHERE wm.workspace_id = conv.workspace_id;
+
+  FOR r IN
+    SELECT *
+    FROM public.conversation_assignment_rules car
+    WHERE car.workspace_id = conv.workspace_id
+      AND car.enabled
+      AND car.archived_at IS NULL
+      AND (cardinality(car.channel_ids) = 0 OR conv.channel_id = ANY (car.channel_ids))
+    ORDER BY car.position, car.created_at, car.id
+    FOR UPDATE
+  LOOP
+    v_pick := public.conversation_rule_pick(r.mode, r.member_ids, v_active, r.last_assigned_member_id);
+    CONTINUE WHEN v_pick IS NULL;
+
+    UPDATE public.conversations SET assigned_to = v_pick WHERE id = conv.id;
+
+    IF r.mode = 'round_robin' THEN
+      UPDATE public.conversation_assignment_rules SET last_assigned_member_id = v_pick WHERE id = r.id;
+    END IF;
+
+    IF r.setter_mode <> 'none' AND conv.contact_id IS NOT NULL THEN
+      SELECT ct.setter_id INTO v_setter_old
+      FROM public.contacts ct
+      WHERE ct.id = conv.contact_id AND ct.deleted_at IS NULL
+      FOR UPDATE;
+      IF FOUND
+         AND v_setter_old IS DISTINCT FROM v_pick
+         AND (r.setter_mode = 'overwrite' OR v_setter_old IS NULL) THEN
+        UPDATE public.contacts SET setter_id = v_pick WHERE id = conv.contact_id;
+        v_setter_changed := true;
+      END IF;
+    END IF;
+
+    RETURN jsonb_build_object(
+      'status', 'assigned',
+      'assigned_to', v_pick,
+      'rule_id', r.id,
+      'rule_name', r.name,
+      'source', 'rule',
+      'contact_id', conv.contact_id,
+      'setter_changed', v_setter_changed,
+      'setter_old', v_setter_old
+    );
+  END LOOP;
+
+  RETURN jsonb_build_object('status', 'no_rule');
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.assign_new_conversation(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.assign_new_conversation(uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 257: STICKERS
+-- ============================================================
+-- ============================================================
+-- 00257_stickers
+-- ============================================================
+-- Stickers de WhatsApp (octubre 2026): la biblioteca del negocio.
+--
+-- WhatsApp no deja leer los stickers guardados en el celular (ni Baileys ni
+-- Evolution exponen esa sincronizacion), asi que la biblioteca se arma sola
+-- con el uso:
+--   - cada sticker que se manda (desde aca o desde el celular: llegan al
+--     webhook como `fromMe`) se agrega solo (`source = 'sent'`);
+--   - uno recibido se guarda con un boton (`source = 'saved'`);
+--   - se pueden subir imagenes o GIFs, que el servidor convierte a sticker
+--     webp de 512 x 512 (`source = 'uploaded'`; un GIF queda animado).
+--
+-- Un sticker por contenido: `sha256` de los bytes del webp, unico por
+-- workspace. Si se borra y vuelve a aparecer al mandarlo, no revive solo
+-- (alguien lo saco a proposito); subirlo o guardarlo a mano si lo revive.
+--
+-- El archivo vive en el bucket `chat-media` (ya existe, privado, la policy de
+-- lectura mira el primer segmento = workspace), bajo `<ws>/stickers/<sha>.webp`.
+-- La retencion de 180 dias borra solo lo que referencia un mensaje, y un
+-- sticker se COPIA a la conversacion antes de mandarse.
+--
+-- Escribe solo el servidor (las acciones chequean el permiso). La app lee con
+-- la RLS (miembros del workspace). Nada se borra de verdad: `deleted_at`.
+--
+-- Aditiva: se aplica ANTES de desplegar el codigo que la usa.
+--
+-- Como volver atras:
+--   DROP TABLE IF EXISTS public.stickers;
+--
+-- Idempotente.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.stickers (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id  uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  storage_path  text NOT NULL,
+  sha256        text NOT NULL,
+  mime_type     text NOT NULL DEFAULT 'image/webp',
+  is_animated   boolean NOT NULL DEFAULT false,
+  size_bytes    integer,
+  source        text NOT NULL,
+  is_favorite   boolean NOT NULL DEFAULT false,
+  use_count     integer NOT NULL DEFAULT 0,
+  last_used_at  timestamptz,
+  created_by    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  deleted_at    timestamptz
+);
+
+COMMENT ON TABLE public.stickers IS
+  'Biblioteca de stickers de WhatsApp (00257): los mandados se agregan solos, los recibidos se guardan con un boton, y se pueden subir. Archivo en chat-media/<ws>/stickers/<sha>.webp.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'stickers_source_check') THEN
+    ALTER TABLE public.stickers ADD CONSTRAINT stickers_source_check
+      CHECK (source IN ('uploaded', 'sent', 'saved'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'stickers_sha256_check') THEN
+    ALTER TABLE public.stickers ADD CONSTRAINT stickers_sha256_check
+      CHECK (sha256 ~ '^[0-9a-f]{64}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'stickers_path_check') THEN
+    ALTER TABLE public.stickers ADD CONSTRAINT stickers_path_check
+      CHECK (storage_path = workspace_id::text || '/stickers/' || sha256 || '.webp');
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stickers_workspace_sha
+  ON public.stickers (workspace_id, sha256);
+
+CREATE INDEX IF NOT EXISTS idx_stickers_workspace_recent
+  ON public.stickers (workspace_id, last_used_at DESC NULLS LAST)
+  WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.stickers;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.stickers
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.stickers ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "stickers_select" ON public.stickers;
+CREATE POLICY "stickers_select" ON public.stickers
+  FOR SELECT USING ((select public.is_workspace_member(workspace_id)));
+
+-- Sin policies de escritura: escribe el servidor.
+
+REVOKE ALL ON public.stickers FROM anon, authenticated;
+GRANT SELECT ON public.stickers TO authenticated;
+GRANT ALL ON public.stickers TO service_role;
+
+-- ============================================================
+-- MIGRATION 258: WHATSAPP CALLS
+-- ============================================================
+-- ============================================================
+-- 00258_whatsapp_calls
+-- ============================================================
+-- Llamadas de WhatsApp en el chat (octubre 2026).
+--
+-- Evolution API (Baileys) NO puede hacer ni atender llamadas: su `offerCall`
+-- esta comentado en el codigo de la 2.3.7 y devuelve un id falso. Lo que si
+-- hace es avisar por webhook (evento CALL) cada vez que alguien llama: offer,
+-- accept, reject, timeout, terminate. Con eso:
+--   - la llamada queda en el hilo como una linea ("📞 Llamada de voz
+--     perdida"), sin ser un mensaje (no alimenta al agente ni a los flujos);
+--   - una perdida o rechazada suma un no leido y avisa al responsable.
+--
+-- No es la tabla `calls` (00145): esa es de Fathom (llamadas de venta
+-- grabadas). Esta es solo el registro de las llamadas de WhatsApp.
+--
+-- `record_whatsapp_call` hace la transicion de estado en UNA sentencia
+-- (INSERT ... ON CONFLICT ... DO UPDATE), asi dos eventos de la misma llamada
+-- que llegan a la vez no se pisan, y devuelve si la llamada RECIEN quedo sin
+-- atender (para avisar una sola vez). Transiciones:
+--   (nueva)  offer/ringing -> ringing; accept -> answered; reject -> rejected;
+--            timeout/terminate -> missed
+--   ringing  accept -> answered; reject -> rejected; timeout/terminate -> missed
+--   answered terminate -> answered (con ended_at); nada la saca de ahi
+--   missed / rejected: finales
+--
+-- Sin `contact_id` a proposito: el contacto sale de la conversacion, y asi una
+-- fusion de contactos (que muda las conversaciones) no necesita tocar esta
+-- tabla (`merge_contacts` / CONTACT_MERGE_TABLES).
+--
+-- Escribe solo el servidor (el webhook, con el service role). La app lee con
+-- la RLS: quien ve la conversacion ve sus llamadas.
+--
+-- Aditiva: se aplica ANTES de desplegar el codigo que la usa.
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.record_whatsapp_call(uuid, uuid, uuid, text, boolean, text, timestamptz);
+--   DROP TABLE IF EXISTS public.whatsapp_calls;
+--
+-- Idempotente.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.whatsapp_calls (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id     uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  channel_id       uuid NOT NULL REFERENCES public.channels(id) ON DELETE CASCADE,
+  conversation_id  uuid NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  platform_call_id text NOT NULL,
+  is_video         boolean NOT NULL DEFAULT false,
+  status           text NOT NULL DEFAULT 'ringing',
+  started_at       timestamptz NOT NULL DEFAULT now(),
+  answered_at      timestamptz,
+  ended_at         timestamptz,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.whatsapp_calls IS
+  'Llamadas de WhatsApp recibidas (00258): lo que avisa Evolution por el evento CALL. Se ven en el hilo; no son mensajes. No confundir con calls (Fathom).';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'whatsapp_calls_status_check') THEN
+    ALTER TABLE public.whatsapp_calls ADD CONSTRAINT whatsapp_calls_status_check
+      CHECK (status IN ('ringing', 'answered', 'missed', 'rejected'));
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_calls_channel_call
+  ON public.whatsapp_calls (channel_id, platform_call_id);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_calls_conversation
+  ON public.whatsapp_calls (conversation_id, started_at);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.whatsapp_calls;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.whatsapp_calls
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.whatsapp_calls ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "whatsapp_calls_select" ON public.whatsapp_calls;
+CREATE POLICY "whatsapp_calls_select" ON public.whatsapp_calls
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.conversations c
+      WHERE c.id = whatsapp_calls.conversation_id
+        AND public.can_see_conversation(c)
+    )
+  );
+
+-- Sin policies de escritura: escribe el webhook con el service role.
+
+REVOKE ALL ON public.whatsapp_calls FROM anon, authenticated;
+GRANT SELECT ON public.whatsapp_calls TO authenticated;
+GRANT ALL ON public.whatsapp_calls TO service_role;
+
+-- ------------------------------------------------------------
+-- La transicion, atomica
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.record_whatsapp_call(
+  p_workspace_id    uuid,
+  p_channel_id      uuid,
+  p_conversation_id uuid,
+  p_call_id         text,
+  p_is_video        boolean,
+  p_event           text,
+  p_at              timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_initial  text;
+  v_previous text;
+  v_row      public.whatsapp_calls%ROWTYPE;
+BEGIN
+  v_initial := CASE p_event
+    WHEN 'accept' THEN 'answered'
+    WHEN 'reject' THEN 'rejected'
+    WHEN 'timeout' THEN 'missed'
+    WHEN 'terminate' THEN 'missed'
+    ELSE 'ringing'
+  END;
+
+  SELECT status INTO v_previous FROM public.whatsapp_calls
+  WHERE channel_id = p_channel_id AND platform_call_id = p_call_id;
+
+  INSERT INTO public.whatsapp_calls AS w (
+    workspace_id, channel_id, conversation_id, platform_call_id, is_video, status, started_at,
+    answered_at, ended_at
+  ) VALUES (
+    p_workspace_id, p_channel_id, p_conversation_id, p_call_id, coalesce(p_is_video, false), v_initial,
+    coalesce(p_at, now()),
+    CASE WHEN v_initial = 'answered' THEN coalesce(p_at, now()) END,
+    CASE WHEN v_initial IN ('missed', 'rejected') THEN coalesce(p_at, now()) END
+  )
+  ON CONFLICT (channel_id, platform_call_id) DO UPDATE SET
+    status = CASE
+      WHEN w.status = 'ringing' AND p_event = 'accept' THEN 'answered'
+      WHEN w.status = 'ringing' AND p_event = 'reject' THEN 'rejected'
+      WHEN w.status = 'ringing' AND p_event IN ('timeout', 'terminate') THEN 'missed'
+      ELSE w.status
+    END,
+    is_video = w.is_video OR coalesce(p_is_video, false),
+    answered_at = CASE WHEN w.status = 'ringing' AND p_event = 'accept' THEN coalesce(p_at, now()) ELSE w.answered_at END,
+    ended_at = CASE
+      WHEN w.ended_at IS NOT NULL THEN w.ended_at
+      WHEN p_event IN ('reject', 'timeout', 'terminate') AND w.status IN ('ringing', 'answered') THEN coalesce(p_at, now())
+      ELSE w.ended_at
+    END
+  RETURNING * INTO v_row;
+
+  RETURN jsonb_build_object(
+    'id', v_row.id,
+    'status', v_row.status,
+    'previous', v_previous,
+    'became_unanswered', v_row.status IN ('missed', 'rejected') AND coalesce(v_previous, 'ringing') = 'ringing'
+  );
+END;
+$$;
+
+COMMENT ON FUNCTION public.record_whatsapp_call(uuid, uuid, uuid, text, boolean, text, timestamptz) IS
+  'Registra un evento CALL de Evolution (00258). Atomica; devuelve si la llamada recien quedo sin atender. Solo service_role.';
+
+REVOKE ALL ON FUNCTION public.record_whatsapp_call(uuid, uuid, uuid, text, boolean, text, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_whatsapp_call(uuid, uuid, uuid, text, boolean, text, timestamptz) TO service_role;
+
+-- ============================================================
 -- MIGRATION 259: CONVERSATION AWAITING REPLY
 -- ============================================================
 -- ============================================================================

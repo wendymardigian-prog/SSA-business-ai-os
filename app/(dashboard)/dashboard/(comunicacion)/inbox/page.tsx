@@ -11,6 +11,9 @@ import {
   ASSIGNMENT_ANY,
   ASSIGNMENT_UNASSIGNED,
   ASSIGNMENT_AI,
+  ASSIGNMENT_MINE,
+  HIDE_KNOWN_PARAM,
+  HIDE_KNOWN_VALUE,
   statusForQuery,
   type InboxFilters,
   type InboxStatus,
@@ -128,6 +131,8 @@ export default async function InboxPage({
   // 00259: esperando respuesta (se puede responder / ventana vencida), el mismo
   // criterio que la tarjeta del dashboard de Chat.
   const awaiting = parseAwaitingFilter(firstParam(params[AWAITING_PARAM]));
+  // Conocidos (00256): esconderlos de la lista.
+  const hideKnown = firstParam(params[HIDE_KNOWN_PARAM]) === HIDE_KNOWN_VALUE;
   const page = pickPage(params.page);
   const selectedId = firstParam(params.c);
 
@@ -138,7 +143,7 @@ export default async function InboxPage({
   // datos del contacto de las que vuelven. Es el mismo mecanismo que usa la
   // lista de contactos para filtrar por tag.
   let select =
-    "*, contacts!inner(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at)";
+    "*, contacts!inner(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at, is_known, known_marked_by)";
   if (tagIds.length > 0) select += ", tag_match:contacts!inner(contact_tags!inner(tag_id))";
 
   let query = supabase
@@ -179,6 +184,7 @@ export default async function InboxPage({
         ? query.or(`reply_window_until.is.null,reply_window_until.gt.${nowIso}`)
         : query.lte("reply_window_until", nowIso);
   }
+  if (hideKnown) query = query.eq("contacts.is_known", false);
 
   if (search) {
     // La busqueda por nombre del contacto va sobre la tabla embebida; el
@@ -200,10 +206,11 @@ export default async function InboxPage({
     // el criterio sigue valiendo, porque va a escribir por el mismo camino.
     query = query.is("assigned_to", null);
   } else if (assignment) {
-    query = query.or(
-      `setter_id.eq.${assignment},vendedor_id.eq.${assignment}`,
-      { referencedTable: "contacts" },
-    );
+    // Una persona: el chat a su cargo, o es setter o vendedor del contacto
+    // (campo calculado `conversation_people`, 00255). Antes miraba solo el
+    // contacto y un chat asignado directo no aparecia.
+    const personId = assignment === ASSIGNMENT_MINE ? user.id : assignment;
+    query = query.filter("conversation_people", "cs", `{${personId}}`);
   }
 
   const from = (page - 1) * PAGE_SIZE;
@@ -245,6 +252,8 @@ export default async function InboxPage({
   // Crear una tarea sobre la conversacion (Tareas, F20): con `tasks.edit`.
   const canCreateTask = permissionCtx.can("tasks.edit");
   const canViewAgentRuns = permissionCtx.can("agents.view");
+  // El responsable de cada conversación (00255): con `contacts.assign` se cambia; sin la clave, solo "Tomar".
+  const canAssignConversations = permissionCtx.can("contacts.assign");
 
   let conversations = toRows(conversationsRes.data);
 
@@ -264,7 +273,7 @@ export default async function InboxPage({
     const { data } = await supabase
       .from("conversations")
       .select(
-        "*, contacts(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at)",
+        "*, contacts(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at, is_known, known_marked_by)",
       )
       .eq("id", selectedId)
       .eq("workspace_id", workspace.id)
@@ -297,6 +306,7 @@ export default async function InboxPage({
     agentError,
     needsHuman,
     awaiting,
+    hideKnown,
   };
 
   const platformItems = platformOptions.map((p) => ({ value: p, label: platformLabel(p) }));
@@ -334,6 +344,9 @@ export default async function InboxPage({
       canManageAssets={canManageAssets}
       canCreateTask={canCreateTask}
       canViewAgentRuns={canViewAgentRuns}
+      canAssignConversations={canAssignConversations}
+      canEditContacts={permissionCtx.can("contacts.edit")}
+      canDeleteContacts={permissionCtx.can("contacts.delete")}
       replyChannelIds={replyFilterFor(access.permissions)}
       filters={filters}
       dateRange={range}
@@ -355,7 +368,7 @@ export default async function InboxPage({
 /** Un id de la URL solo vale si es de alguien del equipo. */
 function resolveAssignment(raw: string, memberIds: string[]): string {
   if (!raw) return ASSIGNMENT_ANY;
-  if (raw === ASSIGNMENT_UNASSIGNED || raw === ASSIGNMENT_AI) return raw;
+  if (raw === ASSIGNMENT_UNASSIGNED || raw === ASSIGNMENT_AI || raw === ASSIGNMENT_MINE) return raw;
   return memberIds.includes(raw) ? raw : ASSIGNMENT_ANY;
 }
 

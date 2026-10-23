@@ -1,0 +1,10 @@
+[
+  { "name": "la persona de esa cuenta", "settings": { "by_channel": { "ch1": "ana" }, "default_user_id": "beto" }, "channel": "ch1", "members": ["ana", "beto", "owner"], "owner": "owner", "expected": "ana" },
+  { "name": "otra cuenta: la persona por defecto", "settings": { "by_channel": { "ch1": "ana" }, "default_user_id": "beto" }, "channel": "ch2", "members": ["ana", "beto", "owner"], "owner": "owner", "expected": "beto" },
+  { "name": "sin nada configurado: el Owner", "settings": {}, "channel": "ch1", "members": ["ana", "owner"], "owner": "owner", "expected": "owner" },
+  { "name": "la de la cuenta se fue del equipo: la por defecto", "settings": { "by_channel": { "ch1": "ana" }, "default_user_id": "beto" }, "channel": "ch1", "members": ["beto", "owner"], "owner": "owner", "expected": "beto" },
+  { "name": "las dos se fueron: el Owner", "settings": { "by_channel": { "ch1": "ana" }, "default_user_id": "beto" }, "channel": "ch1", "members": ["owner"], "owner": "owner", "expected": "owner" },
+  { "name": "un valor que no es un id se ignora", "settings": { "by_channel": { "ch1": 42 }, "default_user_id": "" }, "channel": "ch1", "members": ["owner"], "owner": "owner", "expected": "owner" },
+  { "name": "configuración rota (no es un objeto): el Owner", "settings": "basura", "channel": "ch1", "members": ["owner"], "owner": "owner", "expected": "owner" },
+  { "name": "sin Owner ni nadie: ninguna", "settings": {}, "channel": "ch1", "members": [], "owner": null, "expected": null }
+]

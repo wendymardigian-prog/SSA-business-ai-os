@@ -19,8 +19,8 @@
 
 import type { ConversationStatus } from "@/lib/types/database";
 
-export type MenuAction = "snooze" | "reopen" | "createTask" | "noReply";
-export type NoteKey = "status" | "flowsPaused" | "agentOffByTag" | "draftMode";
+export type MenuAction = "snooze" | "reopen" | "createTask" | "noReply" | "markKnown" | "unmarkKnown";
+export type NoteKey = "status" | "flowsPaused" | "agentOffByTag" | "draftMode" | "known";
 
 export interface HeaderInput {
   status: ConversationStatus;
@@ -34,6 +34,11 @@ export interface HeaderInput {
    * responder por esta cuenta (00259). Opcional: sin el dato, no se ofrece.
    */
   canMarkNoReply?: boolean;
+  /**
+   * Conocido (00256): si el contacto lo es y que puede hacer quien mira. Marcar
+   * pide `contacts.edit`; quitar, haberla puesto o `contacts.delete`.
+   */
+  known?: { isKnown: boolean; canMark: boolean; canUnmark: boolean };
 }
 
 export interface HeaderPlan {
@@ -56,11 +61,14 @@ export function planHeaderActions(input: HeaderInput): HeaderPlan {
   if (input.status === "snoozed") menu.push("reopen");
   if (input.canCreateTask) menu.push("createTask");
   if (input.canMarkNoReply) menu.push("noReply");
+  if (input.known && !input.known.isKnown && input.known.canMark) menu.push("markKnown");
+  if (input.known?.isKnown && input.known.canUnmark) menu.push("unmarkKnown");
 
   const notes: NoteKey[] = ["status"];
   if (input.isAutomationPaused) notes.push("flowsPaused");
   if (input.agentDisabledByTag) notes.push("agentOffByTag");
   if (input.draftMode) notes.push("draftMode");
+  if (input.known?.isKnown) notes.push("known");
 
   return { primary, menu, notes, hasAlert: notes.length > 1 };
 }
@@ -73,6 +81,10 @@ export const NOTE_TEXT: Record<Exclude<NoteKey, "status">, { title: string; deta
   agentOffByTag: {
     title: "Agente apagado por etiqueta",
     detail: "El contacto tiene una etiqueta que apaga el agente (por ejemplo es-conocido). Prenderlo a mano gana sobre la etiqueta.",
+  },
+  known: {
+    title: "Conocido",
+    detail: "Es un contacto personal: el agente no le responde y no recibe secuencias. Las automatizaciones siguen corriendo.",
   },
   draftMode: {
     title: "Modo borrador",

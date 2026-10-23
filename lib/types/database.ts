@@ -492,6 +492,8 @@ export type AuditAction =
   | "link"
   | "import"
   | "do_not_contact"
+  /** Se marco o se quito un conocido (00256). Lo escribe el trigger contacts_known_effects. */
+  | "known"
   /** Un evento del CRM disparo un flow (Fase 2, F3/F4). */
   | "automation_triggered"
   /** Se inscribio un contacto en una secuencia (Fase 2, F13/F15). */
@@ -686,6 +688,9 @@ export type AuditAction =
   /** Ventas, asignacion (entity assignment_rule; la automatica es entity contact, actor sistema). */
   | "assignment_rule.updated"
   | "assignment.automatic"
+  /** Reglas de asignacion de conversaciones (00255): alta y archivo (entity assignment_rule). */
+  | "assignment_rule.created"
+  | "assignment_rule.archived"
   /** Ventas (entity sale). */
   | "sale.created"
   | "sale.updated"
@@ -1115,6 +1120,8 @@ export interface Database {
           finance_settings: Json;
           /** Pipeline de contactos (00245): las listas de estados de setter y de vendedor. */
           contact_status_settings: Json;
+          /** A quien van los chats de un conocido, por cuenta (00256). */
+          known_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */
           max_discount_percent: number | null;
           overdue_grace_days: number;
@@ -1160,6 +1167,8 @@ export interface Database {
           payment_methods?: Json;
           finance_settings?: Json;
           contact_status_settings?: Json;
+          /** A quien van los chats de un conocido, por cuenta (00256). */
+          known_contacts_settings?: Json;
           max_discount_percent?: number | null;
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
@@ -1201,6 +1210,8 @@ export interface Database {
           payment_methods?: Json;
           finance_settings?: Json;
           contact_status_settings?: Json;
+          /** A quien van los chats de un conocido, por cuenta (00256). */
+          known_contacts_settings?: Json;
           max_discount_percent?: number | null;
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
@@ -1474,6 +1485,10 @@ export interface Database {
           do_not_contact: boolean;
           do_not_contact_reason: string | null;
           do_not_contact_at: string | null;
+          /** Conocido (00256). */
+          is_known: boolean;
+          known_marked_by: string | null;
+          known_marked_at: string | null;
           /** Zona IANA del contacto (Etapa 4, 00095). La aprende la agenda y la confirma el agente. */
           timezone: string | null;
           ai_conversation_summary: string | null;
@@ -1539,6 +1554,10 @@ export interface Database {
           do_not_contact?: boolean;
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
+          /** Conocido (00256). */
+          is_known?: boolean;
+          known_marked_by?: string | null;
+          known_marked_at?: string | null;
           timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
@@ -1580,6 +1599,10 @@ export interface Database {
           do_not_contact?: boolean;
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
+          /** Conocido (00256). */
+          is_known?: boolean;
+          known_marked_by?: string | null;
+          known_marked_at?: string | null;
           timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
@@ -2067,6 +2090,8 @@ export interface Database {
           no_reply_needed_at: string | null;
           no_reply_needed_reason: "rule" | "agent" | "manual" | null;
           no_reply_needed_by: string | null;
+          /** El agente lo apago la marca de conocido (00256). */
+          agent_disabled_by_known: boolean;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
@@ -2099,6 +2124,8 @@ export interface Database {
           no_reply_needed_at?: string | null;
           no_reply_needed_reason?: "rule" | "agent" | "manual" | null;
           no_reply_needed_by?: string | null;
+          /** El agente lo apago la marca de conocido (00256). */
+          agent_disabled_by_known?: boolean;
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -2115,6 +2142,8 @@ export interface Database {
           no_reply_needed_at?: string | null;
           no_reply_needed_reason?: "rule" | "agent" | "manual" | null;
           no_reply_needed_by?: string | null;
+          /** El agente lo apago la marca de conocido (00256). */
+          agent_disabled_by_known?: boolean;
           late_conversation_id?: string | null;
           status?: ConversationStatus;
           assigned_to?: string | null;
@@ -4265,6 +4294,120 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Llamadas de WhatsApp recibidas (00258). No es `calls` (Fathom). Escribe solo el webhook. */
+      whatsapp_calls: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          channel_id: string;
+          conversation_id: string;
+          platform_call_id: string;
+          is_video: boolean;
+          status: "ringing" | "answered" | "missed" | "rejected";
+          started_at: string;
+          answered_at: string | null;
+          ended_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      /** Biblioteca de stickers de WhatsApp (00257). Escribe solo el servidor. */
+      stickers: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          storage_path: string;
+          sha256: string;
+          mime_type: string;
+          is_animated: boolean;
+          size_bytes: number | null;
+          source: "uploaded" | "sent" | "saved";
+          is_favorite: boolean;
+          use_count: number;
+          last_used_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          storage_path: string;
+          sha256: string;
+          mime_type?: string;
+          is_animated?: boolean;
+          size_bytes?: number | null;
+          source: "uploaded" | "sent" | "saved";
+          is_favorite?: boolean;
+          use_count?: number;
+          last_used_at?: string | null;
+          created_by?: string | null;
+          deleted_at?: string | null;
+        };
+        Update: {
+          is_favorite?: boolean;
+          use_count?: number;
+          last_used_at?: string | null;
+          deleted_at?: string | null;
+          source?: "uploaded" | "sent" | "saved";
+        };
+        Relationships: [];
+      };
+
+      /** Reglas de asignacion de conversaciones por cuenta (00255). Escribe solo el servidor. */
+      conversation_assignment_rules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          position: number;
+          enabled: boolean;
+          channel_ids: string[];
+          mode: "fixed" | "round_robin";
+          member_ids: string[];
+          last_assigned_member_id: string | null;
+          setter_mode: "none" | "if_empty" | "overwrite";
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name?: string;
+          position?: number;
+          enabled?: boolean;
+          channel_ids?: string[];
+          mode?: "fixed" | "round_robin";
+          member_ids?: string[];
+          last_assigned_member_id?: string | null;
+          setter_mode?: "none" | "if_empty" | "overwrite";
+          archived_at?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          position?: number;
+          enabled?: boolean;
+          channel_ids?: string[];
+          mode?: "fixed" | "round_robin";
+          member_ids?: string[];
+          last_assigned_member_id?: string | null;
+          setter_mode?: "none" | "if_empty" | "overwrite";
+          archived_at?: string | null;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+
       /** Catalogo de productos de Ventas (00159). Absorbe content_offers: los migrados conservan el id. */
       products: {
         Row: {
@@ -5928,6 +6071,28 @@ export interface Database {
           p_copywriter_instructions: string;
         };
         Returns: Json;
+      };
+      /** Registra un evento CALL de Evolution (00258, solo service_role). */
+      record_whatsapp_call: {
+        Args: {
+          p_workspace_id: string;
+          p_channel_id: string;
+          p_conversation_id: string;
+          p_call_id: string;
+          p_is_video: boolean;
+          p_event: string;
+          p_at: string;
+        };
+        Returns: Json;
+      };
+      /** Aplica las reglas de asignacion a una conversacion nueva (00255, solo service_role). */
+      assign_new_conversation: {
+        Args: { p_conversation_id: string };
+        Returns: Json;
+      };
+      conversation_rule_pick: {
+        Args: { p_mode: string; p_member_ids: string[]; p_active_ids: string[]; p_last: string | null };
+        Returns: string | null;
       };
       merge_contacts: {
         Args: { p_workspace_id: string; p_main: string; p_duplicate: string; p_actor: string | null };

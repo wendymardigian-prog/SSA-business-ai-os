@@ -7,6 +7,7 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { resolveContentForPost } from "@/lib/attribution/content-variables";
+import { applyConversationRules } from "@/lib/conversations/assignment";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type Trigger = Database["public"]["Tables"]["triggers"]["Row"];
@@ -213,6 +214,11 @@ export async function processComment({
       )
       .select("id")
       .single();
+
+    // Las reglas de asignacion por cuenta (00255). Es un upsert y no se sabe si
+    // la conversacion es nueva: la RPC solo asigna si todavia no tiene
+    // responsable, asi que nunca pisa a nadie.
+    if (conversation) await applyConversationRules(supabase, { workspaceId: channel.workspace_id, conversationId: conversation.id });
 
     let dmSent = false;
     if (conversation) {

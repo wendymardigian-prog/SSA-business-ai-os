@@ -44,6 +44,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   link: "vinculó el contacto",
   import: "importó el contacto",
   do_not_contact: "cambió la marca de no contactar",
+  known: "cambió la marca de conocido",
   automation_triggered: "disparó una automatización",
   enroll: "lo inscribió en una secuencia",
   collision_detected: "quedó en más de una secuencia por el mismo canal",
@@ -128,6 +129,7 @@ const FIELD_LABELS: Record<string, string> = {
   assignment_locked_at: "Asignado a mano",
   do_not_contact: "No contactar",
   do_not_contact_reason: "Motivo de no contactar",
+  is_known: "Conocido",
   interest_product: "Producto de interés",
   tags: "Tags",
 };

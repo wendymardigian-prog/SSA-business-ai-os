@@ -56,3 +56,24 @@ describe("cabecera de la conversacion", () => {
     }
   });
 });
+
+describe("conocido (00256)", () => {
+  const base = { status: "open" as const, canCreateTask: false, isAutomationPaused: false, agentDisabledByTag: false, draftMode: false };
+
+  it("marcar aparece si no lo es y puede editar contactos", () => {
+    expect(planHeaderActions({ ...base, known: { isKnown: false, canMark: true, canUnmark: false } }).menu).toContain("markKnown");
+    expect(planHeaderActions({ ...base, known: { isKnown: false, canMark: false, canUnmark: false } }).menu).not.toContain("markKnown");
+  });
+
+  it("si ya lo es: el aviso en el menú y quitar solo para quien puede", () => {
+    const plan = planHeaderActions({ ...base, known: { isKnown: true, canMark: true, canUnmark: false } });
+    expect(plan.menu).not.toContain("markKnown");
+    expect(plan.menu).not.toContain("unmarkKnown");
+    expect(plan.notes).toContain("known");
+    expect(planHeaderActions({ ...base, known: { isKnown: true, canMark: true, canUnmark: true } }).menu).toContain("unmarkKnown");
+  });
+
+  it("sin el dato, nada cambia", () => {
+    expect(planHeaderActions(base).menu).toEqual(["snooze"]);
+  });
+});

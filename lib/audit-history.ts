@@ -377,6 +377,8 @@ export const SALE_ACTION_LABELS: Record<
   "version.draft_deleted": "borró el borrador de versión",
   "version.published": "publicó la versión",
   "assignment_rule.updated": "cambió la regla de asignación",
+  "assignment_rule.created": "creó una regla de asignación",
+  "assignment_rule.archived": "archivó una regla de asignación",
   "assignment.automatic": "asignó automáticamente",
   "sale.created": "cargó la venta",
   "sale.updated": "editó la venta",

@@ -39,6 +39,7 @@ export const ENROLLMENT_STATUS: Record<SequenceEnrollmentStatus, StatusStyle> = 
 const PAUSE_REASONS: Record<string, string> = {
   contact_replied: "el contacto respondió",
   opt_out: "pidió no ser contactado",
+  known: "es un conocido",
   sequence_paused: "se pausó la secuencia",
   no_conversation: "no hay una conversación abierta",
   collision: "estaba en más de una secuencia",

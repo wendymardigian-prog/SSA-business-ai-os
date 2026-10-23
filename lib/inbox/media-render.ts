@@ -13,6 +13,7 @@
 import {
   EMAIL_BUCKET_MARKER,
   attachmentLabel,
+  parseAttachments,
   type AttachmentKind,
   type ChatAttachment,
 } from "@/lib/messages/attachments";
@@ -26,6 +27,8 @@ import { chatMediaDownloadUrl, chatMediaUrl } from "@/lib/chat-media/bucket";
  */
 export type MediaComponent =
   | "image"
+  /** Un sticker: chico, sin fondo ni pie de descarga, como en WhatsApp. */
+  | "sticker"
   | "gif-video"
   | "gif-image"
   | "video"
@@ -236,8 +239,9 @@ export function renderPlan(item: ChatAttachment): MediaRenderPlan {
 
   switch (item.kind) {
     case "image":
-    case "sticker":
       return { ...base, component: "image", label: attachmentLabel(item.kind) };
+    case "sticker":
+      return { ...base, component: "sticker", label: attachmentLabel(item.kind) };
     case "gif":
       return {
         ...base,
@@ -303,4 +307,15 @@ export function extensionLabel(item: ChatAttachment): string | null {
   if (fromName) return fromName.toUpperCase();
   const fromMime = item.mime?.split("/")[1]?.split(";")[0];
   return fromMime ? fromMime.toUpperCase().slice(0, 6) : null;
+}
+
+/**
+ * Un mensaje que es SOLO un sticker (sin texto, sin asunto, sin fallo): la
+ * burbuja no lleva fondo, como en WhatsApp. Un sticker que todavia se esta
+ * bajando o que fallo sigue con la burbuja (se ve el motivo).
+ */
+export function isStickerOnlyMessage(message: { text?: string | null; email_subject?: string | null; attachments: unknown }, failed: boolean): boolean {
+  if (failed || message.text?.trim() || message.email_subject) return false;
+  const items = parseAttachments(message.attachments);
+  return items.length === 1 && renderPlan(items[0]).component === "sticker";
 }
