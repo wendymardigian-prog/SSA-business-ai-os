@@ -23,6 +23,9 @@ import { computeQuota } from "@/lib/email/quota";
 import { createNotification } from "@/lib/notifications/create";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { BOOKING_TRIGGER_SCOPE } from "@/lib/scheduling/automation/context";
+import { createNotificationOnce } from "@/lib/notifications/create";
+import { parseEmailAttachments, type EmailAttachmentRef } from "@/lib/email/attachment-limits";
+import { loadEmailAttachments } from "@/lib/email/flow-attachments";
 
 export interface SendEmailNodeData {
   /**
@@ -42,6 +45,8 @@ export interface SendEmailNodeData {
   subject?: string;
   /** Cuerpo con variables (`{{booking.start_invitee}}`). Texto plano o HTML. */
   body?: string;
+  /** Adjuntos: recursos de la banca con archivo (auditoria de automatizaciones). Hasta 10 y 25 MB en total. */
+  attachments?: EmailAttachmentRef[];
 }
 
 /**
@@ -147,8 +152,14 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
     return;
   }
 
+  // Los adjuntos se bajan UNA vez para todas las personas. Si alguno ya no esta (se borro el recurso), el email sale
+  // igual sin ese archivo —lo importante es el mensaje— y se avisa en la campana, una vez por automatizacion.
+  const refs = parseEmailAttachments(data.attachments);
+  const loaded = refs.length > 0 ? await loadEmailAttachments(supabase, { workspaceId: context.workspaceId, refs }) : { files: [], missing: [] };
+  if (loaded.missing.length > 0) await warnMissingAttachments(supabase, context, node.id, loaded.missing);
+
   for (const to of recipients) {
-    await sendTransactionalEmail({
+    const result = await sendTransactionalEmail({
       workspaceId: context.workspaceId,
       to,
       subject: subject || "(sin asunto)",
@@ -161,8 +172,53 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
       // Para que el email aparezca en el historial del contacto (00135), vaya a
       // quien vaya: el contacto, el anfitrion o una direccion fija.
       contactId,
+      ...(loaded.files.length > 0 ? { attachments: loaded.files } : {}),
       deps: { supabase },
     });
+    // Antes el resultado no se miraba: un envio rechazado no dejaba rastro en la automatizacion.
+    if (!result.ok) {
+      try {
+        await supabase.from("analytics_events").insert({
+          workspace_id: context.workspaceId,
+          flow_id: context.flowId,
+          contact_id: contactId,
+          event_type: "node_failed",
+          metadata: { nodeId: node.id, nodeType: "send_email", reason: result.reason },
+        });
+      } catch {
+        // Anotar el fallo nunca frena el flujo.
+      }
+    }
+  }
+}
+
+/** Un adjunto que ya no esta: queda anotado y llega un aviso (uno por automatizacion y por hora). */
+async function warnMissingAttachments(
+  supabase: NodeExecutionArgs<SendEmailNodeData>["supabase"],
+  context: FlowExecutionContext,
+  nodeId: string,
+  missing: string[],
+): Promise<void> {
+  try {
+    await supabase.from("analytics_events").insert({
+      workspace_id: context.workspaceId,
+      flow_id: context.flowId,
+      contact_id: context.contactId,
+      event_type: "node_warning",
+      metadata: { nodeId, nodeType: "send_email", reason: "attachment_missing", count: missing.length },
+    });
+    await createNotificationOnce({
+      supabase,
+      workspaceId: context.workspaceId,
+      type: "flow_notice",
+      title: "Un email salió sin un adjunto",
+      body: `No encontré ${missing.length === 1 ? `«${missing[0]}»` : `${missing.length} adjuntos`} en Recursos (¿se borró o pasa del tope de 25 MB?). Revisá el paso «Enviar email» de la automatización.`,
+      entityType: "flow",
+      entityId: context.flowId,
+      metadata: { flow_id: context.flowId, node_id: nodeId },
+    });
+  } catch (err) {
+    console.error("[flow-engine] no pude avisar del adjunto que falta:", err instanceof Error ? err.message : "error");
   }
 }
 

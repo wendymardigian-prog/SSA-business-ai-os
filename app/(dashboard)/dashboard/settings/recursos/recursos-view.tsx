@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import { deleteAsset, retryTranscription, setAssetAgentEnabled } from "@/lib/actions/response-assets";
+import { countFlowsUsingAsset } from "@/lib/actions/flows";
 import {
   agentUsable,
   applyFilters,
@@ -62,6 +63,19 @@ export function RecursosView({
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<{ asset: BankAsset | null; kind: AssetKind | null } | null>(null);
   const [deleting, setDeleting] = useState<BankAsset | null>(null);
+  // En cuantas automatizaciones se usa el que se va a borrar (adjunto de un email o «Enviar recurso»): solo un aviso.
+  const [deletingUsage, setDeletingUsage] = useState(0);
+  useEffect(() => {
+    if (!deleting) return;
+    let alive = true;
+    countFlowsUsingAsset(deleting.id)
+      .then((n) => alive && setDeletingUsage(n))
+      .catch(() => alive && setDeletingUsage(0));
+    return () => {
+      alive = false;
+      setDeletingUsage(0);
+    };
+  }, [deleting]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -262,7 +276,11 @@ export function RecursosView({
         title="Eliminar recurso"
         message={
           deleting
-            ? `Se elimina "${deleting.name}". Deja de aparecer en la bandeja y el asistente deja de usarlo. Lo que ya se mandó no cambia.`
+            ? `Se elimina "${deleting.name}". Deja de aparecer en la bandeja y el asistente deja de usarlo. Lo que ya se mandó no cambia.${
+                deletingUsage > 0
+                  ? ` Ojo: se usa en ${deletingUsage === 1 ? "1 automatización" : `${deletingUsage} automatizaciones`} (como adjunto o en «Enviar recurso»); esos pasos van a salir sin este recurso.`
+                  : ""
+              }`
             : ""
         }
         confirmLabel="Eliminar"

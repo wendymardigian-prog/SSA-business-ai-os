@@ -5,6 +5,7 @@ import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
 import { InsertAssetButton } from "@/components/response-assets/insert-asset-button";
 import { VariableChips } from "./variable-chips";
+import { EmailAttachmentsField } from "./EmailAttachmentsField";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -75,6 +76,8 @@ export function SendEmailPanel({
         />
         <p className="mt-1.5 text-xs text-muted-foreground">Podés usar formato, emojis y variables. Sin asunto ni mensaje no se manda nada.</p>
       </div>
+
+      <EmailAttachmentsField value={data.attachments} onChange={(attachments) => set({ attachments })} />
 
       {availableVariables && availableVariables.length > 0 && mode === "variable" && (
         <div>

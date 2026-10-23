@@ -152,3 +152,45 @@ export async function listFlowCategories(): Promise<Array<{ name: string; count:
   }
   return categorySuggestions((data ?? []) as Array<{ categories?: string[] | null }>);
 }
+
+/**
+ * Lo que necesita la seccion «Adjuntos» de «Enviar email»: si la persona puede subir un recurso nuevo (administrar
+ * Recursos es `templates.manage`) y el nombre del negocio (lo usa el formulario de Recursos para sus ejemplos).
+ */
+export async function getEmailAttachmentContext(): Promise<{ canUpload: boolean; workspaceName: string }> {
+  const ctx = await getPermissionAction("flows.edit");
+  if (!ctx) return { canUpload: false, workspaceName: "" };
+  return { canUpload: ctx.can("templates.manage"), workspaceName: ctx.workspace.name ?? "" };
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * En cuantas automatizaciones se usa un recurso (como adjunto de un email o en «Enviar recurso»), contando lo publicado
+ * y los cambios sin publicar. Lo usa Recursos para avisar antes de borrarlo: es solo un aviso, no bloquea. Con la
+ * sesion (la RLS de `flows`); sin permiso para ver automatizaciones, 0.
+ */
+export async function countFlowsUsingAsset(assetId: string): Promise<number> {
+  if (!UUID_RE.test(assetId)) return 0;
+  const ctx = await getPermissionAction("flows.view");
+  if (!ctx) return 0;
+  const asAttachment = JSON.stringify([{ data: { attachments: [{ assetId }] } }]);
+  const asAsset = JSON.stringify([{ data: { assetId } }]);
+  // Cuatro consultas simples (`@>` sobre el jsonb) en vez de un `or`: los dos puntos del JSON son caracteres
+  // reservados adentro de un `or` de PostgREST.
+  const queries = (["nodes", "draft_nodes"] as const).flatMap((column) =>
+    [asAttachment, asAsset].map((value) =>
+      ctx.supabase.from("flows").select("id").eq("workspace_id", ctx.workspace.id).filter(column, "cs", value).limit(100),
+    ),
+  );
+  const results = await Promise.all(queries);
+  const ids = new Set<string>();
+  for (const { data, error } of results) {
+    if (error) {
+      console.error("[flows] no pude contar el uso del recurso:", error.message);
+      continue;
+    }
+    for (const row of data ?? []) ids.add((row as { id: string }).id);
+  }
+  return ids.size;
+}
