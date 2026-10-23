@@ -81,7 +81,11 @@ prendió el agente no tiene nada que medir.
 | `chat_origin_group(origin)` | El grupo de un saliente: `agent`, `team`, `automations` (flow + sequence + broadcast), `external`. Un `origin` desconocido devuelve NULL: no se inventa un grupo. |
 | `chat_author_match(author, origin, sent_by_user)` | Helper del filtro "respondido por". Acepta `all`, `agent`, `automations`, `external`, `user` o un uuid. |
 | `chat_dashboard_numbers(ws, from, to, channel, author)` | Conversaciones nuevas, recibidos, enviados y mediana de primera respuesta. Con filtro de autor, las conversaciones son **solo los episodios donde ese autor mandó algo** (§11.2). |
-| `chat_waiting_now(ws, channel)` | Conversaciones abiertas con último mensaje entrante de hace más de 1 h, sin `do_not_contact` ni etiqueta que apague al agente. No depende del período. |
+| `chat_waiting_now(ws, channel)` | Conversaciones abiertas con último mensaje entrante de hace más de 1 h, sin `do_not_contact` ni etiqueta que apague al agente. No depende del período. **Desde la 00259 la app usa `chat_waiting_now_v2`**; esta queda para volver atrás. |
+| `chat_waiting_now_v2(ws, channel)` | Lo mismo, en tres: `can_reply` (todavía se puede responder desde el sistema), `window_closed` (la ventana de la red ya se cerró) y `no_reply_needed` (el último mensaje solo cierra la charla, o alguien lo marcó así). Lee columnas de `conversations` que mantiene el trigger de `messages` (00259). |
+| `chat_response_turns(ws, channel)` | Cada espera del lead (tanda de mensajes seguidos) con quién la cerró y cuánto tardó, desde el primer mensaje sin responder (00261). |
+| `chat_dashboard_response_time(ws, from, to, channel, author)` | Tiempo de respuesta del período: promedio y mediana de las esperas que cerró **una persona** (o el autor filtrado). Reemplaza a la primera respuesta en la tarjeta. |
+| `chat_dashboard_response_time_daily(ws, from, to, channel, author, tz)` | Por día: cuántas esperas y la suma de sus tiempos. La pestaña "Tiempo de respuesta" de Tendencias divide y agrupa por semana. |
 | `chat_agent_episode_flags(ws, channel)` | Por episodio: si el agente actuó, si tomó desde el primer mensaje y si derivó. **Fuente única** de los tres números y de la serie semanal. |
 | `chat_dashboard_agent(ws, from, to, channel)` | Los tres números del agente sobre las conversaciones nuevas. |
 | `chat_dashboard_agent_weekly(ws, channel, tz, weeks)` | Las tres tasas por semana ISO, para las mini líneas. |
@@ -117,17 +121,43 @@ El período anterior se calcula en la app (`lib/dashboards/period.ts`
    actividad: un día sin mensajes faltaba en vez de valer cero y el gráfico
    mentía la forma de la semana.
 
+### Esperando respuesta y tiempo de respuesta (23/10/2026, 00259 a 00261)
+
+- **"Esperando respuesta ahora" es lo que todavía se puede responder desde el
+  sistema.** Instagram deja 24 h desde el último mensaje del lead; lo de ventana
+  vencida va abajo con su link (se responde desde la app de la red) y lo que no
+  necesita respuesta no cuenta. "Ver en Inbox" abre la bandeja con
+  `?esperando=responder` (o `vencida`): **el mismo criterio que la tarjeta**
+  (`lib/inbox/awaiting.ts`), así el número de la tarjeta es el de la lista.
+- **"No necesita respuesta"** lo decide, en este orden: la regla de cierre en la
+  base (un "gracias", un "ok", un emoji o un sticker; `chat_is_closure_message`,
+  gemela de `lib/messages/closure.ts`), el agente (`no_hace_falta_responder`) o
+  una persona (menú "⋯" del hilo). Nunca después de una pregunta o una promesa
+  nuestra ("dame un momento"). Se borra sola cuando el lead vuelve a escribir.
+- **"Tiempo de respuesta" reemplaza a "Primera respuesta".** Mide TODAS las
+  esperas, no solo la primera, desde el primer mensaje del lead sin responder.
+  Por defecto solo las que respondió una persona (desde el sistema o desde la
+  app de la red); no cuenta al agente en envío directo, las automatizaciones ni
+  las respuestas automáticas de otras herramientas (menos de 15 s,
+  `chat_reply_is_human`, gemela de `lib/messages/reply-time.ts`). Un borrador
+  aprobado cuenta como respuesta de quien lo aprobó. La tarjeta muestra el
+  promedio y el tooltip la mediana. La bandeja muestra el mismo cálculo al lado
+  de cada respuesta ("respondido en 2 h 15 min").
+- La tabla "Quién responde" sigue con su "Primera respuesta" por persona
+  (contada desde la asignación): no se tocó.
+
 ### Lo que hay que saber para leer estos números
 
-- **Una mediana no se promedia.** La mediana semanal de primera respuesta se
-  calcula sobre los días que tienen dato; una semana sin episodios queda en
-  `null` y se dibuja como hueco, no como cero.
+- **Un promedio no se promedia.** El tiempo de respuesta semanal se arma con la
+  suma y la cantidad de esperas de cada día, no promediando los promedios
+  diarios; una semana sin esperas respondidas queda en `null` y se dibuja como
+  hueco, no como cero.
 - **Un porcentaje siempre va con la cantidad detrás.** 86 % sobre cuatro
   conversaciones no es lo mismo que sobre cuatrocientas, y sin el número no hay
   forma de saber cuál de los dos es.
 - **Las tasas se comparan en puntos, no en porcentaje del porcentaje.** De 20 % a
   17 % son 3 puntos menos; decir "bajó 15 %" es cierto y confuso.
-- **Bajar no siempre es malo.** En primera respuesta y en "Derivó a una persona",
+- **Bajar no siempre es malo.** En tiempo de respuesta y en "Derivó a una persona",
   bajar es lo bueno, y el color sale de la métrica y no del signo.
 - **"Por qué derivó" agrupa texto libre.** El motivo de una derivación por
   herramienta lo escribe el modelo en una frase, así que se agrupa por el texto

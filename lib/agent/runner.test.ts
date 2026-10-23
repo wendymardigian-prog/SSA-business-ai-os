@@ -235,7 +235,7 @@ describe("base de conocimiento", () => {
 
     const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
 
-    expect(Object.keys(w.modelCalls[0].tools)).toEqual(["derivar_a_humano"]);
+    expect(Object.keys(w.modelCalls[0].tools)).toEqual(["derivar_a_humano", "no_hace_falta_responder"]);
     expect(outcome).toMatchObject({ status: "responded" });
   });
 
@@ -246,7 +246,7 @@ describe("base de conocimiento", () => {
 
     await runAgentTurn(w.db.client, w.payload, w.deps);
 
-    expect(Object.keys(w.modelCalls[0].tools).sort()).toEqual(["buscar_en_conocimiento", "derivar_a_humano"]);
+    expect(Object.keys(w.modelCalls[0].tools).sort()).toEqual(["buscar_en_conocimiento", "derivar_a_humano", "no_hace_falta_responder"]);
   });
 });
 

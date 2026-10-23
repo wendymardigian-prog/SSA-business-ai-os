@@ -35,6 +35,10 @@ import { interleaveCalls, type CallRow } from "@/lib/whatsapp-calls/event";
 import { isStickerOnlyMessage } from "@/lib/inbox/media-render";
 import { ConversationMenu } from "@/components/inbox/conversation-menu";
 import { planHeaderActions } from "@/lib/inbox/header-actions";
+import { canMarkNoReply } from "@/lib/inbox/awaiting";
+import { formatReplyTime, replyTimesByMessage, type MessageReplyTime } from "@/lib/messages/reply-time";
+import { NoReplyBanner } from "@/components/inbox/no-reply-banner";
+import { setConversationNoReply } from "@/lib/actions/conversation-status";
 import { planComposerActions } from "@/lib/inbox/composer-actions";
 import { ComposerMoreMenu } from "@/components/inbox/composer-more-menu";
 import { requestSuggestionAction } from "@/lib/actions/agent-drafts";
@@ -120,8 +124,14 @@ function MessageBubble({
   canReact = false,
   reacting = false,
   onReact,
+  replyTime = null,
 }: {
   message: Message;
+  /**
+   * Si este mensaje cerro una espera del lead: cuanto tardo desde su primer
+   * mensaje sin responder. El mismo calculo que el dashboard (00261).
+   */
+  replyTime?: MessageReplyTime | null;
   /** Las reacciones de este mensaje (A3), ya agrupadas por emoji. */
   reactions?: MessageReactionView[];
   /** Lo que admite el canal; null = no se ofrece reaccionar. */
@@ -199,6 +209,18 @@ function MessageBubble({
             <Bot className="h-3 w-3" />
           )}
           <span>{formatMessageTime(message.created_at)}</span>
+          {replyTime && (
+            <span
+              title={
+                replyTime.human
+                  ? "Tiempo de respuesta: desde el primer mensaje del contacto sin responder hasta esta respuesta."
+                  : "Tiempo de respuesta de una respuesta automática (agente, automatización u otra herramienta). No cuenta en el tiempo de respuesta del equipo."
+              }
+            >
+              · respondido en {formatReplyTime(replyTime.seconds)}
+              {!replyTime.human && " (automática)"}
+            </span>
+          )}
           {!isInbound && message.status === "delivered" && <span>Entregado</span>}
           {canReact && reactionCap && onReact && (
             <ReactButton capability={reactionCap} mine={myReactionEmoji} busy={reacting} onReact={onReact} />
@@ -403,6 +425,9 @@ export function MessageThread({
       ...activityData.data,
     });
   }, [activityData, activityConversationId, messages]);
+  // Tiempo de respuesta de cada saliente que cerro una espera del lead (00261).
+  // Los mensajes optimistas (todavia sin guardar) tambien cuentan: es lo que se ve.
+  const replyTimes = useMemo(() => replyTimesByMessage(messages), [messages]);
   // El indicador va bajo el mensaje del contacto al que se ancla cada corrida (el ultimo de su rafaga).
   const markerMessageIds = useMemo(
     () => new Set(messages.filter((m) => m.direction === "inbound" && activityMap.has(m.id)).map((m) => m.id)),
@@ -544,6 +569,18 @@ export function MessageThread({
       setStatusUpdating(null);
     }
   }, [conversation, statusUpdating, router]);
+
+  // 00259: "No necesita respuesta" a mano. El cartel de abajo del encabezado
+  // explica la marca y la deshace.
+  const markNoReply = useCallback(async () => {
+    if (!conversation) return;
+    const result = await setConversationNoReply(conversation.id, true);
+    if (!result.ok) {
+      alert(result.error);
+      return;
+    }
+    router.refresh();
+  }, [conversation, router]);
 
   const templateContext = { contact: conversation?.contacts ?? null, workspace: { name: workspaceName } };
 
@@ -1030,6 +1067,7 @@ export function MessageThread({
     isAutomationPaused: !!conversation.is_automation_paused,
     agentDisabledByTag: !!conversation.agent_disabled_by_tag_id,
     draftMode: !!(agentInfo?.available && agentInfo.mode === "draft"),
+    canMarkNoReply: canReply && canMarkNoReply(conversation),
     known: conversation.contact_id
       ? {
           isKnown: !!conversation.contacts?.is_known,
@@ -1189,6 +1227,7 @@ export function MessageThread({
             onAction={(action) => {
               if (action === "snooze") void updateConversationStatus("snoozed");
               else if (action === "reopen") void updateConversationStatus("open");
+              else if (action === "noReply") void markNoReply();
               else if (action === "markKnown") void toggleKnown(true);
               else if (action === "unmarkKnown") void toggleKnown(false);
               else setTaskOpen(true);
@@ -1209,6 +1248,7 @@ export function MessageThread({
           entre el encabezado y los mensajes: es lo primero que hay que leer al
           entrar a una conversación derivada. */}
       <NeedsHumanBanner conversationId={conversation.id} conversation={conversation} />
+      <NoReplyBanner conversationId={conversation.id} conversation={conversation} canReply={canReply} />
 
       {/* Messages */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 md:p-4">
@@ -1247,6 +1287,7 @@ export function MessageThread({
                 }
                 reacting={reactingId === message.id}
                 onReact={(emoji) => void handleReact(message, emoji)}
+                replyTime={replyTimes.get(message.id) ?? null}
               />
             </div>
           ))}

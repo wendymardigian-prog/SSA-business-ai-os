@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, ChevronLeft, ChevronRight, FileText, HeartHandshake, UserRoundSearch } from "lucide-react";
+import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, HeartHandshake, UserRoundSearch } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
+import { noReplyBadge } from "@/lib/inbox/awaiting";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -336,6 +337,18 @@ export function ConversationList({
                     >
                       <FileText className="h-3 w-3" aria-hidden />
                       Borrador esperando
+                    </span>
+                  )}
+                  {/* 00259: el ultimo mensaje solo cierra la charla. Gris: no
+                      es una alerta, explica por que no cuenta como esperando. */}
+                  {noReplyBadge(conversation).show && (
+                    <span
+                      className="ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+                      title={noReplyBadge(conversation).detail}
+                    >
+                      <CheckCheck className="h-3 w-3" aria-hidden />
+                      <span className="hidden sm:inline">No necesita respuesta</span>
+                      <span className="sr-only sm:hidden">No necesita respuesta</span>
                     </span>
                   )}
                   {conversation.unread_count > 0 && (

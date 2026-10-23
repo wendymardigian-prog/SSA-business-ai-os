@@ -46110,3 +46110,737 @@ COMMENT ON FUNCTION public.record_whatsapp_call(uuid, uuid, uuid, text, boolean,
 
 REVOKE ALL ON FUNCTION public.record_whatsapp_call(uuid, uuid, uuid, text, boolean, text, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_whatsapp_call(uuid, uuid, uuid, text, boolean, text, timestamptz) TO service_role;
+
+-- ============================================================
+-- MIGRATION 259: CONVERSATION AWAITING REPLY
+-- ============================================================
+-- ============================================================================
+-- 00259 — "Esperando respuesta" guardado en la conversación
+-- ============================================================================
+-- Hasta acá "esperando respuesta" se calculaba en el momento mirando el último
+-- mensaje de cada conversación (chat_waiting_now, 00078). Eso dejaba afuera tres
+-- cosas que se pidieron el 23/10/2026:
+--
+--   1. Separar lo que todavía se puede responder desde el sistema (Instagram
+--      deja 24 h desde el último mensaje del lead) de lo que ya no.
+--   2. No contar lo que no necesita respuesta: un "gracias", un "ok", un emoji.
+--      Salvo que nuestra ultima respuesta haya sido una pregunta o una promesa
+--      ("dame un momento"): ahi el lead sigue esperando.
+--   3. Poder filtrar la bandeja por eso, con el mismo número que el dashboard.
+--
+-- Columnas nuevas en conversations (las mantiene SOLO el trigger de messages y
+-- private.refresh_conversation_awaiting; la app las lee):
+--
+--   awaiting_reply_since      primer mensaje del lead sin responder (NULL = no espera)
+--   awaiting_last_inbound_at  último mensaje del lead sin responder (de acá corre la ventana)
+--   reply_window_until        hasta cuándo se puede responder desde el sistema
+--                             (NULL = el canal no tiene ventana, o no espera)
+--   no_reply_needed_at/_reason/_by
+--                             la tanda sin responder no pide respuesta:
+--                             'rule' (la regla de abajo), 'agent' (lo decidió el
+--                             agente) o 'manual' (una persona). Se borra solo
+--                             cuando el lead vuelve a escribir o le respondemos.
+--
+-- "Responder" es cualquier saliente que no falló (persona, agente, flow, o desde
+-- fuera del sistema): mismo criterio que chat_waiting_now.
+--
+-- La regla "no necesita respuesta" (public.chat_is_closure_message) es GEMELA de
+-- lib/messages/closure.ts, con los casos de lib/messages/closure.cases.json
+-- (scripts/verify-chat-awaiting.mjs los corre contra la base).
+--
+-- El trigger NUNCA puede tumbar el insert de un mensaje: va envuelto en
+-- EXCEPTION WHEN OTHERS (un webhook que pierde un mensaje es peor que un contador
+-- desactualizado).
+--
+-- Idempotente y aditiva. No toca chat_waiting_now (queda para volver atrás).
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. Columnas
+-- ------------------------------------------------------------
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS awaiting_reply_since timestamptz;
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS awaiting_last_inbound_at timestamptz;
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS reply_window_until timestamptz;
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS no_reply_needed_at timestamptz;
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS no_reply_needed_reason text;
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS no_reply_needed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'conversations_no_reply_reason_values') THEN
+    ALTER TABLE public.conversations ADD CONSTRAINT conversations_no_reply_reason_values
+      CHECK (no_reply_needed_reason IS NULL OR no_reply_needed_reason IN ('rule', 'agent', 'manual'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'conversations_no_reply_complete') THEN
+    ALTER TABLE public.conversations ADD CONSTRAINT conversations_no_reply_complete
+      CHECK ((no_reply_needed_at IS NULL) = (no_reply_needed_reason IS NULL));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.conversations.awaiting_reply_since IS
+  'Primer mensaje del lead sin responder. NULL = el ultimo mensaje que importa es nuestro. Lo mantiene el trigger de messages (00259).';
+COMMENT ON COLUMN public.conversations.awaiting_last_inbound_at IS
+  'Ultimo mensaje del lead sin responder: de aca corre la ventana de mensajeria. Lo mantiene el trigger de messages (00259).';
+COMMENT ON COLUMN public.conversations.reply_window_until IS
+  'Hasta cuando se puede responder desde el sistema (awaiting_last_inbound_at + ventana del canal). NULL = sin ventana o no espera.';
+COMMENT ON COLUMN public.conversations.no_reply_needed_at IS
+  'La tanda sin responder no pide respuesta (un gracias, un emoji). Se borra sola cuando el lead vuelve a escribir o le respondemos.';
+COMMENT ON COLUMN public.conversations.no_reply_needed_reason IS
+  'Quien lo decidio: rule (regla de cierre, 00259), agent (el agente) o manual (una persona).';
+
+-- Lo que filtra la bandeja y cuenta el dashboard: solo las que esperan.
+CREATE INDEX IF NOT EXISTS idx_conversations_awaiting
+  ON public.conversations (workspace_id, awaiting_last_inbound_at)
+  WHERE awaiting_last_inbound_at IS NOT NULL AND deleted_at IS NULL;
+
+-- ------------------------------------------------------------
+-- 2. La regla: ¿este mensaje del lead cierra la charla?
+-- ------------------------------------------------------------
+-- Gemela de lib/messages/closure.ts. La lista de palabras va en el MISMO orden
+-- que CLOSURE_WORDS; la tabla de tildes es la misma que normalizeClosureText.
+CREATE OR REPLACE FUNCTION public.chat_is_closure_message(
+  p_text text,
+  p_attachments jsonb,
+  p_last_reply text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_text text := btrim(COALESCE(p_text, ''));
+  v_norm text;
+  v_symbols text;
+  v_words text[];
+  v_kinds text[];
+  v_vocab text[] := ARRAY[
+    'gracias','graciass','gracia','grax','thanks','thank','thx','ty','you',
+    'mil','muchas','muchisimas','muchisimo','mucho','infinitas',
+    'de','nada','igualmente','vos','tambien','ti','a','para','el','la','lo','y','me','te',
+    'chau','chao','adios','bye','saludos','saludo','abrazo','abrazos','abrazote',
+    'beso','besos','besito','besitos','hasta','luego','pronto','manana','nos','vemos','hablamos',
+    'buen','buena','buenas','dia','dias','noches','tardes','finde','semana','que','tengas',
+    'ok','okey','oki','okis','oka','okay','dale','perfecto','perfecta','genial','listo','lista',
+    'joya','buenisimo','buenisima','barbaro','barbara','copado','super','bien','bueno','excelente',
+    'entendido','claro','re','muy','todo','ah','oh','wow','amo','love','hermoso','hermosa',
+    'lindo','linda','encanta','encanto','gusto','un','una','sos','crack','idola','idolo',
+    'increible','fantastico','no'
+  ];
+  -- Frases de una respuesta nuestra que dejan algo pendiente (PENDING_PROMISE_PHRASES).
+  v_promises text[] := ARRAY[
+    'dame un momento','dame un segundo','un momentito','un segundito','en breve','enseguida te',
+    'ya te lo paso','ya te la paso','ya te paso','ya te lo mando','ya te la mando',
+    'ahora te lo','ahora te la','te aviso'
+  ];
+  v_reply_norm text;
+BEGIN
+  -- Si nuestra ultima respuesta fue una pregunta, o prometio algo ("dame un
+  -- momento", "ya te lo paso"), nada cierra: el lead sigue esperando.
+  IF p_last_reply IS NOT NULL THEN
+    IF position('?' IN p_last_reply) > 0 OR position('¿' IN p_last_reply) > 0 THEN
+      RETURN false;
+    END IF;
+    v_reply_norm := regexp_replace(
+      translate(lower(p_last_reply), 'áéíóúüñàèìòù', 'aeiouunaeiou'),
+      '([a-z])\1{2,}', '\1', 'g'
+    );
+    IF EXISTS (SELECT 1 FROM unnest(v_promises) AS p WHERE position(p IN v_reply_norm) > 0) THEN
+      RETURN false;
+    END IF;
+  END IF;
+
+  IF v_text = '' THEN
+    -- Sin texto: cierra solo si todos los adjuntos (formato v2) son stickers o GIFs.
+    IF p_attachments IS NULL OR jsonb_typeof(p_attachments) <> 'object' OR p_attachments->>'v' <> '2'
+       OR jsonb_typeof(p_attachments->'items') <> 'array' THEN
+      RETURN false;
+    END IF;
+    SELECT array_agg(item->>'kind') INTO v_kinds FROM jsonb_array_elements(p_attachments->'items') AS item;
+    RETURN v_kinds IS NOT NULL AND array_length(v_kinds, 1) > 0
+       AND v_kinds <@ ARRAY['sticker', 'gif']::text[];
+  END IF;
+
+  IF position('?' IN v_text) > 0 OR position('¿' IN v_text) > 0 THEN
+    RETURN false;
+  END IF;
+
+  v_norm := regexp_replace(
+    translate(lower(v_text), 'áéíóúüñàèìòù', 'aeiouunaeiou'),
+    '([a-z])\1{2,}', '\1', 'g'
+  );
+
+  -- Solo emojis o simbolos (sin letras ni numeros).
+  v_symbols := regexp_replace(v_norm, '[[:space:].,;:!¡''"()\-_*~…]', '', 'g');
+  IF v_symbols <> '' AND v_symbols !~ '[a-z0-9]' THEN
+    RETURN v_symbols ~ '^[ -⯿️‍\U0001F000-\U0001FAFF]+$';
+  END IF;
+
+  IF v_norm ~ '[0-9]' THEN
+    RETURN false;
+  END IF;
+
+  SELECT array_agg(w) INTO v_words
+  FROM regexp_split_to_table(v_norm, '[^a-z]+') AS w
+  WHERE w <> '';
+
+  IF v_words IS NULL OR array_length(v_words, 1) > 10 THEN
+    RETURN false;
+  END IF;
+
+  RETURN NOT EXISTS (
+    SELECT 1 FROM unnest(v_words) AS w
+    WHERE NOT (w = ANY (v_vocab)) AND w !~ '^(ja|je|ji|ha|he)+j?$'
+  );
+END;
+$$;
+
+COMMENT ON FUNCTION public.chat_is_closure_message(text, jsonb, text) IS
+  'Si un mensaje del lead solo cierra la charla (gracias, ok, un emoji, un sticker) y no pide respuesta. Gemela de lib/messages/closure.ts (casos en closure.cases.json).';
+
+REVOKE ALL ON FUNCTION public.chat_is_closure_message(text, jsonb, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_is_closure_message(text, jsonb, text) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 3. Recalcular el estado de una conversación
+-- ------------------------------------------------------------
+-- Lee los mensajes y escribe las columnas. Toma el lock de la fila de la
+-- conversación ANTES de leer: dos mensajes que llegan a la vez se recalculan uno
+-- detrás del otro, y el segundo ya ve al primero.
+--
+-- Si el último mensaje del lead sin responder no cambió, la marca de "no
+-- necesita respuesta" se respeta (la pudo poner una persona o el agente). Si
+-- cambió, se vuelve a decidir con la regla.
+CREATE OR REPLACE FUNCTION private.refresh_conversation_awaiting(p_conversation_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_conv record;
+  v_reply_at timestamptz;
+  v_reply_text text;
+  v_since timestamptz;
+  v_last timestamptz;
+  v_all_closure boolean;
+  v_window integer;
+  v_until timestamptz;
+BEGIN
+  SELECT c.id, c.awaiting_last_inbound_at, ch.platform, ch.messaging_window_hours
+  INTO v_conv
+  FROM public.conversations c
+  LEFT JOIN public.channels ch ON ch.id = c.channel_id
+  WHERE c.id = p_conversation_id
+  FOR UPDATE OF c;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  SELECT m.created_at, m.text INTO v_reply_at, v_reply_text
+  FROM public.messages m
+  WHERE m.conversation_id = p_conversation_id
+    AND m.direction = 'outbound'
+    AND m.status IS DISTINCT FROM 'failed'
+  ORDER BY m.created_at DESC
+  LIMIT 1;
+
+  SELECT MIN(m.created_at), MAX(m.created_at),
+         bool_and(public.chat_is_closure_message(m.text, m.attachments, v_reply_text))
+  INTO v_since, v_last, v_all_closure
+  FROM public.messages m
+  WHERE m.conversation_id = p_conversation_id
+    AND m.direction = 'inbound'
+    AND (v_reply_at IS NULL OR m.created_at > v_reply_at);
+
+  v_window := public.messaging_window_hours(v_conv.platform, v_conv.messaging_window_hours);
+  v_until := CASE WHEN v_last IS NOT NULL AND v_window > 0 THEN v_last + make_interval(hours => v_window) END;
+
+  IF v_last IS NOT DISTINCT FROM v_conv.awaiting_last_inbound_at THEN
+    UPDATE public.conversations
+    SET awaiting_reply_since = v_since,
+        reply_window_until = v_until
+    WHERE id = p_conversation_id
+      AND (awaiting_reply_since IS DISTINCT FROM v_since OR reply_window_until IS DISTINCT FROM v_until);
+    RETURN;
+  END IF;
+
+  UPDATE public.conversations
+  SET awaiting_reply_since = v_since,
+      awaiting_last_inbound_at = v_last,
+      reply_window_until = v_until,
+      no_reply_needed_at = CASE WHEN v_last IS NOT NULL AND COALESCE(v_all_closure, false) THEN now() END,
+      no_reply_needed_reason = CASE WHEN v_last IS NOT NULL AND COALESCE(v_all_closure, false) THEN 'rule' END,
+      no_reply_needed_by = NULL
+  WHERE id = p_conversation_id;
+END;
+$$;
+
+COMMENT ON FUNCTION private.refresh_conversation_awaiting(uuid) IS
+  'Recalcula awaiting_*, reply_window_until y la marca de la regla de cierre de una conversacion a partir de sus mensajes (00259).';
+
+REVOKE ALL ON FUNCTION private.refresh_conversation_awaiting(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.refresh_conversation_awaiting(uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 4. El trigger de messages
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.messages_refresh_awaiting()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  BEGIN
+    PERFORM private.refresh_conversation_awaiting(NEW.conversation_id);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'messages_refresh_awaiting: no pude recalcular la conversacion % (%)', NEW.conversation_id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.messages_refresh_awaiting() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS messages_zz_refresh_awaiting ON public.messages;
+CREATE TRIGGER messages_zz_refresh_awaiting
+  AFTER INSERT ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.messages_refresh_awaiting();
+
+-- Un envío que pasa a fallido (o vuelve de fallido) cambia si se respondió.
+DROP TRIGGER IF EXISTS messages_zz_refresh_awaiting_update ON public.messages;
+CREATE TRIGGER messages_zz_refresh_awaiting_update
+  AFTER UPDATE OF status, direction, created_at ON public.messages
+  FOR EACH ROW
+  WHEN (
+    OLD.direction IS DISTINCT FROM NEW.direction
+    OR OLD.created_at IS DISTINCT FROM NEW.created_at
+    OR ((OLD.status = 'failed') IS DISTINCT FROM (NEW.status = 'failed'))
+  )
+  EXECUTE FUNCTION public.messages_refresh_awaiting();
+
+-- ------------------------------------------------------------
+-- 5. Marcar o desmarcar a mano / desde el agente
+-- ------------------------------------------------------------
+-- Solo service_role: quien llama ya chequeó que la persona puede responder esa
+-- conversación (lib/inbox/no-reply-actions.ts) o es el agente. Con
+-- p_expected_last_inbound_at, la marca solo se pone si el lead no volvió a
+-- escribir en el medio (si no, se marcaría como cerrado algo que ya pide otra
+-- cosa). Devuelve true si cambió algo.
+CREATE OR REPLACE FUNCTION public.set_conversation_no_reply(
+  p_conversation_id uuid,
+  p_needed boolean,
+  p_reason text,
+  p_by uuid DEFAULT NULL,
+  p_expected_last_inbound_at timestamptz DEFAULT NULL
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  IF p_needed THEN
+    -- "Necesita respuesta": se saca la marca, sea de quien sea.
+    UPDATE public.conversations
+    SET no_reply_needed_at = NULL, no_reply_needed_reason = NULL, no_reply_needed_by = NULL
+    WHERE id = p_conversation_id AND no_reply_needed_at IS NOT NULL;
+  ELSE
+    IF p_reason NOT IN ('agent', 'manual') THEN
+      RAISE EXCEPTION 'motivo invalido: %', p_reason USING ERRCODE = '22023';
+    END IF;
+    UPDATE public.conversations
+    SET no_reply_needed_at = now(), no_reply_needed_reason = p_reason, no_reply_needed_by = p_by
+    WHERE id = p_conversation_id
+      AND awaiting_last_inbound_at IS NOT NULL
+      AND (p_expected_last_inbound_at IS NULL OR awaiting_last_inbound_at = p_expected_last_inbound_at);
+  END IF;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count > 0;
+END;
+$$;
+
+COMMENT ON FUNCTION public.set_conversation_no_reply(uuid, boolean, text, uuid, timestamptz) IS
+  'Pone o saca la marca "no necesita respuesta" (agente o persona). Solo service_role: el permiso lo chequea quien llama.';
+
+REVOKE ALL ON FUNCTION public.set_conversation_no_reply(uuid, boolean, text, uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_conversation_no_reply(uuid, boolean, text, uuid, timestamptz) TO service_role;
+
+-- ------------------------------------------------------------
+-- 6. El contador del dashboard
+-- ------------------------------------------------------------
+-- Mismo criterio que chat_waiting_now (abierta, sin "no contactar", sin la
+-- etiqueta que apaga al agente, último mensaje del lead hace más de 1 hora), en
+-- tres partes. La bandeja filtra con el mismo criterio (lib/inbox/awaiting.ts).
+CREATE OR REPLACE FUNCTION public.chat_waiting_now_v2(
+  p_workspace_id uuid,
+  p_channel text DEFAULT NULL
+)
+RETURNS TABLE (can_reply bigint, window_closed bigint, no_reply_needed bigint)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH w AS (
+    SELECT c.reply_window_until, c.no_reply_needed_at
+    FROM public.conversations c
+    JOIN public.contacts ct ON ct.id = c.contact_id
+    WHERE c.workspace_id = p_workspace_id
+      AND c.deleted_at IS NULL
+      AND c.status = 'open'
+      AND c.agent_disabled_by_tag_id IS NULL
+      AND COALESCE(ct.do_not_contact, false) = false
+      AND c.awaiting_last_inbound_at IS NOT NULL
+      AND c.awaiting_last_inbound_at < now() - interval '1 hour'
+      AND (p_channel IS NULL OR c.channel_id::text = p_channel OR c.platform = p_channel)
+  )
+  SELECT
+    COUNT(*) FILTER (WHERE no_reply_needed_at IS NULL AND (reply_window_until IS NULL OR reply_window_until > now())),
+    COUNT(*) FILTER (WHERE no_reply_needed_at IS NULL AND reply_window_until <= now()),
+    COUNT(*) FILTER (WHERE no_reply_needed_at IS NOT NULL)
+  FROM w;
+$$;
+
+COMMENT ON FUNCTION public.chat_waiting_now_v2(uuid, text) IS
+  'Esperando respuesta ahora, en tres: se puede responder desde el sistema, la ventana ya cerro, y no necesita respuesta. Lee las columnas que mantiene el trigger de messages (00259).';
+
+REVOKE ALL ON FUNCTION public.chat_waiting_now_v2(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_waiting_now_v2(uuid, text) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 7. Backfill: todas las conversaciones existentes
+-- ------------------------------------------------------------
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN SELECT id FROM public.conversations LOOP
+    PERFORM private.refresh_conversation_awaiting(r.id);
+  END LOOP;
+END $$;
+
+-- ============================================================
+-- MIGRATION 260: AGENT DRAFTS EXPIRED
+-- ============================================================
+-- ============================================================================
+-- 00260 — Borradores vencidos: un estado propio cuando la ventana se cierra
+-- ============================================================================
+-- Hasta acá, cuando la ventana de mensajería (24 h en Instagram) se cerraba con
+-- un borrador del agente sin enviar, el barrido (private.sweep_agent_drafts,
+-- 00070) solo anotaba window_missed_at y el borrador seguía "pendiente": la cola
+-- y el aviso del dashboard decían "67 esperando aprobación" cuando 62 ya no se
+-- podían enviar (23/10/2026).
+--
+-- Ahora el borrador pasa a 'expired'. NO es 'discarded': descartar es una
+-- decisión de una persona, vencer no; las métricas los cuentan distinto (el
+-- resultado "Ventana perdida" de chat_dashboard_drafts sale de window_missed_at,
+-- que se sigue anotando igual).
+--
+-- Un vencido sale de la cola, del contador de pendientes y de los avisos (todo
+-- eso mira 'pending'/'failed'), deja lugar a un borrador nuevo (el índice único
+-- de borrador vivo no lo incluye) y la bandeja lo muestra como "no enviado, la
+-- ventana venció", con el texto para copiarlo y mandarlo desde la app.
+--
+-- Definiciones anteriores, para volver atrás:
+--
+--   agent_drafts_status_values:
+--     CHECK ((status = ANY (ARRAY['pending'::text, 'sending'::text, 'sent'::text,
+--       'failed'::text, 'discarded'::text, 'superseded'::text, 'regenerated'::text])))
+--
+--   private.sweep_agent_drafts() y public.purge_agent_draft_content(integer):
+--     las de la 00070, sin cambios desde entonces (md5 de pg_get_functiondef el
+--     23/10/2026: 48f6f980a1c0ed6862c7b2be90a4a799 y 3623764d9c295355646a966bf53ce55e).
+--     La única diferencia de las nuevas es 'expired' (el UPDATE nuevo del barrido
+--     y la lista de estados terminados de la purga).
+--
+-- Para volver atrás: UPDATE agent_drafts SET status = 'pending', decided_at = NULL
+-- WHERE status = 'expired'; y reponer las tres definiciones de arriba.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- 1. El estado nuevo -----------------------------------------------------------
+ALTER TABLE public.agent_drafts DROP CONSTRAINT IF EXISTS agent_drafts_status_values;
+ALTER TABLE public.agent_drafts ADD CONSTRAINT agent_drafts_status_values
+  CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'discarded', 'superseded', 'regenerated', 'expired'));
+
+COMMENT ON COLUMN public.agent_drafts.window_missed_at IS
+  'Cuando la ventana cerro con el borrador todavia sin enviar. Desde la 00260 el borrador pasa a expired en el mismo momento.';
+
+-- 2. El barrido: además de anotar, vence --------------------------------------
+CREATE OR REPLACE FUNCTION private.sweep_agent_drafts()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_failed integer := 0;
+  v_missed integer := 0;
+BEGIN
+  UPDATE public.agent_drafts
+  SET status = 'failed',
+      send_error = 'send_timeout'
+  WHERE status = 'sending'
+    AND updated_at < now() - interval '5 minutes';
+  GET DIAGNOSTICS v_failed = ROW_COUNT;
+
+  UPDATE public.agent_drafts d
+  SET status = 'expired',
+      decided_at = now(),
+      window_missed_at = COALESCE(d.window_missed_at, now()),
+      missed_while_assigned_to = COALESCE(d.missed_while_assigned_to, (
+        SELECT COALESCE(c.setter_id, c.vendedor_id)
+        FROM public.contacts c
+        WHERE c.id = d.contact_id
+      ))
+  WHERE d.status IN ('pending', 'failed')
+    AND d.sendable_until IS NOT NULL
+    AND d.sendable_until < now();
+  GET DIAGNOSTICS v_missed = ROW_COUNT;
+
+  RETURN jsonb_build_object('sending_failed', v_failed, 'windows_missed', v_missed);
+END;
+$$;
+
+COMMENT ON FUNCTION private.sweep_agent_drafts() IS
+  'Barrido de borradores cada 5 minutos: envios colgados pasan a failed, y un borrador cuya ventana cerro sin enviarse pasa a expired (con window_missed_at y missed_while_assigned_to). 00260.';
+
+REVOKE ALL ON FUNCTION private.sweep_agent_drafts() FROM PUBLIC, anon, authenticated;
+
+-- 3. La purga de texto: un vencido es un borrador terminado --------------------
+CREATE OR REPLACE FUNCTION public.purge_agent_draft_content(p_retention_months integer DEFAULT 12)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_count integer := 0;
+BEGIN
+  UPDATE public.agent_drafts
+  SET body = NULL,
+      body_parts = NULL,
+      sent_body = CASE WHEN status = 'sent' THEN '' ELSE NULL END,
+      no_reply_reason = COALESCE(no_reply_reason, 'purged')
+  WHERE status IN ('sent', 'discarded', 'superseded', 'regenerated', 'expired')
+    AND created_at < now() - make_interval(months => GREATEST(p_retention_months, 1))
+    AND (body IS NOT NULL OR body_parts IS NOT NULL OR (sent_body IS NOT NULL AND sent_body <> ''));
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+-- 4. Los que ya vencieron ------------------------------------------------------
+-- decided_at = cuando se perdió la ventana (si se anotó), no hoy: así un vencido
+-- de hace dos semanas no aparece como "vencido hoy".
+UPDATE public.agent_drafts d
+SET status = 'expired',
+    decided_at = COALESCE(d.window_missed_at, d.sendable_until, now()),
+    window_missed_at = COALESCE(d.window_missed_at, d.sendable_until, now())
+WHERE d.status IN ('pending', 'failed')
+  AND d.sendable_until IS NOT NULL
+  AND d.sendable_until < now();
+
+-- ============================================================
+-- MIGRATION 261: CHAT RESPONSE TIMES
+-- ============================================================
+-- ============================================================================
+-- 00261 — Tiempo de respuesta de las personas (reemplaza a "Primera respuesta")
+-- ============================================================================
+-- "Primera respuesta" (00078/00110) medía solo el primer mensaje de cada
+-- episodio y contaba cualquier respuesta. El 23/10/2026 daba 3 segundos: 147 de
+-- 185 "primeras respuestas" eran otra herramienta (ManyChat) contestando sola en
+-- 2 segundos, no el equipo.
+--
+-- Ahora se mide TODA espera del lead, no solo la primera, y por defecto solo las
+-- que respondió una persona:
+--
+--   - Una espera (turno) es una tanda de mensajes seguidos del lead; la cierra
+--     el primer saliente que no falló, de quien sea.
+--   - El tiempo va desde el PRIMER mensaje sin responder de la tanda.
+--   - Quién respondió lo decide public.chat_reply_is_human, GEMELA de
+--     isHumanReply (lib/messages/reply-time.ts, casos en reply-time.cases.json):
+--     persona desde el sistema o borrador aprobado = humana; agente en envío
+--     directo, flows, secuencias y broadcasts = automática; desde fuera del
+--     sistema = humana salvo que salga en menos de 15 s.
+--   - La bandeja muestra el mismo cálculo al lado de cada respuesta
+--     (replyTimesByMessage): el número del chat y el del dashboard coinciden.
+--
+-- Funciones nuevas, todas SECURITY INVOKER (la RLS aplica el alcance de leads).
+-- No toca chat_dashboard_numbers ni chat_dashboard_trends: la app deja de leer su
+-- columna de primera respuesta y las dos quedan para volver atrás.
+--
+-- Idempotente y aditiva.
+-- ============================================================================
+
+-- 1. ¿La respondió una persona? ------------------------------------------------
+CREATE OR REPLACE FUNCTION public.chat_reply_is_human(
+  p_origin text,
+  p_sent_by_user_id uuid,
+  p_seconds_since_last_inbound numeric
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN p_origin = 'user' THEN true
+    WHEN p_origin = 'agent' THEN p_sent_by_user_id IS NOT NULL
+    WHEN p_origin IN ('flow', 'sequence', 'broadcast') THEN false
+    ELSE COALESCE(p_seconds_since_last_inbound, 0) >= 15
+  END;
+$$;
+
+COMMENT ON FUNCTION public.chat_reply_is_human(text, uuid, numeric) IS
+  'Si una respuesta la dio una persona. Gemela de isHumanReply (lib/messages/reply-time.ts). Desde fuera del sistema, menos de 15 s despues del lead = automatica.';
+
+REVOKE ALL ON FUNCTION public.chat_reply_is_human(text, uuid, numeric) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_reply_is_human(text, uuid, numeric) TO authenticated, service_role;
+
+-- 2. Las esperas del lead --------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.chat_response_turns(
+  p_workspace_id uuid,
+  p_channel text DEFAULT NULL
+)
+RETURNS TABLE (
+  conversation_id uuid,
+  started_at timestamptz,
+  last_inbound_at timestamptz,
+  replied_at timestamptz,
+  reply_origin text,
+  reply_user_id uuid,
+  is_human boolean,
+  response_seconds numeric
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH msgs AS (
+    SELECT m.id, m.conversation_id, m.direction, m.origin, m.sent_by_user_id, m.created_at
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE m.workspace_id = p_workspace_id
+      AND c.deleted_at IS NULL
+      AND (p_channel IS NULL OR c.channel_id::text = p_channel OR c.platform = p_channel)
+      -- Un envío que falló no le llegó al lead: no cierra la espera.
+      AND NOT (m.direction = 'outbound' AND m.status IS NOT DISTINCT FROM 'failed')
+  ),
+  marked AS (
+    SELECT msgs.*,
+      CASE WHEN direction = 'inbound'
+                AND LAG(direction) OVER (PARTITION BY conversation_id ORDER BY created_at, id) IS DISTINCT FROM 'inbound'
+           THEN 1 ELSE 0 END AS is_start
+    FROM msgs
+  ),
+  grouped AS (
+    SELECT marked.*,
+      SUM(is_start) OVER (PARTITION BY conversation_id ORDER BY created_at, id ROWS UNBOUNDED PRECEDING) AS turn_no
+    FROM marked
+  ),
+  turns AS (
+    SELECT g.conversation_id,
+      MIN(g.created_at) FILTER (WHERE g.direction = 'inbound') AS started_at,
+      MAX(g.created_at) FILTER (WHERE g.direction = 'inbound') AS last_inbound_at,
+      MIN(g.created_at) FILTER (WHERE g.direction = 'outbound') AS replied_at,
+      (ARRAY_AGG(g.origin ORDER BY g.created_at, g.id) FILTER (WHERE g.direction = 'outbound'))[1] AS reply_origin,
+      (ARRAY_AGG(g.sent_by_user_id ORDER BY g.created_at, g.id) FILTER (WHERE g.direction = 'outbound'))[1] AS reply_user_id
+    FROM grouped g
+    WHERE g.turn_no >= 1
+    GROUP BY g.conversation_id, g.turn_no
+  )
+  SELECT t.conversation_id, t.started_at, t.last_inbound_at, t.replied_at, t.reply_origin, t.reply_user_id,
+    CASE WHEN t.replied_at IS NULL THEN NULL
+         ELSE public.chat_reply_is_human(t.reply_origin, t.reply_user_id, EXTRACT(EPOCH FROM (t.replied_at - t.last_inbound_at)))
+    END,
+    EXTRACT(EPOCH FROM (t.replied_at - t.started_at))
+  FROM turns t;
+$$;
+
+COMMENT ON FUNCTION public.chat_response_turns(uuid, text) IS
+  'Cada espera del lead (tanda de mensajes seguidos) con quien la cerro y cuanto tardo, desde el primer mensaje sin responder. Base del tiempo de respuesta (00261).';
+
+-- 3. El número del dashboard -----------------------------------------------------
+-- Por defecto, solo las esperas que cerró una persona. Con el filtro "Respondido
+-- por" en el agente o las automatizaciones, las de ese autor; con una persona,
+-- las suyas (incluye los borradores que aprobó).
+CREATE OR REPLACE FUNCTION public.chat_dashboard_response_time(
+  p_workspace_id uuid,
+  p_from timestamptz,
+  p_to timestamptz,
+  p_channel text DEFAULT NULL,
+  p_author text DEFAULT NULL
+)
+RETURNS TABLE (avg_seconds numeric, median_seconds numeric, turns bigint)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT
+    AVG(t.response_seconds),
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t.response_seconds),
+    COUNT(*)
+  FROM public.chat_response_turns(p_workspace_id, p_channel) t
+  WHERE t.replied_at IS NOT NULL
+    AND (p_from IS NULL OR t.started_at >= p_from)
+    AND (p_to IS NULL OR t.started_at <= p_to)
+    AND CASE
+      WHEN p_author IS NULL OR p_author = 'all' THEN t.is_human
+      WHEN p_author IN ('agent', 'automations') THEN public.chat_author_match(p_author, t.reply_origin, t.reply_user_id)
+      ELSE t.is_human AND public.chat_author_match(p_author, t.reply_origin, t.reply_user_id)
+    END;
+$$;
+
+COMMENT ON FUNCTION public.chat_dashboard_response_time(uuid, timestamptz, timestamptz, text, text) IS
+  'Tiempo de respuesta del periodo: promedio y mediana, en segundos, de las esperas que cerro una persona (o el autor filtrado). Las esperas se asignan al periodo por su primer mensaje.';
+
+-- 4. La serie diaria de Tendencias ------------------------------------------------
+-- Suma y cantidad, no el promedio: así la semana se arma bien (promediar
+-- promedios diarios le daría el mismo peso a un día con una espera que a uno
+-- con cien).
+CREATE OR REPLACE FUNCTION public.chat_dashboard_response_time_daily(
+  p_workspace_id uuid,
+  p_from timestamptz,
+  p_to timestamptz,
+  p_channel text DEFAULT NULL,
+  p_author text DEFAULT NULL,
+  p_tz text DEFAULT 'UTC'
+)
+RETURNS TABLE (day date, turns bigint, total_seconds numeric)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT (t.started_at AT TIME ZONE p_tz)::date, COUNT(*), SUM(t.response_seconds)
+  FROM public.chat_response_turns(p_workspace_id, p_channel) t
+  WHERE t.replied_at IS NOT NULL
+    AND (p_from IS NULL OR t.started_at >= p_from)
+    AND (p_to IS NULL OR t.started_at <= p_to)
+    AND CASE
+      WHEN p_author IS NULL OR p_author = 'all' THEN t.is_human
+      WHEN p_author IN ('agent', 'automations') THEN public.chat_author_match(p_author, t.reply_origin, t.reply_user_id)
+      ELSE t.is_human AND public.chat_author_match(p_author, t.reply_origin, t.reply_user_id)
+    END
+  GROUP BY 1
+  ORDER BY 1;
+$$;
+
+COMMENT ON FUNCTION public.chat_dashboard_response_time_daily(uuid, timestamptz, timestamptz, text, text, text) IS
+  'Por dia (en la zona pedida): cuantas esperas cerro una persona (o el autor filtrado) y la suma de sus tiempos. La app divide y agrupa por semana.';
+
+-- 5. Permisos ----------------------------------------------------------------------
+REVOKE ALL ON FUNCTION public.chat_response_turns(uuid, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.chat_dashboard_response_time(uuid, timestamptz, timestamptz, text, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.chat_dashboard_response_time_daily(uuid, timestamptz, timestamptz, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_response_turns(uuid, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chat_dashboard_response_time(uuid, timestamptz, timestamptz, text, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chat_dashboard_response_time_daily(uuid, timestamptz, timestamptz, text, text, text) TO authenticated, service_role;

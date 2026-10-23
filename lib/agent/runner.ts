@@ -48,6 +48,8 @@ import { validateOutput } from "./output";
 import { checkOutputGuardrails, outputRuleLabel } from "./output-guardrails";
 import { applyWhatsappMarker, recordWhatsappHandoff } from "./whatsapp-handoff";
 import { WHATSAPP_MEMO_KEY, type WhatsappLinkMemo } from "./tools/whatsapp-link";
+import { NO_REPLY_MEMO_KEY, NO_REPLY_TOOL, type NoReplyMemo } from "./tools/no-reply";
+import { canSkipReply } from "./no-reply";
 import { ASSET_SEND_MEMO_KEY, type AssetSendMemo } from "./tools/assets";
 import { sendAgentAsset } from "./send-asset";
 import { buildModelMessages, buildSystemPrompt, type DraftRevision } from "./prompt";
@@ -687,6 +689,9 @@ async function continueTurn(
       readOnly: args.readOnlyTools,
     }),
   ]);
+  // Cuando una persona pidio la respuesta (sugerir o regenerar), siempre hay
+  // borrador: "no hace falta responder" no se ofrece.
+  if (args.payload.suggest || args.revision) delete toolSet.tools[NO_REPLY_TOOL];
   const system = buildSystemPrompt(agent, nonce, Object.keys(toolSet.tools));
   const revision: DraftRevision | null = args.revision
     ? {
@@ -731,6 +736,27 @@ async function continueTurn(
     // derivar el modelo fallo, igual quedo derivado, que es lo que importa.
     if (generation.ok) run.setFinalUsage(generation.output.totalUsage);
     return close("escalated", "tool:derivar_a_humano");
+  }
+
+  // 00259: el agente decidio que no hace falta responder. Solo vale si la tanda
+  // pasa la compuerta (sin preguntas ni adjuntos que haya que mirar): si no, se
+  // anota y el turno sigue como si no la hubiera usado.
+  const noReply = turnMemo.get(NO_REPLY_MEMO_KEY) as NoReplyMemo | undefined;
+  if (noReply) {
+    const lastReply = [...messages].reverse().find((m) => m.direction === "outbound" && ms(m.created_at) < ms(burst[0].created_at));
+    if (canSkipReply(burst, lastReply?.text ?? null)) {
+      if (generation.ok) run.setFinalUsage(generation.output.totalUsage);
+      const { error: markError } = await supabase.rpc("set_conversation_no_reply", {
+        p_conversation_id: conversation.id,
+        p_needed: false,
+        p_reason: "agent",
+        p_by: null,
+        p_expected_last_inbound_at: burst[burst.length - 1].created_at,
+      });
+      if (markError) console.error("[agent] no pude marcar que no hace falta responder:", markError.message);
+      return close("skipped", "no_reply_needed");
+    }
+    await run.step({ kind: "guardrail", name: "no_reply_rejected", output: { motivo: noReply.motivo } });
   }
 
   const suggestions = toolSet.state.suggestions;

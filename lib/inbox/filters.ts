@@ -13,6 +13,7 @@
 
 import type { ConversationStatus } from "@/lib/types/database";
 import type { DatePreset } from "@/lib/dates";
+import { matchesAwaitingFilter, type AwaitingFilter } from "@/lib/inbox/awaiting";
 
 /** "all" no es un estado de la base: es "no filtres por estado". */
 export const INBOX_STATUS_VALUES = ["all", "open", "closed", "snoozed"] as const;
@@ -66,6 +67,11 @@ export interface InboxFilters {
    * Es distinto de agentError: ahi el agente fallo, aca decidio no responder.
    */
   needsHuman: boolean;
+  /**
+   * "Esperando respuesta" (00259): las que se pueden responder o las de ventana
+   * vencida. Mismo criterio que la tarjeta del dashboard (lib/inbox/awaiting.ts).
+   */
+  awaiting: AwaitingFilter | "";
   /** Esconde los chats de conocidos (00256). Opcional: los links viejos no lo traen. */
   hideKnown?: boolean;
 }
@@ -82,6 +88,7 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   dateTo: "",
   agentError: false,
   needsHuman: false,
+  awaiting: "",
   hideKnown: false,
 };
 
@@ -108,6 +115,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.datePreset) count++;
   if (filters.agentError) count++;
   if (filters.needsHuman) count++;
+  if (filters.awaiting) count++;
   if (filters.hideKnown) count++;
   return count;
 }
@@ -132,9 +140,13 @@ export interface FilterableRow {
   last_message_at: string | null;
   created_at: string;
   last_message_preview: string | null;
-  contacts: { display_name: string | null } | null;
+  contacts: { display_name: string | null; do_not_contact?: boolean | null } | null;
   last_agent_error_at?: string | null;
   needs_human?: boolean | null;
+  awaiting_last_inbound_at?: string | null;
+  reply_window_until?: string | null;
+  no_reply_needed_at?: string | null;
+  agent_disabled_by_tag_id?: string | null;
 }
 
 /**
@@ -161,6 +173,10 @@ export function matchesInboxRow(
   if (filters.agentError && !row.last_agent_error_at) return false;
 
   if (filters.needsHuman && !row.needs_human) return false;
+
+  // Una fila que llega por realtime no trae el contacto: "no contactar" lo
+  // resuelve el servidor en la proxima carga.
+  if (filters.awaiting && !matchesAwaitingFilter(row, filters.awaiting)) return false;
 
   const when = row.last_message_at ?? row.created_at;
   if (range.from && when < range.from) return false;

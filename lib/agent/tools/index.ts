@@ -8,6 +8,7 @@
 
 import { registerAgentTool } from "./registry";
 import { escalateTool } from "./escalate";
+import { noReplyTool } from "./no-reply";
 import { searchKnowledgeTool } from "./search-knowledge";
 import { tagContactTool } from "./tag-contact";
 import { leadTemperatureTool } from "./lead-temperature";
@@ -23,6 +24,8 @@ import { createTaskTool } from "./create-task";
 import { registerSchedulingSkill } from "./scheduling";
 
 registerAgentTool(escalateTool);
+// 00259: la otra salida sin responder. Obligatoria, con compuerta en el runner (lib/agent/no-reply.ts).
+registerAgentTool(noReplyTool);
 registerAgentTool(searchKnowledgeTool);
 registerAgentTool(tagContactTool);
 registerAgentTool(leadTemperatureTool);

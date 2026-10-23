@@ -24,6 +24,14 @@ describe("cabecera de la conversacion", () => {
     expect(plan.menu).toEqual(["reopen", "createTask"]);
   });
 
+  it("el lead espera: se ofrece marcar que no necesita respuesta, al final", () => {
+    expect(planHeaderActions({ ...base, canMarkNoReply: true }).menu).toEqual(["snooze", "createTask", "noReply"]);
+  });
+
+  it("sin espera (o ya marcada) no se ofrece", () => {
+    expect(planHeaderActions({ ...base, canMarkNoReply: false }).menu).not.toContain("noReply");
+  });
+
   it("sin permiso para crear tareas no aparece esa fila", () => {
     expect(planHeaderActions({ ...base, canCreateTask: false }).menu).toEqual(["snooze"]);
   });

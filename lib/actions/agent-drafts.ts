@@ -8,7 +8,7 @@ import { getMemberAction } from "@/lib/auth/guards";
 import { canReplyChannel } from "@/lib/inbox/channel-access";
 import { approveDraft, discardDraft, regenerateDraft, type DraftActionResult } from "@/lib/agent/drafts/actions";
 import { requestSuggestion } from "@/lib/agent/drafts/suggest";
-import { draftOwner, loadLastDiscardedDraft, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
+import { draftOwner, loadLastDiscardedDraft, loadLastExpiredDraft, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
 import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
 
 /**
@@ -137,6 +137,18 @@ export async function loadConversationDiscardedDraft(conversationId: string): Pr
   const { supabase, user } = await session();
   if (!user) return null;
   return loadLastDiscardedDraft(supabase, conversationId);
+}
+
+/**
+ * El borrador que vencio sin enviarse (00260), si sigue siendo la ultima
+ * palabra en la conversacion: se muestra para copiarlo y mandarlo desde la app
+ * de la red, que no tiene el limite de 24 horas.
+ */
+export async function loadConversationExpiredDraft(conversationId: string): Promise<DraftQueueRow | null> {
+  if (typeof conversationId !== "string" || !conversationId) return null;
+  const { supabase, user } = await session();
+  if (!user) return null;
+  return loadLastExpiredDraft(supabase, conversationId);
 }
 
 /**

@@ -26,6 +26,8 @@ describe("registro de herramientas", () => {
         "etiquetar_contacto",
         "generar_link_whatsapp",
         "listar_recursos",
+        // 00259: la otra salida sin responder, obligatoria.
+        "no_hace_falta_responder",
         "pausarse",
         "programar_seguimiento",
         "usar_recurso",
@@ -66,7 +68,7 @@ describe("registro de herramientas", () => {
 
   it("sin eventos elegidos no se ofrece ninguna, aunque este encendida", () => {
     const agente = toAgentConfig(agentRow({ allowed_tools: [], tools_config: { scheduling: { habilitada: true, event_type_ids: [] } } }));
-    expect(toolsForAgent(agente).map((t) => t.name)).toEqual(["derivar_a_humano"]);
+    expect(toolsForAgent(agente).map((t) => t.name)).toEqual(["derivar_a_humano", "no_hace_falta_responder"]);
   });
 
   it("en borrador, las que agendan no se ofrecen y las que leen si", () => {
@@ -93,9 +95,9 @@ describe("registro de herramientas", () => {
     }
   });
 
-  it("sin configurar nada, el agente tiene solo derivar (obligatoria): etiquetar y asignar no existen sin lista blanca", () => {
+  it("sin configurar nada, el agente tiene solo las obligatorias (derivar y no responder): etiquetar y asignar no existen sin lista blanca", () => {
     const agent = toAgentConfig(agentRow({ allowed_tools: ["etiquetar_contacto", "asignar_conversacion", "cambiar_temperatura"], tools_config: {} }));
-    expect(toolsForAgent(agent).map((t) => t.name).sort()).toEqual(["cambiar_temperatura", "derivar_a_humano"]);
+    expect(toolsForAgent(agent).map((t) => t.name).sort()).toEqual(["cambiar_temperatura", "derivar_a_humano", "no_hace_falta_responder"]);
   });
 
   it("con lista blanca, etiquetar aparece", () => {

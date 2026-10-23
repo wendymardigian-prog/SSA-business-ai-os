@@ -173,6 +173,7 @@ valida server-side contra el schema de cada una (`updateAgentTools`).
 | Herramienta | Qué se configura además del on/off |
 |---|---|
 | `derivar_a_humano` (obligatoria) | Si reabre la conversación |
+| `no_hace_falta_responder` (obligatoria, 00259) | Nada. Termina el turno sin escribir y marca la conversación como "no necesita respuesta" (sale de "Esperando respuesta" hasta que el lead vuelva a escribir; en la bandeja queda el cartel con "Sí necesita respuesta" para deshacerlo). Solo vale si la tanda pasa la compuerta del runner (`canSkipReply`, `lib/agent/no-reply.ts`): sin preguntas, sin audios ni fotos, y sin una pregunta o promesa nuestra pendiente. No se ofrece cuando una persona pidió la respuesta (sugerir o regenerar). En modo borrador, no deja borrador. |
 | `buscar_en_conocimiento` (se prende desde Conocimiento) | Fragmentos por búsqueda, similitud mínima |
 | `etiquetar_contacto` | Lista blanca de tags (solo de `tags`, **nunca crea**, **nunca una etiqueta con efecto**: ver "Etiquetas con efecto"); si puede quitar. Sin tags en el workspace, no se puede habilitar y la pantalla dice por qué |
 | `cambiar_temperatura` | Si puede bajarla (default: solo sube) |
@@ -429,12 +430,19 @@ vive en `lib/messaging-window.ts` y en SQL como `messaging_window_hours()`.
 
 "No enviable" no es un estado: es el cálculo sobre `sendable_until`. La cola lo
 muestra en cinco niveles, derivados de la ventana del canal (mitad, cuarto,
-octavo; con 24 h son 12, 6 y 3 h), con leyenda. Pasada la ventana la fila ofrece
-**responder a mano**. Nada se autovence: el borrador sigue `pending`.
+octavo; con 24 h son 12, 6 y 3 h), con leyenda.
 
-El barrido de la 00070 (cada 5 minutos) marca `window_missed_at` y congela de
-quién era (`missed_while_assigned_to`), y pasa a `failed` los `sending`
-colgados más de 5 minutos. **Los avisos a las personas son la 00072**, que está
+**Desde la 00260 un borrador cuya ventana se cerró pasa a `expired`** (antes
+seguía `pending` para siempre y la cola llegó a decir "67 esperando aprobación"
+con 62 que ya no se podían enviar). No es `discarded`: descartar es una decisión
+de una persona y la métrica "Ventana perdida" sigue saliendo de
+`window_missed_at`. En el hilo, mientras sea la última palabra, se muestra como
+"Respuesta sugerida · no enviada" con **Copiar** y **Abrir el chat en
+Instagram** (`ExpiredSuggestion`): desde la app de la red no hay límite de 24 h.
+
+El barrido (cada 5 minutos) marca `window_missed_at`, congela de quién era
+(`missed_while_assigned_to`), pasa el borrador a `expired` y pasa a `failed` los
+`sending` colgados más de 5 minutos. **Los avisos a las personas son la 00072**, que está
 escrita y probada pero **sin aplicar** (ver abajo).
 
 ### La cola (`/dashboard/drafts`)

@@ -52,6 +52,7 @@ const DETAIL_LABELS: Record<string, string> = {
   turn_exception: "error inesperado en el turno",
   human_took_over_during_generation: "una persona tomo la conversacion mientras se generaba",
   "tool:derivar_a_humano": "el agente decidio derivar",
+  no_reply_needed: "el agente decidio que el mensaje no necesitaba respuesta",
   fallback_model: "respondio el modelo de respaldo",
   sent_early_new_message: "se envio antes porque el lead volvio a escribir",
   output_truncated: "la respuesta se recorto al largo maximo",
