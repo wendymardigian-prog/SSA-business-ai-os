@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Loader2, Star, Sticker, Trash2, Upload } from "lucide-react";
 import { deleteSticker, listStickers, setStickerFavorite } from "@/lib/actions/stickers";
 import { defaultStickerTab, stickersForTab, type StickerTab, type StickerWithUrl } from "@/lib/stickers/format";
@@ -29,13 +29,32 @@ export function StickerPicker({
   canDelete,
   disabled,
   disabledReason,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
+  returnFocusRef,
 }: {
   onPick: (stickerId: string) => void;
   canDelete: boolean;
   disabled?: boolean;
   disabledReason?: string | null;
+  /** Controlado desde afuera (el "⋯" del composer lo abre sin boton propio). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Sin boton: el panel se ancla al contenedor y lo abre quien controla `open`. */
+  hideTrigger?: boolean;
+  /** A donde vuelve el foco al cerrar con Esc. */
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
+  const open = openProp ?? innerOpen;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (openProp === undefined) setInnerOpen(next);
+      onOpenChange?.(next);
+    },
+    [openProp, onOpenChange],
+  );
   const [stickers, setStickers] = useState<StickerWithUrl[] | null>(null);
   const [tab, setTab] = useState<StickerTab | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,16 +62,22 @@ export function StickerPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     const result = await listStickers();
     if (!result.ok) {
       setError(result.error);
       setStickers([]);
       return;
     }
+    setError(null);
     setStickers(result.stickers);
     setTab((current) => current ?? defaultStickerTab(result.stickers));
-  }
+  }, []);
+
+  // Se (re)carga cada vez que se abre, lo abra su boton o el "⋯" del composer.
+  useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
 
   useEffect(() => {
     if (!open) return;
@@ -60,7 +85,9 @@ export function StickerPicker({
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      returnFocusRef?.current?.focus();
     };
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
@@ -68,16 +95,11 @@ export function StickerPicker({
       document.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, setOpen, returnFocusRef]);
 
   function toggle() {
     if (disabled) return;
-    const next = !open;
-    setOpen(next);
-    if (next) {
-      setError(null);
-      void load();
-    }
+    setOpen(!open);
   }
 
   async function upload(file: File) {
@@ -124,8 +146,8 @@ export function StickerPicker({
   const shown = stickers && tab ? stickersForTab(stickers, tab) : [];
 
   return (
-    <div ref={rootRef} className="relative">
-      <button
+    <div ref={rootRef} className={hideTrigger ? "pointer-events-none absolute inset-0 [&>*]:pointer-events-auto" : "relative"}>
+      {!hideTrigger && <button
         type="button"
         onClick={toggle}
         disabled={disabled}
@@ -136,7 +158,7 @@ export function StickerPicker({
         className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
       >
         <Sticker className="h-4 w-4" aria-hidden />
-      </button>
+      </button>}
 
       {open && (
         <div

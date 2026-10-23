@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Sparkles, HeartHandshake } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, HeartHandshake } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -35,7 +35,7 @@ import { interleaveCalls, type CallRow } from "@/lib/whatsapp-calls/event";
 import { isStickerOnlyMessage } from "@/lib/inbox/media-render";
 import { ConversationMenu } from "@/components/inbox/conversation-menu";
 import { planHeaderActions } from "@/lib/inbox/header-actions";
-import { planComposerActions } from "@/lib/inbox/composer-actions";
+import { planComposerActions, type ComposerMenuAction } from "@/lib/inbox/composer-actions";
 import { ComposerMoreMenu } from "@/components/inbox/composer-more-menu";
 import { requestSuggestionAction } from "@/lib/actions/agent-drafts";
 import { loadConversationActivity, type ConversationActivityData } from "@/lib/actions/message-activity";
@@ -358,6 +358,9 @@ export function MessageThread({
   // F18/F19: grabar y adjuntar. recording y attachedFile son excluyentes
   // entre si y con escribir texto (el mic solo se ve con el textarea vacio).
   const [recording, setRecording] = useState(false);
+  // Los paneles de emoji y stickers del composer: los abre el "⋯".
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [stickersOpen, setStickersOpen] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1018,12 +1021,40 @@ export function MessageThread({
   }
 
 
+  // Stickers (00257): solo en un canal que los admite (hoy, WhatsApp).
+  const canSticker = stickerCapability(channelProvider).supported;
+  const stickerDisabledReason = conversation.contacts?.do_not_contact
+    ? "El contacto está marcado como «no contactar»."
+    : sending
+      ? "Esperá a que termine de enviarse el mensaje."
+      : null;
   const composerPlan = planComposerActions({
     hasAttachment: !!attachedFile,
     hasText: !!input.trim(),
     // Solo si hay un agente prendido para este canal y no hay ya un borrador esperando.
     canSuggest: !!agentInfo?.available && !hasLiveDraft,
+    canSticker,
   });
+  function onComposerAction(action: ComposerMenuAction) {
+    switch (action) {
+      case "library":
+        if (widget.view === "closed") openWidget(false);
+        else closeWidget(false);
+        return;
+      case "attach":
+        fileInputRef.current?.click();
+        return;
+      case "emoji":
+        setEmojiOpen(true);
+        return;
+      case "sticker":
+        setStickersOpen(true);
+        return;
+      case "suggest":
+        void requestSuggest();
+        return;
+    }
+  }
   const headerPlan = planHeaderActions({
     status: conversation.status,
     canCreateTask,
@@ -1390,67 +1421,36 @@ export function MessageThread({
                   setAttachedFile(file);
                 }}
               />
-              <EmojiButton onPick={insertEmoji} focusRef={textareaRef} />
-              {/* Stickers (00257): solo en un canal que los admite (hoy, WhatsApp). */}
-              {stickerCapability(channelProvider).supported && (
-                <StickerPicker
-                  onPick={(stickerId) => void sendStickerFromLibrary(stickerId)}
-                  canDelete={canManageAssets}
-                  disabled={sending || !!attachedFile || recording || !!conversation.contacts?.do_not_contact}
-                  disabledReason={conversation.contacts?.do_not_contact ? "El contacto está marcado como «no contactar»." : null}
-                />
-              )}
-              {composerPlan.hasMoreMenu && (
+              {/* El "⋯" agrupa lo secundario; el emoji y los stickers abren su panel anclado acá mismo. */}
+              <div className="relative flex-shrink-0">
                 <ComposerMoreMenu
-                  showLibrary={composerPlan.showLibrary}
-                  showAttach={composerPlan.showAttach}
-                  showSuggest={composerPlan.showSuggest}
-                  onLibrary={() => (widget.view === "closed" ? openWidget(false) : closeWidget(false))}
-                  onAttach={() => fileInputRef.current?.click()}
-                  onSuggest={() => void requestSuggest()}
+                  actions={composerPlan.menu}
+                  onAction={onComposerAction}
                   suggesting={suggesting}
+                  libraryOpen={widget.view !== "closed"}
+                  shortcutLabel={shortcutLabel}
+                  stickerDisabledReason={stickerDisabledReason}
                 />
-              )}
-              {composerPlan.showSuggest && (
-                <button
-                  type="button"
-                  onClick={() => void requestSuggest()}
-                  disabled={suggesting}
-                  aria-label={suggesting ? "Preparando una sugerencia" : "Sugerir respuesta"}
-                  title={suggesting ? "Preparando una sugerencia…" : "Sugerir respuesta con el agente"}
-                  className="hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-60 sm:flex"
-                >
-                  {suggesting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
-                </button>
-              )}
-              {composerPlan.showLibrary && (
-                <button
-                  type="button"
-                  data-asset-widget-toggle
-                  onClick={() => (widget.view === "closed" ? openWidget(false) : closeWidget(false))}
-                  aria-label="Recursos guardados"
-                  aria-expanded={widget.view !== "closed"}
-                  aria-haspopup="dialog"
-                  title={`Recursos guardados (${shortcutLabel} o escribí /)`}
-                  className={cn(
-                    "hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent sm:flex",
-                    widget.view !== "closed" && "bg-accent text-foreground",
-                  )}
-                >
-                  <Library className="h-4 w-4" />
-                </button>
-              )}
-              {composerPlan.showAttach && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Adjuntar archivo"
-                  className="hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent sm:flex"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
-              )}
-              {composerPlan.showMic && (
+                <EmojiButton
+                  onPick={insertEmoji}
+                  focusRef={textareaRef}
+                  align="end"
+                  hideTrigger
+                  open={emojiOpen}
+                  onOpenChange={setEmojiOpen}
+                />
+                {canSticker && (
+                  <StickerPicker
+                    onPick={(stickerId) => void sendStickerFromLibrary(stickerId)}
+                    canDelete={canManageAssets}
+                    hideTrigger
+                    open={stickersOpen}
+                    onOpenChange={setStickersOpen}
+                    returnFocusRef={textareaRef}
+                  />
+                )}
+              </div>
+              {composerPlan.primary === "mic" ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -1458,24 +1458,28 @@ export function MessageThread({
                     setRecording(true);
                   }}
                   aria-label="Grabar audio"
-                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
+                  title="Grabar audio"
+                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
-                  <Mic className="h-4 w-4" />
+                  <Mic className="h-5 w-5" aria-hidden />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSendClick}
+                  disabled={(!input.trim() && !attachedFile) || sending}
+                  aria-label="Enviar mensaje"
+                  title="Enviar"
+                  className={cn(
+                    "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg transition-colors",
+                    (input.trim() || attachedFile) && !sending
+                      ? "bg-primary text-primary-foreground hover:opacity-90"
+                      : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
                 </button>
               )}
-              <button
-                onClick={handleSendClick}
-                disabled={(!input.trim() && !attachedFile) || sending}
-                aria-label="Enviar mensaje"
-                className={cn(
-                  "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg transition-colors",
-                  (input.trim() || attachedFile) && !sending
-                    ? "bg-primary text-primary-foreground hover:opacity-90"
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
             </div>
           )}
         </div>
