@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
-import { Clock, ListPlus, MoreHorizontal, RotateCcw } from "lucide-react";
+import { Clock, HeartHandshake, HeartOff, ListPlus, MoreHorizontal, RotateCcw } from "lucide-react";
 import { NOTE_TEXT, type HeaderPlan, type MenuAction } from "@/lib/inbox/header-actions";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,8 @@ const ACTIONS: Record<MenuAction, { label: string; icon: typeof Clock }> = {
   snooze: { label: "Posponer conversación", icon: Clock },
   reopen: { label: "Reabrir conversación", icon: RotateCcw },
   createTask: { label: "Crear tarea", icon: ListPlus },
+  markKnown: { label: "Marcar como conocido", icon: HeartHandshake },
+  unmarkKnown: { label: "Quitar la marca de conocido", icon: HeartOff },
 };
 
 export function ConversationMenu({

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Sparkles } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library, Sparkles, HeartHandshake } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -23,6 +23,16 @@ import { EmojiButton, useEmojiInsert } from "@/components/ui/emoji-picker";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { CreateTaskButton } from "@/components/tasks/create-task-button";
+import { ConversationAssignee } from "@/components/inbox/conversation-assignee";
+import { canUnmarkKnown, knownLabel } from "@/lib/inbox/known";
+import { assigneeName } from "@/lib/inbox/assignee";
+import { setKnown } from "@/lib/actions/contacts";
+import { prepareStickerSend, saveStickerFromMessage } from "@/lib/actions/stickers";
+import { stickerCapability } from "@/lib/channels/stickers";
+import { StickerPicker } from "@/components/inbox/sticker-picker";
+import { CallLine } from "@/components/inbox/call-line";
+import { interleaveCalls, type CallRow } from "@/lib/whatsapp-calls/event";
+import { isStickerOnlyMessage } from "@/lib/inbox/media-render";
 import { ConversationMenu } from "@/components/inbox/conversation-menu";
 import { planHeaderActions } from "@/lib/inbox/header-actions";
 import { planComposerActions } from "@/lib/inbox/composer-actions";
@@ -131,6 +141,7 @@ function MessageBubble({
   const isInbound = message.direction === "inbound";
   const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
+  const stickerOnly = isStickerOnlyMessage(message, failed);
 
   return (
     <div
@@ -149,7 +160,10 @@ function MessageBubble({
         <div
           className={cn(
             "rounded-2xl px-4 py-2 text-sm",
-            isInbound
+            // Solo un sticker: sin globo, como en WhatsApp (00257).
+            stickerOnly
+              ? "bg-transparent px-0 py-0 text-foreground"
+              : isInbound
               ? "rounded-tl-md bg-muted text-foreground"
               : failed
               ? // Un envio rechazado no se pinta como un mensaje entregado: el
@@ -278,6 +292,11 @@ export function MessageThread({
   agentInfo = null,
   channelProvider = null,
   accounts,
+  members = [],
+  currentUserId = "",
+  canAssignConversations = false,
+  canEditContacts = false,
+  canDeleteContacts = false,
   onBack,
   onOpenContact,
 }: {
@@ -304,6 +323,15 @@ export function MessageThread({
   channelProvider?: string | null;
   /** Las cuentas por canal: el encabezado dice por cual cuenta es la conversacion cuando una red tiene varias. */
   accounts?: InboxAccountsInfo;
+  /** El equipo, para el responsable del chat (00255). */
+  members?: { userId: string; label: string }[];
+  currentUserId?: string;
+  /** `contacts.assign`: cambia el responsable; sin la clave, solo "Tomar". */
+  canAssignConversations?: boolean;
+  /** `contacts.edit`: puede marcar "Conocido". */
+  canEditContacts?: boolean;
+  /** `contacts.delete`: puede quitar la marca de conocido aunque no la haya puesto. */
+  canDeleteContacts?: boolean;
   /** Telefono (Bloque 2d): el hilo ocupa la pantalla y se vuelve a la lista. */
   onBack?: () => void;
   /** Telefono (Bloque 2d): abre los datos del contacto como hoja. */
@@ -313,6 +341,10 @@ export function MessageThread({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
+  // Llamadas de WhatsApp (00258): solo existen en chats de Evolution. Se leen
+  // con la RLS (quien ve la conversacion ve sus llamadas) y se pintan entre los
+  // mensajes por hora; no son mensajes.
+  const [calls, setCalls] = useState<CallRow[]>([]);
   // `?texto=` deja el mensaje escrito en el composer, sin mandarlo (Ventas: "Enviar contrato" por
   // WhatsApp o Instagram). Se lee una sola vez al abrir y se saca de la URL.
   const [input, setInput] = useState(() => (searchParams.get("texto") ?? "").slice(0, 2000));
@@ -819,6 +851,46 @@ export function MessageThread({
   }
 
   /**
+   * Manda un sticker de la biblioteca (00257): el servidor lo copia a la
+   * conversacion (nunca se manda el de la biblioteca) y despues va por la ruta
+   * de siempre, como cualquier adjunto. Sin texto: un sticker va solo.
+   */
+  async function sendStickerFromLibrary(stickerId: string) {
+    if (!conversation || sending) return;
+    setSending(true);
+    setMediaError(null);
+    try {
+      const prepared = await prepareStickerSend({ conversationId: conversation.id, stickerId });
+      if (!prepared.ok) {
+        setMediaError(prepared.error);
+        return;
+      }
+      const res = await fetch("/api/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conversation.id,
+          media: { storagePath: prepared.storagePath, kind: "sticker", mime: "image/webp" },
+          stickerId,
+        }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        setMediaError(errorData.error || `No se pudo enviar (${res.status})`);
+        return;
+      }
+      const confirmedMessage: Message = await res.json();
+      setMessages((prev) => [...prev, confirmedMessage]);
+      if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
+    } catch (err) {
+      console.error("Failed to send sticker:", err);
+      setMediaError("No se pudo enviar el sticker. Probá de nuevo.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /**
    * Manda un recurso con archivo ya copiado a la conversacion
    * (prepareAssetSend). Analogo a sendMediaFile, pero sin pasos de subida: la
    * copia server-side (lib/response-assets/send-copy.ts) ya dejo el archivo
@@ -904,6 +976,33 @@ export function MessageThread({
     }
   }
 
+  const conversationIdForCalls = conversation?.id ?? null;
+  useEffect(() => {
+    if (!conversationIdForCalls || channelProvider !== "evolution") {
+      setCalls([]);
+      return;
+    }
+    let cancelled = false;
+    void createClient()
+      .from("whatsapp_calls")
+      .select("id, status, is_video, started_at")
+      .eq("conversation_id", conversationIdForCalls)
+      .order("started_at")
+      .limit(200)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("[llamadas] no pude leer las llamadas:", error.message);
+          return;
+        }
+        setCalls((data ?? []).map((c) => ({ id: c.id, status: c.status, isVideo: c.is_video, startedAt: c.started_at })));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationIdForCalls, channelProvider, messages.length]);
+  const callTimeline = interleaveCalls(messages, calls);
+
   if (!conversation) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-background text-center">
@@ -918,6 +1017,7 @@ export function MessageThread({
     );
   }
 
+
   const composerPlan = planComposerActions({
     hasAttachment: !!attachedFile,
     hasText: !!input.trim(),
@@ -930,7 +1030,29 @@ export function MessageThread({
     isAutomationPaused: !!conversation.is_automation_paused,
     agentDisabledByTag: !!conversation.agent_disabled_by_tag_id,
     draftMode: !!(agentInfo?.available && agentInfo.mode === "draft"),
+    known: conversation.contact_id
+      ? {
+          isKnown: !!conversation.contacts?.is_known,
+          canMark: canEditContacts,
+          canUnmark: canEditContacts && canUnmarkKnown({ viewerId: currentUserId, markedBy: conversation.contacts?.known_marked_by ?? null, canDeleteContacts }),
+        }
+      : undefined,
   });
+
+  async function toggleKnown(value: boolean) {
+    if (!conversation?.contact_id) return;
+    setStatusUpdating(value ? "known" : "unknown");
+    try {
+      const result = await setKnown(conversation.contact_id, value);
+      if (!result.ok) {
+        setMediaError(result.error);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setStatusUpdating(null);
+    }
+  }
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -978,6 +1100,13 @@ export function MessageThread({
                 No contactar
               </p>
             )}
+            {/* Conocido (00256): quien lo abrio igual sabe que es personal. */}
+            {conversation.contacts?.is_known && (
+              <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
+                <HeartHandshake className="h-3 w-3" aria-hidden />
+                {knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}
+              </p>
+            )}
           </div>
         </div>
 
@@ -1019,6 +1148,16 @@ export function MessageThread({
               <span className="hidden sm:inline">Necesita humano</span>
             </span>
           )}
+          {currentUserId && (
+            <ConversationAssignee
+              conversationId={conversation.id}
+              assignedTo={conversation.assigned_to ?? null}
+              members={members}
+              currentUserId={currentUserId}
+              canAssign={canAssignConversations}
+              canReply={canReply}
+            />
+          )}
           <ConversationAgentToggle
             conversationId={conversation.id}
             mode={conversation.agent_enabled}
@@ -1050,6 +1189,8 @@ export function MessageThread({
             onAction={(action) => {
               if (action === "snooze") void updateConversationStatus("snoozed");
               else if (action === "reopen") void updateConversationStatus("open");
+              else if (action === "markKnown") void toggleKnown(true);
+              else if (action === "unmarkKnown") void toggleKnown(false);
               else setTaskOpen(true);
             }}
           />
@@ -1074,6 +1215,11 @@ export function MessageThread({
         <div className="mx-auto max-w-2xl space-y-4">
           {messages.map((message, i) => (
             <div key={message.id}>
+              {callTimeline.before.get(i)?.map((call) => (
+                <div key={call.id} className="mb-4">
+                  <CallLine call={call} />
+                </div>
+              ))}
               {shouldShowDateSeparator(message, messages[i - 1]) && (
                 <div className="my-4 flex items-center gap-3">
                   <div className="h-px flex-1 bg-border" />
@@ -1103,6 +1249,9 @@ export function MessageThread({
                 onReact={(emoji) => void handleReact(message, emoji)}
               />
             </div>
+          ))}
+          {callTimeline.after.map((call) => (
+            <CallLine key={call.id} call={call} />
           ))}
           <div ref={messagesEndRef} />
         </div>
@@ -1242,6 +1391,15 @@ export function MessageThread({
                 }}
               />
               <EmojiButton onPick={insertEmoji} focusRef={textareaRef} />
+              {/* Stickers (00257): solo en un canal que los admite (hoy, WhatsApp). */}
+              {stickerCapability(channelProvider).supported && (
+                <StickerPicker
+                  onPick={(stickerId) => void sendStickerFromLibrary(stickerId)}
+                  canDelete={canManageAssets}
+                  disabled={sending || !!attachedFile || recording || !!conversation.contacts?.do_not_contact}
+                  disabledReason={conversation.contacts?.do_not_contact ? "El contacto está marcado como «no contactar»." : null}
+                />
+              )}
               {composerPlan.hasMoreMenu && (
                 <ComposerMoreMenu
                   showLibrary={composerPlan.showLibrary}
@@ -1381,6 +1539,7 @@ export function MessageThread({
  * del reproductor.
  */
 function MessageAttachments({ message }: { message: Message }) {
+  const isInboundSticker = message.direction === "inbound";
   const items = parseAttachments(message.attachments);
   const [retrying, setRetrying] = useState(false);
 
@@ -1401,7 +1560,17 @@ function MessageAttachments({ message }: { message: Message }) {
   return (
     <div className="space-y-1">
       {items.map((item, index) => (
-        <MediaAttachment key={`${message.id}-${index}`} item={item} onRetry={retryDownload} />
+        <MediaAttachment
+          key={`${message.id}-${index}`}
+          item={item}
+          onRetry={retryDownload}
+          onSaveSticker={
+            // Uno recibido se guarda con un boton; los que se mandan entran solos (00257).
+            isInboundSticker && item.kind === "sticker" && item.storagePath
+              ? () => saveStickerFromMessage({ messageId: message.id, storagePath: item.storagePath! })
+              : undefined
+          }
+        />
       ))}
       <TranscriptBlock messageId={message.id} message={message} />
     </div>

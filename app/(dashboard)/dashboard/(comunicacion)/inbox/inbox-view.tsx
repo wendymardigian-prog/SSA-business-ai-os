@@ -6,6 +6,9 @@ import { MessageSquare, RefreshCw, User } from "lucide-react";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread, type InboxAsset } from "@/components/inbox/message-thread";
 import { ContactPanel } from "@/components/inbox/contact-panel";
+import { KnownGate } from "@/components/inbox/known-gate";
+import { knownGate } from "@/lib/inbox/known";
+import { assigneeName } from "@/lib/inbox/assignee";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/lib/types/database";
@@ -26,6 +29,9 @@ export function InboxView({
   canManageAssets = false,
   canCreateTask = false,
   canViewAgentRuns = false,
+  canAssignConversations = false,
+  canEditContacts = false,
+  canDeleteContacts = false,
   replyChannelIds,
   workspaceName,
   selected: selectedFromServer,
@@ -54,6 +60,11 @@ export function InboxView({
   canCreateTask?: boolean;
   /** Puede ver las corridas del agente (`agents.view`): el panel "Qué hizo el agente" ofrece abrir la corrida. */
   canViewAgentRuns?: boolean;
+  /** `contacts.assign`: cambia el responsable de cualquier conversación (sin la clave, solo "Tomar"). */
+  canAssignConversations?: boolean;
+  /** `contacts.edit` / `contacts.delete`: marcar y quitar "Conocido". */
+  canEditContacts?: boolean;
+  canDeleteContacts?: boolean;
   /** Las cuentas donde puede responder (00249): `null` = en todas las que ve. */
   replyChannelIds?: string[] | null;
   workspaceName: string;
@@ -143,6 +154,19 @@ export function InboxView({
     ? (conversations.find((c) => c.id === selectedId) ?? (selectedFromServer?.id === selectedId ? selectedFromServer : null))
     : null;
 
+  // Conocido (00256): quien no lo marco ni lo tiene a cargo ve primero un aviso,
+  // y el chat no se carga ni se marca como leido hasta que elige abrirlo.
+  const [revealedKnown, setRevealedKnown] = useState<Set<string>>(() => new Set());
+  const gated =
+    !!selected &&
+    !revealedKnown.has(selected.id) &&
+    knownGate({
+      isKnown: !!selected.contacts?.is_known,
+      markedBy: selected.contacts?.known_marked_by ?? null,
+      assignedTo: selected.assigned_to ?? null,
+      viewerId: currentUserId,
+    });
+
   const replaceQuery = useCallback(
     (next: URLSearchParams) => {
       const query = next.toString();
@@ -170,7 +194,7 @@ export function InboxView({
 
   // Load messages when a conversation is selected
   useEffect(() => {
-    if (!selected) {
+    if (!selected || gated) {
       setMessages([]);
       return;
     }
@@ -206,7 +230,7 @@ export function InboxView({
     }
 
     loadMessages();
-  }, [selected?.id]);
+  }, [selected?.id, gated]);
 
   return (
     // En el telefono (Bloque 2d) es lista -> hilo a pantalla completa: con una
@@ -228,6 +252,7 @@ export function InboxView({
           draftCounts={draftCounts}
           draftConversationIds={draftConversationIds}
           accounts={accounts}
+          members={members}
         />
       </div>
 
@@ -272,6 +297,13 @@ export function InboxView({
                 <p className="mt-2 text-xs text-destructive">{syncError}</p>
               )}
             </div>
+          ) : gated && selected ? (
+            <KnownGate
+              contactName={selected.contacts?.display_name ?? null}
+              ownerName={assigneeName(members, selected.contacts?.known_marked_by ?? null) ?? assigneeName(members, selected.assigned_to)}
+              onOpen={() => setRevealedKnown((prev) => new Set(prev).add(selected.id))}
+              onBack={handleBack}
+            />
           ) : loadingMessages && selected ? (
             <div className="flex h-full items-center justify-center">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
@@ -289,6 +321,11 @@ export function InboxView({
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
               channelProvider={selected ? providerByChannel[selected.channel_id] ?? null : null}
               accounts={accounts}
+              members={members}
+              currentUserId={currentUserId}
+              canAssignConversations={canAssignConversations}
+              canEditContacts={canEditContacts}
+              canDeleteContacts={canDeleteContacts}
               onBack={selected ? handleBack : undefined}
               onOpenContact={selected?.contact_id ? () => setContactSheetOpen(true) : undefined}
             />
@@ -299,7 +336,7 @@ export function InboxView({
       {/* Right panel: Contact info. En la computadora es la tercera columna; en
           el telefono, una hoja a pantalla completa que se abre a pedido. Una
           sola instancia, para no cargar el contacto dos veces. */}
-      {selected?.contact_id && (showContactPanel || contactSheetOpen) && (
+      {selected?.contact_id && !gated && (showContactPanel || contactSheetOpen) && (
         <div
           className={cn(
             contactSheetOpen ? "fixed inset-0 z-40 flex bg-background" : "hidden",

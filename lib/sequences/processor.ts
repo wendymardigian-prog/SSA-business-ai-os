@@ -85,8 +85,9 @@ export async function processSequenceSteps(): Promise<ProcessResult> {
 
   for (const enrollment of enrollments) {
     try {
-      if (blocked.has(enrollment.contact_id)) {
-        await pause(supabase, enrollment.id, "opt_out");
+      const blockedReason = blocked.get(enrollment.contact_id);
+      if (blockedReason) {
+        await pause(supabase, enrollment.id, blockedReason);
         result.paused++;
         continue;
       }
@@ -124,16 +125,21 @@ export async function processSequenceSteps(): Promise<ProcessResult> {
  * momento y este puede haber una marcada a mano desde la ficha. Es una sola
  * consulta para toda la tanda.
  */
-async function loadBlockedContacts(supabase: Db, enrollments: Enrollment[]): Promise<Set<string>> {
+async function loadBlockedContacts(supabase: Db, enrollments: Enrollment[]): Promise<Map<string, "opt_out" | "known">> {
   const ids = [...new Set(enrollments.map((e) => e.contact_id))];
   const { data } = await supabase
     .from("contacts")
-    .select("id, do_not_contact, deleted_at")
+    .select("id, do_not_contact, deleted_at, is_known")
     .in("id", ids);
 
-  return new Set(
-    (data ?? []).filter((c) => c.do_not_contact || c.deleted_at).map((c) => c.id)
-  );
+  // Un conocido (00256) tampoco recibe secuencias: se pausa con su propio motivo,
+  // que se puede reanudar si se le saca la marca.
+  const blocked = new Map<string, "opt_out" | "known">();
+  for (const c of data ?? []) {
+    if (c.do_not_contact || c.deleted_at) blocked.set(c.id, "opt_out");
+    else if (c.is_known) blocked.set(c.id, "known");
+  }
+  return blocked;
 }
 
 type StepOutcome = "sent" | "advanced" | "paused" | "retry" | "completed";

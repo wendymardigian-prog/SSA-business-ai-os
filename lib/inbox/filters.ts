@@ -38,6 +38,8 @@ export const INBOX_STATUS_LABELS: Record<InboxStatus, string> = {
 export const ASSIGNMENT_ANY = "";
 export const ASSIGNMENT_UNASSIGNED = "sin-asignar";
 export const ASSIGNMENT_AI = "agente-ia";
+/** Las que me tocan: el chat a mi cargo, o soy setter o vendedor del contacto. */
+export const ASSIGNMENT_MINE = "mias";
 
 export interface InboxFilters {
   search: string;
@@ -52,7 +54,7 @@ export interface InboxFilters {
   channelIds: string[];
   /** Ids de tags; el contacto tiene que tener al menos uno. */
   tagIds: string[];
-  /** "", "sin-asignar", "agente-ia" o el id de un miembro. */
+  /** "", "sin-asignar", "agente-ia", "mias" o el id de un miembro. */
   assignment: string;
   datePreset: DatePreset | "";
   dateFrom: string;
@@ -64,6 +66,8 @@ export interface InboxFilters {
    * Es distinto de agentError: ahi el agente fallo, aca decidio no responder.
    */
   needsHuman: boolean;
+  /** Esconde los chats de conocidos (00256). Opcional: los links viejos no lo traen. */
+  hideKnown?: boolean;
 }
 
 export const EMPTY_INBOX_FILTERS: InboxFilters = {
@@ -78,7 +82,12 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   dateTo: "",
   agentError: false,
   needsHuman: false,
+  hideKnown: false,
 };
+
+/** El parametro de la URL: `?conocidos=ocultar`. */
+export const HIDE_KNOWN_PARAM = "conocidos";
+export const HIDE_KNOWN_VALUE = "ocultar";
 
 /**
  * Cuantos filtros hay puestos, para el contador del boton.
@@ -99,6 +108,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.datePreset) count++;
   if (filters.agentError) count++;
   if (filters.needsHuman) count++;
+  if (filters.hideKnown) count++;
   return count;
 }
 
@@ -111,7 +121,7 @@ export function countActiveFilters(filters: InboxFilters): number {
  * el cliente y hay que volver a preguntarle al servidor.
  */
 export function needsServerToFilter(filters: InboxFilters): boolean {
-  return filters.tagIds.length > 0 || filters.assignment !== ASSIGNMENT_ANY;
+  return filters.tagIds.length > 0 || filters.assignment !== ASSIGNMENT_ANY || !!filters.hideKnown;
 }
 
 export interface FilterableRow {

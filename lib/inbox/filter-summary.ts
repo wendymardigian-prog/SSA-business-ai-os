@@ -10,6 +10,7 @@ import { accountFilterLabel, type InboxAccount } from "@/lib/inbox/accounts";
 import {
   ASSIGNMENT_AI,
   ASSIGNMENT_ANY,
+  ASSIGNMENT_MINE,
   ASSIGNMENT_UNASSIGNED,
   DEFAULT_INBOX_STATUS,
   INBOX_STATUS_LABELS,
@@ -65,6 +66,7 @@ function assignmentLabel(assignment: string, members: FilterSummaryCatalog["memb
   if (assignment === ASSIGNMENT_ANY) return null;
   if (assignment === ASSIGNMENT_UNASSIGNED) return "Sin asignar";
   if (assignment === ASSIGNMENT_AI) return "Asignadas al agente IA";
+  if (assignment === ASSIGNMENT_MINE) return "Asignadas a mí";
   const member = members.find((m) => m.userId === assignment);
   return member ? `Asignadas a ${member.label}` : "Asignadas a alguien del equipo";
 }
@@ -117,6 +119,7 @@ export function describeInboxFilters(filters: InboxFilters, catalog: FilterSumma
 
   if (filters.agentError) parts.push("Con error del agente");
   if (filters.needsHuman) parts.push("Necesita humano");
+  if (filters.hideKnown) parts.push("Sin conocidos");
 
   return parts;
 }

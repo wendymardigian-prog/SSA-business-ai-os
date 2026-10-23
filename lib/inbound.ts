@@ -20,6 +20,7 @@ import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
 import type { IncomingMessage } from "@/lib/flow-engine/types";
 import { fromZernioAttachments, toAttachmentsColumn, type ChatAttachment } from "@/lib/messages/attachments";
 import { isNewerThanLastInbound, outboundCountsAsAnswered } from "@/lib/inbox/unread";
+import { applyConversationRules } from "@/lib/conversations/assignment";
 
 type Db = SupabaseClient<Database>;
 
@@ -131,6 +132,10 @@ export async function upsertConversation({
     console.error("[inbound] no pude crear la conversacion:", error?.message);
     return null;
   }
+
+  // Conversacion NUEVA: las reglas de asignacion por cuenta (00255). Nunca
+  // lanza: si falla, la conversacion queda sin responsable, como antes.
+  await applyConversationRules(supabase, { workspaceId: channel.workspace_id, conversationId: created.id });
 
   return { id: created.id, isAutomationPaused: created.is_automation_paused };
 }

@@ -42,10 +42,13 @@ import { cn } from "@/lib/utils";
 export function MediaAttachment({
   item,
   onRetry,
+  onSaveSticker,
 }: {
   item: ChatAttachment;
   /** Reintentar la descarga. Sin esto, el botón no se muestra. */
   onRetry?: () => void;
+  /** Un sticker recibido: "Guardar sticker" en la biblioteca (00257). Sin esto, no se ofrece. */
+  onSaveSticker?: () => Promise<{ ok: boolean; error?: string }>;
 }) {
   const plan = renderPlan(item);
   const [playing, setPlaying] = useState(false);
@@ -127,6 +130,9 @@ export function MediaAttachment({
           {plan.shareUrlLabel && <span className="truncate text-current/50">{plan.shareUrlLabel}</span>}
         </a>
       );
+
+    case "sticker":
+      return <StickerImage url={plan.url} label={plan.label} onBroken={() => setBroken(true)} onSave={onSaveSticker} />;
 
     case "image":
     case "gif-image":
@@ -296,5 +302,50 @@ function Footer({
         </a>
       )}
     </p>
+  );
+}
+
+/** Un sticker como en WhatsApp: chico, sin fondo, sin pie de descarga. */
+function StickerImage({
+  url,
+  label,
+  onBroken,
+  onSave,
+}: {
+  url: string | null;
+  label: string;
+  onBroken: () => void;
+  onSave?: () => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (!onSave || state === "saving" || state === "saved") return;
+    setState("saving");
+    const result = await onSave();
+    if (result.ok) setState("saved");
+    else {
+      setState("error");
+      setError(result.error ?? "No pude guardarlo.");
+    }
+  }
+
+  return (
+    <div className="group/sticker relative inline-block">
+      {/* eslint-disable-next-line @next/next/no-img-element -- la URL es una ruta propia que redirige a Storage: next/image no puede optimizar un 302 firmado. */}
+      <img src={url ?? undefined} alt={label} loading="lazy" onError={onBroken} className="h-36 w-36 object-contain" />
+      {onSave && (
+        <button
+          type="button"
+          onClick={save}
+          disabled={state === "saving" || state === "saved"}
+          title={error ?? undefined}
+          className="mt-0.5 block text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-70"
+        >
+          {state === "saving" ? "Guardando…" : state === "saved" ? "Guardado en tus stickers" : state === "error" ? "No se pudo guardar · Reintentar" : "Guardar sticker"}
+        </button>
+      )}
+    </div>
   );
 }

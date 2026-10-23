@@ -1497,6 +1497,25 @@ Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con b
 
 `00254_flows_categories_drafts` (aditiva), **aplicada y registrada** el 23/10/2026 (versión `20261023130139`). **La próxima libre es la `00255`** (confirmar con `list_migrations`).
 
+# Bandeja: asignación, Conocido, stickers y llamadas de WhatsApp (construido, 23/10/2026)
+
+Responsable de cada conversación (a mano y con reglas por cuenta), la marca «Conocido», stickers de WhatsApp y el registro de llamadas. Lo que Evolution puede y no puede está en `docs/pendientes/wavoip-llamadas.md`.
+
+## Lo que no se puede romper
+
+- **El responsable del chat es `conversations.assigned_to`** (ya lo usaba la RLS: te asignan un chat → el contacto es «tuyo», `contact_is_mine`). Se cambia con `setConversationAssignee` (`lib/actions/conversation-assign.ts`): con `contacts.assign` a cualquiera; sin la clave, solo «Tomar» uno sin responsable en una cuenta donde respondés (`canChangeConversationAssignee`, `lib/inbox/assignee.ts`). Escribe con el cliente de servicio después de leer con el del usuario. El aviso `conversation_assigned` nunca va a quien asignó.
+- **Reglas por cuenta (00255)**: `conversation_assignment_rules`, gana la primera activa que coincide (`position`); `assign_new_conversation` corre SOLO en una conversación nueva (`upsertConversation`, y en el upsert de comentarios), nunca pisa un responsable y no toca `assignment_locked_at` (Ventas saltea un setter «lleno»). `conversation_rule_pick` y `pickRuleMember` son gemelas con `lib/inbox/assignment-rules.cases.json`. El import histórico no asigna.
+- **El filtro «Asignación → persona» usa `conversation_people`** (responsable + setter + vendedor, campo calculado de la 00255); «Asignadas a mí» es `?asignado=mias`.
+- **Conocido es una marca del contacto (00256), no una etiqueta**: `is_known`, quién y cuándo. Al marcar, la BASE (trigger) asigna cada chat a la persona de su cuenta (`workspaces.known_contacts_settings`, si no el Owner; `private.known_assignee`) y apaga el agente con `agent_disabled_by_known` (mismo patrón que la etiqueta con efecto de la 00073). Al quitar, se prende solo lo que apagó la marca y el responsable queda. `assign_new_conversation` mira la marca antes que las reglas. La fusión la conserva (trigger al borrar el duplicado, sin reescribir `merge_contacts`).
+- **Secuencias y conocidos**: se pausan al marcar (motivo `known`), el procesador los saltea y no se inscribe ni reanuda mientras siga marcado. Los flujos siguen corriendo (decisión de producto).
+- **El aviso al abrir** (`knownGate`): quien no lo marcó ni lo tiene a cargo ve «Es un conocido de…» y el chat no se carga ni se marca como leído hasta «Abrir igual».
+- **Stickers (00257)**: `lib/channels/stickers.ts` es el ÚNICO que decide qué canal los manda (solo Evolution; rama explícita). WhatsApp no deja leer los stickers guardados en el celular: la biblioteca se arma sola con los que se mandan (también desde el teléfono, `fromMe`), los recibidos se guardan con un botón y se suben PNG/JPG/WEBP/GIF (`sharp`, webp 512×512; un GIF queda animado porque Evolution fuerza `gifPlayback=false` en `sendMedia`). El archivo vive en `chat-media/<ws>/stickers/<sha>.webp` y se COPIA a la conversación antes de mandarse (la retención solo borra lo que referencia un mensaje). `sharp` está fijado en la 0.34.5.
+- **Llamadas (00258)**: Evolution 2.3.7 NO hace ni atiende llamadas (`offerCall` está comentado); solo avisa con el evento `CALL`. `record_whatsapp_call` hace la transición en una sentencia; la llamada es una línea del hilo, **no un mensaje** (no la ve el agente ni dispara flujos). Una perdida suma un no leído y avisa (`whatsapp_call_missed`, una vez cada 10 minutos por chat). Rechazar solas y el mensaje viven en Evolution (`/settings`), y guardar re-registra el webhook con `CALL`: **un número conectado antes de esta versión no recibe llamadas hasta reconectarlo o guardar «Llamadas» una vez**. `whatsapp_calls` no tiene `contact_id` a propósito (la fusión no la tiene que tocar). No confundir con `calls` (Fathom).
+
+## Migraciones
+
+`00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. **La próxima libre es la `00259`** (confirmar con `list_migrations`).
+
 # Seguridad
 
 ## Autenticacion y sesiones

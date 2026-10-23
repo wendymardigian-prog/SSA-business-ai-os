@@ -3,7 +3,7 @@ import type { Database } from "@/lib/types/database";
 
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
-import { sendText, sendWhatsAppAudio, sendMedia, EvolutionError, type EvolutionConfig } from "@/lib/evolution-client";
+import { sendText, sendWhatsAppAudio, sendMedia, sendSticker, EvolutionError, type EvolutionConfig } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { describeSendError, RATE_LIMIT_REACHED, type FriendlyError } from "@/lib/instagram-errors";
 import { outboundMessageRow } from "@/lib/messages/outbound";
@@ -65,7 +65,8 @@ export interface SendContext {
 
 /** Un archivo de nuestro bucket `chat-media`, listo para mandar (F19). */
 export interface OutboundMedia {
-  kind: "audio" | "voice" | "image" | "video" | "document";
+  /** `sticker` solo por WhatsApp (lib/channels/stickers.ts). */
+  kind: "audio" | "voice" | "image" | "video" | "document" | "sticker";
   /** Ruta en el bucket chat-media. */
   storagePath: string;
   mime: string;
@@ -273,7 +274,7 @@ async function sendViaResendChannel(
 }
 
 /** El `attachmentType` que entiende `sendInboxMessage`: solo cuatro valores. */
-function zernioAttachmentType(kind: OutboundMedia["kind"]): "image" | "video" | "audio" | "file" {
+function zernioAttachmentType(kind: Exclude<OutboundMedia["kind"], "sticker">): "image" | "video" | "audio" | "file" {
   if (kind === "voice") return "audio";
   if (kind === "document") return "file";
   return kind;
@@ -348,6 +349,13 @@ async function sendViaZernio(
   const body: Record<string, unknown> = { accountId: lateAccountId, message: message.text };
 
   if (message.media) {
+    // Instagram no recibe stickers (lib/channels/stickers.ts): no se sube nada.
+    if (message.media.kind === "sticker") {
+      return {
+        ok: false,
+        failure: { kind: "unknown", message: "Instagram no permite mandar stickers desde acá.", retryable: false },
+      };
+    }
     // Antes de subir nada: un ogg/webm/mp3 Instagram lo va a tirar igual.
     if (
       (message.media.kind === "audio" || message.media.kind === "voice") &&
@@ -414,6 +422,10 @@ async function sendEvolutionMediaMessage(
     // Por WhatsApp no se valida el formato: Evolution convierte cualquiera
     // con su propio ffmpeg (encoding:true, el default).
     return sendWhatsAppAudio(config, instanceName, to, args.url);
+  }
+  if (args.kind === "sticker") {
+    // Un sticker no lleva texto: si viene uno, lo manda el que llama aparte.
+    return sendSticker(config, instanceName, to, args.url);
   }
   const mediatype = args.kind === "document" ? "document" : args.kind === "video" ? "video" : "image";
   return sendMedia(config, instanceName, to, {

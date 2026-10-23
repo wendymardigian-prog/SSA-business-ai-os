@@ -9,6 +9,9 @@ import {
   DEFAULT_INBOX_STATUS,
   ASSIGNMENT_UNASSIGNED,
   ASSIGNMENT_AI,
+  ASSIGNMENT_MINE,
+  HIDE_KNOWN_PARAM,
+  HIDE_KNOWN_VALUE,
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
@@ -218,6 +221,17 @@ export function InboxFiltersMenu({
           </div>
         </FilterGroup>
 
+        <FilterGroup label="Conocidos">
+          <div className="flex flex-wrap gap-1.5">
+            <Chip
+              active={!!filters.hideKnown}
+              onClick={() => setParam(HIDE_KNOWN_PARAM, filters.hideKnown ? "" : HIDE_KNOWN_VALUE)}
+            >
+              Ocultar conocidos
+            </Chip>
+          </div>
+        </FilterGroup>
+
         <FilterGroup label="Asignación">
           <select
             value={filters.assignment}
@@ -226,6 +240,7 @@ export function InboxFiltersMenu({
             className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">Todas</option>
+            <option value={ASSIGNMENT_MINE}>Asignadas a mí</option>
             <option value={ASSIGNMENT_UNASSIGNED}>Sin asignar</option>
             <option value={ASSIGNMENT_AI}>Agente IA</option>
             {members.map((m) => (

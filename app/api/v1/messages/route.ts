@@ -15,6 +15,8 @@ import { sniffUploadMime } from "@/lib/content/media";
 import { attachmentLabel, emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
 import { assetKindForAttachment, channelAccepts } from "@/lib/channels/media";
+import { stickerCapability } from "@/lib/channels/stickers";
+import { touchSticker } from "@/lib/stickers/library";
 import { loadOriginChips, withOriginChips } from "@/lib/inbox/origin-chip-load";
 
 /**
@@ -189,7 +191,7 @@ async function withChips<T extends { id: string; direction: "inbound" | "outboun
 }
 
 /** Los kinds que puede declarar un adjunto saliente (F19). */
-const OUTBOUND_MEDIA_KINDS = new Set<AttachmentKind>(["audio", "voice", "image", "video", "document"]);
+const OUTBOUND_MEDIA_KINDS = new Set<AttachmentKind>(["audio", "voice", "image", "video", "document", "sticker"]);
 
 /**
  * La familia de mime que le corresponde a cada kind, para el chequeo por
@@ -200,6 +202,7 @@ const EXPECTED_MIME_FAMILY: Partial<Record<AttachmentKind, string>> = {
   video: "video/",
   audio: "audio/",
   voice: "audio/",
+  sticker: "image/",
 };
 
 interface IncomingMedia {
@@ -252,6 +255,10 @@ async function validateOutboundMedia(
   if (!sniffed || (family && !sniffed.startsWith(family))) {
     return { ok: false, status: 400, error: "El archivo no se pudo reconocer." };
   }
+  // Un sticker es siempre el webp que dejo listo la biblioteca (00257).
+  if (kind === "sticker" && sniffed !== "image/webp") {
+    return { ok: false, status: 400, error: "El sticker no se pudo reconocer." };
+  }
 
   return {
     ok: true,
@@ -281,11 +288,13 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { conversationId, text, media: incomingMedia, confirmedDoNotContact } = body as {
+  const { conversationId, text, media: incomingMedia, confirmedDoNotContact, stickerId } = body as {
     conversationId?: string;
     text?: string;
     media?: IncomingMedia;
     confirmedDoNotContact?: boolean;
+    /** El sticker de la biblioteca que se mando (00257): suma un uso. */
+    stickerId?: string;
   };
 
   if (!conversationId || (!text && !incomingMedia)) {
@@ -390,14 +399,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validated.error }, { status: validated.status });
     }
     // Que el canal acepte ESTE adjunto (un archivo por Instagram, un audio en
-    // un formato que Instagram rechaza), antes de mandar nada.
-    const acceptance = channelAccepts(
-      outChannel.provider,
-      assetKindForAttachment(validated.media.kind),
-      validated.media.mime,
-    );
-    if (!acceptance.ok) {
-      return NextResponse.json({ error: acceptance.reason }, { status: 400 });
+    // un formato que Instagram rechaza), antes de mandar nada. Un sticker lo
+    // decide lib/channels/stickers.ts (solo WhatsApp) y va sin texto.
+    if (validated.media.kind === "sticker") {
+      const capability = stickerCapability(outChannel.provider);
+      if (!capability.supported) return NextResponse.json({ error: capability.reason }, { status: 400 });
+      if (text?.trim()) return NextResponse.json({ error: "Un sticker se manda sin texto." }, { status: 400 });
+    } else {
+      const acceptance = channelAccepts(
+        outChannel.provider,
+        assetKindForAttachment(validated.media.kind),
+        validated.media.mime,
+      );
+      if (!acceptance.ok) {
+        return NextResponse.json({ error: acceptance.reason }, { status: 400 });
+      }
     }
     media = validated.media;
   }
@@ -480,6 +496,11 @@ export async function POST(request: NextRequest) {
     workspaceId: conversation.workspace_id,
     userId: user.id,
   });
+
+  // Un sticker de la biblioteca suma un uso (00257). Nunca frena el envio.
+  if (media?.kind === "sticker" && typeof stickerId === "string") {
+    await touchSticker(service, { workspaceId: conversation.workspace_id, stickerId });
+  }
 
   // El audio propio tambien se transcribe (F19): asi el agente sabe que dijo
   // la persona si despues alguien lee el historial. Va en el after(): la
