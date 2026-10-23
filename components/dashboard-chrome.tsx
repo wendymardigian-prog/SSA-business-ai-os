@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { Menu, MessageSquare, X } from "lucide-react";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NavLinks, type NavFlags } from "@/components/sidebar";
@@ -148,7 +148,7 @@ export function MobileMenuButton({ chrome }: { chrome: DashboardChrome }) {
 }
 
 /**
- * La campana y el numero de borradores, del lado derecho de la barra.
+ * La campana y los borradores (un globo de chat con su numero), del lado derecho de la barra.
  *
  * Solo en el celular: en la computadora los dos viven al pie del menu lateral,
  * donde los dejo el rediseño del menu.
@@ -163,10 +163,17 @@ export function MobileChromeActions({ chrome }: { chrome: DashboardChrome }) {
         <Link
           href={draftsQueueHref(drafts)}
           aria-label={`${waiting} ${waiting === 1 ? "borrador esperando" : "borradores esperando"}. Ir a la cola`}
-          className="flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-primary hover:bg-accent"
+          title="Borradores esperando"
+          className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
-          <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] leading-none text-primary-foreground">
-            {waiting}
+          {/* Un globo de chat con el numero arriba, como la campana: un numero
+              suelto en la barra no decia de que era. */}
+          <MessageSquare className="h-4 w-4 shrink-0" aria-hidden />
+          <span
+            aria-hidden
+            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground"
+          >
+            {waiting > 99 ? "99+" : waiting}
           </span>
         </Link>
       )}

@@ -83,7 +83,8 @@ export function PageHeader({
 
   return (
     <>
-      <header className="flex h-14 flex-shrink-0 items-center gap-2 border-b border-border px-3 md:px-6">
+      {/* gap-1.5 en el celular: con el menu, las vistas, los botones, los borradores y la campana, 2 px por hueco eran los que dejaban la campana cortada contra el borde en un telefono de 375 px. */}
+      <header className="flex h-14 flex-shrink-0 items-center gap-1.5 border-b border-border px-3 md:gap-2 md:px-6">
         {chrome && <MobileMenuButton chrome={chrome} />}
         {backHref}
         {titleSlot ?? (

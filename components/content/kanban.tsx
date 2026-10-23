@@ -3,7 +3,8 @@
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CalendarClock, Link2 as LinkIcon, Loader2, Plus, Users } from "lucide-react";
+import { CalendarClock, FileText, Lightbulb, Link2 as LinkIcon, Loader2, Plus, Users } from "lucide-react";
+import { Popover } from "@/components/ui/popover";
 import { movePostToColumn } from "@/lib/actions/content";
 import { MARK_PUBLISHED_PARAM } from "@/lib/content/mark-published";
 import { drawerHref } from "@/lib/content/drawer-url";
@@ -248,7 +249,8 @@ function IdeaCard({ idea, href }: { idea: BoardIdea; href: string }) {
 
         <span className="mt-1.5 block text-sm font-medium">{idea.title}</span>
 
-        {excerpt && <span className="mt-1 block text-xs italic text-muted-foreground">“{excerpt}”</span>}
+        {/* Un link largo (sin espacios) se parte: si no, se salia de la tarjeta. */}
+        {excerpt && <span className="mt-1 block text-xs italic text-muted-foreground [overflow-wrap:anywhere]">“{excerpt}”</span>}
 
         {idea.offer && (
           <span className="mt-1.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Producto">
@@ -434,14 +436,45 @@ export function NewContentButtons({
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-2">
+      {/* En el celular, un solo "+" que abre las dos opciones: dos botones de
+          solo icono, uno al lado del otro, no decían cuál era cuál y le
+          sacaban lugar a la barra. */}
+      <div className="sm:hidden">
+        <Popover
+          label="Crear contenido"
+          trigger={newPost.pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
+          triggerClassName="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-60"
+          panelClassName="w-44 p-1"
+          closeOnSelect
+        >
+          <button
+            type="button"
+            onClick={() => setDialog("idea")}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-accent"
+          >
+            <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden />
+            Nueva idea
+          </button>
+          <button
+            type="button"
+            onClick={newPost.create}
+            disabled={newPost.pending}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-accent disabled:opacity-60"
+          >
+            <FileText className="h-4 w-4 text-muted-foreground" aria-hidden />
+            Nuevo post
+          </button>
+        </Popover>
+      </div>
+
+      <div className="hidden shrink-0 items-center gap-2 sm:flex">
         <button
           type="button"
           onClick={() => setDialog("idea")}
           className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent"
         >
           <Plus className="h-4 w-4" aria-hidden />
-          <span className="hidden sm:inline">Nueva idea</span>
+          Nueva idea
         </button>
         <button
           type="button"
@@ -450,7 +483,7 @@ export function NewContentButtons({
           className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
           {newPost.pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
-          <span className="hidden sm:inline">Nuevo post</span>
+          Nuevo post
         </button>
       </div>
 

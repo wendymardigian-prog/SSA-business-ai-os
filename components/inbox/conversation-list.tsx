@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
-import { InboxStatusBar } from "@/components/inbox/inbox-filters";
+import { InboxStatusControls } from "@/components/inbox/inbox-filters";
 import {
   matchesInboxRow,
   needsServerToFilter,
@@ -174,17 +174,19 @@ export function ConversationList({
 
   return (
     <div className="flex h-full flex-col border-r border-border bg-background">
-      {/* Header */}
-      <div className="flex h-14 items-center justify-between border-b border-border px-4">
-        <h2 className="text-sm font-semibold">Bandeja</h2>
-        <span className="text-xs text-muted-foreground">
-          {total === 1 ? "1 conversación" : `${total} conversaciones`}
-        </span>
+      {/* Header: titulo, cantidad, estado y borradores en UNA linea. El
+          buscador y el popover de filtros estan en la barra superior. */}
+      {/* Los margenes estan medidos: en la computadora la lista mide 320 px y con
+          px-4 el "1037 chats" se cortaba. */}
+      <div className="flex h-12 items-center gap-1.5 border-b border-border px-3">
+        <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          <h2 className="shrink-0 text-sm font-semibold">Bandeja</h2>
+          <span className="truncate text-xs tabular-nums text-muted-foreground">
+            {total === 1 ? "1 chat" : `${total} chats`}
+          </span>
+        </div>
+        <InboxStatusControls filters={filters} workspaceId={workspaceId} draftCounts={draftCounts} />
       </div>
-
-      {/* Bloque I: el buscador y el popover de filtros subieron a la barra
-          superior. Aca quedan las pastillas de estado y los borradores. */}
-      <InboxStatusBar filters={filters} workspaceId={workspaceId} draftCounts={draftCounts} />
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">

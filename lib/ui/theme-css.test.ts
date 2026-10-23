@@ -33,4 +33,12 @@ describe("tema y desplegables", () => {
     expect(css.slice(at + 1, at + 1 + rule.length)).toBe(rule);
     expect(css).toContain(".dark select:not([multiple]):not([size]):not(.select-bare)");
   });
+
+  it("en pantallas tactiles los campos van a 16 px, fuera de @layer (si no, el iPhone hace zoom al tocarlos)", () => {
+    const at = css.indexOf("\n@media (pointer: coarse) {");
+    expect(at).toBeGreaterThan(0);
+    const rule = css.slice(at, css.indexOf("\n}", at + 1));
+    expect(rule).toMatch(/textarea, select\)/);
+    expect(rule).toMatch(/font-size:\s*16px;/);
+  });
 });
