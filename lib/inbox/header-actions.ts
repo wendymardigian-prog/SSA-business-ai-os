@@ -19,7 +19,7 @@
 
 import type { ConversationStatus } from "@/lib/types/database";
 
-export type MenuAction = "snooze" | "reopen" | "createTask";
+export type MenuAction = "snooze" | "reopen" | "createTask" | "noReply";
 export type NoteKey = "status" | "flowsPaused" | "agentOffByTag" | "draftMode";
 
 export interface HeaderInput {
@@ -29,6 +29,11 @@ export interface HeaderInput {
   agentDisabledByTag: boolean;
   /** El agente atiende este canal en modo borrador. */
   draftMode: boolean;
+  /**
+   * El lead espera respuesta, nadie marco que no la necesita y la persona puede
+   * responder por esta cuenta (00259). Opcional: sin el dato, no se ofrece.
+   */
+  canMarkNoReply?: boolean;
 }
 
 export interface HeaderPlan {
@@ -50,6 +55,7 @@ export function planHeaderActions(input: HeaderInput): HeaderPlan {
   // Una pospuesta se reabre desde el menu; una cerrada, desde el boton a la vista.
   if (input.status === "snoozed") menu.push("reopen");
   if (input.canCreateTask) menu.push("createTask");
+  if (input.canMarkNoReply) menu.push("noReply");
 
   const notes: NoteKey[] = ["status"];
   if (input.isAutomationPaused) notes.push("flowsPaused");

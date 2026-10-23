@@ -810,7 +810,9 @@ export type AgentDraftStatus =
   | "failed"
   | "discarded"
   | "superseded"
-  | "regenerated";
+  | "regenerated"
+  /** La ventana de mensajeria cerro sin enviarse (migracion 00260). Ya no se puede enviar. */
+  | "expired";
 /** Modo de entrega del agente en un canal (agents.channel_modes, migracion 00070). */
 /** Modo de entrega del agente en un canal: envía directo, deja borrador, o decide por reglas (F9). */
 export type AgentChannelMode = "send" | "draft" | "rules";
@@ -2053,6 +2055,18 @@ export interface Database {
           needs_human: boolean;
           needs_human_reason: string | null;
           needs_human_at: string | null;
+          /**
+           * "Esperando respuesta" (00259): los mantiene el trigger de messages.
+           * awaiting_* en null = el ultimo mensaje que importa es nuestro.
+           */
+          awaiting_reply_since: string | null;
+          awaiting_last_inbound_at: string | null;
+          /** Hasta cuando se puede responder desde el sistema. null = sin ventana o no espera. */
+          reply_window_until: string | null;
+          /** La tanda sin responder no pide respuesta: 'rule', 'agent' o 'manual' (00259). */
+          no_reply_needed_at: string | null;
+          no_reply_needed_reason: "rule" | "agent" | "manual" | null;
+          no_reply_needed_by: string | null;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
@@ -2079,6 +2093,12 @@ export interface Database {
           needs_human?: boolean;
           needs_human_reason?: string | null;
           needs_human_at?: string | null;
+          awaiting_reply_since?: string | null;
+          awaiting_last_inbound_at?: string | null;
+          reply_window_until?: string | null;
+          no_reply_needed_at?: string | null;
+          no_reply_needed_reason?: "rule" | "agent" | "manual" | null;
+          no_reply_needed_by?: string | null;
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -2089,6 +2109,12 @@ export interface Database {
           needs_human?: boolean;
           needs_human_reason?: string | null;
           needs_human_at?: string | null;
+          awaiting_reply_since?: string | null;
+          awaiting_last_inbound_at?: string | null;
+          reply_window_until?: string | null;
+          no_reply_needed_at?: string | null;
+          no_reply_needed_reason?: "rule" | "agent" | "manual" | null;
+          no_reply_needed_by?: string | null;
           late_conversation_id?: string | null;
           status?: ConversationStatus;
           assigned_to?: string | null;
@@ -6128,6 +6154,38 @@ export interface Database {
       chat_waiting_now: {
         Args: { p_workspace_id: string; p_channel?: string | null };
         Returns: number;
+      };
+      /** 00259: esperando respuesta en tres (se puede responder, ventana vencida, no necesita respuesta). */
+      chat_waiting_now_v2: {
+        Args: { p_workspace_id: string; p_channel?: string | null };
+        Returns: { can_reply: number; window_closed: number; no_reply_needed: number }[];
+      };
+      /** 00259: marca o desmarca "no necesita respuesta". Solo service_role. */
+      set_conversation_no_reply: {
+        Args: {
+          p_conversation_id: string;
+          p_needed: boolean;
+          p_reason: string;
+          p_by?: string | null;
+          p_expected_last_inbound_at?: string | null;
+        };
+        Returns: boolean;
+      };
+      /** 00261: tiempo de respuesta de las personas (o del autor filtrado). */
+      chat_dashboard_response_time: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_author?: string | null };
+        Returns: { avg_seconds: number | null; median_seconds: number | null; turns: number }[];
+      };
+      chat_dashboard_response_time_daily: {
+        Args: {
+          p_workspace_id: string;
+          p_from: string | null;
+          p_to: string | null;
+          p_channel?: string | null;
+          p_author?: string | null;
+          p_tz?: string;
+        };
+        Returns: { day: string; turns: number; total_seconds: number | null }[];
       };
       chat_dashboard_agent: {
         Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };

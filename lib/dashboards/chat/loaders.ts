@@ -15,7 +15,16 @@ import { resolvePeriod, previousPeriod, type PeriodPreset, type ResolvedPeriod }
 import type { DashboardFilters } from "@/lib/dashboards/url-state";
 import { blockResult, fromRpc } from "./result";
 import type { BlockResult } from "./types";
-import { bucketTrends, daysBetween, shouldGroupWeekly, trendTotals, type TrendBucket, type TrendRow } from "./trends";
+import {
+  bucketTrends,
+  daysBetween,
+  shouldGroupWeekly,
+  trendTotals,
+  withResponseTimes,
+  type ResponseDayRow,
+  type TrendBucket,
+  type TrendRow,
+} from "./trends";
 import { agentRates, firstResponderSlices, type AgentRate, type AgentRow, type AgentWeekRow, type FirstResponderSlice } from "./agent";
 import { buildTeamRows, type TeamRow, type TeamSqlRow } from "./team-rows";
 import { draftsCard, type DraftsCard, type DraftsSqlRow } from "./drafts";
@@ -71,53 +80,76 @@ export interface NumbersBlock {
   newConversations: number;
   messagesIn: number;
   messagesOut: number;
-  firstResponseMedianSeconds: number | null;
+  /**
+   * Tiempo de respuesta (00261): promedio y mediana de las esperas del lead que
+   * cerro una persona (o el autor filtrado). null = no hubo ninguna.
+   */
+  responseAvgSeconds: number | null;
+  responseMedianSeconds: number | null;
+  responseTurns: number;
+}
+
+/** Esperando respuesta ahora (00259), en tres. No depende del periodo. */
+export interface WaitingNow {
+  /** Todavia se pueden responder desde el sistema. */
+  canReply: number;
+  /** La ventana de la red ya se cerro: solo desde la app. */
+  windowClosed: number;
+  /** El ultimo mensaje solo cierra la charla (o alguien lo marco asi). */
+  noReplyNeeded: number;
 }
 
 export interface CardsBlock {
   current: NumbersBlock;
   /** null cuando no hay con que comparar (Historico). */
   previous: NumbersBlock | null;
-  waitingNow: number;
+  waitingNow: WaitingNow;
 }
 
-function numbers(row: Record<string, unknown> | undefined): NumbersBlock {
+const nullableNumber = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+
+function numbers(row: Record<string, unknown> | undefined, response: Record<string, unknown> | undefined): NumbersBlock {
   return {
     newConversations: Number(row?.new_conversations ?? 0),
     messagesIn: Number(row?.messages_in ?? 0),
     messagesOut: Number(row?.messages_out ?? 0),
-    firstResponseMedianSeconds:
-      row?.first_response_median_seconds === null || row?.first_response_median_seconds === undefined
-        ? null
-        : Number(row.first_response_median_seconds),
+    responseAvgSeconds: nullableNumber(response?.avg_seconds),
+    responseMedianSeconds: nullableNumber(response?.median_seconds),
+    responseTurns: Number(response?.turns ?? 0),
   };
 }
 
 export function loadCards(client: Db, a: ChatQueryArgs): Promise<BlockResult<CardsBlock>> {
   return blockResult<CardsBlock>("los números principales", async () => {
-    const [cur, prev, waiting] = await Promise.all([
+    const prevArgs = {
+      p_workspace_id: a.workspaceId,
+      p_from: a.previous.from,
+      p_to: a.previous.to,
+      p_channel: a.channel,
+      p_author: a.author,
+    };
+    const none = Promise.resolve({ data: null, error: null });
+    const [cur, prev, curResponse, prevResponse, waiting] = await Promise.all([
       client.rpc("chat_dashboard_numbers", { ...common(a), p_author: a.author }),
-      a.previous.from
-        ? client.rpc("chat_dashboard_numbers", {
-            p_workspace_id: a.workspaceId,
-            p_from: a.previous.from,
-            p_to: a.previous.to,
-            p_channel: a.channel,
-            p_author: a.author,
-          })
-        : Promise.resolve({ data: null, error: null }),
-      client.rpc("chat_waiting_now", { p_workspace_id: a.workspaceId, p_channel: a.channel }),
+      a.previous.from ? client.rpc("chat_dashboard_numbers", prevArgs) : none,
+      client.rpc("chat_dashboard_response_time", { ...common(a), p_author: a.author }),
+      a.previous.from ? client.rpc("chat_dashboard_response_time", prevArgs) : none,
+      client.rpc("chat_waiting_now_v2", { p_workspace_id: a.workspaceId, p_channel: a.channel }),
     ]);
-    if (cur.error) return { error: cur.error.message };
-    if (prev.error) return { error: prev.error.message };
-    if (waiting.error) return { error: waiting.error.message };
-    const rows = (cur.data ?? []) as Record<string, unknown>[];
-    const prevRows = (prev.data ?? []) as Record<string, unknown>[] | null;
+    for (const res of [cur, prev, curResponse, prevResponse, waiting]) {
+      if (res.error) return { error: res.error.message };
+    }
+    const first = (res: { data: unknown }) => ((res.data ?? []) as Record<string, unknown>[])[0];
+    const w = first(waiting);
     return {
       data: {
-        current: numbers(rows[0]),
-        previous: a.previous.from ? numbers(prevRows?.[0]) : null,
-        waitingNow: Number((waiting.data as number | null) ?? 0),
+        current: numbers(first(cur), first(curResponse)),
+        previous: a.previous.from ? numbers(first(prev), first(prevResponse)) : null,
+        waitingNow: {
+          canReply: Number(w?.can_reply ?? 0),
+          windowClosed: Number(w?.window_closed ?? 0),
+          noReplyNeeded: Number(w?.no_reply_needed ?? 0),
+        },
       },
     };
   });
@@ -134,11 +166,17 @@ export interface TrendsBlock {
 }
 
 export function loadTrends(client: Db, a: ChatQueryArgs): Promise<BlockResult<TrendsBlock>> {
-  return blockResult("las tendencias", async () => {
-    const res = await client.rpc("chat_dashboard_trends", { ...common(a), p_author: a.author, p_tz: a.timezone });
+  return blockResult<TrendsBlock>("las tendencias", async () => {
+    // La serie de siempre y, aparte, la del tiempo de respuesta (00261): se
+    // juntan por dia antes de agrupar.
+    const [res, response] = await Promise.all([
+      client.rpc("chat_dashboard_trends", { ...common(a), p_author: a.author, p_tz: a.timezone }),
+      client.rpc("chat_dashboard_response_time_daily", { ...common(a), p_author: a.author, p_tz: a.timezone }),
+    ]);
+    if (response.error) return { error: response.error.message };
     return fromRpc<TrendRow, TrendsBlock>(res, (rows) => {
       const weekly = shouldGroupWeekly(a.days);
-      const buckets = bucketTrends(rows, weekly);
+      const buckets = bucketTrends(withResponseTimes(rows, (response.data ?? []) as ResponseDayRow[]), weekly);
       return { buckets, weekly, totals: trendTotals(buckets) };
     });
   });

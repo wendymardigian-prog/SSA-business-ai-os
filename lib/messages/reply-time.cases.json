@@ -1,0 +1,18 @@
+{
+  "_comment": "Casos compartidos entre public.chat_reply_is_human (SQL, 00261) e isHumanReply (TS, lib/messages/reply-time.ts). Corren en lib/messages/reply-time.test.ts y en scripts/verify-chat-awaiting.mjs. 'seconds' = segundos entre el ultimo mensaje del lead y la respuesta.",
+  "cases": [
+    { "name": "persona desde el sistema", "origin": "user", "sentByUserId": "00000000-0000-0000-0000-000000000001", "seconds": 3, "expected": true },
+    { "name": "persona desde el sistema sin id", "origin": "user", "sentByUserId": null, "seconds": 600, "expected": true },
+    { "name": "borrador aprobado", "origin": "agent", "sentByUserId": "00000000-0000-0000-0000-000000000001", "seconds": 7200, "expected": true },
+    { "name": "agente en envio directo", "origin": "agent", "sentByUserId": null, "seconds": 20, "expected": false },
+    { "name": "flow", "origin": "flow", "sentByUserId": null, "seconds": 3600, "expected": false },
+    { "name": "secuencia", "origin": "sequence", "sentByUserId": null, "seconds": 86400, "expected": false },
+    { "name": "broadcast", "origin": "broadcast", "sentByUserId": null, "seconds": 86400, "expected": false },
+    { "name": "app de Instagram, una persona", "origin": "external", "sentByUserId": null, "seconds": 900, "expected": true },
+    { "name": "otra herramienta (2 segundos)", "origin": "external", "sentByUserId": null, "seconds": 2.4, "expected": false },
+    { "name": "justo en el corte (15 s)", "origin": "external", "sentByUserId": null, "seconds": 15, "expected": true },
+    { "name": "justo antes del corte (14,9 s)", "origin": "external", "sentByUserId": null, "seconds": 14.9, "expected": false },
+    { "name": "sin origen, rapido", "origin": null, "sentByUserId": null, "seconds": 1, "expected": false },
+    { "name": "sin origen, lento", "origin": null, "sentByUserId": null, "seconds": 120, "expected": true }
+  ]
+}

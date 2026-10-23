@@ -6,6 +6,8 @@ import { enqueueConversationClose } from "@/lib/agent/closing";
 import { discardPendingDrafts } from "@/lib/agent/drafts/lifecycle";
 import { AUTO_DISCARD } from "@/lib/agent/drafts/types";
 import { clearNeedsHuman } from "@/lib/agent/needs-human";
+import { getMemberAction } from "@/lib/auth/guards";
+import { canReplyChannel } from "@/lib/inbox/channel-access";
 
 /**
  * Cerrar una conversacion desde la bandeja (F33/F34).
@@ -102,6 +104,64 @@ export async function resolveNeedsHuman(
   });
 
   if (!cleared) return { ok: false, error: "No pude marcarla como vista. Probá de nuevo." };
+
+  revalidatePath("/dashboard/inbox");
+  return { ok: true };
+}
+
+/**
+ * "No necesita respuesta" a mano (00259): marcar, o deshacer la marca.
+ *
+ * La marca saca la conversacion de "Esperando respuesta" (la tarjeta del
+ * dashboard y el filtro de la bandeja) hasta que el lead vuelva a escribir: ahi
+ * la base la borra sola. Deshacerla la devuelve a la cuenta, la haya puesto una
+ * persona, el agente o la regla de cierre.
+ *
+ * Puede quien puede RESPONDER en esa cuenta (00249), sobre una conversacion que
+ * la RLS le deja ver. El cambio va con el cliente de servicio por
+ * `set_conversation_no_reply` (solo service_role), que al marcar exige que el
+ * lead no haya escrito de nuevo desde que se cargo la pantalla.
+ */
+export async function setConversationNoReply(
+  conversationId: string,
+  noReplyNeeded: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (typeof conversationId !== "string" || !conversationId || typeof noReplyNeeded !== "boolean") {
+    return { ok: false, error: "Pedido invalido." };
+  }
+
+  const access = await getMemberAction();
+  if (!access) return { ok: false, error: "Tu sesión venció. Volvé a entrar." };
+
+  const supabase = await createClient();
+  const { data: conversation, error: readError } = await supabase
+    .from("conversations")
+    .select("id, channel_id, awaiting_last_inbound_at, no_reply_needed_at")
+    .eq("id", conversationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (readError || !conversation) return { ok: false, error: "No encontré esa conversación." };
+  if (!canReplyChannel(access.permissions, conversation.channel_id)) {
+    return { ok: false, error: "Tu rol no puede responder por este canal." };
+  }
+  if (noReplyNeeded && !conversation.awaiting_last_inbound_at) {
+    // Ya le respondieron mientras la pantalla estaba abierta: no hay nada que marcar.
+    revalidatePath("/dashboard/inbox");
+    return { ok: true };
+  }
+
+  const service = await createServiceClient();
+  const { error } = await service.rpc("set_conversation_no_reply", {
+    p_conversation_id: conversationId,
+    p_needed: !noReplyNeeded,
+    p_reason: "manual",
+    p_by: access.user.id,
+    p_expected_last_inbound_at: noReplyNeeded ? conversation.awaiting_last_inbound_at : null,
+  });
+  if (error) {
+    console.error("[conversation-status] no pude cambiar la marca de respuesta:", error.message);
+    return { ok: false, error: "No pude guardar el cambio. Probá de nuevo." };
+  }
 
   revalidatePath("/dashboard/inbox");
   return { ok: true };

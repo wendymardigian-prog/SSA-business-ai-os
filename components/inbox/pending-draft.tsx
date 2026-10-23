@@ -2,14 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { loadConversationDiscardedDraft, loadConversationDraft } from "@/lib/actions/agent-drafts";
+import { loadConversationDiscardedDraft, loadConversationDraft, loadConversationExpiredDraft } from "@/lib/actions/agent-drafts";
 import type { DraftQueueRow } from "@/lib/agent/drafts/queue-query";
-import { DiscardedSuggestion, ThreadDraft, discardedAgo } from "@/components/drafts/draft-card";
+import { DiscardedSuggestion, ExpiredSuggestion, ThreadDraft, discardedAgo } from "@/components/drafts/draft-card";
 
 /**
  * El borrador del agente en la conversacion (Bloque 2c), arriba del campo de
  * escritura. Con borde punteado y el rotulo "no enviado": nunca con el aspecto
  * de un mensaje enviado.
+ *
+ * Sin borrador vivo, si el ultimo borrador vencio sin enviarse (00260) y nada
+ * entro ni salio despues, se muestra con su texto y "Copiar": desde la app de la
+ * red todavia se puede mandar.
  *
  * Sin borrador vivo, si una persona descarto una sugerencia y todavia se puede
  * recuperar (A1), se ofrece una linea discreta "Sugerencia descartada · Ver":
@@ -33,6 +37,9 @@ export function PendingDraft({
   const [draft, setDraft] = useState<DraftQueueRow | null>(null);
   const [discarded, setDiscarded] = useState<DraftQueueRow | null>(null);
   const [showDiscarded, setShowDiscarded] = useState(false);
+  // 00260: el borrador que vencio sin enviarse, si sigue siendo la ultima palabra.
+  const [expired, setExpired] = useState<DraftQueueRow | null>(null);
+  const [hiddenExpiredId, setHiddenExpiredId] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onLiveChangeRef = useRef(onLiveChange);
   useEffect(() => {
@@ -43,8 +50,12 @@ export function PendingDraft({
     try {
       const live = await loadConversationDraft(conversationId);
       setDraft(live);
-      // La descartada solo se mira si no hay un borrador vivo.
-      setDiscarded(live ? null : await loadConversationDiscardedDraft(conversationId));
+      // La vencida y la descartada solo se miran si no hay un borrador vivo.
+      const [lastExpired, lastDiscarded] = live
+        ? [null, null]
+        : await Promise.all([loadConversationExpiredDraft(conversationId), loadConversationDiscardedDraft(conversationId)]);
+      setExpired(lastExpired);
+      setDiscarded(lastDiscarded);
     } catch (err) {
       console.error("[inbox] no pude leer el borrador:", err instanceof Error ? err.message : "error");
     }
@@ -87,6 +98,14 @@ export function PendingDraft({
     return (
       <div className="border-t border-border px-3 pt-3 md:px-4">
         <ThreadDraft key={draft.id} draft={draft} onDone={reload} />
+      </div>
+    );
+  }
+
+  if (expired && expired.id !== hiddenExpiredId) {
+    return (
+      <div className="border-t border-border px-3 pt-3 md:px-4">
+        <ExpiredSuggestion draft={expired} onClose={() => setHiddenExpiredId(expired.id)} />
       </div>
     );
   }

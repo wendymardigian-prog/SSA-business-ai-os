@@ -16,6 +16,7 @@ import {
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
+import { AWAITING_FILTER_LABELS } from "@/lib/inbox/awaiting";
 
 export interface FilterSummaryCatalog {
   platforms: { value: string; label: string }[];
@@ -117,6 +118,7 @@ export function describeInboxFilters(filters: InboxFilters, catalog: FilterSumma
 
   if (filters.agentError) parts.push("Con error del agente");
   if (filters.needsHuman) parts.push("Necesita humano");
+  if (filters.awaiting) parts.push(AWAITING_FILTER_LABELS[filters.awaiting]);
 
   return parts;
 }

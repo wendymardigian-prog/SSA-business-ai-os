@@ -150,6 +150,8 @@ function draftEntry(run: ActivityRun, draft: ActivityDraft | undefined): Activit
       const why = auto(reason) ? (AUTO_REASON[reason] ?? "se retiró sola") : reason ? `Motivo: ${reason}` : null;
       return { ...base, at: draft.decided_at ?? at, outcome: "skipped", tone: "neutral", title: "Sugerencia descartada", detail: why ? why.replace(/^./, (c) => c.toUpperCase()) : "No salió nada al contacto." };
     }
+    case "expired":
+      return { ...base, at: draft.decided_at ?? at, outcome: "skipped", tone: "neutral", title: "Sugerencia vencida sin enviar", detail: "La ventana de la red se cerró antes de que alguien la aprobara. No salió nada al contacto." };
     case "superseded":
     case "regenerated":
       return { ...base, at: draft.decided_at ?? at, outcome: "skipped", tone: "neutral", title: "Sugerencia reemplazada por otra", detail: "Se generó una versión nueva." };

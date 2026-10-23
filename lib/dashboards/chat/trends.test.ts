@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { bucketTrends, daysBetween, median, mondayOf, shouldGroupWeekly, trendTabLabel, trendTotals, type TrendRow } from "./trends";
+import {
+  averageResponse,
+  bucketTrends,
+  daysBetween,
+  median,
+  mondayOf,
+  shouldGroupWeekly,
+  trendTabLabel,
+  trendTotals,
+  withResponseTimes,
+  type TrendRow,
+} from "./trends";
 
 function row(day: string, over: Partial<TrendRow> = {}): TrendRow {
   return {
@@ -11,7 +22,8 @@ function row(day: string, over: Partial<TrendRow> = {}): TrendRow {
     sent_team: 4,
     sent_automations: 1,
     sent_external: 1,
-    first_response_median_seconds: 300,
+    response_turns: 2,
+    response_total_seconds: 600,
     ...over,
   };
 }
@@ -55,24 +67,21 @@ describe("bucketTrends", () => {
     expect(out[1].key).toBe("2026-09-28");
   });
 
-  it("los seguidores no se suman, pero los mensajes si: la mediana se rehace", () => {
+  it("el tiempo de respuesta de la semana se pondera por esperas, no promedia promedios", () => {
     const out = bucketTrends(
       [
-        row("2026-09-21", { first_response_median_seconds: 100 }),
-        row("2026-09-22", { first_response_median_seconds: 300 }),
-        row("2026-09-23", { first_response_median_seconds: 200 }),
+        // Un dia con una espera de 1 hora y otro con nueve esperas de 1 minuto.
+        row("2026-09-21", { response_turns: 1, response_total_seconds: 3600 }),
+        row("2026-09-22", { response_turns: 9, response_total_seconds: 540 }),
       ],
       true,
     );
-    expect(out[0].firstResponseMedianSeconds).toBe(200);
+    expect(averageResponse(out[0])).toBe(414);
   });
 
-  it("una semana sin episodios queda en null, no en cero", () => {
-    const out = bucketTrends(
-      [row("2026-09-21", { first_response_median_seconds: null, new_conversations: 0 })],
-      true,
-    );
-    expect(out[0].firstResponseMedianSeconds).toBeNull();
+  it("una semana sin esperas respondidas queda en null, no en cero", () => {
+    const out = bucketTrends([row("2026-09-21", { response_turns: 0, response_total_seconds: 0 })], true);
+    expect(averageResponse(out[0])).toBeNull();
   });
 
   it("los grupos salen ordenados aunque las filas vengan al revés", () => {
@@ -82,16 +91,26 @@ describe("bucketTrends", () => {
 });
 
 describe("trendTotals", () => {
-  it("suma los volumenes y rehace la mediana", () => {
+  it("suma los volumenes y las esperas", () => {
     const totals = trendTotals(bucketTrends([row("2026-09-21"), row("2026-09-22")], false));
     expect(totals.messagesOut).toBe(24);
     expect(totals.sent.agent).toBe(12);
-    expect(totals.firstResponseMedianSeconds).toBe(300);
+    expect(averageResponse(totals)).toBe(300);
   });
 
-  it("sin ningun dia con mediana, la mediana es null", () => {
-    const totals = trendTotals(bucketTrends([row("2026-09-21", { first_response_median_seconds: null })], false));
-    expect(totals.firstResponseMedianSeconds).toBeNull();
+  it("sin ninguna espera respondida, el promedio es null", () => {
+    const totals = trendTotals(bucketTrends([row("2026-09-21", { response_turns: 0, response_total_seconds: 0 })], false));
+    expect(averageResponse(totals)).toBeNull();
+  });
+});
+
+describe("withResponseTimes", () => {
+  it("junta por dia y deja en cero los dias sin esperas", () => {
+    const rows = withResponseTimes([row("2026-09-21"), row("2026-09-22")], [{ day: "2026-09-22", turns: 3, total_seconds: 900 }]);
+    expect(rows.map((r) => [r.response_turns, r.response_total_seconds])).toEqual([
+      [0, 0],
+      [3, 900],
+    ]);
   });
 });
 

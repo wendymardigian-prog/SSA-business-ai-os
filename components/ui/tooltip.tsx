@@ -2,33 +2,82 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Info } from "lucide-react";
+import { placeTooltip, type TooltipPlacement } from "@/lib/ui/tooltip-position";
 
 /**
  * Tooltip accesible (F13): abre con hover y con foco de teclado, y describe el
  * control con aria-describedby. Sin librería: es un ⓘ con un panel.
+ *
+ * El panel va con `position: fixed` y se acomoda con `placeTooltip`
+ * (lib/ui/tooltip-position.ts): antes colgaba del icono hacia la derecha y en la
+ * última tarjeta del dashboard se salía de la pantalla. Se cierra con Esc y al
+ * desplazar (la posición se calculó para donde estaba el icono).
  */
+const INFO_WIDTH = 288;
+/** Alto aproximado de un texto de tres o cuatro líneas: solo decide arriba o abajo. */
+const INFO_HEIGHT_GUESS = 120;
+
 export function InfoTooltip({ text, label = "Más información" }: { text: string; label?: string }) {
   const id = useId();
-  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const [placement, setPlacement] = useState<TooltipPlacement | null>(null);
+
+  const show = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPlacement(
+      placeTooltip({
+        anchor: { left: rect.left, top: rect.top, bottom: rect.bottom },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        width: INFO_WIDTH,
+        height: INFO_HEIGHT_GUESS,
+      }),
+    );
+  }, []);
+  const hide = useCallback(() => setPlacement(null), []);
+
+  useEffect(() => {
+    if (!placement) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+    };
+  }, [placement, hide]);
+
   return (
     <span className="relative inline-flex">
       <button
+        ref={ref}
         type="button"
         aria-label={label}
-        aria-describedby={open ? id : undefined}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        aria-describedby={placement ? id : undefined}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
         className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
       >
         <Info className="h-4 w-4" aria-hidden />
       </button>
-      {open && (
+      {placement && (
         <span
           id={id}
           role="tooltip"
-          className="absolute left-0 top-6 z-50 w-72 rounded-lg border border-border bg-popover p-3 text-xs leading-relaxed text-popover-foreground shadow-lg"
+          style={{
+            left: placement.left,
+            top: placement.top,
+            width: placement.width,
+            transform: placement.above ? "translateY(-100%)" : undefined,
+          }}
+          className="pointer-events-none fixed z-[60] rounded-lg border border-border bg-popover p-3 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-popover-foreground shadow-lg"
         >
           {text}
         </span>
