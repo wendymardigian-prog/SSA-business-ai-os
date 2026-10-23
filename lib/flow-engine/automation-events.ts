@@ -92,6 +92,7 @@ async function processContactEvent(
   const bookingVars = booking ? await bookingContextVariables(supabase, booking) : {};
 
   let fired = 0;
+  const failures: string[] = [];
 
   for (const trigger of triggers) {
     const config = (trigger.config ?? {}) as Record<string, unknown>;
@@ -143,27 +144,35 @@ async function processContactEvent(
 
     const extraVars = definition.variablesFor ? await definition.variablesFor(args) : {};
 
-    await executeFlow(supabase, {
-      triggerId: trigger.id,
-      flowId: trigger.flow_id,
-      channelId: conversation?.channel_id ?? "",
-      contactId: event.contact_id,
-      conversationId: conversation?.id ?? "",
-      workspaceId: event.workspace_id,
-      // Que disparo el flujo: lo declara el disparador (agenda, formulario, venta...) y el id es el del evento.
-      source: { type: definition.sourceType ?? "contact", id: event.id },
-      incomingMessage: {},
-      variables: {
-        // El flow puede leer el evento que lo disparo. Util para armar el
-        // mensaje: "vi que te interesa {{event_value}}".
-        event_type: event.event_type,
-        ...Object.fromEntries(
-          Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])
-        ),
-        ...bookingVars,
-        ...extraVars,
-      },
-    });
+    // Un flujo que falla no se lleva puesto al resto de los disparadores de este evento (antes la excepcion cortaba el
+    // ciclo y los demas no corrian nunca: el evento quedaba procesado). Se anota y se sigue; al final, si hubo fallos,
+    // el evento queda con el motivo.
+    try {
+      await executeFlow(supabase, {
+        triggerId: trigger.id,
+        flowId: trigger.flow_id,
+        channelId: conversation?.channel_id ?? "",
+        contactId: event.contact_id,
+        conversationId: conversation?.id ?? "",
+        workspaceId: event.workspace_id,
+        // Que disparo el flujo: lo declara el disparador (agenda, formulario, venta...) y el id es el del evento.
+        source: { type: definition.sourceType ?? "contact", id: event.id },
+        incomingMessage: {},
+        variables: {
+          // El flow puede leer el evento que lo disparo. Util para armar el
+          // mensaje: "vi que te interesa {{event_value}}".
+          event_type: event.event_type,
+          ...Object.fromEntries(
+            Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])
+          ),
+          ...bookingVars,
+          ...extraVars,
+        },
+      });
+    } catch (err) {
+      failures.push(`${trigger.flow_id}: ${err instanceof Error ? err.message : "error desconocido"}`);
+      continue;
+    }
 
     // El requerimiento pide que el disparo quede en el registro de auditoria.
     await logAudit({
@@ -182,7 +191,14 @@ async function processContactEvent(
     fired++;
   }
 
+  throwIfFailures(failures, fired);
   return fired;
+}
+
+/** Si algun flujo fallo, el evento queda con el motivo (el cron lo guarda en `automation_events.error`). */
+function throwIfFailures(failures: string[], fired: number): void {
+  if (failures.length === 0) return;
+  throw new Error(`${failures.length} flujo(s) fallaron (${fired} corrieron bien): ${failures.join("; ").slice(0, 500)}`);
 }
 
 /**
@@ -226,6 +242,7 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
   if (!triggers || triggers.length === 0) return 0;
 
   let fired = 0;
+  const failures: string[] = [];
   for (const trigger of triggers) {
     const config = (trigger.config ?? {}) as Record<string, unknown>;
     const definition = getTrigger(trigger.type);
@@ -261,23 +278,28 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
     }
 
     const extraVars = definition.variablesFor ? await definition.variablesFor(args) : {};
-    await executeFlow(supabase, {
-      triggerId: trigger.id,
-      flowId: trigger.flow_id,
-      channelId: "",
-      contactId: null,
-      ...(who.kind === "member" ? { memberUserId: who.userId } : {}),
-      conversationId: "",
-      workspaceId: event.workspace_id,
-      // Que disparo el flujo: lo declara el disparador; el id es el del evento (su payload trae lo demas).
-      source: { type: definition.sourceType ?? (who.kind === "member" ? "member" : "system"), id: event.id },
-      incomingMessage: {},
-      variables: {
-        event_type: event.event_type,
-        ...Object.fromEntries(Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])),
-        ...extraVars,
-      },
-    });
+    try {
+      await executeFlow(supabase, {
+        triggerId: trigger.id,
+        flowId: trigger.flow_id,
+        channelId: "",
+        contactId: null,
+        ...(who.kind === "member" ? { memberUserId: who.userId } : {}),
+        conversationId: "",
+        workspaceId: event.workspace_id,
+        // Que disparo el flujo: lo declara el disparador; el id es el del evento (su payload trae lo demas).
+        source: { type: definition.sourceType ?? (who.kind === "member" ? "member" : "system"), id: event.id },
+        incomingMessage: {},
+        variables: {
+          event_type: event.event_type,
+          ...Object.fromEntries(Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])),
+          ...extraVars,
+        },
+      });
+    } catch (err) {
+      failures.push(`${trigger.flow_id}: ${err instanceof Error ? err.message : "error desconocido"}`);
+      continue;
+    }
 
     // El disparo queda en el historial de lo que lo origino (el reporte), no de un contacto.
     const audited = definition.auditEntityFor?.(args) ?? null;
@@ -293,6 +315,7 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
     }
     fired++;
   }
+  throwIfFailures(failures, fired);
   return fired;
 }
 

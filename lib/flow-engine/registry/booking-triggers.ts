@@ -55,6 +55,10 @@ for (const type of BOOKING_TRIGGER_TYPES) {
     variableSchema: () => bookingVariableSchema(),
 
     eventMatches: (args) => {
+      // Un aviso relativo viene dirigido a UN trigger (el que lo agendó). Sin esto, el evento de "24 h antes" disparaba
+      // también el trigger de "1 h antes" (y reclamaba su disparo), y el segundo recordatorio no salía nunca.
+      const targeted = args.event.payload?.trigger_id;
+      if (isRelativeTrigger(type) && typeof targeted === "string" && targeted && targeted !== args.trigger.id) return false;
       const booking = bookingForFilter(args);
       // Sin la agenda no se puede filtrar, y disparar "por las dudas" mandaría
       // mensajes que la persona no configuró. Se descarta.

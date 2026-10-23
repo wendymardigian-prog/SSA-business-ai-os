@@ -105,7 +105,9 @@ function getDefaultData(type: string, actionType?: string, attributionDefaults?:
     case "delay":
       return { duration: 5, unit: "minutes" };
     case "aiResponse":
-      return { systemPrompt: "", model: "openai/gpt-4o-mini", temperature: 0.7, maxTokens: 500, contextMessages: 10 };
+      // Sin proveedor ni modelo: corre con el modelo por defecto de la IA conectada. Antes nacia con
+      // "openai/gpt-4o-mini", un id del AI Gateway que ningun proveedor acepta, y un nodo sin tocar fallaba.
+      return { systemPrompt: "", temperature: 0.7, maxTokens: 500, contextMessages: 10 };
     case "action":
       return { actionType: actionType || "addTag" };
     default:

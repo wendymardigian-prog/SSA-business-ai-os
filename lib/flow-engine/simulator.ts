@@ -8,6 +8,10 @@ import type { Node, Edge } from "@xyflow/react";
 import { pickPath, type BranchNodeData, type FieldValue } from "./condition-eval";
 import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
 import { resolveWhatsAppTarget } from "./whatsapp-target";
+import { pickSplitIndex, splitHandle } from "./nodes/ab-split";
+
+/** Los mismos alias de salida que el motor (`engine.ts`): las condiciones viejas dibujaban `yes`/`no`. */
+const SIM_HANDLE_ALIASES: Record<string, string> = { yes: "true", no: "false" };
 
 // --- Types ---
 
@@ -210,7 +214,11 @@ export function simulateFlow(
     let strictHandle = false;
     let shouldPause = false;
 
-    switch (node.type) {
+    // El lienzo guarda el A/B split como `action` con `actionType: "abSplit"`: se simula como lo que es (antes caia en la
+    // accion generica y seguia por cualquier salida, y el Test pasaba un split que en produccion cortaba el flujo).
+    const switchType: string = node.type === "action" && data.actionType === "abSplit" ? "abSplit" : (node.type ?? "");
+
+    switch (switchType) {
       case "sendMessage": {
         const messages = (data.messages as Array<{ type?: string; text?: string; imageUrl?: string }>) || [];
         const texts = messages
@@ -353,10 +361,10 @@ export function simulateFlow(
         const actionType =
           node.type === "addTag"
             ? "addTag"
-            : (data.actionType as string) || node.type;
+            : (data.actionType as string) || switchType;
         steps.push({
           nodeId: node.id,
-          nodeType: node.type,
+          nodeType: switchType,
           nodeLabel: label,
           result: {
             type: "action",
@@ -420,18 +428,10 @@ export function simulateFlow(
       case "abSplit": {
         const paths =
           (data.paths as Array<{ name: string; weight: number }>) || [];
-        if (paths.length > 0) {
-          const totalWeight = paths.reduce((s, p) => s + p.weight, 0);
-          const random = Math.random() * totalWeight;
-          let cumulative = 0;
-          let selected = paths[0];
-          for (const p of paths) {
-            cumulative += p.weight;
-            if (random <= cumulative) {
-              selected = p;
-              break;
-            }
-          }
+        // La MISMA eleccion que el nodo real (pickSplitIndex) y la misma salida (`split-N`).
+        const index = pickSplitIndex(paths);
+        if (index !== null) {
+          const selected = paths[index];
           steps.push({
             nodeId: node.id,
             nodeType: "abSplit",
@@ -442,7 +442,8 @@ export function simulateFlow(
               weight: selected.weight,
             },
           });
-          nextHandle = selected.name;
+          nextHandle = splitHandle(index);
+          strictHandle = true;
         }
         break;
       }
@@ -474,11 +475,11 @@ export function simulateFlow(
       case "resumeAgent": {
         steps.push({
           nodeId: node.id,
-          nodeType: node.type,
+          nodeType: switchType,
           nodeLabel: label,
           result: {
             type: "action",
-            actionType: node.type,
+            actionType: switchType,
             detail: node.type === "pauseAgent" ? "Pausa el agente de IA" : "Reanuda el agente de IA",
           },
         });
@@ -641,7 +642,7 @@ export function simulateFlow(
       case "unsubscribe": {
         steps.push({
           nodeId: node.id,
-          nodeType: node.type,
+          nodeType: switchType,
           nodeLabel: label,
           result: { type: node.type as "subscribe" | "unsubscribe" },
         });
@@ -700,8 +701,9 @@ export function simulateFlow(
     // Find next edge
     let nextEdge: Edge | undefined;
     if (nextHandle) {
+      // Los alias del motor (`yes`/`no` de las condiciones viejas): la prueba sigue la misma arista que produccion.
       nextEdge = edges.find(
-        (e) => e.source === node.id && e.sourceHandle === nextHandle
+        (e) => e.source === node.id && (e.sourceHandle === nextHandle || (e.sourceHandle != null && SIM_HANDLE_ALIASES[e.sourceHandle] === nextHandle))
       );
     }
     if (!nextEdge && !strictHandle) {

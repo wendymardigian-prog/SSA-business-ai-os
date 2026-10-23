@@ -7,7 +7,7 @@ vi.mock("@/lib/vault", async (importOriginal) => {
   return { ...actual, readSecret };
 });
 
-import { getExactWorkspaceModel, getWorkspaceModel, listConnectedAiProviders } from "./provider";
+import { getExactWorkspaceModel, getWorkspaceModel, listConnectedAiProviders, normalizeRequestedModel } from "./provider";
 
 /**
  * Cliente falso que devuelve las filas de integration_configs que le pidas.
@@ -339,5 +339,21 @@ describe("resolvedor estricto del agente (getExactWorkspaceModel)", () => {
 
     expect(r.ok).toBe(false);
     expect(r.problem).toBe("provider_unavailable");
+  });
+});
+
+describe("auditoria de automatizaciones: el modelo que viaja con el proveedor", () => {
+  it("si se cae a otro proveedor, no le manda el modelo del que se pidio", async () => {
+    readSecret.mockResolvedValue("sk-ant-x");
+    const { client } = fakeClient([ANTHROPIC_ROW]);
+    const r = await getWorkspaceModel("ws-1", { supabase: client, preferredProvider: "openai", modelId: "gpt-4o-mini" });
+    expect(r.provider).toBe("anthropic");
+    expect(r.modelId).not.toBe("gpt-4o-mini");
+  });
+
+  it("entiende el formato viejo del AI Gateway ('openai/gpt-4o-mini')", () => {
+    expect(normalizeRequestedModel(undefined, "openai/gpt-4o-mini")).toEqual({ provider: "openai", modelId: "gpt-4o-mini" });
+    expect(normalizeRequestedModel("anthropic", "claude-x")).toEqual({ provider: "anthropic", modelId: "claude-x" });
+    expect(normalizeRequestedModel(undefined, undefined)).toEqual({ provider: undefined, modelId: undefined });
   });
 });

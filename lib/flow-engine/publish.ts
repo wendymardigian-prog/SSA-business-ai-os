@@ -14,9 +14,9 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BUILDER_TRIGGER_TYPES, buildDesiredTriggers } from "@/lib/flow-triggers";
+import { buildDesiredTriggers, persistableTriggerTypes } from "@/lib/flow-triggers";
 import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative";
-import { isRelativeSalesTrigger, SALES_TRIGGER_TYPES } from "@/lib/sales/automation/triggers";
+import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers";
 import type { Database } from "@/lib/types/database";
 import { checkMemberFlow } from "./member-flow-db";
 import { connectionProblemsForGraph } from "./connection-problems";
@@ -104,8 +104,9 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     .delete()
     .eq("flow_id", flowId)
     .is("channel_id", null)
-    // Los de Ventas tambien se reconcilian: republicar no duplica la fila (y un relativo duplicado mandaria dos recordatorios).
-    .in("type", [...BUILDER_TRIGGER_TYPES, ...SALES_TRIGGER_TYPES]);
+    // TODOS los tipos que arma el editor (mensaje, eventos, programados y Ventas): republicar no duplica ninguna fila.
+    // Antes solo se borraban los de mensaje y Ventas, y un flujo de agenda republicado tres veces corria tres veces.
+    .in("type", persistableTriggerTypes());
 
   if (desiredTriggers.length > 0) {
     const { error: insertError } = await db.from("triggers").insert(desiredTriggers);
@@ -114,8 +115,8 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     }
   }
 
-  // Activate any remaining triggers for this flow (e.g. comment_keyword managed elsewhere).
-  await db.from("triggers").update({ is_active: true }).eq("flow_id", flowId);
+  // Las filas con canal (las de la pestaña Growth) NO se reactivan: si alguien apago una a mano, publicar no la vuelve
+  // a prender. Las que arma el editor ya nacen activas.
 
   // Un flujo con un recordatorio relativo al vencimiento de un pago (Ventas, F37): se agendan los de los
   // pagos que ya existen. Sin esto el recordatorio valdria solo para los pagos nuevos.
@@ -145,7 +146,7 @@ export async function unpublishFlow(db: Db, workspaceId: string, flowId: string)
     .delete()
     .eq("flow_id", flowId)
     .is("channel_id", null)
-    .in("type", [...BUILDER_TRIGGER_TYPES, ...SALES_TRIGGER_TYPES]);
+    .in("type", persistableTriggerTypes());
   if (triggersError) {
     console.error("[publish] no pude sacar los disparadores del flujo:", triggersError.message);
     return false;

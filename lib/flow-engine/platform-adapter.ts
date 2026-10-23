@@ -190,6 +190,20 @@ function adaptForTelegram(content: MessageContent): AdaptedMessage {
   return { text, imageUrl: content.imageUrl };
 }
 
+/**
+ * Botones y respuestas rapidas como lista numerada en el texto ("1. Si", "2. No"). Lo usa el envio por Evolution
+ * (WhatsApp por QR), que solo manda texto o media: antes los botones se perdian sin aviso y el lead recibia la
+ * pregunta sin las opciones.
+ */
+export function foldOptionsIntoText(text: string, buttons?: unknown[], quickReplies?: unknown[]): string {
+  const options = ((buttons?.length ? buttons : quickReplies) ?? []) as Array<{ title?: unknown; url?: unknown }>;
+  const lines = options
+    .filter((opt) => opt && typeof opt.title === "string" && opt.title.trim())
+    .map((opt, i) => `${i + 1}. ${String(opt.title).trim()}${typeof opt.url === "string" && opt.url ? `: ${opt.url}` : ""}`);
+  if (lines.length === 0) return text;
+  return text ? `${text}\n\n${lines.join("\n")}` : lines.join("\n");
+}
+
 function adaptForTextOnly(content: MessageContent): AdaptedMessage {
   let text = content.text || "";
 

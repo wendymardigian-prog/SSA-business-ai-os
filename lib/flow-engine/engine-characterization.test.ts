@@ -48,8 +48,10 @@ describe("executeFlow (canal opcional desde la 00100)", () => {
     const { db, context } = world("ch-1");
     await executeFlow(db.client, context);
     expect(db.rows("flow_sessions")).toHaveLength(1);
-    expect(db.rows("flow_sessions")[0]).toMatchObject({ contact_id: "c-1", flow_id: "flow-1", channel_id: "ch-1", status: "active", variables: { event_type: "tag_added" } });
-    expect(db.rows("analytics_events").map((e) => e.event_type)).toEqual(["flow_started"]);
+    // El disparador no tiene pasos conectados: desde la auditoria de automatizaciones la sesion se CIERRA (antes quedaba
+    // `active` para siempre y sumaba una sesion viva por cada disparo).
+    expect(db.rows("flow_sessions")[0]).toMatchObject({ contact_id: "c-1", flow_id: "flow-1", channel_id: "ch-1", status: "completed", variables: { event_type: "tag_added" } });
+    expect(db.rows("analytics_events").map((e) => e.event_type)).toEqual(["flow_started", "flow_completed"]);
   });
 
   it("sin canal (contacto sin conversacion), la sesion se crea con channel_id null", async () => {
@@ -59,8 +61,8 @@ describe("executeFlow (canal opcional desde la 00100)", () => {
     // NULL y por la clave foranea: el flow no corria y nadie se enteraba. Un
     // lead que agenda desde la pagina publica no tiene conversacion, asi que
     // sin esto ningun flujo de agenda arrancaria.
-    expect(db.rows("flow_sessions")[0]).toMatchObject({ channel_id: null, status: "active" });
-    expect(db.rows("analytics_events").map((e) => e.event_type)).toEqual(["flow_started"]);
+    expect(db.rows("flow_sessions")[0]).toMatchObject({ channel_id: null, status: "completed" });
+    expect(db.rows("analytics_events").map((e) => e.event_type)).toEqual(["flow_started", "flow_completed"]);
   });
 
   it("si el insert de la sesion falla, no registra flow_started ni recorre nodos", async () => {

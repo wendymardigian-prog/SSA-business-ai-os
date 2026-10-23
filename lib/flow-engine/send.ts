@@ -10,6 +10,7 @@ import { outboundMessageRow } from "@/lib/messages/outbound";
 import { sentContentContext } from "@/lib/attribution/content-variables";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
+import { foldOptionsIntoText } from "./platform-adapter";
 /**
  * La unica puerta de salida del motor de flows.
  *
@@ -474,8 +475,13 @@ export async function sendEvolutionDirect(
   config: EvolutionConfig,
   instance: string,
   number: string,
-  message: OutboundMessage
+  rawMessage: OutboundMessage
 ): Promise<SendOutcome> {
+  // Evolution manda texto o media, nada interactivo: los botones y las respuestas rapidas van como lista numerada.
+  const message: OutboundMessage =
+    rawMessage.buttons?.length || rawMessage.quickReplies?.length
+      ? { ...rawMessage, text: foldOptionsIntoText(rawMessage.text ?? "", rawMessage.buttons, rawMessage.quickReplies), buttons: undefined, quickReplies: undefined }
+      : rawMessage;
   try {
     if (message.media) {
       const signedUrl = await chatMediaSignedUrl(supabase, message.media.storagePath, EVOLUTION_MEDIA_URL_SECONDS);

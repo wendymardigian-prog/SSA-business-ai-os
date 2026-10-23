@@ -14,7 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { RELATIVE_JOB_TYPE } from "@/lib/scheduling/automation/relative";
-import { bookingDedupeKey } from "@/lib/scheduling/automation/triggers";
+import { bookingDedupeKey, relativeJobDedupeKey } from "@/lib/scheduling/automation/triggers";
 
 type Db = SupabaseClient<Database>;
 
@@ -41,9 +41,13 @@ export async function handleBookingRelativeTrigger(ctx: JobContext): Promise<voi
 
   // Si se movió después de agendar el aviso, el aviso es de la fecha vieja:
   // el reagendado ya planificó el suyo.
+  // La clave nueva lleva el trigger (relativeJobDedupeKey); los jobs que ya estaban en la cola tienen la vieja. Las dos
+  // valen mientras el número de reagendas sea el mismo.
+  const count = booking.reschedule_count ?? 0;
   const expected = payload.dedupe_key ?? bookingDedupeKey(payload.trigger_type, booking.id, 0);
-  const current = bookingDedupeKey(payload.trigger_type, booking.id, booking.reschedule_count ?? 0);
-  if (expected !== current) return;
+  const current = relativeJobDedupeKey(payload.trigger_type, booking.id, count, payload.trigger_id);
+  const currentLegacy = bookingDedupeKey(payload.trigger_type, booking.id, count);
+  if (expected !== current && expected !== currentLegacy) return;
 
   // El trigger puede haberse apagado o borrado entre medio.
   const { data: trigger } = await service

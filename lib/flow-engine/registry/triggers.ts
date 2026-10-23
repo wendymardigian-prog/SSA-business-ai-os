@@ -53,6 +53,9 @@ registerTrigger({
     // referral del anuncio) y «Solo menciones en historias» (alguien menciono la cuenta en su historia).
     if (config.fromAdOnly === true && !args.message.fromAd) return false;
     if (config.storyMentionOnly === true && !args.message.isStoryMention) return false;
+    // Una mencion en una historia casi nunca trae texto: con «Solo menciones» y sin palabras cargadas, la mencion
+    // sola alcanza (antes exigia ademas una palabra clave y el filtro practicamente no disparaba nunca).
+    if (config.storyMentionOnly === true && !hasKeywords(args.config)) return true;
     return keywordMatches(args);
   },
 });
@@ -90,23 +93,56 @@ registerTrigger({
  * Acepta las dos formas de config que quedaron dando vueltas: una lista de
  * strings con un matchType general, o una lista de objetos con el suyo propio.
  */
+function hasKeywords(config: unknown): boolean {
+  const list = (config as { keywords?: Array<string | { value?: string }> } | null)?.keywords;
+  return Array.isArray(list) && list.some((kw) => (typeof kw === "string" ? kw : kw?.value)?.trim());
+}
+
+/**
+ * Normaliza para comparar: minusculas, sin tildes, espacios juntos. «Información» y «informacion» son lo mismo para
+ * quien escribe por chat.
+ */
+export function normalizeKeywordText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Sin signos al principio ni al final: «hola!» o «¿precio?» siguen siendo una coincidencia exacta. */
+const trimPunctuation = (text: string) => text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Compara el texto contra la lista de palabras clave del trigger.
+ *
+ * Acepta las dos formas de config que quedaron dando vueltas: una lista de
+ * strings con un matchType general, o una lista de objetos con el suyo propio.
+ *
+ * Auditoria de automatizaciones: se compara sin tildes ni mayusculas, y «contiene» exige que la palabra EMPIECE en
+ * un borde de palabra: «si» ya no encaja en «así», pero «precio» sigue encajando en «precios».
+ */
 export function keywordMatches(args: TriggerMatchArgs): boolean {
   const config = args.config as {
     keywords?: Array<string | { value: string; matchType?: string }>;
     matchType?: string;
   };
   if (!config.keywords?.length) return false;
+  const text = normalizeKeywordText(args.text ?? "");
 
   for (const kw of config.keywords) {
-    const keyword = (typeof kw === "string" ? kw : kw.value)?.toLowerCase();
+    const keyword = normalizeKeywordText((typeof kw === "string" ? kw : kw?.value) ?? "");
     if (!keyword) continue;
 
     const matchType =
       (typeof kw === "object" && kw.matchType) || config.matchType || "contains";
 
-    if (matchType === "exact" && args.text === keyword) return true;
-    if (matchType === "contains" && args.text.includes(keyword)) return true;
-    if (matchType === "startsWith" && args.text.startsWith(keyword)) return true;
+    if (matchType === "exact" && trimPunctuation(text) === trimPunctuation(keyword)) return true;
+    if (matchType === "contains" && new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegex(keyword)}`, "u").test(text)) return true;
+    if (matchType === "startsWith" && text.startsWith(keyword)) return true;
   }
   return false;
 }

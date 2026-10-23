@@ -1,5 +1,6 @@
 import type { Json, TriggerType } from "@/lib/types/database";
-import { getTrigger } from "@/lib/flow-engine/registry";
+import { getTrigger, listTriggers } from "@/lib/flow-engine/registry";
+import { triggerConfigDefaults } from "@/lib/flow-engine/trigger-defaults";
 
 /**
  * Los tipos que el editor sabe configurar con campos propios (palabras clave,
@@ -35,6 +36,18 @@ function isPersistableTriggerType(type: string): boolean {
   if (isBuilderTriggerType(type)) return true;
   const definition = getTrigger(type);
   return definition?.scope === "event" || definition?.scope === "scheduled";
+}
+
+/**
+ * Todos los tipos cuyas filas (sin canal) arma el editor al publicar: son los que
+ * publicar y despublicar reconcilian. Antes se borraban solo los de mensaje y los de
+ * Ventas, y cada republicacion de un flujo de agenda, formulario, CRM, tareas o webhook
+ * dejaba UNA FILA MAS: el flujo corria una vez por cada vez que se habia publicado.
+ */
+export function persistableTriggerTypes(): TriggerType[] {
+  const types = new Set<string>(BUILDER_TRIGGER_TYPES);
+  for (const t of listTriggers()) if (isPersistableTriggerType(t.type)) types.add(t.type);
+  return [...types] as TriggerType[];
 }
 
 export interface DesiredTrigger {
@@ -77,10 +90,11 @@ export function buildDesiredTriggers(
         if (Array.isArray(postIds) && postIds.length > 0) config.postIds = postIds;
         const replyText = data.replyText ?? nodeConfig.replyText;
         if (typeof replyText === "string" && replyText.trim()) config.replyText = replyText;
-        // Extra L (F19): los filtros de origen del mensaje, solo en la palabra clave de un DM. (El filtro
-        // `storyReply` del mismo panel NO se copia aca desde antes de este cambio: no se toca para no cambiar
-        // lo que ya corre en produccion; ver docs/PENDIENTE-atribucion.md.)
+        // Extra L (F19): los filtros de origen del mensaje, solo en la palabra clave de un DM. «Solo respuestas a
+        // historias» (`storyReply`) tambien se copia desde la auditoria de automatizaciones: el panel lo ofrecia y
+        // nunca llegaba a la fila, asi que cualquier DM con la palabra disparaba el flujo.
         if (type === "keyword") {
+          if (data.storyReply === true || nodeConfig.storyReply === true) config.storyReply = true;
           if (data.fromAdOnly === true || nodeConfig.fromAdOnly === true) config.fromAdOnly = true;
           if (data.storyMentionOnly === true || nodeConfig.storyMentionOnly === true) config.storyMentionOnly = true;
         }
@@ -88,6 +102,10 @@ export function buildDesiredTriggers(
         const payload = data.payload ?? nodeConfig.payload;
         if (payload !== undefined) config.payload = payload;
       } else {
+        // Lo que el panel MUESTRA por defecto vale aunque la persona no lo haya tocado (antes se mostraba sin guardarse
+        // y el disparador no andaba: un evento de CRM sin evento, un recordatorio sin cuanto antes, una inactividad
+        // sin ventana).
+        Object.assign(config, triggerConfigDefaults(type));
         // Los tipos que no son de mensaje guardan lo que el panel escribió en
         // el nodo, menos lo que es del canvas (la etiqueta, el tipo elegido).
         // Así sumar un filtro nuevo al panel no pide tocar este archivo.

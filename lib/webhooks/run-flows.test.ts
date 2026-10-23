@@ -11,6 +11,10 @@ import { runWebhookFlows, type InboundForFlows } from "./run-flows";
 import { processInbound, reprocessInbound } from "./process";
 import { ALREADY_PASSED_NOTE } from "@/lib/flow-engine/nodes/upsert-contact";
 
+// La «Llamada HTTP» resuelve el nombre antes de llamar (no deja pedir direcciones internas). En el test no hay DNS:
+// cualquier nombre resuelve a una IP pública de ejemplo.
+vi.mock("node:dns/promises", () => ({ lookup: async () => [{ address: "93.184.216.34", family: 4 }] }));
+
 const WS = "ws-1";
 type Row = Record<string, unknown>;
 

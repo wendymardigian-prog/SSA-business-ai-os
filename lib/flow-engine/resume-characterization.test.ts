@@ -98,7 +98,7 @@ describe("reanudar un flujo con contacto (como el cron)", () => {
       flows: [
         flowRow(
           "flow-1",
-          [trigger("keyword"), { id: "n-delay", type: "delay", data: { duration: 5, unit: "minutes" } }, { id: "n-delay2", type: "delay", data: { duration: 0, unit: "seconds" } }],
+          [trigger("keyword"), { id: "n-delay", type: "delay", data: { duration: 5, unit: "minutes" } }, { id: "n-delay2", type: "delay", data: { duration: 1, unit: "seconds" } }],
           [
             { id: "e1", source: "n-trigger", target: "n-delay" },
             { id: "e2", source: "n-delay", target: "n-delay2" },

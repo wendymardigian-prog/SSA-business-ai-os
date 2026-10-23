@@ -67,8 +67,10 @@ function fakeDb(waiting: typeof WAITING_SESSION | null) {
     const builder: Record<string, unknown> = {};
     const chain = () => builder;
     for (const m of ["select", "eq", "is", "order", "limit", "in", "neq"]) builder[m] = chain;
+    let updating = false;
     builder.update = (values: Record<string, unknown>) => {
       if (table === "flow_sessions") sessionUpdates.push(values);
+      updating = true;
       return builder;
     };
     builder.insert = (values: unknown) => {
@@ -86,7 +88,9 @@ function fakeDb(waiting: typeof WAITING_SESSION | null) {
       if (table === "flow_sessions") return { data: { flow_id: FLOW.id, contact_id: "c-1", channel_id: "ch-1" }, error: null };
       return { data: null, error: null };
     };
-    builder.then = (resolve: (v: unknown) => unknown) => resolve({ data: null, error: null });
+    // Retomar reclama la sesion (`update ... where waiting_for_input = true returning id`): la base devuelve la fila.
+    builder.then = (resolve: (v: unknown) => unknown) =>
+      resolve({ data: table === "flow_sessions" && updating ? [{ id: "ses-1" }] : null, error: null });
     return builder;
   };
 
