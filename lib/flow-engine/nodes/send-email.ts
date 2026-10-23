@@ -34,7 +34,7 @@ export interface SendEmailNodeData {
   fixedEmail?: string;
   /**
    * Solo `to: "variable"` (Tirón 2, D4): la dirección sale de una variable del flujo, por ejemplo
-   * `{{webhook.body.email}}` (también se acepta sin las llaves). No necesita contacto.
+   * `{{webhook.payload.email}}` (también se acepta sin las llaves). No necesita contacto.
    */
   toVariable?: string;
   /** Solo `to: "users"`: a quiénes del equipo. */

@@ -19,6 +19,7 @@ import { flowSendsMessages } from "@/lib/webhooks/once-per-contact";
 import { getConditionCatalogInputs } from "@/lib/actions/flow-conditions";
 import { chosenType } from "@/lib/flow-engine/trigger-catalog";
 import { pickerVariables } from "@/lib/flow-engine/variable-catalog";
+import { actionLabel } from "../nodes/action-node";
 
 interface NodeConfigSidebarProps {
   /** El flujo que se edita (el panel de Condiciones le pide al servidor los campos comparables). */
@@ -160,7 +161,9 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
   const triggerNodeData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
   const schemaPaths = useTriggerSchemaPaths(flowId, triggerNodeData);
   const variables = useMemo(() => getFlowVariables({ node, nodes, edges, schemaPaths }), [node, nodes, edges, schemaPaths]);
-  const config = nodeTypeConfig[nodeType] || nodeTypeConfig.action;
+  const baseConfig = nodeTypeConfig[nodeType] || nodeTypeConfig.action;
+  // Una accion se llama por lo que hace ("Enviar email"), no "Acción".
+  const config = nodeType === "action" ? { ...baseConfig, label: actionLabel((node.data as { actionType?: string }).actionType) } : baseConfig;
   const Icon = config.icon;
 
   // Close on Escape

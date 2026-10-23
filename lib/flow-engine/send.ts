@@ -26,6 +26,8 @@ import { foldOptionsIntoText } from "./platform-adapter";
 
 /** Tope de mensajes automatizados por hora que impone Instagram. */
 const INSTAGRAM_HOURLY_LIMIT = 200;
+/** El tope por hora de los envios automaticos por WhatsApp, por canal. */
+const WHATSAPP_HOURLY_LIMIT = 200;
 
 /**
  * Lo minimo que hace falta para mandar un mensaje y dejarlo registrado.
@@ -182,11 +184,20 @@ async function claimSend(
   supabase: SupabaseClient<Database>,
   channel: ChannelRow
 ): Promise<boolean> {
-  if (channel.platform !== "instagram" && channel.platform !== "facebook") return true;
+  // WhatsApp tambien (auditoria de automatizaciones): un numero conectado por QR que manda cientos de mensajes por hora
+  // corre riesgo de bloqueo, y un flujo en ciclo con un "Esperar" no tenia ningun freno. Es el mismo tope que ya usa
+  // «Enviar WhatsApp a un número».
+  const limit =
+    channel.platform === "instagram" || channel.platform === "facebook"
+      ? INSTAGRAM_HOURLY_LIMIT
+      : channel.platform === "whatsapp"
+        ? WHATSAPP_HOURLY_LIMIT
+        : null;
+  if (limit === null) return true;
 
   const { data, error } = await supabase.rpc("claim_automated_send", {
     p_channel_id: channel.id,
-    p_limit: INSTAGRAM_HOURLY_LIMIT,
+    p_limit: limit,
   });
 
   if (error) {

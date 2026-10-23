@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
 
   const { data: triggers, error } = await supabase
     .from("triggers")
-    .select("id, flow_id, channel_id, config, workspace_id, flows!inner(status)")
+    .select("id, flow_id, channel_id, config, workspace_id, created_at, flows!inner(status)")
     .eq("type", "inactivity")
     .eq("is_active", true)
     .eq("flows.status", "published");
@@ -88,6 +88,9 @@ export async function GET(request: NextRequest) {
     }
 
     const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    // Solo lo que quedo inactivo DESPUES de prender el disparador (auditoria de automatizaciones): antes, publicarlo le
+    // escribia de golpe a todo el historial de leads viejos. Republicar vuelve a poner la marca (la fila es nueva).
+    const since = inactivitySince(String(trigger.created_at), hours);
 
     // Conversaciones abiertas del workspace cuyo contacto no interactua desde
     // antes del corte. La automatizacion pausada se respeta: si alguien tomo la
@@ -101,8 +104,10 @@ export async function GET(request: NextRequest) {
       .eq("is_automation_paused", false)
       .in("platform", CHANNELS_WITH_REPLIES)
       .lt("contacts.last_interaction_at", cutoff)
+      .gte("contacts.last_interaction_at", since)
       .eq("contacts.do_not_contact", false)
       .eq("contacts.is_subscribed", true)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
       .limit(BATCH);
 
     // Un trigger puede acotarse a un canal; sin channel_id vale para todos.
@@ -118,9 +123,11 @@ export async function GET(request: NextRequest) {
     }
 
     for (const conversation of conversations ?? []) {
-      // La clave lleva la ventana: si el trigger se reconfigura de 24h a 72h,
-      // vuelve a poder disparar sobre la misma conversacion, que es lo esperado.
-      const dedupeKey = `conv:${conversation.id}:${hours}h`;
+      // La clave lleva la ventana (reconfigurar de 24h a 72h vuelve a poder disparar) y la ultima interaccion: si el lead
+      // contesta y despues vuelve a quedar inactivo, es OTRA inactividad y se dispara de nuevo. Antes la clave no
+      // cambiaba nunca y la segunda inactividad no disparaba (hasta que la purga de 90 dias la liberaba de sorpresa).
+      const lastInteraction = (conversation as { contacts?: { last_interaction_at?: string | null } | null }).contacts?.last_interaction_at ?? "";
+      const dedupeKey = inactivityDedupeKey(conversation.id, hours, lastInteraction);
 
       const { error: claimError } = await supabase.from("trigger_fires").insert({
         trigger_id: trigger.id,
@@ -167,4 +174,15 @@ export function windowHours(config: InactivityConfig): number | null {
   const amount = Number(config.amount);
   if (!Number.isFinite(amount) || amount <= 0) return null;
   return config.unit === "days" ? amount * 24 : amount;
+}
+
+/** Desde cuando cuenta una inactividad: lo que quedo inactivo despues de prender el disparador. */
+export function inactivitySince(triggerCreatedAt: string, hours: number): string {
+  const created = Date.parse(triggerCreatedAt);
+  return new Date((Number.isFinite(created) ? created : Date.now()) - hours * 60 * 60 * 1000).toISOString();
+}
+
+/** La clave de un disparo: conversacion, ventana y ultima interaccion (una inactividad nueva es otra clave). */
+export function inactivityDedupeKey(conversationId: string, hours: number, lastInteractionAt: string): string {
+  return `conv:${conversationId}:${hours}h:${lastInteractionAt}`;
 }

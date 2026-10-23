@@ -18,6 +18,12 @@ import {
   ListChecks,
   Mail,
   Smartphone,
+  ListOrdered,
+  CalendarX,
+  CalendarCheck,
+  BadgeDollarSign,
+  CalendarClock,
+  Ban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -62,62 +68,62 @@ const actionConfig: Record<
 > = {
   addTag: {
     icon: Tag,
-    label: "Add Tag",
+    label: "Agregar etiqueta",
     color: "bg-gray-500",
   },
   removeTag: {
     icon: Tag,
-    label: "Remove Tag",
+    label: "Quitar etiqueta",
     color: "bg-gray-500",
   },
   setCustomField: {
     icon: FileText,
-    label: "Set Field",
+    label: "Definir campo",
     color: "bg-gray-500",
   },
   httpRequest: {
     icon: Globe,
-    label: "HTTP Request",
+    label: "Llamada HTTP",
     color: "bg-gray-500",
   },
   goToFlow: {
     icon: ArrowRightLeft,
-    label: "Go To Flow",
+    label: "Ir a otra automatización",
     color: "bg-gray-500",
   },
   humanTakeover: {
     icon: UserCheck,
-    label: "Human Takeover",
+    label: "Derivar a una persona",
     color: "bg-gray-500",
   },
   subscribe: {
     icon: Bell,
-    label: "Subscribe",
+    label: "Suscribir",
     color: "bg-gray-500",
   },
   unsubscribe: {
     icon: Bell,
-    label: "Unsubscribe",
+    label: "Desuscribir",
     color: "bg-gray-500",
   },
   commentReply: {
     icon: Cog,
-    label: "Comment Reply",
+    label: "Responder el comentario",
     color: "bg-gray-500",
   },
   privateReply: {
     icon: Cog,
-    label: "Private Reply",
+    label: "Responder por privado",
     color: "bg-gray-500",
   },
   abSplit: {
     icon: Shuffle,
-    label: "A/B Split",
+    label: "A/B split",
     color: "bg-gray-500",
   },
   smartDelay: {
     icon: Hourglass,
-    label: "Smart Delay",
+    label: "Esperar respuesta",
     color: "bg-gray-500",
   },
   pauseAgent: {
@@ -155,7 +161,21 @@ const actionConfig: Record<
     label: "Enviar WhatsApp a un número",
     color: "bg-gray-500",
   },
+  enrollSequence: { icon: ListOrdered, label: "Inscribir en secuencia", color: "bg-gray-500" },
+  notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
+  cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
+  set_booking_status: { icon: CalendarCheck, label: "Cambiar estado de la reunión", color: "bg-gray-500" },
+  mark_payment_paid: { icon: BadgeDollarSign, label: "Marcar pago como cobrado", color: "bg-gray-500" },
+  reschedule_payment: { icon: CalendarClock, label: "Reprogramar pago", color: "bg-gray-500" },
+  set_sale_status: { icon: Ban, label: "Cancelar la venta", color: "bg-gray-500" },
 };
+
+/** El nombre de cada accion (lo usan el nodo y el encabezado del panel lateral). */
+export function actionLabel(actionType: string | undefined): string {
+  return (actionType && actionConfig[actionType]?.label) || "Acción";
+}
+
+const UNIT_LABELS: Record<string, [string, string]> = { minutes: ["minuto", "minutos"], hours: ["hora", "horas"], days: ["día", "días"] };
 
 const OWNER_LABELS: Record<string, string> = {
   user: "Una persona",
@@ -177,9 +197,9 @@ function getSummary(nodeData: ActionNodeProps): string | null {
 
   switch (type) {
     case "addTag":
-      return nodeData.tagName ? `Add "${nodeData.tagName}"` : null;
+      return nodeData.tagName ? `Agrega «${nodeData.tagName}»` : null;
     case "removeTag":
-      return nodeData.tagName ? `Remove "${nodeData.tagName}"` : null;
+      return nodeData.tagName ? `Quita «${nodeData.tagName}»` : null;
     case "setCustomField":
       return nodeData.fieldSlug
         ? `${nodeData.fieldSlug} = ${nodeData.value || "..."}`
@@ -189,22 +209,24 @@ function getSummary(nodeData: ActionNodeProps): string | null {
         ? `${nodeData.method || "GET"} ${nodeData.url}`
         : null;
     case "goToFlow":
-      return nodeData.flowId ? `Flow: ${nodeData.flowId.slice(0, 8)}...` : null;
+      return nodeData.flowId ? "Automatización elegida" : null;
     case "humanTakeover":
-      return nodeData.message || "Hand off to agent";
+      return nodeData.message || "Pasa a una persona del equipo";
     case "subscribe":
-      return "Subscribe contact";
+      return "Suscribe al contacto";
     case "unsubscribe":
-      return "Unsubscribe contact";
+      return "Desuscribe al contacto";
     case "abSplit":
       if (nodeData.paths && nodeData.paths.length > 0) {
         return nodeData.paths.map((p) => `${p.name}: ${p.weight}%`).join(", ");
       }
       return null;
-    case "smartDelay":
-      return nodeData.timeout
-        ? `Wait up to ${nodeData.timeout} ${nodeData.timeoutUnit || "minutes"}`
-        : null;
+    case "smartDelay": {
+      const enabled = typeof (nodeData as { timeoutEnabled?: unknown }).timeoutEnabled === "boolean" ? (nodeData as { timeoutEnabled?: boolean }).timeoutEnabled : nodeData.timeout != null;
+      if (!enabled || !nodeData.timeout) return "Hasta que responda (máx. 7 días)";
+      const [one, many] = UNIT_LABELS[nodeData.timeoutUnit || "minutes"] ?? UNIT_LABELS.minutes;
+      return `Hasta ${nodeData.timeout} ${nodeData.timeout === 1 ? one : many}`;
+    }
     case "sendAsset":
       return nodeData.assetId ? (nodeData.assetName ?? "Recurso elegido") : null;
     case "create_task" as NodeType:
@@ -231,7 +253,7 @@ export function ActionNode({ data, selected }: NodeProps) {
   const actionType = nodeData.actionType || "addTag";
   const config = actionConfig[actionType] || {
     icon: Cog,
-    label: "Action",
+    label: "Acción",
     color: "bg-gray-500",
   };
   const Icon = config.icon;
@@ -241,6 +263,9 @@ export function ActionNode({ data, selected }: NodeProps) {
 
   const isAbSplit = actionType === "abSplit";
   const paths = isAbSplit ? nodeData.paths || [] : [];
+  // «Esperar respuesta» con tiempo maximo: dos salidas, «Respondió» (la de siempre) y «No respondió» (`timeout`).
+  const nd = nodeData as ActionNodeProps & { timeoutEnabled?: boolean };
+  const hasTimeoutExit = actionType === "smartDelay" && (typeof nd.timeoutEnabled === "boolean" ? nd.timeoutEnabled : nd.timeout != null);
 
   return (
     <div
@@ -268,16 +293,22 @@ export function ActionNode({ data, selected }: NodeProps) {
         {summary ? (
           <p className="mt-1 truncate text-xs text-muted-foreground">{summary}</p>
         ) : (
-          <p className="mt-1 text-xs text-muted-foreground italic">Not configured</p>
+          <p className="mt-1 text-xs text-muted-foreground italic">Sin configurar</p>
         )}
         {detail && <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{detail}</p>}
       </div>
       <NodeBlockedNotice node={{ type: "action", data: { actionType } }} />
       {isAbSplit && paths.length > 0 ? (
         <>
+          {/* Una salida por camino, con el nombre arriba (el motor sigue la salida `split-N`). */}
+          <div className="flex justify-around px-2 pb-1 text-[10px] text-muted-foreground">
+            {paths.map((path, i) => (
+              <span key={i}>{path.name}</span>
+            ))}
+          </div>
           {paths.map((path, i) => (
             <Handle
-              key={path.name}
+              key={i}
               type="source"
               position={Position.Bottom}
               id={`split-${i}`}
@@ -285,6 +316,15 @@ export function ActionNode({ data, selected }: NodeProps) {
               className="!h-3 !w-3 !border-2 !border-gray-400 !bg-white"
             />
           ))}
+        </>
+      ) : hasTimeoutExit ? (
+        <>
+          <div className="flex justify-between px-4 pb-1 text-[10px] text-muted-foreground">
+            <span>Respondió</span>
+            <span>No respondió</span>
+          </div>
+          <Handle type="source" position={Position.Bottom} style={{ left: "25%" }} className="!h-3 !w-3 !border-2 !border-emerald-500 !bg-white" />
+          <Handle type="source" position={Position.Bottom} id="timeout" style={{ left: "75%" }} className="!h-3 !w-3 !border-2 !border-amber-500 !bg-white" />
         </>
       ) : (
         <Handle

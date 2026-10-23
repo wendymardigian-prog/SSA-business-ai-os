@@ -2,7 +2,7 @@
  * «Crear tarea» (Extra A, F22): un flujo deja una tarea para el equipo. Sirve con y sin contacto
  * (`needsContact: false`): con contacto, lo vincula; sin el, queda suelta.
  *
- * - Titulo, descripcion y proyecto admiten variables (`{{contact.name}}`, `{{answer.motivo}}`...).
+ * - Titulo, descripcion y proyecto admiten variables (`{{contact.display_name}}`, `{{answer.motivo}}`...).
  * - Responsable: una persona fija, «quien envio el reporte» (la persona del flujo sin contacto), el «vendedor de la
  *   venta» (vendedor, si no el setter), la «persona asignada al contacto» (vendedor, setter o quien tiene su conversacion)
  *   o nadie. Si no queda nadie, o la persona elegida ya no es del equipo, la tarea queda sin responsable y se avisa a

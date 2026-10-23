@@ -14,6 +14,7 @@ import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { cancelBooking, type CancelStatus } from "@/lib/scheduling/booking/cancel";
 import { isBookingStatus, groupOf, evaluateTransition, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
 import { logAudit } from "@/lib/audit";
+import { interpolateVariables } from "../interpolate";
 import type { Json } from "@/lib/types/database";
 
 export interface CancelBookingNodeData {
@@ -47,7 +48,7 @@ export const cancelBookingNode: NodeDefinition<CancelBookingNodeData> = {
       bookingId,
       by: "system",
       status: data.status ?? "cancelled_other",
-      reason: data.reason ?? "Cancelada por una automatización",
+      reason: interpolateVariables(data.reason ?? "", context.variables ?? {}).trim() || "Cancelada por una automatización",
     });
     if (!result.ok) {
       console.warn(`[flow-engine] no pude cancelar la reunión ${bookingId}: ${result.reason}`);

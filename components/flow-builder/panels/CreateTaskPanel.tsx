@@ -40,8 +40,8 @@ export function CreateTaskPanel({ data: raw, onChange, availableVariables }: { d
     <div className="space-y-4">
       <div>
         <label htmlFor="ct-title" className={labelClass}>Título</label>
-        <input id="ct-title" type="text" maxLength={TASK_LIMITS.title} value={data.title ?? ""} onFocus={() => setTarget("title")} onChange={(e) => set({ title: e.target.value })} placeholder="Llamar a {{contact.name}}" className={inputClass} />
-        <p className="mt-1.5 text-xs text-muted-foreground">Podés usar variables como {"{{contact.name}}"}. Sin título no se crea nada.</p>
+        <input id="ct-title" type="text" maxLength={TASK_LIMITS.title} value={data.title ?? ""} onFocus={() => setTarget("title")} onChange={(e) => set({ title: e.target.value })} placeholder="Llamar a {{contact.display_name}}" className={inputClass} />
+        <p className="mt-1.5 text-xs text-muted-foreground">Podés usar variables como {"{{contact.display_name}}"}. Sin título no se crea nada.</p>
       </div>
 
       <div>

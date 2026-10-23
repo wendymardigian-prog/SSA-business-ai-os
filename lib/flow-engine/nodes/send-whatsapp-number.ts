@@ -5,7 +5,7 @@
  * Es un paso APARTE y no una opción de «Enviar mensaje» a propósito: «Enviar mensaje» sigue intacto (cero riesgo para los
  * flujos que ya existen) y este paso tiene sus propias reglas, que son distintas:
  *
- *   - El destino es un número fijo o el de una variable (`{{webhook.body.telefono}}`), normalizado con `lib/phone.ts`.
+ *   - El destino es un número fijo o el de una variable (`{{webhook.payload.telefono}}`), normalizado con `lib/phone.ts`.
  *   - El canal es un WhatsApp conectado del workspace (por Evolution) que se ELIGE en el paso.
  *   - Se busca el número con la función única de contactos (`find_only`: nunca crea nada). Si es de un contacto marcado
  *     «no contactar», no se manda. Si es de un contacto con conversación en ese canal, el mensaje se guarda ahí como
@@ -29,7 +29,7 @@ export interface SendWhatsAppNumberData {
   to?: "fixed" | "variable";
   /** Solo `to: "fixed"`: el número tal como lo escribió la persona. */
   fixedPhone?: string;
-  /** Solo `to: "variable"`: `{{webhook.body.telefono}}` (también se acepta sin las llaves). */
+  /** Solo `to: "variable"`: `{{webhook.payload.telefono}}` (también se acepta sin las llaves). */
   toVariable?: string;
   /** El canal de WhatsApp que manda. Obligatorio. */
   channelId?: string;

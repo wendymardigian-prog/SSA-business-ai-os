@@ -71,7 +71,7 @@ export function SendWhatsAppNumberPanel({
           </>
         ) : (
           <>
-            <input aria-label="Variable con el número" type="text" value={data.toVariable ?? ""} onFocus={() => setTarget("toVariable")} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{webhook.body.telefono}}" className={`${inputClass} mt-2 font-mono`} />
+            <input aria-label="Variable con el número" type="text" value={data.toVariable ?? ""} onFocus={() => setTarget("toVariable")} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{webhook.payload.telefono}}" className={`${inputClass} mt-2 font-mono`} />
             <p className="mt-1.5 text-xs text-muted-foreground">Si la variable está vacía o no es un número válido, el paso se saltea y queda anotado.</p>
           </>
         )}
@@ -97,7 +97,7 @@ export function SendWhatsAppNumberPanel({
           <label htmlFor="wa-text" className={labelClass}>Mensaje</label>
           <FieldEmojiButton targetId="wa-text" value={data.text ?? ""} onChange={(text) => set({ text })} />
         </div>
-        <textarea id="wa-text" rows={4} value={data.text ?? ""} onFocus={() => setTarget("text")} onChange={(e) => set({ text: e.target.value })} placeholder="Nuevo lead: {{webhook.body.nombre}}" className={inputClass} />
+        <textarea id="wa-text" rows={4} value={data.text ?? ""} onFocus={() => setTarget("text")} onChange={(e) => set({ text: e.target.value })} placeholder="Nuevo lead: {{webhook.payload.nombre}}" className={inputClass} />
         <p className="mt-1.5 text-xs text-muted-foreground">Podés usar variables. Si el número es de un contacto marcado «no contactar», no se manda.</p>
       </div>
 

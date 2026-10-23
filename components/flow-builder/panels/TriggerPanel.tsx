@@ -619,6 +619,42 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
         </div>
       )}
 
+      {/* Email recibido: el filtro por asunto que el motor ya leia y el panel no mostraba. */}
+      {triggerType === "email_received" && (
+        <div>
+          <label htmlFor="trg-subject" className="mb-2 block text-xs font-semibold text-foreground">
+            Solo si el asunto contiene
+          </label>
+          <input
+            id="trg-subject"
+            type="text"
+            value={typeof data.subjectContains === "string" ? data.subjectContains : ""}
+            onChange={(e) => onChange({ ...data, subjectContains: e.target.value })}
+            placeholder="Por ejemplo: presupuesto"
+            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">Vacío: corre con cualquier correo que entre. No distingue mayúsculas.</p>
+        </div>
+      )}
+
+      {/* Comentarios: la respuesta pública que el motor ya mandaba y el panel no mostraba. */}
+      {triggerType === "comment_keyword" && (
+        <div>
+          <label htmlFor="trg-reply" className="mb-2 block text-xs font-semibold text-foreground">
+            Respuesta pública al comentario (opcional)
+          </label>
+          <textarea
+            id="trg-reply"
+            rows={2}
+            value={typeof data.replyText === "string" ? data.replyText : ""}
+            onChange={(e) => onChange({ ...data, replyText: e.target.value })}
+            placeholder="¡Te escribimos por privado! 💬"
+            className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">Se contesta debajo del comentario, a la vista de todos. Para limitarlo a ciertas publicaciones, usá la pestaña Growth.</p>
+        </div>
+      )}
+
       {/* Fase 3: convivencia con el agente de IA */}
       {(MESSAGE_TRIGGER_TYPES.includes(triggerType) || (triggerType === "comment_keyword" && data.alsoMatchInDms)) && (
         <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3">

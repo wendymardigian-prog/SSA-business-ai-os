@@ -28,7 +28,13 @@ export const conditionNode: NodeDefinition<ConditionNodeData> = {
     if (!contact) return "handle:false";
 
     const results: boolean[] = [];
-    for (const condition of data.conditions) {
+    for (const condition of Array.isArray(data.conditions) ? data.conditions : []) {
+      // Una condicion mal guardada (sin campo, o un texto suelto como armaba el editor viejo de la agenda) no se cumple:
+      // antes `matchConditionField(undefined)` lanzaba y cortaba el flujo entero.
+      if (!condition || typeof condition !== "object" || typeof condition.field !== "string" || !condition.field) {
+        results.push(false);
+        continue;
+      }
       const match = matchConditionField(condition.field);
 
       // Sin resolver registrado se asume campo personalizado, que es el caso

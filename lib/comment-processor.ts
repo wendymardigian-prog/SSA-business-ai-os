@@ -83,7 +83,7 @@ export async function getActiveCommentTriggers(
 
 export interface ProcessCommentResult {
   matched: boolean;
-  skipped?: "already_processed";
+  skipped?: "already_processed" | "do_not_contact";
   triggerId?: string;
   error?: string;
 }
@@ -126,6 +126,19 @@ export async function processComment({
 
   const config = matchedTrigger.config as unknown as CommentKeywordConfig;
 
+  // Reclamo atomico (auditoria de automatizaciones): dos entregas del mismo comentario a la vez pasaban las dos el
+  // "ya esta registrado?" de arriba y respondian dos veces. El indice unico de trigger_fires decide quien sigue.
+  const { error: claimError } = await supabase.from("trigger_fires").insert({
+    trigger_id: matchedTrigger.id,
+    workspace_id: channel.workspace_id,
+    dedupe_key: `comment:${channel.id}:${comment.id}`,
+    contact_id: null,
+  });
+  if (claimError) {
+    if (claimError.code === "23505") return { matched: false, skipped: "already_processed" };
+    console.error("[comments] no pude reclamar el comentario:", claimError.message);
+  }
+
   try {
     const senderId = comment.author.id || `comment_${comment.id}`;
     const senderName =
@@ -151,6 +164,13 @@ export async function processComment({
     }
 
     const contactId = contact.contactId;
+
+    // «No contactar» vale tambien para los comentarios: ni respuesta publica ni mensaje privado.
+    const { data: contactFlags } = await supabase.from("contacts").select("do_not_contact").eq("id", contactId).maybeSingle();
+    if ((contactFlags as { do_not_contact?: boolean } | null)?.do_not_contact) {
+      await logComment({ supabase, channel, comment, triggerId: matchedTrigger.id });
+      return { matched: true, triggerId: matchedTrigger.id, skipped: "do_not_contact" };
+    }
 
     let replySent = false;
     if (config.replyText) {

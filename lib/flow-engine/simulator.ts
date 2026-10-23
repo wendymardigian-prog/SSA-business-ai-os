@@ -77,6 +77,16 @@ export interface SimulationResult {
 
 // --- Helpers ---
 
+/** A quién va el email de «Enviar email», como se lee en el panel de prueba. */
+const EMAIL_TO_LABELS: Record<string, string> = {
+  contact: "al contacto",
+  host: "al anfitrión",
+  fixed: "a una dirección fija",
+  member: "a la persona del equipo",
+  users: "a personas del equipo",
+  variable: "a la dirección de una variable",
+};
+
 function resolvePath(
   variables: Record<string, string>,
   path: string
@@ -141,7 +151,7 @@ export function simulateFlow(
   // 1. Find trigger node
   const triggerNode = nodes.find((n) => n.type === "trigger");
   if (!triggerNode) {
-    errors.push("No trigger node found");
+    errors.push("La automatización no tiene disparador");
     return { steps, errors, completed: false };
   }
 
@@ -171,7 +181,7 @@ export function simulateFlow(
   steps.push({
     nodeId: triggerNode.id,
     nodeType: "trigger",
-    nodeLabel: (triggerData.label as string) || "Trigger",
+    nodeLabel: (triggerData.label as string) || "Disparador",
     result: {
       type: "trigger",
       matched: triggerMatched,
@@ -182,7 +192,7 @@ export function simulateFlow(
 
   if (!triggerMatched) {
     errors.push(
-      `Trigger did not match. Keywords: [${keywords.join(", ")}], Message: "${config.incomingMessage}"`
+      `El disparador no coincide. Palabras clave: [${keywords.join(", ")}], mensaje: "${config.incomingMessage}"`
     );
     return { steps, errors, completed: false };
   }
@@ -190,7 +200,7 @@ export function simulateFlow(
   // 2. Follow edges from trigger
   const firstEdge = edges.find((e) => e.source === triggerNode.id);
   if (!firstEdge) {
-    errors.push("Trigger has no outgoing connection");
+    errors.push("El disparador no está conectado a ningún paso");
     return { steps, errors, completed: false };
   }
 
@@ -203,12 +213,12 @@ export function simulateFlow(
     stepCount++;
     const node = nodes.find((n) => n.id === currentNodeId);
     if (!node) {
-      errors.push(`Node not found: ${currentNodeId}`);
+      errors.push(`No se encontró el paso: ${currentNodeId}`);
       break;
     }
 
     const data = node.data as Record<string, unknown>;
-    const label = (data.label as string) || node.type || "Unknown";
+    const label = (data.label as string) || node.type || "Paso sin nombre";
     let nextHandle: string | undefined;
     // "Condiciones" sigue SOLO la salida que eligio: sin ella el flujo termina, como en el motor.
     let strictHandle = false;
@@ -232,7 +242,7 @@ export function simulateFlow(
           nodeLabel: label,
           result: {
             type: "message",
-            texts: texts.length > 0 ? texts : ["(empty message)"],
+            texts: texts.length > 0 ? texts : ["(mensaje vacío)"],
             buttons: buttons.length > 0 ? buttons : undefined,
             quickReplies: quickReplies.length > 0 ? quickReplies : undefined,
           },
@@ -357,7 +367,7 @@ export function simulateFlow(
 
       case "addTag":
       case "removeTag": {
-        const tagName = (data.tagName as string) || "unknown";
+        const tagName = (data.tagName as string) || "(sin etiqueta)";
         const actionType =
           node.type === "addTag"
             ? "addTag"
@@ -371,8 +381,8 @@ export function simulateFlow(
             actionType,
             detail:
               actionType === "addTag" || actionType === "add"
-                ? `Add tag: ${tagName}`
-                : `Remove tag: ${tagName}`,
+                ? `Agrega la etiqueta: ${tagName}`
+                : `Quita la etiqueta: ${tagName}`,
           },
         });
         break;
@@ -384,10 +394,10 @@ export function simulateFlow(
         const fieldSlug = (data.fieldSlug as string) || "";
         const fieldValue = (data.value as string) || "";
         let detail = actionType;
-        if (actionType === "addTag") detail = `Add tag: ${tagName}`;
-        else if (actionType === "removeTag") detail = `Remove tag: ${tagName}`;
+        if (actionType === "addTag") detail = `Agrega la etiqueta: ${tagName}`;
+        else if (actionType === "removeTag") detail = `Quita la etiqueta: ${tagName}`;
         else if (actionType === "setCustomField")
-          detail = `Set ${fieldSlug} = ${fieldValue}`;
+          detail = `Guarda ${fieldSlug} = ${fieldValue}`;
         steps.push({
           nodeId: node.id,
           nodeType: "action",
@@ -398,7 +408,7 @@ export function simulateFlow(
       }
 
       case "setCustomField": {
-        const slug = (data.fieldSlug as string) || "unknown";
+        const slug = (data.fieldSlug as string) || "(sin campo)";
         const value = interpolate((data.value as string) || "", variables);
         steps.push({
           nodeId: node.id,
@@ -407,7 +417,7 @@ export function simulateFlow(
           result: {
             type: "action",
             actionType: "setCustomField",
-            detail: `Set ${slug} = ${value}`,
+            detail: `Guarda ${slug} = ${value}`,
           },
         });
         break;
@@ -415,7 +425,7 @@ export function simulateFlow(
 
       case "aiResponse": {
         // Placeholder so downstream {{ai_response}} interpolates in the dry run
-        variables.ai_response = "[AI response]";
+        variables.ai_response = "[respuesta de la IA]";
         steps.push({
           nodeId: node.id,
           nodeType: "aiResponse",
@@ -498,7 +508,7 @@ export function simulateFlow(
       }
 
       case "goToFlow": {
-        const flowId = (data.flowId as string) || "unknown";
+        const flowId = (data.flowId as string) || "(sin elegir)";
         steps.push({
           nodeId: node.id,
           nodeType: "goToFlow",
@@ -510,7 +520,7 @@ export function simulateFlow(
       }
 
       case "enrollSequence": {
-        const sequenceId = (data.sequenceId as string) || "unknown";
+        const sequenceId = (data.sequenceId as string) || "(sin elegir)";
         steps.push({
           nodeId: node.id,
           nodeType: "enrollSequence",
@@ -525,12 +535,13 @@ export function simulateFlow(
       // muestra qué haría.
       case "send_email": {
         const to = (data.to as string) || "contact";
+        const toLabel = EMAIL_TO_LABELS[to] ?? `a ${to}`;
         const subject = interpolate((data.subject as string) || "", variables);
         steps.push({
           nodeId: node.id,
           nodeType: "send_email",
           nodeLabel: label,
-          result: { type: "action", actionType: "send_email", detail: `a ${to}: ${subject || "(sin asunto)"}` },
+          result: { type: "action", actionType: "send_email", detail: `${toLabel}: ${subject || "(sin asunto)"}` },
         });
         break;
       }
@@ -690,7 +701,7 @@ export function simulateFlow(
           nodeLabel: label,
           result: {
             type: "error",
-            message: `Unknown node type: ${node.type}`,
+            message: `Tipo de paso desconocido: ${node.type}`,
           },
         });
       }
@@ -720,7 +731,7 @@ export function simulateFlow(
       steps.push({
         nodeId: node.id,
         nodeType: "end",
-        nodeLabel: "End",
+        nodeLabel: "Fin",
         result: { type: "flow_end" },
       });
       return { steps, errors, completed: true };
@@ -730,7 +741,7 @@ export function simulateFlow(
   }
 
   if (stepCount >= maxSteps) {
-    errors.push("Simulation stopped: exceeded 50 steps (possible loop)");
+    errors.push("La prueba se cortó: pasó los 50 pasos (puede haber un ciclo)");
   }
 
   return { steps, errors, completed: stepCount < maxSteps };

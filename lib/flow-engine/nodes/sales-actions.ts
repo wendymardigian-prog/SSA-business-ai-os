@@ -12,6 +12,7 @@
  * lo disparó. Si falta, o la acción no se puede hacer (el pago ya estaba cobrado, la venta ya cerrada), el
  * nodo avisa en el log y el flujo sigue: una acción que no corresponde no puede tumbar a las demás.
  */
+import { interpolateVariables } from "../interpolate";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
@@ -129,7 +130,7 @@ export const reschedulePaymentNode: NodeDefinition<ReschedulePaymentNodeData> = 
     const { flowName, ...rest } = core;
     const result = await rescheduleCore(
       { ...rest, actor: { kind: "system", label: flowName } },
-      { newDate: addDays(core.payment.due_date, days), reason: data.reason?.trim() || DEFAULT_RESCHEDULE_REASON },
+      { newDate: addDays(core.payment.due_date, days), reason: interpolateVariables(data.reason ?? "", context.variables ?? {}).trim() || DEFAULT_RESCHEDULE_REASON },
     );
     if (!result.ok) console.warn(`[flow-engine] no pude reprogramar el pago ${core.payment.id}: ${result.error}`);
   },
@@ -153,7 +154,7 @@ export const setSaleStatusNode: NodeDefinition<SetSaleStatusNodeData> = {
     }
     const { flowName, payment: _payment, ...rest } = core;
     void _payment;
-    const result = await cancelSaleAsSystem({ ...rest, actor: { kind: "system", label: flowName } }, { to: data.status, reason: data.reason?.trim() || "Cambiado por una automatización" });
+    const result = await cancelSaleAsSystem({ ...rest, actor: { kind: "system", label: flowName } }, { to: data.status, reason: interpolateVariables(data.reason ?? "", context.variables ?? {}).trim() || "Cambiado por una automatización" });
     if (!result.ok) console.warn(`[flow-engine] no pude cambiar la venta ${core.sale.id}: ${result.error}`);
   },
 };

@@ -155,7 +155,7 @@ export function DeleteFlowButton({
   );
 }
 
-export function ImportFlowButton() {
+export function ImportFlowButton({ compact = false }: { compact?: boolean } = {}) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -248,14 +248,20 @@ export function ImportFlowButton() {
       <button
         onClick={() => fileInputRef.current?.click()}
         disabled={importing}
-        className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+        aria-label="Importar una automatización"
+        title="Importar una automatización (.flow.json)"
+        className={
+          compact
+            ? "inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+            : "inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+        }
       >
         {importing ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
           <Upload className="h-4 w-4" />
         )}
-        {importing ? "Importando…" : "Importar"}
+        <span className={compact ? "hidden 2xl:inline" : undefined}>{importing ? "Importando…" : "Importar"}</span>
       </button>
 
       {error && (

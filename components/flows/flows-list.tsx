@@ -132,13 +132,15 @@ export function FlowsList({
         right={
           canEdit ? (
             <div className="flex items-center gap-2">
-              <ImportFlowButton />
+              <ImportFlowButton compact />
               <Link
                 href="/dashboard/flows/templates"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label="Plantillas"
+                title="Plantillas"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <Sparkles className="h-4 w-4" />
-                <span className="hidden sm:inline">Plantillas</span>
+                <span className="hidden 2xl:inline">Plantillas</span>
               </Link>
               <CreateFlowButton />
             </div>
@@ -201,17 +203,11 @@ export function FlowsList({
                 {visible.map((flow) => (
                   <div key={flow.id} className="group relative flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50">
                     <Link href={`/dashboard/flows/${flow.id}`} className="absolute inset-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary" aria-label={`Abrir ${flow.name}`} />
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="truncate font-medium transition-colors group-hover:text-primary">{flow.name}</h3>
-                          <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium", STATUS_CLASSES[flow.status])}>{FLOW_STATUS_LABELS[flow.status]}</span>
-                          {flow.hasDraft && <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">Cambios sin publicar</span>}
-                        </div>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {flow.triggerLabel} · {flow.stepCount === 1 ? "1 paso" : `${flow.stepCount} pasos`}
-                          {flow.origin !== "manual" && ` · ${FLOW_ORIGIN_LABELS[flow.origin]}`}
-                        </p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium", STATUS_CLASSES[flow.status])}>{FLOW_STATUS_LABELS[flow.status]}</span>
+                        {flow.hasDraft && <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">Cambios sin publicar</span>}
+                        {flow.origin !== "manual" && <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{FLOW_ORIGIN_LABELS[flow.origin]}</span>}
                       </div>
                       {canEdit && (
                         <div className="relative z-10 flex shrink-0 items-center gap-1">
@@ -228,6 +224,10 @@ export function FlowsList({
                         </div>
                       )}
                     </div>
+                    <h3 className="mt-2 break-words font-medium transition-colors group-hover:text-primary">{flow.name}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {flow.triggerLabel} · {flow.stepCount === 1 ? "1 paso" : `${flow.stepCount} pasos`}
+                    </p>
                     {flow.description ? (
                       <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{flow.description}</p>
                     ) : (
