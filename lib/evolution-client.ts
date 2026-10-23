@@ -295,7 +295,9 @@ export async function setWebhook(
   token: string,
 ): Promise<void> {
   const major = await getMajorVersion(config);
-  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
+  // CALL (00258): Evolution avisa cada llamada (no puede atenderlas). Una
+  // instancia vieja lo recibe recien despues de volver a registrar el webhook.
+  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CALL"];
 
   // El token va como header porque el webhook queda expuesto en internet: es lo
   // unico que separa un evento real de cualquiera que descubra la URL.
@@ -732,6 +734,54 @@ export async function sendSticker(
   );
 
   return { id: raw?.key?.id ?? raw?.messageId ?? null };
+}
+
+// ── Ajustes de la instancia (llamadas) ─────────────────────────────────────
+
+/** Los ajustes de una instancia de Evolution v2 (`/settings/find`). */
+export interface InstanceSettings {
+  rejectCall: boolean;
+  msgCall: string;
+  groupsIgnore: boolean;
+  alwaysOnline: boolean;
+  readMessages: boolean;
+  readStatus: boolean;
+  syncFullHistory: boolean;
+}
+
+function settingsFrom(raw: Record<string, unknown> | null | undefined): InstanceSettings {
+  const r = raw ?? {};
+  return {
+    rejectCall: r.rejectCall === true,
+    msgCall: typeof r.msgCall === "string" ? r.msgCall : "",
+    groupsIgnore: r.groupsIgnore === true,
+    alwaysOnline: r.alwaysOnline === true,
+    readMessages: r.readMessages === true,
+    readStatus: r.readStatus === true,
+    syncFullHistory: r.syncFullHistory === true,
+  };
+}
+
+/** Lee los ajustes de la instancia (rechazar llamadas, el mensaje, etc). */
+export async function findInstanceSettings(config: EvolutionConfig, instanceName: string): Promise<InstanceSettings> {
+  const raw = await request<Record<string, unknown> | null>(config, "GET", `/settings/find/${encodeURIComponent(instanceName)}`);
+  return settingsFrom(raw);
+}
+
+/**
+ * Cambia SOLO lo de las llamadas. `/settings/set` pide el objeto entero (los
+ * booleanos son obligatorios), asi que se lee primero y se manda todo lo
+ * demas como estaba: nunca se pisa otro ajuste de la instancia.
+ */
+export async function setCallSettings(
+  config: EvolutionConfig,
+  instanceName: string,
+  patch: { rejectCall: boolean; msgCall: string },
+): Promise<InstanceSettings> {
+  const current = await findInstanceSettings(config, instanceName);
+  const next: InstanceSettings = { ...current, rejectCall: patch.rejectCall, msgCall: patch.msgCall };
+  await request(config, "POST", `/settings/set/${encodeURIComponent(instanceName)}`, next);
+  return next;
 }
 
 // ── Avatares ─────────────────────────────────────────────────────────────────

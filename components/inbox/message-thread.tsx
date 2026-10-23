@@ -30,6 +30,8 @@ import { setKnown } from "@/lib/actions/contacts";
 import { prepareStickerSend, saveStickerFromMessage } from "@/lib/actions/stickers";
 import { stickerCapability } from "@/lib/channels/stickers";
 import { StickerPicker } from "@/components/inbox/sticker-picker";
+import { CallLine } from "@/components/inbox/call-line";
+import { interleaveCalls, type CallRow } from "@/lib/whatsapp-calls/event";
 import { isStickerOnlyMessage } from "@/lib/inbox/media-render";
 import { ConversationMenu } from "@/components/inbox/conversation-menu";
 import { planHeaderActions } from "@/lib/inbox/header-actions";
@@ -339,6 +341,10 @@ export function MessageThread({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
+  // Llamadas de WhatsApp (00258): solo existen en chats de Evolution. Se leen
+  // con la RLS (quien ve la conversacion ve sus llamadas) y se pintan entre los
+  // mensajes por hora; no son mensajes.
+  const [calls, setCalls] = useState<CallRow[]>([]);
   // `?texto=` deja el mensaje escrito en el composer, sin mandarlo (Ventas: "Enviar contrato" por
   // WhatsApp o Instagram). Se lee una sola vez al abrir y se saca de la URL.
   const [input, setInput] = useState(() => (searchParams.get("texto") ?? "").slice(0, 2000));
@@ -970,6 +976,33 @@ export function MessageThread({
     }
   }
 
+  const conversationIdForCalls = conversation?.id ?? null;
+  useEffect(() => {
+    if (!conversationIdForCalls || channelProvider !== "evolution") {
+      setCalls([]);
+      return;
+    }
+    let cancelled = false;
+    void createClient()
+      .from("whatsapp_calls")
+      .select("id, status, is_video, started_at")
+      .eq("conversation_id", conversationIdForCalls)
+      .order("started_at")
+      .limit(200)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("[llamadas] no pude leer las llamadas:", error.message);
+          return;
+        }
+        setCalls((data ?? []).map((c) => ({ id: c.id, status: c.status, isVideo: c.is_video, startedAt: c.started_at })));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationIdForCalls, channelProvider, messages.length]);
+  const callTimeline = interleaveCalls(messages, calls);
+
   if (!conversation) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-background text-center">
@@ -983,6 +1016,7 @@ export function MessageThread({
       </div>
     );
   }
+
 
   const composerPlan = planComposerActions({
     hasAttachment: !!attachedFile,
@@ -1181,6 +1215,11 @@ export function MessageThread({
         <div className="mx-auto max-w-2xl space-y-4">
           {messages.map((message, i) => (
             <div key={message.id}>
+              {callTimeline.before.get(i)?.map((call) => (
+                <div key={call.id} className="mb-4">
+                  <CallLine call={call} />
+                </div>
+              ))}
               {shouldShowDateSeparator(message, messages[i - 1]) && (
                 <div className="my-4 flex items-center gap-3">
                   <div className="h-px flex-1 bg-border" />
@@ -1210,6 +1249,9 @@ export function MessageThread({
                 onReact={(emoji) => void handleReact(message, emoji)}
               />
             </div>
+          ))}
+          {callTimeline.after.map((call) => (
+            <CallLine key={call.id} call={call} />
           ))}
           <div ref={messagesEndRef} />
         </div>

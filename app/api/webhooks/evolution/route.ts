@@ -21,6 +21,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { collectSentSticker } from "@/lib/stickers/library";
+import { callLabel, parseCallEvent, type ParsedCallEvent } from "@/lib/whatsapp-calls/event";
+import { notifyMissedCall } from "@/lib/whatsapp-calls/notify";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { touchAccountOf } from "@/lib/inbox/accounts";
 import { refreshWhatsappIdentity } from "@/lib/whatsapp-identity";
@@ -142,6 +144,22 @@ async function handleWebhook(request: NextRequest) {
     return handleConnectionUpdate(supabase, channel, payload);
   }
 
+  // Llamadas (00258): Evolution no las puede atender, solo avisa. Quedan en el
+  // hilo y una perdida avisa al responsable. No es un mensaje.
+  if (event === "call") {
+    const call = parseCallEvent(payload.data);
+    const callPhone = call ? jidToPhone(call.fromJid) : null;
+    if (!call || !callPhone) return NextResponse.json({ ok: true, skipped: "llamada sin telefono utilizable" });
+    after(async () => {
+      try {
+        await processCall(supabase, channel, call, callPhone);
+      } catch (err) {
+        console.error("[evolution] error procesando la llamada:", err instanceof Error ? err.message : err);
+      }
+    });
+    return NextResponse.json({ ok: true, queued: "call" });
+  }
+
   if (event !== "messages.upsert") {
     return NextResponse.json({ ok: true, skipped: event || "sin evento" });
   }
@@ -188,6 +206,69 @@ async function handleWebhook(request: NextRequest) {
   });
 
   return NextResponse.json({ ok: true, queued: true });
+}
+
+/**
+ * Un evento de llamada: el contacto y la conversacion por el camino de
+ * siempre, la transicion en la base (`record_whatsapp_call`, atomica) y, si la
+ * llamada RECIEN quedo sin atender, un no leido, el preview y el aviso.
+ */
+async function processCall(supabase: Db, channel: ChannelRow, call: ParsedCallEvent, phone: string) {
+  const contact = await upsertContactForSender({
+    supabase,
+    channel,
+    senderId: phone,
+    senderName: phone,
+    senderUsername: phone,
+    senderPicture: null,
+    senderPhone: phone,
+    interactionAt: call.at,
+  });
+  if (!contact) {
+    console.error("[evolution] no pude resolver el contacto de la llamada");
+    return;
+  }
+
+  // Sin tocar el preview ni los no leidos todavia: eso solo si nadie atiende.
+  const { data: existing } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("channel_id", channel.id)
+    .eq("contact_id", contact.contactId)
+    .maybeSingle();
+  const conversationId =
+    existing?.id ??
+    (
+      await upsertConversation({
+        supabase,
+        channel,
+        contactId: contact.contactId,
+        preview: `📞 ${callLabel({ status: "ringing", isVideo: call.isVideo })}`,
+        at: call.at,
+        incrementUnread: false,
+      })
+    )?.id;
+  if (!conversationId) return;
+
+  const { data, error } = await supabase.rpc("record_whatsapp_call", {
+    p_workspace_id: channel.workspace_id,
+    p_channel_id: channel.id,
+    p_conversation_id: conversationId,
+    p_call_id: call.callId,
+    p_is_video: call.isVideo,
+    p_event: call.event,
+    p_at: call.at,
+  });
+  if (error) {
+    console.error("[evolution] no pude registrar la llamada:", error.message);
+    return;
+  }
+  const result = (data ?? {}) as { status?: string; became_unanswered?: boolean };
+  if (!result.became_unanswered || !result.status) return;
+
+  const label = callLabel({ status: result.status, isVideo: call.isVideo });
+  await supabase.rpc("increment_unread", { conv_id: conversationId, preview: `📞 ${label}` });
+  await notifyMissedCall(supabase, { workspaceId: channel.workspace_id, conversationId, contactId: contact.contactId, label });
 }
 
 async function handleConnectionUpdate(

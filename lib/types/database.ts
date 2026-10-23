@@ -4268,6 +4268,27 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Llamadas de WhatsApp recibidas (00258). No es `calls` (Fathom). Escribe solo el webhook. */
+      whatsapp_calls: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          channel_id: string;
+          conversation_id: string;
+          platform_call_id: string;
+          is_video: boolean;
+          status: "ringing" | "answered" | "missed" | "rejected";
+          started_at: string;
+          answered_at: string | null;
+          ended_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
       /** Biblioteca de stickers de WhatsApp (00257). Escribe solo el servidor. */
       stickers: {
         Row: {
@@ -6022,6 +6043,19 @@ export interface Database {
           p_model: string | null;
           p_chat_prompt: string;
           p_copywriter_instructions: string;
+        };
+        Returns: Json;
+      };
+      /** Registra un evento CALL de Evolution (00258, solo service_role). */
+      record_whatsapp_call: {
+        Args: {
+          p_workspace_id: string;
+          p_channel_id: string;
+          p_conversation_id: string;
+          p_call_id: string;
+          p_is_video: boolean;
+          p_event: string;
+          p_at: string;
         };
         Returns: Json;
       };

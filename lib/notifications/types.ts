@@ -45,6 +45,8 @@ export const NOTIFICATION_TYPES = [
   "needs_human",
   /** Te asignaron una conversación (a mano, por una regla o al marcar un conocido). Va SOLO a esa persona, nunca a quien la asignó. */
   "conversation_assigned",
+  /** Alguien llamó por WhatsApp y nadie atendió (00258). Va al responsable del chat, si no al setter, al vendedor o a Owner/Admin. */
+  "whatsapp_call_missed",
   // Llamadas (Fathom + analizador).
   /** Se cayó la conexión de Fathom de una persona: hay que reconectar. Va SOLO a esa persona. */
   "fathom_connection_error",
@@ -366,6 +368,7 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     entity: "eod_form",
   },
   conversation_assigned: { type: "conversation_assigned", label: "Te asignaron una conversación", tone: "info", entity: "conversation" },
+  whatsapp_call_missed: { type: "whatsapp_call_missed", label: "Llamada perdida de WhatsApp", tone: "warning", entity: "conversation" },
   task_assigned: { type: "task_assigned", label: "Te asignaron una tarea", tone: "info", entity: "task" },
   task_follow_added: { type: "task_follow_added", label: "Seguís una tarea", tone: "info", entity: "task" },
   task_changed: { type: "task_changed", label: "Cambió una tarea que seguís", tone: "info", entity: "task" },
