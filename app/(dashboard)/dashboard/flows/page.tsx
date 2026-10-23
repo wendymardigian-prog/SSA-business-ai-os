@@ -1,182 +1,69 @@
 import { getWorkspace } from "@/lib/workspace";
 import { requirePermission } from "@/lib/auth/guards";
-import Link from "next/link";
-import { GitBranch, Sparkles, Plug } from "lucide-react";
-import { CreateFlowButton } from "@/components/create-flow-button";
-import { ImportFlowButton, ExportFlowButton, DeleteFlowButton } from "@/components/flow-actions";
-import type { FlowStatus } from "@/lib/types/database";
-import { PageHeader } from "@/components/page-header";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadAutomationCapabilities } from "@/lib/flow-engine/capabilities";
-import {
-  REQUIREMENT_INFO,
-  blockedNodes,
-  requirementsOfNode,
-  type GraphEdgeLike,
-  type GraphNodeLike,
-} from "@/lib/flow-engine/node-requirements";
+import { REQUIREMENT_INFO, blockedNodes, requirementsOfNode, type GraphEdgeLike, type GraphNodeLike } from "@/lib/flow-engine/node-requirements";
+import { triggerDisplayLabel } from "@/lib/flow-engine/trigger-catalog";
+import { flowOrigin, parseFlowListQuery, type FlowListRow } from "@/lib/flows/list";
+import { normalizeCategories } from "@/lib/flows/categories";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
+import type { FlowStatus } from "@/lib/types/database";
+import { FlowsList } from "@/components/flows/flows-list";
 
-const statusConfig: Record<FlowStatus, { label: string; classes: string }> = {
-  draft: {
-    label: "Draft",
-    classes:
-      "bg-muted text-muted-foreground",
-  },
-  published: {
-    label: "Published",
-    classes:
-      "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
-  },
-  archived: {
-    label: "Archived",
-    classes:
-      "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-  },
-};
-
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-export default async function FlowsPage() {
+/**
+ * La lista de automatizaciones. Arma en el servidor lo que cada tarjeta muestra (como arranca, cuantos pasos, si hay
+ * pasos que no se van a ejecutar) y al navegador viaja solo eso: los pasos enteros no hacen falta para la lista.
+ */
+export default async function FlowsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   // Equipo y roles (F22): la pagina pide su permiso.
-  await requirePermission("flows.view");
+  const ctx = await requirePermission("flows.view");
   const { workspace, supabase } = await getWorkspace();
+  const sp = await searchParams;
 
-  const [{ data: flows }, { count: channelCount }] = await Promise.all([
+  const [{ data: flows }, { count: channelCount }, timeZone] = await Promise.all([
     supabase
       .from("flows")
-      .select("id, name, description, status, updated_at, version, nodes, edges")
+      .select("id, name, description, categories, status, updated_at, nodes, edges, draft_nodes, form_id, event_type_id, template_key")
       .eq("workspace_id", workspace.id)
       .order("updated_at", { ascending: false }),
-    supabase
-      .from("channels")
-      .select("*", { count: "exact", head: true })
-      .eq("workspace_id", workspace.id)
-      .eq("is_active", true),
+    supabase.from("channels").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("is_active", true),
+    resolveViewerTimezone(workspace.timezone),
   ]);
 
   // Un flujo YA publicado al que se le desconecto algo no se despublica solo, pero se avisa que pasos no se van a
   // ejecutar (G1.6). Solo se consultan las conexiones si algun flujo publicado tiene una accion que las necesita.
-  const published = (flows ?? []).filter((f) => f.status === "published" && Array.isArray(f.nodes) && (f.nodes as unknown as GraphNodeLike[]).some((n) => requirementsOfNode(n).length > 0));
+  const list = flows ?? [];
+  const published = list.filter((f) => f.status === "published" && Array.isArray(f.nodes) && (f.nodes as unknown as GraphNodeLike[]).some((n) => requirementsOfNode(n).length > 0));
   const capabilities = published.length > 0 ? await loadAutomationCapabilities(await createServiceClient(), workspace.id) : null;
-  const blockedById = new Map(
-    published.flatMap((f) => {
-      const blocked = capabilities ? blockedNodes(f.nodes as unknown as GraphNodeLike[], (Array.isArray(f.edges) ? f.edges : []) as unknown as GraphEdgeLike[], capabilities) : [];
-      return blocked.length > 0 ? [[f.id, blocked] as const] : [];
-    }),
-  );
+
+  const rows: FlowListRow[] = list.map((f) => {
+    const nodes = (Array.isArray(f.nodes) ? f.nodes : []) as Array<{ type?: string; data?: Record<string, unknown> }>;
+    const trigger = nodes.find((n) => n?.type === "trigger");
+    const blocked =
+      capabilities && f.status === "published" ? blockedNodes(nodes as unknown as GraphNodeLike[], (Array.isArray(f.edges) ? f.edges : []) as unknown as GraphEdgeLike[], capabilities) : [];
+    const missing = [...new Set(blocked.flatMap((b) => b.missing))].map((r) => REQUIREMENT_INFO[r].label).join(", ");
+    return {
+      id: f.id,
+      name: f.name,
+      description: f.description,
+      categories: normalizeCategories(f.categories ?? []),
+      status: f.status as FlowStatus,
+      origin: flowOrigin(f),
+      triggerLabel: trigger ? triggerDisplayLabel(trigger.data ?? {}) : "Sin disparador",
+      stepCount: nodes.filter((n) => n?.type !== "trigger").length,
+      updatedAt: f.updated_at,
+      hasDraft: f.status === "published" && Array.isArray(f.draft_nodes),
+      blockedNote: blocked.length > 0 ? `${blocked.length === 1 ? "1 paso no se va a ejecutar" : `${blocked.length} pasos no se van a ejecutar`}: falta ${missing}.` : null,
+    };
+  });
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader
-        route="/dashboard/flows"
-        right={
-          <div className="flex items-center gap-2">
-            <ImportFlowButton />
-            <Link
-              href="/dashboard/flows/templates"
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-            >
-              <Sparkles className="h-4 w-4" />
-              Templates
-            </Link>
-            <CreateFlowButton />
-          </div>
-        }
-      />
-
-      <div className="flex-1 overflow-auto px-8 py-6">
-      {(channelCount ?? 0) === 0 && (
-        <div className="mt-6 flex items-center gap-4 rounded-xl border border-dashed border-border bg-card p-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-            <Plug className="h-5 w-5 text-primary" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium">Connect a channel to get started</p>
-            <p className="text-xs text-muted-foreground">
-              Link your social media accounts so your flows can send and receive messages.
-            </p>
-          </div>
-          <Link
-            href="/dashboard/channels"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
-          >
-            Connect
-          </Link>
-        </div>
-      )}
-
-      {!flows || flows.length === 0 ? (
-        <div className="mt-12 rounded-xl border border-dashed border-border p-12 text-center">
-          <GitBranch className="mx-auto h-10 w-10 text-muted-foreground" />
-          <h2 className="mt-4 text-lg font-semibold">No flows yet</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Create your first flow to start automating conversations.
-          </p>
-          <div className="mt-4">
-            <CreateFlowButton />
-          </div>
-        </div>
-      ) : (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {flows.map((flow) => {
-            const status = statusConfig[flow.status as FlowStatus] ?? statusConfig.draft;
-            const nodeCount = Array.isArray(flow.nodes) ? flow.nodes.length : 0;
-
-            return (
-              <Link
-                key={flow.id}
-                href={`/dashboard/flows/${flow.id}`}
-                className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                      <GitBranch className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium group-hover:text-primary transition-colors">
-                          {flow.name}
-                        </h3>
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${status.classes}`}
-                        >
-                          {status.label}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {nodeCount} {nodeCount === 1 ? "node" : "nodes"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <ExportFlowButton flow={flow} />
-                    <DeleteFlowButton flow={flow} />
-                  </div>
-                </div>
-                {blockedById.get(flow.id) && (
-                  <p className="mt-3 rounded-md border border-amber-300/60 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-                    {blockedById.get(flow.id)!.length === 1 ? "1 paso no se va a ejecutar" : `${blockedById.get(flow.id)!.length} pasos no se van a ejecutar`}: falta{" "}
-                    {[...new Set(blockedById.get(flow.id)!.flatMap((b) => b.missing))].map((r) => REQUIREMENT_INFO[r].label).join(", ")}.
-                  </p>
-                )}
-                <p className="mt-4 text-xs text-muted-foreground">
-                  Updated {formatDate(flow.updated_at)}
-                </p>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-      </div>
-    </div>
+    <FlowsList
+      rows={rows}
+      initialQuery={parseFlowListQuery(sp)}
+      canEdit={ctx.can("flows.edit")}
+      hasChannels={(channelCount ?? 0) > 0}
+      timeZone={timeZone}
+    />
   );
 }

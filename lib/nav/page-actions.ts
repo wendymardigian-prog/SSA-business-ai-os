@@ -82,11 +82,11 @@ export const PAGE_META: Record<string, PageMeta> = {
       "Como rinde lo que publicas: seguidores, alcance, engagement y que formato funciona en cada red.",
   },
   "/dashboard/flows": {
-    title: "Flows",
-    tooltip: "Automatizaciones que responden solas segun lo que escribe el contacto.",
+    title: "Automatizaciones",
+    tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, una reunión, un formulario, un pago…",
   },
   "/dashboard/flows/templates": {
-    title: "Plantillas de flows",
+    title: "Plantillas de automatizaciones",
     tooltip: "Automatizaciones armadas para copiar y ajustar.",
   },
   "/dashboard/inbox": {
@@ -382,7 +382,7 @@ export const PAGES_WITHOUT_HEADER: Record<string, string> = {
   "/dashboard":
     "Redirige al dashboard de chat: no llega a dibujarse.",
   "/dashboard/flows/[flowId]":
-    "El editor de flows es un lienzo a pantalla completa con su propia barra. Es zona intocable de la etapa 2.",
+    "El editor de automatizaciones es un lienzo a pantalla completa con su propia barra.",
   "/dashboard/channels/callback":
     "Pantalla de paso del OAuth de un canal: se cierra sola.",
   "/dashboard/settings/templates":

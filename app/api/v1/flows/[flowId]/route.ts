@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { checkMemberFlow } from "@/lib/flow-engine/member-flow-db";
+import { normalizeCategories, normalizeDescription } from "@/lib/flows/categories";
 
 async function getWorkspaceId(supabase: Awaited<ReturnType<typeof createClient>>) {
   const {
@@ -60,6 +61,7 @@ export async function PUT(
 
   const body = await request.json();
 
+  let published = false;
   // Un flujo sin contacto (reporte de fin de día, E15) no puede tener pasos que necesiten uno.
   if (Array.isArray(body.nodes) || Array.isArray(body.edges)) {
     // Un flujo PUBLICADO se valida igual que al publicar (Tirón 2, D5): el motor lee `flows.nodes` en vivo, así que guardar
@@ -72,19 +74,29 @@ export async function PUT(
       .eq("id", flowId)
       .eq("workspace_id", workspaceId)
       .maybeSingle();
-    if (!current) return NextResponse.json({ error: "Flow not found" }, { status: 404 });
+    if (!current) return NextResponse.json({ error: "No encontré esa automatización." }, { status: 404 });
+    published = current.status === "published";
 
+    // Los pasos de una automatizacion PUBLICADA van al borrador (00254): lo que corre no cambia hasta publicar, y
+    // publicar valida todo. Un borrador se puede guardar a medias.
     const nodes = Array.isArray(body.nodes) ? body.nodes : Array.isArray(current.nodes) ? (current.nodes as unknown[]) : [];
     const edges = Array.isArray(body.edges) ? body.edges : Array.isArray(current.edges) ? (current.edges as unknown[]) : [];
-    const problems = await checkMemberFlow(supabase, workspaceId, nodes, edges, { publishing: current.status === "published" });
+    const problems = await checkMemberFlow(supabase, workspaceId, nodes, edges, { publishing: false });
     if (problems.length > 0) return NextResponse.json({ error: problems[0], problems }, { status: 400 });
   }
 
   const update: Record<string, unknown> = {};
   if (body.name !== undefined) update.name = body.name;
-  if (body.description !== undefined) update.description = body.description;
-  if (body.nodes !== undefined) update.nodes = body.nodes;
-  if (body.edges !== undefined) update.edges = body.edges;
+  if (body.description !== undefined) update.description = normalizeDescription(body.description);
+  if (body.categories !== undefined) update.categories = normalizeCategories(body.categories);
+  if (published) {
+    if (body.nodes !== undefined) update.draft_nodes = body.nodes;
+    if (body.edges !== undefined) update.draft_edges = body.edges;
+    if (body.nodes !== undefined || body.edges !== undefined) update.draft_updated_at = new Date().toISOString();
+  } else {
+    if (body.nodes !== undefined) update.nodes = body.nodes;
+    if (body.edges !== undefined) update.edges = body.edges;
+  }
   if (body.viewport !== undefined) update.viewport = body.viewport;
 
   const { data: flow, error } = await supabase

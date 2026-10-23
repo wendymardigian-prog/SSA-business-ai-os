@@ -38,18 +38,26 @@ export async function POST(
     .single();
 
   if (vErr || !version)
-    return NextResponse.json({ error: "Version not found" }, { status: 404 });
+    return NextResponse.json({ error: "No encontré esa versión." }, { status: 404 });
 
-  // Restore: copy nodes/edges/viewport back, set status to draft
+  const { data: current } = await supabase
+    .from("flows")
+    .select("status")
+    .eq("id", flowId)
+    .eq("workspace_id", membership.workspace_id)
+    .maybeSingle();
+  if (!current) return NextResponse.json({ error: "No encontré esa automatización." }, { status: 404 });
+
+  // Restaurar deja esa version como BORRADOR (auditoria de automatizaciones): en una automatizacion publicada va a los
+  // cambios sin publicar y lo que corre sigue igual hasta "Publicar cambios". Antes la pasaba a borrador y dejaba de
+  // correr sin avisar.
   const { error } = await supabase
     .from("flows")
-    .update({
-      nodes: version.nodes,
-      edges: version.edges,
-      viewport: version.viewport,
-      status: "draft",
-      updated_at: new Date().toISOString(),
-    })
+    .update(
+      current.status === "published"
+        ? { draft_nodes: version.nodes, draft_edges: version.edges, draft_updated_at: new Date().toISOString(), viewport: version.viewport }
+        : { nodes: version.nodes, edges: version.edges, viewport: version.viewport, updated_at: new Date().toISOString() },
+    )
     .eq("id", flowId)
     .eq("workspace_id", membership.workspace_id);
 

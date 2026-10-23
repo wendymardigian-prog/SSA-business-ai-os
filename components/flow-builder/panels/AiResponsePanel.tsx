@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { listAiProviders } from "@/lib/actions/integrations";
+import { VariableChips } from "./variable-chips";
 
 interface AiResponsePanelData {
   systemPrompt?: string;
@@ -25,6 +26,8 @@ interface ConnectedProvider {
 interface AiResponsePanelProps {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
+  /** Las variables que se resuelven en este paso (las instrucciones las aceptan). */
+  availableVariables?: string[];
 }
 
 /**
@@ -38,7 +41,7 @@ interface AiResponsePanelProps {
  * con la key en Vault). Si no hay ninguno, se dice y se explica donde
  * conectarlo, en vez de dejar configurar algo que no va a funcionar.
  */
-export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProps) {
+export function AiResponsePanel({ data: rawData, onChange, availableVariables }: AiResponsePanelProps) {
   const data = rawData as AiResponsePanelData;
   const [providers, setProviders] = useState<ConnectedProvider[] | null>(null);
 
@@ -70,7 +73,7 @@ export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProp
         {providers === null && (
           <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Buscando proveedores conectados...
+            Buscando proveedores conectados…
           </div>
         )}
 
@@ -79,10 +82,10 @@ export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProp
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
             <p>
               <span className="font-medium">
-                No hay ningun proveedor de IA conectado.
+                No hay ningún proveedor de IA conectado.
               </span>{" "}
-              Este nodo no va a poder generar respuestas hasta que conectes uno
-              en Ajustes &gt; Integraciones. El resto del flow funciona igual.
+              Este paso no va a poder generar respuestas hasta que conectes uno
+              en Ajustes &gt; Integraciones. El resto de la automatización funciona igual.
             </p>
           </div>
         )}
@@ -138,13 +141,15 @@ export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProp
         <textarea
           value={data.systemPrompt || ""}
           onChange={(e) => onChange({ ...data, systemPrompt: e.target.value })}
-          placeholder="Sos el asistente de este negocio. Responde breve y claro..."
+          placeholder="Sos el asistente de este negocio. Respondé breve y claro…"
           rows={8}
           className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         <p className="mt-1 text-[11px] text-muted-foreground/60">
-          Como tiene que comportarse y responder la IA.
+          Cómo tiene que comportarse y responder la IA. Podés usar variables: por ejemplo, el nombre del contacto o lo
+          que respondió en un formulario.
         </p>
+        <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, systemPrompt: `${data.systemPrompt ?? ""}${token}` })} hint="Tocá una variable para sumarla a las instrucciones." />
       </div>
 
       {/* Temperatura */}
@@ -171,7 +176,7 @@ export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProp
       {/* Largo maximo */}
       <div>
         <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-          Largo maximo de la respuesta
+          Largo máximo de la respuesta
         </label>
         <input
           type="number"
@@ -182,7 +187,7 @@ export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProp
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         <p className="mt-1 text-[11px] text-muted-foreground/60">
-          En tokens. 500 alcanza para un par de parrafos.
+          En tokens. 500 alcanza para un par de párrafos.
         </p>
       </div>
 
@@ -200,7 +205,7 @@ export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProp
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         <p className="mt-1 text-[11px] text-muted-foreground/60">
-          Cuantos mensajes anteriores de la conversacion se le pasan a la IA.
+          Cuántos mensajes anteriores de la conversación se le pasan a la IA. Sin conversación (un flujo de agenda o de formulario), ninguno.
         </p>
       </div>
 
@@ -213,11 +218,11 @@ export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProp
             onChange={(e) => onChange({ ...data, sendDirectly: e.target.checked })}
             className="h-3.5 w-3.5 rounded border-border text-blue-500 focus:ring-blue-500"
           />
-          Enviar la respuesta automaticamente
+          Enviar la respuesta automáticamente
         </label>
         <p className="mt-1 text-[11px] text-muted-foreground/60">
-          La respuesta siempre queda disponible para los nodos siguientes como{" "}
-          {"{{ai_response}}"}. Desactivalo si preferis mandarla vos con un nodo
+          La respuesta siempre queda disponible para los pasos siguientes como{" "}
+          {"{{ai_response}}"}. Desactivalo si preferís mandarla vos con un paso
           Enviar mensaje.
         </p>
       </div>

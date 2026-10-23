@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { X, Trash2, Zap, MessageSquare, GitBranch, Clock, Cog, Sparkles, Split, UserRoundPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Edge, Node } from "@xyflow/react";
@@ -16,8 +16,9 @@ import { BranchPanel } from "./BranchPanel";
 import { UpsertContactPanel } from "./UpsertContactPanel";
 import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
 import { flowSendsMessages } from "@/lib/webhooks/once-per-contact";
-import { isSalesTriggerType } from "@/lib/sales/automation/triggers";
-import { SALES_VARIABLE_KEYS } from "@/lib/sales/automation/variables";
+import { getConditionCatalogInputs } from "@/lib/actions/flow-conditions";
+import { chosenType } from "@/lib/flow-engine/trigger-catalog";
+import { pickerVariables } from "@/lib/flow-engine/variable-catalog";
 
 interface NodeConfigSidebarProps {
   /** El flujo que se edita (el panel de Condiciones le pide al servidor los campos comparables). */
@@ -34,6 +35,8 @@ interface NodeConfigSidebarProps {
   onDelete: (nodeId: string) => void;
   /** "Convertir a Condiciones" en un nodo `condition`. */
   onConvert?: (nodeId: string) => void;
+  /** Abre el selector de disparador. */
+  onChangeTrigger?: () => void;
 }
 
 // BFS backwards over edges; the visited set makes cycles terminate.
@@ -51,61 +54,65 @@ function getUpstreamNodeIds(nodeId: string, edges: Edge[]): Set<string> {
   return upstream;
 }
 
-import { CONTENT_VARIABLE_KEYS } from "@/lib/attribution/content-variables";
-
-function getFlowVariables({
-  node,
-  nodes,
-  edges,
-}: {
-  node: Node;
-  nodes: Node[];
-  edges: Edge[];
-}): string[] {
-  const variables = ["message"];
-
+/**
+ * Las variables que ofrece el selector en este paso: las del disparador (las fijas y las que manda el servidor), las
+ * de los pasos ANTERIORES y las del contacto y el negocio (lib/flow-engine/variable-catalog.ts).
+ */
+function getFlowVariables({ node, nodes, edges, schemaPaths }: { node: Node; nodes: Node[]; edges: Edge[]; schemaPaths: string[] }): string[] {
   const triggerNode = nodes.find((n) => n.type === "trigger");
-  const triggerType = (triggerNode?.data as Record<string, unknown> | undefined)
-    ?.triggerType as string | undefined;
-  if (triggerType === "comment_keyword") {
-    variables.push("comment_id", "comment_text", "commenter_name", "post_id", ...CONTENT_VARIABLE_KEYS);
-  }
-  // Ventas: la venta, el contacto y, si el disparador es de un pago, el pago (las mismas que ofrece el esquema de condiciones).
-  if (isSalesTriggerType(triggerType)) {
-    const isPayment = triggerType.startsWith("payment_");
-    for (const key of SALES_VARIABLE_KEYS) if (isPayment || !key.startsWith("payment.")) variables.push(key);
-  }
+  const triggerType = chosenType((triggerNode?.data ?? {}) as Record<string, unknown>);
 
-  // Producer-derived variables are only offered when the producing node runs before this one.
+  // Lo que escriben los pasos que corren ANTES que este.
   const upstreamIds = getUpstreamNodeIds(node.id, edges);
-
-  if (nodes.some((n) => canonicalNodeType({ type: n.type ?? "", data: n.data }) === "aiResponse" && upstreamIds.has(n.id))) {
-    variables.push("ai_response");
-  }
-
+  const upstreamOutputs: string[] = [];
+  let contactBefore = false;
   for (const n of nodes) {
-    // El canvas guarda el HTTP Request como `type: "action"` con el tipo real en `data.actionType`:
-    // mirar `n.type` solo nunca lo encontraba y la variable de su respuesta no se ofrecia.
-    if (canonicalNodeType({ type: n.type ?? "", data: n.data }) !== "httpRequest" || !upstreamIds.has(n.id)) continue;
-    const responseVariable = (n.data as Record<string, unknown>)
-      .responseVariable as string | undefined;
-    if (responseVariable && !variables.includes(responseVariable)) {
-      variables.push(responseVariable);
+    if (!upstreamIds.has(n.id)) continue;
+    const kind = canonicalNodeType({ type: n.type ?? "", data: n.data });
+    if (kind === "aiResponse") upstreamOutputs.push("ai_response");
+    if (kind === "upsert_contact") {
+      contactBefore = true;
+      upstreamOutputs.push("contact_result", "contact_fail_reason");
+    }
+    // El canvas guarda el HTTP Request como `type: "action"` con el tipo real en `data.actionType`.
+    if (kind === "httpRequest") {
+      const responseVariable = String((n.data as Record<string, unknown>).responseVariable ?? "").trim();
+      if (responseVariable) upstreamOutputs.push(responseVariable, `${responseVariable}_status`, `${responseVariable}_ok`);
     }
   }
 
-  return variables;
+  return pickerVariables({ triggerType, schemaPaths, upstreamOutputs, contactBefore });
+}
+
+/** Las rutas del esquema del disparador (las preguntas de un formulario, los datos de la reunion…), del servidor. */
+function useTriggerSchemaPaths(flowId: string, triggerData: Record<string, unknown> | undefined): string[] {
+  const [paths, setPaths] = useState<string[]>([]);
+  const key = JSON.stringify(triggerData ?? {});
+  useEffect(() => {
+    let alive = true;
+    getConditionCatalogInputs({ flowId, triggerData: JSON.parse(key) as Record<string, unknown> })
+      .then((res) => {
+        if (alive) setPaths(res.ok ? res.inputs.triggerSchema.map((f) => f.path) : []);
+      })
+      .catch(() => {
+        if (alive) setPaths([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [flowId, key]);
+  return paths;
 }
 
 const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: string; borderColor: string }> = {
   trigger: {
-    label: "Trigger",
+    label: "Disparador",
     icon: Zap,
     color: "bg-emerald-500",
     borderColor: "border-emerald-500",
   },
   sendMessage: {
-    label: "Send Message",
+    label: "Enviar mensaje",
     icon: MessageSquare,
     color: "bg-blue-500",
     borderColor: "border-blue-500",
@@ -129,27 +136,30 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
     borderColor: "border-teal-500",
   },
   delay: {
-    label: "Delay",
+    label: "Esperar",
     icon: Clock,
     color: "bg-purple-500",
     borderColor: "border-purple-500",
   },
   aiResponse: {
-    label: "AI Response",
+    label: "Respuesta con IA",
     icon: Sparkles,
     color: "bg-violet-500",
     borderColor: "border-violet-500",
   },
   action: {
-    label: "Action",
+    label: "Acción",
     icon: Cog,
-    color: "bg-muted0",
+    color: "bg-slate-500",
     borderColor: "border-muted-foreground",
   },
 };
 
-export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node, nodes, edges, onChange, onClose, onDelete, onConvert }: NodeConfigSidebarProps) {
+export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node, nodes, edges, onChange, onClose, onDelete, onConvert, onChangeTrigger }: NodeConfigSidebarProps) {
   const nodeType = node.type || "action";
+  const triggerNodeData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
+  const schemaPaths = useTriggerSchemaPaths(flowId, triggerNodeData);
+  const variables = useMemo(() => getFlowVariables({ node, nodes, edges, schemaPaths }), [node, nodes, edges, schemaPaths]);
   const config = nodeTypeConfig[nodeType] || nodeTypeConfig.action;
   const Icon = config.icon;
 
@@ -183,14 +193,14 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
     const triggerData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
     switch (nodeType) {
       case "trigger":
-        return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} sendsMessages={flowSendsMessages(nodes)} />;
+        return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} sendsMessages={flowSendsMessages(nodes)} onChangeTrigger={onChangeTrigger} />;
       case "sendMessage":
         return (
           <SendMessagePanel
             key={node.id}
             data={data}
             onChange={handleChange}
-            availableVariables={getFlowVariables({ node, nodes, edges })}
+            availableVariables={variables}
             attributionContext={
               attributionDefaults
                 ? {
@@ -213,13 +223,13 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
       case "delay":
         return <DelayPanel data={data} onChange={handleChange} />;
       case "aiResponse":
-        return <AiResponsePanel data={data} onChange={handleChange} />;
+        return <AiResponsePanel data={data} onChange={handleChange} availableVariables={variables} />;
       case "action":
-        return <ActionPanel data={data} onChange={handleChange} availableVariables={getFlowVariables({ node, nodes, edges })} />;
+        return <ActionPanel data={data} onChange={handleChange} availableVariables={variables} />;
       default:
         return (
           <p className="text-sm text-muted-foreground">
-            No configuration panel available for this node type.
+            Este paso no tiene nada para configurar.
           </p>
         );
     }
@@ -242,22 +252,27 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
           <div>
             <p className="text-sm font-semibold text-foreground">{config.label}</p>
             <p className="text-[11px] text-muted-foreground">
-              ID: {node.id.slice(0, 12)}...
+              ID: {node.id.slice(0, 12)}…
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onDelete(node.id)}
-            className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-500"
-            title="Delete node"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          {/* El disparador no se borra: toda automatizacion arranca por uno. Se cambia con "Cambiar disparador". */}
+          {nodeType !== "trigger" && (
+            <button
+              type="button"
+              onClick={() => onDelete(node.id)}
+              className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-500"
+              title="Borrar paso"
+              aria-label="Borrar paso"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
+            aria-label="Cerrar"
             className="rounded-lg p-1.5 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
           >
             <X className="h-4 w-4" />
@@ -268,7 +283,7 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
       {/* Node Label */}
       <div className="border-b border-border px-4 py-3">
         <label className="mb-1.5 block text-xs font-semibold text-foreground">
-          Node Name
+          Nombre del paso
         </label>
         <input
           type="text"

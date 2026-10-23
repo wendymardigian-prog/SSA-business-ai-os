@@ -3,6 +3,7 @@ import type { Database, Json } from "@/lib/types/database";
 import type { ContactFlowContext, FlowNode, FlowEdge, FlowExecutionContext } from "./types";
 import { getNode } from "./registry";
 import { messageOriginVariables } from "@/lib/messages/origin-context";
+import { seedContactVariables } from "./variable-catalog";
 import type { AutomationSource, FlowRuntime } from "./registry/types";
 
 /**
@@ -125,6 +126,11 @@ export async function executeFlow(
   const nodes = flow.nodes as unknown as FlowNode[];
   const edges = flow.edges as unknown as FlowEdge[];
 
+  // Los datos del contacto y del negocio como variables (`{{contact.display_name}}`, `{{workspace.name}}`), en TODOS
+  // los pasos. Antes solo los resolvian Enviar mensaje, Enviar email y Enviar recurso (con una segunda pasada propia);
+  // en una tarea, un aviso, una Llamada HTTP o el prompt de la IA quedaban como texto literal.
+  context.variables = await withContactVariables(supabase, context.variables, context.contactId, context.workspaceId);
+
   // Get channel platform and late_account_id. Sin canal (agenda, formularios, webhooks) no se pregunta: un `id=""`
   // es un error de uuid que solo ensuciaba el log.
   if (context.channelId) {
@@ -198,6 +204,31 @@ export async function executeFlow(
   }
 
   await runTraversal(supabase, session.id, startNode, nodes, edges, context);
+}
+
+/** Lee y siembra las variables del contacto y del negocio. Un fallo de lectura no frena el flujo: siguen sin sembrar. */
+async function withContactVariables(
+  supabase: SupabaseClient<Database>,
+  variables: Record<string, unknown>,
+  contactId: string | null,
+  workspaceId: string
+): Promise<Record<string, unknown>> {
+  try {
+    const [contact, workspace] = await Promise.all([
+      contactId
+        ? supabase.from("contacts").select("display_name, email, phone").eq("id", contactId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from("workspaces").select("name").eq("id", workspaceId).maybeSingle(),
+    ]);
+    return seedContactVariables(
+      variables,
+      (contact.data as { display_name?: string | null; email?: string | null; phone?: string | null } | null) ?? null,
+      (workspace.data as { name?: string | null } | null) ?? null
+    );
+  } catch (err) {
+    console.error("[flow-engine] no pude leer los datos del contacto para las variables:", err instanceof Error ? err.message : "error");
+    return variables;
+  }
 }
 
 /** Cuantos saltos de "Ir a otro flujo" seguidos se permiten antes de cortar. */

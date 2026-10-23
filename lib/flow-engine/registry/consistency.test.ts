@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { listNodes, resolveNodeType, listTriggers } from "./index";
 import { CONTACT_FREE_NODE_TYPES, MEMBER_TRIGGER_TYPES, SYSTEM_TRIGGER_TYPES } from "../contact-free";
 import { AUTOMATION_SOURCE_TYPES } from "./types";
 import { NODE_REQUIREMENTS } from "../node-requirements";
+import { TRIGGER_CATALOG, TRIGGER_GROUPS } from "../trigger-catalog";
 
 /**
  * Guardia contra la desincronizacion entre la UI y el motor.
@@ -66,40 +67,44 @@ describe("el simulador y el registro dicen lo mismo", () => {
   });
 });
 
-describe("el editor de triggers y el registro dicen lo mismo", () => {
-  const panel = leer("components/flow-builder/panels/TriggerPanel.tsx");
+describe("el catalogo de disparadores, el registro y la base dicen lo mismo", () => {
+  // Antes se leia con una expresion regular el array `triggerTypes` del panel. Desde la auditoria de automatizaciones
+  // el catalogo es un modulo propio (lib/flow-engine/trigger-catalog.ts) que usan el selector, el panel y el nodo.
+  const ofrecidos = TRIGGER_CATALOG.map((t) => t.type as string);
 
-  it("todo tipo de trigger que ofrece el editor esta registrado", () => {
-    // Solo el array triggerTypes: el panel tiene otras listas con la misma
-    // forma (los eventos de CRM, los tipos de coincidencia) que no son tipos
-    // de trigger.
-    const bloque = panel.match(/const triggerTypes[^=]*=\s*\[([\s\S]*?)\n\];/);
-    expect(bloque, "no encontre el array triggerTypes en el panel").not.toBeNull();
-
-    const tipos = [...bloque![1].matchAll(/value:\s*"([^"]+)"/g)].map((m) => m[1]);
-    expect(tipos.length).toBeGreaterThan(0);
-
+  it("todo tipo que ofrece el catalogo esta registrado", () => {
     const registrados = new Set(listTriggers().map((t) => t.type));
-    const desconocidos = tipos.filter((t) => !registrados.has(t));
-
-    expect(desconocidos, `el editor ofrece triggers sin registrar: ${desconocidos.join(", ")}`).toEqual(
-      []
-    );
+    const desconocidos = ofrecidos.filter((t) => !registrados.has(t));
+    expect(desconocidos, `el catalogo ofrece triggers sin registrar: ${desconocidos.join(", ")}`).toEqual([]);
   });
 
-  it("todo trigger registrado se puede configurar desde el editor", () => {
-    const bloque = panel.match(/const triggerTypes[^=]*=\s*\[([\s\S]*?)\n\];/);
-    const ofrecidos = new Set(
-      [...bloque![1].matchAll(/value:\s*"([^"]+)"/g)].map((m) => m[1])
-    );
-
+  it("todo trigger registrado esta en el catalogo (nadie queda sin poder configurarse)", () => {
+    const set = new Set(ofrecidos);
     const faltantes = listTriggers()
       .map((t) => t.type)
-      .filter((t) => !ofrecidos.has(t));
+      .filter((t) => !set.has(t));
+    expect(faltantes, `hay triggers que nadie puede configurar: ${faltantes.join(", ")}`).toEqual([]);
+  });
 
-    expect(faltantes, `hay triggers que nadie puede configurar: ${faltantes.join(", ")}`).toEqual(
-      []
-    );
+  it("el catalogo no repite tipos y cada uno es de un grupo que existe", () => {
+    expect(new Set(ofrecidos).size).toBe(ofrecidos.length);
+    const grupos = new Set(TRIGGER_GROUPS.map((g) => g.key));
+    for (const entry of TRIGGER_CATALOG) expect(grupos.has(entry.group), entry.type).toBe(true);
+  });
+
+  it("el CHECK vigente de triggers.type en la base acepta exactamente los tipos del catalogo", () => {
+    const dir = resolve(__dirname, "../../../supabase/migrations");
+    const files = readdirSync(dir).filter((f) => /^\d{5}_.*\.sql$/.test(f)).sort();
+    let ultimo: string | null = null;
+    for (const file of files) {
+      // Sin los comentarios: las cabeceras copian la definicion vieja para poder volver atras.
+      const sql = readFileSync(resolve(dir, file), "utf8").replace(/--.*$/gm, "");
+      const matches = [...sql.matchAll(/ADD CONSTRAINT triggers_type_check([\s\S]*?);/gi)];
+      if (matches.length > 0) ultimo = matches[matches.length - 1][1];
+    }
+    expect(ultimo, "no encontre el CHECK de triggers.type en las migraciones").not.toBeNull();
+    const enLaBase = [...ultimo!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+    expect(enLaBase).toEqual([...ofrecidos].sort());
   });
 });
 

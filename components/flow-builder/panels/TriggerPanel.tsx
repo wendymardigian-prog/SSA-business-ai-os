@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { STATUS_ROLES, STATUS_ROLE_LABELS, isStatusRole, parseStatusSettings, statusName, type ContactStatusSettings, type StatusRole } from "@/lib/contacts/statuses";
 import { Plus, X } from "lucide-react";
@@ -11,8 +11,8 @@ import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric";
 import { FormTriggerPanel } from "./FormTriggerPanel";
 import { WebhookTriggerPanel } from "./WebhookTriggerPanel";
 import { TaskTriggerPanel } from "./TaskTriggerPanel";
-import { SALES_FILTER_KEYS, SalesTriggerPanel } from "./SalesTriggerPanel";
-import { SALES_PRESETS, presetFor } from "@/lib/sales/automation/presets";
+import { SalesTriggerPanel } from "./SalesTriggerPanel";
+import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 
 interface Keyword {
   value: string;
@@ -51,52 +51,10 @@ interface TriggerPanelProps {
   flowId?: string;
   /** El flujo tiene un paso que le manda algo a la persona (el webhook sugiere «una sola vez por contacto»). */
   sendsMessages?: boolean;
+  /** Abre el selector de disparador ("Cambiar disparador"). */
+  onChangeTrigger?: () => void;
 }
 
-const triggerTypes: Array<{ value: TriggerType; label: string; description: string }> = [
-  { value: "keyword", label: "Palabra clave", description: "Cuando el lead escribe una palabra que coincide" },
-  { value: "postback", label: "Clic en un boton", description: "Cuando el lead toca un boton del mensaje" },
-  { value: "quick_reply", label: "Respuesta rapida", description: "Cuando el lead toca una respuesta rapida" },
-  { value: "welcome", label: "Primer mensaje", description: "La primera vez que el lead escribe" },
-  { value: "default", label: "Respuesta por defecto", description: "Cuando ningun otro trigger coincide" },
-  { value: "comment_keyword", label: "Palabra clave en comentarios", description: "Por palabras clave en los comentarios de una publicacion" },
-  { value: "new_contact", label: "Contacto nuevo", description: "Cuando se crea un contacto, venga de donde venga (mensaje, import o alta manual)" },
-  { value: "crm_event", label: "Evento del CRM", description: "Cuando cambia algo del contacto: un tag, un campo, el setter o el vendedor" },
-  { value: "inactivity", label: "Inactividad", description: "Cuando pasan X horas sin que el lead conteste" },
-  { value: "email_received", label: "Email recibido", description: "Cuando entra un correo a la direccion del negocio" },
-  // Etapa 4: agenda. Los tres ultimos se calculan contra la hora de la
-  // reunion, asi que piden ademas cuanto antes o cuanto despues.
-  { value: "booking_created", label: "Se agendo una reunion", description: "Cuando alguien agenda, por el link, a mano, por el embed o por el agente" },
-  { value: "booking_rescheduled", label: "Cambiaron la fecha", description: "Cuando una reunion se mueve a otro horario" },
-  { value: "booking_cancelled", label: "Se cancelo", description: "Cuando se cancela una reunion" },
-  { value: "booking_updated", label: "Se edito la reunion", description: "Cuando cambia la ubicacion o las notas" },
-  { value: "booking_ended", label: "Termino la reunion", description: "Cuando pasa la hora de fin y la reunion no quedo cancelada" },
-  { value: "booking_status_changed", label: "Cambio el estado", description: "Cuando la reunion pasa a otro estado (no-show, venta, seguimiento...)" },
-  { value: "booking_before_start", label: "Antes de la reunion", description: "Un recordatorio antes de la hora de inicio" },
-  { value: "booking_after_end", label: "Despues de la reunion", description: "Un seguimiento despues de la hora de fin" },
-  { value: "booking_after_created", label: "Despues de agendar", description: "Un mensaje un rato despues de que agendaron" },
-  // Llamadas: solo se dispara si la llamada tiene contacto.
-  { value: "call_analyzed", label: "Se analizo una llamada", description: "Cuando una llamada con contacto queda analizada (nueva o regenerada)" },
-  { value: "call_linked", label: "Se vinculo una llamada", description: "Cuando una llamada se vincula a un contacto, sola o a mano" },
-  // Formularios: solo se dispara si la respuesta tiene contacto.
-  { value: "form_submitted", label: "Se envio un formulario", description: "Cuando alguien envia un formulario personalizado" },
-  { value: "survey_answered", label: "Se respondio una encuesta", description: "Cuando alguien responde una encuesta, con su puntaje" },
-  { value: "contract_signed", label: "Se firmo un contrato", description: "Cuando alguien firma un contrato" },
-  // Ventas: un cambio de estado = un evento. En la lista se muestran como atajos (SALES_PRESETS), no como estos seis.
-  { value: "sale_created", label: "Venta creada", description: "Cuando se carga una venta nueva" },
-  { value: "sale_status_changed", label: "Cambio el estado de la venta", description: "Cuando una venta pasa a otro estado (cancelada, pagada, con mora...)" },
-  { value: "payment_created", label: "Pago creado", description: "Cuando se crea un pago: programado, cobrado o un reembolso" },
-  { value: "payment_status_changed", label: "Cambio el estado del pago", description: "Cuando un pago pasa a cobrado, moroso, incobrable..." },
-  { value: "payment_before_due", label: "Antes de un vencimiento", description: "Un recordatorio X dias antes de que venza un pago" },
-  { value: "payment_after_due", label: "Despues de un vencimiento impago", description: "Un aviso X dias despues del vencimiento si el pago sigue sin cobrarse" },
-  // Reporte de fin de dia (E16): el flujo es sobre la persona del equipo que lo envio, no sobre un contacto.
-  { value: "eod_submitted", label: "Se envio un reporte de fin de dia", description: "Cuando alguien del equipo envia su reporte del dia (sin contacto: no manda mensajes por chat)" },
-  // Tareas (F25): con contacto, el de la tarea; sin el, corre sobre la persona del equipo a cargo.
-  { value: "task_completed", label: "Se completo una tarea", description: "Cuando alguien completa una tarea. Si la tarea no tiene contacto, el flujo corre sin contacto" },
-  { value: "task_overdue", label: "Una tarea quedo vencida", description: "Cuando una tarea con responsable o seguidores vence sin completarse (una vez por vencimiento)" },
-  // Webhooks entrantes (Extra L): arranca sin contacto; el paso "Crear o actualizar contacto" lo consigue.
-  { value: "webhook_received", label: "Webhook recibido", description: "Cuando un formulario externo (Typeform, Tally, Framer…) manda datos a tu URL. Arranca sin contacto: lo creás o actualizás con un paso" },
-];
 
 /** Los nueve de agenda, para mostrar sus filtros. */
 const BOOKING_TRIGGERS = [
@@ -135,13 +93,13 @@ const OFFSETS = [
   { minutes: 60, label: "1 hora" },
   { minutes: 120, label: "2 horas" },
   { minutes: 240, label: "4 horas" },
-  { minutes: 1440, label: "1 dia" },
-  { minutes: 2880, label: "2 dias" },
+  { minutes: 1440, label: "1 día" },
+  { minutes: 2880, label: "2 días" },
   { minutes: 10080, label: "1 semana" },
 ];
 
 const ORIGINS = [
-  { value: "public_page", label: "Link publico" },
+  { value: "public_page", label: "Link público" },
   { value: "embed", label: "Embed" },
   { value: "manual", label: "A mano" },
   { value: "agent", label: "Agente de IA" },
@@ -156,24 +114,26 @@ const BY_WHOM = [
 
 /** Los eventos del CRM que pueden disparar un flow (F4). */
 const CRM_EVENTS: Array<{ value: string; label: string; valueLabel: string; valuePlaceholder: string }> = [
-  { value: "tag_added", label: "Se agrego un tag", valueLabel: "Solo este tag", valuePlaceholder: "interesado" },
-  { value: "tag_removed", label: "Se quito un tag", valueLabel: "Solo este tag", valuePlaceholder: "interesado" },
-  { value: "field_changed", label: "Cambio un campo personalizado", valueLabel: "Solo este campo", valuePlaceholder: "presupuesto" },
-  { value: "assignment_changed", label: "Se asigno setter o vendedor", valueLabel: "Solo este rol", valuePlaceholder: "vendedor" },
-  { value: "do_not_contact", label: 'Se marco "no contactar"', valueLabel: "Solo por este motivo", valuePlaceholder: "" },
+  { value: "tag_added", label: "Se agregó una etiqueta", valueLabel: "Solo esta etiqueta", valuePlaceholder: "interesado" },
+  { value: "tag_removed", label: "Se quitó una etiqueta", valueLabel: "Solo esta etiqueta", valuePlaceholder: "interesado" },
+  { value: "field_changed", label: "Cambió un campo personalizado", valueLabel: "Solo este campo", valuePlaceholder: "presupuesto" },
+  { value: "assignment_changed", label: "Se asignó setter o vendedor", valueLabel: "Solo este rol", valuePlaceholder: "vendedor" },
+  { value: "do_not_contact", label: 'Se marcó "no contactar"', valueLabel: "Solo por este motivo", valuePlaceholder: "" },
   // Pipeline (00245): el valor lo arma su propio selector (rol, o rol:estado).
-  { value: "status_changed", label: "Cambio el estado del contacto", valueLabel: "Que estado", valuePlaceholder: "" },
+  { value: "status_changed", label: "Cambió el estado del contacto", valueLabel: "Qué estado", valuePlaceholder: "" },
 ];
 
 const matchTypes: Array<{ value: "exact" | "contains" | "startsWith"; label: string }> = [
-  { value: "exact", label: "Exact match" },
-  { value: "contains", label: "Contains" },
-  { value: "startsWith", label: "Starts with" },
+  { value: "exact", label: "Exacta" },
+  { value: "contains", label: "Contiene" },
+  { value: "startsWith", label: "Empieza con" },
 ];
 
-export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }: TriggerPanelProps) {
+export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, onChangeTrigger }: TriggerPanelProps) {
   const data = rawData as TriggerPanelData;
-  const triggerType = data.triggerType || "keyword";
+  // `null` = todavia no se eligio (asi nace una automatizacion). Un nodo viejo sin la clave es palabra clave.
+  const triggerType = chosenType(data) ?? "";
+  const entry = triggerEntry(triggerType);
   // Con `data.keywords || []` el array es nuevo en cada render, asi que los
   // useCallback que dependen de el se rehacian siempre (tres warnings del
   // linter). El useMemo lo estabiliza mientras la lista no cambie.
@@ -181,36 +141,22 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
   const [newKeyword, setNewKeyword] = useState("");
   const [newMatchType, setNewMatchType] = useState<"exact" | "contains" | "startsWith">("contains");
 
-  const handleTriggerTypeChange = useCallback(
-    (type: string) => {
-      onChange({ ...data, triggerType: type });
-    },
-    [data, onChange]
-  );
-
-  const addKeyword = useCallback(() => {
+  // Funciones comunes: el React Compiler ya las memoiza (con useCallback a mano el compilador se salteaba el panel).
+  const addKeyword = () => {
     const trimmed = newKeyword.trim();
     if (!trimmed) return;
     const updated: Keyword[] = [...keywords, { value: trimmed, matchType: newMatchType }];
     onChange({ ...data, keywords: updated });
     setNewKeyword("");
-  }, [data, keywords, newKeyword, newMatchType, onChange]);
+  };
 
-  const removeKeyword = useCallback(
-    (index: number) => {
-      const updated = keywords.filter((_, i) => i !== index);
-      onChange({ ...data, keywords: updated });
-    },
-    [data, keywords, onChange]
-  );
+  const removeKeyword = (index: number) => {
+    onChange({ ...data, keywords: keywords.filter((_, i) => i !== index) });
+  };
 
-  const updateKeywordMatchType = useCallback(
-    (index: number, matchType: "exact" | "contains" | "startsWith") => {
-      const updated = keywords.map((k, i) => (i === index ? { ...k, matchType } : k));
-      onChange({ ...data, keywords: updated });
-    },
-    [data, keywords, onChange]
-  );
+  const updateKeywordMatchType = (index: number, matchType: "exact" | "contains" | "startsWith") => {
+    onChange({ ...data, keywords: keywords.map((k, i) => (i === index ? { ...k, matchType } : k)) });
+  };
 
   const showKeywords = triggerType === "keyword" || triggerType === "comment_keyword";
   const showPayload = triggerType === "postback" || triggerType === "quick_reply";
@@ -218,74 +164,20 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
 
   return (
     <div className="space-y-5">
-      {/* Trigger Type */}
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-foreground">
-          Trigger Type
-        </label>
-        <div className="space-y-1.5">
-          {triggerTypes.filter((t) => !SALES_TRIGGERS.includes(t.value)).map((t) => (
-            <label
-              key={t.value}
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
-                triggerType === t.value
-                  ? "border-emerald-500 bg-emerald-50"
-                  : "border-border bg-card hover:border-input"
-              )}
-            >
-              <input
-                type="radio"
-                name="triggerType"
-                value={t.value}
-                checked={triggerType === t.value}
-                onChange={() => handleTriggerTypeChange(t.value)}
-                className="mt-0.5 h-4 w-4 border-input text-emerald-500 focus:ring-emerald-500"
-              />
-              <div>
-                <p className="text-sm font-medium text-foreground">{t.label}</p>
-                <p className="text-xs text-muted-foreground">{t.description}</p>
-              </div>
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* Ventas: los atajos (presets) del selector. Cada uno guarda el tipo y deja elegida su configuracion. */}
-      <div>
-        <label className="mb-2 block text-xs font-semibold text-foreground">Ventas y pagos</label>
-        <div className="space-y-1.5">
-          {SALES_PRESETS.map((preset) => {
-            const selected = SALES_TRIGGERS.includes(triggerType) && presetFor(triggerType, data)?.key === preset.key;
-            return (
-              <label
-                key={preset.key}
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
-                  selected ? "border-emerald-500 bg-emerald-50" : "border-border bg-card hover:border-input"
-                )}
-              >
-                <input
-                  type="radio"
-                  name="triggerType"
-                  value={preset.key}
-                  checked={selected}
-                  onChange={() => {
-                    // Un atajo nuevo arranca de cero: no arrastra los filtros del anterior.
-                    const next: Record<string, unknown> = { ...data };
-                    for (const key of SALES_FILTER_KEYS) delete next[key];
-                    onChange({ ...next, ...preset.config, triggerType: preset.type, ...(preset.type.endsWith("_due") ? { offset_days: 3, at_time: "09:00" } : {}) });
-                  }}
-                  className="mt-0.5 h-4 w-4 border-input text-emerald-500 focus:ring-emerald-500"
-                />
-                <div>
-                  <p className="text-sm font-medium text-foreground">{preset.label}</p>
-                  <p className="text-xs text-muted-foreground">{preset.description}</p>
-                </div>
-              </label>
-            );
-          })}
-        </div>
+      {/* El disparador elegido. Se elige (y se cambia) en el selector, no en una lista larga dentro del panel. */}
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Disparador</p>
+        <p className="mt-1 text-sm font-semibold text-foreground">{triggerDisplayLabel(data)}</p>
+        {entry ? <p className="mt-0.5 text-xs text-muted-foreground">{entry.description}</p> : <p className="mt-0.5 text-xs text-muted-foreground">Todavía no elegiste cómo arranca esta automatización.</p>}
+        {onChangeTrigger && (
+          <button
+            type="button"
+            onClick={onChangeTrigger}
+            className="mt-3 inline-flex items-center rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
+          >
+            {triggerType ? "Cambiar disparador" : "Elegir disparador"}
+          </button>
+        )}
       </div>
 
       {SALES_TRIGGERS.includes(triggerType) && <SalesTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
@@ -294,7 +186,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
       {showKeywords && (
         <div>
           <label className="mb-2 block text-xs font-semibold text-foreground">
-            Keywords
+            Palabras clave
           </label>
 
           {/* Existing keywords */}
@@ -345,7 +237,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
                   addKeyword();
                 }
               }}
-              placeholder="Enter keyword..."
+              placeholder="Escribí una palabra o frase…"
               className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
             <select
@@ -371,7 +263,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
 
           {keywords.length === 0 && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Add keywords that will trigger this flow. Press Enter or click + to add.
+              Agregá las palabras que disparan esta automatización. Enter o + para sumar cada una. No importan las mayúsculas ni las tildes.
             </p>
           )}
 
@@ -387,16 +279,16 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
                 className="mt-0.5 h-4 w-4 rounded border-input text-emerald-500 focus:ring-emerald-500 disabled:opacity-40"
               />
               <div>
-                <p className="text-sm font-medium text-foreground">Also match in DMs</p>
+                <p className="text-sm font-medium text-foreground">También por mensaje directo</p>
                 <p className="text-xs text-muted-foreground">
                   {keywords.length === 0
-                    ? "Add at least one keyword to use this."
-                    : "Run this flow when someone sends a keyword as a direct message, not just as a comment."}
+                    ? "Agregá al menos una palabra para usar esto."
+                    : "La automatización también corre cuando alguien manda la palabra por mensaje directo, no solo en un comentario."}
                 </p>
                 {data.alsoMatchInDms === true && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    A DM has no comment behind it, so public replies and the comment
-                    variables ({"{{comment_text}}"}, {"{{post_id}}"}) are empty on that run.
+                    Un mensaje directo no tiene un comentario detrás: la respuesta pública y las variables del comentario
+                    ({"{{comment_text}}"}, {"{{post_id}}"}) quedan vacías en esa corrida.
                   </p>
                 )}
               </div>
@@ -420,8 +312,8 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
                 Solo respuestas a historias
               </span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                El flow corre unicamente cuando la palabra llega respondiendo una
-                historia de Instagram. Un DM comun con la misma palabra no lo
+                La automatización corre únicamente cuando la palabra llega respondiendo una
+                historia de Instagram. Un mensaje común con la misma palabra no la
                 dispara.
               </span>
             </span>
@@ -442,8 +334,8 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
             <span>
               <span className="font-medium text-foreground">Solo si vino de un anuncio</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                Corre unicamente cuando el mensaje llega desde un anuncio (el primer mensaje despues del clic). Dentro del
-                flujo podes usar {"{{message_origin.ad_title}}"} y {"{{message_origin.ad_id}}"}.
+                Corre únicamente cuando el mensaje llega desde un anuncio (el primer mensaje después del clic). Dentro de la
+                automatización podés usar {"{{message_origin.ad_title}}"} y {"{{message_origin.ad_id}}"}.
               </span>
             </span>
           </label>
@@ -457,7 +349,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
             <span>
               <span className="font-medium text-foreground">Solo menciones en historias</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                Corre unicamente cuando alguien menciona tu cuenta en SU historia de Instagram.
+                Corre únicamente cuando alguien menciona tu cuenta en SU historia de Instagram. Sin palabras clave cargadas, la mención sola alcanza.
               </span>
             </span>
           </label>
@@ -469,7 +361,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
         <div className="space-y-3">
           <div>
             <label className="mb-2 block text-xs font-semibold text-foreground">
-              Que tiene que pasar
+              Qué tiene que pasar
             </label>
             <select
               value={data.event ?? CRM_EVENTS[0].value}
@@ -499,7 +391,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
               className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
             <p className="mt-1 text-[11px] text-muted-foreground/60">
-              Dejalo vacio para que dispare con cualquier valor.
+              Dejalo vacío para que dispare con cualquier valor.
             </p>
           </div>
           )}
@@ -512,7 +404,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
           {RELATIVE_TRIGGERS.includes(triggerType) && (
             <div>
               <label className="mb-2 block text-xs font-semibold text-foreground">
-                {triggerType === "booking_before_start" ? "Cuanto antes de la reunion" : "Cuanto despues"}
+                {triggerType === "booking_before_start" ? "Cuánto antes de la reunión" : "Cuánto después"}
               </label>
               <select
                 value={String(data.offset_minutes ?? 1440)}
@@ -526,7 +418,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
                 ))}
               </select>
               <p className="mt-1 text-[11px] text-muted-foreground/60">
-                Si la reunion se mueve, el aviso se reprograma solo.
+                Si la reunión se mueve, el aviso se reprograma solo.
               </p>
             </div>
           )}
@@ -692,7 +584,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
       {triggerType === "inactivity" && (
         <div>
           <label className="mb-2 block text-xs font-semibold text-foreground">
-            Cuanto esperar sin respuesta
+            Cuánto esperar sin respuesta
           </label>
           <div className="flex gap-2">
             <input
@@ -712,7 +604,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
               className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
               <option value="hours">horas</option>
-              <option value="days">dias</option>
+              <option value="days">días</option>
             </select>
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground/60">
@@ -737,11 +629,11 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
             className="mt-0.5 h-4 w-4 rounded border-input text-emerald-500 focus:ring-emerald-500"
           />
           <span>
-            <span className="block text-sm font-medium text-foreground">Solo si el agente de IA esta apagado</span>
+            <span className="block text-sm font-medium text-foreground">Solo si el agente de IA está apagado</span>
             <span className="mt-0.5 block text-xs text-muted-foreground">
               {triggerType === "default"
-                ? "Recomendado: sin esto, este flow responde todos los mensajes y el agente nunca contesta."
-                : "El flow no arranca en las conversaciones que esta atendiendo el agente."}
+                ? "Recomendado: sin esto, esta automatización responde todos los mensajes y el agente nunca contesta."
+                : "La automatización no arranca en las conversaciones que está atendiendo el agente."}
             </span>
           </span>
         </label>
@@ -751,17 +643,17 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }:
       {showPayload && (
         <div>
           <label className="mb-2 block text-xs font-semibold text-foreground">
-            Payload
+            Valor del botón (payload)
           </label>
           <input
             type="text"
             value={data.payload || ""}
             onChange={(e) => onChange({ ...data, payload: e.target.value })}
-            placeholder="Enter payload value..."
+            placeholder="Por ejemplo: QUIERO_INFO"
             className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            The payload value to match when a {triggerType === "postback" ? "button is clicked" : "quick reply is tapped"}.
+            El valor que tiene que traer {triggerType === "postback" ? "el botón que toca el lead" : "la respuesta rápida que toca el lead"}. Solo Instagram: en WhatsApp las opciones llegan como lista numerada.
           </p>
         </div>
       )}

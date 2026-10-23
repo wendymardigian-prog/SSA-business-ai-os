@@ -15,7 +15,8 @@ vi.mock("@/lib/sales/automation/relative", () => ({ backfillPaymentRelativeJobs:
 import { POST } from "./route";
 
 const WS = "ws-1";
-const trigger = (triggerType: string) => ({ id: "t", type: "trigger", data: { triggerType } });
+// Una palabra clave necesita al menos una palabra para publicarse (auditoria de automatizaciones).
+const trigger = (triggerType: string) => ({ id: "t", type: "trigger", data: { triggerType, ...(triggerType === "keyword" ? { keywords: [{ value: "hola", matchType: "contains" }] } : {}) } });
 const whatsapp = { id: "m", type: "sendMessage", data: { label: "Enviar WhatsApp", messages: [] } };
 const upsert = { id: "u", type: "upsert_contact", data: {} };
 
@@ -113,7 +114,8 @@ describe("POST /api/v1/flows/[flowId]/publish: una accion sin su conexion no se 
   });
 
   it("un paso bloqueado que no se alcanza desde el disparador no frena la publicacion", async () => {
-    const db = setup([trigger("keyword"), email], []);
+    // El disparador necesita un paso conectado; el email suelto, sin Resend, no se alcanza y no frena nada.
+    const db = setup([trigger("keyword"), whatsapp, email], [{ id: "e1", source: "t", target: "m" }]);
     expect((await publish()).status).toBe(200);
     expect(db.rows("flows")[0].status).toBe("published");
   });

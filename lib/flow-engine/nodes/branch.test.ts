@@ -226,9 +226,13 @@ describe("carga lo justo: cada cosa una sola vez y solo si hace falta", () => {
     return reads;
   }
 
+  // El motor lee el contacto UNA vez al arrancar, para sembrar `{{contact.*}}` (auditoria de automatizaciones). Lo que
+  // se mide aca es lo que lee el paso «Condiciones» por encima de eso.
+  const SEED_READS = 1;
+
   it("solo con respuestas del formulario, no lee el contacto", async () => {
     const reads = await tablesRead(world({ answer: FACT[2] }));
-    expect(reads.filter((t) => t === "contacts")).toHaveLength(0);
+    expect(reads.filter((t) => t === "contacts")).toHaveLength(SEED_READS);
     expect(reads.filter((t) => t === "form_submissions")).toHaveLength(1);
   });
 
@@ -239,7 +243,7 @@ describe("carga lo justo: cada cosa una sola vez y solo si hace falta", () => {
     ];
     const db = world({ answer: FACT[2], paths, contact: { contact_tags: [{ tag_id: "t", tags: { name: "vip" } }] } });
     const reads = await tablesRead(db);
-    expect(reads.filter((t) => t === "contacts")).toHaveLength(1);
+    expect(reads.filter((t) => t === "contacts")).toHaveLength(SEED_READS + 1);
   });
 
   it("un campo que miran dos caminos se resuelve una sola vez", async () => {

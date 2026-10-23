@@ -4,6 +4,7 @@ import type { SendEmailNodeData } from "@/lib/flow-engine/nodes/send-email";
 import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
 import { InsertAssetButton } from "@/components/response-assets/insert-asset-button";
+import { VariableChips } from "./variable-chips";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -46,7 +47,7 @@ export function SendEmailPanel({
         )}
         {mode === "variable" && (
           <>
-            <input aria-label="Variable con la dirección" type="text" value={data.toVariable ?? ""} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{webhook.body.email}}" className={`${inputClass} mt-2 font-mono`} />
+            <input aria-label="Variable con la dirección" type="text" value={data.toVariable ?? ""} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{webhook.payload.email}}" className={`${inputClass} mt-2 font-mono`} />
             <p className="mt-1.5 text-xs text-muted-foreground">Si la variable está vacía o no es un email válido, el paso se saltea y queda anotado. Si la dirección es de un contacto marcado «no contactar», no se manda.</p>
           </>
         )}
@@ -59,6 +60,7 @@ export function SendEmailPanel({
           <FieldEmojiButton targetId="em-subject" value={data.subject ?? ""} onChange={(subject) => set({ subject })} />
         </div>
         <input id="em-subject" type="text" value={data.subject ?? ""} onChange={(e) => set({ subject: e.target.value })} className={inputClass} />
+        <VariableChips variables={availableVariables} onInsert={(token) => set({ subject: `${data.subject ?? ""}${token}` })} hint="Tocá una variable para sumarla al asunto." />
       </div>
 
       <div>

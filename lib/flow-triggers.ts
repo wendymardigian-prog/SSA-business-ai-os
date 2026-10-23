@@ -1,6 +1,7 @@
 import type { Json, TriggerType } from "@/lib/types/database";
 import { getTrigger, listTriggers } from "@/lib/flow-engine/registry";
 import { triggerConfigDefaults } from "@/lib/flow-engine/trigger-defaults";
+import { chosenType } from "@/lib/flow-engine/trigger-catalog";
 
 /**
  * Los tipos que el editor sabe configurar con campos propios (palabras clave,
@@ -76,8 +77,10 @@ export function buildDesiredTriggers(
     .flatMap((n) => {
       const data = (n.data ?? {}) as Record<string, any>;
       const nodeConfig = (data.config ?? {}) as Record<string, any>;
-      const type = (data.triggerType ?? "keyword") as string;
-      if (!isPersistableTriggerType(type)) return [];
+      // `null` = el disparador todavia no se eligio (asi nace una automatizacion): no hay fila. Un nodo viejo SIN la clave
+      // sigue siendo palabra clave, como lo guardaba el lienzo de antes.
+      const type = chosenType(data);
+      if (!type || !isPersistableTriggerType(type)) return [];
 
       // The trigger panel stores keywords as data.keywords ([{ value, matchType }]);
       // template-seeded nodes store data.config.keywords ([string]). The matcher
