@@ -1,0 +1,50 @@
+{
+  "_doc": "Respaldo previo a la 00250_retire_inbox_keys (22/10/2026): los roles personalizados que tenian claves inbox.* o scopes.conversations, con su jsonb completo tal como estaba. Para volver atras, restaurar permissions de cada id.",
+  "roles": [
+    {
+      "id": "7a187bff-a102-476c-818d-f4008d0b3110",
+      "name": "Content Manager",
+      "permissions": {
+        "channels": {
+          "all": {
+            "reply": true,
+            "scope": "all"
+          },
+          "mode": "all"
+        },
+        "keys": [
+          "webhooks.manage",
+          "contacts.assign",
+          "knowledge.view",
+          "content.view",
+          "content.publish",
+          "dashboards.chat.view",
+          "contacts.edit",
+          "inbox.email.view",
+          "inbox.whatsapp.view",
+          "dashboards.content.view",
+          "contacts.view",
+          "agents.view",
+          "social.view",
+          "content.approve",
+          "ai_costs.view",
+          "content.create",
+          "flows.edit",
+          "inbox.email.reply",
+          "inbox.instagram.reply",
+          "flows.view",
+          "content.ai",
+          "inbox.instagram.view",
+          "inbox.whatsapp.reply",
+          "flows.publish"
+        ],
+        "scopes": {
+          "bookings": "own",
+          "conversations": "all",
+          "leads": "all"
+        }
+      },
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    }
+  ]
+}

@@ -5,15 +5,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 
-const { getAdminContext, createServiceClient } = vi.hoisted(() => ({
+const { getAdminContext, createServiceClient, syncSocialAccounts } = vi.hoisted(() => ({
   getAdminContext: vi.fn(),
   createServiceClient: vi.fn(),
+  syncSocialAccounts: vi.fn(),
 }));
 
 // Equipo y roles: el guard ahora se llama por permiso; el mismo mock responde a las tres formas.
 vi.mock("@/lib/auth/guards", () => ({ getAdminContext, getPermissionAction: getAdminContext, getAnyPermissionAction: getAdminContext }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// La sincronizacion de cuentas tiene sus propios tests (accounts-zernio.test.ts): aca solo importa que corra antes.
+vi.mock("@/lib/social/accounts", () => ({ syncSocialAccounts }));
 
 import { refreshMetricsNow } from "./metrics";
 
@@ -36,6 +39,7 @@ const queuedFor = (db: ReturnType<typeof memoryDb>) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  syncSocialAccounts.mockResolvedValue({ warnings: [] });
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
 });
@@ -114,5 +118,51 @@ describe("refreshMetricsNow por red", () => {
 
     expect(result.ok).toBe(false);
     expect(createServiceClient).not.toHaveBeenCalled();
+  });
+});
+
+describe("refreshMetricsNow trae las cuentas nuevas", () => {
+  it("una segunda Instagram conectada en Zernio despues aparece y se lee al apretar Actualizar", async () => {
+    const db = setup([{ id: "sa-ig-1", platform: "instagram", profile_synced_at: minutesAgo(1) }]);
+    // Lo que haria la sincronizacion real: Zernio ya lista la segunda cuenta.
+    syncSocialAccounts.mockImplementation(async (client: typeof db.client) => {
+      await client
+        .from("social_accounts")
+        .insert({ id: "sa-ig-2", workspace_id: WS, platform: "instagram", is_active: true, profile_synced_at: null });
+      return { warnings: [] };
+    });
+
+    const result = await refreshMetricsNow("instagram");
+
+    expect(syncSocialAccounts).toHaveBeenCalledWith(db.client, WS);
+    expect(result).toEqual({ ok: true, queued: 1 });
+    expect(queuedFor(db)).toEqual(["sa-ig-2"]);
+  });
+
+  it("lo que la sincronizacion tiene para decir vuelve como aviso", async () => {
+    setup([{ id: "sa-yt", platform: "youtube", profile_synced_at: null }]);
+    syncSocialAccounts.mockResolvedValue({ warnings: ["No pude guardar @marca_academia de Instagram."] });
+
+    const result = await refreshMetricsNow("youtube");
+
+    expect(result).toEqual({ ok: true, queued: 1, warnings: ["No pude guardar @marca_academia de Instagram."] });
+  });
+
+  it("si la sincronizacion falla, las cuentas que ya estaban se actualizan igual", async () => {
+    const db = setup([{ id: "sa-yt", platform: "youtube", profile_synced_at: null }]);
+    syncSocialAccounts.mockRejectedValue(new Error("caida"));
+
+    const result = await refreshMetricsNow("youtube");
+
+    expect(result).toEqual({ ok: true, queued: 1 });
+    expect(queuedFor(db)).toEqual(["sa-yt"]);
+  });
+
+  it("un Member no dispara la sincronizacion", async () => {
+    getAdminContext.mockResolvedValue(null);
+
+    await refreshMetricsNow("instagram");
+
+    expect(syncSocialAccounts).not.toHaveBeenCalled();
   });
 });

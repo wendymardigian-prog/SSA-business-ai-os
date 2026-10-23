@@ -187,9 +187,10 @@ export function ContentDashboard(props: ContentDashboardProps) {
     start(async () => {
       const result = await refreshMetricsNow(props.platform);
       setNotice(
-        result.ok
-          ? "Se esta actualizando. Recarga en un minuto para ver los datos nuevos."
-          : result.error,
+        [
+          result.ok ? "Se esta actualizando. Recarga en un minuto para ver los datos nuevos." : result.error,
+          ...(result.warnings ?? []),
+        ].join(" "),
       );
     });
   }

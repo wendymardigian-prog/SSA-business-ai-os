@@ -9,11 +9,9 @@ import {
   getOrCreateWorkspaceWebhookSecret,
 } from "@/lib/zernio-webhook";
 import { backfillInboxConversations } from "@/lib/inbox-sync";
-import { isSupportedPlatform } from "@/lib/platforms";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
-import { notifyNewChannelAccess } from "@/lib/channels/new-channel-access";
-import { accountLabel } from "@/lib/inbox/accounts";
+import { syncZernioChannels, type ZernioListedAccount } from "@/lib/channels/zernio-channels";
 
 /**
  * POST /api/v1/channels/sync
@@ -50,97 +48,14 @@ export async function POST() {
     const res = await zernio.accounts.listAccounts();
     const lateAccounts = res.data?.accounts ?? [];
 
-    // Solo los canales de Zernio: este sync sale de la lista de cuentas de
-    // Zernio, asi que un canal de WhatsApp (Evolution) no aparece ahi y el
-    // barrido de abajo lo desactivaria.
-    const { data: existingChannels } = await supabase
-      .from("channels")
-      .select("*")
-      .eq("workspace_id", workspace.id)
-      .eq("provider", "zernio");
-
-    const existingByZernioId = new Map(
-      (existingChannels ?? []).map((c) => [c.late_account_id, c])
-    );
-
-    // The SDK type doesn't declare profilePicture but the API returns it
-    const lateAccountIds = new Set(lateAccounts.map((a: { _id?: string }) => a._id).filter(Boolean));
-    let created = 0;
-    let updated = 0;
-    const skipped: string[] = [];
-    const failed: string[] = [];
-
-    for (const account of lateAccounts) {
-      if (!account._id) continue;
-      // A Zernio key also carries accounts we can't drive (TikTok, YouTube,
-      // ads accounts...). Inserting those hit the channels platform check
-      // constraint and, since the error was discarded, vanished silently.
-      if (!isSupportedPlatform(account.platform)) {
-        if (account.platform) skipped.push(account.platform);
-        continue;
-      }
-      const acc = account as typeof account & { profilePicture?: string };
-      const profilePic = acc.profilePicture || null;
-
-      const existing = existingByZernioId.get(account._id);
-
-      if (existing) {
-        if (
-          existing.username !== (account.username || null) ||
-          existing.display_name !== (account.displayName || account.username || null) ||
-          existing.profile_picture !== profilePic
-        ) {
-          await supabase
-            .from("channels")
-            .update({
-              username: account.username || null,
-              display_name: account.displayName || account.username || null,
-              profile_picture: profilePic,
-            })
-            .eq("id", existing.id);
-          updated++;
-        }
-      } else {
-        const { data: inserted, error: insertErr } = await supabase.from("channels").insert({
-          workspace_id: workspace.id,
-          platform: account.platform,
-          provider: "zernio",
-          late_account_id: account._id,
-          username: account.username || null,
-          display_name: account.displayName || account.username || null,
-          profile_picture: profilePic,
-          is_active: true,
-        }).select("id").maybeSingle();
-        if (insertErr) {
-          // Reporting a channel we did not store is how #16 stayed hidden:
-          // the platform check constraint rejected the row and the UI said OK.
-          console.error("[channels/sync] channel insert failed:", insertErr);
-          failed.push(`${account.platform}: ${insertErr.message}`);
-          continue;
-        }
-        created++;
-        // Los roles que eligen cuenta por cuenta no la ven: se avisa (00249). Nunca lanza.
-        if (inserted) {
-          await notifyNewChannelAccess(await createServiceClient(), {
-            workspaceId: workspace.id,
-            channelId: inserted.id,
-            label: accountLabel({ platform: account.platform, username: account.username, display_name: account.displayName }),
-          });
-        }
-      }
-    }
-
-    // Deactivate channels whose Zernio accounts no longer exist
-    let deactivated = 0;
-    for (const channel of existingChannels ?? []) {
-      if (!lateAccountIds.has(channel.late_account_id) && channel.is_active) {
-        await supabase
-          .from("channels")
-          .update({ is_active: false })
-          .eq("id", channel.id);
-        deactivated++;
-      }
-    }
+    // Crear, actualizar y desactivar los canales: lo mismo que hace el aviso de
+    // Zernio cuando se conecta o desconecta una cuenta (account.connected).
+    const { created, updated, deactivated, skipped, failed } = await syncZernioChannels({
+      supabase,
+      service: createServiceClient,
+      workspaceId: workspace.id,
+      accounts: lateAccounts as ZernioListedAccount[],
+    });
 
     // Registrar (o corregir) el webhook en Zernio, que es lo que hace que los
     // DMs entren a la bandeja. No bloquea el sync si falla, pero el resultado

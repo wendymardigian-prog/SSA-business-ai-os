@@ -23,6 +23,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit } from "@/lib/audit";
 import { cleanExternalUrl } from "@/lib/content/networks-schema";
 import type { NetworkEntry } from "@/lib/content/redistribution";
+import { CONTENT_PLATFORMS } from "@/lib/content/network-format";
+import { defaultOptionsFor } from "@/lib/content/network-options";
 import { isManualStatus } from "@/lib/content/status";
 import type { ContentPostStatus, Database, SocialPlatform } from "@/lib/types/database";
 import {
@@ -265,6 +267,84 @@ export async function runMarkPublished(
   });
 
   return { ok: true, data: { postStatus } };
+}
+
+// ── Marcar como publicadas varias redes de una vez ───────────────────────
+
+export interface MarkPieceItem {
+  platform: string;
+  url?: string | null;
+}
+
+/**
+ * "Publicado…" desde el estado de la pieza (lib/content/mark-published.ts):
+ * las redes que salieron por fuera, con una fecha y un link por red.
+ *
+ * No es un camino nuevo: suma a la pieza las redes que no tenia (una pieza
+ * que se subio a LinkedIn sin haberla cargado ahi, por ejemplo) y llama a
+ * `runMarkPublished` por cada una, con su misma validacion, sus filas reales
+ * `origin = 'manual'` y su historial. Si alguna falla, las demas igual quedan
+ * marcadas y se dice cual fallo y por que.
+ */
+export async function runMarkPiecePublished(
+  ctx: ScheduleContextInput,
+  input: { postId: string; items: MarkPieceItem[]; publishedAt?: string | null; now?: Date },
+): Promise<
+  ScheduleActionResult<{ postStatus: string; marked: string[]; failed: Array<{ platform: string; error: string }> }>
+> {
+  if (!ctx.canPublish) return { ok: false, error: "Marcar como publicado es de quien puede publicar." };
+
+  const platforms = [...new Set(input.items.map((i) => i.platform))];
+  if (platforms.length === 0) return { ok: false, error: "Elegí al menos una red." };
+  const unknown = platforms.find((p) => !CONTENT_PLATFORMS.includes(p));
+  if (unknown) return { ok: false, error: "Esa red no se puede publicar desde Contenido." };
+
+  const piece = await loadPiece(ctx, input.postId);
+  if (!piece) return { ok: false, error: "No encontré esa pieza." };
+
+  // Las redes que la pieza no tenia se suman primero, leyendo lo ultimo
+  // guardado (como `patchNetwork`) para no pisar un autoguardado.
+  const missing = platforms.filter((p) => !piece.networks.some((n) => n.platform === p));
+  if (missing.length > 0) {
+    const { data } = await ctx.service.from("content_posts").select("networks").eq("id", piece.id).maybeSingle();
+    const current = (Array.isArray(data?.networks) ? data.networks : []) as unknown as NetworkEntry[];
+    const added: NetworkEntry[] = missing
+      .filter((p) => !current.some((n) => n.platform === p))
+      .map((platform) => ({ platform, planned_at: null, options: defaultOptionsFor(platform) }));
+    const { error } = await ctx.service
+      .from("content_posts")
+      .update({ networks: [...current, ...added] as never })
+      .eq("id", piece.id);
+    if (error) {
+      console.error("[content] no pude sumar las redes a la pieza:", error.message);
+      return { ok: false, error: "No pude sumar esas redes a la pieza. Probá de nuevo." };
+    }
+  }
+
+  const now = input.now ?? new Date();
+  const marked: string[] = [];
+  const failed: Array<{ platform: string; error: string }> = [];
+  let postStatus: string = piece.status;
+
+  for (const platform of platforms) {
+    const item = input.items.find((i) => i.platform === platform);
+    const result = await runMarkPublished(ctx, {
+      postId: piece.id,
+      platform,
+      publishedAt: input.publishedAt,
+      url: item?.url ?? null,
+      now,
+    });
+    if (result.ok) {
+      marked.push(platform);
+      postStatus = result.data.postStatus;
+    } else {
+      failed.push({ platform, error: result.error });
+    }
+  }
+
+  if (marked.length === 0) return { ok: false, error: failed[0]?.error ?? "No pude marcarla como publicada." };
+  return { ok: true, data: { postStatus, marked, failed } };
 }
 
 // ── Deshacer el marcado ──────────────────────────────────────────────────

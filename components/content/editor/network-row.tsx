@@ -606,7 +606,11 @@ function PublishModeBlock({
           <button
             type="button"
             disabled={pending}
-            onClick={() => setMarking(true)}
+            onClick={() => {
+              // La fecha por defecto es "ahora" al abrir, no cuando se dibujo la tarjeta.
+              setPublishedAt(isoToDatetimeInput(new Date().toISOString(), timeZone));
+              setMarking(true);
+            }}
             className="h-8 rounded-lg border border-border px-3 text-xs disabled:opacity-50"
           >
             Marcar como publicado

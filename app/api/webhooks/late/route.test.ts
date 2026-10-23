@@ -74,6 +74,15 @@ vi.mock("@/lib/contacts/touch-inbound", async (importOriginal) => {
 const attributeComment = vi.fn();
 vi.mock("@/lib/comments/attribution", () => ({ attributeComment }));
 
+// Los avisos de cuenta (account.connected / disconnected): el trabajo de releer
+// Zernio tiene sus tests en lib/channels/zernio-account-events.test.ts. Aca se
+// prueba la firma y que se encole en el after(); la busqueda del negocio es real.
+const refreshZernioAccounts = vi.fn();
+vi.mock("@/lib/channels/zernio-account-events", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/channels/zernio-account-events")>();
+  return { ...actual, refreshZernioAccounts };
+});
+
 const WS = "ws-1";
 const ACCOUNT = "late-account-1";
 const SECRET = "secreto-del-workspace";
@@ -836,3 +845,59 @@ describe("webhook de Zernio: reacciones (A3)", () => {
     expect(memory.rows("message_reactions")[0].emoji).toBe("❤️");
   });
 });
+
+describe("webhook de Zernio: una cuenta conectada o desconectada", () => {
+  const connected = {
+    id: "evt-acc-1",
+    event: "account.connected",
+    account: { accountId: "late-account-2", profileId: "p-1", platform: "instagram", username: "academia" },
+    timestamp: "2026-10-22T12:00:00.000Z",
+  };
+
+  it("con la firma del negocio responde 200 y relee las cuentas en el after()", async () => {
+    const memory = db();
+
+    const res = await callRoute(post(connected));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, accepted: "account.connected" });
+
+    expect(refreshZernioAccounts).not.toHaveBeenCalled();
+    await runAfter();
+    expect(refreshZernioAccounts).toHaveBeenCalledWith(memory.client, WS, "webhook account.connected");
+  });
+
+  it("una desconexion hace lo mismo", async () => {
+    db();
+    const res = await callRoute(
+      post({ ...connected, id: "evt-acc-2", event: "account.disconnected", account: { ...connected.account, accountId: ACCOUNT } }),
+    );
+    expect(res.status).toBe(200);
+    await runAfter();
+    expect(refreshZernioAccounts).toHaveBeenCalledWith(expect.anything(), WS, "webhook account.disconnected");
+  });
+
+  it("con una firma equivocada responde 401 y no toca nada", async () => {
+    db();
+    const res = await callRoute(post(connected, { secret: "otro-secreto" }));
+    expect(res.status).toBe(401);
+    await runAfter();
+    expect(refreshZernioAccounts).not.toHaveBeenCalled();
+    expect(claimWebhookEvent).not.toHaveBeenCalled();
+  });
+
+  it("sin firma responde 401", async () => {
+    db();
+    const res = await callRoute(post(connected, { signature: null }));
+    expect(res.status).toBe(401);
+  });
+
+  it("el mismo aviso dos veces se procesa una sola vez", async () => {
+    db();
+    claimWebhookEvent.mockResolvedValueOnce(false);
+    const res = await callRoute(post(connected));
+    expect(await res.json()).toEqual({ ok: true, skipped: "evento repetido" });
+    await runAfter();
+    expect(refreshZernioAccounts).not.toHaveBeenCalled();
+  });
+});
+

@@ -244,3 +244,14 @@ Una reacción NO es un mensaje: vive en `message_reactions` (una por actor y men
 Se guarda por el id con el que el PROVEEDOR conoce el mensaje, porque el hilo de Instagram se lee en vivo de Zernio y
 muchos mensajes no tienen fila propia. Los dos webhooks la atajan antes del camino de los mensajes. Enviar: Evolution
 (`sendReaction`, v1 y v2) y Zernio (`addMessageReaction` / `removeMessageReaction`, probando el id nativo y el propio).
+
+## Una cuenta nueva en Zernio (22/10/2026)
+
+Un DM entra a la bandeja solo si su cuenta tiene **canal** (`channels.late_account_id`): si no, el receptor responde 404 y el mensaje se pierde. Antes los canales se creaban solo al guardar la clave de Zernio o con «Sincronizar canales», así que una segunda Instagram conectada en Zernio después no recibía nada hasta apretar el botón.
+
+Ahora el sistema escucha `account.connected` y `account.disconnected` (`SUBSCRIBED_EVENTS`):
+
+- **De qué negocio es el aviso.** La cuenta nueva no tiene canal, así que se prueba la firma contra el secreto del webhook de cada negocio (`findWorkspaceForSignedEvent`); el que valida es el dueño. Sin firma válida, 401. Idempotencia con `webhook_events`.
+- **Qué hace.** En el `after()` vuelve a leer la lista **completa** de Zernio y pasa por el mismo camino que el botón (`syncZernioChannels`, `lib/channels/zernio-channels.ts`): crea el canal nuevo (con el aviso a Owner y Admin si un rol no lo ve), trae sus conversaciones anteriores y sincroniza las cuentas de Social. Si Zernio no responde, **no se desactiva ningún canal**. Nunca lanza.
+- **Instalaciones que ya existían:** el webhook registrado en Zernio suma los dos eventos la próxima vez que se guarda la clave o se aprieta «Sincronizar canales» (`ensureWebhookRegistered` corrige los eventos que faltan). Hay que hacerlo **una vez** después del deploy.
+

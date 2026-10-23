@@ -24,7 +24,7 @@
 --   select count(*) from public.workspace_roles where system_role is null and not (permissions ? 'channels');
 --   -- Ninguna politica ni funcion viva lee las claves viejas o el alcance de conversaciones:
 --   select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
---   where n.nspname in ('public','private') and p.proname <> 'channels_from_legacy'
+--   where n.nspname in ('public','private') and p.prokind = 'f' and p.proname <> 'channels_from_legacy'
 --     and p.proname <> 'member_permission_keys'
 --     and (pg_get_functiondef(p.oid) ilike '%inbox.instagram%' or pg_get_functiondef(p.oid) ilike '%''conversations'')%');
 --

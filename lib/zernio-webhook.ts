@@ -32,7 +32,9 @@ export type WebhookEvent =
   | "comment.received"
   | "message.sent"
   | "post.platform.published"
-  | "post.platform.failed";
+  | "post.platform.failed"
+  | "account.connected"
+  | "account.disconnected";
 
 /**
  * Eventos que la app se suscribe. `message.sent` trae los ecos de lo que se
@@ -47,6 +49,12 @@ export type WebhookEvent =
  * pedido: el estado solo aparecia si alguien preguntaba a los 2, 12 y 42
  * minutos. Con Zernio programando de su lado (grupo D) esto pasa a ser el
  * camino principal, no el atajo.
+ *
+ * Los dos de `account.*` avisan que se conecto o desconecto una cuenta en
+ * Zernio: con ellos una segunda Instagram tiene canal en la bandeja y aparece
+ * en Social sin que nadie apriete «Sincronizar canales»
+ * (`lib/channels/zernio-account-events.ts`). Un webhook ya registrado los suma
+ * la proxima vez que se guarda la clave o se sincronizan los canales.
  */
 export const SUBSCRIBED_EVENTS: WebhookEvent[] = [
   "message.received",
@@ -54,6 +62,8 @@ export const SUBSCRIBED_EVENTS: WebhookEvent[] = [
   "message.sent",
   "post.platform.published",
   "post.platform.failed",
+  "account.connected",
+  "account.disconnected",
 ];
 
 export interface EnsureWebhookOptions {

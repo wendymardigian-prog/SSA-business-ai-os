@@ -80,6 +80,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -151,6 +152,13 @@
 }
 
 .dark {
+  /*
+   * Sin esto el navegador dibuja la lista de un <select> nativo con sus
+   * colores claros mientras el texto hereda el blanco del tema: blanco
+   * sobre blanco (22/10/2026). Tambien oscurece barras de scroll y
+   * calendarios nativos.
+   */
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -320,6 +328,25 @@
   body {
     @apply bg-background text-foreground;
   }
+  /*
+   * La lista de un <select>: con los colores del popover, en los dos temas.
+   * Safari ignora el color de las opciones, pero respeta `color-scheme`.
+   */
+  option,
+  optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+  option:disabled {
+    color: var(--muted-foreground);
+  }
+  select:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--ring) 45%, transparent);
+    outline-offset: 1px;
+  }
+  select:disabled {
+    cursor: not-allowed;
+  }
   /* Un clic en cualquier parte del campo abre el calendario (components/ui/date-picker-opener.tsx). */
   input:is([type="date"], [type="datetime-local"], [type="month"], [type="week"], [type="time"]):not(:disabled):not([readonly]) {
     cursor: pointer;
@@ -360,6 +387,43 @@
  * El booker público no se toca: usa `data-theme` y tokens propios, sin `dark:`.
  */
 @custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Los desplegables nativos, con un solo aspecto en todo el sistema.
+ *
+ * Hay mas de 300 <select> repartidos en mas de 140 pantallas, cada uno con su
+ * clase local (borde, fondo, padding). En vez de tocarlos uno por uno, la
+ * flecha y el lugar que ocupa se definen aca: cada pantalla sigue decidiendo
+ * su fondo y su borde, y todas comparten la misma flecha en claro y oscuro.
+ *
+ * Va FUERA de `@layer` a proposito: asi le gana al `px-*` / `pr-*` de las
+ * utilidades y la flecha nunca queda tapada por el texto. Solo toca la imagen
+ * de fondo y el padding derecho (el color de fondo sigue siendo de cada uno).
+ *
+ * `.select-bare` es la salida para un desplegable que dibuja su propia flecha
+ * (el chip de estado de una pieza).
+ */
+select:not([multiple]):not([size]):not(.select-bare) {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1rem 1rem;
+  padding-right: 2rem;
+}
+.dark select:not([multiple]):not([size]):not(.select-bare),
+[data-theme="dark"] select:not([multiple]):not([size]):not(.select-bare) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1a1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+/* Un booker claro dentro del panel oscuro (vista previa): flecha oscura. */
+[data-theme="light"] select:not([multiple]):not([size]):not(.select-bare) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+select.select-bare {
+  appearance: none;
+  -webkit-appearance: none;
+}
 
 /*
  * Las grillas del dashboard de Chat (prototipo).

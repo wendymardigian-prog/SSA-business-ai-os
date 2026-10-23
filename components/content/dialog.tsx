@@ -13,6 +13,8 @@ import { X } from "lucide-react";
  * Esc cierra, el foco entra al abrirse y vuelve al cerrarse, y el fondo no
  * hace scroll: lo minimo para que se pueda usar sin mouse.
  */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function ContentDialog({
   title,
   label,
@@ -37,19 +39,40 @@ export function ContentDialog({
     );
     first?.focus();
 
+    // En captura y cortando la propagacion: un modal abierto encima del drawer
+    // de la pieza tiene que quedarse con Esc (cierra el modal, no el drawer) y
+    // con Tab (el foco no se escapa al drawer de atras).
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         onClose();
+        return;
+      }
+      if (event.key === "Tab" && panel.current) {
+        event.stopPropagation();
+        const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+          (el) => el.offsetParent !== null,
+        );
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
 
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
       document.body.style.overflow = overflow;
       previous.current?.focus();
     };

@@ -14,7 +14,8 @@ import {
   planSchedule,
   type NetworkPlan,
 } from "@/lib/content/schedule";
-import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
+import type { NetworkEntry } from "@/lib/content/redistribution";
+import { networkContents } from "@/lib/content/network-content";
 import { resolveNetworkOptions } from "@/lib/content/network-format";
 import { socialMediaTypeFor } from "@/lib/content/media-type";
 import type { MediaEntry } from "@/lib/content/media";
@@ -130,24 +131,7 @@ async function loadPost(
     options: Object.fromEntries(
       networks.map((n) => [String(n.platform ?? ""), resolveNetworkOptions(n)]),
     ),
-    contents: Object.fromEntries(
-      networks.map((n) => {
-        const resolved = resolveNetworkContent<MediaEntry>({
-          network: n,
-          baseCaption: post.caption,
-          baseMedia,
-        });
-        const content: NetworkContent = {
-          platform: String(n.platform ?? ""),
-          text: resolved.caption,
-          media: resolved.media,
-          title: n.youtube_title ?? null,
-          format: n.format ?? null,
-          options: resolveNetworkOptions(n),
-        };
-        return [content.platform, content];
-      }),
-    ),
+    contents: networkContents({ networks, baseCaption: post.caption, baseMedia }),
     publications: (publications ?? []).map((p) => ({
       platform: p.platform,
       status: p.status,

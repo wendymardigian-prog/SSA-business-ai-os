@@ -379,7 +379,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 - **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
 - **La bandeja va por CUENTA conectada (00249)**: cada rol guarda en `permissions.channels` «todas las cuentas» (incluye las futuras) o una lista por cuenta, cada una con su alcance (solo asignadas / + sin asignar / todas) y «responde». Lo aplica la base (`can_see_conversation` decide por la cuenta; ver un chat deja ver la ficha del contacto) y la pantalla usa las mismas reglas (`lib/auth/channel-permissions.ts`, gemelas SQL con `channel-permissions.cases.json`): el menú de cuentas, el composer y los 403 de envío, borradores, reacciones, adjuntos y recursos. Las seis claves `inbox.<red>.*` y el alcance `conversations` se retiraron. Resumen en `docs/roles.md`, «La bandeja por cuenta».
-- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones". Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
+- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M9 (Extra I) ve sus propias comisiones: `commissions.view` con alcance `own`, nada más (el Member ve «Finanzas» solo por eso); M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones", M10 edita el contenido de su pieza (o la asignada) en cualquier estado, sin poder mover el estado fuera de Borrador / En producción / En revisión (00253). Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
 
 ## Migraciones (00208 a 00214, todas aplicadas y registradas)
 
@@ -387,7 +387,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 
 ## La bandeja por cuenta (22/10/2026)
 
-`00249` (aditiva: `permissions.channels`, backfill exacto desde las claves viejas, `can_see_conversation` por cuenta, `can_see_contact` + «ver un chat deja ver la ficha», `can_grant_channels` y el trigger `workspace_roles_channels_default`) y `00250` (la que BORRA las claves `inbox.*` y `scopes.conversations`, y saca esas claves de `private.member_permission_keys()`). **Orden: la 00249 ANTES de desplegar el código, la 00250 DESPUÉS** (con su respaldo y las consultas de su cabecera en 0). **La próxima libre es la `00253`** (la `00251` y la `00252` son de Agentes IA; confirmar con `list_migrations`).
+`00249` (aditiva: `permissions.channels`, backfill exacto desde las claves viejas, `can_see_conversation` por cuenta, `can_see_contact` + «ver un chat deja ver la ficha», `can_grant_channels` y el trigger `workspace_roles_channels_default`) y `00250` (la que BORRA las claves `inbox.*` y `scopes.conversations`, y saca esas claves de `private.member_permission_keys()`). **Las dos aplicadas y registradas el 22/10/2026** (versiones `20261022191356` y `20261022195239`): la 00249 antes del deploy y la 00250 despues, con su respaldo en `docs/roles/respaldo-inbox-keys.json`. **En un clon nuevo: la 00249 ANTES de desplegar el codigo y la 00250 DESPUES.** La `00251` y la `00252` son de Agentes IA (otra sesion). **La proxima libre es la `00253`** (confirmar con `list_migrations`).
 
 ## Verificacion de equipo y roles
 
@@ -638,9 +638,17 @@ componen. El hilo de Instagram **se sigue leyendo en vivo de Zernio** y se cruza
 con nuestra tabla por `platform_message_id`.
 
 **Ojo con dos cosas de CSS** que se midieron y costaron un arreglo: `min-width`
-le gana a `max-width` (un minimo fijo desborda la burbuja), y el `dark:` de
-Tailwind en este proyecto compila a `prefers-color-scheme`, mientras que el tema
-lo maneja la clase `.dark` del `<html>`. Son dos señales distintas.
+le gana a `max-width` (un minimo fijo desborda la burbuja), y el tema lo maneja
+la clase `.dark` del `<html>`, no `prefers-color-scheme`. Desde d72265a el
+`dark:` de Tailwind sigue a esa clase (`@custom-variant dark` en
+`app/globals.css`).
+
+**Desplegables (22/10/2026).** `.dark` declara `color-scheme: dark` (y `:root`
+`light`): sin eso la lista de un `<select>` nativo salia con fondo claro y texto
+blanco. La flecha y el padding derecho de TODOS los `<select>` salen de una
+regla de `app/globals.css` fuera de `@layer` (le gana a `px-*`); las opciones
+usan `--popover`. Un desplegable que dibuja su propia flecha lleva la clase
+`select-bare`. `lib/ui/theme-css.test.ts` lo cuida.
 
 ## Migraciones de los Bloques 1-3
 `00102` (bucket y columnas de media) y `00103` (transcripcion, escalado, el CHECK
@@ -1459,6 +1467,9 @@ con estados y producto; la definición vieja completa en su cabecera) y `00248` 
 **Un DEFAULT de columna se evalúa con los permisos de quien inserta: nunca una función de `private`.** **La próxima libre era la `00249`; desde el 22/10/2026 están ocupadas hasta la `00252` (ver "Agentes IA" más abajo): la próxima libre es la `00253`**
 (confirmar con `list_migrations`).
 
+La `00249` a la `00252` son de otras sesiones (bandeja por cuenta y agentes IA); la `00253` es de Contenido (una pieza se edita en
+cualquier estado), **aplicada y registrada** el 22/10/2026 (version `20261022202705`), con `verify-content.mjs --despues-de-00253` en verde. **La próxima libre es la `00254`** (confirmar con `list_migrations` y las ramas locales).
+
 ## Verificación
 
 ```
@@ -1512,6 +1523,7 @@ Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con b
 - Lo que hacen los dos igual despues de entender el payload vive en `lib/inbound.ts`. Lo que tiene que valer para todos los canales vive en la base: `find_or_link_contact` (dedup) y `apply_opt_out_check` (no contactar).
 - Ack inmediato (responder 200 antes de procesar, con `after()`). Procesamiento async. Idempotencia con `webhook_events`.
 - **Los mensajes entrantes de todos los canales se guardan en `messages`** (Fase 3). Para Instagram es dual-write: se guarda en paralelo y la bandeja sigue leyendo el hilo de Zernio. Guardar nunca puede hacer fallar un webhook: si el insert falla, se loguea y la recepcion sigue. **Se guardan siempre**: ya no hay interruptor en Ajustes (`workspaces.persist_zernio_inbound` quedó sin leerse). Todo el detalle —los dos ids del mensaje, la retencion de 12 meses, el backfill y sus limites— en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).
+- **Una cuenta conectada o desconectada en Zernio** (`account.connected` / `account.disconnected`, 22/10/2026) se identifica por la FIRMA (no tiene canal todavia: se prueba el secreto de cada negocio) y en el `after()` relee la lista completa de Zernio por el mismo camino que «Sincronizar canales» (`syncZernioChannels`) y sincroniza Social. Si Zernio no responde no se desactiva ningun canal. Una instalacion vieja suma esos eventos al guardar la clave o sincronizar canales una vez. Detalle en `docs/flujo-de-mensajes.md`.
 - La URL que se registra en cada proveedor la arma `lib/webhook-url.ts` desde `NEXT_PUBLIC_APP_URL`, y se niega a registrar una direccion local: un webhook apuntando a localhost no falla, simplemente no entra nada.
 - **Agente de IA** (Fase 3): despues de guardar el mensaje y de las automatizaciones, los dos receptores llaman a `maybeScheduleAgentTurn` (`lib/agent/dispatch.ts`), el unico lugar que agenda un turno. La automatizacion tiene prioridad; el turno corre en `/api/cron/agent-bursts` (cada 15 s). Toda llamada a IA del sistema pasa por `openAiRun` (`lib/ai/run.ts`), que registra el run y congela el costo. Nunca `select("*")` sobre `agents` o `agent_runs` con el cliente de un usuario (privilegio de columna en los costos): usar `lib/agent/public.ts`; toda columna nueva de `agents` que lea la pantalla va al GRANT de la 00060. El interruptor por conversacion tiene **tres estados** (`agent_enabled` NULL = heredar del canal, el default): el estado efectivo se calcula solo en `resolveAgentState`. Las acciones del agente (herramientas y clasificacion al cierre) pasan por `lib/agent/tools/effects.ts` y quedan en `audit_log` con `performed_by_agent_id`; la pestaña Acciones y la reversion se arman sobre eso, sin tabla nueva. Detalle en [docs/agente-ia.md](docs/agente-ia.md).
 
@@ -1562,6 +1574,17 @@ completo en `docs/PROGRESS-CV4.md`.
 - **`networks[].publisher` no se escribe mas**: el publicador efectivo es
   siempre el `default_publisher` de la cuenta (F13), nunca algo elegido por
   pieza.
+- **Una pieza se edita en cualquier estado** (M10, 22/10/2026, migracion
+  `00253`, aplicada y registrada): la politica `content_posts_update` ya no mira el estado; el
+  trigger `content_posts_status_guard` conserva que un Member no mueve el
+  ESTADO fuera de los tres de autor. Lo agendado en Zernio se reenvia al
+  guardar, agregar o sacar un archivo (`lib/publishing/content-resync.ts`,
+  validado antes de escribir); lo publicado solo lleva un aviso
+  (`editNotices`).
+- **"Publicado…" en el dropdown de estado** es un atajo, no un estado que se
+  elige: abre la ventanita que marca varias redes a la vez
+  (`markPiecePublished` → `runMarkPublished`, las mismas filas `manual`).
+  Soltar en la columna Publicado abre la pieza con `?marcar=1`.
 
 ## Responsable de la pieza (15/10/2026)
 
