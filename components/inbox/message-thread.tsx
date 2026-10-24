@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, HeartHandshake } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, HeartHandshake, Copy } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -38,6 +38,7 @@ import { planHeaderActions } from "@/lib/inbox/header-actions";
 import { canMarkNoReply } from "@/lib/inbox/awaiting";
 import { formatReplyTime, replyTimesByMessage, type MessageReplyTime } from "@/lib/messages/reply-time";
 import { NoReplyBanner } from "@/components/inbox/no-reply-banner";
+import { canRetrySend } from "@/lib/inbox/send-failure";
 import { setConversationNoReply } from "@/lib/actions/conversation-status";
 import { planComposerActions, type ComposerMenuAction } from "@/lib/inbox/composer-actions";
 import { ComposerMoreMenu } from "@/components/inbox/composer-more-menu";
@@ -125,8 +126,14 @@ function MessageBubble({
   reacting = false,
   onReact,
   replyTime = null,
+  retrying = false,
+  onRetry,
 }: {
   message: Message;
+  /** Se esta reintentando este envio fallido (00262). */
+  retrying?: boolean;
+  /** Reintentar un envio fallido; sin esto no se ofrece el boton. */
+  onRetry?: () => void;
   /**
    * Si este mensaje cerro una espera del lead: cuanto tardo desde su primer
    * mensaje sin responder. El mismo calculo que el dashboard (00261).
@@ -176,8 +183,9 @@ function MessageBubble({
               : isInbound
               ? "rounded-tl-md bg-muted text-foreground"
               : failed
-              ? // Un envio rechazado no se pinta como un mensaje entregado: el
-                // texto que guarda es el motivo, no lo que se quiso mandar.
+              ? // Un envio rechazado no se pinta como un mensaje entregado. Desde
+                // la 00262 el texto es lo que se quiso mandar y el motivo va en
+                // send_error; en una fila vieja el texto es el motivo.
                 "rounded-tr-md border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
               : "rounded-tr-md bg-primary text-primary-foreground"
           )}
@@ -197,6 +205,16 @@ function MessageBubble({
               ser el pie de la foto, no lo principal. */}
           <MessageAttachments message={message} />
           {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+          {/* 00262: el motivo va aparte del texto, con que hacer y como
+              reintentar. Una fila vieja no lo tiene: su texto ya es el motivo. */}
+          {failed && message.send_error && (
+            <FailedSendFooter
+              reason={message.send_error}
+              text={message.text}
+              retrying={retrying}
+              onRetry={onRetry && !message.id.startsWith("optimistic-") && canRetrySend(message) ? onRetry : undefined}
+            />
+          )}
         </div>
         <ReactionChips reactions={reactions} inbound={isInbound} busy={reacting} onRemoveMine={() => onReact?.("")} />
         <div
@@ -250,6 +268,65 @@ function MessageBubble({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Debajo de un envio que no salio (00262): por que, y dos salidas. "Copiar
+ * texto" sirve cuando hay que mandarlo desde otro lado (la app de Instagram o
+ * ManyChat, si otra app maneja la conversacion).
+ */
+function FailedSendFooter({
+  reason,
+  text,
+  retrying,
+  onRetry,
+}: {
+  reason: string;
+  text: string | null;
+  retrying: boolean;
+  onRetry?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("No pude copiar el texto. Seleccionalo y copialo a mano.");
+    }
+  }
+
+  return (
+    <div className="mt-2 border-t border-amber-300/60 pt-2 dark:border-amber-800/60">
+      <p className="text-xs leading-relaxed">{reason}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={retrying}
+            className="inline-flex items-center gap-1 rounded-md border border-amber-400 px-2 py-1 text-xs font-medium hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:hover:bg-amber-900/40"
+          >
+            {retrying ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <RotateCcw className="h-3 w-3" aria-hidden />}
+            {retrying ? "Reintentando…" : "Reintentar"}
+          </button>
+        )}
+        {text && (
+          <button
+            type="button"
+            onClick={() => void copy()}
+            className="inline-flex items-center gap-1 rounded-md border border-amber-400 px-2 py-1 text-xs font-medium hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/40"
+          >
+            <Copy className="h-3 w-3" aria-hidden />
+            {copied ? "Copiado" : "Copiar texto"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -439,6 +516,7 @@ export function MessageThread({
   // Reacciones (A3): las de la conversacion, al dia con Realtime, y el mensaje que se esta reaccionando.
   const [reactions, setReactions] = useState<ReactionRow[]>([]);
   const [reactingId, setReactingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const reactionConversationId = conversation?.id ?? null;
   const reloadReactions = useCallback(async () => {
     if (!reactionConversationId) return;
@@ -762,6 +840,7 @@ export function MessageThread({
       transcript_error: null,
       transcript_seconds: null,
       transcript_started_at: null,
+      send_error: null,
     };
     setMessages((prev) => [...prev, optimisticMessage]);
 
@@ -773,8 +852,18 @@ export function MessageThread({
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Send failed (${res.status})`);
+        const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: Message | null };
+        // 00262: el servidor devuelve la fila fallida que guardo (con su id y
+        // el motivo): reemplaza al optimista y se puede reintentar.
+        const storedFailure = errorData.message;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimisticId
+              ? storedFailure ?? { ...m, status: "failed" as const, send_error: errorData.error || `No se pudo enviar (${res.status}).` }
+              : m,
+          ),
+        );
+        return;
       }
 
       const confirmedMessage: Message = await res.json();
@@ -794,14 +883,60 @@ export function MessageThread({
       if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
     } catch (err) {
       console.error("Failed to send message:", err);
-      // Mark optimistic message as failed
+      // Sin respuesta del servidor (se corto la red): no se sabe si se guardo.
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === optimisticId ? { ...m, status: "failed" as const } : m
+          m.id === optimisticId
+            ? { ...m, status: "failed" as const, send_error: "No hubo respuesta del servidor. Revisá tu conexión y recargá la conversación antes de volver a mandarlo." }
+            : m
         )
       );
     } finally {
       setSending(false);
+    }
+  }
+
+  /**
+   * Reintenta un envio que no salio (00262). La MISMA fila: el servidor la
+   * reclama (`failed -> pending`) antes de mandar, asi que un doble clic o dos
+   * pestanas dan un solo envio. Si vuelve a fallar, queda con el motivo nuevo.
+   */
+  async function handleRetry(message: Message, confirmedDoNotContact = false) {
+    if (!conversation || (retryingId && !confirmedDoNotContact)) return;
+    setRetryingId(message.id);
+    try {
+      const res = await fetch("/api/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: conversation.id, retryOf: message.id, confirmedDoNotContact }),
+      });
+      const data = (await res.json().catch(() => ({}))) as Message & {
+        error?: string;
+        message?: Message | null;
+        requiresConfirmation?: boolean;
+      };
+      // "No contactar" (F18): se pregunta igual que al mandar.
+      if (res.status === 409 && data.requiresConfirmation) {
+        if (window.confirm(`${data.error ?? "Este contacto está marcado como \"no contactar\"."} ¿Reintentar igual?`)) {
+          await handleRetry(message, true);
+        }
+        return;
+      }
+      if (res.ok) {
+        setMessages((prev) => prev.filter((m) => m.id !== message.id).concat(data));
+        if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
+        return;
+      }
+      if (data.message) {
+        const updated = data.message;
+        setMessages((prev) => prev.map((m) => (m.id === message.id ? updated : m)));
+      } else {
+        alert(data.error || "No se pudo reintentar. Probá de nuevo.");
+      }
+    } catch {
+      alert("No hubo respuesta del servidor. Revisá tu conexión y probá de nuevo.");
+    } finally {
+      setRetryingId(null);
     }
   }
 
@@ -1319,6 +1454,8 @@ export function MessageThread({
                 reacting={reactingId === message.id}
                 onReact={(emoji) => void handleReact(message, emoji)}
                 replyTime={replyTimes.get(message.id) ?? null}
+                retrying={retryingId === message.id}
+                onRetry={canReply ? () => void handleRetry(message) : undefined}
               />
             </div>
           ))}

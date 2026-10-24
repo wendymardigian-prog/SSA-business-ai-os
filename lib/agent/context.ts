@@ -82,6 +82,10 @@ export async function loadRecentMessages(
     // literal, y una concatenacion con + lo vuelve `string` y se pierde el tipo.
     .select("id, direction, text, created_at, sent_by_user_id, sent_by_flow_id, sent_by_agent_id, agent_run_id, transcript, transcript_status, media_description, attachments, interpretability")
     .eq("conversation_id", conversationId)
+    // Un envio que no salio no es una respuesta (00262): si contara, cerraria
+    // la rafaga del lead (el agente creeria que ya se le contesto) y entraria
+    // al historial como algo que le dijimos.
+    .neq("status", "failed")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) {

@@ -125,3 +125,19 @@ export function mergeThreadWithLocal(
 export function platformIdsOf(thread: InboxMessage[]): string[] {
   return [...new Set(thread.map((m) => m.platform_message_id).filter((id): id is string => Boolean(id)))];
 }
+
+/**
+ * Suma al hilo de Zernio los envios fallidos de la tabla local (00262), en
+ * orden de fecha. Un mensaje que nunca salio no esta en Zernio; si por algun
+ * motivo el id ya estuviera en el hilo, no se duplica.
+ */
+export function withLocalFailedSends<T extends { id: string; created_at: string }, F extends { id: string; created_at: string }>(
+  thread: T[],
+  failed: F[],
+): Array<T | F> {
+  if (failed.length === 0) return thread;
+  const ids = new Set(thread.map((m) => m.id));
+  const extra = failed.filter((m) => !ids.has(m.id));
+  if (extra.length === 0) return thread;
+  return [...thread, ...extra].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+}

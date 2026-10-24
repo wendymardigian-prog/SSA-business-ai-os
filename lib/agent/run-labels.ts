@@ -39,6 +39,7 @@ const DETAIL_LABELS: Record<string, string> = {
   flow: "un flow respondio el mensaje",
   flow_session: "un flow estaba esperando esta respuesta",
   external_cooldown: "otra herramienta (ManyChat) respondio hace poco",
+  external_cooldown_wait: "otra herramienta (ManyChat) respondio hace poco: el agente espera y vuelve a mirar",
   moment_1: "ya habia una respuesta antes de generar",
   after_generation: "ya habia una respuesta mientras se generaba",
   flow_error: "un flow arranco y fallo",

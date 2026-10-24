@@ -181,6 +181,10 @@ export function runEntries(run: ActivityRun, draft: ActivityDraft | undefined): 
     case "already_answered":
       return [{ key, at, kind: "skipped", outcome: "skipped", tone: "neutral", title: "No hizo nada: ya había una respuesta", detail, runId: run.id }];
     case "skipped":
+      // Espera tras ManyChat: el turno vuelve solo cuando termina la espera.
+      if (run.status_detail === "external_cooldown_wait") {
+        return [{ key, at, kind: "skipped", outcome: "pending", tone: "neutral", title: "Esperando: ManyChat respondió hace poco", detail: "Vuelve a mirar cuando termina la espera y, si nadie respondió, deja su respuesta.", runId: run.id }];
+      }
       return [{ key, at, kind: "skipped", outcome: "skipped", tone: "neutral", title: "No hizo nada", detail: detail ?? "No había nada que hacer en este turno.", runId: run.id }];
     case "error":
       return [{ key, at, kind: "failed", outcome: "failed", tone: "error", title: "Falló al preparar la respuesta", detail, runId: run.id }];
@@ -218,7 +222,9 @@ export function summarize(entries: ActivityEntry[]): ActivitySummary {
           : top.outcome === "failed"
             ? "sugerencia sin enviar"
             : "sugerencia pendiente"
-      : SUMMARY_LABEL[top.kind];
+      : top.kind === "skipped" && top.outcome === "pending"
+        ? "esperando"
+        : SUMMARY_LABEL[top.kind];
   return { tone: top.tone, outcome: top.outcome, label: `Agente: ${label}` };
 }
 

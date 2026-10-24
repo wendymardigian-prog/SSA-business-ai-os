@@ -33,7 +33,7 @@ describe("espera tras respuesta externa (F7)", () => {
 
     const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
 
-    expect(outcome).toMatchObject({ kind: "run", status: "skipped", detail: "external_cooldown" });
+    expect(outcome).toMatchObject({ kind: "run", status: "skipped", detail: "external_cooldown_wait" });
     expect(w.modelCalls).toHaveLength(0);
   });
 
@@ -71,6 +71,6 @@ describe("espera tras respuesta externa (F7)", () => {
     // El saliente de una persona no es 'external': no hay cooldown. (Igual el
     // turno podría cerrar por otra razón, pero nunca por external_cooldown.)
     expect(outcome).toMatchObject({ kind: "run" });
-    if (outcome.kind === "run") expect(outcome.detail).not.toBe("external_cooldown");
+    if (outcome.kind === "run") expect(outcome.detail ?? "").not.toMatch(/external_cooldown/);
   });
 });

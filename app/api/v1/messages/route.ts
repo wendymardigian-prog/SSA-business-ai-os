@@ -18,6 +18,8 @@ import { assetKindForAttachment, channelAccepts } from "@/lib/channels/media";
 import { stickerCapability } from "@/lib/channels/stickers";
 import { touchSticker } from "@/lib/stickers/library";
 import { loadOriginChips, withOriginChips } from "@/lib/inbox/origin-chip-load";
+import { canRetrySend, retryMediaFrom, sendErrorText } from "@/lib/inbox/send-failure";
+import { withLocalFailedSends } from "@/lib/zernio-message-merge";
 
 /**
  * Cuantos mensajes trae el hilo. Es el maximo que acepta Zernio, y alcanza
@@ -133,7 +135,7 @@ export async function GET(request: NextRequest) {
     // Con el cliente del USUARIO: la RLS decide que filas se ven, igual que en
     // el resto de la bandeja.
     const platformIds = platformIdsOf(thread);
-    if (platformIds.length === 0) return NextResponse.json(thread);
+    if (platformIds.length === 0) return NextResponse.json(await withFailedSends(supabase, conversationId, thread));
 
     // Por las DOS columnas de id: el historial de Zernio hoy devuelve el id de
     // Meta, que guardamos en platform_native_message_id (ver
@@ -153,7 +155,7 @@ export async function GET(request: NextRequest) {
     }
 
     const merged = mergeThreadWithLocal(thread, (local ?? []) as LocalMessageMedia[]);
-    return NextResponse.json(await withChips(supabase, conversation.workspace_id, merged));
+    return NextResponse.json(await withChips(supabase, conversation.workspace_id, await withFailedSends(supabase, conversationId, merged)));
   } catch (error) {
     console.error("Failed to fetch messages from Zernio API:", error);
     return NextResponse.json(
@@ -161,6 +163,33 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Los envios de una persona que no salieron (00262). El hilo de Instagram lo
+ * manda Zernio, que no sabe nada de un mensaje que nunca llego a la red: sin
+ * esto, al recargar desaparecia y con el la opcion de reintentarlo. Nunca
+ * falla: sin ellos el hilo se ve igual que antes.
+ */
+async function withFailedSends<T extends { id: string; created_at: string }>(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  conversationId: string,
+  thread: T[],
+) {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .eq("direction", "outbound")
+    .eq("status", "failed")
+    .eq("origin", "user")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) {
+    console.error("Failed to read the failed sends:", error.message);
+    return thread;
+  }
+  return withLocalFailedSends(thread, data ?? []);
 }
 
 /**
@@ -288,14 +317,58 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { conversationId, text, media: incomingMedia, confirmedDoNotContact, stickerId } = body as {
+  const { conversationId, confirmedDoNotContact, stickerId, retryOf } = body as {
     conversationId?: string;
     text?: string;
     media?: IncomingMedia;
     confirmedDoNotContact?: boolean;
     /** El sticker de la biblioteca que se mando (00257): suma un uso. */
     stickerId?: string;
+    /** Reintentar ESTE envio fallido (00262): se manda lo que guardo, no lo que diga el pedido. */
+    retryOf?: string;
   };
+  let text = (body as { text?: string }).text;
+  let incomingMedia = (body as { media?: IncomingMedia }).media;
+
+  // Reintentar (00262): el texto y el adjunto salen de la fila fallida, leida
+  // con el cliente del usuario (la RLS decide si la ve). Solo un saliente de una
+  // persona que guardo el motivo aparte: en una fila vieja el texto ES el motivo.
+  let retryId: string | null = null;
+  if (typeof retryOf === "string" && retryOf) {
+    if (!conversationId) {
+      return NextResponse.json({ error: "conversationId required" }, { status: 400 });
+    }
+    const { data: failedRow } = await supabase
+      .from("messages")
+      .select("id, direction, origin, status, text, attachments, send_error")
+      .eq("id", retryOf)
+      .eq("conversation_id", conversationId)
+      .maybeSingle();
+    if (!failedRow) {
+      return NextResponse.json({ error: "No encontré el mensaje para reintentar." }, { status: 404 });
+    }
+    if (failedRow.status !== "failed") {
+      return NextResponse.json({ error: "Ese mensaje ya se está reintentando o ya salió." }, { status: 409 });
+    }
+    if (!canRetrySend(failedRow)) {
+      return NextResponse.json(
+        { error: "Este mensaje no se puede reintentar: es de antes y no guardó el texto original. Escribilo de nuevo." },
+        { status: 409 },
+      );
+    }
+    retryId = failedRow.id;
+    text = failedRow.text ?? undefined;
+    const retryMedia = retryMediaFrom(failedRow.attachments);
+    incomingMedia = retryMedia
+      ? {
+          storagePath: retryMedia.storagePath,
+          kind: retryMedia.kind,
+          mime: retryMedia.mime ?? undefined,
+          filename: retryMedia.filename,
+          durationSeconds: retryMedia.durationSeconds,
+        }
+      : undefined;
+  }
 
   if (!conversationId || (!text && !incomingMedia)) {
     return NextResponse.json(
@@ -367,6 +440,10 @@ export async function POST(request: NextRequest) {
   // Rama explicita por proveedor y no un `else`: un canal nuevo que caiga
   // por default en Zernio manda el mensaje al lugar equivocado sin avisar.
   if (outChannel.provider === "resend") {
+    // Un email que falla no deja fila (la respuesta es el error): no hay nada que reintentar.
+    if (retryId) {
+      return NextResponse.json({ error: "Este mensaje no se puede reintentar. Escribilo de nuevo." }, { status: 400 });
+    }
     // El email no admite adjuntos. channelAccepts (lib/channels/media.ts) es
     // el unico lugar que decide esto, para que el widget de la bandeja, el
     // agente y esta ruta digan lo mismo.
@@ -429,12 +506,39 @@ export async function POST(request: NextRequest) {
     lateAccountId: outChannel.late_account_id ?? undefined,
   };
 
-  const outcome = await sendChannelMessage(
-    supabase,
-    context,
-    { text: text ?? "", media: media ?? undefined },
-    { secrets: service },
-  );
+  // Reintentar reclama la fila ANTES de mandar: `failed -> pending` en una sola
+  // sentencia. Un doble clic o dos pestanas dan un solo envio.
+  if (retryId) {
+    const { data: claimed, error: claimError } = await service
+      .from("messages")
+      .update({ status: "pending", send_error: null })
+      .eq("id", retryId)
+      .eq("status", "failed")
+      .select("id")
+      .maybeSingle();
+    if (claimError) {
+      console.error("[messages] no pude reclamar el reintento:", claimError.message);
+      return NextResponse.json({ error: "No se pudo reintentar. Probá de nuevo." }, { status: 500 });
+    }
+    if (!claimed) {
+      return NextResponse.json({ error: "Ese mensaje ya se está reintentando o ya salió." }, { status: 409 });
+    }
+  }
+
+  let outcome: Awaited<ReturnType<typeof sendChannelMessage>>;
+  try {
+    outcome = await sendChannelMessage(
+      supabase,
+      context,
+      { text: text ?? "", media: media ?? undefined },
+      { secrets: service },
+    );
+  } catch (err) {
+    // Un reintento reclamado no puede quedar en `pending` para siempre.
+    console.error("[messages] el envio lanzo:", err instanceof Error ? err.message : "error desconocido");
+    outcome = { ok: false, failure: { kind: "unknown", message: "No se pudo enviar el mensaje.", hint: "Probá de nuevo en un momento.", retryable: true } };
+  }
+  const sendError = outcome.ok ? null : sendErrorText(outcome.failure);
 
   const now = new Date().toISOString();
   const attachmentsColumn = media
@@ -450,25 +554,45 @@ export async function POST(request: NextRequest) {
     : null;
 
   // Guardar nunca puede hacer fallar un envio que ya salio: si el insert
-  // falla, se loguea y la respuesta sigue.
-  const { data: stored, error: storeError } = await supabase
-    .from("messages")
-    .insert(
-      outboundMessageRow({
-        conversationId,
-        origin: "user",
-        // Un envio rechazado guarda el motivo en vez del texto que no salio,
-        // igual que recordSend: es lo que va a leer el operador.
-        text: outcome.ok ? (text ?? "") : (outcome.failure?.message ?? text ?? ""),
-        attachments: attachmentsColumn,
-        platformMessageId: outcome.platformMessageId ?? null,
-        sentByUserId: user.id,
-        status: outcome.ok ? "sent" : "failed",
-        createdAt: now,
-      }),
-    )
-    .select("*")
-    .single();
+  // falla, se loguea y la respuesta sigue. Un envio rechazado guarda lo que se
+  // quiso mandar en el texto y el motivo aparte (00262): asi se puede leer el
+  // por que y reintentar sin volver a escribirlo.
+  const { data: stored, error: storeError } = retryId
+    ? // El reintento es la MISMA fila: sale -> pasa a enviada (y baja al
+      // final del hilo); vuelve a fallar -> queda fallida con el motivo nuevo.
+      await service
+        .from("messages")
+        .update(
+          outcome.ok
+            ? {
+                status: "sent" as const,
+                send_error: null,
+                platform_message_id: outcome.platformMessageId ?? null,
+                sent_by_user_id: user.id,
+                created_at: now,
+              }
+            : { status: "failed" as const, send_error: sendError },
+        )
+        .eq("id", retryId)
+        .select("*")
+        .single()
+    : await supabase
+        .from("messages")
+        .insert({
+          ...outboundMessageRow({
+            conversationId,
+            origin: "user",
+            text: text ?? "",
+            attachments: attachmentsColumn,
+            platformMessageId: outcome.platformMessageId ?? null,
+            sentByUserId: user.id,
+            status: outcome.ok ? "sent" : "failed",
+            createdAt: now,
+          }),
+          send_error: sendError,
+        })
+        .select("*")
+        .single();
 
   if (storeError && storeError.code !== "23505") {
     console.error("[messages] no pude guardar el envio manual:", storeError.message);
@@ -476,7 +600,13 @@ export async function POST(request: NextRequest) {
 
   if (!outcome.ok) {
     return NextResponse.json(
-      { error: outcome.failure?.message ?? "No se pudo enviar el mensaje" },
+      {
+        error: sendError,
+        retryable: outcome.failure?.retryable ?? false,
+        // La fila guardada: la pantalla la pone en lugar del mensaje
+        // optimista, con su id para poder reintentarla.
+        message: stored ?? null,
+      },
       { status: outcome.failure?.retryable ? 502 : 400 },
     );
   }

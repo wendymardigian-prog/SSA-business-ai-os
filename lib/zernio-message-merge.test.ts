@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import type { InboxMessage } from "./zernio-message";
-import { mergeThreadWithLocal, platformIdsOf, type LocalMessageMedia } from "./zernio-message-merge";
+import { mergeThreadWithLocal, platformIdsOf, withLocalFailedSends, type LocalMessageMedia } from "./zernio-message-merge";
 
 const fromZernio = (over: Partial<InboxMessage> = {}): InboxMessage => ({
   id: "z-1",
@@ -182,5 +182,21 @@ describe("platformIdsOf (F14)", () => {
 
   it("un hilo vacio no dispara una consulta con una lista vacia", () => {
     expect(platformIdsOf([])).toEqual([]);
+  });
+});
+
+describe("withLocalFailedSends (00262)", () => {
+  const msg = (id: string, created_at: string) => ({ id, created_at });
+
+  it("suma los envios fallidos al hilo de Zernio, en orden de fecha", () => {
+    const thread = [msg("z1", "2026-10-23T21:54:00Z"), msg("z2", "2026-10-23T21:56:00Z")];
+    const failed = [msg("f1", "2026-10-23T21:55:00Z"), msg("f2", "2026-10-24T02:32:00Z")];
+    expect(withLocalFailedSends(thread, failed).map((m) => m.id)).toEqual(["z1", "f1", "z2", "f2"]);
+  });
+
+  it("sin fallidos devuelve el hilo tal cual, y nunca duplica un id", () => {
+    const thread = [msg("z1", "2026-10-23T21:54:00Z")];
+    expect(withLocalFailedSends(thread, [])).toBe(thread);
+    expect(withLocalFailedSends(thread, [msg("z1", "2026-10-23T21:54:00Z")])).toBe(thread);
   });
 });
