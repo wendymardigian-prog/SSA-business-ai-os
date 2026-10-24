@@ -115,7 +115,7 @@ describe("externalCooldownEnd (F7, puro)", () => {
     ).toEqual(at("2026-09-15T16:10:00.000Z"));
   });
   it("pasada la espera: no espera, aunque el lead haya escrito dentro de ella", () => {
-    // El caso real (Lautaro, 23/10/2026): ManyChat a las 16:00, el lead a las
+    // El caso real (23/10/2026): ManyChat a las 16:00, el lead a las
     // 16:01, ManyChat nunca respondio. A las 16:10 el agente tiene que actuar.
     expect(
       externalCooldownEnd({ lastExternalAt: base, cooldownMinutes: 10, now: at("2026-09-15T16:10:05.000Z") }),
