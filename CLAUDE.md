@@ -1529,7 +1529,11 @@ node scripts/verify-chat-awaiting.mjs   # gemelas SQL<->TS, el trigger, la marca
 - **Un envío fallido no es una respuesta para el agente** (`loadRecentMessages` los excluye).
 - **La espera tras ManyChat (`external_reply_cooldown_minutes`) se mide contra AHORA** (`externalCooldownEnd`): el turno se reagenda para cuando termina (`external_cooldown_wait`, con `blocked_retry`) y, si nadie respondió, el agente sigue. Antes se abstenía para siempre.
 
-`00262` (aditiva): **aplicada y registrada** el 23/10/2026 (versión `20261024032027`), con `verify-chat-awaiting.mjs` en verde.
+- **El trigger mira cuál es DE VERDAD el último mensaje** (00265), no `last_message_at`: un entrante pasa por `increment_unread` (hora de ahora) ANTES de guardarse con la hora del proveedor, unos segundos más vieja. Dirección y preview salen siempre de ese último mensaje.
+- **El «no leído» se apaga en la base** (00265): si el último mensaje es una respuesta nuestra (misma regla que `outboundCountsAsAnswered`: una persona en la app o desde afuera, como ManyChat), `unread_count` queda en 0, aunque el mensaje del contacto llegue después que el eco.
+- **Las fechas de la bandeja van por día de calendario** de quien mira (`lib/inbox/day-label.ts`): «Hoy», «Ayer», no «hace menos de 24 h».
+
+`00262` (aditiva): **aplicada y registrada** el 23/10/2026 (versión `20261024032027`), con `verify-chat-awaiting.mjs` en verde. `00265` corrige su trigger y suma el no leído (la `00263` y la `00264` son de tipos de producto).
 
 # Bandeja: asignación, Conocido, stickers y llamadas de WhatsApp (construido, 23/10/2026)
 
