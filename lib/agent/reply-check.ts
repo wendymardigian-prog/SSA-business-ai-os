@@ -60,18 +60,23 @@ export async function lastExternalOutboundAt(
 }
 
 /**
- * Decide la espera tras respuesta externa (F7): true si hay que abstenerse.
- * Puro para poder testearlo sin base.
+ * La espera tras una respuesta externa (F7): hasta cuando el agente no se mete
+ * porque otra herramienta (ManyChat) respondio hace poco. null = no hay que
+ * esperar. Puro para poder testearlo sin base.
+ *
+ * Se mide contra AHORA, no contra el mensaje del lead (23/10/2026): antes, si el
+ * lead escribia dentro de la espera, el agente se hacia a un lado para siempre
+ * aunque ManyChat nunca respondiera. Ahora el turno se reagenda para cuando
+ * termina la espera y, si nadie respondio en el medio, sigue.
  */
-export function withinExternalCooldown(args: {
-  lastInboundAt: string;
+export function externalCooldownEnd(args: {
   lastExternalAt: string | null;
   cooldownMinutes: number;
-}): boolean {
-  if (args.cooldownMinutes <= 0 || !args.lastExternalAt) return false;
-  const inbound = new Date(args.lastInboundAt).getTime();
-  const external = new Date(args.lastExternalAt).getTime();
-  return inbound < external + args.cooldownMinutes * 60_000;
+  now: Date;
+}): Date | null {
+  if (args.cooldownMinutes <= 0 || !args.lastExternalAt) return null;
+  const end = new Date(args.lastExternalAt).getTime() + args.cooldownMinutes * 60_000;
+  return end > args.now.getTime() ? new Date(end) : null;
 }
 
 /**

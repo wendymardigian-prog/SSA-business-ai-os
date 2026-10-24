@@ -11,6 +11,8 @@ export interface RoutingLike {
   check?: string;
   moment?: number;
   refresh?: string;
+  /** Espera tras ManyChat: cuando vuelve a mirar el agente (null = no se pudo reagendar). */
+  retry_at?: string | null;
 }
 
 export interface RuleLabel {
@@ -36,7 +38,9 @@ export function routingSentence(routing: RoutingLike | null | undefined, ruleLoo
     return `No respondió: ya había una respuesta ${cuando}.`;
   }
   if (routing.check === "external_cooldown") {
-    return "No respondió: otra herramienta (por ejemplo ManyChat) respondió hace poco.";
+    return routing.retry_at
+      ? "Esperó: otra herramienta (por ejemplo ManyChat) respondió hace poco. Vuelve a mirar cuando termina la espera y responde si nadie lo hizo."
+      : "No respondió: otra herramienta (por ejemplo ManyChat) respondió hace poco.";
   }
 
   if (routing.mode === "rules") {

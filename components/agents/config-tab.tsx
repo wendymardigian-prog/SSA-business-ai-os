@@ -122,7 +122,7 @@ function TimingSection({ form, set }: SectionProps) {
       </Field>
       <Field
         label="Espera después de una respuesta externa (minutos)"
-        hint="Si otra herramienta (por ejemplo ManyChat) respondió hace menos de N minutos, el agente no se mete. 0 la desactiva."
+        hint="Si otra herramienta (por ejemplo ManyChat) respondió hace menos de N minutos, el agente espera a que pasen. Si después nadie respondió, el agente actúa. 0 la desactiva."
       >
         {(id) => <NumberInput id={id} value={form.externalReplyCooldownMinutes} min={0} max={120} onChange={(v) => set({ externalReplyCooldownMinutes: v ?? 0 })} />}
       </Field>

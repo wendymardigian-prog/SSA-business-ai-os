@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { runAgentTurn } from "./runner";
 import { at, T0, turnWorld } from "./testing/turn-world";
-import { withinExternalCooldown } from "./reply-check";
+import { externalCooldownEnd } from "./reply-check";
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -106,34 +106,79 @@ describe("verificación antes de responder (F5)", () => {
   });
 });
 
-describe("withinExternalCooldown (F7, puro)", () => {
+describe("externalCooldownEnd (F7, puro)", () => {
   const base = "2026-09-15T16:00:00.000Z";
-  it("dentro de la ventana: espera", () => {
+  const at = (iso: string) => new Date(iso);
+  it("dentro de la espera: devuelve cuando termina", () => {
     expect(
-      withinExternalCooldown({
-        lastInboundAt: "2026-09-15T16:03:00.000Z",
-        lastExternalAt: base,
-        cooldownMinutes: 10,
-      }),
-    ).toBe(true);
+      externalCooldownEnd({ lastExternalAt: base, cooldownMinutes: 10, now: at("2026-09-15T16:03:00.000Z") }),
+    ).toEqual(at("2026-09-15T16:10:00.000Z"));
   });
-  it("fuera de la ventana: no espera", () => {
+  it("pasada la espera: no espera, aunque el lead haya escrito dentro de ella", () => {
+    // El caso real (Lautaro, 23/10/2026): ManyChat a las 16:00, el lead a las
+    // 16:01, ManyChat nunca respondio. A las 16:10 el agente tiene que actuar.
     expect(
-      withinExternalCooldown({
-        lastInboundAt: "2026-09-15T16:11:00.000Z",
-        lastExternalAt: base,
-        cooldownMinutes: 10,
-      }),
-    ).toBe(false);
+      externalCooldownEnd({ lastExternalAt: base, cooldownMinutes: 10, now: at("2026-09-15T16:10:05.000Z") }),
+    ).toBeNull();
   });
   it("N=0: desactivada", () => {
-    expect(
-      withinExternalCooldown({ lastInboundAt: "2026-09-15T16:03:00.000Z", lastExternalAt: base, cooldownMinutes: 0 }),
-    ).toBe(false);
+    expect(externalCooldownEnd({ lastExternalAt: base, cooldownMinutes: 0, now: at("2026-09-15T16:03:00.000Z") })).toBeNull();
   });
   it("sin saliente externo: no espera", () => {
-    expect(
-      withinExternalCooldown({ lastInboundAt: base, lastExternalAt: null, cooldownMinutes: 10 }),
-    ).toBe(false);
+    expect(externalCooldownEnd({ lastExternalAt: null, cooldownMinutes: 10, now: at(base) })).toBeNull();
+  });
+});
+
+describe("espera tras ManyChat: se reagenda en vez de rendirse (F7, 23/10/2026)", () => {
+  // ManyChat manda la bienvenida 60 s antes; el lead responde a los 0 s (dentro
+  // de los 10 minutos de espera) y ManyChat nunca vuelve a escribir.
+  function waitingWorld() {
+    const w = turnWorld({ draft: true });
+    pushExternal(w, -60);
+    w.addInbound("te consulto, me podrían ayudar?", 0);
+    w.clock.ms = T0 + 75_000;
+    return w;
+  }
+
+  it("dentro de la espera: no llama al modelo y deja el turno agendado para cuando termina", async () => {
+    const w = waitingWorld();
+
+    const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
+
+    expect(outcome).toMatchObject({ kind: "run", status: "skipped", detail: "external_cooldown_wait" });
+    expect(w.modelCalls).toHaveLength(0);
+    const job = w.db.rows("scheduled_jobs").find((j) => j.type === "agent_burst");
+    expect(job).toBeDefined();
+    // 10 minutos después del mensaje de ManyChat, más el margen.
+    expect(new Date(job!.run_at as string).getTime()).toBe(T0 - 60_000 + 10 * 60_000 + 5_000);
+    expect((job!.payload as { blocked_retry?: boolean }).blocked_retry).toBe(true);
+  });
+
+  it("al volver, si nadie respondió, el agente deja su borrador", async () => {
+    const w = waitingWorld();
+    await runAgentTurn(w.db.client, w.payload, w.deps);
+    const job = w.db.rows("scheduled_jobs").find((j) => j.type === "agent_burst")!;
+
+    w.clock.ms = new Date(job.run_at as string).getTime();
+    const outcome = await runAgentTurn(w.db.client, job.payload, w.deps);
+
+    expect(outcome).toMatchObject({ kind: "run", status: "drafted" });
+    expect(w.db.rows("agent_drafts")).toHaveLength(1);
+  });
+
+  it("al volver, si ManyChat respondió en el medio, se retira sin gastar", async () => {
+    const w = waitingWorld();
+    await runAgentTurn(w.db.client, w.payload, w.deps);
+    const job = w.db.rows("scheduled_jobs").find((j) => j.type === "agent_burst")!;
+    pushExternal(w, 120);
+
+    w.clock.ms = new Date(job.run_at as string).getTime();
+    const callsBefore = w.modelCalls.length;
+    const outcome = await runAgentTurn(w.db.client, job.payload, w.deps);
+
+    // La respuesta de ManyChat ya cerró la ráfaga: no hay nada que responder.
+    expect(outcome).toMatchObject({ kind: "no_turn", reason: "nothing_to_answer" });
+    expect(w.modelCalls.length).toBe(callsBefore);
+    expect(w.db.rows("agent_drafts")).toHaveLength(0);
   });
 });

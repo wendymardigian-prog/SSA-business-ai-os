@@ -2051,6 +2051,8 @@ export interface Database {
           assigned_to: string | null;
           last_message_at: string | null;
           last_message_preview: string | null;
+          /** Si el ultimo mensaje fue del contacto o nuestro (00262, lo mantiene un trigger). */
+          last_message_direction: "inbound" | "outbound" | null;
           unread_count: number;
           is_automation_paused: boolean;
           /**
@@ -2107,6 +2109,7 @@ export interface Database {
           assigned_to?: string | null;
           last_message_at?: string | null;
           last_message_preview?: string | null;
+          last_message_direction?: "inbound" | "outbound" | null;
           unread_count?: number;
           is_automation_paused?: boolean;
           agent_enabled?: boolean | null;
@@ -2149,6 +2152,7 @@ export interface Database {
           assigned_to?: string | null;
           last_message_at?: string | null;
           last_message_preview?: string | null;
+          last_message_direction?: "inbound" | "outbound" | null;
           unread_count?: number;
           is_automation_paused?: boolean;
           agent_enabled?: boolean | null;
@@ -2236,6 +2240,8 @@ export interface Database {
           transcript_seconds: number | null;
           /** Cuando arranco: es lo que usa el reaper de los pending colgados. */
           transcript_started_at: string | null;
+          /** Por que no salio un envio fallido (00262). El texto queda con lo que se quiso mandar. */
+          send_error: string | null;
         };
         Insert: {
           id?: string;
@@ -2277,6 +2283,7 @@ export interface Database {
           transcript_error?: string | null;
           transcript_seconds?: number | null;
           transcript_started_at?: string | null;
+          send_error?: string | null;
           origin_context?: Json | null;
         };
         /**
@@ -2298,6 +2305,7 @@ export interface Database {
           transcript_error?: string | null;
           transcript_seconds?: number | null;
           transcript_started_at?: string | null;
+          send_error?: string | null;
           origin_context?: Json | null;
         };
         Relationships: [

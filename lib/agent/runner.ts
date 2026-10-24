@@ -55,7 +55,7 @@ import { sendAgentAsset } from "./send-asset";
 import { buildModelMessages, buildSystemPrompt, type DraftRevision } from "./prompt";
 import { defaultSend, sendAgentParts, type SendFn } from "./send";
 import { defaultRefresh, type RefreshFn } from "./refresh";
-import { alreadyAnsweredSince, claimAgentReply, lastExternalOutboundAt, withinExternalCooldown } from "./reply-check";
+import { alreadyAnsweredSince, claimAgentReply, externalCooldownEnd, lastExternalOutboundAt } from "./reply-check";
 import { evaluateRules, type RuleEvalResult } from "./rules/evaluate";
 import { buildPreRuleContext, fillResponseContext } from "./rules/context";
 import { buttonTextsFromRows, BUTTON_TEXTS_QUERY } from "./rules/button-texts";
@@ -300,22 +300,29 @@ export async function runAgentTurn(
   }
 
   // 4. Espera tras respuesta externa (F7). Si otra herramienta (ManyChat)
-  // respondió hace menos de N minutos, el agente no se mete.
-  if (
-    !suggest &&
-    withinExternalCooldown({
-      lastInboundAt: lastInbound.created_at,
-      lastExternalAt: await lastExternalOutboundAt(supabase, fresh.id),
-      cooldownMinutes: agent.externalReplyCooldownMinutes,
-    })
-  ) {
+  // respondió hace menos de N minutos, el agente no se mete TODAVÍA: el turno
+  // se reagenda para cuando termina la espera. Al volver, el refresco y el
+  // chequeo de arriba lo retiran si ManyChat respondió en el medio; si no, el
+  // agente sigue. Antes se abstenía para siempre y el lead quedaba sin
+  // respuesta cuando ManyChat no contestaba.
+  const cooldownEnd = suggest
+    ? null
+    : externalCooldownEnd({
+        lastExternalAt: await lastExternalOutboundAt(supabase, fresh.id),
+        cooldownMinutes: agent.externalReplyCooldownMinutes,
+        now: deps.now(),
+      });
+  if (cooldownEnd) {
+    const retryAt = new Date(cooldownEnd.getTime() + EXTERNAL_COOLDOWN_MARGIN_SECONDS * 1000);
+    const rescheduled = await rescheduleTurnAt(supabase, { conversation: fresh, agent, burst, runAt: retryAt });
+    const detail = rescheduled ? "external_cooldown_wait" : "external_cooldown";
     const runId = await recordRunOutcome(supabase, {
       ...runBase,
       status: "skipped",
-      statusDetail: "external_cooldown",
-      routing: { check: "external_cooldown" },
+      statusDetail: detail,
+      routing: { check: "external_cooldown", retry_at: rescheduled ? retryAt.toISOString() : null },
     });
-    return { kind: "run", status: "skipped", detail: "external_cooldown", runId };
+    return { kind: "run", status: "skipped", detail, runId };
   }
 
   // Una regeneracion siempre deja borrador, aunque el canal haya vuelto a
@@ -1378,6 +1385,44 @@ async function rescheduleForMedia(
       "[agent-turn] no pude reprogramar el turno que espera la transcripcion:",
       err instanceof Error ? err.message : "error desconocido",
     );
+  }
+}
+
+/** Margen despues de la espera tras ManyChat: que el job no se levante un tic antes. */
+export const EXTERNAL_COOLDOWN_MARGIN_SECONDS = 5;
+
+/**
+ * Reagenda el turno para un instante dado (la espera tras ManyChat). Con
+ * `blocked_retry`, como los otros reagendados: sin eso se descartaria por viejo
+ * justamente por haber esperado. Devuelve false si no se pudo (queda el run con
+ * el motivo, como antes).
+ */
+async function rescheduleTurnAt(
+  supabase: Db,
+  args: { conversation: TurnConversation; agent: AgentConfig; burst: StoredMessage[]; runAt: Date },
+): Promise<boolean> {
+  const payload: AgentBurstPayload = {
+    workspaceId: args.conversation.workspace_id,
+    conversationId: args.conversation.id,
+    channelId: args.conversation.channel_id,
+    contactId: args.conversation.contact_id,
+    agentId: args.agent.id,
+    last_message_at: args.burst[args.burst.length - 1].created_at,
+    blocked_retry: true,
+  };
+  try {
+    await pushDebouncedJob(supabase, {
+      type: AGENT_BURST_JOB,
+      dedupeKey: agentBurstKey(args.conversation.id),
+      payload: payload as unknown as Record<string, unknown>,
+      runAt: args.runAt,
+      deadline: null,
+      volatileKeys: AGENT_BURST_VOLATILE_KEYS,
+    });
+    return true;
+  } catch (err) {
+    console.error("[agent-turn] no pude reprogramar el turno tras la espera externa:", err instanceof Error ? err.message : "error desconocido");
+    return false;
   }
 }
 

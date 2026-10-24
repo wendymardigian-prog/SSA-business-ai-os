@@ -56,6 +56,8 @@ interface World {
   storageBytes?: Uint8Array;
   storageError?: boolean;
   insertError?: { code: string; message: string } | null;
+  /** La fila que lee un reintento (00262). */
+  failedRow?: Record<string, unknown> | null;
 }
 
 function fakeClient(world: World = {}) {
@@ -67,11 +69,14 @@ function fakeClient(world: World = {}) {
     auth: { getUser: async () => ({ data: { user: world.user === false ? null : { id: "u-1" } } }) },
     from(table: string) {
       return {
-        select: () => ({
-          eq: () => ({
+        select: () => {
+          const chain = {
+            eq: () => chain,
             single: async () => ({ data: table === "conversations" ? (world.conversation ?? null) : null, error: null }),
-          }),
-        }),
+            maybeSingle: async () => ({ data: table === "messages" ? (world.failedRow ?? null) : null, error: null }),
+          };
+          return chain;
+        },
         insert: (row: Record<string, unknown>) => {
           inserts.push({ table, row });
           return {
@@ -212,10 +217,149 @@ describe("POST /api/v1/messages: texto sin media (no-regresion)", () => {
     const response = await call({ conversationId: CONV, text: "hola" });
 
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toEqual({ error: "No se pudo enviar." });
-    // Igual queda guardado como failed, con el motivo en el texto.
+    const body = await response.json();
+    expect(body).toMatchObject({ error: "No se pudo enviar.", retryable: true });
+    // La fila guardada vuelve con la respuesta: la pantalla la usa para reintentar.
+    expect(body.message).toMatchObject({ id: "msg-out-1", status: "failed" });
+    // Queda guardado como failed con LO QUE SE QUISO MANDAR en el texto y el
+    // motivo aparte (00262): antes el motivo pisaba el texto.
     const inserted = inserts.find((i) => i.table === "messages");
-    expect(inserted?.row).toMatchObject({ status: "failed", text: "No se pudo enviar." });
+    expect(inserted?.row).toMatchObject({ status: "failed", text: "hola", send_error: "No se pudo enviar." });
+  });
+
+  it("el motivo guardado suma que hacer (el hint) y uno no reintentable responde 400", async () => {
+    sendChannelMessage.mockResolvedValue({
+      ok: false,
+      failure: { kind: "not_thread_owner", message: "Instagram no dejo enviar.", hint: "Contestale desde esa app.", retryable: false },
+    });
+    const { client, inserts } = fakeClient({ conversation: conversation() });
+    createClient.mockResolvedValue(client);
+
+    const response = await call({ conversationId: CONV, text: "hola" });
+
+    expect(response.status).toBe(400);
+    const inserted = inserts.find((i) => i.table === "messages");
+    expect(inserted?.row).toMatchObject({ text: "hola", send_error: "Instagram no dejo enviar. Contestale desde esa app." });
+  });
+});
+
+/**
+ * El cliente de servicio de un reintento: reclama la fila (`failed -> pending`)
+ * y despues la deja enviada o fallida. Una sola fila compartida, como la base.
+ */
+function fakeRetryService(row: Record<string, unknown>) {
+  const writes: Array<Record<string, unknown>> = [];
+  const service = {
+    from() {
+      return {
+        update(patch: Record<string, unknown>) {
+          const filters: Array<[string, unknown]> = [];
+          const matches = () => filters.every(([col, val]) => row[col] === val);
+          const chain = {
+            eq(col: string, val: unknown) {
+              filters.push([col, val]);
+              return chain;
+            },
+            select: () => ({
+              maybeSingle: async () => {
+                if (!matches()) return { data: null, error: null };
+                Object.assign(row, patch);
+                writes.push(patch);
+                return { data: { id: row.id }, error: null };
+              },
+              single: async () => {
+                Object.assign(row, patch);
+                writes.push(patch);
+                return { data: { ...row }, error: null };
+              },
+            }),
+          };
+          return chain;
+        },
+      };
+    },
+  };
+  return { service, writes };
+}
+
+describe("POST /api/v1/messages: reintentar un envio fallido (00262)", () => {
+  const failedRow = (over: Record<string, unknown> = {}) => ({
+    id: "msg-failed-1",
+    direction: "outbound",
+    origin: "user",
+    status: "failed",
+    text: "Hola Lautaro! claro que si",
+    attachments: null,
+    send_error: "Instagram no dejo enviar.",
+    ...over,
+  });
+
+  it("manda lo que guardo la fila (no lo que diga el pedido) y la MISMA fila pasa a enviada", async () => {
+    const row = failedRow();
+    const { client, inserts } = fakeClient({ conversation: conversation(), failedRow: { ...row } });
+    createClient.mockResolvedValue(client);
+    const { service, writes } = fakeRetryService(row);
+    createServiceClient.mockResolvedValue(service);
+
+    const response = await call({ conversationId: CONV, retryOf: "msg-failed-1", text: "otra cosa" });
+
+    expect(response.status).toBe(201);
+    expect(sendChannelMessage).toHaveBeenCalledTimes(1);
+    expect((sendChannelMessage.mock.calls[0] as unknown[])[2]).toEqual({ text: "Hola Lautaro! claro que si", media: undefined });
+    expect(inserts.filter((i) => i.table === "messages")).toHaveLength(0);
+    expect(writes[0]).toMatchObject({ status: "pending" });
+    expect(row).toMatchObject({ status: "sent", send_error: null, platform_message_id: "pm-1" });
+    expect(applyManualReply).toHaveBeenCalled();
+  });
+
+  it("doble clic: dos reintentos a la vez mandan UNA sola vez", async () => {
+    const row = failedRow();
+    const { client } = fakeClient({ conversation: conversation(), failedRow: { ...row } });
+    createClient.mockResolvedValue(client);
+    const { service } = fakeRetryService(row);
+    createServiceClient.mockResolvedValue(service);
+
+    const [a, b] = await Promise.all([
+      call({ conversationId: CONV, retryOf: "msg-failed-1" }),
+      call({ conversationId: CONV, retryOf: "msg-failed-1" }),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    expect(sendChannelMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("si vuelve a fallar, la fila queda fallida con el motivo nuevo", async () => {
+    sendChannelMessage.mockResolvedValue({ ok: false, failure: { kind: "unknown", message: "Otra vez no.", retryable: true } });
+    const row = failedRow();
+    const { client } = fakeClient({ conversation: conversation(), failedRow: { ...row } });
+    createClient.mockResolvedValue(client);
+    const { service } = fakeRetryService(row);
+    createServiceClient.mockResolvedValue(service);
+
+    const response = await call({ conversationId: CONV, retryOf: "msg-failed-1" });
+
+    expect(response.status).toBe(502);
+    expect(row).toMatchObject({ status: "failed", send_error: "Otra vez no.", text: "Hola Lautaro! claro que si" });
+  });
+
+  it("una fila vieja (el motivo en el texto, sin send_error) no se reintenta: le mandaria el motivo al contacto", async () => {
+    const { client } = fakeClient({ conversation: conversation(), failedRow: failedRow({ send_error: null, text: "Instagram no dejo enviar." }) });
+    createClient.mockResolvedValue(client);
+
+    const response = await call({ conversationId: CONV, retryOf: "msg-failed-1" });
+
+    expect(response.status).toBe(409);
+    expect(sendChannelMessage).not.toHaveBeenCalled();
+  });
+
+  it("un mensaje que ya salio no se reintenta", async () => {
+    const { client } = fakeClient({ conversation: conversation(), failedRow: failedRow({ status: "sent" }) });
+    createClient.mockResolvedValue(client);
+
+    const response = await call({ conversationId: CONV, retryOf: "msg-failed-1" });
+
+    expect(response.status).toBe(409);
+    expect(sendChannelMessage).not.toHaveBeenCalled();
   });
 });
 

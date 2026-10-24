@@ -25,6 +25,8 @@ import { assigneeName } from "@/lib/inbox/assignee";
 import { knownLabel } from "@/lib/inbox/known";
 import { colorOf, initialsOf } from "@/lib/tasks/people";
 import { Avatar } from "@/components/ui/filter-menu";
+import { Tip } from "@/components/ui/tooltip";
+import { conversationListPreview } from "@/lib/inbox/last-message";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 type Conversation = ConversationRow;
@@ -312,8 +314,10 @@ export function ConversationList({
                   </p>
                 )}
                 <div className="flex items-center justify-between">
+                  {/* 00262: el ultimo mensaje de la conversacion, sea del
+                      contacto o nuestro ("Vos: ..."). */}
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {conversation.last_message_preview ?? "Sin mensajes todavía"}
+                    {conversationListPreview(conversation)}
                   </p>
                   {/* F11: el agente no pudo entender lo que llego y no
                       respondio. Hay un lead esperando a una persona, asi que va
@@ -331,13 +335,17 @@ export function ConversationList({
                       borrador es una conversacion esperando respuesta: se
                       entra directo al hilo, donde esta arriba del composer. */}
                   {withDraft.has(conversation.id) && (
-                    <span
-                      className="ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-dashed border-amber-400 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200"
-                      title="El agente dejó una respuesta para aprobar en esta conversación"
-                    >
-                      <FileText className="h-3 w-3" aria-hidden />
-                      Borrador esperando
-                    </span>
+                    // Solo el icono: el texto ocupaba media fila. El tooltip
+                    // (y el aria-label) dicen que es.
+                    <Tip content="Borrador esperando" className="ml-2 flex-shrink-0">
+                      <span
+                        role="img"
+                        aria-label="Borrador esperando"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-amber-400 text-amber-700 dark:text-amber-300"
+                      >
+                        <FileText className="h-3 w-3" aria-hidden />
+                      </span>
+                    </Tip>
                   )}
                   {/* 00259: el ultimo mensaje solo cierra la charla. Gris: no
                       es una alerta, explica por que no cuenta como esperando. */}

@@ -1513,11 +1513,22 @@ Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con b
 
 ## Migraciones
 
-`00259` (columnas, regla, trigger, `set_conversation_no_reply`, `chat_waiting_now_v2` y el backfill), `00260` (`expired`, el barrido y los 62 que ya estaban vencidos) y `00261` (tiempo de respuesta): **aplicadas y registradas** el 23/10/2026 (versiones `20261023211644`, `...211658` y `...211651`). La regla de cierre de la 00259 se corrigió el mismo día (promesas pendientes) y el SQL registrado es el corregido. La `00255` a la `00258` son de la sesión de WhatsApp (stickers y llamadas). **La próxima libre es la `00262`** (confirmar con `list_migrations` y las ramas locales).
+`00259` (columnas, regla, trigger, `set_conversation_no_reply`, `chat_waiting_now_v2` y el backfill), `00260` (`expired`, el barrido y los 62 que ya estaban vencidos) y `00261` (tiempo de respuesta): **aplicadas y registradas** el 23/10/2026 (versiones `20261023211644`, `...211658` y `...211651`). La regla de cierre de la 00259 se corrigió el mismo día (promesas pendientes) y el SQL registrado es el corregido. La `00255` a la `00258` son de la sesión de WhatsApp (stickers y llamadas). La `00262` es de «El último mensaje de la conversación» (abajo): **la próxima libre es la `00263`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-chat-awaiting.mjs   # gemelas SQL<->TS, el trigger, la marca, el contador, el tiempo humano y el barrido
 ```
+# El último mensaje de la conversación, envíos fallidos y la espera tras ManyChat (23/10/2026)
+
+## Lo que no se puede romper
+
+- **La lista muestra el ÚLTIMO mensaje de la conversación**, sea del contacto o nuestro: `last_message_at`, `last_message_preview` y `last_message_direction` los mantiene el trigger `messages_zz_last_message` (00262) con cualquier entrante y cualquier saliente que salió (ni `failed` ni `pending`; un mensaje más viejo que el último no la mueve). Va en `EXCEPTION WHEN OTHERS`: nunca tumba el insert de un mensaje. Las etiquetas de adjuntos de `private.attachment_preview_label` son las de `LABELS` (`lib/inbox/last-message-sql.test.ts`). El «Vos: » lo pone la pantalla (`conversationListPreview`), no se guarda.
+- **Un envío fallido guarda lo que se quiso mandar en `text` y el motivo en `messages.send_error`** (antes el motivo pisaba el texto). La bandeja muestra el motivo, «Reintentar» y «Copiar texto». Reintentar (`retryOf` en `POST /api/v1/messages`) reclama la MISMA fila con `failed -> pending` antes de mandar: doble clic = un envío. Una fila vieja (sin `send_error`) no se reintenta: su texto es el motivo. En Instagram el hilo se lee de Zernio, así que los fallidos se suman desde la tabla (`withLocalFailedSends`).
+- **Un envío fallido no es una respuesta para el agente** (`loadRecentMessages` los excluye).
+- **La espera tras ManyChat (`external_reply_cooldown_minutes`) se mide contra AHORA** (`externalCooldownEnd`): el turno se reagenda para cuando termina (`external_cooldown_wait`, con `blocked_retry`) y, si nadie respondió, el agente sigue. Antes se abstenía para siempre.
+
+`00262` (aditiva): **aplicada y registrada** el 23/10/2026 (versión `20261024032027`), con `verify-chat-awaiting.mjs` en verde.
+
 # Bandeja: asignación, Conocido, stickers y llamadas de WhatsApp (construido, 23/10/2026)
 
 Responsable de cada conversación (a mano y con reglas por cuenta), la marca «Conocido», stickers de WhatsApp y el registro de llamadas. Lo que Evolution puede y no puede está en `docs/pendientes/wavoip-llamadas.md`.
