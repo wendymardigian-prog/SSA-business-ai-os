@@ -45,10 +45,10 @@ describe("buildProductSnapshot", () => {
   it("incluye todos los campos del plano", () => {
     const snap = buildProductSnapshot(
       { id: "p1", name: "Mentoría", product_type: "mentoria" },
-      { id: "v1", name: "Estándar", duration_type: "months", duration_value: 6, billing_type: "one_time", billing_interval: null, guarantee_duration_type: "days", guarantee_duration_value: 30, price: "1497.00" },
+      { id: "v1", name: "Estándar", duration_type: "months", duration_value: 6, billing_type: "one_time", billing_interval: null, event_date: null, price: "1497.00" },
     );
     expect(Object.keys(snap).sort()).toEqual([
-      "billing_interval", "billing_type", "currency", "duration_type", "duration_value", "guarantee_duration_type", "guarantee_duration_value",
+      "billing_interval", "billing_type", "currency", "duration_type", "duration_value", "event_date",
       "price", "product_id", "product_name", "product_type", "variant_id", "variant_name",
     ]);
     expect(snap).toMatchObject({ price: 1497, currency: "USD", variant_id: "v1" });

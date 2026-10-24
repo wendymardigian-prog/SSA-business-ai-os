@@ -56,7 +56,7 @@ const seed = () =>
     contacts: [{ id: CONTACT, workspace_id: WS, deleted_at: null }],
     workspace_members: [{ workspace_id: WS, user_id: ME }],
     products: [{ id: PRODUCT, workspace_id: WS, name: "Mentoría", product_type: "mentoria", status: "active" }],
-    product_variants: [{ id: VARIANT, workspace_id: WS, product_id: PRODUCT, name: "Estándar", duration_type: "lifetime", duration_value: null, guarantee_duration_type: null, guarantee_duration_value: null, billing_type: "one_time", billing_interval: null, price: 1297, archived_at: null }],
+    product_variants: [{ id: VARIANT, workspace_id: WS, product_id: PRODUCT, name: "Estándar", duration_type: "lifetime", duration_value: null, event_date: null, billing_type: "one_time", billing_interval: null, price: 1297, archived_at: null }],
     workspace_roles: [],
   });
 

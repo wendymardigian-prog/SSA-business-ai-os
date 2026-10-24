@@ -34,11 +34,11 @@ beforeEach(() => {
 });
 
 const product = (extra: Record<string, unknown> = {}) => ({
-  id: U(10), workspace_id: WS, name: "Mentoría", description: null, product_type: "otro", status: "active", archived_at: null, display_order: 0, ...extra,
+  id: U(10), workspace_id: WS, name: "Mentoría", description: null, product_type: "programa", status: "active", archived_at: null, display_order: 0, ...extra,
 });
 const variant = (extra: Record<string, unknown> = {}) => ({
   id: U(20), workspace_id: WS, product_id: U(10), name: "Estándar", duration_type: "lifetime", duration_value: null,
-  guarantee_duration_type: null, guarantee_duration_value: null, billing_type: "one_time", billing_interval: null, display_order: 0, price: 1497, archived_at: null, ...extra,
+  event_date: null, billing_type: "one_time", billing_interval: null, display_order: 0, price: 1497, archived_at: null, ...extra,
 });
 
 describe("permiso", () => {
@@ -70,7 +70,7 @@ describe("createProduct", () => {
 
   it("rechaza un nombre repetido (sin mirar mayúsculas ni espacios)", async () => {
     await actions.createProduct({ name: "Mentoría" });
-    const again = await actions.createProduct({ name: " MENTORÍA ", type: "otro" });
+    const again = await actions.createProduct({ name: " MENTORÍA ", type: "producto" });
     expect(again).toEqual({ ok: false, error: "Ya existe un producto con ese nombre" });
     expect(db.rows("products")).toHaveLength(1);
   });
@@ -139,6 +139,12 @@ describe("estado del producto", () => {
     expect(await actions.updateProduct({ id: U(10), name: "Mentoría 2", type: "mentoria" })).toEqual({ ok: true });
     expect(db.rows("products")[0]).toMatchObject({ name: "Mentoría 2", product_type: "mentoria", status: "active" });
   });
+
+  it("un producto que todavía dice 'otro' se renombra y pasa a 'producto'", async () => {
+    db.rows("products")[0].product_type = "otro";
+    expect(await actions.updateProduct({ id: U(10), name: "Libro" })).toEqual({ ok: true });
+    expect(db.rows("products")[0]).toMatchObject({ name: "Libro", product_type: "producto" });
+  });
 });
 
 describe("variantes", () => {
@@ -152,6 +158,19 @@ describe("variantes", () => {
     expect(ok.ok).toBe(true);
     expect(db.rows("product_variants")).toHaveLength(2);
     expect(db.rows("product_variants")[1]).toMatchObject({ billing_interval: "monthly", display_order: 1, price: 200 });
+  });
+
+  it("lo que pide la variante depende del tipo del producto, también al editar", async () => {
+    db.rows("products")[0].product_type = "evento";
+    const noDate = await actions.createVariant({ productId: U(10), name: "Noviembre", durationType: "days", durationValue: 2, billingType: "one_time" });
+    expect(noDate).toEqual({ ok: false, error: "Poné la fecha del evento" });
+    const ok = await actions.createVariant({ productId: U(10), name: "Noviembre", durationType: "days", durationValue: 2, eventDate: "2026-11-15", billingType: "one_time" });
+    expect(ok.ok).toBe(true);
+    expect(db.rows("product_variants")[1]).toMatchObject({ event_date: "2026-11-15", duration_type: "days", duration_value: 2 });
+
+    db.rows("products")[0].product_type = "producto";
+    expect(await actions.updateVariant({ id: U(20), name: "Estándar", durationType: "months", durationValue: 6, billingType: "one_time" })).toEqual({ ok: true });
+    expect(db.rows("product_variants")[0]).toMatchObject({ duration_type: "lifetime", duration_value: null, event_date: null });
   });
 
   it("archivar y restaurar no borran", async () => {

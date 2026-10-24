@@ -651,7 +651,7 @@ try {
     const { data: prodP } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Producto cobranza", product_type: "programa" }).select("id").single();
     const { data: variantP } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prodP!.id, name: "Estandar", price: 1000 }).select("id").single();
     const { data: contactP } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Ana Cobranza", email: `zz-test-cob-${stamp}@example.test` }).select("id").single();
-    const snapshot = { product_id: prodP!.id, product_name: "zz-test Producto cobranza", product_type: "programa", variant_id: variantP!.id, variant_name: "Estandar", price: 1000, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+    const snapshot = { product_id: prodP!.id, product_name: "zz-test Producto cobranza", product_type: "programa", variant_id: variantP!.id, variant_name: "Estandar", price: 1000, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, event_date: null };
     const optionSnapshot = { method_key: "wise", method_name: "Wise", provider_fee_percent: 0, provider_fee_fixed: 0 };
     const reservation = { type: "reservation", amount: 100, status: "paid", due_date: ayer, paid_at: `${ayer}T15:00:00Z`, paid_on: ayer, payment_method: "wise", payment_option_snapshot: optionSnapshot, provider_fee_amount: 0 };
     const installments = [1, 2].map((n) => ({ type: "installment", amount: 450, status: "scheduled", due_date: `2031-0${n}-15` }));

@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { countUsage } from "@/lib/content/taxonomy";
 import { pieceClassification } from "@/lib/content/taxonomy-usage";
-import { productRow, type ProductRow } from "./products";
+import { normalizeProductType, productRow, type ProductRow, type ProductType } from "./products";
 import { priceOrNull } from "./price";
 
 type Db = SupabaseClient<Database>;
@@ -38,8 +38,8 @@ export interface CatalogVariant {
   name: string;
   duration_type: string;
   duration_value: number | null;
-  guarantee_duration_type: string | null;
-  guarantee_duration_value: number | null;
+  /** La fecha fija de un evento (AAAA-MM-DD); null en los demás tipos. */
+  event_date: string | null;
   billing_type: string;
   billing_interval: string | null;
   display_order: number;
@@ -54,7 +54,7 @@ export interface ProductDetailData {
   id: string;
   name: string;
   description: string | null;
-  type: string;
+  type: ProductType;
   status: string;
   pieces: number;
   variants: CatalogVariant[];
@@ -72,7 +72,7 @@ export async function loadProductDetail(supabase: Db, workspaceId: string, produ
 
   const { data: variants } = await supabase
     .from("product_variants")
-    .select("id, name, duration_type, duration_value, guarantee_duration_type, guarantee_duration_value, billing_type, billing_interval, display_order, price, archived_at")
+    .select("id, name, duration_type, duration_value, event_date, billing_type, billing_interval, display_order, price, archived_at")
     .eq("product_id", productId)
     .eq("workspace_id", workspaceId)
     .order("display_order");
@@ -83,7 +83,7 @@ export async function loadProductDetail(supabase: Db, workspaceId: string, produ
     id: product.id,
     name: product.name,
     description: product.description,
-    type: product.product_type,
+    type: normalizeProductType(product.product_type),
     status: product.status,
     pieces,
     variants: (variants ?? []).map((v) => ({ ...v, price: Number(v.price) || 0, activePrice: priceOrNull(v.price) })),

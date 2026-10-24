@@ -4,6 +4,7 @@ import Link from "next/link";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { formatMoney } from "@/lib/sales/format";
 import { checkDiscount } from "@/lib/sales/sale-math";
+import { serviceStartHint } from "@/lib/sales/wizard/service-start";
 import type { WizardProduct, WizardVariant } from "@/lib/sales/wizard/catalog";
 import type { WizardConfig } from "./types";
 
@@ -129,9 +130,12 @@ export function Step2Product({
             <div><dt className="text-xs text-muted-foreground">Precio final</dt><dd className="text-base font-bold">{discount?.ok ? formatMoney(discount.finalAmount) : "—"}</dd></div>
           </dl>
 
-          <DialogField label="Inicio del servicio" hint="Por defecto, la fecha del primer pago">
-            <input type="date" className={fieldInput} value={values.serviceStartsAt} onChange={(e) => onChange({ serviceStartsAt: e.target.value })} />
-          </DialogField>
+          {/* Un producto no tiene inicio; con duración arranca al comprar y un evento, en su fecha. */}
+          {product && product.timing !== "none" && (
+            <DialogField label="Inicio del servicio" hint={serviceStartHint(product.timing)}>
+              <input type="date" className={fieldInput} value={values.serviceStartsAt} onChange={(e) => onChange({ serviceStartsAt: e.target.value })} />
+            </DialogField>
+          )}
         </>
       )}
     </div>

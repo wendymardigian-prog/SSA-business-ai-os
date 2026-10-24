@@ -25,4 +25,18 @@ describe("catálogo del asistente", () => {
     );
     expect(out).toEqual([]);
   });
+
+  it("un evento muestra su fecha y la pasa como inicio; un producto no muestra duración", () => {
+    const out = buildWizardCatalog(
+      [{ id: "e", name: "Evento", product_type: "evento", status: "active" }, { id: "p", name: "Libro", product_type: "otro", status: "active" }],
+      [
+        variant("v1", "e", { price: 100, duration_type: "days", duration_value: 2, event_date: "2026-11-15" }),
+        variant("v2", "p", { price: 50, event_date: "2026-11-15" }),
+      ],
+    );
+    expect(out[0]).toMatchObject({ type: "evento", timing: "event" });
+    expect(out[0].variants[0]).toMatchObject({ detail: "Pago único · 15 nov 2026 · 2 días", eventDate: "2026-11-15" });
+    expect(out[1]).toMatchObject({ type: "producto", timing: "none" });
+    expect(out[1].variants[0]).toMatchObject({ detail: "Pago único", eventDate: null });
+  });
 });

@@ -4423,7 +4423,7 @@ export interface Database {
           workspace_id: string;
           name: string;
           description: string | null;
-          product_type: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          product_type: "programa" | "mentoria" | "curso" | "evento" | "servicio" | "producto";
           display_order: number;
           status: "active" | "inactive" | "discontinued";
           archived_at: string | null;
@@ -4437,7 +4437,7 @@ export interface Database {
           workspace_id: string;
           name: string;
           description?: string | null;
-          product_type?: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          product_type?: "programa" | "mentoria" | "curso" | "evento" | "servicio" | "producto";
           display_order?: number;
           status?: "active" | "inactive" | "discontinued";
           archived_at?: string | null;
@@ -4447,7 +4447,7 @@ export interface Database {
         Update: {
           name?: string;
           description?: string | null;
-          product_type?: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          product_type?: "programa" | "mentoria" | "curso" | "evento" | "servicio" | "producto";
           display_order?: number;
           status?: "active" | "inactive" | "discontinued";
           archived_at?: string | null;
@@ -4465,8 +4465,7 @@ export interface Database {
           name: string;
           duration_type: "days" | "weeks" | "months" | "lifetime";
           duration_value: number | null;
-          guarantee_duration_type: "days" | "weeks" | "months" | null;
-          guarantee_duration_value: number | null;
+          event_date: string | null;
           billing_type: "one_time" | "recurring";
           billing_interval: "monthly" | "quarterly" | "yearly" | null;
           display_order: number;
@@ -4484,8 +4483,7 @@ export interface Database {
           name: string;
           duration_type?: "days" | "weeks" | "months" | "lifetime";
           duration_value?: number | null;
-          guarantee_duration_type?: "days" | "weeks" | "months" | null;
-          guarantee_duration_value?: number | null;
+          event_date?: string | null;
           billing_type?: "one_time" | "recurring";
           billing_interval?: "monthly" | "quarterly" | "yearly" | null;
           display_order?: number;
@@ -4498,8 +4496,7 @@ export interface Database {
           name?: string;
           duration_type?: "days" | "weeks" | "months" | "lifetime";
           duration_value?: number | null;
-          guarantee_duration_type?: "days" | "weeks" | "months" | null;
-          guarantee_duration_value?: number | null;
+          event_date?: string | null;
           billing_type?: "one_time" | "recurring";
           billing_interval?: "monthly" | "quarterly" | "yearly" | null;
           display_order?: number;

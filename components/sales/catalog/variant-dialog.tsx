@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createVariant, updateVariant } from "@/lib/actions/products";
-import { BILLING_INTERVAL_LABELS, DURATION_LABELS, DURATION_TYPES, GUARANTEE_TYPES, BILLING_INTERVALS } from "@/lib/sales/catalog/variants";
+import { variantTiming } from "@/lib/sales/catalog/products";
+import { BILLING_INTERVAL_LABELS, DURATION_LABELS, DURATION_TYPES, EVENT_DURATION_TYPES, BILLING_INTERVALS } from "@/lib/sales/catalog/variants";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
 
 export interface VariantFormValues {
@@ -12,8 +13,8 @@ export interface VariantFormValues {
   name: string;
   durationType: string;
   durationValue: string;
-  guaranteeType: string;
-  guaranteeValue: string;
+  /** La fecha fija de un evento (AAAA-MM-DD). */
+  eventDate: string;
   billingType: string;
   billingInterval: string;
   priceUsd: string;
@@ -23,28 +24,38 @@ export const EMPTY_VARIANT_FORM: VariantFormValues = {
   name: "",
   durationType: "lifetime",
   durationValue: "",
-  guaranteeType: "",
-  guaranteeValue: "",
+  eventDate: "",
   billingType: "one_time",
   billingInterval: "",
   priceUsd: "",
 };
 
+/** Lo que arranca el formulario de una variante nueva: un evento no puede durar «de por vida». */
+export function emptyVariantForm(productType: string): VariantFormValues {
+  return variantTiming(productType) === "event" ? { ...EMPTY_VARIANT_FORM, durationType: "days", durationValue: "1" } : { ...EMPTY_VARIANT_FORM };
+}
+
 /**
- * Crear o editar una variante: nombre, duración, garantía y facturación. El
+ * Crear o editar una variante: nombre, duración (y fecha, si es un evento) y facturación, según el tipo
+ * del producto: con duración, sin fecha (empieza el día que compra cada cliente); un evento, con su
+ * fecha fija; un producto, sin duración. El
  * precio vive en la variante: acá solo se pide al CREAR (para arrancar con ese
  * precio); cambiarlo después es la pestaña "Precio", que deja el cambio en el historial. Sin sección de Whop
  * (Fase 2).
  */
 export function VariantDialog({
   productId,
+  productType,
   initial,
   onClose,
 }: {
   productId: string;
+  productType: string;
   initial: VariantFormValues;
   onClose: () => void;
 }) {
+  const timing = variantTiming(productType);
+  const durationTypes = timing === "event" ? EVENT_DURATION_TYPES : DURATION_TYPES;
   const router = useRouter();
   const [form, setForm] = useState(initial);
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +70,7 @@ export function VariantDialog({
         name: form.name,
         durationType: form.durationType,
         durationValue: form.durationType === "lifetime" ? "" : form.durationValue,
-        guaranteeType: form.guaranteeType,
-        guaranteeValue: form.guaranteeType ? form.guaranteeValue : "",
+        eventDate: timing === "event" ? form.eventDate : "",
         billingType: form.billingType,
         billingInterval: form.billingType === "recurring" ? form.billingInterval : "",
       };
@@ -107,40 +117,30 @@ export function VariantDialog({
         <input value={form.name} onChange={(e) => set({ name: e.target.value })} maxLength={120} placeholder="Estándar" className={fieldInput} />
       </DialogField>
 
-      <div className="grid grid-cols-2 gap-3">
-        <DialogField label="Duración">
-          <select value={form.durationType} onChange={(e) => set({ durationType: e.target.value })} className={fieldInput}>
-            {DURATION_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t === "lifetime" ? "De por vida" : DURATION_LABELS[t][1]}
-              </option>
-            ))}
-          </select>
+      {timing === "event" && (
+        <DialogField label="Fecha del evento">
+          <input type="date" value={form.eventDate} onChange={(e) => set({ eventDate: e.target.value })} className={fieldInput} />
         </DialogField>
-        {form.durationType !== "lifetime" && (
-          <DialogField label="Cuánto">
-            <input value={form.durationValue} onChange={(e) => set({ durationValue: e.target.value })} inputMode="numeric" placeholder="6" className={fieldInput} />
-          </DialogField>
-        )}
-      </div>
+      )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <DialogField label="Garantía (opcional)">
-          <select value={form.guaranteeType} onChange={(e) => set({ guaranteeType: e.target.value })} className={fieldInput}>
-            <option value="">Sin garantía</option>
-            {GUARANTEE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {DURATION_LABELS[t][1]}
-              </option>
-            ))}
-          </select>
-        </DialogField>
-        {form.guaranteeType && (
-          <DialogField label="Cuánto">
-            <input value={form.guaranteeValue} onChange={(e) => set({ guaranteeValue: e.target.value })} inputMode="numeric" placeholder="30" className={fieldInput} />
+      {timing !== "none" && (
+        <div className="grid grid-cols-2 gap-3">
+          <DialogField label="Duración" hint={timing === "duration" ? "Empieza el día que compra cada cliente" : undefined}>
+            <select value={form.durationType} onChange={(e) => set({ durationType: e.target.value })} className={fieldInput}>
+              {durationTypes.map((t) => (
+                <option key={t} value={t}>
+                  {t === "lifetime" ? "De por vida" : DURATION_LABELS[t][1]}
+                </option>
+              ))}
+            </select>
           </DialogField>
-        )}
-      </div>
+          {form.durationType !== "lifetime" && (
+            <DialogField label="Cuánto">
+              <input value={form.durationValue} onChange={(e) => set({ durationValue: e.target.value })} inputMode="numeric" placeholder="6" className={fieldInput} />
+            </DialogField>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <DialogField label="Cobro">

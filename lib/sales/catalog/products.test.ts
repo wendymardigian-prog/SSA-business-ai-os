@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultVariantPrice, isSellable, piecesLabel, productInputSchema, productRow, sortProducts, visibleProducts } from "./products";
+import { PRODUCT_TYPE_LABELS, PRODUCT_TYPES, defaultVariantPrice, isSellable, normalizeProductType, piecesLabel, productInputSchema, productRow, sortProducts, variantTiming, visibleProducts } from "./products";
 
 const prod = (status: string, extra = {}) => ({ id: "p", name: "Programa", product_type: "programa", status, ...extra });
 
@@ -17,10 +17,10 @@ describe("productRow: un producto de cada estado", () => {
     expect(row.priceLabel).toBe("$3.000,00");
   });
 
-  it("un estado desconocido se trata como activo y un tipo desconocido como 'otro'", () => {
+  it("un estado desconocido se trata como activo y un tipo desconocido como 'producto'", () => {
     const row = productRow(prod("raro", { product_type: "inventado" }), [], 0);
     expect(row.status).toBe("active");
-    expect(row.type).toBe("otro");
+    expect(row.type).toBe("producto");
     expect(row.priceLabel).toBe("Sin precio");
   });
 });
@@ -69,12 +69,31 @@ describe("selección y orden", () => {
 });
 
 describe("productInputSchema", () => {
-  it("el tipo por defecto es 'otro' y recorta el nombre", () => {
+  it("el tipo por defecto es 'producto' y recorta el nombre", () => {
     const r = productInputSchema.parse({ name: "  Mentoría 1:1 " });
-    expect(r).toMatchObject({ name: "Mentoría 1:1", type: "otro" });
+    expect(r).toMatchObject({ name: "Mentoría 1:1", type: "producto" });
   });
-  it("rechaza nombre vacío o tipo inventado", () => {
+  it("rechaza nombre vacío, tipo inventado y el viejo 'otro'", () => {
     expect(productInputSchema.safeParse({ name: " " }).success).toBe(false);
     expect(productInputSchema.safeParse({ name: "x", type: "inventado" }).success).toBe(false);
+    expect(productInputSchema.safeParse({ name: "x", type: "otro" }).success).toBe(false);
+  });
+});
+
+describe("tipos de producto", () => {
+  it("son seis, en este orden y con estos nombres", () => {
+    expect(PRODUCT_TYPES.map((t) => PRODUCT_TYPE_LABELS[t])).toEqual([
+      "Programa", "Mentoría / Consultoría / Asesoría", "Curso", "Evento", "Servicio", "Producto",
+    ]);
+  });
+  it("qué pide cada uno en sus variantes", () => {
+    expect(["programa", "mentoria", "curso", "servicio"].map(variantTiming)).toEqual(["duration", "duration", "duration", "duration"]);
+    expect(variantTiming("evento")).toBe("event");
+    expect(variantTiming("producto")).toBe("none");
+    expect(variantTiming("otro")).toBe("none");
+  });
+  it("el viejo 'otro' se lee como 'producto'", () => {
+    expect(normalizeProductType("otro")).toBe("producto");
+    expect(normalizeProductType("evento")).toBe("evento");
   });
 });

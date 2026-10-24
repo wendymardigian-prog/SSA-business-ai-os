@@ -158,9 +158,20 @@ try {
     await bad({ billing_type: "one_time", billing_interval: "monthly" }, "one_time con intervalo se rechaza");
     await bad({ duration_type: "lifetime", duration_value: 3 }, "lifetime con valor se rechaza");
     await bad({ duration_type: "months", duration_value: null }, "months sin valor se rechaza");
-    await bad({ guarantee_duration_type: "days" }, "garantia a medias se rechaza");
-    const { error: recurringOk } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "zz-test mensual", duration_type: "months", duration_value: 6, billing_type: "recurring", billing_interval: "monthly", guarantee_duration_type: "days", guarantee_duration_value: 30 });
-    check(!recurringOk, "una variante mensual de 6 meses con garantia es valida", recurringOk?.message);
+    const { error: recurringOk } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "zz-test mensual", duration_type: "months", duration_value: 6, billing_type: "recurring", billing_interval: "monthly" });
+    check(!recurringOk, "una variante mensual de 6 meses es valida", recurringOk?.message);
+
+    console.log("\n— 00263/00264: tipos de producto y fecha del evento —");
+    for (const t of ["evento", "producto"]) {
+      const { error: typeErr } = await svc.from("products").insert({ workspace_id: ws.id, name: `zz-test tipo ${t}`, product_type: t });
+      check(!typeErr, `el tipo '${t}' se acepta`, typeErr?.message);
+    }
+    const { error: otroErr } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test tipo otro", product_type: "otro" });
+    check(!!otroErr, "el tipo 'otro' ya no se acepta (00264)");
+    check((sql("select column_default from information_schema.columns where table_schema='public' and table_name='products' and column_name='product_type'"))[0].column_default?.includes("producto"), "el tipo por defecto es 'producto'");
+    check((sql("select count(*)::int n from information_schema.columns where table_schema='public' and table_name='product_variants' and column_name like 'guarantee%'"))[0].n === 0, "las columnas de garantia ya no existen");
+    const { data: eventVariant, error: eventErr } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "zz-test evento", duration_type: "days", duration_value: 3, billing_type: "one_time", event_date: "2026-11-15" }).select("event_date").single();
+    check(!eventErr && eventVariant?.event_date === "2026-11-15", "una variante guarda la fecha del evento", eventErr?.message);
 
     console.log("\n— 00169: el precio vive en la variante —");
     check((sql("select to_regclass('public.product_versions') is null as gone"))[0].gone === true, "la tabla product_versions ya no existe");
@@ -364,7 +375,7 @@ try {
     const contactA = await newContact("lead A");
     const contactB = await newContact("lead B");
 
-    const snapshot = (price) => ({ product_id: prod3.id, product_name: "zz-test Producto de ventas", product_type: "programa", variant_id: variant3.id, variant_name: "Estandar", price, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null });
+    const snapshot = (price) => ({ product_id: prod3.id, product_name: "zz-test Producto de ventas", product_type: "programa", variant_id: variant3.id, variant_name: "Estandar", price, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, event_date: null });
     const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
     const optionSnapshot = { method_key: "wise", method_name: "Wise", provider_fee_percent: 0, provider_fee_fixed: 0 };
     const paidReservation = { type: "reservation", amount: 297, status: "paid", due_date: ayer, paid_at: `${ayer}T15:00:00Z`, paid_on: ayer, payment_method: "wise", payment_option_snapshot: optionSnapshot, provider_fee_amount: 0 };
@@ -705,7 +716,7 @@ try {
       const { data: va } = await svc.from("product_variants").insert({ workspace_id: w.id, product_id: pr.id, name: "Estandar", price: 100 }).select("id").single();
       const { data: c } = await svc.from("contacts").insert({ workspace_id: w.id, display_name: "zz-test mora lead" }).select("id").single();
       const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-      const snap = { product_id: pr.id, product_name: "zz-test mora", product_type: "programa", variant_id: va.id, variant_name: "Estandar", price: 100, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+      const snap = { product_id: pr.id, product_name: "zz-test mora", product_type: "programa", variant_id: va.id, variant_name: "Estandar", price: 100, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, event_date: null };
       const { data: sale, error } = await svc.rpc("create_sale", { p_actor_id: owner.id, p_payload: { workspace_id: w.id, contact_id: c.id, product_variant_id: va.id, product_snapshot: snap, base_amount: 100, discount_amount: 0, financing_type: "full", sale_date: ayer, setter_id: null, vendedor_id: null, attribution: { mode: "last_touch" }, payments: [{ type: "full", amount: 100, status: "scheduled", due_date: due }] } });
       if (error) throw new Error(`no pude crear la venta de mora: ${error.message}`);
       if (saleStatus) await svc.from("sales").update({ status: saleStatus }).eq("id", sale.sale_id);

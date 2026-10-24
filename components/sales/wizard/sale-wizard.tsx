@@ -15,6 +15,7 @@ import { buildSummary } from "@/lib/sales/wizard/summary";
 import type { PlannedPayment } from "@/lib/sales/payment-plan";
 import type { WizardVariant } from "@/lib/sales/wizard/catalog";
 import { initialProduct } from "@/lib/sales/wizard/initial-product";
+import { resolveServiceStart } from "@/lib/sales/wizard/service-start";
 import { DEFAULT_ATTRIBUTION_STATE } from "@/lib/sales/attribution-field";
 import { formatMoney } from "@/lib/sales/format";
 
@@ -158,7 +159,7 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
         attribution: s1.attribution as never,
         idempotencyKey,
         bookingId: s1.bookingId,
-        serviceStartsAt: s2.serviceStartsAt || rows[0]?.due_date || null,
+        serviceStartsAt: resolveServiceStart(s2.serviceStartsAt, product?.timing ?? "duration", variant.eventDate, s1.saleDate),
         notes: s1.notes.trim() || null,
         payments: paymentsForServer(rows) as never,
       });

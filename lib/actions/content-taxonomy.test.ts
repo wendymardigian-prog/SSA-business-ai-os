@@ -197,7 +197,7 @@ describe("productos: atajos del catalogo de Ventas", () => {
   });
   const variant = (over: Record<string, unknown> = {}) => ({
     id: "va1", workspace_id: WS, product_id: "pr1", name: "Estandar", duration_type: "lifetime", duration_value: null,
-    guarantee_duration_type: null, guarantee_duration_value: null, billing_type: "one_time", billing_interval: null, display_order: 0, price: 1500, archived_at: null, ...over,
+    event_date: null, billing_type: "one_time", billing_interval: null, display_order: 0, price: 1500, archived_at: null, ...over,
   });
 
   it("crea un producto activo con su variante Estandar y el precio", async () => {

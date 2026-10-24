@@ -3,9 +3,9 @@ import { initialProduct } from "./initial-product";
 import type { WizardProduct } from "./catalog";
 
 const variant = (id: string, unavailable: string | null = null) => ({
-  id, name: id, billingType: "one_time", billingInterval: null, price: unavailable ? null : 100, detail: "", unavailable,
+  id, name: id, billingType: "one_time", billingInterval: null, price: unavailable ? null : 100, detail: "", eventDate: null, unavailable,
 });
-const catalog: WizardProduct[] = [{ id: "p-1", name: "VIP", type: "programa", variants: [variant("v-ok"), variant("v-sin-precio", "Sin precio")] }];
+const catalog: WizardProduct[] = [{ id: "p-1", name: "VIP", type: "programa", timing: "duration", variants: [variant("v-ok"), variant("v-sin-precio", "Sin precio")] }];
 
 describe("initialProduct (el producto de interés en «Nueva venta»)", () => {
   it("preselecciona el producto y la variante vendibles", () => {

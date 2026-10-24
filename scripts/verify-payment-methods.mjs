@@ -91,7 +91,7 @@ try {
   const { data: prod } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Programa", product_type: "programa" }).select("id").single();
   const { data: variant } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "Estandar", price: 1000 }).select("id").single();
   const { data: contact } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test lead pm" }).select("id").single();
-  const snapshot = { product_id: prod.id, product_name: "zz-test Programa", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", price: 1000, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+  const snapshot = { product_id: prod.id, product_name: "zz-test Programa", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", price: 1000, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, event_date: null };
   const stripeSnap = { method_key: "stripe", method_name: "Stripe", provider_fee_percent: 2.9, provider_fee_fixed: 0.3 };
   const payload = (payments, over = {}) => ({
     workspace_id: ws.id, contact_id: contact.id, product_variant_id: variant.id, product_snapshot: snapshot,

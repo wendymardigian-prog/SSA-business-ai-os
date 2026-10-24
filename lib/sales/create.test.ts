@@ -6,7 +6,7 @@ const CONTACT = `${U}01`;
 const VARIANT = `${U}02`;
 const ME = `${U}03`;
 
-const snapshot = { product_id: "p", product_name: "Mentoría", product_type: "mentoria", variant_id: VARIANT, variant_name: "Estándar", price: 1297, currency: "USD" as const, duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+const snapshot = { product_id: "p", product_name: "Mentoría", product_type: "mentoria", variant_id: VARIANT, variant_name: "Estándar", price: 1297, currency: "USD" as const, duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, event_date: null };
 
 const ctx = (over: Partial<SaleRuleContext> = {}): SaleRuleContext => ({
   timeZone: "America/Costa_Rica", now: new Date("2026-10-11T18:00:00Z"), enabledMethods: ["wise", "binance", "whop"],
