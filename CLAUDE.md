@@ -1533,7 +1533,7 @@ node scripts/verify-chat-awaiting.mjs   # gemelas SQL<->TS, el trigger, la marca
 - **El «no leído» se apaga en la base** (00265): si el último mensaje es una respuesta nuestra (misma regla que `outboundCountsAsAnswered`: una persona en la app o desde afuera, como ManyChat), `unread_count` queda en 0, aunque el mensaje del contacto llegue después que el eco.
 - **Las fechas de la bandeja van por día de calendario** de quien mira (`lib/inbox/day-label.ts`): «Hoy», «Ayer», no «hace menos de 24 h».
 
-`00262` (aditiva): **aplicada y registrada** el 23/10/2026 (versión `20261024032027`), con `verify-chat-awaiting.mjs` en verde. `00265` corrige su trigger y suma el no leído (la `00263` y la `00264` son de tipos de producto).
+`00262` (aditiva): **aplicada y registrada** el 23/10/2026 (versión `20261024032027`), con `verify-chat-awaiting.mjs` en verde. `00265` corrige su trigger y suma el no leído: **aplicada y registrada** el 24/10/2026 (versión `20261024162422`), con `verify-chat-awaiting.mjs` en verde (la `00263` y la `00264` son de tipos de producto). **La próxima libre es la `00266`** (confirmar con `list_migrations` y las ramas locales).
 
 # Bandeja: asignación, Conocido, stickers y llamadas de WhatsApp (construido, 23/10/2026)
 
