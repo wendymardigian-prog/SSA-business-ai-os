@@ -64,8 +64,8 @@ export interface SnapshotVariant {
   duration_value: number | null;
   billing_type: string;
   billing_interval: string | null;
-  guarantee_duration_type: string | null;
-  guarantee_duration_value: number | null;
+  /** La fecha fija de un evento (00263); null en los demás tipos. */
+  event_date?: string | null;
   /** El precio de la variante en este momento (USD). */
   price: unknown;
 }
@@ -82,8 +82,8 @@ export interface ProductSnapshot {
   duration_value: number | null;
   billing_type: string;
   billing_interval: string | null;
-  guarantee_duration_type: string | null;
-  guarantee_duration_value: number | null;
+  /** La fecha del evento al vender (solo un evento). Las ventas viejas pueden traer además la garantía, que ya no existe. */
+  event_date: string | null;
 }
 
 /** La foto del producto al vender: la venta conserva su precio aunque el catálogo cambie. */
@@ -100,8 +100,7 @@ export function buildProductSnapshot(product: SnapshotProduct, variant: Snapshot
     duration_value: variant.duration_value,
     billing_type: variant.billing_type,
     billing_interval: variant.billing_interval,
-    guarantee_duration_type: variant.guarantee_duration_type,
-    guarantee_duration_value: variant.guarantee_duration_value,
+    event_date: variant.event_date ?? null,
   };
 }
 

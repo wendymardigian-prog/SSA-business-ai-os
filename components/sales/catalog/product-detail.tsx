@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Layers, Loader2, Pencil, Plus, Save, Undo2, Archive } from "lucide-react";
 import { archiveVariant, duplicateVariant, restoreVariant, setProductStatus, updateProduct } from "@/lib/actions/products";
 import { PRODUCT_STATUSES, PRODUCT_STATUS_LABEL, TAXONOMY_NAME_MAX, isProductStatus } from "@/lib/content/taxonomy";
-import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from "@/lib/sales/catalog/products";
+import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS, variantTiming } from "@/lib/sales/catalog/products";
 import { archiveLeavesProductUnsellable, variantRow } from "@/lib/sales/catalog/variants";
 import type { ProductDetailData, CatalogVariant } from "@/lib/sales/catalog/load";
 import { ActionError } from "@/components/contacts/ui";
@@ -17,19 +17,20 @@ import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Tabs } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { EMPTY_VARIANT_FORM, VariantDialog, type VariantFormValues } from "./variant-dialog";
+import { VariantDialog, emptyVariantForm, type VariantFormValues } from "./variant-dialog";
 import { VariantPriceTab } from "./variant-price-tab";
 
 type VariantTab = "precio" | "historial";
 
-function formFrom(v: CatalogVariant): VariantFormValues {
+function formFrom(v: CatalogVariant, productType: string): VariantFormValues {
+  // Un evento no dura «de por vida»: si el producto cambió de tipo después, se arranca en días.
+  const lifetimeEvent = variantTiming(productType) === "event" && v.duration_type === "lifetime";
   return {
     id: v.id,
     name: v.name,
-    durationType: v.duration_type,
-    durationValue: v.duration_value === null ? "" : String(v.duration_value),
-    guaranteeType: v.guarantee_duration_type ?? "",
-    guaranteeValue: v.guarantee_duration_value === null ? "" : String(v.guarantee_duration_value),
+    durationType: lifetimeEvent ? "days" : v.duration_type,
+    durationValue: lifetimeEvent || v.duration_value === null ? "" : String(v.duration_value),
+    eventDate: v.event_date ?? "",
     billingType: v.billing_type,
     billingInterval: v.billing_interval ?? "",
     priceUsd: "",
@@ -63,7 +64,7 @@ export function ProductDetail({
 
   const selected = product.variants.find((v) => v.id === selectedId) ?? null;
   const dirty = name.trim() !== product.name;
-  const rows = useMemo(() => new Map(product.variants.map((v) => [v.id, variantRow(v, v.activePrice)])), [product.variants]);
+  const rows = useMemo(() => new Map(product.variants.map((v) => [v.id, variantRow(v, v.activePrice, product.type)])), [product.variants, product.type]);
 
   function run(task: () => Promise<{ ok: true } | { ok: false; error: string }>, then?: () => void) {
     setError(null);
@@ -102,6 +103,15 @@ export function ProductDetail({
 
       <div className="min-h-0 flex-1 overflow-auto">
       <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 md:px-8">
+        {/* Volver a la lista: la flecha de la barra de arriba queda chica y lejos del contenido. */}
+        <Link
+          href="/dashboard/settings/productos"
+          className="-mb-2 inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Productos
+        </Link>
+
         {/* Encabezado del producto */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1">
@@ -184,7 +194,7 @@ export function ProductDetail({
             </h2>
             <button
               type="button"
-              onClick={() => setVariantForm({ ...EMPTY_VARIANT_FORM })}
+              onClick={() => setVariantForm(emptyVariantForm(product.type))}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent"
             >
               <Plus className="h-4 w-4" aria-hidden />
@@ -216,14 +226,16 @@ export function ProductDetail({
                           <span className={cn("shrink-0 text-sm font-semibold", !row.sellable && "text-amber-700 dark:text-amber-300")}>{row.priceLabel}</span>
                         </span>
                         <span className="mt-1 block text-xs text-muted-foreground">
-                          {row.duration} · {row.billing} · {row.guarantee}
-                          {row.archived ? " · Archivada" : ""}
+                          {[row.missingEventDate ? null : row.timing, row.billing, row.archived ? "Archivada" : null].filter(Boolean).join(" · ")}
                         </span>
+                        {row.missingEventDate && (
+                          <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">Falta la fecha del evento: editala para cargarla.</span>
+                        )}
                       </button>
                       <div className="mt-2 flex gap-1">
                         <button
                           type="button"
-                          onClick={() => setVariantForm(formFrom(variant))}
+                          onClick={() => setVariantForm(formFrom(variant, product.type))}
                           aria-label={`Editar ${variant.name}`}
                           className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                         >
@@ -297,7 +309,7 @@ export function ProductDetail({
       </div>
       </div>
 
-      {variantForm && <VariantDialog productId={product.id} initial={variantForm} onClose={() => setVariantForm(null)} />}
+      {variantForm && <VariantDialog productId={product.id} productType={product.type} initial={variantForm} onClose={() => setVariantForm(null)} />}
       {editingDescription && (
         <DescriptionDialog
           productId={product.id}

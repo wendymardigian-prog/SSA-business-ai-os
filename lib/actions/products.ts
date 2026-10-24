@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { archivedAtFor, checkName, isProductStatus } from "@/lib/content/taxonomy";
-import { productInputSchema } from "@/lib/sales/catalog/products";
+import { normalizeProductType, productInputSchema } from "@/lib/sales/catalog/products";
 import { checkPrice } from "@/lib/sales/catalog/price";
 import { parseVariantInput } from "@/lib/sales/catalog/variants";
 import type { CatalogResult } from "@/lib/sales/catalog/result";
@@ -66,7 +66,7 @@ async function loadVariant(ctx: Ctx, id: string) {
   if (typeof id !== "string" || !id) return null;
   const { data } = await ctx.supabase
     .from("product_variants")
-    .select("id, product_id, name, duration_type, duration_value, guarantee_duration_type, guarantee_duration_value, billing_type, billing_interval, display_order, price, archived_at")
+    .select("id, product_id, name, duration_type, duration_value, event_date, billing_type, billing_interval, display_order, price, archived_at")
     .eq("id", id)
     .eq("workspace_id", ctx.workspace.id)
     .maybeSingle();
@@ -160,7 +160,8 @@ export async function updateProduct(input: {
 
   const parsed = productInputSchema.safeParse({
     name: input.name ?? before.name,
-    type: input.type ?? before.product_type,
+    // Un producto que todavía dice «otro» (antes de la 00264) se lee como «producto».
+    type: input.type ?? normalizeProductType(before.product_type),
     description: input.description === undefined ? before.description : input.description,
   });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Datos de producto inválidos" };
@@ -245,7 +246,7 @@ export async function createVariant(input: {
   const product = await loadProduct(ctx, input.productId);
   if (!product) return { ok: false, error: "No encontré ese producto" };
 
-  const parsed = parseVariantInput(input);
+  const parsed = parseVariantInput(input, product.product_type);
   if (!parsed.ok) return parsed;
 
   let price = 0;
@@ -277,8 +278,10 @@ export async function updateVariant(input: { id: string; [field: string]: unknow
   if (!ctx) return { ok: false, error: NOT_ALLOWED };
   const before = await loadVariant(ctx, input.id);
   if (!before) return { ok: false, error: "No encontré esa variante" };
+  const product = await loadProduct(ctx, before.product_id);
+  if (!product) return { ok: false, error: "No encontré ese producto" };
 
-  const parsed = parseVariantInput(input);
+  const parsed = parseVariantInput(input, product.product_type);
   if (!parsed.ok) return parsed;
 
   const { error } = await ctx.supabase
@@ -342,8 +345,7 @@ export async function duplicateVariant(id: string): Promise<CatalogResult<{ id: 
       name: copyName,
       duration_type: source.duration_type,
       duration_value: source.duration_value,
-      guarantee_duration_type: source.guarantee_duration_type,
-      guarantee_duration_value: source.guarantee_duration_value,
+      event_date: source.event_date,
       billing_type: source.billing_type,
       billing_interval: source.billing_interval,
       display_order: order,

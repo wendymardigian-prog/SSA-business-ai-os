@@ -73,7 +73,7 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
   // 2. El catálogo, RELEÍDO: la variante y su precio EN ESTE MOMENTO.
   const { data: variant } = await supabase
     .from("product_variants")
-    .select("id, product_id, name, duration_type, duration_value, guarantee_duration_type, guarantee_duration_value, billing_type, billing_interval, price, archived_at")
+    .select("id, product_id, name, duration_type, duration_value, event_date, billing_type, billing_interval, price, archived_at")
     .eq("id", input.variantId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -370,7 +370,7 @@ export async function updateSale(input: UpdateSaleInput): Promise<SaleActionResu
     if (input.variantId && input.variantId !== sale.product_variant_id) {
       const { data: variant } = await supabase
         .from("product_variants")
-        .select("id, product_id, name, duration_type, duration_value, guarantee_duration_type, guarantee_duration_value, billing_type, billing_interval, price, archived_at")
+        .select("id, product_id, name, duration_type, duration_value, event_date, billing_type, billing_interval, price, archived_at")
         .eq("id", input.variantId)
         .eq("workspace_id", workspace.id)
         .maybeSingle();

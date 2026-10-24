@@ -7,20 +7,40 @@ import { z } from "zod";
 import { PRODUCT_STATUSES, PRODUCT_STATUS_LABEL, TAXONOMY_NAME_MAX, isProductStatus, type ProductStatus } from "@/lib/content/taxonomy";
 import { formatMoney } from "../format";
 
-export const PRODUCT_TYPES = ["programa", "mentoria", "curso", "servicio", "otro"] as const;
+export const PRODUCT_TYPES = ["programa", "mentoria", "curso", "evento", "servicio", "producto"] as const;
 export type ProductType = (typeof PRODUCT_TYPES)[number];
 
 export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
   programa: "Programa",
-  mentoria: "Mentoría",
+  mentoria: "Mentoría / Consultoría / Asesoría",
   curso: "Curso",
+  evento: "Evento",
   servicio: "Servicio",
-  otro: "Otro",
+  producto: "Producto",
 };
+
+/**
+ * Qué pide cada tipo en sus variantes (00263):
+ *  - `duration`: duración sin fecha; empieza el día que compra cada cliente.
+ *  - `event`: una fecha fija por variante y su duración.
+ *  - `none`: sin duración (un producto).
+ */
+export type VariantTiming = "duration" | "event" | "none";
+
+export function variantTiming(type: string): VariantTiming {
+  if (type === "evento") return "event";
+  if (type === "producto" || type === "otro") return "none";
+  return "duration";
+}
+
+/** El tipo guardado como uno de los de hoy: «otro» (el de antes de la 00264) y cualquier valor raro son «producto». */
+export function normalizeProductType(raw: string | null | undefined): ProductType {
+  return (PRODUCT_TYPES as readonly string[]).includes(raw ?? "") ? (raw as ProductType) : "producto";
+}
 
 export const productInputSchema = z.object({
   name: z.string().trim().min(1, "Poné un nombre").max(TAXONOMY_NAME_MAX, `Máximo ${TAXONOMY_NAME_MAX} caracteres`),
-  type: z.enum(PRODUCT_TYPES).default("otro"),
+  type: z.enum(PRODUCT_TYPES).default("producto"),
   description: z.string().trim().max(1000, "Máximo 1000 caracteres").optional().nullable(),
 });
 
@@ -74,7 +94,7 @@ export function productRow(
   pieces: number,
 ): ProductRow {
   const status: ProductStatus = isProductStatus(product.status) ? product.status : "active";
-  const type = (PRODUCT_TYPES as readonly string[]).includes(product.product_type) ? (product.product_type as ProductType) : "otro";
+  const type = normalizeProductType(product.product_type);
   const defaultPrice = defaultVariantPrice(variants);
   return {
     id: product.id,

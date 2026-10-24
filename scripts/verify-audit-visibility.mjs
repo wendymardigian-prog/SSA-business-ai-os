@@ -247,7 +247,7 @@ try {
     const { data: prod } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test av producto", product_type: "programa" }).select("id").single();
     const { data: variant } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "Estandar", price: 500 }).select("id").single();
     const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-    const snapshot = { product_id: prod.id, product_name: "zz-test av producto", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", price: 500, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+    const snapshot = { product_id: prod.id, product_name: "zz-test av producto", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", price: 500, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, event_date: null };
     const mkSale = async (contact, setter, vendedor) => {
       const { data, error } = await svc.rpc("create_sale", { p_actor_id: owner.id, p_payload: {
         workspace_id: ws.id, contact_id: contact, product_variant_id: variant.id, product_snapshot: snapshot, base_amount: 500, discount_amount: 0,

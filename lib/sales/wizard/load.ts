@@ -22,7 +22,7 @@ export async function loadWizardConfig(ctx: PermissionContext): Promise<WizardCo
 
   const [products, variants, members, viewerTz] = await Promise.all([
     supabase.from("products").select("id, name, product_type, status").eq("workspace_id", workspace.id),
-    supabase.from("product_variants").select("id, product_id, name, duration_type, duration_value, billing_type, billing_interval, display_order, price, archived_at").eq("workspace_id", workspace.id),
+    supabase.from("product_variants").select("id, product_id, name, duration_type, duration_value, event_date, billing_type, billing_interval, display_order, price, archived_at").eq("workspace_id", workspace.id),
     getWorkspaceMembers(workspace.id),
     resolveViewerTimezone(workspace.timezone),
   ]);

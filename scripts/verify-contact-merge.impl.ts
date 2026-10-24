@@ -211,7 +211,7 @@ try {
   const product: any = await seed("products", { workspace_id: ws.id, name: "zz-test Producto fusion", product_type: "programa" });
   const variant: any = await seed("product_variants", { workspace_id: ws.id, product_id: product.id, name: "Estandar", price: 1000 });
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-  const snapshot = { product_id: product.id, product_name: "zz-test Producto fusion", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", price: 1000, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+  const snapshot = { product_id: product.id, product_name: "zz-test Producto fusion", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", price: 1000, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, event_date: null };
   const saleRes = await svc.rpc("create_sale", {
     p_payload: {
       workspace_id: ws.id, contact_id: dup.id, product_variant_id: variant.id, product_snapshot: snapshot, base_amount: 1000, discount_amount: 0, financing_type: "reservation_installments", sale_date: yesterday,

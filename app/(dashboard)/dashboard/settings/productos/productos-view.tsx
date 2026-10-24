@@ -239,7 +239,7 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
 function NewProductDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [type, setType] = useState<(typeof PRODUCT_TYPES)[number]>("otro");
+  const [type, setType] = useState<(typeof PRODUCT_TYPES)[number]>("programa");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
