@@ -25,7 +25,7 @@ vi.mock("@/lib/zernio-client", () => ({
   createZernioClient: () => ({ messages: { addMessageReaction, removeMessageReaction } }),
 }));
 
-import { sendReactionToProvider, zernioMessageIds, type ReactionTarget } from "./send-reaction";
+import { describeInstagramReactionError, sendReactionToProvider, zernioMessageIds, type ReactionTarget } from "./send-reaction";
 
 const WS = "ws-1";
 
@@ -139,6 +139,16 @@ describe("reaccionar por Instagram (Zernio)", () => {
     expect(addMessageReaction).toHaveBeenCalledTimes(1);
   });
 
+  it("si otra app maneja la conversacion, lo dice claro (no el texto generico de envio)", async () => {
+    // Asi lanza el SDK de Zernio cuando el hilo esta en "standby" (ManyChat es la duena).
+    addMessageReaction.mockRejectedValue(Object.assign(new Error("Another app currently controls this thread"), { statusCode: 409, code: "not_thread_owner" }));
+    const db = world();
+    const result = await sendReactionToProvider({ supabase: db, secrets: db, target: ig(), emoji: "❤️" });
+    expect(result).toMatchObject({ ok: false, retryable: false, message: expect.stringMatching(/otra app/i) });
+    expect(result).not.toMatchObject({ message: expect.stringMatching(/No se pudo enviar el mensaje/i) });
+    expect(addMessageReaction).toHaveBeenCalledTimes(1);
+  });
+
   it("quitar usa removeMessageReaction con la cuenta", async () => {
     const db = world();
     await sendReactionToProvider({ supabase: db, secrets: db, target: ig(), emoji: "" });
@@ -190,5 +200,35 @@ describe("zernioMessageIds", () => {
     expect(zernioMessageIds({ platformMessageId: "a", platformNativeMessageId: "a" })).toEqual(["a"]);
     expect(zernioMessageIds({ platformMessageId: "a", platformNativeMessageId: null })).toEqual(["a"]);
     expect(zernioMessageIds({ platformMessageId: null })).toEqual([]);
+  });
+});
+
+describe("describeInstagramReactionError", () => {
+  it("habla de reaccionar, nunca de 'enviar el mensaje'", () => {
+    const cases: unknown[] = [
+      { statusCode: 404 },
+      Object.assign(new Error("x"), { statusCode: 409, code: "not_thread_owner" }),
+      { error: { error_subcode: 2534022, message: "outside of allowed window" } },
+      { error: { code: 4, message: "rate limit" } },
+      { error: { code: 190, message: "access token" } },
+      { statusCode: 403 },
+      { statusCode: 400 },
+      { statusCode: 500 },
+      null,
+    ];
+    for (const err of cases) {
+      const { message } = describeInstagramReactionError(err);
+      expect(message).not.toMatch(/enviar el mensaje/i);
+      expect(message).not.toMatch(/[{}]|statusCode|not_thread_owner/);
+    }
+  });
+
+  it("la ventana de 24 horas se explica como regla de Instagram", () => {
+    expect(describeInstagramReactionError({ error: { error_subcode: 2534022, message: "x" } })).toMatchObject({ kind: "outside_window", retryable: false, message: expect.stringMatching(/24 horas/) });
+  });
+
+  it("un 403 es el plan de Zernio sin bandeja; un 500 se puede reintentar", () => {
+    expect(describeInstagramReactionError({ statusCode: 403 }).message).toMatch(/plan de Zernio/);
+    expect(describeInstagramReactionError({ statusCode: 500 }).retryable).toBe(true);
   });
 });

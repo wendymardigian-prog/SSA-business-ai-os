@@ -93,3 +93,25 @@ describe("tope propio del sistema", () => {
     expect(RATE_LIMIT_REACHED.retryable).toBe(true);
   });
 });
+
+describe("otra app maneja la conversacion (handover de Meta)", () => {
+  // Asi lo deja el SDK de Zernio: el codigo de Zernio y el status, sin el error crudo de Meta.
+  const zernioError = (over: Record<string, unknown>) => Object.assign(new Error("Another app currently controls this thread"), over);
+
+  it("lo reconoce por el codigo de Zernio", () => {
+    const result = describeSendError(zernioError({ statusCode: 409, code: "not_thread_owner" }));
+    expect(result.kind).toBe("not_thread_owner");
+    expect(result.retryable).toBe(false);
+    expect(result.message).toMatch(/otra app/i);
+    expect(pareceErrorCrudo(result.message)).toBe(false);
+  });
+
+  it("lo reconoce por el subcodigo de Meta o por la app duena", () => {
+    expect(describeSendError({ error: { code: 10, error_subcode: 2534037, message: "x" } }).kind).toBe("not_thread_owner");
+    expect(describeSendError(zernioError({ statusCode: 409, details: { ownerAppId: "123" } })).kind).toBe("not_thread_owner");
+  });
+
+  it("un 409 suelto (Idempotency-Key en curso) NO es eso", () => {
+    expect(describeSendError(Object.assign(new Error("Request still processing"), { statusCode: 409 })).kind).toBe("unknown");
+  });
+});

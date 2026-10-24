@@ -18,6 +18,7 @@
 
 /** Motivos que sabemos distinguir. */
 export type InstagramErrorKind =
+  | "not_thread_owner"
   | "outside_window"
   | "rate_limited"
   | "user_unavailable"
@@ -99,6 +100,34 @@ function extractMetaError(error: unknown): MetaErrorShape {
   return {};
 }
 
+/**
+ * Si otra app es la "duena" del hilo (handover de Meta).
+ *
+ * Cuando otra app conectada a la cuenta de Instagram (ManyChat, por ejemplo)
+ * es la que recibe los mensajes, los nuestros llegan en "standby" y Meta
+ * rechaza todo lo que mandemos: un texto, un adjunto o una reaccion. Zernio lo
+ * contesta con 409 y `code: "not_thread_owner"` (subcodigo de Meta 2534037,
+ * y a veces `details.ownerAppId`). Su SDK se queda con el codigo (texto), el
+ * status y `details`, pero descarta el error crudo de Meta. Un 409 suelto NO
+ * alcanza: Zernio tambien lo usa para un `Idempotency-Key` en curso.
+ */
+const NOT_THREAD_OWNER_SUBCODE = 2534037;
+
+function isNotThreadOwner(error: unknown, meta: MetaErrorShape, text: string): boolean {
+  if (meta.error_subcode === NOT_THREAD_OWNER_SUBCODE) return true;
+  if (error && typeof error === "object") {
+    const obj = error as { code?: unknown; details?: { ownerAppId?: unknown } | null };
+    if (obj.code === "not_thread_owner") return true;
+    if (obj.details && typeof obj.details === "object" && obj.details.ownerAppId != null) return true;
+  }
+  return (
+    text.includes("not_thread_owner") ||
+    text.includes("thread owner") ||
+    text.includes("thread control") ||
+    text.includes("standby")
+  );
+}
+
 const OUTSIDE_WINDOW_SUBCODES = new Set([2534022, 2018278]);
 const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
 
@@ -110,6 +139,15 @@ const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
 export function describeSendError(error: unknown): FriendlyError {
   const meta = extractMetaError(error);
   const text = (meta.message ?? "").toLowerCase();
+
+  if (isNotThreadOwner(error, meta, text)) {
+    return {
+      kind: "not_thread_owner",
+      message: "Instagram no dejo enviar: esta conversacion la esta manejando otra app conectada a la cuenta (por ejemplo ManyChat).",
+      hint: "Mientras esa app tenga la conversacion, Instagram no deja que el sistema responda. Hay que contestar desde esa app o desde Instagram, o pasarle la conversacion al sistema.",
+      retryable: false,
+    };
+  }
 
   const outsideWindow =
     (meta.error_subcode !== undefined && OUTSIDE_WINDOW_SUBCODES.has(meta.error_subcode)) ||

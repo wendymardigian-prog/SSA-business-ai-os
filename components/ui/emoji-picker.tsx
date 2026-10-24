@@ -64,6 +64,9 @@ export function EmojiButton({
   className = "",
   label = "Insertar emoji",
   disabled = false,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
 }: {
   onPick: (emoji: string) => void;
   /** El campo al que vuelve el foco al cerrar. */
@@ -73,16 +76,29 @@ export function EmojiButton({
   className?: string;
   label?: string;
   disabled?: boolean;
+  /** Controlado desde afuera (el "⋯" del composer lo abre sin boton propio). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Sin boton: el panel se ancla al contenedor y lo abre quien controla `open`. */
+  hideTrigger?: boolean;
 }) {
   const id = useId();
-  const [open, setOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
+  const open = openProp ?? innerOpen;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (openProp === undefined) setInnerOpen(next);
+      onOpenChange?.(next);
+    },
+    [openProp, onOpenChange],
+  );
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const close = useCallback(() => {
     setOpen(false);
     (focusRef?.current ?? buttonRef.current)?.focus();
-  }, [focusRef]);
+  }, [focusRef, setOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -101,11 +117,11 @@ export function EmojiButton({
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("pointerdown", onPointer);
     };
-  }, [open, close]);
+  }, [open, close, setOpen]);
 
   return (
-    <div ref={rootRef} className="relative">
-      <button
+    <div ref={rootRef} className={hideTrigger ? "pointer-events-none absolute inset-0 [&>*]:pointer-events-auto" : "relative"}>
+      {!hideTrigger && <button
         ref={buttonRef}
         type="button"
         disabled={disabled}
@@ -115,14 +131,14 @@ export function EmojiButton({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onMouseDown={(event) => event.preventDefault()}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         className={
           className ||
           "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
         }
       >
         <Smile className="h-5 w-5" aria-hidden />
-      </button>
+      </button>}
       {open && (
         <>
           <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" aria-hidden onClick={() => setOpen(false)} />
