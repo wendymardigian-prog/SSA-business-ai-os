@@ -288,7 +288,7 @@ describe("POST /api/v1/messages: reintentar un envio fallido (00262)", () => {
     direction: "outbound",
     origin: "user",
     status: "failed",
-    text: "Hola Lautaro! claro que si",
+    text: "Hola! claro que si, te ayudo",
     attachments: null,
     send_error: "Instagram no dejo enviar.",
     ...over,
@@ -305,7 +305,7 @@ describe("POST /api/v1/messages: reintentar un envio fallido (00262)", () => {
 
     expect(response.status).toBe(201);
     expect(sendChannelMessage).toHaveBeenCalledTimes(1);
-    expect((sendChannelMessage.mock.calls[0] as unknown[])[2]).toEqual({ text: "Hola Lautaro! claro que si", media: undefined });
+    expect((sendChannelMessage.mock.calls[0] as unknown[])[2]).toEqual({ text: "Hola! claro que si, te ayudo", media: undefined });
     expect(inserts.filter((i) => i.table === "messages")).toHaveLength(0);
     expect(writes[0]).toMatchObject({ status: "pending" });
     expect(row).toMatchObject({ status: "sent", send_error: null, platform_message_id: "pm-1" });
@@ -339,7 +339,7 @@ describe("POST /api/v1/messages: reintentar un envio fallido (00262)", () => {
     const response = await call({ conversationId: CONV, retryOf: "msg-failed-1" });
 
     expect(response.status).toBe(502);
-    expect(row).toMatchObject({ status: "failed", send_error: "Otra vez no.", text: "Hola Lautaro! claro que si" });
+    expect(row).toMatchObject({ status: "failed", send_error: "Otra vez no.", text: "Hola! claro que si, te ayudo" });
   });
 
   it("una fila vieja (el motivo en el texto, sin send_error) no se reintenta: le mandaria el motivo al contacto", async () => {
