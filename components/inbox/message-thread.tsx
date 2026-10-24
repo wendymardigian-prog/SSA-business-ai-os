@@ -39,6 +39,7 @@ import { canMarkNoReply } from "@/lib/inbox/awaiting";
 import { formatReplyTime, replyTimesByMessage, type MessageReplyTime } from "@/lib/messages/reply-time";
 import { NoReplyBanner } from "@/components/inbox/no-reply-banner";
 import { canRetrySend } from "@/lib/inbox/send-failure";
+import { threadDayLabel } from "@/lib/inbox/day-label";
 import { setConversationNoReply } from "@/lib/actions/conversation-status";
 import { planComposerActions, type ComposerMenuAction } from "@/lib/inbox/composer-actions";
 import { ComposerMoreMenu } from "@/components/inbox/composer-more-menu";
@@ -90,18 +91,7 @@ function formatMessageTime(dateStr: string): string {
 }
 
 function formatDateSeparator(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return date.toLocaleDateString([], {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  });
+  return threadDayLabel(new Date(dateStr));
 }
 
 function shouldShowDateSeparator(

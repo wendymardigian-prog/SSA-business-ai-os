@@ -27,6 +27,7 @@ import { colorOf, initialsOf } from "@/lib/tasks/people";
 import { Avatar } from "@/components/ui/filter-menu";
 import { Tip } from "@/components/ui/tooltip";
 import { conversationListPreview } from "@/lib/inbox/last-message";
+import { listTimeLabel } from "@/lib/inbox/day-label";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 type Conversation = ConversationRow;
@@ -36,19 +37,9 @@ const REFRESH_DEBOUNCE_MS = 800;
 
 function formatTime(dateStr: string | null): string {
   if (!dateStr) return "";
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  if (diffDays === 1) return "Ayer";
-  if (diffDays < 7) {
-    return date.toLocaleDateString("es-AR", { weekday: "short" });
-  }
-  return date.toLocaleDateString("es-AR", { month: "short", day: "numeric" });
+  // Por dia de calendario (lib/inbox/day-label.ts): un mensaje de ayer a la
+  // noche dice "Ayer" aunque no hayan pasado 24 horas.
+  return listTimeLabel(new Date(dateStr));
 }
 
 export function ConversationList({
