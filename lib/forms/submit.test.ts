@@ -568,15 +568,15 @@ describe("submitForm: contratos (FO3)", () => {
 
     it("el nombre del negocio es el de la marca de ESE negocio (00266); sin marca propia, el de la instalación", async () => {
       const previous = process.env.NEXT_PUBLIC_BRAND_NAME;
-      process.env.NEXT_PUBLIC_BRAND_NAME = "SSA";
+      process.env.NEXT_PUBLIC_BRAND_NAME = "Marca Principal";
       try {
-        const own = makePorts(contractMode({ businessName: "BusinessXcelerator" }));
+        const own = makePorts(contractMode({ businessName: "Negocio Dos" }));
         await submitForm(own.ports, baseInput(signed()));
-        expect((own.saves[0].meta.contract_render as { text: string }).text).toContain(" y BusinessXcelerator, por");
+        expect((own.saves[0].meta.contract_render as { text: string }).text).toContain(" y Negocio Dos, por");
 
         const installation = makePorts(contractMode());
         await submitForm(installation.ports, baseInput(signed()));
-        expect((installation.saves[0].meta.contract_render as { text: string }).text).toContain(" y SSA, por");
+        expect((installation.saves[0].meta.contract_render as { text: string }).text).toContain(" y Marca Principal, por");
       } finally {
         if (previous === undefined) delete process.env.NEXT_PUBLIC_BRAND_NAME;
         else process.env.NEXT_PUBLIC_BRAND_NAME = previous;

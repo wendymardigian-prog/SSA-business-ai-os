@@ -5,7 +5,7 @@
  * selector de arriba a la izquierda; cada negocio tiene sus propias claves
  * (Zernio, IA, Resend...), sus canales, su equipo y su marca.
  *
- *   node scripts/create-workspace.mjs --owner-email=duena@negocio.com --name="BusinessXcelerator" [--timezone=America/Costa_Rica]
+ *   node scripts/create-workspace.mjs --owner-email=duena@negocio.com --name="Segundo negocio" [--timezone=America/Costa_Rica]
  *
  * Que hace:
  *   1. Busca la cuenta por email (no crea cuentas: para el primer Owner de una

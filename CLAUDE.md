@@ -11,7 +11,7 @@
 Nombre: Sistema Operativo de Negocio con IA (para agencia de marketing digital)
 Descripcion: Sistema operativo centralizado que unifica CRM, inbox multicanal con bot de IA, automatizaciones, contenido, ventas y finanzas en una sola plataforma, para que ningun lead quede sin respuesta y todo viva en una sola fuente de verdad.
 
-Multi-tenancy: **una copia por cliente**. Desde el 25/10/2026 una instalacion puede tener **varios negocios del MISMO dueño** (por ejemplo SSA y BusinessXcelerator), cada uno un workspace con sus claves, canales, equipo y marca, y se cambia con el selector. No hay pantalla para crear workspaces: `scripts/create-workspace.mjs`. Guia y reglas en [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md).
+Multi-tenancy: **una copia por cliente**. Desde el 25/10/2026 una instalacion puede tener **varios negocios del MISMO dueño** (por ejemplo dos marcas propias), cada uno un workspace con sus claves, canales, equipo y marca, y se cambia con el selector. No hay pantalla para crear workspaces: `scripts/create-workspace.mjs`. Guia y reglas en [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md).
 
 ## Etapas
 - Etapa 1: Sistema Operativo Base (Fase 1: Foundation, Canales y CRM. Fase 2: Comunicacion y Automatizaciones. Fase 3: Agente IA, Analytics y Pulido)

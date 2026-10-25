@@ -1,8 +1,8 @@
 -- ============================================================
 -- 00266_workspace_brand
 --
--- Varios negocios del mismo dueño en UNA instalacion (por ejemplo SSA y
--- BusinessXcelerator, con el mismo login y el selector de workspace).
+-- Varios negocios del mismo dueño en UNA instalacion (dos marcas propias, con
+-- el mismo login y el selector de workspace).
 --
 -- 1. La marca y el tono del agente pasan a poder ser de cada workspace:
 --    `brand_name`, `brand_logo_path`, `brand_color` y `ai_language_style`.

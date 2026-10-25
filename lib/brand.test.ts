@@ -79,8 +79,8 @@ describe("resolveBrand (marca de un negocio, 00266)", () => {
   });
 
   it("sin marca propia es exactamente la de la instalacion (un negocio que no toca nada se ve igual)", () => {
-    process.env.NEXT_PUBLIC_BRAND_NAME = "SSA";
-    process.env.NEXT_PUBLIC_BRAND_LOGO_URL = "https://cdn.ejemplo.com/ssa.png";
+    process.env.NEXT_PUBLIC_BRAND_NAME = "Marca Principal";
+    process.env.NEXT_PUBLIC_BRAND_LOGO_URL = "https://cdn.ejemplo.com/logo.png";
     process.env.NEXT_PUBLIC_BRAND_COLOR = "#112233";
     const installation = { name: brandName(), logoUrl: brandLogoUrl(), colorHex: brandColorHex(), initial: brandInitial() };
     expect(resolveBrand(null)).toEqual(installation);
@@ -89,24 +89,24 @@ describe("resolveBrand (marca de un negocio, 00266)", () => {
   });
 
   it("con todo propio, usa lo del negocio", () => {
-    process.env.NEXT_PUBLIC_BRAND_NAME = "SSA";
+    process.env.NEXT_PUBLIC_BRAND_NAME = "Marca Principal";
     process.env.NEXT_PUBLIC_BRAND_COLOR = "#112233";
     process.env[SUPABASE] = "https://abc.supabase.co/";
-    const brand = resolveBrand({ brand_name: "BusinessXcelerator", brand_logo_path: "ws-1/logo/a.png", brand_color: "#aabbcc" });
+    const brand = resolveBrand({ brand_name: "Negocio Dos", brand_logo_path: "ws-1/logo/a.png", brand_color: "#aabbcc" });
     expect(brand).toEqual({
-      name: "BusinessXcelerator",
+      name: "Negocio Dos",
       logoUrl: "https://abc.supabase.co/storage/v1/object/public/brand-assets/ws-1/logo/a.png",
       colorHex: "#aabbcc",
-      initial: "B",
+      initial: "N",
     });
   });
 
   it("con nombre propio y sin logo, muestra su inicial: nunca el logo de la instalacion al lado de otro nombre", () => {
-    process.env.NEXT_PUBLIC_BRAND_NAME = "SSA";
-    process.env.NEXT_PUBLIC_BRAND_LOGO_URL = "https://cdn.ejemplo.com/ssa.png";
-    const brand = resolveBrand({ brand_name: "BX" });
+    process.env.NEXT_PUBLIC_BRAND_NAME = "Marca Principal";
+    process.env.NEXT_PUBLIC_BRAND_LOGO_URL = "https://cdn.ejemplo.com/logo.png";
+    const brand = resolveBrand({ brand_name: "Otra Marca" });
     expect(brand.logoUrl).toBeNull();
-    expect(brand.initial).toBe("B");
+    expect(brand.initial).toBe("O");
   });
 
   it("un color invalido se descarta (va en un <style>) y cae al de la instalacion", () => {
