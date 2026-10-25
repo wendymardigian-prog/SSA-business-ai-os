@@ -139,6 +139,8 @@ const SELF_CHECK_WORDS = [
   "zernfl" + "ow",
   "5067081" + "4873",
   "knrxj" + "n",
+  // El nombre de otro negocio del mismo dueño (un segundo workspace, 25/10/2026): los clientes no lo ven.
+  "businessxcelera" + "t",
 ];
 const SELF_CHECK_PATTERN = new RegExp(SELF_CHECK_WORDS.join("|"), "i");
 const SELF_CHECK_EXTENSIONS = new Set([".ts", ".tsx", ".mjs", ".sql", ".md", ".json"]);
