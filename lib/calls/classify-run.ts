@@ -20,7 +20,7 @@ import { auditAsSystem } from "@/lib/audit";
 import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
-import { loadTaskInstructions } from "@/lib/ai-tasks/store";
+import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
 import { classifyCallWithAi } from "./classify-ai";
@@ -109,7 +109,7 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
 
     const [model, instructions] = await Promise.all([
       resolveTaskModel(db, call.workspace_id, "call_classification"),
-      loadTaskInstructions(db, call.workspace_id, "call_classification"),
+      loadTaskInstructionsForRun(db, call.workspace_id, "call_classification"),
     ]);
     if (!deps.generate && (!model.ok || !model.model)) {
       return markFailed(deps, call.id, model.message ?? "No hay un proveedor de IA conectado", true);

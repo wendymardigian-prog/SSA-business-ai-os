@@ -19,6 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { channelAlertEmail } from "@/lib/email/templates";
+import { resolveBrand } from "@/lib/brand";
 import { appUrl } from "@/lib/app-url";
 import { createNotificationOnce } from "@/lib/notifications/create";
 
@@ -81,7 +82,9 @@ export async function notifyWorkspaceAdmins({
     const emails = await workspaceAdminEmails(supabase, workspaceId);
     if (emails.length === 0) return;
 
-    const content = channelAlertEmail({ title, body, appUrl: appUrl() });
+    const { data: ws } = await supabase.from("workspaces").select("name, brand_name, brand_color").eq("id", workspaceId).maybeSingle();
+    const brand = resolveBrand(ws);
+    const content = channelAlertEmail({ title, body, appUrl: appUrl(), businessName: ws?.brand_name?.trim() || ws?.name || null, brandColor: brand.colorHex });
 
     for (const email of emails) {
       await sendTransactionalEmail({

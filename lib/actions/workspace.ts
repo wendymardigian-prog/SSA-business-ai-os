@@ -1,13 +1,15 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
-import { WORKSPACE_COOKIE } from "@/lib/workspace";
+import { setActiveWorkspaceCookie } from "@/lib/workspace";
 import { isValidTimeZone } from "@/lib/timezone";
 import type { Json } from "@/lib/types/database";
+import { randomUUID } from "node:crypto";
+import { BRAND_ASSETS_BUCKET, brandLogoPublicUrl } from "@/lib/brand";
+import { brandLogoPath, isOwnLogoPath, parseBrandLogo, parseBrandSettings } from "@/lib/brand-settings";
 
 export async function switchWorkspace(workspaceId: string) {
   const supabase = await createClient();
@@ -27,21 +29,14 @@ export async function switchWorkspace(workspaceId: string) {
 
   if (!membership) return { error: "No access to this workspace" };
 
-  const cookieStore = await cookies();
-  cookieStore.set(WORKSPACE_COOKIE, workspaceId, {
-    path: "/",
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 365,
-  });
+  await setActiveWorkspaceCookie(workspaceId);
 
   return { ok: true };
 }
 
-// No hay `createWorkspace`: el modelo es una copia del sistema por cliente
-// (white label), y el primer Owner de una copia nueva lo crea
-// scripts/create-owner.mjs. La accion que habia fallaba igual: no existe una
+// No hay `createWorkspace` en la app: el primer Owner de una copia nueva lo
+// crea scripts/create-owner.mjs, y un segundo negocio del mismo dueño en la
+// misma instalacion, scripts/create-workspace.mjs. La accion que habia fallaba igual: no existe una
 // policy de INSERT sobre `workspaces`.
 
 /**
@@ -266,4 +261,143 @@ export async function updateBackgroundSettings(
   });
   revalidatePath("/dashboard/settings/background");
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Marca del negocio (00266): nombre, color y tono de la IA, y el logo aparte.
+//
+// `settings.general`, como el resto de General. Se escribe con el cliente de
+// servicio DESPUES del guard y siempre sobre el workspace de la sesion. Un
+// campo vacio = NULL = el de la instalacion.
+// ---------------------------------------------------------------------------
+
+const NO_BRAND_PERMISSION = "No tenés permiso para cambiar la marca del negocio";
+
+export async function updateWorkspaceBrand(input: {
+  name: string;
+  color: string;
+  languageStyle: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: NO_BRAND_PERMISSION };
+
+  const parsed = parseBrandSettings(input);
+  if (!parsed.ok) return parsed;
+
+  const { workspace, supabase, user } = ctx;
+  const service = await createServiceClient();
+  const { data: before } = await service
+    .from("workspaces")
+    .select("brand_name, brand_color, ai_language_style")
+    .eq("id", workspace.id)
+    .maybeSingle();
+
+  const { error } = await service.from("workspaces").update(parsed.values).eq("id", workspace.id);
+  if (error) {
+    console.error("[workspace] no pude guardar la marca:", error.message);
+    return { ok: false, error: "No pude guardar la marca. Probá de nuevo." };
+  }
+
+  const changes = diffFields((before ?? {}) as Record<string, unknown>, parsed.values as unknown as Record<string, unknown>);
+  if (changes) {
+    await logAudit({
+      supabase,
+      workspaceId: workspace.id,
+      entityType: "workspace",
+      entityId: workspace.id,
+      action: "update",
+      changes,
+      metadata: { kind: "brand" },
+      performedBy: user.id,
+    });
+  }
+
+  // El nombre, el color y el logo se ven en todo el panel (menu, selector, color).
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+/** Sube un logo nuevo (data URL, validado por sus bytes) y lo deja como el del negocio. */
+export async function uploadWorkspaceLogo(input: { dataUrl: string }): Promise<{ ok: true; path: string; url: string | null } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: NO_BRAND_PERMISSION };
+
+  const parsed = parseBrandLogo(input.dataUrl);
+  if (!parsed.ok) return parsed;
+
+  const { workspace, supabase, user } = ctx;
+  const service = await createServiceClient();
+  const { data: before } = await service.from("workspaces").select("brand_logo_path").eq("id", workspace.id).maybeSingle();
+
+  const path = brandLogoPath(workspace.id, randomUUID(), parsed.ext);
+  const { error: uploadError } = await service.storage.from(BRAND_ASSETS_BUCKET).upload(path, parsed.bytes, { contentType: parsed.mime, upsert: false });
+  if (uploadError) {
+    console.error("[workspace] no pude subir el logo:", uploadError.message);
+    return { ok: false, error: "No pude subir el logo. Probá de nuevo." };
+  }
+
+  const { error } = await service.from("workspaces").update({ brand_logo_path: path }).eq("id", workspace.id);
+  if (error) {
+    console.error("[workspace] no pude guardar el logo:", error.message);
+    await removeLogoFile(service, workspace.id, path);
+    return { ok: false, error: "No pude guardar el logo. Probá de nuevo." };
+  }
+
+  // El anterior ya no lo usa nadie: se borra (si falla, queda un archivo suelto, nada se rompe).
+  await removeLogoFile(service, workspace.id, before?.brand_logo_path);
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: { brand_logo_path: { old: before?.brand_logo_path ?? null, new: path } },
+    metadata: { kind: "brand" },
+    performedBy: user.id,
+  });
+
+  revalidatePath("/dashboard", "layout");
+  return { ok: true, path, url: brandLogoPublicUrl(path) };
+}
+
+/** Saca el logo propio: el negocio vuelve a su inicial (o al logo de la instalacion si tampoco tiene nombre propio). */
+export async function removeWorkspaceLogo(): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: NO_BRAND_PERMISSION };
+
+  const { workspace, supabase, user } = ctx;
+  const service = await createServiceClient();
+  const { data: before } = await service.from("workspaces").select("brand_logo_path").eq("id", workspace.id).maybeSingle();
+  if (!before?.brand_logo_path) return { ok: true };
+
+  const { error } = await service.from("workspaces").update({ brand_logo_path: null }).eq("id", workspace.id);
+  if (error) {
+    console.error("[workspace] no pude sacar el logo:", error.message);
+    return { ok: false, error: "No pude sacar el logo. Probá de nuevo." };
+  }
+  await removeLogoFile(service, workspace.id, before.brand_logo_path);
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: { brand_logo_path: { old: before.brand_logo_path, new: null } },
+    metadata: { kind: "brand" },
+    performedBy: user.id,
+  });
+
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+/** Borra un logo del bucket, solo si es de ESE workspace. Nunca lanza. */
+async function removeLogoFile(service: Awaited<ReturnType<typeof createServiceClient>>, workspaceId: string, path: string | null | undefined) {
+  if (!isOwnLogoPath(workspaceId, path)) return;
+  try {
+    const { error } = await service.storage.from(BRAND_ASSETS_BUCKET).remove([path]);
+    if (error) console.error("[workspace] no pude borrar el logo anterior:", error.message);
+  } catch (err) {
+    console.error("[workspace] no pude borrar el logo anterior:", err instanceof Error ? err.message : "error");
+  }
 }

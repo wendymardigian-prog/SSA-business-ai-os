@@ -1,23 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspace } from "@/lib/workspace";
 import { checkMemberFlow } from "@/lib/flow-engine/member-flow-db";
 import { normalizeCategories, normalizeDescription } from "@/lib/flows/categories";
 
-async function getWorkspaceId(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
-
-  return membership?.workspace_id || null;
+// El workspace ACTIVO (el elegido en el selector), nunca "el primero": ver lib/workspace.ts.
+async function getWorkspaceId() {
+  const active = await getActiveWorkspace();
+  return active?.workspace.id ?? null;
 }
 
 export async function GET(
@@ -26,7 +17,7 @@ export async function GET(
 ) {
   const { flowId } = await params;
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
+  const workspaceId = await getWorkspaceId();
   if (!workspaceId)
     return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
@@ -52,7 +43,7 @@ export async function PUT(
 ) {
   const { flowId } = await params;
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
+  const workspaceId = await getWorkspaceId();
   if (!workspaceId)
     return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 
@@ -119,7 +110,7 @@ export async function DELETE(
 ) {
   const { flowId } = await params;
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
+  const workspaceId = await getWorkspaceId();
   if (!workspaceId)
     return NextResponse.json({ error: "Tenés que iniciar sesión." }, { status: 401 });
 

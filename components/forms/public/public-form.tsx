@@ -244,8 +244,8 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
     const texts: Record<string, string> = {};
     for (const [key, value] of Object.entries(answersForSubmit(fields, answers))) texts[key] = answerToText(value);
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return renderContractTemplate(form.contract.text, contractValues({ answers: texts, link: contractContext, businessName: brandName(), date: contractDate(new Date(), timeZone) }));
-  }, [contractMode, form.contract?.text, fields, answers, contractContext]);
+    return renderContractTemplate(form.contract.text, contractValues({ answers: texts, link: contractContext, businessName: form.business_name ?? brandName(), date: contractDate(new Date(), timeZone) }));
+  }, [contractMode, form.contract?.text, form.business_name, fields, answers, contractContext]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();

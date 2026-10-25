@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, MessageSquare, X } from "lucide-react";
 import { NotificationBell } from "@/components/notifications/notification-bell";
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { WorkspaceSwitcher, type WorkspaceItem } from "@/components/workspace-switcher";
 import { NavLinks, type NavFlags } from "@/components/sidebar";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
@@ -27,7 +27,7 @@ type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
 export interface DashboardChrome {
   workspace: Workspace;
   user: ProfileUser;
-  workspaces: Array<{ id: string; name: string; slug: string; role: string }>;
+  workspaces: WorkspaceItem[];
   role: string;
   /** Claves del rol resuelto (Etapa 4): el menu filtra por permiso. */
   permissionKeys?: string[];
@@ -64,6 +64,16 @@ export function DashboardChromeProvider({
  */
 export function useDashboardChrome(): DashboardChrome | null {
   return useContext(ChromeContext);
+}
+
+/**
+ * El workspace ACTIVO (el del selector). Una persona puede estar en dos
+ * negocios y la RLS le deja leer los dos: toda consulta del navegador que
+ * liste filas de un negocio filtra por este id. Null fuera del layout del
+ * dashboard.
+ */
+export function useActiveWorkspaceId(): string | null {
+  return useDashboardChrome()?.workspace.id ?? null;
 }
 
 /**

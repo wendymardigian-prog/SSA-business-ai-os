@@ -40,13 +40,14 @@ const COUNT_MAX_PAGES = 10;
  * 1000 filas sin avisar, y un conteo que se queda corto en silencio es peor
  * que no tener conteo. Solo se traen los contactos que SI llegaron por una pieza.
  */
-async function firstTouchCounts(supabase: Awaited<ReturnType<typeof getPermissionContext>>["supabase"]) {
+async function firstTouchCounts(supabase: Awaited<ReturnType<typeof getPermissionContext>>["supabase"], workspaceId: string) {
   const rows: Array<{ content_post_id: string | null }> = [];
 
   for (let page = 0; page < COUNT_MAX_PAGES; page++) {
     const { data, error } = await supabase
       .from("contacts")
       .select("content_post_id:attribution->first_touch->>content_post_id")
+      .eq("workspace_id", workspaceId)
       .is("deleted_at", null)
       .not("attribution->first_touch->>content_post_id", "is", null)
       .order("id")
@@ -110,7 +111,7 @@ export default async function ContentPage({
     // Archivados incluidos: una idea o pieza que ya tiene un pilar lo sigue
     // mostrando aunque ya no se ofrezca en el selector (F89).
     loadContentTaxonomy(supabase, workspace.id, can("settings.general")),
-    firstTouchCounts(supabase),
+    firstTouchCounts(supabase, workspace.id),
     // Las piezas con algun anuncio vinculado (A2): se leen con la sesion, asi que quien no puede ver anuncios no ve el indicador.
     canSeePaid ? loadPaidPieceIds(supabase, workspace.id) : Promise.resolve(new Set<string>()),
   ]);

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { brandName, brandColorHex } from "@/lib/brand";
+import { brandName, brandColorHex, brandColorCss } from "@/lib/brand";
 import { appUrl } from "@/lib/app-url";
 import { DatePickerOpener } from "@/components/ui/date-picker-opener";
 
@@ -59,7 +59,7 @@ try{if(localStorage.getItem("nav-tools-open")==="1")document.documentElement.cla
         {brandColor && (
           <style
             dangerouslySetInnerHTML={{
-              __html: `:root,.dark,[data-theme="dark"],[data-theme="light"]{--primary:${brandColor} !important;--ring:${brandColor} !important;--color-primary:${brandColor} !important;--color-ring:${brandColor} !important;}`,
+              __html: brandColorCss(brandColor),
             }}
           />
         )}

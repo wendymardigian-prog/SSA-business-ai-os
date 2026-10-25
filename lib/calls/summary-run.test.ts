@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({ openAiRun: vi.fn(), budget: vi.fn(), model: vi
 vi.mock("@/lib/ai/run", () => ({ openAiRun: mocks.openAiRun }));
 vi.mock("@/lib/ai/workspace-budget", () => ({ withinWorkspaceBudget: mocks.budget }));
 vi.mock("@/lib/ai-tasks/model", () => ({ resolveTaskModel: mocks.model }));
-vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions }));
+vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions, loadTaskInstructionsForRun: mocks.instructions }));
 vi.mock("@/lib/audit", () => ({ auditAsSystem: mocks.audit }));
 
 import { runCallSummaryJob } from "./summary-run";

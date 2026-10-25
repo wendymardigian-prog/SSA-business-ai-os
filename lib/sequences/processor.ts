@@ -14,6 +14,7 @@ import {
 } from "./steps";
 import type { Database, SequenceStep } from "@/lib/types/database";
 import { aiLanguageStyle } from "@/lib/ai/language-style";
+import { loadLanguageStyle } from "@/lib/ai/language-style-load";
 
 /**
  * El procesador de secuencias. Lo llama el cron cada minuto.
@@ -288,7 +289,7 @@ async function deliverStep(
       provider: step.provider,
       modelId: step.model,
       systemPrompt:
-        `Sos quien atiende los mensajes de este negocio. Escribi en ${aiLanguageStyle()}, breve y natural, como una persona. No saludes de nuevo si la conversacion ya empezo.`,
+        `Sos quien atiende los mensajes de este negocio. Escribi en ${await loadLanguageStyle(supabase, workspaceId)}, breve y natural, como una persona. No saludes de nuevo si la conversacion ya empezo.`,
       userPrompt: interpolateVariables(step.prompt ?? "", variables),
       temperature: step.temperature,
       maxTokens: step.maxTokens,

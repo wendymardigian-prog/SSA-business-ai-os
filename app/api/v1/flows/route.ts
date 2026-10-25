@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspace } from "@/lib/workspace";
 import { MAX_FLOW_NAME_LENGTH, NEW_FLOW_NAME, newTriggerNode, normalizeCategories, normalizeDescription } from "@/lib/flows/categories";
 
 export async function GET() {
@@ -13,12 +14,9 @@ export async function GET() {
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
   if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  // El workspace ACTIVO (el elegido en el selector), nunca "el primero": ver lib/workspace.ts.
+  const active = await getActiveWorkspace();
+  const membership = active ? { workspace_id: active.workspace.id } : null;
 
   if (!membership) return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });
 
@@ -43,12 +41,9 @@ export async function POST(request: NextRequest) {
   // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
   if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  // El workspace ACTIVO (el elegido en el selector), nunca "el primero": ver lib/workspace.ts.
+  const active = await getActiveWorkspace();
+  const membership = active ? { workspace_id: active.workspace.id } : null;
 
   if (!membership) return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });
 

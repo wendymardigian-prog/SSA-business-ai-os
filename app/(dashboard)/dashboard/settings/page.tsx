@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { aiLanguageStyle } from "@/lib/ai/language-style";
 import { getPermissionContext, requireAnyPermission } from "@/lib/auth/guards";
 import { canOpenGeneral } from "@/lib/settings/general-sections";
 import { visibleSettingsTabs } from "@/lib/settings/tabs";
@@ -62,6 +63,13 @@ export default async function SettingsPage() {
         maxDiscountPercent: w.max_discount_percent == null ? null : Number(w.max_discount_percent),
         overdueGraceDays: Number(w.overdue_grace_days) || 0,
         salesAutoCreateFlows: w.sales_auto_create_flows !== false,
+        brand: {
+          name: workspace.brand_name ?? null,
+          logoPath: workspace.brand_logo_path ?? null,
+          color: workspace.brand_color ?? null,
+          languageStyle: workspace.ai_language_style ?? null,
+          installationStyle: aiLanguageStyle(),
+        },
       }}
       canViewAiCosts={canViewAiCosts}
       canViewAudit={can("audit.view")}

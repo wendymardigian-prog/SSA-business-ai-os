@@ -1,26 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspace } from "@/lib/workspace";
 
-async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id, workspaces(*)")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
-
-  if (!membership?.workspaces) return null;
-  return membership.workspaces;
+// El workspace ACTIVO (el elegido en el selector), nunca "el primero": ver lib/workspace.ts.
+async function getWorkspace() {
+  const active = await getActiveWorkspace();
+  return active?.workspace ?? null;
 }
 
 export async function GET() {
   const supabase = await createClient();
-  const workspace = await getWorkspace(supabase);
+  const workspace = await getWorkspace();
   if (!workspace)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

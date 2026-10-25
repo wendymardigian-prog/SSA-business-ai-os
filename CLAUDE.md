@@ -11,7 +11,7 @@
 Nombre: Sistema Operativo de Negocio con IA (para agencia de marketing digital)
 Descripcion: Sistema operativo centralizado que unifica CRM, inbox multicanal con bot de IA, automatizaciones, contenido, ventas y finanzas en una sola plataforma, para que ningun lead quede sin respuesta y todo viva en una sola fuente de verdad.
 
-Multi-tenancy: **Single-tenant** (un solo negocio, un solo workspace). ZernFlow trae workspaces, se conservan, pero no se construye gestion multi-negocio.
+Multi-tenancy: **una copia por cliente**. Desde el 25/10/2026 una instalacion puede tener **varios negocios del MISMO dueño** (por ejemplo SSA y BusinessXcelerator), cada uno un workspace con sus claves, canales, equipo y marca, y se cambia con el selector. No hay pantalla para crear workspaces: `scripts/create-workspace.mjs`. Guia y reglas en [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md).
 
 ## Etapas
 - Etapa 1: Sistema Operativo Base (Fase 1: Foundation, Canales y CRM. Fase 2: Comunicacion y Automatizaciones. Fase 3: Agente IA, Analytics y Pulido)
@@ -75,8 +75,8 @@ Nota de canales: TikTok, YouTube y LinkedIn NO van en Etapa 1. TikTok no tiene A
 
 El sistema se duplica por cliente: cada clon es su propia copia, con su propia base.
 
-- Marca por variables de entorno, nunca en el codigo: `NEXT_PUBLIC_BRAND_NAME`, `NEXT_PUBLIC_BRAND_LOGO_URL`, `NEXT_PUBLIC_BRAND_COLOR` (ver `lib/brand.ts`). Sin configurar, el sistema muestra un nombre generico.
-- Como habla el agente en espanol: `AI_LANGUAGE_STYLE` (ver `lib/ai/language-style.ts`). Sin configurar, "espanol neutro, directo y sin relleno".
+- Marca por variables de entorno, nunca en el codigo: `NEXT_PUBLIC_BRAND_NAME`, `NEXT_PUBLIC_BRAND_LOGO_URL`, `NEXT_PUBLIC_BRAND_COLOR` (ver `lib/brand.ts`). Sin configurar, el sistema muestra un nombre generico. Es la marca de la INSTALACION (login, icono, sitio publico) y el respaldo de cada negocio: desde la 00266 cada workspace puede tener la suya (`workspaces.brand_*`, Ajustes → General → Marca) y todo lo que ve un lead y el panel usan `resolveBrand(workspace)`.
+- Como habla el agente en espanol: `AI_LANGUAGE_STYLE` (ver `lib/ai/language-style.ts`). Sin configurar, "espanol neutro, directo y sin relleno". Un negocio con `workspaces.ai_language_style` usa el suyo (`aiLanguageStyle(propio)`; las tareas de IA lo reciben con `loadTaskInstructionsForRun`).
 - Alta solo por invitacion: no hay registro publico. `scripts/create-owner.mjs` crea el primer Owner de un clon nuevo (cuenta + workspace + zona horaria del negocio).
 - Zona horaria por USUARIO, no por workspace: se detecta del navegador en el primer ingreso y se guarda en `user_preferences` (00121); editable desde el menu de perfil. `workspaces.timezone` sigue existiendo aparte, para las reglas que no pueden depender de quien mira (horario de atencion del agente, topes de gasto, hora de las tareas programadas) — ver `lib/dates.ts` y `lib/user-timezone.ts`.
 - Cada clon necesita `app_url` y `cron_secret` propios en Supabase Vault (`system:app_url` / `system:cron_secret`, desde la 00139): `select private.set_system_secret('cron_secret', '...')`, el mismo valor que `CRON_SECRET` en Railway. `private.system_secrets_status()` dice si estan cargados y cuantos cron dieron 200/401, sin mostrar el secreto. Detalle en el comentario de `CRON_SECRET` en `.env.example`.
@@ -314,6 +314,8 @@ borradores creados DESPUES de aplicarla, asi que enchufarla con la cola vacia
 La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e32`): los secretos de Zernio se movieron a Vault comprobando por huella sha256 que la copia era identica, se vaciaron las columnas, se comprobo que el sistema seguia leyendo, y recien ahi se borraron. Hoy **no queda ninguna clave en columnas de la base**.
 
 Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`.
+
+**Varios negocios en una instalacion (25/10/2026).** `00266_workspace_brand` (marca y tono por workspace, bucket publico `brand-assets`, usuario de agenda unico en toda la instalacion): **aplicada y registrada** el 25/10/2026 (version `20261025202218`), antes del deploy, con `verify-workspace-isolation --despues-de-00143` en verde. En un clon nuevo va ANTES de desplegar el codigo (el layout y los formularios leen sus columnas). Ver [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md). **La proxima libre es la `00267`** (confirmar con `list_migrations`).
 
 **Extra I (15/10/2026).** `00224` a `00232` estan **aplicadas y registradas** (metodos de pago, gastos y finanzas, atribucion organica y comisiones); `00233`, `00234` y `00235` se aplicaron el **15/10/2026, despues del merge** y estan **aplicadas y registradas** (versiones `20261015232110`, `20261015232347` y `20261015232649`; ver las cuatro secciones del Extra I mas abajo). **La proxima libre es la `00236`.**
 

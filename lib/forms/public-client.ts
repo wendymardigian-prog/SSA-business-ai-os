@@ -25,6 +25,11 @@ export interface PublicFormData {
   } | null;
   signature_required: boolean;
   survey: { scoreFieldKey?: string | null } | null;
+  /**
+   * El nombre del negocio dueño del formulario (00266): el de su marca, o el de la instalación. No sale de
+   * `get_public_form`: lo suma `loadPublicFormData` (es público, va en el contrato). Sin dato, el de la instalación.
+   */
+  business_name?: string;
 }
 
 export type PublicFormResult = PublicFormData | { status: "unavailable" };

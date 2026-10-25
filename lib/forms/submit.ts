@@ -76,6 +76,8 @@ export interface LoadedForm {
   fields: FormField[];
   success: SuccessConfig;
   workspaceTimezone: string;
+  /** El nombre del negocio para el contrato (00266). Sin dato, el de la instalación. */
+  businessName?: string;
   /** Cómo la respuesta se vuelve un contacto (F15). */
   contactConfig: ContactConfig;
   /** Los campos personalizados del workspace (para el mapeo). */
@@ -548,7 +550,7 @@ async function buildContractRender(
   }
   const text = renderContractTemplate(
     form.contractText ?? "",
-    contractValues({ answers, link: linkContext, businessName: brandName(), date: contractDate(new Date(), form.workspaceTimezone) }),
+    contractValues({ answers, link: linkContext, businessName: form.businessName ?? brandName(), date: contractDate(new Date(), form.workspaceTimezone) }),
   );
   const signer = form.contract?.mode === "contract" && form.contract.businessSigner.enabled ? form.contract.businessSigner : null;
   return {

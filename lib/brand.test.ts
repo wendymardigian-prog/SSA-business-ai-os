@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { brandName, brandLogoUrl, brandColorHex, brandInitial } from "./brand";
+import { brandName, brandLogoUrl, brandColorHex, brandInitial, resolveBrand, safeBrandColor, brandColorCss } from "./brand";
 
 const KEYS = ["NEXT_PUBLIC_BRAND_NAME", "NEXT_PUBLIC_BRAND_LOGO_URL", "NEXT_PUBLIC_BRAND_COLOR"] as const;
 
@@ -67,5 +67,57 @@ describe("brandInitial", () => {
   it("usa P si no hay nombre configurado", () => {
     clearEnv();
     expect(brandInitial()).toBe("P");
+  });
+});
+
+describe("resolveBrand (marca de un negocio, 00266)", () => {
+  const SUPABASE = "NEXT_PUBLIC_SUPABASE_URL";
+  const previousSupabase = process.env[SUPABASE];
+  afterEach(() => {
+    if (previousSupabase === undefined) delete process.env[SUPABASE];
+    else process.env[SUPABASE] = previousSupabase;
+  });
+
+  it("sin marca propia es exactamente la de la instalacion (un negocio que no toca nada se ve igual)", () => {
+    process.env.NEXT_PUBLIC_BRAND_NAME = "SSA";
+    process.env.NEXT_PUBLIC_BRAND_LOGO_URL = "https://cdn.ejemplo.com/ssa.png";
+    process.env.NEXT_PUBLIC_BRAND_COLOR = "#112233";
+    const installation = { name: brandName(), logoUrl: brandLogoUrl(), colorHex: brandColorHex(), initial: brandInitial() };
+    expect(resolveBrand(null)).toEqual(installation);
+    expect(resolveBrand({ brand_name: null, brand_logo_path: null, brand_color: null })).toEqual(installation);
+    expect(resolveBrand({ brand_name: "   " })).toEqual(installation);
+  });
+
+  it("con todo propio, usa lo del negocio", () => {
+    process.env.NEXT_PUBLIC_BRAND_NAME = "SSA";
+    process.env.NEXT_PUBLIC_BRAND_COLOR = "#112233";
+    process.env[SUPABASE] = "https://abc.supabase.co/";
+    const brand = resolveBrand({ brand_name: "BusinessXcelerator", brand_logo_path: "ws-1/logo/a.png", brand_color: "#aabbcc" });
+    expect(brand).toEqual({
+      name: "BusinessXcelerator",
+      logoUrl: "https://abc.supabase.co/storage/v1/object/public/brand-assets/ws-1/logo/a.png",
+      colorHex: "#aabbcc",
+      initial: "B",
+    });
+  });
+
+  it("con nombre propio y sin logo, muestra su inicial: nunca el logo de la instalacion al lado de otro nombre", () => {
+    process.env.NEXT_PUBLIC_BRAND_NAME = "SSA";
+    process.env.NEXT_PUBLIC_BRAND_LOGO_URL = "https://cdn.ejemplo.com/ssa.png";
+    const brand = resolveBrand({ brand_name: "BX" });
+    expect(brand.logoUrl).toBeNull();
+    expect(brand.initial).toBe("B");
+  });
+
+  it("un color invalido se descarta (va en un <style>) y cae al de la instalacion", () => {
+    process.env.NEXT_PUBLIC_BRAND_COLOR = "#112233";
+    expect(resolveBrand({ brand_color: "red;} body{display:none" }).colorHex).toBe("#112233");
+    expect(safeBrandColor("#ABCDEF")).toBe("#ABCDEF");
+    expect(safeBrandColor("#abc")).toBeNull();
+  });
+
+  it("brandColorCss solo acepta un hex valido", () => {
+    expect(brandColorCss("#aabbcc")).toContain("--primary:#aabbcc !important");
+    expect(brandColorCss("x;}")).toBe("");
   });
 });

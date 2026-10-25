@@ -5,12 +5,13 @@
  * moderno, asi que se usan estilos en linea y una sola columna. Sin imagenes
  * remotas (muchos clientes las bloquean por defecto).
  *
- * El boton usa el color de marca (NEXT_PUBLIC_BRAND_COLOR, lib/brand.ts) si
- * el cliente configuro uno: un email no entiende variables CSS, asi que el
- * hex se resuelve aca, en el momento de armar el HTML, no en el navegador.
+ * El boton usa el color de marca del negocio que manda el email
+ * (`resolveBrand(workspace).colorHex`, lib/brand.ts; si no tiene uno, el de la
+ * instalacion): un email no entiende variables CSS, asi que el hex se
+ * resuelve aca, en el momento de armar el HTML, no en el navegador.
  */
 
-import { brandColorHex } from "@/lib/brand";
+import { brandColorHex, safeBrandColor } from "@/lib/brand";
 
 interface EmailContent {
   subject: string;
@@ -37,8 +38,8 @@ function layout(body: string): string {
 </html>`;
 }
 
-function button(url: string, label: string): string {
-  const background = brandColorHex() ?? "#111827";
+function button(url: string, label: string, color?: string | null): string {
+  const background = safeBrandColor(color) ?? brandColorHex() ?? "#111827";
   return `<a href="${escapeHtml(url)}" style="display:inline-block;margin:24px 0;padding:12px 20px;background:${background};color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">${escapeHtml(label)}</a>
     <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:0;">Si el boton no funciona, copia y pega este link en tu navegador:<br />
       <span style="color:#374151;word-break:break-all;">${escapeHtml(url)}</span>
@@ -50,6 +51,8 @@ export function teamInviteEmail(params: {
   workspaceName: string;
   inviteUrl: string;
   roleLabel: string;
+  /** El color del negocio que invita (00266). Sin él, el de la instalación. */
+  brandColor?: string | null;
 }): EmailContent {
   return {
     subject: `Te invitaron a ${params.workspaceName}`,
@@ -59,7 +62,7 @@ export function teamInviteEmail(params: {
         Vas a entrar con el rol <strong>${escapeHtml(params.roleLabel)}</strong>.
         El link vence en 7 dias.
       </p>
-      ${button(params.inviteUrl, "Aceptar la invitacion")}
+      ${button(params.inviteUrl, "Aceptar la invitacion", params.brandColor)}
     `),
   };
 }
@@ -69,13 +72,17 @@ export function channelAlertEmail(params: {
   title: string;
   body: string;
   appUrl: string;
+  /** El negocio del canal: con dos negocios en la instalación, el admin tiene que saber de cuál es. */
+  businessName?: string | null;
+  brandColor?: string | null;
 }): EmailContent {
   return {
-    subject: params.title,
+    subject: params.businessName ? `${params.businessName}: ${params.title}` : params.title,
     html: layout(`
+      ${params.businessName ? `<p style="font-size:13px;color:#6b7280;margin:0 0 8px;">${escapeHtml(params.businessName)}</p>` : ""}
       <h1 style="font-size:20px;margin:0 0 12px;">${escapeHtml(params.title)}</h1>
       <p style="font-size:15px;line-height:1.6;margin:0;">${escapeHtml(params.body)}</p>
-      ${button(`${params.appUrl}/dashboard/channels`, "Ver los canales")}
+      ${button(`${params.appUrl}/dashboard/channels`, "Ver los canales", params.brandColor)}
     `),
   };
 }

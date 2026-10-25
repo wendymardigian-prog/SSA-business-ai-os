@@ -1,4 +1,4 @@
-import { brandName, brandLogoUrl, brandInitial } from "@/lib/brand";
+import { resolveBrand, type Brand } from "@/lib/brand";
 
 /**
  * El logo del producto, o un monograma si el cliente no subio uno.
@@ -7,15 +7,17 @@ import { brandName, brandLogoUrl, brandInitial } from "@/lib/brand";
  * ningun logo (antes se mostraba uno fijo a mano). El monograma hace
  * que la pantalla de acceso y el menu lateral nunca queden vacios.
  */
-export function BrandMark({ size = 48, className }: { size?: number; className?: string }) {
-  const logoUrl = brandLogoUrl();
+export function BrandMark({ size = 48, className, brand }: { size?: number; className?: string; brand?: Brand }) {
+  // Sin `brand`, la marca de la instalacion (login, invitacion). Adentro del
+  // panel se pasa la del negocio (`resolveBrand(workspace)`).
+  const { name, logoUrl, initial } = brand ?? resolveBrand();
 
   if (logoUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- el dominio del logo lo define cada cliente, no se puede fijar en next.config
       <img
         src={logoUrl}
-        alt={brandName()}
+        alt={name}
         width={size}
         height={size}
         className={className}
@@ -40,10 +42,10 @@ export function BrandMark({ size = 48, className }: { size?: number; className?:
         fontSize: size * 0.5,
         lineHeight: 1,
       }}
-      aria-label={brandName()}
+      aria-label={name}
       role="img"
     >
-      {brandInitial()}
+      {initial}
     </div>
   );
 }

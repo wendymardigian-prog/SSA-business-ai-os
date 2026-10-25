@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useActiveWorkspaceId } from "@/components/dashboard-chrome";
 import { createClient } from "@/lib/supabase/client";
 import { STATUS_ROLES, STATUS_ROLE_LABELS, isStatusRole, parseStatusSettings, statusName, type ContactStatusSettings, type StatusRole } from "@/lib/contacts/statuses";
 import { Plus, X } from "lucide-react";
@@ -704,22 +705,25 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
  */
 function StatusChangedPicker({ flowId, value, onChange }: { flowId?: string; value: string; onChange: (value: string) => void }) {
   const [settings, setSettings] = useState<ContactStatusSettings | null>(null);
+  const workspaceId = useActiveWorkspaceId();
   useEffect(() => {
     let alive = true;
     const supabase = createClient();
-    // El workspace del flujo (con la RLS de quien edita); sin flujo, el suyo (single-tenant).
+    // El workspace del flujo (con la RLS de quien edita); sin flujo, el activo (una persona puede estar en dos).
     const load = flowId
       ? supabase.from("flows").select("workspaces(contact_status_settings)").eq("id", flowId).maybeSingle()
           .then(({ data }) => (data as { workspaces?: { contact_status_settings?: unknown } | null } | null)?.workspaces?.contact_status_settings)
-      : supabase.from("workspaces").select("contact_status_settings").limit(1).maybeSingle()
-          .then(({ data }) => (data as { contact_status_settings?: unknown } | null)?.contact_status_settings);
+      : workspaceId
+        ? supabase.from("workspaces").select("contact_status_settings").eq("id", workspaceId).maybeSingle()
+            .then(({ data }) => (data as { contact_status_settings?: unknown } | null)?.contact_status_settings)
+        : Promise.resolve(null);
     void load.then((raw) => {
       if (alive) setSettings(parseStatusSettings(raw));
     });
     return () => {
       alive = false;
     };
-  }, [flowId]);
+  }, [flowId, workspaceId]);
 
   const [rawRole, status = ""] = value.split(":");
   const role: StatusRole | "" = isStatusRole(rawRole) ? rawRole : "";

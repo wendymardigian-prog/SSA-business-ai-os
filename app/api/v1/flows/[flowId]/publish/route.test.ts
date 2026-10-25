@@ -10,6 +10,8 @@ const { createClient, createServiceClient } = vi.hoisted(() => ({ createClient: 
 vi.mock("@/lib/supabase/server", () => ({ createClient, createServiceClient }));
 // Quien publica tiene `flows.publish` (Equipo y roles, F22); el guard en si se prueba en lib/flow-engine/api-permissions.test.ts.
 vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: vi.fn(async () => ({ user: { id: "u-1" } })) }));
+// El workspace ACTIVO de la sesion (lib/workspace.ts): las rutas ya no buscan "el primero" por su cuenta.
+vi.mock("@/lib/workspace", () => ({ getActiveWorkspace: async () => ({ workspace: { id: "ws-1" } }) }));
 vi.mock("@/lib/sales/automation/relative", () => ({ backfillPaymentRelativeJobs: vi.fn(async () => {}) }));
 
 import { POST } from "./route";

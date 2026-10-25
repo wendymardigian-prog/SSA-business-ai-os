@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const service = await createServiceClient();
   const form = await loadPublicFormData(service, slug);
   const title = isAvailable(form) ? form.design?.title : null;
-  return { title: { absolute: title || brandName() } };
+  return { title: { absolute: title || (isAvailable(form) ? form.business_name : null) || brandName() } };
 }
 
 /**

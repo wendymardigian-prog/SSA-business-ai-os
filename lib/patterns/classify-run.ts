@@ -10,7 +10,7 @@ import { resolveBackgroundSettings } from "@/lib/background/settings";
 import { getProvider, isTextProvider } from "@/lib/integrations/providers";
 import { selectPending, applyClassification, CLASSIFIER_BATCH, MAX_NEW_CATEGORIES, type PendingText } from "./classifier";
 import { buildSystemPrompt, buildBatchPrompt, parseClassifierOutput, MAX_CORRECTIONS, type CategoryForPrompt, type CorrectionForPrompt } from "./prompt";
-import { loadTaskInstructions } from "@/lib/ai-tasks/store";
+import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 
 type Db = SupabaseClient<Database>;
 
@@ -152,7 +152,7 @@ export async function runMessageClassification(
   // Las instrucciones editables de la tarea (Agentes IA): si no hay version
   // activa, o si algo falla al leerla, se usa el texto del sistema. Se carga
   // una sola vez por corrida, no por lote.
-  const instructions = await loadTaskInstructions(supabase, args.workspaceId, "message_classification");
+  const instructions = await loadTaskInstructionsForRun(supabase, args.workspaceId, "message_classification");
 
   let failure: string | null = null;
 

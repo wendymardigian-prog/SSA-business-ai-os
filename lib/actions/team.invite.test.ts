@@ -13,7 +13,8 @@ vi.mock("@/lib/email/send", () => email);
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 const audit = vi.hoisted(() => ({ logAudit: vi.fn(async () => "audit-1") }));
 vi.mock("@/lib/audit", () => audit);
-vi.mock("@/lib/workspace", () => ({ getWorkspace: vi.fn() }));
+const setActiveWorkspaceCookie = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("@/lib/workspace", () => ({ getWorkspace: vi.fn(), setActiveWorkspaceCookie }));
 vi.mock("@/lib/fathom/revoke", () => ({ revokeFathomConnectionsOf: vi.fn(async () => 0) }));
 
 let db: MemoryDb;
@@ -287,6 +288,8 @@ describe("aceptar (F10)", () => {
     const r = await acceptInvite("inv-1");
     expect(r).toMatchObject({ ok: true, workspaceId: WS });
     expect(db.rows("workspace_members")[0]).toMatchObject({ workspace_id: WS, user_id: "u-nueva", role: "member", role_id: ROLE.custom });
+    // Quien entra por una invitacion queda parado en ESE negocio (una persona puede estar en dos).
+    expect(setActiveWorkspaceCookie).toHaveBeenCalledWith(WS);
     expect(invites()[0]).toMatchObject({ status: "accepted", accepted_by: "u-nueva" });
     expect(invites()[0].accepted_at).toBeTruthy();
   });

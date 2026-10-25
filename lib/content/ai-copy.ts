@@ -73,10 +73,11 @@ export const copyOutputSchema = z.object({
 export type CopyOutput = z.infer<typeof copyOutputSchema>;
 
 /** Por cliente: forma de hablar de la IA (AI_LANGUAGE_STYLE, lib/ai/language-style.ts). */
-export function SYSTEM_PROMPT(): string {
+/** `workspaceStyle`: el tono propio del negocio (00266); sin él, el de la instalación. */
+export function SYSTEM_PROMPT(workspaceStyle?: string | null): string {
   return [
     "Sos quien escribe el contenido de este negocio.",
-    `Escribis en ${aiLanguageStyle()}.`,
+    `Escribis en ${aiLanguageStyle(workspaceStyle)}.`,
     "No usas emojis salvo que la voz de marca los pida, ni frases de manual de marketing.",
     "Devolves SOLO lo que se te pide, en el formato indicado.",
   ].join(" ");

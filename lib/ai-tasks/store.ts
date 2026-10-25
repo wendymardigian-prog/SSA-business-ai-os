@@ -11,6 +11,7 @@ import {
   MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS,
   SUMMARY_DEFAULT_INSTRUCTIONS,
 } from "./instructions";
+import { interpolate } from "./instructions";
 
 type Db = SupabaseClient<Database>;
 
@@ -91,6 +92,32 @@ export async function loadTaskInstructions(service: Db, workspaceId: string, tas
   } catch (err) {
     console.error(`[ai-tasks] no pude leer las instrucciones de ${task}, uso el texto del sistema:`, err instanceof Error ? err.message : err);
     return fallback;
+  }
+}
+
+/**
+ * Las instrucciones para CORRER la tarea: las mismas de `loadTaskInstructions`,
+ * con el tono del negocio (`{{estilo}}`, 00266) ya puesto si el negocio tiene
+ * uno propio. Sin tono propio, el texto vuelve igual y el que arma el prompt
+ * pone el de la instalacion como siempre: el prompt final no cambia.
+ *
+ * Solo para las corridas: la pestaña Instrucciones usa `loadTaskInstructions`,
+ * que muestra `{{estilo}}` sin reemplazar (si no, guardar congelaria el tono).
+ */
+export async function loadTaskInstructionsForRun(service: Db, workspaceId: string, task: AiTaskId): Promise<TaskInstructions> {
+  const [instructions, style] = await Promise.all([
+    loadTaskInstructions(service, workspaceId, task),
+    workspaceOwnStyle(service, workspaceId),
+  ]);
+  return style ? { ...instructions, text: interpolate(instructions.text, { estilo: style }) } : instructions;
+}
+
+async function workspaceOwnStyle(service: Db, workspaceId: string): Promise<string | null> {
+  try {
+    const { data } = await service.from("workspaces").select("ai_language_style").eq("id", workspaceId).maybeSingle();
+    return data?.ai_language_style?.trim() || null;
+  } catch {
+    return null;
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadTaskInstructions } from "./store";
+import { loadTaskInstructions, loadTaskInstructionsForRun } from "./store";
 import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, CLASSIFY_DEFAULT_INSTRUCTIONS, CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS } from "./instructions";
 
 /**
@@ -7,7 +7,7 @@ import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, CLASSIFY_DEFAULT_INSTRUCTIONS, CLOSE
  * version activa, la fila no existe, un error de red) se cae al texto del
  * sistema. Cliente falso minimo, mismo patron que runs-query.test.ts.
  */
-function fakeClient(opts: { active?: Record<string, number>; versionRow?: { version: number; instructions: string } | null; fail?: boolean }) {
+function fakeClient(opts: { active?: Record<string, number>; versionRow?: { version: number; instructions: string } | null; fail?: boolean; style?: string | null }) {
   return {
     from(table: string) {
       if (table === "workspaces") {
@@ -15,7 +15,7 @@ function fakeClient(opts: { active?: Record<string, number>; versionRow?: { vers
           select: () => ({
             eq: () => ({
               maybeSingle: async () =>
-                opts.fail ? { data: null, error: { message: "boom" } } : { data: { ai_task_prompt_active: opts.active ?? {} }, error: null },
+                opts.fail ? { data: null, error: { message: "boom" } } : { data: { ai_task_prompt_active: opts.active ?? {}, ai_language_style: opts.style ?? null }, error: null },
             }),
           }),
         };
@@ -113,5 +113,28 @@ describe("las tareas con instrucciones son las mismas en los tres lugares", () =
 
     expect(fromDefaults).toEqual(fromCatalog);
     expect(check).toEqual(fromCatalog);
+  });
+});
+
+describe("loadTaskInstructionsForRun (el tono del negocio, 00266)", () => {
+  it("sin tono propio, el texto vuelve igual: el prompt final no cambia", async () => {
+    const forRun = await loadTaskInstructionsForRun(fakeClient({ active: {} }), "ws-1", "ads_analysis");
+    const plain = await loadTaskInstructions(fakeClient({ active: {} }), "ws-1", "ads_analysis");
+    expect(forRun).toEqual(plain);
+  });
+
+  it("con tono propio, {{estilo}} ya viene puesto con el del negocio", async () => {
+    const got = await loadTaskInstructionsForRun(
+      fakeClient({ active: { ads_analysis: 2 }, versionRow: { version: 2, instructions: "Hablá en {{estilo}}. Máximo {{largo_maximo}}." }, style: "español mexicano (tú)" }),
+      "ws-1",
+      "ads_analysis",
+    );
+    // Solo el estilo: las otras variables las pone quien arma el prompt, como siempre.
+    expect(got).toEqual({ version: 2, text: "Hablá en español mexicano (tú). Máximo {{largo_maximo}}." });
+  });
+
+  it("si no puede leer el tono, sigue con el texto de siempre (nunca frena la tarea)", async () => {
+    const got = await loadTaskInstructionsForRun(fakeClient({ fail: true }), "ws-1", "ads_analysis");
+    expect(got).toEqual({ version: null, text: ADS_ANALYSIS_DEFAULT_INSTRUCTIONS });
   });
 });

@@ -30,7 +30,7 @@ import { TOOLS_OPEN_KEY, activeInsideTools, toolsOpen } from "@/lib/nav/tools-op
 export type NavFlags = Partial<Record<NavFlag, boolean>>;
 import { activeNavHref } from "@/lib/nav/active";
 import { cn } from "@/lib/utils";
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { WorkspaceSwitcher, type WorkspaceItem } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useHtmlClass } from "@/components/use-html-class";
@@ -41,12 +41,6 @@ import type { Database } from "@/lib/types/database";
 
 type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
 
-interface WorkspaceItem {
-  id: string;
-  name: string;
-  slug: string;
-  role: string;
-}
 
 // Cada item pide el permiso de lo que abre (lib/nav/items.ts): la pantalla ademas se protege
 // con su guard y con la RLS. Ocultarla del menu es para no ofrecer un link que rebota.

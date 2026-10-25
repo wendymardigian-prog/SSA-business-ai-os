@@ -8,6 +8,8 @@ import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 
 let db: MemoryDb;
 vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: async () => ({ workspace: { id: "ws-1" } }) }));
+// El workspace ACTIVO de la sesion (lib/workspace.ts): las rutas ya no buscan "el primero" por su cuenta.
+vi.mock("@/lib/workspace", () => ({ getActiveWorkspace: async () => ({ workspace: { id: "ws-1" } }) }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: { id: "u-1" } } }) },

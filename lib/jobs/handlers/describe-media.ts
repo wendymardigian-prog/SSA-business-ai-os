@@ -7,7 +7,7 @@ import { openAiRun } from "@/lib/ai/run";
 import { parseAttachments } from "@/lib/messages/attachments";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS } from "@/lib/ai-tasks/instructions";
-import { loadTaskInstructions } from "@/lib/ai-tasks/store";
+import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 
 type Db = SupabaseClient<Database>;
 
@@ -149,7 +149,7 @@ export async function describeMessageMedia(
 
   // Las instrucciones editables de la tarea (Agentes IA): sin version activa,
   // o si algo falla al leerla, se usa PROMPT (el texto del sistema).
-  const instructions = await loadTaskInstructions(supabase, claimed.workspace_id, "media_description");
+  const instructions = await loadTaskInstructionsForRun(supabase, claimed.workspace_id, "media_description");
 
   let text: string;
   try {
