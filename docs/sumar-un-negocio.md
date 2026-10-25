@@ -21,7 +21,7 @@ para el segundo.
 
 ## Cómo se crea
 
-1. Con la migración `00266` aplicada:
+1. Con la migración `00266` aplicada (en producción desde el 25/10/2026; en un clon nuevo, ANTES de desplegar el código):
 
    ```bash
    node scripts/create-workspace.mjs --owner-email=tu@email.com --name="BusinessXcelerator" --timezone=America/Costa_Rica

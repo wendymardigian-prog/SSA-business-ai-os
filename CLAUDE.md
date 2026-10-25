@@ -315,7 +315,7 @@ La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e
 
 Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`.
 
-**Varios negocios en una instalacion (25/10/2026).** `00266_workspace_brand` (marca y tono por workspace, bucket publico `brand-assets`, usuario de agenda unico en toda la instalacion): **escrita, sin aplicar** — aditiva, va antes del deploy. Ver [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md). **La proxima libre es la `00267`** (confirmar con `list_migrations`).
+**Varios negocios en una instalacion (25/10/2026).** `00266_workspace_brand` (marca y tono por workspace, bucket publico `brand-assets`, usuario de agenda unico en toda la instalacion): **aplicada y registrada** el 25/10/2026 (version `20261025202218`), antes del deploy, con `verify-workspace-isolation --despues-de-00143` en verde. En un clon nuevo va ANTES de desplegar el codigo (el layout y los formularios leen sus columnas). Ver [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md). **La proxima libre es la `00267`** (confirmar con `list_migrations`).
 
 **Extra I (15/10/2026).** `00224` a `00232` estan **aplicadas y registradas** (metodos de pago, gastos y finanzas, atribucion organica y comisiones); `00233`, `00234` y `00235` se aplicaron el **15/10/2026, despues del merge** y estan **aplicadas y registradas** (versiones `20261015232110`, `20261015232347` y `20261015232649`; ver las cuatro secciones del Extra I mas abajo). **La proxima libre es la `00236`.**
 
