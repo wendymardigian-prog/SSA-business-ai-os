@@ -9,6 +9,8 @@ import { NextRequest } from "next/server";
 const touched = vi.hoisted(() => ({ calls: 0 }));
 const guards = vi.hoisted(() => ({ getPermissionAction: vi.fn() }));
 vi.mock("@/lib/auth/guards", () => guards);
+// El workspace ACTIVO de la sesion (lib/workspace.ts): las rutas ya no buscan "el primero" por su cuenta.
+vi.mock("@/lib/workspace", () => ({ getActiveWorkspace: async () => ({ workspace: { id: "ws-1" } }) }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: { id: "u-1", email: "a@b.co" } } }) },

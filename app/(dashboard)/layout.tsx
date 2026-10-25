@@ -1,4 +1,5 @@
 import { getWorkspace } from "@/lib/workspace";
+import { brandColorCss, safeBrandColor } from "@/lib/brand";
 import { canUseInbox } from "@/lib/inbox/channel-access";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { countUnreadNotifications } from "@/lib/actions/notifications";
@@ -22,7 +23,7 @@ export default async function DashboardLayout({
   const [{ data: memberships }, unreadNotifications, draftCounts, permissionContext, savedTimezone, hasEod] = await Promise.all([
     supabase
       .from("workspace_members")
-      .select("role, workspaces(id, name, slug)")
+      .select("role, workspaces(id, name, slug, brand_name, brand_logo_path, brand_color)")
       .eq("user_id", user.id),
     countUnreadNotifications(),
     countPendingDrafts(),
@@ -45,9 +46,13 @@ export default async function DashboardLayout({
   const permissionKeys = permissionContext.permissions.keys;
   const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
 
+  // Solo si el negocio tiene color propio: si no, queda el de la instalacion, como siempre.
+  const ownColor = safeBrandColor(workspace.brand_color);
+  const workspaceColorCss = ownColor ? brandColorCss(ownColor) : null;
+
   const workspaces = (memberships ?? [])
     .map((m) => ({
-      ...(m.workspaces as { id: string; name: string; slug: string }),
+      ...(m.workspaces as { id: string; name: string; slug: string; brand_name: string | null; brand_logo_path: string | null; brand_color: string | null }),
       role: m.role,
     }))
     .filter((w) => w.id);
@@ -63,6 +68,8 @@ export default async function DashboardLayout({
       value={{ workspace, user, workspaces, role, permissionKeys, navFlags, unreadNotifications, draftCounts, viewerTimezone }}
     >
       <TimezoneBootstrap hasSaved={savedTimezone !== null} />
+      {/* El color de ESTE negocio (00266) pisa el de la instalacion que pone app/layout.tsx: va despues, con los mismos selectores. */}
+      {workspaceColorCss && <style dangerouslySetInnerHTML={{ __html: workspaceColorCss }} />}
       <div className="flex h-dvh">
         <Sidebar
           workspace={workspace}

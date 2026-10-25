@@ -6,8 +6,10 @@ import { ChevronDown, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { switchWorkspace } from "@/lib/actions/workspace";
 import { BrandMark } from "@/components/brand-mark";
+import { resolveBrand, type WorkspaceBrandFields } from "@/lib/brand";
 
-interface WorkspaceItem {
+/** Un negocio del selector, con su marca (00266): cada uno se ve con su logo. */
+export interface WorkspaceItem extends WorkspaceBrandFields {
   id: string;
   name: string;
   slug: string;
@@ -18,7 +20,7 @@ export function WorkspaceSwitcher({
   current,
   workspaces,
 }: {
-  current: { id: string; name: string };
+  current: { id: string; name: string } & WorkspaceBrandFields;
   workspaces: WorkspaceItem[];
 }) {
   const router = useRouter();
@@ -55,7 +57,7 @@ export function WorkspaceSwitcher({
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-sidebar-accent transition-colors"
       >
-        <BrandMark size={28} className="rounded-md" />
+        <BrandMark size={28} className="rounded-md" brand={resolveBrand(current)} />
         <span className="flex-1 truncate text-sm font-semibold text-sidebar-foreground">
           {current.name}
         </span>
@@ -85,7 +87,7 @@ export function WorkspaceSwitcher({
                     : "text-popover-foreground hover:bg-accent"
                 )}
               >
-                <BrandMark size={24} className="rounded" />
+                <BrandMark size={24} className="rounded" brand={resolveBrand(ws)} />
                 <span className="flex-1 truncate text-left">{ws.name}</span>
                 {isLoading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -96,8 +98,8 @@ export function WorkspaceSwitcher({
             );
           })}
 
-          {/* No hay "crear workspace": un negocio nuevo es una copia nueva del
-              sistema (scripts/create-owner.mjs), no otro workspace aca. */}
+          {/* No hay "crear workspace" en la pantalla: un negocio nuevo del mismo
+              dueño se crea con scripts/create-workspace.mjs. */}
         </div>
       )}
     </div>

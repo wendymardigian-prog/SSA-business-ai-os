@@ -49,7 +49,7 @@ async function resolveTarget(forUserId: string | null | undefined) {
 export async function suggestProfileUsername(forUserId?: string | null): Promise<ProfileActionResult<{ username: string; timezone: string; displayName: string }>> {
   const { ctx, targetId, error } = await resolveTarget(forUserId);
   if (!ctx) return { ok: false, error };
-  const taken = await takenUsernames(ctx.supabase, ctx.workspace.id, targetId);
+  const taken = await takenUsernames(await createServiceClient(), ctx.workspace.id, targetId);
   const meta = (ctx.user.user_metadata ?? {}) as { full_name?: string; name?: string };
   const displayName = targetId === ctx.user.id ? meta.full_name ?? meta.name ?? ctx.user.email?.split("@")[0] ?? "" : "";
   return {
@@ -71,7 +71,7 @@ export async function saveSchedulingProfile(input: ProfileFormInput): Promise<Pr
   if (!isValidTimeZone(input.timezone)) return { ok: false, error: "La zona horaria no es valida" };
   if (input.timeFormat !== "12h" && input.timeFormat !== "24h") return { ok: false, error: "El formato de hora tiene que ser 12h o 24h" };
 
-  const taken = await takenUsernames(ctx.supabase, ctx.workspace.id, targetId);
+  const taken = await takenUsernames(await createServiceClient(), ctx.workspace.id, targetId);
   const checked = validateUsername(input.username, { taken });
   if (!checked.ok) return { ok: false, error: checked.message };
 
@@ -94,7 +94,11 @@ export async function saveSchedulingProfile(input: ProfileFormInput): Promise<Pr
       .from("scheduling_profiles")
       .update({ username: checked.username, display_name: displayName, timezone: input.timezone, time_format: input.timeFormat, welcome_message: welcome })
       .eq("id", existing.id);
-    if (updateError) return { ok: false, error: `No pude guardar el perfil: ${updateError.message}` };
+    if (updateError) {
+      // Dos personas eligiendo el mismo usuario a la vez: el indice unico gana.
+      if (updateError.code === "23505") return { ok: false, error: "Ese usuario ya está en uso: probá con otro" };
+      return { ok: false, error: `No pude guardar el perfil: ${updateError.message}` };
+    }
 
     await logAudit({
       supabase: ctx.supabase,
@@ -127,7 +131,7 @@ export async function saveSchedulingProfile(input: ProfileFormInput): Promise<Pr
     .maybeSingle();
   if (insertError || !created) {
     const dup = insertError?.code === "23505";
-    return { ok: false, error: dup ? "Ese usuario ya lo usa otra persona del negocio" : `No pude crear el perfil: ${insertError?.message ?? ""}` };
+    return { ok: false, error: dup ? "Ese usuario ya está en uso: probá con otro" : `No pude crear el perfil: ${insertError?.message ?? ""}` };
   }
 
   // F3: al crear el perfil existe exactamente un horario por defecto

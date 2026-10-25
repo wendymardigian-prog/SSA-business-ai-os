@@ -5,7 +5,7 @@ import { requirePermission } from "@/lib/auth/guards";
 import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { buildAnalysisContext, buildAnalysisSystemPrompt, hasSomethingToAnalyze } from "@/lib/meta/ai-analysis";
-import { loadTaskInstructions } from "@/lib/ai-tasks/store";
+import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
@@ -94,7 +94,7 @@ export async function analyzeAdsWithAi(input: {
   const service = await createServiceClient();
   const [model, instructions] = await Promise.all([
     resolveTaskModel(service, workspace.id, "ads_analysis"),
-    loadTaskInstructions(service, workspace.id, "ads_analysis"),
+    loadTaskInstructionsForRun(service, workspace.id, "ads_analysis"),
   ]);
   if (!model.ok || !model.model) {
     const base = model.message ?? "No hay un proveedor de IA conectado. Conectalo en Ajustes → Integraciones.";

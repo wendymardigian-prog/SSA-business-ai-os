@@ -106,7 +106,7 @@ export async function runCopywriter(
 
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("content_copy_settings, ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd, ai_daily_limit_action, ai_monthly_limit_action, ai_spend_alert_pct, timezone")
+    .select("content_copy_settings, ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd, ai_daily_limit_action, ai_monthly_limit_action, ai_spend_alert_pct, timezone, ai_language_style")
     .eq("id", agent.workspace_id)
     .maybeSingle();
 
@@ -182,7 +182,7 @@ export async function runCopywriter(
     const result = await generate({
       model: resolved.model,
       schema: copyOutputSchema,
-      system: SYSTEM_PROMPT(),
+      system: SYSTEM_PROMPT(workspace?.ai_language_style),
       prompt,
       ...(agent.temperature !== null ? { temperature: agent.temperature } : {}),
       ...(agent.max_output_tokens !== null ? { maxOutputTokens: agent.max_output_tokens } : {}),

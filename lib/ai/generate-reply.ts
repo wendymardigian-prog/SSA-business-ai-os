@@ -9,6 +9,7 @@ import { markNeedsHuman } from "@/lib/agent/needs-human";
 import { aiLanguageStyle } from "./language-style";
 import { withinWorkspaceBudget } from "./workspace-budget";
 import { newNonce, wrapUntrusted } from "@/lib/agent/untrusted";
+import { loadLanguageStyle } from "@/lib/ai/language-style-load";
 
 /**
  * Generar una respuesta con IA, sin saber nada de flows.
@@ -95,8 +96,8 @@ export function runInputForTrace(request: AiReplyRequest): OpenRunInput {
 }
 
 /** Por cliente: forma de hablar de la IA (AI_LANGUAGE_STYLE, lib/ai/language-style.ts). */
-function defaultSystemPrompt(): string {
-  return `Sos un asistente de atencion al cliente. Responde en ${aiLanguageStyle()}, breve y claro.`;
+function defaultSystemPrompt(style: string = aiLanguageStyle()): string {
+  return `Sos un asistente de atencion al cliente. Responde en ${style}, breve y claro.`;
 }
 
 /**
@@ -285,7 +286,8 @@ export async function generateAiReply(
     aiMessages.push({ role: "user", content: "Escribí el mensaje siguiendo tus instrucciones." });
   }
 
-  const baseSystem = request.systemPrompt?.trim() || defaultSystemPrompt();
+  // Sin prompt propio, el de siempre con el tono de ESTE negocio (00266).
+  const baseSystem = request.systemPrompt?.trim() || defaultSystemPrompt(await loadLanguageStyle(supabase, request.workspaceId));
   const system = hasLeadText ? `${baseSystem}\n\n${untrustedLeadRule(nonce)}` : baseSystem;
   const limits = clampGeneration(request.temperature, request.maxTokens);
 

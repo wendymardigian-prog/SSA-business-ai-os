@@ -1127,6 +1127,11 @@ export interface Database {
           overdue_grace_days: number;
           sales_auto_create_flows: boolean;
           ai_background_settings: Json;
+          /** Marca y tono de ESTE negocio (00266). NULL = los de la instalacion (lib/brand.ts, lib/ai/language-style.ts). */
+          brand_name: string | null;
+          brand_logo_path: string | null;
+          brand_color: string | null;
+          ai_language_style: string | null;
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
           ai_monthly_cost_limit_usd: number | null;
@@ -1173,6 +1178,10 @@ export interface Database {
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
           ai_background_settings?: Json;
+          brand_name?: string | null;
+          brand_logo_path?: string | null;
+          brand_color?: string | null;
+          ai_language_style?: string | null;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           ai_daily_limit_action?: CostLimitAction;
@@ -1216,6 +1225,10 @@ export interface Database {
           overdue_grace_days?: number;
           sales_auto_create_flows?: boolean;
           ai_background_settings?: Json;
+          brand_name?: string | null;
+          brand_logo_path?: string | null;
+          brand_color?: string | null;
+          ai_language_style?: string | null;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           ai_daily_limit_action?: CostLimitAction;

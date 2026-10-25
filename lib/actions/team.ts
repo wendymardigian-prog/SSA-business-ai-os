@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getWorkspace } from "@/lib/workspace";
+import { getWorkspace, setActiveWorkspaceCookie } from "@/lib/workspace";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { teamInviteEmail } from "@/lib/email/templates";
+import { resolveBrand } from "@/lib/brand";
 import { inviteUrl } from "@/lib/app-url";
 import { logAudit } from "@/lib/audit";
 import type { Json } from "@/lib/types/database";
@@ -63,6 +64,7 @@ async function sendInviteEmail(
     workspaceName: ctx.workspace.name,
     inviteUrl: inviteUrl(invite.id),
     roleLabel: roleName,
+    brandColor: resolveBrand(ctx.workspace).colorHex,
   });
   const sent = await sendTransactionalEmail({
     workspaceId: ctx.workspace.id,
@@ -440,6 +442,8 @@ async function finalizeAcceptInvite(serviceClient: ServiceClient, invite: Invite
 
   if (existingMembership) {
     await serviceClient.from("workspace_invites").update(accepted).eq("id", invite.id);
+    // Quien ya es miembro de otro negocio de la instalacion entra al de la invitacion, no al que tenia elegido.
+    await setActiveWorkspaceCookie(invite.workspace_id);
     return { ok: true as const, workspaceId: invite.workspace_id, alreadyMember: true };
   }
 
@@ -455,6 +459,7 @@ async function finalizeAcceptInvite(serviceClient: ServiceClient, invite: Invite
   }
 
   await serviceClient.from("workspace_invites").update(accepted).eq("id", invite.id);
+  await setActiveWorkspaceCookie(invite.workspace_id);
   try {
     await logAudit({
       supabase: serviceClient, workspaceId: invite.workspace_id, entityType: "workspace_member", entityId: invite.id,

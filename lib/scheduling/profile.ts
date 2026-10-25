@@ -17,7 +17,7 @@ export const USERNAME_ERROR_TEXT: Record<UsernameError, string> = {
   too_long: `Tiene que tener como maximo ${USERNAME_MAX} caracteres`,
   invalid_chars: "Solo minusculas, numeros y guiones, sin empezar ni terminar con guion",
   reserved: "Ese usuario esta reservado. Elegi otro",
-  taken: "Ese usuario ya lo usa otra persona del negocio",
+  taken: "Ese usuario ya está en uso: probá con otro",
 };
 
 /**

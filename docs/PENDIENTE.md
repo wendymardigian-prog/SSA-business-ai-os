@@ -1034,14 +1034,21 @@ Queda pendiente, a proposito:
   key puede crearse una cuenta y el trigger le arma un workspace vacio (no ve
   nada ajeno). Se apaga desde el panel: Authentication → Sign In / Providers →
   "Allow new users to sign up". `supabase/config.toml` solo cubre local.
-- **Rutas con su propio `getWorkspace` y `.limit(1)`** (`app/api/v1/{channels,
-  flows, broadcasts, contacts}`) y el respaldo sin ORDER BY de
-  `lib/workspace.ts`: con varios workspaces por usuario actuan sobre "el
-  primero". Solo importa si algun dia hay mas de un workspace por instalacion.
-- `acceptInvite` (cuenta ya existente) no deja la cookie en el workspace de la
-  invitacion; nombres de instancia de Evolution con solo 8 caracteres del id;
-  webhooks que buscan la cuenta o la direccion sin filtrar por workspace (con
-  la misma cuenta en dos workspaces se pierden mensajes, no se cruzan).
+- ~~**Rutas con su propio `getWorkspace` y `.limit(1)`** y el respaldo sin
+  ORDER BY de `lib/workspace.ts`~~ — **resuelto** (25/10/2026, segundo
+  negocio en la misma instalacion): las rutas usan `getActiveWorkspace()`, el
+  respaldo es el workspace mas viejo y `lib/workspace-boundary.test.ts` falla
+  si vuelve la forma vieja. De paso: cinco selectores del editor de
+  automatizaciones (campos, flujos, secuencias, formularios, estados) filtran
+  por el workspace activo (`useActiveWorkspaceId`).
+- ~~`acceptInvite` no deja la cookie en el workspace de la invitacion~~ —
+  **resuelto** (25/10/2026, `setActiveWorkspaceCookie`).
+- Nombres de instancia de Evolution con solo 8 caracteres del id (una
+  coincidencia entre dos workspaces es de 1 en 4 mil millones: no se toca), y
+  webhooks que buscan la cuenta o la direccion sin filtrar por workspace: **con
+  la MISMA cuenta de Instagram (o el mismo numero) en dos workspaces se pierden
+  mensajes** (no se cruzan). Con cuentas distintas no pasa nada. Ver
+  `docs/sumar-un-negocio.md`.
 - **Workspace "Paula Diaz's Workspace"** (2/10/2026): la cuenta se creo un
   minuto despues de la invitacion, sin `invite_id` (por el `/register` publico
   de antes del white label), asi que el trigger viejo le armo un workspace

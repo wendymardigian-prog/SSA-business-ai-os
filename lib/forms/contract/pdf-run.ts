@@ -98,7 +98,7 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
     const rendered = sig.rendered_text ?? null;
     if (rendered !== null && contractTextSha256(rendered) !== sig.rendered_sha256) return fail("la huella del texto firmado no coincide");
 
-    const { data: workspace } = await db.from("workspaces").select("timezone").eq("id", sig.workspace_id).maybeSingle();
+    const { data: workspace } = await db.from("workspaces").select("timezone, brand_name").eq("id", sig.workspace_id).maybeSingle();
     const config = (form.contract_config ?? {}) as { title?: string };
     const legal = (sig.legal ?? {}) as Record<string, unknown>;
     const str = (key: string) => (typeof legal[key] === "string" ? (legal[key] as string) : null);
@@ -126,7 +126,8 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
       .map(([, answer]) => ({ label: answer.label, value: answerToText(answer.value) }));
 
     const bytes = await (deps.build ?? buildContractPdf)({
-      businessName: (deps.businessName ?? brandName)(),
+      // El nombre del negocio dueño del contrato (00266); sin marca propia, el de la instalación.
+      businessName: deps.businessName ? deps.businessName() : workspace?.brand_name?.trim() || brandName(),
       title: config.title?.trim() || form.name,
       text: rendered ?? version.contract_text,
       versionNumber: version.version_number,

@@ -8,6 +8,7 @@ import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
+import { BrandSettings, type BrandSettingsInitial } from "@/components/settings/brand-settings";
 import { SalesSettings } from "@/components/settings/sales-settings";
 import { FinanceSettings } from "@/components/settings/finance-settings";
 import { AttributionSettingsCard } from "@/components/settings/attribution-settings";
@@ -38,6 +39,8 @@ interface WorkspaceSettings {
   maxDiscountPercent: number | null;
   overdueGraceDays: number;
   salesAutoCreateFlows: boolean;
+  /** La marca de este negocio (00266). */
+  brand: BrandSettingsInitial;
 }
 
 /**
@@ -205,6 +208,10 @@ export function SettingsView({
               <hr className="border-border" />
 
               <TimezoneSettings timezone={workspace.timezone} />
+
+              <hr className="border-border" />
+
+              <BrandSettings initial={workspace.brand} />
             </section>
 
             <hr className="border-border" />

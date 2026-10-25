@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useActiveWorkspaceId } from "@/components/dashboard-chrome";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -160,14 +161,18 @@ const VALUE_HINTS: Record<string, string> = {
 
 function SetFieldConfig({ data, onChange, availableVariables }: ActionSubPanelProps) {
   const [fields, setFields] = useState<FieldOption[] | null>(null);
+  const workspaceId = useActiveWorkspaceId();
 
   useEffect(() => {
     let alive = true;
     const supabase = createClient();
-    void supabase
+    // Solo los del negocio activo: la RLS deja ver los de los dos si la persona esta en dos.
+    let query = supabase
       .from("custom_field_definitions")
       .select("slug, name, type")
-      .is("deleted_at", null)
+      .is("deleted_at", null);
+    if (workspaceId) query = query.eq("workspace_id", workspaceId);
+    void query
       .order("name", { ascending: true })
       .then(({ data: rows }) => {
         if (alive) setFields(rows ?? []);
@@ -175,7 +180,7 @@ function SetFieldConfig({ data, onChange, availableVariables }: ActionSubPanelPr
     return () => {
       alive = false;
     };
-  }, []);
+  }, [workspaceId]);
 
   const slug = data.fieldSlug || "";
   const selected = fields?.find((f) => f.slug === slug) ?? null;
@@ -387,13 +392,14 @@ function HttpRequestConfig({ data, onChange, availableVariables }: ActionSubPane
 
 /* ───────── Ir a otra automatización ───────── */
 function GoToFlowConfig({ data, onChange }: ActionSubPanelProps) {
-  // Antes se escribia el id a mano. Ahora se elige de las automatizaciones del negocio (la RLS decide cuales ve).
+  // Antes se escribia el id a mano. Ahora se elige de las automatizaciones del negocio ACTIVO (la RLS decide cuales ve).
   const [flows, setFlows] = useState<Array<{ id: string; name: string; status: string }> | null>(null);
+  const workspaceId = useActiveWorkspaceId();
   useEffect(() => {
     let alive = true;
-    void createClient()
-      .from("flows")
-      .select("id, name, status")
+    let query = createClient().from("flows").select("id, name, status");
+    if (workspaceId) query = query.eq("workspace_id", workspaceId);
+    void query
       .order("name", { ascending: true })
       .limit(500)
       .then(({ data: rows }) => {
@@ -402,7 +408,7 @@ function GoToFlowConfig({ data, onChange }: ActionSubPanelProps) {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [workspaceId]);
   const selected = flows?.find((f) => f.id === data.flowId);
 
   return (

@@ -7,6 +7,7 @@
  * DE LA PERSONA, así que la RLS (`can_view_forms`) decide si puede.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveBrand } from "@/lib/brand";
 import type { Database } from "@/lib/types/database";
 import { SLUG_PATTERN } from "./list";
 import { fieldsOf } from "./server-ports";
@@ -24,7 +25,24 @@ export async function loadPublicFormData(service: Db, slug: string): Promise<Pub
   if (error || !data || typeof data !== "object") return { status: "unavailable" };
   const result = data as unknown as PublicFormResult;
   if (result.status !== "available") return { status: "unavailable" };
-  return withSignerUrl(service, result);
+  const withName = { ...result, business_name: await formBusinessName(service, slug) };
+  return withSignerUrl(service, withName);
+}
+
+/**
+ * El nombre del negocio dueño del formulario (00266): con dos negocios en la instalación, un contrato de uno no
+ * puede decir el nombre del otro. Es la misma regla que usa el servidor al firmar (`loadPublishedForm`). Ante
+ * cualquier error, el de la instalación (lo de siempre): la página nunca se cae por esto.
+ */
+async function formBusinessName(db: Db, slug: string): Promise<string> {
+  try {
+    const { data: form } = await db.from("forms").select("workspace_id").ilike("slug", slug).maybeSingle();
+    if (!form) return resolveBrand(null).name;
+    const { data: workspace } = await db.from("workspaces").select("brand_name").eq("id", form.workspace_id).maybeSingle();
+    return resolveBrand(workspace).name;
+  } catch {
+    return resolveBrand(null).name;
+  }
 }
 
 /**
@@ -109,6 +127,7 @@ export async function loadPreviewFormData(userClient: Db, slug: string): Promise
         : null,
     signature_required: form.type === "contract" ? (contract?.signatureRequired ?? true) : false,
     survey: form.type === "survey" ? { scoreFieldKey: (form.survey_config as { scoreFieldKey?: string } | null)?.scoreFieldKey ?? null } : null,
+    business_name: await formBusinessName(userClient, slug),
   };
 }
 

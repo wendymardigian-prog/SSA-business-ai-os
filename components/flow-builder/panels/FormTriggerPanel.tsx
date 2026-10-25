@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useActiveWorkspaceId } from "@/components/dashboard-chrome";
 import type { FormField, FormType } from "@/lib/forms/fields";
 import { conditionSources } from "@/lib/forms/builder";
 import { commonFields } from "@/lib/forms/automation/trigger-config";
@@ -65,17 +66,20 @@ export function FormTriggerPanel({ triggerType, data, onChange }: { triggerType:
   const [forms, setForms] = useState<FormOption[]>([]);
   const [loading, setLoading] = useState(true);
   const formType = TYPE_FOR_TRIGGER[triggerType] ?? "custom";
+  const workspaceId = useActiveWorkspaceId();
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       const supabase = createClient();
-      const { data: rows } = await supabase
+      // Solo los del negocio activo: la RLS deja ver los de los dos si la persona esta en dos.
+      let query = supabase
         .from("forms")
         .select("id, name, status, current_version_id")
         .eq("type", formType)
-        .neq("status", "archived")
-        .order("name", { ascending: true });
+        .neq("status", "archived");
+      if (workspaceId) query = query.eq("workspace_id", workspaceId);
+      const { data: rows } = await query.order("name", { ascending: true });
       const withVersion = (rows ?? []).filter((r) => r.current_version_id);
       const versionIds = withVersion.map((r) => r.current_version_id as string);
       const { data: versions } = versionIds.length > 0 ? await supabase.from("form_versions").select("id, definition").in("id", versionIds) : { data: [] };
@@ -95,7 +99,7 @@ export function FormTriggerPanel({ triggerType, data, onChange }: { triggerType:
     return () => {
       cancelled = true;
     };
-  }, [formType]);
+  }, [formType, workspaceId]);
 
   const selectedIds = useMemo(() => ((data.form_ids as string[] | undefined) ?? []).filter(Boolean), [data.form_ids]);
   const selectedForms = useMemo(() => forms.filter((f) => selectedIds.includes(f.id)), [forms, selectedIds]);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspace } from "@/lib/workspace";
 
 export async function POST(
   _request: NextRequest,
@@ -19,12 +20,9 @@ export async function POST(
   if (!(await getPermissionAction("flows.publish"))) return NextResponse.json({ error: "No tenés permiso para hacer esto." }, { status: 403 });
 
   // Verify user has access
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  // El workspace ACTIVO (el elegido en el selector), nunca "el primero": ver lib/workspace.ts.
+  const active = await getActiveWorkspace();
+  const membership = active ? { workspace_id: active.workspace.id } : null;
 
   if (!membership)
     return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });

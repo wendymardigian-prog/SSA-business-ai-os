@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveWorkspace } from "@/lib/workspace";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -8,12 +9,9 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  // El workspace ACTIVO (el elegido en el selector), nunca "el primero": ver lib/workspace.ts.
+  const active = await getActiveWorkspace();
+  const membership = active ? { workspace_id: active.workspace.id } : null;
 
   if (!membership) return NextResponse.json({ error: "No workspace" }, { status: 404 });
 

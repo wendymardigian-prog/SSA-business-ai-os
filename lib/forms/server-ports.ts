@@ -4,6 +4,7 @@
  * puertos, y los tests reciben unos simulados.
  */
 import { randomUUID } from "node:crypto";
+import { resolveBrand } from "@/lib/brand";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { checkLimit, formsKeys } from "@/lib/antispam/rate-limit";
@@ -50,7 +51,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
 
   const [{ data: version }, { data: workspace }] = await Promise.all([
     service.from("form_versions").select("id, version_number, definition, contract_text").eq("id", form.current_version_id).maybeSingle(),
-    service.from("workspaces").select("timezone").eq("id", form.workspace_id).maybeSingle(),
+    service.from("workspaces").select("timezone, brand_name").eq("id", form.workspace_id).maybeSingle(),
   ]);
   if (!version) return null;
 
@@ -67,6 +68,8 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
     fields: fieldsOf(version.definition),
     success: success.ok ? success.success : DEFAULT_SUCCESS,
     workspaceTimezone: workspace?.timezone ?? "UTC",
+    // El nombre que va en el contrato: el de la marca de ESTE negocio, o el de la instalación (00266).
+    businessName: resolveBrand(workspace).name,
     contactConfig,
     customFields: await loadCustomFields(service, form.workspace_id, contactConfig.map.map((m) => m.target)),
     notifyEnabled: form.notify_enabled,

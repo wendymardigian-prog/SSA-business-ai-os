@@ -1,4 +1,5 @@
 import { getPermissionContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getProfileForUser, takenUsernames } from "@/lib/scheduling/data/profiles";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { suggestUsername } from "@/lib/scheduling/profile";
@@ -19,7 +20,7 @@ export default async function AgendaAjustesPage({ searchParams }: { searchParams
 
   const [profile, taken, members] = await Promise.all([
     getProfileForUser(ctx.supabase, ctx.workspace.id, targetUserId),
-    takenUsernames(ctx.supabase, ctx.workspace.id, targetUserId),
+    createServiceClient().then((service) => takenUsernames(service, ctx.workspace.id, targetUserId)),
     canManageOthers ? getWorkspaceMembers(ctx.workspace.id) : Promise.resolve([]),
   ]);
 

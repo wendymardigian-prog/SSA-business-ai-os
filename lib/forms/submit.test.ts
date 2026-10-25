@@ -566,6 +566,23 @@ describe("submitForm: contratos (FO3)", () => {
       expect(render.business_signer).toEqual({ name: "Laura", role: "Directora", signature_path: "ws-1/form-1/business-signer/a.png" });
     });
 
+    it("el nombre del negocio es el de la marca de ESE negocio (00266); sin marca propia, el de la instalación", async () => {
+      const previous = process.env.NEXT_PUBLIC_BRAND_NAME;
+      process.env.NEXT_PUBLIC_BRAND_NAME = "SSA";
+      try {
+        const own = makePorts(contractMode({ businessName: "BusinessXcelerator" }));
+        await submitForm(own.ports, baseInput(signed()));
+        expect((own.saves[0].meta.contract_render as { text: string }).text).toContain(" y BusinessXcelerator, por");
+
+        const installation = makePorts(contractMode());
+        await submitForm(installation.ports, baseInput(signed()));
+        expect((installation.saves[0].meta.contract_render as { text: string }).text).toContain(" y SSA, por");
+      } finally {
+        if (previous === undefined) delete process.env.NEXT_PUBLIC_BRAND_NAME;
+        else process.env.NEXT_PUBLIC_BRAND_NAME = previous;
+      }
+    });
+
     it("lo que mande el navegador como texto no entra", async () => {
       const { ports, saves } = makePorts(contractMode());
       await submitForm(ports, baseInput(signed({ contract_text: "OTRO TEXTO", rendered_text: "OTRO" })));

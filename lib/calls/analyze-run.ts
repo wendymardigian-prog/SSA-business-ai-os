@@ -20,7 +20,7 @@ import { auditAsSystem, logAudit } from "@/lib/audit";
 import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
-import { loadTaskInstructions } from "@/lib/ai-tasks/store";
+import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 import { getJobHandler } from "@/lib/jobs/registry";
 import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
@@ -109,7 +109,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
 
   const [model, instructions] = await Promise.all([
     resolveTaskModel(db, workspaceId, "call_analysis"),
-    loadTaskInstructions(db, workspaceId, "call_analysis"),
+    loadTaskInstructionsForRun(db, workspaceId, "call_analysis"),
   ]);
   if (!deps.generate && (!model.ok || !model.model)) {
     return fail(db, callId, "error", model.message ?? "No hay un proveedor de IA conectado", "ai_error");

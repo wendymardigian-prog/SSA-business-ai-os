@@ -22,7 +22,7 @@ import { auditAsSystem } from "@/lib/audit";
 import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
-import { loadTaskInstructions } from "@/lib/ai-tasks/store";
+import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
 import { applyMemory, readContactMemory } from "./memory";
@@ -74,7 +74,7 @@ export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPa
 
   const [model, instructions] = await Promise.all([
     resolveTaskModel(db, call.workspace_id, "call_summary"),
-    loadTaskInstructions(db, call.workspace_id, "call_summary"),
+    loadTaskInstructionsForRun(db, call.workspace_id, "call_summary"),
   ]);
   if (!deps.generate && (!model.ok || !model.model)) {
     await db.from("calls").update({ summary_status: "error" }).eq("id", call.id);

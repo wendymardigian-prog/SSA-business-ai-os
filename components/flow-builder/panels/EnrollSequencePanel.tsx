@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useActiveWorkspaceId } from "@/components/dashboard-chrome";
 import { Loader2 } from "lucide-react";
 
 interface EnrollSequencePanelProps {
@@ -25,20 +26,21 @@ const STATUS_LABELS: Record<string, string> = {
 export function EnrollSequencePanel({ data, onChange }: EnrollSequencePanelProps) {
   const [sequences, setSequences] = useState<SequenceOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const workspaceId = useActiveWorkspaceId();
 
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      const { data: rows } = await supabase
-        .from("sequences")
-        .select("id, name, status")
-        .order("name", { ascending: true });
+      // Solo las del negocio activo: la RLS deja ver las de los dos si la persona esta en dos.
+      let query = supabase.from("sequences").select("id, name, status");
+      if (workspaceId) query = query.eq("workspace_id", workspaceId);
+      const { data: rows } = await query.order("name", { ascending: true });
 
       setSequences(rows ?? []);
       setLoading(false);
     }
     load();
-  }, []);
+  }, [workspaceId]);
 
   return (
     <div className="space-y-4">

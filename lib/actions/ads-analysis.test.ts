@@ -12,7 +12,7 @@ const resolveTaskModel = vi.fn();
 vi.mock("@/lib/ai-tasks/model", () => ({ resolveTaskModel: (...args: unknown[]) => resolveTaskModel(...args) }));
 
 const loadTaskInstructions = vi.fn();
-vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: (...args: unknown[]) => loadTaskInstructions(...args) }));
+vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructionsForRun: (...args: unknown[]) => loadTaskInstructions(...args) }));
 
 const openAiRun = vi.fn();
 vi.mock("@/lib/ai/run", () => ({ openAiRun: (...args: unknown[]) => openAiRun(...args) }));

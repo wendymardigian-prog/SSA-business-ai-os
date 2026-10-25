@@ -22,7 +22,7 @@ import { newNonce, wrapUntrusted } from "./untrusted";
 import { effectiveMessageText } from "./effective-text";
 import { aiLanguageStyle } from "@/lib/ai/language-style";
 import { assembleTaskPrompt, interpolate, SUMMARY_DEFAULT_INSTRUCTIONS } from "@/lib/ai-tasks/instructions";
-import { loadTaskInstructions } from "@/lib/ai-tasks/store";
+import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 
 /**
  * Memoria acumulativa (F33) y clasificacion al cierre (F34).
@@ -277,8 +277,8 @@ export async function summarizeConversationOnClose(
   try {
     const nonce = newNonce();
     const [instructions, closeCriteria] = await Promise.all([
-      loadTaskInstructions(supabase, conversation.workspace_id, "conversation_summary"),
-      canClassify ? loadTaskInstructions(supabase, conversation.workspace_id, "close_classification") : Promise.resolve(null),
+      loadTaskInstructionsForRun(supabase, conversation.workspace_id, "conversation_summary"),
+      canClassify ? loadTaskInstructionsForRun(supabase, conversation.workspace_id, "close_classification") : Promise.resolve(null),
     ]);
     const system = buildSummarySystemPrompt(nonce, allowedTagNames, canClassify, instructions.text, closeCriteria?.text, {
       temperature: agent.allowedTools.includes("cambiar_temperatura"),
