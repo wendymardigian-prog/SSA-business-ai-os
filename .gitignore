@@ -56,3 +56,6 @@ claude/
 
 # Ajustes locales de Claude Code: son de esta copia, no del template.
 .claude/settings.local.json
+
+# Bases locales de trabajo de la plantilla de estudiantes (scripts/plantilla)
+.plantilla-work/
