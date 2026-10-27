@@ -136,10 +136,11 @@ describe("export-template --perfil=estudiantes", () => {
     for (const p of [...profile.TOOLING, profile.TEMPLATE_FILES, "docs"]) expect(existsSync(join(destP, p)), p).toBe(false);
   });
 
-  it("las migraciones, los seeds y el config.toml son los de la plantilla, mas ALL_MIGRATIONS.sql", () => {
+  it("las migraciones, los seeds y el config.toml son los de la plantilla, mas ALL_MIGRATIONS.sql fuera de migrations", () => {
     const from = join(process.cwd(), profile.SUPABASE_DIR);
     const own = readdirSync(join(from, "migrations")).sort();
-    expect(readdirSync(join(destP, "supabase/migrations")).sort()).toEqual([...own, "ALL_MIGRATIONS.sql"].sort());
+    expect(readdirSync(join(destP, "supabase/migrations")).sort()).toEqual(own);
+    expect(existsSync(join(destP, "supabase/ALL_MIGRATIONS.sql"))).toBe(true);
     for (const f of own) expect(readFileSync(join(destP, "supabase/migrations", f), "utf8"), f).toBe(readFileSync(join(from, "migrations", f), "utf8"));
     expect(readdirSync(join(destP, "supabase/seeds")).sort()).toEqual(readdirSync(join(from, "seeds")).sort());
     expect(readFileSync(join(destP, "supabase/config.toml"), "utf8")).toBe(readFileSync(join(from, "config.toml"), "utf8"));

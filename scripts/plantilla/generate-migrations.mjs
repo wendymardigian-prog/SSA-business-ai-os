@@ -803,7 +803,8 @@ for (const f of readdirSync(join(repo, "supabase", "seeds")).filter((f) => f.end
   writeFileSync(join(seedsDir, f), cleanSeed(f, src));
 }
 const config = readFileSync(join(repo, "supabase", "config.toml"), "utf8");
-writeFileSync(join(outDir, "config.toml"), `project_id = "plantilla-estudiantes"\n\n` + config.replace(/^project_id\s*=.*\n/m, ""));
+const SEED_CONFIG = `\n# Los seeds (precios de los modelos de IA) no se cargan solos: se corren a mano despues de crear\n# el primer usuario (ver el README). Sin esto, \`supabase db reset\` avisa que falta supabase/seed.sql.\n[db.seed]\nenabled = false\n`;
+writeFileSync(join(outDir, "config.toml"), `project_id = "plantilla-estudiantes"\n\n` + config.replace(/^project_id\s*=.*\n/m, "") + SEED_CONFIG);
 console.log(`\nEscrito en ${outDir}`);
 
 // Los seeds: ver SEED_REWRITES (arriba).

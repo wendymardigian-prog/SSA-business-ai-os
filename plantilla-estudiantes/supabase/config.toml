@@ -24,3 +24,8 @@ enable_signup = false
 # (app/api/webhooks/), que es donde corre el motor de flows: desde Deno no se
 # puede llamar. Hubo una Edge Function `channel-webhook` haciendo de receptor
 # publico mientras la app corria en local; se retiro al publicarla en Railway.
+
+# Los seeds (precios de los modelos de IA) no se cargan solos: se corren a mano despues de crear
+# el primer usuario (ver el README). Sin esto, `supabase db reset` avisa que falta supabase/seed.sql.
+[db.seed]
+enabled = false

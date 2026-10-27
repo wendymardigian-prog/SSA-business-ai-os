@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Regenerates supabase/migrations/ALL_MIGRATIONS.sql from the numbered
+ * Regenerates ALL_MIGRATIONS.sql (in OUT_DIR, below) from the numbered
  * migration files.
  *
  * The bundle is the paste-into-the-SQL-editor convenience copy, and
@@ -18,6 +18,10 @@ import { fileURLToPath } from "node:url";
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "supabase", "migrations");
 const BUNDLE = "ALL_MIGRATIONS.sql";
+// Where the bundle goes. Outside supabase/migrations the CLI does not try to apply it as one more
+// migration (and does not warn that it skips it).
+const OUT_DIR = MIGRATIONS_DIR; // @plantilla-quitar(proyecto)
+// @plantilla-sin(proyecto): const OUT_DIR = join(MIGRATIONS_DIR, "..");
 
 const HEADER = `-- =============================================
 -- COMBINED MIGRATIONS
@@ -44,5 +48,5 @@ const sections = files.map((file) => {
   ].join("\n");
 });
 
-writeFileSync(join(MIGRATIONS_DIR, BUNDLE), `${HEADER}\n${sections.join("\n\n")}\n`);
+writeFileSync(join(OUT_DIR, BUNDLE), `${HEADER}\n${sections.join("\n\n")}\n`);
 console.log(`${BUNDLE}: ${files.length} migrations bundled`);

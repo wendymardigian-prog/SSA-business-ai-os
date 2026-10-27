@@ -400,7 +400,8 @@ describe("caracterizacion: el menu (F68)", () => {
 });
 
 describe("caracterizacion: el scope de leads en la base (F68)", () => {
-  const migration = read("supabase/migrations/ALL_MIGRATIONS.sql");
+  const migration = read("supabase/migrations/ALL_MIGRATIONS.sql"); // @plantilla-quitar(proyecto)
+  // @plantilla-sin(proyecto): const migration = read("supabase/ALL_MIGRATIONS.sql");
 
   it("can_see_contact y can_see_conversation existen", () => {
     // Son las dos funciones que deciden el alcance de leads. Si

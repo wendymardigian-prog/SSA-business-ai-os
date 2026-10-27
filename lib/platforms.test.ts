@@ -45,7 +45,8 @@ describe("platform allowlist", () => {
 
   it("keeps ALL_MIGRATIONS.sql a faithful in-order copy of every migration", () => {
     const dir = migrationsDir();
-    const bundle = readFileSync(join(dir, "ALL_MIGRATIONS.sql"), "utf8");
+    const bundle = readFileSync(join(dir, "ALL_MIGRATIONS.sql"), "utf8"); // @plantilla-quitar(proyecto)
+    // @plantilla-sin(proyecto): const bundle = readFileSync(join(dir, "..", "ALL_MIGRATIONS.sql"), "utf8");
     let cursor = 0;
     for (const file of listMigrations()) {
       const body = readMigration(file).trim();

@@ -15,7 +15,7 @@
 //   6. Limpia los comentarios: les saca la historia del proyecto (clean-comments.mjs). Solo
 //      comentarios; si el codigo de un archivo cambiara en un solo token, frena.
 //   7. Saca del package.json los paquetes que son solo de un modulo excluido.
-//   8. Vuelve a armar supabase/migrations/ALL_MIGRATIONS.sql.
+//   8. Vuelve a armar supabase/ALL_MIGRATIONS.sql (fuera de migrations: la CLI no lo toma por una migracion).
 //
 // `runGates` corre los controles sobre la copia (con node_modules enlazado del repo):
 // tsc, eslint, vitest, next build y el de historia (`findHistoryInCopy`). Devuelve un

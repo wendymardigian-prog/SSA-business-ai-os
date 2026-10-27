@@ -131,6 +131,8 @@ Poné en el `.env` la URL (`http://127.0.0.1:54321`) y las claves que muestra `s
 
 Ojo: los canales no mandan mensajes a una app en `localhost` (el sistema se niega a registrar una dirección local como webhook), así que WhatsApp e Instagram se prueban con la app desplegada.
 
+Tampoco corren los trabajos programados (cron) contra la app local: `private.set_system_secret` solo acepta la dirección pública (`https://...`) de la app, así que la base local no puede llamar a `localhost`. Es lo esperado: no hace falta buscarle la vuelta. Lo que depende del cron (secuencias, recordatorios, sincronizaciones) se prueba con la app desplegada.
+
 ## Varios negocios en una instalación
 
 Un mismo dueño puede manejar varios negocios desde el mismo login. Cada uno es un espacio de trabajo con sus claves, canales, contactos, equipo y marca, y se elige con el selector de arriba a la izquierda.

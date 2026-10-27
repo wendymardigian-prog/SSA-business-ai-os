@@ -35,7 +35,8 @@ const EXCLUDED = [
   "lib/auth/roles-admin.ts",
   "lib/roles/templates.ts",
   "lib/types/database.ts",
-  "supabase/migrations/ALL_MIGRATIONS.sql",
+  "supabase/migrations/ALL_MIGRATIONS.sql", // @plantilla-quitar(proyecto)
+  // @plantilla-sin(proyecto): "supabase/ALL_MIGRATIONS.sql",
 ];
 
 /** Sin comentarios (una clave nombrada en un comentario no decide nada) ni las listas de paridad de permisos. */
