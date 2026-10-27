@@ -19,7 +19,7 @@ import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { getSavedViewerTimezone, resolveViewerTimezone } from "@/lib/user-timezone";
 import type { TaskScreenData } from "@/lib/ai-tasks/screen";
-import { loadCallConfig } from "@/lib/calls/config-data";
+import { loadCallConfig } from "@/lib/calls/config-data"; // @plantilla-quitar(llamadas)
 import { TaskDetailView, TaskTabBody } from "@/components/agents/tasks/task-detail-view";
 import { TabBodySkeleton } from "@/components/agents/detail-tabs";
 import { redirectIfAgentsEmpty } from "@/lib/agent/usage";
@@ -53,7 +53,8 @@ export default async function TaskDetailPage({
   // La zona guardada de quien mira se pide junto con el permiso (no depende de el); despues `resolveViewerTimezone`
   // la toma del cache del request.
   const [{ workspace, supabase }, service] = await Promise.all([
-    requireAnyPermission(["ai_tasks.manage", "calls.configure"]),
+    requireAnyPermission(["ai_tasks.manage", "calls.configure"]), // @plantilla-quitar(llamadas)
+    // @plantilla-sin(llamadas): requireAnyPermission(["ai_tasks.manage"]),
     createServiceClient(),
     getSavedViewerTimezone(),
   ]);
@@ -125,6 +126,7 @@ export default async function TaskDetailPage({
     return { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin: true, canExport: permissions.can("data.export"), options };
   };
 
+  // @plantilla-desde(llamadas)
   // Las tareas de Llamadas con configuracion propia (reglas, rubrica, categorias).
   const callTask = task.callTask;
   const loadCall = async (): Promise<TaskScreenData["callConfig"]> => {
@@ -140,6 +142,7 @@ export default async function TaskDetailPage({
   };
   // La prueba del borrador de instrucciones necesita las llamadas analizadas, asi que el analisis tambien la carga en Instrucciones.
   const needsCallConfig = Boolean(callTask) && (tab === "config" || (tab === "instrucciones" && callTask === "call_analysis"));
+  // @plantilla-hasta(llamadas)
 
   const isClassification = task.id === "message_classification";
   const byAgent = task.control.kind === "agent";
@@ -162,7 +165,8 @@ export default async function TaskDetailPage({
       tab === "runs" ? loadRunsTab(viewerTimezone) : Promise.resolve(undefined),
       isClassification && tab === "config" ? loadReviewCategories(workspace.id) : Promise.resolve(undefined),
       byAgent && (tab === "como" || tab === "config") ? loadAgentCloseSettings(service, workspace.id) : Promise.resolve(undefined),
-      needsCallConfig ? loadCall() : Promise.resolve(undefined),
+      needsCallConfig ? loadCall() : Promise.resolve(undefined), // @plantilla-quitar(llamadas)
+      // @plantilla-sin(llamadas): Promise.resolve(undefined),
     ]);
     return {
       task,
@@ -175,7 +179,7 @@ export default async function TaskDetailPage({
       batchWarning: null,
       quality: backgroundScreen ?? undefined,
       categories,
-      callConfig,
+      callConfig, // @plantilla-quitar(llamadas)
       instructions,
       model,
       runs,

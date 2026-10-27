@@ -169,6 +169,7 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         ],
         cost: TOKENS,
       };
+    // @plantilla-desde(llamadas)
     case "call_classification":
       return {
         trigger: "Cuando entra una llamada de Fathom (o una importada) y las reglas del negocio no alcanzan para decidir su tipo. También cuando alguien pide reclasificarla.",
@@ -237,5 +238,6 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         ],
         cost: TOKENS,
       };
+    // @plantilla-hasta(llamadas)
   }
 }

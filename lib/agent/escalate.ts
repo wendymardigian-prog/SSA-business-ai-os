@@ -3,7 +3,7 @@ import type { Database } from "@/lib/types/database";
 import { logAudit } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
 import { todayInputValue } from "@/lib/dates";
-import { createTaskFromAutomation, resolveConversationResponsible } from "@/lib/tasks/create-from-automation";
+import { createTaskFromAutomation, resolveConversationResponsible } from "@/lib/tasks/create-from-automation"; // @plantilla-quitar(tareas)
 
 /**
  * Derivar la conversacion a una persona (Human Takeover desde el agente).
@@ -111,12 +111,13 @@ export async function escalateToHuman(
     metadata: { run_id: args.runId, origin: args.origin, contact_id: args.contactId, channel_id: args.channelId },
   });
 
-  // Opcional y apagado por defecto (Tareas, F24): ademas de avisar, deja una tarea. No cambia nada de lo de arriba.
-  await maybeCreateEscalationTask(supabase, args, { who, summary });
+  // Opcional y apagado por defecto (Tareas, F24): ademas de avisar, deja una tarea. No cambia nada de lo de arriba. // @plantilla-quitar(tareas)
+  await maybeCreateEscalationTask(supabase, args, { who, summary }); // @plantilla-quitar(tareas)
 
   return { auditLogId };
 }
 
+// @plantilla-desde(tareas)
 /**
  * «Crear una tarea cuando derive a una persona» (F24). Si el agente lo tiene prendido, deja una tarea `agent` vinculada a
  * la conversacion, a cargo de quien tiene la conversacion (asignada, setter o vendedor; si nadie, avisa a Owner/Admin).
@@ -150,3 +151,4 @@ async function maybeCreateEscalationTask(supabase: Db, args: EscalateArgs, ctx: 
     console.error("[tareas] no pude crear la tarea al derivar:", error instanceof Error ? error.message : String(error));
   }
 }
+// @plantilla-hasta(tareas)

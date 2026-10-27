@@ -1,8 +1,8 @@
 import { buildClassifyTechnicalPrompt } from "@/lib/patterns/prompt";
 import { buildSummaryTechnicalPrompt } from "@/lib/agent/summary";
-import { buildClassifierTechnical } from "@/lib/calls/classifier-prompt";
-import { buildAnalysisTechnical, DEFAULT_RUBRIC, EMPTY_CATEGORIES } from "@/lib/calls/rubric";
-import { buildSummaryTechnical } from "@/lib/calls/summary";
+import { buildClassifierTechnical } from "@/lib/calls/classifier-prompt"; // @plantilla-quitar(llamadas)
+import { buildAnalysisTechnical, DEFAULT_RUBRIC, EMPTY_CATEGORIES } from "@/lib/calls/rubric"; // @plantilla-quitar(llamadas)
+import { buildSummaryTechnical } from "@/lib/calls/summary"; // @plantilla-quitar(llamadas)
 import type { AiTaskId } from "./catalog";
 
 /**
@@ -26,6 +26,7 @@ export function technicalPreviewFor(task: AiTaskId): string {
     // criterios editables van despues, con este encabezado.
     case "close_classification":
       return `${buildSummaryTechnicalPrompt("a1b2c3", ["Interesado", "Precio"], true)}\n\nCriterios del negocio para la clasificacion:\n(lo que escribas arriba)`;
+    // @plantilla-desde(llamadas)
     // Llamadas: la parte fija de cada tarea, con la rubrica generica y los tipos
     // de sistema de muestra (la real depende de la configuracion del negocio).
     case "call_classification":
@@ -34,6 +35,7 @@ export function technicalPreviewFor(task: AiTaskId): string {
       return buildAnalysisTechnical(DEFAULT_RUBRIC, "cierre", { categories: EMPTY_CATEGORIES, allowNewCategories: true, companyContext: null });
     case "call_summary":
       return buildSummaryTechnical({ withMemory: true });
+    // @plantilla-hasta(llamadas)
     default:
       return "";
   }

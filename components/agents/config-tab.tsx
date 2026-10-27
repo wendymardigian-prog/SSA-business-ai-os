@@ -277,12 +277,14 @@ function GuardrailsSection({ form, set }: SectionProps) {
             {(id) => <textarea id={id} rows={3} value={g.escalation.urgencyPhrases.join("\n")} onChange={(e) => patch({ escalation: { ...g.escalation, urgencyPhrases: linesToList(e.target.value) } })} className={`${inputClass} text-xs`} />}
           </Field>
         )}
+        {/* @plantilla-desde(tareas) */}
         <Checkbox
           checked={g.escalation.createTaskOnEscalate}
           onChange={(createTaskOnEscalate) => patch({ escalation: { ...g.escalation, createTaskOnEscalate } })}
           label="Crear una tarea cuando derive a una persona"
           description="Además del aviso de siempre, deja una tarea en Tareas, vinculada a la conversación y a cargo de quien la tiene (la persona asignada, el setter o el vendedor). Apagado, derivar no cambia nada."
         />
+        {/* @plantilla-hasta(tareas) */}
       </div>
 
       <div className="space-y-3 rounded-lg border border-border p-4">
