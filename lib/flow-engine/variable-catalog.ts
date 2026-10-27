@@ -46,7 +46,10 @@ export function staticTriggerVariables(triggerType: string | null | undefined): 
 }
 
 /** Disparadores cuyos flujos no tienen contacto al arrancar (las variables del contacto no aplican al principio). */
-const NO_CONTACT_AT_START = new Set(["webhook_received", "eod_submitted"]);
+const NO_CONTACT_AT_START = new Set<string>([
+  "webhook_received", // @plantilla-quitar(webhooks)
+  "eod_submitted", // @plantilla-quitar(formularios)
+]);
 
 export interface PickerVariablesInput {
   triggerType: string | null | undefined;

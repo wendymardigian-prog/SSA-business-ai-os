@@ -83,9 +83,9 @@ export interface MissingContact {
 export const TRIGGER_ENTITY_NODES: Readonly<Record<string, "reunión" | "venta">> = {
   cancel_booking: "reunión",
   set_booking_status: "reunión",
-  mark_payment_paid: "venta",
-  reschedule_payment: "venta",
-  set_sale_status: "venta",
+  mark_payment_paid: "venta", // @plantilla-quitar(ventas)
+  reschedule_payment: "venta", // @plantilla-quitar(ventas)
+  set_sale_status: "venta", // @plantilla-quitar(ventas)
 };
 
 /** «la reunión» / «la venta» si el paso actúa sobre la del disparador; null si no. */

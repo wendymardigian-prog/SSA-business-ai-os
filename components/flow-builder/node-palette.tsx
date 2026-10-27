@@ -93,9 +93,11 @@ const categories: PaletteCategory[] = [
       // "Condiciones" reemplaza a "Condition": varios caminos en orden y "Si no". Los
       // flujos que ya tienen un "Condition" lo siguen mostrando como "Condición (sí / si no)".
       { type: "branch", nodeType: "branch", label: "Condiciones", icon: Split, description: "Varios caminos según un dato, y «Si no»", synonyms: ["si", "condicion", "filtro", "if"] },
+      // @plantilla-desde(webhooks)
       // Webhooks entrantes: consigue el contacto de un flujo que arranco sin uno. No aparece en los
       // flujos de una persona del equipo (EOD): ahi nunca hay un envio del que sacar un contacto.
       { type: "upsert_contact", nodeType: "upsert_contact", label: "Crear o actualizar contacto", icon: UserRoundPlus, description: "Consigue el contacto en un flujo que arrancó sin uno (webhooks)", synonyms: ["lead", "alta"] },
+      // @plantilla-hasta(webhooks)
       { type: "delay", nodeType: "delay", label: "Esperar", icon: Clock, description: "Un tiempo fijo o hasta una fecha", synonyms: ["delay", "pausa", "demora"] },
       {
         type: "action",
@@ -250,6 +252,7 @@ const categories: PaletteCategory[] = [
         synonyms: ["notificacion", "aviso", "equipo"],
         actionType: "notify_team",
       },
+      // @plantilla-desde(tareas)
       // Tareas (F22): deja una tarea para el equipo (sirve también en flujos sin contacto).
       {
         type: "action",
@@ -260,6 +263,8 @@ const categories: PaletteCategory[] = [
         synonyms: ["pendiente", "to do"],
         actionType: "create_task",
       },
+      // @plantilla-hasta(tareas)
+      // @plantilla-desde(tareas)
       // Tareas × CRM (R4): cierra las tareas abiertas que tienen una clave de origen.
       {
         type: "action",
@@ -270,6 +275,7 @@ const categories: PaletteCategory[] = [
         synonyms: ["cerrar tarea"],
         actionType: "complete_task",
       },
+      // @plantilla-hasta(tareas)
       {
         type: "action",
         nodeType: "cancel_booking",
@@ -288,6 +294,7 @@ const categories: PaletteCategory[] = [
         synonyms: ["agenda", "no show"],
         actionType: "set_booking_status",
       },
+      // @plantilla-desde(ventas)
       // Ventas (F37): las tres acciones de cobranza. Trabajan sobre el pago o la venta que disparo el flujo.
       {
         type: "action",
@@ -316,6 +323,7 @@ const categories: PaletteCategory[] = [
         synonyms: ["venta"],
         actionType: "set_sale_status",
       },
+      // @plantilla-hasta(ventas)
     ],
   },
 ];

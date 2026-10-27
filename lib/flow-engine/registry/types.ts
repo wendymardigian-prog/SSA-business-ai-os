@@ -242,11 +242,13 @@ export interface TriggerDefinition {
    * `subject: "member"`, el evento CON contacto no cambia en nada.
    */
   contactOptional?: boolean;
+  // @plantilla-desde(formularios)
   /**
    * Solo `subject: "member"`: sobre qué entidad queda el disparo en el historial
    * (un flujo sin contacto no se audita sobre un contacto).
    */
   auditEntityFor?(args: TriggerEventArgs): { entityType: "eod_report"; entityId: string; metadata?: Record<string, unknown> } | null;
+  // @plantilla-hasta(formularios)
   /** Decide si este trigger le corresponde al mensaje. Solo para scope "message"/"comment". */
   matches?(args: TriggerMatchArgs): boolean;
   /**

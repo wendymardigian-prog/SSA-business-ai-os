@@ -12,7 +12,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient, createServiceClient }));
 vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: vi.fn(async () => ({ user: { id: "u-1" } })) }));
 // El workspace ACTIVO de la sesion (lib/workspace.ts): las rutas ya no buscan "el primero" por su cuenta.
 vi.mock("@/lib/workspace", () => ({ getActiveWorkspace: async () => ({ workspace: { id: "ws-1" } }) }));
-vi.mock("@/lib/sales/automation/relative", () => ({ backfillPaymentRelativeJobs: vi.fn(async () => {}) }));
+vi.mock("@/lib/sales/automation/relative", () => ({ backfillPaymentRelativeJobs: vi.fn(async () => {}) })); // @plantilla-quitar(ventas)
 
 import { POST } from "./route";
 

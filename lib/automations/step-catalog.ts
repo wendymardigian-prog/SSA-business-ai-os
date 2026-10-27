@@ -195,9 +195,9 @@ const OTHER_LABELS: Record<string, string> = {
   sendAsset: "Enviar un recurso",
   aiResponse: "Respuesta del agente de IA",
   smartDelay: "Espera inteligente",
-  mark_payment_paid: "Marcar el pago como cobrado",
-  reschedule_payment: "Reprogramar el pago",
-  set_sale_status: "Cancelar la venta",
+  mark_payment_paid: "Marcar el pago como cobrado", // @plantilla-quitar(ventas)
+  reschedule_payment: "Reprogramar el pago", // @plantilla-quitar(ventas)
+  set_sale_status: "Cancelar la venta", // @plantilla-quitar(ventas)
 };
 
 /** "Email al contacto", "Esperar 2 horas": el resumen de un paso. */

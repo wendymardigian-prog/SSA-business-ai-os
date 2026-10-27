@@ -141,6 +141,7 @@ const actionConfig: Record<
     label: "Enviar recurso",
     color: "bg-gray-500",
   },
+  // @plantilla-desde(tareas)
   create_task: {
     icon: ListTodo,
     label: "Crear tarea",
@@ -151,6 +152,7 @@ const actionConfig: Record<
     label: "Completar tarea",
     color: "bg-gray-500",
   },
+  // @plantilla-hasta(tareas)
   send_email: {
     icon: Mail,
     label: "Enviar email",
@@ -165,9 +167,9 @@ const actionConfig: Record<
   notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
   cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
   set_booking_status: { icon: CalendarCheck, label: "Cambiar estado de la reunión", color: "bg-gray-500" },
-  mark_payment_paid: { icon: BadgeDollarSign, label: "Marcar pago como cobrado", color: "bg-gray-500" },
-  reschedule_payment: { icon: CalendarClock, label: "Reprogramar pago", color: "bg-gray-500" },
-  set_sale_status: { icon: Ban, label: "Cancelar la venta", color: "bg-gray-500" },
+  mark_payment_paid: { icon: BadgeDollarSign, label: "Marcar pago como cobrado", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
+  reschedule_payment: { icon: CalendarClock, label: "Reprogramar pago", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
+  set_sale_status: { icon: Ban, label: "Cancelar la venta", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
 };
 
 /** El nombre de cada accion (lo usan el nodo y el encabezado del panel lateral). */
@@ -229,10 +231,12 @@ function getSummary(nodeData: ActionNodeProps): string | null {
     }
     case "sendAsset":
       return nodeData.assetId ? (nodeData.assetName ?? "Recurso elegido") : null;
+    // @plantilla-desde(tareas)
     case "create_task" as NodeType:
       return nodeData.title?.trim() || null;
     case "complete_task" as NodeType:
       return nodeData.sourceKey?.trim() ? `Clave: ${nodeData.sourceKey.trim()}` : null;
+    // @plantilla-hasta(tareas)
     // Tirón 2, D3/D4: a quién va, en una línea.
     case "send_whatsapp_number" as NodeType: {
       if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;

@@ -39,7 +39,7 @@ export type SimulationStepResult =
   /** "Condiciones": por que camino iria (`pathId` es el del camino o `else`) y que paso con cada condicion. */
   | { type: "branch"; pathId: string; pathLabel: string; checks: Array<{ pathId: string; field: string; operator: string; ok: boolean; missing?: boolean }> }
   | { type: "delay"; duration: number; unit: string }
-  | { type: "upsert_contact" }
+  | { type: "upsert_contact" } // @plantilla-quitar(webhooks)
   | { type: "action"; actionType: string; detail: string }
   | { type: "ai_response"; mode: "skipped" | "generated"; text?: string }
   | { type: "split"; selectedPath: string; weight: number }
@@ -339,6 +339,7 @@ export function simulateFlow(
         break;
       }
 
+      // @plantilla-desde(webhooks)
       // «Crear o actualizar contacto» (webhooks): la prueba no escribe nada, supone que salió bien.
       // Lo real corre con el envío; «Probar con el ejemplo» (en el panel del paso) muestra el mapeo.
       case "upsert_contact": {
@@ -352,6 +353,7 @@ export function simulateFlow(
         strictHandle = true;
         break;
       }
+      // @plantilla-hasta(webhooks)
 
       case "delay": {
         const duration = (data.duration as number) || 5;
@@ -575,6 +577,7 @@ export function simulateFlow(
         break;
       }
 
+      // @plantilla-desde(tareas)
       // Tareas (F22): en la simulación no se crea ninguna tarea.
       case "create_task": {
         const title = interpolate((data.title as string) || "", variables);
@@ -586,7 +589,9 @@ export function simulateFlow(
         });
         break;
       }
+      // @plantilla-hasta(tareas)
 
+      // @plantilla-desde(tareas)
       // Tareas × CRM (R4): en la simulacion no se completa ninguna tarea.
       case "complete_task": {
         const key = interpolate((data.sourceKey as string) || "", variables);
@@ -598,6 +603,7 @@ export function simulateFlow(
         });
         break;
       }
+      // @plantilla-hasta(tareas)
 
       case "cancel_booking": {
         steps.push({
@@ -619,6 +625,7 @@ export function simulateFlow(
         break;
       }
 
+      // @plantilla-desde(ventas)
       case "mark_payment_paid": {
         steps.push({
           nodeId: node.id,
@@ -628,7 +635,9 @@ export function simulateFlow(
         });
         break;
       }
+      // @plantilla-hasta(ventas)
 
+      // @plantilla-desde(ventas)
       case "reschedule_payment": {
         steps.push({
           nodeId: node.id,
@@ -638,7 +647,9 @@ export function simulateFlow(
         });
         break;
       }
+      // @plantilla-hasta(ventas)
 
+      // @plantilla-desde(ventas)
       case "set_sale_status": {
         steps.push({
           nodeId: node.id,
@@ -648,6 +659,7 @@ export function simulateFlow(
         });
         break;
       }
+      // @plantilla-hasta(ventas)
 
       case "subscribe":
       case "unsubscribe": {

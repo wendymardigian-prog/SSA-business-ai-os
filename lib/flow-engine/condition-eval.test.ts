@@ -15,8 +15,8 @@ import {
   type ConditionValueType,
   type FieldValue,
 } from "./condition-eval";
-import { evaluateCondition as evaluateVisibilityCondition } from "@/lib/forms/visibility";
-import type { Condition as VisibilityCondition } from "@/lib/forms/visibility-types";
+import { evaluateCondition as evaluateVisibilityCondition } from "@/lib/forms/visibility"; // @plantilla-quitar(formularios)
+import type { Condition as VisibilityCondition } from "@/lib/forms/visibility-types"; // @plantilla-quitar(formularios)
 import { LEGACY_OPERATORS } from "./legacy-operators";
 import { getConditionOperator } from "./registry/registry";
 
@@ -398,6 +398,7 @@ describe("explicar con palabras", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 /**
  * PARIDAD con las reglas de mostrar/ocultar campos de Formularios
  * (`lib/forms/visibility.ts`): en los operadores que comparten significado,
@@ -485,3 +486,4 @@ describe("paridad con lib/forms/visibility.ts", () => {
     });
   });
 });
+// @plantilla-hasta(formularios)

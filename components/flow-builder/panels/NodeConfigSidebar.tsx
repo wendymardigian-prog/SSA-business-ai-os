@@ -13,9 +13,9 @@ import { DelayPanel } from "./DelayPanel";
 import { ActionPanel } from "./ActionPanel";
 import { AiResponsePanel } from "./AiResponsePanel";
 import { BranchPanel } from "./BranchPanel";
-import { UpsertContactPanel } from "./UpsertContactPanel";
+import { UpsertContactPanel } from "./UpsertContactPanel"; // @plantilla-quitar(webhooks)
 import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
-import { flowSendsMessages } from "@/lib/webhooks/once-per-contact";
+import { flowSendsMessages } from "@/lib/webhooks/once-per-contact"; // @plantilla-quitar(webhooks)
 import { getConditionCatalogInputs } from "@/lib/actions/flow-conditions";
 import { chosenType } from "@/lib/flow-engine/trigger-catalog";
 import { pickerVariables } from "@/lib/flow-engine/variable-catalog";
@@ -130,12 +130,14 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
     color: "bg-indigo-500",
     borderColor: "border-indigo-500",
   },
+  // @plantilla-desde(webhooks)
   upsert_contact: {
     label: "Crear o actualizar contacto",
     icon: UserRoundPlus,
     color: "bg-teal-600",
     borderColor: "border-teal-500",
   },
+  // @plantilla-hasta(webhooks)
   delay: {
     label: "Esperar",
     icon: Clock,
@@ -196,7 +198,8 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
     const triggerData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
     switch (nodeType) {
       case "trigger":
-        return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} sendsMessages={flowSendsMessages(nodes)} onChangeTrigger={onChangeTrigger} />;
+        return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} sendsMessages={flowSendsMessages(nodes)} onChangeTrigger={onChangeTrigger} />; // @plantilla-quitar(webhooks)
+        // @plantilla-sin(webhooks): return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} onChangeTrigger={onChangeTrigger} />;
       case "sendMessage":
         return (
           <SendMessagePanel
@@ -221,8 +224,10 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
         return <ConditionPanel data={data} onChange={handleChange} onConvert={onConvert ? () => onConvert(node.id) : undefined} />;
       case "branch":
         return <BranchPanel flowId={flowId} nodeId={node.id} data={data} nodes={nodes} edges={edges} onChange={handleChange} />;
+      // @plantilla-desde(webhooks)
       case "upsert_contact":
         return <UpsertContactPanel data={data} nodes={nodes} onChange={handleChange} />;
+      // @plantilla-hasta(webhooks)
       case "delay":
         return <DelayPanel data={data} onChange={handleChange} />;
       case "aiResponse":

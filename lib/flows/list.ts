@@ -20,7 +20,7 @@ export const FLOW_ORIGIN_LABELS: Record<FlowOrigin, string> = {
 export const FLOW_STATUS_LABELS: Record<FlowStatus, string> = { draft: "Borrador", published: "Publicada", archived: "Archivada" };
 
 export function flowOrigin(row: { form_id?: string | null; event_type_id?: string | null; template_key?: string | null }): FlowOrigin {
-  if (row.form_id) return "formularios";
+  if (row.form_id) return "formularios"; // @plantilla-quitar(formularios)
   if (row.event_type_id) return "agenda";
   if (row.template_key) return "sistema";
   return "manual";
@@ -54,7 +54,8 @@ export interface FlowListQuery {
 export const EMPTY_FLOW_QUERY: FlowListQuery = { q: "", status: "all", origin: "all", categories: [] };
 
 const STATUSES: FlowStatus[] = ["draft", "published", "archived"];
-const ORIGINS: FlowOrigin[] = ["manual", "formularios", "agenda", "sistema"];
+const ORIGINS: FlowOrigin[] = ["manual", "formularios", "agenda", "sistema"]; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): const ORIGINS: FlowOrigin[] = ["manual", "agenda", "sistema"];
 const STATUS_PARAM: Record<string, FlowStatus> = { borrador: "draft", publicada: "published", archivada: "archived" };
 const STATUS_TO_PARAM: Record<FlowStatus, string> = { draft: "borrador", published: "publicada", archived: "archivada" };
 

@@ -47,7 +47,7 @@ import { TriggerNode } from "./nodes/trigger-node";
 import { SendMessageNode } from "./nodes/send-message-node";
 import { ConditionNode } from "./nodes/condition-node";
 import { BranchNode } from "./nodes/branch-node";
-import { UpsertContactNode } from "./nodes/upsert-contact-node";
+import { UpsertContactNode } from "./nodes/upsert-contact-node"; // @plantilla-quitar(webhooks)
 import { DelayNode } from "./nodes/delay-node";
 import { ActionNode } from "./nodes/action-node";
 import { AiResponseNode } from "./nodes/AiResponseNode";
@@ -64,7 +64,7 @@ const nodeTypes: NodeTypes = {
   sendMessage: SendMessageNode,
   condition: ConditionNode,
   branch: BranchNode,
-  upsert_contact: UpsertContactNode,
+  upsert_contact: UpsertContactNode, // @plantilla-quitar(webhooks)
   delay: DelayNode,
   action: ActionNode,
   aiResponse: AiResponseNode,
@@ -103,9 +103,11 @@ function getDefaultData(type: string, actionType?: string, attributionDefaults?:
     case "branch":
       // Nace con un camino (la base exige al menos uno); las condiciones se arman en el panel.
       return { paths: [{ id: newPathId(), label: "Camino 1", logic: "and", conditions: [] }] };
+    // @plantilla-desde(webhooks)
     case "upsert_contact":
       // Los valores por defecto del paso (crear o actualizar, completar lo vacio, formulario externo).
       return { mode: "create_or_update", update: "fill_empty", map: [], tags: { fixed: [] }, attribution: { map: [], autoDetect: true }, touchMedium: "external_form" };
+    // @plantilla-hasta(webhooks)
     case "delay":
       return { duration: 5, unit: "minutes" };
     case "aiResponse":

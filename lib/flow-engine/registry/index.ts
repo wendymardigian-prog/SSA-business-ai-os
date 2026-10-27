@@ -13,16 +13,16 @@
 import "./nodes";
 import "./conditions";
 import "./booking-conditions";
-import "./call-conditions";
-import "./sales-conditions";
+import "./call-conditions"; // @plantilla-quitar(llamadas)
+import "./sales-conditions"; // @plantilla-quitar(ventas)
 import "./triggers";
 import "./booking-triggers";
-import "./call-triggers";
-import "./form-triggers";
-import "./sales-triggers";
-import "./eod-triggers";
-import "./webhook-triggers";
-import "./task-triggers";
+import "./call-triggers"; // @plantilla-quitar(llamadas)
+import "./form-triggers"; // @plantilla-quitar(formularios)
+import "./sales-triggers"; // @plantilla-quitar(ventas)
+import "./eod-triggers"; // @plantilla-quitar(formularios)
+import "./webhook-triggers"; // @plantilla-quitar(webhooks)
+import "./task-triggers"; // @plantilla-quitar(tareas)
 import "./guards";
 
 export * from "./registry";

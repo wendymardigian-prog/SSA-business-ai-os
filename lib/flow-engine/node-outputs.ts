@@ -44,6 +44,7 @@ export function aiResponseOutputs(): ConditionFieldSpec[] {
   return [{ path: "variable:ai_response", label: "Respuesta del agente de IA", type: "text", group: GROUP }];
 }
 
+// @plantilla-desde(webhooks)
 /** «Crear o actualizar contacto»: qué pasó con el contacto y, si no se pudo, por qué. */
 export function upsertContactOutputs(): ConditionFieldSpec[] {
   return [
@@ -61,11 +62,12 @@ export function upsertContactOutputs(): ConditionFieldSpec[] {
     { path: "variable:contact_fail_reason", label: "Por qué no se pudo", type: "text", group: GROUP, hint: "no_identifier (sin teléfono, email ni red) o not_found (no existe)" },
   ];
 }
+// @plantilla-hasta(webhooks)
 
 const OUTPUTS: Record<string, (data: never) => ConditionFieldSpec[]> = {
   httpRequest: httpRequestOutputs as (data: never) => ConditionFieldSpec[],
   aiResponse: aiResponseOutputs as (data: never) => ConditionFieldSpec[],
-  upsert_contact: upsertContactOutputs as (data: never) => ConditionFieldSpec[],
+  upsert_contact: upsertContactOutputs as (data: never) => ConditionFieldSpec[], // @plantilla-quitar(webhooks)
 };
 
 /** Los tipos de nodo que aportan campos (para el test que lo cruza con el registro). */

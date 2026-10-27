@@ -24,11 +24,11 @@ import { pauseAgentNode, resumeAgentNode } from "../nodes/agent-toggle";
 import { sendEmailNode } from "../nodes/send-email";
 import { sendAssetNode } from "../nodes/send-asset";
 import { cancelBookingNode, setBookingStatusNode } from "../nodes/booking-actions";
-import { markPaymentPaidNode, reschedulePaymentNode, setSaleStatusNode } from "../nodes/sales-actions";
+import { markPaymentPaidNode, reschedulePaymentNode, setSaleStatusNode } from "../nodes/sales-actions"; // @plantilla-quitar(ventas)
 import { notifyTeamNode } from "../nodes/notify-team";
-import { upsertContactNode } from "../nodes/upsert-contact";
-import { createTaskNode } from "../nodes/create-task";
-import { completeTaskNode } from "../nodes/complete-task";
+import { upsertContactNode } from "../nodes/upsert-contact"; // @plantilla-quitar(webhooks)
+import { createTaskNode } from "../nodes/create-task"; // @plantilla-quitar(tareas)
+import { completeTaskNode } from "../nodes/complete-task"; // @plantilla-quitar(tareas)
 import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 
 registerNode(sendMessageNode);
@@ -60,17 +60,23 @@ registerNode(sendEmailNode);
 registerNode(cancelBookingNode);
 registerNode(setBookingStatusNode);
 
+// @plantilla-desde(ventas)
 // Ventas (F37): las tres acciones de cobranza. Pasan por el mismo nucleo que las Server Actions.
 registerNode(markPaymentPaidNode);
 registerNode(reschedulePaymentNode);
 registerNode(setSaleStatusNode);
+// @plantilla-hasta(ventas)
 // Reporte de fin de día (E15): sirve en flujos sin contacto y con contacto.
 registerNode(notifyTeamNode);
+// @plantilla-desde(webhooks)
 // Webhooks entrantes (Extra L): consigue el contacto de un flujo que arranco sin uno.
 registerNode(upsertContactNode);
+// @plantilla-hasta(webhooks)
+// @plantilla-desde(tareas)
 // Tareas (Extra A, F22): deja una tarea para el equipo; sirve con y sin contacto.
 registerNode(createTaskNode);
 // Tareas × CRM (R4): cierra las tareas abiertas con una clave de origen (la de «Crear tarea»).
 registerNode(completeTaskNode);
+// @plantilla-hasta(tareas)
 // Tiron 2, D3: un aviso por WhatsApp a un numero que puede no ser de ningun contacto (sirve con y sin contacto).
 registerNode(sendWhatsAppNumberNode);

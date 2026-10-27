@@ -4,7 +4,7 @@ import { applyTriggerChoice, chosenType, filterTriggerChoices, hasTriggerConfig,
 describe("triggerChoices", () => {
   it("Ventas se ofrece con sus atajos y el resto con un tipo por opcion", () => {
     const choices = triggerChoices();
-    expect(choices.some((c) => c.key === "sales:payment_paid" && c.type === "payment_status_changed")).toBe(true);
+    expect(choices.some((c) => c.key === "sales:payment_paid" && c.type === "payment_status_changed")).toBe(true); // @plantilla-quitar(ventas)
     expect(choices.filter((c) => c.type === "keyword")).toHaveLength(1);
   });
 });

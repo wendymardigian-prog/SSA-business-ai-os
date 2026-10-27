@@ -15,8 +15,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDesiredTriggers, persistableTriggerTypes } from "@/lib/flow-triggers";
-import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative";
-import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers";
+import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative"; // @plantilla-quitar(ventas)
+import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers"; // @plantilla-quitar(ventas)
 import type { Database, Json } from "@/lib/types/database";
 import { checkMemberFlow } from "./member-flow-db";
 import { connectionProblemsForGraph } from "./connection-problems";
@@ -129,6 +129,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   // Las filas con canal (las de la pestaña Growth) NO se reactivan: si alguien apago una a mano, publicar no la vuelve
   // a prender. Las que arma el editor ya nacen activas.
 
+  // @plantilla-desde(ventas)
   // Un flujo con un recordatorio relativo al vencimiento de un pago (Ventas, F37): se agendan los de los
   // pagos que ya existen. Sin esto el recordatorio valdria solo para los pagos nuevos.
   if (desiredTriggers.some((t) => isRelativeSalesTrigger(t.type))) {
@@ -138,6 +139,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
       console.error("[publish] no pude agendar los recordatorios de pagos:", backfillError instanceof Error ? backfillError.message : "error");
     }
   }
+  // @plantilla-hasta(ventas)
 
   return { ok: true, flow: { ...(flow as FlowRow), nodes: nodes as Json, edges: edges as Json }, version: newVersion };
 }

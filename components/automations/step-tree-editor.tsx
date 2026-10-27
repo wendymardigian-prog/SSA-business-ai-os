@@ -30,9 +30,11 @@ import { StepList } from "@/components/automations/step-list";
 import { StepEditorProvider, type ConfirmRequest } from "@/components/automations/step-tree-context";
 import { useConditionCatalog } from "@/components/automations/use-condition-catalog";
 import { TestConditionsButton, type TestResponsesSource } from "@/components/automations/test-conditions-sheet";
-import { VisibilityRuleBuilder } from "@/components/forms/builder/visibility-rule-builder";
-import type { ConditionSource } from "@/lib/forms/visibility-builder-adapter";
-import type { VisibilityConfig } from "@/lib/forms/visibility-types";
+import { VisibilityRuleBuilder } from "@/components/forms/builder/visibility-rule-builder"; // @plantilla-quitar(formularios)
+import type { ConditionSource } from "@/lib/forms/visibility-builder-adapter"; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): type ConditionSource = unknown;
+import type { VisibilityConfig } from "@/lib/forms/visibility-types"; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): type VisibilityConfig = unknown;
 import { recognizedFields } from "@/lib/automations/condition-builder-model";
 import type { EditorScreen } from "@/lib/automations/step-catalog";
 import { actionTypeOf, allSteps, firstEmailStep, type ActionStep, type StepTree } from "@/lib/automations/step-tree";
@@ -274,6 +276,7 @@ export function StepTreeEditor({
           {reach !== null && describeReach && <p className="mt-1 text-xs text-muted-foreground">{describeReach(reach)}</p>}
         </section>
 
+        {/* @plantilla-desde(formularios) */}
         {onlyIf && !readOnly && (
           <section className="rounded-xl border border-border p-4">
             <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Solo si…</h2>
@@ -289,6 +292,7 @@ export function StepTreeEditor({
             </p>
           </section>
         )}
+        {/* @plantilla-hasta(formularios) */}
 
         {context && tree && (
           <StepEditorProvider value={context}>

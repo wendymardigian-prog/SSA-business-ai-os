@@ -166,8 +166,8 @@ export async function executeFlow(
       contact_id: context.contactId,
       // Un flujo sin contacto es sobre una persona del equipo (00182).
       ...(context.contactId ? {} : { member_user_id: context.memberUserId ?? null }),
-      // Un flujo de webhook arranca sin contacto ni persona: el envio es lo que lo sostiene (00187).
-      ...(context.inboundWebhookId ? { inbound_webhook_id: context.inboundWebhookId } : {}),
+      // Un flujo de webhook arranca sin contacto ni persona: el envio es lo que lo sostiene (00187). // @plantilla-quitar(webhooks)
+      ...(context.inboundWebhookId ? { inbound_webhook_id: context.inboundWebhookId } : {}), // @plantilla-quitar(webhooks)
       // Que lo disparo (00218). Sin declarar, la base lo completa segun el contacto, la persona o el envio.
       ...(context.source ? { source_type: context.source.type, source_id: context.source.id } : {}),
       flow_id: context.flowId,
@@ -428,11 +428,12 @@ export async function resumeSession(
  */
 export function restoreOriginFromSession(
   context: FlowExecutionContext,
-  session: Pick<Database["public"]["Tables"]["flow_sessions"]["Row"], "contact_id" | "member_user_id" | "inbound_webhook_id" | "source_type" | "source_id">
+  session: Pick<Database["public"]["Tables"]["flow_sessions"]["Row"], "contact_id" | "member_user_id" | "inbound_webhook_id" | "source_type" | "source_id"> // @plantilla-quitar(webhooks)
+  // @plantilla-sin(webhooks): session: Pick<Database["public"]["Tables"]["flow_sessions"]["Row"], "contact_id" | "member_user_id" | "source_type" | "source_id">
 ): void {
   context.contactId ??= session.contact_id;
   context.memberUserId ??= session.member_user_id;
-  context.inboundWebhookId ??= session.inbound_webhook_id;
+  context.inboundWebhookId ??= session.inbound_webhook_id; // @plantilla-quitar(webhooks)
   if (!context.source && session.source_type) {
     context.source = { type: session.source_type as AutomationSource["type"], id: session.source_id ?? null };
   }

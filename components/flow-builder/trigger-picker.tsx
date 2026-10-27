@@ -31,12 +31,12 @@ export const TRIGGER_GROUP_ICONS: Record<TriggerGroupKey, LucideIcon> = {
   comentarios: MessagesSquare,
   contactos: Users,
   agenda: CalendarDays,
-  formularios: ClipboardList,
-  ventas: DollarSign,
-  tareas: Zap,
-  llamadas: Phone,
-  webhooks: Webhook,
-  equipo: Bot,
+  formularios: ClipboardList, // @plantilla-quitar(formularios)
+  ventas: DollarSign, // @plantilla-quitar(ventas)
+  tareas: Zap, // @plantilla-quitar(tareas)
+  llamadas: Phone, // @plantilla-quitar(llamadas)
+  webhooks: Webhook, // @plantilla-quitar(webhooks)
+  equipo: Bot, // @plantilla-quitar(formularios)
 };
 
 interface TriggerPickerProps {

@@ -301,6 +301,7 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
       continue;
     }
 
+    // @plantilla-desde(formularios)
     // El disparo queda en el historial de lo que lo origino (el reporte), no de un contacto.
     const audited = definition.auditEntityFor?.(args) ?? null;
     if (audited) {
@@ -313,6 +314,7 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
         metadata: { trigger_id: trigger.id, flow_id: trigger.flow_id, event_type: event.event_type, ...(audited.metadata ?? {}) },
       });
     }
+    // @plantilla-hasta(formularios)
     fired++;
   }
   throwIfFailures(failures, fired);
