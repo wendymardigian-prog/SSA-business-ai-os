@@ -97,6 +97,7 @@ describe("avisos de ventana de borradores (Bloque 2c)", () => {
   });
 });
 
+// @plantilla-desde(llamadas)
 describe("avisos de Llamadas", () => {
   it("la conexion de Fathom lleva a Mi Fathom, no a Integraciones (un Member no entra ahi)", () => {
     expect(linkFor("fathom", null)).toBe("/dashboard/llamadas/mi-fathom");
@@ -111,7 +112,9 @@ describe("avisos de Llamadas", () => {
     expect(toneFor("call_objection")).toBe("info");
   });
 });
+// @plantilla-hasta(llamadas)
 
+// @plantilla-desde(formularios)
 describe("Formularios: form_submitted", () => {
   it("es un tipo conocido, con tono info y entidad form_submission", () => {
     expect(isNotificationType("form_submitted")).toBe(true);
@@ -134,7 +137,9 @@ describe("linkFor: reportes de fin de día", () => {
     expect(linkFor("eod_form", "f1")).toBe("/dashboard/eod/f1");
   });
 });
+// @plantilla-hasta(formularios)
 
+// @plantilla-desde(comisiones)
 describe("links de comisiones", () => {
   it("una comisión abre su ficha; el aviso de un gasto pagado, la lista de ese gasto; el de una venta, la lista de esa venta", () => {
     expect(linkFor("commission", "c1", {})).toBe("/dashboard/finanzas/comisiones?commission=c1");
@@ -143,3 +148,4 @@ describe("links de comisiones", () => {
     expect(linkFor("commission", null, {})).toBe("/dashboard/finanzas/comisiones");
   });
 });
+// @plantilla-hasta(comisiones)

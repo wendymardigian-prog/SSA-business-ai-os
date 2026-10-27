@@ -1,6 +1,6 @@
 /**
  * "Avisar en la campana" (E15): una notificación para personas del equipo. Sirve en un
- * flujo sin contacto (un reporte de fin de día) y también en uno con contacto.
+ * flujo sin contacto (el de una persona del equipo) y también en uno con contacto.
  *
  * - A quién: las personas elegidas, "quien envió el reporte" (la persona del flujo sin
  *   contacto), o las dos cosas. Solo llega a quien es del workspace.
@@ -47,10 +47,10 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Noti
   const { data: members } = await supabase.from("workspace_members").select("user_id").eq("workspace_id", context.workspaceId).in("user_id", wanted);
   const allowed = (members ?? []).map((m) => m.user_id);
 
-  // Un reporte de fin de día abre su detalle; si no, el flujo.
-  const report = (vars.report ?? null) as { id?: unknown; form_id?: unknown } | null;
-  const reportId = typeof report?.id === "string" ? report.id : null;
-  const formId = typeof report?.form_id === "string" ? report.form_id : null;
+  // Un reporte de fin de día abre su detalle; si no, el flujo.  @plantilla-quitar(formularios)
+  const report = (vars.report ?? null) as { id?: unknown; form_id?: unknown } | null; // @plantilla-quitar(formularios)
+  const reportId = typeof report?.id === "string" ? report.id : null; // @plantilla-quitar(formularios)
+  const formId = typeof report?.form_id === "string" ? report.form_id : null; // @plantilla-quitar(formularios)
 
   for (const recipientId of allowed) {
     await createNotification({
@@ -59,10 +59,13 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Noti
       type: "flow_notice",
       title,
       body: body || undefined,
-      entityType: reportId && formId ? "eod_report" : "flow",
-      entityId: reportId && formId ? reportId : context.flowId,
+      entityType: reportId && formId ? "eod_report" : "flow", // @plantilla-quitar(formularios)
+      // @plantilla-sin(formularios): entityType: "flow",
+      entityId: reportId && formId ? reportId : context.flowId, // @plantilla-quitar(formularios)
+      // @plantilla-sin(formularios): entityId: context.flowId,
       recipientId,
-      metadata: { flow_id: context.flowId, node_id: node.id, ...(formId ? { form_id: formId } : {}) },
+      metadata: { flow_id: context.flowId, node_id: node.id, ...(formId ? { form_id: formId } : {}) }, // @plantilla-quitar(formularios)
+      // @plantilla-sin(formularios): metadata: { flow_id: context.flowId, node_id: node.id },
     });
   }
 }

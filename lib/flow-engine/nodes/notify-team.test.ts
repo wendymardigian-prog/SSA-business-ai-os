@@ -40,7 +40,8 @@ describe("Avisar en la campana", () => {
     await run(db, { to: "both", userIds: ["u-lider", "u-ana"], title: "{{member.name}} mandó {{metrics.total.links_enviados}} links", body: "Revisalo" });
     const rows = db.rows("notifications");
     expect(rows.map((r) => r.recipient_id).sort()).toEqual(["u-ana", "u-lider"]);
-    expect(rows[0]).toMatchObject({ type: "flow_notice", title: "Ana mandó 4 links", entity_type: "eod_report", entity_id: "r-1" });
+    expect(rows[0]).toMatchObject({ type: "flow_notice", title: "Ana mandó 4 links", entity_type: "eod_report", entity_id: "r-1" }); // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): expect(rows[0]).toMatchObject({ type: "flow_notice", title: "Ana mandó 4 links", entity_type: "flow" });
   });
 
   it("alguien que no es del workspace no recibe nada", async () => {
