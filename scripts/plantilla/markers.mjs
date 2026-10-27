@@ -20,7 +20,9 @@
 //   3. Una linea que aparece:   // @plantilla-sin(ventas): const columnas = [];
 //      En el proyecto es un comentario. Si se excluye alguno de los modulos, la linea
 //      queda como "const columnas = [];" (con la misma sangria). Sirve para el reemplazo
-//      de lo que se saco con un bloque, cuando sacar solo no alcanza.
+//      de lo que se saco con un bloque, cuando sacar solo no alcanza. En JSX va como
+//      {/* @plantilla-sin(ventas): {contenido} */} y queda "{contenido}" (el codigo no
+//      puede tener un cierre de comentario).
 //
 // Todo es puro (texto -> texto): lo usan el test de frontera, el simulador del
 // export y, mas adelante, el export de verdad.
@@ -35,6 +37,8 @@ const RE_QUITAR = new RegExp(`${P}quitar\\(\\s*(${LIST})\\s*\\)`);
 const RE_DESDE = new RegExp(`${P}desde\\(\\s*(${LIST})\\s*\\)`);
 const RE_HASTA = new RegExp(`${P}hasta\\(\\s*(${LIST})\\s*\\)`);
 const RE_SIN = new RegExp(`^(\\s*)//\\s*${P}sin\\(\\s*(${LIST})\\s*\\):\\s?(.*)$`);
+const RE_SIN_JSX = new RegExp(`^(\\s*)\\{/\\*\\s*${P}sin\\(\\s*(${LIST})\\s*\\):\\s?(.*?)\\s*\\*/\\}\\s*$`);
+const matchSin = (text) => RE_SIN.exec(text) ?? RE_SIN_JSX.exec(text);
 
 const parseList = (raw) => raw.split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -65,7 +69,7 @@ export function parseMarkers(text, known) {
     const line = i + 1;
     if (!RE_ANY.test(text)) return;
     let m;
-    if ((m = RE_SIN.exec(text))) {
+    if ((m = matchSin(text))) {
       const modules = parseList(m[2]);
       check(modules, line);
       if (open) throw new MarkerError("una marca \"sin\" no puede ir adentro de un bloque", line);
@@ -139,7 +143,7 @@ export function stripMarkers(text, excludedModules, known) {
     }
     if (mk.kind === "sin") {
       if (hits(mk)) {
-        const m = RE_SIN.exec(text);
+        const m = matchSin(text);
         out.push(`${m[1]}${m[3]}`);
       } else out.push(text);
       return;

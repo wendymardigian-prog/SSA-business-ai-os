@@ -54,6 +54,12 @@ describe("stripMarkers", () => {
     expect(stripMarkers(t, ["tareas"])).toBe(t);
   });
 
+  it("la forma 'sin' en JSX", () => {
+    const t = ["<div>", "  {/* " + P + "sin(tareas): {content} */}", "</div>"].join("\n");
+    expect(stripMarkers(t, ["tareas"])).toBe("<div>\n  {content}\n</div>");
+    expect(stripMarkers(t, ["ventas"])).toBe(t);
+  });
+
   it("valida los modulos si se le pasa la lista", () => {
     const t = `x(); ${q("ventaz")}`;
     expect(() => stripMarkers(t, ["ventas"], KNOWN)).toThrow(/modulo desconocido "ventaz"/);
