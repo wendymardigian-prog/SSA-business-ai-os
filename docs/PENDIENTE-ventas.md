@@ -30,7 +30,7 @@ Formato: **qué quedó · por qué · qué se decidió**.
 | D-10 | `bookings` como módulo de permisos | Solo es alcance | `sales` módulo propio; `ctx.scope("sales")` |
 | D-11 | Ventas después de Agenda | El grupo tiene Llamadas | Ventas va después de Llamadas |
 | D-12 | `ADMIN_PAGES` = 11 | Actividad suma una | Pasa a 12, a propósito |
-| D-13 | `date-fns` | No está; hay `dayjs` y `lib/dates.ts` | `lib/sales/dates.ts` |
+| D-13 | `date-fns` | No está; hay `dayjs` y `lib/dates.ts` | `lib/shared/dates.ts` |
 | D-14 | shadcn | No hay Button/Dialog/Select/Badge/Table | Se traduce a los componentes de SSA |
 | D-15 | Ficha de agenda = página; estado "asistió" | Panel lateral; grupo `outcome` | "Cargar venta" con estado del grupo `outcome` |
 | D-16 | Buscador de contactos reusable | Uno por módulo | `searchContactsForSale` |

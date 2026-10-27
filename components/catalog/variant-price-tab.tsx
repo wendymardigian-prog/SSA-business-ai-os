@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { setVariantPrice } from "@/lib/actions/products";
-import { formatAmount, formatMoney } from "@/lib/sales/format";
+import { formatAmount, formatMoney } from "@/lib/shared/format";
 import { ActionError } from "@/components/contacts/ui";
 import { Historial } from "@/components/historial/historial";
 import { fieldInput } from "@/components/content/dialog";

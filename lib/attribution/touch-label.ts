@@ -4,7 +4,7 @@
  */
 import { isChannel, mediumLabel, sourceLabel } from "@/lib/contacts/taxonomy";
 import { touchChannel, type TouchChannel, type TouchChannelInput } from "@/lib/attribution/channel";
-import { localDate } from "./dates";
+import { localDate } from "@/lib/shared/dates";
 
 export interface TouchNames {
   /** `content_posts.id` -> titulo. */

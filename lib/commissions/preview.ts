@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import { firstPaymentType } from "@/lib/sales/payment-plan";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { decodeUtm } from "@/lib/attribution/meta-match";
 import { commissionAmount, explainRule, payeeFor, type RuleDimension } from "./rules";
 import { ruleConditionsSchema } from "./rule-schema";

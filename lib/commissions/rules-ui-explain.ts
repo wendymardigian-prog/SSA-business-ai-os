@@ -5,7 +5,7 @@
  */
 import { formatUsd } from "@/lib/finance/format";
 import { FINANCING_TYPE_LABELS } from "@/lib/sales/labels";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import type { DescribeLookups } from "./describe";
 import type { CommissionPreviewRole, SkippedRule } from "./preview";
 import { PREVIEW_REASON_MESSAGES } from "./preview";

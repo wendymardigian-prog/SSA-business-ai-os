@@ -5,7 +5,7 @@
  */
 import type { PermissionContext } from "@/lib/auth/guards";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { financeContextOf } from "./context";
 import type { ExpenseCategory } from "./categories";
 import {

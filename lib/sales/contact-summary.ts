@@ -4,7 +4,7 @@
  * canónica que ya existe, y el nombre de la regla del último `audit_log` de
  * asignación automática (actor sistema).
  */
-import { attributionFromContact, describeAttribution } from "./attribution";
+import { attributionFromContact, describeAttribution } from "@/lib/attribution/attribution";
 
 export type AssignmentLineKind = "setter" | "vendedor";
 

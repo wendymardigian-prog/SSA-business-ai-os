@@ -10,7 +10,7 @@ import { parseAmountText } from "./expense-form";
 import { addDaysCivil, firstOccurrenceOnOrAfter, isValidCivil, nextOccurrence, validateRecurrenceRule, type CivilDate, type RecurrenceTemplate } from "./recurrence";
 import { LEAD_DAYS_MAX, normalizeTemplate, type RecurringTemplateInput, type RecurringTemplateRow } from "./recurring";
 import { weekdayOf } from "./dates";
-import { fromCents, toCents } from "@/lib/sales/money";
+import { fromCents, toCents } from "@/lib/shared/money";
 
 export type RecurringFrequencyValue = RecurringTemplateRow["frequency"];
 

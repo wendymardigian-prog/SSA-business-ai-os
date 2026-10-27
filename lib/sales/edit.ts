@@ -8,7 +8,7 @@
  *    Si después el cuadre se rompe, `plan_unbalanced = true` y se ofrece «Rearmar el plan».
  */
 import { checkDiscount, type Discount, type ProductSnapshot } from "./sale-math";
-import { fromCents, toCents, totalPaidCents } from "./money";
+import { fromCents, toCents, totalPaidCents } from "@/lib/shared/money";
 import { validatePlanBalances } from "./payment-plan";
 
 export const LOCKED_STATUSES = ["cancelled", "refunded", "disputed"] as const;

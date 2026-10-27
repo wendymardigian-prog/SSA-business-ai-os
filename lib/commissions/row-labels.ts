@@ -3,7 +3,7 @@
  * neto» o «USD 15 fijos») y la celda del gasto («Programado 5/11»). Puro: la lista y el CSV usan lo mismo.
  */
 import { formatUsd } from "@/lib/finance/format";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { formatRate } from "./describe";
 import { shortCivil, type CommissionStatusResult } from "./status";
 

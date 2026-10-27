@@ -6,7 +6,7 @@
  * El trigger `expenses_guard` de la base repite lo esencial (un pagado no cambia monto/fechas, un anulado no
  * se edita, un automático no se edita a mano): estas reglas dan el mensaje claro ANTES de llegar a la base.
  */
-import { fromCents, toCents } from "@/lib/sales/money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import { activeCategories, findCategory, type ExpenseCategory } from "./categories";
 import { isDateOnly, type CivilDate } from "./dates";
 import { isAutoOrigin, unpaidStatusFor, type ExpenseStatus } from "./expense-status";

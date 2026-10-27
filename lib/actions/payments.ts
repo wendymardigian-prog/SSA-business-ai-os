@@ -7,8 +7,8 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { diffFields, logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { wallClockToUtc } from "@/lib/scheduling/time/tz";
-import { localToday } from "@/lib/sales/dates";
-import { totalPaidCents } from "@/lib/sales/money";
+import { localToday } from "@/lib/shared/dates";
+import { totalPaidCents } from "@/lib/shared/money";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 import {

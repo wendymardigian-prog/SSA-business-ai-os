@@ -9,7 +9,7 @@ import { AddPaymentDialog, FeeCorrectionDialog, MarkPaidDialog, ReasonDialog, Re
 import { Historial } from "@/components/historial/historial";
 import { refundAdjustHref } from "@/lib/commissions/list-view";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import { PAYMENT_STATUS_LABELS } from "@/lib/sales/labels";
 import { paymentRows, tableFooter, type TablePayment } from "@/lib/sales/payment-table";
 import type { PaymentMethodDef } from "@/lib/sales/payment-methods";

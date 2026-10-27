@@ -10,7 +10,7 @@
  */
 import { effectivePrefill } from "@/lib/forms/prefill";
 import type { FormField } from "@/lib/forms/fields";
-import { fromCents, toCents } from "./money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import { snapshotText } from "./sale-text";
 import type { ContractLinkContext } from "@/lib/forms/contract/variables";
 

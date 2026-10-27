@@ -17,7 +17,7 @@
 import { z } from "zod";
 import { readAttribution, type AttributionTouch } from "@/lib/contacts/attribution";
 import { MEDIUMS, SOURCES, mediumLabel, sourceLabel } from "@/lib/contacts/taxonomy";
-import { daysBetween, localDate } from "./dates";
+import { daysBetween, localDate } from "@/lib/shared/dates";
 
 /** Las claves de `contact_touches.raw` que no tienen columna y que se conservan (v1.1, §0.0.4). */
 export const EXTRAS_KEYS = [

@@ -6,7 +6,7 @@
  * una sugerencia por persona, editable. **No se crea nada solo.**
  */
 import { z } from "zod";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 
 export const ADJUSTMENT_NOTES_MAX = 500;
 export const ADJUSTMENT_MAX_AMOUNT = 9_999_999_999.99;

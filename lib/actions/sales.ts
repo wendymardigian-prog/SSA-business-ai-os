@@ -11,7 +11,7 @@ import { logAudit } from "@/lib/audit";
 import { sanitizeSearch } from "@/lib/url-params";
 import { isProductStatus } from "@/lib/content/taxonomy";
 import { LOCKED_REASON, hasEditConflict, isLockedForEdit, lockedEditError, planRepricing, type EditField } from "@/lib/sales/edit";
-import { resolveSaleAttribution, TOUCH_COLUMNS, type TouchRow } from "@/lib/sales/attribution";
+import { resolveSaleAttribution, TOUCH_COLUMNS, type TouchRow } from "@/lib/attribution/attribution";
 import { attributionRequestSchema } from "@/lib/sales/create";
 import { registerManualSaleTouch } from "@/lib/sales/manual-touch";
 import { diffFields } from "@/lib/audit";
@@ -20,7 +20,7 @@ import { applySaleRules, createSaleInputSchema, mapCreateSaleError, type CreateS
 import { manualContactSchema, resolveFoundContact, type ManualContactInput } from "@/lib/sales/contacts";
 import { buildProductSnapshot } from "@/lib/sales/sale-math";
 import { hasPrice } from "@/lib/catalog/price";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { syncPaymentRelativeJobs } from "@/lib/sales/automation/relative";
 import type { Json } from "@/lib/types/database";
 

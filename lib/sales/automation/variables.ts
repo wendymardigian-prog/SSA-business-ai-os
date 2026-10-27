@@ -14,7 +14,7 @@
  * `sale.id` y `payment.id` también están: `{{form_link.*}}` firma el link con la venta del flujo.
  */
 import { ATTRIBUTION_TYPE_LABELS, paymentStatusLabel, saleStatusLabel, type AttributionType } from "../labels";
-import { formatMoney } from "../format";
+import { formatMoney } from "@/lib/shared/format";
 import { saleBalance } from "../sale-math";
 import { paymentMethodName } from "../payment-methods";
 import { snapshotText } from "../sale-text";

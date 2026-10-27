@@ -1,5 +1,5 @@
 /**
- * Dinero en pantalla. La plata se decide siempre en CÉNTIMOS enteros (`lib/sales/money.ts`); acá solo
+ * Dinero en pantalla. La plata se decide siempre en CÉNTIMOS enteros (`lib/shared/money.ts`); acá solo
  * se muestra. Siempre USD, dos decimales, punto de miles y coma decimal ("USD 1.240,00").
  */
 const NUMBER = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

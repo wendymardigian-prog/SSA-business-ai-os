@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { DialogField, fieldInput } from "@/components/content/dialog";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import { checkDiscount } from "@/lib/sales/sale-math";
 import { serviceStartHint } from "@/lib/sales/wizard/service-start";
 import type { WizardProduct, WizardVariant } from "@/lib/sales/wizard/catalog";

@@ -9,7 +9,7 @@
  * subconjunto que entiende el motor (`recurrence.ts`).
  */
 import { z } from "zod";
-import { fromCents, toCents } from "@/lib/sales/money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import { CATEGORY_KEY_RE } from "./categories";
 import type { RuleResult } from "./expense-rules";
 import {

@@ -11,7 +11,7 @@ import { formatUsd } from "@/lib/finance/format";
 import { REASON_MAX } from "@/lib/finance/expense-rules";
 import { isAutoOrigin } from "@/lib/finance/expense-status";
 import { formatCivilDate, receiptPickError } from "@/lib/finance/view";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 
 /**
  * Los diálogos de un gasto: pagar, revertir el pago y anular. Cada uno valida acá lo evidente y el servidor vuelve

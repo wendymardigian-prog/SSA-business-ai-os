@@ -5,7 +5,7 @@
  *
  * "Hoy" siempre lo resuelve quien llama con `localToday(now, workspace.timezone)`.
  */
-export { addDays, addMonths, daysBetween, isDateOnly, localDate, localToday } from "@/lib/sales/dates";
+export { addDays, addMonths, daysBetween, isDateOnly, localDate, localToday } from "@/lib/shared/dates";
 
 export type CivilDate = string;
 

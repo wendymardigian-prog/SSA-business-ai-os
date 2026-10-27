@@ -1,6 +1,6 @@
 import { PaymentsList, type PaymentsListData } from "@/components/sales/payments-list";
 import { requirePermission } from "@/lib/auth/guards";
-import { localToday } from "@/lib/sales/dates";
+import { localToday } from "@/lib/shared/dates";
 import { monthRange, paymentListRow, parsePaymentsFilters, PAYMENTS_PAGE_SIZE, paymentsQueryFilters, paymentsTotals, weekRange, type QueryFilter } from "@/lib/sales/payments-list";
 import { snapshotText } from "@/lib/sales/sale-text";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";

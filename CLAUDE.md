@@ -1025,7 +1025,7 @@ Catalogo de productos con precio versionado, atribucion y asignacion automatica 
 ## Lo que no se puede romper
 
 - **`sales` y `payments` los escribe SOLO el servidor** (Server Actions con el cliente de servicio, despues de `getPermissionAction`); la app lee con la RLS (`can_see_sale`). Los tipos Update/Insert son `Record<string, never>`: se escribe con `as never`.
-- **La plata va en centimos** (`lib/sales/money.ts`, `Number(x) || 0`). Siempre USD. La comision de **Whop esta en 0 %** hasta que Wendy confirme el porcentaje real.
+- **La plata va en centimos** (`lib/shared/money.ts`, `Number(x) || 0`). Siempre USD. La comision de **Whop esta en 0 %** hasta que Wendy confirme el porcentaje real.
 - **El precio vive en la VARIANTE** (`product_variants.price`, USD, 0 = sin precio: no se vende). No hay tabla de versiones (se borro en la 00169): la venta guarda el snapshot congelado del producto y su precio, y el historial de cambios de precio vive en `audit_log`. `create_sale` compara el precio de la variante con el que mostro el asistente (`price_changed`). `products` reemplazo a `content_offers`, que se **borro en la 00171** (12/10/2026, despues de desplegar; respaldo en `docs/ventas/respaldo-content-offers.json`): ya no existe ni su puente.
 - **El estado de la venta se deriva igual en SQL y en TypeScript** (`derive_sale_status` / `deriveSaleStatus`, mismos casos en `lib/sales/sale-status.cases.json`). Cuatro estados se escriben y ganan; un incobrable nunca deja llegar a `paid`.
 - **Un cambio = un evento = una ejecucion por flow.** Los triggers de base emiten con un `change_id` y `pickCanonicalTrigger` (dentro de `eventMatches`) elige un trigger ganador. Los eventos llevan solo escalares y nunca `booking_id`.

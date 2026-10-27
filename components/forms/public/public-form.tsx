@@ -7,7 +7,7 @@ import { attributionFromParams, parseCookieHeader, sanitizeAttribution } from "@
 import { effectiveAttribution, preferEmbeddedEntryUrl } from "@/lib/attribution/merge";
 import { cookieEnv, storedFromEffective } from "@/lib/attribution/browser";
 import { parseStored } from "@/lib/attribution/store";
-import { decodeAttr } from "@/lib/forms/embed-attr";
+import { decodeAttr } from "@/lib/attribution/embed-attr";
 import { hiddenValues, prefillFromParams } from "@/lib/forms/prefill";
 import { answerToText } from "@/lib/forms/responses";
 import { validateSubmission } from "@/lib/forms/submission-schema";

@@ -7,7 +7,7 @@
  *
  * Reglas que mandan en todo el archivo:
  *  - **Una division por cero es «—» (null), nunca 0.** Un CPL de 0 diria «gratis».
- *  - La plata del CRM viene en CENTAVOS y se pasa a dolares con `fromCents` (`lib/sales/money.ts`). Siempre USD.
+ *  - La plata del CRM viene en CENTAVOS y se pasa a dolares con `fromCents` (`lib/shared/money.ts`). Siempre USD.
  *  - Los nombres y el estado son los del CATALOGO (`meta_*`). Si el catalogo no tiene la fila (todavia no sincronizo),
  *    la tabla usa lo que ya traen los insights (`resolveRowInfo`): nombre, padre, campaña y conjunto.
  *  - Un objeto que solo tiene CRM (sin gasto en el periodo) aparece igual, con el gasto en «—».
@@ -22,7 +22,7 @@
  */
 
 import { ratio, groupByObject, type AdsRow, type GroupedRow } from "./ads";
-import { fromCents } from "@/lib/sales/money";
+import { fromCents } from "@/lib/shared/money";
 import { metaCountersOf, metaRatios, sumMetaCounters, sumOrNull, type MetaCounters, type MetaRatios } from "./ads-meta-metrics";
 
 export type CrmLevel = "campaign" | "adset" | "ad";

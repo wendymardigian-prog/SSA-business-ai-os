@@ -14,7 +14,7 @@
  */
 import { buildEmbedIframeUrl, isFormLink, parentAttributionFromSearch, parentUtmFromSearch, type EmbedConfig, type FormEmbedExtras, type ParentUtm } from "./url";
 import { attributionFromParams, parseCookieHeader } from "@/lib/attribution/collect";
-import { encodeAttr } from "@/lib/forms/embed-attr";
+import { encodeAttr } from "@/lib/attribution/embed-attr";
 import { pageAttribution, trackVisit, type TrackEnv } from "@/lib/attribution/browser";
 import { STORE_KEY } from "@/lib/attribution/store";
 import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";

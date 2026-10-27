@@ -3,7 +3,7 @@
  * ORIGINAL y el día en que se cobró, medidos en la zona del workspace (la misma lógica que
  * escribe `payments.paid_on`, de donde sale `delay_days`). Puro.
  */
-import { daysBetween, localDate } from "./dates";
+import { daysBetween, localDate } from "@/lib/shared/dates";
 
 /** Un cobro a las 23:50 locales del día del vencimiento es 0; a las 00:30 del siguiente, 1. */
 export function paymentDelayDays(originalDueDate: string | null | undefined, paidAt: Date | string | number, timeZone: string): number | null {

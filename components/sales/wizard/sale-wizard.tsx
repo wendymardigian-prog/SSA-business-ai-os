@@ -17,7 +17,7 @@ import type { WizardVariant } from "@/lib/sales/wizard/catalog";
 import { initialProduct } from "@/lib/sales/wizard/initial-product";
 import { resolveServiceStart } from "@/lib/sales/wizard/service-start";
 import { DEFAULT_ATTRIBUTION_STATE } from "@/lib/sales/attribution-field";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 
 const STEPS = ["Contacto", "Producto y precio", "Financiamiento"] as const;
 

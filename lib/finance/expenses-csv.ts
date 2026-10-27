@@ -6,7 +6,7 @@ import { toCsv, type CsvValue } from "@/lib/csv/write";
 import { categoryGroup, categoryName, CATEGORY_GROUP_LABELS, type ExpenseCategory } from "./categories";
 import { expenseOriginLabel, expenseStatusLabel } from "./expense-status";
 import type { ExpenseListRow } from "./expense-list";
-import { fromCents, toCents } from "@/lib/sales/money";
+import { fromCents, toCents } from "@/lib/shared/money";
 
 export const EXPENSES_CSV_HEADER = [
   "id", "fecha_programada", "fecha_pago", "concepto", "proveedor", "categoria", "grupo", "estado", "origen", "monto_usd", "responsable", "comprobante", "notas", "motivo_anulacion",

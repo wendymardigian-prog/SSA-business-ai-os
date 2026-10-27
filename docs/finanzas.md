@@ -19,7 +19,7 @@ El menú «Finanzas» lo ve quien tenga `expenses.view` o `commissions.view` (un
 - `expenses`, `recurring_expenses` y `vendors` (00225). Nada se borra: un gasto se **anula**, una plantilla se **pausa**, un proveedor se **archiva**. No hay política de DELETE.
 - `workspaces.finance_settings` (jsonb): las 12 categorías precargadas (con su grupo: Adquisición, Entrega, Operación u Otro), la configuración de los gastos automáticos y los días de cierre. Cada pantalla escribe SU clave; las Server Actions escriben con el cliente de servicio después de chequear el permiso (la política de `workspaces` sigue siendo de Admin).
 - Un gasto tiene **estado**: `por_revisar` (sin monto, lo dejó una plantilla variable), `programado`, `vencido`, `pagado`, `anulado`. La regla pura está en `lib/finance/expense-status.ts`.
-- La plata va en **céntimos enteros** (`lib/sales/money.ts`) y siempre en USD. Las fechas son civiles (`AAAA-MM-DD`) en la zona del negocio.
+- La plata va en **céntimos enteros** (`lib/shared/money.ts`) y siempre en USD. Las fechas son civiles (`AAAA-MM-DD`) en la zona del negocio.
 
 ## Lo que no se puede romper
 

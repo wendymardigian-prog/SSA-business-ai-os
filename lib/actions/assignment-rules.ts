@@ -8,7 +8,7 @@ import { dryRunAssignments, type DryRunRow } from "@/lib/assignment/dry-run";
 import { checkRuleConfig } from "@/lib/assignment/rules";
 import type { ContactForResolve } from "@/lib/assignment/resolve";
 import { ASSIGNMENT_KINDS, ASSIGNMENT_MODES, type AssignmentKind, type AssignmentMode } from "@/lib/assignment/types";
-import { manualAttribution } from "@/lib/sales/attribution";
+import { manualAttribution } from "@/lib/attribution/attribution";
 import { sanitizeSearch } from "@/lib/url-params";
 import type { Json } from "@/lib/types/database";
 

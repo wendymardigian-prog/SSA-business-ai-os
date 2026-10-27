@@ -16,7 +16,7 @@ import { effectiveAttribution, preferEmbeddedEntryUrl } from "@/lib/attribution/
 import { storedFromEffective } from "@/lib/attribution/browser";
 import { parseStored } from "@/lib/attribution/store";
 import { COOKIE_KEYS } from "@/lib/attribution/keys";
-import { decodeAttr } from "@/lib/forms/embed-attr";
+import { decodeAttr } from "@/lib/attribution/embed-attr";
 
 export interface BookingAttributionInput {
   /** Los parámetros de la URL de la página (o del iframe) tal cual. */

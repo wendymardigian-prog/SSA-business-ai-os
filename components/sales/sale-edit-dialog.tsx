@@ -12,7 +12,7 @@ import type { WizardConfig } from "@/components/sales/wizard/types";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { DEFAULT_ATTRIBUTION_STATE, type AttributionFieldState } from "@/lib/sales/attribution-field";
 import { isLockedForEdit, LOCKED_REASON } from "@/lib/sales/edit";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import { snapshotProductId } from "@/lib/sales/sale-text";
 
 export interface EditableSale {

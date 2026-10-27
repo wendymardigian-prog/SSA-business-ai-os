@@ -13,7 +13,7 @@ import { createNotification } from "@/lib/notifications/create";
 import { startOfDay } from "@/lib/dates";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { parseMetaConfig } from "@/lib/meta/accounts";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import type { FinanceDailyContext } from "@/lib/jobs/handlers/finance-daily";
 import {
   autoClosePaidDate, autoExpenseConcept, autoKey, monthsInWindow, parseAutoKey, shouldAutoClose, sumMetaSpendCents, sumProcessorFeeCents,

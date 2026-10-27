@@ -6,7 +6,7 @@
  *   - `CommissionRule` es una fila de `commission_rules` (§8.2), con las condiciones tipadas.
  *
  * La plata de los hechos viene en DÓLARES (numeric de la base); toda decisión de monto se toma en
- * céntimos (`lib/sales/money.ts`). Las fechas son civiles `AAAA-MM-DD`.
+ * céntimos (`lib/shared/money.ts`). Las fechas son civiles `AAAA-MM-DD`.
  */
 
 /** A quién se le paga un rol (F50). */

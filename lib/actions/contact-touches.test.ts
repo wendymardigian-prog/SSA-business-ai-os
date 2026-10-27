@@ -11,7 +11,7 @@ vi.mock("@/lib/workspace", () => ({
 }));
 
 const { listContactTouches } = await import("./contact-touches");
-const { TOUCHES_PAGE_SIZE } = await import("@/lib/sales/attribution");
+const { TOUCHES_PAGE_SIZE } = await import("@/lib/attribution/attribution");
 
 const touch = (n: number) => ({ id: `t${String(n).padStart(3, "0")}`, workspace_id: WS, contact_id: "c1", occurred_at: new Date(Date.UTC(2026, 9, 1, 0, n)).toISOString(), source: "instagram" });
 

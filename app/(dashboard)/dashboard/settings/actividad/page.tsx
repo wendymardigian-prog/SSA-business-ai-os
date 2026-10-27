@@ -2,8 +2,8 @@ import { ActivityScreen, type ActivityRow } from "@/components/settings/activity
 import { requirePermission } from "@/lib/auth/guards";
 import { ACTIVITY_PAGE_SIZE, ACTOR_TYPES, applyAuditFilters, auditFilters } from "@/lib/audit-query";
 import { HISTORY_COLUMNS } from "@/lib/audit-history";
-import { isDateOnly } from "@/lib/sales/dates";
-import { addDays } from "@/lib/sales/dates";
+import { isDateOnly } from "@/lib/shared/dates";
+import { addDays } from "@/lib/shared/dates";
 import { startOfDayUtc } from "@/lib/scheduling/time/tz";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";

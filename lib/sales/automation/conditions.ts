@@ -5,7 +5,7 @@
  * Sin dato, devuelven vacío («no tiene ninguna venta» no puede decir que el estado de su última venta
  * es «pagada»). Los booleanos devuelven `"true"` / `"false"`, los números, texto.
  */
-import { fromCents, toCents, totalPaidCents } from "../money";
+import { fromCents, toCents, totalPaidCents } from "@/lib/shared/money";
 import { INACTIVE_SALE_STATUSES } from "../labels";
 import { snapshotProductId } from "../sale-text";
 

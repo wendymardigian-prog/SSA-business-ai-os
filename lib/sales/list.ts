@@ -3,10 +3,10 @@
  * el chip de alcance. Puro: la página arma la consulta con esto y la RLS decide qué ve cada
  * persona (un Member con alcance `own` ve solo las suyas aunque la URL pida otro vendedor).
  */
-import { isDateOnly } from "./dates";
+import { isDateOnly } from "@/lib/shared/dates";
 import { ATTRIBUTION_TYPES, SALE_STATUSES } from "./labels";
 import { saleBalance, salePaid } from "./sale-math";
-import { describeAttribution, type SaleAttribution } from "./attribution";
+import { describeAttribution, type SaleAttribution } from "@/lib/attribution/attribution";
 import { CHANNELS, type TouchChannelKey } from "@/lib/contacts/taxonomy";
 import { snapshotText } from "./sale-text";
 

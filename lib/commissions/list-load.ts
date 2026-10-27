@@ -16,8 +16,8 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { financeContextOf } from "@/lib/finance/context";
 import { fetchAllPages } from "@/lib/finance/paginate";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
-import { toCents } from "@/lib/sales/money";
-import { addDays } from "@/lib/sales/dates";
+import { toCents } from "@/lib/shared/money";
+import { addDays } from "@/lib/shared/dates";
 import type { CommissionRole, CommissionRule } from "./types";
 import { COMMISSIONS_PAGE_SIZE, paidRange, type CommissionFilters, type CommissionGroupBy, type CommissionPill, type StatusTotals } from "./filters";
 import {

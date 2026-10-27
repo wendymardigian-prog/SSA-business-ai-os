@@ -3,7 +3,7 @@
  * acciones ofrece cada fila. Los cálculos de plata van en céntimos.
  */
 import { delayChip, type DelayChip } from "./delay";
-import { fromCents, toCents } from "./money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import { paymentMethodName, type PaymentMethodDef } from "./payment-methods";
 import { paymentStatusLabel, paymentTypeLabel } from "./labels";
 import { saleBalance, saleExpected, salePaid } from "./sale-math";

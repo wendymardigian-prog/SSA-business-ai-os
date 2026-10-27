@@ -6,7 +6,7 @@
  * "Subir es rojo" en los gastos: el color de una variación (`good`/`bad`) NO es la dirección de la flecha.
  */
 import type { ResolvedPeriod } from "@/lib/dashboards/period";
-import { fromCents } from "@/lib/sales/money";
+import { fromCents } from "@/lib/shared/money";
 import { CATEGORY_GROUP_HINTS, type CategoryGroup } from "./categories";
 import { addDays, localDate, monthKey, type CivilDate } from "./dates";
 import { expensesHref } from "./expense-filters";

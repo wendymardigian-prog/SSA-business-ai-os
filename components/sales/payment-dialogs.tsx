@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { addPayment, correctPaymentFee, createRefund, markPaymentPaid, markUncollectible, reschedulePayment, revertPayment, uploadPaymentReceipt, type PaymentActionResult } from "@/lib/actions/payments";
 import { SaleModal } from "@/components/sales/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import { selectableMethods, type PaymentMethodDef } from "@/lib/sales/payment-methods";
 import type { PartialOffer } from "@/lib/sales/payments-rules";
 

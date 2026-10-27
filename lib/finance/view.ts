@@ -3,7 +3,7 @@
  * el color de cada estado, de dónde salió un gasto, el aviso de diferencia y el link del CSV. Puro: los
  * componentes solo componen lo que sale de acá.
  */
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { CATEGORY_GROUPS, CATEGORY_GROUP_LABELS, type CategoryGroup, type ExpenseCategory } from "./categories";
 import { monthLabel } from "./dates";
 import { EXPENSE_STATUSES, isExpenseStatus, type StatusTone } from "./expense-status";

@@ -7,7 +7,7 @@ import { diffFields, logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { addDays, isDateOnly } from "@/lib/finance/dates";
 import { financeContextOf } from "@/lib/finance/context";
-import { fromCents, toCents } from "@/lib/sales/money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import type { Json } from "@/lib/types/database";
 import { commissionAdjustmentSchema, refundSuggestion } from "@/lib/commissions/adjustment";

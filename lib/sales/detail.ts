@@ -3,7 +3,7 @@
  * El saldo es final − cobrado neto: los reembolsos son filas cobradas con monto negativo
  * y restan solos; un incobrable NO cambia el saldo.
  */
-import { fromCents, toCents } from "./money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import { saleBalance, saleExpected, salePaid } from "./sale-math";
 
 export interface DetailPayment {

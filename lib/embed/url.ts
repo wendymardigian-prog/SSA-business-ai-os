@@ -98,7 +98,7 @@ export function filterHostParams(params: Record<string, string | undefined | nul
 export interface FormEmbedExtras {
   /** Los parametros de la URL de la pagina que embebe (se filtran aca). */
   hostParams?: Record<string, string | undefined | null>;
-  /** La atribucion y las cookies de esa pagina, ya codificadas (`lib/forms/embed-attr.ts`). */
+  /** La atribucion y las cookies de esa pagina, ya codificadas (`lib/attribution/embed-attr.ts`). */
   attr?: string | null;
   /** Atribucion de la URL de la pagina padre con las claves de formularios. */
   parentAttribution?: ParentAttribution;

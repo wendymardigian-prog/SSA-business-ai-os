@@ -26,7 +26,7 @@ import type { CallSectionRow } from "@/lib/calls/contact-section";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
 import type { WizardConfig, WizardInitial } from "@/components/sales/wizard/types";
 import { StatusChip as SaleStatusChip } from "@/components/sales/sales-list";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 
 export interface BookingDetailData {
   id: string;

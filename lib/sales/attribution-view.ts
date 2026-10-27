@@ -15,7 +15,7 @@ import { touchChannel, type TouchChannel, type TouchChannelInput } from "@/lib/a
 import { pieceHref } from "@/lib/contacts/attribution-view";
 import { channelLabel, isChannel, mediumLabel, sourceLabel } from "@/lib/contacts/taxonomy";
 import { adDetailHref } from "@/lib/meta/content-ad-summary";
-import type { SaleAttribution } from "./attribution";
+import type { SaleAttribution } from "@/lib/attribution/attribution";
 
 /** Lo que la venta guarda de su atribucion. */
 export interface ViewSale {

@@ -581,7 +581,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - Test: `verify-sales.mjs --block 2` sale 0.
 
 #### F10: La atribución de una venta (funciones puras)
-**Descripción:** `lib/sales/attribution.ts`. La atribución de la venta es **una copia congelada de un toque canónico**, leída con `readAttribution` / `contact_touches`, nunca de columnas `utm_*` planas.
+**Descripción:** `lib/attribution/attribution.ts`. La atribución de la venta es **una copia congelada de un toque canónico**, leída con `readAttribution` / `contact_touches`, nunca de columnas `utm_*` planas.
 - **Forma guardada** en `sales.attribution jsonb` (tipo `SaleAttribution`): `{touch_id, occurred_at, source, medium, campaign, content, term, ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid, referrer_url, landing_page, extras}`. **`extras`** (v1.1) es el objeto con las claves de `contact_touches.raw` que están en `lib/attribution/keys.ts` (`utm_id`, `gbraid`, `wbraid`, `msclkid`, `twclid`, `sccid`, `epik`, `rdt_cid`, `placement`, `fbp`, `fbc`, `ga_client_id`, `page_url`); se omite si no hay ninguna. La misma forma la arma `create_sale` en SQL para el modo `last_touch`. `content` sale de `contact_touches.content_label` (en `readAttribution` es `content`). Campos ausentes = omitidos (no `""`).
 - **`attributionFromTouch(touch)`**: arma `SaleAttribution` desde una fila de `contact_touches` (con su `id` como `touch_id`).
 - **`attributionFromContact(contact)`**: si no hay fila de toque disponible, usa `readAttribution(contact.attribution).last_touch` (sin `touch_id`). Devuelve `null` si el contacto no tiene ningún toque.
@@ -602,7 +602,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - `attributionFromTouch` DEBE mapear `content_label` → `content` y omitir los campos vacíos.
 - DADO un toque con `raw = {msclkid:"m1", fbc:"fb.1.1.x", foo:"z"}`, `attributionFromTouch` DEBE dar `extras = {msclkid:"m1", fbc:"fb.1.1.x"}` (sin `foo`); y `verify-sales.mjs` DEBE confirmar que `create_sale` en SQL guarda el mismo `extras` (paridad SQL/TS).
 - `describeAttribution` DEBE dar "Sin atribución" para `none` y "hace 3 días" con el reloj fijado.
-- Test: `lib/sales/attribution.test.ts` pasa (los 7 casos).
+- Test: `lib/attribution/attribution.test.ts` pasa (los 7 casos).
 
 #### F11: Componente "Atribución" (ver, editar, elegir otro toque)
 **Descripción:** `components/sales/attribution-field.tsx`, reusado en el paso 1 del asistente (F18) y en la edición de la venta (F26).
@@ -612,7 +612,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
   - **Cargar a mano:** `source` y `medium` con selectores de la taxonomía cerrada (con sus etiquetas), `campaign`, `content` y `term` libres.
   - "Volver al último toque" restaura el modo por defecto.
 - Lectura de toques por una Server Action `listContactTouches(contactId)` con `sales.view` y visibilidad del contacto (`can_see_contact`), con `.select` de columnas específicas.
-- La lógica de qué se muestra vive en `lib/sales/attribution.ts` (F10); el componente solo compone.
+- La lógica de qué se muestra vive en `lib/attribution/attribution.ts` (F10); el componente solo compone.
 
 **Criterios:**
 - CUANDO el contacto no tiene toques, el componente DEBE mostrar "Sin atribución" y el panel DEBE abrir directo en "Cargar a mano" (la lista de toques vacía no se ofrece).
@@ -1418,7 +1418,7 @@ Storage: payment-receipts (privado)
 - **Estados en toda pantalla nueva:** skeleton (`loading.tsx`), vacío con acción (`SettingsEmptyState` en Ajustes), error con "Reintentar" (`ActionError`) y toast de éxito.
 - **390 px:** sin scroll horizontal; las tablas pasan a cards con los datos principales; los modales a pantalla completa.
 - **Textos:** español con voseo, sin jerga.
-- **Dinero:** `$1.297,00`, a la derecha en tablas; negativos (reembolsos) en rojo y entre paréntesis. Formateo en `lib/sales/format.ts` (una sola función).
+- **Dinero:** `$1.297,00`, a la derecha en tablas; negativos (reembolsos) en rojo y entre paréntesis. Formateo en `lib/shared/format.ts` (una sola función).
 - **Fechas** en la zona del workspace; vencimientos con "vence en 3 días" / "venció hace 5 días".
 - **Chips de estado:** un color por estado en todas las pantallas (`lib/sales/status-colors.ts`), con etiqueta en castellano (`lib/sales/labels.ts`: Con pago pendiente, Reservada, Pagada, Con mora, Suscripción activa, Cancelada, Reembolsada, En disputa, Suscripción cancelada; Programado, Cobrado, Moroso, Incobrable, Reembolsado, Anulado).
 

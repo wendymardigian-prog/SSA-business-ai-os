@@ -4,7 +4,7 @@
  * Portado de `calculateTotalPaid` / `calculateBalance` de prevxcrm
  * (`sales-constants.ts`), que sumaban en flotante.
  */
-import { fromCents, sumCentsByStatus, toCents, totalPaidCents, type MoneyRow } from "./money";
+import { fromCents, sumCentsByStatus, toCents, totalPaidCents, type MoneyRow } from "@/lib/shared/money";
 
 export type Discount = { type: "amount"; value: unknown } | { type: "percent"; value: unknown } | null | undefined;
 

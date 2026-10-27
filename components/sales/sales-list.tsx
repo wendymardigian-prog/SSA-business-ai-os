@@ -12,7 +12,7 @@ import { searchPiecesForSale, type PieceOption } from "@/lib/actions/sales-attri
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
 import type { WizardConfig } from "@/components/sales/wizard/types";
 import { CHANNELS, CHANNEL_LABELS, MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "@/lib/contacts/taxonomy";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import { ATTRIBUTION_TYPE_LABELS, SALE_STATUS_LABELS, SALE_STATUSES, type SaleStatus } from "@/lib/sales/labels";
 import { PILLS, PILL_LABELS, countActiveSalesFilters, salesFiltersToParams, scopeChip, type Pill, type SaleListRow, type SalesFilters } from "@/lib/sales/list";
 import { saleStatusClasses } from "@/lib/sales/status-colors";

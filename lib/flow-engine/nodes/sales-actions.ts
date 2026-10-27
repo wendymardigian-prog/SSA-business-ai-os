@@ -16,7 +16,7 @@ import { interpolateVariables } from "../interpolate";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
-import { addDays } from "@/lib/sales/dates";
+import { addDays } from "@/lib/shared/dates";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { cancelSaleAsSystem, markPaidCore, rescheduleCore, type CoreContext } from "@/lib/sales/payments-core";
 

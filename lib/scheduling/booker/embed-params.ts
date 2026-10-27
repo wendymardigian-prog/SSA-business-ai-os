@@ -83,7 +83,7 @@ export interface EmbedParams {
   attribution: Record<string, string>;
   /**
    * Lo que mando el script del embed con la atribucion y las cookies de la web que lo contiene
-   * (`lib/forms/embed-attr.ts`), todavia codificado. Se decodifica y re-sanea en `bookingAttribution`.
+   * (`lib/attribution/embed-attr.ts`), todavia codificado. Se decodifica y re-sanea en `bookingAttribution`.
    */
   attr: string | null;
   /**

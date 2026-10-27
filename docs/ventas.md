@@ -34,7 +34,7 @@ Un pago **incobrable no baja el saldo**: una venta con uno nunca llega a `paid`.
 
 ## Plata
 
-Todo en **céntimos** (`lib/sales/money.ts`, `Number(x) || 0`). Siempre USD. La comisión del proveedor se congela al cobrar (`provider_fee_amount`); **Whop está en 0 %** hasta que se confirme el porcentaje real.
+Todo en **céntimos** (`lib/shared/money.ts`, `Number(x) || 0`). Siempre USD. La comisión del proveedor se congela al cobrar (`provider_fee_amount`); **Whop está en 0 %** hasta que se confirme el porcentaje real.
 
 ## Atribución y asignación
 

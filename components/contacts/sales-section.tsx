@@ -7,7 +7,7 @@ import { Section } from "./ui";
 import { StatusChip } from "@/components/sales/sales-list";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
 import type { WizardConfig } from "@/components/sales/wizard/types";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 
 export interface ContactSaleRow {
   id: string;

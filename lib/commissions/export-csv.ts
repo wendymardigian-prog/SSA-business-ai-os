@@ -6,7 +6,7 @@
  * la persona, y `cobrado` y `fee` (lo que cobró el negocio) salen vacíos, igual que en la ficha.
  */
 import { CSV_BOM, csvCell, type CsvValue } from "@/lib/csv/write";
-import { fromCents } from "@/lib/sales/money";
+import { fromCents } from "@/lib/shared/money";
 
 export const COMMISSIONS_CSV_HEADER = [
   "id", "fecha_cobro", "persona", "rol", "contacto", "producto", "financiamiento", "pago_numero", "metodo", "cobrado", "fee", "base", "calculo", "monto", "regla",

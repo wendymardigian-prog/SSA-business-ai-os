@@ -1,8 +1,8 @@
 "use server";
 
 import { getPermissionAction } from "@/lib/auth/guards";
-import { TOUCHES_PAGE_SIZE, TOUCH_COLUMNS, type TouchRow } from "@/lib/sales/attribution";
-import type { TouchNames } from "@/lib/sales/touch-label";
+import { TOUCHES_PAGE_SIZE, TOUCH_COLUMNS, type TouchRow } from "@/lib/attribution/attribution";
+import type { TouchNames } from "@/lib/attribution/touch-label";
 
 /**
  * Los toques de un contacto, para elegir con cuál se atribuye una venta (F11).
