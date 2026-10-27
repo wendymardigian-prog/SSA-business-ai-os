@@ -50,7 +50,8 @@ const D = (day, h, m, s) => `2026-09-${String(day).padStart(2, "0")}T${String(h)
 
 try {
   const { data: ws } = await svc.from("workspaces")
-    .insert({ name: "zz-test-dash", slug: `zz-test-dash-${Date.now()}`, lead_scope_enabled: true, unassigned_leads_visible_to_members: false })
+    .insert({ name: "zz-test-dash", slug: `zz-test-dash-${Date.now()}`, lead_scope_enabled: true, unassigned_leads_visible_to_members: false }) // @plantilla-quitar(proyecto)
+    // @plantilla-sin(proyecto):     .insert({ name: "zz-test-dash", slug: `zz-test-dash-${Date.now()}` })
     .select("id").single();
 
   const owner = await makeUser("dash-owner");

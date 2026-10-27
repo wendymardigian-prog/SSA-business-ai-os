@@ -62,9 +62,9 @@ async function setFlags(wsId, flags) {
   if ("lead_scope_enabled" in flags) st.scope = flags.lead_scope_enabled;
   if ("unassigned_leads_visible_to_members" in flags) st.unassigned = flags.unassigned_leads_visible_to_members;
   flagState.set(wsId, st);
-  const res = await svc.from("workspaces").update(flags).eq("id", wsId);
+  const res = await svc.from("workspaces").update(flags).eq("id", wsId); // @plantilla-quitar(proyecto)
   await leadScope.apply(wsId, st.scope ? (st.unassigned ? "own_unassigned" : "own") : "all");
-  return res;
+  return res; // @plantilla-quitar(proyecto)
 }
 
 try {
@@ -137,6 +137,7 @@ try {
       "pero NO ve un lead que tiene a otra persona asignada");
     await svc.from("contacts").delete().eq("id", ajeno.id);
   }
+  // @plantilla-desde(proyecto)
   if (POST_00136) {
     // Despues de la 00136 los interruptores viejos no cuentan: manda el rol.
     await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
@@ -149,6 +150,7 @@ try {
     await svc.from("workspaces").update({ lead_scope_enabled: true, unassigned_leads_visible_to_members: false }).eq("id", ws.id);
     await setFlags(ws.id, { unassigned_leads_visible_to_members: true });
   }
+  // @plantilla-hasta(proyecto)
 
   console.log("\n— Scope PRENDIDO, lead asignado al Member —");
   await setFlags(ws.id, { unassigned_leads_visible_to_members: false });

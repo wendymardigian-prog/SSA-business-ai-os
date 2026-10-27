@@ -1106,13 +1106,15 @@ export interface Database {
           global_keywords: Json | null;
           /** Frases que marcan "no contactar" al recibir un mensaje (migracion 00027). */
           opt_out_phrases: string[];
-          lead_scope_enabled: boolean;
-          unassigned_leads_visible_to_members: boolean;
+          lead_scope_enabled: boolean; // @plantilla-quitar(proyecto)
+          unassigned_leads_visible_to_members: boolean; // @plantilla-quitar(proyecto)
+          // @plantilla-desde(proyecto)
           /**
            * Si se guardan localmente los entrantes de los canales de Zernio
            * (Instagram). Apagado, el receptor no inserta (migracion 00053).
            */
           persist_zernio_inbound: boolean;
+          // @plantilla-hasta(proyecto)
           /**
            * Si se copia a nuestro Storage la media que llega por el chat
            * (00102). Apagado, el mensaje queda solo con la URL del proveedor,
@@ -1176,9 +1178,9 @@ export interface Database {
           ai_provider?: string;
           global_keywords?: Json | null;
           opt_out_phrases?: string[];
-          lead_scope_enabled?: boolean;
-          unassigned_leads_visible_to_members?: boolean;
-          persist_zernio_inbound?: boolean;
+          lead_scope_enabled?: boolean; // @plantilla-quitar(proyecto)
+          unassigned_leads_visible_to_members?: boolean; // @plantilla-quitar(proyecto)
+          persist_zernio_inbound?: boolean; // @plantilla-quitar(proyecto)
           persist_chat_media?: boolean;
           chat_media_retention_days?: number;
           agent_escalate_on_unreadable?: boolean;
@@ -1223,9 +1225,9 @@ export interface Database {
           ai_provider?: string;
           global_keywords?: Json | null;
           opt_out_phrases?: string[];
-          lead_scope_enabled?: boolean;
-          unassigned_leads_visible_to_members?: boolean;
-          persist_zernio_inbound?: boolean;
+          lead_scope_enabled?: boolean; // @plantilla-quitar(proyecto)
+          unassigned_leads_visible_to_members?: boolean; // @plantilla-quitar(proyecto)
+          persist_zernio_inbound?: boolean; // @plantilla-quitar(proyecto)
           persist_chat_media?: boolean;
           chat_media_retention_days?: number;
           agent_escalate_on_unreadable?: boolean;

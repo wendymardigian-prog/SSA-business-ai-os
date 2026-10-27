@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS public.contact_notes (
   CONSTRAINT contact_notes_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.contact_notes ENABLE ROW LEVEL SECURITY;
-COMMENT ON TABLE public.contact_notes IS 'Sin uso: las notas viven en contacts.notes. Nadie le escribe; purge_soft_deleted la sigue purgando.';
+COMMENT ON TABLE public.contact_notes IS 'Notas sueltas de un contacto, aparte de contacts.notes (el texto de la ficha). Las lee la herramienta del agente que consulta el CRM (campo notes); la fusion de contactos las mueve y purge_soft_deleted purga las borradas.';
 
 CREATE TABLE IF NOT EXISTS public.contact_status_changes (
   id uuid DEFAULT gen_random_uuid() NOT NULL,

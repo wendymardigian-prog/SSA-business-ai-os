@@ -219,6 +219,14 @@ export const MODULES = {
       "scripts/verify-inbound-webhooks.mjs",
     ],
   },
+  // No es un modulo de la app: lo que solo tiene sentido en el proyecto y no viaja a
+  // ninguna plantilla. Columnas que el sistema ya no lee (la plantilla no las crea),
+  // tests que fijan una migracion vieja del proyecto y comentarios que cuentan su
+  // historia. Se marca con @plantilla-quitar(proyecto) y compania; no tiene rutas.
+  proyecto: {
+    label: "Solo del proyecto (historia, objetos sin uso)",
+    paths: [],
+  },
   sitio: {
     label: "Sitio publico del clon",
     paths: ["app/(sitio)", "public/sitio", "lib/site", "app/sitemap.ts"],

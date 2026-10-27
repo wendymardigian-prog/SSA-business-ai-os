@@ -35,10 +35,7 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
   ai_api_key text,
   ai_provider text DEFAULT 'openai'::text NOT NULL,
-  lead_scope_enabled boolean DEFAULT true NOT NULL,
-  unassigned_leads_visible_to_members boolean DEFAULT false NOT NULL,
   opt_out_phrases jsonb DEFAULT '["no me contactes", "no me contacten", "no me escribas mas", "no me escriban mas", "no quiero recibir mensajes", "dejen de escribirme", "dejame de escribir", "dar de baja", "darme de baja", "stop", "unsubscribe", "basta"]'::jsonb NOT NULL,
-  persist_zernio_inbound boolean DEFAULT true NOT NULL,
   ai_daily_cost_limit_usd numeric(10,2),
   ai_monthly_cost_limit_usd numeric(10,2),
   timezone text DEFAULT 'UTC'::text NOT NULL,
@@ -77,10 +74,7 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   CONSTRAINT workspaces_opt_out_phrases_is_array CHECK ((jsonb_typeof(opt_out_phrases) = 'array'::text))
 );
 ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
-COMMENT ON COLUMN public.workspaces.lead_scope_enabled IS 'Sin uso: el alcance de leads sale del rol (workspace_roles.permissions.scopes.leads).';
-COMMENT ON COLUMN public.workspaces.unassigned_leads_visible_to_members IS 'Sin uso: lo reemplaza el alcance leads=own_unassigned del rol.';
 COMMENT ON COLUMN public.workspaces.opt_out_phrases IS 'Frases que marcan un contacto como "no contactar" cuando aparecen en un mensaje entrante. Se editan desde Ajustes. Se comparan por palabra completa, sin acentos ni mayusculas.';
-COMMENT ON COLUMN public.workspaces.persist_zernio_inbound IS 'Sin uso: los mensajes entrantes de los canales de Zernio se guardan siempre.';
 COMMENT ON COLUMN public.workspaces.ai_daily_cost_limit_usd IS 'Tope diario de gasto de IA de todo el workspace (todas las fuentes). NULL = sin tope global. Corte del dia en la zona del negocio.';
 COMMENT ON COLUMN public.workspaces.timezone IS 'Zona horaria IANA del negocio. Los dashboards cortan dias y semanas con esta zona. Default UTC.';
 COMMENT ON COLUMN public.workspaces.content_media_retention_days IS 'Dias que se conserva la media despues de publicada. 0 = no se borra nunca.';

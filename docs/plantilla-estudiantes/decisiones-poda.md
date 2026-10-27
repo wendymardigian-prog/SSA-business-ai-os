@@ -33,7 +33,7 @@ Los puntos marcados con **PREGUNTA** necesitan tu decisión. Todo lo demás es c
 
 Con cada tabla se van sus reglas de acceso, sus índices y sus automatismos internos.
 
-## 2. Datos (columnas) que se sacan de tablas que se quedan (18)
+## 2. Datos (columnas) que se sacan de tablas que se quedan (21)
 
 | Dónde | Dato | Por qué |
 |---|---|---|
@@ -46,6 +46,10 @@ Con cada tabla se van sus reglas de acceso, sus índices y sus automatismos inte
 | Negocio | `enabled_payment_methods`, `payment_methods`, `max_discount_percent`, `overdue_grace_days`, `sales_auto_create_flows` | Ajustes de Ventas y Pagos (métodos de pago, descuento máximo, días de gracia, flujos de cobranza). |
 | Negocio | `finance_settings` | Ajustes de Finanzas (categorías de gastos y gastos automáticos). |
 | Negocio | `commission_settings` | Roles de comisión. |
+| Negocio | `lead_scope_enabled`, `unassigned_leads_visible_to_members` | Interruptores viejos del alcance de leads. Ya no los lee nadie: el alcance sale del rol. |
+| Negocio | `persist_zernio_inbound` | Interruptor viejo para guardar o no los mensajes de Instagram. Ya no lo lee nadie: se guardan siempre. |
+
+La tabla de **notas sueltas** de un contacto (`contact_notes`) se queda: aunque la pantalla usa el texto de notas de la ficha, el agente la lee cuando consulta el CRM, y la fusión y la purga la tienen en cuenta.
 
 Además se borran dos índices (atajos de búsqueda) que solo servían a los módulos: el de las vistas de formularios en las analíticas y el de los trabajos programados de un pago.
 

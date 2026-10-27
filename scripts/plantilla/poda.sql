@@ -820,6 +820,15 @@ ALTER TABLE public.workspaces DROP COLUMN payment_methods;
 ALTER TABLE public.workspaces DROP COLUMN finance_settings;
 ALTER TABLE public.workspaces DROP COLUMN commission_settings;
 
+-- Negocio: tres interruptores que el sistema ya no lee (en el proyecto quedan con el
+-- comentario "Sin uso"). El alcance de leads sale del rol (scopes.leads = own,
+-- own_unassigned o all) y los mensajes entrantes se guardan siempre. Ninguna funcion
+-- ni politica los nombra; en el codigo, solo los tipos y dos scripts de verificacion,
+-- marcados para la plantilla.
+ALTER TABLE public.workspaces DROP COLUMN lead_scope_enabled;
+ALTER TABLE public.workspaces DROP COLUMN unassigned_leads_visible_to_members;
+ALTER TABLE public.workspaces DROP COLUMN persist_zernio_inbound;
+
 -- Indices de tablas que se quedan que solo servian a los modulos.
 DROP INDEX public.idx_analytics_forms;         -- eventos de vista y envio de formularios
 DROP INDEX public.idx_scheduled_jobs_payment;  -- jobs de un pago

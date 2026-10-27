@@ -342,19 +342,13 @@ export const COMMENT_REWRITES = {
     "Nombre del negocio que ven los leads (agenda, emails). NULL = el de la instalacion (NEXT_PUBLIC_BRAND_NAME).",
   "column public.workspaces.known_contacts_settings":
     'A quien van los chats de un conocido: {"by_channel": {"<channel_id>": "<user_id>"}, "default_user_id": "<user_id>"}. Sin nada, al Owner.',
-  "column public.workspaces.lead_scope_enabled":
-    "Sin uso: el alcance de leads sale del rol (workspace_roles.permissions.scopes.leads).",
   "column public.workspaces.opt_out_phrases":
     'Frases que marcan un contacto como "no contactar" cuando aparecen en un mensaje entrante. Se editan desde Ajustes. Se comparan por palabra completa, sin acentos ni mayusculas.',
-  "column public.workspaces.persist_zernio_inbound":
-    "Sin uso: los mensajes entrantes de los canales de Zernio se guardan siempre.",
   "column public.workspaces.scheduling_auto_create_flows": "Crear los 7 flujos sugeridos (apagados) al crear un evento.",
   "column public.workspaces.scheduling_public_base_url":
     "Dominio propio de las paginas publicas de agenda. null = NEXT_PUBLIC_APP_URL.",
   "column public.workspaces.timezone":
     "Zona horaria IANA del negocio. Los dashboards cortan dias y semanas con esta zona. Default UTC.",
-  "column public.workspaces.unassigned_leads_visible_to_members":
-    "Sin uso: lo reemplaza el alcance leads=own_unassigned del rol.",
   "column public.contact_touches.entry_url":
     "La URL de entrada completa de la visita (con todos sus parametros, sin sensibles ni fragmento). La escribe record_contact_touch. Puede traer datos de la persona: nunca se loguea.",
   "function public.approve_content_idea_v2":
@@ -406,7 +400,7 @@ export const COMMENT_REWRITES = {
   "table public.agent_runs":
     "Una fila por llamada a IA del sistema (source). Para el agente, un run = un turno. Solo la escribe el service role. Las columnas de tokens y costo solo son legibles por Owner/Admin via servidor (privilegio de columna).",
   "table public.contact_notes":
-    "Sin uso: las notas viven en contacts.notes. Nadie le escribe; purge_soft_deleted la sigue purgando.",
+    "Notas sueltas de un contacto, aparte de contacts.notes (el texto de la ficha). Las lee la herramienta del agente que consulta el CRM (campo notes); la fusion de contactos las mueve y purge_soft_deleted purga las borradas.",
   "table public.contact_touches": "Cada interaccion atribuible de un contacto. Solo la escribe el servidor.",
   "table public.conversation_assignment_rules":
     "Reglas de asignacion de conversaciones nuevas por cuenta conectada. Gana la primera activa que coincide (position). Escribe solo el servidor.",
