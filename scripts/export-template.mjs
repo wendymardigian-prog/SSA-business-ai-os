@@ -16,6 +16,15 @@
  *   node scripts/export-template.mjs [--out=../ruta]
  *
  * Sin --out, el destino es "../template-export" (carpeta hermana del repo).
+ * @plantilla-desde(proyecto)
+ *
+ * Con --perfil=<nombre> (por ejemplo `--perfil=estudiantes`) exporta una plantilla SIN
+ * algunos modulos: despues de la copia aplica el perfil de scripts/plantilla/perfiles/
+ * (ver scripts/plantilla/export-profile.mjs), corre los controles (tsc, eslint, vitest,
+ * next build, nombres e historia) y arma el git SOLO si todos pasan. Sin --out, el destino
+ * es "../template-export-<perfil>". --skip-gates no corre los controles ni arma el git
+ * (lo usa el test del export).
+ * @plantilla-hasta(proyecto)
  */
 
 import {
@@ -37,7 +46,9 @@ function arg(name) {
   return process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(`--${name}=`.length);
 }
 
-const outArg = arg("out") || "../template-export";
+const PERFIL = arg("perfil"); // @plantilla-quitar(proyecto)
+const outArg = arg("out") || (PERFIL ? `../template-export-${PERFIL}` : "../template-export"); // @plantilla-quitar(proyecto)
+// @plantilla-sin(proyecto): const outArg = arg("out") || "../template-export";
 const DEST = resolve(REPO_ROOT, outArg);
 
 // --- Que NO se copia -------------------------------------------------------
@@ -176,7 +187,7 @@ function selfCheck(dir, relDir, matches) {
 
 // --- Main --------------------------------------------------------------------
 
-function main() {
+async function main() {
   if (existsSync(DEST)) {
     console.error(`Ya existe "${DEST}". Borrala o elegi otro --out antes de exportar de nuevo.`);
     process.exit(1);
@@ -186,6 +197,29 @@ function main() {
   copyTree(REPO_ROOT, DEST, "");
   copySiteDefaults();
   console.log(`Copiados ${filesCopied} archivos.`);
+
+  // @plantilla-desde(proyecto)
+  if (PERFIL) {
+    const { exportWithProfile } = await import("./plantilla/export-with-profile.mjs");
+    const ok = await exportWithProfile({
+      repo: REPO_ROOT,
+      dest: DEST,
+      perfil: PERFIL,
+      skipGates: process.argv.includes("--skip-gates"),
+      selfCheck: (dir) => {
+        const matches = [];
+        selfCheck(dir, "", matches);
+        return matches;
+      },
+      gitInit: () => {
+        run("git", ["init"], DEST);
+        run("git", ["add", "-A"], DEST);
+        run("git", ["commit", "-m", `chore: punto de partida de la plantilla (${PERFIL})`], DEST);
+      },
+    });
+    process.exit(ok ? 0 : 1);
+  }
+  // @plantilla-hasta(proyecto)
 
   try {
     run("git", ["init"], DEST);
@@ -211,4 +245,4 @@ function main() {
   console.log(`Destino: ${DEST}`);
 }
 
-main();
+await main();
