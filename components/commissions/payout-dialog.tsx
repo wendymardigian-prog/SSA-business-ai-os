@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { generateCommissionPayout } from "@/lib/actions/commissions";
 import type { PayoutResult } from "@/lib/commissions/action-types";

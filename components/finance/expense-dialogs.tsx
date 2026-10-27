@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { markExpensePaid, revertExpensePayment, uploadExpenseReceipt, voidExpense } from "@/lib/actions/finance-expenses";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { amountToText, parseAmountText } from "@/lib/finance/expense-form";
 import { formatUsd } from "@/lib/finance/format";

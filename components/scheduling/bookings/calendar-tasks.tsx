@@ -4,8 +4,8 @@ import { useState, type DragEvent } from "react";
 import { CheckSquare, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { PRIORITY_DOT, STATUS_BORDER, monthChipText, undatedTasks, type TasksMode } from "@/lib/tasks/calendar-ui";
 import type { CalendarTaskItem } from "@/lib/tasks/calendar";
-import type { TimeFormat } from "@/lib/tasks/time";
-import { formatTime } from "@/lib/tasks/time";
+import type { TimeFormat } from "@/lib/calendar/time";
+import { formatTime } from "@/lib/calendar/time";
 import { PRIORITY_LABELS, STATUS_LABELS, type TaskRow } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
 

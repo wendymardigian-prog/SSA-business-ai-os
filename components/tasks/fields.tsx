@@ -2,7 +2,7 @@
 
 import { CalendarDays, Timer, X } from "lucide-react";
 import { formatDayLong } from "@/lib/tasks/format";
-import { formatDuration } from "@/lib/tasks/time";
+import { formatDuration } from "@/lib/calendar/time";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 

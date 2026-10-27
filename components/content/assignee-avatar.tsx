@@ -1,5 +1,5 @@
 import { Avatar } from "@/components/ui/filter-menu";
-import { colorOf, initialsOf } from "@/lib/tasks/people";
+import { colorOf, initialsOf } from "@/lib/shared/people";
 import type { AssigneeInfo } from "@/lib/content/assignee";
 
 /**

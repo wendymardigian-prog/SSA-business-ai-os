@@ -8,7 +8,7 @@
 
 import { BLOCKER_ERROR_MESSAGES } from "./dependencies";
 import { cleanProjectName } from "./project";
-import { isTimeOfDay, isValidDuration } from "./time";
+import { isTimeOfDay, isValidDuration } from "@/lib/calendar/time";
 import { TASK_LIMITS, type TaskPriority, type TaskRow, type TaskStatus } from "./types";
 
 export const EDITABLE_COLUMNS = ["status", "title", "owner", "followers", "project", "due", "priority"] as const;

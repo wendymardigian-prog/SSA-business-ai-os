@@ -3,7 +3,7 @@
 import { useId, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { fieldInput } from "@/components/content/dialog";
 import { VendorCombobox, type CreateVendorResult } from "@/components/finance/vendor-combobox";
 import { createRecurringTemplate, updateRecurringTemplate } from "@/lib/actions/finance-recurring";

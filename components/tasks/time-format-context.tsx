@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { TimeFormat } from "@/lib/tasks/time";
+import type { TimeFormat } from "@/lib/calendar/time";
 
 /**
  * El formato de hora (12 h / 24 h) de quien mira, para mostrar la hora de las tareas (R6). Sale del perfil de agenda de la

@@ -9,7 +9,7 @@ import { DialogField, fieldInput } from "@/components/content/dialog";
 import { AdjustmentDialog } from "@/components/commissions/adjustment-dialog";
 import { CommissionStatusChip, toneClasses } from "@/components/commissions/commission-chips";
 import { Historial } from "@/components/historial/historial";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { assignCommissionPerson, voidCommission } from "@/lib/actions/commissions";
 import type { DescribeLookups } from "@/lib/commissions/describe";
 import { allowedActions, attributionView, paymentLines, saleClosedChip, usedRuleText } from "@/lib/commissions/drawer-view";

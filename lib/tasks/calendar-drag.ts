@@ -9,7 +9,7 @@
 import { dateInTz, minutesOfDayInTz, wallClockToUtc } from "@/lib/scheduling/time/tz";
 import type { WallTime } from "@/lib/scheduling/types";
 import { formatTaskWhen } from "./format";
-import { minutesToTime, normalizeTime, type TimeFormat } from "./time";
+import { minutesToTime, normalizeTime, type TimeFormat } from "@/lib/calendar/time";
 import type { TaskRow } from "./types";
 
 /** Los pasos de la rejilla: 15 minutos. */

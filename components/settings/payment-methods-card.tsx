@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Plus } from "lucide-react";
 import { updatePaymentMethods } from "@/lib/actions/sales-settings";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { Switch } from "@/components/ui/switch";
 import { feePreviewText } from "@/lib/sales/fee-preview";

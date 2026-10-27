@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X } from "lucide-react";
 import { updateSale, type SaleActionResult } from "@/lib/actions/sales";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { AttributionField } from "@/components/sales/attribution-field";
 import { ContactSearch } from "@/components/sales/wizard/step1-contact";
 import { discountState } from "@/components/sales/wizard/step2-product";

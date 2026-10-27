@@ -23,7 +23,7 @@ import {
 } from "@/lib/contacts/statuses";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 
 const ROLE_HINTS: Record<StatusRole, string> = {

@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Check, Copy, FileText, Loader2, Mail, MessageCircle, Send } from "lucide-react";
 import { emailContractLink, generateContractLink, listContractForms, type ContractFormOption, type ContractLink } from "@/lib/actions/sales-contract";
 import { getContractPdfUrl } from "@/lib/actions/forms/contracts";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { Section } from "@/components/sales/sale-detail";
 import type { SaleContractsData } from "@/lib/sales/contracts-load";
 import { EMAIL_STATUS_LABELS } from "@/lib/forms/contract/status";

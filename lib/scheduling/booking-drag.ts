@@ -7,7 +7,7 @@
  * explicita.
  */
 
-import { minutesToTime } from "@/lib/tasks/time";
+import { minutesToTime } from "@/lib/calendar/time";
 import { minutesOfDayInTz, wallClockToUtc } from "./time/tz";
 import type { WallTime } from "./types";
 

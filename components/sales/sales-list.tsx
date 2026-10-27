@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import { ChevronLeft, ChevronRight, Filter, Plus, Search, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { ChannelChip } from "@/components/sales/channel-chip";
+import { ChannelChip } from "@/components/shared/channel-chip";
 import { SearchPicker } from "@/components/sales/search-picker";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
 import { searchPiecesForSale, type PieceOption } from "@/lib/actions/sales-attribution";

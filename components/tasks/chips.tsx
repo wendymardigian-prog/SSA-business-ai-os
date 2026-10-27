@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Circle, CircleDashed, CircleDot, Flag, Lock } from "lucide-react";
 import { Avatar } from "@/components/ui/filter-menu";
-import { colorOf, initialsOf } from "@/lib/tasks/people";
+import { colorOf, initialsOf } from "@/lib/shared/people";
 import { PRIORITY_LABELS, STATUS_LABELS, type TaskPriority, type TaskStatus } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
 

@@ -3,7 +3,7 @@
  */
 
 import { addDays, diffDays } from "./dates";
-import { formatTime, type TimeFormat } from "./time";
+import { formatTime, type TimeFormat } from "@/lib/calendar/time";
 import type { TaskRow, TaskSource } from "./types";
 
 /** dd/mm/aaaa */

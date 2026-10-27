@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { isDateOnly } from "./dates";
-import { DURATION_MAX, DURATION_MIN, isTimeOfDay } from "./time";
+import { DURATION_MAX, DURATION_MIN, isTimeOfDay } from "@/lib/calendar/time";
 import { cleanProjectName } from "./project";
 import { TASK_LIMITS, TASK_PRIORITIES, TASK_STATUSES } from "./types";
 

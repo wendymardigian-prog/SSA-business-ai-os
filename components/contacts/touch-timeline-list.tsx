@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { ChannelChip } from "@/components/sales/channel-chip";
+import { ChannelChip } from "@/components/shared/channel-chip";
 import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import type { TimelineItem } from "@/lib/contacts/touch-timeline";
 import { cn } from "@/lib/utils";

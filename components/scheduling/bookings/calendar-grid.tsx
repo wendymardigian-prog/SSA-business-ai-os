@@ -24,7 +24,7 @@ import { useOptionalTaskWorkbench } from "@/components/tasks/task-workbench";
 import { placeTasksInCalendar } from "@/lib/tasks/calendar";
 import { dropTarget, isSameDrop, movedMessage, snapMinutes, undoPatch, type TaskDropTarget } from "@/lib/tasks/calendar-drag";
 import { isDraggableTask, tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui";
-import { layoutOverlaps, type Span } from "@/lib/tasks/layoutOverlaps";
+import { layoutOverlaps, type Span } from "@/lib/calendar/layoutOverlaps";
 import type { TaskRow } from "@/lib/tasks/types";
 import { TaskCard, TaskMonthChip, TasksToggle, UndatedPanel } from "./calendar-tasks";
 import { useIsDesktop } from "./use-desktop";

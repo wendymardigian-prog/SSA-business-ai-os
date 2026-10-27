@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Loader2, Plus, SmilePlus } from "lucide-react";
-import { FloatingPanel } from "@/components/tasks/floating";
+import { FloatingPanel } from "@/components/shared/floating";
 import { EmojiPickerPanel } from "@/components/ui/emoji-picker";
 import type { ReactionCapability } from "@/lib/channels/reactions";
 import type { MessageReactionView } from "@/lib/messages/reactions";

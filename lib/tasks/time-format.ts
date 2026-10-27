@@ -5,7 +5,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { TimeFormat } from "./time";
+import type { TimeFormat } from "@/lib/calendar/time";
 
 export function asTimeFormat(value: unknown): TimeFormat {
   return value === "12h" ? "12h" : "24h";

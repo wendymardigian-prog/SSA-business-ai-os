@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { cancelSale, cancelSubscription, rebuildPlan, type SaleActionResult } from "@/lib/actions/sales";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { formatMoney } from "@/lib/shared/format";
 import { toCents } from "@/lib/shared/money";

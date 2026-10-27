@@ -7,7 +7,7 @@ import { CalendarClock, Loader2, Pause, Pencil, Play, Plus } from "lucide-react"
 import { PageHeader } from "@/components/page-header";
 import { FinanceTabs, ReadOnlyNote } from "@/components/finance/finance-tabs";
 import { RecurringFormDialog } from "@/components/finance/recurring-form-dialog";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { setRecurringActive } from "@/lib/actions/finance-recurring";
 import { ESTADO_FILTERS, ESTADO_LABELS, estadoHref, type RecurringListItem, type RecurringScreenData } from "@/lib/finance/recurring-list";
 import { emptyRecurringDraft, type RecurringDraft } from "@/lib/finance/recurring-form";

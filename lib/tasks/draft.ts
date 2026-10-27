@@ -8,7 +8,7 @@
 
 import type { CellPatch } from "./cell-edit";
 import { cleanProjectName } from "./project";
-import { normalizeTime } from "./time";
+import { normalizeTime } from "@/lib/calendar/time";
 import type { TaskPriority, TaskRow, TaskStatus } from "./types";
 
 export interface TaskValues {
