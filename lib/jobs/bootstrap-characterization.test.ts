@@ -27,41 +27,41 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "booking_ended",
       "booking_google_sync",
       "booking_relative_trigger",
-      "call_analyze",
-      "call_classify",
-      "call_index_knowledge",
-      "call_summary",
+      "call_analyze", // @plantilla-quitar(llamadas)
+      "call_classify", // @plantilla-quitar(llamadas)
+      "call_index_knowledge", // @plantilla-quitar(llamadas)
+      "call_summary", // @plantilla-quitar(llamadas)
       // Atribución orgánica (Extra I, AO1): el vínculo retroactivo de comentarios.
       "comment_backfill",
       "comment_backfill_workspace",
-      // Comisiones (Extra I, CM1): generar o revertir las de un pago.
-      "commissions_payment",
+      // Comisiones (Extra I, CM1): generar o revertir las de un pago. // @plantilla-quitar(comisiones)
+      "commissions_payment", // @plantilla-quitar(comisiones)
       "content_copy",
       "content_provider_schedule",
       "content_publish",
       "content_publish_check",
       "content_upload",
-      "contract_email",
-      "contract_pdf",
+      "contract_email", // @plantilla-quitar(formularios)
+      "contract_pdf", // @plantilla-quitar(formularios)
       "describe_media",
-      // Reporte de fin de día (E13): el recordatorio.
-      "eod_reminder_sweep",
-      "fathom_sync",
-      // Finanzas (Extra I, G1): el trabajo diario.
-      "finance_daily",
+      // Reporte de fin de día (E13): el recordatorio. // @plantilla-quitar(formularios)
+      "eod_reminder_sweep", // @plantilla-quitar(formularios)
+      "fathom_sync", // @plantilla-quitar(llamadas)
+      // Finanzas (Extra I, G1): el trabajo diario. // @plantilla-quitar(finanzas)
+      "finance_daily", // @plantilla-quitar(finanzas)
       // Auditoria de automatizaciones: el vencimiento de un "Esperar respuesta".
       "flow_wait_timeout",
       // Catalogo de Meta (Extra L, AT2): las miniaturas de los anuncios.
       "meta_ad_thumbnails",
       "meta_ads_sync",
       "metrics_sync",
-      // Ventas (B4): los recordatorios relativos al vencimiento de un pago y el barrido de mora.
-      "payment_relative_trigger",
-      "payments_overdue_sweep",
+      // Ventas (B4): los recordatorios relativos al vencimiento de un pago y el barrido de mora. // @plantilla-quitar(ventas)
+      "payment_relative_trigger", // @plantilla-quitar(ventas)
+      "payments_overdue_sweep", // @plantilla-quitar(ventas)
       // Ventas (B2): la asignacion automatica de un contacto.
       "sales_contact_eval",
-      // Tareas (Extra A, F18): el barrido de vencimientos.
-      "tasks_due_sweep",
+      // Tareas (Extra A, F18): el barrido de vencimientos. // @plantilla-quitar(tareas)
+      "tasks_due_sweep", // @plantilla-quitar(tareas)
       "transcribe_audio",
       // Atribucion (Extra L, Tiron 2, A1): el anuncio de origen de una conversacion de Instagram, desde Zernio.
       "zernio_ad_origin",

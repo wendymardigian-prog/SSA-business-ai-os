@@ -38,11 +38,11 @@ const NODOS_DE_ACCION = [
   // Banca de recursos en las automatizaciones.
   "sendAsset",
   // Tareas × CRM (R4).
-  "complete_task",
+  "complete_task", // @plantilla-quitar(tareas)
 ] as const;
 
 describe("registro de nodos", () => {
-  it("tiene los 32 tipos ejecutables", () => {
+  it("tiene todos los tipos ejecutables", () => {
     // 17 de la Fase 2, + pausar y reanudar el agente de IA (Fase 3),
     // + enviar email y las dos acciones de agenda (Etapa 4),
     // + enviar un recurso de la banca,
@@ -53,7 +53,8 @@ describe("registro de nodos", () => {
     // + `create_task` ("Crear tarea", Tareas, F22).
     // + `complete_task` ("Completar tarea", Tareas × CRM, R4).
     // + `send_whatsapp_number` ("Enviar WhatsApp a un número", Extra L Tirón 2, D3).
-    expect(listNodes()).toHaveLength(32);
+    expect(listNodes()).toHaveLength(32); // @plantilla-quitar(ventas,webhooks,tareas)
+    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(26);
   });
 
   it.each(NODOS_DE_ACCION)(

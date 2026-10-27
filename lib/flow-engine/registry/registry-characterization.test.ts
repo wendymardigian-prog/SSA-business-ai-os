@@ -25,8 +25,8 @@ const BEFORE: Array<[string, string, number, string[] | null]> = [
   ["booking_before_start", "scheduled", 45, ["booking_before_start"]],
   ["booking_after_end", "scheduled", 45, ["booking_after_end"]],
   ["booking_after_created", "scheduled", 45, ["booking_after_created"]],
-  ["call_analyzed", "event", 45, ["call_analyzed"]],
-  ["call_linked", "event", 45, ["call_linked"]],
+  ["call_analyzed", "event", 45, ["call_analyzed"]], // @plantilla-quitar(llamadas)
+  ["call_linked", "event", 45, ["call_linked"]], // @plantilla-quitar(llamadas)
   ["inactivity", "scheduled", 40, null],
   ["welcome", "message", 20, null],
   ["default", "message", 10, null],
@@ -43,7 +43,7 @@ describe("registro de triggers: lo que ya existía", () => {
     expect(def!.eventTypes ?? null).toEqual(eventTypes);
   });
 
-  it("la unión TriggerType y el CHECK de la base conocen los mismos 21 tipos de antes", () => {
+  it("la unión TriggerType y el CHECK de la base conocen los mismos tipos de antes", () => {
     const source = readFileSync("lib/types/database.ts", "utf8");
     const decl = source.slice(source.indexOf("export type TriggerType"));
     const block = decl.slice(0, decl.indexOf(";") + 1);

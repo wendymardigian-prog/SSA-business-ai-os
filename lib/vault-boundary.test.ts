@@ -113,17 +113,17 @@ const SERVER_ONLY = [
   // Formularios: calculan huellas con
   // `node:crypto` o cuentan topes con el cliente de servicio. Nada de esto puede
   // viajar al navegador.
-  { label: "lib/forms/contract-hash.ts", file: join(ROOT, "lib/forms/contract-hash.ts") },
+  { label: "lib/forms/contract-hash.ts", file: join(ROOT, "lib/forms/contract-hash.ts") }, // @plantilla-quitar(formularios)
   { label: "lib/antispam/rate-limit.ts", file: join(ROOT, "lib/antispam/rate-limit.ts") },
-  { label: "lib/forms/signed-link.ts", file: join(ROOT, "lib/forms/signed-link.ts") },
-  { label: "lib/forms/submit.ts", file: join(ROOT, "lib/forms/submit.ts") },
-  { label: "lib/forms/server-ports.ts", file: join(ROOT, "lib/forms/server-ports.ts") },
+  { label: "lib/forms/signed-link.ts", file: join(ROOT, "lib/forms/signed-link.ts") }, // @plantilla-quitar(formularios)
+  { label: "lib/forms/submit.ts", file: join(ROOT, "lib/forms/submit.ts") }, // @plantilla-quitar(formularios)
+  { label: "lib/forms/server-ports.ts", file: join(ROOT, "lib/forms/server-ports.ts") }, // @plantilla-quitar(formularios)
   // Contratos: generan el PDF (pdf-lib, que pesa y es solo de servidor), leen y escriben el
   // bucket privado y mandan el email con el adjunto.
-  { label: "lib/forms/contract/pdf.ts", file: join(ROOT, "lib/forms/contract/pdf.ts") },
-  { label: "lib/forms/contract/pdf-run.ts", file: join(ROOT, "lib/forms/contract/pdf-run.ts") },
-  { label: "lib/forms/contract/email-run.ts", file: join(ROOT, "lib/forms/contract/email-run.ts") },
-  { label: "lib/forms/contract/storage.ts", file: join(ROOT, "lib/forms/contract/storage.ts") },
+  { label: "lib/forms/contract/pdf.ts", file: join(ROOT, "lib/forms/contract/pdf.ts") }, // @plantilla-quitar(formularios)
+  { label: "lib/forms/contract/pdf-run.ts", file: join(ROOT, "lib/forms/contract/pdf-run.ts") }, // @plantilla-quitar(formularios)
+  { label: "lib/forms/contract/email-run.ts", file: join(ROOT, "lib/forms/contract/email-run.ts") }, // @plantilla-quitar(formularios)
+  { label: "lib/forms/contract/storage.ts", file: join(ROOT, "lib/forms/contract/storage.ts") }, // @plantilla-quitar(formularios)
   // Atribución orgánica (Extra I): firman y arman los links con seguimiento; leen el secreto de Vault.
   { label: "lib/attribution/tracked-link.ts", file: join(ROOT, "lib/attribution/tracked-link.ts") },
   { label: "lib/attribution/link-secret.ts", file: join(ROOT, "lib/attribution/link-secret.ts") },

@@ -103,7 +103,8 @@ describe("linkContacts delega la fusion en la base (R9)", () => {
 
   it("devuelve el principal y el resumen de lo que se unifico", async () => {
     const r = await linkContacts(DUP, MAIN);
-    expect(r).toMatchObject({ ok: true, contactId: MAIN, summary: "Se unificaron 2 conversaciones, 1 agenda, 1 venta y 3 tareas." });
+    expect(r).toMatchObject({ ok: true, contactId: MAIN, summary: "Se unificaron 2 conversaciones, 1 agenda, 1 venta y 3 tareas." }); // @plantilla-quitar(ventas,tareas)
+    // @plantilla-sin(ventas,tareas): expect(r).toMatchObject({ ok: true, contactId: MAIN, summary: "Se unificaron 2 conversaciones y 1 agenda." });
     expect(r.ok && r.notes).toEqual(["Se canceló 1 inscripción repetida a una secuencia."]);
   });
 

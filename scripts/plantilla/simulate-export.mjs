@@ -1,26 +1,28 @@
 #!/usr/bin/env node
-// Simula el export de una plantilla y corre el chequeo de tipos sobre la copia.
+// Simula el export de una plantilla y corre controles sobre la copia.
 //
-//   node scripts/plantilla/simulate-export.mjs [--perfil=estudiantes] [--out=carpeta] [--keep] [--no-tsc] [--buildinfo=archivo]
+//   node scripts/plantilla/simulate-export.mjs [--perfil=estudiantes] [--out=carpeta] [--keep]
+//        [--no-tsc] [--buildinfo=archivo] [--vitest] [--controles=tsc,eslint,vitest,build,historia]
+//        [--vitest-args="lib/agent --testTimeout=120000"]
 //
 // Con --buildinfo, tsc corre incremental guardando su estado en ese archivo (fuera de la copia):
 // la segunda corrida solo vuelve a mirar lo que cambio.
 //
 // Pasos:
 //   1. Copia el repo a una carpeta temporal (sin node_modules, .next, .git, .claude ni docs).
-//   2. Borra las rutas de los modulos que la plantilla no lleva (y pone sus reemplazos).
-//   3. Saca lo marcado con las marcas de la plantilla (ver markers.mjs) en cada archivo.
-//   4. Enlaza node_modules del repo (no lo copia).
-//   5. Corre `tsc --noEmit` con el tsconfig de la copia. Sale con 1 si hay errores.
+//   2. Aplica el perfil (export-profile.mjs): borra los modulos, saca lo marcado, pone las
+//      migraciones consolidadas de la plantilla y sus archivos propios.
+//   3. Enlaza node_modules del repo (no lo copia).
+//   4. Corre `tsc --noEmit` (salvo --no-tsc) y, con --vitest o --controles, los demas.
 //
-// No toca el repo. Es la prueba fuerte de que la plantilla compila sin los modulos;
-// la F4 la convierte en el export de verdad.
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+// No toca el repo. Es la prueba rapida; el export de verdad es
+// `node scripts/export-template.mjs --perfil=estudiantes`.
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { hasMarkers, stripMarkers } from "./markers.mjs";
+import { applyProfile, loadProfile, runGates } from "./export-profile.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "..", "..");
@@ -28,12 +30,10 @@ const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slic
 const flag = (name) => process.argv.includes(`--${name}`);
 
 const perfil = arg("perfil") ?? "estudiantes";
-const profile = await import(pathToFileURL(join(here, "perfiles", `${perfil}.mjs`)).href);
-const { MODULES, EXCLUDED, excludeTests = [], isToolingPath } = profile;
+const profile = await loadProfile(perfil);
 
 const out = resolve(arg("out") ?? mkdtempSync(join(tmpdir(), `plantilla-${perfil}-`)));
 const SKIP_TOP = new Set(["node_modules", ".next", ".git", ".claude", "docs", "tsconfig.tsbuildinfo", ".plantilla-work", "BITACORA.md"]);
-const TEXT = /\.(ts|tsx|mts|mjs|js|cjs|css|sql|json|md)$/;
 
 // 1. Copia
 if (existsSync(out) && readdirSync(out).length > 0 && arg("out")) rmSync(out, { recursive: true, force: true });
@@ -46,66 +46,24 @@ for (const name of readdirSync(repo)) {
   });
 }
 
-// 2. Borrar lo de los modulos (y las herramientas de la plantilla)
-const removed = [];
-const rm = (rel) => {
-  const p = join(out, rel);
-  if (existsSync(p)) {
-    rmSync(p, { recursive: true, force: true });
-    removed.push(rel);
-  }
-};
-for (const id of EXCLUDED) {
-  for (const rel of MODULES[id].paths) rm(rel);
-  for (const [dest, src] of Object.entries(MODULES[id].replacements ?? {})) {
-    cpSync(join(repo, src), join(out, dest), { recursive: true });
-  }
-}
-for (const t of excludeTests) if (t.modules.some((m) => EXCLUDED.includes(m))) rm(t.path);
-const walk = (dir, acc = []) => {
-  for (const name of readdirSync(join(out, dir))) {
-    const rel = dir ? `${dir}/${name}` : name;
-    if (rel === "node_modules") continue;
-    const st = statSync(join(out, rel));
-    if (st.isDirectory()) walk(rel, acc);
-    else acc.push(rel);
-  }
-  return acc;
-};
-for (const rel of walk("")) if (isToolingPath(rel)) rm(rel);
-
-// 3. Sacar lo marcado
-let stripped = 0;
-const errors = [];
-for (const rel of walk("")) {
-  if (!TEXT.test(rel)) continue;
-  const p = join(out, rel);
-  const text = readFileSync(p, "utf8");
-  if (!hasMarkers(text)) continue;
-  try {
-    const next = stripMarkers(text, EXCLUDED, Object.keys(MODULES));
-    if (next !== text) {
-      writeFileSync(p, next);
-      stripped++;
-    }
-  } catch (e) {
-    errors.push(`${rel}: ${e.message}`);
-  }
-}
-if (errors.length) {
-  console.error("Marcas con errores:\n" + errors.join("\n"));
+// 2. El perfil
+let summary;
+try {
+  summary = applyProfile({ repo, out, profile });
+} catch (e) {
+  console.error(e.message);
   process.exit(1);
 }
 
-// 4. node_modules
+// 3. node_modules
 symlinkSync(join(repo, "node_modules"), join(out, "node_modules"), "dir");
 
 console.log(`Copia en ${out}`);
-console.log(`Rutas borradas: ${removed.length}. Archivos con marcas aplicadas: ${stripped}.`);
+console.log(`Rutas borradas: ${summary.removed.length}. Archivos con marcas aplicadas: ${summary.stripped}.`);
 
-// 5. tsc
+// 4. Controles
 let code = 0;
-if (!flag("no-tsc")) {
+if (!flag("no-tsc") && !arg("controles")) {
   const tsc = spawnSync(join(repo, "node_modules", ".bin", "tsc"), ["--noEmit", ...(arg("buildinfo") ? ["--incremental", "--tsBuildInfoFile", resolve(arg("buildinfo"))] : ["--incremental", "false"]), "-p", out], {
     cwd: out,
     encoding: "utf8",
@@ -120,6 +78,14 @@ if (!flag("no-tsc")) {
     console.log(tsc.stdout + tsc.stderr);
     code = 1;
   } else console.log("tsc: 0 errores");
+}
+const only = arg("controles")?.split(",") ?? (flag("vitest") ? ["vitest"] : null);
+if (only) {
+  const vitestArgs = arg("vitest-args")?.split(/\s+/).filter(Boolean) ?? [];
+  for (const r of runGates(out, { only, vitestArgs })) {
+    console.log(`${r.name}: ${r.ok ? "ok" : "FALLA"} (${r.detail}, ${r.seconds} s) -> ${r.log}`);
+    if (!r.ok) code = 1;
+  }
 }
 if (!flag("keep") && code === 0 && !arg("out")) rmSync(out, { recursive: true, force: true });
 process.exit(code);

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkValues, listMigrations, migrationsDir, readMigration } from "@/lib/test-utils/migrations";
 import { PLATFORMS, PLATFORM_LABELS, isSupportedPlatform, platformLabel } from "./platforms";
 
 /**
@@ -46,8 +47,8 @@ describe("platform allowlist", () => {
     const dir = migrationsDir();
     const bundle = readFileSync(join(dir, "ALL_MIGRATIONS.sql"), "utf8");
     let cursor = 0;
-    for (const file of migrationFiles()) {
-      const body = readFileSync(join(dir, file), "utf8").trim();
+    for (const file of listMigrations()) {
+      const body = readMigration(file).trim();
       const at = bundle.indexOf(body, cursor);
       expect(at, `${file} missing from ALL_MIGRATIONS.sql or out of order`).toBeGreaterThan(-1);
       cursor = at + body.length;
@@ -55,38 +56,9 @@ describe("platform allowlist", () => {
   });
 });
 
-function migrationsDir(): string {
-  return join(__dirname, "..", "supabase", "migrations");
-}
-
-function migrationFiles(): string[] {
-  return readdirSync(migrationsDir())
-    .filter((f) => /^\d+_.*\.sql$/.test(f))
-    .sort();
-}
-
-/**
- * The platform list from the newest migration that redefines the constraint.
- *
- * Anclado al NOMBRE de la constraint (`channels_platform_check`) y no a
- * "aparece channels y despues platform": desde la etapa 2 hay otras tablas con
- * una columna `platform` y su propio CHECK (social_accounts), y la version
- * anterior de esta busqueda agarraba la ultima que encontraba.
- */
+/** La lista de plataformas del CHECK vigente de `channels.platform` (anclado al NOMBRE de la constraint). */
 function latestChannelsPlatformConstraint(): string[] {
-  const dir = migrationsDir();
-
-  for (const file of [...migrationFiles()].reverse()) {
-    const sql = readFileSync(join(dir, file), "utf8");
-    const match = sql.match(
-      /channels_platform_check[\s\S]*?check\s*\(\s*platform\s+in\s*\(([^)]*)\)/i
-    );
-    if (match) {
-      return match[1]
-        .split(",")
-        .map((v) => v.trim().replace(/^'|'$/g, ""))
-        .sort();
-    }
-  }
-  throw new Error("no migration defines the channels platform constraint");
+  const found = checkValues("channels_platform_check");
+  if (!found) throw new Error("no migration defines the channels platform constraint");
+  return [...found.values].sort();
 }

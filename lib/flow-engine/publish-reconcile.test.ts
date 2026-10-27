@@ -43,7 +43,7 @@ describe("publicar reconcilia todas las filas que arma el editor", () => {
     ["crm_event", { triggerType: "crm_event", event: "tag_added", value: "vip" }],
     ["new_contact", { triggerType: "new_contact" }],
     ["booking_created", { triggerType: "booking_created" }],
-    ["task_completed", { triggerType: "task_completed" }],
+    ["task_completed", { triggerType: "task_completed" }], // @plantilla-quitar(tareas)
   ])("%s: tres publicaciones dejan UNA fila", async (_type, data) => {
     const db = world(data);
     for (let i = 0; i < 3; i++) {

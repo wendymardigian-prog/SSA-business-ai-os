@@ -122,8 +122,9 @@ describe("Agenda en el menu (F8)", () => {
     const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { inbox: true } }).map((i) => i.name);
     // Plano formularios-ui (D4): Recursos ya no es un item (se llega por Ajustes) y Ajustes pide su bandera,
     // que aca no se pasa: un viewer sin flags no lo ve.
-    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]);
-    // (cambio aprobado M9: «Finanzas» se suma al Member de sistema, que tiene commissions.view)
+    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]); // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,tareas,formularios)
+    // @plantilla-sin(llamadas,ventas,finanzas,comisiones,tareas,formularios): expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Automatizaciones", "Agentes IA"]);
+    // (cambio aprobado M9: «Finanzas» se suma al Member de sistema, que tiene commissions.view) // @plantilla-quitar(comisiones)
     // Sin ningun permiso (y sin banderas), no queda nada.
     expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
     // Con la bandera de Ajustes, el Member suma Ajustes (llega a Recursos).
@@ -139,6 +140,7 @@ describe("Bandeja en el menu (00249)", () => {
   });
 });
 
+// @plantilla-desde(ventas)
 describe("Ventas en el menu (Etapa 5)", () => {
   const ventas = NAV_ITEMS.find((i) => i.name === "Ventas");
 
@@ -156,7 +158,9 @@ describe("Ventas en el menu (Etapa 5)", () => {
     expect(names([])).not.toContain("Ventas");
   });
 });
+// @plantilla-hasta(ventas)
 
+// @plantilla-desde(llamadas)
 describe("Llamadas en el menu", () => {
   const llamadas = NAV_ITEMS.find((i) => i.name === "Llamadas");
 
@@ -173,7 +177,9 @@ describe("Llamadas en el menu", () => {
     expect(names([])).not.toContain("Llamadas");
   });
 });
+// @plantilla-hasta(llamadas)
 
+// @plantilla-desde(formularios)
 describe("Formularios en el menu", () => {
   const formularios = NAV_ITEMS.find((i) => i.name === "Formularios");
 
@@ -195,6 +201,7 @@ describe("Formularios en el menu", () => {
     expect(names(true, [])).toContain("Formularios");
   });
 });
+// @plantilla-hasta(formularios)
 
 describe("Social en el menu (F78)", () => {
   const social = NAV_ITEMS.find((i) => i.name === "Social");
@@ -251,15 +258,19 @@ describe("grupos del menu (bloque N, N1)", () => {
   it("Dashboards, Bandeja y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
     const sueltos = NAV_ITEMS.filter((i) => i.group === "inicio").map((i) => i.name);
     // Tareas se mudo a Herramientas: ya no es un suelto.
-    expect(sueltos).toEqual(["Dashboards", "Bandeja", "Mi reporte del día"]);
+    expect(sueltos).toEqual(["Dashboards", "Bandeja", "Mi reporte del día"]); // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): expect(sueltos).toEqual(["Dashboards", "Bandeja"]);
   });
 
   it("el orden de los grupos e items es exactamente el del plano formularios-ui (F1)", () => {
     expect(NAV_GROUPS.map((g) => [g.id, NAV_ITEMS.filter((i) => i.group === g.id).map((i) => i.name)])).toEqual([
-      ["inicio", ["Dashboards", "Bandeja", "Mi reporte del día"]],
+      ["inicio", ["Dashboards", "Bandeja", "Mi reporte del día"]], // @plantilla-quitar(formularios)
+      // @plantilla-sin(formularios): ["inicio", ["Dashboards", "Bandeja"]],
       ["adquisicion", ["Contenido", "Social"]],
-      ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo
-      ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]],
+      ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones)
+      // @plantilla-sin(llamadas,ventas,finanzas,comisiones): ["ventas", ["Contactos", "Agenda"]],
+      ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)
+      // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Agentes IA", "Ajustes"]],
     ]);
   });
 
@@ -379,6 +390,7 @@ describe("navItemTooltip (bloque N, N3)", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 describe("Mi reporte del día (EOD, E10)", () => {
   const item = NAV_ITEMS.find((i) => i.name === "Mi reporte del día")!;
 
@@ -395,6 +407,7 @@ describe("Mi reporte del día (EOD, E10)", () => {
     expect(names({ eod: true }, true)).toContain("Mi reporte del día");
   });
 });
+// @plantilla-hasta(formularios)
 
 describe("Ajustes en el menu (plano formularios-ui, D4)", () => {
   const names = (viewer: { admin: boolean; settings?: boolean }) =>
@@ -417,7 +430,9 @@ describe("Ajustes en el menu (plano formularios-ui, D4)", () => {
   });
 
   it("el resto de los items lleva a su propio href", () => {
-    const formularios = NAV_ITEMS.find((i) => i.name === "Formularios")!;
-    expect(navItemHref(formularios, { permissionKeys: [] })).toBe("/dashboard/formularios");
+    const formularios = NAV_ITEMS.find((i) => i.name === "Formularios")!; // @plantilla-quitar(formularios)
+    expect(navItemHref(formularios, { permissionKeys: [] })).toBe("/dashboard/formularios"); // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): const contenido = NAV_ITEMS.find((i) => i.name === "Contenido")!;
+    // @plantilla-sin(formularios): expect(navItemHref(contenido, { permissionKeys: [] })).toBe("/dashboard/content");
   });
 });

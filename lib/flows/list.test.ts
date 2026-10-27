@@ -52,7 +52,7 @@ describe("conteos y origen", () => {
     expect(flowCounts(rows).status).toMatchObject({ all: 3, published: 1, archived: 1, draft: 1 });
   });
   it("flowOrigin", () => {
-    expect(flowOrigin({ form_id: "x" })).toBe("formularios");
+    expect(flowOrigin({ form_id: "x" })).toBe("formularios"); // @plantilla-quitar(formularios)
     expect(flowOrigin({ event_type_id: "x" })).toBe("agenda");
     expect(flowOrigin({ template_key: "task_payment_overdue" })).toBe("sistema");
     expect(flowOrigin({})).toBe("manual");

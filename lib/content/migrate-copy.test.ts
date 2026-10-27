@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync } from "node:fs"; // @plantilla-quitar(proyecto)
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 import {
   ideaContentFromLegacy,
@@ -79,6 +79,9 @@ describe("el texto de una idea o pieza vieja, sin perder nada (F90)", () => {
   });
 });
 
+// La migracion que paso el copy viejo al guion unico es historia del proyecto: una base nueva nace
+// sin las columnas viejas y no tiene nada que migrar.
+// @plantilla-desde(proyecto)
 describe("la 00117 hace lo mismo que legacy.ts (no se pueden separar)", () => {
   const sql = readFileSync("supabase/migrations/00117_content_single_text.sql", "utf8");
 
@@ -103,6 +106,7 @@ describe("la 00117 hace lo mismo que legacy.ts (no se pueden separar)", () => {
     expect(sql).not.toMatch(/DROP COLUMN/i);
   });
 });
+// @plantilla-hasta(proyecto)
 
 describe("las versiones viejas se siguen pudiendo leer (F90)", () => {
   const vieja: LegacyPostSnapshot = {

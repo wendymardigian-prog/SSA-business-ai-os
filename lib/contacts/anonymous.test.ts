@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { lastFunctionDefinition } from "@/lib/test-utils/migrations";
 import {
   PLACEHOLDER_NAMES,
   isPlaceholderName,
@@ -105,8 +105,9 @@ describe("profileUpdateFor", () => {
 
 describe("la lista de placeholders no se puede desincronizar del SQL", () => {
   it("los nombres del TS son los mismos que los de la migracion", () => {
-    const sql = readFileSync("supabase/migrations/00031_contact_profile_enrichment.sql", "utf8");
-    const bloque = sql.slice(sql.indexOf("is_placeholder_name"));
+    const def = lastFunctionDefinition("public.is_placeholder_name");
+    expect(def, "no encontre public.is_placeholder_name en las migraciones").not.toBeNull();
+    const bloque = def!.sql;
     const lista = bloque.slice(bloque.indexOf("IN ("), bloque.indexOf(");"));
 
     for (const nombre of PLACEHOLDER_NAMES) {

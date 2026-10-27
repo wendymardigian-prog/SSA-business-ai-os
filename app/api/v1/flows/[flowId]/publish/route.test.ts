@@ -20,7 +20,7 @@ const WS = "ws-1";
 // Una palabra clave necesita al menos una palabra para publicarse (auditoria de automatizaciones).
 const trigger = (triggerType: string) => ({ id: "t", type: "trigger", data: { triggerType, ...(triggerType === "keyword" ? { keywords: [{ value: "hola", matchType: "contains" }] } : {}) } });
 const whatsapp = { id: "m", type: "sendMessage", data: { label: "Enviar WhatsApp", messages: [] } };
-const upsert = { id: "u", type: "upsert_contact", data: {} };
+const upsert = { id: "u", type: "upsert_contact", data: {} }; // @plantilla-quitar(webhooks)
 
 const ACTIVE_CHANNEL = { id: "ch-1", workspace_id: WS, platform: "instagram", provider: "zernio", evolution_instance: null, is_active: true };
 const RESEND = { workspace_id: WS, type: "email_provider", provider: "resend", is_active: true };
@@ -47,6 +47,7 @@ const publish = () => POST({} as never, { params: Promise.resolve({ flowId: "f-1
 
 beforeEach(() => vi.clearAllMocks());
 
+// @plantilla-desde(webhooks)
 describe("POST /api/v1/flows/[flowId]/publish con el disparador de webhook", () => {
   it("«Enviar WhatsApp» antes de «Crear o actualizar contacto»: rechaza y no publica", async () => {
     const db = setup(
@@ -86,6 +87,7 @@ describe("POST /api/v1/flows/[flowId]/publish con el disparador de webhook", () 
     expect(db.rows("flows")[0].status).toBe("published");
   });
 });
+// @plantilla-hasta(webhooks)
 
 describe("POST /api/v1/flows/[flowId]/publish: una accion sin su conexion no se publica (G1)", () => {
   const email = { id: "e", type: "action", data: { actionType: "send_email", label: "Aviso por email", to: "fixed", fixedEmail: "a@b.com", subject: "x", body: "y" } };

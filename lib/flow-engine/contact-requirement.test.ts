@@ -101,6 +101,7 @@ describe("nodeNeedsContact: más allá de needsContact", () => {
   });
 });
 
+// @plantilla-desde(webhooks,formularios)
 describe("el sujeto del flujo y la validación de publicar", () => {
   it("un disparador de webhook es de sujeto webhook; los demás, no", () => {
     expect(flowSubject([trigger()])).toBe("webhook");
@@ -123,7 +124,9 @@ describe("el sujeto del flujo y la validación de publicar", () => {
     expect(memberFlowProblems([trigger("webhook_received"), whatsapp])).toEqual([]);
   });
 });
+// @plantilla-hasta(webhooks,formularios)
 
+// @plantilla-desde(webhooks,formularios,ventas)
 describe("los pasos de agenda y ventas piden la reunión o la venta del disparador, no un contacto suelto (Tirón 2, D2)", () => {
   const cancel: GraphNode = { id: "c", type: "action", data: { actionType: "cancel_booking", label: "Cancelar la reunión" } };
   const markPaid: GraphNode = { id: "p", type: "action", data: { actionType: "mark_payment_paid" } };
@@ -156,3 +159,4 @@ describe("los pasos de agenda y ventas piden la reunión o la venta del disparad
     expect(pathsMissingContact([trigger(), cancel], [edge("t", "c")])[0]).toMatchObject({ nodeId: "c", nodeType: "cancel_booking" });
   });
 });
+// @plantilla-hasta(webhooks,formularios,ventas)

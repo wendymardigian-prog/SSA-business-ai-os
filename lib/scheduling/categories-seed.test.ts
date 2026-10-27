@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { lastFunctionDefinition } from "@/lib/test-utils/migrations";
 import { SYSTEM_AREAS, canArchive } from "@/lib/scheduling/categories";
 
 /**
  * La lista de areas y tipos de sistema vive en dos lugares que tienen que decir lo mismo: el SQL que las precarga en
- * cada workspace (00240) y `SYSTEM_AREAS` del codigo (que usan los tests y la pantalla). Este test las compara.
+ * cada workspace (`seed_booking_categories_for_workspace`) y `SYSTEM_AREAS` del codigo (que usan los tests y la pantalla). Este test las compara.
  */
 
-const sql = readFileSync(join(process.cwd(), "supabase/migrations/00240_booking_areas_team_other.sql"), "utf8");
+// La ultima definicion de la funcion que precarga las areas (sin comentarios).
+const sql = lastFunctionDefinition("public.seed_booking_categories_for_workspace")?.sql ?? "";
 
 function seedFromSql(): Array<{ name: string; color: string; types: string[] }> {
   const values = sql.slice(sql.indexOf("FROM (VALUES"), sql.indexOf(") AS x(name, color, types)"));
@@ -20,7 +20,7 @@ function seedFromSql(): Array<{ name: string; color: string; types: string[] }> 
 }
 
 describe("las areas de sistema de la agenda", () => {
-  it("el SQL de 00240 y SYSTEM_AREAS son la misma lista, en el mismo orden", () => {
+  it("el SQL de la base y SYSTEM_AREAS son la misma lista, en el mismo orden", () => {
     expect(seedFromSql()).toEqual(SYSTEM_AREAS.map((a) => ({ name: a.name, color: a.color, types: [...a.types] })));
   });
 
@@ -49,15 +49,14 @@ describe("las areas de sistema de la agenda", () => {
     expect(canArchive({ is_system: true, parent_id: "x" }).ok).toBe(true);
   });
 
-  it("la migracion no pisa lo que el negocio ya tenia: respeta una area con el mismo nombre y no le agrega tipos", () => {
-    expect(sql).toMatch(/Ya existe \(de sistema o creada por el negocio\): se respeta tal cual/);
-    expect(sql).toContain("CONTINUE;");
+  it("la precarga no pisa lo que el negocio ya tenia: respeta una area con el mismo nombre y no le agrega tipos", () => {
+    expect(sql).toMatch(/IF v_area IS NOT NULL THEN\s+CONTINUE;/);
     // Nunca reclasifica reuniones: ni una sola sentencia sobre las tablas de reservas o eventos.
-    expect(sql.replace(/--.*$/gm, "")).not.toMatch(/UPDATE\s+public\.(bookings|event_types)/i);
+    expect(sql).not.toMatch(/UPDATE\s+public\.(bookings|event_types)/i);
   });
 
   it("es idempotente: no hay INSERT sin ON CONFLICT ni sin comprobar la existencia", () => {
-    const code = sql.replace(/--.*$/gm, "");
+    const code = sql;
     const inserts = code.match(/INSERT INTO public\.booking_categories/g) ?? [];
     const guarded = code.match(/ON CONFLICT DO NOTHING/g) ?? [];
     expect(inserts.length).toBe(guarded.length);

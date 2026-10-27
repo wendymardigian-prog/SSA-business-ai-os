@@ -132,8 +132,8 @@ describe("attributionPanelView", () => {
 
 describe("flowHasNoContact", () => {
   it("webhook y reporte de fin de día no tienen contacto; un mensaje sí", () => {
-    expect(flowHasNoContact("webhook_received")).toBe(true);
-    expect(flowHasNoContact("eod_submitted")).toBe(true);
+    expect(flowHasNoContact("webhook_received")).toBe(true); // @plantilla-quitar(webhooks)
+    expect(flowHasNoContact("eod_submitted")).toBe(true); // @plantilla-quitar(formularios)
     expect(flowHasNoContact("keyword")).toBe(false);
     expect(flowHasNoContact(undefined)).toBe(false);
   });

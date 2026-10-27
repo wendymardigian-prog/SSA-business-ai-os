@@ -117,6 +117,7 @@ describe("flujo de persona del equipo (sin contacto)", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 describe("memberFlowProblems (validacion de EOD)", () => {
   const trigger = { id: "n-trigger", type: "trigger", data: { triggerType: "eod_submitted" } };
 
@@ -135,3 +136,4 @@ describe("memberFlowProblems (validacion de EOD)", () => {
     expect(problems).toEqual([]);
   });
 });
+// @plantilla-hasta(formularios)

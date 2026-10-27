@@ -27,7 +27,8 @@ describe("plantillas de rol", () => {
 
   it("el Setter lleva la bandeja de todas las cuentas (asignadas + sin asignar, responde), contactos view/edit/assign y los contactos sin asignar", () => {
     const setter = templateById("setter")!;
-    for (const k of ["contacts.assign", "bookings.manage", "tasks.edit"]) expect(setter.keys).toContain(k);
+    for (const k of ["contacts.assign", "bookings.manage", "tasks.edit"]) expect(setter.keys).toContain(k); // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): for (const k of ["contacts.assign", "bookings.manage"]) expect(setter.keys).toContain(k);
     expect(setter.scopes.leads).toBe("own_unassigned");
     expect(setter.channels).toEqual({ mode: "all", all: { scope: "own_unassigned", reply: true } });
   });
@@ -38,7 +39,8 @@ describe("plantillas de rol", () => {
 
   it("el Líder de equipo es Setter + Closer + los extras, con alcance 'all'", () => {
     const leader = templateById("leader")!;
-    for (const k of [...templateById("setter")!.keys, ...templateById("closer")!.keys, "team.view", "eod.view_all", "dashboards.agenda.view", "data.export", "tasks.delete"]) {
+    for (const k of [...templateById("setter")!.keys, ...templateById("closer")!.keys, "team.view", "eod.view_all", "dashboards.agenda.view", "data.export", "tasks.delete"]) { // @plantilla-quitar(formularios,tareas)
+    // @plantilla-sin(formularios,tareas): for (const k of [...templateById("setter")!.keys, ...templateById("closer")!.keys, "team.view", "dashboards.agenda.view", "data.export"]) {
       expect(leader.keys).toContain(k);
     }
     expect(leader.scopes.leads).toBe("all");

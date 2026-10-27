@@ -1,10 +1,11 @@
 /**
- * El historial de productos y variantes lo escribe la BASE (trigger `catalog_audit`, 00170).
+ * El historial de productos y variantes lo escribe la BASE (trigger `catalog_audit`).
  * Si `lib/actions/products.ts` volviera a llamar a `logAudit` o a un helper `audit(...)`,
  * cada cambio quedaría registrado dos veces. Este test lo atrapa.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { lastDefinition } from "@/lib/test-utils/migrations";
 
 function code(file: string): string {
   return readFileSync(file, "utf8")
@@ -21,9 +22,13 @@ describe("el historial del catálogo no se escribe desde las acciones", () => {
     expect(source).not.toMatch(/from\("audit_log"\)/);
   });
 
-  it("la migración 00170 deja un trigger en products y otro en product_variants", () => {
-    const sql = readFileSync("supabase/migrations/00170_catalog_audit_triggers.sql", "utf8");
-    expect(sql).toMatch(/CREATE TRIGGER products_audit\s+AFTER INSERT OR UPDATE OR DELETE ON public\.products/);
-    expect(sql).toMatch(/CREATE TRIGGER product_variants_audit\s+AFTER INSERT OR UPDATE OR DELETE ON public\.product_variants/);
+  it("las migraciones dejan un trigger en products y otro en product_variants (alta, cambio y baja)", () => {
+    // Los tres eventos, en el orden que sea (la base los devuelve como INSERT OR DELETE OR UPDATE).
+    const events = "(?:INSERT|UPDATE|DELETE)(?:\\s+OR\\s+(?:INSERT|UPDATE|DELETE)){2}";
+    for (const [trigger, table] of [["products_audit", "products"], ["product_variants_audit", "product_variants"]]) {
+      const found = lastDefinition(new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?TRIGGER\\s+${trigger}\\s+AFTER\\s+(${events})\\s+ON\\s+public\\.${table}\\b`, "i"));
+      expect(found, trigger).not.toBeNull();
+      expect(new Set(found!.match[1].split(/\s+OR\s+/)), trigger).toEqual(new Set(["INSERT", "UPDATE", "DELETE"]));
+    }
   });
 });

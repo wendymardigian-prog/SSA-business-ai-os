@@ -38,11 +38,11 @@ const EXCLUDED = [
   "supabase/migrations/ALL_MIGRATIONS.sql",
 ];
 
-/** Sin comentarios (una clave nombrada en un comentario no decide nada) ni las listas de paridad de la 00208. */
+/** Sin comentarios (una clave nombrada en un comentario no decide nada) ni las listas de paridad de permisos. */
 function code(file: string, text: string): string {
   if (file.endsWith(".sql")) {
     return text
-      .replace(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+private\.(?:member_permission_keys|owner_only_keys)\(\)[\s\S]*?\$\$;/gi, "")
+      .replace(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+private\.(?:member_permission_keys|owner_only_keys)\(\)[\s\S]*?\$[A-Za-z_]*\$;/gi, "")
       .split("\n")
       .filter((l) => !l.trimStart().startsWith("--"))
       .join("\n");

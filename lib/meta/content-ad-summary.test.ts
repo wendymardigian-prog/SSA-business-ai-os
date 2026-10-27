@@ -139,7 +139,8 @@ describe("summaryTiles", () => {
 
   it("el orden es el de lectura y lo que no existe es un guion, no un cero", () => {
     const tiles = summaryTiles(summarizePieceAds({ ads: [ad("a")], insights: [], crm: null }), format);
-    expect(tiles.map((t) => t.key)).toEqual(["spend", "impressions", "clicks", "leadsNew", "leadsTotal", "cplNew", "cplTotal", "bookings", "sales"]);
+    expect(tiles.map((t) => t.key)).toEqual(["spend", "impressions", "clicks", "leadsNew", "leadsTotal", "cplNew", "cplTotal", "bookings", "sales"]); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): expect(tiles.map((t) => t.key)).toEqual(["spend", "impressions", "clicks", "leadsNew", "leadsTotal", "cplNew", "cplTotal", "bookings"]);
     expect(tiles.every((t) => t.value === "—")).toBe(true);
   });
 
@@ -148,7 +149,7 @@ describe("summaryTiles", () => {
     const byKey = Object.fromEntries(summaryTiles(s, format).map((t) => [t.key, t]));
     expect(byKey.cplNew.value).toBe("$50");
     expect(byKey.cplTotal.value).toBe("$25");
-    expect(byKey.sales.value).toBe("0"); // una venta en cero SÍ es un dato: el CRM respondió
+    expect(byKey.sales.value).toBe("0"); // una venta en cero SÍ es un dato: el CRM respondió // @plantilla-quitar(ventas)
     expect(byKey.leadsNew.tip).toMatch(/primer toque/);
     expect(byKey.leadsTotal.tip).toMatch(/algún toque/);
   });

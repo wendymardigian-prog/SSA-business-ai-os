@@ -143,6 +143,7 @@ describe("los tipos que no son de mensaje (arreglo colateral de la Etapa 4)", ()
     expect(rows[0].config).toEqual({});
   });
 
+  // @plantilla-desde(formularios)
   it("los tres triggers de Formularios guardan su configuracion entera (D-10)", () => {
     const conditions = { rootConjunction: "and", conditions: [{ fieldKey: "facturacion", operator: "gt", value: "10000" }], groups: [] };
     const rows = buildDesiredTriggers(
@@ -158,6 +159,7 @@ describe("los tipos que no son de mensaje (arreglo colateral de la Etapa 4)", ()
     expect(rows[1].config).toEqual({ form_ids: ["f2"], nps_categories: ["detractor"], score: { operator: "lte", value: 6 }, survey_categories: ["servicio"] });
     expect(rows[2].config).toEqual({});
   });
+  // @plantilla-hasta(formularios)
 
   it("un tipo que el registro no conoce se sigue descartando", () => {
     expect(buildDesiredTriggers([{ type: "trigger", data: { triggerType: "inventado" } }], "flow-1")).toEqual([]);

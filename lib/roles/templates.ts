@@ -25,15 +25,16 @@ const SETTER_KEYS = [
   "dashboards.chat.view",
   "contacts.view", "contacts.edit", "contacts.assign",
   "scheduling.use", "bookings.view", "bookings.manage",
-  "forms.view", "tasks.view", "tasks.edit",
+  "forms.view", // @plantilla-quitar(formularios)
+  "tasks.view", "tasks.edit", // @plantilla-quitar(tareas)
 ];
 
 const CLOSER_KEYS = [
   "contacts.view", "contacts.edit",
   "scheduling.use", "bookings.view", "bookings.manage",
-  "calls.view", "calls.edit",
-  "sales.view", "sales.manage", "payments.manage",
-  "tasks.view", "tasks.edit",
+  "calls.view", "calls.edit", // @plantilla-quitar(llamadas)
+  "sales.view", "sales.manage", "payments.manage", // @plantilla-quitar(ventas)
+  "tasks.view", "tasks.edit", // @plantilla-quitar(tareas)
 ];
 
 export const ROLE_TEMPLATES: RoleTemplate[] = [
@@ -63,7 +64,8 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     keys: [
       "dashboards.content.view", "social.view",
       "content.view", "content.create", "content.approve", "content.publish", "content.ai",
-      "templates.manage", "tasks.view", "tasks.edit",
+      "templates.manage",
+      "tasks.view", "tasks.edit", // @plantilla-quitar(tareas)
     ],
     scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "own", bookings: "own" },
@@ -73,7 +75,8 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     id: "leader",
     name: "Líder de equipo",
     description: "Todo lo del Setter y el Closer, y ve a todo el equipo.",
-    keys: [...new Set([...SETTER_KEYS, ...CLOSER_KEYS, "team.view", "eod.view_all", "dashboards.agenda.view", "data.export", "tasks.delete"])],
+    keys: [...new Set([...SETTER_KEYS, ...CLOSER_KEYS, "team.view", "eod.view_all", "dashboards.agenda.view", "data.export", "tasks.delete"])], // @plantilla-quitar(formularios,tareas)
+    // @plantilla-sin(formularios,tareas): keys: [...new Set([...SETTER_KEYS, ...CLOSER_KEYS, "team.view", "dashboards.agenda.view", "data.export"])],
     scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "all", bookings: "all" },
     channels: { mode: "all", all: { scope: "all", reply: true } },

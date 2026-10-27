@@ -37,42 +37,54 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
   it("Owner y Admin ven todo, en este orden y con estos grupos (plano formularios-ui, D1-D4)", () => {
     for (const role of ["owner", "admin"] as const) {
       expect(menuFor({ permissionKeys: keysOf(role), eod: true })).toEqual([
-        { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] },
+        { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] }, // @plantilla-quitar(formularios)
+        // @plantilla-sin(formularios): { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja"] },
         { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido", "Social"] },
-        // Extra I: Owner y Admin ganan «Finanzas» al final del grupo; el resto del orden no cambia.
-        { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"] },
-        { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] },
+        // Extra I: Owner y Admin ganan «Finanzas» al final del grupo; el resto del orden no cambia. // @plantilla-quitar(finanzas)
+        { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"] }, // @plantilla-quitar(llamadas,ventas,finanzas)
+        // @plantilla-sin(llamadas,ventas,finanzas): { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda"] },
+        { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] }, // @plantilla-quitar(tareas,formularios)
+        // @plantilla-sin(tareas,formularios): { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Agentes IA", "Ajustes"] },
       ]);
     }
   });
 
   it("el Member de sistema pierde Recursos y gana Ajustes; sigue sin Social (plano formularios-ui, D4)", () => {
     expect(menuFor({ permissionKeys: keysOf("member"), eod: true })).toEqual([
-      { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] },
+      { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] }, // @plantilla-quitar(formularios)
+      // @plantilla-sin(formularios): { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja"] },
       { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido"] },
-      // Cambio aprobado M9 (Extra I): el Member de sistema gana «Finanzas» (ve sus propias comisiones).
-      { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"] },
-      { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] },
+      // Cambio aprobado M9 (Extra I): el Member de sistema gana «Finanzas» (ve sus propias comisiones). // @plantilla-quitar(comisiones)
+      { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"] }, // @plantilla-quitar(llamadas,ventas,comisiones)
+      // @plantilla-sin(llamadas,ventas,comisiones): { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda"] },
+      { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"] }, // @plantilla-quitar(tareas,formularios)
+      // @plantilla-sin(tareas,formularios): { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Agentes IA", "Ajustes"] },
     ]);
   });
 
+  // @plantilla-desde(formularios)
   it("Mi reporte del dia solo aparece con la condicion del servidor, tambien para un admin", () => {
     const flat = (eod: boolean) => menuFor({ permissionKeys: [], eod }).flatMap((s) => s.items);
     expect(flat(true)).toContain("Mi reporte del día");
     expect(flat(false)).not.toContain("Mi reporte del día");
   });
+  // @plantilla-hasta(formularios)
 
+  // @plantilla-desde(formularios)
   it("un rol personalizado SIN forms.view no ve Formularios; CON forms.view si", () => {
     const sin = menuFor({ permissionKeys: ["social.view"] }).flatMap((s) => s.items);
     const con = menuFor({ permissionKeys: ["forms.view"] }).flatMap((s) => s.items);
     expect(sin).not.toContain("Formularios");
     expect(con).toContain("Formularios");
   });
+  // @plantilla-hasta(formularios)
 
+  // @plantilla-desde(formularios)
   it("forms.manage sola no muestra Formularios (el item pide forms.view)", () => {
     const items = menuFor({ permissionKeys: ["forms.manage"] }).flatMap((s) => s.items);
     expect(items).not.toContain("Formularios");
   });
+  // @plantilla-hasta(formularios)
 
   it("un rol personalizado sin ninguna clave solo ve lo que no pide permiso (plano formularios-ui, D1-D4)", () => {
     // Equipo y roles (B1): cada item pide su clave, asi que sin ninguna solo queda Ajustes (que pide la bandeja

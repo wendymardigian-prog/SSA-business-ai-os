@@ -64,6 +64,7 @@ describe("contact.*", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 describe("answer.*: la respuesta real, con la version con la que se respondio", () => {
   const vars = (id: string) => ({ submission: { id } });
 
@@ -120,6 +121,7 @@ describe("answer.*: la respuesta real, con la version con la que se respondio", 
     expect(await multi.definition.resolve({ supabase: db.client, argument: multi.argument, context: ctx(vars("sub-1")), contact: {} })).toBe("CRM, Ads");
   });
 });
+// @plantilla-hasta(formularios)
 
 describe("form.* / submission.* / booking.* / sale.* / payment.*: lo que deja el disparador", () => {
   const variables = {
@@ -131,19 +133,19 @@ describe("form.* / submission.* / booking.* / sale.* / payment.*: lo que deja el
     "flat.key": "plano",
   };
   it.each([
-    ["form.name", "Aplicación"],
-    ["submission.score", "9"],
-    ["submission.nps_category", "promoter"],
+    ["form.name", "Aplicación"], // @plantilla-quitar(formularios)
+    ["submission.score", "9"], // @plantilla-quitar(formularios)
+    ["submission.nps_category", "promoter"], // @plantilla-quitar(formularios)
     ["booking.status", "scheduled"],
     ["booking.answers.x", "1"],
-    ["sale.status", "Pagada"],
-    ["payment.method", "Transferencia"],
+    ["sale.status", "Pagada"], // @plantilla-quitar(ventas)
+    ["payment.method", "Transferencia"], // @plantilla-quitar(ventas)
   ])("%s", async (field, expected) => {
     expect(await typed(field, { variables })).toBe(expected);
   });
   it("lo que no esta es vacio, sin lanzar", async () => {
     expect(await typed("booking.nada", { variables })).toBeUndefined();
-    expect(await typed("form.name", { variables: {} })).toBeUndefined();
+    expect(await typed("form.name", { variables: {} })).toBeUndefined(); // @plantilla-quitar(formularios)
   });
   it("variablePathValue: clave plana con punto, anidada, objetos y arrays raros", () => {
     expect(variablePathValue({ "a.b": "plana" }, "a.b")).toBe("plana");
@@ -157,7 +159,7 @@ describe("form.* / submission.* / booking.* / sale.* / payment.*: lo que deja el
 
 describe("el registro", () => {
   it("las rutas con punto se reconocen por prefijo y las exactas, por nombre", () => {
-    expect(matchConditionField("answer.facturacion")).toMatchObject({ argument: "facturacion", definition: { prefix: "answer." } });
+    expect(matchConditionField("answer.facturacion")).toMatchObject({ argument: "facturacion", definition: { prefix: "answer." } }); // @plantilla-quitar(formularios)
     expect(matchConditionField("contact.tags")?.definition.prefix).toBe("contact.tags");
     expect(matchConditionField("booking.answers.x")?.argument).toBe("answers.x");
   });
@@ -170,12 +172,14 @@ describe("el registro", () => {
 
 describe("variableSchema de los triggers", () => {
   it("los de Formularios, Agenda y Ventas lo declaran; el resto no", () => {
-    for (const type of ["form_submitted", "survey_answered", "contract_signed", "booking_created", "booking_before_start", "sale_created", "payment_status_changed"]) {
+    for (const type of ["form_submitted", "survey_answered", "contract_signed", "booking_created", "booking_before_start", "sale_created", "payment_status_changed"]) { // @plantilla-quitar(formularios,ventas)
+    // @plantilla-sin(formularios,ventas): for (const type of ["booking_created", "booking_before_start"]) {
       expect(typeof getTrigger(type)?.variableSchema, type).toBe("function");
     }
     expect(getTrigger("keyword")?.variableSchema).toBeUndefined();
   });
 
+  // @plantilla-desde(formularios)
   it("form_submitted lee la version PUBLICADA de los formularios elegidos (y el borrador si nunca se publico)", async () => {
     const db = memoryDb({
       forms: [
@@ -199,10 +203,13 @@ describe("variableSchema de los triggers", () => {
     expect((await schema({}, { supabase: db.client, workspaceId: WS })).map((s) => s.path)).toEqual(["form.name"]);
     expect((await schema({ form_ids: "todos" }, { supabase: db.client, workspaceId: WS })).map((s) => s.path)).toEqual(["form.name"]);
   });
+  // @plantilla-hasta(formularios)
 
+  // @plantilla-desde(formularios)
   it("survey_answered suma puntaje y categoria NPS", async () => {
     const db = memoryDb({ forms: [], form_versions: [] });
     const out = await getTrigger("survey_answered")!.variableSchema!({}, { supabase: db.client, workspaceId: WS });
     expect(out.map((s) => s.path)).toEqual(["form.name", "submission.score", "submission.nps_category"]);
   });
+  // @plantilla-hasta(formularios)
 });

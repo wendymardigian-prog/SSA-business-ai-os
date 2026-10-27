@@ -1,7 +1,7 @@
 /**
- * Los once estados de agenda (F32) viven en dos lugares: la lista de
- * `booking-status.ts` y el CHECK de la migracion 00099. Este test lee el
- * archivo SQL y compara, para que agregar un estado en uno solo se note acá y
+ * Los once estados de agenda viven en dos lugares: la lista de
+ * `booking-status.ts` y el CHECK de `bookings.status` en las migraciones. Este test lee
+ * la ultima definicion y compara, para que agregar un estado en uno solo se note acá y
  * no en producción con un 23514.
  *
  * Tambien compara los grupos: el CASE de la columna calculada `status_group`
@@ -9,30 +9,29 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { checkValues, lastDefinition } from "@/lib/test-utils/migrations";
 import { BOOKING_STATUS_KEYS, groupOf, STATUS_GROUPS } from "./booking-status";
 import type { BookingStatus, StatusGroup } from "./types";
 
-const sql = readFileSync(join(process.cwd(), "supabase/migrations/00099_bookings.sql"), "utf8");
-
 function checkStatuses(): string[] {
-  const match = sql.match(/bookings_status_check CHECK \(status IN \(([\s\S]*?)\)\)/);
-  if (!match) throw new Error("no encontré el CHECK de bookings.status en la 00099");
-  return [...match[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  const found = checkValues("bookings_status_check");
+  if (!found) throw new Error("no encontré el CHECK de bookings.status en las migraciones");
+  return found.values;
 }
 
 /** El CASE de la columna calculada, leído del SQL. */
 function generatedGroups(): { pairs: Array<[string, string]>; fallback: string } {
-  const match = sql.match(/status_group\s+text GENERATED ALWAYS AS \(\s*CASE([\s\S]*?)END\s*\) STORED/);
-  if (!match) throw new Error("no encontré la columna calculada status_group en la 00099");
-  const body = match[1];
+  const found = lastDefinition(/status_group\s+text\s+GENERATED ALWAYS AS \(\s*CASE([\s\S]*?)END\s*\)\s*STORED/i);
+  if (!found) throw new Error("no encontré la columna calculada status_group en las migraciones");
+  const body = found.match[1];
   const pairs: Array<[string, string]> = [];
+  // Sirve escrito a mano (`WHEN status IN ('a', 'b') THEN 'x'`) o como lo devuelve la base
+  // (`WHEN (status = ANY (ARRAY['a'::text, 'b'::text])) THEN 'x'::text`).
   for (const line of body.split("\n")) {
-    const when = line.match(/WHEN status (?:IN \(([^)]*)\)|= '([a-z_]+)') THEN '([a-z_]+)'/);
+    const when = line.match(/WHEN([\s\S]*?)THEN\s+'([a-z_]+)'/);
     if (!when) continue;
-    const group = when[3];
-    const statuses = when[1] ? [...when[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]) : [when[2]];
+    const group = when[2];
+    const statuses = [...when[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
     for (const status of statuses) pairs.push([status, group]);
   }
   const fallback = body.match(/ELSE '([a-z_]+)'/)?.[1];

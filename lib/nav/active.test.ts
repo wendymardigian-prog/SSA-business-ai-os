@@ -68,6 +68,7 @@ describe("activeNavHref: gana el candidato mas largo (N4)", () => {
     expect(activeNavHref("/dashboard/knowledge/9f0d1b6e", NAV_ITEMS)).toBe("/dashboard/agents");
   });
 
+  // @plantilla-desde(formularios)
   it("Formularios queda marcado en todas sus subrutas (plano formularios-ui, F3)", () => {
     for (const pathname of [
       "/dashboard/formularios",
@@ -79,6 +80,7 @@ describe("activeNavHref: gana el candidato mas largo (N4)", () => {
       expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/formularios");
     }
   });
+  // @plantilla-hasta(formularios)
 
   it("Bandeja queda marcada desde drafts, broadcasts, sequences y growth", () => {
     for (const pathname of ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"]) {

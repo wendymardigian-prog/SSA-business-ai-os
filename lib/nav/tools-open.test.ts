@@ -16,14 +16,15 @@ describe("toolsOpen (plano formularios-ui, F2)", () => {
   });
 
   it("con la pantalla activa adentro se ve abierta aunque la persona la haya cerrado", () => {
-    expect(toolsOpen("0", "/dashboard/formularios")).toBe(true);
+    expect(toolsOpen("0", "/dashboard/formularios")).toBe(true); // @plantilla-quitar(formularios)
     expect(toolsOpen("0", "/dashboard/flows")).toBe(true);
     expect(toolsOpen("0", "/dashboard/agents")).toBe(true);
     expect(toolsOpen("0", "/dashboard/settings")).toBe(true);
   });
 
   it("con la pantalla activa adentro y sin nada guardado: abierta", () => {
-    expect(toolsOpen(null, "/dashboard/formularios")).toBe(true);
+    expect(toolsOpen(null, "/dashboard/formularios")).toBe(true); // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): expect(toolsOpen(null, "/dashboard/flows")).toBe(true);
   });
 
   it("un valor guardado raro no la abre", () => {
@@ -32,8 +33,9 @@ describe("toolsOpen (plano formularios-ui, F2)", () => {
 });
 
 describe("activeInsideTools", () => {
-  it("reconoce los cuatro items de Herramientas y nada mas", () => {
-    for (const href of ["/dashboard/flows", "/dashboard/formularios", "/dashboard/agents", "/dashboard/settings"]) {
+  it("reconoce los items de Herramientas y nada mas", () => {
+    for (const href of ["/dashboard/flows", "/dashboard/formularios", "/dashboard/agents", "/dashboard/settings"]) { // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): for (const href of ["/dashboard/flows", "/dashboard/agents", "/dashboard/settings"]) {
       expect(activeInsideTools(href)).toBe(true);
     }
     for (const href of ["/dashboard/inbox", "/dashboard/contacts", "/dashboard/ventas", null, undefined]) {

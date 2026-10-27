@@ -117,6 +117,8 @@ export const MODULES = {
       "lib/actions/sales-settings.test.ts",
       "lib/actions/payments.ts",
       "lib/actions/payments.test.ts",
+      "lib/actions/contact-touches.ts",
+      "lib/actions/contact-touches.test.ts",
       "lib/jobs/handlers/payment-relative.ts",
       "lib/jobs/handlers/payments-overdue-sweep.ts",
       "lib/jobs/handlers/payments-overdue-sweep.test.ts",
@@ -275,6 +277,20 @@ export const excludeTests = [
   { path: "lib/auth/roles-admin.test.ts", modules: SCOPES, why: "fija los alcances de los modulos" },
   { path: "lib/settings/permissions-characterization.test.ts", modules: SCOPES, why: "caracteriza los permisos con los alcances de los modulos" },
   { path: "lib/team/grant.test.ts", modules: SCOPES, why: "fija los alcances de los modulos" },
+  { path: "lib/team/grant.cases.test.ts", modules: SCOPES, why: "corre lib/team/grant.cases.json, que fija claves y alcances de los modulos (lo comparte con la base)" },
+  { path: "lib/auth/access-matrix.characterization.test.ts", modules: ["llamadas", "formularios", "ventas", "tareas", "finanzas", "comisiones", "webhooks"], why: "compara contra la foto access-matrix.baseline.json, que tiene las pantallas y acciones de los modulos" },
+  { path: "lib/flow-engine/member-flow.test.ts", modules: ["formularios"], why: "prueba los flujos de una persona del equipo con el disparador del fin de dia" },
+  { path: "lib/flow-engine/nodes/branch.test.ts", modules: ["formularios"], why: "arma cada caso con las respuestas de un formulario" },
+  { path: "lib/actions/flow-conditions.test.ts", modules: ["formularios"], why: "lee las preguntas del formulario del disparador" },
+  { path: "lib/dashboards/ads-columns.test.ts", modules: ["ventas"], why: "fija el catalogo de columnas de anuncios con las de ventas (Ventas, Revenue, Cash, ROAS...)" },
+  // Historia del proyecto: fijan una migracion vieja por su nombre (lo que cambio una reescritura de
+  // una funcion, o lo que hizo un paso de datos). La plantilla arranca con las migraciones consolidadas
+  // y no tiene esos archivos; lo que esas funciones garantizan hoy lo prueban los tests de paridad.
+  { path: "lib/contacts/c2-migrations-diff.test.ts", modules: ["proyecto"], why: "fija el diff de tres reescrituras de funciones de una migracion vieja" },
+  { path: "lib/contacts/record-touch-00215-diff.test.ts", modules: ["proyecto"], why: "fija el diff de una reescritura de record_contact_touch" },
+  { path: "lib/contacts/find-or-create-migration.test.ts", modules: ["proyecto"], why: "lee el archivo de la migracion que creo la regla unica de contactos" },
+  { path: "lib/scheduling/booking/create-booking-ad-ids.test.ts", modules: ["proyecto"], why: "fija el diff de una reescritura de create_booking" },
+  { path: "lib/dashboards/ads-guide.test.ts", modules: ["proyecto"], why: "compara con docs/atribucion.md, y docs/ no viaja a la plantilla" },
 ];
 
 /** Paquetes de npm que solo usa un modulo (el export los saca del package.json). */
@@ -282,6 +298,15 @@ export const PACKAGES = {
   "@tanstack/react-table": ["tareas"],
   "pdf-lib": ["formularios"],
 };
+
+/** De donde salen supabase/migrations, supabase/seeds y supabase/config.toml de la plantilla. */
+export const SUPABASE_DIR = "plantilla-estudiantes/supabase";
+
+/**
+ * Archivos propios de la plantilla (CLAUDE.md, README.md, .env.example, .claude/...): el export
+ * los copia encima de los del proyecto, con la misma ruta relativa. La carpeta no viaja.
+ */
+export const TEMPLATE_FILES = "scripts/template-files/estudiantes";
 
 /**
  * Carpetas de herramientas de quien mantiene la plantilla: no son parte de lo que se

@@ -120,7 +120,8 @@ describe("cuando se puede abrir una celda", () => {
 
 describe("lo que acepta el servidor", () => {
   it("las cuatro metricas y fechas civiles", () => {
-    for (const m of ["leads_new", "leads_total", "bookings", "sales"]) expect(isCellMetric(m)).toBe(true);
+    for (const m of ["leads_new", "leads_total", "bookings", "sales"]) expect(isCellMetric(m)).toBe(true); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): for (const m of ["leads_new", "leads_total", "bookings"]) expect(isCellMetric(m)).toBe(true);
     for (const m of ["uf_cash", "cash", "", 3, null]) expect(isCellMetric(m)).toBe(false);
     expect(isCivilDate("2026-10-14")).toBe(true);
     for (const d of ["2026-10-14T00:00:00Z", "14/10/2026", "2026-13-45", "", null, 20261014]) expect(isCivilDate(d), String(d)).toBe(false);

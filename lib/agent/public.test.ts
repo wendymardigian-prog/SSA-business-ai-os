@@ -1,5 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { listMigrations, readMigration, stripSqlComments } from "@/lib/test-utils/migrations";
 import { describe, it, expect } from "vitest";
 import { AGENT_RUN_COST_COLUMNS, AGENT_RUN_PUBLIC_COLUMNS, channelAgentInfo } from "./public";
 
@@ -10,13 +9,12 @@ import { AGENT_RUN_COST_COLUMNS, AGENT_RUN_PUBLIC_COLUMNS, channelAgentInfo } fr
  * Es lo que la base hace de verdad; la constante tiene que coincidir.
  */
 function agentRunsSchemaFromMigrations() {
-  const dir = join(process.cwd(), "supabase/migrations");
-  const files = readdirSync(dir).filter((f) => /^\d+_.*\.sql$/.test(f)).sort();
+  const files = listMigrations();
   const columns = new Set<string>();
   let granted = new Set<string>();
 
   for (const file of files) {
-    const sql = readFileSync(join(dir, file), "utf8").replace(/--[^\n]*/g, "");
+    const sql = stripSqlComments(readMigration(file));
 
     const create = sql.search(/CREATE TABLE IF NOT EXISTS public\.agent_runs\s*\(/i);
     if (create >= 0) {

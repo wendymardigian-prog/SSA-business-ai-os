@@ -188,7 +188,8 @@ export type TriggerSubject = "contact" | "member" | "webhook" | "system";
 export type AutomationSourceType = "contact" | "member" | "webhook" | "task" | "form" | "booking" | "sale" | "call" | "system";
 
 /** Los orígenes que admite la base (el CHECK de 00218). Una sola lista: la usan el motor, los tests y los scripts. */
-export const AUTOMATION_SOURCE_TYPES: readonly AutomationSourceType[] = ["contact", "member", "webhook", "task", "form", "booking", "sale", "call", "system"];
+export const AUTOMATION_SOURCE_TYPES: readonly AutomationSourceType[] = ["contact", "member", "webhook", "task", "form", "booking", "sale", "call", "system"]; // @plantilla-quitar(webhooks,tareas,formularios,ventas,llamadas)
+// @plantilla-sin(webhooks,tareas,formularios,ventas,llamadas): export const AUTOMATION_SOURCE_TYPES: readonly AutomationSourceType[] = ["contact", "member", "booking", "system"];
 
 /** De dónde viene la ejecución de un flujo. `id` es la entidad que lo disparó (envío, evento, persona…). */
 export interface AutomationSource {

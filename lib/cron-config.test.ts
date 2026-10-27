@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { lastFunctionDefinition } from "@/lib/test-utils/migrations";
 
 /**
  * Cada cron nuevo reescribe `private.call_app_cron` entera (patron desde la
@@ -33,30 +34,10 @@ function repoRoot(): string {
   return join(__dirname, "..");
 }
 
-function stripSqlComments(sql: string): string {
-  return sql
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("--"))
-    .join("\n");
-}
-
 function latestCallAppCronBody(): string {
-  const dir = join(repoRoot(), "supabase", "migrations");
-  const files = readdirSync(dir)
-    .filter((f) => /^\d+_.*\.sql$/.test(f))
-    .sort();
-  const header = /CREATE OR REPLACE FUNCTION private\.call_app_cron\(/;
-  let latest: string | null = null;
-  for (const file of files) {
-    const sql = stripSqlComments(readFileSync(join(dir, file), "utf8"));
-    const match = header.exec(sql);
-    if (match) {
-      const rest = sql.slice(match.index);
-      latest = rest.slice(0, rest.indexOf("END; $$;") + "END; $$;".length);
-    }
-  }
+  const latest = lastFunctionDefinition("private.call_app_cron");
   if (!latest) throw new Error("no se encontro ninguna definicion de private.call_app_cron");
-  return latest;
+  return latest.sql;
 }
 
 function whitelist(body: string): string[] {

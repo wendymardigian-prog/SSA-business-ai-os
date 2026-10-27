@@ -178,25 +178,25 @@ describe("los tres tipos nuevos estan registrados", () => {
       "booking_rescheduled",
       "booking_status_changed",
       "booking_updated",
-      "call_analyzed",
-      "call_linked",
-      "contract_signed",
+      "call_analyzed", // @plantilla-quitar(llamadas)
+      "call_linked", // @plantilla-quitar(llamadas)
+      "contract_signed", // @plantilla-quitar(formularios)
       "crm_event",
       "email_received",
-      // Reporte de fin de día (E16): el primero sin contacto.
-      "eod_submitted",
-      "form_submitted",
+      // Reporte de fin de día (E16): el primero sin contacto. // @plantilla-quitar(formularios)
+      "eod_submitted", // @plantilla-quitar(formularios)
+      "form_submitted", // @plantilla-quitar(formularios)
       "new_contact",
-      "payment_created",
-      "payment_status_changed",
-      "sale_created",
-      "sale_status_changed",
-      "survey_answered",
-      // Tareas (F25): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto.
-      "task_completed",
-      "task_overdue",
-      // Webhooks entrantes (Extra L): de evento, pero corre directo y no por la cola.
-      "webhook_received",
+      "payment_created", // @plantilla-quitar(ventas)
+      "payment_status_changed", // @plantilla-quitar(ventas)
+      "sale_created", // @plantilla-quitar(ventas)
+      "sale_status_changed", // @plantilla-quitar(ventas)
+      "survey_answered", // @plantilla-quitar(formularios)
+      // Tareas (F25): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto. // @plantilla-quitar(tareas)
+      "task_completed", // @plantilla-quitar(tareas)
+      "task_overdue", // @plantilla-quitar(tareas)
+      // Webhooks entrantes (Extra L): de evento, pero corre directo y no por la cola. // @plantilla-quitar(webhooks)
+      "webhook_received", // @plantilla-quitar(webhooks)
     ]);
     // Los tres relativos de agenda y los dos de pagos (antes y despues del
     // vencimiento) los agenda un job, igual que inactividad.
@@ -205,8 +205,8 @@ describe("los tres tipos nuevos estan registrados", () => {
       "booking_after_end",
       "booking_before_start",
       "inactivity",
-      "payment_after_due",
-      "payment_before_due",
+      "payment_after_due", // @plantilla-quitar(ventas)
+      "payment_before_due", // @plantilla-quitar(ventas)
     ]);
   });
 

@@ -28,6 +28,7 @@ describe("triggers registrados", () => {
     }
   });
 
+  // @plantilla-desde(llamadas)
   it("Llamadas suma exactamente call_analyzed y call_linked, de alcance evento y prioridad 45", () => {
     const byType = new Map(listTriggers().map((t) => [t.type, t]));
     for (const type of ["call_analyzed", "call_linked"]) {
@@ -41,7 +42,9 @@ describe("triggers registrados", () => {
     // + los dos de Tareas (task_completed, task_overdue).
     expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2);
   });
+  // @plantilla-hasta(llamadas)
 
+  // @plantilla-desde(formularios)
   it("Formularios suma exactamente form_submitted, survey_answered y contract_signed, de alcance evento y prioridad 45", () => {
     const byType = new Map(listTriggers().map((t) => [t.type, t]));
     for (const type of ["form_submitted", "survey_answered", "contract_signed"]) {
@@ -52,7 +55,9 @@ describe("triggers registrados", () => {
       expect(t.eventTypes).toEqual([type]);
     }
   });
+  // @plantilla-hasta(formularios)
 
+  // @plantilla-desde(ventas)
   it("Ventas suma exactamente seis triggers de prioridad 45: cuatro de evento y dos relativos (scheduled)", () => {
     const byType = new Map(listTriggers().map((t) => [t.type, t]));
     for (const type of ["sale_created", "sale_status_changed", "payment_created", "payment_status_changed", "payment_before_due", "payment_after_due"]) {
@@ -63,6 +68,7 @@ describe("triggers registrados", () => {
       expect(t.scope).toBe(type.endsWith("_due") ? "scheduled" : "event");
     }
   });
+  // @plantilla-hasta(ventas)
 
   it("el orden de prioridad de los de mensaje sigue igual", () => {
     const order = listTriggers("message").map((t) => t.type);
@@ -81,6 +87,7 @@ describe("triggers registrados", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 describe("reporte de fin de día (E16)", () => {
   it("eod_submitted es el ÚNICO disparador sin contacto; todos los demás siguen siendo sobre un contacto", () => {
     const members = listTriggers().filter((t) => t.subject === "member").map((t) => t.type);
@@ -91,7 +98,9 @@ describe("reporte de fin de día (E16)", () => {
     expect(listTriggers().filter((x) => x.type !== "eod_submitted" && x.type !== "webhook_received").every((x) => (x.subject ?? "contact") === "contact")).toBe(true);
   });
 });
+// @plantilla-hasta(formularios)
 
+// @plantilla-desde(webhooks)
 describe("webhooks entrantes (Extra L)", () => {
   it("webhook_received es el ÚNICO disparador de sujeto webhook, de alcance evento, sin cola de eventos", () => {
     const webhook = listTriggers().filter((t) => t.subject === "webhook").map((t) => t.type);
@@ -102,3 +111,4 @@ describe("webhooks entrantes (Extra L)", () => {
     expect(t.eventTypes).toBeUndefined();
   });
 });
+// @plantilla-hasta(webhooks)

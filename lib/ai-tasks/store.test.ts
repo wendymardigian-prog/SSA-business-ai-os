@@ -93,8 +93,7 @@ describe("loadTaskInstructions", () => {
 
 describe("las tareas con instrucciones son las mismas en los tres lugares", () => {
   it("catalogo (instructions.editable) = DEFAULT_TEXT = CHECK de la ultima migracion que lo toca", async () => {
-    const { readdirSync, readFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
+    const { checkValues } = await import("@/lib/test-utils/migrations");
     const { AI_TASK_IDS, AI_TASKS } = await import("./catalog");
     const { DEFAULT_TEXT } = await import("./store");
 
@@ -102,14 +101,7 @@ describe("las tareas con instrucciones son las mismas en los tres lugares", () =
     const fromDefaults = Object.keys(DEFAULT_TEXT).sort();
 
     // El CHECK vigente es el de la ultima migracion que lo redefine.
-    const dir = join(process.cwd(), "supabase", "migrations");
-    const files = readdirSync(dir).filter((f) => /^\d{5}_.*\.sql$/.test(f)).sort();
-    let check: string[] | null = null;
-    for (const f of files) {
-      const sql = readFileSync(join(dir, f), "utf8");
-      const m = sql.match(/ADD CONSTRAINT ai_task_prompt_versions_task_check\s+CHECK \(task IN \(([^)]*)\)\)/);
-      if (m) check = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort();
-    }
+    const check = checkValues("ai_task_prompt_versions_task_check")?.values.sort() ?? null;
 
     expect(fromDefaults).toEqual(fromCatalog);
     expect(check).toEqual(fromCatalog);

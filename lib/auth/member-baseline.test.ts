@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { lastDefinition } from "@/lib/test-utils/migrations";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { NAV_ITEMS, visibleNavItems } from "@/lib/nav/items";
@@ -51,7 +52,8 @@ const MIGRATED_ADMIN_PAGES = [
   ["app/(dashboard)/dashboard/dashboards/unified/page.tsx", "dashboards.unified.view", 'requirePermission("dashboards.unified.view")'],
   ["app/(dashboard)/dashboard/knowledge/page.tsx", "knowledge.view", 'requirePermission("knowledge.view")'],
   ["app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx", "knowledge.view", 'requirePermission("knowledge.view")'],
-  ["app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx", "ai_tasks.manage", 'requireAnyPermission(["ai_tasks.manage", "calls.configure"])'],
+  ["app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx", "ai_tasks.manage", 'requireAnyPermission(["ai_tasks.manage", "calls.configure"])'], // @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): ["app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx", "ai_tasks.manage", 'requireAnyPermission(["ai_tasks.manage"])'],
   [
     "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
     "integrations.view",
@@ -60,7 +62,8 @@ const MIGRATED_ADMIN_PAGES = [
   [
     "app/(dashboard)/dashboard/settings/page.tsx",
     "settings.general",
-    'requireAnyPermission(["settings.general", "sales.settings", "expenses.manage"])',
+    'requireAnyPermission(["settings.general", "sales.settings", "expenses.manage"])', // @plantilla-quitar(ventas,finanzas)
+    // @plantilla-sin(ventas,finanzas): 'requireAnyPermission(["settings.general"])',
   ],
 ] as const;
 
@@ -202,9 +205,9 @@ const PERMISSION_PAGES = [
   ["app/(dashboard)/dashboard/dashboards/ads/page.tsx", "dashboards.ads.view"],
   // Ventas (Etapa 5): la lista pide sales.view; el detalle de un producto, la
   // misma products.manage que la lista de Productos.
-  ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"],
+  ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"], // @plantilla-quitar(ventas)
   // Tareas (Extra A): la pantalla pide tasks.view (el Member de sistema lo tiene).
-  ["app/(dashboard)/dashboard/tareas/page.tsx", "tasks.view"],
+  ["app/(dashboard)/dashboard/tareas/page.tsx", "tasks.view"], // @plantilla-quitar(tareas)
   ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "products.manage"],
 ] as const;
 
@@ -232,14 +235,12 @@ describe("caracterizacion: la banca de recursos decide por permiso (banca v2, F4
 
   it("crear, editar y borrar piden templates.manage, no el cargo", () => {
     // Antes era getAdminContext: un rol personalizado con la clave no podia
-    // crear nada. La RLS de la 00131 acepta la clave igual que aca.
+    // crear nada. La RLS de response_assets acepta la clave igual que aca.
     expect(source).toContain('const MANAGE = "templates.manage"');
     expect(source).toMatch(/getPermissionAction\(MANAGE\)/);
     expect(source).not.toContain("getAdminContext");
     expect(source).not.toContain("isAdminRole");
-    expect(read("supabase/migrations/00131_response_assets_six_kinds.sql")).toContain(
-      "public.has_permission(workspace_id, 'templates.manage')",
-    );
+    expect(lastDefinition(/public\.has_permission\(workspace_id, 'templates\.manage'(?:::text)?\)/), "la RLS de response_assets").not.toBeNull();
   });
 
   it("el Member de sistema la ve y la usa, pero no la administra", () => {
@@ -369,20 +370,32 @@ describe("caracterizacion: el menu (F68)", () => {
       "Contactos",
       "Contenido",
       "Dashboards",
+      // @plantilla-desde(comisiones)
       // Finanzas (Extra I, cambio aprobado M9): el Member de sistema tiene commissions.view (sus comisiones,
       // alcance own). Adentro NO ve las pestañas de gastos (piden expenses.view).
       "Finanzas",
+      // @plantilla-hasta(comisiones)
+      // @plantilla-desde(formularios)
       // Formularios (alcance v7.1 §4.5): el Member de sistema tiene forms.view.
       "Formularios",
+      // @plantilla-hasta(formularios)
+      // @plantilla-desde(llamadas)
       // Llamadas (decision 152): el Member de sistema tiene calls.view.
       "Llamadas",
+      // @plantilla-hasta(llamadas)
+      // @plantilla-desde(formularios)
       // Reporte de fin de día (E10): no pide permiso, pide estar en la audiencia de un
       // EOD publicado (condición del servidor, `requires: "eod"`).
       "Mi reporte del día",
+      // @plantilla-hasta(formularios)
+      // @plantilla-desde(tareas)
       // Tareas (Extra A): el Member de sistema tiene tasks.view (alcance own).
       "Tareas",
+      // @plantilla-hasta(tareas)
+      // @plantilla-desde(ventas)
       // Ventas (Etapa 5): el Member de sistema tiene sales.view (alcance own).
       "Ventas",
+      // @plantilla-hasta(ventas)
     ]);
   });
 });
