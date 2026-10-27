@@ -9,12 +9,12 @@ import {
   describeChanges,
   effectiveActorType,
   runHistoryQuery,
-  CALL_ACTION_LABELS,
-  COMMISSION_ACTION_LABELS,
-  FINANCE_ACTION_LABELS,
+  CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
+  COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
+  FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
   FORM_ACTION_LABELS,
   SALE_ACTION_LABELS,
-  TASK_ACTION_LABELS,
+  TASK_ACTION_LABELS, // @plantilla-quitar(tareas)
   type HistoryRow,
 } from "@/lib/audit-history";
 import type { AuditActorType } from "@/lib/types/database";
@@ -37,12 +37,12 @@ const GENERIC_ACTIONS: Record<string, string> = {
   restore: "restauró",
   link: "vinculó",
   summary: "actualizó el resumen",
-  ...CALL_ACTION_LABELS,
+  ...CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
   ...FORM_ACTION_LABELS,
-  ...COMMISSION_ACTION_LABELS,
-  ...FINANCE_ACTION_LABELS,
+  ...COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
+  ...FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
   ...SALE_ACTION_LABELS,
-  ...TASK_ACTION_LABELS,
+  ...TASK_ACTION_LABELS, // @plantilla-quitar(tareas)
 };
 
 function actionText(action: string): string {

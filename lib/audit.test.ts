@@ -116,17 +116,21 @@ describe("logAudit: el actor (00144)", () => {
     expect(rows[0]).toMatchObject({ actor_type: "user" });
   });
 
+  // @plantilla-desde(llamadas)
   it("auditAsSystem guarda tipo system, la etiqueta y performed_by null", async () => {
     const { client, rows } = fakeAuditClient();
     await auditAsSystem({ supabase: client, workspaceId: "ws-1", entityType: "call", entityId: "x", action: "call.analyzed", label: "Análisis automático" });
     expect(rows[0]).toMatchObject({ actor_type: "system", actor_label: "Análisis automático", performed_by: null });
   });
+  // @plantilla-hasta(llamadas)
 
+  // @plantilla-desde(llamadas)
   it("auditAsWebhook guarda tipo webhook y la etiqueta", async () => {
     const { client, rows } = fakeAuditClient();
     await auditAsWebhook({ supabase: client, workspaceId: "ws-1", entityType: "call", entityId: "x", action: "call.ingested", label: "Fathom" });
     expect(rows[0]).toMatchObject({ actor_type: "webhook", actor_label: "Fathom" });
   });
+  // @plantilla-hasta(llamadas)
 
   it("inferActorType da prioridad al agente", () => {
     expect(inferActorType("u-1", "ag-1")).toBe("agent");

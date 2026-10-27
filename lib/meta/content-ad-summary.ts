@@ -192,7 +192,7 @@ export function summaryTiles(
     { key: "cplNew", label: "CPL nuevo", value: format.money(summary.cplNew), tip: "Gasto dividido por los leads nuevos." },
     { key: "cplTotal", label: "CPL total", value: format.money(summary.cplTotal), tip: "Gasto dividido por los leads totales." },
     { key: "bookings", label: "Agendas", value: format.count(summary.bookings), tip: "Reuniones agendadas por personas que vinieron de estos anuncios." },
-    { key: "sales", label: "Ventas", value: format.count(summary.sales), tip: "Ventas atribuidas a estos anuncios." },
+    { key: "sales", label: "Ventas", value: format.count(summary.sales), tip: "Ventas atribuidas a estos anuncios." }, // @plantilla-quitar(ventas)
   ];
 }
 

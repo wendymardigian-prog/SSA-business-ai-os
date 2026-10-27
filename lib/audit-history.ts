@@ -7,7 +7,7 @@
  * pasen. Con el cliente del usuario, la RLS decide que se ve.
  */
 
-import { paymentStatusLabel, saleStatusLabel } from "@/lib/sales/labels";
+import { paymentStatusLabel, saleStatusLabel } from "@/lib/sales/labels"; // @plantilla-quitar(ventas)
 import { applyAuditFilters, auditFilters } from "@/lib/audit-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditActorType, AuditAction, AuditEntityType, Json } from "@/lib/types/database";
@@ -149,8 +149,8 @@ export function describeChange(
   const named = (value: unknown): unknown => {
     if (typeof value !== "string") return value;
     if (key === "status") {
-      if (entityType === "sale") return saleStatusLabel(value);
-      if (entityType === "payment") return paymentStatusLabel(value);
+      if (entityType === "sale") return saleStatusLabel(value); // @plantilla-quitar(ventas)
+      if (entityType === "payment") return paymentStatusLabel(value); // @plantilla-quitar(ventas)
       if (entityType === "task") return TASK_STATUS_NAMES[value] ?? value;
     }
     if (entityType === "task") {
@@ -183,6 +183,7 @@ export function describeChanges(entityType: string, changes: Json | null, names?
 const TASK_STATUS_NAMES: Record<string, string> = { pending: "Pendiente", in_progress: "En progreso", completed: "Completada" };
 const TASK_PRIORITY_NAMES: Record<string, string> = { low: "Baja", normal: "Normal", high: "Alta", urgent: "Urgente" };
 
+// @plantilla-desde(tareas)
 /** Etiquetas de las acciones de Tareas, para <Historial/>. */
 export const TASK_ACTION_LABELS: Record<Extract<AuditAction, `task.${string}`>, string> = {
   "task.created": "creó la tarea",
@@ -193,6 +194,7 @@ export const TASK_ACTION_LABELS: Record<Extract<AuditAction, `task.${string}`>, 
   "task.blockers_changed": "cambió de qué depende la tarea",
   "task.deleted": "borró la tarea",
 };
+// @plantilla-hasta(tareas)
 
 // ── La consulta ───────────────────────────────────────────────────────────
 
@@ -248,6 +250,7 @@ export async function runHistoryQuery(
   return { ok: true, page: { rows, nextCursor: more ? rows[rows.length - 1].performed_at : null } };
 }
 
+// @plantilla-desde(llamadas)
 /** Etiquetas de las acciones de llamadas, para <Historial/> y la ficha del contacto. */
 export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, string> = {
   "call.ingested": "entró la llamada desde Fathom",
@@ -262,29 +265,30 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
   "call.objection_resolved": "resolvió una objeción",
   "call.archived": "archivó la llamada",
 };
+// @plantilla-hasta(llamadas)
 
 /** Etiquetas de las acciones de Formularios, para <Historial/> y la ficha del contacto. */
 export const FORM_ACTION_LABELS: Record<
   Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}` | `eod.${string}` | `attribution.${string}` | `social_post.${string}`>,
   string
 > = {
-  "eod.edited": "corrigió el reporte de fin de día",
-  "form.created": "creó el formulario",
-  "form.updated": "editó el formulario",
-  "form.published": "publicó el formulario",
-  "form.paused": "pausó el formulario",
-  "form.resumed": "reanudó el formulario",
-  "form.archived": "archivó el formulario",
-  "form.restored": "restauró el formulario",
-  "form.duplicated": "duplicó el formulario",
-  "form.slug_changed": "cambió el link del formulario",
-  "form.contact_config_changed": "cambió cómo se arma el contacto",
-  "form.flow_created": "creó una automatización del formulario",
-  "form.flow_toggled": "encendió o apagó una automatización del formulario",
-  "form.flow_updated": "editó una automatización del formulario",
-  "submission.linked": "vinculó la respuesta con un contacto",
-  "submission.spam": "marcó la respuesta como spam",
-  "submission.unspam": "sacó la respuesta de spam",
+  "eod.edited": "corrigió el reporte de fin de día", // @plantilla-quitar(formularios)
+  "form.created": "creó el formulario", // @plantilla-quitar(formularios)
+  "form.updated": "editó el formulario", // @plantilla-quitar(formularios)
+  "form.published": "publicó el formulario", // @plantilla-quitar(formularios)
+  "form.paused": "pausó el formulario", // @plantilla-quitar(formularios)
+  "form.resumed": "reanudó el formulario", // @plantilla-quitar(formularios)
+  "form.archived": "archivó el formulario", // @plantilla-quitar(formularios)
+  "form.restored": "restauró el formulario", // @plantilla-quitar(formularios)
+  "form.duplicated": "duplicó el formulario", // @plantilla-quitar(formularios)
+  "form.slug_changed": "cambió el link del formulario", // @plantilla-quitar(formularios)
+  "form.contact_config_changed": "cambió cómo se arma el contacto", // @plantilla-quitar(formularios)
+  "form.flow_created": "creó una automatización del formulario", // @plantilla-quitar(formularios)
+  "form.flow_toggled": "encendió o apagó una automatización del formulario", // @plantilla-quitar(formularios)
+  "form.flow_updated": "editó una automatización del formulario", // @plantilla-quitar(formularios)
+  "submission.linked": "vinculó la respuesta con un contacto", // @plantilla-quitar(formularios)
+  "submission.spam": "marcó la respuesta como spam", // @plantilla-quitar(formularios)
+  "submission.unspam": "sacó la respuesta de spam", // @plantilla-quitar(formularios)
   "contact.created": "creó el contacto desde un formulario",
   "contact.linked": "vinculó el contacto desde un formulario",
   "contact.updated": "actualizó el contacto",
@@ -295,10 +299,11 @@ export const FORM_ACTION_LABELS: Record<
   "attribution.settings_updated": "cambió la configuración de atribución",
   // Extra I (F43): el responsable de una publicación sin pieza.
   "social_post.assignee_changed": "cambió el responsable de la publicación",
-  "contract.email_resent": "reenvió la copia del contrato",
-  "contract.pdf_regenerated": "regeneró el PDF del contrato",
+  "contract.email_resent": "reenvió la copia del contrato", // @plantilla-quitar(formularios)
+  "contract.pdf_regenerated": "regeneró el PDF del contrato", // @plantilla-quitar(formularios)
 };
 
+// @plantilla-desde(finanzas)
 /** Etiquetas de las acciones de Finanzas (gastos, recurrentes, proveedores y su configuracion), para <Historial/>. */
 export const FINANCE_ACTION_LABELS: Record<Extract<AuditAction, `expense.${string}` | `recurring.${string}` | `vendor.${string}` | `finance.${string}`>, string> = {
   "expense.created": "cargó el gasto",
@@ -330,7 +335,9 @@ export const FINANCE_ACTION_LABELS: Record<Extract<AuditAction, `expense.${strin
   "finance.categories_updated": "cambió las categorías de gasto",
   "finance.settings_updated": "cambió la configuración de Finanzas",
 };
+// @plantilla-hasta(finanzas)
 
+// @plantilla-desde(comisiones)
 /** Etiquetas de las acciones de Comisiones (la comision, sus reglas y sus roles), para <Historial/>. */
 export const COMMISSION_ACTION_LABELS: Record<Extract<AuditAction, `commission.${string}` | `commission_rule.${string}`>, string> = {
   "commission.generated": "generó la comisión",
@@ -347,6 +354,7 @@ export const COMMISSION_ACTION_LABELS: Record<Extract<AuditAction, `commission.$
   "commission_rule.archived": "archivó la regla de comisión",
   "commission_rule.reordered": "reordenó las reglas de comisión",
 };
+// @plantilla-hasta(comisiones)
 
 /** Etiquetas de las acciones de Ventas (catalogo, venta y pago), para <Historial/>. */
 export const SALE_ACTION_LABELS: Record<
@@ -381,23 +389,23 @@ export const SALE_ACTION_LABELS: Record<
   "assignment_rule.created": "creó una regla de asignación",
   "assignment_rule.archived": "archivó una regla de asignación",
   "assignment.automatic": "asignó automáticamente",
-  "sale.created": "cargó la venta",
-  "sale.updated": "editó la venta",
-  "sale.attribution_changed": "cambió la atribución de la venta",
-  "sale.repriced": "cambió el producto o el precio de la venta",
-  "sale.cancelled": "canceló la venta",
-  "sale.subscription_cancelled": "canceló la suscripción",
-  "sale.refunded": "reembolsó la venta",
-  "sale.contract_sent": "envió el contrato",
-  "payment.created": "agregó un pago",
-  "payment.paid": "cobró el pago",
-  "payment.reverted": "revirtió el cobro",
-  "payment.rescheduled": "reprogramó el pago",
-  "payment.uncollectible": "marcó el pago como incobrable",
-  "payment.restored": "volvió a poner el pago en cobro",
-  "payment.cancelled": "anuló el pago",
-  "payment.overdue": "marcó el pago como moroso",
-  "payment.refund": "registró un reembolso",
-  "payment.receipt_uploaded": "subió el comprobante del pago",
-  "payment.fee_corrected": "corrigió la comisión del procesador del pago",
+  "sale.created": "cargó la venta", // @plantilla-quitar(ventas)
+  "sale.updated": "editó la venta", // @plantilla-quitar(ventas)
+  "sale.attribution_changed": "cambió la atribución de la venta", // @plantilla-quitar(ventas)
+  "sale.repriced": "cambió el producto o el precio de la venta", // @plantilla-quitar(ventas)
+  "sale.cancelled": "canceló la venta", // @plantilla-quitar(ventas)
+  "sale.subscription_cancelled": "canceló la suscripción", // @plantilla-quitar(ventas)
+  "sale.refunded": "reembolsó la venta", // @plantilla-quitar(ventas)
+  "sale.contract_sent": "envió el contrato", // @plantilla-quitar(ventas)
+  "payment.created": "agregó un pago", // @plantilla-quitar(ventas)
+  "payment.paid": "cobró el pago", // @plantilla-quitar(ventas)
+  "payment.reverted": "revirtió el cobro", // @plantilla-quitar(ventas)
+  "payment.rescheduled": "reprogramó el pago", // @plantilla-quitar(ventas)
+  "payment.uncollectible": "marcó el pago como incobrable", // @plantilla-quitar(ventas)
+  "payment.restored": "volvió a poner el pago en cobro", // @plantilla-quitar(ventas)
+  "payment.cancelled": "anuló el pago", // @plantilla-quitar(ventas)
+  "payment.overdue": "marcó el pago como moroso", // @plantilla-quitar(ventas)
+  "payment.refund": "registró un reembolso", // @plantilla-quitar(ventas)
+  "payment.receipt_uploaded": "subió el comprobante del pago", // @plantilla-quitar(ventas)
+  "payment.fee_corrected": "corrigió la comisión del procesador del pago", // @plantilla-quitar(ventas)
 };

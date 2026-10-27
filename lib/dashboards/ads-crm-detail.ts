@@ -12,7 +12,8 @@ import type { CellMetric } from "./ads-crm-columns";
 
 export const PAGE_SIZE = 50;
 
-export const CELL_METRICS: readonly CellMetric[] = ["leads_new", "leads_total", "bookings", "sales"];
+export const CELL_METRICS: readonly CellMetric[] = ["leads_new", "leads_total", "bookings", "sales"]; // @plantilla-quitar(ventas)
+// @plantilla-sin(ventas): export const CELL_METRICS: readonly CellMetric[] = ["leads_new", "leads_total", "bookings"];
 
 export const isCellMetric = (value: unknown): value is CellMetric => typeof value === "string" && (CELL_METRICS as readonly string[]).includes(value);
 

@@ -20,7 +20,7 @@ import type { Database } from "@/lib/types/database";
 import { interpolateTemplate } from "@/lib/templates/interpolate";
 import { appUrl } from "@/lib/app-url";
 import { escapeHtml } from "@/lib/email/html";
-import { formLinkSlugs, hasFormLinkVariables, linkIdsFromVariables, replaceFormLinks } from "@/lib/forms/link-variables";
+import { formLinkSlugs, hasFormLinkVariables, linkIdsFromVariables, replaceFormLinks } from "@/lib/forms/link-variables"; // @plantilla-quitar(formularios)
 
 type Db = SupabaseClient<Database>;
 
@@ -47,8 +47,9 @@ export async function resolveBankVariables(
   texts: string[],
 ): Promise<string[]> {
   const needsBank = texts.some(hasBankVariables);
-  const needsFormLink = texts.some(hasFormLinkVariables);
-  if (!needsBank && !needsFormLink) return texts;
+  const needsFormLink = texts.some(hasFormLinkVariables); // @plantilla-quitar(formularios)
+  if (!needsBank && !needsFormLink) return texts; // @plantilla-quitar(formularios)
+  // @plantilla-sin(formularios): if (!needsBank) return texts;
 
   let resolved = texts;
   if (needsBank) {
@@ -62,11 +63,12 @@ export async function resolveBankVariables(
     resolved = resolved.map((text) => interpolateTemplate(text, { contact: safeContact, workspace: safeWorkspace }));
   }
 
-  // Segundo pase, solo si el texto trae `{{form_link.`: el link firmado para ESTE contacto.
-  if (needsFormLink) resolved = await resolveFormLinkVariables(supabase, context, resolved);
+  // Segundo pase, solo si el texto trae `{{form_link.`: el link firmado para ESTE contacto. // @plantilla-quitar(formularios)
+  if (needsFormLink) resolved = await resolveFormLinkVariables(supabase, context, resolved); // @plantilla-quitar(formularios)
   return resolved;
 }
 
+// @plantilla-desde(formularios)
 /**
  * `{{form_link.<slug_con_guion_bajo>}}` → `<base>/f/<slug>?c=<token>`, firmado para
  * el contacto del flujo (con `service.id` y `sale.id` si el flujo los trae). Un
@@ -113,3 +115,4 @@ export async function resolveFormLinkVariables(
   }
   return texts.map((text) => replaceFormLinks(text, links));
 }
+// @plantilla-hasta(formularios)

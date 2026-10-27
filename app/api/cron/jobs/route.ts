@@ -20,8 +20,8 @@ import { sweepStuckPublications } from "@/lib/publishing/sweep";
 import { CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
 import { reconcileProviderSchedules } from "@/lib/publishing/reconcile";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
-import { reapInboundWebhooks } from "@/lib/webhooks/reaper";
-import { settleResumedSession } from "@/lib/webhooks/session-result";
+import { reapInboundWebhooks } from "@/lib/webhooks/reaper"; // @plantilla-quitar(webhooks)
+import { settleResumedSession } from "@/lib/webhooks/session-result"; // @plantilla-quitar(webhooks)
 
 // Enchufa los publicadores y los handlers de contenido (F30, F35). Al
 // importar el modulo, no dentro de la corrida: registrarlos por job seria
@@ -127,12 +127,14 @@ export async function GET(request: NextRequest) {
     console.error("[cron/jobs] fallo el reaper de transcripciones:", err instanceof Error ? err.message : String(err));
   }
 
+  // @plantilla-desde(webhooks)
   // Webhooks entrantes guardados que nadie proceso (Extra L, F2): el after() del receptor no llego
   // a correr. Consulta sobre un indice parcial, casi siempre vacia. Nunca lanza.
   const reaped = await reapInboundWebhooks(supabase);
   if (reaped.processed > 0 || reaped.recovered > 0) {
     console.log(`[cron/jobs] webhooks entrantes: ${reaped.processed} procesados, ${reaped.recovered} cortados`);
   }
+  // @plantilla-hasta(webhooks)
 
   // Pick up pending jobs that are due, plus 'processing' jobs whose claim is
   // stale: if the claim UPDATE commits but the response is lost, nothing else
@@ -379,10 +381,12 @@ async function failJobAndSettleSession({
     .eq("id", sessionId)
     .eq("status", "active")
     .select("id");
+  // @plantilla-desde(webhooks)
   // Una sesion de webhook que recien se cancela aca (no la habia cancelado ya el catch de processJob): el envio lo anota.
   if (!settleError && (cancelledRows ?? []).length > 0) {
     await settleResumedSession(supabase, { sessionId, failure: errorMessage });
   }
+  // @plantilla-hasta(webhooks)
   if (settleError) {
     // The job is already 'failed' and never re-fetched, so this session stays
     // active with no pending job. Requeuing would not help: the retry hits the
@@ -697,7 +701,7 @@ async function processJob(
       // Resume from the node after the delay; resumeSession restores
       // variables from the session row and leaves {{message}} untouched
       // because incomingMessage is empty.
-      const skippedSteps: string[] = [];
+      const skippedSteps: string[] = []; // @plantilla-quitar(webhooks)
       try {
         await resumeSession(supabase, session, {
           triggerId: "",
@@ -712,8 +716,8 @@ async function processJob(
           lateAccountId: payload.lateAccountId || undefined,
           variables: payload.variables || undefined,
           incomingMessage: {},
-          // Los pasos que se saltea por falta de contacto, para anotarlos en el historial del envio (webhooks).
-          ...(session.inbound_webhook_id ? { onStepSkipped: (step: { label: string }) => skippedSteps.push(step.label) } : {}),
+          // Los pasos que se saltea por falta de contacto, para anotarlos en el historial del envio (webhooks). // @plantilla-quitar(webhooks)
+          ...(session.inbound_webhook_id ? { onStepSkipped: (step: { label: string }) => skippedSteps.push(step.label) } : {}), // @plantilla-quitar(webhooks)
         });
       } catch (err) {
         // A FlowLoadError is thrown before resumeSession advances
@@ -743,16 +747,20 @@ async function processJob(
           `Failed to resume flow session ${payload.sessionId} (flow ${session.flow_id}), session cancelled:`,
           err
         );
+        // @plantilla-desde(webhooks)
         // Un flujo de webhook que falla DESPUES de una pausa: el historial del envio tiene que decirlo (C3).
         await settleResumedSession(supabase, {
           sessionId: payload.sessionId,
           failure: err instanceof Error ? err.message : String(err),
           skippedSteps,
         });
+        // @plantilla-hasta(webhooks)
         throw err;
       }
+      // @plantilla-desde(webhooks)
       // Retomado sin fallar: si la sesion es de un webhook, el envio anota si termino o volvio a esperar.
       await settleResumedSession(supabase, { sessionId: payload.sessionId, skippedSteps });
+      // @plantilla-hasta(webhooks)
       break;
     }
 

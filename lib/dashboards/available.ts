@@ -56,6 +56,7 @@ export const DASHBOARDS: DashboardOption[] = [
     href: "/dashboard/dashboards/agenda",
     permission: "dashboards.agenda.view",
   },
+  // @plantilla-desde(llamadas)
   {
     key: "calls",
     label: "Llamadas",
@@ -64,6 +65,7 @@ export const DASHBOARDS: DashboardOption[] = [
     // El mismo permiso que la lista de Llamadas: se ve lo que el alcance permite.
     permission: "calls.view",
   },
+  // @plantilla-hasta(llamadas)
   {
     key: "ads",
     // "Meta Ads" y no "Anuncios": es el nombre del producto y es lo que se

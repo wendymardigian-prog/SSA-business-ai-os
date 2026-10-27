@@ -27,21 +27,21 @@ import { registerFlowWaitTimeoutHandler } from "@/lib/jobs/handlers/flow-wait-ti
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
-import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync";
-import { registerCallClassifyHandler } from "@/lib/jobs/handlers/call-classify";
-import { registerCallAnalyzeHandler } from "@/lib/jobs/handlers/call-analyze";
-import { registerCallSummaryHandler } from "@/lib/jobs/handlers/call-summary";
-import { registerCallIndexKnowledgeHandler } from "@/lib/jobs/handlers/call-index-knowledge";
-import { registerContractPdfHandler } from "@/lib/jobs/handlers/contract-pdf";
+import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync"; // @plantilla-quitar(llamadas)
+import { registerCallClassifyHandler } from "@/lib/jobs/handlers/call-classify"; // @plantilla-quitar(llamadas)
+import { registerCallAnalyzeHandler } from "@/lib/jobs/handlers/call-analyze"; // @plantilla-quitar(llamadas)
+import { registerCallSummaryHandler } from "@/lib/jobs/handlers/call-summary"; // @plantilla-quitar(llamadas)
+import { registerCallIndexKnowledgeHandler } from "@/lib/jobs/handlers/call-index-knowledge"; // @plantilla-quitar(llamadas)
+import { registerContractPdfHandler } from "@/lib/jobs/handlers/contract-pdf"; // @plantilla-quitar(formularios)
 import { registerSalesContactEvalHandler } from "@/lib/jobs/handlers/sales-contact-eval";
-import { registerPaymentsOverdueSweepHandler } from "@/lib/jobs/handlers/payments-overdue-sweep";
-import { registerTasksDueSweepHandler } from "@/lib/jobs/handlers/tasks-due-sweep";
-import { registerFinanceDailyHandler } from "@/lib/jobs/handlers/finance-daily";
+import { registerPaymentsOverdueSweepHandler } from "@/lib/jobs/handlers/payments-overdue-sweep"; // @plantilla-quitar(ventas)
+import { registerTasksDueSweepHandler } from "@/lib/jobs/handlers/tasks-due-sweep"; // @plantilla-quitar(tareas)
+import { registerFinanceDailyHandler } from "@/lib/jobs/handlers/finance-daily"; // @plantilla-quitar(finanzas)
 import { registerCommentBackfillHandlers } from "@/lib/jobs/handlers/comment-backfill";
-import { registerCommissionsPaymentHandler } from "@/lib/jobs/handlers/commissions-payment";
-import { registerEodReminderHandler } from "@/lib/jobs/handlers/eod-reminder";
-import { registerPaymentRelativeHandler } from "@/lib/jobs/handlers/payment-relative";
-import { registerContractEmailHandler } from "@/lib/jobs/handlers/contract-email";
+import { registerCommissionsPaymentHandler } from "@/lib/jobs/handlers/commissions-payment"; // @plantilla-quitar(comisiones)
+import { registerEodReminderHandler } from "@/lib/jobs/handlers/eod-reminder"; // @plantilla-quitar(formularios)
+import { registerPaymentRelativeHandler } from "@/lib/jobs/handlers/payment-relative"; // @plantilla-quitar(ventas)
+import { registerContractEmailHandler } from "@/lib/jobs/handlers/contract-email"; // @plantilla-quitar(formularios)
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -114,27 +114,33 @@ export function registerPublishing(): void {
   // Y describir las imagenes, para que una captura no sea un mensaje vacio (F8).
   registerDescribeMediaHandler();
 
+  // @plantilla-desde(llamadas)
   // Llamadas: la consulta a Fathom de una conexion (F8).
   registerFathomSyncHandler();
   registerCallClassifyHandler();
   registerCallAnalyzeHandler();
   registerCallSummaryHandler();
   registerCallIndexKnowledgeHandler();
+  // @plantilla-hasta(llamadas)
 
+  // @plantilla-desde(formularios)
   // Formularios: el PDF firmado de un contrato y su copia por email (F27, F28).
   registerContractPdfHandler();
   registerContractEmailHandler();
+  // @plantilla-hasta(formularios)
 
   // Ventas: la asignacion automatica de setter, vendedor y referido (F15).
   registerSalesContactEvalHandler();
-  registerPaymentsOverdueSweepHandler();
-  registerTasksDueSweepHandler();
-  registerFinanceDailyHandler();
+  registerPaymentsOverdueSweepHandler(); // @plantilla-quitar(ventas)
+  registerTasksDueSweepHandler(); // @plantilla-quitar(tareas)
+  registerFinanceDailyHandler(); // @plantilla-quitar(finanzas)
   registerCommentBackfillHandlers();
-  registerCommissionsPaymentHandler();
+  registerCommissionsPaymentHandler(); // @plantilla-quitar(comisiones)
+  // @plantilla-desde(formularios)
   // Reporte de fin de día (E13): el recordatorio.
   registerEodReminderHandler();
-  registerPaymentRelativeHandler();
+  // @plantilla-hasta(formularios)
+  registerPaymentRelativeHandler(); // @plantilla-quitar(ventas)
 }
 
 /** Para los tests. */
