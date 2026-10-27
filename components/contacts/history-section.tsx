@@ -4,7 +4,13 @@ import { useState } from "react";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { describeHistoryItem, type AuditHistoryItem, type HistoryItem } from "@/lib/contacts/history";
 import type { AuditAction, Json } from "@/lib/types/database";
-import { CALL_ACTION_LABELS, COMMISSION_ACTION_LABELS, FINANCE_ACTION_LABELS, FORM_ACTION_LABELS, SALE_ACTION_LABELS } from "@/lib/audit-history";
+import {
+  CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
+  COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
+  FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
+  FORM_ACTION_LABELS,
+  SALE_ACTION_LABELS,
+} from "@/lib/audit-history";
 import { EmptyHint, Section, formatDateTime } from "./ui";
 
 /**
@@ -29,7 +35,7 @@ type HistoryEntry = AuditHistoryItem;
 const ACTION_LABELS: Record<AuditAction, string> = {
   // El historial de un anuncio (entity meta_ad) no se muestra en la ficha del contacto; las etiquetas existen por el tipo.
   // Extra I (MP): los métodos de pago del negocio se auditan sobre el workspace; no se ven en la ficha de un contacto.
-  "payment_methods.updated": "cambió los métodos de pago",
+  "payment_methods.updated": "cambió los métodos de pago", // @plantilla-quitar(ventas)
   "content_link.linked": "vinculó el anuncio con una pieza de contenido",
   "content_link.unlinked": "desvinculó el anuncio de su pieza de contenido",
   // Pipeline (00245): el cambio de estado se ve con su propia entrada (contact_status_changes);
@@ -97,25 +103,25 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "booking.host_changed": "reasignó el anfitrión de una agenda",
   agent_asset_sent: "mandó un recurso de audio de la banca",
   // Webhooks entrantes: son del endpoint, no del contacto; quedan por si alguna cae en la ficha.
-  "webhook_endpoint.created": "creó un endpoint de webhooks",
-  "webhook_endpoint.updated": "editó un endpoint de webhooks",
-  "webhook_endpoint.paused": "pausó un endpoint de webhooks",
-  "webhook_endpoint.resumed": "reanudó un endpoint de webhooks",
-  "webhook_endpoint.token_regenerated": "regeneró la URL de un endpoint de webhooks",
-  "webhook_endpoint.secret_changed": "cambió el secreto de un endpoint de webhooks",
-  "webhook_endpoint.sample_saved": "guardó un ejemplo de un endpoint de webhooks",
-  "webhook_endpoint.deleted": "borró un endpoint de webhooks",
-  "webhook_endpoint.reprocessed": "reprocesó un envío de webhooks",
-  "task.created": "creó una tarea",
-  "task.updated": "editó una tarea",
-  "task.reopened": "reabrió una tarea",
-  "task.completed": "completó una tarea",
-  "task.date_shifted": "movió la fecha de una tarea",
-  "task.blockers_changed": "cambió las dependencias de una tarea",
-  "task.deleted": "borró una tarea",
-  ...CALL_ACTION_LABELS,
-  ...COMMISSION_ACTION_LABELS,
-  ...FINANCE_ACTION_LABELS,
+  "webhook_endpoint.created": "creó un endpoint de webhooks", // @plantilla-quitar(webhooks)
+  "webhook_endpoint.updated": "editó un endpoint de webhooks", // @plantilla-quitar(webhooks)
+  "webhook_endpoint.paused": "pausó un endpoint de webhooks", // @plantilla-quitar(webhooks)
+  "webhook_endpoint.resumed": "reanudó un endpoint de webhooks", // @plantilla-quitar(webhooks)
+  "webhook_endpoint.token_regenerated": "regeneró la URL de un endpoint de webhooks", // @plantilla-quitar(webhooks)
+  "webhook_endpoint.secret_changed": "cambió el secreto de un endpoint de webhooks", // @plantilla-quitar(webhooks)
+  "webhook_endpoint.sample_saved": "guardó un ejemplo de un endpoint de webhooks", // @plantilla-quitar(webhooks)
+  "webhook_endpoint.deleted": "borró un endpoint de webhooks", // @plantilla-quitar(webhooks)
+  "webhook_endpoint.reprocessed": "reprocesó un envío de webhooks", // @plantilla-quitar(webhooks)
+  "task.created": "creó una tarea", // @plantilla-quitar(tareas)
+  "task.updated": "editó una tarea", // @plantilla-quitar(tareas)
+  "task.reopened": "reabrió una tarea", // @plantilla-quitar(tareas)
+  "task.completed": "completó una tarea", // @plantilla-quitar(tareas)
+  "task.date_shifted": "movió la fecha de una tarea", // @plantilla-quitar(tareas)
+  "task.blockers_changed": "cambió las dependencias de una tarea", // @plantilla-quitar(tareas)
+  "task.deleted": "borró una tarea", // @plantilla-quitar(tareas)
+  ...CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
+  ...COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
+  ...FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
   ...FORM_ACTION_LABELS,
   ...SALE_ACTION_LABELS,
 };

@@ -77,6 +77,7 @@ describe("la guardia de deriva (findMergeDrift)", () => {
     expect(findMergeDrift([...CONTACT_MERGE_TABLES, "invoices", "appointments"])).toEqual({ missing: ["appointments", "invoices"], stale: [] });
   });
   it("una tabla de la lista que ya no existe tambien se avisa", () => {
-    expect(findMergeDrift(CONTACT_MERGE_TABLES.filter((t) => t !== "tasks"))).toEqual({ missing: [], stale: ["tasks"] });
+    expect(findMergeDrift(CONTACT_MERGE_TABLES.filter((t) => t !== "tasks"))).toEqual({ missing: [], stale: ["tasks"] }); // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): expect(findMergeDrift(CONTACT_MERGE_TABLES.filter((t) => t !== "email_log"))).toEqual({ missing: [], stale: ["email_log"] });
   });
 });

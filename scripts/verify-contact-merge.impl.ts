@@ -95,7 +95,8 @@ try {
   const drift = findMergeDrift(relationsInDb());
   check(drift.missing.length === 0, "no hay ninguna relacion con contacts que la fusion no cubra ni excluya con motivo", `faltan: ${drift.missing.join(", ")}`);
   check(drift.stale.length === 0, "y todas las de la lista existen", `sobran: ${drift.stale.join(", ")}`);
-  check(CONTACT_MERGE_TABLES.length === 25, "son las 25 (la 00247 suma el historial de estados)");
+  check(CONTACT_MERGE_TABLES.length === 25, "son las 25 (la 00247 suma el historial de estados)"); // @plantilla-quitar(llamadas,formularios,webhooks,ventas,tareas)
+  // @plantilla-sin(llamadas,formularios,webhooks,ventas,tareas): check(CONTACT_MERGE_TABLES.length === 19, "son las 19 de la plantilla (sin las tablas de los modulos que no lleva)");
   // Una tabla nueva con contact_id hace fallar la guardia (se crea una de prueba y se saca).
   sql(`create table public.zz_test_merge_drift (id int, contact_id uuid references public.contacts(id) on delete cascade)`);
   tempArtifacts = true;

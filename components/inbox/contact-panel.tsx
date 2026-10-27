@@ -4,8 +4,8 @@ import { useState, useEffect, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { X, Mail, Phone, Brain, Loader2, ShieldOff, ExternalLink, HeartHandshake } from "lucide-react";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
-import { ContactTasks } from "@/components/tasks/contact-tasks";
-import { ContactTasksLoader } from "@/components/tasks/contact-tasks-loader";
+import { ContactTasks } from "@/components/tasks/contact-tasks"; // @plantilla-quitar(tareas)
+import { ContactTasksLoader } from "@/components/tasks/contact-tasks-loader"; // @plantilla-quitar(tareas)
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -196,7 +196,9 @@ export function ContactPanel({
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
         </div>
       ) : details ? (
+        // @plantilla-desde(tareas)
         <ContactTasksLoader contactId={details.contact.id} contactName={details.contact.display_name}>
+        {/* @plantilla-hasta(tareas) */}
         <div className="flex-1 overflow-y-auto">
           <Identity details={details} />
 
@@ -250,7 +252,9 @@ export function ContactPanel({
             </PanelSection>
           )}
 
+          {/* @plantilla-desde(tareas) */}
           <ContactTasks wrap={(body) => <PanelSection title="Tareas">{body}</PanelSection>} />
+          {/* @plantilla-hasta(tareas) */}
 
           <AgentMemory contact={details.contact} />
 
@@ -262,7 +266,9 @@ export function ContactPanel({
 
           <DoNotContact contact={details.contact} isAdmin={isAdmin} onSaved={reload} />
         </div>
+        {/* @plantilla-desde(tareas) */}
         </ContactTasksLoader>
+        // @plantilla-hasta(tareas)
       ) : failed ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
           <p className="text-sm text-muted-foreground">No pude cargar los datos del contacto.</p>

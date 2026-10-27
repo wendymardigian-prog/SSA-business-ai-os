@@ -6,7 +6,7 @@ import { CalendarClock, Loader2, X } from "lucide-react";
 import { updateContact } from "@/lib/actions/contacts";
 import { dateInputToIso, isoToDateInput, formatDateOnly } from "@/lib/dates";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
-import { FollowupTask } from "@/components/tasks/followup-task";
+import { FollowupTask } from "@/components/tasks/followup-task"; // @plantilla-quitar(tareas)
 import { ActionError } from "./ui";
 
 /**
@@ -105,7 +105,9 @@ export function FollowupField({
 
       {error && <div className="mt-2"><ActionError message={error} /></div>}
 
+      {/* @plantilla-desde(tareas) */}
       <FollowupTask contactId={contactId} contactName={contactName} followupValue={value} canCreateTask={canCreateTask} />
+      {/* @plantilla-hasta(tareas) */}
     </div>
   );
 }

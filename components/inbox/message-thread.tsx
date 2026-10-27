@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { EmojiButton, useEmojiInsert } from "@/components/ui/emoji-picker";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
-import { CreateTaskButton } from "@/components/tasks/create-task-button";
+import { CreateTaskButton } from "@/components/tasks/create-task-button"; // @plantilla-quitar(tareas)
 import { ConversationAssignee } from "@/components/inbox/conversation-assignee";
 import { canUnmarkKnown, knownLabel } from "@/lib/inbox/known";
 import { assigneeName } from "@/lib/inbox/assignee";
@@ -1389,6 +1389,7 @@ export function MessageThread({
               else setTaskOpen(true);
             }}
           />
+          {/* @plantilla-desde(tareas) */}
           {canCreateTask && (
             <CreateTaskButton
               contactId={conversation.contact_id}
@@ -1397,6 +1398,7 @@ export function MessageThread({
               controlled={{ open: taskOpen, onOpenChange: setTaskOpen, anchor: menuButtonRef }}
             />
           )}
+          {/* @plantilla-hasta(tareas) */}
         </div>
       </div>
 

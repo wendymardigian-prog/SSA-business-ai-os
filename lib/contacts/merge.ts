@@ -14,7 +14,7 @@ export const CONTACT_MERGE_TABLES = [
   "automation_events",
   "bookings",
   "broadcast_recipients",
-  "calls",
+  "calls", // @plantilla-quitar(llamadas)
   "contact_channels",
   "contact_custom_fields",
   "contact_notes",
@@ -22,16 +22,16 @@ export const CONTACT_MERGE_TABLES = [
   "contact_tags",
   "contact_touches",
   "contacts", // referred_by_contact_id: los contactos que el duplicado habia referido
-  "contract_signatures",
+  "contract_signatures", // @plantilla-quitar(formularios)
   "conversations", // y los mensajes de las que se unifican
   "email_log",
   "flow_sessions",
-  "form_submissions",
-  "inbound_webhooks",
-  "sales", // los pagos y demas cuelgan de la venta y la siguen
+  "form_submissions", // @plantilla-quitar(formularios)
+  "inbound_webhooks", // @plantilla-quitar(webhooks)
+  "sales", // los pagos y demas cuelgan de la venta y la siguen // @plantilla-quitar(ventas)
   "sequence_enrollments",
   "social_post_comments",
-  "tasks",
+  "tasks", // @plantilla-quitar(tareas)
   "trigger_fires",
 ] as const;
 
@@ -53,11 +53,11 @@ const LABELS: readonly Label[] = [
   { keys: ["conversations", "conversations_merged"], one: "conversación", many: "conversaciones" },
   { keys: ["messages_moved"], one: "mensaje", many: "mensajes" },
   { keys: ["bookings"], one: "agenda", many: "agendas" },
-  { keys: ["calls"], one: "llamada", many: "llamadas" },
-  { keys: ["sales"], one: "venta", many: "ventas" },
-  { keys: ["tasks"], one: "tarea", many: "tareas" },
-  { keys: ["form_submissions"], one: "respuesta de formulario", many: "respuestas de formularios" },
-  { keys: ["contract_signatures"], one: "firma de contrato", many: "firmas de contratos" },
+  { keys: ["calls"], one: "llamada", many: "llamadas" }, // @plantilla-quitar(llamadas)
+  { keys: ["sales"], one: "venta", many: "ventas" }, // @plantilla-quitar(ventas)
+  { keys: ["tasks"], one: "tarea", many: "tareas" }, // @plantilla-quitar(tareas)
+  { keys: ["form_submissions"], one: "respuesta de formulario", many: "respuestas de formularios" }, // @plantilla-quitar(formularios)
+  { keys: ["contract_signatures"], one: "firma de contrato", many: "firmas de contratos" }, // @plantilla-quitar(formularios)
   { keys: ["contact_channels"], one: "canal", many: "canales" },
   { keys: ["contact_notes"], one: "nota", many: "notas" },
   { keys: ["contact_tags"], one: "etiqueta", many: "etiquetas" },
@@ -67,7 +67,7 @@ const LABELS: readonly Label[] = [
   { keys: ["flow_sessions"], one: "sesión de automatización", many: "sesiones de automatización" },
   { keys: ["email_log"], one: "email", many: "emails" },
   { keys: ["social_post_comments"], one: "comentario", many: "comentarios" },
-  { keys: ["inbound_webhooks"], one: "aviso de webhook", many: "avisos de webhooks" },
+  { keys: ["inbound_webhooks"], one: "aviso de webhook", many: "avisos de webhooks" }, // @plantilla-quitar(webhooks)
   { keys: ["referred_contacts"], one: "contacto referido", many: "contactos referidos" },
   { keys: ["automation_events"], one: "evento de automatización", many: "eventos de automatización" },
   { keys: ["agent_runs"], one: "corrida del agente", many: "corridas del agente" },

@@ -22,10 +22,10 @@ import { BookingsList } from "./list";
 import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
 import { useRescheduleDrag } from "./reschedule-dialog";
-import { TaskWorkbench } from "@/components/tasks/task-workbench";
-import { tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui";
-import type { TaskRow } from "@/lib/tasks/types";
-import type { MemberLite } from "@/lib/tasks/table-model";
+import { TaskWorkbench } from "@/components/tasks/task-workbench"; // @plantilla-quitar(tareas)
+import { tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
+import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
+import type { MemberLite } from "@/lib/tasks/table-model"; // @plantilla-quitar(tareas)
 import { BookingDetailPanel, type BookingDetailData } from "./detail-panel";
 import { BookManualDialog, type ManualEventOption } from "./book-manual-dialog";
 import { AgendaFiltersMenu } from "./agenda-filters-menu";
@@ -59,6 +59,7 @@ const VIEWS: Array<{ key: "list" | "kanban" | "calendar"; label: string }> = [
   { key: "calendar", label: "Calendario" },
 ];
 
+// @plantilla-desde(tareas)
 /** Lo que la pagina arma para las tareas del calendario. */
 export interface AgendaTasksProps {
   mode: TasksMode;
@@ -72,6 +73,8 @@ export interface AgendaTasksProps {
   canEdit: boolean;
   canDelete: boolean;
 }
+// @plantilla-hasta(tareas)
+// @plantilla-sin(tareas): export type AgendaTasksProps = never;
 
 export function BookingsScreen({
   items,
@@ -366,7 +369,7 @@ export function BookingsScreen({
                 onView={(v) => setParam("cal", v)}
                 onAnchor={(d) => setParam("dia", d)}
                 onOpen={openDetail}
-                taskControls={tasks ? { mode: tasks.mode, onMode: (m) => setParam("tareas", tasksModeParam(m)) } : undefined}
+                taskControls={tasks ? { mode: tasks.mode, onMode: (m) => setParam("tareas", tasksModeParam(m)) } : undefined} // @plantilla-quitar(tareas)
                 canDragBookings={canManage}
                 onDropBooking={reschedule.onDrop}
                 ghost={reschedule.ghost}
@@ -435,6 +438,7 @@ export function BookingsScreen({
  * Con el interruptor apagado (o sin permiso) devuelve el calendario tal cual: no monta nada de tareas.
  */
 function CalendarWithTasks({ tasks, calendar, timeFormat }: { tasks?: AgendaTasksProps; calendar: React.ReactNode; timeFormat: "12h" | "24h" }) {
+  // @plantilla-desde(tareas)
   if (!tasks || tasks.mode === "off") return <>{calendar}</>;
   return (
     <TaskWorkbench
@@ -451,4 +455,6 @@ function CalendarWithTasks({ tasks, calendar, timeFormat }: { tasks?: AgendaTask
       {calendar}
     </TaskWorkbench>
   );
+  // @plantilla-hasta(tareas)
+  // @plantilla-sin(tareas): return <>{calendar}</>;
 }

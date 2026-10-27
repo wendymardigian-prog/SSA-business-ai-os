@@ -6,10 +6,10 @@ import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
 import { bookingUtmOptions, getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
-import { loadBookingCalls } from "@/lib/calls/contact-section";
-import { canLoadSaleFromBooking, prefillFromBooking } from "@/lib/sales/booking-link";
-import { snapshotText } from "@/lib/sales/sale-text";
-import { loadWizardConfig } from "@/lib/sales/wizard/load";
+import { loadBookingCalls } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
+import { canLoadSaleFromBooking, prefillFromBooking } from "@/lib/sales/booking-link"; // @plantilla-quitar(ventas)
+import { snapshotText } from "@/lib/sales/sale-text"; // @plantilla-quitar(ventas)
+import { loadWizardConfig } from "@/lib/sales/wizard/load"; // @plantilla-quitar(ventas)
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
 import { quickFilterCounts, type QuickFilter } from "@/lib/scheduling/bookings-view";
@@ -26,10 +26,10 @@ import type { CalendarView } from "@/lib/scheduling/calendar-view";
 import type { BookingField, BookingOrigin, BookingStatus } from "@/lib/scheduling/types";
 import { rangeFor } from "@/lib/scheduling/calendar-range";
 import { startOfDay, endOfDay, todayInputValue } from "@/lib/dates";
-import { TASK_COLUMNS } from "@/lib/tasks/core";
-import { dueDateWindow } from "@/lib/tasks/calendar";
-import { parseTasksMode } from "@/lib/tasks/calendar-ui";
-import type { TaskRow } from "@/lib/tasks/types";
+import { TASK_COLUMNS } from "@/lib/tasks/core"; // @plantilla-quitar(tareas)
+import { dueDateWindow } from "@/lib/tasks/calendar"; // @plantilla-quitar(tareas)
+import { parseTasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
+import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 export const dynamic = "force-dynamic";
@@ -200,10 +200,13 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
   const detail = query.agenda ? await getBookingDetail(ctx.supabase, one(query.agenda) ?? "") : null;
   const publicBase = publicBaseUrl(ctx.workspace as { scheduling_public_base_url?: string | null });
+  // @plantilla-desde(llamadas)
   // Las llamadas vinculadas a esta agenda (F34): solo con `calls.view`, y solo las que la RLS deja ver.
   const bookingCalls =
     detail && ctx.can("calls.view") ? await loadBookingCalls(ctx.supabase, { workspaceId: ctx.workspace.id, bookingId: detail.booking.id, names }) : [];
+  // @plantilla-hasta(llamadas)
 
+  // @plantilla-desde(ventas)
   // Las ventas que nacieron de esta agenda (Ventas, F24): solo con `sales.view`, y solo las que la RLS deja ver.
   const bookingSales =
     detail && ctx.can("sales.view")
@@ -221,10 +224,12 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       saleLoad = { config, initial: { contact: { id: prefill.contactId, name: detail.contact?.display_name ?? detail.booking.booker_name ?? "Contacto" }, bookingId: prefill.bookingId, vendedorId: prefill.vendedorId } };
     }
   }
+  // @plantilla-hasta(ventas)
 
   // "Todavía no hay NINGUNA agenda" es un problema distinto de "ninguna con
   // estos filtros": antes los dos mostraban el mismo cartel de "Conectar
   // Google Calendar", aunque ya estuviera conectado.
+  // @plantilla-desde(tareas)
   // Las tareas del calendario (Tareas × CRM, R7): SOLO con el interruptor encendido, en la vista calendario y con
   // `tasks.view`. Apagado no se consulta nada de tareas. La RLS decide cuales ve cada quien; «mias» es el responsable.
   const canViewTasks = ctx.can("tasks.view");
@@ -260,6 +265,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       canDelete: ctx.can("tasks.delete"),
     };
   }
+  // @plantilla-hasta(tareas)
 
   const [{ count: everCount }, utmOptions] = await Promise.all([
     ctx.supabase.from("bookings").select("id", { count: "exact", head: true }).eq("workspace_id", ctx.workspace.id),
@@ -352,9 +358,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               history: detail.history.map((h) => ({ id: h.id, at: h.performed_at, text: historyText(h, names) })),
               attribution: attributionOf((detail.booking as unknown as { utm?: unknown; referrer_url?: string | null }).utm, detail.booking.referrer_url),
               slotReleasedAt: detail.booking.slot_released_at,
-              calls: bookingCalls,
-              sales: bookingSales.map((x) => ({ id: x.id, status: x.status, finalAmount: Number(x.final_amount) || 0, product: snapshotText(x.product_snapshot) })),
-              saleLoad,
+              calls: bookingCalls, // @plantilla-quitar(llamadas)
+              sales: bookingSales.map((x) => ({ id: x.id, status: x.status, finalAmount: Number(x.final_amount) || 0, product: snapshotText(x.product_snapshot) })), // @plantilla-quitar(ventas)
+              saleLoad, // @plantilla-quitar(ventas)
             }
           : null
       }
@@ -373,7 +379,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       showConfig={canOpenConfig(ctx.can)}
       brokenAccounts={broken}
       needsProfile={ctx.can("scheduling.use") && !profile}
-      tasks={agendaTasks}
+      tasks={agendaTasks} // @plantilla-quitar(tareas)
     />
   );
 }

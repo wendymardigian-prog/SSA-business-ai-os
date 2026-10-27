@@ -62,6 +62,7 @@ export default async function ContactTouchesPage({
   const shown = new Set(first.items.map((i) => i.id));
   const pageRows = loaded.data.filter((t) => shown.has(t.id));
 
+  // @plantilla-desde(formularios)
   const formIds = [
     ...new Set(
       pageRows
@@ -70,11 +71,14 @@ export default async function ContactTouchesPage({
         .filter((id): id is string => typeof id === "string"),
     ),
   ];
+  // @plantilla-hasta(formularios)
   const formNames: Record<string, string> = {};
+  // @plantilla-desde(formularios)
   if (formIds.length > 0) {
     const { data: formRows } = await supabase.from("forms").select("id, name").eq("workspace_id", workspace.id).in("id", formIds);
     for (const f of (formRows ?? []) as { id: string; name: string }[]) formNames[f.id] = f.name;
   }
+  // @plantilla-hasta(formularios)
   const names = await loadMetaNames(supabase, workspace.id, pageRows);
   const timeline = buildTimeline(loaded.data, { page, timeZone, formNames, names });
 
