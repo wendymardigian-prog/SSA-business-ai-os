@@ -198,7 +198,7 @@ export interface FlowExecutionContext {
   channelId: string;
   /**
    * El contacto del flujo. `null` en un flujo SIN contacto ("sobre una persona del
-   * equipo", E15): un reporte de fin de día es de alguien del equipo, no de un lead.
+   * equipo", E15): es de alguien del equipo, no de un lead.
    * Los nodos que necesitan contacto (`needsContact`) nunca corren sin uno: el motor
    * los saltea y lo anota.
    */

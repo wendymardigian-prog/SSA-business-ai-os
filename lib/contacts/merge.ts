@@ -1,5 +1,5 @@
 /**
- * La fusion de contactos (Tareas × CRM, R9). PURO: ni el navegador ni el servidor dependen de nada de aca.
+ * La fusion de contactos (R9). PURO: ni el navegador ni el servidor dependen de nada de aca.
  *
  * `merge_contacts` (00207) mueve TODO lo que cuelga del duplicado al contacto principal en una transaccion. Esta lista dice
  * que tablas cubre; `scripts/verify-contact-merge.mjs` falla si aparece en la base una relacion con `contacts` que no este

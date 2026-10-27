@@ -1,6 +1,6 @@
 /**
- * Caracterización de `scripts/export-template.mjs` ANTES de que Formularios
- * (F30) le enseñe a no copiar el sitio propio de cada clon.
+ * Caracterización de `scripts/export-template.mjs`: qué copia y qué no (el sitio
+ * propio de cada clon no viaja).
  *
  * Lo corre como proceso en una carpeta temporal (el script ejecuta `main()` al
  * importarse). NO mira el código de salida: el control final de nombres puede

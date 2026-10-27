@@ -24,7 +24,7 @@ export interface DetailItem {
   /** La fecha del toque. */
   occurredAt: string | null;
   origin: string | null;
-  /** Agendas: cuándo es la reunión. Ventas: la fecha de la venta. */
+  /** Una agenda: cuándo es la reunión. Una venta: la fecha de la venta. */
   detailAt: string | null;
   amountCents: number | null;
 }

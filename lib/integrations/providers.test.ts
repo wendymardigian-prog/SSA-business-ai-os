@@ -174,7 +174,7 @@ describe("catalogo extendido (F1)", () => {
 
     // Bloque G: de seis secciones a dos. El agrupamiento fino de antes lo
     // recuperan los chips (ver providers.ts, CHIP_BY_TYPE).
-    // Formularios sumó "Seguridad" (Cloudflare Turnstile) y se sacó en la corrección R1: vuelven las dos.
+    // Formularios sumó "Seguridad" (Cloudflare Turnstile) y se sacó en la corrección R1: vuelven las dos.  @plantilla-quitar(proyecto)
     expect(groups.map((g) => g.section)).toEqual(["connections", "ai"]);
     for (const group of groups) {
       expect(group.providers.every((p) => p.visible)).toBe(true);

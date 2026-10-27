@@ -1,6 +1,5 @@
 /**
- * Caracterizacion del retorno OAuth (Llamadas, §4.3): fija lo que hace hoy,
- * ANTES de sumar Fathom. Una conexion del workspace exige Owner/Admin y
+ * Caracterizacion del retorno OAuth. Una conexion del workspace exige Owner/Admin y
  * sincroniza las redes sociales; una por persona (Google Calendar) exige su
  * permiso, sincroniza calendarios y vuelve a Agenda > Calendarios.
  */

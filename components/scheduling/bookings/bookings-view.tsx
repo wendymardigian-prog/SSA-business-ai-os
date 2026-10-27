@@ -146,10 +146,10 @@ export function BookingsScreen({
   showConfig: boolean;
   brokenAccounts: string[];
   needsProfile: boolean;
-  /**
-   * Tareas × CRM (R7): las tareas del calendario. `undefined` = el contacto no puede ver tareas (no hay interruptor). Con
-   * `mode: "off"` el interruptor existe pero no se consulto nada de tareas.
-   */
+  /**  @plantilla-quitar(tareas)
+   * Tareas × CRM (R7): las tareas del calendario. `undefined` = el contacto no puede ver tareas (no hay interruptor). Con  @plantilla-quitar(tareas)
+   * `mode: "off"` el interruptor existe pero no se consulto nada de tareas.  @plantilla-quitar(tareas)
+   * @plantilla-quitar(tareas) */
   tasks?: AgendaTasksProps;
 }) {
   const router = useRouter();

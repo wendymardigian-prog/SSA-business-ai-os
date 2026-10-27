@@ -1,15 +1,15 @@
 /**
- * Caracterizacion del menu lateral por rol (corrida formularios-ui).
- *
- * Se escribio ANTES de B1 fijando el menu de entonces; B1 mueve grupos y saca tres items
- * (plano formularios-ui D1-D4) y por eso las aserciones de los grupos se reescribieron con un
- * comentario que cita el plano. Lo que NO cambia por esas decisiones sigue fijado: quien ve
- * cada item (Social, Formularios, Agenda, Llamadas, Ventas, Tareas, Mi reporte del dia) y el
- * orden dentro de cada grupo. Antes de B1:
- *   Owner/Admin: inicio[Dashboards, Bandeja, Mi reporte del dia] adquisicion[Contenido, Social, Formularios]
- *     ventas[Contactos, Agenda, Llamadas, Ventas] automatizacion[Automatizaciones, Agentes IA, Conocimiento, Recursos]
- *     sistema[Integraciones, Ajustes]
- *   Member: lo mismo sin Social, Conocimiento, Integraciones ni Ajustes (con Recursos).
+ * Caracterizacion del menu lateral por rol: quien ve cada item y el orden dentro de cada grupo.
+ *  @plantilla-quitar(proyecto)
+ * Se escribio ANTES de B1 fijando el menu de entonces; B1 mueve grupos y saca tres items  @plantilla-quitar(proyecto)
+ * (plano formularios-ui D1-D4) y por eso las aserciones de los grupos se reescribieron con un  @plantilla-quitar(proyecto)
+ * comentario que cita el plano. Lo que NO cambia por esas decisiones sigue fijado: quien ve  @plantilla-quitar(proyecto)
+ * cada item (Social, Formularios, Agenda, Llamadas, Ventas, Tareas, Mi reporte del dia) y el  @plantilla-quitar(proyecto)
+ * orden dentro de cada grupo. Antes de B1:  @plantilla-quitar(proyecto)
+ *   Owner/Admin: inicio[Dashboards, Bandeja, Mi reporte del dia] adquisicion[Contenido, Social, Formularios]  @plantilla-quitar(proyecto)
+ *     ventas[Contactos, Agenda, Llamadas, Ventas] automatizacion[Automatizaciones, Agentes IA, Conocimiento, Recursos]  @plantilla-quitar(proyecto)
+ *     sistema[Integraciones, Ajustes]  @plantilla-quitar(proyecto)
+ *   Member: lo mismo sin Social, Conocimiento, Integraciones ni Ajustes (con Recursos).  @plantilla-quitar(proyecto)
  */
 
 import { describe, expect, it } from "vitest";
@@ -95,7 +95,7 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
   });
 
   it("un grupo sin items visibles no muestra su titulo", () => {
-    // Un viewer sin ninguna bandera ni permiso no ve ni Social, ni Formularios, ni Ajustes: "adquisicion" queda con Contenido,
+    // Un viewer sin ninguna bandera ni permiso no ve ni Social ni Ajustes (ni lo que pide un permiso): "adquisicion" queda con Contenido,
     // pero si ademas se le saca ese item el grupo desaparece entero.
     const items = visibleNavItems(NAV_ITEMS, { permissionKeys: ["content.view"] }).filter((i) => i.name !== "Contenido");
     expect(navSections(items).some((s) => s.group === "adquisicion")).toBe(false);

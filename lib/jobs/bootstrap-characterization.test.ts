@@ -15,10 +15,10 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
     resetJobHandlers();
     resetPublishingBootstrap();
     registerPublishing();
-    // La Etapa 4 sumo los tres de agenda; Mejoras de Chat suma describe_media y
-    // transcribe_audio; Llamadas suma fathom_sync (y despues call_*). Los ocho
-    // originales no cambian.
-    //
+    // La Etapa 4 sumo los tres de agenda; Mejoras de Chat suma describe_media y  @plantilla-quitar(proyecto)
+    // transcribe_audio; Llamadas suma fathom_sync (y despues call_*). Los ocho  @plantilla-quitar(proyecto)
+    // originales no cambian.  @plantilla-quitar(proyecto)
+    //  @plantilla-quitar(proyecto)
     // El valor de esta lista es que un handler nuevo NO se registre por
     // accidente: cada tipo que aparece aca tiene que ser uno que alguien quiso
     // dar de alta, y el que se olvida de llamar a su register* lo ve faltar.
@@ -58,7 +58,7 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       // Ventas (B4): los recordatorios relativos al vencimiento de un pago y el barrido de mora. // @plantilla-quitar(ventas)
       "payment_relative_trigger", // @plantilla-quitar(ventas)
       "payments_overdue_sweep", // @plantilla-quitar(ventas)
-      // Ventas (B2): la asignacion automatica de un contacto.
+      // La asignacion automatica de un contacto (B2).
       "sales_contact_eval",
       // Tareas (Extra A, F18): el barrido de vencimientos. // @plantilla-quitar(tareas)
       "tasks_due_sweep", // @plantilla-quitar(tareas)

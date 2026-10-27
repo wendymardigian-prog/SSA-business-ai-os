@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Reagendar una agenda arrastrandola (Tareas × CRM, R8): SIEMPRE con un modal de confirmacion. Soltar la agenda abre el
+ * Reagendar una agenda arrastrandola (R8): SIEMPRE con un modal de confirmacion. Soltar la agenda abre el
  * modal; nada se guarda hasta que la persona confirma. La maquina de estados es `dragConfirmReducer` (pura, con su test);
  * esto solo la conecta con `rescheduleAsHost`, sin tocarlo.
  */

@@ -34,7 +34,7 @@ type HistoryEntry = AuditHistoryItem;
 
 const ACTION_LABELS: Record<AuditAction, string> = {
   // El historial de un anuncio (entity meta_ad) no se muestra en la ficha del contacto; las etiquetas existen por el tipo.
-  // Extra I (MP): los métodos de pago del negocio se auditan sobre el workspace; no se ven en la ficha de un contacto.
+  // Extra I (MP): los métodos de pago del negocio se auditan sobre el workspace; no se ven en la ficha de un contacto.  @plantilla-quitar(ventas)
   "payment_methods.updated": "cambió los métodos de pago", // @plantilla-quitar(ventas)
   "content_link.linked": "vinculó el anuncio con una pieza de contenido",
   "content_link.unlinked": "desvinculó el anuncio de su pieza de contenido",
@@ -102,7 +102,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "booking.slot_occupied": "volvió a ocupar el espacio de una agenda",
   "booking.host_changed": "reasignó el anfitrión de una agenda",
   agent_asset_sent: "mandó un recurso de audio de la banca",
-  // Webhooks entrantes: son del endpoint, no del contacto; quedan por si alguna cae en la ficha.
+  // Webhooks entrantes: son del endpoint, no del contacto; quedan por si alguna cae en la ficha.  @plantilla-quitar(webhooks)
   "webhook_endpoint.created": "creó un endpoint de webhooks", // @plantilla-quitar(webhooks)
   "webhook_endpoint.updated": "editó un endpoint de webhooks", // @plantilla-quitar(webhooks)
   "webhook_endpoint.paused": "pausó un endpoint de webhooks", // @plantilla-quitar(webhooks)

@@ -9,9 +9,8 @@ export interface FoundContact {
 }
 
 /**
- * El buscador de contactos de Ventas (reglas de asignación, asistente de venta).
- * Mismo patrón que `components/forms/use-contact-search.ts`, pero con la búsqueda
- * que se le pasa: cada módulo busca con su permiso. Busca a los 250 ms de dejar de
+ * El buscador de contactos (por ejemplo, el de las reglas de asignación), con la
+ * búsqueda que se le pasa: cada módulo busca con su permiso. Busca a los 250 ms de dejar de
  * escribir y desde 2 letras; un resultado que llega tarde de una consulta vieja
  * se descarta.
  */

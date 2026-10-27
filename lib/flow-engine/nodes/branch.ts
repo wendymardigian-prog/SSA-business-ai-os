@@ -23,8 +23,8 @@ import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "../branch-paths"
  *  - NUNCA lanza. Un campo que no se puede leer (la pregunta ya no existe, la
  *    base no responde) hace que esa condicion no se cumpla, y el flujo sigue.
  *  - Cada campo se resuelve UNA vez, aunque lo miren varias condiciones; el
- *    contacto y la respuesta del formulario se cargan solo si algun campo los
- *    necesita.
+ *    contacto y lo demas que haya que leer de la base se cargan solo si algun
+ *    campo los necesita.
  *  - Se compara el valor REAL de la respuesta (un numero, una lista), no su
  *    texto. Ver `condition-eval.ts`.
  *  - Deja `branch_taken` en `analytics_events` (la ficha del contacto muestra
@@ -41,9 +41,9 @@ import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "../branch-paths"
  */
 const CONTACT_FREE_PREFIXES = [
   "answer.", "form.", "submission.", "booking.", "sale.", "payment.", "variable:",
-  // Reporte de fin de día (E16): todo sale de las variables del disparador.
+  // Reporte de fin de día (E16): todo sale de las variables del disparador.  @plantilla-quitar(formularios)
   "eod.", "member.", "metrics.", "channel.", "report.",
-  // Webhooks entrantes (Extra L): el envío (`webhook.payload.*`, `webhook.query.*`) viaja en las variables.
+  // Webhooks entrantes (Extra L): el envío (`webhook.payload.*`, `webhook.query.*`) viaja en las variables.  @plantilla-quitar(webhooks)
   "webhook.",
 ];
 const CONTACT_FREE_FIELDS = ["platform", "agent_active"];

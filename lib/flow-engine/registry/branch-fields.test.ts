@@ -1,6 +1,6 @@
 /**
  * Los campos tipados que solo usa el nodo `branch`: tags, secuencias,
- * temperatura, la respuesta del formulario y lo que deja el disparador en las
+ * temperatura, las respuestas y lo que deja el disparador en las
  * variables. Cada uno devuelve su valor REAL (lista, numero), no texto.
  */
 import { describe, it, expect, beforeAll } from "vitest";

@@ -1,6 +1,6 @@
 /**
- * Caracterizacion del calendario de agendas ANTES de Tareas × CRM (R7 y R8): fija el HTML que dibuja hoy en dia, semana y
- * mes con las props de siempre. Las props nuevas (tareas, arrastre) son opcionales: sin ellas, nada de esto puede cambiar.
+ * Caracterizacion del calendario de agendas: fija el HTML que dibuja en dia, semana y mes con las props basicas. Las
+ * demas (tareas, arrastre) son opcionales: sin ellas, nada de esto puede cambiar.
  */
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

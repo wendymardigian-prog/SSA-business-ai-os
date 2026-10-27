@@ -173,9 +173,9 @@ function MessageBubble({
               : isInbound
               ? "rounded-tl-md bg-muted text-foreground"
               : failed
-              ? // Un envio rechazado no se pinta como un mensaje entregado. Desde
-                // la 00262 el texto es lo que se quiso mandar y el motivo va en
-                // send_error; en una fila vieja el texto es el motivo.
+              ? // Un envio rechazado no se pinta como un mensaje entregado. El
+                // texto es lo que se quiso mandar y el motivo va en send_error
+                // (sin send_error, el texto es el motivo).
                 "rounded-tr-md border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
               : "rounded-tr-md bg-primary text-primary-foreground"
           )}
@@ -395,7 +395,7 @@ export function MessageThread({
   assets?: InboxAsset[];
   /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
   canManageAssets?: boolean;
-  /** Puede crear tareas (`tasks.edit`): muestra «Crear tarea» en el encabezado. */
+  /** Puede crear tareas (`tasks.edit`): muestra «Crear tarea» en el encabezado.  @plantilla-quitar(tareas) */
   canCreateTask?: boolean;
   /** Puede ver las corridas del agente (`agents.view`): el panel de actividad ofrece abrir la corrida. */
   canViewAgentRuns?: boolean;
@@ -434,8 +434,8 @@ export function MessageThread({
   // con la RLS (quien ve la conversacion ve sus llamadas) y se pintan entre los
   // mensajes por hora; no son mensajes.
   const [calls, setCalls] = useState<CallRow[]>([]);
-  // `?texto=` deja el mensaje escrito en el composer, sin mandarlo (Ventas: "Enviar contrato" por
-  // WhatsApp o Instagram). Se lee una sola vez al abrir y se saca de la URL.
+  // `?texto=` deja el mensaje escrito en el composer, sin mandarlo (por ejemplo, un link para mandar
+  // por WhatsApp o Instagram). Se lee una sola vez al abrir y se saca de la URL.
   const [input, setInput] = useState(() => (searchParams.get("texto") ?? "").slice(0, 2000));
   const [sending, setSending] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
@@ -544,7 +544,7 @@ export function MessageThread({
     };
   }, [reactionConversationId, reloadReactions]);
   const reactionCap: ReactionCapability | null = channelProvider && capabilityFor(channelProvider).supported ? capabilityFor(channelProvider) : null;
-  // "Crear tarea" se abre desde el menu "⋯" de la cabecera y su panel se ancla a ese boton.
+  // "Crear tarea" se abre desde el menu "⋯" de la cabecera y su panel se ancla a ese boton.  @plantilla-quitar(tareas)
   const [taskOpen, setTaskOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const insertEmoji = useEmojiInsert(textareaRef, input, setInput);
@@ -1305,7 +1305,7 @@ export function MessageThread({
         </div>
 
         {/* A la vista: el interruptor del agente y la accion mas frecuente (cerrar o
-            reabrir). El resto (posponer, crear tarea y los avisos de estado) vive
+            reabrir). El resto (posponer, otras acciones y los avisos de estado) vive
             en el menu "⋯": ver `planHeaderActions`. */}
         <div className="flex flex-shrink-0 items-center gap-1.5">
           {onOpenContact && (

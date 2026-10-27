@@ -110,16 +110,15 @@ const pathToVault = (entry: string) => pathTo(entry, VAULT);
 const SERVER_ONLY = [
   { label: "lib/vault.ts", file: VAULT },
   { label: "lib/supabase/server.ts", file: join(ROOT, "lib/supabase/server.ts") },
-  // Formularios: calculan huellas con
-  // `node:crypto` o cuentan topes con el cliente de servicio. Nada de esto puede
-  // viajar al navegador.
+  // Cuentan topes con el cliente de servicio o calculan huellas con `node:crypto`.
+  // Nada de esto puede viajar al navegador.
   { label: "lib/forms/contract-hash.ts", file: join(ROOT, "lib/forms/contract-hash.ts") }, // @plantilla-quitar(formularios)
   { label: "lib/antispam/rate-limit.ts", file: join(ROOT, "lib/antispam/rate-limit.ts") },
   { label: "lib/forms/signed-link.ts", file: join(ROOT, "lib/forms/signed-link.ts") }, // @plantilla-quitar(formularios)
   { label: "lib/forms/submit.ts", file: join(ROOT, "lib/forms/submit.ts") }, // @plantilla-quitar(formularios)
   { label: "lib/forms/server-ports.ts", file: join(ROOT, "lib/forms/server-ports.ts") }, // @plantilla-quitar(formularios)
-  // Contratos: generan el PDF (pdf-lib, que pesa y es solo de servidor), leen y escriben el
-  // bucket privado y mandan el email con el adjunto.
+  // Contratos: generan el PDF (pdf-lib, que pesa y es solo de servidor), leen y escriben el  @plantilla-quitar(formularios)
+  // bucket privado y mandan el email con el adjunto.  @plantilla-quitar(formularios)
   { label: "lib/forms/contract/pdf.ts", file: join(ROOT, "lib/forms/contract/pdf.ts") }, // @plantilla-quitar(formularios)
   { label: "lib/forms/contract/pdf-run.ts", file: join(ROOT, "lib/forms/contract/pdf-run.ts") }, // @plantilla-quitar(formularios)
   { label: "lib/forms/contract/email-run.ts", file: join(ROOT, "lib/forms/contract/email-run.ts") }, // @plantilla-quitar(formularios)

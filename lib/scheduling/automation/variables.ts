@@ -65,7 +65,7 @@ export interface VariablesOptions {
   baseUrl: string;
 }
 
-/** Una respuesta del formulario como texto: las de selección múltiple, unidas por comas. */
+/** Una respuesta de la reserva como texto: las de selección múltiple, unidas por comas. */
 export function answerToText(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (Array.isArray(value)) return value.map(String).join(", ");

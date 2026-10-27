@@ -1,5 +1,5 @@
 /**
- * Arrastrar una agenda a otra hora o dia, siempre con confirmacion (Tareas × CRM, R8). PURO.
+ * Arrastrar una agenda a otra hora o dia, siempre con confirmacion (R8). PURO.
  *
  * Soltar una agenda NO la reagenda: abre un modal y nada se guarda hasta que la persona confirma. Aca esta lo que decide
  * a que instante apunta el destino y la maquina de estados del modal (`dragConfirmReducer`), que garantiza que ninguna

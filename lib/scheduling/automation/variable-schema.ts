@@ -5,7 +5,7 @@
  * Son las mismas variables que `{{booking.*}}` (`BOOKING_VARIABLE_KEYS`) y todas
  * se comparan como TEXTO: ya vienen formateadas para leerse ("12 de octubre de
  * 2026", "30 minutos"), asi que un "mayor que" sobre ellas no tendria sentido.
- * Las respuestas del formulario de la reunion (`booking.answers.<clave>`) no se
+ * Las respuestas de la reserva (`booking.answers.<clave>`) no se
  * ofrecen: cambian por tipo de evento y hoy no hay una lista confiable.
  */
 import type { ConditionFieldSpec } from "@/lib/flow-engine/condition-eval";

@@ -46,9 +46,9 @@ export interface ActionNodeProps {
   /** "Enviar recurso": el recurso elegido y su nombre (para mostrarlo sin leer la banca). */
   assetId?: string;
   assetName?: string;
-  /** "Crear tarea": el titulo (con variables) que se muestra como resumen. */
+  /** "Crear tarea": el titulo (con variables) que se muestra como resumen.  @plantilla-quitar(tareas) */
   title?: string;
-  /** "Crear tarea": quien queda a cargo y la clave de origen, que se muestran en la tarjeta. */
+  /** "Crear tarea": quien queda a cargo y la clave de origen, que se muestran en la tarjeta.  @plantilla-quitar(tareas) */
   owner?: string;
   sourceKey?: string;
   /** "Completar tarea": la clave de origen de la(s) tarea(s) que cierra. */
@@ -186,7 +186,7 @@ const OWNER_LABELS: Record<string, string> = {
   contact_assigned: "Asignada al contacto",
 };
 
-/** La segunda linea de la tarjeta de «Crear tarea»: quien queda a cargo y la clave de origen. */
+/** La segunda linea de la tarjeta de «Crear tarea»: quien queda a cargo y la clave de origen.  @plantilla-quitar(tareas) */
 function getDetail(nodeData: ActionNodeProps): string | null {
   if (nodeData.actionType !== ("create_task" as NodeType)) return null;
   const parts = [nodeData.owner && OWNER_LABELS[nodeData.owner] ? `A cargo: ${OWNER_LABELS[nodeData.owner]}` : null, nodeData.sourceKey?.trim() ? `Clave: ${nodeData.sourceKey.trim()}` : null];

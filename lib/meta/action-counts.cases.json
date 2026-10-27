@@ -1,5 +1,5 @@
 {
-  "comentario": "Casos compartidos con la regla en SQL (00220_meta_leads_recount): leads y compras. Cada caso: las `actions` que se guardan y lo que da la regla (null = Meta no lo informa). Si se cambia la regla, cambiarla en TS y en SQL y sumar el caso.",
+  "comentario": "Casos compartidos con la regla en SQL: leads y compras. Cada caso: las `actions` que se guardan y lo que da la regla (null = Meta no lo informa). Si se cambia la regla, cambiarla en TS y en SQL y sumar el caso.",
   "leads": [
     { "nombre": "el total de Meta y sus variantes duplicadas cuentan UNA vez", "actions": { "lead": 3, "onsite_conversion.lead_grouped": 3, "offsite_complete_registration_add_meta_leads": 3, "offsite_search_add_meta_leads": 3, "offsite_content_view_add_meta_leads": 3 }, "esperado": 3 },
     { "nombre": "sin `lead`, vale la variante agrupada", "actions": { "onsite_conversion.lead_grouped": 2, "link_click": 50 }, "esperado": 2 },

@@ -32,12 +32,12 @@ export function FollowupField({
   value: string | null;
   /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
   onSaved?: () => void;
-  /**
-   * Tareas × CRM (R2): si se puede mostrar «Crear tarea» debajo de la fecha. Opcional: sin esto se usa el permiso de
-   * editar tareas del anfitrion de tareas (`ContactTasksProvider`); sin anfitrion, el campo es el de siempre.
-   */
+  /**  @plantilla-quitar(tareas)
+   * Tareas × CRM (R2): si se puede mostrar «Crear tarea» debajo de la fecha. Opcional: sin esto se usa el permiso de  @plantilla-quitar(tareas)
+   * editar tareas del anfitrion de tareas (`ContactTasksProvider`); sin anfitrion, el campo es el de siempre.  @plantilla-quitar(tareas)
+   * @plantilla-quitar(tareas) */
   canCreateTask?: boolean;
-  /** Para el texto del boton «Crear tarea» (lo lee el lector de pantalla). */
+  /** Para el texto del boton «Crear tarea» (lo lee el lector de pantalla).  @plantilla-quitar(tareas) */
   contactName?: string | null;
 }) {
   const router = useRouter();

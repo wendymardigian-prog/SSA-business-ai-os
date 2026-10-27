@@ -2,7 +2,7 @@
 
 /**
  * El detalle de una agenda (F36): un panel lateral con el estado, las
- * acciones del anfitrión, las respuestas del formulario, las notas internas
+ * acciones del anfitrión, las respuestas de la reserva, las notas internas
  * y el historial.
  *
  * El estado se cambia desde acá con el menú: es el camino que no depende de

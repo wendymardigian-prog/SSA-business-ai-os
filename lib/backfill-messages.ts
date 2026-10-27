@@ -18,12 +18,10 @@
  * indice unico (conversation_id, platform_message_id) descarta todo lo que ya
  * este, asi que la segunda corrida solo suma lo que aparecio en el medio.
  *
- * **Los ids, verificados contra la API real (24 de septiembre de 2026).** El
- * endpoint de historial devuelve UN solo id por mensaje, en `id`, y es el id
- * NATIVO de Meta (el `mid` largo en base64), no el ObjectId corto de Zernio que
- * el webhook guarda en `platform_message_id`. El Bloque 1 asumio lo contrario
- * y el primer dry-run en firme lo desmintio: 0 "ya estaban" con 234 mensajes
- * guardados por webhook. Si se dedupara solo por `platform_message_id`, cada
+ * **Los ids, verificados contra la API real.** El endpoint de historial
+ * devuelve UN solo id por mensaje, en `id`, y es el id NATIVO de Meta (el `mid`
+ * largo en base64), no el ObjectId corto de Zernio que el webhook guarda en
+ * `platform_message_id`. Si se dedupara solo por `platform_message_id`, cada
  * corrida insertaria una copia de todo lo que entro por webhook.
  *
  * Por eso la deduplicacion mira LAS DOS columnas de id (`platform_message_id`

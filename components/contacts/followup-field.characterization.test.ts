@@ -1,7 +1,7 @@
 /**
- * Caracterizacion de `FollowupField` ANTES de Tareas × CRM (R2): fija el HTML que dibuja hoy con la firma de siempre
- * (`contactId`, `value`, `onSaved`), que es como lo usan la ficha del contacto y el panel de la bandeja. Las props
- * nuevas son opcionales: sin ellas, nada de esto puede cambiar.
+ * Caracterizacion de `FollowupField`: fija el HTML que dibuja con la firma basica (`contactId`, `value`,
+ * `onSaved`), que es como lo usan la ficha del contacto y el panel de la bandeja. Las demas props son opcionales:
+ * sin ellas, nada de esto puede cambiar.
  */
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

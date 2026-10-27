@@ -2,7 +2,7 @@
  * Las tres secciones de Integraciones y qué puede hacer cada persona en ellas (Equipo y roles, F18).
  * Puro: lo usan la página, el detalle y los tests.
  *
- *   Mis conexiones             todos: conectar el propio Google Calendar y el propio Fathom.
+ *   Mis conexiones             todos: conectar las cuentas propias (Google Calendar...).
  *   Canales                    `channels.manage` los toca; `integrations.view`/`manage` los ven.
  *   Integraciones del negocio  `integrations.manage` las toca; `integrations.view` ve su estado.
  *

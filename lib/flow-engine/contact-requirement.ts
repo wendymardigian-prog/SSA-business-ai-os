@@ -76,7 +76,7 @@ export interface MissingContact {
 /**
  * Los pasos que actúan sobre LA reunión o LA venta que disparó el flujo (no sobre un contacto suelto): leen
  * `event_booking_id` / `event_sale_id` y los demás datos del evento. Un flujo que no arrancó por una reunión o una
- * venta (un webhook, un reporte de fin de día, el sistema) no las tiene, y «Crear o actualizar contacto» no se las da.
+ * venta (un webhook, una persona del equipo, el sistema) no las tiene, y «Crear o actualizar contacto» no se las da.
  * Siguen declarando `needsContact: true` (la reunión y la venta tienen contacto); esto solo corrige lo que se le dice
  * a la persona. Tirón 2, D2.
  */

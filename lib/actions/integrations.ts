@@ -297,9 +297,8 @@ export async function updateIntegrationConfig(
  * programados para el jueves los deja fallando el jueves, y enterarse ese dia
  * es tarde.
  *
- * Hoy devuelve 0 siempre: la tabla `social_posts` la crea el bloque 3. La
- * funcion existe desde ahora para que el modal tenga donde preguntar y el
- * bloque 3 solo tenga que cambiar el cuerpo, no la pantalla.
+ * Cuenta las filas programadas de `social_posts` de los publicadores que
+ * dependen de esta integracion.
  */
 export async function countScheduledUses(providerId: string): Promise<number> {
   const ctx = await getAnyPermissionAction(["integrations.manage", "channels.manage"]);

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verificacion de la fusion de contactos (Tareas × CRM, R9) contra la base real.
+ * Verificacion de la fusion de contactos (R9) contra la base real.
  *
  * Lanza la version TypeScript con vite-node: lo que se prueba es `merge_contacts` (00207) con la base de verdad y la lista
  * `CONTACT_MERGE_TABLES` del codigo. Crea todo con prefijo `zz-test-` y lo borra al terminar (tambien lo que arma para

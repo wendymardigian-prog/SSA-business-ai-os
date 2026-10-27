@@ -5,8 +5,8 @@
  * hora de pared más la zona IANA del horario. Estas funciones son el puente
  * entre las dos cosas y son las únicas que deberían hacer esa conversión.
  *
- * `getViewerTimezone` (la zona de quien mira) lee el perfil y va en la
- * Tanda B; acá solo hay funciones puras que reciben la zona por parámetro.
+ * `getViewerTimezone` (la zona de quien mira) lee el perfil y no va acá:
+ * acá solo hay funciones puras que reciben la zona por parámetro.
  */
 import dayjs from "./dayjs";
 import type { DateString, WallTime } from "../types";

@@ -35,9 +35,8 @@ export const getActiveWorkspace = cache(async () => {
   if (selectedId) {
     const { data: membership } = await supabase
       .from("workspace_members")
-      // role_id se suma en la etapa 2: es el rol con los permisos finos
-      // (00088). `role` sigue siendo owner/admin/member y es lo que leen las
-      // policies que ya existian.
+      // role_id es el rol con los permisos finos (00088); `role` es
+      // owner/admin/member y es lo que leen las policies.
       .select("workspace_id, role, role_id, workspaces(*)")
       .eq("user_id", user.id)
       .eq("workspace_id", selectedId)

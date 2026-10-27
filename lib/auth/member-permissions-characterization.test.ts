@@ -1,19 +1,19 @@
 /**
- * Caracterizacion de los roles de sistema (Llamadas, §4.3): el set EXACTO de
- * claves y alcances de cada rol, escrito con `toEqual`. Lo que cambie en un
- * rol de sistema tiene que cambiar aca, a la vista, con su decision.
+ * Caracterizacion de los roles de sistema: el set EXACTO de claves y alcances
+ * de cada rol, escrito con `toEqual`. Lo que cambie en un rol de sistema tiene
+ * que cambiar aca, a la vista, con su decision.
  *
- * Llamadas suma (decision 152): `calls.view` con alcance `own` al Member, y
- * las tres claves de `calls` al Owner y al Admin. Nada mas.
- *
- * Formularios suma (alcance v7.1 §4.5): `forms.view` al Member (ve las respuestas
- * de los contactos que ve; la RLS lo aplica) y `forms.view` + `forms.manage` al
- * Owner y al Admin. El Member NO tiene `forms.manage`.
- *
- * Ventas suma (plano §5): `sales.view`, `sales.manage` y `payments.manage` a los
- * tres roles de sistema, con alcance `sales` = `own` para el Member y `all` para
- * Owner y Admin. El Member NO tiene `products.manage` ni `sales.settings`.
- *
+ * Llamadas suma (decision 152): `calls.view` con alcance `own` al Member, y  @plantilla-quitar(llamadas)
+ * las tres claves de `calls` al Owner y al Admin. Nada mas.  @plantilla-quitar(llamadas)
+ *  @plantilla-quitar(llamadas)
+ * Formularios suma (alcance v7.1 §4.5): `forms.view` al Member (ve las respuestas  @plantilla-quitar(formularios)
+ * de los contactos que ve; la RLS lo aplica) y `forms.view` + `forms.manage` al  @plantilla-quitar(formularios)
+ * Owner y al Admin. El Member NO tiene `forms.manage`.  @plantilla-quitar(formularios)
+ *  @plantilla-quitar(formularios)
+ * Ventas suma (plano §5): `sales.view`, `sales.manage` y `payments.manage` a los  @plantilla-quitar(ventas)
+ * tres roles de sistema, con alcance `sales` = `own` para el Member y `all` para  @plantilla-quitar(ventas)
+ * Owner y Admin. El Member NO tiene `products.manage` ni `sales.settings`.  @plantilla-quitar(ventas)
+ *  @plantilla-quitar(ventas)
  * Equipo y roles (plano §9.3, cambio aprobado el 13/10/2026): el Member suma `contacts.assign` y
  * `flows.publish` (las dos ya las podia hacer de hecho; se conservan) y pierde `sequences.edit`
  * (la base nunca se lo dejo usar: corrige el catalogo, sin cambio real). Son 27 claves.

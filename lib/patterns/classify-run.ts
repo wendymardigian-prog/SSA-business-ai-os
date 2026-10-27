@@ -438,8 +438,8 @@ async function loadCategories(supabase: Db, workspaceId: string, direction: Dire
 /**
  * El tope de categorías nuevas del lote.
  *
- * F20 fija 3, pensando en el régimen diario. Con el catálogo recién nacido ese
- * número deja el backlog entero en "Otro": las 5 categorías que trae la 00079
+ * El tope es 3, pensando en el régimen diario. Con el catálogo recién nacido ese
+ * número deja el backlog entero en "Otro": las 5 categorías que trae la base
  * son de sistema y no dicen nada del negocio. Mientras la dirección tenga
  * menos de 8 categorías propias, el tope sube; después vuelve a 3 solo.
  */

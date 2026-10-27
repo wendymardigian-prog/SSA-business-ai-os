@@ -90,7 +90,7 @@ export function Sidebar({
   unreadNotifications?: number;
   /** Borradores esperando (Bloque 2c). Coincide con la vista por defecto de la cola: los mios. */
   draftCounts?: PendingDraftCounts;
-  /** Condiciones del menú calculadas en el servidor ("Mi reporte del día"). */
+  /** Condiciones del menú calculadas en el servidor. */
   navFlags?: NavFlags;
 }) {
   const drafts = useDraftCounts(workspace.id, draftCounts, "sidebar-drafts");

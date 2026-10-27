@@ -17,7 +17,7 @@ import { VISIBLE_PERMISSION_KEYS } from "@/lib/auth/permissions";
 
 const ROOT = process.cwd();
 
-/** Claves que todavia no tienen su uso: cada una dice en que bloque llega. Al cerrar B5 esta lista queda VACIA (y asi tiene que seguir). */
+/** Claves que todavia no tienen su uso, cada una con el motivo. Tiene que quedar VACIA. */
 const PENDING: Record<string, string> = {};
 
 function walk(dir: string, out: string[] = []): string[] {

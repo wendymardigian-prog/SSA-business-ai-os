@@ -49,7 +49,7 @@ export interface InterpretabilityVerdict {
 /**
  * Si un mensaje esta esperando algo que puede llegar.
  *
- * `retryQueued` es FA4: un 429 transitorio del proveedor de transcripción escribe `transcript_status
+ * `retryQueued`: un 429 transitorio del proveedor de transcripción escribe `transcript_status
  * = 'failed'` y encola un reintento en `scheduled_jobs`. Sin esto la compuerta
  * veia "failed", lo trataba como ilegible DEFINITIVO, y escalaba (apagando el
  * agente) aunque la cola fuera a transcribir bien 20-30 segundos despues.

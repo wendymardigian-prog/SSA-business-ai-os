@@ -164,13 +164,13 @@ describe("los tres tipos nuevos estan registrados", () => {
   });
 
   it("los de evento y los agendados estan separados", () => {
-    // `email_received` (etapa 2) es de evento: lo dispara el receptor de
-    // Resend, no el matcher de la bandeja ni un cron. Los seis de agenda
-    // (etapa 4) tambien son de evento: nacen de la cola de automation_events, y
-    // los dos de Llamadas (call_analyzed, call_linked) y los tres de Formularios
-    // (form_submitted, survey_answered, contract_signed) tambien, y los cuatro
-    // inmediatos de Ventas (sale_created, sale_status_changed, payment_created,
-    // payment_status_changed).
+    // `email_received` es de evento: lo dispara el receptor de Resend, no el
+    // matcher de la bandeja ni un cron. Los seis de agenda tambien son de
+    // evento: nacen de la cola de automation_events.
+    // Tambien los dos de Llamadas (call_analyzed, call_linked),  @plantilla-quitar(llamadas)
+    // los tres de Formularios (form_submitted, survey_answered, contract_signed)  @plantilla-quitar(formularios)
+    // y los cuatro inmediatos de Ventas (sale_created, sale_status_changed,  @plantilla-quitar(ventas)
+    // payment_created, payment_status_changed).  @plantilla-quitar(ventas)
     expect(listTriggers("event").map((t) => t.type).sort()).toEqual([
       "booking_cancelled",
       "booking_created",
@@ -198,8 +198,8 @@ describe("los tres tipos nuevos estan registrados", () => {
       // Webhooks entrantes (Extra L): de evento, pero corre directo y no por la cola. // @plantilla-quitar(webhooks)
       "webhook_received", // @plantilla-quitar(webhooks)
     ]);
-    // Los tres relativos de agenda y los dos de pagos (antes y despues del
-    // vencimiento) los agenda un job, igual que inactividad.
+    // Los tres relativos de agenda los agenda un job, igual que inactividad.
+    // Tambien los dos de pagos (antes y despues del vencimiento).  @plantilla-quitar(ventas)
     expect(listTriggers("scheduled").map((t) => t.type).sort()).toEqual([
       "booking_after_created",
       "booking_after_end",

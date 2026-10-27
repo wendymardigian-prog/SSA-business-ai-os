@@ -1,7 +1,7 @@
 /**
- * Caracterizacion de los triggers registrados (Llamadas, §4.3): el conjunto
- * exacto de tipos, con su alcance y prioridad, ANTES de sumar `call_analyzed`
- * y `call_linked`. Llamadas solo puede agregar; ningun tipo existente cambia.
+ * Caracterizacion de los triggers registrados: el conjunto exacto de tipos,
+ * con su alcance y prioridad. Lo nuevo solo puede agregar; ningun tipo
+ * existente cambia.
  */
 import { describe, expect, it } from "vitest";
 import { listTriggers, listNodes } from "./index";

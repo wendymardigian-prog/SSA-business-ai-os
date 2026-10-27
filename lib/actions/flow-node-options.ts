@@ -39,9 +39,9 @@ export async function loadWhatsAppChannelOptions(): Promise<{ ok: true; channels
 }
 
 /**
- * Las personas del equipo que ofrecen los pasos del lienzo que eligen gente («Avisar en la campana», «Crear tarea»).
+ * Las personas del equipo que ofrecen los pasos del lienzo que eligen gente (como «Avisar en la campana»).
  * Lo abre quien arma el flujo; es el mismo dato que ya ven los demas selectores de personas (id y nombre de gente del
- * mismo workspace). Antes vivia en lib/actions/tasks.ts como `loadTaskNodeOptions`.
+ * mismo workspace).
  */
 export async function loadTeamMemberOptions(): Promise<{ members: Array<{ id: string; name: string }> }> {
   const { workspace } = await getWorkspace();

@@ -35,15 +35,15 @@ export function IntegrationsGrid({
   access,
 }: {
   integrations: Record<string, IntegrationCardData>;
-  /**
-   * La card de Fathom (la app OAuth del negocio): no esta en el catalogo, pero se muestra en "Conexiones" junto a las
-   * demas, con el mismo diseno. Respeta los chips (sin chip) y "Requiere atencion" (solo si necesita atencion).
-   */
+  /**  @plantilla-quitar(llamadas)
+   * La card de Fathom (la app OAuth del negocio): no esta en el catalogo, pero se muestra en "Conexiones" junto a las  @plantilla-quitar(llamadas)
+   * demas, con el mismo diseno. Respeta los chips (sin chip) y "Requiere atencion" (solo si necesita atencion).  @plantilla-quitar(llamadas)
+   * @plantilla-quitar(llamadas) */
   fathom?: React.ReactNode;
   fathomNeedsAttention?: boolean;
   /** Cards propias que no pasan por el catalogo (Webhooks): se muestran sin filtros activos. */
   extra?: React.ReactNode;
-  /** «Mis conexiones»: el Google Calendar y el Fathom de la propia persona. Lo ve todo el equipo. */
+  /** «Mis conexiones»: las conexiones personales (Google Calendar y otras) de la propia persona. Lo ve todo el equipo. */
   mine?: React.ReactNode;
   /** Que puede hacer en Canales y en Integraciones del negocio (lib/integrations/sections.ts). */
   access: Pick<IntegrationSections, "channels" | "business">;
@@ -90,7 +90,7 @@ export function IntegrationsGrid({
   );
   const hasShared = access.channels !== null || access.business !== null;
 
-  // Fathom no tiene chip: aparece con "Todos" y, con "Requiere atencion", solo si la necesita.
+  // Fathom no tiene chip: aparece con "Todos" y, con "Requiere atencion", solo si la necesita.  @plantilla-quitar(llamadas)
   const showFathom = Boolean(fathom) && chip === null && (!onlyAttention || fathomNeedsAttention);
   const nothingConnectedYet = !Object.values(integrations).some((data) => data.status !== "not_connected");
 
@@ -194,7 +194,7 @@ export function IntegrationsGrid({
                         {section.providers.map((provider) => (
                           <IntegrationCard key={provider.id} provider={provider} data={integrations[provider.id]} detailHref={detailHrefFor(provider.id)} />
                         ))}
-                        {/* Fathom va con las demas conexiones, en la primera seccion (Conexiones). */}
+                        {/* Fathom va con las demas conexiones, en la primera seccion (Conexiones).  @plantilla-quitar(llamadas) */}
                         {index === 0 && showFathom && fathom}
                       </div>
                     </div>

@@ -10,7 +10,7 @@ import { parseVariantInput } from "@/lib/catalog/variants";
 import type { CatalogResult } from "@/lib/catalog/result";
 
 /**
- * Productos y variantes (Ventas, plano F3 a F6).
+ * Productos y variantes (F3 a F6).
  *
  * Todo pide `products.manage` (lo repite la RLS de la 00159). El workspace sale
  * SIEMPRE de la sesion, nunca del pedido.

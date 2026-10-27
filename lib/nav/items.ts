@@ -7,8 +7,7 @@
  * `navSections` hace el agrupamiento real.
  *
  * Plano formularios-ui (D1-D4): las herramientas de uso menos diario van a la
- * seccion "Herramientas", que se colapsa (Tareas, Automatizaciones, Formularios,
- * Agentes IA y Ajustes). Conocimiento, Recursos e Integraciones salen del menu:
+ * seccion "Herramientas", que se colapsa (Automatizaciones, Agentes IA, Ajustes...). Conocimiento, Recursos e Integraciones salen del menu:
  * Conocimiento se abre desde Agentes IA (boton de la barra) y Recursos e
  * Integraciones son pestañas de Ajustes. Sus rutas siguen andando.
  *
@@ -34,7 +33,8 @@ export interface NavGroupMeta {
 export const NAV_GROUPS: NavGroupMeta[] = [
   { id: "inicio", title: null },
   { id: "adquisicion", title: "Adquisición" },
-  // Contactos, Agenda, Llamadas y Ventas (Etapa 5).
+  // Contactos, Agenda, Llamadas y Ventas (Etapa 5).  @plantilla-quitar(llamadas,ventas)
+  // @plantilla-sin(llamadas,ventas): // Contactos y Agenda.
   { id: "ventas", title: "Ventas" },
   { id: "herramientas", title: "Herramientas", collapsible: true },
 ];
@@ -61,8 +61,9 @@ export interface NavItemMeta {
   alsoActiveOn?: string[];
   /**
    * Visible solo si la condición calculada en el servidor es verdadera, también para
-   * Owner y Admin: "Mi reporte del día" aparece si la persona está en la audiencia de
-   * algún reporte de fin de día publicado (`lib/eod/nav-flag.ts`).
+   * Owner y Admin.
+   * "Mi reporte del día" aparece si la persona está en la audiencia de  @plantilla-quitar(formularios)
+   * algún reporte de fin de día publicado (`lib/eod/nav-flag.ts`).  @plantilla-quitar(formularios)
    */
   requires?: NavFlag;
 }
@@ -111,7 +112,8 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // @plantilla-hasta(finanzas,comisiones)
 
   // Herramientas (plano formularios-ui, D1): la unica seccion colapsable. Orden fijo:
-  // Tareas, Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
+  // Tareas, Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.  @plantilla-quitar(tareas,formularios)
+  // @plantilla-sin(tareas,formularios): // Automatizaciones, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
   // @plantilla-desde(tareas)
   // Tareas (Extra A): el trabajo pendiente del equipo. Se ve con `tasks.view`: el Member de sistema lo tiene
   // (ve las que creo, tiene a cargo o sigue). Se mudo de los sueltos de arriba a Herramientas.

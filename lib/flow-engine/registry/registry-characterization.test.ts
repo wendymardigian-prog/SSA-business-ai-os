@@ -1,6 +1,5 @@
 /**
- * Caracterización del registro de triggers ANTES de que Formularios sume los
- * suyos (F19). Lo nuevo solo puede SUMAR: cada tipo de acá tiene que seguir
+ * Caracterización del registro de triggers. Lo nuevo solo puede SUMAR: cada tipo de acá tiene que seguir
  * registrado con el mismo alcance, la misma prioridad y los mismos eventos.
  */
 import { describe, it, expect } from "vitest";

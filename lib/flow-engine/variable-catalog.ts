@@ -88,8 +88,8 @@ export function firstNameOf(displayName: string | null | undefined): string {
 }
 
 /**
- * Las variables del contacto y del negocio que el motor siembra (sin pisar lo que ya vino del disparador: Ventas trae
- * sus propias `contact.*`). Puro: el motor le pasa lo que leyo.
+ * Las variables del contacto y del negocio que el motor siembra (sin pisar lo que ya vino del disparador, que puede
+ * traer sus propias `contact.*`). Puro: el motor le pasa lo que leyo.
  */
 export function seedContactVariables(
   variables: Record<string, unknown>,

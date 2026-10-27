@@ -117,7 +117,7 @@ export async function recordImportTouches(
   }
 }
 
-// ── Formularios (F17, F33) ───────────────────────────────────────────────────
+// ── Las respuestas que traen atribucion (F17, F33) ───────────────────────────────────────────────────
 
 /** Los datos de atribución que NO tienen columna propia en `contact_touches`: van a `raw`. */
 const FORM_RAW_EXTRA_KEYS = [

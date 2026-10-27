@@ -68,8 +68,8 @@ export function normalizeGrant(value: unknown): ChannelGrant | null {
 
 /**
  * La configuracion guardada, validada. Un valor que falta o que no se entiende es "sin acceso": un rol
- * mal guardado no puede abrir conversaciones. (Los roles anteriores a la 00249 los convierte la
- * migracion; ver `private.channels_from_legacy`.)
+ * mal guardado no puede abrir conversaciones.
+ * (Los roles anteriores a la 00249 los convierte la migracion; ver `private.channels_from_legacy`.)  @plantilla-quitar(proyecto)
  */
 export function parseChannels(value: unknown): ChannelsConfig {
   if (!value || typeof value !== "object") return NO_CHANNELS;

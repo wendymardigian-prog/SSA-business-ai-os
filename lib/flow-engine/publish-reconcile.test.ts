@@ -1,8 +1,8 @@
 /**
  * Republicar no duplica disparadores (auditoria de automatizaciones, oct 2026).
  *
- * Antes publicar solo borraba las filas de los disparadores de mensaje y de Ventas: un flujo de agenda, formulario,
- * CRM, tareas o webhook sumaba UNA FILA MAS por cada publicacion, y corria una vez por cada fila.
+ * Publicar borra las filas de TODOS los tipos de disparador que arma el editor: si no, un flujo de agenda o de CRM
+ * sumaria UNA FILA MAS por cada publicacion, y correria una vez por cada fila.
  */
 import { describe, expect, it } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";

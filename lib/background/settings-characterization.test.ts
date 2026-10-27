@@ -1,6 +1,6 @@
 /**
- * Caracterizacion de la configuracion de tareas en segundo plano (Llamadas,
- * §4.3): lo que devuelve hoy `resolveBackgroundSettings` y lo que acepta
+ * Caracterizacion de la configuracion de tareas en segundo plano: lo que
+ * devuelve `resolveBackgroundSettings` y lo que acepta
  * `validateBackgroundSettings`, con las cuatro claves que existen.
  */
 import { describe, expect, it } from "vitest";

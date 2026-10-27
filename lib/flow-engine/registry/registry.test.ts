@@ -37,7 +37,7 @@ const NODOS_DE_ACCION = [
   "set_booking_status",
   // Banca de recursos en las automatizaciones.
   "sendAsset",
-  // Tareas × CRM (R4).
+  // Tareas × CRM (R4).  @plantilla-quitar(tareas)
   "complete_task", // @plantilla-quitar(tareas)
 ] as const;
 
@@ -46,12 +46,12 @@ describe("registro de nodos", () => {
     // 17 de la Fase 2, + pausar y reanudar el agente de IA (Fase 3),
     // + enviar email y las dos acciones de agenda (Etapa 4),
     // + enviar un recurso de la banca,
-    // + las tres acciones de cobranza de Ventas (mark_payment_paid, reschedule_payment, set_sale_status),
+    // + las tres acciones de cobranza de Ventas (mark_payment_paid, reschedule_payment, set_sale_status),  @plantilla-quitar(ventas)
     // + `branch` ("Condiciones": varios caminos en orden y "Si no"). El `condition` de siempre sigue registrado.
-    // + `notify_team` ("Avisar en la campana", EOD E15).
-    // + `upsert_contact` ("Crear o actualizar contacto", webhooks entrantes, Extra L).
-    // + `create_task` ("Crear tarea", Tareas, F22).
-    // + `complete_task` ("Completar tarea", Tareas × CRM, R4).
+    // + `notify_team` ("Avisar en la campana").
+    // + `upsert_contact` ("Crear o actualizar contacto", webhooks entrantes, Extra L).  @plantilla-quitar(webhooks)
+    // + `create_task` ("Crear tarea", Tareas, F22).  @plantilla-quitar(tareas)
+    // + `complete_task` ("Completar tarea", Tareas × CRM, R4).  @plantilla-quitar(tareas)
     // + `send_whatsapp_number` ("Enviar WhatsApp a un número", Extra L Tirón 2, D3).
     expect(listNodes()).toHaveLength(32); // @plantilla-quitar(ventas,webhooks,tareas)
     // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(26);

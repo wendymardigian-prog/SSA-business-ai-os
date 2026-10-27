@@ -14,8 +14,9 @@ import { parseAttributionSettings } from "@/lib/attribution/settings";
 import { SettingsView } from "./settings-view";
 
 export default async function SettingsPage() {
-  // General se parte por permiso: «General» (`settings.general`), «Ventas y cobranza» (`sales.settings`) y «Finanzas»
-  // (`expenses.manage`). Quien tiene otra pestaña de Ajustes pero ninguna de estas aterriza en esa pestaña, no en el dashboard.
+  // General se parte por permiso: «General» (`settings.general`), «Ventas y cobranza» (`sales.settings`) y «Finanzas»  @plantilla-quitar(ventas,finanzas)
+  // (`expenses.manage`). Quien tiene otra pestaña de Ajustes pero ninguna de estas aterriza en esa pestaña, no en el dashboard.  @plantilla-quitar(ventas,finanzas)
+  // @plantilla-sin(ventas,finanzas): // «General» pide `settings.general`: quien tiene otra pestaña de Ajustes pero no esta aterriza en esa pestaña, no en el dashboard.
   const first = await getPermissionContext();
   if (!canOpenGeneral(first.can)) {
     redirect(visibleSettingsTabs(first.can).find((tab) => tab.href !== "/dashboard/settings")?.href ?? "/dashboard");

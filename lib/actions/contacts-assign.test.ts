@@ -1,5 +1,5 @@
 /**
- * Ventas F15: asignar a mano setter o vendedor BLOQUEA la asignacion automatica
+ * Asignar a mano setter o vendedor (F15) BLOQUEA la asignacion automatica
  * (`assignment_locked_at`), y lo que cambia sigue auditandose como una accion de
  * una persona.
  */

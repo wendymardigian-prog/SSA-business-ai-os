@@ -387,7 +387,7 @@ function PaletteEntry({ item, locked, onAdd }: { item: PaletteItem; locked: bool
 }
 
 /**
- * `memberFlow`: el flujo es sobre una persona del equipo (reporte de fin de día, E15). Se
+ * `memberFlow`: el flujo es sobre una persona del equipo. Se
  * ocultan los pasos que necesitan un contacto; guardar uno igual lo rechaza el servidor.
  *
  * `locked`: el disparador todavia no se eligio. Primero se decide como arranca; despues, los pasos.

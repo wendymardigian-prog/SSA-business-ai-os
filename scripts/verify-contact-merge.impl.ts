@@ -1,10 +1,10 @@
 /**
- * La fusion de contactos contra la base real (Tareas × CRM, R9).
+ * La fusion de contactos contra la base real (R9).
  *
  * Siembra un duplicado con al menos un registro en CADA tabla de `CONTACT_MERGE_TABLES` y un principal con los conflictos
  * (misma conversacion de canal, misma etiqueta, mismo campo personalizado, misma secuencia activa, misma fecha de
  * seguimiento...), fusiona de verdad y comprueba: todo cuelga del principal, ningun mensaje se perdio, las reglas de
- * conflicto, los pagos de la venta que se movio, el duplicado quedo borrado con `merged_into`, que un Member no puede
+ * conflicto, que lo que se movio conserva sus datos, el duplicado quedo borrado con `merged_into`, que un Member no puede
  * ejecutarla, la atomicidad (un fallo a mitad de camino no mueve nada) y la guardia de deriva.
  */
 
@@ -166,7 +166,7 @@ try {
   // (el pendiente se siembra justo antes de fusionar: el cron real de la app lee la cola cada minuto y lo marcaria como procesado)
   const evDone: any = await seed("automation_events", { workspace_id: ws.id, event_type: "contact_created", contact_id: dup.id, payload: {}, processed_at: iso("2026-10-02T00:00:00Z") });
 
-  // Tareas: seguimiento repetido (misma fecha) + una normal + una completada.
+  // Tareas: seguimiento repetido (misma fecha) + una normal + una completada.  @plantilla-quitar(tareas)
   await seed("tasks", [
     { workspace_id: ws.id, title: "zz-test seguimiento M", contact_id: main.id, source: "manual", source_ref: "followup:2026-10-20", created_by: owner.id },
     { workspace_id: ws.id, title: "zz-test seguimiento D", contact_id: dup.id, source: "manual", source_ref: "followup:2026-10-20", created_by: owner.id },
@@ -186,7 +186,7 @@ try {
   const evType: any = await seed("event_types", { workspace_id: ws.id, category_id: (cats ?? [])[0]?.id, owner_user_id: member.id, title: "zz-test-evento", slug: `zz-test-ev-${stamp}`, duration_minutes: 30 });
   const booking: any = await seed("bookings", { workspace_id: ws.id, uid: `zz-test-bk-${stamp}`, event_type_id: evType.id, host_user_id: member.id, contact_id: dup.id, title: "zz-test reunion", start_at: iso("2031-05-05T15:00:00Z"), end_at: iso("2031-05-05T15:30:00Z") });
 
-  // Llamada, comentario, email, evento de analitica, corrida del agente, webhook entrante, envio masivo.
+  // Un registro en cada una de las demas tablas.
   const call: any = await seed("calls", { workspace_id: ws.id, source: "manual", title: "zz-test llamada", recorded_at: iso("2026-10-03T10:00:00Z"), contact_id: dup.id });
   await seed("social_post_comments", { workspace_id: ws.id, platform: "instagram", external_comment_id: `zz-test-cm-${stamp}`, source: "sync", contact_id: dup.id });
   await seed("email_log", { workspace_id: ws.id, to_email: "zz-test@example.test", subject: "zz-test asunto", kind: "notification", status: "sent", contact_id: dup.id });
@@ -197,7 +197,7 @@ try {
   const bc: any = await seed("broadcasts", { workspace_id: ws.id, name: "zz-test envio" });
   await seed("broadcast_recipients", { broadcast_id: bc.id, contact_id: dup.id, channel_id: ch2.id });
 
-  // Formularios: dos formularios con «una vez por contacto» y una firma de contrato.
+  // Formularios: dos formularios con «una vez por contacto» y una firma de contrato.  @plantilla-quitar(formularios)
   const mkForm = async (tag: string) => {
     const form: any = await seed("forms", { workspace_id: ws.id, name: `zz-test form ${tag}`, type: "custom", slug: `zz-test-${tag}-${stamp}`, draft_definition: {} });
     const version: any = await seed("form_versions", { workspace_id: ws.id, form_id: form.id, version_number: 1, definition: { fields: [] } });
@@ -209,7 +209,7 @@ try {
   const [subA]: any[] = await seed("form_submissions", [sub(fa, dup.id, `contact:${dup.id}`), sub(fb, dup.id, `contact:${dup.id}`), sub(fb, main.id, `contact:${main.id}`)]);
   await seed("contract_signatures", { workspace_id: ws.id, submission_id: subA.id, form_id: fa.form.id, form_version_id: fa.version.id, text_sha256: "a".repeat(64), signer_email: "zz-test@example.test", legal: {}, contact_id: dup.id });
 
-  // Una venta con pagos (la cuelga el duplicado).
+  // Una venta con pagos (la cuelga el duplicado).  @plantilla-quitar(ventas)
   const product: any = await seed("products", { workspace_id: ws.id, name: "zz-test Producto fusion", product_type: "programa" });
   const variant: any = await seed("product_variants", { workspace_id: ws.id, product_id: product.id, name: "Estandar", price: 1000 });
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
@@ -376,7 +376,7 @@ try {
   check(evP.contact_id === dup.id && evP.processed_at !== null && evP.error === "fusion de contactos", "eventos: el pendiente NO se mueve y queda cancelado (no puede disparar un flujo para el principal)", JSON.stringify(evP));
   check(evD.contact_id === main.id, "...y el ya procesado (historial) se movio");
 
-  // Tareas.
+  // Tareas.  @plantilla-quitar(tareas)
   const tasks = ((await svc.from("tasks").select("title, contact_id, source_ref, status, conversation_id").in("contact_id", both)) .data ?? []) as any[];
   check(tasks.length === 5 && tasks.every((t) => t.contact_id === main.id), "tareas: las 5 cuelgan del principal (ninguna se perdio)", JSON.stringify(tasks));
   check(tasks.filter((t) => t.source_ref === "followup:2026-10-20").length === 1 && tasks.find((t) => t.title === "zz-test seguimiento D")?.source_ref === null, "el seguimiento repetido del duplicado paso como tarea normal (sin la clave)", JSON.stringify(tasks));
@@ -389,12 +389,12 @@ try {
   check(mainRow.attribution?.first_touch?.source === "instagram" && mainRow.attribution?.last_touch?.source === "google", "atribucion: se recalculo con TODOS los toques (primer toque del duplicado, ultimo del principal)", JSON.stringify(mainRow.attribution));
   check((await countBy("contact_touches", [main.id])) === 2, "los toques se movieron todos");
 
-  // Formularios.
+  // Formularios.  @plantilla-quitar(formularios)
   const subs = ((await svc.from("form_submissions").select("form_id, contact_id, once_key").in("contact_id", both)).data ?? []) as any[];
   check(subs.find((s) => s.form_id === fa.form.id)?.once_key === `contact:${main.id}`, "formularios: «una vez por contacto» pasa a la clave del principal si no choca");
   check(subs.filter((s) => s.form_id === fb.form.id && s.once_key === `contact:${dup.id}`).length === 1, "...y se queda como estaba si el principal ya tenia una para ese formulario");
 
-  // Ventas, agendas y llamadas: solo cambian de dueno.
+  // Lo que solo cambia de dueno.
   const saleAfter = (await svc.from("sales").select("contact_id, status").eq("id", saleId).single()).data as any;
   check(saleAfter.contact_id === main.id, "ventas: la venta cuelga del principal");
   check(JSON.stringify(((await svc.from("payments").select("id, type, status, amount, due_date").eq("sale_id", saleId).order("id")).data ?? [])) === paymentsBefore, "...y sus pagos siguen ahi, con el mismo monto, estado y fecha");

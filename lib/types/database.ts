@@ -468,30 +468,30 @@ export type AuditEntityType =
   | "response_asset"
   /** Cambiar el publicador por defecto de una cuenta social (Bloque G, G7). */
   | "social_account"
-  /** Una llamada de venta (Llamadas, 00145). La configuracion de sus tareas se audita sobre "workspace". */
+  /** Una llamada de venta (Llamadas, 00145). La configuracion de sus tareas se audita sobre "workspace".  @plantilla-quitar(llamadas) */
   | "call" // @plantilla-quitar(llamadas)
-  /** Formularios (00150): el formulario, una respuesta y la firma de un contrato. */
+  /** Formularios (00150): el formulario, una respuesta y la firma de un contrato.  @plantilla-quitar(formularios) */
   | "form" // @plantilla-quitar(formularios)
   | "form_submission" // @plantilla-quitar(formularios)
   | "contract_signature" // @plantilla-quitar(formularios)
-  /** Ventas (00159 a 00168): el catalogo, las reglas de asignacion, la venta y el pago. */
+  /** El catalogo, las reglas de asignacion, la venta y el pago (00159 a 00168). */
   | "product"
   | "product_variant"
   | "assignment_rule"
   | "sale" // @plantilla-quitar(ventas)
   | "payment" // @plantilla-quitar(ventas)
-  /** Reporte de fin de dia (00180). Una correccion la escribe `submit_eod_report` (00181). */
+  /** Reporte de fin de dia (00180). Una correccion la escribe `submit_eod_report` (00181).  @plantilla-quitar(formularios) */
   | "eod_report" // @plantilla-quitar(formularios)
-  /** Webhooks entrantes (00186): el endpoint (Extra L). */
+  /** Webhooks entrantes (00186): el endpoint (Extra L).  @plantilla-quitar(webhooks) */
   | "webhook_endpoint" // @plantilla-quitar(webhooks)
   /** Un anuncio del catalogo de Meta (00191): el vinculo manual con una pieza de Contenido (Extra L, Tiron 2, A2). */
   | "meta_ad"
-  /** Tareas (00196). Las RPC de 00197 escriben `task.completed`, `task.date_shifted`, `task.blockers_changed` y `task.deleted`. */
-  /** Finanzas (Extra I, 00225): gastos, plantillas recurrentes y proveedores. Las categorias y la configuracion se auditan sobre "workspace". */
+  /** Tareas (00196). Las RPC de 00197 escriben `task.completed`, `task.date_shifted`, `task.blockers_changed` y `task.deleted`.  @plantilla-quitar(tareas) */
+  /** Finanzas (Extra I, 00225): gastos, plantillas recurrentes y proveedores. Las categorias y la configuracion se auditan sobre "workspace".  @plantilla-quitar(finanzas) */
   | "expense" // @plantilla-quitar(finanzas)
   | "recurring_expense" // @plantilla-quitar(finanzas)
   | "vendor" // @plantilla-quitar(finanzas)
-  /** Comisiones (Extra I, 00231): una comision y una regla de comision. Los roles de comision se auditan sobre "workspace". */
+  /** Comisiones (Extra I, 00231): una comision y una regla de comision. Los roles de comision se auditan sobre "workspace".  @plantilla-quitar(comisiones) */
   | "commission" // @plantilla-quitar(comisiones)
   | "commission_rule" // @plantilla-quitar(comisiones)
   /** Una publicacion de una red (Extra I, F43): su responsable cuando no tiene pieza. */
@@ -593,7 +593,7 @@ export type AuditAction =
   | "booking.host_changed"
   /** El agente mando un recurso de audio de la banca. performed_by_agent_id, entity response_asset. */
   | "agent_asset_sent"
-  /** Llamadas (modulo Fathom + analizador). entity call, salvo que se aclare. */
+  /** Llamadas (modulo Fathom + analizador). entity call, salvo que se aclare.  @plantilla-quitar(llamadas) */
   | "call.ingested" // @plantilla-quitar(llamadas)
   | "call.imported" // @plantilla-quitar(llamadas)
   | "call.linked" // @plantilla-quitar(llamadas)
@@ -603,7 +603,7 @@ export type AuditAction =
   | "call.section_edited" // @plantilla-quitar(llamadas)
   | "call.regenerated" // @plantilla-quitar(llamadas)
   | "call.objection" // @plantilla-quitar(llamadas)
-  /** Tareas (Extra A): crear, editar, reabrir; las RPC de 00197 escriben las demas. */
+  /** Tareas (Extra A): crear, editar, reabrir; las RPC de 00197 escriben las demas.  @plantilla-quitar(tareas) */
   | "task.created" // @plantilla-quitar(tareas)
   | "task.updated" // @plantilla-quitar(tareas)
   | "task.reopened" // @plantilla-quitar(tareas)
@@ -613,10 +613,10 @@ export type AuditAction =
   | "task.deleted" // @plantilla-quitar(tareas)
   | "call.objection_resolved" // @plantilla-quitar(llamadas)
   | "call.archived" // @plantilla-quitar(llamadas)
-  /** Extra I, MP: los metodos de pago del negocio (entity workspace) y la correccion de la comision de un pago. */
+  /** Extra I, MP: los metodos de pago del negocio (entity workspace) y la correccion de la comision de un pago.  @plantilla-quitar(ventas) */
   | "payment_methods.updated" // @plantilla-quitar(ventas)
   | "payment.fee_corrected" // @plantilla-quitar(ventas)
-  /** Finanzas (Extra I). Entity expense, salvo que se aclare. */
+  /** Finanzas (Extra I). Entity expense, salvo que se aclare.  @plantilla-quitar(finanzas) */
   | "expense.created" // @plantilla-quitar(finanzas)
   | "expense.updated" // @plantilla-quitar(finanzas)
   | "expense.paid" // @plantilla-quitar(finanzas)
@@ -645,14 +645,14 @@ export type AuditAction =
   | "vendor.updated" // @plantilla-quitar(finanzas)
   | "vendor.archived" // @plantilla-quitar(finanzas)
   | "vendor.restored" // @plantilla-quitar(finanzas)
-  /** Entity workspace: las categorias y la configuracion de Finanzas. */
+  /** Entity workspace: las categorias y la configuracion de Finanzas.  @plantilla-quitar(finanzas) */
   | "finance.categories_updated" // @plantilla-quitar(finanzas)
   | "finance.settings_updated" // @plantilla-quitar(finanzas)
   /** Entity workspace: la configuración de atribución (Extra I, F31). */
   | "attribution.settings_updated"
   /** Entity social_post: se cambió el responsable de una publicación sin pieza (Extra I, F43). changes.assigned_to {old,new}. */
   | "social_post.assignee_changed"
-  /** Formularios (entity form, salvo que se aclare). `form.published` lo escribe la funcion SQL. */
+  /** Formularios (entity form, salvo que se aclare). `form.published` lo escribe la funcion SQL.  @plantilla-quitar(formularios) */
   | "form.created" // @plantilla-quitar(formularios)
   | "form.updated" // @plantilla-quitar(formularios)
   | "form.published" // @plantilla-quitar(formularios)
@@ -673,7 +673,7 @@ export type AuditAction =
   /** Entity contact: lo escribe la funcion SQL del envio (actor sistema, "Formulario: <nombre>"). */
   | "contact.created"
   | "contact.linked"
-  /** Entity contact: un webhook entrante actualizo un contacto que ya existia (Extra L). */
+  /** Entity contact: un webhook entrante actualizo un contacto que ya existia (Extra L).  @plantilla-quitar(webhooks) */
   | "contact.updated"
   /** Entity contact: una persona vinculo, ignoro o quito el vinculo de un toque con un anuncio de Meta (Extra L, AT3). */
   | "attribution.meta_linked"
@@ -687,7 +687,7 @@ export type AuditAction =
   /** Entity contract_signature. */
   | "contract.email_resent" // @plantilla-quitar(formularios)
   | "contract.pdf_regenerated" // @plantilla-quitar(formularios)
-  /** Ventas, catalogo (entity product o product_variant). Los escribe el trigger `catalog_audit` (00170). */
+  /** Catalogo (entity product o product_variant). Los escribe el trigger `catalog_audit` (00170). */
   | "product.created"
   | "product.updated"
   | "product.status_changed"
@@ -704,13 +704,13 @@ export type AuditAction =
   | "version.draft_updated"
   | "version.draft_deleted"
   | "version.published"
-  /** Ventas, asignacion (entity assignment_rule; la automatica es entity contact, actor sistema). */
+  /** Asignacion (entity assignment_rule; la automatica es entity contact, actor sistema). */
   | "assignment_rule.updated"
   | "assignment.automatic"
   /** Reglas de asignacion de conversaciones (00255): alta y archivo (entity assignment_rule). */
   | "assignment_rule.created"
   | "assignment_rule.archived"
-  /** Ventas (entity sale). */
+  /** Ventas (entity sale).  @plantilla-quitar(ventas) */
   | "sale.created" // @plantilla-quitar(ventas)
   | "sale.updated" // @plantilla-quitar(ventas)
   | "sale.attribution_changed" // @plantilla-quitar(ventas)
@@ -719,7 +719,7 @@ export type AuditAction =
   | "sale.subscription_cancelled" // @plantilla-quitar(ventas)
   | "sale.refunded" // @plantilla-quitar(ventas)
   | "sale.contract_sent" // @plantilla-quitar(ventas)
-  /** Pagos (entity payment). */
+  /** Pagos (entity payment).  @plantilla-quitar(ventas) */
   | "payment.created" // @plantilla-quitar(ventas)
   | "payment.paid" // @plantilla-quitar(ventas)
   | "payment.reverted" // @plantilla-quitar(ventas)
@@ -730,7 +730,7 @@ export type AuditAction =
   | "payment.overdue" // @plantilla-quitar(ventas)
   | "payment.refund" // @plantilla-quitar(ventas)
   | "payment.receipt_uploaded" // @plantilla-quitar(ventas)
-  /** Webhooks entrantes (entity webhook_endpoint). Nunca llevan el token ni el secreto. */
+  /** Webhooks entrantes (entity webhook_endpoint). Nunca llevan el token ni el secreto.  @plantilla-quitar(webhooks) */
   | "webhook_endpoint.created" // @plantilla-quitar(webhooks)
   | "webhook_endpoint.updated" // @plantilla-quitar(webhooks)
   | "webhook_endpoint.paused" // @plantilla-quitar(webhooks)
@@ -740,14 +740,14 @@ export type AuditAction =
   | "webhook_endpoint.sample_saved" // @plantilla-quitar(webhooks)
   | "webhook_endpoint.deleted" // @plantilla-quitar(webhooks)
   | "webhook_endpoint.reprocessed" // @plantilla-quitar(webhooks)
-  /** Comisiones (Extra I, entity commission). `generated`, `voided` (automatica) y `payout_released` los escribe la base (00231). */
+  /** Comisiones (Extra I, entity commission). `generated`, `voided` (automatica) y `payout_released` los escribe la base (00231).  @plantilla-quitar(comisiones) */
   | "commission.generated" // @plantilla-quitar(comisiones)
   | "commission.voided" // @plantilla-quitar(comisiones)
   | "commission.payout_released" // @plantilla-quitar(comisiones)
   | "commission.payout_assigned" // @plantilla-quitar(comisiones)
   | "commission.person_assigned" // @plantilla-quitar(comisiones)
   | "commission.adjustment_created" // @plantilla-quitar(comisiones)
-  /** Entity workspace: los roles de comision. */
+  /** Entity workspace: los roles de comision.  @plantilla-quitar(comisiones) */
   | "commission.roles_updated" // @plantilla-quitar(comisiones)
   /** Entity commission_rule. */
   | "commission_rule.created" // @plantilla-quitar(comisiones)
@@ -773,7 +773,7 @@ export type BroadcastStatus =
   | "completed"
   | "cancelled";
 /**
- * `cancelled` lo suma la 00099: un aviso relativo que ya no corresponde se
+ * `cancelled`: un aviso relativo que ya no corresponde se
  * anula en vez de borrarse, y el runner solo toma `pending`.
  */
 export type JobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
@@ -795,7 +795,7 @@ export type AgentRunSource =
   // los pide el sistema al recibir un mensaje.
   | "audio_transcription"
   | "media_description"
-  // Llamadas (00148): clasificar, analizar, corregir con IA, probar el borrador y resumir.
+  // Llamadas (00148): clasificar, analizar, corregir con IA, probar el borrador y resumir.  @plantilla-quitar(llamadas)
   | "call_classification" // @plantilla-quitar(llamadas)
   | "call_analysis" // @plantilla-quitar(llamadas)
   | "call_correction" // @plantilla-quitar(llamadas)
@@ -852,7 +852,7 @@ export type TriggerType =
   | "welcome"
   | "default"
   | "comment_keyword"
-  // Los tres que suma la Fase 2 (CHECK de la migracion 00038).
+  // Contacto nuevo, eventos del CRM e inactividad.
   | "new_contact"
   | "crm_event"
   | "inactivity"
@@ -869,26 +869,26 @@ export type TriggerType =
   | "booking_before_start"
   | "booking_after_end"
   | "booking_after_created"
-  // Llamadas (CHECK de la migracion 00149): una llamada con contacto queda
-  // analizada, o se vincula un contacto a una llamada.
+  // Llamadas (CHECK de la migracion 00149): una llamada con contacto queda  @plantilla-quitar(llamadas)
+  // analizada, o se vincula un contacto a una llamada.  @plantilla-quitar(llamadas)
   | "call_analyzed" // @plantilla-quitar(llamadas)
   | "call_linked" // @plantilla-quitar(llamadas)
-  // Formularios (CHECK de la migracion 00155): un envio por tipo de formulario.
+  // Formularios (CHECK de la migracion 00155): un envio por tipo de formulario.  @plantilla-quitar(formularios)
   | "form_submitted" // @plantilla-quitar(formularios)
   | "survey_answered" // @plantilla-quitar(formularios)
   | "contract_signed" // @plantilla-quitar(formularios)
-  // Ventas (CHECK de la migracion 00166): un cambio de estado = un evento; los dos ultimos son relativos al vencimiento.
+  // Ventas (CHECK de la migracion 00166): un cambio de estado = un evento; los dos ultimos son relativos al vencimiento.  @plantilla-quitar(ventas)
   | "sale_created" // @plantilla-quitar(ventas)
   | "sale_status_changed" // @plantilla-quitar(ventas)
   | "payment_created" // @plantilla-quitar(ventas)
   | "payment_status_changed" // @plantilla-quitar(ventas)
   | "payment_before_due" // @plantilla-quitar(ventas)
   | "payment_after_due" // @plantilla-quitar(ventas)
-  /** Reporte de fin de dia (00183): el primer disparador sin contacto. */
+  /** Reporte de fin de dia (00183): el primer disparador sin contacto.  @plantilla-quitar(formularios) */
   | "eod_submitted" // @plantilla-quitar(formularios)
-  /** Un envio llego a un endpoint de webhooks entrantes (00187). Corre directo, sin la cola `automation_events`. */
+  /** Un envio llego a un endpoint de webhooks entrantes (00187). Corre directo, sin la cola `automation_events`.  @plantilla-quitar(webhooks) */
   | "webhook_received" // @plantilla-quitar(webhooks)
-  /** Tareas (00199): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto. */
+  /** Tareas (00199): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto.  @plantilla-quitar(tareas) */
   | "task_completed" // @plantilla-quitar(tareas)
   | "task_overdue"; // @plantilla-quitar(tareas)
 export type FlowSessionStatus =
@@ -1500,7 +1500,7 @@ export interface Database {
           avatar_url: string | null;
           /** De donde sale avatar_url (migracion 00104, F16). Default 'external'. */
           avatar_source: AvatarSource;
-          /** Ventas (00161): quien refirio a este contacto. */
+          /** Quien refirio a este contacto (00161). */
           referred_by_user_id: string | null;
           referred_by_contact_id: string | null;
           /** Se escribe al asignar a mano setter o vendedor: la asignacion automatica no lo toca mas. */
@@ -4320,7 +4320,7 @@ export interface Database {
       };
       // @plantilla-hasta(ventas)
 
-      /** Reglas de asignacion automatica (Ventas, 00161): una fila por workspace y kind. */
+      /** Reglas de asignacion automatica (00161): una fila por workspace y kind. */
       assignment_rules: {
         Row: {
           id: string;
@@ -4356,7 +4356,7 @@ export interface Database {
         Relationships: [];
       };
 
-      /** Llamadas de WhatsApp recibidas (00258). No es `calls` (Fathom). Escribe solo el webhook. */
+      /** Llamadas de WhatsApp recibidas (00258). Escribe solo el webhook. */
       whatsapp_calls: {
         Row: {
           id: string;
@@ -4470,7 +4470,7 @@ export interface Database {
         Relationships: [];
       };
 
-      /** Catalogo de productos de Ventas (00159). Absorbe content_offers: los migrados conservan el id. */
+      /** Catalogo de productos (00159). */
       products: {
         Row: {
           id: string;
@@ -6149,7 +6149,7 @@ export interface Database {
         Returns: Json;
       };
       // @plantilla-hasta(tareas)
-      /** Tareas × CRM (00207): la fusion de contactos, en una transaccion. Solo service_role. */
+      /** La fusion de contactos (00207), en una transaccion. Solo service_role. */
       /** Pipeline (00245): la unica forma de cambiar el estado de setter o de vendedor. Solo service_role. */
       set_contact_status: {
         Args: {

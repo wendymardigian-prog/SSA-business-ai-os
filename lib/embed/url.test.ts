@@ -46,7 +46,7 @@ describe("buildEmbedIframeUrl (F39)", () => {
   });
 });
 
-// ── Formularios (F10): f/<slug> ──────────────────────────────────────────────
+// ── Formularios (F10): f/<slug> ──────────────────────────────────────────────  @plantilla-quitar(formularios)
 import { filterHostParams, formSlugOfLink, isFormLink, parentAttributionFromSearch } from "./url";
 
 describe("embed de formularios: f/<slug>", () => {

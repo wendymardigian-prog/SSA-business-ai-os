@@ -1,7 +1,7 @@
 /**
  * Tiempo fuera (F13): la parte pura. Convierte lo que carga la persona (fechas,
  * y horas si no son días completos) a los instantes UTC que se guardan en
- * `out_of_office`. La consulta de agendas en conflicto la hace la Tanda B.
+ * `out_of_office`. La consulta de agendas en conflicto va aparte.
  */
 import type { DateString, OutOfOfficeReason, WallTime } from "./types";
 import { addDays, isValidDateString, isValidWallTime, wallClockToUtc } from "./time/tz";

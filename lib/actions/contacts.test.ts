@@ -1,9 +1,8 @@
 /**
  * `linkContacts` (vincular un contacto duplicado con el principal).
  *
- * Tareas × CRM (R9). Se escribio ANTES de tocar la accion, fijando lo que hacia (a quien deja pasar, que valida, que
- * devuelve): eso sigue valiendo igual. Lo que movia a mano (conversaciones, canales, etiquetas, rellenado, notas, borrado
- * logico y auditoria) ahora lo hace `merge_contacts` en la base, en una transaccion: se prueba con la base real en
+ * Fija a quien deja pasar, que valida y que devuelve. La fusion (conversaciones, canales, etiquetas, rellenado, notas,
+ * borrado logico y auditoria) la hace `merge_contacts` en la base, en una transaccion: se prueba con la base real en
  * `scripts/verify-contact-merge.mjs`. Aca se prueba que la accion le delega con los argumentos correctos.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";

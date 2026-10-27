@@ -1,6 +1,5 @@
 /**
- * ¿Van a salir los correos del sistema? Para avisar ANTES (en el editor de un contrato) que la copia firmada no va a
- * llegar. SOLO servidor el lector; la regla (`describeEmailReadiness`) es pura.
+ * ¿Van a salir los correos del sistema? Para avisar ANTES de que un correo importante no llegue. SOLO servidor el lector; la regla (`describeEmailReadiness`) es pura.
  *
  * Mira lo mismo que mira `sendTransactionalEmail` para decidir si manda (Resend conectado y con remitente) y, además,
  * el ÚLTIMO intento de envío: si Resend lo rechazó por algo que no se arregla solo (un dominio sin verificar, una clave

@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 /**
  * La foto de un contacto, con fallback a la inicial (F16).
  *
- * Antes una URL vencida (el CDN de Meta, antes de que F16 la copiara a
- * nuestro Storage) dejaba el icono de imagen rota del navegador. El
+ * Una URL vencida (una foto del CDN de Meta que todavia no se copio a
+ * nuestro Storage) dejaria el icono de imagen rota del navegador: el
  * `onError` hace caer a la inicial, igual que cuando no hay `avatarUrl`.
  *
  * Client Component chico a proposito: la pantalla de detalle del contacto es

@@ -56,7 +56,7 @@ export function InboxView({
   assets: InboxAsset[];
   /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
   canManageAssets?: boolean;
-  /** Puede crear tareas (`tasks.edit`): la bandeja ofrece «Crear tarea» sobre la conversacion. */
+  /** Puede crear tareas (`tasks.edit`): la bandeja ofrece «Crear tarea» sobre la conversacion.  @plantilla-quitar(tareas) */
   canCreateTask?: boolean;
   /** Puede ver las corridas del agente (`agents.view`): el panel "Qué hizo el agente" ofrece abrir la corrida. */
   canViewAgentRuns?: boolean;

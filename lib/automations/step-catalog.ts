@@ -5,13 +5,13 @@
  * que el editor no ofrece en esa pantalla solo puede venir de algo que ya
  * estaba guardado).
  *
- * Formularios: email (al contacto o a una direccion fija), mensaje, esperar,
- * poner o sacar un tag, y Condiciones.
- * Agenda: lo mismo, mas el email al anfitrion, cambiar el estado de la reunion
+ * Agenda: email (al contacto, al anfitrion o a una direccion fija), mensaje,
+ * esperar, poner o sacar un tag, Condiciones, cambiar el estado de la reunion
  * y cancelarla.
- * Reporte de fin de dia (E15, un flujo SIN contacto): email (a quien envio el reporte,
- * a personas del equipo o a una direccion fija), esperar, avisar en la campana y
- * Condiciones. Nada que necesite un contacto.
+ * Formularios: lo mismo, sin lo de la reunion.  @plantilla-quitar(formularios)
+ * Reporte de fin de dia (E15, un flujo SIN contacto): email (a quien envio el reporte,  @plantilla-quitar(formularios)
+ * a personas del equipo o a una direccion fija), esperar, avisar en la campana y  @plantilla-quitar(formularios)
+ * Condiciones. Nada que necesite un contacto.  @plantilla-quitar(formularios)
  */
 
 import { z } from "zod";
@@ -114,10 +114,10 @@ export const ACTION_KINDS: ActionKind[] = [
   },
 ];
 
-/**
- * El primer paso nuevo de una pantalla: en un reporte de fin de día el email no puede ir
- * "al contacto" (no hay), arranca yendo a quien envió el reporte.
- */
+/**  @plantilla-quitar(formularios)
+ * El primer paso nuevo de una pantalla: en un reporte de fin de día el email no puede ir  @plantilla-quitar(formularios)
+ * "al contacto" (no hay), arranca yendo a quien envió el reporte.  @plantilla-quitar(formularios)
+  @plantilla-quitar(formularios) */
 export function blankFor(kind: ActionKind, screen: EditorScreen): NodeData {
   const data = kind.blank();
   if (screen === "eod" && kind.key === "email") return { ...data, to: "member" };

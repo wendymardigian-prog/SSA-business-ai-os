@@ -1,5 +1,5 @@
 /**
- * Repartir en columnas lo que se superpone en la rejilla horaria (Tareas × CRM, R7). PURO.
+ * Repartir en columnas lo que se superpone en la rejilla horaria (R7). PURO.
  *
  * Una agenda y una tarea (o dos tareas) en el mismo horario se dibujan LADO A LADO en vez de una encima de la otra. Se usa
  * SOLO cuando el interruptor de tareas esta encendido: sin el, el calendario de agendas se dibuja como siempre.

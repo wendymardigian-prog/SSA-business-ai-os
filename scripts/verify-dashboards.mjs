@@ -8,10 +8,8 @@
  * Member A tiene scope sobre las conversaciones 1 y 3. Limpia todo al terminar;
  * una limpieza fallida es una falla.
  *
- * La conversacion 7 se sumo el 28/9/2026 con los tres origenes de automatizacion
- * (flow, sequence, broadcast): es la que fija que sean UNA fila en "Quien
- * responde" y no tres. §11.8 del plano describe el set de 6; los numeros de aca
- * son los del set real, que es el que vale.
+ * La conversacion 7 tiene los tres origenes de automatizacion (flow, sequence,
+ * broadcast): es la que fija que sean UNA fila en "Quien responde" y no tres.
  *
  *   node scripts/verify-dashboards.mjs
  */
@@ -227,7 +225,7 @@ try {
     const { data: emojiCat } = await svc.from("message_categories").select("name").eq("id", emoji?.category_id).maybeSingle();
     check(emojiCat?.name === "Solo emoji o adjunto", "el emoji fue a 'Solo emoji o adjunto'");
     // (Los textos de botón son de cada negocio, no se siembran en la migración:
-    // se marcan a mano en Ajustes → Tareas, message_texts.is_button.)
+    // se marcan a mano, message_texts.is_button.)
   }
 
   console.log("\n— normalize_for_grouping (paridad con la app) —");

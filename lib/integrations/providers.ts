@@ -719,9 +719,8 @@ export function serializableProvider(provider: ProviderDefinition): ProviderDefi
 
 /**
  * Las integraciones VISIBLES de un tipo. Lo visible importa: `email_provider`
- * son dos (Resend saliente y Resend entrante) y el entrante recien se muestra
- * en el bloque 8, asi que hasta entonces esta funcion sigue devolviendo lo
- * mismo que antes de la etapa 2.
+ * son dos (Resend saliente y Resend entrante) y solo cuentan las que se
+ * muestran.
  */
 export function providersByType(type: IntegrationType): ProviderDefinition[] {
   return PROVIDERS.filter((p) => p.visible && p.type === type);

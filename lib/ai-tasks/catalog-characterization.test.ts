@@ -1,7 +1,6 @@
 /**
- * Caracterizacion de las siete tareas de IA que existian antes de Llamadas
- * (§4.3). Llamadas suma tres tareas al catalogo; ninguna de estas siete puede
- * cambiar de forma. Este test sigue pasando cuando el catalogo crece.
+ * Caracterizacion de siete tareas de IA del catalogo: ninguna puede cambiar de
+ * forma. Este test sigue pasando cuando el catalogo crece.
  */
 import { describe, expect, it } from "vitest";
 import { AI_TASKS, type AiTaskId } from "./catalog";

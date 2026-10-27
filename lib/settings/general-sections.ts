@@ -1,5 +1,5 @@
 /**
- * Las secciones de General (S2; Ventas se sumó con la Etapa 5), como datos puros: la navegación
+ * Las secciones de General (S2), como datos puros: la navegación
  * interna de la pestaña sale de acá, igual que
  * lib/scheduling/config-sections.ts para la Configuración de Agenda.
  *
@@ -17,9 +17,10 @@ export interface GeneralSection {
 
 /**
  * General se parte por permiso: «General» (nombre, palabras clave, no contactar, zona horaria,
- * retención de archivos y, desde el Extra I, «Atribución») pide `settings.general`; «Ventas y cobranza» (métodos de pago, tope de
- * descuento, días de gracia, flujos de cobranza) pide `sales.settings`; «Finanzas» (categorías de gasto y,
- * más adelante, los gastos automáticos) pide `expenses.manage`.
+ * retención de archivos y «Atribución») pide `settings.general`.
+ * «Ventas y cobranza» (métodos de pago, tope de descuento, días de gracia, flujos de cobranza) pide  @plantilla-quitar(ventas)
+ * `sales.settings`.  @plantilla-quitar(ventas)
+ * «Finanzas» (categorías de gasto y los gastos automáticos) pide `expenses.manage`.  @plantilla-quitar(finanzas)
  */
 export const GENERAL_SECTIONS: GeneralSection[] = [
   { id: "workspace", label: "Workspace", permission: "settings.general" },

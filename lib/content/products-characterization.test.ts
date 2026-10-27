@@ -1,6 +1,5 @@
 /**
- * Caracterizacion de Productos y de la clasificacion por producto, ANTES de que
- * Ventas (00160) los pase de `content_offers` a `products`.
+ * Caracterizacion de Productos y de la clasificacion por producto.
  *
  * Fija lo que el usuario ve y lo que Contenido da por hecho:
  *  - los tres estados, su orden y sus etiquetas;
@@ -93,8 +92,8 @@ describe("pantalla Ajustes > Productos (lo que se conserva)", () => {
     expect(view).toContain("SettingsTabs");
   });
 
-  // Con Ventas (F3) la lógica de orden, filtro y "Sin piezas" pasó de la vista a
-  // funciones puras (lib/catalog/products.ts), con su propio test.
+  // La lógica de orden, filtro y "Sin piezas" vive en funciones puras
+  // (lib/catalog/products.ts), con su propio test.
   it("el orden y el texto del contador siguen siendo los de siempre (ahora en funciones puras)", () => {
     const view = read("productos-view.tsx");
     expect(view).toContain("sortProducts(products)");

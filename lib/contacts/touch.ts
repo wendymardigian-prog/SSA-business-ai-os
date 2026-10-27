@@ -111,10 +111,10 @@ const RAW_KEYS = new Set([
   "ad_id", "adset_id", "campaign_id", "ref", "source", "type", "source_id",
   "source_type", "source_url", "headline", "ctwa_clid", "title", "media_type",
   "fbclid", "gclid", "ttclid", "li_fat_id",
-  // Formularios (F33): los datos del anuncio que `contact_touches` no tiene como columna.
+  // Los datos del anuncio que `contact_touches` no tiene como columna (F33).
   "utm_id", "gbraid", "wbraid", "msclkid", "twclid", "sccid", "epik", "rdt_cid", "placement",
   "fbp", "fbc", "ga_client_id", "page_url",
-  // Webhooks entrantes (Extra L): de que endpoint vino el toque.
+  // Webhooks entrantes (Extra L): de que endpoint vino el toque.  @plantilla-quitar(webhooks)
   "endpoint_id", "endpoint_name",
   // Chat (Extra L, F19): el `referral` completo y la mencion en una historia.
   "referral_type", "story_mention",

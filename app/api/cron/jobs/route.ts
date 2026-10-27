@@ -140,9 +140,8 @@ export async function GET(request: NextRequest) {
   // stale: if the claim UPDATE commits but the response is lost, nothing else
   // ever re-reads that status and the job would be stranded forever. Five
   // minutes is far beyond any real processing time here. The is.null arm
-  // covers rows claimed without a claimed_at stamp (strands from before
-  // migration 00015's backfill, or claims by a not-yet-redeployed invocation
-  // during a deploy; a lt. comparison is NULL-hostile and would skip them
+  // covers rows claimed without a claimed_at stamp (old strands, or claims
+  // by a not-yet-redeployed invocation during a deploy; a lt. comparison is NULL-hostile and would skip them
   // forever). Those rows are NOT processed directly, only stamped, see below.
   const staleClaimCutoff = new Date(Date.now() - STALE_INVOCATION_MS).toISOString();
   const { data: jobs, error } = await supabase
@@ -917,7 +916,7 @@ async function processJob(
       break;
     }
 
-    // Los tipos que suma la etapa 2 (contenido, metricas, anuncios) viven en
+    // Los demas tipos (contenido, metricas, anuncios...) viven en
     // el registro (lib/jobs/registry.ts): cada uno trae su handler y no hace
     // falta tocar este archivo para sumar uno.
     //

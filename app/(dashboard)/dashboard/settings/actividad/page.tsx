@@ -17,7 +17,7 @@ const one = (v: string | string[] | undefined): string | null => {
 };
 
 /**
- * Actividad (Ventas, F36): el `audit_log` de todo el workspace, para Owner y Admin (sin clave propia).
+ * Actividad (F36): el `audit_log` de todo el workspace, para Owner y Admin (sin clave propia).
  * Usa la MISMA función de armado de consulta que `<Historial>` (`lib/audit-query.ts`). Los días del filtro
  * son los de la zona de quien mira.
  */

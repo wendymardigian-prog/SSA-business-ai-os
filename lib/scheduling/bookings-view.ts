@@ -1,6 +1,5 @@
 /**
- * Funciones puras de la pantalla de agendas (F32, F33). `filterBookings`
- * (arma la consulta con el alcance) va en la Tanda B.
+ * Funciones puras de la pantalla de agendas (F32, F33).
  */
 import type { Booking, BookingStatus } from "./types";
 import { BOOKING_STATUS_KEYS, groupOf, isActive, canTransition } from "./booking-status";

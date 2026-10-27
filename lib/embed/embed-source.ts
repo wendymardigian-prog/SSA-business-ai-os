@@ -7,8 +7,8 @@
  * pre-renderizado, sin namespaces anidados en el iframe, sin CSS inyectado
  * más allá de estilos inline.
  *
- * NO está integrado al build (tanda A). La Tanda B compila `entry.ts` a
- * `public/embed/embed.js`. Para poder testearlo en Node, el runtime recibe
+ * El build compila `entry.ts` a `public/embed/embed.js`
+ * (`scripts/build-embed.mjs`). Para poder testearlo en Node, el runtime recibe
  * `window` y `document` con una interfaz mínima (`EmbedWindow`,
  * `EmbedDocument`) que el DOM real cumple.
  */

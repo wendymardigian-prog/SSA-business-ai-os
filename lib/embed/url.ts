@@ -66,7 +66,7 @@ export function parentAttributionFromSearch(search: string): ParentAttribution {
   return out;
 }
 
-// ── Formularios: lo que la pagina que lo contiene le pasa al iframe ─────────
+// ── Formularios: lo que la pagina que lo contiene le pasa al iframe ─────────  @plantilla-quitar(formularios)
 
 const HOST_PARAM_NAME_RE = /^[a-zA-Z0-9_.-]{1,40}$/;
 const MAX_HOST_PARAMS = 30;

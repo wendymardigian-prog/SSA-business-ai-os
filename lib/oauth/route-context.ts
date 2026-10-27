@@ -4,7 +4,7 @@
  *
  * Tres casos, siempre explicitos (nunca un `else` que adopte un proveedor
  * nuevo sin que nadie lo decida):
- *  - Por persona y para cualquier miembro (`anyMember`: Fathom): el guard de miembro.
+ *  - Por persona y para cualquier miembro (`anyMember`): el guard de miembro.
  *  - Por persona con permiso (Google Calendar): el permiso del adaptador.
  *  - Del workspace (YouTube, LinkedIn, Threads): `integrations.manage` (Equipo y roles, F18). Las dos
  *    ramas por persona NO cambian.
@@ -29,8 +29,8 @@ export function oauthForbiddenMessage(adapter: OAuthAdapter): string {
 }
 
 /**
- * A donde vuelve una conexion por persona. Google Calendar sigue volviendo a
- * Agenda; Fathom vuelve a su pantalla (Llamadas > Mi Fathom).
+ * A donde vuelve una conexion por persona: Google Calendar vuelve a Agenda.
+ * Fathom vuelve a su pantalla (Llamadas > Mi Fathom).  @plantilla-quitar(llamadas)
  */
 export function perUserLanding(provider: string): string {
   return provider === "fathom" ? "/dashboard/llamadas/mi-fathom" : "/dashboard/agenda/configuracion/calendarios"; // @plantilla-quitar(llamadas)

@@ -6,8 +6,8 @@
  * usando: pide publicar y recibe un resultado.
  *
  * Eso es lo que permite que editar, cancelar y reprogramar funcionen igual en
- * todas las redes, y lo que va a permitir que en la etapa 3 un agente publique
- * llamando a lo mismo.
+ * todas las redes, y lo que permitiria que un agente publique llamando a lo
+ * mismo.
  */
 
 import type { FetchLike } from "@/lib/oauth/types";

@@ -7,7 +7,7 @@
  *
  * Su API no documenta webhooks, asi que el estado final se CONSULTA: la
  * publicacion queda "en proceso" y un job vuelve a preguntar (F35). Ver la
- * nota en `lib/social/postproxy.ts` y en docs/PENDIENTE.md.
+ * nota en `lib/social/postproxy.ts`.
  */
 
 import { createPost, getPost, platformOutcome, PostproxyError } from "@/lib/social/postproxy";

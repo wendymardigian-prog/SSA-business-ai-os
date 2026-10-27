@@ -80,7 +80,7 @@ export interface TouchRow {
   referrer_url: string | null;
   landing_page: string | null;
   raw?: unknown;
-  /** Lo que suma el Extra I (F46): el canal, la pieza, la publicacion, el origen y el vinculo con el catalogo de Meta. */
+  /** El canal, la pieza, la publicacion, el origen y el vinculo con el catalogo de Meta. */
   channel?: string | null;
   content_post_id?: string | null;
   social_post_id?: string | null;

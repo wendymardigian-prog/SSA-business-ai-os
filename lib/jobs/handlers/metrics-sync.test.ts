@@ -1,9 +1,7 @@
 /**
- * F79 en el job real: la regla de frecuencia por antiguedad.
+ * En el job real: la regla de frecuencia por antiguedad.
  *
- * `shouldCollect` y `postsDueForSync` estaban escritos y nadie los llamaba, asi
- * que un post de 31 a 90 dias no se volvia a leer nunca. Los tests de
- * `rules.test.ts` prueban la regla; este prueba que el JOB la use: que pida la
+ * Los tests de `rules.test.ts` prueban la regla; este prueba que el JOB la use: que pida la
  * ventana estirada solo cuando toca, y que no guarde lo que no corresponde.
  *
  * Se simulan el lector de Zernio, el cliente de Zernio (el job tambien lee los

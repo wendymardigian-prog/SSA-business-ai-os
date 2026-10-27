@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre public.touch_channel (SQL, 00230) y touchChannel (TS, lib/attribution/channel.ts). Cada caso corre contra las dos: scripts/verify-organic-attribution.mjs y lib/attribution/channel.test.ts. Los 15 campos de input son los 15 parametros de la funcion SQL (los dos ultimos son uuid). Normalizacion que las dos gemelas tienen que compartir: origin, medium y source se comparan en minusculas y recortados (lower(btrim(x))); el resto de los textos se recorta y un texto vacio cuenta como null.",
+  "_comment": "Casos compartidos entre public.touch_channel (SQL) y touchChannel (TS, lib/attribution/channel.ts). Cada caso corre contra las dos: scripts/verify-organic-attribution.mjs y lib/attribution/channel.test.ts. Los 15 campos de input son los 15 parametros de la funcion SQL (los dos ultimos son uuid). Normalizacion que las dos gemelas tienen que compartir: origin, medium y source se comparan en minusculas y recortados (lower(btrim(x))); el resto de los textos se recorta y un texto vacio cuenta como null.",
   "keys": [
     "origin",
     "medium",

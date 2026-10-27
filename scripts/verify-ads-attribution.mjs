@@ -453,7 +453,7 @@ try {
     await mkBooking(k1, { created_at: ago(1.5), status: "cancelled_no_response", start_at: new Date(Date.now() + 8 * dayMs).toISOString(), end_at: new Date(Date.now() + 8 * dayMs + 1_800_000).toISOString() });
     check(!bManual.error, "y una manual");
 
-    // Ventas: producto y variante.
+    // Un producto y su variante.
     const { data: prod } = await svc.from("products").insert({ workspace_id: wsC.id, name: "zz-test Programa" }).select("id").single();
     const { data: variant } = await svc.from("product_variants").insert({ workspace_id: wsC.id, product_id: prod.id, name: "zz-test variante" }).select("id").single();
     const mkSale = (touchId, status, amount, over = {}) =>

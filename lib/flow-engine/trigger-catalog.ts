@@ -89,7 +89,7 @@ export function triggerEntry(type: string | null | undefined): TriggerCatalogEnt
   return type ? BY_TYPE.get(type) : undefined;
 }
 
-/** Una opcion del selector: un tipo, o un atajo de Ventas (un tipo + la configuracion que deja elegida). */
+/** Una opcion del selector: un tipo, o un atajo (un tipo + la configuracion que deja elegida). */
 export interface TriggerChoice {
   key: string;
   type: TriggerType;
@@ -101,7 +101,7 @@ export interface TriggerChoice {
   config: Record<string, unknown>;
 }
 
-/** Las opciones del selector, en el orden de los grupos. Ventas se ofrece con sus atajos (`SALES_PRESETS`). */
+/** Las opciones del selector, en el orden de los grupos (con sus atajos, si los hay). */
 export function triggerChoices(): TriggerChoice[] {
   const out: TriggerChoice[] = [];
   for (const group of TRIGGER_GROUPS) {
@@ -178,7 +178,7 @@ export function triggerDisplayLabel(data: Record<string, unknown> | null | undef
   return triggerEntry(type)?.label ?? type;
 }
 
-/** La opcion del selector que corresponde a lo guardado (para marcarla): el atajo de Ventas, o el tipo. */
+/** La opcion del selector que corresponde a lo guardado (para marcarla): el atajo, o el tipo. */
 export function choiceKeyFor(data: Record<string, unknown> | null | undefined): string | null {
   const type = chosenType(data);
   if (!type) return null;

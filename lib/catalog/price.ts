@@ -1,5 +1,5 @@
 /**
- * El precio de una variante (Ventas, 00169). Vive en `product_variants.price`, en USD.
+ * El precio de una variante (00169). Vive en `product_variants.price`, en USD.
  * Cero significa "sin precio": la variante existe pero no se puede vender. Cada cambio
  * queda en `audit_log` (`variant.price_changed`, lo escribe la base: 00170).
  */

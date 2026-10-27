@@ -54,7 +54,7 @@ export function brandInitial(): string {
 //
 // Todo lo que ve un lead (formularios, contratos, agenda, emails) y el panel
 // de adentro usan `resolveBrand(workspace)`. El login, el icono de la pestaña
-// y el sitio publico siguen con la de la instalacion: se ven antes de saber
+// y las paginas publicas siguen con la de la instalacion: se ven antes de saber
 // de que negocio se trata.
 // ------------------------------------------------------------
 

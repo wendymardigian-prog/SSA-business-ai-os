@@ -257,7 +257,7 @@ describe("grupos del menu (bloque N, N1)", () => {
 
   it("Dashboards, Bandeja y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
     const sueltos = NAV_ITEMS.filter((i) => i.group === "inicio").map((i) => i.name);
-    // Tareas se mudo a Herramientas: ya no es un suelto.
+    // Tareas se mudo a Herramientas: ya no es un suelto.  @plantilla-quitar(proyecto)
     expect(sueltos).toEqual(["Dashboards", "Bandeja", "Mi reporte del día"]); // @plantilla-quitar(formularios)
     // @plantilla-sin(formularios): expect(sueltos).toEqual(["Dashboards", "Bandeja"]);
   });
@@ -321,15 +321,15 @@ describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
   });
 
   it("un grupo sin ningun item visible no aparece, y con el su titulo", () => {
-    // Simula lo que ve alguien con solo contactos: sin Agenda, Llamadas ni Ventas (sin sus permisos).
+    // Simula lo que ve alguien con solo contactos: sin los demas items del grupo (sin sus permisos).
     const soloContactos = visibleNavItems(NAV_ITEMS, { permissionKeys: ["contacts.view"] });
     const secciones = navSections(soloContactos);
 
-    // "ventas" tenia Contactos, Agenda, Llamadas y Ventas; sin los permisos le queda Contactos.
+    // Al grupo "ventas" sin los demas permisos le queda Contactos.
     const ventas = secciones.find((s) => s.group === "ventas");
     expect(ventas?.items.map((i) => i.name)).toEqual(["Contactos"]);
 
-    // Plano formularios-ui (F1): "Herramientas" (Automatizaciones, Formularios, Agentes IA y Ajustes) pide
+    // Plano formularios-ui (F1): "Herramientas" (Automatizaciones, Agentes IA, Ajustes...) pide
     // permisos y la bandeja de Ajustes; sin nada de eso se queda vacia y no aparece, con su titulo.
     expect(secciones.some((s) => s.group === "herramientas")).toBe(false);
   });

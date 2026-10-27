@@ -1,8 +1,8 @@
 /**
- * Publicar y despublicar un flujo desde el servidor (Tareas × CRM, R5).
+ * Publicar y despublicar un flujo desde el servidor (R5).
  *
  * Es la logica de `POST /api/v1/flows/[flowId]/publish`, sacada tal cual a una funcion para que otro codigo del servidor
- * (el interruptor de cobranza de Ajustes) publique con los MISMOS pasos y la MISMA validacion, sin pasar por HTTP. La ruta
+ * (por ejemplo, un interruptor de Ajustes) publique con los MISMOS pasos y la MISMA validacion, sin pasar por HTTP. La ruta
  * la llama y devuelve lo mismo que siempre (mismos cuerpos y mismos codigos).
  *
  *   1. Lee el flujo del workspace (404 si no esta).
@@ -32,7 +32,7 @@ export interface PublishFlowArgs {
   userId: string | null;
   workspaceId: string;
   flowId: string;
-  /** El cliente de servicio para agendar los recordatorios de pagos. Se pide solo si hace falta. */
+  /** El cliente de servicio, para lo que haya que agendar al publicar. Se pide solo si hace falta. */
   getServiceClient: () => Promise<Db>;
   /** Una validacion extra (solo las plantillas del servidor la usan). Devuelve los problemas, o `[]`. */
   extraProblems?: (nodes: unknown[], edges: unknown[]) => string[];
@@ -57,7 +57,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     ? Array.isArray(flow.draft_edges) ? (flow.draft_edges as unknown[]) : []
     : Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [];
 
-  // Un flujo sin contacto (reporte de fin de día, E15) no se publica con pasos que necesiten uno. Tampoco con pasos
+  // Un flujo sin contacto no se publica con pasos que necesiten uno. Tampoco con pasos
   // que necesitan una conexion que falta (Resend, WhatsApp, una IA...): se puede armar y guardar el borrador, pero
   // publicarlo seria prometer algo que no se va a ejecutar (G1).
   const problems = [
@@ -115,8 +115,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     .delete()
     .eq("flow_id", flowId)
     .is("channel_id", null)
-    // TODOS los tipos que arma el editor (mensaje, eventos, programados y Ventas): republicar no duplica ninguna fila.
-    // Antes solo se borraban los de mensaje y Ventas, y un flujo de agenda republicado tres veces corria tres veces.
+    // TODOS los tipos que arma el editor (mensaje, eventos, programados...): republicar no duplica ninguna fila.
     .in("type", persistableTriggerTypes());
 
   if (desiredTriggers.length > 0) {

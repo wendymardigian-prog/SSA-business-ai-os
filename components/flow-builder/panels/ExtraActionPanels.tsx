@@ -11,8 +11,7 @@ const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 type PanelProps = { data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void; availableVariables?: string[] };
 
 /**
- * «Avisar en la campana» en el lienzo (antes solo se configuraba desde el editor de pasos de Formularios y la Agenda:
- * en el lienzo decía «No configuration available» y el paso no hacía nada).
+ * «Avisar en la campana» en el lienzo.
  */
 export function NotifyTeamPanel({ data, onChange, availableVariables }: PanelProps) {
   const [members, setMembers] = useState<Array<{ id: string; name: string }> | null>(null);

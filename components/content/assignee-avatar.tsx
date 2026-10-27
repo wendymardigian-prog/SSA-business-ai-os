@@ -5,8 +5,7 @@ import type { AssigneeInfo } from "@/lib/content/assignee";
 /**
  * El responsable de una pieza como un circulo con sus iniciales.
  *
- * Es el mismo avatar que usa Tareas: el sistema no guarda fotos de perfil del
- * equipo, asi que el circulo lleva iniciales, con un color que es siempre el
+ * El sistema no guarda fotos de perfil del equipo, asi que el circulo lleva iniciales, con un color que es siempre el
  * mismo para la misma persona. Sin responsable, un circulo vacio con guiones.
  */
 export function AssigneeAvatar({ assignee, size = "md" }: { assignee: AssigneeInfo | null; size?: "sm" | "md" }) {

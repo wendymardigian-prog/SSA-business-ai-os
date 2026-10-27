@@ -42,7 +42,7 @@ export interface SendEmailParams {
   contactId?: string | null;
   /** Quien lo disparo. Null/omitido = el sistema. */
   createdBy?: string | null;
-  /** Adjuntos en base64 (la copia firmada de un contrato). Omitido = sin adjuntos, como siempre. */
+  /** Adjuntos en base64 (por ejemplo, un PDF). Omitido = sin adjuntos, como siempre. */
   attachments?: Array<{ filename: string; content: string }>;
   /** Inyeccion para tests. En produccion no se pasa. */
   deps?: {

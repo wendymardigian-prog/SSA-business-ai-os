@@ -130,7 +130,7 @@ export async function requirePermission(key: string): Promise<PermissionContext>
 
 /**
  * Para rutas y Server Actions que cualquier MIEMBRO puede usar, sin un permiso
- * aparte (conectar el propio Fathom, decision 153). Devuelve el contexto con
+ * aparte (por ejemplo, una conexion personal). Devuelve el contexto con
  * los permisos resueltos, o null si no hay sesion o membresia.
  *
  * No existe un "guard de miembro" mas barato: `getWorkspace` ya manda al login
@@ -157,7 +157,7 @@ export async function getPermissionAction(key: string): Promise<PermissionContex
 }
 
 /**
- * Para paginas que abre quien tenga AL MENOS UNO de los permisos (Webhooks entrantes:
+ * Para paginas que abre quien tenga AL MENOS UNO de los permisos (por ejemplo,
  * `flows.edit` o `integrations.manage`). Misma salida que `requirePermission`.
  */
 export async function requireAnyPermission(keys: readonly string[]): Promise<PermissionContext> {

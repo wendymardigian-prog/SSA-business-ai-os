@@ -21,7 +21,7 @@ import type { StepTree } from "@/lib/automations/step-tree";
 import { fieldsOfTree, manualFields, manualValuesFrom, type ManualInputs } from "@/lib/automations/test-values";
 import type { ConditionFieldSpec } from "@/lib/flow-engine/condition-eval";
 
-/** Lo que una pantalla aporta para probar con una respuesta REAL (hoy, Formularios). */
+/** Lo que una pantalla aporta para probar con una respuesta REAL. */
 export interface TestResponsesSource {
   list: (input: { flowId: string }) => Promise<{ ok: true; formName: string; responses: Array<{ id: string; label: string }> } | { ok: false; error: string }>;
   load: (input: { flowId: string; submissionId: string }) => Promise<{ ok: true; values: TestValues } | { ok: false; error: string }>;

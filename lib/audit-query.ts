@@ -1,5 +1,5 @@
 /**
- * El armado de consultas sobre `audit_log` (Ventas F36): UNA sola función para el historial de una
+ * El armado de consultas sobre `audit_log` (F36): UNA sola función para el historial de una
  * entidad (`<Historial>`) y para la pantalla global de Actividad. Puro: devuelve filtros de columna que
  * quien llama aplica a su consulta (con el cliente del usuario la RLS filtra). El comportamiento del
  * historial de una entidad NO cambió: `runHistoryQuery` ahora arma sus filtros acá y son los mismos de
@@ -20,7 +20,7 @@ export interface AuditQueryInput {
   /** Desde (incluido) y hasta (excluido), como instantes ISO: quien llama convierte los días a la zona de quien mira. */
   fromIso?: string | null;
   toIso?: string | null;
-  /** Texto en la etiqueta del actor («Job de mora», el nombre de un flujo). */
+  /** Texto en la etiqueta del actor (el nombre de un job o de un flujo). */
   actorLabel?: string | null;
   /** performed_at de la última fila vista: trae las anteriores (el historial por entidad). */
   cursor?: string | null;

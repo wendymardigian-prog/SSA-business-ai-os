@@ -197,8 +197,8 @@ try {
     await setFlags(ws.id, { unassigned_leads_visible_to_members: false });
   }
 
-  // El caso que motivo la 00028: antes, esta segunda conversacion se veia sin
-  // que se viera el contacto, y en la bandeja aparecia sin nombre.
+  // Si esta segunda conversacion se viera sin que se viera el contacto, en la
+  // bandeja apareceria sin nombre.
   console.log("\n— Dos conversaciones del mismo lead, una asignada a otro —");
   {
     await svc.from("contacts")

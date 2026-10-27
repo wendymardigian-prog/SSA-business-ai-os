@@ -1,10 +1,9 @@
 /**
  * Que un post programado se publique, contra la base real (A, D11).
  *
- * Esto es lo que ningun test con vitest podia probar: que la fila, el job,
- * el estado de la pieza y la automatizacion se muevan juntos. Cuando la
- * Etapa 2 cerro, los 237 tests de publicacion estaban en verde y **no se
- * publicaba nada**.
+ * Esto es lo que ningun test con vitest puede probar: que la fila, el job,
+ * el estado de la pieza y la automatizacion se muevan juntos. Con todos los
+ * tests de publicacion en verde, el sistema puede no estar publicando nada.
  *
  * Base real, proveedores simulados: no se llama a Zernio, no se conecta
  * ninguna cuenta y no se publica nada en ningun lado. El publicador se

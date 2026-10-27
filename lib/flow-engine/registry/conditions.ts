@@ -188,7 +188,7 @@ export function variablePathValue(variables: Record<string, unknown> | undefined
 }
 
 // Lo que el disparador deja en las variables del flow: se lee por su ruta.
-// Reporte de fin de día (E16): quién, el día, las respuestas por canal y las métricas.
+// Reporte de fin de día (E16): quién, el día, las respuestas por canal y las métricas.  @plantilla-quitar(formularios)
 const FLOW_VARIABLE_PREFIXES = [
   "form.", // @plantilla-quitar(formularios)
   "submission.", // @plantilla-quitar(formularios)

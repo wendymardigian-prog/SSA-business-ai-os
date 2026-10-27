@@ -42,8 +42,8 @@ describe("diffFields", () => {
   });
 });
 
-// Caracterizacion de logAudit (Llamadas, §4.3): la fila que inserta con la
-// firma de siempre. Llamadas le suma actor_type/actor_label sin romper esto.
+// Caracterizacion de logAudit: la fila que inserta con la firma de siempre,
+// con actor_type/actor_label.
 import { logAudit, auditAsSystem, auditAsWebhook, inferActorType } from "./audit";
 
 function fakeAuditClient(result: { data?: { id: string } | null; error?: { message: string } | null } = { data: { id: "audit-1" }, error: null }) {

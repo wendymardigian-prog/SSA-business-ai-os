@@ -1,9 +1,8 @@
 /**
- * Lo que el servidor acepta como `networks` y como media de una pieza (F92,
- * F93, §7 del plano).
+ * Lo que el servidor acepta como `networks` y como media de una pieza (F92, F93).
  *
- * Hasta ahora `savePostDraft` escribia lo que llegaba del navegador tal cual:
- * un `jsonb` sin forma, que cualquier cliente (o un bug) podia llenar de
+ * Sin esto, `savePostDraft` escribiria lo que llega del navegador tal cual:
+ * un `jsonb` sin forma, que cualquier cliente (o un bug) podria llenar de
  * cualquier cosa. Aca esta la forma. Es estricta con lo que importa (la red,
  * la fecha, el tipo de CTA, el formato y los ids de archivo) y deja pasar lo
  * que no conoce (`passthrough`), porque una clave de un bloque futuro no tiene

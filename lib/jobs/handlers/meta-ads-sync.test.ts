@@ -1,5 +1,5 @@
 /**
- * F23 en el job real: el catalogo (campañas, conjuntos y anuncios) se sincroniza antes de las
+ * En el job real: el catalogo (campañas, conjuntos y anuncios) se sincroniza antes de las
  * metricas, es independiente de ellas, y deja el estado en las filas de insights.
  *
  * `fetch` se simula con respuestas del grafo (v21): NINGUNA llamada sale a internet. El handler,

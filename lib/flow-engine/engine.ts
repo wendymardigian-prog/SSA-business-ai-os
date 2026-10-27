@@ -39,7 +39,7 @@ export async function findWaitingSession(
 ): Promise<FlowSessionRow | null> {
   // Sin canal no hay sesión que retomar: un mensaje entrante siempre llega por
   // uno, y una sesión sin canal (agenda) no espera respuesta del contacto. Un
-  // flujo sin contacto (EOD) tampoco tiene canal.
+  // flujo sin contacto tampoco tiene canal.
   if (!channelId || !contactId) return null;
 
   const { data, error } = await supabase

@@ -339,7 +339,7 @@ export function applyKeyToggle(
   return { keys: [...set], alsoAdded, alsoRemoved };
 }
 
-/** `eod.view_all` se muestra como un selector («Qué reportes de fin de día ve»), no como una casilla. */
+/** `eod.view_all` se muestra como un selector («Qué reportes de fin de día ve»), no como una casilla.  @plantilla-quitar(formularios) */
 export function eodSelectorValue(keys: string[]): "own" | "all" {
   return keys.includes("eod.view_all") ? "all" : "own";
 }

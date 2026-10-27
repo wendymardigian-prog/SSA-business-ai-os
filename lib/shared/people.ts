@@ -1,4 +1,4 @@
-/** Iniciales y color de una persona, para los avatares de Tareas. PURO. */
+/** Iniciales y color de una persona, para los avatares del equipo. PURO. */
 
 export function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);

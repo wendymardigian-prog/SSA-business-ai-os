@@ -2,11 +2,11 @@
 
 /**
  * El editor de pasos de una automatizacion (reemplaza al editor lineal
- * Cuando / Si / Entonces, y es COMPARTIDO: lo usan Formularios y la Agenda con
- * sus propias variables, su descripcion del disparador y sus acciones).
+ * Cuando / Si / Entonces, y es COMPARTIDO: lo usan las pantallas que arman sus
+ * propias automatizaciones (la Agenda y otras), con sus propias variables, su descripcion del disparador y sus acciones).
  *
  *   Cuando <disparador>            fijo
- *   Solo si…                       solo Formularios: decide si el flujo arranca
+ *   Solo si…                       solo Formularios: decide si el flujo arranca  @plantilla-quitar(formularios)
  *   Paso 1, paso 2...              uno debajo del otro, con "+ Agregar paso"
  *   Condiciones                    un bloque por camino y "Si no" al final
  *
@@ -66,15 +66,15 @@ export interface StepTreeEditorProps {
   /** Un ejemplo para la ayuda de variables. */
   variableExample: string;
   describeTrigger: (type: string, config: Record<string, unknown>) => string;
-  /** Solo Formularios: el "Solo si…" del disparador (`answer_conditions`). */
+  /** El "Solo si…" del disparador (`answer_conditions`), en las pantallas que lo usan. */
   onlyIf?: { sources: ConditionSource[]; value: VisibilityConfig | undefined };
   onSave: (input: { flowId: string; tree: Pick<StepTree, "steps">; answerConditions?: VisibilityConfig | null }) => Promise<EditorActionResult>;
   onSendTest: (input: { flowId: string; subject: string; body: string }) => Promise<EditorActionResult>;
-  /** Para "Probar condiciones" con una respuesta real (hoy solo Formularios). Sin esto se prueba cargando los datos a mano. */
+  /** Para "Probar condiciones" con una respuesta real. Sin esto se prueba cargando los datos a mano. */
   testResponses?: TestResponsesSource;
-  /** Las personas del equipo, para los pasos que van a gente del equipo (EOD). */
+  /** Las personas del equipo, para los pasos que van a gente del equipo. */
   members?: Array<{ userId: string; name: string }>;
-  /** Algo más dentro de "Cuándo" (EOD: primer envío o cada corrección). */
+  /** Algo más dentro de "Cuándo" (una opción propia del disparador). */
   whenExtra?: ReactNode;
 }
 

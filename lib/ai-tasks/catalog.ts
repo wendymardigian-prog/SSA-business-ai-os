@@ -90,11 +90,11 @@ export interface AiTaskDef {
   detailLike?: string;
   /** La clave en `BackgroundSettings`, solo cuando `configurable` es true y la tarea tiene modo por lote. */
   backgroundTask?: BackgroundTask;
-  /**
-   * Las tareas de Llamadas con configuracion propia (reglas, rubrica, categorias…).
-   * Viven en `ai_background_settings` pero NO en `BackgroundSettings`: tienen su
-   * propio esquema (`lib/calls/task-settings.ts`) y nunca van por lote.
-   */
+  /**  @plantilla-quitar(llamadas)
+   * Las tareas de Llamadas con configuracion propia (reglas, rubrica, categorias…).  @plantilla-quitar(llamadas)
+   * Viven en `ai_background_settings` pero NO en `BackgroundSettings`: tienen su  @plantilla-quitar(llamadas)
+   * propio esquema (`lib/calls/task-settings.ts`) y nunca van por lote.  @plantilla-quitar(llamadas)
+  @plantilla-quitar(llamadas) */
   callTask?: "call_classification" | "call_analysis";
 }
 

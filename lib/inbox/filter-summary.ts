@@ -32,8 +32,8 @@ export interface FilterSummaryCatalog {
 /**
  * Cuantos filtros hay puestos ADENTRO del popover.
  *
- * `countActiveFilters` cuenta tambien la busqueda y el estado, que desde el
- * Bloque I viven afuera (la busqueda en la barra, el estado en las pastillas
+ * `countActiveFilters` cuenta tambien la busqueda y el estado, que viven
+ * afuera (la busqueda en la barra, el estado en las pastillas
  * arriba de la lista), y las cuentas, que tienen su propio menu de Canal. Si el
  * boton los contara, diria "4" con tres cosas marcadas adentro. Se neutralizan
  * esos tres y se cuenta el resto con la misma funcion de siempre.

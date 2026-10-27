@@ -107,7 +107,7 @@ describe("permiso", () => {
   it("un rol personalizado con settings.general crea pilares, pero no productos", async () => {
     customRole(["settings.general"]);
     expect((await actions.createPillar({ name: "Educativo" })).ok).toBe(true);
-    // Los pilares y los productos tienen cada uno su clave (el catalogo de Ventas pide products.manage).
+    // Los pilares y los productos tienen cada uno su clave (el catalogo de productos pide products.manage).
     expect((await actions.createProduct({ name: "Mentoria", priceUsd: 1500 })).ok).toBe(false);
   });
 

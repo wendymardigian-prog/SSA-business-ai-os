@@ -8,7 +8,7 @@
  *
  * La solucion no es "refrescar siempre": una foto que alguien subio a mano
  * (`avatar_source = 'manual'`) no se puede perder porque llego un mensaje
- * nuevo. La migracion 00104 ya resuelve el caso mas simple (una foto
+ * nuevo. La base ya resuelve el caso mas simple (una foto
  * `external` se refresca con la URL fresca de cada mensaje, adentro de
  * `find_or_link_contact`). Lo que falta, y es lo que hace este modulo, es
  * COPIAR esa foto a nuestro Storage (bucket publico `avatars`), para no

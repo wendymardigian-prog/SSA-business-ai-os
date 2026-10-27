@@ -35,7 +35,7 @@ interface MemberDetail {
   joinedAt: string;
   email: string;
   name: string;
-  /** Graba llamadas de venta (Llamadas, 00145). */
+  /** Graba llamadas de venta (Llamadas, 00145).  @plantilla-quitar(llamadas) */
   isCloser?: boolean;
   closerEmails?: string[];
 }

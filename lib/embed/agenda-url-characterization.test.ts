@@ -1,7 +1,6 @@
 /**
- * Caracterización del embed de la Agenda ANTES de que Formularios (F10) le
- * sume `f/<slug>`. Para cualquier link de agenda la URL tiene que ser
- * exactamente la de hoy.
+ * Caracterización del embed de la Agenda: para cualquier link de agenda la URL
+ * tiene que ser exactamente esta.
  */
 import { describe, it, expect } from "vitest";
 import { buildEmbedIframeUrl } from "./url";

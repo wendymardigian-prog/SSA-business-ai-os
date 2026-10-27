@@ -66,7 +66,7 @@ registerNode(markPaymentPaidNode);
 registerNode(reschedulePaymentNode);
 registerNode(setSaleStatusNode);
 // @plantilla-hasta(ventas)
-// Reporte de fin de día (E15): sirve en flujos sin contacto y con contacto.
+// «Avisar en la campana»: sirve en flujos sin contacto y con contacto.
 registerNode(notifyTeamNode);
 // @plantilla-desde(webhooks)
 // Webhooks entrantes (Extra L): consigue el contacto de un flujo que arranco sin uno.

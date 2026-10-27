@@ -5,7 +5,7 @@
  * saldada quedaba "con pago pendiente".
  *
  * Reglas:
- *  - Ninguna decisión de saldo, cuadre o mora se toma con punto flotante.
+ *  - Ninguna decisión de saldo o cuadre se toma con punto flotante.
  *  - Todo lo que viene de la base pasa por `toCents` / `num` (`Number(x) || 0`).
  *  - Solo USD (decisión del plano): no hay moneda acá.
  */
@@ -31,14 +31,14 @@ export interface MoneyRow {
   status: string;
 }
 
-/** Cobrado neto, en céntimos: los pagos `paid` (los reembolsos son filas `paid` con monto negativo). */
+/** Cobrado neto, en céntimos: las filas `paid` (los reembolsos son filas `paid` con monto negativo). */
 export function totalPaidCents(payments: readonly MoneyRow[] | null | undefined): number {
   let total = 0;
   for (const p of payments ?? []) if (p.status === "paid") total += toCents(p.amount);
   return total;
 }
 
-/** Suma de los pagos en los estados dados, en céntimos. */
+/** Suma de las filas en los estados dados, en céntimos. */
 export function sumCentsByStatus(payments: readonly MoneyRow[] | null | undefined, statuses: readonly string[]): number {
   let total = 0;
   for (const p of payments ?? []) if (statuses.includes(p.status)) total += toCents(p.amount);

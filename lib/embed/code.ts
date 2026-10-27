@@ -146,7 +146,7 @@ export default function AgendaEmbed() {
   return { html, react };
 }
 
-// ── Formularios (F10, F32) ───────────────────────────────────────────────────
+// ── Formularios (F10, F32) ───────────────────────────────────────────────────  @plantilla-quitar(formularios)
 
 export const FORM_EMBED_MODES: EmbedMode[] = ["inline", "floating"];
 

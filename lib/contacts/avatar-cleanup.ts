@@ -5,7 +5,7 @@
  * 30 MB sobre 100 GB de plan -- sino no guardar indefinidamente la cara de
  * gente con la que ya no se habla. Se cuelga del mismo cron diario que ya
  * limpia la media del chat y las piezas publicadas (`content-media-cleanup`):
- * mismo criterio que F5, sin sumar una ruta de cron nueva.
+ * con el mismo criterio, sin sumar una ruta de cron nueva.
  *
  * Solo se borran fotos `avatar_source = 'storage'`: una `manual` nunca se
  * toca, y una `external` no tiene archivo nuestro que borrar.

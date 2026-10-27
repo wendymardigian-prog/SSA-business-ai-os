@@ -1,4 +1,4 @@
-/** Formato de dinero de Ventas (plano §13.0): una sola función para todas las pantallas. */
+/** Formato de dinero: una sola función para todas las pantallas. */
 import { toCents } from "./money";
 
 /**

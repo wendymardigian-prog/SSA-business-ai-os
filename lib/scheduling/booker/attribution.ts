@@ -57,7 +57,7 @@ export function bookingAttribution(input: BookingAttributionInput): Record<strin
 
 /**
  * Las cookies de anuncios que el pedido trae y el navegador no mandó (`_fbp`, `_fbc`, `_ga`): se completan en
- * el servidor, igual que `buildAttribution` de Formularios. Una clave que ya vino no se pisa.
+ * el servidor. Una clave que ya vino no se pisa.
  */
 export function fillFromRequestCookies(attribution: Record<string, unknown>, cookieHeader: string | null | undefined): Record<string, unknown> {
   const cookies = parseCookieHeader(cookieHeader);

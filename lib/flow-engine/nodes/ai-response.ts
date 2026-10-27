@@ -93,7 +93,7 @@ async function executeAiResponse(
  * Genera una respuesta con IA y, si esta configurado asi, la manda.
  *
  * Es una respuesta puntual adentro de un flow, no el agente conversacional en
- * loop: eso es la Fase 3.
+ * loop (ese es el agente de IA).
  */
 export const aiResponseNode: NodeDefinition<AiResponseNodeData> = {
   needsContact: true,

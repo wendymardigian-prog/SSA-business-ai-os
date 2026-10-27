@@ -1,5 +1,5 @@
 /**
- * El país de un contacto a partir de lo que escribió una persona (Formularios R6): el código ISO de 2 letras o el
+ * El país de un contacto a partir de lo que escribió una persona (R6): el código ISO de 2 letras o el
  * nombre del país, en español o en inglés, sin distinguir mayúsculas ni tildes ("costa rica", "México", "Spain").
  * PURO. La tabla de nombres sale de `Intl.DisplayNames` sobre todos los códigos ISO, no está escrita a mano.
  */

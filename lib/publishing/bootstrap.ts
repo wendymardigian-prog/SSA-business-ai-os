@@ -129,7 +129,7 @@ export function registerPublishing(): void {
   registerContractEmailHandler();
   // @plantilla-hasta(formularios)
 
-  // Ventas: la asignacion automatica de setter, vendedor y referido (F15).
+  // La asignacion automatica de setter, vendedor y referido (F15).
   registerSalesContactEvalHandler();
   registerPaymentsOverdueSweepHandler(); // @plantilla-quitar(ventas)
   registerTasksDueSweepHandler(); // @plantilla-quitar(tareas)

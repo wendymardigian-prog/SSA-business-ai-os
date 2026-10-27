@@ -44,13 +44,10 @@ interface WorkspaceSettings {
 }
 
 /**
- * General (S2): antes era una columna de 13 bloques apilados, con seis de
- * ellos siendo tarjetas-link que repetían una pestaña o una ruta propia
- * (API keys, Team, Roles, Campos personalizados, Tareas, Banca de
- * recursos). Esas tarjetas se eliminaron: todo lo que linkeaban ya tiene su
- * propia pestaña en `SettingsTabs`.
+ * General (S2): lo que linkea a otra pantalla tiene su propia pestaña en
+ * `SettingsTabs`; aca quedan los ajustes del negocio.
  *
- * Lo que queda se agrupó en cuatro secciones con navegación interna
+ * Se agrupan en cuatro secciones con navegación interna
  * (`SectionNav`, mismo patrón que `components/scheduling/config-nav.tsx`,
  * pero por anclas en vez de rutas): Workspace, Conversaciones, Archivos e
  * IA. Cada ajuste conserva su forma de guardado actual — el botón de abajo
@@ -78,9 +75,9 @@ export function SettingsView({
   canViewAudit: boolean;
   /** `settings.general`: las secciones de General. */
   canGeneral: boolean;
-  /** `sales.settings`: la sección «Ventas y cobranza». */
+  /** `sales.settings`: la sección «Ventas y cobranza».  @plantilla-quitar(ventas) */
   canSales: boolean;
-  /** `expenses.manage`: la sección «Finanzas». */
+  /** `expenses.manage`: la sección «Finanzas».  @plantilla-quitar(finanzas) */
   canFinance: boolean;
   financeCategories: ExpenseCategory[]; // @plantilla-quitar(finanzas)
   financeUsage: Record<string, CategoryUsage>; // @plantilla-quitar(finanzas)

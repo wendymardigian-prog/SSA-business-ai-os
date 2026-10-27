@@ -27,7 +27,7 @@ export interface DashboardOption {
   color?: string;
   /**
    * Todavia no existe: aparece en la lista, apagado y con su pastilla. Figura
-   * en el prototipo y en F14 porque saber que viene es parte de la respuesta a
+   * porque saber que viene es parte de la respuesta a
    * "¿cuanto me cuesta el agente?".
    */
   comingSoon?: boolean;

@@ -93,9 +93,9 @@ try {
 
   console.log("\n— Lo que escribio una persona NO se pisa —");
   {
-    // avatar_source: 'manual' (migracion 00104, F16) es lo que le dice a
-    // find_or_link_contact que esta foto la puso una persona: sin esto, desde
-    // la 00104 una foto 'external' (el default) SI se refresca con el
+    // avatar_source: 'manual' es lo que le dice a find_or_link_contact que
+    // esta foto la puso una persona: sin esto, una foto 'external' (el
+    // default) SI se refresca con el
     // proximo mensaje, que es exactamente lo que este bloque prueba que NO
     // deberia pasar.
     await svc.from("contacts")

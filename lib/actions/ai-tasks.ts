@@ -26,8 +26,8 @@ const TASKS_PATH = "/dashboard/agents/tareas";
 const NOT_ADMIN = "No tenés permiso para editar las instrucciones de una tarea.";
 
 /**
- * Quien puede tocar una tarea de IA: `ai_tasks.manage`; las dos tareas de llamadas aceptan ademas
- * `calls.configure`, como ya pasaba en su pantalla de Llamadas.
+ * Quien puede tocar una tarea de IA: `ai_tasks.manage`.
+ * Las dos tareas de llamadas aceptan ademas `calls.configure`, como ya pasaba en su pantalla de Llamadas.  @plantilla-quitar(llamadas)
  */
 async function taskGuard(taskId: string) {
   const callTask = taskId === "call_classification" || taskId === "call_analysis" || taskId === "call_summary"; // @plantilla-quitar(llamadas)

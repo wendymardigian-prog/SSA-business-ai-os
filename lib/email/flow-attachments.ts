@@ -1,6 +1,6 @@
 /**
  * Los adjuntos de «Enviar email» en una automatizacion: se bajan de Recursos UNA vez por paso (aunque el correo vaya a
- * varias personas) y viajan en base64 por el mismo `attachments` que ya usa la copia firmada de un contrato.
+ * varias personas) y viajan en base64 por el `attachments` del envio de emails.
  *
  * Solo servidor: lee el bucket con el cliente de servicio.
  */

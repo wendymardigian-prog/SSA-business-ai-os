@@ -92,9 +92,10 @@ export async function GET(
     }
   }
 
-  // Google Calendar vuelve a Agenda solo si salio bien (como siempre); Fathom
-  // vuelve a su pantalla salga como salga, porque un Member no entra a
-  // Integraciones, que es a donde caeria el error.
+  // Google Calendar vuelve a Agenda solo si salio bien (como siempre); Fathom  @plantilla-quitar(llamadas)
+  // vuelve a su pantalla salga como salga, porque un Member no entra a  @plantilla-quitar(llamadas)
+  // Integraciones, que es a donde caeria el error.  @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): // Una conexion por persona (Google Calendar) vuelve a su pantalla solo si salio bien.
   const landing = // @plantilla-quitar(llamadas)
     adapter.provider === "fathom" ? perUserLanding("fathom") : result.ok && adapter.perUser ? perUserLanding(adapter.provider) : result.redirectTo; // @plantilla-quitar(llamadas)
     // @plantilla-sin(llamadas): const landing = result.ok && adapter.perUser ? perUserLanding(adapter.provider) : result.redirectTo;

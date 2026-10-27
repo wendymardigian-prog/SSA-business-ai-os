@@ -105,7 +105,7 @@ export async function countEventsUsingConnection(connectionId: string): Promise<
   const ids = (cals ?? []).map((c) => c.id);
   let events = 0;
   if (ids.length > 0) {
-    // event_types llega en B3: hasta entonces la consulta falla y se cuenta 0.
+    // Los eventos que usan estos calendarios (si la consulta falla, se cuenta 0).
     const { count } = await service
       .from("event_types" as never)
       .select("id", { count: "exact", head: true })

@@ -358,7 +358,7 @@ export interface QualityLine {
 /**
  * La linea de calidad del pie de Patrones.
  *
- * Usa las mismas formulas que la pantalla de Tareas (`lib/patterns/quality.ts`):
+ * Usa las mismas formulas que la tarea de clasificacion (`lib/patterns/quality.ts`):
  * una precision que se calcule de dos maneras distintas termina en dos numeros
  * distintos y nadie sabe cual creer.
  */

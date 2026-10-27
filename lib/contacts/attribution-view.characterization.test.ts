@@ -1,9 +1,7 @@
 /**
- * Caracterizacion ANTES de B6 (plano formularios-ui): lo que muestra HOY la
- * seccion de atribucion de un contacto para un toque con anuncio de Meta.
- *
- * B6 suma la URL de entrada a cada visita; lo que ya se muestra (origen,
- * anuncio, detalle, camino) no cambia. Datos de ejemplo.
+ * Caracterizacion de lo que muestra la seccion de atribucion de un contacto
+ * para un toque con anuncio de Meta: origen, anuncio, detalle y camino (la URL
+ * de entrada de cada visita va aparte). Datos de ejemplo.
  */
 
 import { describe, expect, it } from "vitest";

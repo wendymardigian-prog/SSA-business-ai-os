@@ -12,11 +12,8 @@ import { civilDate, startOfDay } from "@/lib/dates";
 /**
  * Cuentas que ocupan un lugar del plan de Zernio.
  *
- * Hoy son los canales de la bandeja conectados por Zernio (Instagram). En el
- * bloque 2 se suman las cuentas de `social_accounts` que publican via Zernio
- * (TikTok), que ocupan lugar igual aunque no tengan bandeja: la cuenta se
- * conecta una sola vez y sirve para las dos cosas, asi que se cuenta por
- * cuenta (`late_account_id`), sin repetir.
+ * Son los canales de la bandeja conectados por Zernio (Instagram), contados
+ * por cuenta (`late_account_id`), sin repetir.
  */
 export async function countZernioAccounts(
   supabase: SupabaseClient<Database>,

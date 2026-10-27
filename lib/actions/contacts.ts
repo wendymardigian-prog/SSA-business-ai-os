@@ -222,7 +222,7 @@ export async function assignContact(
 
   if (Object.keys(patch).length === 0) return { ok: true, contactId };
 
-  // Lo asignado a mano bloquea lo automatico (Ventas, 00161): desde ahora la
+  // Lo asignado a mano bloquea lo automatico (00161): desde ahora la
   // asignacion automatica no toca el setter ni el vendedor de este contacto.
   patch.assignment_locked_at = new Date().toISOString();
 
@@ -263,9 +263,9 @@ export async function setDoNotContact(
   });
 
   // Marcar "no contactar" a mano pausa las secuencias activas del contacto,
-  // igual que la deteccion automatica (apply_opt_out_check, 00027). Hasta el
-  // Bloque 2c solo lo hacia la automatica: la marca manual quedaba con los
-  // drips corriendo y el procesador los salteaba de a uno.
+  // igual que la deteccion automatica (apply_opt_out_check, 00027): si no, la
+  // marca manual dejaria los drips corriendo y el procesador los saltearia de
+  // a uno.
   if (result.ok && value) {
     await pauseSequencesForOptOut(workspace.id, contactId, user.id);
   }
@@ -892,7 +892,7 @@ export async function setContactCustomField(
  * Une un contacto duplicado con el principal.
  *
  * Todo lo que colgaba del duplicado pasa al principal: conversaciones y sus mensajes, canales, etiquetas, notas,
- * agendas, llamadas, ventas (con sus pagos), tareas, formularios, secuencias, toques de atribucion y el resto (la lista
+ * agendas, secuencias, toques de atribucion y el resto de lo que se relaciona con el contacto (la lista
  * completa es `CONTACT_MERGE_TABLES`). Lo hace `merge_contacts` en la base, en UNA transaccion: si algo falla, no se
  * mueve nada. Los campos de identidad vacios del principal se completan con los del duplicado (nunca al reves), las
  * notas se juntan y el duplicado queda con borrado logico (reversible durante 30 dias) y `metadata.merged_into`.

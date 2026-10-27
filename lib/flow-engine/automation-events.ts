@@ -30,10 +30,10 @@ export type Db = Awaited<ReturnType<typeof createServiceClient>>;
  *
  * Una rama EXPLICITA por sujeto (como con los proveedores, nunca un `else`): un evento
  * sobre un contacto sigue exactamente el camino de siempre; uno sobre una persona del
- * equipo (EOD, E15) va por el suyo, sin conversacion, canal ni "no contactar".
+ * equipo va por el suyo, sin conversacion, canal ni "no contactar".
  */
 export async function processEvent(supabase: Db, event: AutomationEvent): Promise<number> {
-  // Tareas (F25): un evento SIN contacto y con una persona del equipo, de un tipo que atiende tambien sin contacto, corre
+  // Un evento SIN contacto y con una persona del equipo, de un tipo que atiende tambien sin contacto, corre
   // por la rama de la persona. Con contacto (o cualquier otro evento) no cambia nada: sigue por `eventSubject`.
   if (!event.contact_id && event.member_user_id && eventAllowsNoContact(event.event_type)) {
     return processMemberEvent(supabase, event);
@@ -226,8 +226,8 @@ type NoContactSubject = { kind: "member"; userId: string } | { kind: "system" };
 async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: NoContactSubject): Promise<number> {
   const types = (triggerTypesForEvent(event.event_type) as TriggerType[]).filter((type) => {
     const definition = getTrigger(type);
-    // De persona: los `member` de siempre y los que atienden tambien eventos sin contacto (Tareas).
-    // De sistema: solo los declarados `system` (un evento de Tareas sin contacto ni persona sigue sin correr: no se emite).
+    // De persona: los `member` de siempre y los que atienden tambien eventos sin contacto.
+    // De sistema: solo los declarados `system` (un evento sin contacto ni persona sigue sin correr: no se emite).
     return who.kind === "member" ? definition?.subject === "member" || definition?.contactOptional === true : definition?.subject === "system";
   });
   if (types.length === 0) return 0;

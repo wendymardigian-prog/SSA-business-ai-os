@@ -44,10 +44,10 @@ const DECISIONS: Array<{
 
 /**
  * Aviso de colision (F13).
- *
- * El centro de notificaciones es del Bloque 3; hasta entonces la colision se
- * ve aca. Cuando exista, va a leer las mismas filas (listOpenCollisions) y
- * esto no cambia.
+ *  @plantilla-quitar(proyecto)
+ * El centro de notificaciones es del Bloque 3; hasta entonces la colision se  @plantilla-quitar(proyecto)
+ * ve aca. Cuando exista, va a leer las mismas filas (listOpenCollisions) y  @plantilla-quitar(proyecto)
+ * esto no cambia.  @plantilla-quitar(proyecto)
  */
 export function CollisionAlert({
   collisions,

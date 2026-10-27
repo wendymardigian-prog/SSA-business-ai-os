@@ -50,11 +50,11 @@ export const RESERVED_PARAMS = new Set<string>([
   "website",
   // El embed manda la URL de la página donde vive (lib/embed/url.ts) con este
   // nombre. Antes no estaba acá: pasaba el filtro de identificador y quedaba
-  // precargada como respuesta de formulario en vez de leerse como la landing
+  // precargada como respuesta de la reserva en vez de leerse como la landing
   // page (Agenda v2).
   "referrer",
-  // La atribucion que manda el script del embed (`attr`, igual que a los formularios) y todas las claves de
-  // `lib/attribution/keys.ts`: tampoco se leen como respuestas de formulario.
+  // La atribucion que manda el script del embed (`attr`) y todas las claves de
+  // `lib/attribution/keys.ts`: tampoco se leen como respuestas de la reserva.
   "attr",
   ...UTM_KEYS,
   ...CLICK_ID_KEYS,

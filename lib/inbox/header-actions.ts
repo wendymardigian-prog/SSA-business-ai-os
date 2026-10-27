@@ -3,13 +3,13 @@
  *
  * Antes eran hasta nueve iconos en una fila (estado, flows pausados, agente
  * apagado por etiqueta, modo borrador, necesita humano, interruptor del agente,
- * crear tarea, cerrar, posponer, reabrir): en el telefono se partian en dos
+ * cerrar, posponer, reabrir...): en el telefono se partian en dos
  * renglones y competian con el hilo. Ahora:
  *
  *  - A la vista, siempre: el interruptor del agente y la accion mas frecuente,
  *    que es cerrar (o reabrir, si ya esta cerrada). "Necesita humano" tambien:
  *    es una alerta, no un detalle.
- *  - En el menu: posponer, reabrir una pospuesta, crear tarea.
+ *  - En el menu: posponer, reabrir una pospuesta y otras acciones.
  *  - Los avisos de estado (flows pausados, agente apagado por etiqueta, modo
  *    borrador) pasan a ser filas de texto del menu, con un punto en el boton si
  *    hay alguno: antes eran iconos que solo se entendian con el mouse encima.

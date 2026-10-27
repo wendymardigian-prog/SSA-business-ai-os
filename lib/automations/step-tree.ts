@@ -45,7 +45,7 @@ export const MAX_BRANCH_DEPTH = 3;
 
 export type NodeData = Record<string, unknown>;
 
-/** El disparador. El editor no lo edita (en Formularios, solo su "Solo si…"). */
+/** El disparador. El editor no lo edita (salvo su "Solo si…", donde existe). */
 export interface TriggerStep {
   id: string;
   data: NodeData;

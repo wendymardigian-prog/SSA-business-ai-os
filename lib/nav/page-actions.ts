@@ -262,7 +262,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip: "Un reporte de fin de día: las preguntas generales, cada canal, la versión y si se corrigió.",
   },
   // @plantilla-hasta(formularios)
-  // ── Reporte de fin de día (lo completa cada persona) ──────────────────
+  // ── Reporte de fin de día (lo completa cada persona) ──────────────────  @plantilla-quitar(formularios)
   // @plantilla-desde(formularios)
   "/dashboard/eod": {
     title: "Mi reporte del día",

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * El menu "⋯" de la cabecera de una conversacion: las acciones que no se usan a
- * cada rato (posponer, reabrir una pospuesta, crear tarea) y los avisos de
+ * cada rato (posponer, reabrir una pospuesta y otras) y los avisos de
  * estado como texto, que antes eran iconos que solo se entendian con el mouse
  * encima. Que va adentro lo decide `planHeaderActions`; esto solo lo dibuja.
  *
@@ -34,7 +34,7 @@ export function ConversationMenu({
   plan: HeaderPlan;
   statusLabel: string;
   onAction: (action: MenuAction) => void;
-  /** El boton "⋯" (el panel de "Crear tarea" se ancla a el). */
+  /** El boton "⋯" (un panel que abre el menu se ancla a el). */
   buttonRef: RefObject<HTMLButtonElement | null>;
   disabled?: boolean;
 }) {

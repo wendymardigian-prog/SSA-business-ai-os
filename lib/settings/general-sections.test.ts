@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AI_RUNS_HREF, GENERAL_SECTIONS } from "./general-sections";
 
 describe("GENERAL_SECTIONS", () => {
-  // Extra I: Finanzas y Atribución se suman al final de las que ya había.
+  // Extra I: Finanzas y Atribución se suman al final de las que ya había.  @plantilla-quitar(proyecto)
   it("tiene las secciones en orden (Ventas se suma con la Etapa 5, Finanzas y Atribución con el Extra I), sin Zona de peligro", () => {
     expect(GENERAL_SECTIONS.map((s) => s.id)).toEqual([
       "workspace",

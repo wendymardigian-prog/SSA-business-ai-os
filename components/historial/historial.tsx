@@ -20,8 +20,8 @@ import {
 import type { AuditActorType } from "@/lib/types/database";
 
 /**
- * El historial de una entidad (Llamadas, F1). Lo usan Llamadas, Formularios,
- * Ventas, CX y Gastos: por eso es generico.
+ * El historial de una entidad (F1). Lo usan varias pantallas: por eso es
+ * generico.
  *
  * Lee con el cliente del usuario: la RLS decide que se ve. Una persona nunca
  * ve de mas por usar este componente.

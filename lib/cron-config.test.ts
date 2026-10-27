@@ -4,10 +4,9 @@ import { join } from "node:path";
 import { lastFunctionDefinition } from "@/lib/test-utils/migrations";
 
 /**
- * Cada cron nuevo reescribe `private.call_app_cron` entera (patron desde la
- * 00036). Si alguien copia una version anterior a la 00139, la funcion vuelve a
- * leer el secreto de `private.system_config`, que desde la 00140 ya no lo
- * tiene: todos los cron dejan de correr sin ningun error visible.
+ * Cada cron nuevo reescribe `private.call_app_cron` entera. Si alguien copia
+ * una version vieja de la funcion, que lee el secreto de `private.system_config`
+ * (donde ya no esta), todos los cron dejan de correr sin ningun error visible.
  */
 describe("private.call_app_cron (la definicion vigente)", () => {
   const body = latestCallAppCronBody();

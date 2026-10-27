@@ -52,7 +52,7 @@ interface TriggerPickerProps {
 }
 
 /**
- * El selector de disparador: una ventana con buscador y los disparadores agrupados (Mensajes, Agenda, Ventas…).
+ * El selector de disparador: una ventana con buscador y los disparadores agrupados (Mensajes, Agenda…).
  *
  * Se abre sola en una automatizacion nueva (que nace con el disparador sin elegir) y desde "Cambiar disparador" en el
  * panel. Mientras no se elige, la paleta de pasos queda apagada: primero se decide como arranca.

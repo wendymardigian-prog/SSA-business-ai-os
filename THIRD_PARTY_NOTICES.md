@@ -10,7 +10,7 @@ Este proyecto incluye código adaptado de proyectos de código abierto. Cada arc
 
 ## Cal.diy
 
-- Origen: https://github.com/calcom/cal.diy (rama `main`, commit `54343aa` del 20/9/2026)
+- Origen: https://github.com/calcom/cal.diy (rama `main`, commit `54343aa`)
 - Uso: lógica del motor de horarios, límites, formulario de reserva, helpers del booker y embed, adaptada en `lib/scheduling/` y `lib/embed/`. El código se copia y adapta; no se importa ningún paquete `@calcom/*`.
 - Licencia: MIT (texto completo a continuación).
 

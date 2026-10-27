@@ -1,8 +1,8 @@
 /**
- * El historial de una entidad, en funciones puras (Llamadas, F1).
+ * El historial de una entidad, en funciones puras (F1).
  *
- * Lo usan <Historial/> (components/historial/) y, mas adelante, la pantalla de
- * Actividad de Ventas. Nada de aca habla con la base: `buildHistoryQuery` solo
+ * Lo usan <Historial/> (components/historial/) y la pantalla de Actividad.
+ * Nada de aca habla con la base: `buildHistoryQuery` solo
  * DESCRIBE la consulta y `runHistoryQuery` la aplica con el cliente que le
  * pasen. Con el cliente del usuario, la RLS decide que se ve.
  */
@@ -31,9 +31,8 @@ export const HISTORY_COLUMNS =
 export const HISTORY_PAGE_SIZE = 20;
 
 /**
- * Quien hizo la accion, aunque la fila sea anterior a la 00144 (que no tiene
- * actor real): agente si hay agente, sistema si no hay persona, y si no, lo
- * guardado.
+ * Quien hizo la accion, aunque la fila no guarde el actor: agente si hay
+ * agente, sistema si no hay persona, y si no, lo guardado.
  */
 export function effectiveActorType(row: Pick<HistoryRow, "performed_by" | "performed_by_agent_id" | "actor_type">): AuditActorType {
   if (row.performed_by_agent_id) return "agent";
@@ -91,7 +90,7 @@ const FIELD_LABELS: Record<string, string> = {
   provider_fee_amount: "Comisión",
   title: "Título",
   role: "Rol",
-  // Tareas
+  // Tareas  @plantilla-quitar(tareas)
   priority: "Prioridad",
   start_date: "Inicio",
   owner_id: "Responsable",
@@ -267,7 +266,7 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
 };
 // @plantilla-hasta(llamadas)
 
-/** Etiquetas de las acciones de Formularios, para <Historial/> y la ficha del contacto. */
+/** Etiquetas de las acciones de Formularios, para <Historial/> y la ficha del contacto.  @plantilla-quitar(formularios) */
 export const FORM_ACTION_LABELS: Record<
   Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}` | `eod.${string}` | `attribution.${string}` | `social_post.${string}`>,
   string
@@ -356,7 +355,7 @@ export const COMMISSION_ACTION_LABELS: Record<Extract<AuditAction, `commission.$
 };
 // @plantilla-hasta(comisiones)
 
-/** Etiquetas de las acciones de Ventas (catalogo, venta y pago), para <Historial/>. */
+/** Etiquetas de las acciones de Ventas (catalogo, venta y pago), para <Historial/>.  @plantilla-quitar(ventas) */
 export const SALE_ACTION_LABELS: Record<
   Extract<
     AuditAction,

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 
 /**
- * El modal ancho de Ventas (asistente de venta, cobrar un pago, cancelar). Mismo comportamiento
+ * Un modal ancho (por ejemplo, un asistente de varios pasos con tablas). Mismo comportamiento
  * que `ContentDialog` (Esc cierra, el foco entra y vuelve, el fondo no se mueve) pero con
  * ancho a elección: el asistente necesita tres pasos con tablas, no 512 px.
  */

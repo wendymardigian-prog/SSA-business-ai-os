@@ -36,7 +36,8 @@ export default async function IntegrationsPage() {
   const sections = integrationSections(ctx.can);
   const shared = hasSharedSections(ctx.can);
 
-  // Mis conexiones: mi Google Calendar y mi Fathom (los mismos datos y OAuth personal de siempre).
+  // Mis conexiones: mi Google Calendar y mi Fathom (los mismos datos y OAuth personal de siempre).  @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): // Mis conexiones: mi Google Calendar (los mismos datos y OAuth personal de siempre).
   const service = await createServiceClient(); // @plantilla-quitar(llamadas)
   const since = daysAgoIso(7); // @plantilla-quitar(llamadas)
   const [profile, googleConnections, secretNames, { data: fathomConnections }, { data: me }] = await Promise.all([ // @plantilla-quitar(llamadas)

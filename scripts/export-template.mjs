@@ -69,7 +69,7 @@ function isExcluded(relPath) {
   if (relPath === ".claude/worktrees" || relPath.startsWith(".claude/worktrees/")) return true;
   if (relPath === "supabase/.temp" || relPath.startsWith("supabase/.temp/")) return true;
   if (relPath === ".mcp.json") return true;
-  // El sitio publico de cada clon es SUYO (Formularios, F30): ni sus paginas ni sus imagenes
+  // El sitio publico de cada clon es SUYO: ni sus paginas ni sus imagenes
   // viajan. En su lugar se copia la version por defecto (ver `copySiteDefaults`).
   if (relPath === "app/(sitio)" || relPath.startsWith("app/(sitio)/")) return true;
   if (relPath === "public/sitio" || relPath.startsWith("public/sitio/")) return true;

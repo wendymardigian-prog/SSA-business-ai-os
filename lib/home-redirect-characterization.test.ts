@@ -1,9 +1,9 @@
 /**
- * Caracterización de la página de inicio. Hoy `/` redirige a `/login`.
+ * Caracterización de la página de inicio: `/` redirige a `/login`.
  *
- * Formularios (F30) mueve `app/page.tsx` a `app/(sitio)/page.tsx` y deja ahí,
- * como versión por defecto, el mismo redirect. Este test sigue la página donde
- * esté y exige que la versión por defecto lleve al login.
+ * La página vive en `app/(sitio)/page.tsx`, y la versión por defecto es ese
+ * redirect. Este test sigue la página donde esté y exige que la versión por
+ * defecto lleve al login.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";

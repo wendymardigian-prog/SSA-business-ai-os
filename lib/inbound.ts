@@ -512,9 +512,8 @@ export async function applyOptOut({
 /**
  * El mensaje entrante, tal como lo entiende el motor.
  *
- * Se re-exporta el del flow-engine en vez de mantener una copia: eran dos
- * definiciones identicas que ya se habian empezado a separar (la marca de
- * respuesta a historia que suma F6 estaba en una y no en la otra).
+ * Se re-exporta el del flow-engine en vez de mantener una copia: dos
+ * definiciones identicas terminan separandose.
  */
 export type { IncomingMessage };
 
@@ -627,8 +626,8 @@ export async function runInboundAutomation({
 
   // Una conversacion parada en "Esperar respuesta" se retoma con ESTE mensaje,
   // matchee o no un trigger. Va antes del matcher: si no, la sesion solo
-  // despertaba cuando algun trigger reclamaba el mensaje, y el agente de la
-  // Fase 3 se hubiera llevado las respuestas que el flow estaba esperando.
+  // despertaria cuando algun trigger reclamara el mensaje, y el agente se
+  // llevaria las respuestas que el flow estaba esperando.
   const waiting = await findWaitingSession(supabase, {
     contactId,
     channelId: channel.id,

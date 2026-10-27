@@ -27,7 +27,7 @@ export async function POST(
   if (!membership)
     return NextResponse.json({ error: "No encontré tu negocio." }, { status: 404 });
 
-  // Los pasos de publicar viven en `lib/flow-engine/publish.ts` (los usa tambien el interruptor de cobranza de Ajustes).
+  // Los pasos de publicar viven en `lib/flow-engine/publish.ts`, que usan tambien otras pantallas.
   const result = await publishFlow({
     db: supabase,
     userId: user.id,
