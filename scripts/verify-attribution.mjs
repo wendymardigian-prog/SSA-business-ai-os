@@ -107,6 +107,7 @@ try {
   }
 
   // ── Extra L (M3): el origen `webhook` ───────────────────────────────────────
+  // @plantilla-desde(webhooks)
   console.log("\n— El origen `webhook` (Extra L, M3) —");
   {
     // Un contacto nuevo: el toque del webhook es el primero y el ultimo.
@@ -137,6 +138,12 @@ try {
     const bad = await svc.from("contact_touches").insert({ workspace_id: ws.id, contact_id: previo, source: "web", origin: "inventado", dedupe_key: `zz-bad-${stamp}` });
     check(!!bad.error, "un origen que no esta en la lista sigue rechazado por el CHECK");
   }
+  // @plantilla-hasta(webhooks)
+  // @plantilla-sin(webhooks): {
+  // @plantilla-sin(webhooks):   const otro = await newContact();
+  // @plantilla-sin(webhooks):   const bad = await svc.from("contact_touches").insert({ workspace_id: ws.id, contact_id: otro, source: "web", origin: "inventado", dedupe_key: `zz-bad-${stamp}` });
+  // @plantilla-sin(webhooks):   check(!!bad.error, "un origen que no esta en la lista sigue rechazado por el CHECK");
+  // @plantilla-sin(webhooks): }
 
   console.log("\n— record_contact_touch: idempotencia (F82, F83) —");
   {

@@ -39,6 +39,9 @@ const URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const COMMENT_BACKFILL_TRIGGER = process.argv.includes("--despues-de-00234"); // @plantilla-quitar(proyecto)
 // @plantilla-sin(proyecto): const COMMENT_BACKFILL_TRIGGER = true;
+// Un origen que puede traer UTMs (el de un formulario; la plantilla no tiene formularios y usa el de un alta a mano).
+const FORM_ORIGIN = "form"; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): const FORM_ORIGIN = "manual";
 
 let failures = 0;
 const ok = (m) => console.log("  ok  ", m);
@@ -129,7 +132,7 @@ try {
     const code = piece.attribution_code;
     const contact = await newContact();
 
-    const first = await insertTouch(contact, { source: "instagram", medium: "social", origin: "form", content_label: code, campaign: "zz-test-camp" });
+    const first = await insertTouch(contact, { source: "instagram", medium: "social", origin: FORM_ORIGIN, content_label: code, campaign: "zz-test-camp" });
     check(first.data?.content_post_id === piece.id, "content_label = codigo completa la pieza", first.error?.message);
     check(first.data?.channel === "organic", "el canal es organico");
     check(first.data?.meta_match_status === "ignored" && first.data?.meta_match_reason === "organic_content", "y el vinculo de Meta queda ignorado (organic_content): no aparece en «Sin vincular»", `${first.data?.meta_match_status} / ${first.data?.meta_match_reason}`);
@@ -137,27 +140,27 @@ try {
     check(first.data?.social_post_id === null, "sin publicacion en esa red, social_post_id queda vacio");
 
     // El codigo llega codificado y en mayusculas (UTMs de verdad).
-    const encoded = await insertTouch(contact, { content_label: `%43${code.slice(1).toUpperCase()}`, source: "instagram", origin: "form" });
+    const encoded = await insertTouch(contact, { content_label: `%43${code.slice(1).toUpperCase()}`, source: "instagram", origin: FORM_ORIGIN });
     check(encoded.data?.content_post_id === piece.id, "un codigo codificado (%43) y en mayusculas tambien coincide", encoded.error?.message);
 
     // Con UNA publicacion de la pieza en esa red, la completa; con dos, no adivina.
     const { data: sp } = await svc.from("social_posts").insert({ workspace_id: ws.id, content_post_id: piece.id, platform: "instagram", status: "published" }).select("id").single();
-    const withPost = await insertTouch(contact, { content_label: code, source: "instagram", origin: "form" });
+    const withPost = await insertTouch(contact, { content_label: code, source: "instagram", origin: FORM_ORIGIN });
     check(withPost.data?.social_post_id === sp.id, "con una sola publicacion de la pieza en esa red, completa tambien social_post_id", withPost.error?.message);
     // El indice unico (pieza, red) ya impide dos publicaciones vivas; una borrada no cuenta.
     await svc.from("social_posts").insert({ workspace_id: ws.id, content_post_id: piece.id, platform: "instagram", status: "published", deleted_at: new Date().toISOString() });
-    const withDeleted = await insertTouch(contact, { content_label: code, source: "instagram", origin: "form" });
+    const withDeleted = await insertTouch(contact, { content_label: code, source: "instagram", origin: FORM_ORIGIN });
     check(withDeleted.data?.social_post_id === sp.id, "una publicacion borrada de la misma pieza no cuenta: sigue siendo UNA");
-    const otherNetwork = await insertTouch(contact, { content_label: code, source: "tiktok", origin: "form" });
+    const otherNetwork = await insertTouch(contact, { content_label: code, source: "tiktok", origin: FORM_ORIGIN });
     check(otherNetwork.data?.content_post_id === piece.id && otherNetwork.data?.social_post_id === null, "y en otra red sin publicaciones tampoco");
 
     // Un codigo que no existe, o de OTRO workspace, no hace nada.
     const other = await newPiece(ws2.id);
-    const ghost = await insertTouch(contact, { content_label: "czzzzz", source: "instagram", origin: "form" });
+    const ghost = await insertTouch(contact, { content_label: "czzzzz", source: "instagram", origin: FORM_ORIGIN });
     check(ghost.data?.content_post_id === null, "un codigo que no existe no completa nada");
-    const foreign = await insertTouch(contact, { content_label: other.attribution_code, source: "instagram", origin: "form" });
+    const foreign = await insertTouch(contact, { content_label: other.attribution_code, source: "instagram", origin: FORM_ORIGIN });
     check(foreign.data?.content_post_id === null, "el codigo de una pieza de OTRO workspace no completa nada");
-    const already = await insertTouch(contact, { content_label: code, source: "instagram", origin: "form", content_post_id: other.id === piece.id ? null : null });
+    const already = await insertTouch(contact, { content_label: code, source: "instagram", origin: FORM_ORIGIN, content_post_id: other.id === piece.id ? null : null });
     check(!!already.data?.id, "un toque que ya trae su pieza no se pisa (se probo sin error)");
   }
 
@@ -169,11 +172,11 @@ try {
     const paid = await insertTouch(contact, { source: "instagram", origin: "dm", ad_id: "120001", content_label: piece.attribution_code });
     check(paid.data?.channel === "paid", "un toque con ad_id es de pauta");
     check(paid.data?.meta_match_status !== "ignored", "y el vinculo de Meta NO se marca como ignorado", paid.data?.meta_match_status);
-    const clid = await insertTouch(contact, { source: "web", origin: "form", medium: "paid_social" });
+    const clid = await insertTouch(contact, { source: "web", origin: FORM_ORIGIN, medium: "paid_social" });
     check(clid.data?.channel === "paid", "un medium de pauta tambien");
-    const fb = await insertTouch(contact, { source: "web", origin: "form", fbclid: "IwAR-zz", content_label: piece.attribution_code });
+    const fb = await insertTouch(contact, { source: "web", origin: FORM_ORIGIN, fbclid: "IwAR-zz", content_label: piece.attribution_code });
     check(fb.data?.channel === "organic" && fb.data?.meta_match_status !== "ignored", "fbclid + pieza: organico pero NO se ignora el vinculo (hay un dato de Meta)", `${fb.data?.channel} ${fb.data?.meta_match_status}`);
-    const direct = await insertTouch(contact, { source: "web", origin: "form", medium: null });
+    const direct = await insertTouch(contact, { source: "web", origin: FORM_ORIGIN, medium: null });
     check(direct.data?.channel === "direct", "un toque sin ninguna senal es directo");
     const referral = await insertTouch(contact, { source: "manual", origin: "manual", medium: "referral_person" });
     check(referral.data?.channel === "referral", "un medium referral_person es referido");
@@ -214,7 +217,7 @@ try {
     const contact = await newContact();
     const explicit = await insertTouch(contact, { source: "manual", origin: "manual", medium: "dm", channel: "referral" });
     check(explicit.data?.channel === "referral", "un canal puesto en el INSERT se respeta");
-    const t = await insertTouch(contact, { source: "web", origin: "form", medium: null });
+    const t = await insertTouch(contact, { source: "web", origin: FORM_ORIGIN, medium: null });
     check(t.data?.channel === "direct", "un toque sin senal arranca directo");
     const upd = await svc.from("contact_touches").update({ ad_id: "999" }).eq("id", t.data.id).select("channel").single();
     check(upd.data?.channel === "paid", "si despues se le vincula un anuncio, el canal se recalcula a pauta", upd.error?.message);
@@ -230,11 +233,11 @@ try {
     check(!click.error && click.data?.channel === "organic", "el origen link_click se acepta y es organico", click.error?.message);
     const bad = await svc.from("contact_touches").insert({ workspace_id: ws.id, contact_id: contact, source: "web", origin: "inventado", dedupe_key: `zz-bad-${stamp}` });
     check(!!bad.error, "un origen inventado sigue rechazado");
-    const later = await insertTouch(contact, { source: "web", origin: "form", medium: null, occurred_at: "2026-10-05T10:00:00Z" });
+    const later = await insertTouch(contact, { source: "web", origin: FORM_ORIGIN, medium: null, occurred_at: "2026-10-05T10:00:00Z" });
     const lastOrigin = await svc.rpc("contact_last_origin_touch", { p_contact_id: contact });
     check(lastOrigin.data === click.data.id, "contact_last_origin_touch salta el toque directo y devuelve el ultimo con origen", `${lastOrigin.data} vs ${click.data.id} (directo ${later.data?.id})`);
     const none = await newContact();
-    await insertTouch(none, { source: "web", origin: "form", medium: null });
+    await insertTouch(none, { source: "web", origin: FORM_ORIGIN, medium: null });
     check((await svc.rpc("contact_last_origin_touch", { p_contact_id: none })).data === null, "y sin ningun toque con origen devuelve null");
   }
 
@@ -297,7 +300,7 @@ try {
     // Lo que escribe el formulario: `record_contact_touch` con `content` = el utm_content (el trigger lo reconoce).
     const form = await svc.rpc("record_contact_touch", {
       p_workspace_id: ws.id, p_contact_id: contact,
-      p_touch: { source: "instagram", medium: "organic_social", origin: "form", content: piece.attribution_code, campaign: "info-reel", dedupe_key: `zz-form-${stamp}`, occurred_at: new Date().toISOString() },
+      p_touch: { source: "instagram", medium: "organic_social", origin: FORM_ORIGIN, content: piece.attribution_code, campaign: "info-reel", dedupe_key: `zz-form-${stamp}`, occurred_at: new Date().toISOString() },
     });
     check(form.data?.inserted === true, "el formulario deja su toque", form.error?.message);
     const t = (await svc.from("contact_touches").select("content_post_id, channel, meta_match_status").eq("workspace_id", ws.id).eq("dedupe_key", `zz-form-${stamp}`).single()).data;

@@ -7,7 +7,7 @@
     { "name": "el Admin no da una clave solo-Owner", "actor": "admin", "keys": ["team.remove"], "scopes": {}, "allowed": false },
     { "name": "nadie da una clave reservada", "actor": "owner", "keys": ["workspace.transfer"], "scopes": {}, "allowed": false },
     { "name": "nadie da scheduling.team_events", "actor": "admin", "keys": ["scheduling.team_events"], "scopes": {}, "allowed": false },
-    { "name": "el Member de sistema da una clave que tiene", "actor": "member", "keys": ["contacts.view", "tasks.edit"], "scopes": {}, "allowed": true },
+    { "name": "el Member de sistema da una clave que tiene", "actor": "member", "keys": ["contacts.view", "flows.edit"], "scopes": {}, "allowed": true },
     { "name": "el Member de sistema no da una que no tiene", "actor": "member", "keys": ["contacts.view", "team.invite"], "scopes": {}, "allowed": false },
     { "name": "el Member de sistema no da un alcance mas ancho que el suyo", "actor": "member", "keys": ["contacts.view"], "scopes": { "leads": "all" }, "allowed": false },
     { "name": "el Member de sistema da su mismo alcance", "actor": "member", "keys": ["contacts.view"], "scopes": { "leads": "own" }, "allowed": true },

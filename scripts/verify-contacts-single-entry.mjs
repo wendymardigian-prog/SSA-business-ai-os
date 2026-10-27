@@ -337,6 +337,7 @@ $ens$;`;
     check(rows[0]?.auth_exec === false && rows[0]?.anon_exec === false && rows[0]?.svc_exec === true, "y solo service_role la ejecuta");
   }
 
+  // @plantilla-desde(formularios,ventas)
   console.log("\n— Los buscadores (envoltorios) usan la misma busqueda —");
   {
     const p = num(40);
@@ -352,6 +353,7 @@ $ens$;`;
     check(g?.contact_id === a.contact_id && g.matched_by === "phone" && g.conflict_contact_id === b.contact_id, "find_contact_by_phone_or_email: gana el telefono y avisa del email", JSON.stringify(g));
     check(!("conflicts" in g), "y conserva su forma (sin lista de conflictos)");
   }
+  // @plantilla-hasta(formularios,ventas)
 
   console.log("\n— find_or_link_contact sobre la regla central —");
   {
