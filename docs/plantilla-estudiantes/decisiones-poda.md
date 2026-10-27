@@ -105,3 +105,10 @@ Tres que vale la pena nombrar:
 2. **PREGUNTA — Purga de contactos borrados.** En tu sistema, un contacto borrado que tenía ventas nunca se purga. En la plantilla, como no hay ventas, todo contacto borrado se elimina de verdad a los 30 días. ¿Está bien?
 3. **PREGUNTA — Asignación con nombres viejos.** La asignación automática se queda con nombres internos que dicen "sales" (ventas). No se ven en pantalla. ¿Preferís dejarlos así (recomendado: menos riesgo y más fácil de comparar con tu sistema) o renombrarlos?
 4. **PREGUNTA — Resultado "venta" en la Agenda.** Una reunión puede terminar con el resultado "venta". Sin el módulo de Ventas, ese resultado queda como una etiqueta más (no crea nada). ¿Lo dejamos (recomendado) o lo sacamos de la lista de resultados?
+
+## Respuestas de Wendy (27/10/2026)
+
+1. **Meta vs CRM**: queda sin las columnas de ventas, ingresos, cobrado y ROAS (gasto, leads nuevos y totales, agendas y costo por lead).
+2. **Purga**: todo contacto borrado se purga a los 30 días.
+3. **Nombres internos "sales" de la Asignación**: se dejan iguales al proyecto (por ejemplo `sales_contact_eval`).
+4. **Resultado "Venta" de una reunión**: se deja.
