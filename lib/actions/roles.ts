@@ -47,10 +47,10 @@ export interface RoleFormInput {
   keys: string[];
   leadsScope?: PermissionScope;
   bookingsScope?: PermissionScope;
-  callsScope?: PermissionScope;
-  salesScope?: PermissionScope;
-  commissionsScope?: PermissionScope;
-  tasksScope?: PermissionScope;
+  callsScope?: PermissionScope; // @plantilla-quitar(llamadas)
+  salesScope?: PermissionScope; // @plantilla-quitar(ventas)
+  commissionsScope?: PermissionScope; // @plantilla-quitar(comisiones)
+  tasksScope?: PermissionScope; // @plantilla-quitar(tareas)
   /** La bandeja por cuenta (00249). Sin esto, el rol no ve ninguna cuenta. */
   channels?: ChannelsConfig;
 }
@@ -65,7 +65,8 @@ export async function createRole(
     name: input.name,
     description: input.description,
     keys: input.keys,
-    scopes: { leads: input.leadsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope },
+    scopes: { leads: input.leadsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: input.leadsScope, bookings: input.bookingsScope },
     channels: input.channels ? parseChannels(input.channels) : undefined,
   });
   if (!checked.ok) return checked;
@@ -143,7 +144,8 @@ export async function updateRole(
     name: input.name,
     description: input.description,
     keys: input.keys,
-    scopes: { leads: input.leadsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope },
+    scopes: { leads: input.leadsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: input.leadsScope, bookings: input.bookingsScope },
     channels: input.channels ? parseChannels(input.channels) : parsePermissions(existing.permissions).channels,
   });
   if (!checked.ok) return checked;

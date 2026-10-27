@@ -25,8 +25,8 @@ export const GENERAL_SECTIONS: GeneralSection[] = [
   { id: "workspace", label: "Workspace", permission: "settings.general" },
   { id: "conversaciones", label: "Conversaciones", permission: "settings.general" },
   { id: "archivos", label: "Archivos", permission: "settings.general" },
-  { id: "ventas", label: "Ventas y cobranza", permission: "sales.settings" },
-  { id: "finanzas", label: "Finanzas", permission: "expenses.manage" },
+  { id: "ventas", label: "Ventas y cobranza", permission: "sales.settings" }, // @plantilla-quitar(ventas)
+  { id: "finanzas", label: "Finanzas", permission: "expenses.manage" }, // @plantilla-quitar(finanzas)
   { id: "ia", label: "IA", permission: "settings.general" },
   { id: "atribucion", label: "Atribución", permission: "settings.general" },
 ];

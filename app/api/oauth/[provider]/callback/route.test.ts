@@ -25,8 +25,8 @@ vi.mock("@/lib/scheduling/data/calendars", () => ({ syncCalendars }));
 vi.mock("@/lib/app-url", () => ({ appUrl: () => "https://app.test" }));
 const audit = vi.hoisted(() => ({ logAudit: vi.fn(async () => "a1") }));
 vi.mock("@/lib/audit", () => audit);
-const queueFathomSyncNow = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/fathom/queue", () => ({ queueFathomSyncNow }));
+const queueFathomSyncNow = vi.hoisted(() => vi.fn()); // @plantilla-quitar(llamadas)
+vi.mock("@/lib/fathom/queue", () => ({ queueFathomSyncNow })); // @plantilla-quitar(llamadas)
 
 import { GET } from "./route";
 
@@ -40,7 +40,7 @@ beforeEach(() => {
   syncSocialAccounts.mockResolvedValue({ newAccountIds: ["a1"] });
   syncCalendars.mockResolvedValue(undefined);
   guards.getMemberAction.mockResolvedValue(memberCtx);
-  queueFathomSyncNow.mockResolvedValue({ queued: true });
+  queueFathomSyncNow.mockResolvedValue({ queued: true }); // @plantilla-quitar(llamadas)
   queueFirstRead.mockResolvedValue(undefined);
 });
 
@@ -114,6 +114,7 @@ describe("retorno OAuth: una conexion por persona (Google Calendar)", () => {
   });
 });
 
+// @plantilla-desde(llamadas)
 describe("retorno OAuth: Fathom (una conexion por persona, sin permiso)", () => {
   it("la completa cualquier miembro, encola la primera consulta y vuelve a Mi Fathom", async () => {
     guards.getPermissionAction.mockResolvedValue(null);
@@ -144,6 +145,7 @@ describe("retorno OAuth: Fathom (una conexion por persona, sin permiso)", () => 
   });
 });
 
+// @plantilla-hasta(llamadas)
 describe("quien puede completar una conexion del workspace (F18)", () => {
   it("sin integrations.manage da 403 y no completa nada", async () => {
     guards.getPermissionAction.mockImplementation(async (key: string) => (key === "scheduling.use" ? memberCtx : null));
@@ -155,7 +157,7 @@ describe("quien puede completar una conexion del workspace (F18)", () => {
 
   it("las conexiones por persona siguen igual: Fathom con cualquier miembro, Google Calendar con scheduling.use", async () => {
     guards.getPermissionAction.mockResolvedValue(null);
-    expect((await call("fathom")).status).not.toBe(403);
+    expect((await call("fathom")).status).not.toBe(403); // @plantilla-quitar(llamadas)
     guards.getPermissionAction.mockImplementation(async (key: string) => (key === "scheduling.use" ? memberCtx : null));
     expect((await call("google_calendar")).status).not.toBe(403);
   });

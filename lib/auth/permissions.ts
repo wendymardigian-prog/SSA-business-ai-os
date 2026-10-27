@@ -33,12 +33,13 @@ export const PERMISSION_MODULES = [
   "knowledge",
   "content",
   "scheduling",
-  "calls",
-  "forms",
-  "sales",
-  "finance",
-  "commissions",
-  "tasks",
+  "calls", // @plantilla-quitar(llamadas)
+  "forms", // @plantilla-quitar(formularios)
+  "sales", // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): "catalogo",
+  "finance", // @plantilla-quitar(finanzas)
+  "commissions", // @plantilla-quitar(comisiones)
+  "tasks", // @plantilla-quitar(tareas)
   "integrations",
   "team",
   "settings",
@@ -58,12 +59,13 @@ export const MODULE_LABELS: Record<PermissionModule, string> = {
   knowledge: "Base de conocimiento",
   content: "Contenido",
   scheduling: "Agenda",
-  calls: "Llamadas",
-  forms: "Formularios",
-  sales: "Ventas",
-  finance: "Finanzas",
-  commissions: "Comisiones",
-  tasks: "Tareas",
+  calls: "Llamadas", // @plantilla-quitar(llamadas)
+  forms: "Formularios", // @plantilla-quitar(formularios)
+  sales: "Ventas", // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): catalogo: "Catálogo",
+  finance: "Finanzas", // @plantilla-quitar(finanzas)
+  commissions: "Comisiones", // @plantilla-quitar(comisiones)
+  tasks: "Tareas", // @plantilla-quitar(tareas)
   integrations: "Integraciones",
   team: "Equipo",
   settings: "Configuración",
@@ -127,7 +129,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "sequences.view", module: "flows", label: "Ver secuencias", description: "Las secuencias y quién está inscripto." },
   { key: "sequences.edit", module: "flows", label: "Editar secuencias", description: "Crear, cambiar y borrar secuencias, e inscribir contactos." },
   { key: "broadcasts.manage", module: "flows", label: "Enviar broadcasts", description: "Mensajes a muchos contactos a la vez." },
-  { key: "webhooks.manage", module: "flows", label: "Administrar webhooks", description: "Crear y cambiar las direcciones que reciben datos de otros sistemas, y los flujos que arrancan con ellas." },
+  { key: "webhooks.manage", module: "flows", label: "Administrar webhooks", description: "Crear y cambiar las direcciones que reciben datos de otros sistemas, y los flujos que arrancan con ellas." }, // @plantilla-quitar(webhooks)
 
   // La clave conserva su nombre de cuando eran plantillas: un rol que ya la
   // tenia marcada sigue teniendo sentido, y renombrarla dejaria la vieja
@@ -160,37 +162,38 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "bookings.view", module: "scheduling", label: "Ver agendas", description: "El alcance decide si ve todas o solo las que es anfitrión." },
   { key: "bookings.manage", module: "scheduling", label: "Gestionar agendas", description: "Cancelar, reagendar, marcar, editar y agendar a mano. Mismo alcance que ver." },
 
-  // ── Llamadas (Fathom + analizador de llamadas) ──────────────────────────
-  { key: "calls.view", module: "calls", label: "Ver las llamadas", description: "La lista, la ficha, el análisis y el dashboard de Llamadas, según el alcance." },
-  { key: "calls.edit", module: "calls", label: "Editar las llamadas", description: "Cambiar el tipo, vincular contacto y agenda, analizar, corregir, regenerar, resumir, mandar a Conocimiento e importar." },
-  { key: "calls.configure", module: "calls", label: "Configurar el análisis de llamadas", description: "Reglas, tipos, rúbrica, categorías y contexto del negocio de las tareas Clasificación y Análisis de llamadas." },
+  // ── Llamadas (Fathom + analizador de llamadas) ────────────────────────── // @plantilla-quitar(llamadas)
+  { key: "calls.view", module: "calls", label: "Ver las llamadas", description: "La lista, la ficha, el análisis y el dashboard de Llamadas, según el alcance." }, // @plantilla-quitar(llamadas)
+  { key: "calls.edit", module: "calls", label: "Editar las llamadas", description: "Cambiar el tipo, vincular contacto y agenda, analizar, corregir, regenerar, resumir, mandar a Conocimiento e importar." }, // @plantilla-quitar(llamadas)
+  { key: "calls.configure", module: "calls", label: "Configurar el análisis de llamadas", description: "Reglas, tipos, rúbrica, categorías y contexto del negocio de las tareas Clasificación y Análisis de llamadas." }, // @plantilla-quitar(llamadas)
 
-  // ── Formularios (personalizado, encuesta/NPS y contrato) ────────────────
-  { key: "forms.view", module: "forms", label: "Ver formularios y respuestas", description: "La lista, el editor en solo lectura, las métricas y el panel de encuesta. De las respuestas, solo las de los contactos que puede ver." },
-  { key: "forms.manage", module: "forms", label: "Crear y publicar formularios", description: "Crear, editar, duplicar, publicar, pausar y archivar; mapear a contacto; vincular respuestas a mano; marcar spam; reenviar la copia del contrato." },
-  // Reportes de fin de dia (E10). Completar uno no necesita permiso: alcanza con estar en su
-  // audiencia. Cada persona ve siempre los suyos. La RLS lo lee en `can_view_eod_all` (00180).
-  { key: "eod.view_all", module: "forms", label: "Ver los reportes de fin de día de todo el equipo", description: "Los reportes ENVIADOS de todas las personas, sus totales y quién falta hoy. Los borradores ajenos no los ve nadie." },
+  // ── Formularios (personalizado, encuesta/NPS y contrato) ──────────────── // @plantilla-quitar(formularios)
+  { key: "forms.view", module: "forms", label: "Ver formularios y respuestas", description: "La lista, el editor en solo lectura, las métricas y el panel de encuesta. De las respuestas, solo las de los contactos que puede ver." }, // @plantilla-quitar(formularios)
+  { key: "forms.manage", module: "forms", label: "Crear y publicar formularios", description: "Crear, editar, duplicar, publicar, pausar y archivar; mapear a contacto; vincular respuestas a mano; marcar spam; reenviar la copia del contrato." }, // @plantilla-quitar(formularios)
+  // Reportes de fin de dia (E10). Completar uno no necesita permiso: alcanza con estar en su // @plantilla-quitar(formularios)
+  // audiencia. Cada persona ve siempre los suyos. La RLS lo lee en `can_view_eod_all` (00180). // @plantilla-quitar(formularios)
+  { key: "eod.view_all", module: "forms", label: "Ver los reportes de fin de día de todo el equipo", description: "Los reportes ENVIADOS de todas las personas, sus totales y quién falta hoy. Los borradores ajenos no los ve nadie." }, // @plantilla-quitar(formularios)
 
-  // ── Ventas y pagos (Etapa 5, Fase 1) ────────────────────────────────────
-  { key: "sales.view", module: "sales", label: "Ver las ventas", description: "La lista, la ficha, los pagos y el historial de cada venta, según el alcance." },
-  { key: "sales.manage", module: "sales", label: "Cargar y editar ventas", description: "Cargar, editar y cancelar ventas; enviar el contrato. Pasar el tope de descuento exige alcance «todos»." },
-  { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." },
-  { key: "products.manage", module: "sales", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." },
-  { key: "sales.settings", module: "sales", label: "Configurar ventas y cobranza", description: "Métodos de pago, tope de descuento, días de gracia y los flujos de cobranza." },
+  // ── Ventas y pagos (Etapa 5, Fase 1) ──────────────────────────────────── // @plantilla-quitar(ventas)
+  { key: "sales.view", module: "sales", label: "Ver las ventas", description: "La lista, la ficha, los pagos y el historial de cada venta, según el alcance." }, // @plantilla-quitar(ventas)
+  { key: "sales.manage", module: "sales", label: "Cargar y editar ventas", description: "Cargar, editar y cancelar ventas; enviar el contrato. Pasar el tope de descuento exige alcance «todos»." }, // @plantilla-quitar(ventas)
+  { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." }, // @plantilla-quitar(ventas)
+  { key: "products.manage", module: "sales", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." }, // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): { key: "products.manage", module: "catalogo", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." },
+  { key: "sales.settings", module: "sales", label: "Configurar ventas y cobranza", description: "Métodos de pago, tope de descuento, días de gracia y los flujos de cobranza." }, // @plantilla-quitar(ventas)
 
-  // ── Finanzas (Extra I) ──────────────────────────────────────────────────
-  { key: "expenses.view", module: "finance", label: "Ver Finanzas", description: "Los gastos, comprobantes, recurrentes, proveedores y el panel de Finanzas, con los ingresos cobrados totales. Exportar a CSV." },
-  { key: "expenses.manage", module: "finance", label: "Administrar gastos", description: "Crear, editar, pagar, revertir y anular gastos; plantillas recurrentes; proveedores; categorías y gastos automáticos." },
+  // ── Finanzas (Extra I) ────────────────────────────────────────────────── // @plantilla-quitar(finanzas)
+  { key: "expenses.view", module: "finance", label: "Ver Finanzas", description: "Los gastos, comprobantes, recurrentes, proveedores y el panel de Finanzas, con los ingresos cobrados totales. Exportar a CSV." }, // @plantilla-quitar(finanzas)
+  { key: "expenses.manage", module: "finance", label: "Administrar gastos", description: "Crear, editar, pagar, revertir y anular gastos; plantillas recurrentes; proveedores; categorías y gastos automáticos." }, // @plantilla-quitar(finanzas)
 
-  // ── Comisiones (Extra I) ────────────────────────────────────────────────
-  { key: "commissions.view", module: "commissions", label: "Ver comisiones", description: "La lista de Comisiones y el detalle de cada una. El alcance decide si ve todas o solo las que tiene a su nombre." },
-  { key: "commissions.manage", module: "commissions", label: "Administrar comisiones", description: "Crear y editar reglas y roles de comisión, generar gastos de liquidación, asignar persona, anular y crear ajustes." },
+  // ── Comisiones (Extra I) ──────────────────────────────────────────────── // @plantilla-quitar(comisiones)
+  { key: "commissions.view", module: "commissions", label: "Ver comisiones", description: "La lista de Comisiones y el detalle de cada una. El alcance decide si ve todas o solo las que tiene a su nombre." }, // @plantilla-quitar(comisiones)
+  { key: "commissions.manage", module: "commissions", label: "Administrar comisiones", description: "Crear y editar reglas y roles de comisión, generar gastos de liquidación, asignar persona, anular y crear ajustes." }, // @plantilla-quitar(comisiones)
 
-  // ── Tareas (Extra A) ────────────────────────────────────────────────────
-  { key: "tasks.view", module: "tasks", label: "Ver las tareas", description: "La tabla y el tablero de Tareas. El alcance decide si ve todas o solo las que creó, tiene a cargo o sigue." },
-  { key: "tasks.edit", module: "tasks", label: "Crear y editar tareas", description: "Crear tareas, editarlas, completarlas, reasignarlas y agregar seguidores. Mismo alcance que ver." },
-  { key: "tasks.delete", module: "tasks", label: "Borrar tareas", description: "Borrar tareas. Se borran de forma lógica: dejan de verse pero quedan en el historial." },
+  // ── Tareas (Extra A) ──────────────────────────────────────────────────── // @plantilla-quitar(tareas)
+  { key: "tasks.view", module: "tasks", label: "Ver las tareas", description: "La tabla y el tablero de Tareas. El alcance decide si ve todas o solo las que creó, tiene a cargo o sigue." }, // @plantilla-quitar(tareas)
+  { key: "tasks.edit", module: "tasks", label: "Crear y editar tareas", description: "Crear tareas, editarlas, completarlas, reasignarlas y agregar seguidores. Mismo alcance que ver." }, // @plantilla-quitar(tareas)
+  { key: "tasks.delete", module: "tasks", label: "Borrar tareas", description: "Borrar tareas. Se borran de forma lógica: dejan de verse pero quedan en el historial." }, // @plantilla-quitar(tareas)
 
   // ── Integraciones ───────────────────────────────────────────────────────
   { key: "integrations.view", module: "integrations", label: "Ver las integraciones", description: "El estado de cada integración, sin las claves ni botones de cambio." },
@@ -236,7 +239,14 @@ export function visiblePermissionsOfModule(module: PermissionModule): Permission
 // ── Alcances ──────────────────────────────────────────────────────────────
 
 /** Los modulos donde importa CUANTO se ve, no solo si se ve. */
-export const SCOPED_MODULES = ["leads", "bookings", "calls", "sales", "commissions", "tasks"] as const;
+export const SCOPED_MODULES = [
+  "leads",
+  "bookings",
+  "calls", // @plantilla-quitar(llamadas)
+  "sales", // @plantilla-quitar(ventas)
+  "commissions", // @plantilla-quitar(comisiones)
+  "tasks", // @plantilla-quitar(tareas)
+] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
 /**
@@ -310,26 +320,26 @@ const MEMBER_KEYS = [
   "scheduling.use",
   "bookings.view",
   "bookings.manage",
-  // Llamadas (decision 152): un Member ve las llamadas que grabo y las de los
-  // contactos que puede ver. NO edita ni configura.
-  "calls.view",
-  // Formularios (alcance v7.1 §4.5): ve las respuestas de los contactos que ve
-  // (lo aplica la RLS). NO crea ni publica formularios.
-  "forms.view",
-  // Ventas (Etapa 5): un Member carga y cobra las ventas donde es setter o
-  // vendedor (alcance `own`, aplicado por la RLS y por las acciones). NO
-  // administra productos ni reglas de asignación (products.manage / assignment.manage).
-  "sales.view",
-  "sales.manage",
-  "payments.manage",
-  // Tareas (Extra A): un Member crea, edita y completa las tareas que creo, tiene a
-  // cargo o sigue (alcance `own`, aplicado por la RLS). NO borra (`tasks.delete`).
-  "tasks.view",
-  "tasks.edit",
-  // Comisiones (Extra I, cambio aprobado M9): un Member ve SUS propias comisiones (alcance
-  // `own`, las que tiene a su nombre). Es lo unico que suma: NO administra comisiones
-  // (`commissions.manage`) ni ve los gastos (`expenses.*`).
-  "commissions.view",
+  // Llamadas (decision 152): un Member ve las llamadas que grabo y las de los // @plantilla-quitar(llamadas)
+  // contactos que puede ver. NO edita ni configura. // @plantilla-quitar(llamadas)
+  "calls.view", // @plantilla-quitar(llamadas)
+  // Formularios (alcance v7.1 §4.5): ve las respuestas de los contactos que ve // @plantilla-quitar(formularios)
+  // (lo aplica la RLS). NO crea ni publica formularios. // @plantilla-quitar(formularios)
+  "forms.view", // @plantilla-quitar(formularios)
+  // Ventas (Etapa 5): un Member carga y cobra las ventas donde es setter o // @plantilla-quitar(ventas)
+  // vendedor (alcance `own`, aplicado por la RLS y por las acciones). NO // @plantilla-quitar(ventas)
+  // administra productos ni reglas de asignación (products.manage / assignment.manage). // @plantilla-quitar(ventas)
+  "sales.view", // @plantilla-quitar(ventas)
+  "sales.manage", // @plantilla-quitar(ventas)
+  "payments.manage", // @plantilla-quitar(ventas)
+  // Tareas (Extra A): un Member crea, edita y completa las tareas que creo, tiene a // @plantilla-quitar(tareas)
+  // cargo o sigue (alcance `own`, aplicado por la RLS). NO borra (`tasks.delete`). // @plantilla-quitar(tareas)
+  "tasks.view", // @plantilla-quitar(tareas)
+  "tasks.edit", // @plantilla-quitar(tareas)
+  // Comisiones (Extra I, cambio aprobado M9): un Member ve SUS propias comisiones (alcance // @plantilla-quitar(comisiones)
+  // `own`, las que tiene a su nombre). Es lo unico que suma: NO administra comisiones // @plantilla-quitar(comisiones)
+  // (`commissions.manage`) ni ve los gastos (`expenses.*`). // @plantilla-quitar(comisiones)
+  "commissions.view", // @plantilla-quitar(comisiones)
 ] as const;
 
 /**
@@ -341,18 +351,21 @@ export const MEMBER_PERMISSION_KEYS: readonly string[] = MEMBER_KEYS;
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "all", bookings: "all" },
     channels: ALL_CHANNELS,
   },
   admin: {
     // Todo salvo lo solo-Owner (transferir la propiedad, quitar personas).
     keys: ALL_PERMISSION_KEYS.filter((key) => !OWNER_ONLY_KEYS.includes(key)),
-    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "all", bookings: "all" },
     channels: ALL_CHANNELS,
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "own", bookings: "own" },
     channels: MEMBER_CHANNELS,
   },
 };
@@ -415,7 +428,8 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks") },
+    scopes: { leads: scope("leads"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks") }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: scope("leads"), bookings: scope("bookings") },
     channels: parseChannels(record.channels),
   };
 }

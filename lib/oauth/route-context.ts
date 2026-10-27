@@ -33,5 +33,6 @@ export function oauthForbiddenMessage(adapter: OAuthAdapter): string {
  * Agenda; Fathom vuelve a su pantalla (Llamadas > Mi Fathom).
  */
 export function perUserLanding(provider: string): string {
-  return provider === "fathom" ? "/dashboard/llamadas/mi-fathom" : "/dashboard/agenda/configuracion/calendarios";
+  return provider === "fathom" ? "/dashboard/llamadas/mi-fathom" : "/dashboard/agenda/configuracion/calendarios"; // @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): return "/dashboard/agenda/configuracion/calendarios";
 }

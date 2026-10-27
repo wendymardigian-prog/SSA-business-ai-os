@@ -49,9 +49,9 @@ export const SECRET_NAMES = {
   linkedinClientSecret: "linkedin_client_secret",
   threadsAppId: "threads_app_id",
   threadsAppSecret: "threads_app_secret",
-  /** La app OAuth de Fathom: cada closer conecta SU cuenta con ella (Llamadas). */
-  fathomClientId: "fathom_client_id",
-  fathomClientSecret: "fathom_client_secret",
+  /** La app OAuth de Fathom: cada closer conecta SU cuenta con ella (Llamadas). */ // @plantilla-quitar(llamadas)
+  fathomClientId: "fathom_client_id", // @plantilla-quitar(llamadas)
+  fathomClientSecret: "fathom_client_secret", // @plantilla-quitar(llamadas)
 
   // ── Servicios de publicacion y metricas ──────────────────────────────────
   postproxyApiKey: "postproxy_api_key",

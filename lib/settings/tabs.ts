@@ -22,7 +22,8 @@ export interface SettingsTab {
 }
 
 export const SETTINGS_TABS: SettingsTab[] = [
-  { name: "General", href: "/dashboard/settings", permissions: ["settings.general", "sales.settings", "expenses.manage"] },
+  { name: "General", href: "/dashboard/settings", permissions: ["settings.general", "sales.settings", "expenses.manage"] }, // @plantilla-quitar(ventas,finanzas)
+  // @plantilla-sin(ventas,finanzas): { name: "General", href: "/dashboard/settings", permissions: ["settings.general"] },
   {
     name: "Equipo y roles",
     href: "/dashboard/settings/team",

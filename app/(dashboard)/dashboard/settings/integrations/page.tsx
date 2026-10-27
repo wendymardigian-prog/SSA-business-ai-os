@@ -1,19 +1,19 @@
 import { getPermissionContext } from "@/lib/auth/guards";
 import { hasSharedSections, integrationSections } from "@/lib/integrations/sections";
 import { MyGoogleCard } from "@/components/settings/integrations/my-google-card";
-import { MiFathomCard } from "@/components/calls/mi-fathom-card";
+import { MiFathomCard } from "@/components/calls/mi-fathom-card"; // @plantilla-quitar(llamadas)
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { listCalendarConnections } from "@/lib/scheduling/data/calendars";
 import { calendarConnectionStatus } from "@/lib/scheduling/bookable";
-import { fathomCardView, pickConnection } from "@/lib/fathom/connection-state";
-import { daysAgoIso } from "@/lib/calls/format";
-import { createServiceClient } from "@/lib/supabase/server";
+import { fathomCardView, pickConnection } from "@/lib/fathom/connection-state"; // @plantilla-quitar(llamadas)
+import { daysAgoIso } from "@/lib/calls/format"; // @plantilla-quitar(llamadas)
+import { createServiceClient } from "@/lib/supabase/server"; // @plantilla-quitar(llamadas)
 import { IntegrationsGrid } from "@/components/settings/integrations/integrations-grid";
 import { loadIntegrations } from "@/lib/integrations/load";
-import { FathomAppCard } from "@/components/settings/integrations/fathom-app-card";
-import { WebhooksCard } from "@/components/settings/integrations/webhooks-card";
-import { listSecretNames, SECRET_NAMES } from "@/lib/vault";
-import { appUrl } from "@/lib/app-url";
+import { FathomAppCard } from "@/components/settings/integrations/fathom-app-card"; // @plantilla-quitar(llamadas)
+import { WebhooksCard } from "@/components/settings/integrations/webhooks-card"; // @plantilla-quitar(webhooks)
+import { listSecretNames, SECRET_NAMES } from "@/lib/vault"; // @plantilla-quitar(llamadas)
+import { appUrl } from "@/lib/app-url"; // @plantilla-quitar(llamadas)
 
 /**
  * Integraciones: todo lo que el sistema conecta con afuera, en una pantalla.
@@ -37,12 +37,14 @@ export default async function IntegrationsPage() {
   const shared = hasSharedSections(ctx.can);
 
   // Mis conexiones: mi Google Calendar y mi Fathom (los mismos datos y OAuth personal de siempre).
-  const service = await createServiceClient();
-  const since = daysAgoIso(7);
-  const [profile, googleConnections, secretNames, { data: fathomConnections }, { data: me }] = await Promise.all([
+  const service = await createServiceClient(); // @plantilla-quitar(llamadas)
+  const since = daysAgoIso(7); // @plantilla-quitar(llamadas)
+  const [profile, googleConnections, secretNames, { data: fathomConnections }, { data: me }] = await Promise.all([ // @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): const [profile, googleConnections] = await Promise.all([
     getProfileForUser(supabase, workspace.id, user.id),
     listCalendarConnections(supabase, workspace.id, user.id),
-    listSecretNames(service, workspace.id),
+    listSecretNames(service, workspace.id), // @plantilla-quitar(llamadas)
+    // @plantilla-desde(llamadas)
     supabase
       .from("oauth_connections")
       .select("id, status, account_label, last_synced_at, last_error, sync_last_error, created_at")
@@ -50,8 +52,10 @@ export default async function IntegrationsPage() {
       .eq("provider", "fathom")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false }),
-    supabase.from("workspace_members").select("is_closer").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(),
+    // @plantilla-hasta(llamadas)
+    supabase.from("workspace_members").select("is_closer").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(), // @plantilla-quitar(llamadas)
   ]);
+  // @plantilla-desde(llamadas)
   const hasFathomApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
   const mineFathom = pickConnection(fathomConnections ?? []);
   const fathomConnectionId = mineFathom ? (fathomConnections ?? []).find((c) => c === mineFathom)?.id ?? null : null;
@@ -67,6 +71,7 @@ export default async function IntegrationsPage() {
     callsLast7d = count ?? 0;
   }
   const fathomView = fathomCardView({ hasApp: hasFathomApp, connection: mineFathom, isCloser: me?.is_closer === true, callsLast7d });
+  // @plantilla-hasta(llamadas)
 
   const mine = (
     <>
@@ -79,12 +84,15 @@ export default async function IntegrationsPage() {
           status: calendarConnectionStatus({ id: c.id, status: c.status, granted_scopes: c.granted_scopes }),
         }))}
       />
+      {/* @plantilla-desde(llamadas) */}
       <MiFathomCard view={fathomView} connectionId={fathomConnectionId} flash={null} embedded />
+      {/* @plantilla-hasta(llamadas) */}
     </>
   );
 
   // Lo compartido solo se carga si hay algo que mostrar. Con el cliente de la persona: la RLS decide.
   const integrations = shared ? (await loadIntegrations(supabase, workspace.id)).integrations : {};
+  // @plantilla-desde(llamadas,webhooks)
   const [{ data: connections }, { data: endpoints }] = shared
     ? await Promise.all([
         supabase.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "fathom"),
@@ -96,16 +104,17 @@ export default async function IntegrationsPage() {
   const pausedEndpoints = (endpoints ?? []).length - activeEndpoints;
   const connected = (connections ?? []).filter((c) => c.status === "active" || c.status === "attention").length;
   const withError = (connections ?? []).filter((c) => c.status === "error").length;
+  // @plantilla-hasta(llamadas,webhooks)
 
   return (
     <IntegrationsGrid
       integrations={integrations}
       mine={mine}
       access={{ channels: sections.channels, business: sections.business }}
-      // Fathom va con las demas conexiones (Integraciones del negocio > Conexiones), con el mismo diseno.
-      fathom={sections.business === "edit" ? <FathomAppCard hasApp={hasFathomApp} returnUrl={`${appUrl()}/api/oauth/fathom/callback`} connected={connected} withError={withError} /> : undefined}
-      fathomNeedsAttention={withError > 0 || !hasFathomApp}
-      extra={sections.business ? <WebhooksCard active={activeEndpoints} paused={pausedEndpoints} /> : undefined}
+      // Fathom va con las demas conexiones (Integraciones del negocio > Conexiones), con el mismo diseno. // @plantilla-quitar(llamadas)
+      fathom={sections.business === "edit" ? <FathomAppCard hasApp={hasFathomApp} returnUrl={`${appUrl()}/api/oauth/fathom/callback`} connected={connected} withError={withError} /> : undefined} // @plantilla-quitar(llamadas)
+      fathomNeedsAttention={withError > 0 || !hasFathomApp} // @plantilla-quitar(llamadas)
+      extra={sections.business ? <WebhooksCard active={activeEndpoints} paused={pausedEndpoints} /> : undefined} // @plantilla-quitar(webhooks)
     />
   );
 }

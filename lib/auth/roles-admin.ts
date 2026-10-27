@@ -99,10 +99,10 @@ export function validateRole(input: RoleInput): RoleValidation {
     scopes: {
       leads: input.scopes.leads ?? "own",
       bookings: input.scopes.bookings ?? "own",
-      calls: input.scopes.calls ?? "own",
-      sales: input.scopes.sales ?? "own",
-      commissions: input.scopes.commissions ?? "own",
-      tasks: input.scopes.tasks ?? "own",
+      calls: input.scopes.calls ?? "own", // @plantilla-quitar(llamadas)
+      sales: input.scopes.sales ?? "own", // @plantilla-quitar(ventas)
+      commissions: input.scopes.commissions ?? "own", // @plantilla-quitar(comisiones)
+      tasks: input.scopes.tasks ?? "own", // @plantilla-quitar(tareas)
     },
     // `parsePermissions` normaliza: "responder" sin un alcance no existe (un permiso de cuenta siempre trae
     // "que conversaciones ve"), y un valor que no se entiende es "sin acceso".
@@ -243,20 +243,20 @@ export function describeChannels(channels: ChannelsConfig): string {
 const SCOPE_GATES: Record<ScopedModule, { keys: string[]; label: string; hint: string; hintSelector: string }> = {
   leads: { keys: ["contacts.view"], label: "Qué contactos ve", hint: "Activá «Ver contactos» para elegir el alcance", hintSelector: "contacts.view" },
   bookings: { keys: ["bookings.view"], label: "Qué agendas ve", hint: "Activá «Ver agendas» para elegir el alcance", hintSelector: "bookings.view" },
-  calls: { keys: ["calls.view"], label: "Qué llamadas ve", hint: "Activá «Ver las llamadas» para elegir el alcance", hintSelector: "calls.view" },
-  sales: { keys: ["sales.view"], label: "Qué ventas ve", hint: "Activá «Ver las ventas» para elegir el alcance", hintSelector: "sales.view" },
-  commissions: { keys: ["commissions.view"], label: "Qué comisiones ve", hint: "Activá «Ver comisiones» para elegir el alcance", hintSelector: "commissions.view" },
-  tasks: { keys: ["tasks.view"], label: "Qué tareas ve", hint: "Activá «Ver las tareas» para elegir el alcance", hintSelector: "tasks.view" },
+  calls: { keys: ["calls.view"], label: "Qué llamadas ve", hint: "Activá «Ver las llamadas» para elegir el alcance", hintSelector: "calls.view" }, // @plantilla-quitar(llamadas)
+  sales: { keys: ["sales.view"], label: "Qué ventas ve", hint: "Activá «Ver las ventas» para elegir el alcance", hintSelector: "sales.view" }, // @plantilla-quitar(ventas)
+  commissions: { keys: ["commissions.view"], label: "Qué comisiones ve", hint: "Activá «Ver comisiones» para elegir el alcance", hintSelector: "commissions.view" }, // @plantilla-quitar(comisiones)
+  tasks: { keys: ["tasks.view"], label: "Qué tareas ve", hint: "Activá «Ver las tareas» para elegir el alcance", hintSelector: "tasks.view" }, // @plantilla-quitar(tareas)
 };
 
 /** En qué grupo de la pantalla va el selector de cada alcance. */
 export const SCOPE_GROUP: Record<ScopedModule, string> = {
   leads: "contacts",
   bookings: "scheduling",
-  calls: "calls",
-  sales: "sales",
-  commissions: "commissions",
-  tasks: "tasks",
+  calls: "calls", // @plantilla-quitar(llamadas)
+  sales: "sales", // @plantilla-quitar(ventas)
+  commissions: "commissions", // @plantilla-quitar(comisiones)
+  tasks: "tasks", // @plantilla-quitar(tareas)
 };
 
 export interface ScopeFieldState {

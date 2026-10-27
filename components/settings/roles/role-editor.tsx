@@ -312,9 +312,11 @@ export function RoleEditor({
                 );
               })}
 
+              {/* @plantilla-desde(formularios) */}
               {group === "forms" && (
                 <p className="mb-2 text-[11px] text-muted-foreground">Las respuestas siguen el alcance de Contactos.</p>
               )}
+              {/* @plantilla-hasta(formularios) */}
 
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {perms.map((perm) => {
