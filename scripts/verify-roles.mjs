@@ -14,21 +14,22 @@
  *
  * Crea y borra todo lo suyo. Una limpieza que falla es una prueba que falla.
  *
- *   node scripts/verify-roles.mjs                      # antes de aplicar la 00136
- *   node scripts/verify-roles.mjs --despues-de-00136   # y despues: suma el alcance own_unassigned
- *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208   # has_permission v2 (Member, Admin, Owner)
- *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211   # y el retiro de settings.manage
- *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212   # y la RLS de equipo (invitar, asignar, editar roles)
- *   ... --despues-de-00249   # y la bandeja por cuenta (dos Instagram, alcances por cuenta, "todas", la ficha y "no podes dar")
+ *   node scripts/verify-roles.mjs
+ *   (en el proyecto, sin banderas = antes de aplicar la 00136)  @plantilla-quitar(proyecto)
+ *   node scripts/verify-roles.mjs --despues-de-00136   # y despues: suma el alcance own_unassigned  @plantilla-quitar(proyecto)
+ *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208   # has_permission v2 (Member, Admin, Owner)  @plantilla-quitar(proyecto)
+ *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211   # y el retiro de settings.manage  @plantilla-quitar(proyecto)
+ *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212   # y la RLS de equipo (invitar, asignar, editar roles)  @plantilla-quitar(proyecto)
+ *   ... --despues-de-00249   # y la bandeja por cuenta (dos Instagram, alcances por cuenta, "todas", la ficha y "no podes dar")  @plantilla-quitar(proyecto)
  */
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { writeFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync, mkdtempSync } from "node:fs"; // @plantilla-quitar(proyecto)
+import { tmpdir } from "node:os"; // @plantilla-quitar(proyecto)
+import { join } from "node:path"; // @plantilla-quitar(proyecto)
 import { runCleanup } from "./test-cleanup.mjs";
 import { dbTargetArgs } from "./lib/db-target.mjs";
 
@@ -38,11 +39,17 @@ const env = Object.fromEntries(
     .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()])
 );
 const URL = env.NEXT_PUBLIC_SUPABASE_URL, ANON = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-// Equipo y roles (B1): comprobaciones de las migraciones 00208 (has_permission v2) y 00211 (settings.manage).
-const POST_00208 = process.argv.includes("--despues-de-00208");
-const POST_00211 = process.argv.includes("--despues-de-00211");
-const POST_00212 = process.argv.includes("--despues-de-00212");
-const POST_00249 = process.argv.includes("--despues-de-00249");
+// Que se prueba: el alcance por rol (`own_unassigned`), `has_permission` por rol, la RLS de
+// equipo ("no podes dar lo que no tenes") y la bandeja por cuenta.
+// @plantilla-desde(proyecto)
+// En el proyecto cada parte se prende con la bandera de la migracion que la trajo.
+const ROLE_SCOPES = process.argv.includes("--despues-de-00136");
+const PERMISSION_CHECKS = process.argv.includes("--despues-de-00208");
+const RETIRE_SETTINGS_MANAGE = process.argv.includes("--despues-de-00211");
+const TEAM_RLS = process.argv.includes("--despues-de-00212");
+const INBOX_BY_ACCOUNT = process.argv.includes("--despues-de-00249");
+// @plantilla-hasta(proyecto)
+// @plantilla-sin(proyecto): const ROLE_SCOPES = true, PERMISSION_CHECKS = true, TEAM_RLS = true, INBOX_BY_ACCOUNT = true;
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 let failures = 0;
@@ -163,8 +170,8 @@ try {
       "sin leads asignados y con alcance `own`, no ve ninguno");
   }
 
-  if (process.argv.includes("--despues-de-00136")) {
-    console.log("\n— Alcance `own_unassigned`: los suyos + los sin asignar (00136) —");
+  if (ROLE_SCOPES) {
+    console.log("\n— Alcance `own_unassigned`: los suyos + los sin asignar —");
     {
       const { data: libre } = await svc.from("contacts").insert({
         workspace_id: ws.id, display_name: "zz-test lead sin asignar",
@@ -279,8 +286,8 @@ try {
     check(scopeMember === "own", "el de un Member sin rol, `own`");
   }
 
-  if (POST_00208) {
-    console.log("\n— has_permission v2 (00208): el Member de sistema, el Admin, el Owner y los roles personalizados —");
+  if (PERMISSION_CHECKS) {
+    console.log("\n— has_permission: el Member de sistema, el Admin, el Owner y los roles personalizados —");
     const hp = async (u, key) => (await u.client.rpc("has_permission", { p_workspace_id: ws.id, p_key: key })).data;
     const dueno = await makeUser("roles-owner");
     const conRolSistema = await makeUser("roles-member-sistema");
@@ -326,7 +333,8 @@ try {
     check((await hp(otro, "contacts.view")) === false, "quien no es miembro de ese workspace: false");
   }
 
-  if (POST_00211) {
+  // @plantilla-desde(proyecto)
+  if (RETIRE_SETTINGS_MANAGE) {
     console.log("\n— settings.manage se retira (00211): el jsonb de los roles personalizados se migra —");
     const { data: viejo } = await svc.from("workspace_roles").insert({
       workspace_id: ws.id, name: "zz-test Rol viejo",
@@ -369,9 +377,10 @@ try {
       check(JSON.parse(out).rows[0].n === 0, "ninguna politica viva menciona settings.manage");
     } catch (e) { fail("no pude consultar pg_policies", String(e.message).slice(0, 200)); }
   }
+  // @plantilla-hasta(proyecto)
 
-  if (POST_00212) {
-    console.log("\n— RLS de equipo (00212): no podes dar lo que no tenes —");
+  if (TEAM_RLS) {
+    console.log("\n— RLS de equipo: no podes dar lo que no tenes —");
     const casos = JSON.parse(readFileSync("lib/team/grant.cases.json", "utf8")).cases;
     const dueno2 = await makeUser("roles-owner-212");
     await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: dueno2.id, role: "owner" });
@@ -516,8 +525,8 @@ try {
       check(!(await svc.from("workspace_roles").select("id").eq("id", borrable.id).maybeSingle()).data, "un rol con roles.manage borra un rol personalizado que no es el suyo");
     }
   }
-  if (POST_00249) {
-    console.log("\n— La bandeja por cuenta (00249) —");
+  if (INBOX_BY_ACCOUNT) {
+    console.log("\n— La bandeja por cuenta —");
     const casos = JSON.parse(readFileSync("lib/auth/channel-permissions.cases.json", "utf8"));
     const resolver = (v) => {
       if (Array.isArray(v)) return v.map(resolver);

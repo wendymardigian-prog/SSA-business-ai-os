@@ -18,7 +18,7 @@
  * se corre en simultaneo con otro.
  *
  *   node scripts/verify-workspace-isolation.mjs
- *   node scripts/verify-workspace-isolation.mjs --despues-de-00143   # read_secret solo para el servidor
+ *   node scripts/verify-workspace-isolation.mjs --despues-de-00143   # read_secret solo para el servidor  @plantilla-quitar(proyecto)
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -62,10 +62,13 @@ async function makeWorkspace(tag, adminId) {
 }
 
 const SECRET = "zz_test_iso";
-// Desde la 00143 `read_secret` solo la ejecuta service_role. Los valores se
-// comprueban con el service role (sirve antes y despues); lo que cambia es si
-// el Admin todavia puede leer el SUYO con su sesion.
-const POST_00143 = process.argv.includes("--despues-de-00143");
+// `read_secret` solo la ejecuta service_role: los valores se comprueban con el service role.
+// @plantilla-desde(proyecto)
+// Sirve antes y despues de la 00143; lo que cambia es si el Admin todavia puede leer el
+// SUYO con su sesion (sin --despues-de-00143 se prueba que si).
+const SECRETS_SERVER_ONLY = process.argv.includes("--despues-de-00143");
+// @plantilla-hasta(proyecto)
+// @plantilla-sin(proyecto): const SECRETS_SERVER_ONLY = true;
 // Los secretos no se van con el workspace (viven en vault.secrets), asi que
 // se anotan aca y se borran en el finally, antes de la limpieza general.
 const secretsToDelete = [];
@@ -92,11 +95,13 @@ try {
 
   console.log("\n— Leer una clave con la sesion —");
   { const { data, error } = await adminA.client.rpc("read_secret", { secret_name: SECRET, workspace_id: wsA });
-    if (POST_00143) {
+    if (SECRETS_SERVER_ONLY) {
       check(!!error && /permission denied/.test(error.message) && data == null,
-        "el Admin de A NO puede leer ni la suya desde el navegador (00143)", error?.message ?? `devolvio: ${data}`);
+        "el Admin de A NO puede leer ni la suya desde el navegador", error?.message ?? `devolvio: ${data}`);
+      // @plantilla-desde(proyecto)
     } else {
       check(data === "valor-de-A", "el Admin de A todavia lee la suya (antes de la 00143)", error?.message);
+      // @plantilla-hasta(proyecto)
     } }
 
   console.log("\n— El Admin de B no puede tocar los secretos de A —");

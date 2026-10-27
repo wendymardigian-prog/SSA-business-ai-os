@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verificacion de la atribucion organica (Extra I, bloque AO1; migracion 00230, y 00234 con el flag).
+ * Verificacion de la atribucion organica (Extra I, bloque AO1; migraciones 00230 y 00234).
  *
  * Corre contra la base real. Prueba lo que Vitest NO puede probar: que la BASE haga lo que dice
  *   - el canal de un toque (`touch_channel`) da lo mismo que su gemela en TypeScript sobre los mismos casos;
@@ -13,12 +13,13 @@
  *   - la funcion del vinculo retroactivo de comentarios encola una vez y no lanza si falla;
  *   - las huellas de las ocho funciones protegidas no cambiaron.
  *
- *   --despues-de-00234   suma la comprobacion del trigger `contacts_comment_backfill` (se aplica despues del merge).
- *
+ *   --despues-de-00234   suma la comprobacion del trigger `contacts_comment_backfill` (se aplica despues del merge).  @plantilla-quitar(proyecto)
+ *  @plantilla-quitar(proyecto)
  * Crea y borra todo lo suyo (prefijo zz-test-). No se corre a la vez que otro verify-*: comparten prefijo.
  * Tomar el candado /private/tmp/ssa-verify.lock.
  *
- *   node scripts/verify-organic-attribution.mjs [--despues-de-00234]
+ *   node scripts/verify-organic-attribution.mjs
+ *   node scripts/verify-organic-attribution.mjs --despues-de-00234  @plantilla-quitar(proyecto)
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -36,7 +37,8 @@ const env = Object.fromEntries(
 );
 const URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-const AFTER_00234 = process.argv.includes("--despues-de-00234");
+const COMMENT_BACKFILL_TRIGGER = process.argv.includes("--despues-de-00234"); // @plantilla-quitar(proyecto)
+// @plantilla-sin(proyecto): const COMMENT_BACKFILL_TRIGGER = true;
 
 let failures = 0;
 const ok = (m) => console.log("  ok  ", m);
@@ -323,14 +325,14 @@ try {
     check(JSON.stringify(trg) === JSON.stringify(["contact_touches_content_code", "contact_touches_meta_match", "contact_touches_zz_channel", "set_updated_at"]),
       "los triggers de contact_touches corren en el orden esperado (content_code < meta_match < zz_channel)", trg.join(","));
     const assignee = sql("select tgname from pg_trigger where tgrelid = 'public.content_posts'::regclass and tgname = 'content_posts_assignee'");
-    check(assignee.length === 1, "el trigger de responsable de las piezas (00223) sigue ahi");
+    check(assignee.length === 1, "el trigger de responsable de las piezas sigue ahi");
     const hook = sql("select tgname from pg_trigger where tgrelid = 'public.contacts'::regclass and tgname = 'contacts_comment_backfill'");
-    if (AFTER_00234) check(hook.length === 1, "el trigger contacts_comment_backfill existe (00234)");
-    else check(hook.length === 0, "el trigger contacts_comment_backfill todavia NO existe (la 00234 se aplica despues del merge)");
+    if (COMMENT_BACKFILL_TRIGGER) check(hook.length === 1, "el trigger contacts_comment_backfill existe");
+    else check(hook.length === 0, "el trigger contacts_comment_backfill todavia NO existe (la 00234 se aplica despues del merge)"); // @plantilla-quitar(proyecto)
   }
 
-  if (AFTER_00234) {
-    console.log("\n— Despues de la 00234 —");
+  if (COMMENT_BACKFILL_TRIGGER) {
+    console.log("\n— El vinculo retroactivo de comentarios al crear un contacto —");
     const contact = await newContact({ instagram_username: `zz_test_${stamp}` });
     const jobs = sql(`select count(*)::int as n from public.scheduled_jobs where type = 'comment_backfill' and payload ->> 'contact_id' = '${contact}'`);
     check(jobs[0].n === 1, "crear un contacto con usuario de Instagram encola el vinculo de comentarios");

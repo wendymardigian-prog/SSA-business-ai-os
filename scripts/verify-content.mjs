@@ -247,8 +247,9 @@ try {
     const { data } = await svc.from("content_posts").select("assigned_to").eq("id", postMember.id).single();
     check(!error && data.assigned_to === member2.id, "quien creo la pieza puede cambiar el responsable", error?.message); }
 
-  if (process.argv.includes("--despues-de-00253")) {
-    console.log("\n— Editar en cualquier estado (00253, cambio aprobado M10) —");
+  if (process.argv.includes("--despues-de-00253")) { // @plantilla-quitar(proyecto)
+  // @plantilla-sin(proyecto): {
+    console.log("\n— Editar en cualquier estado —");
 
     const { data: aprobada } = await svc.from("content_posts")
       .insert({ workspace_id: wsA, title: "zz-test aprobada del member", created_by: member.id, status: "approved" })
@@ -281,8 +282,10 @@ try {
     { const { error } = await owner.client.from("content_posts")
         .update({ status: "approved" }).eq("id", aprobada.id);
       check(!error, "Owner y Admin siguen moviendo el estado como siempre", error?.message); }
+    // @plantilla-desde(proyecto)
   } else {
     console.log("\n(sin --despues-de-00253: no se prueba editar en cualquier estado)");
+    // @plantilla-hasta(proyecto)
   }
 
   console.log("\n— social_posts solo la escribe el servidor —");
