@@ -180,7 +180,7 @@ export async function uploadSchedulingAvatar(formData: FormData): Promise<Profil
 }
 
 async function countActiveEvents(supabase: Parameters<typeof getProfileForUser>[0], workspaceId: string, userId: string): Promise<number> {
-  // event_types llega en B3; hasta entonces no hay links que romper.
+  // Los eventos activos u ocultos de la persona: son los links que se romperian.
   const { count, error } = await supabase
     .from("event_types" as never)
     .select("id", { count: "exact", head: true })

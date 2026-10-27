@@ -13,7 +13,7 @@
  * FUNCIONES: la pasada de hardening (00045-00047) toca grants, no policies.
  *
  *   node scripts/verify-rls.mjs
- *   node scripts/verify-rls.mjs --despues-de-00143   # read_secret solo para el servidor
+ *   node scripts/verify-rls.mjs --despues-de-00143   # read_secret solo para el servidor  @plantilla-quitar(proyecto)
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -45,16 +45,20 @@ async function makeUser(tag) {
   if (e) throw new Error(`no pude loguear ${tag}: ${e.message}`);
   return { id: data.user.id, client };
 }
-// Desde la 00136 el alcance de leads sale del ROL, no de los interruptores del
-// workspace. Cada caso de este script se arma con "prendo/apago el scope" y
-// "los sin asignar son visibles": `setFlags` conserva esa forma y la traduce a
-// roles (leadScopeHelper). Ademas escribe las columnas viejas, que la funcion
-// anterior a la 00136 todavia lee: asi el script sirve ANTES de aplicarla (para
-// probar que el codigo nuevo no rompe nada) y DESPUES.
+// El alcance de leads sale del ROL, no de los interruptores del workspace. Cada caso de
+// este script se arma con "prendo/apago el scope" y "los sin asignar son visibles":
+// `setFlags` conserva esa forma y la traduce a roles (leadScopeHelper).
+// @plantilla-desde(proyecto)
+// Ademas escribe las columnas viejas, que la funcion anterior a la 00136 todavia lee: asi el
+// script sirve ANTES de aplicarla (para probar que el codigo nuevo no rompe nada) y DESPUES.
 const POST_00136 = process.argv.includes("--despues-de-00136");
-// Desde la 00143 `read_secret` solo la ejecuta service_role: ni el Owner lee
-// una clave con su sesion. Antes de aplicarla, el Admin todavia la lee.
-const POST_00143 = process.argv.includes("--despues-de-00143");
+// @plantilla-hasta(proyecto)
+// `read_secret` solo la ejecuta service_role: ni el Owner lee una clave con su sesion.
+// @plantilla-desde(proyecto)
+// Antes de aplicar la 00143 el Admin todavia la lee: sin --despues-de-00143 se prueba eso.
+const SECRETS_SERVER_ONLY = process.argv.includes("--despues-de-00143");
+// @plantilla-hasta(proyecto)
+// @plantilla-sin(proyecto): const SECRETS_SERVER_ONLY = true;
 const leadScope = leadScopeHelper(svc);
 const flagState = new Map();
 async function setFlags(wsId, flags) {
@@ -62,9 +66,9 @@ async function setFlags(wsId, flags) {
   if ("lead_scope_enabled" in flags) st.scope = flags.lead_scope_enabled;
   if ("unassigned_leads_visible_to_members" in flags) st.unassigned = flags.unassigned_leads_visible_to_members;
   flagState.set(wsId, st);
-  const res = await svc.from("workspaces").update(flags).eq("id", wsId);
+  const res = await svc.from("workspaces").update(flags).eq("id", wsId); // @plantilla-quitar(proyecto)
   await leadScope.apply(wsId, st.scope ? (st.unassigned ? "own_unassigned" : "own") : "all");
-  return res;
+  return res; // @plantilla-quitar(proyecto)
 }
 
 try {
@@ -137,6 +141,7 @@ try {
       "pero NO ve un lead que tiene a otra persona asignada");
     await svc.from("contacts").delete().eq("id", ajeno.id);
   }
+  // @plantilla-desde(proyecto)
   if (POST_00136) {
     // Despues de la 00136 los interruptores viejos no cuentan: manda el rol.
     await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
@@ -149,6 +154,7 @@ try {
     await svc.from("workspaces").update({ lead_scope_enabled: true, unassigned_leads_visible_to_members: false }).eq("id", ws.id);
     await setFlags(ws.id, { unassigned_leads_visible_to_members: true });
   }
+  // @plantilla-hasta(proyecto)
 
   console.log("\n— Scope PRENDIDO, lead asignado al Member —");
   await setFlags(ws.id, { unassigned_leads_visible_to_members: false });
@@ -191,8 +197,8 @@ try {
     await setFlags(ws.id, { unassigned_leads_visible_to_members: false });
   }
 
-  // El caso que motivo la 00028: antes, esta segunda conversacion se veia sin
-  // que se viera el contacto, y en la bandeja aparecia sin nombre.
+  // Si esta segunda conversacion se viera sin que se viera el contacto, en la
+  // bandeja apareceria sin nombre.
   console.log("\n— Dos conversaciones del mismo lead, una asignada a otro —");
   {
     await svc.from("contacts")
@@ -379,19 +385,21 @@ try {
     check(!error, "el Admin puede guardar un secret", error?.message);
     const { data: leido } = await svc.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
     check(leido === "abc123", "el servidor (service role) lo lee");
-    if (POST_00143) {
+    if (SECRETS_SERVER_ONLY) {
       const { data, error } = await admin.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
       check(!!error && /permission denied/.test(error.message) && data == null,
-        "el Admin NO puede leerlo con su sesion (00143)", error?.message ?? "lo leyo");
+        "el Admin NO puede leerlo con su sesion", error?.message ?? "lo leyo");
       // El permiso es de la funcion, no del rol: se prueba igual con un Owner.
       await svc.from("workspace_members").update({ role: "owner" }).eq("workspace_id", ws.id).eq("user_id", admin.id);
       const { data: dOwner, error: eOwner } = await admin.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
       await svc.from("workspace_members").update({ role: "admin" }).eq("workspace_id", ws.id).eq("user_id", admin.id);
       check(!!eOwner && /permission denied/.test(eOwner.message) && dOwner == null,
-        "ni el Owner (00143)", eOwner?.message ?? "lo leyo");
+        "ni el Owner", eOwner?.message ?? "lo leyo");
+      // @plantilla-desde(proyecto)
     } else {
       const { data } = await admin.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
       check(data === "abc123", "el Admin todavia lo lee con su sesion (antes de la 00143)");
+      // @plantilla-hasta(proyecto)
     }
     const { error: e1 } = await member.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
     check(!!e1 && /forbidden|permission denied/.test(e1.message), "el Member no puede leer secrets");

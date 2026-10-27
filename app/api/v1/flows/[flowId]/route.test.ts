@@ -98,12 +98,14 @@ describe("PUT /flows/:id · borrador", () => {
     expect(stored().nodes).toEqual(brokenNodes);
   });
 
+  // @plantilla-desde(formularios)
   it("un flujo de una persona del equipo con un paso que necesita contacto se rechaza también como borrador", async () => {
     world("draft");
     const eodTrigger = { id: "t", type: "trigger", position: { x: 0, y: 0 }, data: { triggerType: "eod_submitted" } };
     const res = await put({ nodes: [eodTrigger, message], edges: [edge("t", "m")] });
     expect(res.status).toBe(400);
   });
+  // @plantilla-hasta(formularios)
 
   it("un flujo que no existe devuelve 404", async () => {
     world("draft");

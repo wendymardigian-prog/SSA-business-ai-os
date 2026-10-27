@@ -11,7 +11,7 @@
  * El gasto copia concepto, proveedor, categoría, responsable y notas de la plantilla EN ESE MOMENTO: editar la
  * plantilla después no lo cambia.
  */
-import { fromCents, toCents } from "@/lib/sales/money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import { addDays, compareCivil, type CivilDate } from "./dates";
 import { unpaidStatusFor, type ExpenseStatus } from "./expense-status";
 import { getPendingPaymentDates } from "./recurrence";

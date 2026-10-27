@@ -3,10 +3,8 @@ import { timingSafeEqual } from "node:crypto";
 /**
  * Comparaciones que no filtran informacion por el tiempo que tardan.
  *
- * Vivia adentro de lib/inbound.ts, que es el modulo de los webhooks entrantes.
- * Ahi estaba bien mientras el unico consumidor era el token de Evolution; con
- * los crons usandola tambien, tenerla en un modulo llamado "inbound" es
- * confuso.
+ * Va en su propio modulo porque la usan los receptores de mensajes (el token
+ * de Evolution) y los crons.
  */
 
 /**

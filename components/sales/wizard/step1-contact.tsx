@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, Loader2, Plus, Search, X } from "lucide-react";
 import { createContactForSale, searchContactsForSale, type SaleContactContext } from "@/lib/actions/sales";
 import { AttributionField } from "@/components/sales/attribution-field";
-import { useContactSearchWith } from "@/components/sales/use-contact-search";
+import { useContactSearchWith } from "@/components/shared/use-contact-search";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { draftAttributionType, type Step1Result } from "@/lib/sales/wizard/step1";
 import type { AttributionFieldState } from "@/lib/sales/attribution-field";

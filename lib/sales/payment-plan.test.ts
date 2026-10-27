@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { balanceLine, bornOverdue, buildPaymentPlan, dueDateAt, firstPaymentType, splitCents, validatePlanBalances } from "./payment-plan";
-import { formatMoney } from "./format";
+import { formatMoney } from "@/lib/shared/format";
 
 describe("buildPaymentPlan", () => {
   it("1250, primer pago de 250 cobrado y 4 cuotas mensuales → 5 pagos", () => {

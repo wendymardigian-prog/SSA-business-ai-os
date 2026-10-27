@@ -7,7 +7,7 @@ import { selectableMethods } from "@/lib/sales/payment-methods";
 import type { Frequency, PlannedPayment } from "@/lib/sales/payment-plan";
 import type { SaleSummary } from "@/lib/sales/wizard/summary";
 import type { RowsCheck, Step3State, SubscriptionInterval } from "@/lib/sales/wizard/step3";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import type { WizardConfig } from "./types";
 
 function formatDay(date: string): string {

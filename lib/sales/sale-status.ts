@@ -14,7 +14,7 @@
  * Estructura de `deriveSaleStatus` de prevxcrm (`sales-constants.ts`), con la
  * precedencia de este plano y sin el estado calculado con flotantes.
  */
-import { balanceCents } from "./money";
+import { balanceCents } from "@/lib/shared/money";
 import type { SaleStatus } from "./labels";
 
 export const WRITTEN_SALE_STATUSES: readonly SaleStatus[] = ["cancelled", "refunded", "disputed", "subscription_cancelled"];

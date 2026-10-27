@@ -8,7 +8,7 @@ import { getSavedViewerTimezone, resolveViewerTimezone } from "@/lib/user-timezo
 import { Sidebar } from "@/components/sidebar";
 import { DashboardChromeProvider } from "@/components/dashboard-chrome";
 import { TimezoneBootstrap } from "@/components/timezone-bootstrap";
-import { eodNavFlag } from "@/lib/eod/nav-flag";
+import { eodNavFlag } from "@/lib/eod/nav-flag"; // @plantilla-quitar(formularios)
 import { visibleSettingsTabs } from "@/lib/settings/tabs";
 
 export default async function DashboardLayout({
@@ -33,8 +33,9 @@ export default async function DashboardLayout({
     // cache() evita pegarle dos veces a la base: resolveViewerTimezone (abajo)
     // vuelve a llamar a la misma funcion y reusa este resultado.
     getSavedViewerTimezone(),
-    // "Mi reporte del día": si la persona está en la audiencia de algún EOD publicado (caché de 60 s).
-    eodNavFlag(workspace.id, user.id),
+    // "Mi reporte del día": si la persona está en la audiencia de algún EOD publicado (caché de 60 s). // @plantilla-quitar(formularios)
+    eodNavFlag(workspace.id, user.id), // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): Promise.resolve(false),
   ]);
   // "Ajustes" se ve para quien tenga al menos una pestaña (plano formularios-ui, D4): Recursos e
   // Integraciones ya no son items del menu, se llega por ahi.

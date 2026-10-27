@@ -1,5 +1,5 @@
 {
-  "_doc": "Casos compartidos de la bandeja por cuenta (00249). Los corre channel-permissions.test.ts contra grantFor / canGrantChannels (TypeScript) y verify-roles.mjs contra private.role_channel_grant y public.can_grant_channels (SQL). Los ids de cuenta son uuid fijos: A y B son dos Instagram, C un WhatsApp. En canGrant, actor es owner | admin | member (rol de sistema) o la configuracion de bandeja de un rol personalizado. Si se cambia una regla, se cambia en las dos y se suma el caso.",
+  "_doc": "Casos compartidos de la bandeja por cuenta. Los corre channel-permissions.test.ts contra grantFor / canGrantChannels (TypeScript) y verify-roles.mjs contra private.role_channel_grant y public.can_grant_channels (SQL). Los ids de cuenta son uuid fijos: A y B son dos Instagram, C un WhatsApp. En canGrant, actor es owner | admin | member (rol de sistema) o la configuracion de bandeja de un rol personalizado. Si se cambia una regla, se cambia en las dos y se suma el caso.",
   "ids": {
     "A": "aaaaaaaa-0000-4000-8000-000000000001",
     "B": "bbbbbbbb-0000-4000-8000-000000000002",

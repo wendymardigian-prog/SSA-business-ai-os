@@ -20,13 +20,14 @@ import { groupOf } from "@/lib/scheduling/booking-status";
 import { bookingDropToStartUtc, isSameStart, type BookingDrop } from "@/lib/scheduling/booking-drag";
 import { dateInTz, minutesOfDayInTz } from "@/lib/scheduling/time/tz";
 import { useToast } from "@/components/content/drawer/toast";
-import { useOptionalTaskWorkbench } from "@/components/tasks/task-workbench";
-import { placeTasksInCalendar } from "@/lib/tasks/calendar";
-import { dropTarget, isSameDrop, movedMessage, snapMinutes, undoPatch, type TaskDropTarget } from "@/lib/tasks/calendar-drag";
-import { isDraggableTask, tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui";
-import { layoutOverlaps, type Span } from "@/lib/tasks/layoutOverlaps";
-import type { TaskRow } from "@/lib/tasks/types";
-import { TaskCard, TaskMonthChip, TasksToggle, UndatedPanel } from "./calendar-tasks";
+import { useOptionalTaskWorkbench } from "@/components/tasks/task-workbench"; // @plantilla-quitar(tareas)
+import { placeTasksInCalendar } from "@/lib/tasks/calendar"; // @plantilla-quitar(tareas)
+import { dropTarget, isSameDrop, movedMessage, undoPatch, type TaskDropTarget } from "@/lib/tasks/calendar-drag"; // @plantilla-quitar(tareas)
+import { snapMinutes } from "@/lib/calendar/snap";
+import { isDraggableTask, tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
+import { layoutOverlaps, type Span } from "@/lib/calendar/layoutOverlaps";
+import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
+import { TaskCard, TaskMonthChip, TasksToggle, UndatedPanel } from "./calendar-tasks"; // @plantilla-quitar(tareas)
 import { useIsDesktop } from "./use-desktop";
 
 const VIEWS: Array<{ key: CalendarView; label: string }> = [
@@ -68,7 +69,7 @@ export function BookingsCalendar({
   onView,
   onAnchor,
   onOpen,
-  taskControls,
+  taskControls, // @plantilla-quitar(tareas)
   canDragBookings = false,
   onDropBooking,
   ghost = null,
@@ -82,11 +83,13 @@ export function BookingsCalendar({
   onView: (view: CalendarView) => void;
   onAnchor: (date: string) => void;
   onOpen: (id: string) => void;
+  // @plantilla-desde(tareas)
   /**
    * Tareas × CRM (R7): el interruptor «Tareas». Sin esto (o con el modo apagado) el calendario es el de siempre y no
    * consulta ni dibuja nada de tareas.
    */
   taskControls?: { mode: TasksMode; onMode: (mode: TasksMode) => void };
+  // @plantilla-hasta(tareas)
   /** R8: las agendas activas se pueden arrastrar (solo escritorio). */
   canDragBookings?: boolean;
   /** R8: se solto una agenda en otro horario o dia. SIEMPRE abre una confirmacion: nada se guarda aca. */
@@ -94,11 +97,11 @@ export function BookingsCalendar({
   ghost?: BookingGhost | null;
 }) {
   const range = useMemo(() => rangeFor(view, anchor), [view, anchor]);
-  const wb = useOptionalTaskWorkbench();
+  const wb = useOptionalTaskWorkbench(); // @plantilla-quitar(tareas)
   const toast = useToast();
   const isDesktop = useIsDesktop();
   const [dragging, setDragging] = useState<Dragging | null>(null);
-  const tasksOn = !!taskControls && taskControls.mode !== "off" && !!wb;
+  const tasksOn = !!taskControls && taskControls.mode !== "off" && !!wb; // @plantilla-quitar(tareas)
 
   const placement = useMemo(
     () =>
@@ -113,6 +116,7 @@ export function BookingsCalendar({
 
   const days = Object.keys(placement.byDate).sort();
 
+  // @plantilla-desde(tareas)
   // Las tareas (solo con el interruptor encendido).
   const taskPlacement = useMemo(
     () => (tasksOn && wb ? placeTasksInCalendar({ tasks: wb.tasks, workspaceTz: wb.timeZone, viewerTz: timezone, view, range }) : null),
@@ -120,9 +124,11 @@ export function BookingsCalendar({
   );
   const canEditTasks = !!wb?.canEdit;
   const taskDraggable = (task: TaskRow) => isDesktop && !!wb && isDraggableTask(task, canEditTasks);
+  // @plantilla-hasta(tareas)
   const bookingDraggable = (item: BookingListItem) => isDesktop && canDragBookings && !!onDropBooking && groupOf(item.status) === "active";
 
   // El reparto lado a lado de lo que se superpone (solo con tareas: sin ellas, el dibujo no cambia).
+  // @plantilla-desde(tareas)
   const columnsByDate = useMemo(() => {
     const out = new Map<string, Map<string, { column: number; columns: number }>>();
     if (!taskPlacement) return out;
@@ -136,13 +142,17 @@ export function BookingsCalendar({
     }
     return out;
   }, [taskPlacement, placement, days]);
+  // @plantilla-hasta(tareas)
+  // @plantilla-sin(tareas): const columnsByDate = new Map<string, Map<string, { column: number; columns: number }>>();
 
   // ── Arrastre ──────────────────────────────────────────────────────────────
+  // @plantilla-desde(tareas)
   function startTask(task: TaskRow, e: DragEvent<HTMLElement>) {
     e.dataTransfer.setData("text/plain", task.id);
     e.dataTransfer.effectAllowed = "move";
     setDragging({ kind: "task", id: task.id });
   }
+  // @plantilla-hasta(tareas)
   function startBooking(item: BookingListItem, e: DragEvent<HTMLElement>) {
     e.dataTransfer.setData("text/plain", item.id);
     e.dataTransfer.effectAllowed = "move";
@@ -150,6 +160,7 @@ export function BookingsCalendar({
   }
   const endDrag = () => setDragging(null);
 
+  // @plantilla-desde(tareas)
   /** Una tarea soltada: se mueve al instante, sin confirmar, y se puede deshacer. */
   function dropTask(taskId: string, target: TaskDropTarget) {
     if (!wb) return;
@@ -167,6 +178,7 @@ export function BookingsCalendar({
       });
     });
   }
+  // @plantilla-hasta(tareas)
 
   /** Una agenda soltada: SIEMPRE se pide confirmacion; aca solo se calcula el destino. */
   function dropBooking(bookingId: string, drop: BookingDrop) {
@@ -181,8 +193,9 @@ export function BookingsCalendar({
     const current = dragging;
     setDragging(null);
     if (!current) return;
-    if (current.kind === "task") dropTask(current.id, target);
-    else if (target.kind !== "allday") dropBooking(current.id, target);
+    if (current.kind === "task") dropTask(current.id, target); // @plantilla-quitar(tareas)
+    else if (target.kind !== "allday") dropBooking(current.id, target); // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): if (target.kind !== "allday") dropBooking(current.id, target);
   }
 
   /** ¿Este destino acepta lo que se esta arrastrando? (La franja «Sin hora» solo acepta tareas.) */
@@ -218,7 +231,7 @@ export function BookingsCalendar({
     },
   });
 
-  const openTask = (id: string) => wb?.openTask(id);
+  const openTask = (id: string) => wb?.openTask(id); // @plantilla-quitar(tareas)
   const ghostDate = ghost ? dateInTz(ghost.startUtc, timezone) : null;
   const ghostMinutes = ghost ? minutesOfDayInTz(ghost.startUtc, timezone) : 0;
 
@@ -247,10 +260,12 @@ export function BookingsCalendar({
                   </button>
                 );
               })}
+              {/* @plantilla-desde(tareas) */}
               {taskPlacement &&
                 (taskPlacement.byDate[date] ?? []).map((ti) => (
                   <TaskMonthChip key={ti.task.id} item={ti} timeFormat={timeFormat} draggable={taskDraggable(ti.task)} onOpen={openTask} onDragStart={startTask} onDragEnd={endDrag} />
                 ))}
+              {/* @plantilla-hasta(tareas) */}
               {ghost && ghostDate === date && view === "month" && (
                 <span className="truncate rounded border border-dashed border-primary bg-primary/10 px-1.5 py-0.5 text-[11px]">{ghost.label}</span>
               )}
@@ -269,6 +284,7 @@ export function BookingsCalendar({
                 {dayLabel(date)}
               </div>
             ))}
+            {/* @plantilla-desde(tareas) */}
             {taskPlacement && (
               <>
                 <div className="border-b border-border pr-2 pt-1.5 text-right text-[11px] text-muted-foreground">Sin hora</div>
@@ -283,6 +299,7 @@ export function BookingsCalendar({
                 ))}
               </>
             )}
+            {/* @plantilla-hasta(tareas) */}
             <div>
               {Array.from({ length: LAST_HOUR - FIRST_HOUR }, (_, i) => (
                 <div key={i} className="border-t border-border pr-2 text-right text-[11px] text-muted-foreground" style={{ height: HOUR_PX }}>
@@ -320,6 +337,7 @@ export function BookingsCalendar({
                     </button>
                   );
                 })}
+                {/* @plantilla-desde(tareas) */}
                 {taskPlacement &&
                   (taskPlacement.byDate[date] ?? [])
                     .filter((ti) => ti.timed)
@@ -342,6 +360,7 @@ export function BookingsCalendar({
                         />
                       );
                     })}
+                {/* @plantilla-hasta(tareas) */}
                 {ghost && ghostDate === date && (
                   <div
                     aria-label={`Nuevo horario: ${ghost.label}`}
@@ -361,7 +380,10 @@ export function BookingsCalendar({
           {days.map((date) => (
             <li key={date} className="p-3">
               <p className="mb-1.5 text-xs font-medium text-muted-foreground">{dayLabel(date)}</p>
+              {/* @plantilla-desde(tareas) */}
               {(placement.byDate[date] ?? []).length === 0 && !(taskPlacement?.byDate[date] ?? []).length && <p className="text-xs text-muted-foreground">Sin agendas</p>}
+              {/* @plantilla-hasta(tareas) */}
+              {/* @plantilla-sin(tareas): {(placement.byDate[date] ?? []).length === 0 && <p className="text-xs text-muted-foreground">Sin agendas</p>} */}
               <div className="flex flex-col gap-1.5">
                 {(placement.byDate[date] ?? []).map((it) => {
                   const item = it.booking as unknown as BookingListItem;
@@ -380,10 +402,12 @@ export function BookingsCalendar({
                     </button>
                   );
                 })}
+                {/* @plantilla-desde(tareas) */}
                 {taskPlacement &&
                   (taskPlacement.byDate[date] ?? []).map((ti) => (
                     <TaskCard key={ti.task.id} item={ti} timeFormat={timeFormat} draggable={false} onOpen={openTask} onDragStart={startTask} onDragEnd={endDrag} />
                   ))}
+                {/* @plantilla-hasta(tareas) */}
               </div>
             </li>
           ))}
@@ -398,7 +422,9 @@ export function BookingsCalendar({
         <h3 className="text-sm font-semibold">{titleFor(view, range)}</h3>
         <span className="text-xs text-muted-foreground">Las canceladas no se muestran</span>
         <div className="ml-auto flex items-center gap-2">
+          {/* @plantilla-desde(tareas) */}
           {taskControls && <TasksToggle mode={taskControls.mode} onMode={taskControls.onMode} />}
+          {/* @plantilla-hasta(tareas) */}
           <button type="button" onClick={() => onAnchor(shiftAnchor(view, anchor, -1))} aria-label="Anterior" className="grid h-8 w-8 place-items-center rounded-md border border-border hover:bg-muted">
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -421,6 +447,7 @@ export function BookingsCalendar({
         </div>
       </div>
 
+      {/* @plantilla-desde(tareas) */}
       {tasksOn && wb && taskPlacement ? (
         <div className="flex">
           <div className="min-w-0 flex-1">{content}</div>
@@ -429,6 +456,8 @@ export function BookingsCalendar({
       ) : (
         content
       )}
+      {/* @plantilla-hasta(tareas) */}
+      {/* @plantilla-sin(tareas): {content} */}
     </div>
   );
 }

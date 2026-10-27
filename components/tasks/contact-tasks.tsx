@@ -6,7 +6,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { ListChecks, Plus } from "lucide-react";
 import { tasksForContact } from "@/lib/tasks/contact-tasks";
 import type { MemberLite } from "@/lib/tasks/table-model";
-import type { TimeFormat } from "@/lib/tasks/time";
+import type { TimeFormat } from "@/lib/calendar/time";
 import type { TaskRow } from "@/lib/tasks/types";
 import { TaskLine } from "./task-line";
 import { TaskWorkbench, useOptionalTaskWorkbench, type TaskWorkbenchApi } from "./task-workbench";

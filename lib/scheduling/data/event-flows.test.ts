@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * `flows` no tiene `deleted_at` (CLAUDE.md, Formularios). Una consulta que lo filtre
+ * `flows` no tiene `deleted_at`. Una consulta que lo filtre
  * falla en la base y la pantalla queda vacía sin avisar: así estuvo la sección Flujos
  * de la Agenda hasta que se sacó el filtro. El test mira el código y no la base para
  * que falle aunque nadie corra los `verify-*`.

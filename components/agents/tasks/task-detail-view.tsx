@@ -14,9 +14,9 @@ import { TaskInstructionsPanel } from "./task-instructions-panel";
 import { TaskModelPanel } from "./task-model-panel";
 import { QualityPanel, ButtonTextsPanel } from "./classification-quality";
 import { AgentCloseTable, HowItWorks } from "./how-it-works";
-import { ClassificationConfig } from "./calls/classification-config";
-import { AnalysisConfig } from "./calls/analysis-config";
-import { PromptTestPanel } from "./calls/prompt-test-panel";
+import { ClassificationConfig } from "./calls/classification-config"; // @plantilla-quitar(llamadas)
+import { AnalysisConfig } from "./calls/analysis-config"; // @plantilla-quitar(llamadas)
+import { PromptTestPanel } from "./calls/prompt-test-panel"; // @plantilla-quitar(llamadas)
 import { MODE_LABELS, formatSpend, lastRunLabel } from "@/lib/background/screen";
 import { controlLabel } from "@/lib/ai-tasks/catalog";
 import { TASK_TABS, resolveTaskTab } from "@/lib/ai-tasks/tabs";
@@ -140,6 +140,7 @@ export function TaskTabBody({ data, tab }: { data: TaskScreenData; tab: string }
               versions={data.instructions.versions}
               technical={data.instructions.technical}
               variables={task.instructions.variables}
+              // @plantilla-desde(llamadas)
               testPanel={
                 data.callConfig?.task === "call_analysis"
                   ? (draft) => (
@@ -151,6 +152,7 @@ export function TaskTabBody({ data, tab }: { data: TaskScreenData; tab: string }
                     )
                   : undefined
               }
+              // @plantilla-hasta(llamadas)
             />
           )
         ) : (
@@ -229,8 +231,10 @@ function ConfigTab({ data }: { data: TaskScreenData }) {
         )}
       </section>
 
+      {/* @plantilla-desde(llamadas) */}
       {data.callConfig?.task === "call_classification" && <ClassificationConfig data={data.callConfig} />}
       {data.callConfig?.task === "call_analysis" && <AnalysisConfig data={data.callConfig} />}
+      {/* @plantilla-hasta(llamadas) */}
 
       {data.quality && <QualityPanel data={data.quality} categories={data.categories ?? []} />}
       {data.quality && <ButtonTextsPanel buttonTexts={data.quality.buttonTexts} />}

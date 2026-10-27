@@ -93,6 +93,7 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     argumentPlaceholder: "ai_response",
     valueKind: "text", valueType: "text", group: "contact",
   },
+  // @plantilla-desde(llamadas)
   // Llamadas (F32): todos sobre la ultima llamada analizada del contacto. Sin
   // llamada analizada comparan contra vacio.
   {
@@ -116,6 +117,8 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     valueKind: "text", valueType: "text", group: "calls",
     hint: "Por ejemplo: cierre, seguimiento, triaje.",
   },
+  // @plantilla-hasta(llamadas)
+  // @plantilla-desde(ventas)
   // Ventas (F37): sobre las ventas y los pagos del contacto. Los de `sale_*` miran LA VENTA que
   // disparo el flujo (o, sin ella, la ultima del contacto).
   {
@@ -151,6 +154,7 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
   { prefix: "sale_attribution_type", label: "Tipo de atribución de la venta", argument: "none", valueKind: "text", valueType: "single_select", group: "sales", options: [{ value: "last_touch", label: "Último toque" }, { value: "manual", label: "Manual" }, { value: "none", label: "Sin atribución" }], hint: "last_touch (último toque), manual o none (sin atribución)." },
   { prefix: "sale_from_booking", label: "La venta vino de una agenda", argument: "none", valueKind: "boolean", valueType: "boolean", group: "sales" },
   { prefix: "sale_booking_event_type", label: "Tipo de evento de la agenda de la venta", argument: "none", valueKind: "text", valueType: "text", group: "sales", hint: "El id del tipo de evento de agenda; vacío si la venta no vino de una agenda." },
+  // @plantilla-hasta(ventas)
   {
     // Sin prefijo: el campo es el slug del campo personalizado tal cual.
     prefix: "",

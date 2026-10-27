@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { CONDITION_OPERATORS, CONDITION_OPERATOR_LABELS, OPERATORS_WITHOUT_VALUE, type Condition, type ConditionTree, type Conjunction } from "@/lib/sales/conditions-schema";
+import { CONDITION_OPERATORS, CONDITION_OPERATOR_LABELS, OPERATORS_WITHOUT_VALUE, type Condition, type ConditionTree, type Conjunction } from "@/lib/conditions/conditions-schema";
 import {
   addGroup,
   addGroupCondition,
@@ -13,7 +13,7 @@ import {
   setRootConjunction,
   updateGroupCondition,
   updateRootCondition,
-} from "@/lib/sales/conditions-edit";
+} from "@/lib/conditions/conditions-edit";
 import { cn } from "@/lib/utils";
 
 export interface EditorField {

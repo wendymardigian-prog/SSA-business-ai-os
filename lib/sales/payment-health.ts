@@ -2,7 +2,7 @@
  * La salud de pago de un contacto (plano F31): cómo paga. Se guarda en
  * `contacts.payment_health` y se recalcula al cobrar, revertir o pasar a moroso. Puro.
  */
-import { toCents } from "./money";
+import { toCents } from "@/lib/shared/money";
 
 export interface HealthPayment {
   type: string;

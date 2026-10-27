@@ -45,7 +45,7 @@ export const MAX_BRANCH_DEPTH = 3;
 
 export type NodeData = Record<string, unknown>;
 
-/** El disparador. El editor no lo edita (en Formularios, solo su "Solo si…"). */
+/** El disparador. El editor no lo edita (salvo su "Solo si…", donde existe). */
 export interface TriggerStep {
   id: string;
   data: NodeData;
@@ -529,9 +529,9 @@ export function gateToBranch(gate: GateStep, options: { pathId?: string; random?
 // ------------------------------------------------------------
 
 const SHORT_WHEN: Record<string, string> = {
-  form_submitted: "Cuando se envía",
-  survey_answered: "Cuando se responde",
-  contract_signed: "Cuando se firma",
+  form_submitted: "Cuando se envía", // @plantilla-quitar(formularios)
+  survey_answered: "Cuando se responde", // @plantilla-quitar(formularios)
+  contract_signed: "Cuando se firma", // @plantilla-quitar(formularios)
   booking_created: "Cuando se agenda",
   booking_rescheduled: "Cuando se reagenda",
   booking_cancelled: "Cuando se cancela",

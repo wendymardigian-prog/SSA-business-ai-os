@@ -1,12 +1,11 @@
 /**
  * Cliente de Postproxy (F14).
  *
- * Postproxy publica en varias redes por API. En esta etapa se usa para UNA
+ * Postproxy publica en varias redes por API. Aca se usa para UNA
  * cosa: subir a YouTube sin pasar por la auditoria de Google, que es lo que
  * bloquea publicar en publico con la API oficial.
  *
- * **Lo que dice la documentacion, y difiere del plano** (consultada el
- * 26/9/2026 en postproxy.dev/getting-started/quickstart):
+ * **Lo que dice la documentacion** (postproxy.dev/getting-started/quickstart):
  *   - La base es `https://api.postproxy.dev/api` y se autentica con
  *     `Authorization: Bearer <api key>`.
  *   - Se publica con `POST /posts`, con el cuerpo

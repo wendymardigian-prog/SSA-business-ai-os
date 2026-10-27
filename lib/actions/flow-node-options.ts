@@ -1,6 +1,8 @@
 "use server";
 
 import { getAnyPermissionAction } from "@/lib/auth/guards";
+import { getWorkspace } from "@/lib/workspace";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 /**
  * Lo que el editor de automatizaciones necesita para ofrecer un paso que manda por un canal (Tirón 2, D3).
@@ -34,4 +36,15 @@ export async function loadWhatsAppChannelOptions(): Promise<{ ok: true; channels
       .filter((c) => !!c.evolution_instance)
       .map((c) => ({ id: c.id, name: c.display_name?.trim() || c.username?.trim() || "WhatsApp" })),
   };
+}
+
+/**
+ * Las personas del equipo que ofrecen los pasos del lienzo que eligen gente (como «Avisar en la campana»).
+ * Lo abre quien arma el flujo; es el mismo dato que ya ven los demas selectores de personas (id y nombre de gente del
+ * mismo workspace).
+ */
+export async function loadTeamMemberOptions(): Promise<{ members: Array<{ id: string; name: string }> }> {
+  const { workspace } = await getWorkspace();
+  const members = await getWorkspaceMembers(workspace.id);
+  return { members: members.map((m) => ({ id: m.userId, name: m.name })) };
 }

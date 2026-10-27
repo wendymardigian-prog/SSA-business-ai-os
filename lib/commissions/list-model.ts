@@ -5,7 +5,7 @@
  * en la consulta: por eso las pastillas, los totales por estado y la paginación se hacen sobre estas filas.
  */
 import { monthKey } from "@/lib/finance/dates";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import {
   COMMISSION_PILLS,
   COMMISSION_PILL_STATUSES,

@@ -38,10 +38,12 @@ describe("pickerVariables", () => {
     expect(vars).toEqual(expect.arrayContaining(["booking.start_invitee", "puntos", "contact.display_name", "workspace.name"]));
     expect(vars).not.toContain("tag:");
   });
+  // @plantilla-desde(webhooks)
   it("un webhook no ofrece el contacto hasta que un paso lo consigue", () => {
     expect(pickerVariables({ triggerType: "webhook_received" })).not.toContain("contact.display_name");
     expect(pickerVariables({ triggerType: "webhook_received", contactBefore: true })).toContain("contact.display_name");
   });
+  // @plantilla-hasta(webhooks)
   it("suma lo de los pasos anteriores sin repetir", () => {
     expect(pickerVariables({ triggerType: "keyword", upstreamOutputs: ["ai_response", "ai_response"] }).filter((v) => v === "ai_response")).toHaveLength(1);
   });

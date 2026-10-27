@@ -7,12 +7,12 @@ import { STATUS_ROLES, STATUS_ROLE_LABELS, isStatusRole, parseStatusSettings, st
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TriggerType } from "@/lib/types/database";
-import { BASE_CALL_TYPES } from "@/lib/calls/classification";
-import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric";
-import { FormTriggerPanel } from "./FormTriggerPanel";
-import { WebhookTriggerPanel } from "./WebhookTriggerPanel";
-import { TaskTriggerPanel } from "./TaskTriggerPanel";
-import { SalesTriggerPanel } from "./SalesTriggerPanel";
+import { BASE_CALL_TYPES } from "@/lib/calls/classification"; // @plantilla-quitar(llamadas)
+import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric"; // @plantilla-quitar(llamadas)
+import { FormTriggerPanel } from "./FormTriggerPanel"; // @plantilla-quitar(formularios)
+import { WebhookTriggerPanel } from "./WebhookTriggerPanel"; // @plantilla-quitar(webhooks)
+import { TaskTriggerPanel } from "./TaskTriggerPanel"; // @plantilla-quitar(tareas)
+import { SalesTriggerPanel } from "./SalesTriggerPanel"; // @plantilla-quitar(ventas)
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 
 interface Keyword {
@@ -70,20 +70,28 @@ const BOOKING_TRIGGERS = [
   "booking_after_created",
 ];
 
+// @plantilla-desde(ventas)
 /** Los seis de Ventas: se ofrecen como atajos aparte y llevan su propio panel de filtros. */
 const SALES_TRIGGERS = ["sale_created", "sale_status_changed", "payment_created", "payment_status_changed", "payment_before_due", "payment_after_due"];
+// @plantilla-hasta(ventas)
 
+// @plantilla-desde(llamadas)
 /** Los dos de Llamadas, para mostrar sus filtros. */
 const CALL_TRIGGERS = ["call_analyzed", "call_linked"];
+// @plantilla-hasta(llamadas)
 
+// @plantilla-desde(formularios)
 /** Los tres de Formularios, para mostrar sus filtros. */
 const FORM_TRIGGERS = ["form_submitted", "survey_answered", "contract_signed"];
+// @plantilla-hasta(formularios)
 
+// @plantilla-desde(llamadas)
 const QUALIFICATIONS = [
   { value: "calificado", label: "Calificado" },
   { value: "con_reservas", label: "Con reservas" },
   { value: "no_calificado", label: "No calificado" },
 ];
+// @plantilla-hasta(llamadas)
 
 const RELATIVE_TRIGGERS = ["booking_before_start", "booking_after_end", "booking_after_created"];
 
@@ -181,7 +189,9 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
         )}
       </div>
 
+      {/* @plantilla-desde(ventas) */}
       {SALES_TRIGGERS.includes(triggerType) && <SalesTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
+      {/* @plantilla-hasta(ventas) */}
 
       {/* Keywords Section */}
       {showKeywords && (
@@ -505,6 +515,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
         </div>
       )}
 
+      {/* @plantilla-desde(llamadas) */}
       {/* Llamadas (F32): filtros de call_analyzed y call_linked */}
       {CALL_TRIGGERS.includes(triggerType) && (
         <div className="space-y-3">
@@ -572,14 +583,21 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
           </p>
         </div>
       )}
+      {/* @plantilla-hasta(llamadas) */}
 
+      {/* @plantilla-desde(formularios) */}
       {/* Formularios (F19): formularios, puntaje y condiciones sobre las respuestas */}
       {FORM_TRIGGERS.includes(triggerType) && <FormTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
+      {/* @plantilla-hasta(formularios) */}
 
+      {/* @plantilla-desde(tareas) */}
       {/* Tareas (F25): proyectos y origenes */}
       {(triggerType === "task_completed" || triggerType === "task_overdue") && <TaskTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
+      {/* @plantilla-hasta(tareas) */}
 
+      {/* @plantilla-desde(webhooks) */}
       {triggerType === "webhook_received" && <WebhookTriggerPanel flowId={flowId} data={data} onChange={onChange} sendsMessages={sendsMessages} />}
+      {/* @plantilla-hasta(webhooks) */}
 
       {/* F5: ventana de inactividad */}
       {triggerType === "inactivity" && (

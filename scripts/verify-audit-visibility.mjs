@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Caracterizacion de lo que ve cada rol en `audit_log` (Llamadas, F1 y §1b).
+ * Caracterizacion de lo que ve cada rol en `audit_log`.
+ * (Nacio con Llamadas, F1 y §1b.)  @plantilla-quitar(proyecto)
  *
  * `audit_log_select` NO se reescribe nunca: cada modulo suma su propia politica
  * permisiva (`audit_log_select_<modulo>`). Este script prueba que sumar una no
@@ -11,15 +12,16 @@
  * Los nombres de los tipos salen de la base real (`select distinct entity_type`)
  * mas contact, conversation y booking, que tienen ramas propias en la policy.
  *
- *   node scripts/verify-audit-visibility.mjs --generar            # antes de la 00147: escribe el esperado
+ *   node scripts/verify-audit-visibility.mjs --generar            # escribe el esperado
+ *   (en el proyecto se genero antes de la 00147)  @plantilla-quitar(proyecto)
  *   node scripts/verify-audit-visibility.mjs                      # compara contra el esperado
- *   node scripts/verify-audit-visibility.mjs --despues-de-00147   # ademas prueba las filas de llamadas
- *   node scripts/verify-audit-visibility.mjs --despues-de-00168   # ademas prueba las filas de ventas, pagos y catalogo (Ventas, F35)
- *
- * Ventas (00168): `audit_log_select_sales` es una politica ADICIONAL. El script comprueba que las
- * definiciones de `audit_log_select` y `audit_log_select_calls` no cambiaron (md5 del `qual`, guardado en
- * scripts/fixtures/audit-log-policies.before-00168.json) y que el resultado para TODOS los tipos que ya
- * existian es el mismo antes y despues.
+ *   node scripts/verify-audit-visibility.mjs --despues-de-00147   # ademas prueba las filas de llamadas  @plantilla-quitar(llamadas)
+ *   node scripts/verify-audit-visibility.mjs --despues-de-00168   # ademas prueba las filas de ventas, pagos y catalogo (Ventas, F35)  @plantilla-quitar(ventas)
+ *  @plantilla-quitar(ventas)
+ * Ventas (00168): `audit_log_select_sales` es una politica ADICIONAL. El script comprueba que las  @plantilla-quitar(ventas)
+ * definiciones de `audit_log_select` y `audit_log_select_calls` no cambiaron (md5 del `qual`, guardado en  @plantilla-quitar(ventas)
+ * scripts/fixtures/audit-log-policies.before-00168.json) y que el resultado para TODOS los tipos que ya  @plantilla-quitar(ventas)
+ * existian es el mismo antes y despues.  @plantilla-quitar(ventas)
  *
  * Crea y borra todo lo suyo (prefijo zz-test-). Una limpieza que falla es una
  * prueba que falla.
@@ -30,6 +32,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { runCleanup } from "./test-cleanup.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -41,13 +44,13 @@ const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSe
 
 const FIXTURE = "scripts/fixtures/audit-visibility.expected.json";
 const GENERAR = process.argv.includes("--generar");
-const DESPUES_00147 = process.argv.includes("--despues-de-00147");
-const DESPUES_00168 = process.argv.includes("--despues-de-00168");
-const POLICIES_FIXTURE = "scripts/fixtures/audit-log-policies.before-00168.json";
+const DESPUES_00147 = process.argv.includes("--despues-de-00147"); // @plantilla-quitar(llamadas)
+const DESPUES_00168 = process.argv.includes("--despues-de-00168"); // @plantilla-quitar(ventas)
+const POLICIES_FIXTURE = "scripts/fixtures/audit-log-policies.before-00168.json"; // @plantilla-quitar(proyecto)
 
 /** Consultas que la API no expone (pg_policies): con la CLI ya vinculada. */
 function sql(query) {
-  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   return JSON.parse(out).rows ?? [];
 }
 
@@ -78,7 +81,10 @@ try {
     distinct.push(...(data ?? []));
     if ((data ?? []).length < 1000) break;
   }
-  const types = [...new Set([...distinct.map((r) => r.entity_type), ...FIXED_TYPES])]
+  // Tambien los tipos del esperado: en una base nueva todavia no hay filas de cada tipo, y sin
+  // sembrarlos la comparacion los daria por desaparecidos.
+  const expectedTypes = !GENERAR && existsSync(FIXTURE) ? JSON.parse(readFileSync(FIXTURE, "utf8")).types ?? [] : [];
+  const types = [...new Set([...distinct.map((r) => r.entity_type), ...FIXED_TYPES, ...expectedTypes])]
     .filter((t) => t !== "call")
     .sort();
 
@@ -187,7 +193,7 @@ try {
     writeFileSync(FIXTURE, JSON.stringify({ types, cases: Object.fromEntries(Object.entries(seen).sort(([a], [b]) => a.localeCompare(b))) }, null, 2) + "\n");
     ok(`esperado generado en ${FIXTURE} (${Object.keys(seen).length} casos)`);
   } else if (!existsSync(FIXTURE)) {
-    fail(`falta ${FIXTURE}: correr una vez con --generar ANTES de la 00147`);
+    fail(`falta ${FIXTURE}: correr una vez con --generar`);
   } else {
     const expected = JSON.parse(readFileSync(FIXTURE, "utf8")).cases;
     const diffs = [];
@@ -206,6 +212,7 @@ try {
   check(seen["contact|propio|por_member"]?.m1 === true && seen["contact|propio|por_member"]?.m2 === false,
     "un Member ve lo que escribio el mismo, y no lo de otro");
 
+  // @plantilla-desde(llamadas)
   if (DESPUES_00147) {
     console.log("\n— Filas de llamadas (00147) —");
     const { data: c1, error: cErr } = await svc.from("calls").insert([
@@ -226,7 +233,9 @@ try {
     check(callSeen["call|propia|por_sistema"]?.m2 !== true, "ni uno ajeno ve la llamada de otro");
     check(callSeen["call|ajena|por_sistema"]?.admin === true && callSeen["call|propia|por_sistema"]?.owner === true, "Owner y Admin ven todas");
   }
+  // @plantilla-hasta(llamadas)
 
+  // @plantilla-desde(proyecto)
   // Las definiciones que NO se reescriben (Ventas, 00168): `audit_log_select` y la de Llamadas.
   console.log("\n— Definiciones de las politicas de SELECT —");
   const policies = sql(`select policyname, md5(coalesce(qual,'')) as qual_md5 from pg_policies where schemaname='public' and tablename='audit_log' and cmd='SELECT'`);
@@ -238,7 +247,9 @@ try {
   } else {
     fail(`falta ${POLICIES_FIXTURE}`);
   }
+  // @plantilla-hasta(proyecto)
 
+  // @plantilla-desde(ventas)
   if (DESPUES_00168) {
     console.log("\n— Filas de ventas, pagos y catalogo (00168) —");
     check(!!policyHash("audit_log_select_sales"), "existe la politica adicional audit_log_select_sales");
@@ -290,6 +301,7 @@ try {
     const again = await readAll((k) => k.startsWith("contact|"));
     check(again["contact|ajeno|por_sistema"]?.m1 !== true && again["contact|propio|por_member"]?.m2 !== true, "las filas contact que un Member no escribio siguen sin verse");
   }
+  // @plantilla-hasta(ventas)
 } catch (e) {
   fail("el script fallo", e.message);
 } finally {

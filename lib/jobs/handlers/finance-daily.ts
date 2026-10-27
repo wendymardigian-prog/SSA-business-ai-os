@@ -18,7 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { auditAsSystem } from "@/lib/audit";
 import { isDateOnly } from "@/lib/finance/dates";
 import { summarizeOverdue } from "@/lib/finance/summary-text";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { autoExpensesStep, generateRecurringStep } from "@/lib/finance/daily-steps";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { createNotification } from "@/lib/notifications/create";

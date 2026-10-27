@@ -116,9 +116,8 @@ export const enrollSequenceNode: NodeDefinition<EnrollSequenceNodeData> = {
         performedBy: null,
       });
 
-      // El aviso a los admins (F18). Esta era la costura que el Bloque 2 dejo
-      // apuntada al centro de notificaciones: la deteccion y el audit log de
-      // arriba no cambiaron, solo cambio a donde va el aviso.
+      // El aviso a los admins (F18) va al centro de notificaciones; la
+      // deteccion y el audit log son los de arriba.
       //
       // Sin recipientId: una colision es informacion de administracion, y
       // can_see_notification no se la muestra a un Member.

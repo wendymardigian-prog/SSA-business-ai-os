@@ -23,7 +23,7 @@ import type { ConversationRow } from "@/lib/inbox/types";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import { assigneeName } from "@/lib/inbox/assignee";
 import { knownLabel } from "@/lib/inbox/known";
-import { colorOf, initialsOf } from "@/lib/tasks/people";
+import { colorOf, initialsOf } from "@/lib/shared/people";
 import { Avatar } from "@/components/ui/filter-menu";
 import { Tip } from "@/components/ui/tooltip";
 import { conversationListPreview } from "@/lib/inbox/last-message";

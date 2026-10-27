@@ -58,6 +58,7 @@ describe("generateEmbedCode (F40): 3 modos × HTML y React", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 import { formFallback, formPageSnippet, generateFormEmbedCode } from "./code";
 
 describe("código del embed de un formulario (F10, F32)", () => {
@@ -85,6 +86,7 @@ describe("código del embed de un formulario (F10, F32)", () => {
     expect(formPageSnippet("apl")).toBe('<Formulario slug="apl" />');
   });
 });
+// @plantilla-hasta(formularios)
 
 import { trackingSnippet } from "./code";
 

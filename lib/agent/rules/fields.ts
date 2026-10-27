@@ -47,7 +47,7 @@ export const RULE_FIELDS: FieldDef[] = [
   { field: "agent.wants_escalate", label: "Quiere derivar", stage: "final", operators: ["is"], valueType: "bool" },
   { field: "agent.kb_miss", label: "No encontró en Conocimiento", stage: "final", operators: ["is"], valueType: "bool" },
   { field: "agent.used_tool", label: "Usó la herramienta", stage: "final", operators: ["is"], valueType: "words" },
-  // La intención se suma en el Bloque 5 (F26); la condición ya vive acá.
+  // La intención se suma en el Bloque 5 (F26); la condición ya vive acá.  @plantilla-quitar(proyecto)
   { field: "intent.category", label: "La intención del mensaje", stage: "final", operators: ["is", "is_not"], valueType: "intent" },
 ];
 

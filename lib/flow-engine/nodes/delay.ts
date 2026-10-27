@@ -50,8 +50,7 @@ export function waitTimeoutMs(data: Partial<SmartDelayNodeData> | null | undefin
  * Espera un tiempo fijo (o hasta una fecha) y sigue.
  *
  * El flow no se queda esperando en memoria: se agenda un job y la sesion queda
- * dormida. Quien la despierta es /api/cron/jobs, que desde la migracion 00036
- * corre por pg_cron. Sin ese cron andando, un Delay para el flow para siempre.
+ * dormida. Quien la despierta es /api/cron/jobs, que corre por pg_cron. Sin ese cron andando, un Delay para el flow para siempre.
  */
 export const delayNode: NodeDefinition<DelayNodeData> = {
   needsContact: false,

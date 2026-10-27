@@ -11,7 +11,7 @@ import { listProjects } from "@/lib/tasks/project";
 import type { MemberLite } from "@/lib/tasks/table-model";
 import { upsertRow } from "@/lib/tasks/cell-edit";
 import type { TaskRow } from "@/lib/tasks/types";
-import type { TimeFormat } from "@/lib/tasks/time";
+import type { TimeFormat } from "@/lib/calendar/time";
 import { ShiftDialog } from "./shift-dialog";
 import { TimeFormatProvider } from "./time-format-context";
 import { TaskDrawer } from "./task-drawer";

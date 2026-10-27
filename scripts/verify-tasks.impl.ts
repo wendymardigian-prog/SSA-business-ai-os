@@ -24,6 +24,7 @@ import { ensureTaskPaymentFlows, getPaymentTasksState } from "../lib/tasks/autom
 import "../lib/flow-engine/registry";
 import { processEvent, type AutomationEvent } from "../lib/flow-engine/automation-events";
 import { buildDesiredTriggers } from "../lib/flow-triggers";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -431,7 +432,7 @@ try {
       const dir = mkdtempSync(join(tmpdir(), "verify-tasks-"));
       const file = join(dir, "q.sql");
       writeFileSync(file, query);
-      const r = spawnSync("supabase", ["db", "query", "--linked", "-f", file], { encoding: "utf8" });
+      const r = spawnSync("supabase", ["db", "query", ...dbTargetArgs(), "-f", file], { encoding: "utf8" });
       rmSync(dir, { recursive: true, force: true });
       const out = r.stdout ?? "";
       const json = out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1);

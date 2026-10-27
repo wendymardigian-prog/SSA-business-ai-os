@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { lastFunctionDefinition } from "@/lib/test-utils/migrations";
 
 /**
- * Cada cron nuevo reescribe `private.call_app_cron` entera (patron desde la
- * 00036). Si alguien copia una version anterior a la 00139, la funcion vuelve a
- * leer el secreto de `private.system_config`, que desde la 00140 ya no lo
- * tiene: todos los cron dejan de correr sin ningun error visible.
+ * Cada cron nuevo reescribe `private.call_app_cron` entera. Si alguien copia
+ * una version vieja de la funcion, que lee el secreto de `private.system_config`
+ * (donde ya no esta), todos los cron dejan de correr sin ningun error visible.
  */
 describe("private.call_app_cron (la definicion vigente)", () => {
   const body = latestCallAppCronBody();
@@ -33,30 +33,10 @@ function repoRoot(): string {
   return join(__dirname, "..");
 }
 
-function stripSqlComments(sql: string): string {
-  return sql
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("--"))
-    .join("\n");
-}
-
 function latestCallAppCronBody(): string {
-  const dir = join(repoRoot(), "supabase", "migrations");
-  const files = readdirSync(dir)
-    .filter((f) => /^\d+_.*\.sql$/.test(f))
-    .sort();
-  const header = /CREATE OR REPLACE FUNCTION private\.call_app_cron\(/;
-  let latest: string | null = null;
-  for (const file of files) {
-    const sql = stripSqlComments(readFileSync(join(dir, file), "utf8"));
-    const match = header.exec(sql);
-    if (match) {
-      const rest = sql.slice(match.index);
-      latest = rest.slice(0, rest.indexOf("END; $$;") + "END; $$;".length);
-    }
-  }
+  const latest = lastFunctionDefinition("private.call_app_cron");
   if (!latest) throw new Error("no se encontro ninguna definicion de private.call_app_cron");
-  return latest;
+  return latest.sql;
 }
 
 function whitelist(body: string): string[] {

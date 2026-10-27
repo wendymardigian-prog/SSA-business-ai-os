@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, Check, Loader2, Pencil, Plus, RotateCcw } from "lucide-react";
 import { saveExpenseCategories } from "@/lib/actions/finance-categories";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { CATEGORY_COLORS, CATEGORY_GROUPS, CATEGORY_GROUP_HINTS, CATEGORY_GROUP_LABELS, CATEGORY_NAME_MAX, type ExpenseCategory } from "@/lib/finance/categories";
 import {

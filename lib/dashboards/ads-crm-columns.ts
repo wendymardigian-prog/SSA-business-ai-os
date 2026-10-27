@@ -32,7 +32,8 @@ export const GROUP_TIP: Record<ColumnGroup, string> = {
   info: "Qué es cada fila: a qué campaña y conjunto pertenece, su estado y su publicación.",
   meta: "Lo que mide Meta Ads: gasto, alcance, clics, video y lo que cuenta el píxel. No sabe qué pasó después del clic.",
   metaVsCrm: "Lo mismo contado por Meta y por tu CRM, lado a lado. Si no coinciden, el CRM es el que sabe quién llegó de verdad.",
-  crm: "Lo que pasó en tu CRM con la gente que llegó de cada anuncio: leads, agendas, ventas y plata.",
+  crm: "Lo que pasó en tu CRM con la gente que llegó de cada anuncio: leads, agendas, ventas y plata.", // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): crm: "Lo que pasó en tu CRM con la gente que llegó de cada anuncio: leads y agendas.",
 };
 
 /** Los subtítulos del grupo Meta, para encontrar rápido una columna entre tantas. */
@@ -49,7 +50,8 @@ export const SUBGROUP_LABEL: Record<MetaSubgroup, string> = {
 };
 
 /** Qué número de la tabla se puede abrir (el panel con las personas o los registros que lo forman). */
-export type CellMetric = "leads_new" | "leads_total" | "bookings" | "sales";
+export type CellMetric = "leads_new" | "leads_total" | "bookings" | "sales"; // @plantilla-quitar(ventas)
+// @plantilla-sin(ventas): export type CellMetric = "leads_new" | "leads_total" | "bookings";
 
 export type ColumnKind = "money" | "count" | "percent" | "decimal" | "seconds" | "text" | "status" | "link";
 
@@ -166,7 +168,8 @@ export const COLUMNS: ColumnDef[] = [
   { id: "purchasesMeta", group: "meta", subgroup: "conversions", label: "Compras Meta", kind: "count", defaultVisible: false, value: (r) => r.purchases, tip: { title: "Compras según Meta", body: "Compras que Meta registra con el píxel o la API de conversiones. «—» si no manda ese evento." } },
   { id: "costPerPurchase", group: "meta", subgroup: "conversions", label: "Costo compra", kind: "money", defaultVisible: false, value: (r) => r.costPerPurchase, tip: { title: "Costo por compra", body: "Gasto ÷ Compras Meta." } },
   { id: "purchaseValue", group: "meta", subgroup: "conversions", label: "Valor de compras", kind: "money", defaultVisible: false, value: (r) => r.purchaseValue, tip: { title: "Valor de compras", body: "Suma del valor de las compras que registra Meta." } },
-  { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta. El ROAS del CRM («ROAS») usa tus ventas reales." } },
+  { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta. El ROAS del CRM («ROAS») usa tus ventas reales." } }, // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta." } },
 
   // ── Meta · calidad (solo anuncios) ────────────────────────────────────
   textCol("qualityRanking", "meta", "Ranking de calidad", "text", ["ad"], false, { title: "Ranking de calidad", body: "Cómo se percibe la calidad del anuncio frente a otros que compiten por la misma audiencia. Es el del último día con dato y no se suma." }, (r) => rankingLabel(r.qualityRanking), { subgroup: "quality" }),
@@ -186,14 +189,14 @@ export const COLUMNS: ColumnDef[] = [
   { id: "attended", group: "crm", label: "Asistidas", kind: "count", defaultVisible: false, value: (r) => r.attended, tip: { title: "Agendas asistidas", body: "De las agendas de arriba, las que llegaron a un resultado (seguimiento tibio o frío, venta o no calificado). Mide la calidad." } },
   { id: "costPerAttended", group: "crm", label: "Costo por asistida", kind: "money", defaultVisible: false, value: (r) => r.costPerAttended, tip: { title: "Costo por agenda asistida", body: "Gasto ÷ Agendas asistidas. «—» si ninguna llegó a un resultado." } },
   { id: "leadToBooking", group: "crm", label: "Lead → Agenda", kind: "percent", defaultVisible: false, value: (r) => r.leadToBooking, tip: { title: "Lead → Agenda", body: "Personas con agenda ÷ Leads totales. Cuántos de los que llegaron terminaron agendando. En el Total usa personas distintas en los dos lados." } },
-  { id: "sales", group: "crm", label: "Ventas", kind: "count", defaultVisible: true, cell: "sales", value: (r) => r.sales, tip: { title: "Ventas", body: "Ventas no canceladas ni reembolsadas, con fecha de cierre en el período, cuyo toque de atribución es de este anuncio." } },
-  { id: "revenue", group: "crm", label: "Revenue", kind: "money", defaultVisible: true, value: (r) => r.revenue, tip: { title: "Revenue", body: "Suma del total de esas ventas, en USD." } },
-  { id: "cash", group: "crm", label: "Cash", kind: "money", defaultVisible: false, value: (r) => r.cash, tip: { title: "Cash", body: "Pagos cobrados en el período (menos reembolsos) de ventas de este anuncio, en USD." } },
-  { id: "ufCash", group: "crm", label: "UF cash", kind: "money", defaultVisible: false, value: (r) => r.ufCash, tip: { title: "UF cash", body: "Cash del primer pago: el primer pago cobrado de cada venta de este anuncio, si se cobró en el período, en USD. Mide cuánta plata entra de entrada." } },
-  { id: "roas", group: "crm", label: "ROAS", kind: "decimal", defaultVisible: true, value: (r) => r.roas, tip: { title: "ROAS", body: "Revenue ÷ Gasto. Cuántos dólares de venta por cada dólar invertido. «—» si no hubo gasto." } },
-  { id: "roasCash", group: "crm", label: "ROAS cash", kind: "decimal", defaultVisible: false, value: (r) => r.roasCash, tip: { title: "ROAS cash", body: "Cash ÷ Gasto. Lo mismo, pero con la plata que ya entró." } },
-  { id: "ufRoas", group: "crm", label: "UF ROAS", kind: "decimal", defaultVisible: false, value: (r) => r.ufRoas, tip: { title: "UF ROAS", body: "UF cash ÷ Gasto. Cuánto volvió de entrada, con el primer pago de cada venta, por cada dólar invertido." } },
-  { id: "costPerNewDeal", group: "crm", label: "Costo por nuevo deal", kind: "money", defaultVisible: false, value: (r) => r.costPerNewDeal, tip: { title: "Costo por nuevo deal", body: "Gasto ÷ Ventas (no canceladas ni reembolsadas). Lo que cuesta cada venta nueva. Reemplaza a «CAC» y «Costo por cierre», que eran lo mismo. «—» si no hubo ventas." } },
+  { id: "sales", group: "crm", label: "Ventas", kind: "count", defaultVisible: true, cell: "sales", value: (r) => r.sales, tip: { title: "Ventas", body: "Ventas no canceladas ni reembolsadas, con fecha de cierre en el período, cuyo toque de atribución es de este anuncio." } }, // @plantilla-quitar(ventas)
+  { id: "revenue", group: "crm", label: "Revenue", kind: "money", defaultVisible: true, value: (r) => r.revenue, tip: { title: "Revenue", body: "Suma del total de esas ventas, en USD." } }, // @plantilla-quitar(ventas)
+  { id: "cash", group: "crm", label: "Cash", kind: "money", defaultVisible: false, value: (r) => r.cash, tip: { title: "Cash", body: "Pagos cobrados en el período (menos reembolsos) de ventas de este anuncio, en USD." } }, // @plantilla-quitar(ventas)
+  { id: "ufCash", group: "crm", label: "UF cash", kind: "money", defaultVisible: false, value: (r) => r.ufCash, tip: { title: "UF cash", body: "Cash del primer pago: el primer pago cobrado de cada venta de este anuncio, si se cobró en el período, en USD. Mide cuánta plata entra de entrada." } }, // @plantilla-quitar(ventas)
+  { id: "roas", group: "crm", label: "ROAS", kind: "decimal", defaultVisible: true, value: (r) => r.roas, tip: { title: "ROAS", body: "Revenue ÷ Gasto. Cuántos dólares de venta por cada dólar invertido. «—» si no hubo gasto." } }, // @plantilla-quitar(ventas)
+  { id: "roasCash", group: "crm", label: "ROAS cash", kind: "decimal", defaultVisible: false, value: (r) => r.roasCash, tip: { title: "ROAS cash", body: "Cash ÷ Gasto. Lo mismo, pero con la plata que ya entró." } }, // @plantilla-quitar(ventas)
+  { id: "ufRoas", group: "crm", label: "UF ROAS", kind: "decimal", defaultVisible: false, value: (r) => r.ufRoas, tip: { title: "UF ROAS", body: "UF cash ÷ Gasto. Cuánto volvió de entrada, con el primer pago de cada venta, por cada dólar invertido." } }, // @plantilla-quitar(ventas)
+  { id: "costPerNewDeal", group: "crm", label: "Costo por nuevo deal", kind: "money", defaultVisible: false, value: (r) => r.costPerNewDeal, tip: { title: "Costo por nuevo deal", body: "Gasto ÷ Ventas (no canceladas ni reembolsadas). Lo que cuesta cada venta nueva. Reemplaza a «CAC» y «Costo por cierre», que eran lo mismo. «—» si no hubo ventas." } }, // @plantilla-quitar(ventas)
 ];
 
 export const COLUMN_BY_ID: Record<ColumnId, ColumnDef> = Object.fromEntries(COLUMNS.map((c) => [c.id, c])) as Record<ColumnId, ColumnDef>;

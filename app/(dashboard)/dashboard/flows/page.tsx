@@ -23,7 +23,8 @@ export default async function FlowsPage({ searchParams }: { searchParams: Promis
   const [{ data: flows }, { count: channelCount }, timeZone] = await Promise.all([
     supabase
       .from("flows")
-      .select("id, name, description, categories, status, updated_at, nodes, edges, draft_nodes, form_id, event_type_id, template_key")
+      .select("id, name, description, categories, status, updated_at, nodes, edges, draft_nodes, form_id, event_type_id, template_key") // @plantilla-quitar(formularios)
+      // @plantilla-sin(formularios): .select("id, name, description, categories, status, updated_at, nodes, edges, draft_nodes, event_type_id, template_key")
       .eq("workspace_id", workspace.id)
       .order("updated_at", { ascending: false }),
     supabase.from("channels").select("*", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("is_active", true),

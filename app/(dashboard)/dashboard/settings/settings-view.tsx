@@ -1,7 +1,7 @@
 "use client";
 
-import { PaymentTasksCard } from "@/components/settings/payment-tasks-card";
-import type { TaskPaymentState } from "@/lib/tasks/payment-tasks-types";
+import { PaymentTasksCard } from "@/components/settings/payment-tasks-card"; // @plantilla-quitar(tareas)
+import type { TaskPaymentState } from "@/lib/tasks/payment-tasks-types"; // @plantilla-quitar(tareas)
 import { useState } from "react";
 import { Settings, Hash, Save, Plus, X, Check } from "lucide-react";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
@@ -9,14 +9,14 @@ import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
 import { BrandSettings, type BrandSettingsInitial } from "@/components/settings/brand-settings";
-import { SalesSettings } from "@/components/settings/sales-settings";
-import { FinanceSettings } from "@/components/settings/finance-settings";
+import { SalesSettings } from "@/components/settings/sales-settings"; // @plantilla-quitar(ventas)
+import { FinanceSettings } from "@/components/settings/finance-settings"; // @plantilla-quitar(finanzas)
 import { AttributionSettingsCard } from "@/components/settings/attribution-settings";
 import type { AttributionSettings } from "@/lib/attribution/settings";
-import type { ExpenseCategory } from "@/lib/finance/categories";
-import type { CategoryUsage } from "@/lib/finance/category-totals";
-import type { FinanceAutoData } from "@/lib/finance/auto-card";
-import type { PaymentMethodConfig } from "@/lib/sales/payment-methods-config";
+import type { ExpenseCategory } from "@/lib/finance/categories"; // @plantilla-quitar(finanzas)
+import type { CategoryUsage } from "@/lib/finance/category-totals"; // @plantilla-quitar(finanzas)
+import type { FinanceAutoData } from "@/lib/finance/auto-card"; // @plantilla-quitar(finanzas)
+import type { PaymentMethodConfig } from "@/lib/sales/payment-methods-config"; // @plantilla-quitar(ventas)
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SectionNav } from "@/components/settings/section-nav";
@@ -33,24 +33,21 @@ interface WorkspaceSettings {
   persistChatMedia: boolean;
   chatMediaRetentionDays: number;
   timezone: string;
-  paymentMethods: PaymentMethodConfig[];
-  /** Pagos programados o morosos por método de pago (para el aviso de apagar uno). */
-  scheduledByMethod: Record<string, number>;
-  maxDiscountPercent: number | null;
-  overdueGraceDays: number;
-  salesAutoCreateFlows: boolean;
+  paymentMethods: PaymentMethodConfig[]; // @plantilla-quitar(ventas)
+  /** Pagos programados o morosos por método de pago (para el aviso de apagar uno). */ // @plantilla-quitar(ventas)
+  scheduledByMethod: Record<string, number>; // @plantilla-quitar(ventas)
+  maxDiscountPercent: number | null; // @plantilla-quitar(ventas)
+  overdueGraceDays: number; // @plantilla-quitar(ventas)
+  salesAutoCreateFlows: boolean; // @plantilla-quitar(ventas)
   /** La marca de este negocio (00266). */
   brand: BrandSettingsInitial;
 }
 
 /**
- * General (S2): antes era una columna de 13 bloques apilados, con seis de
- * ellos siendo tarjetas-link que repetían una pestaña o una ruta propia
- * (API keys, Team, Roles, Campos personalizados, Tareas, Banca de
- * recursos). Esas tarjetas se eliminaron: todo lo que linkeaban ya tiene su
- * propia pestaña en `SettingsTabs`.
+ * General (S2): lo que linkea a otra pantalla tiene su propia pestaña en
+ * `SettingsTabs`; aca quedan los ajustes del negocio.
  *
- * Lo que queda se agrupó en cuatro secciones con navegación interna
+ * Se agrupan en cuatro secciones con navegación interna
  * (`SectionNav`, mismo patrón que `components/scheduling/config-nav.tsx`,
  * pero por anclas en vez de rutas): Workspace, Conversaciones, Archivos e
  * IA. Cada ajuste conserva su forma de guardado actual — el botón de abajo
@@ -64,12 +61,12 @@ export function SettingsView({
   canGeneral,
   canSales,
   canFinance,
-  financeCategories,
-  financeUsage,
-  financeUsageFailed,
-  financeUsageTruncated,
-  financeAuto,
-  paymentTasks,
+  financeCategories, // @plantilla-quitar(finanzas)
+  financeUsage, // @plantilla-quitar(finanzas)
+  financeUsageFailed, // @plantilla-quitar(finanzas)
+  financeUsageTruncated, // @plantilla-quitar(finanzas)
+  financeAuto, // @plantilla-quitar(finanzas)
+  paymentTasks, // @plantilla-quitar(tareas)
   attributionSettings,
 }: {
   workspace: WorkspaceSettings;
@@ -78,16 +75,16 @@ export function SettingsView({
   canViewAudit: boolean;
   /** `settings.general`: las secciones de General. */
   canGeneral: boolean;
-  /** `sales.settings`: la sección «Ventas y cobranza». */
+  /** `sales.settings`: la sección «Ventas y cobranza».  @plantilla-quitar(ventas) */
   canSales: boolean;
-  /** `expenses.manage`: la sección «Finanzas». */
+  /** `expenses.manage`: la sección «Finanzas».  @plantilla-quitar(finanzas) */
   canFinance: boolean;
-  financeCategories: ExpenseCategory[];
-  financeUsage: Record<string, CategoryUsage>;
-  financeUsageFailed: boolean;
-  financeUsageTruncated: boolean;
-  financeAuto: FinanceAutoData;
-  paymentTasks: TaskPaymentState;
+  financeCategories: ExpenseCategory[]; // @plantilla-quitar(finanzas)
+  financeUsage: Record<string, CategoryUsage>; // @plantilla-quitar(finanzas)
+  financeUsageFailed: boolean; // @plantilla-quitar(finanzas)
+  financeUsageTruncated: boolean; // @plantilla-quitar(finanzas)
+  financeAuto: FinanceAutoData; // @plantilla-quitar(finanzas)
+  paymentTasks: TaskPaymentState; // @plantilla-quitar(tareas)
   /** La configuración de «Atribución» (Extra I, F31); solo se muestra con `settings.general`. */
   attributionSettings: AttributionSettings;
 }) {
@@ -309,6 +306,7 @@ export function SettingsView({
 
             </>)}
 
+            {/* @plantilla-desde(ventas) */}
             {canSales && (<>
             {canGeneral && <hr className="border-border" />}
 
@@ -324,7 +322,9 @@ export function SettingsView({
               <PaymentTasksCard initial={paymentTasks} />
             </section>
             </>)}
+            {/* @plantilla-hasta(ventas) */}
 
+            {/* @plantilla-desde(finanzas) */}
             {canFinance && (<>
             {(canGeneral || canSales) && <hr className="border-border" />}
 
@@ -339,6 +339,7 @@ export function SettingsView({
               />
             </section>
             </>)}
+            {/* @plantilla-hasta(finanzas) */}
 
             {canViewAudit && (
               <>

@@ -10,7 +10,7 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { computeProviderFee } from "@/lib/sales/fees";
 import { findMethod } from "@/lib/sales/payment-methods";
-import { fromCents } from "@/lib/sales/money";
+import { fromCents } from "@/lib/shared/money";
 import type { Json } from "@/lib/types/database";
 import type { CommissionActionResult, PreviewResult, RolesActionResult } from "@/lib/commissions/action-types";
 import { canonicalJson, jsonCreated, jsonDiff } from "@/lib/commissions/audit-diff";

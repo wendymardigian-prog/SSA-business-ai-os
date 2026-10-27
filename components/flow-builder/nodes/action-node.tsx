@@ -46,9 +46,9 @@ export interface ActionNodeProps {
   /** "Enviar recurso": el recurso elegido y su nombre (para mostrarlo sin leer la banca). */
   assetId?: string;
   assetName?: string;
-  /** "Crear tarea": el titulo (con variables) que se muestra como resumen. */
+  /** "Crear tarea": el titulo (con variables) que se muestra como resumen.  @plantilla-quitar(tareas) */
   title?: string;
-  /** "Crear tarea": quien queda a cargo y la clave de origen, que se muestran en la tarjeta. */
+  /** "Crear tarea": quien queda a cargo y la clave de origen, que se muestran en la tarjeta.  @plantilla-quitar(tareas) */
   owner?: string;
   sourceKey?: string;
   /** "Completar tarea": la clave de origen de la(s) tarea(s) que cierra. */
@@ -141,6 +141,7 @@ const actionConfig: Record<
     label: "Enviar recurso",
     color: "bg-gray-500",
   },
+  // @plantilla-desde(tareas)
   create_task: {
     icon: ListTodo,
     label: "Crear tarea",
@@ -151,6 +152,7 @@ const actionConfig: Record<
     label: "Completar tarea",
     color: "bg-gray-500",
   },
+  // @plantilla-hasta(tareas)
   send_email: {
     icon: Mail,
     label: "Enviar email",
@@ -165,9 +167,9 @@ const actionConfig: Record<
   notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
   cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
   set_booking_status: { icon: CalendarCheck, label: "Cambiar estado de la reunión", color: "bg-gray-500" },
-  mark_payment_paid: { icon: BadgeDollarSign, label: "Marcar pago como cobrado", color: "bg-gray-500" },
-  reschedule_payment: { icon: CalendarClock, label: "Reprogramar pago", color: "bg-gray-500" },
-  set_sale_status: { icon: Ban, label: "Cancelar la venta", color: "bg-gray-500" },
+  mark_payment_paid: { icon: BadgeDollarSign, label: "Marcar pago como cobrado", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
+  reschedule_payment: { icon: CalendarClock, label: "Reprogramar pago", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
+  set_sale_status: { icon: Ban, label: "Cancelar la venta", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
 };
 
 /** El nombre de cada accion (lo usan el nodo y el encabezado del panel lateral). */
@@ -179,12 +181,12 @@ const UNIT_LABELS: Record<string, [string, string]> = { minutes: ["minuto", "min
 
 const OWNER_LABELS: Record<string, string> = {
   user: "Una persona",
-  member: "Quien envió el reporte",
-  seller: "Vendedor de la venta",
+  member: "Quien envió el reporte", // @plantilla-quitar(formularios)
+  seller: "Vendedor de la venta", // @plantilla-quitar(ventas)
   contact_assigned: "Asignada al contacto",
 };
 
-/** La segunda linea de la tarjeta de «Crear tarea»: quien queda a cargo y la clave de origen. */
+/** La segunda linea de la tarjeta de «Crear tarea»: quien queda a cargo y la clave de origen.  @plantilla-quitar(tareas) */
 function getDetail(nodeData: ActionNodeProps): string | null {
   if (nodeData.actionType !== ("create_task" as NodeType)) return null;
   const parts = [nodeData.owner && OWNER_LABELS[nodeData.owner] ? `A cargo: ${OWNER_LABELS[nodeData.owner]}` : null, nodeData.sourceKey?.trim() ? `Clave: ${nodeData.sourceKey.trim()}` : null];
@@ -229,10 +231,12 @@ function getSummary(nodeData: ActionNodeProps): string | null {
     }
     case "sendAsset":
       return nodeData.assetId ? (nodeData.assetName ?? "Recurso elegido") : null;
+    // @plantilla-desde(tareas)
     case "create_task" as NodeType:
       return nodeData.title?.trim() || null;
     case "complete_task" as NodeType:
       return nodeData.sourceKey?.trim() ? `Clave: ${nodeData.sourceKey.trim()}` : null;
+    // @plantilla-hasta(tareas)
     // Tirón 2, D3/D4: a quién va, en una línea.
     case "send_whatsapp_number" as NodeType: {
       if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;

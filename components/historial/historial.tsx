@@ -9,19 +9,19 @@ import {
   describeChanges,
   effectiveActorType,
   runHistoryQuery,
-  CALL_ACTION_LABELS,
-  COMMISSION_ACTION_LABELS,
-  FINANCE_ACTION_LABELS,
+  CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
+  COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
+  FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
   FORM_ACTION_LABELS,
   SALE_ACTION_LABELS,
-  TASK_ACTION_LABELS,
+  TASK_ACTION_LABELS, // @plantilla-quitar(tareas)
   type HistoryRow,
 } from "@/lib/audit-history";
 import type { AuditActorType } from "@/lib/types/database";
 
 /**
- * El historial de una entidad (Llamadas, F1). Lo usan Llamadas, Formularios,
- * Ventas, CX y Gastos: por eso es generico.
+ * El historial de una entidad (F1). Lo usan varias pantallas: por eso es
+ * generico.
  *
  * Lee con el cliente del usuario: la RLS decide que se ve. Una persona nunca
  * ve de mas por usar este componente.
@@ -37,12 +37,12 @@ const GENERIC_ACTIONS: Record<string, string> = {
   restore: "restauró",
   link: "vinculó",
   summary: "actualizó el resumen",
-  ...CALL_ACTION_LABELS,
+  ...CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
   ...FORM_ACTION_LABELS,
-  ...COMMISSION_ACTION_LABELS,
-  ...FINANCE_ACTION_LABELS,
+  ...COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
+  ...FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
   ...SALE_ACTION_LABELS,
-  ...TASK_ACTION_LABELS,
+  ...TASK_ACTION_LABELS, // @plantilla-quitar(tareas)
 };
 
 function actionText(action: string): string {

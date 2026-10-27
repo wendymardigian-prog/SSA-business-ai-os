@@ -6,7 +6,7 @@ import { CalendarClock, Loader2, X } from "lucide-react";
 import { updateContact } from "@/lib/actions/contacts";
 import { dateInputToIso, isoToDateInput, formatDateOnly } from "@/lib/dates";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
-import { FollowupTask } from "@/components/tasks/followup-task";
+import { FollowupTask } from "@/components/tasks/followup-task"; // @plantilla-quitar(tareas)
 import { ActionError } from "./ui";
 
 /**
@@ -25,19 +25,19 @@ export function FollowupField({
   contactId,
   value,
   onSaved,
-  canCreateTask,
+  canCreateTask, // @plantilla-quitar(tareas)
   contactName,
 }: {
   contactId: string;
   value: string | null;
   /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
   onSaved?: () => void;
-  /**
-   * Tareas × CRM (R2): si se puede mostrar «Crear tarea» debajo de la fecha. Opcional: sin esto se usa el permiso de
-   * editar tareas del anfitrion de tareas (`ContactTasksProvider`); sin anfitrion, el campo es el de siempre.
-   */
-  canCreateTask?: boolean;
-  /** Para el texto del boton «Crear tarea» (lo lee el lector de pantalla). */
+  /**  @plantilla-quitar(tareas)
+   * Tareas × CRM (R2): si se puede mostrar «Crear tarea» debajo de la fecha. Opcional: sin esto se usa el permiso de  @plantilla-quitar(tareas)
+   * editar tareas del anfitrion de tareas (`ContactTasksProvider`); sin anfitrion, el campo es el de siempre.  @plantilla-quitar(tareas)
+   * @plantilla-quitar(tareas) */
+  canCreateTask?: boolean; // @plantilla-quitar(tareas)
+  /** Para el texto del boton «Crear tarea» (lo lee el lector de pantalla).  @plantilla-quitar(tareas) */
   contactName?: string | null;
 }) {
   const router = useRouter();
@@ -105,7 +105,9 @@ export function FollowupField({
 
       {error && <div className="mt-2"><ActionError message={error} /></div>}
 
+      {/* @plantilla-desde(tareas) */}
       <FollowupTask contactId={contactId} contactName={contactName} followupValue={value} canCreateTask={canCreateTask} />
+      {/* @plantilla-hasta(tareas) */}
     </div>
   );
 }

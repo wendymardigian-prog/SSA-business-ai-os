@@ -10,7 +10,7 @@ import { googleAdapter } from "@/lib/social/google";
 import { linkedinAdapter } from "@/lib/social/linkedin";
 import { threadsAdapter } from "@/lib/social/threads/auth";
 import { googleCalendarAdapter } from "@/lib/social/google-calendar";
-import { fathomAdapter } from "@/lib/fathom/oauth-adapter";
+import { fathomAdapter } from "@/lib/fathom/oauth-adapter"; // @plantilla-quitar(llamadas)
 import type { OAuthAdapter } from "./types";
 
 export const OAUTH_ADAPTERS: Record<OAuthProvider, OAuthAdapter> = {
@@ -18,7 +18,7 @@ export const OAUTH_ADAPTERS: Record<OAuthProvider, OAuthAdapter> = {
   linkedin: linkedinAdapter,
   threads: threadsAdapter,
   google_calendar: googleCalendarAdapter,
-  fathom: fathomAdapter,
+  fathom: fathomAdapter, // @plantilla-quitar(llamadas)
 };
 
 export function getOAuthAdapter(provider: string): OAuthAdapter | undefined {

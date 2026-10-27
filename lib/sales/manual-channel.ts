@@ -32,7 +32,7 @@ import { touchChannel, type TouchChannel } from "@/lib/attribution/channel";
 import { dateInputToIso } from "@/lib/dates";
 import { MEDIUMS, SOURCES } from "@/lib/contacts/taxonomy";
 import type { TouchInput } from "@/lib/contacts/touch";
-import { localDate } from "./dates";
+import { localDate } from "@/lib/shared/dates";
 
 // ── La tabla de canales ──────────────────────────────────────────────────────
 

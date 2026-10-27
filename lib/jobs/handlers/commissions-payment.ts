@@ -14,7 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generatedNotice, reviewNeededNotice } from "@/lib/commissions/notices";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { createNotification, createNotificationOnce } from "@/lib/notifications/create";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import type { Database } from "@/lib/types/database";
 
 type Db = SupabaseClient<Database>;

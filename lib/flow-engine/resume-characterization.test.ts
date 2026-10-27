@@ -3,7 +3,7 @@
  * (Tiron 2, D1). Reproduce lo que hace `/api/cron/jobs` en `resume_flow`: lee la sesion, y llama a
  * `resumeSession` con el contexto que armo el nodo "Esperar" (contacto o persona, canal, conversacion).
  *
- * Fija lo que el cambio no puede mover para los flujos CON contacto y los de persona del equipo (EOD):
+ * Fija lo que el cambio no puede mover para los flujos CON contacto y los de persona del equipo:
  *  1. Esperar -> el siguiente paso corre y la sesion se completa con su `flow_completed`;
  *  2. Esperar -> "Ir a otro flujo": el padre se cierra y el destino abre SU sesion con el mismo contacto;
  *  3. un flujo de persona del equipo retoma con esa persona y saltea (anotando) un paso que necesita contacto.

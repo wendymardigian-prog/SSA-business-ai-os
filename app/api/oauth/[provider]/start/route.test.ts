@@ -30,6 +30,7 @@ const call = (provider: string, qs = "") =>
   GET(new NextRequest(`https://app.test/api/oauth/${provider}/start${qs}`), { params: Promise.resolve({ provider }) });
 
 describe("empezar una conexion como Member", () => {
+  // @plantilla-desde(llamadas)
   it("fathom la puede iniciar cualquier miembro, sin scheduling.use, a su nombre", async () => {
     guards.getPermissionAction.mockResolvedValue(null); // sin ningun permiso
     startOAuth.mockResolvedValue({ ok: true, authorizeUrl: "https://fathom.video/external/v1/oauth2/authorize?x=1", nonce: "n" });
@@ -40,12 +41,15 @@ describe("empezar una conexion como Member", () => {
     expect(startOAuth.mock.calls[0][0].adapter.provider).toBe("fathom");
     expect(guards.getPermissionAction).not.toHaveBeenCalled();
   });
+  // @plantilla-hasta(llamadas)
 
+  // @plantilla-desde(llamadas)
   it("fathom sin sesion da 403", async () => {
     guards.getMemberAction.mockResolvedValue(null);
     expect((await call("fathom")).status).toBe(403);
     expect(startOAuth).not.toHaveBeenCalled();
   });
+  // @plantilla-hasta(llamadas)
 
   it("que fathom no pida permiso NO le abre la puerta a Google Calendar (no regresion)", async () => {
     guards.getPermissionAction.mockResolvedValue(null);

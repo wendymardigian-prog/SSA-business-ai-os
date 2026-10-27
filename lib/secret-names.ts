@@ -49,9 +49,9 @@ export const SECRET_NAMES = {
   linkedinClientSecret: "linkedin_client_secret",
   threadsAppId: "threads_app_id",
   threadsAppSecret: "threads_app_secret",
-  /** La app OAuth de Fathom: cada closer conecta SU cuenta con ella (Llamadas). */
-  fathomClientId: "fathom_client_id",
-  fathomClientSecret: "fathom_client_secret",
+  /** La app OAuth de Fathom: cada closer conecta SU cuenta con ella (Llamadas). */ // @plantilla-quitar(llamadas)
+  fathomClientId: "fathom_client_id", // @plantilla-quitar(llamadas)
+  fathomClientSecret: "fathom_client_secret", // @plantilla-quitar(llamadas)
 
   // ── Servicios de publicacion y metricas ──────────────────────────────────
   postproxyApiKey: "postproxy_api_key",
@@ -59,10 +59,10 @@ export const SECRET_NAMES = {
   /** Token de system user de Meta, para Ads y los insights de Instagram (B5). */
   metaSystemUserToken: "meta_system_user_token",
 
-  // ── Formularios ──────────────────────────────────────────────────────────
-  /** Firma los links de formulario por contacto (HMAC). Se genera la primera vez. */
-  formsLinkSecret: "forms_link_secret",
-
+  // ── Formularios ──────────────────────────────────────────────────────────  @plantilla-quitar(formularios)
+  /** Firma los links de formulario por contacto (HMAC). Se genera la primera vez.  @plantilla-quitar(formularios) */
+  formsLinkSecret: "forms_link_secret", // @plantilla-quitar(formularios)
+ // @plantilla-quitar(formularios)
   // ── Atribución orgánica (Extra I) ────────────────────────────────────────
   /** Firma los links con seguimiento `/l/<token>` de los mensajes de los flujos (HMAC). Se genera la primera vez. */
   attributionLinkSecret: "attribution_link_secret",
@@ -84,6 +84,7 @@ export function oauthSecretName(prefix: string, kind: "access_token" | "refresh_
   return `${prefix}_${kind}`;
 }
 
+// @plantilla-desde(webhooks)
 /**
  * Nombre del secreto opcional del header `x-webhook-secret` de un endpoint de
  * webhooks entrantes. Uno por endpoint: el nombre guarda el id, no el valor.
@@ -91,3 +92,4 @@ export function oauthSecretName(prefix: string, kind: "access_token" | "refresh_
 export function webhookSecretName(endpointId: string): string {
   return `webhook_secret_${endpointId}`;
 }
+// @plantilla-hasta(webhooks)

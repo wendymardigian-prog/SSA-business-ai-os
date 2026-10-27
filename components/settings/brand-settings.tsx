@@ -103,7 +103,8 @@ export function BrandSettings({ initial }: { initial: BrandSettingsInitial }) {
         <h2 className="text-sm font-semibold">Marca</h2>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Lo que ven los leads de este negocio en formularios, contratos, la agenda y los emails, y el logo y el color de este
+        Lo que ven los leads de este negocio en formularios, contratos, la agenda y los emails, y el logo y el color de este {/* @plantilla-quitar(formularios) */}
+        {/* @plantilla-sin(formularios): Lo que ven los leads de este negocio en la agenda y los emails, y el logo y el color de este */}
         panel. Lo que dejes vacío usa la marca de la instalación ({installationBrandName()}).
       </p>
 
@@ -196,7 +197,8 @@ export function BrandSettings({ initial }: { initial: BrandSettingsInitial }) {
         />
         <p className="mt-1 text-[11px] text-muted-foreground">
           Por ejemplo «español rioplatense (vos/tenés)» o «español mexicano (tú)». Lo usan las respuestas, los resúmenes, el
-          análisis de llamadas y el copywriter.
+          análisis de llamadas y el copywriter. {/* @plantilla-quitar(llamadas) */}
+          {/* @plantilla-sin(llamadas): las tareas de IA y el copywriter. */}
         </p>
       </div>
 

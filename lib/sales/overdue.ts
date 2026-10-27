@@ -2,7 +2,7 @@
  * La mora automática (plano F30). Puro: lo usan el handler `payments_overdue_sweep` y los
  * tests de paridad con la función SQL `private.enqueue_payments_overdue_sweep` (00167).
  */
-import { addDays, localHour, localToday } from "./dates";
+import { addDays, localHour, localToday } from "@/lib/shared/dates";
 
 export { localToday };
 

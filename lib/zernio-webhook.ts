@@ -176,7 +176,7 @@ export function generateWebhookSecret(): string {
  *
  * Si no se puede guardar en Vault se lanza, y no se devuelve uno igual:
  * registrar en Zernio un secreto que no quedo guardado deja todos los
- * webhooks entrantes rechazados con 401, y sin nada que lo explique.
+ * webhooks de Zernio rechazados con 401, y sin nada que lo explique.
  */
 export async function getOrCreateWorkspaceWebhookSecret(
   supabase: SupabaseClient,
@@ -225,7 +225,7 @@ export interface ChannelSecretRef {
 }
 
 /**
- * Con que secreto se verifica la firma de un webhook entrante.
+ * Con que secreto se verifica la firma de un webhook de Zernio.
  *
  * **Solo Vault** (`zernio_webhook_secret`). Hasta la 00090 habia dos
  * respaldos —`workspaces.webhook_secret` y `channels.webhook_secret`— que

@@ -61,7 +61,8 @@ export function FunnelCard({ totals, currency }: { totals: AdsTotals; currency: 
           <div className="text-right">
             <span className="text-sm font-bold text-emerald-500">{totals.roas?.toFixed(2)}x</span>
             <span className="ml-2 text-xs text-muted-foreground">
-              ({money(totals.purchaseValue, currency, { narrow: true })} en ventas)
+              ({money(totals.purchaseValue, currency, { narrow: true })} en ventas) {/* @plantilla-quitar(ventas) */}
+              {/* @plantilla-sin(ventas): ({money(totals.purchaseValue, currency, { narrow: true })} en compras) */}
             </span>
           </div>
         </div>

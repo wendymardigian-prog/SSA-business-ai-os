@@ -10,11 +10,11 @@ import { SaleEditDialog, type EditableSale } from "@/components/sales/sale-edit-
 import { SaleOrigin } from "@/components/sales/sale-origin";
 import { StatusChip } from "@/components/sales/sales-list";
 import type { WizardConfig, WizardMember } from "@/components/sales/wizard/types";
-import { describeAttribution, type SaleAttribution } from "@/lib/sales/attribution";
+import { describeAttribution, type SaleAttribution } from "@/lib/attribution/attribution";
 import type { SaleAttributionViewModel } from "@/lib/sales/attribution-view";
 import type { SaleNumbers } from "@/lib/sales/detail";
 import { isLockedForEdit } from "@/lib/sales/edit";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import { ATTRIBUTION_TYPE_LABELS, FINANCING_TYPE_LABELS, PAYMENT_TYPE_LABELS, paymentStatusLabel, type AttributionType, type FinancingType, type PaymentType } from "@/lib/sales/labels";
 import { PaymentPlan } from "@/components/sales/payment-plan";
 import type { TablePayment } from "@/lib/sales/payment-table";

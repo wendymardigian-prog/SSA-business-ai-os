@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
-import { appUrl } from "@/lib/app-url";
-import { SITE_PAGES, buildRobots } from "@/lib/site/pages";
+import { appUrl } from "@/lib/app-url"; // @plantilla-quitar(sitio)
+import { SITE_PAGES, buildRobots } from "@/lib/site/pages"; // @plantilla-quitar(sitio)
 
 /**
  * Sigue bloqueando todo: el sistema es la app, no un sitio web. Las páginas de agenda
@@ -11,5 +11,6 @@ import { SITE_PAGES, buildRobots } from "@/lib/site/pages";
  * exactamente como antes.
  */
 export default function robots(): MetadataRoute.Robots {
-  return buildRobots(SITE_PAGES, appUrl());
+  return buildRobots(SITE_PAGES, appUrl()); // @plantilla-quitar(sitio)
+  // @plantilla-sin(sitio): return { rules: [{ userAgent: "*", disallow: "/" }] };
 }

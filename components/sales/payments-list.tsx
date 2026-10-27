@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { MarkPaidDialog, RescheduleDialog } from "@/components/sales/payment-dialogs";
 import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
 import { DELAY_TONE_CLASSES } from "@/lib/sales/delay";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import { PAYMENT_STATUS_LABELS, PAYMENT_STATUSES, type PaymentStatus } from "@/lib/sales/labels";
 import type { PaymentMethodDef } from "@/lib/sales/payment-methods";
 import {

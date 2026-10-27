@@ -47,6 +47,7 @@ export const NOTIFICATION_TYPES = [
   "conversation_assigned",
   /** Alguien llamó por WhatsApp y nadie atendió (00258). Va al responsable del chat, si no al setter, al vendedor o a Owner/Admin. */
   "whatsapp_call_missed",
+  // @plantilla-desde(llamadas)
   // Llamadas (Fathom + analizador).
   /** Se cayó la conexión de Fathom de una persona: hay que reconectar. Va SOLO a esa persona. */
   "fathom_connection_error",
@@ -54,6 +55,8 @@ export const NOTIFICATION_TYPES = [
   "call_analysis_budget",
   /** El closer no está de acuerdo con una sección del análisis. Va a quienes editan llamadas. */
   "call_objection",
+  // @plantilla-hasta(llamadas)
+  // @plantilla-desde(formularios)
   // Formularios.
   /** Alguien respondió un formulario. Va a quienes eligió el formulario (por defecto, Owner y Admin). */
   "form_submitted",
@@ -62,11 +65,15 @@ export const NOTIFICATION_TYPES = [
   "eod_submitted",
   /** A la hora configurada: a quien le toca y todavía no envió el de hoy (E13). Va SOLO a esa persona. */
   "eod_reminder",
+  // @plantilla-hasta(formularios)
   /** Un flujo mandó un aviso al equipo (nodo "Avisar en la campana"). */
   "flow_notice",
+  // @plantilla-desde(webhooks)
   // Webhooks entrantes.
   /** Un endpoint acumuló 5 envíos con error en una hora. Va a quien lo creó y a Owner/Admin. */
   "webhook_errors",
+  // @plantilla-hasta(webhooks)
+  // @plantilla-desde(tareas)
   // Tareas (Extra A). Todas van a una persona concreta (`recipient_id`), nunca a quien hizo la acción.
   /** Te asignaron una tarea. */
   "task_assigned",
@@ -82,6 +89,8 @@ export const NOTIFICATION_TYPES = [
   "task_due_today",
   /** Una tarea venció y sigue sin completarse. */
   "task_overdue",
+  // @plantilla-hasta(tareas)
+  // @plantilla-desde(finanzas)
   // Finanzas (Extra I). Van a Owner y Admin (sin destinatario concreto).
   /** El trabajo diario venció uno o más gastos. */
   "expense_overdue",
@@ -89,6 +98,8 @@ export const NOTIFICATION_TYPES = [
   "expense_review_pending",
   /** Un gasto automático ya pagado cambió su total después de pagado. */
   "expense_auto_changed",
+  // @plantilla-hasta(finanzas)
+  // @plantilla-desde(comisiones)
   // Comisiones (Extra I). Van a UNA persona concreta (`recipient_id`), nunca a quien hizo el cambio.
   /** Generaste comisiones por una venta (agrupado: una por persona cada 10 minutos). */
   "commission_generated",
@@ -96,6 +107,7 @@ export const NOTIFICATION_TYPES = [
   "commission_payout_paid",
   /** Se revirtió un cobro con comisiones ya liquidadas: revisá si corresponde un ajuste. Va a Owner/Admin. */
   "commission_review_needed",
+  // @plantilla-hasta(comisiones)
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -111,21 +123,23 @@ export type NotificationEntity =
   | "content_post"
   | "booking"
   | "flow"
-  | "fathom"
-  | "call"
+  | "fathom" // @plantilla-quitar(llamadas)
+  | "call" // @plantilla-quitar(llamadas)
+  // @plantilla-desde(formularios)
   | "form_submission"
   /** Un reporte de fin de día enviado (el id del formulario viaja en la metadata). */
   | "eod_report"
   /** Un reporte de fin de día para completar (el id es el del formulario). */
   | "eod_form"
-  /** Un endpoint de webhooks entrantes (el id es el del endpoint). */
-  | "webhook_endpoint"
-  /** Una tarea (el id es el de la tarea). */
-  | "task"
-  /** Un gasto (el id es el del gasto); sin id apunta a la lista filtrada por `metadata.pill`. */
-  | "expense"
-  /** Una comisión (el id es el de la comisión); abre su ficha. */
-  | "commission";
+  // @plantilla-hasta(formularios)
+  /** Un endpoint de webhooks entrantes (el id es el del endpoint).  @plantilla-quitar(webhooks) */
+  | "webhook_endpoint" // @plantilla-quitar(webhooks)
+  /** Una tarea (el id es el de la tarea).  @plantilla-quitar(tareas) */
+  | "task" // @plantilla-quitar(tareas)
+  /** Un gasto (el id es el del gasto); sin id apunta a la lista filtrada por `metadata.pill`.  @plantilla-quitar(finanzas) */
+  | "expense" // @plantilla-quitar(finanzas)
+  /** Una comisión (el id es el de la comisión); abre su ficha.  @plantilla-quitar(comisiones) */
+  | "commission"; // @plantilla-quitar(comisiones)
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -329,6 +343,7 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "booking",
   },
+  // @plantilla-desde(llamadas)
   /** La conexion de Fathom dejo de dar acceso: sin reconectar no entran llamadas nuevas. */
   fathom_connection_error: {
     type: "fathom_connection_error",
@@ -348,6 +363,8 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "info",
     entity: "call",
   },
+  // @plantilla-hasta(llamadas)
+  // @plantilla-desde(formularios)
   /** Una respuesta nueva. No pasa por el motor de flows: llega aunque el contacto esté en "no contactar". */
   form_submitted: {
     type: "form_submitted",
@@ -367,8 +384,10 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "eod_form",
   },
+  // @plantilla-hasta(formularios)
   conversation_assigned: { type: "conversation_assigned", label: "Te asignaron una conversación", tone: "info", entity: "conversation" },
   whatsapp_call_missed: { type: "whatsapp_call_missed", label: "Llamada perdida de WhatsApp", tone: "warning", entity: "conversation" },
+  // @plantilla-desde(tareas)
   task_assigned: { type: "task_assigned", label: "Te asignaron una tarea", tone: "info", entity: "task" },
   task_follow_added: { type: "task_follow_added", label: "Seguís una tarea", tone: "info", entity: "task" },
   task_changed: { type: "task_changed", label: "Cambió una tarea que seguís", tone: "info", entity: "task" },
@@ -376,18 +395,25 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   task_date_moved: { type: "task_date_moved", label: "Se movió la fecha de una tarea", tone: "warning", entity: "task" },
   task_due_today: { type: "task_due_today", label: "Una tarea vence hoy", tone: "warning", entity: "task" },
   task_overdue: { type: "task_overdue", label: "Una tarea está vencida", tone: "warning", entity: "task" },
+  // @plantilla-hasta(tareas)
+  // @plantilla-desde(finanzas)
   expense_overdue: { type: "expense_overdue", label: "Gastos vencidos", tone: "warning", entity: "expense" },
   expense_review_pending: { type: "expense_review_pending", label: "Gastos por revisar", tone: "info", entity: "expense" },
   expense_auto_changed: { type: "expense_auto_changed", label: "Un gasto automático cambió después de pagado", tone: "warning", entity: "expense" },
+  // @plantilla-hasta(finanzas)
+  // @plantilla-desde(comisiones)
   commission_generated: { type: "commission_generated", label: "Generaste comisiones", tone: "success", entity: "commission" },
   commission_payout_paid: { type: "commission_payout_paid", label: "Se pagaron tus comisiones", tone: "success", entity: "commission" },
   commission_review_needed: { type: "commission_review_needed", label: "Un cobro revertido tenía comisiones liquidadas", tone: "warning", entity: "commission" },
+  // @plantilla-hasta(comisiones)
+  // @plantilla-desde(webhooks)
   webhook_errors: {
     type: "webhook_errors",
     label: "Un webhook está fallando",
     tone: "warning",
     entity: "webhook_endpoint",
   },
+  // @plantilla-hasta(webhooks)
   flow_notice: {
     type: "flow_notice",
     label: "Aviso de una automatización",
@@ -445,6 +471,7 @@ export function linkFor(
     case "flow":
       return entityId ? `/dashboard/flows/${entityId}` : "/dashboard/flows";
 
+    // @plantilla-desde(llamadas)
     // Llamadas: la conexion de Fathom se arregla en su pantalla (la ve cualquier
     // miembro; Integraciones es solo de admins), y una llamada abre su ficha.
     case "fathom":
@@ -452,7 +479,9 @@ export function linkFor(
 
     case "call":
       return entityId ? `/dashboard/llamadas/${entityId}` : "/dashboard/llamadas";
+    // @plantilla-hasta(llamadas)
 
+    // @plantilla-desde(formularios)
     // Reportes de fin de día: el enviado abre su detalle; el que falta, la pantalla para completarlo.
     case "eod_report": {
       const formId = metadata?.form_id;
@@ -462,14 +491,18 @@ export function linkFor(
 
     case "eod_form":
       return entityId ? `/dashboard/eod/${entityId}` : "/dashboard/eod";
+    // @plantilla-hasta(formularios)
 
+    // @plantilla-desde(finanzas)
     // Finanzas: un gasto abre su ficha; un aviso agrupado, la lista filtrada por la pastilla que corresponda.
     case "expense": {
       if (entityId) return `/dashboard/finanzas/gastos/${entityId}`;
       const pill = metadata?.pill;
       return typeof pill === "string" ? `/dashboard/finanzas/gastos?pastilla=${encodeURIComponent(pill)}` : "/dashboard/finanzas/gastos";
     }
+    // @plantilla-hasta(finanzas)
 
+    // @plantilla-desde(comisiones)
     // Comisiones: una comisión abre su ficha; un aviso de una venta, la lista filtrada por esa venta.
     case "commission": {
       if (entityId) return `/dashboard/finanzas/comisiones?commission=${entityId}`;
@@ -479,21 +512,28 @@ export function linkFor(
       const saleId = metadata?.sale_id;
       return typeof saleId === "string" ? `/dashboard/finanzas/comisiones?venta=${encodeURIComponent(saleId)}` : "/dashboard/finanzas/comisiones";
     }
+    // @plantilla-hasta(comisiones)
 
+    // @plantilla-desde(tareas)
     // Tareas: abre la tarea en su drawer.
     case "task":
       return entityId ? `/dashboard/tareas?task=${entityId}` : "/dashboard/tareas";
+    // @plantilla-hasta(tareas)
 
+    // @plantilla-desde(webhooks)
     // Webhooks entrantes: el historial del endpoint que falla.
     case "webhook_endpoint":
       return entityId ? `/dashboard/settings/integrations/webhooks/${entityId}` : "/dashboard/settings/integrations/webhooks";
+    // @plantilla-hasta(webhooks)
 
+    // @plantilla-desde(formularios)
     // Formularios: la respuesta abre su detalle (necesita el id del formulario, que viaja en la metadata).
     case "form_submission": {
       const formId = metadata?.form_id;
       if (typeof formId !== "string") return "/dashboard/formularios";
       return entityId ? `/dashboard/formularios/${formId}/respuestas/${entityId}` : `/dashboard/formularios/${formId}/respuestas`;
     }
+    // @plantilla-hasta(formularios)
 
     case "integration":
       // Todas llevan a la pantalla de integraciones, con el filtro puesto:

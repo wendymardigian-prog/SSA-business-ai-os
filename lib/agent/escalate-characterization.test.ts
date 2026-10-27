@@ -1,6 +1,6 @@
 /**
- * Caracterizacion de `escalateToHuman` (Tareas, F24): lo que hace HOY, fijado antes de que la opcion «crear una tarea
- * cuando derive» le sume algo. Con esa opcion apagada (el default) el comportamiento tiene que ser identico a este.
+ * Caracterizacion de `escalateToHuman` (F24): lo que hace con sus opciones por defecto.
+ * Con la opcion «crear una tarea cuando derive» apagada (el default) el comportamiento tiene que ser identico a este.  @plantilla-quitar(tareas)
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { bootstrap, trackEmbedVisit, trackEnvOf, EmbedRuntime, FLOATING_BUTTON_ID, MODAL_ID, type EmbedDocument, type EmbedElement, type EmbedWindow, type AgendaGlobal } from "./embed-source";
-import { decodeAttr } from "@/lib/forms/embed-attr";
+import { decodeAttr } from "@/lib/attribution/embed-attr";
 import { embedMessage } from "./events";
 
 /** DOM de juguete suficiente para el runtime. */

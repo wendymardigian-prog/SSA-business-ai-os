@@ -21,7 +21,7 @@ import { formatUsd } from "@/lib/finance/format";
 import type { ExpenseListData } from "@/lib/finance/list-load";
 import { vendorLabel } from "@/lib/finance/vendors";
 import { amountClasses, categoryOptionGroups, driftNotice, exportHref, exportWarning, expenseStatusClasses, formatCivilDate } from "@/lib/finance/view";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 
 /**
  * Finanzas > Gastos. Todo el estado vive en la URL (`serializeExpenseFilters`): copiar el link muestra lo mismo en

@@ -1,14 +1,14 @@
 /**
  * "Horario normal" vive en dos lugares: defaultWeeklyHours() y la RPC
- * ensure_default_schedule (00096). Este test los mantiene iguales.
+ * ensure_default_schedule. Este test los mantiene iguales.
  */
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { defaultWeeklyHours } from "./availability-schema";
+import { lastFunctionDefinition } from "@/lib/test-utils/migrations";
 
-describe("Horario normal (F3): codigo y migracion coinciden", () => {
-  it("el jsonb de la 00096 es exactamente defaultWeeklyHours()", () => {
-    const sql = readFileSync("supabase/migrations/00096_availability.sql", "utf8");
+describe("Horario normal: codigo y migracion coinciden", () => {
+  it("el jsonb de ensure_default_schedule es exactamente defaultWeeklyHours()", () => {
+    const sql = lastFunctionDefinition("public.ensure_default_schedule")?.sql ?? "";
     const match = sql.match(/'(\{"1":\[.*?\]\})'::jsonb/);
     expect(match).not.toBeNull();
     expect(JSON.parse(match![1])).toEqual(defaultWeeklyHours());

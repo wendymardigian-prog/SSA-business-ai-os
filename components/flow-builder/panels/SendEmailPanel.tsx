@@ -13,7 +13,7 @@ const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 /**
  * El panel de «Enviar email» en el lienzo: a quién (el contacto, una dirección fija o la dirección de una variable), el asunto
  * y el texto. El destino «una variable» (Tirón 2, D4) no necesita contacto: sirve para escribirle a quien llenó un webhook.
- * Los destinos de las pantallas de agenda y de fin de día (anfitrión, equipo) los arma su editor de pasos, no este.
+ * Los destinos propios de otras pantallas (el anfitrión de la agenda, el equipo) los arma su editor de pasos, no este.
  */
 export function SendEmailPanel({
   data: raw,
@@ -38,7 +38,7 @@ export function SendEmailPanel({
           <option value="contact">Al contacto</option>
           <option value="fixed">A una dirección fija</option>
           <option value="variable">A la dirección de una variable</option>
-          {/* Los destinos que arman las pantallas de agenda y de fin de día se conservan si el paso ya los tenía. */}
+          {/* Los destinos que arman otras pantallas se conservan si el paso ya los tenía. */}
           {mode === "host" && <option value="host">Al anfitrión de la reunión</option>}
           {mode === "member" && <option value="member">A quien envió el reporte</option>}
           {mode === "users" && <option value="users">A personas del equipo</option>}
@@ -48,11 +48,13 @@ export function SendEmailPanel({
         )}
         {mode === "variable" && (
           <>
-            <input aria-label="Variable con la dirección" type="text" value={data.toVariable ?? ""} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{webhook.payload.email}}" className={`${inputClass} mt-2 font-mono`} />
+            <input aria-label="Variable con la dirección" type="text" value={data.toVariable ?? ""} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{webhook.payload.email}}" className={`${inputClass} mt-2 font-mono`} /> {/* @plantilla-quitar(webhooks) */}
+            {/* @plantilla-sin(webhooks): <input aria-label="Variable con la dirección" type="text" value={data.toVariable ?? ""} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{contact.email}}" className={`${inputClass} mt-2 font-mono`} /> */}
             <p className="mt-1.5 text-xs text-muted-foreground">Si la variable está vacía o no es un email válido, el paso se saltea y queda anotado. Si la dirección es de un contacto marcado «no contactar», no se manda.</p>
           </>
         )}
-        {mode === "contact" && <p className="mt-1.5 text-xs text-muted-foreground">Necesita un contacto: en un flujo de webhook, poné antes «Crear o actualizar contacto».</p>}
+        {mode === "contact" && <p className="mt-1.5 text-xs text-muted-foreground">Necesita un contacto: en un flujo de webhook, poné antes «Crear o actualizar contacto».</p>} {/* @plantilla-quitar(webhooks) */}
+        {/* @plantilla-sin(webhooks): {mode === "contact" && <p className="mt-1.5 text-xs text-muted-foreground">Necesita un contacto: en un flujo sin contacto, el paso se saltea.</p>} */}
       </div>
 
       <div>

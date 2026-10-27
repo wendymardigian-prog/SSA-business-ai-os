@@ -1,7 +1,6 @@
 /**
- * Punto de entrada de `public/embed/embed.js` (F39). La Tanda B lo compila
- * (esbuild, formato iife) y lo sirve en `/embed/embed.js`. En la tanda A no
- * está integrado al build: solo existe la fuente y sus tests.
+ * Punto de entrada de `public/embed/embed.js` (F39). Se compila (esbuild,
+ * formato iife) y se sirve en `/embed/embed.js`.
  */
 import { bootstrap, type EmbedDocument, type EmbedWindow } from "./embed-source";
 

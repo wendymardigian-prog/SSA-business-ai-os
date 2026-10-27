@@ -213,8 +213,8 @@ export async function generateAiReply(
   // ── La compuerta de interpretabilidad (FA6) ───────────────────────────────
   //
   // El nodo "Respuesta con IA" y los pasos de IA de las secuencias contestaban
-  // a ciegas: filtraban lo ilegible del historial pero generaban igual. Mismo
-  // bug que F10 arreglo para el agente, por otra puerta. Va ANTES de resolver
+  // a ciegas: filtraban lo ilegible del historial pero generaban igual. Es la
+  // misma compuerta del runner del agente, por otra puerta. Va ANTES de resolver
   // el modelo: si no es interpretable, no hace falta ni mirar el BYOK.
   const gate = await checkFlowInterpretability(supabase, {
     workspaceId: request.workspaceId,

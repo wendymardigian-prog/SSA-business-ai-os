@@ -19,8 +19,8 @@ describe("registro de herramientas", () => {
         "cambiar_temperatura",
         // Pipeline (00245): el estado de setter. Nace apagada.
         "cambiar_estado_setter",
-        // Tareas (Extra A, F23): deja una tarea para el equipo.
-        "crear_tarea",
+        // Tareas (Extra A, F23): deja una tarea para el equipo.  @plantilla-quitar(tareas)
+        "crear_tarea", // @plantilla-quitar(tareas)
         "declarar_intencion",
         "derivar_a_humano",
         "etiquetar_contacto",

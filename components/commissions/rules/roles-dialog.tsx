@@ -3,7 +3,7 @@
 import { useId, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { Switch } from "@/components/ui/switch";
 import { updateCommissionRoles } from "@/lib/actions/commission-rules";
 import { payeeLabel, ROLE_NAME_MAX } from "@/lib/commissions/roles";

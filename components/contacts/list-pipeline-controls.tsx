@@ -115,8 +115,8 @@ export function CustomFieldFilter({
 /**
  * Qué columnas opcionales se ven: Estado, Producto y cada campo personalizado.
  * Es una preferencia de cada persona: vive en `localStorage` (siempre en
- * try/catch; sin poder leerlo, las de por defecto). Mismo patrón que las
- * vistas guardadas de Llamadas: `useSyncExternalStore`, así el servidor dibuja
+ * try/catch; sin poder leerlo, las de por defecto). Con
+ * `useSyncExternalStore`, así el servidor dibuja
  * las de por defecto y el navegador las de la persona sin un render de más.
  */
 const COLUMNS_EVENT = "contacts:columns-changed";

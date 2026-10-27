@@ -109,6 +109,7 @@ export const CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS = [
   'Seguimiento: propone volver a contactar solo si quedo algo pendiente (una respuesta, una decision, una fecha que dio el lead). Los dias salen de lo hablado: si dijo "la semana que viene", 7. Si no queda nada pendiente, null.',
 ].join("\n");
 
+// @plantilla-desde(llamadas)
 // ---------------------------------------------------------------------------
 // Llamadas: Clasificación, Análisis y Resumen (lib/calls/*)
 // ---------------------------------------------------------------------------
@@ -165,3 +166,4 @@ export const CALL_SUMMARY_DEFAULT_INSTRUCTIONS = [
   "Memoria del contacto: si recibís la memoria previa, devolvé una memoria INTEGRADA en {{estilo}}, en tercera persona, de hasta {{largo_maximo}} caracteres. Reconciliá: si un dato nuevo contradice o corrige uno de la memoria previa, quedate con el NUEVO y no dejes el viejo; nunca acumules versiones contradictorias. No inventes nada que no esté en la llamada o en la memoria previa.",
   "Escribí en español, con tono profesional y directo.",
 ].join("\n");
+// @plantilla-hasta(llamadas)

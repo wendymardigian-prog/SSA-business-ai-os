@@ -8,7 +8,7 @@
  *
  * Todo en CÉNTIMOS enteros. Un gasto automático es uno por (método o cuenta, mes): `auto_key`.
  */
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { addDays, localDate, monthEnd, monthKey, monthLabel, previousMonthKey, type CivilDate } from "./dates";
 import { isAutoOrigin, type ExpenseStatus } from "./expense-status";
 import type { ChargeMode } from "./settings";

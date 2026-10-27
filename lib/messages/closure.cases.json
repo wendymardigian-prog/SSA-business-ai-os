@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre public.chat_is_closure_message (SQL, 00259) e isClosureMessage (TS, lib/messages/closure.ts). Cada caso corre contra las dos: lib/messages/closure.test.ts y scripts/verify-chat-awaiting.mjs. 'attachments' son los kind de los adjuntos (el SQL los recibe como {v:2, items:[{kind}]}); 'lastReply' es el texto de nuestra ultima respuesta (null = nunca respondimos).",
+  "_comment": "Casos compartidos entre public.chat_is_closure_message (SQL) e isClosureMessage (TS, lib/messages/closure.ts). Cada caso corre contra las dos: lib/messages/closure.test.ts y scripts/verify-chat-awaiting.mjs. 'attachments' son los kind de los adjuntos (el SQL los recibe como {v:2, items:[{kind}]}); 'lastReply' es el texto de nuestra ultima respuesta (null = nunca respondimos).",
   "cases": [
     { "name": "gracias", "text": "gracias", "lastReply": null, "expected": true },
     { "name": "Gracias con mayuscula y signo", "text": "Gracias!", "lastReply": null, "expected": true },

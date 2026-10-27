@@ -42,8 +42,8 @@ describe("diffFields", () => {
   });
 });
 
-// Caracterizacion de logAudit (Llamadas, §4.3): la fila que inserta con la
-// firma de siempre. Llamadas le suma actor_type/actor_label sin romper esto.
+// Caracterizacion de logAudit: la fila que inserta con la firma de siempre,
+// con actor_type/actor_label.
 import { logAudit, auditAsSystem, auditAsWebhook, inferActorType } from "./audit";
 
 function fakeAuditClient(result: { data?: { id: string } | null; error?: { message: string } | null } = { data: { id: "audit-1" }, error: null }) {
@@ -116,17 +116,21 @@ describe("logAudit: el actor (00144)", () => {
     expect(rows[0]).toMatchObject({ actor_type: "user" });
   });
 
+  // @plantilla-desde(llamadas)
   it("auditAsSystem guarda tipo system, la etiqueta y performed_by null", async () => {
     const { client, rows } = fakeAuditClient();
     await auditAsSystem({ supabase: client, workspaceId: "ws-1", entityType: "call", entityId: "x", action: "call.analyzed", label: "Análisis automático" });
     expect(rows[0]).toMatchObject({ actor_type: "system", actor_label: "Análisis automático", performed_by: null });
   });
+  // @plantilla-hasta(llamadas)
 
+  // @plantilla-desde(llamadas)
   it("auditAsWebhook guarda tipo webhook y la etiqueta", async () => {
     const { client, rows } = fakeAuditClient();
     await auditAsWebhook({ supabase: client, workspaceId: "ws-1", entityType: "call", entityId: "x", action: "call.ingested", label: "Fathom" });
     expect(rows[0]).toMatchObject({ actor_type: "webhook", actor_label: "Fathom" });
   });
+  // @plantilla-hasta(llamadas)
 
   it("inferActorType da prioridad al agente", () => {
     expect(inferActorType("u-1", "ag-1")).toBe("agent");

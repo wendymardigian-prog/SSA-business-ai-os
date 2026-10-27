@@ -45,7 +45,8 @@ const svc = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE
 
 const { data: workspaces, error: wsError } = await svc
   .from("workspaces")
-  .select("id, name, persist_zernio_inbound");
+  .select("id, name, persist_zernio_inbound"); // @plantilla-quitar(proyecto)
+  // @plantilla-sin(proyecto):   .select("id, name");
 
 if (wsError) {
   console.error("No pude leer los workspaces:", wsError.message);
@@ -72,12 +73,14 @@ for (const ws of workspaces ?? []) {
   const verbo = APPLY ? "borrados" : "se borrarian";
   console.log(`  ${ws.name}: ${count ?? 0} mensajes entrantes de Zernio ${verbo}`);
 
+  // @plantilla-desde(proyecto)
   if (ws.persist_zernio_inbound) {
     console.log(
       "    OJO: el interruptor de este workspace sigue PRENDIDO. " +
         "Apagalo en Ajustes o el proximo DM se vuelve a guardar.",
     );
   }
+  // @plantilla-hasta(proyecto)
 }
 
 if (!APPLY) {

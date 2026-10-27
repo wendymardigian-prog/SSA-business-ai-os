@@ -1,37 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { GRANTS_REQUIRED_FROM, listMigrations, migrationNumber, readMigration } from "@/lib/test-utils/migrations";
 
 /**
  * Dos cosas que solo se rompen en un Supabase NUEVO (por eso nunca se vieron en
  * la base de produccion, que se armo antes):
  *
- * 1. Desde el 30/5/2026 los proyectos nuevos no le dan acceso automatico a las
- *    tablas de `public` a anon, authenticated y service_role (y el 30/10/2026 el
- *    cambio llega a los proyectos existentes, para objetos nuevos). Las
- *    migraciones viejas lo resuelven con la 00000 (acceso por defecto antes de
- *    crear ninguna tabla). Las nuevas, desde la 00224, declaran sus permisos:
- *    asi no dependen de ningun valor por defecto.
+ * 1. Los proyectos nuevos de Supabase no le dan acceso automatico a las tablas
+ *    de `public` a anon, authenticated y service_role. La primera migracion lo
+ *    resuelve (acceso por defecto antes de crear ninguna tabla), y las tablas
+ *    nuevas, desde `GRANTS_REQUIRED_FROM`, declaran sus permisos: asi no dependen
+ *    de ningun valor por defecto.
  * 2. La CLI (`supabase db push`) no tiene el esquema `extensions` en su
  *    search_path, a diferencia del panel y del conector: un tipo de extension
- *    sin esquema (`vector(1024)`) falla ahi. Fallo la 00083.
+ *    sin esquema (`vector(1024)`) falla ahi.
  */
 
-const MIGRATIONS_DIR = join(process.cwd(), "supabase", "migrations");
-const FIRST_MIGRATION_WITH_EXPLICIT_GRANTS = 224;
-
-const files = readdirSync(MIGRATIONS_DIR)
-  .filter((f) => /^\d+_.*\.sql$/.test(f))
-  .sort();
+const files = listMigrations();
 
 /** El SQL sin comentarios de linea ni de bloque: lo que de verdad se ejecuta. */
 function code(file: string): string {
-  return readFileSync(join(MIGRATIONS_DIR, file), "utf8")
+  return readMigration(file)
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/--.*$/gm, "");
 }
 
-describe("acceso por defecto en un proyecto nuevo (00000)", () => {
+describe("acceso por defecto en un proyecto nuevo (la primera migracion)", () => {
   it("es la primera migracion", () => {
     expect(files[0]).toMatch(/^00000_/);
   });
@@ -45,11 +38,11 @@ describe("acceso por defecto en un proyecto nuevo (00000)", () => {
   });
 });
 
-describe("tablas nuevas (00224 en adelante) declaran sus permisos", () => {
-  const recent = files.filter((f) => Number(f.slice(0, 5)) >= FIRST_MIGRATION_WITH_EXPLICIT_GRANTS);
+describe("las tablas nuevas declaran sus permisos", () => {
+  const recent = files.filter((f) => migrationNumber(f) >= GRANTS_REQUIRED_FROM);
 
   it.each(recent.length ? recent : [null])("%s", (file) => {
-    if (!file) return; // todavia no hay migraciones desde la 00224
+    if (!file) return; // todavia no hay migraciones desde GRANTS_REQUIRED_FROM
     const sql = code(file);
     const tables = [...sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?/gi)].map((m) => m[1]);
     for (const table of tables) {

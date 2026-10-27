@@ -1,7 +1,7 @@
 /**
  * Transcribir un audio de la banca de recursos.
  *
- * Mismo criterio que F7 (lib/chat-media/transcribe-message.test.ts): el claim
+ * Mismo criterio que la transcripcion de los mensajes (lib/chat-media/transcribe-message.test.ts): el claim
  * condicional evita transcribir dos veces. Una correccion manual
  * (transcript_source='manual') no la pisa ningun reintento, y un recurso
  * kind='text' nunca se toca.

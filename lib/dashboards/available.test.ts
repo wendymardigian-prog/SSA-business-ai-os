@@ -11,16 +11,18 @@ describe("B3 · que dashboards se ven", () => {
       "chat",
       "content",
       "agenda",
-      "calls",
+      "calls", // @plantilla-quitar(llamadas)
       "ads",
       "unified",
     ]);
   });
 
+  // @plantilla-desde(llamadas)
   it("Llamadas sale del permiso calls.view y de nada mas", () => {
     expect(availableDashboards(solo("calls.view")).map((d) => d.key)).toEqual(["calls"]);
     expect(availableDashboards(solo("dashboards.agenda.view")).map((d) => d.key)).not.toContain("calls");
   });
+  // @plantilla-hasta(llamadas)
 
   it("Agenda sale de su propio permiso", () => {
     expect(availableDashboards(solo("dashboards.agenda.view")).map((d) => d.key)).toEqual(["agenda"]);

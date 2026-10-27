@@ -5,7 +5,7 @@
  * El porcentaje se pasa a puntos básicos enteros para que ni el 2,9 % entre
  * como flotante a la multiplicación.
  */
-import { fromCents, num, toCents } from "./money";
+import { fromCents, num, toCents } from "@/lib/shared/money";
 import { findMethod, type PaymentMethodDef } from "./payment-methods";
 
 export interface FeeSpec {

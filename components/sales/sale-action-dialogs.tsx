@@ -4,10 +4,10 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { cancelSale, cancelSubscription, rebuildPlan, type SaleActionResult } from "@/lib/actions/sales";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
-import { formatMoney } from "@/lib/sales/format";
-import { toCents } from "@/lib/sales/money";
+import { formatMoney } from "@/lib/shared/format";
+import { toCents } from "@/lib/shared/money";
 import { buildPaymentPlan, type Frequency } from "@/lib/sales/payment-plan";
 
 /** Cancelar la venta o dar de baja la suscripción: pide el motivo y avisa que no se puede deshacer. */

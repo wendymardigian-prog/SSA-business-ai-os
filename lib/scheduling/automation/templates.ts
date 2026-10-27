@@ -42,7 +42,7 @@ export interface FlowTemplate {
 
 /**
  * Los textos, en español rioplatense. Se pueden editar como cualquier flow.
- * Las variables son las de F47.
+ * Las variables son las de la reunion y del contacto.
  */
 export const FLOW_TEMPLATES: FlowTemplate[] = [
   {

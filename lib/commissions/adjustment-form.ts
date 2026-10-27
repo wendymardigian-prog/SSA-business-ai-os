@@ -8,7 +8,7 @@
  */
 import { formatUsd } from "@/lib/finance/format";
 import { parseAmountText } from "@/lib/finance/expense-form";
-import { fromCents } from "@/lib/sales/money";
+import { fromCents } from "@/lib/shared/money";
 import type { RefundSuggestionResult } from "./action-types";
 import { ADJUSTMENT_NOTES_MAX, commissionAdjustmentSchema } from "./adjustment";
 

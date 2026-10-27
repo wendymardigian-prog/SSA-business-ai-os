@@ -1,10 +1,7 @@
 /**
- * Caracterización de `updateSession` ANTES de que Formularios (FO4, F30) abra
- * el área pública del sitio.
+ * Caracterización de `updateSession`: quién va adónde, con y sin sesión.
  *
- * Fija quién va adónde, con y sin sesión. F30 no puede cambiar nada de esto:
- * lo único nuevo es que `/` deja de redirigir al login por código propio de la
- * página (ahora la decide `app/(sitio)/page.tsx`), no por el middleware.
+ * `/` no la decide el middleware: la decide la página (`app/(sitio)/page.tsx`).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";

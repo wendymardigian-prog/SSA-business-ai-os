@@ -56,10 +56,10 @@ export function NewRoleDialog({
       keys: permissions.keys,
       leadsScope: scopes?.leads,
       bookingsScope: scopes?.bookings,
-      callsScope: scopes?.calls,
-      salesScope: scopes?.sales,
-      commissionsScope: scopes?.commissions,
-      tasksScope: scopes?.tasks,
+      callsScope: scopes?.calls, // @plantilla-quitar(llamadas)
+      salesScope: scopes?.sales, // @plantilla-quitar(ventas)
+      commissionsScope: scopes?.commissions, // @plantilla-quitar(comisiones)
+      tasksScope: scopes?.tasks, // @plantilla-quitar(tareas)
       channels: permissions.channels,
     });
     setPending(false);

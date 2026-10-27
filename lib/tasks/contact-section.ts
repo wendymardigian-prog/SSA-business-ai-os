@@ -7,7 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { TASK_COLUMNS } from "./core";
 import { RECENT_COMPLETED, splitOpenDone } from "./contact-tasks";
-import type { TimeFormat } from "./time";
+import type { TimeFormat } from "@/lib/calendar/time";
 import type { TaskRow } from "./types";
 
 type Db = SupabaseClient<Database>;

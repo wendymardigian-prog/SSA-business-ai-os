@@ -131,6 +131,7 @@ describe("cron automation-events (caracterizacion previa a la etapa 4)", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 describe("eventos sin contacto: un reporte de fin de día (E15)", () => {
   const eod = (editCount = 0) => ({ event_type: "eod_submitted", contact_id: null, member_user_id: "u-ana", payload: { report_id: "r-1", form_id: "f-1", report_date: "2026-10-12", edit_count: editCount } });
 
@@ -169,3 +170,4 @@ describe("eventos sin contacto: un reporte de fin de día (E15)", () => {
     expect(db.rows("automation_events")[0].error).toMatch(/no trae contacto/);
   });
 });
+// @plantilla-hasta(formularios)

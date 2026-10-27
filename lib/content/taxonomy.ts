@@ -1,9 +1,8 @@
 /**
  * Pilares y productos: las reglas puras (F89).
  *
- * Los PRODUCTOS (lo que se vende) se llamaban "ofertas": la tabla sigue siendo
- * `products` (Ventas, 00160; antes `content_offers`) y las columnas `offer_id`.
- * Todo lo que ve el usuario dice "producto".
+ * Los PRODUCTOS (lo que se vende) viven en `products`, y las columnas que los
+ * apuntan se llaman `offer_id`. Todo lo que ve el usuario dice "producto".
  *
  * Son listas del negocio que se configuran en Ajustes y se eligen al cargar
  * una idea o una pieza. Tres reglas que el resto del modulo da por hechas:
@@ -234,7 +233,7 @@ export function checkPrice(raw: unknown): PriceCheck {
   return { ok: true, price: Math.round(n * 100) / 100 };
 }
 
-/** "USD 1.500,00", o "Sin precio" para un producto anterior a la 00134. */
+/** "USD 1.500,00", o "Sin precio" si no tiene. */
 export function formatPriceUsd(price: number | null | undefined): string {
   if (price === null || price === undefined) return "Sin precio";
   return `USD ${price.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

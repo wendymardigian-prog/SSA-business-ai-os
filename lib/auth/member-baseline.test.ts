@@ -1,15 +1,13 @@
 /**
- * Lo que HOY puede un Member, fijado antes de tocar nada (F68).
+ * Lo que puede un Member, fijado en una tabla (F68).
  *
- * El bloque 9 cambia como se decide un permiso: de un booleano `role ===
- * "admin"` a una tabla de roles con claves. Es la zona mas delicada del
- * sistema, porque un error hace que alguien vea leads que no son suyos y
- * nadie se entera hasta que pasa.
+ * Un permiso se decide con una tabla de roles con claves, no con un booleano
+ * `role === "admin"`. Es la zona mas delicada del sistema, porque un error hace
+ * que alguien vea leads que no son suyos y nadie se entera hasta que pasa.
  *
- * Este test no prueba el codigo nuevo: prueba el que YA ESTA. Recorre las
- * paginas y las acciones de verdad, mira que guard usa cada una, y lo
- * compara con una tabla escrita a mano. Si el bloque 9 cambia un guard sin
- * querer, este test falla nombrando el archivo.
+ * Este test recorre las paginas y las acciones de verdad, mira que guard usa
+ * cada una, y lo compara con una tabla escrita a mano. Si un cambio toca un
+ * guard sin querer, este test falla nombrando el archivo.
  *
  * La tabla es la fuente: `SYSTEM_ROLE_PERMISSIONS.member` se deriva de ella,
  * no al revés. Así lo que un Member puede después es exactamente lo que
@@ -17,6 +15,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { lastDefinition } from "@/lib/test-utils/migrations";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { NAV_ITEMS, visibleNavItems } from "@/lib/nav/items";
@@ -45,13 +44,14 @@ const MIGRATED_ADMIN_PAGES = [
   ["app/(dashboard)/dashboard/settings/team/page.tsx", "team.view", 'requirePermission("team.view")'],
   // General se parte por permiso: la abre quien tiene `settings.general`, `sales.settings` o `expenses.manage` (el Member, ninguna).
   ["app/(dashboard)/dashboard/settings/custom-fields/page.tsx", "custom_fields.manage", 'requirePermission("custom_fields.manage")'],
-  // Ventas (F36): el historial de todo el workspace; ahora lo ve quien tiene `audit.view`.
+  // El historial de todo el workspace (F36): lo ve quien tiene `audit.view`.
   ["app/(dashboard)/dashboard/settings/actividad/page.tsx", "audit.view", 'requirePermission("audit.view")'],
   ["app/(dashboard)/dashboard/channels/page.tsx", "channels.manage", 'requirePermission("channels.manage")'],
   ["app/(dashboard)/dashboard/dashboards/unified/page.tsx", "dashboards.unified.view", 'requirePermission("dashboards.unified.view")'],
   ["app/(dashboard)/dashboard/knowledge/page.tsx", "knowledge.view", 'requirePermission("knowledge.view")'],
   ["app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx", "knowledge.view", 'requirePermission("knowledge.view")'],
-  ["app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx", "ai_tasks.manage", 'requireAnyPermission(["ai_tasks.manage", "calls.configure"])'],
+  ["app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx", "ai_tasks.manage", 'requireAnyPermission(["ai_tasks.manage", "calls.configure"])'], // @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): ["app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx", "ai_tasks.manage", 'requireAnyPermission(["ai_tasks.manage"])'],
   [
     "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
     "integrations.view",
@@ -60,7 +60,8 @@ const MIGRATED_ADMIN_PAGES = [
   [
     "app/(dashboard)/dashboard/settings/page.tsx",
     "settings.general",
-    'requireAnyPermission(["settings.general", "sales.settings", "expenses.manage"])',
+    'requireAnyPermission(["settings.general", "sales.settings", "expenses.manage"])', // @plantilla-quitar(ventas,finanzas)
+    // @plantilla-sin(ventas,finanzas): 'requireAnyPermission(["settings.general"])',
   ],
 ] as const;
 
@@ -131,7 +132,7 @@ const MEMBER_ACTION_FILES = [
  *
  * Es el unico modulo donde el permiso no es "todo o nada": crea y edita sus
  * piezas, las manda a revision, y NO aprueba ni programa. Ese reparto es lo
- * que el bloque 9 tiene que conservar.
+ * que este test fija.
  */
 const MEMBER_CONTENT = {
   puede: ["create", "isAuthor"],
@@ -147,11 +148,11 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
 
   it("son exactamente once, y estan todas en el repo", () => {
     // El numero importa: si aparece una pagina nueva de Admin sin sumarla
-    // aca, el bloque 9 puede cambiarle el guard sin que nadie lo note.
-    // (Bloque G suma el detalle de una integracion, G5. F78 saca Social y el
-    // dashboard de contenido: pasaron a un permiso. AT4 (F32) saca el dashboard
-    // de Ads: pide `dashboards.ads.view`, que es lo que ya anunciaba `available.ts`.)
-    // Integraciones (la lista) deja de ser de Admin: la abre todo el equipo (M8); por eso son diez.
+    // aca, un cambio de permisos puede cambiarle el guard sin que nadie lo note.
+    // (Bloque G suma el detalle de una integracion, G5. F78 saca Social y el  @plantilla-quitar(proyecto)
+    // dashboard de contenido: pasaron a un permiso. AT4 (F32) saca el dashboard  @plantilla-quitar(proyecto)
+    // de Ads: pide `dashboards.ads.view`, que es lo que ya anunciaba `available.ts`.)  @plantilla-quitar(proyecto)
+    // Integraciones (la lista) no es de Admin: la abre todo el equipo (M8); por eso son diez.
     expect(ADMIN_PAGES.length + MIGRATED_ADMIN_PAGES.length).toBe(10);
     for (const page of [...ADMIN_PAGES, ...MIGRATED_ADMIN_PAGES.map(([p]) => p)]) {
       expect(existsSync(join(ROOT, page)), page).toBe(true);
@@ -200,11 +201,11 @@ const PERMISSION_PAGES = [
   ["app/(dashboard)/dashboard/dashboards/agenda/page.tsx", "dashboards.agenda.view"],
   // Extra L (AT4, F32): el dashboard de Ads pide su permiso, no el cargo (Owner y Admin lo tienen siempre).
   ["app/(dashboard)/dashboard/dashboards/ads/page.tsx", "dashboards.ads.view"],
-  // Ventas (Etapa 5): la lista pide sales.view; el detalle de un producto, la
-  // misma products.manage que la lista de Productos.
-  ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"],
-  // Tareas (Extra A): la pantalla pide tasks.view (el Member de sistema lo tiene).
-  ["app/(dashboard)/dashboard/tareas/page.tsx", "tasks.view"],
+  // Ventas (Etapa 5): la lista pide sales.view.  @plantilla-quitar(ventas)
+  // El detalle de un producto pide la misma products.manage que la lista de Productos.
+  ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"], // @plantilla-quitar(ventas)
+  // Tareas (Extra A): la pantalla pide tasks.view (el Member de sistema lo tiene).  @plantilla-quitar(tareas)
+  ["app/(dashboard)/dashboard/tareas/page.tsx", "tasks.view"], // @plantilla-quitar(tareas)
   ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "products.manage"],
 ] as const;
 
@@ -232,14 +233,12 @@ describe("caracterizacion: la banca de recursos decide por permiso (banca v2, F4
 
   it("crear, editar y borrar piden templates.manage, no el cargo", () => {
     // Antes era getAdminContext: un rol personalizado con la clave no podia
-    // crear nada. La RLS de la 00131 acepta la clave igual que aca.
+    // crear nada. La RLS de response_assets acepta la clave igual que aca.
     expect(source).toContain('const MANAGE = "templates.manage"');
     expect(source).toMatch(/getPermissionAction\(MANAGE\)/);
     expect(source).not.toContain("getAdminContext");
     expect(source).not.toContain("isAdminRole");
-    expect(read("supabase/migrations/00131_response_assets_six_kinds.sql")).toContain(
-      "public.has_permission(workspace_id, 'templates.manage')",
-    );
+    expect(lastDefinition(/public\.has_permission\(workspace_id, 'templates\.manage'(?:::text)?\)/), "la RLS de response_assets").not.toBeNull();
   });
 
   it("el Member de sistema la ve y la usa, pero no la administra", () => {
@@ -303,7 +302,7 @@ describe("caracterizacion: lo que un Member hace en contenido (F68)", () => {
   const review = read("lib/content/review.ts");
 
   it("el reparto de contenido esta escrito en las reglas puras, no en la pantalla", () => {
-    // Si estuviera solo en los componentes, el bloque 9 podria cambiar el
+    // Si estuviera solo en los componentes, un cambio de permisos podria cambiar el
     // permiso sin que ningun test se entere.
     for (const key of [...MEMBER_CONTENT.puede, ...MEMBER_CONTENT.noPuede]) {
       expect(status.includes(key) || review.includes(key), key).toBe(true);
@@ -351,8 +350,9 @@ describe("caracterizacion: el menu (F68)", () => {
     const visibles = memberMenu();
     const ocultas = NAV_ITEMS.map((item) => item.name).filter((n) => !visibles.includes(n)).sort();
 
-    // Cambio aprobado M9 (Extra I): el Member de sistema ve «Finanzas» (tiene commissions.view, para sus
-    // propias comisiones). Sigue sin Social.
+    // Cambio aprobado M9 (Extra I): el Member de sistema ve «Finanzas» (tiene commissions.view, para sus  @plantilla-quitar(comisiones)
+    // propias comisiones). Sigue sin Social.  @plantilla-quitar(comisiones)
+    // @plantilla-sin(comisiones): // El Member de sistema no ve Social.
     expect(ocultas).toEqual(["Social"]);
   });
 
@@ -369,29 +369,42 @@ describe("caracterizacion: el menu (F68)", () => {
       "Contactos",
       "Contenido",
       "Dashboards",
+      // @plantilla-desde(comisiones)
       // Finanzas (Extra I, cambio aprobado M9): el Member de sistema tiene commissions.view (sus comisiones,
       // alcance own). Adentro NO ve las pestañas de gastos (piden expenses.view).
       "Finanzas",
+      // @plantilla-hasta(comisiones)
+      // @plantilla-desde(formularios)
       // Formularios (alcance v7.1 §4.5): el Member de sistema tiene forms.view.
       "Formularios",
+      // @plantilla-hasta(formularios)
+      // @plantilla-desde(llamadas)
       // Llamadas (decision 152): el Member de sistema tiene calls.view.
       "Llamadas",
+      // @plantilla-hasta(llamadas)
+      // @plantilla-desde(formularios)
       // Reporte de fin de día (E10): no pide permiso, pide estar en la audiencia de un
       // EOD publicado (condición del servidor, `requires: "eod"`).
       "Mi reporte del día",
+      // @plantilla-hasta(formularios)
+      // @plantilla-desde(tareas)
       // Tareas (Extra A): el Member de sistema tiene tasks.view (alcance own).
       "Tareas",
+      // @plantilla-hasta(tareas)
+      // @plantilla-desde(ventas)
       // Ventas (Etapa 5): el Member de sistema tiene sales.view (alcance own).
       "Ventas",
+      // @plantilla-hasta(ventas)
     ]);
   });
 });
 
 describe("caracterizacion: el scope de leads en la base (F68)", () => {
-  const migration = read("supabase/migrations/ALL_MIGRATIONS.sql");
+  const migration = read("supabase/migrations/ALL_MIGRATIONS.sql"); // @plantilla-quitar(proyecto)
+  // @plantilla-sin(proyecto): const migration = read("supabase/ALL_MIGRATIONS.sql");
 
   it("can_see_contact y can_see_conversation existen", () => {
-    // Son las dos funciones que el bloque 9 reescribe por dentro. Si
+    // Son las dos funciones que deciden el alcance de leads. Si
     // desaparecieran, el scope de leads dejaria de aplicarse en la base.
     expect(migration).toContain("can_see_contact");
     expect(migration).toContain("can_see_conversation");

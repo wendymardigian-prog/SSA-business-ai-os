@@ -19,7 +19,7 @@
  */
 import { z } from "zod";
 import { wallClockToUtc } from "@/lib/scheduling/time/tz";
-import { addDays, isDateOnly } from "../dates";
+import { addDays, isDateOnly } from "@/lib/shared/dates";
 import { ATTRIBUTION_TYPES, FINANCING_TYPES, PAYMENT_STATUSES, PAYMENT_TYPES, SALE_STATUSES } from "../labels";
 
 export const SALES_TRIGGER_TYPES = [

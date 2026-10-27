@@ -4,7 +4,7 @@ import { applyTriggerChoice, chosenType, filterTriggerChoices, hasTriggerConfig,
 describe("triggerChoices", () => {
   it("Ventas se ofrece con sus atajos y el resto con un tipo por opcion", () => {
     const choices = triggerChoices();
-    expect(choices.some((c) => c.key === "sales:payment_paid" && c.type === "payment_status_changed")).toBe(true);
+    expect(choices.some((c) => c.key === "sales:payment_paid" && c.type === "payment_status_changed")).toBe(true); // @plantilla-quitar(ventas)
     expect(choices.filter((c) => c.type === "keyword")).toHaveLength(1);
   });
 });
@@ -25,10 +25,12 @@ describe("applyTriggerChoice", () => {
     const next = applyTriggerChoice({ label: "Arranque", triggerType: "keyword", keywords: [{ value: "hola" }] }, choice("crm_event"));
     expect(next).toEqual({ label: "Arranque", triggerType: "crm_event", event: "tag_added" });
   });
+  // @plantilla-desde(ventas)
   it("un atajo de Ventas deja elegida su configuracion", () => {
     expect(applyTriggerChoice({}, choice("sales:payment_paid"))).toEqual({ triggerType: "payment_status_changed", to_status: ["paid"] });
     expect(applyTriggerChoice({}, choice("sales:payment_before_due"))).toMatchObject({ offset_days: 3, at_time: "09:00" });
   });
+  // @plantilla-hasta(ventas)
 });
 
 describe("nombres y estado", () => {
@@ -37,7 +39,7 @@ describe("nombres y estado", () => {
     expect(chosenType({})).toBe("keyword");
     expect(triggerDisplayLabel({ triggerType: null })).toBe("Elegí cómo arranca");
     expect(triggerDisplayLabel({ triggerType: "booking_created" })).toBe("Se agendó una reunión");
-    expect(triggerDisplayLabel({ triggerType: "payment_status_changed", to_status: ["paid"] })).toBe("Pago cobrado");
+    expect(triggerDisplayLabel({ triggerType: "payment_status_changed", to_status: ["paid"] })).toBe("Pago cobrado"); // @plantilla-quitar(ventas)
   });
   it("hasTriggerConfig", () => {
     expect(hasTriggerConfig({ triggerType: "keyword", keywords: [], label: "x" })).toBe(false);

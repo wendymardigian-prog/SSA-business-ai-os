@@ -27,7 +27,7 @@ import { TasksTable } from "./tasks-table";
 import { useTaskActions } from "./use-task-actions";
 import { useTasksLayout } from "./use-layout";
 import { TimeFormatProvider } from "./time-format-context";
-import type { TimeFormat } from "@/lib/tasks/time";
+import type { TimeFormat } from "@/lib/calendar/time";
 import { cn } from "@/lib/utils";
 
 export interface TasksScreenProps {

@@ -18,6 +18,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { runCleanup } from "./test-cleanup.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -390,7 +391,7 @@ try {
     check(!ins.error, "se cargan claves en el formato viejo", ins.error?.message);
 
     const migration = "supabase/migrations/00217_webhook_fire_keys.sql";
-    const rerun = () => execFileSync("supabase", ["db", "query", "--linked", "-f", migration], { stdio: "pipe" });
+    const rerun = () => execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-f", migration], { stdio: "pipe" });
     rerun();
     const keysOf = async (trigger) => (await svc.from("trigger_fires").select("dedupe_key").eq("trigger_id", trigger)).data?.map((r) => r.dedupe_key).sort() ?? [];
     const okKeys = await keysOf(okFlow.trigger);

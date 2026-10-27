@@ -1,12 +1,8 @@
 /**
  * Las pestañas de Ajustes, como datos puros (S1).
  *
- * Antes eran cuatro: General, Equipo y roles, Integraciones y Tareas.
- * `custom-fields` y `recursos` tenían ruta propia pero habían quedado
- * afuera del sistema de pestañas. Luego fueron seis y Contenido (pilares y
- * ofertas, F89) hizo siete; esa pestaña hoy es Productos (octubre 2026): se mantiene el mecanismo
- * de sub-rutas (no se migra a `?tab=`) y el patrón de "otras rutas que
- * dejan esta pestaña marcada" (`also`), que ya existía para Roles.
+ * Cada pestaña puede tener sub-rutas (no `?tab=`) y "otras rutas que la
+ * dejan marcada" (`also`), como Roles dentro de Equipo.
  */
 
 export interface SettingsTab {
@@ -22,7 +18,8 @@ export interface SettingsTab {
 }
 
 export const SETTINGS_TABS: SettingsTab[] = [
-  { name: "General", href: "/dashboard/settings", permissions: ["settings.general", "sales.settings", "expenses.manage"] },
+  { name: "General", href: "/dashboard/settings", permissions: ["settings.general", "sales.settings", "expenses.manage"] }, // @plantilla-quitar(ventas,finanzas)
+  // @plantilla-sin(ventas,finanzas): { name: "General", href: "/dashboard/settings", permissions: ["settings.general"] },
   {
     name: "Equipo y roles",
     href: "/dashboard/settings/team",
@@ -48,11 +45,11 @@ export const SETTINGS_TABS: SettingsTab[] = [
     also: ["/dashboard/settings/contenido"],
     permissions: ["products.manage"],
   },
-  // Reglas de asignacion (Ventas, F13): como se asignan solos setter, vendedor y referido.
+  // Reglas de asignacion (F13): como se asignan solos setter, vendedor y referido.
   { name: "Asignación", href: "/dashboard/settings/asignacion", permissions: ["assignment.manage"] },
   { name: "Integraciones", href: "/dashboard/settings/integrations", permissions: ["integrations.view", "integrations.manage", "channels.manage"] },
-  // "Tareas" se mudo a Agentes IA (Bloque Agentes IA): /dashboard/settings/background
-  // ahora solo redirige, ya no es una pestana de Ajustes.
+  // "Tareas" se mudo a Agentes IA (Bloque Agentes IA): /dashboard/settings/background  @plantilla-quitar(proyecto)
+  // ahora solo redirige, ya no es una pestana de Ajustes.  @plantilla-quitar(proyecto)
 ];
 
 /**

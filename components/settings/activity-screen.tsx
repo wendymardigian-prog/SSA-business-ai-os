@@ -7,7 +7,17 @@ import { Bot, ChevronLeft, ChevronRight, Cog, User, Webhook } from "lucide-react
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { ACTOR_TYPE_LABELS, ACTOR_TYPES, ENTITY_TYPE_LABELS, entityHref } from "@/lib/audit-query";
-import { actorName, describeChanges, effectiveActorType, SALE_ACTION_LABELS, CALL_ACTION_LABELS, COMMISSION_ACTION_LABELS, FINANCE_ACTION_LABELS, FORM_ACTION_LABELS, type HistoryRow } from "@/lib/audit-history";
+import {
+  actorName,
+  describeChanges,
+  effectiveActorType,
+  SALE_ACTION_LABELS,
+  CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
+  COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
+  FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
+  FORM_ACTION_LABELS,
+  type HistoryRow,
+} from "@/lib/audit-history";
 import type { AuditActorType } from "@/lib/types/database";
 
 export type ActivityRow = HistoryRow & { entity_type: string; entity_id: string };
@@ -23,7 +33,18 @@ interface Filters {
 }
 
 const ACTOR_ICON: Record<AuditActorType, typeof User> = { user: User, agent: Bot, system: Cog, webhook: Webhook };
-const ACTIONS: Record<string, string> = { create: "creó", update: "editó", delete: "eliminó", restore: "restauró", link: "vinculó", ...CALL_ACTION_LABELS, ...COMMISSION_ACTION_LABELS, ...FINANCE_ACTION_LABELS, ...FORM_ACTION_LABELS, ...SALE_ACTION_LABELS };
+const ACTIONS: Record<string, string> = {
+  create: "creó",
+  update: "editó",
+  delete: "eliminó",
+  restore: "restauró",
+  link: "vinculó",
+  ...CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
+  ...COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
+  ...FINANCE_ACTION_LABELS, // @plantilla-quitar(finanzas)
+  ...FORM_ACTION_LABELS,
+  ...SALE_ACTION_LABELS,
+};
 const selectClass = "h-8 w-full rounded-lg border border-input bg-background px-2 text-sm";
 
 function formatWhen(value: string, timeZone: string): string {
@@ -85,9 +106,11 @@ export function ActivityScreen({
             </Field>
             <Field label="Desde"><input type="date" className={selectClass} value={filters.desde} onChange={(e) => go({ desde: e.target.value })} /></Field>
             <Field label="Hasta"><input type="date" className={selectClass} value={filters.hasta} onChange={(e) => go({ hasta: e.target.value })} /></Field>
-            <Field label="Buscar en el nombre del actor (ej. Job de mora)">
+            <Field label="Buscar en el nombre del actor (ej. Job de mora)"> {/* @plantilla-quitar(ventas) */}
+            {/* @plantilla-sin(ventas): <Field label="Buscar en el nombre del actor (ej. Sistema)"> */}
               <form onSubmit={(e) => { e.preventDefault(); go({ q: text.trim() }); }}>
-                <input className={selectClass} value={text} onChange={(e) => setText(e.target.value)} placeholder="Job de mora" />
+                <input className={selectClass} value={text} onChange={(e) => setText(e.target.value)} placeholder="Job de mora" /> {/* @plantilla-quitar(ventas) */}
+                {/* @plantilla-sin(ventas): <input className={selectClass} value={text} onChange={(e) => setText(e.target.value)} placeholder="Sistema" /> */}
               </form>
             </Field>
             {active && <div className="flex items-end"><button type="button" onClick={() => router.push(pathname)} className="h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent">Limpiar filtros</button></div>}

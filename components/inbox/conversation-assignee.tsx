@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Hand, Loader2 } from "lucide-react";
 import { Avatar, FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
-import { colorOf, initialsOf } from "@/lib/tasks/people";
+import { colorOf, initialsOf } from "@/lib/shared/people";
 import { assigneeControl, assigneeName, assigneeOptions, type TeamMember } from "@/lib/inbox/assignee";
 import { setConversationAssignee } from "@/lib/actions/conversation-assign";
 

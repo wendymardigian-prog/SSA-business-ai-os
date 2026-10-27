@@ -31,7 +31,7 @@ export interface DashboardChrome {
   role: string;
   /** Claves del rol resuelto (Etapa 4): el menu filtra por permiso. */
   permissionKeys?: string[];
-  /** Condiciones del menú calculadas en el servidor ("Mi reporte del día"). */
+  /** Condiciones del menú calculadas en el servidor. */
   navFlags?: NavFlags;
   unreadNotifications: number;
   draftCounts?: PendingDraftCounts;

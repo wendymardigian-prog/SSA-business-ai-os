@@ -22,7 +22,7 @@ import { auditAsSystem } from "@/lib/audit";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { overdueCutoff, SWEEP_SKIPPED_SALE_STATUSES } from "@/lib/sales/overdue";
 import { refreshContactPaymentHealth } from "@/lib/sales/payment-health-run";
-import { isDateOnly } from "@/lib/sales/dates";
+import { isDateOnly } from "@/lib/shared/dates";
 
 type Db = SupabaseClient<Database>;
 

@@ -2,8 +2,8 @@
  * Los textos de botón que salen de la base, para la condición
  * `inbound.is_known_button` (F8, F19).
  *
- * La fuente real es `message_texts.is_button`, que cada negocio edita en
- * Ajustes → Tareas según su propia campaña, y esta función es la que
+ * La fuente real es `message_texts.is_button`, que cada negocio marca
+ * según su propia campaña, y esta función es la que
  * convierte esas filas en lo que la condición espera. `lib/agent/runner.ts`
  * consulta `BUTTON_TEXTS_QUERY` y pasa el resultado como `knownButtonExtra`.
  *

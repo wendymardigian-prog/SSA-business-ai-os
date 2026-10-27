@@ -17,7 +17,7 @@ import { VISIBLE_PERMISSION_KEYS } from "@/lib/auth/permissions";
 
 const ROOT = process.cwd();
 
-/** Claves que todavia no tienen su uso: cada una dice en que bloque llega. Al cerrar B5 esta lista queda VACIA (y asi tiene que seguir). */
+/** Claves que todavia no tienen su uso, cada una con el motivo. Tiene que quedar VACIA. */
 const PENDING: Record<string, string> = {};
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -35,14 +35,15 @@ const EXCLUDED = [
   "lib/auth/roles-admin.ts",
   "lib/roles/templates.ts",
   "lib/types/database.ts",
-  "supabase/migrations/ALL_MIGRATIONS.sql",
+  "supabase/migrations/ALL_MIGRATIONS.sql", // @plantilla-quitar(proyecto)
+  // @plantilla-sin(proyecto): "supabase/ALL_MIGRATIONS.sql",
 ];
 
-/** Sin comentarios (una clave nombrada en un comentario no decide nada) ni las listas de paridad de la 00208. */
+/** Sin comentarios (una clave nombrada en un comentario no decide nada) ni las listas de paridad de permisos. */
 function code(file: string, text: string): string {
   if (file.endsWith(".sql")) {
     return text
-      .replace(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+private\.(?:member_permission_keys|owner_only_keys)\(\)[\s\S]*?\$\$;/gi, "")
+      .replace(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+private\.(?:member_permission_keys|owner_only_keys)\(\)[\s\S]*?\$[A-Za-z_]*\$;/gi, "")
       .split("\n")
       .filter((l) => !l.trimStart().startsWith("--"))
       .join("\n");

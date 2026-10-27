@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bookingAttribution, fillFromRequestCookies, type BookingAttributionInput } from "./attribution";
-import { encodeAttr } from "@/lib/forms/embed-attr";
+import { encodeAttr } from "@/lib/attribution/embed-attr";
 import { encodeCookieValue } from "@/lib/attribution/browser";
 
 const base = (over: Partial<BookingAttributionInput> = {}): BookingAttributionInput => ({

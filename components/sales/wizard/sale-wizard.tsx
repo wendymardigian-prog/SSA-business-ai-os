@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { createSale, getSaleContactContext, type SaleContactContext } from "@/lib/actions/sales";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { Step1Contact, DuplicateSaleWarning, type Step1Values } from "./step1-contact";
 import { Step2Product, discountState, selectedVariant, type Step2Values } from "./step2-product";
 import { Step3Financing } from "./step3-financing";
@@ -17,7 +17,7 @@ import type { WizardVariant } from "@/lib/sales/wizard/catalog";
 import { initialProduct } from "@/lib/sales/wizard/initial-product";
 import { resolveServiceStart } from "@/lib/sales/wizard/service-start";
 import { DEFAULT_ATTRIBUTION_STATE } from "@/lib/sales/attribution-field";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 
 const STEPS = ["Contacto", "Producto y precio", "Financiamiento"] as const;
 

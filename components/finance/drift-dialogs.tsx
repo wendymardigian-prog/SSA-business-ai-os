@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createDriftAdjustment, ignoreDrift } from "@/lib/actions/finance-auto";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { formatUsd } from "@/lib/finance/format";
 import { driftExplanation } from "@/lib/finance/view";

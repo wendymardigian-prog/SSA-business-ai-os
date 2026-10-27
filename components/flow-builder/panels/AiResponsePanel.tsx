@@ -146,8 +146,10 @@ export function AiResponsePanel({ data: rawData, onChange, availableVariables }:
           className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         <p className="mt-1 text-[11px] text-muted-foreground/60">
-          Cómo tiene que comportarse y responder la IA. Podés usar variables: por ejemplo, el nombre del contacto o lo
-          que respondió en un formulario.
+          Cómo tiene que comportarse y responder la IA. Podés usar variables: por ejemplo, el nombre del contacto o lo {/* @plantilla-quitar(formularios) */}
+          que respondió en un formulario. {/* @plantilla-quitar(formularios) */}
+          {/* @plantilla-sin(formularios): Cómo tiene que comportarse y responder la IA. Podés usar variables: por ejemplo, el nombre del contacto o el día */}
+          {/* @plantilla-sin(formularios): de su reunión. */}
         </p>
         <VariableChips variables={availableVariables} onInsert={(token) => onChange({ ...data, systemPrompt: `${data.systemPrompt ?? ""}${token}` })} hint="Tocá una variable para sumarla a las instrucciones." />
       </div>
@@ -205,7 +207,8 @@ export function AiResponsePanel({ data: rawData, onChange, availableVariables }:
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
         <p className="mt-1 text-[11px] text-muted-foreground/60">
-          Cuántos mensajes anteriores de la conversación se le pasan a la IA. Sin conversación (un flujo de agenda o de formulario), ninguno.
+          Cuántos mensajes anteriores de la conversación se le pasan a la IA. Sin conversación (un flujo de agenda o de formulario), ninguno. {/* @plantilla-quitar(formularios) */}
+          {/* @plantilla-sin(formularios): Cuántos mensajes anteriores de la conversación se le pasan a la IA. Sin conversación (un flujo de agenda), ninguno. */}
         </p>
       </div>
 

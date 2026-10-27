@@ -7,14 +7,14 @@
  * pre-renderizado, sin namespaces anidados en el iframe, sin CSS inyectado
  * más allá de estilos inline.
  *
- * NO está integrado al build (tanda A). La Tanda B compila `entry.ts` a
- * `public/embed/embed.js`. Para poder testearlo en Node, el runtime recibe
+ * El build compila `entry.ts` a `public/embed/embed.js`
+ * (`scripts/build-embed.mjs`). Para poder testearlo en Node, el runtime recibe
  * `window` y `document` con una interfaz mínima (`EmbedWindow`,
  * `EmbedDocument`) que el DOM real cumple.
  */
 import { buildEmbedIframeUrl, isFormLink, parentAttributionFromSearch, parentUtmFromSearch, type EmbedConfig, type FormEmbedExtras, type ParentUtm } from "./url";
 import { attributionFromParams, parseCookieHeader } from "@/lib/attribution/collect";
-import { encodeAttr } from "@/lib/forms/embed-attr";
+import { encodeAttr } from "@/lib/attribution/embed-attr";
 import { pageAttribution, trackVisit, type TrackEnv } from "@/lib/attribution/browser";
 import { STORE_KEY } from "@/lib/attribution/store";
 import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";

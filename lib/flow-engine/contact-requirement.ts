@@ -76,16 +76,16 @@ export interface MissingContact {
 /**
  * Los pasos que actúan sobre LA reunión o LA venta que disparó el flujo (no sobre un contacto suelto): leen
  * `event_booking_id` / `event_sale_id` y los demás datos del evento. Un flujo que no arrancó por una reunión o una
- * venta (un webhook, un reporte de fin de día, el sistema) no las tiene, y «Crear o actualizar contacto» no se las da.
+ * venta (un webhook, una persona del equipo, el sistema) no las tiene, y «Crear o actualizar contacto» no se las da.
  * Siguen declarando `needsContact: true` (la reunión y la venta tienen contacto); esto solo corrige lo que se le dice
  * a la persona. Tirón 2, D2.
  */
 export const TRIGGER_ENTITY_NODES: Readonly<Record<string, "reunión" | "venta">> = {
   cancel_booking: "reunión",
   set_booking_status: "reunión",
-  mark_payment_paid: "venta",
-  reschedule_payment: "venta",
-  set_sale_status: "venta",
+  mark_payment_paid: "venta", // @plantilla-quitar(ventas)
+  reschedule_payment: "venta", // @plantilla-quitar(ventas)
+  set_sale_status: "venta", // @plantilla-quitar(ventas)
 };
 
 /** «la reunión» / «la venta» si el paso actúa sobre la del disparador; null si no. */
@@ -169,7 +169,8 @@ export function pathsMissingContact(nodes: GraphNode[], edges: GraphEdge[], subj
 export function missingContactMessage(name: string, nodeType?: string): string {
   const entity = nodeType ? triggerEntityOf(nodeType) : null;
   if (entity) {
-    return `«${name}» actúa sobre la ${entity} que dispara el flujo, y este flujo no arranca por una ${entity}: no tiene ninguna. Solo se puede usar en un flujo que empieza con un disparador de ${entity === "reunión" ? "agenda" : "venta"}.`;
+    return `«${name}» actúa sobre la ${entity} que dispara el flujo, y este flujo no arranca por una ${entity}: no tiene ninguna. Solo se puede usar en un flujo que empieza con un disparador de ${entity === "reunión" ? "agenda" : "venta"}.`; // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): return `«${name}» actúa sobre la ${entity} que dispara el flujo, y este flujo no arranca por una ${entity}: no tiene ninguna. Solo se puede usar en un flujo que empieza con un disparador de agenda.`;
   }
   return `«${name}» necesita un contacto. Poné antes «Crear o actualizar contacto» y conectá este paso a su salida «Listo».`;
 }

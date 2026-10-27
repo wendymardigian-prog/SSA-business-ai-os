@@ -7,7 +7,7 @@ import { Archive, Loader2, Pencil, Plus, RotateCcw, Search, Users } from "lucide
 import { PageHeader } from "@/components/page-header";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { FinanceTabs, ReadOnlyNote } from "@/components/finance/finance-tabs";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { createVendor, setVendorArchived, updateVendor } from "@/lib/actions/finance-vendors";
 import { expensesHref } from "@/lib/finance/expense-filters";
 import { formatUsd } from "@/lib/finance/format";

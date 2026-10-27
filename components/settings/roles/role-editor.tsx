@@ -13,7 +13,8 @@ import {
   type PermissionScope,
   type ScopedModule,
 } from "@/lib/auth/permissions";
-import { applyKeyToggle, eodSelectorValue, moduleState, scopeFieldState, SCOPE_GROUP, toggleModule, type RoleRow } from "@/lib/auth/roles-admin";
+import { applyKeyToggle, eodSelectorValue, moduleState, scopeFieldState, SCOPE_GROUP, toggleModule, type RoleRow } from "@/lib/auth/roles-admin"; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): import { applyKeyToggle, moduleState, scopeFieldState, SCOPE_GROUP, toggleModule, type RoleRow } from "@/lib/auth/roles-admin";
 import { createSaveQueue } from "@/lib/roles/save-queue";
 import { assertCanGrant, type GrantActor } from "@/lib/team/grant";
 import type { ChannelsConfig } from "@/lib/auth/channel-permissions";
@@ -312,12 +313,15 @@ export function RoleEditor({
                 );
               })}
 
+              {/* @plantilla-desde(formularios) */}
               {group === "forms" && (
                 <p className="mb-2 text-[11px] text-muted-foreground">Las respuestas siguen el alcance de Contactos.</p>
               )}
+              {/* @plantilla-hasta(formularios) */}
 
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {perms.map((perm) => {
+                  // @plantilla-desde(formularios)
                   if (perm.key === "eod.view_all") {
                     return (
                       <label key={perm.key} className="col-span-full block text-xs font-medium">
@@ -334,6 +338,7 @@ export function RoleEditor({
                       </label>
                     );
                   }
+                  // @plantilla-hasta(formularios)
                   const checked = keys.includes(perm.key);
                   const blocked = !readOnly && !checked && !canGive(perm.key);
                   const ownerOnly = perm.ownerOnly === true;

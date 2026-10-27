@@ -1,5 +1,5 @@
 /**
- * Ventas F3 a F6: las acciones del catalogo. Fija que sin `products.manage` no
+ * Las acciones del catalogo (F3 a F6). Fija que sin `products.manage` no
  * se escribe nada, que nada se borra (salvo la limpieza de un alta que fallo) y que
  * el precio vive en la variante. El historial NO se escribe aca: lo hace la base
  * (00170, `products-audit.test.ts`).

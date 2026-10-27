@@ -6,7 +6,7 @@ import { CheckCircle2, ListPlus, Loader2 } from "lucide-react";
 import { createTask } from "@/lib/actions/tasks";
 import { suggestedTitle } from "@/lib/tasks/suggest";
 import { TASK_LIMITS } from "@/lib/tasks/types";
-import { FloatingPanel } from "./floating";
+import { FloatingPanel } from "@/components/shared/floating";
 
 /**
  * «Crear tarea» en la bandeja (F20): sobre la conversacion abierta, con el contacto y la conversacion ya vinculados y un

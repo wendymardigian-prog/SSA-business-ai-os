@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { lastDefinition, lastFunctionDefinition } from "@/lib/test-utils/migrations";
 import {
   DEFAULT_CONTACT_STATUSES,
   deriveLastStatus,
@@ -17,13 +16,20 @@ import {
 } from "./statuses";
 
 describe("los estados por defecto", () => {
-  // La 00245 los tiene en su funcion; la 00248, como literal del DEFAULT de la columna (un DEFAULT
-  // que llama a una funcion sin permisos rompia el alta de un workspace).
-  it.each(["00245_contact_statuses.sql", "00248_contact_status_settings_default.sql"])("son los mismos en el código y en %s", (file) => {
-    const sql = readFileSync(join(process.cwd(), "supabase/migrations", file), "utf8");
+  // Viven en la funcion private.default_contact_status_settings() y, ademas, como literal del DEFAULT
+  // de la columna (un DEFAULT que llama a una funcion sin permisos rompe el alta de un workspace).
+  it("son los mismos en el código y en private.default_contact_status_settings()", () => {
+    const sql = lastFunctionDefinition("private.default_contact_status_settings")?.sql ?? "";
     const match = /\$defaults\$([\s\S]*?)\$defaults\$/.exec(sql);
     expect(match).not.toBeNull();
     expect(JSON.parse(match![1])).toEqual(DEFAULT_CONTACT_STATUSES);
+  });
+
+  it("son los mismos en el código y en el DEFAULT de workspaces.contact_status_settings", () => {
+    const found = lastDefinition(/contact_status_settings\s+(?:jsonb\s+)?(?:SET\s+)?DEFAULT\s+(?:\$defaults\$([\s\S]*?)\$defaults\$|'((?:[^']|'')*)')/i);
+    expect(found).not.toBeNull();
+    const literal = found!.match[1] ?? found!.match[2].replace(/''/g, "'");
+    expect(JSON.parse(literal)).toEqual(DEFAULT_CONTACT_STATUSES);
   });
 });
 

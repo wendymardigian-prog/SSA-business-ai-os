@@ -102,7 +102,7 @@ export function auditAsSystem(args: Omit<AuditArgs, "performedBy" | "performedBy
   return logAudit({ ...rest, performedBy: null, performedByAgentId: null, actorType: "system", actorLabel: label });
 }
 
-/** Una accion que llego por un webhook de un proveedor ("Fathom"). */
+/** Una accion que llego por un webhook de un proveedor (su nombre va en `label`). */
 export function auditAsWebhook(args: Omit<AuditArgs, "performedBy" | "performedByAgentId" | "actorType" | "actorLabel"> & { label: string }) {
   const { label, ...rest } = args;
   return logAudit({ ...rest, performedBy: null, performedByAgentId: null, actorType: "webhook", actorLabel: label });

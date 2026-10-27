@@ -748,9 +748,8 @@ async function handleCommentWebhook(
     channel?.platform) as SocialPlatform | undefined;
 
   // La cuenta tambien puede ser una que NO conversa: TikTok no tiene API de
-  // mensajes, asi que no tiene canal, y hasta F46 sus comentarios rebotaban
-  // con un 404. Ahora se busca ademas en social_accounts, que es donde
-  // viven las cuentas de publicacion y metricas.
+  // mensajes, asi que no tiene canal: por eso se busca ademas en
+  // social_accounts, que es donde viven las cuentas de publicacion y metricas.
   // Varias cuentas de la misma red (00236): se busca la cuenta POR SU ID en Zernio, que es la del canal. Para que un
   // workspace con una sola cuenta siga igual, si no hay coincidencia exacta se cae a "la de esa red" (la mas antigua).
   const exactAccount = channel && platform

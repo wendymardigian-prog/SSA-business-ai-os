@@ -3,9 +3,9 @@
  * Puro: la página arma la consulta con esto y la RLS (`can_see_sale_id`) decide qué ve cada
  * persona. Los totales se calculan en céntimos y coinciden con la suma de las filas.
  */
-import { addDays, isDateOnly } from "./dates";
+import { addDays, isDateOnly } from "@/lib/shared/dates";
 import { delayChip, type DelayChip } from "./delay";
-import { fromCents, toCents } from "./money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import { paymentMethodName, type PaymentMethodDef } from "./payment-methods";
 import { PAYMENT_STATUSES, paymentStatusLabel, paymentTypeLabel } from "./labels";
 

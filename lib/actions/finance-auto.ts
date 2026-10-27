@@ -14,7 +14,7 @@ import { findActiveVendorByName, type VendorLite } from "@/lib/finance/vendors";
 import { parseFinanceSettings } from "@/lib/finance/settings";
 import { loadMetaAccounts } from "@/lib/finance/meta-accounts";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
-import { fromCents, toCents } from "@/lib/sales/money";
+import { fromCents, toCents } from "@/lib/shared/money";
 import type { Json } from "@/lib/types/database";
 
 /**

@@ -21,8 +21,7 @@ describe("isNavItemActive: coincide por segmento, no por texto crudo", () => {
   });
 
   it("ya NO matchea un texto que arranca igual pero no es un segmento (el bug de la version vieja)", () => {
-    // Antes esto daba `true` (startsWith de texto crudo). El bloque N lo
-    // corrige como efecto colateral de comparar por segmento (N4).
+    // Con un startsWith de texto crudo daria `true`: se compara por segmento (N4).
     expect(isNavItemActive("/dashboard/contactsnomatch", { href: "/dashboard/contacts" })).toBe(false);
   });
 
@@ -68,6 +67,7 @@ describe("activeNavHref: gana el candidato mas largo (N4)", () => {
     expect(activeNavHref("/dashboard/knowledge/9f0d1b6e", NAV_ITEMS)).toBe("/dashboard/agents");
   });
 
+  // @plantilla-desde(formularios)
   it("Formularios queda marcado en todas sus subrutas (plano formularios-ui, F3)", () => {
     for (const pathname of [
       "/dashboard/formularios",
@@ -79,6 +79,7 @@ describe("activeNavHref: gana el candidato mas largo (N4)", () => {
       expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/formularios");
     }
   });
+  // @plantilla-hasta(formularios)
 
   it("Bandeja queda marcada desde drafts, broadcasts, sequences y growth", () => {
     for (const pathname of ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"]) {
@@ -112,7 +113,7 @@ describe("exactamente un item activo en cualquier ruta real del dashboard (N4)",
   // valor de relleno: lo unico que importa aca es el PREFIJO de la ruta.
   const rutaDeEjemplo = (patron: string) => patron.replace(/\[[^\]]+\]/g, "muestra");
 
-  // Un admin que además está en la audiencia de un EOD: ve el menú entero.
+  // Un admin con todas las banderas: ve el menú entero.
   const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true, settings: true, inbox: true } });
   const member = visibleNavItems(NAV_ITEMS, { permissionKeys: [], flags: { settings: true } });
 

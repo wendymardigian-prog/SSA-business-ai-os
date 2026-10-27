@@ -5,20 +5,21 @@
  * que el editor no ofrece en esa pantalla solo puede venir de algo que ya
  * estaba guardado).
  *
- * Formularios: email (al contacto o a una direccion fija), mensaje, esperar,
- * poner o sacar un tag, y Condiciones.
- * Agenda: lo mismo, mas el email al anfitrion, cambiar el estado de la reunion
+ * Agenda: email (al contacto, al anfitrion o a una direccion fija), mensaje,
+ * esperar, poner o sacar un tag, Condiciones, cambiar el estado de la reunion
  * y cancelarla.
- * Reporte de fin de dia (E15, un flujo SIN contacto): email (a quien envio el reporte,
- * a personas del equipo o a una direccion fija), esperar, avisar en la campana y
- * Condiciones. Nada que necesite un contacto.
+ * Formularios: lo mismo, sin lo de la reunion.  @plantilla-quitar(formularios)
+ * Reporte de fin de dia (E15, un flujo SIN contacto): email (a quien envio el reporte,  @plantilla-quitar(formularios)
+ * a personas del equipo o a una direccion fija), esperar, avisar en la campana y  @plantilla-quitar(formularios)
+ * Condiciones. Nada que necesite un contacto.  @plantilla-quitar(formularios)
  */
 
 import { z } from "zod";
 import { BOOKING_STATUSES, isBookingStatus } from "@/lib/scheduling/booking-status";
 import { actionTypeOf, newStepId, type ActionStep, type NodeData } from "./step-tree";
 
-export type EditorScreen = "forms" | "agenda" | "eod";
+export type EditorScreen = "forms" | "agenda" | "eod"; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): export type EditorScreen = "agenda";
 
 export type ActionKindKey = "email" | "message" | "delay" | "tag_add" | "tag_remove" | "booking_status" | "cancel_booking" | "notify_team";
 
@@ -45,7 +46,8 @@ export const ACTION_KINDS: ActionKind[] = [
     menuLabel: "Enviar un email",
     title: "Email",
     nodeType: "action",
-    screens: ["forms", "agenda", "eod"],
+    screens: ["forms", "agenda", "eod"], // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): screens: ["agenda"],
     matches: (s) => isAction(s, "send_email"),
     blank: () => ({ actionType: "send_email", to: "contact", subject: "", body: "" }),
   },
@@ -54,7 +56,8 @@ export const ACTION_KINDS: ActionKind[] = [
     menuLabel: "Enviar un mensaje",
     title: "Mensaje",
     nodeType: "sendMessage",
-    screens: ["forms", "agenda"],
+    screens: ["forms", "agenda"], // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): screens: ["agenda"],
     matches: (s) => s.nodeType === "sendMessage",
     blank: () => ({ messages: [{ text: "" }], onlyIfPhone: true }),
   },
@@ -63,7 +66,8 @@ export const ACTION_KINDS: ActionKind[] = [
     menuLabel: "Esperar un tiempo",
     title: "Esperar",
     nodeType: "delay",
-    screens: ["forms", "agenda", "eod"],
+    screens: ["forms", "agenda", "eod"], // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): screens: ["agenda"],
     matches: (s) => s.nodeType === "delay",
     blank: () => ({ duration: 1, unit: "hours" }),
   },
@@ -72,7 +76,8 @@ export const ACTION_KINDS: ActionKind[] = [
     menuLabel: "Agregar un tag",
     title: "Agregar un tag",
     nodeType: "action",
-    screens: ["forms", "agenda"],
+    screens: ["forms", "agenda"], // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): screens: ["agenda"],
     matches: (s) => isAction(s, "addTag"),
     blank: () => ({ actionType: "addTag", tagName: "" }),
   },
@@ -81,7 +86,8 @@ export const ACTION_KINDS: ActionKind[] = [
     menuLabel: "Quitar un tag",
     title: "Quitar un tag",
     nodeType: "action",
-    screens: ["forms", "agenda"],
+    screens: ["forms", "agenda"], // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): screens: ["agenda"],
     matches: (s) => isAction(s, "removeTag"),
     blank: () => ({ actionType: "removeTag", tagName: "" }),
   },
@@ -108,19 +114,20 @@ export const ACTION_KINDS: ActionKind[] = [
     menuLabel: "Avisar en la campana",
     title: "Aviso en la campana",
     nodeType: "action",
-    screens: ["eod"],
+    screens: ["eod"], // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): screens: [],
     matches: (s) => isAction(s, "notify_team"),
     blank: () => ({ actionType: "notify_team", to: "users", userIds: [], title: "", body: "" }),
   },
 ];
 
-/**
- * El primer paso nuevo de una pantalla: en un reporte de fin de día el email no puede ir
- * "al contacto" (no hay), arranca yendo a quien envió el reporte.
- */
+/**  @plantilla-quitar(formularios)
+ * El primer paso nuevo de una pantalla: en un reporte de fin de día el email no puede ir  @plantilla-quitar(formularios)
+ * "al contacto" (no hay), arranca yendo a quien envió el reporte.  @plantilla-quitar(formularios)
+  @plantilla-quitar(formularios) */
 export function blankFor(kind: ActionKind, screen: EditorScreen): NodeData {
   const data = kind.blank();
-  if (screen === "eod" && kind.key === "email") return { ...data, to: "member" };
+  if (screen === "eod" && kind.key === "email") return { ...data, to: "member" }; // @plantilla-quitar(formularios)
   return data;
 }
 
@@ -157,7 +164,7 @@ export const EMAIL_RECIPIENT_LABELS: Record<string, string> = {
   contact: "al contacto",
   host: "al anfitrión",
   fixed: "a una dirección fija",
-  member: "a quien envió el reporte",
+  member: "a quien envió el reporte", // @plantilla-quitar(formularios)
   users: "a personas del equipo",
 };
 
@@ -168,17 +175,17 @@ export function emailRecipientsFor(screen: EditorScreen): EmailRecipient[] {
   switch (screen) {
     case "agenda":
       return ["contact", "host", "fixed"];
-    case "forms":
-      return ["contact", "fixed"];
-    case "eod":
-      return ["member", "users", "fixed"];
+    case "forms": // @plantilla-quitar(formularios)
+      return ["contact", "fixed"]; // @plantilla-quitar(formularios)
+    case "eod": // @plantilla-quitar(formularios)
+      return ["member", "users", "fixed"]; // @plantilla-quitar(formularios)
   }
 }
 
 export const NOTIFY_RECIPIENT_LABELS: Record<string, string> = {
   users: "a personas elegidas",
-  reporter: "a quien envió el reporte",
-  both: "a quien envió el reporte y a personas elegidas",
+  reporter: "a quien envió el reporte", // @plantilla-quitar(formularios)
+  both: "a quien envió el reporte y a personas elegidas", // @plantilla-quitar(formularios)
 };
 
 /** Los nombres de los nodos que el editor no edita, para mostrarlos con algo mas que su clave. */
@@ -195,9 +202,9 @@ const OTHER_LABELS: Record<string, string> = {
   sendAsset: "Enviar un recurso",
   aiResponse: "Respuesta del agente de IA",
   smartDelay: "Espera inteligente",
-  mark_payment_paid: "Marcar el pago como cobrado",
-  reschedule_payment: "Reprogramar el pago",
-  set_sale_status: "Cancelar la venta",
+  mark_payment_paid: "Marcar el pago como cobrado", // @plantilla-quitar(ventas)
+  reschedule_payment: "Reprogramar el pago", // @plantilla-quitar(ventas)
+  set_sale_status: "Cancelar la venta", // @plantilla-quitar(ventas)
 };
 
 /** "Email al contacto", "Esperar 2 horas": el resumen de un paso. */

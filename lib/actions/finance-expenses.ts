@@ -11,7 +11,7 @@ import { planCreateExpense, planPayExpense, planRevertExpense, planUpdateExpense
 import { EXPENSE_RECEIPT_BUCKET, RECEIPT_SIGNED_URL_SECONDS, checkExpenseReceipt, receiptPath, receiptPathBelongsTo } from "@/lib/finance/receipts";
 import { payoutPaidNotice } from "@/lib/commissions/notices";
 import { createNotification } from "@/lib/notifications/create";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import type { Json } from "@/lib/types/database";
 
 /**

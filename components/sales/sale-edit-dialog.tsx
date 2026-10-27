@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X } from "lucide-react";
 import { updateSale, type SaleActionResult } from "@/lib/actions/sales";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { AttributionField } from "@/components/sales/attribution-field";
 import { ContactSearch } from "@/components/sales/wizard/step1-contact";
 import { discountState } from "@/components/sales/wizard/step2-product";
@@ -12,7 +12,7 @@ import type { WizardConfig } from "@/components/sales/wizard/types";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { DEFAULT_ATTRIBUTION_STATE, type AttributionFieldState } from "@/lib/sales/attribution-field";
 import { isLockedForEdit, LOCKED_REASON } from "@/lib/sales/edit";
-import { formatMoney } from "@/lib/sales/format";
+import { formatMoney } from "@/lib/shared/format";
 import { snapshotProductId } from "@/lib/sales/sale-text";
 
 export interface EditableSale {

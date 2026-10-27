@@ -1,15 +1,14 @@
 /**
- * Caracterización de `sanitizeRaw` / `recordTouch` ANTES de que el módulo
- * Formularios (FO4, F33) sume claves a la lista blanca.
+ * Caracterización de `sanitizeRaw` / `recordTouch`.
  *
- * Fija lo que hoy se guarda en `raw` para los tres orígenes que ya existen:
+ * Fija lo que se guarda en `raw` para estos tres orígenes:
  *  - la Agenda: su toque se arma en SQL (`create_booking`) y su `raw` es
  *    `{ utm, booking_origin }`; no pasa por `sanitizeRaw`, pero su FORMA es la
  *    que tiene que seguir sobreviviendo si algún día pasara;
  *  - un DM de Zernio (`lib/contacts/touch-inbound.ts`);
  *  - un comentario de Zernio (`lib/comments/attribution.ts`).
  *
- * F33 solo puede SUMAR claves. Si alguno de estos casos cambia, se rompió algo
+ * Lo nuevo solo puede SUMAR claves. Si alguno de estos casos cambia, se rompió algo
  * que no era parte del módulo.
  */
 import { describe, it, expect, vi } from "vitest";

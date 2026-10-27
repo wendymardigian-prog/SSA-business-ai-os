@@ -1,10 +1,8 @@
 /**
  * Tipos del módulo de agendamiento (Etapa 4), según §9 del plano.
  *
- * Son tipos propios del módulo, no los generados desde la base: la tanda A se
- * construye antes de que existan las tablas. Cuando la Tanda B genere
- * `lib/types/database.ts`, estos tipos se mantienen como la "forma" que
- * esperan las funciones puras, y la capa de datos adapta las filas a ellos.
+ * Son tipos propios del módulo, no los generados desde la base: son la "forma"
+ * que esperan las funciones puras, y la capa de datos adapta las filas a ellos.
  *
  * Convenciones:
  * - Todo instante va en UTC como string ISO (`2026-10-06T18:30:00.000Z`).
@@ -130,8 +128,7 @@ export interface UnavailableMessages {
 }
 
 /**
- * `event_types` (§9.3). Solo los campos que usan las funciones puras; la
- * Tanda B suma los ids de relaciones que necesite.
+ * `event_types` (§9.3). Solo los campos que usan las funciones puras.
  */
 export interface EventType {
   id: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadTaskNodeOptions } from "@/lib/actions/tasks";
+import { loadTeamMemberOptions } from "@/lib/actions/flow-node-options";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
 import { VariableChips } from "./variable-chips";
 
@@ -11,14 +11,13 @@ const labelClass = "mb-2 block text-xs font-semibold text-foreground";
 type PanelProps = { data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void; availableVariables?: string[] };
 
 /**
- * «Avisar en la campana» en el lienzo (antes solo se configuraba desde el editor de pasos de Formularios y la Agenda:
- * en el lienzo decía «No configuration available» y el paso no hacía nada).
+ * «Avisar en la campana» en el lienzo.
  */
 export function NotifyTeamPanel({ data, onChange, availableVariables }: PanelProps) {
   const [members, setMembers] = useState<Array<{ id: string; name: string }> | null>(null);
   useEffect(() => {
     let alive = true;
-    loadTaskNodeOptions()
+    loadTeamMemberOptions()
       .then((o) => alive && setMembers(o.members))
       .catch(() => alive && setMembers([]));
     return () => {
@@ -35,8 +34,8 @@ export function NotifyTeamPanel({ data, onChange, availableVariables }: PanelPro
         <label htmlFor="nt-to" className={labelClass}>Para</label>
         <select id="nt-to" value={to} onChange={(e) => onChange({ ...data, to: e.target.value })} className={inputClass}>
           <option value="users">Personas elegidas</option>
-          <option value="reporter">Quien envió el reporte (flujos de fin de día)</option>
-          <option value="both">Quien envió el reporte y personas elegidas</option>
+          <option value="reporter">Quien envió el reporte (flujos de fin de día)</option> {/* @plantilla-quitar(formularios) */}
+          <option value="both">Quien envió el reporte y personas elegidas</option> {/* @plantilla-quitar(formularios) */}
         </select>
       </div>
       {to !== "reporter" && (

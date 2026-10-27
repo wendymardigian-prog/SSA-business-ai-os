@@ -18,10 +18,10 @@ export const AI_TASK_IDS = [
   "audio_transcription",
   "media_description",
   "ads_analysis",
-  // Llamadas (Fathom + analizador): tres tareas, dos con configuracion propia.
-  "call_classification",
-  "call_analysis",
-  "call_summary",
+  // Llamadas (Fathom + analizador): tres tareas, dos con configuracion propia. // @plantilla-quitar(llamadas)
+  "call_classification", // @plantilla-quitar(llamadas)
+  "call_analysis", // @plantilla-quitar(llamadas)
+  "call_summary", // @plantilla-quitar(llamadas)
 ] as const;
 
 export type AiTaskId = (typeof AI_TASK_IDS)[number];
@@ -90,11 +90,11 @@ export interface AiTaskDef {
   detailLike?: string;
   /** La clave en `BackgroundSettings`, solo cuando `configurable` es true y la tarea tiene modo por lote. */
   backgroundTask?: BackgroundTask;
-  /**
-   * Las tareas de Llamadas con configuracion propia (reglas, rubrica, categorias…).
-   * Viven en `ai_background_settings` pero NO en `BackgroundSettings`: tienen su
-   * propio esquema (`lib/calls/task-settings.ts`) y nunca van por lote.
-   */
+  /**  @plantilla-quitar(llamadas)
+   * Las tareas de Llamadas con configuracion propia (reglas, rubrica, categorias…).  @plantilla-quitar(llamadas)
+   * Viven en `ai_background_settings` pero NO en `BackgroundSettings`: tienen su  @plantilla-quitar(llamadas)
+   * propio esquema (`lib/calls/task-settings.ts`) y nunca van por lote.  @plantilla-quitar(llamadas)
+  @plantilla-quitar(llamadas) */
   callTask?: "call_classification" | "call_analysis";
 }
 
@@ -216,6 +216,7 @@ const BASE_TASKS: Record<Exclude<AiTaskId, CallTaskId>, AiTaskDef> = {
   },
 };
 
+// @plantilla-desde(llamadas)
 /** Tareas nuevas de Llamadas, al final del objeto para no mover el orden de las anteriores. */
 const CALL_TASKS: Record<CallTaskId, AiTaskDef> = {
   call_classification: {
@@ -263,7 +264,9 @@ const CALL_TASKS: Record<CallTaskId, AiTaskDef> = {
     source: "call_summary",
   },
 };
-export const AI_TASKS: Record<AiTaskId, AiTaskDef> = { ...BASE_TASKS, ...CALL_TASKS };
+// @plantilla-hasta(llamadas)
+export const AI_TASKS: Record<AiTaskId, AiTaskDef> = { ...BASE_TASKS, ...CALL_TASKS }; // @plantilla-quitar(llamadas)
+// @plantilla-sin(llamadas): export const AI_TASKS: Record<AiTaskId, AiTaskDef> = { ...BASE_TASKS };
 
 /** La etiqueta corta de cómo corre, para la tarjeta de la lista. */
 export function controlLabel(task: AiTaskDef): string {

@@ -3,7 +3,7 @@
  * pago. Todo en CÉNTIMOS (`toCents`), nunca con un `SUM` de flotantes en el navegador. Más el filtro de la lista
  * y el borrador del formulario.
  */
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { COMMON_COUNTRIES, VENDOR_NOTES_MAX, type VendorInput } from "./vendors";
 
 export interface PaidExpenseRow {

@@ -46,7 +46,10 @@ export function staticTriggerVariables(triggerType: string | null | undefined): 
 }
 
 /** Disparadores cuyos flujos no tienen contacto al arrancar (las variables del contacto no aplican al principio). */
-const NO_CONTACT_AT_START = new Set(["webhook_received", "eod_submitted"]);
+const NO_CONTACT_AT_START = new Set<string>([
+  "webhook_received", // @plantilla-quitar(webhooks)
+  "eod_submitted", // @plantilla-quitar(formularios)
+]);
 
 export interface PickerVariablesInput {
   triggerType: string | null | undefined;
@@ -85,8 +88,8 @@ export function firstNameOf(displayName: string | null | undefined): string {
 }
 
 /**
- * Las variables del contacto y del negocio que el motor siembra (sin pisar lo que ya vino del disparador: Ventas trae
- * sus propias `contact.*`). Puro: el motor le pasa lo que leyo.
+ * Las variables del contacto y del negocio que el motor siembra (sin pisar lo que ya vino del disparador, que puede
+ * traer sus propias `contact.*`). Puro: el motor le pasa lo que leyo.
  */
 export function seedContactVariables(
   variables: Record<string, unknown>,

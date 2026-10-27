@@ -3,9 +3,9 @@
  * activas, con el precio de la variante a la vista. Una variante sin precio (0) no se ofrece, y se
  * dice por qué. Puro.
  */
-import { priceOrNull } from "@/lib/sales/catalog/price";
-import { normalizeProductType, variantTiming, type VariantTiming } from "@/lib/sales/catalog/products";
-import { describeBilling, describeTiming } from "@/lib/sales/catalog/variants";
+import { priceOrNull } from "@/lib/catalog/price";
+import { normalizeProductType, variantTiming, type VariantTiming } from "@/lib/catalog/products";
+import { describeBilling, describeTiming } from "@/lib/catalog/variants";
 
 export interface WizardVariant {
   id: string;

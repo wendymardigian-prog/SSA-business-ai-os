@@ -13,8 +13,8 @@ import { getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { parsePermissions, systemRolePermissions } from "@/lib/auth/permissions";
 import { assertCanAssignRole, grantActorOf, type RoleToGive } from "@/lib/team/grant";
 import { canResend, inviteState, invalidInviteMessage, renewedExpiry } from "@/lib/team/invite-state";
-import { validateCloserEmails } from "@/lib/fathom/closers";
-import { revokeFathomConnectionsOf } from "@/lib/fathom/revoke";
+import { validateCloserEmails } from "@/lib/fathom/closers"; // @plantilla-quitar(llamadas)
+import { revokeFathomConnectionsOf } from "@/lib/fathom/revoke"; // @plantilla-quitar(llamadas)
 import { memberDisplayName } from "@/lib/workspace-members";
 
 /**
@@ -357,6 +357,7 @@ export async function removeTeamMember(workspaceId: string, userId: string): Pro
     action: "delete", metadata: { kind: "member_removed", role: target.role }, performedBy: ctx.user.id,
   });
 
+  // @plantilla-desde(llamadas)
   // Llamadas: su Fathom se desconecta con la persona (sus llamadas quedan, son
   // del negocio). Un paso posterior y aparte: si falla, salir del equipo ya paso.
   try {
@@ -364,6 +365,7 @@ export async function removeTeamMember(workspaceId: string, userId: string): Pro
   } catch (err) {
     console.error("[equipo] no pude revocar el Fathom de quien salió:", err instanceof Error ? err.message : "error");
   }
+  // @plantilla-hasta(llamadas)
 
   revalidatePath("/dashboard/settings/team");
   return { ok: true };
@@ -669,6 +671,7 @@ export async function setMemberRole(input: {
   return { ok: true };
 }
 
+// @plantilla-desde(llamadas)
 /**
  * Marcar a una persona como closer y cargar sus correos alternos (F4).
  *
@@ -737,3 +740,4 @@ export async function setMemberCloser(input: {
   revalidatePath("/dashboard/settings/team");
   return { ok: true, emails: checked.emails };
 }
+// @plantilla-hasta(llamadas)

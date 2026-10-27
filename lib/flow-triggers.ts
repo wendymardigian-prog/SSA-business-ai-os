@@ -41,9 +41,8 @@ function isPersistableTriggerType(type: string): boolean {
 
 /**
  * Todos los tipos cuyas filas (sin canal) arma el editor al publicar: son los que
- * publicar y despublicar reconcilian. Antes se borraban solo los de mensaje y los de
- * Ventas, y cada republicacion de un flujo de agenda, formulario, CRM, tareas o webhook
- * dejaba UNA FILA MAS: el flujo corria una vez por cada vez que se habia publicado.
+ * publicar y despublicar reconcilian. Si no, cada republicacion de un flujo dejaria
+ * UNA FILA MAS: el flujo correria una vez por cada vez que se habia publicado.
  */
 export function persistableTriggerTypes(): TriggerType[] {
   const types = new Set<string>(BUILDER_TRIGGER_TYPES);

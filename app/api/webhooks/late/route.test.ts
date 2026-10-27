@@ -523,9 +523,8 @@ describe("webhook de Zernio: comentarios", () => {
   });
 
   it("una cuenta que no es un canal responde 404", async () => {
-    // Hoy la cuenta se busca SOLO en channels, y no puede existir un canal de
-    // TikTok: por eso un comentario de TikTok rebota. F46 agrega la busqueda en
-    // social_accounts, y este caso pasa a ser "cuenta que no es de nadie".
+    // Una cuenta que no es un canal ni una cuenta de social_accounts no es de
+    // nadie: el comentario rebota.
     db({ channels: [channelRow({ late_account_id: "cuenta-de-tiktok" })] });
     const res = await callRoute(post(comment()));
 

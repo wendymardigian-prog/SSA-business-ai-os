@@ -2,9 +2,9 @@
  * Catálogo de estados de agenda (F32), definido por Ana. Cada estado tiene
  * clave, etiqueta, color, orden y grupo; el sistema decide por el grupo.
  *
- * `BOOKING_STATUS_KEYS` es la lista canónica: la Tanda B la compara con el
- * CHECK de `bookings.status` en un test, y el CASE de la columna calculada
- * `status_group` sale de `groupOf`.
+ * `BOOKING_STATUS_KEYS` es la lista canónica, la misma del CHECK de
+ * `bookings.status`; el CASE de la columna calculada `status_group` sale de
+ * `groupOf`.
  */
 import type { Booking, BookingStatus, StatusGroup } from "./types";
 

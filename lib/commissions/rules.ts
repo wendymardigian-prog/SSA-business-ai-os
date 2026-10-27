@@ -12,7 +12,7 @@
  *   - Sin condiciones implícitas de canal: si «Contenido» tiene que pagar solo lo orgánico, la regla lo dice.
  */
 import { decodeUtm } from "@/lib/attribution/meta-match";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import {
   UTM_DIMENSIONS,
   type CommissionFacts,

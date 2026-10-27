@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { checkValues } from "@/lib/test-utils/migrations";
 import { listNodes, resolveNodeType, listTriggers } from "./index";
 import { CONTACT_FREE_NODE_TYPES, MEMBER_TRIGGER_TYPES, SYSTEM_TRIGGER_TYPES } from "../contact-free";
 import { AUTOMATION_SOURCE_TYPES } from "./types";
@@ -93,18 +94,10 @@ describe("el catalogo de disparadores, el registro y la base dicen lo mismo", ()
   });
 
   it("el CHECK vigente de triggers.type en la base acepta exactamente los tipos del catalogo", () => {
-    const dir = resolve(__dirname, "../../../supabase/migrations");
-    const files = readdirSync(dir).filter((f) => /^\d{5}_.*\.sql$/.test(f)).sort();
-    let ultimo: string | null = null;
-    for (const file of files) {
-      // Sin los comentarios: las cabeceras copian la definicion vieja para poder volver atras.
-      const sql = readFileSync(resolve(dir, file), "utf8").replace(/--.*$/gm, "");
-      const matches = [...sql.matchAll(/ADD CONSTRAINT triggers_type_check([\s\S]*?);/gi)];
-      if (matches.length > 0) ultimo = matches[matches.length - 1][1];
-    }
+    // La ultima definicion (sin comentarios: las cabeceras copian la vieja para poder volver atras).
+    const ultimo = checkValues("triggers_type_check");
     expect(ultimo, "no encontre el CHECK de triggers.type en las migraciones").not.toBeNull();
-    const enLaBase = [...ultimo!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
-    expect(enLaBase).toEqual([...ofrecidos].sort());
+    expect([...ultimo!.values].sort()).toEqual([...ofrecidos].sort());
   });
 });
 
@@ -150,7 +143,8 @@ describe("cada nodo declara si necesita un contacto (EOD, E15)", () => {
       .filter((n) => !n.needsContact)
       .map((n) => n.type)
       .sort();
-    expect(libres).toEqual(["abSplit", "branch", "complete_task", "create_task", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "send_whatsapp_number", "upsert_contact"]);
+    expect(libres).toEqual(["abSplit", "branch", "complete_task", "create_task", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "send_whatsapp_number", "upsert_contact"]); // @plantilla-quitar(tareas,webhooks)
+    // @plantilla-sin(tareas,webhooks): expect(libres).toEqual(["abSplit", "branch", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "send_whatsapp_number"]);
     expect([...CONTACT_FREE_NODE_TYPES].sort()).toEqual(libres);
   });
 
@@ -180,7 +174,7 @@ describe("que conexion necesita cada accion (G1)", () => {
 
 describe("cada disparador declara el origen de sus sesiones (Tirón 2, D1)", () => {
   // `flow_sessions.source_type` dice QUE disparo el flujo y la base exige contacto u origen. Un disparador nuevo que
-  // no lo declare no podria arrancar sin contacto: se exige, y tiene que ser un valor que la base admite (00218).
+  // no lo declare no podria arrancar sin contacto: se exige, y tiene que ser un valor que la base admite.
   it("todos los disparadores registrados declaran sourceType, y es un valor que admite la base", () => {
     const sinDeclarar = listTriggers().filter((t) => !t.sourceType).map((t) => t.type);
     expect(sinDeclarar).toEqual([]);
@@ -200,10 +194,10 @@ describe("cada disparador declara el origen de sus sesiones (Tirón 2, D1)", () 
   });
 
   it("la lista de origenes del codigo es exactamente la del CHECK de la migracion", () => {
-    const sql = readFileSync(resolve(__dirname, "../../../supabase/migrations/00218_automation_source.sql"), "utf8");
-    const check = /source_type IN \(([^)]*)\)/.exec(sql);
-    expect(check, "no encontre el CHECK de source_type en la 00218").not.toBeNull();
-    const enLaBase = [...check![1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
-    expect(enLaBase).toEqual([...AUTOMATION_SOURCE_TYPES].sort());
+    for (const name of ["flow_sessions_source_type_check", "automation_events_source_type_check"]) {
+      const check = checkValues(name);
+      expect(check, `no encontre el CHECK ${name} en las migraciones`).not.toBeNull();
+      expect([...check!.values].sort(), name).toEqual([...AUTOMATION_SOURCE_TYPES].sort());
+    }
   });
 });

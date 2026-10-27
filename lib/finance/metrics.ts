@@ -12,12 +12,12 @@
  *    que ser igual a la tarjeta de gastos pagados).
  *  - Las categorías se identifican por su `key` (las categorías viven en `workspaces.finance_settings`, no en una tabla).
  */
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { CATEGORY_GROUPS, CATEGORY_GROUP_LABELS, type CategoryGroup, type ExpenseCategory } from "./categories";
 import { addDays, localDate, monthKey, previousMonthKey, weekEnd, weekStart, type CivilDate } from "./dates";
 import type { VendorLite } from "./vendors";
 
-export { toCents, fromCents } from "@/lib/sales/money";
+export { toCents, fromCents } from "@/lib/shared/money";
 
 // ---------------------------------------------------------------------------------------------------------
 // Entradas

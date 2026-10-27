@@ -7,7 +7,7 @@ import type { PermissionContext } from "@/lib/auth/guards";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
-import { localToday } from "@/lib/sales/dates";
+import { localToday } from "@/lib/shared/dates";
 import { buildWizardCatalog } from "./catalog";
 import type { WizardConfig } from "@/components/sales/wizard/types";
 

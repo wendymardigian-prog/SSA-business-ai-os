@@ -1,7 +1,6 @@
 /**
  * Caracterización de los 7 flujos precreados de la Agenda y del editor lineal
- * ANTES de que Formularios extraiga el editor a `components/automations/`
- * (F21) y arregle que `linearToFlow` pierda `fixedEmail`.
+ * (`components/automations/`, F21).
  *
  * Lo que fija: el flujo precreado de cada plantilla pasa del canvas a lineal y
  * de vuelta sin cambiar, con los mismos pasos y el mismo trigger.

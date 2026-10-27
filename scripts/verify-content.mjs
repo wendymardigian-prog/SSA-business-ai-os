@@ -128,6 +128,7 @@ try {
     check(post?.script === null && post?.recording_notes === null,
       "el guion y las notas de grabacion arrancan vacios: el texto de la idea es contexto");
 
+    // @plantilla-desde(proyecto)
     // La 00118 (6/10/2026) borro lo del modelo viejo: que no vuelva sin que nadie lo note.
     const { error: eCopy } = await svc.from("content_posts").select("copy").limit(1);
     const { error: eHook } = await svc.from("content_ideas").select("hook").limit(1);
@@ -136,6 +137,7 @@ try {
       p_idea_id: ideaMember.id, p_title: "x", p_format: null, p_copy: {},
     });
     check(!!eV1 && /could not find the function/i.test(eV1.message), "la funcion `approve_content_idea` vieja ya no existe", eV1?.message);
+    // @plantilla-hasta(proyecto)
 
     const { error: eDoble } = await owner.client.rpc("approve_content_idea_v2", {
       p_idea_id: ideaMember.id, p_title: "otra", p_format: null,
@@ -247,8 +249,9 @@ try {
     const { data } = await svc.from("content_posts").select("assigned_to").eq("id", postMember.id).single();
     check(!error && data.assigned_to === member2.id, "quien creo la pieza puede cambiar el responsable", error?.message); }
 
-  if (process.argv.includes("--despues-de-00253")) {
-    console.log("\n— Editar en cualquier estado (00253, cambio aprobado M10) —");
+  if (process.argv.includes("--despues-de-00253")) { // @plantilla-quitar(proyecto)
+  // @plantilla-sin(proyecto): {
+    console.log("\n— Editar en cualquier estado —");
 
     const { data: aprobada } = await svc.from("content_posts")
       .insert({ workspace_id: wsA, title: "zz-test aprobada del member", created_by: member.id, status: "approved" })
@@ -281,8 +284,10 @@ try {
     { const { error } = await owner.client.from("content_posts")
         .update({ status: "approved" }).eq("id", aprobada.id);
       check(!error, "Owner y Admin siguen moviendo el estado como siempre", error?.message); }
+    // @plantilla-desde(proyecto)
   } else {
     console.log("\n(sin --despues-de-00253: no se prueba editar en cualquier estado)");
+    // @plantilla-hasta(proyecto)
   }
 
   console.log("\n— social_posts solo la escribe el servidor —");

@@ -427,7 +427,7 @@ export async function movePostToColumn(
 
   if (!decision.ok) return { ok: false, error: decision.reason };
 
-  // Programar de verdad (crear las filas y los jobs) es F25. Mover la tarjeta
+  // Programar de verdad crea las filas y los jobs. Mover la tarjeta
   // a esa columna sin eso dejaria una pieza que dice "programada" y no tiene
   // nada agendado, que es peor que no dejar moverla.
   if (decision.status === "scheduled") {

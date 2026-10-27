@@ -59,9 +59,9 @@ export interface ApplyResult {
  *
  * Lo que se pasa del tope **no se escribe**: el texto sigue con `source NULL` y
  * entra a la corrida siguiente, cuando el catálogo ya tenga las categorías que
- * le faltaban. F20 dice mandarlo a "Otro", pero eso lo deja clasificado para
- * siempre y ningún lote lo vuelve a mirar: el texto se quema por una categoría
- * que todavía no existía. Diferirlo no pierde nada, solo lo posterga.
+ * le faltaban. Mandarlo a "Otro" lo dejaria clasificado para siempre y ningún
+ * lote lo volveria a mirar: el texto se quemaria por una categoría que todavía
+ * no existía. Diferirlo no pierde nada, solo lo posterga.
  */
 export async function applyClassification(
   client: Db,

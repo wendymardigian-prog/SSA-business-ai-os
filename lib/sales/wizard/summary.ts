@@ -5,7 +5,7 @@
  * que pasa.
  */
 import { balanceLine, validatePlanBalances } from "../payment-plan";
-import { formatMoney } from "../format";
+import { formatMoney } from "@/lib/shared/format";
 import { saleStatusLabel } from "../labels";
 import { deriveSaleStatus } from "../sale-status";
 import type { PlannedPayment } from "../payment-plan";

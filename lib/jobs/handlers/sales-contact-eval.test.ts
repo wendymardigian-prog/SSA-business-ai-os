@@ -1,5 +1,5 @@
 /**
- * Ventas F15: el job que asigna setter, vendedor y referido. Fija las reglas de
+ * El job que asigna setter, vendedor y referido (F15). Fija las reglas de
  * escritura (campo lleno, asignado a mano, "puede reasignar"), el actor sistema
  * con el nombre de la regla y el avance del puntero del reparto.
  */

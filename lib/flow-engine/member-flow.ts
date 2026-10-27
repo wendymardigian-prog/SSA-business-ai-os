@@ -1,7 +1,7 @@
 /**
  * Flujos sin contacto ("sobre una persona del equipo", E15): de qué se trata un flujo y
- * qué pasos no puede tener. Lo usan el guardado del canvas, su publicación y el editor de
- * pasos del EOD: guardar un flujo así con un paso que necesita un contacto se rechaza en
+ * qué pasos no puede tener. Lo usan el guardado del canvas, su publicación y los editores de
+ * pasos: guardar un flujo así con un paso que necesita un contacto se rechaza en
  * el servidor. El motor igual los saltea si llegaran (red de seguridad).
  */
 import { getNode, getTrigger } from "./registry";
@@ -16,7 +16,7 @@ interface RawNode {
 
 /**
  * Sobre quién es el flujo: lo dice su disparador. Sin disparador conocido, `contact`.
- * `member` es de una persona del equipo (EOD, nunca tiene contacto); `webhook` arranca sin
+ * `member` es de una persona del equipo (nunca tiene contacto); `webhook` arranca sin
  * contacto y lo consigue con el paso "Crear o actualizar contacto"; `system` (Tirón 2, D1) no es
  * sobre ningún contacto ni persona: nunca tiene contacto.
  */

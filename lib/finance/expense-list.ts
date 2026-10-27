@@ -2,7 +2,7 @@
  * Lo que muestra la lista de gastos (GF12): totales por estado en CÉNTIMOS, orden por defecto y agrupado.
  * Los totales se calculan sobre TODAS las filas del filtro (consulta de agregado aparte), no sobre la página.
  */
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { EXPENSE_STATUS_KEYS, type ExpenseStatus } from "./expense-status";
 import type { GroupBy } from "./expense-filters";
 

@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { Avatar } from "@/components/ui/filter-menu";
 import { cellKeyAction, type CellPatch, type EditableColumn } from "@/lib/tasks/cell-edit";
 import { dueLabel, formatSource, type SourceContext } from "@/lib/tasks/format";
-import { colorOf, initialsOf, summarizeNames } from "@/lib/tasks/people";
+import { colorOf, initialsOf, summarizeNames } from "@/lib/shared/people";
 import type { ProjectSummary } from "@/lib/tasks/project";
 import type { MemberLite, TaskRowView } from "@/lib/tasks/table-model";
 import { TASK_LIMITS } from "@/lib/tasks/types";

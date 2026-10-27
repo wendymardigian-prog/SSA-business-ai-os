@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { loadActiveMembers, loadAssignmentRules, loadContactChannel, loadValidContactIds } from "@/lib/jobs/handlers/sales-contact-eval";
-import { dryRunAssignments, type DryRunRow } from "@/lib/sales/assignment/dry-run";
-import { checkRuleConfig } from "@/lib/sales/assignment/rules";
-import type { ContactForResolve } from "@/lib/sales/assignment/resolve";
-import { ASSIGNMENT_KINDS, ASSIGNMENT_MODES, type AssignmentKind, type AssignmentMode } from "@/lib/sales/assignment/types";
-import { manualAttribution } from "@/lib/sales/attribution";
+import { dryRunAssignments, type DryRunRow } from "@/lib/assignment/dry-run";
+import { checkRuleConfig } from "@/lib/assignment/rules";
+import type { ContactForResolve } from "@/lib/assignment/resolve";
+import { ASSIGNMENT_KINDS, ASSIGNMENT_MODES, type AssignmentKind, type AssignmentMode } from "@/lib/assignment/types";
+import { manualAttribution } from "@/lib/attribution/attribution";
 import { sanitizeSearch } from "@/lib/url-params";
 import type { Json } from "@/lib/types/database";
 

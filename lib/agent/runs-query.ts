@@ -220,11 +220,11 @@ export const AGENT_RUN_SOURCES = [
   "ads_analysis",
   "audio_transcription",
   "media_description",
-  "call_classification",
-  "call_analysis",
-  "call_correction",
-  "call_summary",
-  "call_prompt_test",
+  "call_classification", // @plantilla-quitar(llamadas)
+  "call_analysis", // @plantilla-quitar(llamadas)
+  "call_correction", // @plantilla-quitar(llamadas)
+  "call_summary", // @plantilla-quitar(llamadas)
+  "call_prompt_test", // @plantilla-quitar(llamadas)
 ] as const satisfies readonly AgentRunSource[];
 const _EVERY_SOURCE_LISTED: [Exclude<AgentRunSource, (typeof AGENT_RUN_SOURCES)[number]>] extends [never] ? true : never = true;
 void _EVERY_SOURCE_LISTED;

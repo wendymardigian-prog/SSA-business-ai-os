@@ -7,8 +7,7 @@
  * `navSections` hace el agrupamiento real.
  *
  * Plano formularios-ui (D1-D4): las herramientas de uso menos diario van a la
- * seccion "Herramientas", que se colapsa (Tareas, Automatizaciones, Formularios,
- * Agentes IA y Ajustes). Conocimiento, Recursos e Integraciones salen del menu:
+ * seccion "Herramientas", que se colapsa (Automatizaciones, Agentes IA, Ajustes...). Conocimiento, Recursos e Integraciones salen del menu:
  * Conocimiento se abre desde Agentes IA (boton de la barra) y Recursos e
  * Integraciones son pestañas de Ajustes. Sus rutas siguen andando.
  *
@@ -34,7 +33,8 @@ export interface NavGroupMeta {
 export const NAV_GROUPS: NavGroupMeta[] = [
   { id: "inicio", title: null },
   { id: "adquisicion", title: "Adquisición" },
-  // Contactos, Agenda, Llamadas y Ventas (Etapa 5).
+  // Contactos, Agenda, Llamadas y Ventas (Etapa 5).  @plantilla-quitar(llamadas,ventas)
+  // @plantilla-sin(llamadas,ventas): // Contactos y Agenda.
   { id: "ventas", title: "Ventas" },
   { id: "herramientas", title: "Herramientas", collapsible: true },
 ];
@@ -61,8 +61,9 @@ export interface NavItemMeta {
   alsoActiveOn?: string[];
   /**
    * Visible solo si la condición calculada en el servidor es verdadera, también para
-   * Owner y Admin: "Mi reporte del día" aparece si la persona está en la audiencia de
-   * algún reporte de fin de día publicado (`lib/eod/nav-flag.ts`).
+   * Owner y Admin.
+   * "Mi reporte del día" aparece si la persona está en la audiencia de  @plantilla-quitar(formularios)
+   * algún reporte de fin de día publicado (`lib/eod/nav-flag.ts`).  @plantilla-quitar(formularios)
    */
   requires?: NavFlag;
 }
@@ -76,9 +77,11 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
   // La bandeja no tiene claves: aparece si el rol ve al menos una cuenta conectada (`canUseInbox`, 00249).
   { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", requires: "inbox", group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
+  // @plantilla-desde(formularios)
   // Reporte de fin de día (E10): completarlo no necesita permiso, alcanza con estar en
   // la audiencia de un EOD publicado. Por eso es una condición del servidor y no un permiso.
   { name: "Mi reporte del día", href: "/dashboard/eod", icon: "ListChecks", group: "inicio", requires: "eod" },
+  // @plantilla-hasta(formularios)
 
   { name: "Contenido", href: "/dashboard/content", icon: "Clapperboard", permissions: ["content.view"], group: "adquisicion" },
   // Social: el perfil de cada red y sus publicaciones. Se ve con el permiso
@@ -90,28 +93,39 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // Agenda (Etapa 4, F8): abre directo las agendas. La configuracion va
   // detras del engranaje de esa pantalla, no del menu.
   { name: "Agenda", href: "/dashboard/agenda", icon: "CalendarDays", permissions: ["scheduling.use", "bookings.view"], group: "ventas" },
+  // @plantilla-desde(llamadas)
   // Llamadas (Fathom + analizador): menu propio (decision 151), debajo de
   // Agenda. Se ve con `calls.view`; un Member de sistema lo tiene (decision 152).
   { name: "Llamadas", href: "/dashboard/llamadas", icon: "PhoneCall", permissions: ["calls.view"], group: "ventas" },
+  // @plantilla-hasta(llamadas)
+  // @plantilla-desde(ventas)
   // Ventas y pagos (Etapa 5, F8): abre la lista de ventas, SIN engranaje. Los
   // productos y las reglas de asignacion viven en Ajustes. Va despues de
   // Llamadas: ese lugar ya estaba fijado por su test.
   { name: "Ventas", href: "/dashboard/ventas", icon: "CircleDollarSign", permissions: ["sales.view"], group: "ventas", alsoActiveOn: ["/dashboard/ventas"] },
+  // @plantilla-hasta(ventas)
+  // @plantilla-desde(finanzas,comisiones)
   // Finanzas (Extra I): gastos, recurrentes, proveedores y el panel. Va al final del grupo para no mover el
   // orden de los demas items. Se ve con `expenses.view` O con `commissions.view` (cambio aprobado M9: el Member
   // de sistema ve sus propias comisiones); adentro, cada pestana pide su clave.
   { name: "Finanzas", href: "/dashboard/finanzas", icon: "Wallet", permissions: ["expenses.view", "commissions.view"], group: "ventas", alsoActiveOn: ["/dashboard/finanzas"] },
+  // @plantilla-hasta(finanzas,comisiones)
 
   // Herramientas (plano formularios-ui, D1): la unica seccion colapsable. Orden fijo:
-  // Tareas, Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
+  // Tareas, Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.  @plantilla-quitar(tareas,formularios)
+  // @plantilla-sin(tareas,formularios): // Automatizaciones, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
+  // @plantilla-desde(tareas)
   // Tareas (Extra A): el trabajo pendiente del equipo. Se ve con `tasks.view`: el Member de sistema lo tiene
   // (ve las que creo, tiene a cargo o sigue). Se mudo de los sueltos de arriba a Herramientas.
   { name: "Tareas", href: "/dashboard/tareas", icon: "ListTodo", permissions: ["tasks.view"], group: "herramientas" },
+  // @plantilla-hasta(tareas)
   { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", permissions: ["flows.view"], group: "herramientas" },
+  // @plantilla-desde(formularios)
   // Formularios (personalizado, encuesta, contrato y fin de dia): se ve con `forms.view`.
   // El Member de sistema lo tiene (ve las respuestas de los contactos que ve);
   // crear y publicar lo decide `forms.manage`, no el menu.
   { name: "Formularios", href: "/dashboard/formularios", icon: "ClipboardList", permissions: ["forms.view"], group: "herramientas" },
+  // @plantilla-hasta(formularios)
   // Agentes IA: Conocimiento ya no es un item (D3): se abre con el boton "Conocimiento" de la
   // barra de esta pantalla (lib/nav/page-actions.ts), y mientras esta abierto queda marcado Agentes IA.
   { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", permissions: ["agents.view"], group: "herramientas", alsoActiveOn: ["/dashboard/knowledge"] },

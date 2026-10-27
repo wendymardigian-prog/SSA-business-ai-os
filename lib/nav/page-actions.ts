@@ -83,7 +83,8 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/flows": {
     title: "Automatizaciones",
-    tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, una reunión, un formulario, un pago…",
+    tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, una reunión, un formulario, un pago…", // @plantilla-quitar(ventas,formularios)
+    // @plantilla-sin(ventas,formularios): tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, un comentario, una reunión, una etiqueta…",
   },
   "/dashboard/flows/templates": {
     title: "Plantillas de automatizaciones",
@@ -130,10 +131,12 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Contacto",
     tooltip: "Todo lo que sabemos de esta persona y todo lo que paso con ella.",
   },
+  // @plantilla-desde(formularios)
   "/dashboard/contacts/[contactId]/formularios": {
     title: "Formularios del contacto",
     tooltip: "Todos los formularios que respondió esta persona. Solo ves las respuestas de los contactos que podés ver.",
   },
+  // @plantilla-hasta(formularios)
   "/dashboard/contacts/[contactId]/toques": {
     title: "Toques del contacto",
     tooltip: "Todas las veces que esta persona interactuó, del más nuevo al más viejo, con el canal y de dónde vino cada una.",
@@ -186,69 +189,99 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Equipo",
     tooltip: "Quienes tienen acceso y con que permisos.",
   },
-  // ── Llamadas (Fathom + analizador) ────────────────────────────────────
+  // ── Llamadas (Fathom + analizador) ──────────────────────────────────── // @plantilla-quitar(llamadas)
+  // @plantilla-desde(llamadas)
   "/dashboard/llamadas": {
     title: "Llamadas",
     tooltip: "Las llamadas de venta que entran desde Fathom, con su tipo, su análisis y su puntaje. Se consulta Fathom cada 10 minutos.",
   },
+  // @plantilla-hasta(llamadas)
+  // @plantilla-desde(llamadas)
   "/dashboard/llamadas/[id]": {
     title: "Llamada",
     tooltip: "La transcripción de la llamada y su análisis. El análisis se puede corregir; lo que dijo la IA queda guardado aparte.",
   },
+  // @plantilla-hasta(llamadas)
+  // @plantilla-desde(llamadas)
   "/dashboard/llamadas/mi-fathom": {
     title: "Mi Fathom",
     tooltip: "Conectá tu cuenta de Fathom para que tus llamadas de venta entren solas al sistema.",
   },
+  // @plantilla-hasta(llamadas)
+  // @plantilla-desde(llamadas)
   "/dashboard/dashboards/llamadas": {
     title: "Dashboards",
     tooltip: "La calidad de las llamadas de venta: puntaje por criterio, foco de cada closer y objeciones más frecuentes.",
   },
-  // ── Formularios ───────────────────────────────────────────────────────
+  // @plantilla-hasta(llamadas)
+  // ── Formularios ─────────────────────────────────────────────────────── // @plantilla-quitar(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios": {
     title: "Formularios",
     tooltip: "Formularios para captar leads, medir satisfacción o firmar contratos. Cada respuesta crea o vincula un contacto con su atribución.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]": {
     title: "Formulario",
     tooltip: "Los campos, cómo se mapea a un contacto, las automatizaciones y cómo publicarlo.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]/respuestas": {
     title: "Respuestas",
     tooltip: "Lo que respondió la gente. Solo ves las respuestas de los contactos que podés ver.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]/respuestas/[submissionId]": {
     title: "Respuesta",
     tooltip: "Una respuesta con su contacto, su atribución y su versión del formulario.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]/metricas": {
     title: "Métricas",
     tooltip: "Vistas, inicios y envíos por día. La conversión es envíos sobre vistas.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]/encuesta": {
     title: "Encuesta",
     tooltip: "El puntaje de la encuesta: promedio o NPS, distribución y evolución.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]/reportes": {
     title: "Reportes",
     tooltip: "Los reportes de fin de día: una fila por persona y día, con los totales de cada métrica y quién falta hoy.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]/reportes/[reportId]": {
     title: "Reporte",
     tooltip: "Un reporte de fin de día: las preguntas generales, cada canal, la versión y si se corrigió.",
   },
-  // ── Reporte de fin de día (lo completa cada persona) ──────────────────
+  // @plantilla-hasta(formularios)
+  // ── Reporte de fin de día (lo completa cada persona) ──────────────────  @plantilla-quitar(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/eod": {
     title: "Mi reporte del día",
     tooltip: "Los reportes de fin de día que te tocan. Dejalo abierto y usalo como contador: todo se guarda solo.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/eod/[formId]": {
     title: "Mi reporte del día",
     tooltip: "Todo lo que cargás se guarda solo, en el servidor y en este navegador. Al final del día, enviá el reporte.",
   },
+  // @plantilla-hasta(formularios)
+  // @plantilla-desde(formularios)
   "/dashboard/formularios/[id]/automatizaciones/[flowId]": {
     title: "Automatización",
     tooltip: "Qué pasa cuando alguien responde este formulario: cuándo, bajo qué condición y qué se hace.",
   },
+  // @plantilla-hasta(formularios)
   // ── Agenda (Etapa 4) ──────────────────────────────────────────────────
   "/dashboard/agenda": {
     title: "Agenda",
@@ -291,15 +324,19 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Integracion",
     tooltip: "Credenciales, cuentas conectadas y actividad de esta integracion.",
   },
+  // @plantilla-desde(webhooks)
   "/dashboard/settings/integrations/webhooks": {
     title: "Webhooks entrantes",
     tooltip:
       "Una URL por cada formulario externo (Typeform, Tally, Framer…). Lo que llega se guarda, y los flujos que lo escuchan crean o actualizan el contacto.",
   },
+  // @plantilla-hasta(webhooks)
+  // @plantilla-desde(webhooks)
   "/dashboard/settings/integrations/webhooks/[endpointId]": {
     title: "Endpoint de webhooks",
     tooltip: "La URL de este endpoint, lo que llegó y lo que pasó con cada envío.",
   },
+  // @plantilla-hasta(webhooks)
   "/dashboard/settings/custom-fields": {
     title: "Campos personalizados",
     tooltip: "Los datos propios que se guardan de cada contacto.",
@@ -315,7 +352,8 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/settings/productos": {
     title: "Productos",
-    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
+    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.", // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
   },
   "/dashboard/settings/productos/[id]": {
     title: "Producto",
@@ -329,50 +367,72 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Actividad",
     tooltip: "Todo lo que se hizo en el workspace: quién, qué y cuándo, con lo que cambió. Solo Owner y Admin.",
   },
+  // @plantilla-desde(tareas)
   "/dashboard/tareas": {
     title: "Tareas",
     tooltip: "El trabajo pendiente del equipo: con responsable, seguidores, proyecto, fechas y dependencias. Editás desde la tabla sin abrir cada tarea; si completar una tarea atrasa a otras, te mostramos las fechas nuevas antes de mover nada.",
   },
+  // @plantilla-hasta(tareas)
+  // @plantilla-desde(ventas)
   "/dashboard/ventas": {
     title: "Ventas",
     tooltip: "Las ventas del negocio con su plan de pagos, su estado y de qué anuncio o publicación vinieron.",
   },
+  // @plantilla-hasta(ventas)
+  // @plantilla-desde(ventas)
   "/dashboard/ventas/pagos": {
     title: "Pagos",
     tooltip: "Todos los pagos de las ventas: lo que vence, lo que está moroso y lo cobrado, con su método, comisión y desfase.",
   },
+  // @plantilla-hasta(ventas)
+  // @plantilla-desde(ventas)
   "/dashboard/ventas/[id]": {
     title: "Venta",
     tooltip: "El detalle de una venta: sus números, el plan de pagos, los contratos y todo lo que se le hizo. Cancelar es definitivo.",
   },
+  // @plantilla-hasta(ventas)
+  // @plantilla-desde(finanzas)
   "/dashboard/finanzas": {
     title: "Finanzas",
     tooltip: "Cuánto entra, cuánto sale y cuánto queda: ingresos cobrados, gastos pagados, resultado y margen del período.",
   },
+  // @plantilla-hasta(finanzas)
+  // @plantilla-desde(finanzas)
   "/dashboard/finanzas/gastos": {
     title: "Gastos",
     tooltip: "Todo lo que pagás: facturas, suscripciones, sueldos y los gastos automáticos. Filtrá, agrupá, pagá desde la fila y exportá a CSV.",
   },
+  // @plantilla-hasta(finanzas)
+  // @plantilla-desde(finanzas)
   "/dashboard/finanzas/gastos/[id]": {
     title: "Gasto",
     tooltip: "El detalle de un gasto: su monto, estado, comprobante, de dónde salió y todo lo que se le hizo. Un gasto anulado ya no se puede editar.",
   },
+  // @plantilla-hasta(finanzas)
+  // @plantilla-desde(finanzas)
   "/dashboard/finanzas/recurrentes": {
     title: "Recurrentes",
     tooltip: "Los gastos que se repiten (suscripciones, sueldos, alquiler): cada plantilla crea sola sus gastos en la fecha que le toca.",
   },
+  // @plantilla-hasta(finanzas)
+  // @plantilla-desde(finanzas)
   "/dashboard/finanzas/proveedores": {
     title: "Proveedores",
     tooltip: "A quién le pagás, con lo que le pagaste en total y en el año. Un proveedor no se borra: se archiva.",
   },
+  // @plantilla-hasta(finanzas)
+  // @plantilla-desde(comisiones)
   "/dashboard/finanzas/comisiones": {
     title: "Comisiones",
     tooltip: "Quién cobra qué por cada pago cobrado. Elegí las que ya se pueden pagar y generá el gasto de la liquidación; un ajuste corrige a mano lo que haga falta. Quien ve solo las suyas tiene «Mis comisiones».",
   },
+  // @plantilla-hasta(comisiones)
+  // @plantilla-desde(comisiones)
   "/dashboard/finanzas/comisiones/reglas": {
     title: "Reglas de comisión",
     tooltip: "Cuánto cobra cada rol y en qué casos. Gana la primera regla que cumple sus condiciones; cambiarlas no toca las comisiones ya generadas.",
   },
+  // @plantilla-hasta(comisiones)
 };
 
 /** Rutas que a proposito NO llevan barra superior, y por que. */

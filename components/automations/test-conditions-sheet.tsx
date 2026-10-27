@@ -21,7 +21,7 @@ import type { StepTree } from "@/lib/automations/step-tree";
 import { fieldsOfTree, manualFields, manualValuesFrom, type ManualInputs } from "@/lib/automations/test-values";
 import type { ConditionFieldSpec } from "@/lib/flow-engine/condition-eval";
 
-/** Lo que una pantalla aporta para probar con una respuesta REAL (hoy, Formularios). */
+/** Lo que una pantalla aporta para probar con una respuesta REAL. */
 export interface TestResponsesSource {
   list: (input: { flowId: string }) => Promise<{ ok: true; formName: string; responses: Array<{ id: string; label: string }> } | { ok: false; error: string }>;
   load: (input: { flowId: string; submissionId: string }) => Promise<{ ok: true; values: TestValues } | { ok: false; error: string }>;
@@ -204,7 +204,8 @@ function TestPanel({ flowId, tree, catalog, source }: { flowId: string; tree: St
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resultado</h3>
           <ExplanationView explanation={explanation} />
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Lo que mira un paso anterior, el contacto o una venta figura «sin dato en la prueba» y no se cumple: acá no hay de dónde leerlo.
+            Lo que mira un paso anterior, el contacto o una venta figura «sin dato en la prueba» y no se cumple: acá no hay de dónde leerlo. {/* @plantilla-quitar(ventas) */}
+            {/* @plantilla-sin(ventas): Lo que mira un paso anterior o el contacto figura «sin dato en la prueba» y no se cumple: acá no hay de dónde leerlo. */}
           </p>
         </div>
       )}

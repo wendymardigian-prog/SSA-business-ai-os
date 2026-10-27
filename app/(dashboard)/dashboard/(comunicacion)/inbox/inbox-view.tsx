@@ -27,7 +27,7 @@ export function InboxView({
   workspaceId,
   assets,
   canManageAssets = false,
-  canCreateTask = false,
+  canCreateTask = false, // @plantilla-quitar(tareas)
   canViewAgentRuns = false,
   canAssignConversations = false,
   canEditContacts = false,
@@ -56,8 +56,8 @@ export function InboxView({
   assets: InboxAsset[];
   /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
   canManageAssets?: boolean;
-  /** Puede crear tareas (`tasks.edit`): la bandeja ofrece «Crear tarea» sobre la conversacion. */
-  canCreateTask?: boolean;
+  /** Puede crear tareas (`tasks.edit`): la bandeja ofrece «Crear tarea» sobre la conversacion.  @plantilla-quitar(tareas) */
+  canCreateTask?: boolean; // @plantilla-quitar(tareas)
   /** Puede ver las corridas del agente (`agents.view`): el panel "Qué hizo el agente" ofrece abrir la corrida. */
   canViewAgentRuns?: boolean;
   /** `contacts.assign`: cambia el responsable de cualquier conversación (sin la clave, solo "Tomar"). */
@@ -314,7 +314,7 @@ export function InboxView({
               messages={messages}
               assets={assets}
               canManageAssets={canManageAssets}
-              canCreateTask={canCreateTask}
+              canCreateTask={canCreateTask} // @plantilla-quitar(tareas)
               canViewAgentRuns={canViewAgentRuns}
               canReply={!selected || !replyChannelIds || replyChannelIds.includes(selected.channel_id)}
               workspaceName={workspaceName}

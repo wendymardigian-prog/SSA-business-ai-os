@@ -30,17 +30,23 @@ describe("toCsv", () => {
   });
 
   it("lleva las columnas visibles en orden, una fila por objeto y el total", () => {
-    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("spend"), col("leadsTotal"), col("cplTotal"), col("roas")], rows, total: totalRow(rows) });
+    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("spend"), col("leadsTotal"), col("cplTotal"), col("roas")], rows, total: totalRow(rows) }); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("spend"), col("leadsTotal"), col("cplTotal")], rows, total: totalRow(rows) });
     const lines = csv.replace("﻿", "").trim().split("\r\n");
-    expect(lines[0]).toBe("Anuncio,Gasto,Leads totales,CPL total,ROAS");
-    expect(lines[1]).toBe('"Video, testimonio",100,5,20,0');
-    expect(lines[2]).toBe("Total,100,5,20,0");
+    expect(lines[0]).toBe("Anuncio,Gasto,Leads totales,CPL total,ROAS"); // @plantilla-quitar(ventas)
+    expect(lines[1]).toBe('"Video, testimonio",100,5,20,0'); // @plantilla-quitar(ventas)
+    expect(lines[2]).toBe("Total,100,5,20,0"); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): expect(lines[0]).toBe("Anuncio,Gasto,Leads totales,CPL total");
+    // @plantilla-sin(ventas): expect(lines[1]).toBe('"Video, testimonio",100,5,20');
+    // @plantilla-sin(ventas): expect(lines[2]).toBe("Total,100,5,20");
     expect(csv.startsWith("﻿")).toBe(true);
   });
 
   it("exporta EN EL ORDEN ELEGIDO, no el del catalogo", () => {
-    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("roas"), col("spend")], rows, total: totalRow(rows) });
-    expect(csv.replace("﻿", "").split("\r\n")[0]).toBe("Anuncio,ROAS,Gasto");
+    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("roas"), col("spend")], rows, total: totalRow(rows) }); // @plantilla-quitar(ventas)
+    expect(csv.replace("﻿", "").split("\r\n")[0]).toBe("Anuncio,ROAS,Gasto"); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("leadsTotal"), col("spend")], rows, total: totalRow(rows) });
+    // @plantilla-sin(ventas): expect(csv.replace("﻿", "").split("\r\n")[0]).toBe("Anuncio,Leads totales,Gasto");
   });
 
   it("«Estado» ya no es una columna fija: sale solo si esta entre las visibles", () => {
@@ -55,7 +61,8 @@ describe("toCsv", () => {
   });
 
   it("lo que no se puede calcular va vacio (no 0)", () => {
-    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("costPerNewDeal"), col("costPerBooking")], rows, total: totalRow(rows) });
+    const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("costPerNewDeal"), col("costPerBooking")], rows, total: totalRow(rows) }); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): const csv = toCsv({ firstColumnLabel: "Anuncio", columns: [col("hookRate"), col("costPerBooking")], rows, total: totalRow(rows) });
     const lines = csv.replace("﻿", "").trim().split("\r\n");
     // 0 ventas: costo por nuevo deal vacio; 2 agendas: costo por agenda 50.
     expect(lines[1]).toBe('"Video, testimonio",,50');

@@ -142,10 +142,10 @@ export const guardrailsSchema = z.object({
        * agente, siguen leyendo la columna del workspace.
        */
       onUnreadable: z.boolean().default(true),
-      /**
-       * Al derivar la conversacion a una persona, deja ademas una tarea para el equipo (Tareas, F24). Apagado por defecto:
-       * con esto apagado, derivar hace exactamente lo de siempre. La tarea nunca cambia ni frena el escalamiento.
-       */
+      /**  @plantilla-quitar(tareas)
+       * Al derivar la conversacion a una persona, deja ademas una tarea para el equipo (Tareas, F24). Apagado por defecto:  @plantilla-quitar(tareas)
+       * con esto apagado, derivar hace exactamente lo de siempre. La tarea nunca cambia ni frena el escalamiento.  @plantilla-quitar(tareas)
+  @plantilla-quitar(tareas) */
       createTaskOnEscalate: z.boolean().default(false),
     })
     .default({

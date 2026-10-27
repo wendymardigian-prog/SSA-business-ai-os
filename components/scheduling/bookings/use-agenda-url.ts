@@ -59,7 +59,8 @@ export function useAgendaUrl() {
    */
   function clearAll() {
     const next = new URLSearchParams();
-    for (const key of ["vista", "agenda", "cal", "dia", "tareas", "task"]) {
+    for (const key of ["vista", "agenda", "cal", "dia", "tareas", "task"]) { // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): for (const key of ["vista", "agenda", "cal", "dia"]) {
       const v = searchParams.get(key);
       if (v) next.set(key, v);
     }

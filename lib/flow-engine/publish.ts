@@ -1,8 +1,8 @@
 /**
- * Publicar y despublicar un flujo desde el servidor (Tareas × CRM, R5).
+ * Publicar y despublicar un flujo desde el servidor (R5).
  *
  * Es la logica de `POST /api/v1/flows/[flowId]/publish`, sacada tal cual a una funcion para que otro codigo del servidor
- * (el interruptor de cobranza de Ajustes) publique con los MISMOS pasos y la MISMA validacion, sin pasar por HTTP. La ruta
+ * (por ejemplo, un interruptor de Ajustes) publique con los MISMOS pasos y la MISMA validacion, sin pasar por HTTP. La ruta
  * la llama y devuelve lo mismo que siempre (mismos cuerpos y mismos codigos).
  *
  *   1. Lee el flujo del workspace (404 si no esta).
@@ -15,8 +15,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildDesiredTriggers, persistableTriggerTypes } from "@/lib/flow-triggers";
-import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative";
-import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers";
+import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative"; // @plantilla-quitar(ventas)
+import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers"; // @plantilla-quitar(ventas)
 import type { Database, Json } from "@/lib/types/database";
 import { checkMemberFlow } from "./member-flow-db";
 import { connectionProblemsForGraph } from "./connection-problems";
@@ -32,7 +32,7 @@ export interface PublishFlowArgs {
   userId: string | null;
   workspaceId: string;
   flowId: string;
-  /** El cliente de servicio para agendar los recordatorios de pagos. Se pide solo si hace falta. */
+  /** El cliente de servicio, para lo que haya que agendar al publicar. Se pide solo si hace falta. */
   getServiceClient: () => Promise<Db>;
   /** Una validacion extra (solo las plantillas del servidor la usan). Devuelve los problemas, o `[]`. */
   extraProblems?: (nodes: unknown[], edges: unknown[]) => string[];
@@ -57,7 +57,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     ? Array.isArray(flow.draft_edges) ? (flow.draft_edges as unknown[]) : []
     : Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [];
 
-  // Un flujo sin contacto (reporte de fin de día, E15) no se publica con pasos que necesiten uno. Tampoco con pasos
+  // Un flujo sin contacto no se publica con pasos que necesiten uno. Tampoco con pasos
   // que necesitan una conexion que falta (Resend, WhatsApp, una IA...): se puede armar y guardar el borrador, pero
   // publicarlo seria prometer algo que no se va a ejecutar (G1).
   const problems = [
@@ -115,8 +115,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     .delete()
     .eq("flow_id", flowId)
     .is("channel_id", null)
-    // TODOS los tipos que arma el editor (mensaje, eventos, programados y Ventas): republicar no duplica ninguna fila.
-    // Antes solo se borraban los de mensaje y Ventas, y un flujo de agenda republicado tres veces corria tres veces.
+    // TODOS los tipos que arma el editor (mensaje, eventos, programados...): republicar no duplica ninguna fila.
     .in("type", persistableTriggerTypes());
 
   if (desiredTriggers.length > 0) {
@@ -129,6 +128,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   // Las filas con canal (las de la pestaña Growth) NO se reactivan: si alguien apago una a mano, publicar no la vuelve
   // a prender. Las que arma el editor ya nacen activas.
 
+  // @plantilla-desde(ventas)
   // Un flujo con un recordatorio relativo al vencimiento de un pago (Ventas, F37): se agendan los de los
   // pagos que ya existen. Sin esto el recordatorio valdria solo para los pagos nuevos.
   if (desiredTriggers.some((t) => isRelativeSalesTrigger(t.type))) {
@@ -138,6 +138,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
       console.error("[publish] no pude agendar los recordatorios de pagos:", backfillError instanceof Error ? backfillError.message : "error");
     }
   }
+  // @plantilla-hasta(ventas)
 
   return { ok: true, flow: { ...(flow as FlowRow), nodes: nodes as Json, edges: edges as Json }, version: newVersion };
 }

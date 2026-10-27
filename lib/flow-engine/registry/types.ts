@@ -1,5 +1,5 @@
 /**
- * Contratos del registro de nodos, triggers y condiciones (F7).
+ * Los tipos del registro de nodos, triggers y condiciones (F7).
  *
  * El motor no sabe que tipos de nodo existen. Sabe pedirle al registro el que
  * corresponde y ejecutarlo. Sumar un tipo nuevo es declararlo aca y registrarlo;
@@ -171,10 +171,11 @@ export interface AutomationEventRow {
 
 /**
  * Sobre quién es un flujo. `contact` (todos los de siempre): un lead. `member`: una
- * persona del equipo, sin contacto (E15). `webhook`: un envío de un webhook entrante: arranca
- * sin contacto ni persona y el contacto aparece a mitad de flujo, cuando el paso "Crear o
- * actualizar contacto" lo crea o lo encuentra (Extra L). Lo declara el disparador; por
- * defecto `contact`.
+ * persona del equipo, sin contacto (E15). `system`: ni un contacto ni una persona.
+ * `webhook`: un envío de un webhook entrante: arranca sin contacto ni persona y el contacto  @plantilla-quitar(webhooks)
+ * aparece a mitad de flujo, cuando el paso "Crear o actualizar contacto" lo crea o lo  @plantilla-quitar(webhooks)
+ * encuentra (Extra L).  @plantilla-quitar(webhooks)
+ * Lo declara el disparador; por defecto `contact`.
  */
 export type TriggerSubject = "contact" | "member" | "webhook" | "system";
 
@@ -188,7 +189,8 @@ export type TriggerSubject = "contact" | "member" | "webhook" | "system";
 export type AutomationSourceType = "contact" | "member" | "webhook" | "task" | "form" | "booking" | "sale" | "call" | "system";
 
 /** Los orígenes que admite la base (el CHECK de 00218). Una sola lista: la usan el motor, los tests y los scripts. */
-export const AUTOMATION_SOURCE_TYPES: readonly AutomationSourceType[] = ["contact", "member", "webhook", "task", "form", "booking", "sale", "call", "system"];
+export const AUTOMATION_SOURCE_TYPES: readonly AutomationSourceType[] = ["contact", "member", "webhook", "task", "form", "booking", "sale", "call", "system"]; // @plantilla-quitar(webhooks,tareas,formularios,ventas,llamadas)
+// @plantilla-sin(webhooks,tareas,formularios,ventas,llamadas): export const AUTOMATION_SOURCE_TYPES: readonly AutomationSourceType[] = ["contact", "member", "booking", "system"];
 
 /** De dónde viene la ejecución de un flujo. `id` es la entidad que lo disparó (envío, evento, persona…). */
 export interface AutomationSource {
@@ -237,16 +239,18 @@ export interface TriggerDefinition {
    */
   sourceType?: AutomationSourceType;
   /**
-   * El disparador atiende tambien eventos SIN contacto (Tareas, F25): si el evento trae `contact_id` sigue el camino de
+   * El disparador atiende tambien eventos SIN contacto (F25): si el evento trae `contact_id` sigue el camino de
    * siempre; si no, trae `member_user_id` y el flujo corre sin contacto, sobre esa persona del equipo. A diferencia de
    * `subject: "member"`, el evento CON contacto no cambia en nada.
    */
   contactOptional?: boolean;
+  // @plantilla-desde(formularios)
   /**
    * Solo `subject: "member"`: sobre qué entidad queda el disparo en el historial
    * (un flujo sin contacto no se audita sobre un contacto).
    */
   auditEntityFor?(args: TriggerEventArgs): { entityType: "eod_report"; entityId: string; metadata?: Record<string, unknown> } | null;
+  // @plantilla-hasta(formularios)
   /** Decide si este trigger le corresponde al mensaje. Solo para scope "message"/"comment". */
   matches?(args: TriggerMatchArgs): boolean;
   /**
@@ -320,7 +324,7 @@ export interface ConditionFieldArgs {
   contact: Record<string, unknown>;
   /**
    * Memoria de UNA corrida de nodo: lo que varios campos necesitan y es caro
-   * (la respuesta del formulario) se carga una sola vez. La pasa el nodo
+   * (por ejemplo, leer algo de la base) se carga una sola vez. La pasa el nodo
    * `branch`; el `condition` viejo no la usa.
    */
   memo?: Map<string, Promise<unknown>>;

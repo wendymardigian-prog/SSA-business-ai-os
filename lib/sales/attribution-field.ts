@@ -6,10 +6,10 @@
  * El estado es lo que viaja al servidor (`AttributionRequest`): el servidor
  * resuelve el resto al guardar (F22).
  */
-import type { AttributionRequest, ManualAttributionInput } from "./attribution";
+import type { AttributionRequest, ManualAttributionInput } from "@/lib/attribution/attribution";
 import type { ManualChoiceInput } from "./manual-channel";
 import { suggestSaleTouch, type SuggestedTouch, type SuggestTouchInput } from "./suggest-touch";
-import { shortDayMonth, touchTitle, NO_NAMES, type LabelableTouch, type TouchNames } from "./touch-label";
+import { shortDayMonth, touchTitle, NO_NAMES, type LabelableTouch, type TouchNames } from "@/lib/attribution/touch-label";
 
 /**
  * "Cargar a mano" con canal (Extra I, F47): la eleccion de la persona. El SERVIDOR crea el toque al guardar la venta

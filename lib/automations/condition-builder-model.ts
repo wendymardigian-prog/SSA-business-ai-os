@@ -75,7 +75,7 @@ export interface BuilderField {
   options?: FieldOption[];
   argument?: FieldArgumentSpec;
   hint?: string;
-  /** Si quien lo usa tiene sus propios operadores (Formularios). Sin esto, los del tipo. */
+  /** Si quien lo usa tiene sus propios operadores. Sin esto, los del tipo. */
   operators?: OperatorChoice[];
   /** Idem para como se pide el valor. Sin esto, el del tipo y el operador. */
   slots?: (operator: string) => ValueSlot[];

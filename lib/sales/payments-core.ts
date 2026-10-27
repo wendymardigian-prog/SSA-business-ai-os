@@ -8,7 +8,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { auditAsSystem, diffFields, logAudit } from "@/lib/audit";
-import { localToday } from "./dates";
+import { localToday } from "@/lib/shared/dates";
 import { planMarkPaid, planReschedule, type PartialOffer } from "./payments-rules";
 import type { PaymentMethodDef } from "./payment-methods";
 import { refreshContactPaymentHealth } from "./payment-health-run";

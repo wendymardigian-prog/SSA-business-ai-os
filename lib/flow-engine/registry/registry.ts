@@ -207,7 +207,7 @@ export function resetRegistry(): void {
 }
 
 /**
- * ¿Algun disparador atiende este tipo de evento tambien SIN contacto (Tareas, F25)? Solo cambia el camino de un evento
+ * ¿Algun disparador atiende este tipo de evento tambien SIN contacto (F25)? Solo cambia el camino de un evento
  * que llega sin contacto y con una persona del equipo; los demas eventos no lo consultan.
  */
 export function eventAllowsNoContact(eventType: string): boolean {

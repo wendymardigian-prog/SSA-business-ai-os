@@ -5,8 +5,8 @@ import { resolve } from "node:path";
 /**
  * Caracterizacion del Realtime de la lista de conversaciones (Bloque I, I6).
  *
- * El Bloque I saca el buscador y los filtros de `conversation-list.tsx`, y la
- * regla es que el Realtime quede IDENTICO: mismo canal, mismo respiro de
+ * El buscador y los filtros viven afuera de `conversation-list.tsx`, y el
+ * Realtime tiene que quedar IDENTICO: mismo canal, mismo respiro de
  * 800 ms, mismo merge en el cliente cuando la fila sigue cumpliendo el filtro.
  *
  * Vitest corre en `node` y el proyecto no tiene tests de componentes, asi que

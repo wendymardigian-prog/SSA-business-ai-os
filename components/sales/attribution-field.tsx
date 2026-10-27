@@ -5,9 +5,9 @@ import { Loader2 } from "lucide-react";
 import { listContactTouches } from "@/lib/actions/contact-touches";
 import { ManualChannelSelector } from "@/components/sales/manual-channel-selector";
 import type { WizardMember } from "@/components/sales/wizard/types";
-import { ChannelChip } from "@/components/sales/channel-chip";
+import { ChannelChip } from "@/components/shared/channel-chip";
 import { mediumLabel, sourceLabel } from "@/lib/contacts/taxonomy";
-import { attributionFromTouch, describeAttribution, latestTouch, relativeDays, type TouchRow } from "@/lib/sales/attribution";
+import { attributionFromTouch, describeAttribution, latestTouch, relativeDays, type TouchRow } from "@/lib/attribution/attribution";
 import {
   backToLastTouch,
   chooseTouch,
@@ -20,7 +20,7 @@ import {
   type AttributionPanel,
 } from "@/lib/sales/attribution-field";
 import { suggestSaleTouch } from "@/lib/sales/suggest-touch";
-import { channelOfTouch, NO_NAMES, touchTitle, type TouchNames } from "@/lib/sales/touch-label";
+import { channelOfTouch, NO_NAMES, touchTitle, type TouchNames } from "@/lib/attribution/touch-label";
 import { cn } from "@/lib/utils";
 
 /**

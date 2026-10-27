@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre public.chat_reply_is_human (SQL, 00261) e isHumanReply (TS, lib/messages/reply-time.ts). Corren en lib/messages/reply-time.test.ts y en scripts/verify-chat-awaiting.mjs. 'seconds' = segundos entre el ultimo mensaje del lead y la respuesta.",
+  "_comment": "Casos compartidos entre public.chat_reply_is_human (SQL) e isHumanReply (TS, lib/messages/reply-time.ts). Corren en lib/messages/reply-time.test.ts y en scripts/verify-chat-awaiting.mjs. 'seconds' = segundos entre el ultimo mensaje del lead y la respuesta.",
   "cases": [
     { "name": "persona desde el sistema", "origin": "user", "sentByUserId": "00000000-0000-0000-0000-000000000001", "seconds": 3, "expected": true },
     { "name": "persona desde el sistema sin id", "origin": "user", "sentByUserId": null, "seconds": 600, "expected": true },

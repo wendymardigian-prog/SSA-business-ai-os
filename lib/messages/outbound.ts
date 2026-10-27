@@ -2,10 +2,8 @@ import type { Database, Json } from "@/lib/types/database";
 
 /**
  * Origen de un saliente (F2, Bloque 1). Es la respuesta a "de dónde salió este
- * mensaje", que hasta ahora no se guardaba: los 1.580 salientes del historial
- * entraron sin autor (ver docs/diagnostico-autoria.md). Cada camino de envío
- * ahora declara su origen acá, en un solo lugar, para que el dashboard del
- * Bloque 3 pueda agrupar por autor.
+ * mensaje": cada camino de envío declara su origen acá, en un solo lugar, para
+ * que el dashboard pueda agrupar por autor.
  *
  * - `agent`     el agente de IA (envío directo o borrador aprobado)
  * - `user`      una persona desde la bandeja

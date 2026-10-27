@@ -11,7 +11,7 @@ import type { ConditionField, ConditionFieldArgs } from "./types";
 import { agentStateForConversation } from "@/lib/agent/state";
 import { LEGACY_OPERATORS } from "../legacy-operators";
 import { MissingFieldError, type FieldValue } from "../condition-eval";
-import { answerValueOf, type AnswerSource } from "@/lib/forms/automation/variable-schema";
+import { answerValueOf, type AnswerSource } from "@/lib/forms/automation/variable-schema"; // @plantilla-quitar(formularios)
 import { requireContactId } from "../types";
 
 // ------------------------------------------------------------
@@ -188,8 +188,20 @@ export function variablePathValue(variables: Record<string, unknown> | undefined
 }
 
 // Lo que el disparador deja en las variables del flow: se lee por su ruta.
-// Reporte de fin de día (E16): quién, el día, las respuestas por canal y las métricas.
-for (const prefix of ["form.", "submission.", "booking.", "sale.", "payment.", "eod.", "member.", "metrics.", "channel.", "report."]) {
+// Reporte de fin de día (E16): quién, el día, las respuestas por canal y las métricas.  @plantilla-quitar(formularios)
+const FLOW_VARIABLE_PREFIXES = [
+  "form.", // @plantilla-quitar(formularios)
+  "submission.", // @plantilla-quitar(formularios)
+  "booking.",
+  "sale.", // @plantilla-quitar(ventas)
+  "payment.", // @plantilla-quitar(ventas)
+  "eod.", // @plantilla-quitar(formularios)
+  "member.",
+  "metrics.", // @plantilla-quitar(formularios)
+  "channel.", // @plantilla-quitar(formularios)
+  "report.", // @plantilla-quitar(formularios)
+];
+for (const prefix of FLOW_VARIABLE_PREFIXES) {
   registerTypedField({
     prefix,
     label: `Dato del flujo (${prefix}*)`,
@@ -263,6 +275,7 @@ registerTypedField({
   value: ({ contact }) => textColumn(contact.interest_product_id),
 });
 
+// @plantilla-desde(formularios)
 /**
  * La respuesta del formulario que disparo el flujo, junto con las preguntas de
  * la version con la que se respondio. Se carga UNA vez por corrida del nodo.
@@ -317,3 +330,4 @@ registerTypedField({
     return variablePathValue(args.context.variables, path);
   },
 });
+// @plantilla-hasta(formularios)

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Loader2, Search, X } from "lucide-react";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { createCommissionAdjustment } from "@/lib/actions/commissions";
 import { listPaymentsForAdjustment, searchSalesForAdjustment } from "@/lib/actions/commissions-ui";

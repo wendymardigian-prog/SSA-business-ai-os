@@ -13,9 +13,9 @@
  * Las fechas mensuales conservan el día de la primera: del 31 de enero caen el 28
  * (o 29) de febrero y el 31 de marzo.
  */
-import { addDays, addMonths } from "./dates";
+import { addDays, addMonths } from "@/lib/shared/dates";
 import type { FinancingType, PaymentType } from "./labels";
-import { fromCents, toCents } from "./money";
+import { fromCents, toCents } from "@/lib/shared/money";
 
 export type Frequency = "weekly" | "biweekly" | "monthly";
 

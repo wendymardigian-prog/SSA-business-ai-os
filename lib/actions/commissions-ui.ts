@@ -10,7 +10,7 @@ import { loadSelectableCommissions } from "@/lib/commissions/screen-load";
 import type { PaymentOption, SaleOption, SelectAllResult } from "@/lib/commissions/ui-action-types";
 import { formatUsd } from "@/lib/finance/format";
 import { formatCivilDate } from "@/lib/finance/view";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { snapshotText } from "@/lib/sales/sale-text";
 
 /**

@@ -5,7 +5,7 @@
  *
  * El navegador manda el arbol entero; el servidor no le cree nada de lo que no
  * tiene que decidir el:
- *  - el disparador sale de lo GUARDADO (solo el "Solo si…" de Formularios es
+ *  - el disparador sale de lo GUARDADO (solo el "Solo si…", donde existe, es
  *    editable, y se valida aparte);
  *  - un paso que el editor no ofrece en esa pantalla (una llamada HTTP, un A/B)
  *    solo puede venir de algo que YA estaba guardado, con los mismos datos;

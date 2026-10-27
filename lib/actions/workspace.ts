@@ -161,8 +161,8 @@ export async function updateWorkspaceTimezone(
  * existe esta accion.
  *
  * Las palabras clave no son decoracion: disparan flows y dan de baja
- * contactos. Que se cambien sin dejar rastro es exactamente el caso que F20
- * viene a cubrir.
+ * contactos. Que se cambien sin dejar rastro es exactamente lo que el audit
+ * log viene a cubrir.
  */
 export async function updateWorkspaceSettings(settings: {
   name?: string;
@@ -247,7 +247,7 @@ export async function updateBackgroundSettings(
   if (!validated.ok) return { ok: false, error: validated.error ?? "Configuración inválida" };
 
   const { data: prev } = await supabase.from("workspaces").select("ai_background_settings").eq("id", workspace.id).single();
-  // Se conserva lo demas que hay en la columna (las tareas de Llamadas viven ahi).
+  // Se conserva lo demas que hay en la columna (otras tareas guardan ahi su configuracion).
   const merged = mergeBackgroundSettings((prev as { ai_background_settings?: unknown } | null)?.ai_background_settings, validated.settings!);
   const { error } = await (await createServiceClient()).from("workspaces").update({ ai_background_settings: merged as unknown as Json }).eq("id", workspace.id);
   if (error) {

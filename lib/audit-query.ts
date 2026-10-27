@@ -1,5 +1,5 @@
 /**
- * El armado de consultas sobre `audit_log` (Ventas F36): UNA sola función para el historial de una
+ * El armado de consultas sobre `audit_log` (F36): UNA sola función para el historial de una
  * entidad (`<Historial>`) y para la pantalla global de Actividad. Puro: devuelve filtros de columna que
  * quien llama aplica a su consulta (con el cliente del usuario la RLS filtra). El comportamiento del
  * historial de una entidad NO cambió: `runHistoryQuery` ahora arma sus filtros acá y son los mismos de
@@ -20,7 +20,7 @@ export interface AuditQueryInput {
   /** Desde (incluido) y hasta (excluido), como instantes ISO: quien llama convierte los días a la zona de quien mira. */
   fromIso?: string | null;
   toIso?: string | null;
-  /** Texto en la etiqueta del actor («Job de mora», el nombre de un flujo). */
+  /** Texto en la etiqueta del actor (el nombre de un job o de un flujo). */
   actorLabel?: string | null;
   /** performed_at de la última fila vista: trae las anteriores (el historial por entidad). */
   cursor?: string | null;
@@ -63,18 +63,20 @@ export function entityHref(entityType: string, entityId: string, metadata?: unkn
   const saleId = typeof (metadata as { sale_id?: unknown } | null)?.sale_id === "string" ? (metadata as { sale_id: string }).sale_id : null;
   switch (entityType) {
     case "contact": return `/dashboard/contacts/${entityId}`;
-    case "sale": return `/dashboard/ventas/${entityId}`;
-    case "payment": return saleId ? `/dashboard/ventas/${saleId}` : null;
+    case "sale": return `/dashboard/ventas/${entityId}`; // @plantilla-quitar(ventas)
+    case "payment": return saleId ? `/dashboard/ventas/${saleId}` : null; // @plantilla-quitar(ventas)
     case "product": return `/dashboard/settings/productos/${entityId}`;
     case "booking": return `/dashboard/agenda?agenda=${entityId}`;
-    case "call": return `/dashboard/llamadas/${entityId}`;
-    case "form": return `/dashboard/formularios/${entityId}`;
-    case "task": return `/dashboard/tareas?task=${entityId}`;
-    case "commission": return `/dashboard/finanzas/comisiones?commission=${entityId}`;
+    case "call": return `/dashboard/llamadas/${entityId}`; // @plantilla-quitar(llamadas)
+    case "form": return `/dashboard/formularios/${entityId}`; // @plantilla-quitar(formularios)
+    case "task": return `/dashboard/tareas?task=${entityId}`; // @plantilla-quitar(tareas)
+    case "commission": return `/dashboard/finanzas/comisiones?commission=${entityId}`; // @plantilla-quitar(comisiones)
+    // @plantilla-desde(formularios)
     case "eod_report": {
       const formId = typeof (metadata as { form_id?: unknown } | null)?.form_id === "string" ? (metadata as { form_id: string }).form_id : null;
       return formId ? `/dashboard/formularios/${formId}/reportes/${entityId}` : null;
     }
+    // @plantilla-hasta(formularios)
     case "conversation": return `/dashboard/inbox?c=${entityId}`;
     case "agent": return `/dashboard/agents/${entityId}`;
     default: return null;
@@ -94,19 +96,19 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   event_type: "Tipo de evento",
   booking: "Agenda",
   response_asset: "Recurso",
-  call: "Llamada",
-  form: "Formulario",
-  form_submission: "Respuesta de formulario",
-  contract_signature: "Firma de contrato",
-  eod_report: "Reporte de fin de día",
-  task: "Tarea",
+  call: "Llamada", // @plantilla-quitar(llamadas)
+  form: "Formulario", // @plantilla-quitar(formularios)
+  form_submission: "Respuesta de formulario", // @plantilla-quitar(formularios)
+  contract_signature: "Firma de contrato", // @plantilla-quitar(formularios)
+  eod_report: "Reporte de fin de día", // @plantilla-quitar(formularios)
+  task: "Tarea", // @plantilla-quitar(tareas)
   product: "Producto",
   product_variant: "Variante",
   assignment_rule: "Regla de asignación",
-  sale: "Venta",
-  payment: "Pago",
-  commission: "Comisión",
-  commission_rule: "Regla de comisión",
+  sale: "Venta", // @plantilla-quitar(ventas)
+  payment: "Pago", // @plantilla-quitar(ventas)
+  commission: "Comisión", // @plantilla-quitar(comisiones)
+  commission_rule: "Regla de comisión", // @plantilla-quitar(comisiones)
 };
 
 export const ACTOR_TYPE_LABELS: Record<AuditActorType, string> = {

@@ -26,14 +26,15 @@ const TASKS_PATH = "/dashboard/agents/tareas";
 const NOT_ADMIN = "No tenés permiso para editar las instrucciones de una tarea.";
 
 /**
- * Quien puede tocar una tarea de IA: `ai_tasks.manage`; las dos tareas de llamadas aceptan ademas
- * `calls.configure`, como ya pasaba en su pantalla de Llamadas.
+ * Quien puede tocar una tarea de IA: `ai_tasks.manage`.
+ * Las dos tareas de llamadas aceptan ademas `calls.configure`, como ya pasaba en su pantalla de Llamadas.  @plantilla-quitar(llamadas)
  */
 async function taskGuard(taskId: string) {
-  const callTask = taskId === "call_classification" || taskId === "call_analysis" || taskId === "call_summary";
-  return callTask
-    ? await getAnyPermissionAction(["ai_tasks.manage", "calls.configure"])
-    : await getPermissionAction("ai_tasks.manage");
+  const callTask = taskId === "call_classification" || taskId === "call_analysis" || taskId === "call_summary"; // @plantilla-quitar(llamadas)
+  return callTask // @plantilla-quitar(llamadas)
+    ? await getAnyPermissionAction(["ai_tasks.manage", "calls.configure"]) // @plantilla-quitar(llamadas)
+    : await getPermissionAction("ai_tasks.manage"); // @plantilla-quitar(llamadas)
+    // @plantilla-sin(llamadas): return await getPermissionAction("ai_tasks.manage");
 }
 /** Mismo tope que el prompt de un agente (lib/agent/validate.ts). */
 const MAX_INSTRUCTIONS_CHARS = 32_000;

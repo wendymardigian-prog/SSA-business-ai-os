@@ -288,7 +288,7 @@ describe("getOrCreateWorkspaceWebhookSecret", () => {
 
   it("si no se puede guardar, LANZA en vez de devolver el secreto", async () => {
     // Registrar en Zernio un secreto que no quedo guardado deja todos los
-    // webhooks entrantes rechazados con 401, y sin nada que lo explique.
+    // webhooks de Zernio rechazados con 401, y sin nada que lo explique.
     const fake = makeFakeSupabase({ vault: null, storeFalla: "sin permiso" });
 
     await expect(getOrCreateWorkspaceWebhookSecret(fake.client, "ws-1")).rejects.toThrow(

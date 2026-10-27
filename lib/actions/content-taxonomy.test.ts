@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
+import { lastDefinition } from "@/lib/test-utils/migrations";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 
 const WS = "ws-1";
@@ -106,7 +107,7 @@ describe("permiso", () => {
   it("un rol personalizado con settings.general crea pilares, pero no productos", async () => {
     customRole(["settings.general"]);
     expect((await actions.createPillar({ name: "Educativo" })).ok).toBe(true);
-    // Los pilares y los productos tienen cada uno su clave (el catalogo de Ventas pide products.manage).
+    // Los pilares y los productos tienen cada uno su clave (el catalogo de productos pide products.manage).
     expect((await actions.createProduct({ name: "Mentoria", priceUsd: 1500 })).ok).toBe(false);
   });
 
@@ -308,9 +309,7 @@ describe("borrar no existe (F89)", () => {
     expect(source).not.toMatch(/\.delete\(/);
   });
 
-  it("la migracion no le da policy de DELETE a ninguna de las dos tablas", () => {
-    const sql = readFileSync("supabase/migrations/00116_content_taxonomy.sql", "utf8");
-    // Una sola mencion: el DROP POLICY IF EXISTS que deja la tabla sin ella.
-    expect(sql).not.toMatch(/CREATE POLICY[^;]*FOR DELETE/i);
+  it("ninguna migracion le da policy de DELETE a los pilares", () => {
+    expect(lastDefinition(/CREATE POLICY[^;]*ON\s+public\.content_pillars\b[^;]*FOR DELETE/i)).toBeNull();
   });
 });

@@ -25,15 +25,16 @@ const SETTER_KEYS = [
   "dashboards.chat.view",
   "contacts.view", "contacts.edit", "contacts.assign",
   "scheduling.use", "bookings.view", "bookings.manage",
-  "forms.view", "tasks.view", "tasks.edit",
+  "forms.view", // @plantilla-quitar(formularios)
+  "tasks.view", "tasks.edit", // @plantilla-quitar(tareas)
 ];
 
 const CLOSER_KEYS = [
   "contacts.view", "contacts.edit",
   "scheduling.use", "bookings.view", "bookings.manage",
-  "calls.view", "calls.edit",
-  "sales.view", "sales.manage", "payments.manage",
-  "tasks.view", "tasks.edit",
+  "calls.view", "calls.edit", // @plantilla-quitar(llamadas)
+  "sales.view", "sales.manage", "payments.manage", // @plantilla-quitar(ventas)
+  "tasks.view", "tasks.edit", // @plantilla-quitar(tareas)
 ];
 
 export const ROLE_TEMPLATES: RoleTemplate[] = [
@@ -43,15 +44,18 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     name: "Setter",
     description: "Contesta los chats, atiende a los contactos y agenda reuniones.",
     keys: SETTER_KEYS,
-    scopes: { leads: "own_unassigned", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    scopes: { leads: "own_unassigned", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "own_unassigned", bookings: "own" },
     channels: { mode: "all", all: { scope: "own_unassigned", reply: true } },
   },
   {
     id: "closer",
     name: "Closer",
-    description: "Hace las llamadas de venta, carga las ventas y cobra.",
+    description: "Hace las llamadas de venta, carga las ventas y cobra.", // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): description: "Atiende las reuniones con los leads y cierra.",
     keys: CLOSER_KEYS,
-    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "own", bookings: "own" },
     channels: { mode: "all", all: { scope: "own", reply: true } },
   },
   {
@@ -61,17 +65,21 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     keys: [
       "dashboards.content.view", "social.view",
       "content.view", "content.create", "content.approve", "content.publish", "content.ai",
-      "templates.manage", "tasks.view", "tasks.edit",
+      "templates.manage",
+      "tasks.view", "tasks.edit", // @plantilla-quitar(tareas)
     ],
-    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" },
+    scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "own", bookings: "own" },
     channels: NO_CHANNELS,
   },
   {
     id: "leader",
     name: "Líder de equipo",
     description: "Todo lo del Setter y el Closer, y ve a todo el equipo.",
-    keys: [...new Set([...SETTER_KEYS, ...CLOSER_KEYS, "team.view", "eod.view_all", "dashboards.agenda.view", "data.export", "tasks.delete"])],
-    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" },
+    keys: [...new Set([...SETTER_KEYS, ...CLOSER_KEYS, "team.view", "eod.view_all", "dashboards.agenda.view", "data.export", "tasks.delete"])], // @plantilla-quitar(formularios,tareas)
+    // @plantilla-sin(formularios,tareas): keys: [...new Set([...SETTER_KEYS, ...CLOSER_KEYS, "team.view", "dashboards.agenda.view", "data.export"])],
+    scopes: { leads: "all", bookings: "all", calls: "all", sales: "all", commissions: "all", tasks: "all" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
+    // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "all", bookings: "all" },
     channels: { mode: "all", all: { scope: "all", reply: true } },
   },
 ];

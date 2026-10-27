@@ -7,7 +7,7 @@ import type { TaskRowView } from "@/lib/tasks/table-model";
 import { STATUS_LABELS, TASK_STATUSES, type TaskStatus } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
 import { PersonBadge, PriorityChip, StatusChip, StatusIcon, STATUS_TONE } from "./chips";
-import { FloatingPanel } from "./floating";
+import { FloatingPanel } from "@/components/shared/floating";
 import { useTimeFormat } from "./time-format-context";
 
 export interface TaskCardProps {

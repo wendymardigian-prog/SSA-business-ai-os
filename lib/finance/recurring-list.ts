@@ -21,7 +21,7 @@ import {
 import { draftFromRow, type RecurringDraft } from "./recurring-form";
 import { vendorLabel, type VendorLite } from "./vendors";
 import { formatUsd } from "./format";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 
 /** Las columnas de `recurring_expenses` que lee la pantalla. */
 export const RECURRING_LIST_COLUMNS =

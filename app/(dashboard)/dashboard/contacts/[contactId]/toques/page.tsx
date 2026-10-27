@@ -62,6 +62,7 @@ export default async function ContactTouchesPage({
   const shown = new Set(first.items.map((i) => i.id));
   const pageRows = loaded.data.filter((t) => shown.has(t.id));
 
+  // @plantilla-desde(formularios)
   const formIds = [
     ...new Set(
       pageRows
@@ -70,11 +71,14 @@ export default async function ContactTouchesPage({
         .filter((id): id is string => typeof id === "string"),
     ),
   ];
+  // @plantilla-hasta(formularios)
   const formNames: Record<string, string> = {};
+  // @plantilla-desde(formularios)
   if (formIds.length > 0) {
     const { data: formRows } = await supabase.from("forms").select("id, name").eq("workspace_id", workspace.id).in("id", formIds);
     for (const f of (formRows ?? []) as { id: string; name: string }[]) formNames[f.id] = f.name;
   }
+  // @plantilla-hasta(formularios)
   const names = await loadMetaNames(supabase, workspace.id, pageRows);
   const timeline = buildTimeline(loaded.data, { page, timeZone, formNames, names });
 
@@ -97,7 +101,8 @@ export default async function ContactTouchesPage({
       )}
       {timeline.total === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Todavía no hay toques de este contacto. Se registran solos cuando escribe, comenta, hace clic en un link, agenda o responde un formulario.
+          Todavía no hay toques de este contacto. Se registran solos cuando escribe, comenta, hace clic en un link, agenda o responde un formulario. {/* @plantilla-quitar(formularios) */}
+          {/* @plantilla-sin(formularios): Todavía no hay toques de este contacto. Se registran solos cuando escribe, comenta, hace clic en un link o agenda. */}
         </p>
       ) : (
         <TouchTimelineList items={timeline.items} timeZone={timeZone} adHrefs={adHrefs} />

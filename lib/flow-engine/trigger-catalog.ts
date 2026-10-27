@@ -9,7 +9,7 @@
  */
 
 import type { TriggerType } from "@/lib/types/database";
-import { presetFor, SALES_PRESETS } from "@/lib/sales/automation/presets";
+import { presetFor, SALES_PRESETS } from "@/lib/sales/automation/presets"; // @plantilla-quitar(ventas)
 import { triggerConfigDefaults } from "./trigger-defaults";
 
 export type TriggerGroupKey =
@@ -17,24 +17,24 @@ export type TriggerGroupKey =
   | "comentarios"
   | "contactos"
   | "agenda"
-  | "formularios"
-  | "ventas"
-  | "tareas"
-  | "llamadas"
-  | "webhooks"
-  | "equipo";
+  | "formularios" // @plantilla-quitar(formularios)
+  | "ventas" // @plantilla-quitar(ventas)
+  | "tareas" // @plantilla-quitar(tareas)
+  | "llamadas" // @plantilla-quitar(llamadas)
+  | "webhooks" // @plantilla-quitar(webhooks)
+  | "equipo"; // @plantilla-quitar(formularios)
 
 export const TRIGGER_GROUPS: ReadonlyArray<{ key: TriggerGroupKey; label: string }> = [
   { key: "mensajes", label: "Mensajes" },
   { key: "comentarios", label: "Comentarios" },
   { key: "contactos", label: "Contactos y CRM" },
   { key: "agenda", label: "Agenda" },
-  { key: "formularios", label: "Formularios" },
-  { key: "ventas", label: "Ventas y pagos" },
-  { key: "tareas", label: "Tareas" },
-  { key: "llamadas", label: "Llamadas" },
-  { key: "webhooks", label: "Webhooks" },
-  { key: "equipo", label: "Equipo" },
+  { key: "formularios", label: "Formularios" }, // @plantilla-quitar(formularios)
+  { key: "ventas", label: "Ventas y pagos" }, // @plantilla-quitar(ventas)
+  { key: "tareas", label: "Tareas" }, // @plantilla-quitar(tareas)
+  { key: "llamadas", label: "Llamadas" }, // @plantilla-quitar(llamadas)
+  { key: "webhooks", label: "Webhooks" }, // @plantilla-quitar(webhooks)
+  { key: "equipo", label: "Equipo" }, // @plantilla-quitar(formularios)
 ];
 
 export interface TriggerCatalogEntry {
@@ -66,21 +66,21 @@ export const TRIGGER_CATALOG: readonly TriggerCatalogEntry[] = [
   { type: "booking_before_start", label: "Antes de una reunión", description: "Un recordatorio antes de la hora de inicio", group: "agenda", synonyms: ["recordatorio"] },
   { type: "booking_after_end", label: "Después de una reunión", description: "Un seguimiento después de la hora de fin", group: "agenda", synonyms: ["seguimiento"] },
   { type: "booking_after_created", label: "Después de agendar", description: "Un mensaje un rato después de que agendaron", group: "agenda" },
-  { type: "form_submitted", label: "Se envió un formulario", description: "Cuando alguien envía un formulario personalizado", group: "formularios", synonyms: ["form"] },
-  { type: "survey_answered", label: "Se respondió una encuesta", description: "Cuando alguien responde una encuesta, con su puntaje", group: "formularios", synonyms: ["nps"] },
-  { type: "contract_signed", label: "Se firmó un contrato", description: "Cuando alguien firma un contrato", group: "formularios", synonyms: ["firma"] },
-  { type: "sale_created", label: "Venta creada", description: "Cuando se carga una venta nueva", group: "ventas" },
-  { type: "sale_status_changed", label: "Cambió el estado de la venta", description: "Cuando una venta pasa a otro estado (cancelada, pagada, con mora…)", group: "ventas" },
-  { type: "payment_created", label: "Pago creado", description: "Cuando se crea un pago: programado, cobrado o un reembolso", group: "ventas" },
-  { type: "payment_status_changed", label: "Cambió el estado del pago", description: "Cuando un pago pasa a cobrado, moroso, incobrable…", group: "ventas" },
-  { type: "payment_before_due", label: "Antes de un vencimiento", description: "Un recordatorio X días antes de que venza un pago", group: "ventas" },
-  { type: "payment_after_due", label: "Después de un vencimiento impago", description: "Un aviso X días después del vencimiento si el pago sigue sin cobrarse", group: "ventas" },
-  { type: "task_completed", label: "Se completó una tarea", description: "Cuando alguien completa una tarea. Si la tarea no tiene contacto, corre sin contacto", group: "tareas" },
-  { type: "task_overdue", label: "Una tarea quedó vencida", description: "Cuando una tarea vence sin completarse (una vez por vencimiento)", group: "tareas" },
-  { type: "call_analyzed", label: "Se analizó una llamada", description: "Cuando una llamada con contacto queda analizada (nueva o regenerada)", group: "llamadas", synonyms: ["fathom"] },
-  { type: "call_linked", label: "Se vinculó una llamada", description: "Cuando una llamada se vincula a un contacto, sola o a mano", group: "llamadas", synonyms: ["fathom"] },
-  { type: "webhook_received", label: "Webhook recibido", description: "Cuando un formulario externo (Typeform, Tally, Framer…) manda datos a tu URL. Arranca sin contacto", group: "webhooks", synonyms: ["api", "zapier", "make", "typeform", "tally"] },
-  { type: "eod_submitted", label: "Se envió un reporte de fin de día", description: "Cuando alguien del equipo envía su reporte del día. Es sobre la persona, sin contacto", group: "equipo", synonyms: ["eod", "reporte"] },
+  { type: "form_submitted", label: "Se envió un formulario", description: "Cuando alguien envía un formulario personalizado", group: "formularios", synonyms: ["form"] }, // @plantilla-quitar(formularios)
+  { type: "survey_answered", label: "Se respondió una encuesta", description: "Cuando alguien responde una encuesta, con su puntaje", group: "formularios", synonyms: ["nps"] }, // @plantilla-quitar(formularios)
+  { type: "contract_signed", label: "Se firmó un contrato", description: "Cuando alguien firma un contrato", group: "formularios", synonyms: ["firma"] }, // @plantilla-quitar(formularios)
+  { type: "sale_created", label: "Venta creada", description: "Cuando se carga una venta nueva", group: "ventas" }, // @plantilla-quitar(ventas)
+  { type: "sale_status_changed", label: "Cambió el estado de la venta", description: "Cuando una venta pasa a otro estado (cancelada, pagada, con mora…)", group: "ventas" }, // @plantilla-quitar(ventas)
+  { type: "payment_created", label: "Pago creado", description: "Cuando se crea un pago: programado, cobrado o un reembolso", group: "ventas" }, // @plantilla-quitar(ventas)
+  { type: "payment_status_changed", label: "Cambió el estado del pago", description: "Cuando un pago pasa a cobrado, moroso, incobrable…", group: "ventas" }, // @plantilla-quitar(ventas)
+  { type: "payment_before_due", label: "Antes de un vencimiento", description: "Un recordatorio X días antes de que venza un pago", group: "ventas" }, // @plantilla-quitar(ventas)
+  { type: "payment_after_due", label: "Después de un vencimiento impago", description: "Un aviso X días después del vencimiento si el pago sigue sin cobrarse", group: "ventas" }, // @plantilla-quitar(ventas)
+  { type: "task_completed", label: "Se completó una tarea", description: "Cuando alguien completa una tarea. Si la tarea no tiene contacto, corre sin contacto", group: "tareas" }, // @plantilla-quitar(tareas)
+  { type: "task_overdue", label: "Una tarea quedó vencida", description: "Cuando una tarea vence sin completarse (una vez por vencimiento)", group: "tareas" }, // @plantilla-quitar(tareas)
+  { type: "call_analyzed", label: "Se analizó una llamada", description: "Cuando una llamada con contacto queda analizada (nueva o regenerada)", group: "llamadas", synonyms: ["fathom"] }, // @plantilla-quitar(llamadas)
+  { type: "call_linked", label: "Se vinculó una llamada", description: "Cuando una llamada se vincula a un contacto, sola o a mano", group: "llamadas", synonyms: ["fathom"] }, // @plantilla-quitar(llamadas)
+  { type: "webhook_received", label: "Webhook recibido", description: "Cuando un formulario externo (Typeform, Tally, Framer…) manda datos a tu URL. Arranca sin contacto", group: "webhooks", synonyms: ["api", "zapier", "make", "typeform", "tally"] }, // @plantilla-quitar(webhooks)
+  { type: "eod_submitted", label: "Se envió un reporte de fin de día", description: "Cuando alguien del equipo envía su reporte del día. Es sobre la persona, sin contacto", group: "equipo", synonyms: ["eod", "reporte"] }, // @plantilla-quitar(formularios)
 ];
 
 const BY_TYPE = new Map<string, TriggerCatalogEntry>(TRIGGER_CATALOG.map((e) => [e.type, e]));
@@ -89,7 +89,7 @@ export function triggerEntry(type: string | null | undefined): TriggerCatalogEnt
   return type ? BY_TYPE.get(type) : undefined;
 }
 
-/** Una opcion del selector: un tipo, o un atajo de Ventas (un tipo + la configuracion que deja elegida). */
+/** Una opcion del selector: un tipo, o un atajo (un tipo + la configuracion que deja elegida). */
 export interface TriggerChoice {
   key: string;
   type: TriggerType;
@@ -101,16 +101,18 @@ export interface TriggerChoice {
   config: Record<string, unknown>;
 }
 
-/** Las opciones del selector, en el orden de los grupos. Ventas se ofrece con sus atajos (`SALES_PRESETS`). */
+/** Las opciones del selector, en el orden de los grupos (con sus atajos, si los hay). */
 export function triggerChoices(): TriggerChoice[] {
   const out: TriggerChoice[] = [];
   for (const group of TRIGGER_GROUPS) {
+    // @plantilla-desde(ventas)
     if (group.key === "ventas") {
       for (const preset of SALES_PRESETS) {
         out.push({ key: `sales:${preset.key}`, type: preset.type, label: preset.label, description: preset.description, group: "ventas", synonyms: ["venta", "pago", "cobro"], config: preset.config });
       }
       continue;
     }
+    // @plantilla-hasta(ventas)
     for (const entry of TRIGGER_CATALOG.filter((e) => e.group === group.key)) {
       out.push({ key: entry.type, type: entry.type, label: entry.label, description: entry.description, group: entry.group, synonyms: entry.synonyms ?? [], config: {} });
     }
@@ -156,7 +158,8 @@ export function hasTriggerConfig(data: Record<string, unknown> | null | undefine
 export function applyTriggerChoice(current: Record<string, unknown> | null | undefined, choice: TriggerChoice): Record<string, unknown> {
   const label = typeof current?.label === "string" ? { label: current.label } : {};
   const keywords = choice.type === "keyword" || choice.type === "comment_keyword" ? { keywords: [] } : {};
-  const dueDefaults = choice.type === "payment_before_due" || choice.type === "payment_after_due" ? { offset_days: 3, at_time: "09:00" } : {};
+  const dueDefaults = choice.type === "payment_before_due" || choice.type === "payment_after_due" ? { offset_days: 3, at_time: "09:00" } : {}; // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): const dueDefaults = {};
   return { ...label, triggerType: choice.type, ...keywords, ...triggerConfigDefaults(choice.type), ...dueDefaults, ...choice.config };
 }
 
@@ -170,15 +173,16 @@ export function chosenType(data: Record<string, unknown> | null | undefined): st
 export function triggerDisplayLabel(data: Record<string, unknown> | null | undefined): string {
   const type = chosenType(data);
   if (!type) return "Elegí cómo arranca";
-  const preset = presetFor(type, data);
-  if (preset) return preset.label;
+  const preset = presetFor(type, data); // @plantilla-quitar(ventas)
+  if (preset) return preset.label; // @plantilla-quitar(ventas)
   return triggerEntry(type)?.label ?? type;
 }
 
-/** La opcion del selector que corresponde a lo guardado (para marcarla): el atajo de Ventas, o el tipo. */
+/** La opcion del selector que corresponde a lo guardado (para marcarla): el atajo, o el tipo. */
 export function choiceKeyFor(data: Record<string, unknown> | null | undefined): string | null {
   const type = chosenType(data);
   if (!type) return null;
-  const preset = presetFor(type, data);
-  return preset ? `sales:${preset.key}` : type;
+  const preset = presetFor(type, data); // @plantilla-quitar(ventas)
+  return preset ? `sales:${preset.key}` : type; // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): return type;
 }

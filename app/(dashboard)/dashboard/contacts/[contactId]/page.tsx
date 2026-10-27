@@ -41,8 +41,8 @@ import { isStatusRole } from "@/lib/contacts/statuses";
 import { AttributionSection } from "@/components/contacts/attribution-section";
 import { HistorySection } from "@/components/contacts/history-section";
 import { buildContactHistory } from "@/lib/contacts/history";
-import { automaticRulesFromAudit } from "@/lib/sales/contact-summary";
-import { ContactSummary } from "@/components/sales/contact-summary";
+import { automaticRulesFromAudit } from "@/lib/assignment/contact-summary";
+import { ContactSummary } from "@/components/assignment/contact-summary";
 import {
   ContactSequencesSection,
   type ContactEnrollment,
@@ -54,18 +54,18 @@ import {
 import { ContactBookingsSection } from "@/components/contacts/bookings-section";
 import { MergeNotice } from "@/components/contacts/merge-notice";
 import { decodeMergeParam } from "@/lib/contacts/merge";
-import { ContactCallsSection } from "@/components/contacts/calls-section";
-import { ContactSalesSection } from "@/components/contacts/sales-section";
-import { ContactFormsSection } from "@/components/contacts/forms-section";
-import { loadContactForms } from "@/lib/forms/data/contact-forms";
-import { ContactTasks, ContactTasksProvider } from "@/components/tasks/contact-tasks";
-import { loadContactTasksChecked } from "@/lib/tasks/contact-section";
+import { ContactCallsSection } from "@/components/contacts/calls-section"; // @plantilla-quitar(llamadas)
+import { ContactSalesSection } from "@/components/contacts/sales-section"; // @plantilla-quitar(ventas)
+import { ContactFormsSection } from "@/components/contacts/forms-section"; // @plantilla-quitar(formularios)
+import { loadContactForms } from "@/lib/forms/data/contact-forms"; // @plantilla-quitar(formularios)
+import { ContactTasks, ContactTasksProvider } from "@/components/tasks/contact-tasks"; // @plantilla-quitar(tareas)
+import { loadContactTasksChecked } from "@/lib/tasks/contact-section"; // @plantilla-quitar(tareas)
 import { todayInputValue } from "@/lib/dates";
-import { loadWizardConfig } from "@/lib/sales/wizard/load";
-import { snapshotText } from "@/lib/sales/sale-text";
-import { describePaymentHealth } from "@/lib/sales/payment-health";
+import { loadWizardConfig } from "@/lib/sales/wizard/load"; // @plantilla-quitar(ventas)
+import { snapshotText } from "@/lib/sales/sale-text"; // @plantilla-quitar(ventas)
+import { describePaymentHealth } from "@/lib/sales/payment-health"; // @plantilla-quitar(ventas)
 import { getPermissionContext } from "@/lib/auth/guards";
-import { loadContactCalls } from "@/lib/calls/contact-section";
+import { loadContactCalls } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
 import { PageHeader } from "@/components/page-header";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 
@@ -221,12 +221,14 @@ export default async function ContactDetailPage({
   const viewerTimezone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
   // Un toque de formulario ya no lleva el nombre del formulario como `utm_content`: se lee de `raw.source_id`.
   const touchRows = touchesRes.data ?? [];
-  const formIds = [...new Set(touchRows.filter((t) => t.origin === "form").map((t) => (t.raw as { source_id?: unknown } | null)?.source_id).filter((id): id is string => typeof id === "string"))];
+  const formIds = [...new Set(touchRows.filter((t) => t.origin === "form").map((t) => (t.raw as { source_id?: unknown } | null)?.source_id).filter((id): id is string => typeof id === "string"))]; // @plantilla-quitar(formularios)
   const formNames: Record<string, string> = {};
+  // @plantilla-desde(formularios)
   if (formIds.length > 0) {
     const { data: formRows } = await supabase.from("forms").select("id, name").eq("workspace_id", workspace.id).in("id", formIds);
     for (const f of (formRows ?? []) as { id: string; name: string }[]) formNames[f.id] = f.name;
   }
+  // @plantilla-hasta(formularios)
   // Los nombres (y la miniatura) de la campaña, el conjunto y el anuncio a los que se vincularon los toques. Con la
   // sesion de quien mira: si no tiene permiso para ver los anuncios (`dashboards.ads.view`), la RLS no devuelve nada
   // y la ficha muestra los ids.
@@ -249,15 +251,18 @@ export default async function ContactDetailPage({
   }));
   const labels = memberLabels(members);
 
+  // @plantilla-desde(llamadas)
   // Las llamadas del contacto (F34): solo si quien mira tiene `calls.view`, y solo las que la RLS le deja ver.
   const canViewCalls = (await getPermissionContext()).can("calls.view");
   const contactCalls = canViewCalls
     ? await loadContactCalls(supabase, { workspaceId: workspace.id, contactId, names: new Map(members.map((m) => [m.userId, m.name])) })
     : { rows: [], total: 0 };
+  // @plantilla-hasta(llamadas)
 
-  // Las ventas del contacto (Ventas, B3): solo con `sales.view`; la RLS decide cuáles ve. El asistente
-  // se carga solo si puede cargar ventas y hay algo para vender.
+  // Las ventas del contacto (Ventas, B3): solo con `sales.view`; la RLS decide cuáles ve. El asistente // @plantilla-quitar(ventas)
+  // se carga solo si puede cargar ventas y hay algo para vender. // @plantilla-quitar(ventas)
   const permissionCtx = await getPermissionContext();
+  // @plantilla-desde(ventas)
   const canViewSales = permissionCtx.can("sales.view");
   const contactSales = canViewSales
     ? await supabase
@@ -269,15 +274,20 @@ export default async function ContactDetailPage({
         .limit(10)
     : null;
   const salesWizard = canViewSales && permissionCtx.can("sales.manage") ? await loadWizardConfig(permissionCtx) : null;
+  // @plantilla-hasta(ventas)
 
+  // @plantilla-desde(formularios)
   // Los formularios que respondió (Formularios, R8): solo con `forms.view`; la RLS decide cuáles ve.
   const canViewForms = permissionCtx.can("forms.view");
   const contactForms = canViewForms ? await loadContactForms(supabase, { workspaceId: workspace.id, contactId }) : null;
+  // @plantilla-hasta(formularios)
 
+  // @plantilla-desde(tareas)
   // Las tareas del contacto (Tareas, F20): solo con `tasks.view`; la RLS decide cuales ve (un Member, las suyas).
   const canViewTasks = permissionCtx.can("tasks.view");
   const contactTasksRes = canViewTasks ? await loadContactTasksChecked(supabase, { workspaceId: workspace.id, contactId }) : { tasks: [], failed: false };
   const contactTasks = contactTasksRes.tasks;
+  // @plantilla-hasta(tareas)
 
   const contactBookings = (bookingsRes.data ?? []).map((b) => ({
     id: b.id,
@@ -556,8 +566,11 @@ export default async function ContactDetailPage({
 
             <ContactBookingsSection bookings={contactBookings} timezone={bookingTimezone} timeFormat={bookingTimeFormat} />
 
+            {/* @plantilla-desde(llamadas) */}
             <ContactCallsSection calls={contactCalls.rows} total={contactCalls.total} contactId={contact.id} timeZone={viewerTimezone} />
+            {/* @plantilla-hasta(llamadas) */}
 
+            {/* @plantilla-desde(ventas) */}
             {canViewSales && (
               <ContactSalesSection
                 sales={(contactSales?.data ?? []).map((s) => ({ id: s.id, saleDate: s.sale_date, status: s.status, finalAmount: Number(s.final_amount) || 0, product: snapshotText(s.product_snapshot) }))}
@@ -568,8 +581,11 @@ export default async function ContactDetailPage({
                 interest={{ productId: contact.interest_product_id, variantId: contact.interest_variant_id }}
               />
             )}
+            {/* @plantilla-hasta(ventas) */}
 
+            {/* @plantilla-desde(formularios) */}
             {contactForms && <ContactFormsSection rows={contactForms.rows} total={contactForms.total} contactId={contact.id} timeZone={viewerTimezone} />}
+            {/* @plantilla-hasta(formularios) */}
 
             <AttributionSection view={attributionView} contactId={contact.id} />
 
@@ -618,6 +634,7 @@ export default async function ContactDetailPage({
               />
             </Section>
 
+            {/* @plantilla-desde(tareas) */}
             <ContactTasksProvider
               contactId={contact.id}
               contactName={contact.display_name || contact.email || null}
@@ -633,24 +650,27 @@ export default async function ContactDetailPage({
                 canDelete: permissionCtx.can("tasks.delete"),
               }}
             >
+            {/* @plantilla-hasta(tareas) */}
               <Section title="Seguimiento">
                 <div className="space-y-3">
                   <TemperatureField contactId={contact.id} value={contact.lead_temperature} />
                   <FollowupField
                     contactId={contact.id}
                     value={contact.next_followup_date}
-                    canCreateTask={permissionCtx.can("tasks.edit")}
+                    canCreateTask={permissionCtx.can("tasks.edit")} // @plantilla-quitar(tareas)
                     contactName={contact.display_name || contact.email || null}
                   />
                 </div>
               </Section>
 
+              {/* @plantilla-desde(tareas) */}
               {canViewTasks && (
                 <Section title="Tareas">
                   <ContactTasks />
                 </Section>
               )}
             </ContactTasksProvider>
+              {/* @plantilla-hasta(tareas) */}
 
             <Section title="Tags">
               <TagsEditor

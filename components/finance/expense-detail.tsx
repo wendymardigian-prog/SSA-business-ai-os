@@ -20,7 +20,7 @@ import { formatUsd } from "@/lib/finance/format";
 import { expensesHref } from "@/lib/finance/expense-filters";
 import { vendorLabel, type VendorLite } from "@/lib/finance/vendors";
 import { amountClasses, driftNotice, expenseStatusClasses, formatCivilDate, receiptKind, receiptPickError, type OriginDescription } from "@/lib/finance/view";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 
 /**
  * La ficha de un gasto: el monto grande, su estado, los datos, el comprobante, de dónde salió, las acciones que

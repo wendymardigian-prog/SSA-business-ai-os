@@ -3,7 +3,7 @@
  */
 
 import { foldText } from "./text";
-import { formatTime, type TimeFormat } from "./time";
+import { formatTime, type TimeFormat } from "@/lib/calendar/time";
 import type { TaskPriority, TaskRow } from "./types";
 
 /** El punto de color de la prioridad (clase de Tailwind). */

@@ -101,7 +101,7 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     if (!limit.allowed) return { ok: false, status: 429, reason: "rate_limited", message: "Demasiados intentos. Probá de nuevo en un rato." };
   }
 
-  // 4. Las respuestas del formulario.
+  // 4. Las respuestas de la reserva.
   const { data: workspace } = await service.from("workspaces").select("timezone").eq("id", event.workspace_id).maybeSingle();
   const fields = (event.booking_fields as unknown as Parameters<typeof buildBookingSchema>[0]) ?? [];
   const schema = buildBookingSchema(fields, { defaultCountry: countryFromTimezone(workspace?.timezone ?? null) });

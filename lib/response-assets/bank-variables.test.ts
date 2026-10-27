@@ -56,6 +56,7 @@ describe("resolveBankVariables", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 describe("{{form_link.<slug>}} (Formularios, F20)", () => {
   const S = "11111111-1111-4111-8111-111111111111";
 
@@ -108,3 +109,4 @@ describe("{{form_link.<slug>}} (Formularios, F20)", () => {
     err.mockRestore();
   });
 });
+// @plantilla-hasta(formularios)

@@ -30,7 +30,7 @@ Formato: **qué quedó · por qué · qué se decidió**.
 | D-10 | `bookings` como módulo de permisos | Solo es alcance | `sales` módulo propio; `ctx.scope("sales")` |
 | D-11 | Ventas después de Agenda | El grupo tiene Llamadas | Ventas va después de Llamadas |
 | D-12 | `ADMIN_PAGES` = 11 | Actividad suma una | Pasa a 12, a propósito |
-| D-13 | `date-fns` | No está; hay `dayjs` y `lib/dates.ts` | `lib/sales/dates.ts` |
+| D-13 | `date-fns` | No está; hay `dayjs` y `lib/dates.ts` | `lib/shared/dates.ts` |
 | D-14 | shadcn | No hay Button/Dialog/Select/Badge/Table | Se traduce a los componentes de SSA |
 | D-15 | Ficha de agenda = página; estado "asistió" | Panel lateral; grupo `outcome` | "Cargar venta" con estado del grupo `outcome` |
 | D-16 | Buscador de contactos reusable | Uno por módulo | `searchContactsForSale` |
@@ -59,7 +59,7 @@ Formato: **qué quedó · por qué · qué se decidió**.
 - **Un producto nuevo desde Ajustes nace con la versión 1 en borrador, precio 0 y la nota "Precio por definir"** (la base exige una nota para el precio 0). No se puede publicar así: `canPublish` pide cargar el precio. Desde Contenido, el alta publica la versión 1 con el precio.
 - **Cambiar el precio desde Contenido** (`updateProduct({priceUsd})`) ya no pisa nada: crea una versión en la variante por defecto y la publica. La pantalla nueva no edita el precio en línea.
 - **Un alta en `content_offers` hecha por el código viejo con un nombre que ya existe en `products` falla** (índice único de nombre activo). Se prefirió ese error a dejar una pieza huérfana. En la práctica el código viejo no corre después del deploy.
-- **La cuenta de ventas por versión (historial de precios) es 0 hasta el Bloque 3** (`lib/sales/catalog/usage.ts`); F17 la reemplaza por la consulta real.
+- **La cuenta de ventas por versión (historial de precios) es 0 hasta el Bloque 3** (`lib/catalog/usage.ts`); F17 la reemplaza por la consulta real.
 - **Ajustes > General sigue protegida por `requireWorkspaceAdmin`** (así estaba), así que la sección "Ventas" (métodos de pago) es de Owner y Admin; el plano pedía `settings.manage`. Un rol personalizado con `settings.manage` que no es Admin no llega a General. Cambiar eso toca la pantalla General entera y su test de caracterización: queda como mejora aparte. La acción `updateSalesSettings` sí pide `settings.manage`.
 - **El aviso de pagos programados que usan un método apagado** se arma con `scheduledUsingDisabled`; hasta que existan los pagos (B3) la pantalla recibe `{}`.
 - **`verify-rls` salió con código 1 una vez (con "Todo verde" al final)** y a la corrida siguiente dio 0 sin cambios; es el corte ocasional que ya anotó Formularios. No se reprodujo.

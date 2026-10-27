@@ -1,5 +1,5 @@
 /**
- * Motor de horarios libres (F23). Puro: sin base ni red. La Tanda B arma la
+ * Motor de horarios libres (F23). Puro: sin base ni red. Quien lo llama arma la
  * entrada (evento, horario, tiempo fuera, ocupado de Google, agendas del
  * sistema y conteos) y le pasa `now`.
  *

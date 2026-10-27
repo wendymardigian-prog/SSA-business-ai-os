@@ -164,13 +164,13 @@ describe("los tres tipos nuevos estan registrados", () => {
   });
 
   it("los de evento y los agendados estan separados", () => {
-    // `email_received` (etapa 2) es de evento: lo dispara el receptor de
-    // Resend, no el matcher de la bandeja ni un cron. Los seis de agenda
-    // (etapa 4) tambien son de evento: nacen de la cola de automation_events, y
-    // los dos de Llamadas (call_analyzed, call_linked) y los tres de Formularios
-    // (form_submitted, survey_answered, contract_signed) tambien, y los cuatro
-    // inmediatos de Ventas (sale_created, sale_status_changed, payment_created,
-    // payment_status_changed).
+    // `email_received` es de evento: lo dispara el receptor de Resend, no el
+    // matcher de la bandeja ni un cron. Los seis de agenda tambien son de
+    // evento: nacen de la cola de automation_events.
+    // Tambien los dos de Llamadas (call_analyzed, call_linked),  @plantilla-quitar(llamadas)
+    // los tres de Formularios (form_submitted, survey_answered, contract_signed)  @plantilla-quitar(formularios)
+    // y los cuatro inmediatos de Ventas (sale_created, sale_status_changed,  @plantilla-quitar(ventas)
+    // payment_created, payment_status_changed).  @plantilla-quitar(ventas)
     expect(listTriggers("event").map((t) => t.type).sort()).toEqual([
       "booking_cancelled",
       "booking_created",
@@ -178,35 +178,35 @@ describe("los tres tipos nuevos estan registrados", () => {
       "booking_rescheduled",
       "booking_status_changed",
       "booking_updated",
-      "call_analyzed",
-      "call_linked",
-      "contract_signed",
+      "call_analyzed", // @plantilla-quitar(llamadas)
+      "call_linked", // @plantilla-quitar(llamadas)
+      "contract_signed", // @plantilla-quitar(formularios)
       "crm_event",
       "email_received",
-      // Reporte de fin de día (E16): el primero sin contacto.
-      "eod_submitted",
-      "form_submitted",
+      // Reporte de fin de día (E16): el primero sin contacto. // @plantilla-quitar(formularios)
+      "eod_submitted", // @plantilla-quitar(formularios)
+      "form_submitted", // @plantilla-quitar(formularios)
       "new_contact",
-      "payment_created",
-      "payment_status_changed",
-      "sale_created",
-      "sale_status_changed",
-      "survey_answered",
-      // Tareas (F25): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto.
-      "task_completed",
-      "task_overdue",
-      // Webhooks entrantes (Extra L): de evento, pero corre directo y no por la cola.
-      "webhook_received",
+      "payment_created", // @plantilla-quitar(ventas)
+      "payment_status_changed", // @plantilla-quitar(ventas)
+      "sale_created", // @plantilla-quitar(ventas)
+      "sale_status_changed", // @plantilla-quitar(ventas)
+      "survey_answered", // @plantilla-quitar(formularios)
+      // Tareas (F25): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto. // @plantilla-quitar(tareas)
+      "task_completed", // @plantilla-quitar(tareas)
+      "task_overdue", // @plantilla-quitar(tareas)
+      // Webhooks entrantes (Extra L): de evento, pero corre directo y no por la cola. // @plantilla-quitar(webhooks)
+      "webhook_received", // @plantilla-quitar(webhooks)
     ]);
-    // Los tres relativos de agenda y los dos de pagos (antes y despues del
-    // vencimiento) los agenda un job, igual que inactividad.
+    // Los tres relativos de agenda los agenda un job, igual que inactividad.
+    // Tambien los dos de pagos (antes y despues del vencimiento).  @plantilla-quitar(ventas)
     expect(listTriggers("scheduled").map((t) => t.type).sort()).toEqual([
       "booking_after_created",
       "booking_after_end",
       "booking_before_start",
       "inactivity",
-      "payment_after_due",
-      "payment_before_due",
+      "payment_after_due", // @plantilla-quitar(ventas)
+      "payment_before_due", // @plantilla-quitar(ventas)
     ]);
   });
 

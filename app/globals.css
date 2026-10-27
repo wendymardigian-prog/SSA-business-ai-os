@@ -381,8 +381,7 @@
  * Sin esto, en Tailwind 4 las utilidades `dark:*` miran `prefers-color-scheme`
  * (el tema del sistema operativo) mientras los tokens (`bg-background`) siguen
  * a la clase: alguien con el sistema en claro y la app en oscuro veia texto
- * oscuro sobre fondo oscuro en los pedazos escritos con `dark:`. Venia de la
- * Etapa 1 y estaba anotado en docs/PENDIENTE.md.
+ * oscuro sobre fondo oscuro en los pedazos escritos con `dark:`.
  *
  * El booker público no se toca: usa `data-theme` y tokens propios, sin `dark:`.
  */

@@ -1,5 +1,5 @@
 /**
- * Ventas F13 y F16: guardar las reglas, el probador y la simulación en seco.
+ * Reglas de asignacion (F13 y F16): guardar las reglas, el probador y la simulación en seco.
  * Fija que sin assignment.manage no se escribe nada, que se valida en el servidor
  * (no solo en la pantalla) y que el probador y la simulación NO escriben.
  */

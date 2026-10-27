@@ -14,7 +14,8 @@ import { AiProviderOptions } from "@/components/agents/no-ai-connection";
 const WHAT_YOU_GET = [
   { icon: Bot, title: "Agente de chat", text: "Responde a tus leads por Instagram y WhatsApp. Viene apagado y con un prompt inicial para que lo revises." },
   { icon: FileText, title: "Copywriter de contenido", text: "Escribe guiones y captions de tus piezas con la voz de tu marca." },
-  { icon: Sparkles, title: "Tareas de IA", text: "Resúmenes, clasificación de mensajes, análisis de llamadas y más, con sus instrucciones listas." },
+  { icon: Sparkles, title: "Tareas de IA", text: "Resúmenes, clasificación de mensajes, análisis de llamadas y más, con sus instrucciones listas." }, // @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): { icon: Sparkles, title: "Tareas de IA", text: "Resúmenes, clasificación de mensajes, transcripción de audios y más, con sus instrucciones listas." },
 ] as const;
 
 export function ConnectFirstAi({ canConnect }: { canConnect: boolean }) {

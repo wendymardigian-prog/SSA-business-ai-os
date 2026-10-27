@@ -1,6 +1,6 @@
 import { SalesList, type SalesListData } from "@/components/sales/sales-list";
 import { requirePermission } from "@/lib/auth/guards";
-import { localToday, addDays } from "@/lib/sales/dates";
+import { localToday, addDays } from "@/lib/shared/dates";
 import { PILL_STATUSES, SALES_PAGE_SIZE, parseSalesFilters, saleListRow, salesQueryFilters, touchEmbed, type QueryFilter } from "@/lib/sales/list";
 import { buildOriginViews, loadOriginParts } from "@/lib/sales/attribution-load";
 import { loadWizardConfig, hasSalesAllScope } from "@/lib/sales/wizard/load";

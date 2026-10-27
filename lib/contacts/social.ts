@@ -1,5 +1,5 @@
 /**
- * Usuarios de redes sociales (Formularios R5): una sola normalización para el envío, el prellenado y el
+ * Usuarios de redes sociales (R5): una sola normalización para el envío, el prellenado y el
  * mapeo al contacto. PURO.
  *
  * Tiene que coincidir con cómo están guardados hoy los contactos: `instagram_username` (y TikTok y X)

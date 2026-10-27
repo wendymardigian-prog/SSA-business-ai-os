@@ -81,7 +81,8 @@ export interface PieceAdsSummary {
 }
 
 export const NOTE_CURRENCIES = "Los anuncios están en cuentas con monedas distintas: el gasto y el costo por lead no se pueden sumar.";
-export const NOTE_NO_CRM = "No pude leer los leads, agendas y ventas en este momento.";
+export const NOTE_NO_CRM = "No pude leer los leads, agendas y ventas en este momento."; // @plantilla-quitar(ventas)
+// @plantilla-sin(ventas): export const NOTE_NO_CRM = "No pude leer los leads y las agendas en este momento.";
 export const NOTE_DISTINCT = "Los leads totales cuentan una vez a quien tocó más de uno de estos anuncios.";
 
 /**
@@ -192,7 +193,7 @@ export function summaryTiles(
     { key: "cplNew", label: "CPL nuevo", value: format.money(summary.cplNew), tip: "Gasto dividido por los leads nuevos." },
     { key: "cplTotal", label: "CPL total", value: format.money(summary.cplTotal), tip: "Gasto dividido por los leads totales." },
     { key: "bookings", label: "Agendas", value: format.count(summary.bookings), tip: "Reuniones agendadas por personas que vinieron de estos anuncios." },
-    { key: "sales", label: "Ventas", value: format.count(summary.sales), tip: "Ventas atribuidas a estos anuncios." },
+    { key: "sales", label: "Ventas", value: format.count(summary.sales), tip: "Ventas atribuidas a estos anuncios." }, // @plantilla-quitar(ventas)
   ];
 }
 

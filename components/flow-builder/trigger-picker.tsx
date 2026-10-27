@@ -31,12 +31,12 @@ export const TRIGGER_GROUP_ICONS: Record<TriggerGroupKey, LucideIcon> = {
   comentarios: MessagesSquare,
   contactos: Users,
   agenda: CalendarDays,
-  formularios: ClipboardList,
-  ventas: DollarSign,
-  tareas: Zap,
-  llamadas: Phone,
-  webhooks: Webhook,
-  equipo: Bot,
+  formularios: ClipboardList, // @plantilla-quitar(formularios)
+  ventas: DollarSign, // @plantilla-quitar(ventas)
+  tareas: Zap, // @plantilla-quitar(tareas)
+  llamadas: Phone, // @plantilla-quitar(llamadas)
+  webhooks: Webhook, // @plantilla-quitar(webhooks)
+  equipo: Bot, // @plantilla-quitar(formularios)
 };
 
 interface TriggerPickerProps {
@@ -52,7 +52,7 @@ interface TriggerPickerProps {
 }
 
 /**
- * El selector de disparador: una ventana con buscador y los disparadores agrupados (Mensajes, Agenda, Ventas…).
+ * El selector de disparador: una ventana con buscador y los disparadores agrupados (Mensajes, Agenda…).
  *
  * Se abre sola en una automatizacion nueva (que nace con el disparador sin elegir) y desde "Cambiar disparador" en el
  * panel. Mientras no se elige, la paleta de pasos queda apagada: primero se decide como arranca.
@@ -120,7 +120,8 @@ export function TriggerPicker({ open, currentKey, onPick, onClose, title = "¿C�
               onKeyDown={(e) => {
                 if (e.key === "Enter" && filtered.length === 1) pick(filtered[0]);
               }}
-              placeholder="Buscar: reunión, etiqueta, pago, formulario…"
+              placeholder="Buscar: reunión, etiqueta, pago, formulario…" // @plantilla-quitar(ventas,formularios)
+              // @plantilla-sin(ventas,formularios): placeholder="Buscar: reunión, etiqueta, mensaje, comentario…"
               className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </label>

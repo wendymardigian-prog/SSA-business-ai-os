@@ -4,7 +4,9 @@
  * registro (que trae código de servidor). `registry/consistency.test.ts` exige que estas
  * listas digan lo mismo que el registro.
  */
-export const MEMBER_TRIGGER_TYPES = ["eod_submitted"] as const;
+export const MEMBER_TRIGGER_TYPES = [
+  "eod_submitted", // @plantilla-quitar(formularios)
+] as const;
 
 /**
  * Los disparadores de SISTEMA (Tirón 2, D1): sin contacto ni persona. Todavía no hay ninguno registrado; la lista
@@ -12,7 +14,19 @@ export const MEMBER_TRIGGER_TYPES = ["eod_submitted"] as const;
  */
 export const SYSTEM_TRIGGER_TYPES: readonly string[] = [];
 
-export const CONTACT_FREE_NODE_TYPES = ["abSplit", "branch", "complete_task", "create_task", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "send_whatsapp_number", "upsert_contact"] as const;
+export const CONTACT_FREE_NODE_TYPES = [
+  "abSplit",
+  "branch",
+  "complete_task", // @plantilla-quitar(tareas)
+  "create_task", // @plantilla-quitar(tareas)
+  "delay",
+  "goToFlow",
+  "httpRequest",
+  "notify_team",
+  "send_email",
+  "send_whatsapp_number",
+  "upsert_contact", // @plantilla-quitar(webhooks)
+] as const;
 
 export function isMemberTriggerType(type: unknown): boolean {
   return typeof type === "string" && (MEMBER_TRIGGER_TYPES as readonly string[]).includes(type);

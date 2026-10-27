@@ -2,7 +2,7 @@
 
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { snapshotText } from "@/lib/sales/sale-text";
 import { sanitizeSearch } from "@/lib/url-params";
 import type { MetaHit, PieceHit, SalePaymentOption, SalePaymentsResult, SaleTestOption } from "@/lib/commissions/rules-ui-lookup-types";

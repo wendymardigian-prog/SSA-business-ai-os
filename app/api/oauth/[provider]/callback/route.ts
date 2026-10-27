@@ -21,7 +21,7 @@ import { queueFirstRead } from "@/lib/social/sync-hook";
 import { syncCalendars } from "@/lib/scheduling/data/calendars";
 import { notifyEventsNowOnGoogle } from "@/lib/scheduling/data/calendar-switch";
 import { appUrl } from "@/lib/app-url";
-import { queueFathomSyncNow } from "@/lib/fathom/queue";
+import { queueFathomSyncNow } from "@/lib/fathom/queue"; // @plantilla-quitar(llamadas)
 import { logAudit } from "@/lib/audit";
 
 const FALLBACK = "/dashboard/settings/integrations";
@@ -68,6 +68,7 @@ export async function GET(
         // El perfil recibió su primer calendario por defecto: los eventos que
         // estaban "solo en el sistema" ya lo usan. Se le avisa cuáles.
         if (synced.destinationSet) await notifyEventsNowOnGoogle(service, ctx.workspace.id, ctx.user.id);
+      // @plantilla-desde(llamadas)
       } else if (adapter.provider === "fathom") {
         // La primera consulta no espera a la vuelta del cron (F8): se encola ya.
         await queueFathomSyncNow(service, result.connectionId);
@@ -80,6 +81,7 @@ export async function GET(
           metadata: { provider: "fathom", kind: "connected" },
           performedBy: ctx.user.id,
         });
+      // @plantilla-hasta(llamadas)
       } else if (!adapter.perUser) {
         const synced = await syncSocialAccounts(service, ctx.workspace.id);
         // Una red recien conectada se lee ya, no a las 3 AM. Nunca lanza.
@@ -90,11 +92,13 @@ export async function GET(
     }
   }
 
-  // Google Calendar vuelve a Agenda solo si salio bien (como siempre); Fathom
-  // vuelve a su pantalla salga como salga, porque un Member no entra a
-  // Integraciones, que es a donde caeria el error.
-  const landing =
-    adapter.provider === "fathom" ? perUserLanding("fathom") : result.ok && adapter.perUser ? perUserLanding(adapter.provider) : result.redirectTo;
+  // Google Calendar vuelve a Agenda solo si salio bien (como siempre); Fathom  @plantilla-quitar(llamadas)
+  // vuelve a su pantalla salga como salga, porque un Member no entra a  @plantilla-quitar(llamadas)
+  // Integraciones, que es a donde caeria el error.  @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): // Una conexion por persona (Google Calendar) vuelve a su pantalla solo si salio bien.
+  const landing = // @plantilla-quitar(llamadas)
+    adapter.provider === "fathom" ? perUserLanding("fathom") : result.ok && adapter.perUser ? perUserLanding(adapter.provider) : result.redirectTo; // @plantilla-quitar(llamadas)
+    // @plantilla-sin(llamadas): const landing = result.ok && adapter.perUser ? perUserLanding(adapter.provider) : result.redirectTo;
   const destination = new URL(landing, appUrl() || url.origin);
   if (result.ok) destination.searchParams.set("connected", adapter.perUser ? "1" : adapter.provider);
   else destination.searchParams.set("error", result.error);

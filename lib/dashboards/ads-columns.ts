@@ -59,8 +59,8 @@ export const REPLACED_COLUMNS: Readonly<Record<string, readonly ColumnId[]>> = {
   leadsCrm: ["leadsTotal"],
   leadsFirst: ["leadsNew"],
   bookingsCrm: ["bookings"],
-  cac: ["costPerNewDeal"],
-  costPerClose: ["costPerNewDeal"],
+  cac: ["costPerNewDeal"], // @plantilla-quitar(ventas)
+  costPerClose: ["costPerNewDeal"], // @plantilla-quitar(ventas)
   conversions: ["purchasesMeta"],
 };
 

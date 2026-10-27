@@ -6,7 +6,7 @@ import { normalizeForGrouping } from "@/lib/text/normalize";
  * Los usa la condición `inbound.is_known_button` (F8). La fuente real es
  * `message_texts.is_button` (F19, `lib/agent/rules/button-texts.ts`, conectada
  * en `lib/agent/runner.ts`): cada negocio tiene sus propios textos de botón,
- * según su propia campaña, y se marcan desde Ajustes → Tareas. Esta lista es
+ * según su propia campaña, y se marcan en los patrones de mensajes. Esta lista es
  * un respaldo que se suma a esa fuente, no la reemplaza — vacía por defecto
  * para no sembrar la campaña de ningún cliente en particular.
  */

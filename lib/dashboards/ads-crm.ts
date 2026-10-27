@@ -7,7 +7,7 @@
  *
  * Reglas que mandan en todo el archivo:
  *  - **Una division por cero es «—» (null), nunca 0.** Un CPL de 0 diria «gratis».
- *  - La plata del CRM viene en CENTAVOS y se pasa a dolares con `fromCents` (`lib/sales/money.ts`). Siempre USD.
+ *  - La plata del CRM viene en CENTAVOS y se pasa a dolares con `fromCents` (`lib/shared/money.ts`). Siempre USD.
  *  - Los nombres y el estado son los del CATALOGO (`meta_*`). Si el catalogo no tiene la fila (todavia no sincronizo),
  *    la tabla usa lo que ya traen los insights (`resolveRowInfo`): nombre, padre, campaña y conjunto.
  *  - Un objeto que solo tiene CRM (sin gasto en el periodo) aparece igual, con el gasto en «—».
@@ -22,7 +22,7 @@
  */
 
 import { ratio, groupByObject, type AdsRow, type GroupedRow } from "./ads";
-import { fromCents } from "@/lib/sales/money";
+import { fromCents } from "@/lib/shared/money";
 import { metaCountersOf, metaRatios, sumMetaCounters, sumOrNull, type MetaCounters, type MetaRatios } from "./ads-meta-metrics";
 
 export type CrmLevel = "campaign" | "adset" | "ad";
@@ -507,7 +507,8 @@ export function showNoAdSignalNotice(total: CrmRow): boolean {
 
 /** La nota al pie de la tabla: dice qué hace hoy la fila de total. */
 export function totalFootnote(leadsTotalIsSum: boolean): string {
-  const exact = "Leads nuevos, agendas y ventas se suman: es exacto, porque cada persona tiene un solo primer toque y cada agenda y cada venta cae en un solo anuncio.";
+  const exact = "Leads nuevos, agendas y ventas se suman: es exacto, porque cada persona tiene un solo primer toque y cada agenda y cada venta cae en un solo anuncio."; // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): const exact = "Leads nuevos y agendas se suman: es exacto, porque cada persona tiene un solo primer toque y cada agenda cae en un solo anuncio.";
   const leads = leadsTotalIsSum
     ? "«Leads totales» del total suma las filas: puede contar dos veces a quien tocó varios anuncios."
     : "«Leads totales» del total cuenta a cada persona una sola vez, aunque haya tocado varios anuncios; el CPL total y Lead → Agenda del total usan ese número.";

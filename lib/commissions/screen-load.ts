@@ -16,7 +16,7 @@ import { financeContextOf } from "@/lib/finance/context";
 import { expenseStatusLabel } from "@/lib/finance/expense-status";
 import { fetchAllPages } from "@/lib/finance/paginate";
 import { monthStart } from "@/lib/finance/dates";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { FINANCING_TYPE_LABELS, type FinancingType } from "@/lib/sales/labels";
 import { paymentMethodName } from "@/lib/sales/payment-methods";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";

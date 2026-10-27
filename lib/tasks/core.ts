@@ -18,7 +18,7 @@ import { diffFields, logAudit } from "@/lib/audit";
 import { todayInputValue } from "@/lib/dates";
 import type { Database, Json } from "@/lib/types/database";
 import { dateOfInstant } from "./dates";
-import { normalizeTime } from "./time";
+import { normalizeTime } from "@/lib/calendar/time";
 import { emitTaskEvent } from "./automation/emit";
 import { planCompleted, planCreated, planUpdated, sendTaskNotifications, type TaskNotice } from "./notifications";
 import { computeDateShifts, type DateRuleTask, type DateShift } from "./date-rules";

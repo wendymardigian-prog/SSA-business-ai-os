@@ -4,7 +4,7 @@
  * cliente: no se escribe nada hasta guardar.
  */
 import type { AttributionFieldState } from "../attribution-field";
-import { isDateOnly } from "../dates";
+import { isDateOnly } from "@/lib/shared/dates";
 import { INACTIVE_SALE_STATUSES } from "../labels";
 
 export interface Step1State {

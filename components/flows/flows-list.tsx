@@ -153,7 +153,10 @@ export function FlowsList({
           <div className="mb-4 flex flex-col gap-3 rounded-xl border border-dashed border-border bg-card p-5 sm:flex-row sm:items-center">
             <div className="flex-1">
               <p className="text-sm font-medium">Conectá un canal para empezar</p>
+              {/* @plantilla-desde(formularios) */}
               <p className="text-xs text-muted-foreground">Sin Instagram o WhatsApp conectado, las automatizaciones no pueden mandar ni recibir mensajes (las de agenda, formularios y email sí funcionan).</p>
+              {/* @plantilla-hasta(formularios) */}
+              {/* @plantilla-sin(formularios): <p className="text-xs text-muted-foreground">Sin Instagram o WhatsApp conectado, las automatizaciones no pueden mandar ni recibir mensajes (las de agenda y email sí funcionan).</p> */}
             </div>
             <Link href="/dashboard/channels" className="rounded-lg bg-primary px-4 py-2 text-center text-sm font-medium text-primary-foreground hover:opacity-90">
               Conectar

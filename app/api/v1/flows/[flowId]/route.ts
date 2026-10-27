@@ -53,7 +53,7 @@ export async function PUT(
   const body = await request.json();
 
   let published = false;
-  // Un flujo sin contacto (reporte de fin de día, E15) no puede tener pasos que necesiten uno.
+  // Un flujo sin contacto no puede tener pasos que necesiten uno.
   if (Array.isArray(body.nodes) || Array.isArray(body.edges)) {
     // Un flujo PUBLICADO se valida igual que al publicar (Tirón 2, D5): el motor lee `flows.nodes` en vivo, así que guardar
     // sobre uno publicado sin esa regla lo dejaba corriendo con pasos que no pueden funcionar (un envío sin contacto, por

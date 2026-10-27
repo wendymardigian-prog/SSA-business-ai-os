@@ -7,12 +7,12 @@ import { z } from "zod";
 import { wallClockToUtc } from "@/lib/scheduling/time/tz";
 import { computeProviderFee, buildPaymentOptionSnapshot } from "./fees";
 import { FINANCING_TYPES, PAYMENT_TYPES } from "./labels";
-import { toCents, fromCents } from "./money";
+import { toCents, fromCents } from "@/lib/shared/money";
 import { isKnownMethod, type PaymentMethodDef } from "./payment-methods";
 import { validatePlanBalances } from "./payment-plan";
 import { checkDiscount, type ProductSnapshot } from "./sale-math";
-import { isDateOnly, localToday } from "./dates";
-import { manualAttributionSchema, type AttributionRequest } from "./attribution";
+import { isDateOnly, localToday } from "@/lib/shared/dates";
+import { manualAttributionSchema, type AttributionRequest } from "@/lib/attribution/attribution";
 import { manualChoiceSchema } from "./manual-channel";
 
 const dateOnly = z.string().refine(isDateOnly, "La fecha no es válida");

@@ -198,14 +198,15 @@ export function mediumLabel(medium: string | null | undefined): string {
   return isKnownMedium(medium) ? MEDIUM_LABELS[medium] : medium;
 }
 
-export const ORIGIN_LABELS: Record<TouchOrigin, string> = {
+export const ORIGIN_LABELS: Record<TouchOrigin, string> = { // @plantilla-quitar(formularios,webhooks)
+// @plantilla-sin(formularios,webhooks): export const ORIGIN_LABELS: Partial<Record<TouchOrigin, string>> = {
   dm: "Mensaje directo",
   comment: "Comentario",
   booking: "Reserva",
-  form: "Formulario",
+  form: "Formulario", // @plantilla-quitar(formularios)
   manual: "Alta manual",
   import: "Importación",
-  webhook: "Webhook",
+  webhook: "Webhook", // @plantilla-quitar(webhooks)
   link_click: "Clic en un link",
 };
 

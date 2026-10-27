@@ -144,7 +144,7 @@ async function handleWebhook(request: NextRequest) {
     return handleConnectionUpdate(supabase, channel, payload);
   }
 
-  // Llamadas (00258): Evolution no las puede atender, solo avisa. Quedan en el
+  // Llamadas de WhatsApp (00258): Evolution no las puede atender, solo avisa. Quedan en el
   // hilo y una perdida avisa al responsable. No es un mensaje.
   if (event === "call") {
     const call = parseCallEvent(payload.data);

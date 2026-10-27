@@ -27,7 +27,7 @@ export interface DashboardOption {
   color?: string;
   /**
    * Todavia no existe: aparece en la lista, apagado y con su pastilla. Figura
-   * en el prototipo y en F14 porque saber que viene es parte de la respuesta a
+   * porque saber que viene es parte de la respuesta a
    * "¿cuanto me cuesta el agente?".
    */
   comingSoon?: boolean;
@@ -56,6 +56,7 @@ export const DASHBOARDS: DashboardOption[] = [
     href: "/dashboard/dashboards/agenda",
     permission: "dashboards.agenda.view",
   },
+  // @plantilla-desde(llamadas)
   {
     key: "calls",
     label: "Llamadas",
@@ -64,6 +65,7 @@ export const DASHBOARDS: DashboardOption[] = [
     // El mismo permiso que la lista de Llamadas: se ve lo que el alcance permite.
     permission: "calls.view",
   },
+  // @plantilla-hasta(llamadas)
   {
     key: "ads",
     // "Meta Ads" y no "Anuncios": es el nombre del producto y es lo que se

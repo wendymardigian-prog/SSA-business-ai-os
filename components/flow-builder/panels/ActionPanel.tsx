@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
 import { EnrollSequencePanel } from "./EnrollSequencePanel";
 import { SendAssetPanel } from "./SendAssetPanel";
-import { CreateTaskPanel } from "./CreateTaskPanel";
-import { CompleteTaskPanel } from "./CompleteTaskPanel";
+import { CreateTaskPanel } from "./CreateTaskPanel"; // @plantilla-quitar(tareas)
+import { CompleteTaskPanel } from "./CompleteTaskPanel"; // @plantilla-quitar(tareas)
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
 import { SendEmailPanel } from "./SendEmailPanel";
 import { CancelBookingPanel, NotifyTeamPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
@@ -87,12 +87,15 @@ export function ActionPanel({ data: rawData, onChange, availableVariables }: Act
     // Etapa 4 (F46) + Tirón 2, D4: el email, ahora también a la dirección de una variable.
     case "send_email" as NodeType:
       return <SendEmailPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+    // @plantilla-desde(tareas)
     // Tareas (F22): deja una tarea para el equipo.
     case "create_task" as NodeType:
       return <CreateTaskPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     // Tareas × CRM (R4): cierra las tareas abiertas que tienen esa clave de origen.
     case "complete_task" as NodeType:
       return <CompleteTaskPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+    // @plantilla-hasta(tareas)
+    // @plantilla-desde(ventas)
     // Ventas (F37): trabajan sobre el pago o la venta que disparo el flujo.
     case "mark_payment_paid" as NodeType:
       return <MarkPaymentPaidConfig data={data} onChange={onChange} />;
@@ -100,6 +103,7 @@ export function ActionPanel({ data: rawData, onChange, availableVariables }: Act
       return <ReschedulePaymentConfig data={data} onChange={onChange} />;
     case "set_sale_status" as NodeType:
       return <SetSaleStatusConfig data={data} onChange={onChange} />;
+    // @plantilla-hasta(ventas)
     // Antes estos tres no tenian panel en el lienzo: decia "No configuration available" y el paso no hacia nada.
     case "notify_team" as NodeType:
       return <NotifyTeamPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
@@ -745,6 +749,7 @@ function SmartDelayConfig({ data, onChange }: ActionSubPanelProps) {
   );
 }
 
+// @plantilla-desde(ventas)
 /* ───────── Ventas (F37) ───────── */
 const salesInput = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 
@@ -811,3 +816,4 @@ function SetSaleStatusConfig({ data, onChange }: ActionSubPanelProps) {
     </div>
   );
 }
+// @plantilla-hasta(ventas)

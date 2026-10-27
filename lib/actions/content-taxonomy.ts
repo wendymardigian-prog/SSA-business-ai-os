@@ -19,8 +19,7 @@ import {
 } from "@/lib/actions/products";
 
 /**
- * Pilares y productos (F89). Las "ofertas" pasaron a ser productos con precio y
- * estado en la 00134 y, con Ventas (00160), viven en `products`: las acciones de
+ * Pilares y productos (F89). Los productos viven en `products`: las acciones de
  * producto de acá abajo son atajos de `lib/actions/products.ts` (el catálogo),
  * que es quien escribe.
  *
@@ -48,8 +47,8 @@ export type TaxonomyResult<T = undefined> =
 
 type Table = "content_pillars";
 
-// Para los mensajes: "el pilar". Los productos ya no pasan por aca: viven en el
-// catalogo de Ventas (`lib/actions/products.ts`).
+// Para los mensajes: "el pilar". Los productos no pasan por aca: viven en el
+// catalogo de productos (`lib/actions/products.ts`).
 const KIND: Record<Table, { label: string; audit: string; the: string; that: string; it: string }> = {
   content_pillars: { label: "pilar", audit: "content_pillar", the: "el", that: "ese", it: "o" },
 };
@@ -243,7 +242,7 @@ export async function restorePillar(input: { id: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Productos (lo que se vende): atajos del catalogo de Ventas
+// Productos (lo que se vende): atajos del catalogo
 // ---------------------------------------------------------------------------
 
 export interface ProductData {

@@ -4,14 +4,14 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { markExpensePaid, revertExpensePayment, uploadExpenseReceipt, voidExpense } from "@/lib/actions/finance-expenses";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { DialogField, fieldInput } from "@/components/content/dialog";
 import { amountToText, parseAmountText } from "@/lib/finance/expense-form";
 import { formatUsd } from "@/lib/finance/format";
 import { REASON_MAX } from "@/lib/finance/expense-rules";
 import { isAutoOrigin } from "@/lib/finance/expense-status";
 import { formatCivilDate, receiptPickError } from "@/lib/finance/view";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 
 /**
  * Los diálogos de un gasto: pagar, revertir el pago y anular. Cada uno valida acá lo evidente y el servidor vuelve

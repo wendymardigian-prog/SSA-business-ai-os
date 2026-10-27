@@ -9,7 +9,7 @@
 import { addDays, dateInTz, eachDate, minutesOfDayInTz, wallClockToUtc } from "@/lib/scheduling/time/tz";
 import type { WallTime } from "@/lib/scheduling/types";
 import type { CalendarView } from "@/lib/scheduling/calendar-view";
-import { DEFAULT_DURATION_MINUTES, isValidDuration, normalizeTime } from "./time";
+import { DEFAULT_DURATION_MINUTES, isValidDuration, normalizeTime } from "@/lib/calendar/time";
 import type { TaskRow } from "./types";
 
 export interface CalendarTaskItem {

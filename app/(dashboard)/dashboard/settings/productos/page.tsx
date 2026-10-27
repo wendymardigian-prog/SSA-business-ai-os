@@ -1,13 +1,12 @@
 import { requirePermission } from "@/lib/auth/guards";
-import { loadProductList } from "@/lib/sales/catalog/load";
+import { loadProductList } from "@/lib/catalog/load";
 import { ProductosView } from "./productos-view";
 
 /**
  * Ajustes -> Productos: lo que vende el negocio, con sus variantes y su precio.
  *
- * Con Ventas (00160) el catálogo vive en `products`: cada producto tiene al
- * menos una variante (la "Estándar" de los que ya existían) y el precio está en
- * la variante (00169). Los pilares se mudaron a la página de
+ * El catálogo vive en `products`: cada producto tiene al menos una variante y
+ * el precio está en la variante (00169). Los pilares están en la página de
  * Contenido.
  *
  * Pide `products.manage` y no "ser admin": un rol personalizado con ese

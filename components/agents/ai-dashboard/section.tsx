@@ -31,8 +31,8 @@ export async function AiDashboardSection({
 }) {
   const service = await createServiceClient();
 
-  // La señal de integraciones (A5) consume el estado que G3 ya resuelve:
-  // no se recalculan vencimientos ni scopes aca.
+  // La señal de integraciones usa el estado que ya resuelve la pantalla de
+  // Integraciones: no se recalculan vencimientos ni scopes aca.
   const [data, counts, integrations, workspaceRow] = await Promise.all([
     loadAiDashboardData(service, { workspaceId, filter, timeZone }),
     loadRunCounts24h(service, { workspaceId }),

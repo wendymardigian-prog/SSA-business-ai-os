@@ -3,7 +3,7 @@
  * pagó en el año, en CÉNTIMOS; las categorías ordenadas por grupo; y cómo se arma lo que se manda a
  * `saveExpenseCategories`. Puro: el componente solo lo compone.
  */
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import {
   CATEGORY_COLORS, CATEGORY_GROUPS, CATEGORY_GROUP_HINTS, CATEGORY_GROUP_LABELS, CATEGORY_NAME_MAX, type CategoryGroup, type ExpenseCategory,
 } from "./categories";

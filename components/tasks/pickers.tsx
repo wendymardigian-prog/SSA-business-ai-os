@@ -4,12 +4,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import { Check, Plus, Search } from "lucide-react";
 import { Avatar } from "@/components/ui/filter-menu";
 import { foldText } from "@/lib/tasks/text";
-import { colorOf, initialsOf } from "@/lib/tasks/people";
+import { colorOf, initialsOf } from "@/lib/shared/people";
 import { shouldOfferCreate, type ProjectSummary } from "@/lib/tasks/project";
 import { PRIORITY_LABELS, STATUS_LABELS, TASK_PRIORITIES, TASK_STATUSES, type TaskPriority, type TaskStatus } from "@/lib/tasks/types";
 import type { MemberLite } from "@/lib/tasks/table-model";
 import { cn } from "@/lib/utils";
-import { FloatingPanel } from "./floating";
+import { FloatingPanel } from "@/components/shared/floating";
 import { PriorityChip, StatusChip } from "./chips";
 
 /**

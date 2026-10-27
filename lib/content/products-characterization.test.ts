@@ -1,6 +1,5 @@
 /**
- * Caracterizacion de Productos y de la clasificacion por producto, ANTES de que
- * Ventas (00160) los pase de `content_offers` a `products`.
+ * Caracterizacion de Productos y de la clasificacion por producto.
  *
  * Fija lo que el usuario ve y lo que Contenido da por hecho:
  *  - los tres estados, su orden y sus etiquetas;
@@ -78,7 +77,7 @@ describe("pantalla Ajustes > Productos (lo que se conserva)", () => {
     const page = read("page.tsx");
     expect(page).toContain('requirePermission("products.manage")');
     expect(page).toContain("loadProductList");
-    const loader = readFileSync(join(process.cwd(), "lib/sales/catalog/load.ts"), "utf8");
+    const loader = readFileSync(join(process.cwd(), "lib/catalog/load.ts"), "utf8");
     expect(loader).toContain("pieceClassification");
     expect(loader).toContain("countUsage");
   });
@@ -93,13 +92,13 @@ describe("pantalla Ajustes > Productos (lo que se conserva)", () => {
     expect(view).toContain("SettingsTabs");
   });
 
-  // Con Ventas (F3) la lógica de orden, filtro y "Sin piezas" pasó de la vista a
-  // funciones puras (lib/sales/catalog/products.ts), con su propio test.
+  // La lógica de orden, filtro y "Sin piezas" vive en funciones puras
+  // (lib/catalog/products.ts), con su propio test.
   it("el orden y el texto del contador siguen siendo los de siempre (ahora en funciones puras)", () => {
     const view = read("productos-view.tsx");
     expect(view).toContain("sortProducts(products)");
     expect(view).toContain("visibleProducts(sorted, showDiscontinued)");
-    const logic = readFileSync(join(process.cwd(), "lib/sales/catalog/products.ts"), "utf8");
+    const logic = readFileSync(join(process.cwd(), "lib/catalog/products.ts"), "utf8");
     expect(logic).toContain("{ active: 0, inactive: 1, discontinued: 2 }");
     expect(logic).toContain('localeCompare(b.name, "es")');
     expect(logic).toContain('"Sin piezas"');

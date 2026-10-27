@@ -2,7 +2,7 @@
  * El paso 3 del asistente (plano F20): financiamiento. El estado del formulario y las reglas
  * que el servidor vuelve a aplicar (`applySaleRules`), para avisar acá antes de guardar. Puro.
  */
-import { isDateOnly } from "../dates";
+import { isDateOnly } from "@/lib/shared/dates";
 import type { FinancingType } from "../labels";
 import { isKnownMethod, type PaymentMethodDef } from "../payment-methods";
 import { bornOverdue, buildPaymentPlan, type Frequency, type PlannedPayment } from "../payment-plan";

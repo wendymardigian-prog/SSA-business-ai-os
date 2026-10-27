@@ -2,11 +2,11 @@
 
 /**
  * El editor de pasos de una automatizacion (reemplaza al editor lineal
- * Cuando / Si / Entonces, y es COMPARTIDO: lo usan Formularios y la Agenda con
- * sus propias variables, su descripcion del disparador y sus acciones).
+ * Cuando / Si / Entonces, y es COMPARTIDO: lo usan las pantallas que arman sus
+ * propias automatizaciones (la Agenda y otras), con sus propias variables, su descripcion del disparador y sus acciones).
  *
  *   Cuando <disparador>            fijo
- *   Solo si…                       solo Formularios: decide si el flujo arranca
+ *   Solo si…                       solo Formularios: decide si el flujo arranca  @plantilla-quitar(formularios)
  *   Paso 1, paso 2...              uno debajo del otro, con "+ Agregar paso"
  *   Condiciones                    un bloque por camino y "Si no" al final
  *
@@ -30,9 +30,11 @@ import { StepList } from "@/components/automations/step-list";
 import { StepEditorProvider, type ConfirmRequest } from "@/components/automations/step-tree-context";
 import { useConditionCatalog } from "@/components/automations/use-condition-catalog";
 import { TestConditionsButton, type TestResponsesSource } from "@/components/automations/test-conditions-sheet";
-import { VisibilityRuleBuilder } from "@/components/forms/builder/visibility-rule-builder";
-import type { ConditionSource } from "@/lib/forms/visibility-builder-adapter";
-import type { VisibilityConfig } from "@/lib/forms/visibility-types";
+import { VisibilityRuleBuilder } from "@/components/forms/builder/visibility-rule-builder"; // @plantilla-quitar(formularios)
+import type { ConditionSource } from "@/lib/forms/visibility-builder-adapter"; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): type ConditionSource = unknown;
+import type { VisibilityConfig } from "@/lib/forms/visibility-types"; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): type VisibilityConfig = unknown;
 import { recognizedFields } from "@/lib/automations/condition-builder-model";
 import type { EditorScreen } from "@/lib/automations/step-catalog";
 import { actionTypeOf, allSteps, firstEmailStep, type ActionStep, type StepTree } from "@/lib/automations/step-tree";
@@ -64,15 +66,15 @@ export interface StepTreeEditorProps {
   /** Un ejemplo para la ayuda de variables. */
   variableExample: string;
   describeTrigger: (type: string, config: Record<string, unknown>) => string;
-  /** Solo Formularios: el "Solo si…" del disparador (`answer_conditions`). */
+  /** El "Solo si…" del disparador (`answer_conditions`), en las pantallas que lo usan. */
   onlyIf?: { sources: ConditionSource[]; value: VisibilityConfig | undefined };
   onSave: (input: { flowId: string; tree: Pick<StepTree, "steps">; answerConditions?: VisibilityConfig | null }) => Promise<EditorActionResult>;
   onSendTest: (input: { flowId: string; subject: string; body: string }) => Promise<EditorActionResult>;
-  /** Para "Probar condiciones" con una respuesta real (hoy solo Formularios). Sin esto se prueba cargando los datos a mano. */
+  /** Para "Probar condiciones" con una respuesta real. Sin esto se prueba cargando los datos a mano. */
   testResponses?: TestResponsesSource;
-  /** Las personas del equipo, para los pasos que van a gente del equipo (EOD). */
+  /** Las personas del equipo, para los pasos que van a gente del equipo. */
   members?: Array<{ userId: string; name: string }>;
-  /** Algo más dentro de "Cuándo" (EOD: primer envío o cada corrección). */
+  /** Algo más dentro de "Cuándo" (una opción propia del disparador). */
   whenExtra?: ReactNode;
 }
 
@@ -266,14 +268,17 @@ export function StepTreeEditor({
           <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cuándo</h2>
           <p className="mt-1 text-sm">{describeTrigger(trigger.type, trigger.config)}</p>
           {whenExtra}
+          {/* @plantilla-desde(formularios) */}
           {screen === "eod" && (
             <p className="mt-1 text-xs text-muted-foreground">
               Este flujo es sobre una persona del equipo, no sobre un contacto: no puede mandar mensajes por chat ni tocar contactos.
             </p>
           )}
+          {/* @plantilla-hasta(formularios) */}
           {reach !== null && describeReach && <p className="mt-1 text-xs text-muted-foreground">{describeReach(reach)}</p>}
         </section>
 
+        {/* @plantilla-desde(formularios) */}
         {onlyIf && !readOnly && (
           <section className="rounded-xl border border-border p-4">
             <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Solo si…</h2>
@@ -289,6 +294,7 @@ export function StepTreeEditor({
             </p>
           </section>
         )}
+        {/* @plantilla-hasta(formularios) */}
 
         {context && tree && (
           <StepEditorProvider value={context}>

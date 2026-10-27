@@ -1,9 +1,8 @@
 /**
  * F78: aprobar y producir copy se deciden por permiso, no por cargo.
  *
- * El rol personalizado "Content Manager" de produccion tiene `content.approve`,
- * `content.publish` y `content.ai`, y hasta F78 no podia aprobar porque el
- * guard miraba si era Owner o Admin. Estos casos fijan las dos puntas: el
+ * Un rol personalizado con `content.approve`, `content.publish` y `content.ai`
+ * aprueba aunque no sea Owner ni Admin. Estos casos fijan las dos puntas: el
  * permiso habilita, y su falta rechaza ANTES de tocar nada.
  */
 

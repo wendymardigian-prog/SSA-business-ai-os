@@ -14,11 +14,11 @@ import { PRIORITY_LABELS, TASK_LIMITS, type TaskRow } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
 import { BlockedMark, PersonBadge, PRIORITY_TONE, StatusChip } from "./chips";
 import { AutoSaveText, DatePill, DurationSelect, Section } from "./fields";
-import { DURATION_OPTIONS } from "@/lib/tasks/time";
+import { DURATION_OPTIONS } from "@/lib/calendar/time";
 import { CenterDialog, SidePanel } from "./overlay";
 import { MemberPicker, MembersMultiPicker, PriorityPicker, ProjectPicker, StatusPicker } from "./pickers";
 import type { TaskActions } from "./use-task-actions";
-import { FloatingPanel } from "./floating";
+import { FloatingPanel } from "@/components/shared/floating";
 import { foldText } from "@/lib/tasks/text";
 
 export interface TaskDrawerProps {

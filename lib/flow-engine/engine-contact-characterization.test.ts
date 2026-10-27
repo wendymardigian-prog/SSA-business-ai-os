@@ -5,10 +5,10 @@
  *  1. un flujo disparado por un mensaje, con contacto, crea su sesion con ese
  *     contacto, siembra `{{message}}` y deja el contacto en el payload del
  *     job de "Esperar";
- *  2. un flujo de persona del equipo (EOD) arranca con `member_user_id`, sin
+ *  2. un flujo de persona del equipo arranca con `member_user_id`, sin
  *     contacto, y un paso que necesita contacto se saltea y se anota
  *     (`node_skipped`) en lugar de cortar la sesion;
- *  3. `memberFlowProblems` rechaza lo mismo que hoy en un flujo de EOD.
+ *  3. `memberFlowProblems` rechaza lo mismo que hoy en un flujo de persona.
  *
  * Sigue en verde despues del cambio: es la red de no-regresion de §12.5.
  */
@@ -117,6 +117,7 @@ describe("flujo de persona del equipo (sin contacto)", () => {
   });
 });
 
+// @plantilla-desde(formularios)
 describe("memberFlowProblems (validacion de EOD)", () => {
   const trigger = { id: "n-trigger", type: "trigger", data: { triggerType: "eod_submitted" } };
 
@@ -135,3 +136,4 @@ describe("memberFlowProblems (validacion de EOD)", () => {
     expect(problems).toEqual([]);
   });
 });
+// @plantilla-hasta(formularios)

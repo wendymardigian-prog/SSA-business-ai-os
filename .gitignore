@@ -38,7 +38,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Lo que la CLI de Supabase guarda en la carpeta del proyecto (estado local y ramas)
 supabase/.temp
+supabase/.branches
 
 # codigo de referencia de la etapa 2 (se lee, nunca se importa; se borra al cerrar)
 docs/referencia/
@@ -56,3 +59,6 @@ claude/
 
 # Ajustes locales de Claude Code: son de esta copia, no del template.
 .claude/settings.local.json
+
+# Bases locales de trabajo de la plantilla de estudiantes (scripts/plantilla)
+.plantilla-work/

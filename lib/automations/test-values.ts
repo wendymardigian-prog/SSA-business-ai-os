@@ -13,13 +13,14 @@
  */
 
 import type { ConditionFieldSpec, FieldValue } from "@/lib/flow-engine/condition-eval";
-import type { FormField } from "@/lib/forms/fields";
-import { answerPath, answerValueOf, type AnswerSource } from "@/lib/forms/automation/variable-schema";
+import type { FormField } from "@/lib/forms/fields"; // @plantilla-quitar(formularios)
+import { answerPath, answerValueOf, type AnswerSource } from "@/lib/forms/automation/variable-schema"; // @plantilla-quitar(formularios)
 import type { TestValues } from "./explain-paths";
 import type { ConditionCatalogInputs } from "./condition-catalog-inputs";
 import { allSteps, type StepTree } from "./step-tree";
 import { conditionGroupsFor } from "./step-tree-edit";
 
+// @plantilla-desde(formularios)
 export interface SubmissionForTest {
   /** Las preguntas de la version con la que se respondio. */
   fields: Array<Pick<FormField, "key">>;
@@ -49,6 +50,7 @@ export function testValuesFromSubmission(input: SubmissionForTest): TestValues {
   return values;
 }
 
+// @plantilla-hasta(formularios)
 // ------------------------------------------------------------
 // A mano
 // ------------------------------------------------------------

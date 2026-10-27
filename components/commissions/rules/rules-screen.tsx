@@ -6,7 +6,7 @@ import { FlaskConical, Loader2, Plus, Users } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { FinanceTabs, ReadOnlyNote } from "@/components/finance/finance-tabs";
 import { BackLink } from "@/components/forms/back-link";
-import { SaleModal } from "@/components/sales/sale-modal";
+import { SaleModal } from "@/components/shared/sale-modal";
 import { archiveCommissionRule, duplicateCommissionRule, reorderCommissionRules, setCommissionRuleActive } from "@/lib/actions/commission-rules";
 import { payeeLabel } from "@/lib/commissions/roles";
 import { COMMISSIONS_PATH, activeRoles, roleTabHref } from "@/lib/commissions/rules-ui-access";

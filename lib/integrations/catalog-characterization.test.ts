@@ -9,9 +9,9 @@ import { PROVIDERS, providersBySection } from "./providers";
  * secciones, y tiene que seguir pasando igual con dos. Si un dia se suma un
  * proveedor de verdad, este es el test que se actualiza, a proposito.
  *
- * Formularios sumo "turnstile" (seccion "Seguridad") y la correccion R1 (12/10/2026) lo saco:
- * publicar un formulario no puede depender de un captcha. Por eso el catalogo vuelve a los catorce
- * de siempre a proposito (ver docs/pendientes/turnstile-captcha.md).
+ * Formularios sumo "turnstile" (seccion "Seguridad") y la correccion R1 (12/10/2026) lo saco:  @plantilla-quitar(proyecto)
+ * publicar un formulario no puede depender de un captcha. Por eso el catalogo vuelve a los catorce  @plantilla-quitar(proyecto)
+ * de siempre a proposito (ver docs/pendientes/turnstile-captcha.md).  @plantilla-quitar(proyecto)
  */
 const IDS = [
   "anthropic",

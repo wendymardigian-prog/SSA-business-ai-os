@@ -1,7 +1,6 @@
 /**
- * Exportar datos a CSV (Equipo y roles, F24). Un solo permiso, `data.export`, para los cuatro exports
- * del sistema: las respuestas de formularios, los reportes de fin de día, las corridas de IA y la tabla
- * de anuncios. Antes los podía bajar cualquiera que viera la pantalla, el Member incluido.
+ * Exportar datos a CSV (Equipo y roles, F24). Un solo permiso, `data.export`, para todos los exports
+ * del sistema (las corridas de IA, la tabla de anuncios...): no alcanza con ver la pantalla.
  *
  * Puro: lo usan las páginas (para ofrecer o no el botón) y los endpoints y acciones (para rechazar).
  */

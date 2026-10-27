@@ -2,7 +2,7 @@
 
 /**
  * El detalle de una agenda (F36): un panel lateral con el estado, las
- * acciones del anfitrión, las respuestas del formulario, las notas internas
+ * acciones del anfitrión, las respuestas de la reserva, las notas internas
  * y el historial.
  *
  * El estado se cambia desde acá con el menú: es el camino que no depende de
@@ -21,12 +21,12 @@ import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/form
 import { categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
 import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, occupyBookingSlotAsHost, reassignBookingHostAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
 import { StatusChip, SlotReleasedChip, statusDotClass } from "./status-chip";
-import { CallSectionList } from "@/components/calls/call-section-list";
-import type { CallSectionRow } from "@/lib/calls/contact-section";
-import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
-import type { WizardConfig, WizardInitial } from "@/components/sales/wizard/types";
-import { StatusChip as SaleStatusChip } from "@/components/sales/sales-list";
-import { formatMoney } from "@/lib/sales/format";
+import { CallSectionList } from "@/components/calls/call-section-list"; // @plantilla-quitar(llamadas)
+import type { CallSectionRow } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
+import { SaleWizard } from "@/components/sales/wizard/sale-wizard"; // @plantilla-quitar(ventas)
+import type { WizardConfig, WizardInitial } from "@/components/sales/wizard/types"; // @plantilla-quitar(ventas)
+import { StatusChip as SaleStatusChip } from "@/components/sales/sales-list"; // @plantilla-quitar(ventas)
+import { formatMoney } from "@/lib/shared/format";
 
 export interface BookingDetailData {
   id: string;
@@ -59,12 +59,12 @@ export interface BookingDetailData {
   attribution: { source: string; medium: string; campaign: string; content: string; term: string; referrerUrl: string | null } | null;
   /** Agenda v2: su horario dejó de contar como ocupado. null = nunca se liberó. */
   slotReleasedAt: string | null;
-  /** Las llamadas vinculadas a esta agenda que quien mira puede ver (vacio si no tiene `calls.view` o no hay ninguna). */
-  calls: CallSectionRow[];
-  /** Las ventas que nacieron de esta agenda y que quien mira puede ver (vacío sin `sales.view`). */
-  sales: Array<{ id: string; status: string; finalAmount: number; product: string }>;
-  /** «Cargar venta»: solo con `sales.manage`, reunión pasada y con resultado. El asistente abre con el contacto y la agenda resueltos. */
-  saleLoad: { config: WizardConfig; initial: WizardInitial } | null;
+  /** Las llamadas vinculadas a esta agenda que quien mira puede ver (vacio si no tiene `calls.view` o no hay ninguna). */ // @plantilla-quitar(llamadas)
+  calls: CallSectionRow[]; // @plantilla-quitar(llamadas)
+  /** Las ventas que nacieron de esta agenda y que quien mira puede ver (vacío sin `sales.view`). */ // @plantilla-quitar(ventas)
+  sales: Array<{ id: string; status: string; finalAmount: number; product: string }>; // @plantilla-quitar(ventas)
+  /** «Cargar venta»: solo con `sales.manage`, reunión pasada y con resultado. El asistente abre con el contacto y la agenda resueltos. */ // @plantilla-quitar(ventas)
+  saleLoad: { config: WizardConfig; initial: WizardInitial } | null; // @plantilla-quitar(ventas)
 }
 
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
@@ -94,7 +94,7 @@ export function BookingDetailPanel({
   const [menuOpen, setMenuOpen] = useState(false);
   const [cancelFor, setCancelFor] = useState<BookingStatus | null>(null);
   const [reassignOpen, setReassignOpen] = useState(false);
-  const [saleOpen, setSaleOpen] = useState(false);
+  const [saleOpen, setSaleOpen] = useState(false); // @plantilla-quitar(ventas)
   const [newHostId, setNewHostId] = useState("");
   const [transferAssignment, setTransferAssignment] = useState(true);
   const [reason, setReason] = useState("");
@@ -526,6 +526,7 @@ export function BookingDetailPanel({
             </section>
           )}
 
+          {/* @plantilla-desde(llamadas) */}
           {booking.calls.length > 0 && (
             <section className="rounded-lg border border-border p-3">
               <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -534,7 +535,9 @@ export function BookingDetailPanel({
               <CallSectionList rows={booking.calls} timeZone={timezone} compact />
             </section>
           )}
+          {/* @plantilla-hasta(llamadas) */}
 
+          {/* @plantilla-desde(ventas) */}
           {(booking.sales.length > 0 || booking.saleLoad) && (
             <section className="rounded-lg border border-border p-3">
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Ventas</h3>
@@ -560,6 +563,7 @@ export function BookingDetailPanel({
               )}
             </section>
           )}
+          {/* @plantilla-hasta(ventas) */}
 
           <section className="rounded-lg border border-border p-3">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Historial</h3>
@@ -574,7 +578,9 @@ export function BookingDetailPanel({
           </section>
         </div>
       </aside>
+      {/* @plantilla-desde(ventas) */}
       {saleOpen && booking.saleLoad && <SaleWizard config={booking.saleLoad.config} initial={booking.saleLoad.initial} onClose={() => setSaleOpen(false)} />}
+      {/* @plantilla-hasta(ventas) */}
     </>
   );
 }

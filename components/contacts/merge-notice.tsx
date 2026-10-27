@@ -5,7 +5,7 @@ import { CheckCircle2, X } from "lucide-react";
 import { mergeNotes, summarizeMerge, type MergeMoved } from "@/lib/contacts/merge";
 
 /**
- * El aviso de despues de unir dos contactos (Tareas × CRM, R9): llegas a la ficha del contacto principal y esto dice que
+ * El aviso de despues de unir dos contactos: llegas a la ficha del contacto principal y esto dice que
  * se unifico («Se unificaron 2 conversaciones, 1 agenda y 3 tareas.»). El resultado viaja en la URL como cuentas, nunca
  * como texto; se descarta con la X (saca el parametro).
  */

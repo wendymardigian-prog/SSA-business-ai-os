@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ExternalLink, Pencil } from "lucide-react";
 import { AssigneeAvatar } from "@/components/content/assignee-avatar";
-import { ChannelChip } from "@/components/sales/channel-chip";
+import { ChannelChip } from "@/components/shared/channel-chip";
 import type { SaleAttributionViewModel } from "@/lib/sales/attribution-view";
-import { shortDayMonth } from "@/lib/sales/touch-label";
+import { shortDayMonth } from "@/lib/attribution/touch-label";
 
 /**
  * «De dónde vino» en la ficha de una venta (Extra I, F49): el canal y, según el toque, la pieza con su responsable, el

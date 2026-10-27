@@ -6,7 +6,7 @@
  *                 «Marketing · campaña contiene «webinar» · 2 % del cobrado · a Carla»
  */
 import { formatUsd } from "@/lib/finance/format";
-import { toCents } from "@/lib/sales/money";
+import { toCents } from "@/lib/shared/money";
 import { shortCivil } from "./status";
 import { UTM_DIMENSIONS, type CommissionRule, type RuleConditions, type UtmCondition, type UtmDimension } from "./types";
 

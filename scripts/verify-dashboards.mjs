@@ -8,10 +8,8 @@
  * Member A tiene scope sobre las conversaciones 1 y 3. Limpia todo al terminar;
  * una limpieza fallida es una falla.
  *
- * La conversacion 7 se sumo el 28/9/2026 con los tres origenes de automatizacion
- * (flow, sequence, broadcast): es la que fija que sean UNA fila en "Quien
- * responde" y no tres. §11.8 del plano describe el set de 6; los numeros de aca
- * son los del set real, que es el que vale.
+ * La conversacion 7 tiene los tres origenes de automatizacion (flow, sequence,
+ * broadcast): es la que fija que sean UNA fila en "Quien responde" y no tres.
  *
  *   node scripts/verify-dashboards.mjs
  */
@@ -50,7 +48,8 @@ const D = (day, h, m, s) => `2026-09-${String(day).padStart(2, "0")}T${String(h)
 
 try {
   const { data: ws } = await svc.from("workspaces")
-    .insert({ name: "zz-test-dash", slug: `zz-test-dash-${Date.now()}`, lead_scope_enabled: true, unassigned_leads_visible_to_members: false })
+    .insert({ name: "zz-test-dash", slug: `zz-test-dash-${Date.now()}`, lead_scope_enabled: true, unassigned_leads_visible_to_members: false }) // @plantilla-quitar(proyecto)
+    // @plantilla-sin(proyecto):     .insert({ name: "zz-test-dash", slug: `zz-test-dash-${Date.now()}` })
     .select("id").single();
 
   const owner = await makeUser("dash-owner");
@@ -226,7 +225,7 @@ try {
     const { data: emojiCat } = await svc.from("message_categories").select("name").eq("id", emoji?.category_id).maybeSingle();
     check(emojiCat?.name === "Solo emoji o adjunto", "el emoji fue a 'Solo emoji o adjunto'");
     // (Los textos de botón son de cada negocio, no se siembran en la migración:
-    // se marcan a mano en Ajustes → Tareas, message_texts.is_button.)
+    // se marcan a mano, message_texts.is_button.)
   }
 
   console.log("\n— normalize_for_grouping (paridad con la app) —");

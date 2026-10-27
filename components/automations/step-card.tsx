@@ -291,7 +291,7 @@ function CancelEditor({ name, step, patch, disabled }: EditorProps) {
   );
 }
 
-/** Personas del equipo, con casillas (EOD: un email o un aviso a gente elegida). */
+/** Personas del equipo, con casillas (un email o un aviso a gente elegida). */
 function MemberPicker({ name, value, onChange, disabled }: { name: string; value: string[]; onChange: (ids: string[]) => void; disabled: boolean }) {
   const { members } = useStepEditor();
   if (members.length === 0) return <p className="text-xs text-muted-foreground">No hay personas en el equipo para elegir.</p>;

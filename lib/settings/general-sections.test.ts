@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { AI_RUNS_HREF, GENERAL_SECTIONS } from "./general-sections";
 
 describe("GENERAL_SECTIONS", () => {
-  // Extra I: Finanzas y Atribución se suman al final de las que ya había.
+  // Extra I: Finanzas y Atribución se suman al final de las que ya había.  @plantilla-quitar(proyecto)
   it("tiene las secciones en orden (Ventas se suma con la Etapa 5, Finanzas y Atribución con el Extra I), sin Zona de peligro", () => {
     expect(GENERAL_SECTIONS.map((s) => s.id)).toEqual([
       "workspace",
       "conversaciones",
       "archivos",
-      "ventas",
-      "finanzas",
+      "ventas", // @plantilla-quitar(ventas)
+      "finanzas", // @plantilla-quitar(finanzas)
       "ia",
       "atribucion",
     ]);
@@ -31,18 +31,22 @@ describe("General partido por permiso (F16)", () => {
     expect(generalSectionsFor(can("settings.general")).map((s) => s.id)).toEqual(["workspace", "conversaciones", "archivos", "ia", "atribucion"]);
   });
 
+  // @plantilla-desde(ventas)
   it("con solo sales.settings ve únicamente «Ventas y cobranza»", () => {
     const sections = generalSectionsFor(can("sales.settings"));
     expect(sections.map((s) => s.id)).toEqual(["ventas"]);
     expect(sections[0].label).toBe("Ventas y cobranza");
   });
+  // @plantilla-hasta(ventas)
 
+  // @plantilla-desde(finanzas)
   it("con solo expenses.manage ve únicamente «Finanzas»", () => {
     const sections = generalSectionsFor(can("expenses.manage"));
     expect(sections.map((s) => s.id)).toEqual(["finanzas"]);
     expect(sections[0].label).toBe("Finanzas");
     expect(canOpenGeneral(can("expenses.manage"))).toBe(true);
   });
+  // @plantilla-hasta(finanzas)
 
   it("expenses.view sin expenses.manage no abre Finanzas en Ajustes (la configuración es de quien administra)", () => {
     expect(generalSectionsFor(can("expenses.view"))).toEqual([]);
@@ -59,10 +63,12 @@ describe("General partido por permiso (F16)", () => {
   });
 
   it("Owner y Admin (todas las claves) ven las siete; quien no tiene ninguna no ve nada", () => {
-    expect(generalSectionsFor(can("settings.general", "sales.settings", "expenses.manage"))).toHaveLength(7);
-    expect(generalSectionsFor(() => true).map((s) => s.id)).toEqual(["workspace", "conversaciones", "archivos", "ventas", "finanzas", "ia", "atribucion"]);
+    expect(generalSectionsFor(can("settings.general", "sales.settings", "expenses.manage"))).toHaveLength(7); // @plantilla-quitar(ventas,finanzas)
+    expect(generalSectionsFor(() => true).map((s) => s.id)).toEqual(["workspace", "conversaciones", "archivos", "ventas", "finanzas", "ia", "atribucion"]); // @plantilla-quitar(ventas,finanzas)
+    // @plantilla-sin(ventas,finanzas): expect(generalSectionsFor(can("settings.general"))).toHaveLength(5);
+    // @plantilla-sin(ventas,finanzas): expect(generalSectionsFor(() => true).map((s) => s.id)).toEqual(["workspace", "conversaciones", "archivos", "ia", "atribucion"]);
     expect(generalSectionsFor(can("products.manage"))).toEqual([]);
     expect(canOpenGeneral(can("products.manage"))).toBe(false);
-    expect(canOpenGeneral(can("sales.settings"))).toBe(true);
+    expect(canOpenGeneral(can("sales.settings"))).toBe(true); // @plantilla-quitar(ventas)
   });
 });

@@ -3,7 +3,7 @@
  */
 
 import { foldText } from "./text";
-import { normalizeTime } from "./time";
+import { normalizeTime } from "@/lib/calendar/time";
 import { PRIORITY_RANK, STATUS_LABELS, TASK_STATUSES, type TaskRow, type TaskSource, type TaskStatus } from "./types";
 import type { GroupBy, SortColumn, SortSpec } from "./view-state";
 

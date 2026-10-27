@@ -16,7 +16,7 @@ import { effectiveAttribution, preferEmbeddedEntryUrl } from "@/lib/attribution/
 import { storedFromEffective } from "@/lib/attribution/browser";
 import { parseStored } from "@/lib/attribution/store";
 import { COOKIE_KEYS } from "@/lib/attribution/keys";
-import { decodeAttr } from "@/lib/forms/embed-attr";
+import { decodeAttr } from "@/lib/attribution/embed-attr";
 
 export interface BookingAttributionInput {
   /** Los parámetros de la URL de la página (o del iframe) tal cual. */
@@ -57,7 +57,7 @@ export function bookingAttribution(input: BookingAttributionInput): Record<strin
 
 /**
  * Las cookies de anuncios que el pedido trae y el navegador no mandó (`_fbp`, `_fbc`, `_ga`): se completan en
- * el servidor, igual que `buildAttribution` de Formularios. Una clave que ya vino no se pisa.
+ * el servidor. Una clave que ya vino no se pisa.
  */
 export function fillFromRequestCookies(attribution: Record<string, unknown>, cookieHeader: string | null | undefined): Record<string, unknown> {
   const cookies = parseCookieHeader(cookieHeader);
