@@ -128,6 +128,7 @@ try {
     check(post?.script === null && post?.recording_notes === null,
       "el guion y las notas de grabacion arrancan vacios: el texto de la idea es contexto");
 
+    // @plantilla-desde(proyecto)
     // La 00118 (6/10/2026) borro lo del modelo viejo: que no vuelva sin que nadie lo note.
     const { error: eCopy } = await svc.from("content_posts").select("copy").limit(1);
     const { error: eHook } = await svc.from("content_ideas").select("hook").limit(1);
@@ -136,6 +137,7 @@ try {
       p_idea_id: ideaMember.id, p_title: "x", p_format: null, p_copy: {},
     });
     check(!!eV1 && /could not find the function/i.test(eV1.message), "la funcion `approve_content_idea` vieja ya no existe", eV1?.message);
+    // @plantilla-hasta(proyecto)
 
     const { error: eDoble } = await owner.client.rpc("approve_content_idea_v2", {
       p_idea_id: ideaMember.id, p_title: "otra", p_format: null,

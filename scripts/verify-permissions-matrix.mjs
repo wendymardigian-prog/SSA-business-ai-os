@@ -203,9 +203,11 @@ try {
       payload: (a) => ({ workspace_id: ws.id, agent_id: agent.id, version: 1000 + Math.floor(Math.random() * 1e6), system_prompt: "zz-test", created_by: a.id }) }),
     T({ name: "agent_prompt_versions SELECT", table: "agent_prompt_versions", op: "select", any: ["agents.edit"], deny: ["agents.view", "ai_tasks.manage"], member: false,
       seed: () => svc.from("agent_prompt_versions").insert({ workspace_id: ws.id, agent_id: agent.id, version: 1000 + Math.floor(Math.random() * 1e6), system_prompt: "zz-test" }).select("id").single() }),
-    T({ name: "ai_task_prompt_versions INSERT", table: "ai_task_prompt_versions", op: "insert", any: ["ai_tasks.manage", "calls.configure"], deny: ["agents.edit", "agents.view"], member: false,
+    T({ name: "ai_task_prompt_versions INSERT", table: "ai_task_prompt_versions", op: "insert", any: ["ai_tasks.manage", "calls.configure"], deny: ["agents.edit", "agents.view"], member: false, // @plantilla-quitar(llamadas)
+    // @plantilla-sin(llamadas): T({ name: "ai_task_prompt_versions INSERT", table: "ai_task_prompt_versions", op: "insert", any: ["ai_tasks.manage"], deny: ["agents.edit", "agents.view"], member: false,
       payload: (a) => ({ workspace_id: ws.id, task: "close_classification", version: 1000 + Math.floor(Math.random() * 1e6), instructions: "zz-test", created_by: a.id }) }),
-    T({ name: "ai_task_prompt_versions SELECT", table: "ai_task_prompt_versions", op: "select", any: ["ai_tasks.manage", "calls.configure"], deny: ["agents.edit", "agents.view"], member: false,
+    T({ name: "ai_task_prompt_versions SELECT", table: "ai_task_prompt_versions", op: "select", any: ["ai_tasks.manage", "calls.configure"], deny: ["agents.edit", "agents.view"], member: false, // @plantilla-quitar(llamadas)
+    // @plantilla-sin(llamadas): T({ name: "ai_task_prompt_versions SELECT", table: "ai_task_prompt_versions", op: "select", any: ["ai_tasks.manage"], deny: ["agents.edit", "agents.view"], member: false,
       seed: () => svc.from("ai_task_prompt_versions").insert({ workspace_id: ws.id, task: "close_classification", version: 1000 + Math.floor(Math.random() * 1e6), instructions: "zz-test" }).select("id").single() }),
     T({ name: "knowledge_base INSERT", table: "knowledge_base", op: "insert", any: ["knowledge.edit"], deny: ["knowledge.view", "agents.edit"], member: false,
       payload: () => ({ workspace_id: ws.id, title: `zz-test doc ${uid()}` }) }),
@@ -217,12 +219,15 @@ try {
     T({ name: "contacts DELETE", table: "contacts", op: "delete", any: ["contacts.delete"], deny: ["contacts.edit", "contacts.merge"], member: false, base: ["contacts.view"],
       seed: () => svc.from("contacts").insert({ workspace_id: ws.id, display_name: `zz-test contacto ${uid()}` }).select("id").single() }),
 
+    // @plantilla-desde(comisiones)
     // ---- Comisiones (Extra I, 00231): solo se LEEN con la sesion (escribe el servidor). `commissions.view` con alcance `all`
     // (ALL_SCOPES) ve todas; las reglas las ve tambien quien administra.
     T({ name: "commissions SELECT", table: "commissions", op: "select", any: ["commissions.view"], deny: ["commissions.manage"], member: false,
       seed: () => svc.from("commissions").insert({ workspace_id: ws.id, kind: "adjustment", user_id: null, amount: 5, available_on: "2031-01-01", notes: "zz-test ajuste" }).select("id").single() }),
     T({ name: "commission_rules SELECT", table: "commission_rules", op: "select", any: ["commissions.manage", "commissions.view"], deny: ["expenses.view"], member: false,
       seed: () => svc.from("commission_rules").insert({ workspace_id: ws.id, name: "zz-test regla", role: "vendedor", position: 1 + Math.floor(Math.random() * 100000), calc_type: "percent", rate: 5 }).select("id").single() }),
+    // @plantilla-hasta(comisiones)
+    // @plantilla-desde(finanzas)
     // ---- Finanzas (Extra I, 00225): leer con expenses.view, escribir con expenses.manage (para UPDATE tambien hace falta VER la fila)
     T({ name: "expenses SELECT", table: "expenses", op: "select", any: ["expenses.view"], deny: ["expenses.manage"], member: false,
       seed: () => svc.from("expenses").insert({ workspace_id: ws.id, concept: "zz-test gasto", category_key: "marketing", amount: 10, status: "programado", scheduled_date: "2031-01-01", origin: "manual" }).select("id").single() }),
@@ -245,6 +250,7 @@ try {
     T({ name: "recurring_expenses UPDATE", table: "recurring_expenses", op: "update", any: ["expenses.manage"], deny: ["expenses.view"], member: false, base: ["expenses.view"],
       seed: () => svc.from("recurring_expenses").insert({ workspace_id: ws.id, concept: "zz-test plantilla", category_key: "software", amount_type: "fixed", amount: 10, charge_mode: "manual", frequency: "monthly", monthly_day: 5, start_date: "2031-01-01", generation_anchor: "2031-01-01" }).select("id").single(),
       patch: () => ({ notes: "probado" }) }),
+    // @plantilla-hasta(finanzas)
   ];
 
   // --- Ejecutar -----------------------------------------------------------------------------------------------
