@@ -291,6 +291,8 @@ export const excludeTests = [
   { path: "lib/contacts/find-or-create-migration.test.ts", modules: ["proyecto"], why: "lee el archivo de la migracion que creo la regla unica de contactos" },
   { path: "lib/scheduling/booking/create-booking-ad-ids.test.ts", modules: ["proyecto"], why: "fija el diff de una reescritura de create_booking" },
   { path: "lib/dashboards/ads-guide.test.ts", modules: ["proyecto"], why: "compara con docs/atribucion.md, y docs/ no viaja a la plantilla" },
+  { path: "lib/contacts/c2-migrations-diff.snapshot.json", modules: ["proyecto"], why: "la foto que usa c2-migrations-diff.test.ts (que tampoco viaja)" },
+  { path: "scripts/fixtures/audit-log-policies.before-00168.json", modules: ["proyecto"], why: "las politicas de audit_log antes de una migracion vieja; verify-audit-visibility solo la lee en el proyecto" },
 ];
 
 /** Paquetes de npm que solo usa un modulo (el export los saca del package.json). */

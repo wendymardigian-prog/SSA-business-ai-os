@@ -8,19 +8,18 @@
 // 3. Clona (o enlaza) node_modules del repo y regenera public/embed/embed.js con el codigo ya podado.
 // 4. Controles: tsc, eslint (0 errores), vitest (un archivo que falla se reintenta una vez:
 //    hay tests de tiempo que fallan con la maquina cargada), next build, el de nombres del
-//    export de siempre y el de historia. El de historia frena solo por nombres propios y
-//    numeros de PR; lo demas (numeros de migracion, fechas, palabras de modulos en
-//    comentarios) se informa en un archivo para revisarlo.
+//    export de siempre y el de historia. El de historia frena por lo que cuente la historia del
+//    proyecto en un comentario (numeros de migracion, fechas, codigos de requerimiento, etapas,
+//    palabras de modulos que no viajan), por un nombre propio o un PR en cualquier texto, y por
+//    los comentarios que la limpieza no pudo arreglar sola; lo que esta fuera de los comentarios
+//    (strings, nombres de tests) se informa en el mismo archivo.
 // 5. Si todo pasa: limpia lo que dejaron los controles y arma el git (un solo commit).
 //
 // Los registros de cada control quedan en "<destino>-controles/" (fuera de la copia).
-import { existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { applyProfile, cleanGateArtifacts, findHistoryInCopy, loadProfile, runGates } from "./export-profile.mjs";
-
-/** Reglas del control de historia que frenan el export (las demas se informan). */
-const STRICT_HISTORY = new Set(["nombre propio", "PR"]);
+import { applyProfile, cleanGateArtifacts, findHistoryInCopy, historyReport, loadProfile, runGates } from "./export-profile.mjs";
 
 export async function exportWithProfile({ repo, dest, perfil, skipGates, selfCheck, gitInit }) {
   const started = Date.now();
@@ -33,6 +32,7 @@ export async function exportWithProfile({ repo, dest, perfil, skipGates, selfChe
   const summary = applyProfile({ repo, out: dest, profile });
   console.log(`Perfil "${perfil}": ${summary.removed.length} rutas borradas, marcas aplicadas en ${summary.stripped} archivos, ${summary.overlaid.length} archivos propios de la plantilla.`);
   if (summary.depsRemoved.length) console.log(`Paquetes sacados del package.json: ${summary.depsRemoved.join(", ")}.`);
+  console.log(`Comentarios limpiados: ${summary.commentsCleaned}${summary.commentWarnings.length ? ` (${summary.commentWarnings.length} para reescribir a mano)` : ""}.`);
 
   // 2. package-lock.json.
   if (summary.depsRemoved.length) {
@@ -59,6 +59,11 @@ export async function exportWithProfile({ repo, dest, perfil, skipGates, selfChe
 
   if (skipGates) {
     cleanGateArtifacts(dest);
+    // El de historia es rapido y no necesita node_modules: se informa igual (sin frenar).
+    const report = historyReport(findHistoryInCopy(dest), summary.commentWarnings);
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(join(logDir, "historia.txt"), report.text);
+    console.log(`Historia: ${report.detail} (detalle en ${join(logDir, "historia.txt")})`);
     console.log(`\n--skip-gates: no se corrieron los controles ni se armo el git. Copia en ${dest}`);
     return true;
   }
@@ -88,19 +93,10 @@ export async function exportWithProfile({ repo, dest, perfil, skipGates, selfChe
   show(namesResult);
   results.push(namesResult);
 
-  const hits = findHistoryInCopy(dest);
-  const strict = hits.filter((h) => STRICT_HISTORY.has(h.rule));
-  const byRule = {};
-  for (const h of hits) byRule[h.rule] = (byRule[h.rule] ?? 0) + 1;
+  const report = historyReport(findHistoryInCopy(dest), summary.commentWarnings);
   const historyLog = join(logDir, "historia.txt");
-  writeFileSync(historyLog, hits.map((h) => `${h.file}:${h.line} [${h.rule}] ${h.text}`).join("\n") + "\n");
-  const historyResult = {
-    name: "historia",
-    ok: strict.length === 0,
-    detail: `${strict.length} que frenan (nombres propios, PR); para revisar: ${Object.entries(byRule).filter(([k]) => !STRICT_HISTORY.has(k)).map(([k, v]) => `${k} ${v}`).join(", ") || "ninguno"} (detalle en ${historyLog})`,
-    seconds: 0,
-    log: historyLog,
-  };
+  writeFileSync(historyLog, report.text);
+  const historyResult = { name: "historia", ok: report.ok, detail: `${report.detail} (detalle en ${historyLog})`, seconds: 0, log: historyLog };
   show(historyResult);
   results.push(historyResult);
 

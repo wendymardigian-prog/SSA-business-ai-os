@@ -12,8 +12,10 @@
 //      plantilla (`profile.SUPABASE_DIR`).
 //   5. Copia encima los archivos propios de la plantilla (`profile.TEMPLATE_FILES`: CLAUDE.md,
 //      README.md, .env.example, .claude/...), si la carpeta existe.
-//   6. Saca del package.json los paquetes que son solo de un modulo excluido.
-//   7. Vuelve a armar supabase/migrations/ALL_MIGRATIONS.sql.
+//   6. Limpia los comentarios: les saca la historia del proyecto (clean-comments.mjs). Solo
+//      comentarios; si el codigo de un archivo cambiara en un solo token, frena.
+//   7. Saca del package.json los paquetes que son solo de un modulo excluido.
+//   8. Vuelve a armar supabase/migrations/ALL_MIGRATIONS.sql.
 //
 // `runGates` corre los controles sobre la copia (con node_modules enlazado del repo):
 // tsc, eslint, vitest, next build y el de historia (`findHistoryInCopy`). Devuelve un
@@ -23,6 +25,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { hasMarkers, stripMarkers } from "./markers.mjs";
+import { cleanSource, historyRefs } from "./clean-comments.mjs";
+import { codeTokens, commentLanguage, findComments } from "./comments.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -113,7 +117,25 @@ export function applyProfile({ repo, out, profile }) {
     }
   }
 
-  // 6. Paquetes que son solo de un modulo excluido.
+  // 6. La historia en los comentarios. Las migraciones de la plantilla ya vienen limpias y
+  // public/ es generado (embed.js sale de lib/embed, que si se limpia).
+  let commentsCleaned = 0;
+  const commentWarnings = [];
+  for (const rel of walkFiles(out)) {
+    if (!commentLanguage(rel) || /^(public|supabase\/migrations)\//.test(rel)) continue;
+    const p = join(out, rel);
+    const text = readFileSync(p, "utf8");
+    const { text: next, changed, warnings } = cleanSource(text, rel);
+    for (const w of warnings) commentWarnings.push(`${rel}: ${w}`);
+    if (next === text) continue;
+    const before = codeTokens(text, rel);
+    if (before && before.join("\u0000") !== codeTokens(next, rel).join("\u0000"))
+      throw new Error(`La limpieza de comentarios cambio el codigo de ${rel}: no se escribe (revisar clean-comments.mjs).`);
+    writeFileSync(p, next);
+    commentsCleaned += changed;
+  }
+
+  // 7. Paquetes que son solo de un modulo excluido.
   const depsRemoved = [];
   const pkgPath = join(out, "package.json");
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
@@ -128,62 +150,170 @@ export function applyProfile({ repo, out, profile }) {
   }
   if (depsRemoved.length) writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
-  // 7. El paquete de migraciones para pegar en el editor SQL.
+  // 8. El paquete de migraciones para pegar en el editor SQL.
   if (SUPABASE_DIR) {
     const r = spawnSync(process.execPath, [join(out, "scripts", "build-all-migrations.mjs")], { cwd: out, encoding: "utf8" });
     if (r.status !== 0) throw new Error(`build-all-migrations fallo:\n${r.stdout}${r.stderr}`);
   }
 
-  return { removed, stripped, overlaid, depsRemoved };
+  return { removed, stripped, overlaid, depsRemoved, commentsCleaned, commentWarnings };
 }
 
 // ---------------------------------------------------------------------------
 // Control de historia: lo que la copia no puede contar del proyecto.
 // ---------------------------------------------------------------------------
-// Se revisa todo el texto de la copia (codigo y comentarios), salvo las migraciones
-// (verify-student-schema ya las revisa con su propio control) y lo generado.
+// FRENA el export (strict):
+//   - en los comentarios del codigo: numeros de migracion, fechas, codigos de requerimiento
+//     ("F87", "M10"), etapas del proyecto ("Fase 3", "Extra I", "Contenido v4", "PR #12"...) y
+//     las palabras de los modulos que la plantilla no lleva (salvo MODULE_ALLOWLIST);
+//   - en cualquier texto: un nombre propio y un numero de PR;
+//   - en los .md y .json: numeros de migracion y fechas (salvo TEXT_ALLOWLIST).
+// Se INFORMA sin frenar: lo mismo en el codigo que no es un comentario (strings, nombres de tests),
+// que la limpieza no toca a proposito.
+// Las migraciones (verify-student-schema ya las revisa con su propio control) y lo generado no se miran.
 const HISTORY_SKIP = [
-  /^supabase\//, // migraciones, seeds y config: su control es verify-student-schema
+  /^supabase\/migrations\//,
   /^package-lock\.json$/,
   /^public\//, // datos y archivos generados (embed.js sale de lib/embed, que si se revisa)
   /^scripts\/build-all-migrations\.mjs$/,
 ];
 
-export const COPY_HISTORY_PATTERNS = [
-  { name: "numero de migracion", re: /(?<![\w-])00\d{3}(?![\w-])/ },
-  { name: "fecha", re: /\b\d{1,2}\/\d{1,2}\/(?:19|20)\d{2}\b/ },
-  { name: "PR", re: /\bPR\s*#\s*\d+/ },
-  { name: "nombre propio", re: /\bWendy\b/i },
-  { name: "produccion", re: /producci[oó]n/i },
-  {
-    name: "modulo sacado",
-    re: /\bFathom\b|\bEOD\b|\bcomisi[oó]n(?:es)?\b|\bfinanzas\b|\bformularios?\b|\bcontratos?\b|webhooks? entrantes?|\btareas?\b/i,
-  },
+const ANYWHERE = [
+  { rule: "nombre propio", re: /\bWendy\b/i },
+  { rule: "PR", re: /\bPR\s*#\s*\d+/ },
 ];
 
-// Frases que nombran algo parecido a un modulo y no lo son (se borran antes de buscar).
-const HISTORY_SAFE = [
-  /tareas? (?:de (?:la )?IA|en segundo plano|del sistema|programadas?|de fondo)/gi,
-  /llamadas? de WhatsApp/gi,
-  /formulario de (?:reserva|la agenda|agendamiento)/gi,
-  /<form\b|\bform\b/gi,
-  /tiene que ser la publica de produccion/gi, // mensaje de private.set_system_secret
+/**
+ * Lo que nombra un modulo que la plantilla no lleva (en comentarios). Son nombres propios del
+ * modulo (con mayuscula: "Ventas", "Tareas") o frases que solo existen en el (una "respuesta de
+ * formulario", "la cobranza"): "formulario", "tarea", "llamada" o "contrato" sueltos tienen otros
+ * sentidos (el formulario de la ficha, una tarea de IA, una llamada a la API, el contrato de una
+ * funcion) y no se buscan.
+ */
+export const MODULE_WORDS = [
+  /\bFathom\b/g,
+  /\bLlamadas\b/g,
+  /\bllamadas? de venta\b/gi,
+  /\bEOD\b/g,
+  /\bfin de d[ií]a\b/gi,
+  /\breporte del d[ií]a\b/gi,
+  /\bFormularios\b/g,
+  /\brespuestas? (?:de|del|a) (?:un |una |su )?(?:formularios?|encuestas?)\b/gi,
+  /\bencuestas?\b/gi,
+  /\bcontratos? firmados?\b|\bfirm(?:a|ar) (?:de |del )?(?:un |el )?contrato\b|\bmodo Contrato\b|\bcopia firmada\b/gi,
+  /\bVentas\b/g,
+  /\bcobranza\b/gi,
+  /\bmora\b/gi,
+  /\bpagos\b/gi,
+  /\bm[eé]todos? de pago\b/gi,
+  /\bTareas\b/g,
+  /\btareas? del equipo\b/gi,
+  /\bcrear (?:una )?tarea\b/gi,
+  /\bFinanzas\b/g,
+  /\bgastos\b/gi,
+  /\bcomisi[oó]n(?:es)?\b/gi,
+  /\bwebhooks? entrantes?\b/gi,
+  /\bsitio p[uú]blico\b/gi,
 ];
 
-/** Lo que encuentra el control de historia en la copia: [{ file, line, rule, text }]. */
+/**
+ * Lo que se parece a un modulo sacado y no lo es. Cada entrada dice por que. `files` limita la
+ * excepcion a esos archivos; sin `files` vale en toda la copia.
+ */
+export const MODULE_ALLOWLIST = [
+  { re: /\bTareas? (?:de (?:la )?IA|en segundo plano|del sistema)\b/gi, why: "las tareas de IA del sistema (clasificar, resumir, transcribir) son de Agentes IA, no del modulo de Tareas" },
+  { files: /^(lib\/ai-tasks|lib\/background|components\/agents|app\/\(dashboard\)\/dashboard\/agents|app\/\(dashboard\)\/dashboard\/settings\/background|app\/api\/cron\/bg-)/, re: /\bTareas\b/g, why: "en Agentes IA, \"Tareas\" es la seccion de las tareas de IA" },
+  { re: /\bLlamadas? (?:de|por) WhatsApp\b/g, why: "las llamadas de WhatsApp (el aviso de Evolution) son de la bandeja, no del modulo de Llamadas" },
+  { re: /\bgastos? de (?:la )?IA\b/gi, why: "el gasto de IA (topes de gasto), no el modulo de Finanzas" },
+  { re: /\b(?:Ventas|Servicio|Equipo|Otros)(?:, (?:Ventas|Servicio|Equipo|Otros))+|\bVentas · \w+|"Ventas"/g, why: "las areas de la agenda (Ventas, Servicio, Equipo, Otros) son de la Agenda" },
+];
+/** Excepciones de numeros y fechas en .md y .json: los archivos de migracion propios de la plantilla. */
+export const TEXT_ALLOWLIST = [
+  { files: /^(CLAUDE\.md|README\.md|\.claude\/commands\/setup\.md)$/, re: /\b000(?:0\d|1[0-7])(?:_[a-z_]+)?\b/g, why: "los archivos de migracion de la plantilla (00000 a 00016) y la proxima (00017)" },
+];
+
+const stripAllow = (text, rel, list) =>
+  list.reduce((t, a) => (a.files && !a.files.test(rel) ? t : t.replace(a.re, " ")), text);
+
+/** Las palabras de modulos sacados que tiene una linea de comentario (despues de las excepciones). */
+export function moduleWordsIn(line, rel = "") {
+  const clean = stripAllow(line, rel, MODULE_ALLOWLIST);
+  return MODULE_WORDS.flatMap((re) => [...clean.matchAll(re)].map((m) => m[0]));
+}
+
+const lineOf = (text, index) => text.slice(0, index).split("\n").length;
+
+/**
+ * Lo que encuentra el control de historia en la copia: [{ file, line, rule, text, strict }].
+ * `strict` = frena el export.
+ */
 export function findHistoryInCopy(out) {
   const hits = [];
+  const push = (rel, line, rule, text, strict) => hits.push({ file: rel, line, rule, text: text.trim().slice(0, 200), strict });
   for (const rel of walkFiles(out)) {
     if (!TEXT.test(rel) || HISTORY_SKIP.some((re) => re.test(rel))) continue;
-    const lines = readFileSync(join(out, rel), "utf8").split("\n");
+    const text = readFileSync(join(out, rel), "utf8");
+    const lines = text.split("\n");
     lines.forEach((line, i) => {
-      const clean = HISTORY_SAFE.reduce((t, re) => t.replace(re, " "), line);
-      for (const p of COPY_HISTORY_PATTERNS) {
-        if (p.re.test(clean)) hits.push({ file: rel, line: i + 1, rule: p.name, text: line.trim().slice(0, 200) });
-      }
+      for (const a of ANYWHERE) if (a.re.test(line)) push(rel, i + 1, a.rule, line, true);
     });
+    if (commentLanguage(rel)) {
+      let code = text;
+      for (const c of findComments(text, rel).reverse()) {
+        const body = text.slice(c.start, c.end);
+        body.split("\n").forEach((l, k) => {
+          const line = lineOf(text, c.start) + k;
+          for (const h of historyRefs(l)) push(rel, line, h.rule, l, true);
+          for (const w of moduleWordsIn(l, rel)) push(rel, line, `modulo sacado (${w.toLowerCase()})`, l, true);
+        });
+        code = code.slice(0, c.start) + body.replace(/[^\n]/g, " ") + code.slice(c.end);
+      }
+      // Lo que no es comentario: se informa.
+      code.split("\n").forEach((l, i) => {
+        for (const h of historyRefs(l)) push(rel, i + 1, `${h.rule} (fuera de comentarios)`, lines[i], false);
+      });
+    } else if (/\.(md|json)$/.test(rel)) {
+      lines.forEach((l, i) => {
+        const clean = stripAllow(l, rel, TEXT_ALLOWLIST);
+        for (const h of historyRefs(clean)) {
+          const strict = h.rule === "numero de migracion" || h.rule === "fecha";
+          push(rel, i + 1, strict ? h.rule : `${h.rule} (texto)`, l, strict);
+        }
+      });
+    }
   }
   return hits;
+}
+
+/**
+ * El resumen del control de historia: { ok, detail, text }. `ok` = ninguna que frene. El texto
+ * lista primero las que frenan y despues las que solo se informan.
+ */
+export function historyReport(hits, warnings = []) {
+  const strict = hits.filter((h) => h.strict);
+  const info = hits.filter((h) => !h.strict);
+  const count = (list) => {
+    const by = {};
+    for (const h of list) {
+      const rule = h.rule.replace(/ \(.*\)$/, "");
+      by[rule] = (by[rule] ?? 0) + 1;
+    }
+    return Object.entries(by).map(([k, v]) => `${k} ${v}`).join(", ") || "ninguna";
+  };
+  const fmt = (h) => `${h.file}:${h.line} [${h.rule}] ${h.text}`;
+  const text = [
+    `# Frenan el export (${strict.length})`,
+    ...strict.map(fmt),
+    "",
+    `# Comentarios que la limpieza no pudo arreglar sola: reescribirlos en el proyecto (${warnings.length})`,
+    ...warnings,
+    "",
+    `# Solo se informan: fuera de comentarios (strings, nombres de tests) (${info.length})`,
+    ...info.map(fmt),
+  ].join("\n");
+  const ok = strict.length === 0 && warnings.length === 0;
+  const detail = `${strict.length} que frenan (${count(strict)}); ${warnings.length} comentarios para reescribir; se informan ${info.length} fuera de comentarios`;
+  return { ok, detail, text: text + "\n" };
 }
 
 // ---------------------------------------------------------------------------
@@ -252,12 +382,8 @@ export function runGates(out, { only, vitestArgs = [], logDir = `${out}-controle
   }
   if (want("historia")) {
     const started = Date.now();
-    const hits = findHistoryInCopy(out);
-    const text = hits.map((h) => `${h.file}:${h.line} [${h.rule}] ${h.text}`).join("\n");
-    const byRule = {};
-    for (const h of hits) byRule[h.rule] = (byRule[h.rule] ?? 0) + 1;
-    const detail = hits.length ? Object.entries(byRule).map(([k, v]) => `${k}: ${v}`).join(", ") : "ninguna";
-    results.push({ name: "historia", ok: hits.length === 0, detail, seconds: Math.round((Date.now() - started) / 1000), log: save("historia", text) });
+    const report = historyReport(findHistoryInCopy(out));
+    results.push({ name: "historia", ok: report.ok, detail: report.detail, seconds: Math.round((Date.now() - started) / 1000), log: save("historia", report.text) });
   }
   return results;
 }
