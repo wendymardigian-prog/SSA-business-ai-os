@@ -1,6 +1,6 @@
 /**
- * Lo que una automatizacion necesita en su disparador para poder publicarse (auditoria de automatizaciones,
- * oct 2026). Puro: lo usan `publishFlow`, la API y el lienzo (para avisar antes de apretar Publicar).
+ * Lo que una automatizacion necesita en su disparador para poder publicarse.
+ * Puro: lo usan `publishFlow`, la API y el lienzo (para avisar antes de apretar Publicar).
  *
  * Reglas:
  *  - exactamente UN disparador (el motor arranca siempre por el primero: con dos, el segundo corria los pasos del

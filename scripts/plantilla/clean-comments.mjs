@@ -37,6 +37,8 @@ const PHRASES = [
   String.raw`\b[Tt]andas? [A-Z]\b`,
   String.raw`\b[Cc]orridas? [A-Z]\b`,
   String.raw`\b(?:las )?Mejoras de Chat\b`,
+  String.raw`\b[Aa]uditor[ií]a de automatizaciones\b`,
+  String.raw`(?<=[(,]\s?)(?:ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)[a-z]*\.?\s+(?:de\s+)?20\d{2}(?=\s*[),.])`,
   String.raw`§\s?\d+(?:\.\d+)*`,
   String.raw`[Pp]lano formularios-ui`,
   String.raw`\bdecisi[oó]n \d{2,3}\b`,

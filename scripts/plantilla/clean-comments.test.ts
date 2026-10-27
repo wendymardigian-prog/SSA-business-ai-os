@@ -71,6 +71,10 @@ describe("cleanCommentLine", () => {
     [" Un evento (decisión del 20/10/2026): no tiene", " Un evento: no tiene"],
     [" retención y, desde el Extra I, «Atribución»", " retención y «Atribución»"],
     [" El agente que eligio (E1: para saber si su IA sigue conectada).", " El agente que eligio (para saber si su IA sigue conectada)."],
+    [" La lista (auditoria de automatizaciones, oct 2026): buscador y filtros", " La lista: buscador y filtros"],
+    [" Mejoras de Chat: el asistente no pudo entender un mensaje.", " El asistente no pudo entender un mensaje."],
+    [' "Clasificación al cierre" (Bloque Agentes IA) no tiene `source` propio', ' "Clasificación al cierre" no tiene `source` propio'],
+    [" Decision 152 aparte: (decision 153) nada", " Decision 152 aparte: nada"],
     [" Ver `docs/sitio.md`.", null],
     [` ${M("118")}`, null],
     // Lo que no es historia no se toca
@@ -80,6 +84,8 @@ describe("cleanCommentLine", () => {
     [" La codificacion queda: \"%C2%B7\"", " La codificacion queda: \"%C2%B7\""],
     [` El numero de una migracion (\`${M("042")}_algo.sql\` -> 42).`, ` El numero de una migracion (\`${M("042")}_algo.sql\` -> 42).`],
     [" Usa la API /api/v1/messages y Tailwind v4", " Usa la API /api/v1/messages y Tailwind v4"],
+    [" «15 nov 2026». Una fecha civil", " «15 nov 2026». Una fecha civil"],
+    [" El 3 de octubre de 2026, 12:00 en Costa Rica.", " El 3 de octubre de 2026, 12:00 en Costa Rica."],
   ];
   it.each(cases)("%s", (input, expected) => {
     expect(cleanCommentLine(input)).toBe(expected);
@@ -90,7 +96,8 @@ describe("cleanCommentLine", () => {
     cleanCommentLine(" Programar de verdad es F25. Mover la tarjeta", w);
     cleanCommentLine(` un producto anterior a la ${M("134")}.`, w);
     cleanCommentLine(" El Bloque 1 asumio lo contrario", w);
-    expect(w).toHaveLength(3);
+    cleanCommentLine(" La Tanda B compila `entry.ts`", w);
+    expect(w).toHaveLength(4);
     const ok: string[] = [];
     cleanCommentLine(" Desde la Fase 3 los entrantes se guardan", ok);
     cleanCommentLine(" Cancelar desde el equipo, con motivo (F36).", ok);

@@ -8,13 +8,15 @@ import { categoryKey } from "./categories";
 import { matchesQuery } from "./search";
 
 /** De donde viene la automatizacion: la crearon en Automatizaciones o la arma otra pantalla. */
-export type FlowOrigin = "manual" | "formularios" | "agenda" | "sistema";
+export type FlowOrigin = "manual" | "formularios" | "agenda" | "sistema"; // @plantilla-quitar(formularios)
+// @plantilla-sin(formularios): export type FlowOrigin = "manual" | "agenda" | "sistema";
 
 export const FLOW_ORIGIN_LABELS: Record<FlowOrigin, string> = {
   manual: "Creadas acá",
-  formularios: "De Formularios",
+  formularios: "De Formularios", // @plantilla-quitar(formularios)
   agenda: "De la Agenda",
-  sistema: "Del sistema (Ventas y cobranza)",
+  sistema: "Del sistema (Ventas y cobranza)", // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): sistema: "Del sistema",
 };
 
 export const FLOW_STATUS_LABELS: Record<FlowStatus, string> = { draft: "Borrador", published: "Publicada", archived: "Archivada" };
@@ -106,7 +108,8 @@ export function flowCounts(rows: FlowListRow[]): {
   categories: Array<{ name: string; count: number }>;
 } {
   const status = { all: rows.length, draft: 0, published: 0, archived: 0 } as Record<"all" | FlowStatus, number>;
-  const origin = { all: rows.length, manual: 0, formularios: 0, agenda: 0, sistema: 0 } as Record<"all" | FlowOrigin, number>;
+  const origin = { all: rows.length, manual: 0, formularios: 0, agenda: 0, sistema: 0 } as Record<"all" | FlowOrigin, number>; // @plantilla-quitar(formularios)
+  // @plantilla-sin(formularios): const origin = { all: rows.length, manual: 0, agenda: 0, sistema: 0 } as Record<"all" | FlowOrigin, number>;
   const byKey = new Map<string, { name: string; count: number }>();
   for (const row of rows) {
     if (STATUSES.includes(row.status)) status[row.status] += 1;
