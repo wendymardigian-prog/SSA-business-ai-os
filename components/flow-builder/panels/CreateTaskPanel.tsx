@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadTaskNodeOptions } from "@/lib/actions/tasks";
+import { loadTeamMemberOptions } from "@/lib/actions/flow-node-options";
 import { MAX_DUE_DAYS, type CreateTaskNodeData } from "@/lib/flow-engine/nodes/create-task";
 import { PRIORITY_LABELS, TASK_LIMITS, TASK_PRIORITIES } from "@/lib/tasks/types";
 
@@ -18,7 +18,7 @@ export function CreateTaskPanel({ data: raw, onChange, availableVariables }: { d
 
   useEffect(() => {
     let cancelled = false;
-    loadTaskNodeOptions()
+    loadTeamMemberOptions()
       .then((o) => { if (!cancelled) setMembers(o.members); })
       .catch(() => { if (!cancelled) setMembers([]); });
     return () => { cancelled = true; };

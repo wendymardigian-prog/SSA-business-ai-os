@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadTaskNodeOptions } from "@/lib/actions/tasks";
+import { loadTeamMemberOptions } from "@/lib/actions/flow-node-options";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
 import { VariableChips } from "./variable-chips";
 
@@ -18,7 +18,7 @@ export function NotifyTeamPanel({ data, onChange, availableVariables }: PanelPro
   const [members, setMembers] = useState<Array<{ id: string; name: string }> | null>(null);
   useEffect(() => {
     let alive = true;
-    loadTaskNodeOptions()
+    loadTeamMemberOptions()
       .then((o) => alive && setMembers(o.members))
       .catch(() => alive && setMembers([]));
     return () => {

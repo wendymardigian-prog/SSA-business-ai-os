@@ -1,5 +1,5 @@
 import { Sparkles } from "lucide-react";
-import { summarizeContact, type ContactSummaryInput } from "@/lib/sales/contact-summary";
+import { summarizeContact, type ContactSummaryInput } from "@/lib/assignment/contact-summary";
 
 /**
  * Debajo de Setter y Vendedor en la ficha: el último toque del contacto y cómo

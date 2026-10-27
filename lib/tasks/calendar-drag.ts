@@ -12,18 +12,8 @@ import { formatTaskWhen } from "./format";
 import { minutesToTime, normalizeTime, type TimeFormat } from "@/lib/calendar/time";
 import type { TaskRow } from "./types";
 
-/** Los pasos de la rejilla: 15 minutos. */
-export const SNAP_MINUTES = 15;
-
-/**
- * Minutos desde la medianoche a los que cae un punto de la rejilla, ajustado al paso. `offsetY` son los pixeles desde el
- * borde de arriba de la columna del dia (donde empieza `firstHour`). Queda dentro del dia.
- */
-export function snapMinutes(offsetY: number, hourPx: number, firstHour: number, step: number = SNAP_MINUTES): number {
-  const raw = firstHour * 60 + (offsetY / hourPx) * 60;
-  const snapped = Math.round(raw / step) * step;
-  return Math.max(0, Math.min(24 * 60 - step, snapped));
-}
+// La rejilla (pasos de 15 minutos) es del calendario, no de las tareas: la usan tambien las agendas.
+export { SNAP_MINUTES, snapMinutes } from "@/lib/calendar/snap";
 
 /** Donde se solto: una hora de la rejilla, la franja «Sin hora» de un dia, o una celda del mes. */
 export type TaskDropTarget =

@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getWorkspace } from "@/lib/workspace";
 import { getWorkspaceMembers, memberDisplayName } from "@/lib/workspace-members";
+import { loadTeamMemberOptions } from "@/lib/actions/flow-node-options";
 import {
   TASK_COLUMNS,
   completeTaskCore,
@@ -109,13 +109,11 @@ export async function createFollowupTask(contactId: string, date: string): Promi
 }
 
 /**
- * Las personas del equipo que el nodo «Crear tarea» del canvas ofrece como responsable y seguidores. Lo abre quien arma
- * el flujo; es el mismo dato que ya ven los demas selectores de personas (id y nombre de gente del mismo workspace).
+ * Las personas del equipo que el nodo «Crear tarea» del canvas ofrece como responsable y seguidores. Es la misma lista
+ * que «Avisar en la campana»: vive en lib/actions/flow-node-options.ts (`loadTeamMemberOptions`), que no es de Tareas.
  */
 export async function loadTaskNodeOptions(): Promise<{ members: Array<{ id: string; name: string }> }> {
-  const { workspace } = await getWorkspace();
-  const members = await getWorkspaceMembers(workspace.id);
-  return { members: members.map((m) => ({ id: m.userId, name: m.name })) };
+  return loadTeamMemberOptions();
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
