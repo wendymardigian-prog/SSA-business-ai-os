@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ConditionTree } from "@/lib/sales/conditions-schema";
+import type { ConditionTree } from "@/lib/conditions/conditions-schema";
 import { evaluateCondition, evaluateConditions } from "./conditions";
 
 const ctx = { last_combined: "instagram|paid_social|jose-reels-oct||", first_combined: "google|||", last_fbclid: "", last_source: "instagram", country: "CR" };

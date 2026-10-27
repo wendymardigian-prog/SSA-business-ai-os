@@ -4,7 +4,7 @@
  * CHECK de forma.
  */
 import { ASSIGNMENT_FIELD_KEYS } from "./context";
-import { serializeConditionTree } from "@/lib/sales/conditions-schema";
+import { serializeConditionTree } from "@/lib/conditions/conditions-schema";
 import { isDestinationValid } from "./resolve";
 import { conditionRuleSchema, type AssignmentKind, type AssignmentMode, type ConditionRule } from "./types";
 

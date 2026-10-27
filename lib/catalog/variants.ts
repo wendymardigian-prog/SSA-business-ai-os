@@ -5,7 +5,7 @@
  * La garantía se sacó (00264).
  */
 import { z } from "zod";
-import { formatMoney } from "../format";
+import { formatMoney } from "../sales/format";
 import { variantTiming, type VariantTiming } from "./products";
 
 export const DURATION_TYPES = ["days", "weeks", "months", "lifetime"] as const;

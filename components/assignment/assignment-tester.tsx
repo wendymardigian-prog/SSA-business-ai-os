@@ -3,13 +3,13 @@
 import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { probeAssignment, searchContactsForRules, simulateAssignments, type SimulationRow } from "@/lib/actions/assignment-rules";
-import type { DryRunRow } from "@/lib/sales/assignment/dry-run";
-import { KIND_LABELS } from "@/lib/sales/assignment/types";
+import type { DryRunRow } from "@/lib/assignment/dry-run";
+import { KIND_LABELS } from "@/lib/assignment/types";
 import { MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "@/lib/contacts/taxonomy";
 import { ActionError } from "@/components/contacts/ui";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
-import { useContactSearchWith } from "../use-contact-search";
+import { useContactSearchWith } from "@/components/shared/use-contact-search";
 import type { MemberOption } from "./assignment-rules-view";
 
 /**

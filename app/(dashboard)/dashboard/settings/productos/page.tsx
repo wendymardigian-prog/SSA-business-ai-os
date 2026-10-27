@@ -1,5 +1,5 @@
 import { requirePermission } from "@/lib/auth/guards";
-import { loadProductList } from "@/lib/sales/catalog/load";
+import { loadProductList } from "@/lib/catalog/load";
 import { ProductosView } from "./productos-view";
 
 /**

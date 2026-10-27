@@ -5,7 +5,7 @@
  *  - producto: no tiene inicio.
  * Lo que la persona escribe a mano gana, salvo en un producto.
  */
-import type { VariantTiming } from "@/lib/sales/catalog/products";
+import type { VariantTiming } from "@/lib/catalog/products";
 
 export function defaultServiceStart(timing: VariantTiming, eventDate: string | null, saleDate: string): string | null {
   if (timing === "none") return null;

@@ -9,7 +9,7 @@
  *
  * Todo sin distinguir mayúsculas. Los valores vienen de `buildAssignmentContext`.
  */
-import { OPERATORS_WITHOUT_VALUE, type Condition, type ConditionTree, type Conjunction } from "@/lib/sales/conditions-schema";
+import { OPERATORS_WITHOUT_VALUE, type Condition, type ConditionTree, type Conjunction } from "@/lib/conditions/conditions-schema";
 import type { AssignmentContext } from "./context";
 
 export function evaluateCondition(condition: Condition, context: AssignmentContext): boolean {

@@ -452,7 +452,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
   - **"+ Nuevo producto"** (modal corto): nombre, tipo (`programa`, `mentoria`, `curso`, `servicio`, `otro`), descripción. Al crear, el sistema crea también la variante "Estándar" y su versión 1 en **borrador** y abre el detalle.
   - **Archivar = pasar a Inactivo o Discontinuado** (escribe `archived_at = now()`); **restaurar = volver a Activo** (`archived_at = null`). Solo los `active` aparecen en el selector de venta nueva y en los de Contenido; las ventas y piezas existentes siguen mostrando su producto **en cualquier estado** (con el chip del estado).
   - El detalle `/dashboard/settings/productos/[id]` muestra sus variantes (F4).
-- Lógica de pantalla en funciones puras: `lib/sales/catalog/products.ts` (`productRow`, `defaultVariantPrice`, `isSellable`).
+- Lógica de pantalla en funciones puras: `lib/catalog/products.ts` (`productRow`, `defaultVariantPrice`, `isSellable`).
 
 **Criterios:**
 - DADA la base con las 3 filas de `content_offers`, CUANDO se aplica la 00159, ENTONCES DEBEN existir 3 productos con **los mismos ids** y el **mismo `status`** que tenían, 3 variantes "Estándar" y 3 versiones 1 activas con 3000, 6000 y 12000; y la consulta de control de huérfanos DEBE dar 0.
@@ -465,10 +465,10 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - CUANDO se intenta guardar `status = 'inactive'` con `archived_at` null (o `active` con `archived_at`), DEBE fallar por el CHECK de coherencia; `setProductStatus` DEBE escribir los dos juntos.
 - La pantalla DEBE mostrar los 3 estados con el desplegable por fila y el contador de piezas (test de `productRow` con un producto de cada estado).
 - CUANDO se intenta borrar un producto, NO DEBE existir la acción (ni en la interfaz ni por RLS).
-- `grep -rn "from(\"content_offers\")" app lib scripts` NO DEBE devolver resultados (test estático en `lib/sales/catalog/no-content-offers.test.ts` que recorre esos directorios).
+- `grep -rn "from(\"content_offers\")" app lib scripts` NO DEBE devolver resultados (test estático en `lib/catalog/no-content-offers.test.ts` que recorre esos directorios).
 - Los tests existentes de Contenido (`lib/content/*.test.ts`, `lib/actions/content-*.test.ts`, `lib/agent/copywriter.test.ts`) siguen en verde con los fixtures pasados a `products`.
 - `lib/settings/permissions-characterization.test.ts` sigue diciendo `productos: settings.manage`.
-- Test: `lib/sales/catalog/products.test.ts` pasa; `verify-sales.mjs --block 1`, `verify-content.mjs` y `verify-rls.mjs` salen 0.
+- Test: `lib/catalog/products.test.ts` pasa; `verify-sales.mjs --block 1`, `verify-content.mjs` y `verify-rls.mjs` salen 0.
 
 #### F4: Variantes
 **Descripción:** dentro del detalle del producto. El detalle de la variante se arma **con pestañas** (hoy una sola: **Precio**; CX suma **Servicio** después).
@@ -482,7 +482,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - CUANDO la facturación es `recurring`, el intervalo DEBE ser obligatorio; CUANDO es `one_time`, DEBE quedar null (CHECK y Zod).
 - CUANDO la duración es `lifetime`, el valor DEBE quedar null y NO DEBE pedirse.
 - CUANDO se archiva la única variante activa de un producto, DEBE advertir que el producto deja de poder venderse.
-- Test: `lib/sales/catalog/variants.test.ts` pasa.
+- Test: `lib/catalog/variants.test.ts` pasa.
 
 #### F5: Versiones y publicación
 **Descripción:** la versión es donde vive el **precio** y las condiciones vigentes.
@@ -490,7 +490,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - **Publicar**, en **una sola transacción**: la activa pasa a `deprecated` con `deprecated_at` y la nueva a `active` con `published_at`. Función SQL `publish_product_version(p_version_id, p_actor_id)` (`SECURITY DEFINER`, `SET search_path = ''`, `REVOKE` de `authenticated`, la llama la Server Action con el cliente de servicio después de `requirePermission`).
 - Un borrador se edita y se borra libremente. Una publicada **no se edita nunca**: se crea otra.
 - Precio cero solo con notas del cambio.
-- Funciones puras en `lib/sales/catalog/versions.ts`: `resolveActiveVersion(versions)` y `canPublish(version, siblings)`.
+- Funciones puras en `lib/catalog/versions.ts`: `resolveActiveVersion(versions)` y `canPublish(version, siblings)`.
 
 **Criterios:**
 - CUANDO se publica una versión, la anterior DEBE quedar `deprecated` en la **misma transacción** y DEBE existir exactamente una `active`.
@@ -499,7 +499,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - CUANDO se intenta borrar una versión con ventas o una publicada, DEBE rechazarse.
 - CUANDO el precio es 0 y no hay notas, DEBE rechazarse (CHECK y Zod).
 - `resolveActiveVersion` con dos activas (estado imposible) DEBE lanzar, no elegir una.
-- Test: `lib/sales/catalog/versions.test.ts` pasa; `verify-sales.mjs --block 1` cubre la transacción de publicar.
+- Test: `lib/catalog/versions.test.ts` pasa; `verify-sales.mjs --block 1` cubre la transacción de publicar.
 
 #### F6: Historial de precios
 **Descripción:** en la variante, panel "Historial de precios": versiones con número, precio, estado, quién publicó, cuándo, notas y **cuántas ventas** se hicieron con esa versión (sobre `sales.product_version_id`; hasta que exista `sales` en B3, la cuenta es 0 y la consulta se agrega en F17). Botón "Nueva versión" que arranca de una copia de la activa.
@@ -507,7 +507,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 **Criterios:**
 - CUANDO una versión tiene 3 ventas, el panel DEBE mostrar 3 y NO DEBE existir el botón de borrar para esa versión.
 - CUANDO se abre "Nueva versión", los campos DEBEN venir con los valores de la activa.
-- Test: `lib/sales/catalog/price-history.test.ts` pasa.
+- Test: `lib/catalog/price-history.test.ts` pasa.
 
 #### F7: Métodos de pago (lista fija en código)
 **Descripción:** **no hay tablas.** Constante en `lib/sales/payment-methods.ts`:
@@ -643,10 +643,10 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - CUANDO el modo es `round_robin` y `enabled_member_ids` está vacío, DEBE rechazarse con "elegí al menos una persona".
 - CUANDO el destino es una persona que ya no está en el workspace, DEBE mostrarse "destino inválido" y `matchRule` DEBE saltearla.
 - La pantalla NO DEBE ofrecer una tarjeta de "Fuente".
-- Test: `lib/sales/assignment/rules.test.ts` pasa; `verify-sales.mjs --block 2` cubre la RLS.
+- Test: `lib/assignment/rules.test.ts` pasa; `verify-sales.mjs --block 2` cubre la RLS.
 
 #### F14: Motor de condiciones y round robin
-**Descripción:** funciones puras en `lib/sales/assignment/`.
+**Descripción:** funciones puras en `lib/assignment/`.
 - **`buildAssignmentContext(contact, extras)`** → contexto plano, construido **sobre `readAttribution(contact.attribution)`** (los UTMs del primer y último toque canónicos):
   - Por cada campo del toque (`source`, `medium`, `campaign`, `content`, `term`, `ad_id`, `adset_id`, `campaign_id`, `fbclid`, `gclid`, `ttclid`, `referrer_url`, `landing_page`, `origin`, `social_post_id`, `content_post_id`): `first_<campo>` y `last_<campo>`.
   - **`first_combined`** y **`last_combined`**: `source|medium|campaign|content|term` del toque, en minúsculas (el caso "la campaña contiene el nombre del setter").
@@ -663,7 +663,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - DADO `is_empty` sobre `last_fbclid` ausente, DEBE dar `true`; `contains "Jose"` contra `"jose"`, coincidir.
 - DADO un contacto con atribución en la forma vieja `{first_click: {utm_source: "ig"}}`, `buildAssignmentContext` DEBE producir `first_source` con lo que devuelva `readAttribution` (y **no** una clave `first_utm_source`).
 - `pickRoundRobin(['a','b','c'], 2, all)` DEBE devolver `{memberId:'a', nextIndex:0}`; con `b` inactivo y `lastIndex 0`, `{memberId:'c', nextIndex:2}`; vacío o todos inactivos → `null`.
-- Test: `lib/sales/assignment/context.test.ts`, `conditions.test.ts` y `round-robin.test.ts` pasan (los 9 casos).
+- Test: `lib/assignment/context.test.ts`, `conditions.test.ts` y `round-robin.test.ts` pasan (los 9 casos).
 
 #### F15: Aplicar las asignaciones
 **Descripción:**
@@ -681,7 +681,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - DADO un destino round robin, DEBE avanzar el `last_index` **de esa regla**.
 - DADO dos jobs del mismo contacto con la misma atribución mientras el primero está pendiente, el segundo NO DEBE crearse; y si se crea después, NO DEBE escribir nada nuevo.
 - CUANDO se asigna a mano desde la ficha, `assignment_locked_at` DEBE quedar con la fecha y la auditoría con `actor_type = 'user'`.
-- Test: `lib/sales/assignment/resolve.test.ts` y `lib/jobs/handlers/sales-contact-eval.test.ts` pasan (los 7 casos).
+- Test: `lib/assignment/resolve.test.ts` y `lib/jobs/handlers/sales-contact-eval.test.ts` pasan (los 7 casos).
 
 #### F16: Probador y simulación en seco
 **Descripción:**
@@ -693,7 +693,7 @@ Más una sobrecarga `can_see_sale_id(p_sale_id uuid)` para usar desde `payments`
 - CUANDO se corre el probador o la simulación, NO DEBE haber ningún `insert`, `update`, `upsert` ni `delete` (test que espía el cliente de Supabase).
 - CUANDO la simulación encuentra un contacto con el campo lleno, la fila DEBE decir "no se aplicaría: ya tiene vendedor"; bloqueado a mano, "no se aplicaría: asignado a mano".
 - El resultado del probador para un contacto DEBE coincidir con lo que el handler haría.
-- Test: `lib/sales/assignment/dry-run.test.ts` pasa.
+- Test: `lib/assignment/dry-run.test.ts` pasa.
 
 **Bloque 2 listo cuando:** F9 a F16 cumplen sus criterios; `npx vitest run` sale 0; `npm run build` compila; `verify-sales.mjs --block 2`, `verify-crm.mjs`, `verify-csv-import.mjs` y `verify-attribution.mjs` salen 0; la 00160 está aplicada.
 
@@ -1247,7 +1247,7 @@ Un trigger guardado con un preset se reabre mostrando el nombre del atajo (funci
 
 ### 9.2 Asignación (00160)
 
-**`assignment_rules`**: `kind text NOT NULL` CHECK (`setter, vendedor, referral`) — **sin `source`**; `entity_type text NOT NULL DEFAULT 'contact'` (CHECK `contact`; reservado para `booking` y `sale`), `mode text NOT NULL DEFAULT 'manual'` (`manual, round_robin, condition_based`), `enabled_member_ids uuid[] NOT NULL DEFAULT '{}'`, `last_assigned_member_id uuid`, `condition_rules jsonb NOT NULL DEFAULT '[]'` (`[{id, name, priority, conditions: {conditions:[{field, operator, value}], groups:[{conditions[], conjunction}], rootConjunction}, destination:{type:'user'|'contact'|'round_robin', user_id?, contact_id?, members?, last_index?}, can_reassign, is_active}]`, validado con Zod en `lib/sales/conditions-schema.ts`), `updated_by`. **Único `(workspace_id, kind, entity_type)`.**
+**`assignment_rules`**: `kind text NOT NULL` CHECK (`setter, vendedor, referral`) — **sin `source`**; `entity_type text NOT NULL DEFAULT 'contact'` (CHECK `contact`; reservado para `booking` y `sale`), `mode text NOT NULL DEFAULT 'manual'` (`manual, round_robin, condition_based`), `enabled_member_ids uuid[] NOT NULL DEFAULT '{}'`, `last_assigned_member_id uuid`, `condition_rules jsonb NOT NULL DEFAULT '[]'` (`[{id, name, priority, conditions: {conditions:[{field, operator, value}], groups:[{conditions[], conjunction}], rootConjunction}, destination:{type:'user'|'contact'|'round_robin', user_id?, contact_id?, members?, last_index?}, can_reassign, is_active}]`, validado con Zod en `lib/conditions/conditions-schema.ts`), `updated_by`. **Único `(workspace_id, kind, entity_type)`.**
 
 **`contacts`** (aditivas): `referred_by_user_id`, `referred_by_contact_id`, `assignment_locked_at`, `payment_health jsonb NOT NULL DEFAULT '{}'`. Trigger nuevo `contacts_enqueue_sales_eval` (F9). **No se agrega `source_id`:** la atribución del contacto sigue siendo la canónica (`contacts.attribution` + `contact_touches`), sin tocar.
 

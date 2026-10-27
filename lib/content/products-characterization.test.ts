@@ -78,7 +78,7 @@ describe("pantalla Ajustes > Productos (lo que se conserva)", () => {
     const page = read("page.tsx");
     expect(page).toContain('requirePermission("products.manage")');
     expect(page).toContain("loadProductList");
-    const loader = readFileSync(join(process.cwd(), "lib/sales/catalog/load.ts"), "utf8");
+    const loader = readFileSync(join(process.cwd(), "lib/catalog/load.ts"), "utf8");
     expect(loader).toContain("pieceClassification");
     expect(loader).toContain("countUsage");
   });
@@ -94,12 +94,12 @@ describe("pantalla Ajustes > Productos (lo que se conserva)", () => {
   });
 
   // Con Ventas (F3) la lógica de orden, filtro y "Sin piezas" pasó de la vista a
-  // funciones puras (lib/sales/catalog/products.ts), con su propio test.
+  // funciones puras (lib/catalog/products.ts), con su propio test.
   it("el orden y el texto del contador siguen siendo los de siempre (ahora en funciones puras)", () => {
     const view = read("productos-view.tsx");
     expect(view).toContain("sortProducts(products)");
     expect(view).toContain("visibleProducts(sorted, showDiscontinued)");
-    const logic = readFileSync(join(process.cwd(), "lib/sales/catalog/products.ts"), "utf8");
+    const logic = readFileSync(join(process.cwd(), "lib/catalog/products.ts"), "utf8");
     expect(logic).toContain("{ active: 0, inactive: 1, discontinued: 2 }");
     expect(logic).toContain('localeCompare(b.name, "es")');
     expect(logic).toContain('"Sin piezas"');

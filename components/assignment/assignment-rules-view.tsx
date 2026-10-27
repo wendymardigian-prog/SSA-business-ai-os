@@ -4,15 +4,15 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { saveAssignmentRule, searchContactsForRules } from "@/lib/actions/assignment-rules";
-import { ASSIGNMENT_FIELDS } from "@/lib/sales/assignment/context";
-import { priorityCollisions } from "@/lib/sales/assignment/rules";
-import { isDestinationValid } from "@/lib/sales/assignment/resolve";
-import { ASSIGNMENT_KINDS, KIND_LABELS, MODE_LABELS, type AssignmentKind, type AssignmentMode, type ConditionRule, type Destination } from "@/lib/sales/assignment/types";
-import { EMPTY_CONDITION_TREE } from "@/lib/sales/conditions-schema";
+import { ASSIGNMENT_FIELDS } from "@/lib/assignment/context";
+import { priorityCollisions } from "@/lib/assignment/rules";
+import { isDestinationValid } from "@/lib/assignment/resolve";
+import { ASSIGNMENT_KINDS, KIND_LABELS, MODE_LABELS, type AssignmentKind, type AssignmentMode, type ConditionRule, type Destination } from "@/lib/assignment/types";
+import { EMPTY_CONDITION_TREE } from "@/lib/conditions/conditions-schema";
 import { ConditionTreeEditor } from "@/components/conditions/condition-tree-editor";
 import { ActionError } from "@/components/contacts/ui";
 import { cn } from "@/lib/utils";
-import { useContactSearchWith } from "../use-contact-search";
+import { useContactSearchWith } from "@/components/shared/use-contact-search";
 
 export interface RuleCardData {
   id: string;

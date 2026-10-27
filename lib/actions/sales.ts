@@ -19,7 +19,7 @@ import { validatePlanBalances } from "@/lib/sales/payment-plan";
 import { applySaleRules, createSaleInputSchema, mapCreateSaleError, type CreateSaleInput, type SaleCode } from "@/lib/sales/create";
 import { manualContactSchema, resolveFoundContact, type ManualContactInput } from "@/lib/sales/contacts";
 import { buildProductSnapshot } from "@/lib/sales/sale-math";
-import { hasPrice } from "@/lib/sales/catalog/price";
+import { hasPrice } from "@/lib/catalog/price";
 import { toCents } from "@/lib/sales/money";
 import { syncPaymentRelativeJobs } from "@/lib/sales/automation/relative";
 import type { Json } from "@/lib/types/database";

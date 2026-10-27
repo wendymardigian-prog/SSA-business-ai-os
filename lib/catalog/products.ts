@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 import { PRODUCT_STATUSES, PRODUCT_STATUS_LABEL, TAXONOMY_NAME_MAX, isProductStatus, type ProductStatus } from "@/lib/content/taxonomy";
-import { formatMoney } from "../format";
+import { formatMoney } from "../sales/format";
 
 export const PRODUCT_TYPES = ["programa", "mentoria", "curso", "evento", "servicio", "producto"] as const;
 export type ProductType = (typeof PRODUCT_TYPES)[number];

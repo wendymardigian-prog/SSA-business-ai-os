@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createVariant, updateVariant } from "@/lib/actions/products";
-import { variantTiming } from "@/lib/sales/catalog/products";
-import { BILLING_INTERVAL_LABELS, DURATION_LABELS, DURATION_TYPES, EVENT_DURATION_TYPES, BILLING_INTERVALS } from "@/lib/sales/catalog/variants";
+import { variantTiming } from "@/lib/catalog/products";
+import { BILLING_INTERVAL_LABELS, DURATION_LABELS, DURATION_TYPES, EVENT_DURATION_TYPES, BILLING_INTERVALS } from "@/lib/catalog/variants";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
 
 export interface VariantFormValues {

@@ -753,7 +753,7 @@ compatibles con el código viejo.
     `countryFromTimezone(workspace.timezone)` como Formularios. En SQL la comparación es exacta y los
     teléfonos guardados están como `+dígitos`, así que el paso normaliza a `+dígitos`.
 14. **`content_label` lo leen más lugares** que la ficha: `contact_touch_json` (→ `attribution.content`),
-    `sale_attribution_from_touch` (Ventas), `lib/sales/assignment/context.ts` (reglas de asignación por
+    `sale_attribution_from_touch` (Ventas), `lib/assignment/context.ts` (reglas de asignación por
     `content`), `verify-forms.impl.ts` (afirma `content_label === nombre del formulario`). F18 actualiza esa
     afirmación con un comentario, y antes revisa si alguna regla de asignación real usa `content` con el
     nombre de un formulario (consulta de solo lectura; si hay, se anota y se pregunta).

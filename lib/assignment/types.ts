@@ -1,6 +1,6 @@
 /** Los tipos de las reglas de asignación (plano §9.2). Lo guardado viene de la base: se lee con `parseConditionRules`. */
 import { z } from "zod";
-import { conditionTreeSchema, readConditionTree, type ConditionTree } from "@/lib/sales/conditions-schema";
+import { conditionTreeSchema, readConditionTree, type ConditionTree } from "@/lib/conditions/conditions-schema";
 
 export const ASSIGNMENT_KINDS = ["setter", "vendedor", "referral"] as const;
 export type AssignmentKind = (typeof ASSIGNMENT_KINDS)[number];

@@ -23,8 +23,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { auditAsSystem } from "@/lib/audit";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
-import { resolveAssignments, type ContactForResolve } from "@/lib/sales/assignment/resolve";
-import { parseConditionRules, type AssignmentKind, type AssignmentRuleRow } from "@/lib/sales/assignment/types";
+import { resolveAssignments, type ContactForResolve } from "@/lib/assignment/resolve";
+import { parseConditionRules, type AssignmentKind, type AssignmentRuleRow } from "@/lib/assignment/types";
 
 type Db = SupabaseClient<Database>;
 

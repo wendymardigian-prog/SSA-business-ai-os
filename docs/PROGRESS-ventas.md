@@ -65,7 +65,7 @@ Próxima libre al terminar: 00172.
 
 - **Base**: 00161 (`assignment_rules` con RLS, columnas de `contacts` y `workspaces`, precarga por workspace, trigger `contacts_enqueue_sales_eval` que solo encola y atrapa toda excepción).
 - **Atribución de la venta (F10)**: `lib/sales/attribution.ts` (copia congelada del último toque, otro toque, manual, sin atribución, extras de `raw`).
-- **Núcleo portado**: `reparto-condiciones.ts` → `lib/sales/conditions-schema.ts`; `run-assignment-rules` (`evalSingleCondition`, `combine`, `evaluateRules`) → `lib/sales/assignment/{conditions,resolve}.ts`; `apply-contact-setter-assignment` → `round-robin.ts`. Con los bugs arreglados (operador desconocido, puntero del turno).
+- **Núcleo portado**: `reparto-condiciones.ts` → `lib/conditions/conditions-schema.ts`; `run-assignment-rules` (`evalSingleCondition`, `combine`, `evaluateRules`) → `lib/assignment/{conditions,resolve}.ts`; `apply-contact-setter-assignment` → `round-robin.ts`. Con los bugs arreglados (operador desconocido, puntero del turno).
 - **Job `sales_contact_eval`** (`lib/jobs/handlers/sales-contact-eval.ts`) y `assignContact` que ahora escribe `assignment_locked_at`.
 - **Pantallas**: Ajustes > Asignación (3 tarjetas, constructor de condiciones reutilizable, probador y simulación en seco), el componente de atribución y la línea de último toque y asignación en la ficha del contacto.
 - Verificación: vitest 7882 verdes, build y lint (0 errores), `verify-sales --block 2`.

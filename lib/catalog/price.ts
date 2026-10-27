@@ -3,7 +3,7 @@
  * Cero significa "sin precio": la variante existe pero no se puede vender. Cada cambio
  * queda en `audit_log` (`variant.price_changed`, lo escribe la base: 00170).
  */
-import { toCents } from "../money";
+import { toCents } from "../sales/money";
 
 export const MAX_PRICE = 10_000_000;
 

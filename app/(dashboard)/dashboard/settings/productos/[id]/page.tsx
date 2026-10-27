@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
-import { loadProductDetail } from "@/lib/sales/catalog/load";
+import { loadProductDetail } from "@/lib/catalog/load";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
-import { ProductDetail } from "@/components/sales/catalog/product-detail";
+import { ProductDetail } from "@/components/catalog/product-detail";
 
 /**
  * Ajustes -> Productos -> un producto: sus variantes y, en cada una, el precio

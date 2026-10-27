@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { archivedAtFor, checkName, isProductStatus } from "@/lib/content/taxonomy";
-import { normalizeProductType, productInputSchema } from "@/lib/sales/catalog/products";
-import { checkPrice } from "@/lib/sales/catalog/price";
-import { parseVariantInput } from "@/lib/sales/catalog/variants";
-import type { CatalogResult } from "@/lib/sales/catalog/result";
+import { normalizeProductType, productInputSchema } from "@/lib/catalog/products";
+import { checkPrice } from "@/lib/catalog/price";
+import { parseVariantInput } from "@/lib/catalog/variants";
+import type { CatalogResult } from "@/lib/catalog/result";
 
 /**
  * Productos y variantes (Ventas, plano F3 a F6).

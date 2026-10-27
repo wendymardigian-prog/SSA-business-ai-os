@@ -13,7 +13,7 @@ import {
   sortProducts,
   visibleProducts,
   type ProductRow,
-} from "@/lib/sales/catalog/products";
+} from "@/lib/catalog/products";
 import { ActionError } from "@/components/contacts/ui";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
 import { PageHeader } from "@/components/page-header";
