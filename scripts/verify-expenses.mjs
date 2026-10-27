@@ -23,6 +23,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { runCleanup } from "./test-cleanup.mjs";
 import { checkProtectedFunctions } from "./protected-functions.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -54,14 +55,14 @@ async function makeUser(tag) {
 }
 
 function sql(query) {
-  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   return JSON.parse(out).rows ?? [];
 }
 
 /** Corre un bloque DO que termina con `RAISE EXCEPTION 'RESULTADO: ...'`: la transaccion se deshace sola. */
 function sqlProbe(query) {
   try {
-    execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     return "SIN RESULTADO (el bloque no levanto la excepcion final)";
   } catch (e) {
     const text = `${e.stdout ?? ""}${e.stderr ?? ""}`;

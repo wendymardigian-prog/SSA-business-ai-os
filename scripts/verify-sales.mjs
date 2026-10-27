@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { runCleanup } from "./test-cleanup.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -56,7 +57,7 @@ async function makeUser(tag) {
 
 /** Consultas que la API no expone (esquema `private`, `cron`, `pg_constraint`): con la CLI ya vinculada. */
 export function sql(query) {
-  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   return JSON.parse(out).rows ?? [];
 }
 
@@ -66,7 +67,7 @@ export function sql(query) {
  */
 export function sqlProbe(query) {
   try {
-    execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     return "SIN RESULTADO (el bloque no levanto la excepcion final)";
   } catch (e) {
     const text = `${e.stdout ?? ""}${e.stderr ?? ""}`;

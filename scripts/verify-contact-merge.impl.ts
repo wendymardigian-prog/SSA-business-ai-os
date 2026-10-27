@@ -14,6 +14,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { runCleanup } from "./test-cleanup.mjs";
 import { CONTACT_MERGE_EXCLUSIONS, CONTACT_MERGE_TABLES, findMergeDrift, summarizeMerge } from "../lib/contacts/merge";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -37,7 +38,7 @@ const check = (cond: unknown, m: string, extra?: string) => (cond ? ok(m) : fail
 
 /** Consultas que la API no expone (pg_constraint, DDL de prueba): con la CLI ya vinculada. */
 function sql(query: string): Array<Record<string, any>> {
-  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   return JSON.parse(out).rows ?? [];
 }
 

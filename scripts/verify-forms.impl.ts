@@ -41,6 +41,7 @@ import { runContractEmail } from "../lib/forms/contract/email-run";
 import { loadContractCopy } from "../lib/forms/contract/copy-download";
 import { createCopyToken } from "../lib/forms/contract/copy-link";
 import { contractStorage } from "../lib/forms/contract/storage";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -82,7 +83,7 @@ async function makeUser(tag: string): Promise<TestUser> {
 
 /** Consultas de solo lectura por la CLI (esquemas que la API no expone). */
 function sql(query: string): Array<Record<string, unknown>> {
-  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   return (JSON.parse(out).rows ?? []) as Array<Record<string, unknown>>;
 }
 

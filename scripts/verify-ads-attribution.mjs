@@ -20,6 +20,7 @@ import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCleanup } from "./test-cleanup.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -43,7 +44,7 @@ function sql(query) {
   const dir = mkdtempSync(join(tmpdir(), "verify-ads-"));
   const file = join(dir, "q.sql");
   writeFileSync(file, query);
-  const out = execFileSync("supabase", ["db", "query", "--linked", "-f", file], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-f", file], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const start = out.indexOf("{");
   return JSON.parse(out.slice(start)).rows ?? [];
 }

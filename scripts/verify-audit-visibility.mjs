@@ -30,6 +30,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { runCleanup } from "./test-cleanup.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -47,7 +48,7 @@ const POLICIES_FIXTURE = "scripts/fixtures/audit-log-policies.before-00168.json"
 
 /** Consultas que la API no expone (pg_policies): con la CLI ya vinculada. */
 function sql(query) {
-  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   return JSON.parse(out).rows ?? [];
 }
 

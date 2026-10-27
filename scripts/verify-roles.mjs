@@ -30,6 +30,7 @@ import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCleanup } from "./test-cleanup.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -344,7 +345,7 @@ try {
     const dir = mkdtempSync(join(tmpdir(), "verify-roles-"));
     const file = join(dir, "q.sql");
     writeFileSync(file, sql.slice(sql.indexOf("UPDATE public.workspace_roles r")));
-    try { execFileSync("supabase", ["db", "query", "--linked", "-f", file], { stdio: "pipe" }); }
+    try { execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-f", file], { stdio: "pipe" }); }
     catch (e) { fail("no pude correr el UPDATE de la 00211 (¿esta la CLI de Supabase?)", String(e.message).slice(0, 200)); }
 
     const { data: despues } = await svc.from("workspace_roles").select("id, permissions").in("id", [viejo.id, sinNada.id]);
@@ -363,7 +364,7 @@ try {
 
     // Ninguna politica viva sigue pidiendo la clave que ya no existe.
     try {
-      const out = execFileSync("supabase", ["db", "query", "--linked", "-o", "json",
+      const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-o", "json",
         "select count(*)::int as n from pg_policies where schemaname='public' and (coalesce(qual,'') || coalesce(with_check,'')) ilike '%settings.manage%'"], { stdio: "pipe" }).toString();
       check(JSON.parse(out).rows[0].n === 0, "ninguna politica viva menciona settings.manage");
     } catch (e) { fail("no pude consultar pg_policies", String(e.message).slice(0, 200)); }
@@ -531,7 +532,7 @@ try {
         .map((c, i) => `select ${i} as i, (private.role_channel_grant(${lit(resolver(c.channels))}, '${casos.ids[c.channel]}') is not distinct from ${lit(c.expected)}) as ok`)
         .join(" union all ");
       try {
-        const out = execFileSync("supabase", ["db", "query", "--linked", "-o", "json", `select json_agg(x) as r from (${sql}) x`], { stdio: "pipe" }).toString();
+        const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-o", "json", `select json_agg(x) as r from (${sql}) x`], { stdio: "pipe" }).toString();
         const rows = JSON.parse(out).rows[0].r;
         for (const row of rows) check(row.ok, `role_channel_grant: ${casos.grantFor[row.i].name}`);
       } catch (e) { fail("no pude correr los casos de role_channel_grant (¿esta la CLI de Supabase?)", String(e.message).slice(0, 200)); }

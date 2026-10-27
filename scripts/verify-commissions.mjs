@@ -30,6 +30,7 @@ import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { runCleanup } from "./test-cleanup.mjs";
 import { checkProtectedFunctions } from "./protected-functions.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -48,20 +49,20 @@ const check = (cond, m, extra) => (cond ? ok(m) : fail(m, extra));
 const stamp = Date.now();
 
 function sql(query) {
-  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(out).rows ?? [];
 }
 function sqlFile(text) {
   const dir = mkdtempSync(join(tmpdir(), "zz-commissions-"));
   const file = join(dir, "q.sql");
   writeFileSync(file, text);
-  const out = execFileSync("supabase", ["db", "query", "--linked", "-f", file], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-f", file], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 * 1024 * 1024 });
   return JSON.parse(out).rows ?? [];
 }
 /** Un bloque DO que termina con `RAISE EXCEPTION 'RESULTADO: ...'`: la transaccion se deshace sola. */
 function sqlProbe(query) {
   try {
-    execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     return "SIN RESULTADO";
   } catch (e) {
     const text = `${e.stdout ?? ""}${e.stderr ?? ""}`;

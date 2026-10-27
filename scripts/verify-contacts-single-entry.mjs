@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { runCleanup } from "./test-cleanup.mjs";
+import { dbTargetArgs } from "./lib/db-target.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -46,7 +47,7 @@ function sql(query) {
   const dir = mkdtempSync(join(tmpdir(), "verify-contacts-"));
   const file = join(dir, "q.sql");
   writeFileSync(file, query);
-  const out = execFileSync("supabase", ["db", "query", "--linked", "-f", file], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-f", file], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
   const start = out.indexOf("{");
   return JSON.parse(out.slice(start)).rows ?? [];
 }
@@ -150,7 +151,7 @@ $ens$;`;
       writeFileSync(join(dir, "q.sql"), rehearsal);
       let text = "";
       try {
-        execFileSync("supabase", ["db", "query", "--linked", "-f", join(dir, "q.sql")], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+        execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-f", join(dir, "q.sql")], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
         fail("el ensayo de la 00205 no se deshizo (no lanzo)");
       } catch (e) {
         text = `${e.stderr ?? ""}${e.stdout ?? ""}`;
