@@ -34,8 +34,12 @@ const PHRASES = [
   String.raw`(?:[Ff]ases?|[Ee]tapas?)\s+\d+\b`,
   String.raw`(?:revisi[oó]n\s+)?(?:Contenido|Agenda|[Bb]anca|Ventas|Chat)\s+v\d+\b`,
   String.raw`Tir[oó]n\s+\d+\b`,
+  String.raw`\b[Tt]andas? [A-Z]\b`,
+  String.raw`\b[Cc]orridas? [A-Z]\b`,
+  String.raw`\b(?:las )?Mejoras de Chat\b`,
   String.raw`§\s?\d+(?:\.\d+)*`,
-  String.raw`plano formularios-ui`,
+  String.raw`[Pp]lano formularios-ui`,
+  String.raw`\bdecisi[oó]n \d{2,3}\b`,
   String.raw`requerimientos(?:-[\w-]+|\s+v\d+(?:\.\d+)*)`,
   String.raw`\bPR\s*#\s*\d+`,
   String.raw`\s?--despues-de-00\d{3}\b`,
@@ -154,7 +158,7 @@ export function cleanCommentLine(line, warnings) {
   t = t
     .replace(new RegExp(`\\s*${S}(?=\x60)`, "g"), "")
     .replace(new RegExp(`\\s*${S}\\s*(?=[,.;:)!?]|$)`, "g"), "")
-    .replace(new RegExp(`(?<=[(«"])\\s*${S}\\s*`, "g"), "")
+    .replace(new RegExp(`(?<=[(«])\\s*${S}\\s*`, "g"), "")
     .replace(new RegExp(`(?<=\\S)\\s*${S}\\s*(?=\\S)`, "g"), " ")
     .replace(new RegExp(S, "g"), "")
     .replace(/\(\s*\)/g, "")

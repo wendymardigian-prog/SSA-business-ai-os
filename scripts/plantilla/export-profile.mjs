@@ -195,7 +195,7 @@ export const MODULE_WORDS = [
   /\bLlamadas\b/g,
   /\bllamadas? de venta\b/gi,
   /\bEOD\b/g,
-  /\bfin de d[ií]a\b/gi,
+  /\breportes? (?:de|del) fin de d[ií]a\b/gi,
   /\breporte del d[ií]a\b/gi,
   /\bFormularios\b/g,
   /\brespuestas? (?:de|del|a) (?:un |una |su )?(?:formularios?|encuestas?)\b/gi,
@@ -210,10 +210,10 @@ export const MODULE_WORDS = [
   /\btareas? del equipo\b/gi,
   /\bcrear (?:una )?tarea\b/gi,
   /\bFinanzas\b/g,
+  /\bContratos\b/g,
   /\bgastos\b/gi,
   /\bcomisi[oó]n(?:es)?\b/gi,
   /\bwebhooks? entrantes?\b/gi,
-  /\bsitio p[uú]blico\b/gi,
 ];
 
 /**
@@ -226,6 +226,8 @@ export const MODULE_ALLOWLIST = [
   { re: /\bLlamadas? (?:de|por) WhatsApp\b/g, why: "las llamadas de WhatsApp (el aviso de Evolution) son de la bandeja, no del modulo de Llamadas" },
   { re: /\bgastos? de (?:la )?IA\b/gi, why: "el gasto de IA (topes de gasto), no el modulo de Finanzas" },
   { re: /\b(?:Ventas|Servicio|Equipo|Otros)(?:, (?:Ventas|Servicio|Equipo|Otros))+|\bVentas · \w+|"Ventas"/g, why: "las areas de la agenda (Ventas, Servicio, Equipo, Otros) son de la Agenda" },
+  { re: /\bVentas(?= \([áa]rea)|[áa]reas? (?:de )?Ventas\b/g, why: "el área Ventas de la agenda" },
+  { re: /«Ventas»/g, why: "la columna «Ventas» de la tabla de anuncios (Meta vs CRM) es del dashboard de anuncios" },
 ];
 /** Excepciones de numeros y fechas en .md y .json: los archivos de migracion propios de la plantilla. */
 export const TEXT_ALLOWLIST = [
