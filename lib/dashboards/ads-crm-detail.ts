@@ -74,7 +74,7 @@ const METRIC_LABEL: Record<CellMetric, string> = {
   leads_new: "Leads nuevos",
   leads_total: "Leads totales",
   bookings: "Agendas",
-  sales: "Ventas",
+  sales: "Ventas", // @plantilla-quitar(ventas)
 };
 
 export const metricLabel = (metric: CellMetric): string => METRIC_LABEL[metric];
@@ -93,8 +93,8 @@ export function panelHint(metric: CellMetric): string {
       return "Personas con algún toque en el período. Una persona que tocó más de un anuncio aparece en cada uno.";
     case "bookings":
       return "Agendas creadas en el período (incluye las canceladas; no las liberadas).";
-    case "sales":
-      return "Ventas no canceladas ni reembolsadas, con fecha de cierre en el período.";
+    case "sales": // @plantilla-quitar(ventas)
+      return "Ventas no canceladas ni reembolsadas, con fecha de cierre en el período."; // @plantilla-quitar(ventas)
   }
 }
 
@@ -106,8 +106,8 @@ export function emptyMessage(metric: CellMetric): string {
       return "Ningún lead con toques en este período.";
     case "bookings":
       return "Ninguna agenda en este período.";
-    case "sales":
-      return "Ninguna venta en este período.";
+    case "sales": // @plantilla-quitar(ventas)
+      return "Ninguna venta en este período."; // @plantilla-quitar(ventas)
   }
 }
 
@@ -115,8 +115,8 @@ const ORIGIN_LABEL: Record<string, string> = {
   dm: "Mensaje directo",
   comment: "Comentario",
   booking: "Agenda",
-  form: "Formulario",
-  webhook: "Webhook",
+  form: "Formulario", // @plantilla-quitar(formularios)
+  webhook: "Webhook", // @plantilla-quitar(webhooks)
   manual: "Carga manual",
   import: "Importación",
 };
@@ -129,13 +129,14 @@ export const originLabel = (origin: string | null): string | null => (origin ? (
  */
 export function itemHref(metric: CellMetric, item: DetailItem): string | null {
   if (metric === "bookings") return item.itemId ? `/dashboard/agenda?agenda=${item.itemId}` : null;
-  if (metric === "sales") return item.itemId ? `/dashboard/ventas/${item.itemId}` : null;
+  if (metric === "sales") return item.itemId ? `/dashboard/ventas/${item.itemId}` : null; // @plantilla-quitar(ventas)
   return item.contactId ? `/dashboard/contacts/${item.contactId}` : null;
 }
 
 export function itemTitle(metric: CellMetric, item: DetailItem): string {
   if (item.contactName?.trim()) return item.contactName.trim();
-  return metric === "sales" ? "Venta sin nombre de contacto" : "Contacto sin nombre";
+  return metric === "sales" ? "Venta sin nombre de contacto" : "Contacto sin nombre"; // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): return "Contacto sin nombre";
 }
 
 const dateFmt = (iso: string | null, timeZone: string, withTime: boolean): string | null => {
@@ -160,11 +161,13 @@ export function itemDetails(metric: CellMetric, item: DetailItem, opts: { timeZo
     const meeting = dateFmt(item.detailAt, opts.timeZone, true);
     if (meeting) out.push(`Reunión: ${meeting}`);
   }
+  // @plantilla-desde(ventas)
   if (metric === "sales") {
     if (item.amountCents !== null) out.push(`Monto: ${opts.formatMoney(item.amountCents / 100)}`);
     const sale = dateFmt(item.detailAt, opts.timeZone, false);
     if (sale) out.push(`Venta: ${sale}`);
   }
+  // @plantilla-hasta(ventas)
   return out;
 }
 

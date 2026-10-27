@@ -13,6 +13,8 @@
 //    palabras de modulos que no viajan), por un nombre propio o un PR en cualquier texto, y por
 //    los comentarios que la limpieza no pudo arreglar sola; lo que esta fuera de los comentarios
 //    (strings, nombres de tests) se informa en el mismo archivo.
+//    El de textos frena por un texto que se ve en la pantalla (o que se le manda a la IA) y nombra
+//    un modulo que la plantilla no lleva (visible-strings.mjs, con sus excepciones explicadas).
 // 5. Si todo pasa: limpia lo que dejaron los controles y arma el git (un solo commit).
 //
 // Los registros de cada control quedan en "<destino>-controles/" (fuera de la copia).
@@ -20,6 +22,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { applyProfile, cleanGateArtifacts, findHistoryInCopy, historyReport, loadProfile, runGates } from "./export-profile.mjs";
+import { findVisibleModuleStrings, visibleReport } from "./visible-strings.mjs";
 
 export async function exportWithProfile({ repo, dest, perfil, skipGates, selfCheck, gitInit }) {
   const started = Date.now();
@@ -64,6 +67,9 @@ export async function exportWithProfile({ repo, dest, perfil, skipGates, selfChe
     mkdirSync(logDir, { recursive: true });
     writeFileSync(join(logDir, "historia.txt"), report.text);
     console.log(`Historia: ${report.detail} (detalle en ${join(logDir, "historia.txt")})`);
+    const visible = visibleReport(findVisibleModuleStrings(dest));
+    writeFileSync(join(logDir, "textos.txt"), visible.text);
+    console.log(`Textos visibles: ${visible.detail} (detalle en ${join(logDir, "textos.txt")})`);
     console.log(`\n--skip-gates: no se corrieron los controles ni se armo el git. Copia en ${dest}`);
     return true;
   }
@@ -99,6 +105,13 @@ export async function exportWithProfile({ repo, dest, perfil, skipGates, selfChe
   const historyResult = { name: "historia", ok: report.ok, detail: `${report.detail} (detalle en ${historyLog})`, seconds: 0, log: historyLog };
   show(historyResult);
   results.push(historyResult);
+
+  const visible = visibleReport(findVisibleModuleStrings(dest));
+  const visibleLog = join(logDir, "textos.txt");
+  writeFileSync(visibleLog, visible.text);
+  const visibleResult = { name: "textos", ok: visible.ok, detail: `${visible.detail} (detalle en ${visibleLog})`, seconds: 0, log: visibleLog };
+  show(visibleResult);
+  results.push(visibleResult);
 
   const ok = results.every((r) => r.ok);
   writeFileSync(join(logDir, "resumen.txt"), results.map((r) => `${r.ok ? "ok" : "FALLA"}\t${r.name}\t${r.detail}\t${r.seconds} s`).join("\n") + `\ntotal\t${secs()} s\n`);

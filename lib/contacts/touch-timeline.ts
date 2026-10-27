@@ -40,8 +40,8 @@ export const TIMELINE_ORIGIN_LABELS: Record<string, string> = {
   comment: "Comentario",
   link_click: "Clic en un link",
   booking: "Agenda",
-  form: "Formulario",
-  webhook: "Webhook",
+  form: "Formulario", // @plantilla-quitar(formularios)
+  webhook: "Webhook", // @plantilla-quitar(webhooks)
   manual: "Alta manual",
   import: "Importación",
 };

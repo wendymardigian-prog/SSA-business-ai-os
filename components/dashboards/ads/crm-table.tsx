@@ -267,7 +267,8 @@ export function CrmLevelTable({
         </p>
       )}
       {noSignal && <NoSignalNotice />}
-      {crm.scopeLimited && <p className="text-xs text-muted-foreground">Ves los leads, agendas y ventas de tu alcance.</p>}
+      {crm.scopeLimited && <p className="text-xs text-muted-foreground">Ves los leads, agendas y ventas de tu alcance.</p>} {/* @plantilla-quitar(ventas) */}
+      {/* @plantilla-sin(ventas): {crm.scopeLimited && <p className="text-xs text-muted-foreground">Ves los leads y las agendas de tu alcance.</p>} */}
 
       {shown.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs text-muted-foreground">

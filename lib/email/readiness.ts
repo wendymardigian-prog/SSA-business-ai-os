@@ -17,7 +17,8 @@ export interface ReadinessInput {
 
 export function describeEmailReadiness(input: ReadinessInput): EmailReadiness {
   if (!input.integration || !input.integration.is_active) {
-    return { ok: false, reason: "not_connected", message: "Resend no está conectado: los correos (como la copia firmada) no se mandan. Conectalo en Ajustes → Integraciones." };
+    return { ok: false, reason: "not_connected", message: "Resend no está conectado: los correos (como la copia firmada) no se mandan. Conectalo en Ajustes → Integraciones." }; // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): return { ok: false, reason: "not_connected", message: "Resend no está conectado: los correos (como las invitaciones del equipo) no se mandan. Conectalo en Ajustes → Integraciones." };
   }
   if (!input.integration.from_email?.trim()) {
     return { ok: false, reason: "no_sender", message: "Falta el remitente de Resend: los correos no se mandan. Completalo en Ajustes → Integraciones." };
@@ -32,7 +33,8 @@ export function describeEmailReadiness(input: ReadinessInput): EmailReadiness {
         return {
           ok: false,
           reason: "rejected",
-          message: `Resend está rechazando los correos: el dominio ${domain} no está verificado. Verificalo en resend.com → Domains (cargando los registros DNS que te da) y la copia firmada va a salir.`,
+          message: `Resend está rechazando los correos: el dominio ${domain} no está verificado. Verificalo en resend.com → Domains (cargando los registros DNS que te da) y la copia firmada va a salir.`, // @plantilla-quitar(formularios)
+          // @plantilla-sin(formularios): message: `Resend está rechazando los correos: el dominio ${domain} no está verificado. Verificalo en resend.com → Domains (cargando los registros DNS que te da) y los correos van a salir.`,
         };
       }
       if (status === 401 || status === 403) {

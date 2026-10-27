@@ -106,9 +106,11 @@ export function ActivityScreen({
             </Field>
             <Field label="Desde"><input type="date" className={selectClass} value={filters.desde} onChange={(e) => go({ desde: e.target.value })} /></Field>
             <Field label="Hasta"><input type="date" className={selectClass} value={filters.hasta} onChange={(e) => go({ hasta: e.target.value })} /></Field>
-            <Field label="Buscar en el nombre del actor (ej. Job de mora)">
+            <Field label="Buscar en el nombre del actor (ej. Job de mora)"> {/* @plantilla-quitar(ventas) */}
+            {/* @plantilla-sin(ventas): <Field label="Buscar en el nombre del actor (ej. Sistema)"> */}
               <form onSubmit={(e) => { e.preventDefault(); go({ q: text.trim() }); }}>
-                <input className={selectClass} value={text} onChange={(e) => setText(e.target.value)} placeholder="Job de mora" />
+                <input className={selectClass} value={text} onChange={(e) => setText(e.target.value)} placeholder="Job de mora" /> {/* @plantilla-quitar(ventas) */}
+                {/* @plantilla-sin(ventas): <input className={selectClass} value={text} onChange={(e) => setText(e.target.value)} placeholder="Sistema" /> */}
               </form>
             </Field>
             {active && <div className="flex items-end"><button type="button" onClick={() => router.push(pathname)} className="h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent">Limpiar filtros</button></div>}

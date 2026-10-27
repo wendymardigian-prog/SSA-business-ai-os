@@ -204,7 +204,8 @@ function TestPanel({ flowId, tree, catalog, source }: { flowId: string; tree: St
           <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resultado</h3>
           <ExplanationView explanation={explanation} />
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Lo que mira un paso anterior, el contacto o una venta figura «sin dato en la prueba» y no se cumple: acá no hay de dónde leerlo.
+            Lo que mira un paso anterior, el contacto o una venta figura «sin dato en la prueba» y no se cumple: acá no hay de dónde leerlo. {/* @plantilla-quitar(ventas) */}
+            {/* @plantilla-sin(ventas): Lo que mira un paso anterior o el contacto figura «sin dato en la prueba» y no se cumple: acá no hay de dónde leerlo. */}
           </p>
         </div>
       )}

@@ -120,7 +120,8 @@ export function TriggerPicker({ open, currentKey, onPick, onClose, title = "¿C�
               onKeyDown={(e) => {
                 if (e.key === "Enter" && filtered.length === 1) pick(filtered[0]);
               }}
-              placeholder="Buscar: reunión, etiqueta, pago, formulario…"
+              placeholder="Buscar: reunión, etiqueta, pago, formulario…" // @plantilla-quitar(ventas,formularios)
+              // @plantilla-sin(ventas,formularios): placeholder="Buscar: reunión, etiqueta, mensaje, comentario…"
               className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </label>

@@ -109,7 +109,7 @@ export function mergeNotes(result: { moved?: MergeMoved } | MergeMoved | null | 
   add("sequence_enrollments_cancelled", "Se canceló 1 inscripción repetida a una secuencia.", "Se cancelaron {n} inscripciones repetidas a secuencias.");
   add("flow_sessions_cancelled", "Se canceló 1 sesión de automatización repetida.", "Se cancelaron {n} sesiones de automatización repetidas.");
   add("automation_events_cancelled", "Se canceló 1 evento de automatización pendiente.", "Se cancelaron {n} eventos de automatización pendientes.");
-  add("tasks_detached", "1 tarea de seguimiento quedó como tarea normal (ya había otra para esa fecha).", "{n} tareas de seguimiento quedaron como tareas normales (ya había otra para esa fecha).");
+  add("tasks_detached", "1 tarea de seguimiento quedó como tarea normal (ya había otra para esa fecha).", "{n} tareas de seguimiento quedaron como tareas normales (ya había otra para esa fecha)."); // @plantilla-quitar(tareas)
   add("messages_left", "1 mensaje repetido quedó en la conversación vieja.", "{n} mensajes repetidos quedaron en la conversación vieja.");
   return notes;
 }

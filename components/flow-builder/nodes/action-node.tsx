@@ -181,8 +181,8 @@ const UNIT_LABELS: Record<string, [string, string]> = { minutes: ["minuto", "min
 
 const OWNER_LABELS: Record<string, string> = {
   user: "Una persona",
-  member: "Quien envió el reporte",
-  seller: "Vendedor de la venta",
+  member: "Quien envió el reporte", // @plantilla-quitar(formularios)
+  seller: "Vendedor de la venta", // @plantilla-quitar(ventas)
   contact_assigned: "Asignada al contacto",
 };
 

@@ -25,7 +25,7 @@ export function FollowupField({
   contactId,
   value,
   onSaved,
-  canCreateTask,
+  canCreateTask, // @plantilla-quitar(tareas)
   contactName,
 }: {
   contactId: string;
@@ -36,7 +36,7 @@ export function FollowupField({
    * Tareas × CRM (R2): si se puede mostrar «Crear tarea» debajo de la fecha. Opcional: sin esto se usa el permiso de  @plantilla-quitar(tareas)
    * editar tareas del anfitrion de tareas (`ContactTasksProvider`); sin anfitrion, el campo es el de siempre.  @plantilla-quitar(tareas)
    * @plantilla-quitar(tareas) */
-  canCreateTask?: boolean;
+  canCreateTask?: boolean; // @plantilla-quitar(tareas)
   /** Para el texto del boton «Crear tarea» (lo lee el lector de pantalla).  @plantilla-quitar(tareas) */
   contactName?: string | null;
 }) {

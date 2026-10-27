@@ -48,11 +48,13 @@ export function SendEmailPanel({
         )}
         {mode === "variable" && (
           <>
-            <input aria-label="Variable con la dirección" type="text" value={data.toVariable ?? ""} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{webhook.payload.email}}" className={`${inputClass} mt-2 font-mono`} />
+            <input aria-label="Variable con la dirección" type="text" value={data.toVariable ?? ""} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{webhook.payload.email}}" className={`${inputClass} mt-2 font-mono`} /> {/* @plantilla-quitar(webhooks) */}
+            {/* @plantilla-sin(webhooks): <input aria-label="Variable con la dirección" type="text" value={data.toVariable ?? ""} onChange={(e) => set({ toVariable: e.target.value })} placeholder="{{contact.email}}" className={`${inputClass} mt-2 font-mono`} /> */}
             <p className="mt-1.5 text-xs text-muted-foreground">Si la variable está vacía o no es un email válido, el paso se saltea y queda anotado. Si la dirección es de un contacto marcado «no contactar», no se manda.</p>
           </>
         )}
-        {mode === "contact" && <p className="mt-1.5 text-xs text-muted-foreground">Necesita un contacto: en un flujo de webhook, poné antes «Crear o actualizar contacto».</p>}
+        {mode === "contact" && <p className="mt-1.5 text-xs text-muted-foreground">Necesita un contacto: en un flujo de webhook, poné antes «Crear o actualizar contacto».</p>} {/* @plantilla-quitar(webhooks) */}
+        {/* @plantilla-sin(webhooks): {mode === "contact" && <p className="mt-1.5 text-xs text-muted-foreground">Necesita un contacto: en un flujo sin contacto, el paso se saltea.</p>} */}
       </div>
 
       <div>

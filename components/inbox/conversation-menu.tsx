@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 const ACTIONS: Record<MenuAction, { label: string; icon: typeof Clock }> = {
   snooze: { label: "Posponer conversación", icon: Clock },
   reopen: { label: "Reabrir conversación", icon: RotateCcw },
-  createTask: { label: "Crear tarea", icon: ListPlus },
+  createTask: { label: "Crear tarea", icon: ListPlus }, // @plantilla-quitar(tareas)
   noReply: { label: "No necesita respuesta", icon: CheckCheck },
   markKnown: { label: "Marcar como conocido", icon: HeartHandshake },
   unmarkKnown: { label: "Quitar la marca de conocido", icon: HeartOff },

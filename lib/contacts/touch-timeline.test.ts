@@ -93,7 +93,8 @@ describe("buildTimeline: orden y marcas", () => {
     const itemB = tl.items.find((i) => i.id === "B")!;
     const itemA = tl.items.find((i) => i.id === "A")!;
     expect(itemB.channelLabel).toBe("Pauta");
-    expect(itemB.originLabel).toBe("Formulario");
+    expect(itemB.originLabel).toBe("Formulario"); // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): expect(itemB.originLabel).toBe("form");
     expect(itemB.adId).toBe("123");
     expect(itemA.channelLabel).toBe("Orgánico");
     expect(itemA.originLabel).toBe("Comentario");

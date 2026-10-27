@@ -81,7 +81,8 @@ export interface PieceAdsSummary {
 }
 
 export const NOTE_CURRENCIES = "Los anuncios están en cuentas con monedas distintas: el gasto y el costo por lead no se pueden sumar.";
-export const NOTE_NO_CRM = "No pude leer los leads, agendas y ventas en este momento.";
+export const NOTE_NO_CRM = "No pude leer los leads, agendas y ventas en este momento."; // @plantilla-quitar(ventas)
+// @plantilla-sin(ventas): export const NOTE_NO_CRM = "No pude leer los leads y las agendas en este momento.";
 export const NOTE_DISTINCT = "Los leads totales cuentan una vez a quien tocó más de uno de estos anuncios.";
 
 /**

@@ -250,7 +250,7 @@ export default async function InboxPage({
   const assets: InboxAsset[] = (assetsRes.data ?? []).map(toBankAsset);
   const canManageAssets = permissionCtx.can("templates.manage");
   // Crear una tarea sobre la conversacion (Tareas, F20): con `tasks.edit`.  @plantilla-quitar(tareas)
-  const canCreateTask = permissionCtx.can("tasks.edit");
+  const canCreateTask = permissionCtx.can("tasks.edit"); // @plantilla-quitar(tareas)
   const canViewAgentRuns = permissionCtx.can("agents.view");
   // El responsable de cada conversación (00255): con `contacts.assign` se cambia; sin la clave, solo "Tomar".
   const canAssignConversations = permissionCtx.can("contacts.assign");
@@ -342,7 +342,7 @@ export default async function InboxPage({
       workspaceName={workspace.name}
       assets={assets}
       canManageAssets={canManageAssets}
-      canCreateTask={canCreateTask}
+      canCreateTask={canCreateTask} // @plantilla-quitar(tareas)
       canViewAgentRuns={canViewAgentRuns}
       canAssignConversations={canAssignConversations}
       canEditContacts={permissionCtx.can("contacts.edit")}

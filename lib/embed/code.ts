@@ -148,6 +148,7 @@ export default function AgendaEmbed() {
 
 // ── Formularios (F10, F32) ───────────────────────────────────────────────────  @plantilla-quitar(formularios)
 
+// @plantilla-desde(formularios)
 export const FORM_EMBED_MODES: EmbedMode[] = ["inline", "floating"];
 
 /** El mensaje de respaldo de un formulario que no carga: ya resuelto, con un link para abrirlo aparte. */
@@ -191,6 +192,7 @@ export function generateFormEmbedCode(mode: "inline" | "floating", options: Form
 export function formPageSnippet(slug: string): string {
   return `<Formulario slug="${slug}" />`;
 }
+// @plantilla-hasta(formularios)
 
 /**
  * El snippet de "Seguimiento en todo el sitio" (F29, F32): el mismo `embed.js` en modo

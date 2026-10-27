@@ -58,13 +58,13 @@ export function actorName(
 const FIELD_LABELS: Record<string, string> = {
   contact_id: "Contacto",
   booking_id: "Agenda",
-  call_type: "Tipo de llamada",
-  recorded_by_user_id: "Closer",
-  is_closer: "Es closer",
-  closer_emails: "Correos alternos",
-  closer_score: "Puntaje del closer",
-  lead_score: "Puntaje del lead",
-  analysis: "Análisis",
+  call_type: "Tipo de llamada", // @plantilla-quitar(llamadas)
+  recorded_by_user_id: "Closer", // @plantilla-quitar(llamadas)
+  is_closer: "Es closer", // @plantilla-quitar(llamadas)
+  closer_emails: "Correos alternos", // @plantilla-quitar(llamadas)
+  closer_score: "Puntaje del closer", // @plantilla-quitar(llamadas)
+  lead_score: "Puntaje del lead", // @plantilla-quitar(llamadas)
+  analysis: "Análisis", // @plantilla-quitar(llamadas)
   status: "Estado",
   name: "Nombre",
   product_type: "Tipo",
@@ -74,20 +74,20 @@ const FIELD_LABELS: Record<string, string> = {
   change_notes: "Notas del cambio",
   setter_id: "Setter",
   vendedor_id: "Vendedor",
-  discount_amount: "Descuento",
-  final_amount: "Monto final",
-  base_amount: "Monto base",
-  discount_reason: "Motivo del descuento",
-  sale_date: "Fecha de la venta",
-  service_starts_at: "Inicio del servicio",
+  discount_amount: "Descuento", // @plantilla-quitar(ventas)
+  final_amount: "Monto final", // @plantilla-quitar(ventas)
+  base_amount: "Monto base", // @plantilla-quitar(ventas)
+  discount_reason: "Motivo del descuento", // @plantilla-quitar(ventas)
+  sale_date: "Fecha de la venta", // @plantilla-quitar(ventas)
+  service_starts_at: "Inicio del servicio", // @plantilla-quitar(ventas)
   notes: "Notas",
   attribution: "Atribución",
   due_date: "Vence",
   amount: "Monto",
-  payment_method: "Método de pago",
-  paid_on: "Cobrado el",
+  payment_method: "Método de pago", // @plantilla-quitar(ventas)
+  paid_on: "Cobrado el", // @plantilla-quitar(ventas)
   reschedule_reason: "Motivo de la reprogramación",
-  provider_fee_amount: "Comisión",
+  provider_fee_amount: "Comisión", // @plantilla-quitar(ventas)
   title: "Título",
   role: "Rol",
   // Tareas  @plantilla-quitar(tareas)
@@ -288,8 +288,10 @@ export const FORM_ACTION_LABELS: Record<
   "submission.linked": "vinculó la respuesta con un contacto", // @plantilla-quitar(formularios)
   "submission.spam": "marcó la respuesta como spam", // @plantilla-quitar(formularios)
   "submission.unspam": "sacó la respuesta de spam", // @plantilla-quitar(formularios)
-  "contact.created": "creó el contacto desde un formulario",
-  "contact.linked": "vinculó el contacto desde un formulario",
+  "contact.created": "creó el contacto desde un formulario", // @plantilla-quitar(formularios)
+  // @plantilla-sin(formularios): "contact.created": "creó el contacto",
+  "contact.linked": "vinculó el contacto desde un formulario", // @plantilla-quitar(formularios)
+  // @plantilla-sin(formularios): "contact.linked": "vinculó el contacto",
   "contact.updated": "actualizó el contacto",
   "attribution.meta_linked": "vinculó un toque con un anuncio de Meta",
   "attribution.meta_ignored": "ignoró un toque para el vínculo con Meta",

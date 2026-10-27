@@ -939,9 +939,9 @@ export async function linkContacts(
     revalidateContact(mainId);
     revalidateContact(duplicateId);
     // Lo que se movio aparece de inmediato en las pantallas que lo muestran.
-    revalidatePath("/dashboard/tareas");
+    revalidatePath("/dashboard/tareas"); // @plantilla-quitar(tareas)
     revalidatePath("/dashboard/agenda");
-    revalidatePath("/dashboard/ventas");
+    revalidatePath("/dashboard/ventas"); // @plantilla-quitar(ventas)
     return { ok: true, contactId: mainId, summary: summarizeMerge(result), notes: mergeNotes(result), moved: result.moved ?? {} };
   } catch (error) {
     console.error("[contacts] linkContacts:", error instanceof Error ? error.message : String(error));

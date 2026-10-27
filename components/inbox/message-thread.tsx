@@ -374,7 +374,7 @@ export function MessageThread({
   messages: initialMessages,
   assets = [],
   canManageAssets = false,
-  canCreateTask = false,
+  canCreateTask = false, // @plantilla-quitar(tareas)
   canViewAgentRuns = false,
   canReply = true,
   workspaceName = "",
@@ -396,7 +396,7 @@ export function MessageThread({
   /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
   canManageAssets?: boolean;
   /** Puede crear tareas (`tasks.edit`): muestra «Crear tarea» en el encabezado.  @plantilla-quitar(tareas) */
-  canCreateTask?: boolean;
+  canCreateTask?: boolean; // @plantilla-quitar(tareas)
   /** Puede ver las corridas del agente (`agents.view`): el panel de actividad ofrece abrir la corrida. */
   canViewAgentRuns?: boolean;
   /** `inbox.<canal>.reply`: sin esto la conversacion se ve pero no se escribe (Equipo y roles, F20). */
@@ -545,7 +545,7 @@ export function MessageThread({
   }, [reactionConversationId, reloadReactions]);
   const reactionCap: ReactionCapability | null = channelProvider && capabilityFor(channelProvider).supported ? capabilityFor(channelProvider) : null;
   // "Crear tarea" se abre desde el menu "⋯" de la cabecera y su panel se ancla a ese boton.  @plantilla-quitar(tareas)
-  const [taskOpen, setTaskOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false); // @plantilla-quitar(tareas)
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const insertEmoji = useEmojiInsert(textareaRef, input, setInput);
   useEffect(() => {
@@ -1219,7 +1219,7 @@ export function MessageThread({
   }
   const headerPlan = planHeaderActions({
     status: conversation.status,
-    canCreateTask,
+    canCreateTask, // @plantilla-quitar(tareas)
     isAutomationPaused: !!conversation.is_automation_paused,
     agentDisabledByTag: !!conversation.agent_disabled_by_tag_id,
     draftMode: !!(agentInfo?.available && agentInfo.mode === "draft"),
@@ -1386,7 +1386,7 @@ export function MessageThread({
               else if (action === "noReply") void markNoReply();
               else if (action === "markKnown") void toggleKnown(true);
               else if (action === "unmarkKnown") void toggleKnown(false);
-              else setTaskOpen(true);
+              else setTaskOpen(true); // @plantilla-quitar(tareas)
             }}
           />
           {/* @plantilla-desde(tareas) */}

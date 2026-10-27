@@ -19,12 +19,13 @@
 
 import type { ConversationStatus } from "@/lib/types/database";
 
-export type MenuAction = "snooze" | "reopen" | "createTask" | "noReply" | "markKnown" | "unmarkKnown";
+export type MenuAction = "snooze" | "reopen" | "createTask" | "noReply" | "markKnown" | "unmarkKnown"; // @plantilla-quitar(tareas)
+// @plantilla-sin(tareas): export type MenuAction = "snooze" | "reopen" | "noReply" | "markKnown" | "unmarkKnown";
 export type NoteKey = "status" | "flowsPaused" | "agentOffByTag" | "draftMode" | "known";
 
 export interface HeaderInput {
   status: ConversationStatus;
-  canCreateTask: boolean;
+  canCreateTask: boolean; // @plantilla-quitar(tareas)
   isAutomationPaused: boolean;
   agentDisabledByTag: boolean;
   /** El agente atiende este canal en modo borrador. */
@@ -59,7 +60,7 @@ export function planHeaderActions(input: HeaderInput): HeaderPlan {
   if (input.status !== "snoozed") menu.push("snooze");
   // Una pospuesta se reabre desde el menu; una cerrada, desde el boton a la vista.
   if (input.status === "snoozed") menu.push("reopen");
-  if (input.canCreateTask) menu.push("createTask");
+  if (input.canCreateTask) menu.push("createTask"); // @plantilla-quitar(tareas)
   if (input.canMarkNoReply) menu.push("noReply");
   if (input.known && !input.known.isKnown && input.known.canMark) menu.push("markKnown");
   if (input.known?.isKnown && input.known.canUnmark) menu.push("unmarkKnown");

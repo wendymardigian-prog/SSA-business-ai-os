@@ -115,7 +115,8 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
               Productos
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Lo que vendés, con sus variantes y su precio en dólares. Sirve para cargar ventas y para saber qué contenido
+              Lo que vendés, con sus variantes y su precio en dólares. Sirve para cargar ventas y para saber qué contenido {/* @plantilla-quitar(ventas) */}
+              {/* @plantilla-sin(ventas): Lo que vendés, con sus variantes y su precio en dólares. Sirve para saber qué contenido */}
               empuja cada producto. Los pilares de tu contenido se administran en la página de Contenido.
             </p>
           </div>
@@ -203,8 +204,10 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
                   }}
                   title={
                     product.pieces > 0
-                      ? "Deja de ofrecerse al vender y al clasificar, pero las piezas y ventas que lo tienen lo siguen mostrando"
-                      : "Un producto inactivo o discontinuado deja de ofrecerse al vender y al clasificar"
+                      ? "Deja de ofrecerse al vender y al clasificar, pero las piezas y ventas que lo tienen lo siguen mostrando" // @plantilla-quitar(ventas)
+                      // @plantilla-sin(ventas): ? "Deja de ofrecerse al clasificar, pero las piezas que lo tienen lo siguen mostrando"
+                      : "Un producto inactivo o discontinuado deja de ofrecerse al vender y al clasificar" // @plantilla-quitar(ventas)
+                      // @plantilla-sin(ventas): : "Un producto inactivo o discontinuado deja de ofrecerse al clasificar"
                   }
                   className={cn(inputClass, "h-8 px-2 text-xs")}
                 >

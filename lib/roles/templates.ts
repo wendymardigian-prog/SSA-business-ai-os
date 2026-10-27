@@ -51,7 +51,8 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
   {
     id: "closer",
     name: "Closer",
-    description: "Hace las llamadas de venta, carga las ventas y cobra.",
+    description: "Hace las llamadas de venta, carga las ventas y cobra.", // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): description: "Atiende las reuniones con los leads y cierra.",
     keys: CLOSER_KEYS,
     scopes: { leads: "own", bookings: "own", calls: "own", sales: "own", commissions: "own", tasks: "own" }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: "own", bookings: "own" },

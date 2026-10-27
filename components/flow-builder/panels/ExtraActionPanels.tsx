@@ -34,8 +34,8 @@ export function NotifyTeamPanel({ data, onChange, availableVariables }: PanelPro
         <label htmlFor="nt-to" className={labelClass}>Para</label>
         <select id="nt-to" value={to} onChange={(e) => onChange({ ...data, to: e.target.value })} className={inputClass}>
           <option value="users">Personas elegidas</option>
-          <option value="reporter">Quien envió el reporte (flujos de fin de día)</option>
-          <option value="both">Quien envió el reporte y personas elegidas</option>
+          <option value="reporter">Quien envió el reporte (flujos de fin de día)</option> {/* @plantilla-quitar(formularios) */}
+          <option value="both">Quien envió el reporte y personas elegidas</option> {/* @plantilla-quitar(formularios) */}
         </select>
       </div>
       {to !== "reporter" && (

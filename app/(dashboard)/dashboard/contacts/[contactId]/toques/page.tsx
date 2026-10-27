@@ -101,7 +101,8 @@ export default async function ContactTouchesPage({
       )}
       {timeline.total === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Todavía no hay toques de este contacto. Se registran solos cuando escribe, comenta, hace clic en un link, agenda o responde un formulario.
+          Todavía no hay toques de este contacto. Se registran solos cuando escribe, comenta, hace clic en un link, agenda o responde un formulario. {/* @plantilla-quitar(formularios) */}
+          {/* @plantilla-sin(formularios): Todavía no hay toques de este contacto. Se registran solos cuando escribe, comenta, hace clic en un link o agenda. */}
         </p>
       ) : (
         <TouchTimelineList items={timeline.items} timeZone={timeZone} adHrefs={adHrefs} />

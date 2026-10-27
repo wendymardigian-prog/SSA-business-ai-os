@@ -32,7 +32,8 @@ export const GROUP_TIP: Record<ColumnGroup, string> = {
   info: "Qué es cada fila: a qué campaña y conjunto pertenece, su estado y su publicación.",
   meta: "Lo que mide Meta Ads: gasto, alcance, clics, video y lo que cuenta el píxel. No sabe qué pasó después del clic.",
   metaVsCrm: "Lo mismo contado por Meta y por tu CRM, lado a lado. Si no coinciden, el CRM es el que sabe quién llegó de verdad.",
-  crm: "Lo que pasó en tu CRM con la gente que llegó de cada anuncio: leads, agendas, ventas y plata.",
+  crm: "Lo que pasó en tu CRM con la gente que llegó de cada anuncio: leads, agendas, ventas y plata.", // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): crm: "Lo que pasó en tu CRM con la gente que llegó de cada anuncio: leads y agendas.",
 };
 
 /** Los subtítulos del grupo Meta, para encontrar rápido una columna entre tantas. */
@@ -49,7 +50,8 @@ export const SUBGROUP_LABEL: Record<MetaSubgroup, string> = {
 };
 
 /** Qué número de la tabla se puede abrir (el panel con las personas o los registros que lo forman). */
-export type CellMetric = "leads_new" | "leads_total" | "bookings" | "sales";
+export type CellMetric = "leads_new" | "leads_total" | "bookings" | "sales"; // @plantilla-quitar(ventas)
+// @plantilla-sin(ventas): export type CellMetric = "leads_new" | "leads_total" | "bookings";
 
 export type ColumnKind = "money" | "count" | "percent" | "decimal" | "seconds" | "text" | "status" | "link";
 
@@ -166,7 +168,8 @@ export const COLUMNS: ColumnDef[] = [
   { id: "purchasesMeta", group: "meta", subgroup: "conversions", label: "Compras Meta", kind: "count", defaultVisible: false, value: (r) => r.purchases, tip: { title: "Compras según Meta", body: "Compras que Meta registra con el píxel o la API de conversiones. «—» si no manda ese evento." } },
   { id: "costPerPurchase", group: "meta", subgroup: "conversions", label: "Costo compra", kind: "money", defaultVisible: false, value: (r) => r.costPerPurchase, tip: { title: "Costo por compra", body: "Gasto ÷ Compras Meta." } },
   { id: "purchaseValue", group: "meta", subgroup: "conversions", label: "Valor de compras", kind: "money", defaultVisible: false, value: (r) => r.purchaseValue, tip: { title: "Valor de compras", body: "Suma del valor de las compras que registra Meta." } },
-  { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta. El ROAS del CRM («ROAS») usa tus ventas reales." } },
+  { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta. El ROAS del CRM («ROAS») usa tus ventas reales." } }, // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta." } },
 
   // ── Meta · calidad (solo anuncios) ────────────────────────────────────
   textCol("qualityRanking", "meta", "Ranking de calidad", "text", ["ad"], false, { title: "Ranking de calidad", body: "Cómo se percibe la calidad del anuncio frente a otros que compiten por la misma audiencia. Es el del último día con dato y no se suma." }, (r) => rankingLabel(r.qualityRanking), { subgroup: "quality" }),

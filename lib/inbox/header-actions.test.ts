@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { planHeaderActions, type HeaderInput } from "@/lib/inbox/header-actions";
 
-const base: HeaderInput = { status: "open", canCreateTask: true, isAutomationPaused: false, agentDisabledByTag: false, draftMode: false };
+const base: HeaderInput = { status: "open", canCreateTask: true, isAutomationPaused: false, agentDisabledByTag: false, draftMode: false }; // @plantilla-quitar(tareas)
+// @plantilla-sin(tareas): const base: HeaderInput = { status: "open", isAutomationPaused: false, agentDisabledByTag: false, draftMode: false };
 
 describe("cabecera de la conversacion", () => {
   it("abierta: cerrar a la vista; posponer y crear tarea en el menu", () => {
     const plan = planHeaderActions(base);
     expect(plan.primary).toBe("close");
-    expect(plan.menu).toEqual(["snooze", "createTask"]);
+    expect(plan.menu).toEqual(["snooze", "createTask"]); // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): expect(plan.menu).toEqual(["snooze"]);
     expect(plan.notes).toEqual(["status"]);
     expect(plan.hasAlert).toBe(false);
   });
@@ -15,26 +17,31 @@ describe("cabecera de la conversacion", () => {
   it("cerrada: reabrir a la vista, y se puede posponer", () => {
     const plan = planHeaderActions({ ...base, status: "closed" });
     expect(plan.primary).toBe("reopen");
-    expect(plan.menu).toEqual(["snooze", "createTask"]);
+    expect(plan.menu).toEqual(["snooze", "createTask"]); // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): expect(plan.menu).toEqual(["snooze"]);
   });
 
   it("pospuesta: cerrar a la vista y reabrir en el menu, sin posponer de nuevo", () => {
     const plan = planHeaderActions({ ...base, status: "snoozed" });
     expect(plan.primary).toBe("close");
-    expect(plan.menu).toEqual(["reopen", "createTask"]);
+    expect(plan.menu).toEqual(["reopen", "createTask"]); // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): expect(plan.menu).toEqual(["reopen"]);
   });
 
   it("el lead espera: se ofrece marcar que no necesita respuesta, al final", () => {
-    expect(planHeaderActions({ ...base, canMarkNoReply: true }).menu).toEqual(["snooze", "createTask", "noReply"]);
+    expect(planHeaderActions({ ...base, canMarkNoReply: true }).menu).toEqual(["snooze", "createTask", "noReply"]); // @plantilla-quitar(tareas)
+    // @plantilla-sin(tareas): expect(planHeaderActions({ ...base, canMarkNoReply: true }).menu).toEqual(["snooze", "noReply"]);
   });
 
   it("sin espera (o ya marcada) no se ofrece", () => {
     expect(planHeaderActions({ ...base, canMarkNoReply: false }).menu).not.toContain("noReply");
   });
 
+  // @plantilla-desde(tareas)
   it("sin permiso para crear tareas no aparece esa fila", () => {
     expect(planHeaderActions({ ...base, canCreateTask: false }).menu).toEqual(["snooze"]);
   });
+  // @plantilla-hasta(tareas)
 
   it("los avisos pasan a filas de texto y prenden el punto del boton", () => {
     const plan = planHeaderActions({ ...base, isAutomationPaused: true, agentDisabledByTag: true, draftMode: true });
@@ -58,7 +65,8 @@ describe("cabecera de la conversacion", () => {
 });
 
 describe("conocido (00256)", () => {
-  const base = { status: "open" as const, canCreateTask: false, isAutomationPaused: false, agentDisabledByTag: false, draftMode: false };
+  const base = { status: "open" as const, canCreateTask: false, isAutomationPaused: false, agentDisabledByTag: false, draftMode: false }; // @plantilla-quitar(tareas)
+  // @plantilla-sin(tareas): const base = { status: "open" as const, isAutomationPaused: false, agentDisabledByTag: false, draftMode: false };
 
   it("marcar aparece si no lo es y puede editar contactos", () => {
     expect(planHeaderActions({ ...base, known: { isKnown: false, canMark: true, canUnmark: false } }).menu).toContain("markKnown");

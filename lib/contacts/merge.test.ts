@@ -44,7 +44,7 @@ describe("mergeNotes", () => {
     expect(mergeNotes({ moved: { sequence_enrollments_cancelled: 1, flow_sessions_cancelled: 2, tasks_detached: 1, messages_left: 3 } })).toEqual([
       "Se canceló 1 inscripción repetida a una secuencia.",
       "Se cancelaron 2 sesiones de automatización repetidas.",
-      "1 tarea de seguimiento quedó como tarea normal (ya había otra para esa fecha).",
+      "1 tarea de seguimiento quedó como tarea normal (ya había otra para esa fecha).", // @plantilla-quitar(tareas)
       "3 mensajes repetidos quedaron en la conversación vieja.",
     ]);
     expect(mergeNotes({ moved: {} })).toEqual([]);

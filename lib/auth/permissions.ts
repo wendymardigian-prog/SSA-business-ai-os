@@ -203,7 +203,8 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // ── Equipo ──────────────────────────────────────────────────────────────
   { key: "team.view", module: "team", label: "Ver el equipo", description: "Quiénes son, con qué rol y desde cuándo. Sin cambiar nada." },
   { key: "team.invite", module: "team", label: "Invitar personas", description: "Invitar por email o por link, reenviar, renovar y anular invitaciones. Solo con roles que uno mismo puede dar." },
-  { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Cambiarle el rol a una persona y marcar quién es closer." },
+  { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Cambiarle el rol a una persona y marcar quién es closer." }, // @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Cambiarle el rol a una persona." },
   { key: "team.remove", module: "team", label: "Quitar personas del equipo", description: "Solo el Owner. Saca a alguien del negocio.", ownerOnly: true },
   { key: "roles.view", module: "team", label: "Ver los roles", description: "La lista de roles y lo que puede cada uno, sin editar." },
   { key: "roles.manage", module: "team", label: "Administrar roles", description: "Crear roles y elegir qué puede cada uno. Solo puede dar permisos que uno mismo tiene." },
@@ -211,7 +212,8 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // ── Configuración ───────────────────────────────────────────────────────
   { key: "settings.general", module: "settings", label: "Cambiar la configuración general", description: "Nombre del negocio, palabras clave, no contactar, zona horaria, retención de archivos y los ajustes del negocio." },
   { key: "audit.view", module: "settings", label: "Ver la actividad", description: "El historial de lo que cambió y quién lo cambió." },
-  { key: "data.export", module: "settings", label: "Exportar datos", description: "Bajar a CSV las respuestas de formularios, los reportes de fin de día, las corridas de IA y la tabla de anuncios." },
+  { key: "data.export", module: "settings", label: "Exportar datos", description: "Bajar a CSV las respuestas de formularios, los reportes de fin de día, las corridas de IA y la tabla de anuncios." }, // @plantilla-quitar(formularios)
+  // @plantilla-sin(formularios): { key: "data.export", module: "settings", label: "Exportar datos", description: "Bajar a CSV las corridas de IA y la tabla de anuncios." },
   { key: "workspace.transfer", module: "settings", label: "Transferir la propiedad", description: "Solo el Owner. Es irreversible.", reserved: true, ownerOnly: true },
 ];
 

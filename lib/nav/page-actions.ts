@@ -83,7 +83,8 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/flows": {
     title: "Automatizaciones",
-    tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, una reunión, un formulario, un pago…",
+    tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, una reunión, un formulario, un pago…", // @plantilla-quitar(ventas,formularios)
+    // @plantilla-sin(ventas,formularios): tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, un comentario, una reunión, una etiqueta…",
   },
   "/dashboard/flows/templates": {
     title: "Plantillas de automatizaciones",
@@ -351,7 +352,8 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/settings/productos": {
     title: "Productos",
-    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
+    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.", // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
   },
   "/dashboard/settings/productos/[id]": {
     title: "Producto",

@@ -169,7 +169,8 @@ export function pathsMissingContact(nodes: GraphNode[], edges: GraphEdge[], subj
 export function missingContactMessage(name: string, nodeType?: string): string {
   const entity = nodeType ? triggerEntityOf(nodeType) : null;
   if (entity) {
-    return `«${name}» actúa sobre la ${entity} que dispara el flujo, y este flujo no arranca por una ${entity}: no tiene ninguna. Solo se puede usar en un flujo que empieza con un disparador de ${entity === "reunión" ? "agenda" : "venta"}.`;
+    return `«${name}» actúa sobre la ${entity} que dispara el flujo, y este flujo no arranca por una ${entity}: no tiene ninguna. Solo se puede usar en un flujo que empieza con un disparador de ${entity === "reunión" ? "agenda" : "venta"}.`; // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): return `«${name}» actúa sobre la ${entity} que dispara el flujo, y este flujo no arranca por una ${entity}: no tiene ninguna. Solo se puede usar en un flujo que empieza con un disparador de agenda.`;
   }
   return `«${name}» necesita un contacto. Poné antes «Crear o actualizar contacto» y conectá este paso a su salida «Listo».`;
 }

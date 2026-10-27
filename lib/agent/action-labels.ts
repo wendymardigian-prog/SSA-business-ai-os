@@ -16,5 +16,5 @@ export const AGENT_ACTION_LABELS: Record<string, string> = {
   whatsapp_handoff: "Pasó el lead a WhatsApp",
   update: "Se apagó por tope de gasto",
   // Tareas (Extra A): lo que el agente deja pendiente para el equipo.  @plantilla-quitar(tareas)
-  "task.created": "Creó una tarea",
+  "task.created": "Creó una tarea", // @plantilla-quitar(tareas)
 };

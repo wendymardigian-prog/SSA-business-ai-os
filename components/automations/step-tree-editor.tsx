@@ -268,11 +268,13 @@ export function StepTreeEditor({
           <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cuándo</h2>
           <p className="mt-1 text-sm">{describeTrigger(trigger.type, trigger.config)}</p>
           {whenExtra}
+          {/* @plantilla-desde(formularios) */}
           {screen === "eod" && (
             <p className="mt-1 text-xs text-muted-foreground">
               Este flujo es sobre una persona del equipo, no sobre un contacto: no puede mandar mensajes por chat ni tocar contactos.
             </p>
           )}
+          {/* @plantilla-hasta(formularios) */}
           {reach !== null && describeReach && <p className="mt-1 text-xs text-muted-foreground">{describeReach(reach)}</p>}
         </section>
 
