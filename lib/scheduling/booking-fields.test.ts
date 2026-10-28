@@ -5,6 +5,7 @@ import {
   buildBookingSchema,
   identifierFromLabel,
   uniqueIdentifier,
+  newCustomField,
   visibleFields,
   contactDataFromResponses,
   EMAIL_OR_PHONE_REQUIRED,
@@ -115,6 +116,28 @@ describe("identificadores desde la etiqueta", () => {
     expect(identifierFromLabel("2024 objetivos")).toBe("p_2024_objetivos");
     expect(identifierFromLabel("!!!")).toBe("pregunta");
     expect(uniqueIdentifier("presupuesto", ["presupuesto", "presupuesto_2"])).toBe("presupuesto_3");
+  });
+});
+
+describe("agregar una pregunta (newCustomField)", () => {
+  it("no repite el id de una pregunta que ya cambió su identificador", () => {
+    // La primera nació como "Nueva pregunta" y después se renombró: su id
+    // quedó en nueva_pregunta pero su identificador ya es otro.
+    const first = { ...newCustomField("select", defaultBookingFields()), label: "¿Por qué?", identifier: "por_que" };
+    const fields = [...defaultBookingFields(), first];
+    expect(first.id).toBe("nueva_pregunta");
+
+    const second = newCustomField("long_text", fields);
+    expect(second.id).not.toBe(first.id);
+    expect(second.identifier).not.toBe(first.identifier);
+    expect(new Set([...fields, second].map((f) => f.id)).size).toBe(fields.length + 1);
+  });
+
+  it("tampoco choca con un identificador existente", () => {
+    const fields = [...defaultBookingFields(), { ...newCustomField("short_text", defaultBookingFields()), id: "otra", identifier: "nueva_pregunta" }];
+    const next = newCustomField("short_text", fields);
+    expect(next.id).toBe("nueva_pregunta_2");
+    expect(next.identifier).toBe("nueva_pregunta_2");
   });
 });
 

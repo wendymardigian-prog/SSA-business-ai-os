@@ -11,6 +11,7 @@ import {
   VISIBILITIES,
   fieldTextIssues,
   identifierFromLabel,
+  newCustomField,
   uniqueIdentifier,
 } from "@/lib/scheduling/booking-fields";
 import type { BookingField, BookingFieldType, BookingFieldVisibility } from "@/lib/scheduling/types";
@@ -58,17 +59,7 @@ export function FormBuilder({
   const update = (id: string, patch: Partial<BookingField>) => onChange(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)));
 
   function addQuestion(type: BookingFieldType) {
-    const label = "Nueva pregunta";
-    const identifier = uniqueIdentifier(identifierFromLabel(label), fields.map((f) => f.identifier));
-    const field: BookingField = {
-      id: identifier,
-      type,
-      system: false,
-      label,
-      visibility: "optional",
-      identifier,
-      ...(type === "select" || type === "multiselect" ? { options: ["Opción 1", "Opción 2"] } : {}),
-    };
+    const field = newCustomField(type, fields);
     onChange([...fields, field]);
     setEditing(field.id);
   }
