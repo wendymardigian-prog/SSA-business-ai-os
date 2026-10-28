@@ -1,11 +1,14 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ADS_GUIDE_STEPS, ADS_NO_SIGNAL_MESSAGE, ADS_URL_PARAMS } from "./ads-guide";
 
+// docs/ no viaja a la plantilla de clientes: alli este control no tiene contra que comparar.
+const DOCS_PATH = resolve(__dirname, "../../docs/atribucion.md");
+
 describe("la guia del aviso «ningún contacto trae datos de anuncio»", () => {
-  it("la plantilla de parametros es la MISMA que explica docs/atribucion.md", () => {
-    const docs = readFileSync(resolve(__dirname, "../../docs/atribucion.md"), "utf8");
+  it.skipIf(!existsSync(DOCS_PATH))("la plantilla de parametros es la MISMA que explica docs/atribucion.md", () => {
+    const docs = readFileSync(DOCS_PATH, "utf8");
     expect(docs).toContain(ADS_URL_PARAMS);
     expect(docs).toContain("Guía: parámetros de URL para los anuncios".replace("í", "i").replace("á", "a"));
   });
