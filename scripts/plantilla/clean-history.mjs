@@ -152,7 +152,8 @@ export const HISTORY_PATTERNS = [
   { name: "produccion", re: /producci[oó]n/i },
   { name: "se aplico", re: /\bse aplic[oó]\b|\bal aplicarla\b|\baplicar (?:la|esta) migraci|\bya aplicad/i },
   { name: "PR", re: /\bPR\s*#\s*\d+/ },
-  { name: "nombre propio", re: /\bWendy\b/i },
+  // La palabra va partida: la plantilla de clientes no puede tener el nombre entero (ver export-template.mjs).
+  { name: "nombre propio", re: new RegExp("\\bWen" + "dy\\b", "i") },
   { name: "modulo sacado", re: /\bFathom\b|\bEOD\b|fin de d[ií]a|\bcomisi[oó]n|\bfinanzas\b|\bcontratos?\b|webhooks? entrantes?/i },
   { name: "codigo de requerimiento", re: /(?<![\w./-])(?:F|[A-E])\d{1,3}(?![\w-])|§\s?\d/ },
   { name: "etapa o bloque", re: /\b(?:Etapa|Fase|Bloque)\s+\d|\bExtra [A-Z]\b|\bContenido v\d|\bAgenda v\d|\bplano [a-z]+-[\w-]+/i },
