@@ -65,3 +65,4 @@ Límites a conocer:
 - **Solo cubre los merges que hace Claude** con `gh pr merge`. Si mergeás desde la página de GitHub, el hook no se entera: avisale a Claude ("mergeado") y la regla guardada en su memoria hace la misma pregunta.
 - **Lo toman las sesiones nuevas.** Una sesión abierta antes de que este archivo llegue a `main` no lo tiene hasta que se actualice su rama.
 - El hook y su configuración **no viajan a la plantilla** (`scripts/export-template.mjs` los excluye).
+- La herramienta de la plantilla de estudiantes (`scripts/plantilla/`, `plantilla-estudiantes/`, `scripts/template-files/estudiantes/` y `scripts/verify-student-schema.mjs`) **tampoco viaja**: es de quien arma esa plantilla. Su test con perfil vive en `scripts/plantilla/export-perfil.test.ts` para que la copia de los clientes compile sin ella. Un test que lee `docs/` se saltea si la carpeta no está (`it.skipIf`).

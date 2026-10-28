@@ -61,6 +61,14 @@ function isExcluded(relPath) {
   if (relPath === "BITACORA.md") return true;
   // Es la herramienta de quien mantiene la plantilla; un cliente no la usa.
   if (relPath === "scripts/sync-template.mjs") return true;
+  // Lo mismo con la herramienta que arma la plantilla de estudiantes (el perfil, sus
+  // migraciones propias y su verificador): es la lista `TOOLING` del perfil, escrita aca
+  // porque la copia no lleva el perfil para importarla. El export con perfil no la necesita
+  // en la copia: lee sus carpetas desde el repo.
+  if (relPath === "scripts/plantilla" || relPath.startsWith("scripts/plantilla/")) return true;
+  if (relPath === "plantilla-estudiantes" || relPath.startsWith("plantilla-estudiantes/")) return true;
+  if (relPath === "scripts/verify-student-schema.mjs") return true;
+  if (relPath === "scripts/template-files/estudiantes" || relPath.startsWith("scripts/template-files/estudiantes/")) return true;
   // El aviso de "actualizar la plantilla" despues de un merge (hook de Claude Code) es de
   // quien mantiene este repo: ni la configuracion que lo activa ni su script van al cliente.
   if (relPath === ".claude/settings.json") return true;
@@ -200,6 +208,10 @@ async function main() {
 
   // @plantilla-desde(proyecto)
   if (PERFIL) {
+    if (!existsSync(join(REPO_ROOT, "scripts/plantilla/export-with-profile.mjs"))) {
+      console.error("Esta copia no trae las herramientas de perfiles (scripts/plantilla): --perfil no se puede usar aca.");
+      process.exit(1);
+    }
     const { exportWithProfile } = await import("./plantilla/export-with-profile.mjs");
     const ok = await exportWithProfile({
       repo: REPO_ROOT,
