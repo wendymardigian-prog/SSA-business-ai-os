@@ -29,6 +29,10 @@ import {
   type Platform,
 } from "@/lib/platforms";
 import { getDmLink } from "@/lib/contacts/links";
+import { importStatusView } from "@/lib/channels/import-status";
+
+/** Cada cuanto se vuelve a mirar una importacion en curso. */
+const IMPORT_POLL_MS = 10_000;
 
 export type Channel = Database["public"]["Tables"]["channels"]["Row"];
 
@@ -69,7 +73,58 @@ export function ChannelsPanel({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [whatsappChannel, setWhatsappChannel] = useState<Channel | null>(null);
   const [connectingWhatsapp, setConnectingWhatsapp] = useState(false);
+  const [retryingImportId, setRetryingImportId] = useState<string | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+
+  // La importacion de conversaciones corre en la cola (00267): mientras alguna
+  // este en marcha, se vuelve a leer su avance cada tanto. Solo esa columna.
+  const runningImportIds = channels
+    .filter((c) => importStatusView(c.inbox_import, () => "")?.running)
+    .map((c) => c.id)
+    .join(",");
+  useEffect(() => {
+    if (!runningImportIds) return;
+    const ids = runningImportIds.split(",");
+    const timer = window.setInterval(async () => {
+      const { data, error } = await createClient()
+        .from("channels")
+        .select("id, inbox_import")
+        .in("id", ids);
+      if (error || !data) return;
+      const byId = new Map(data.map((row) => [row.id, row.inbox_import]));
+      setChannels((prev) =>
+        prev.map((c) => (byId.has(c.id) ? { ...c, inbox_import: byId.get(c.id) ?? null } : c)),
+      );
+    }, IMPORT_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [runningImportIds]);
+
+  async function handleRetryImport(channel: Channel) {
+    setRetryingImportId(channel.id);
+    try {
+      const res = await fetch(`/api/v1/channels/${channel.id}/import`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        setSyncMessage(data.error || "No pude volver a importar. Probá de nuevo en un rato.");
+        setTimeout(() => setSyncMessage(null), 6000);
+        return;
+      }
+      // Se marca como en curso ya: el siguiente vistazo trae el avance real.
+      const { data: fresh } = await createClient()
+        .from("channels")
+        .select("id, inbox_import")
+        .eq("id", channel.id)
+        .maybeSingle();
+      if (fresh) {
+        setChannels((prev) => prev.map((c) => (c.id === channel.id ? { ...c, inbox_import: fresh.inbox_import } : c)));
+      }
+    } catch {
+      setSyncMessage("No pude contactar al servidor. Revisá tu conexión.");
+      setTimeout(() => setSyncMessage(null), 4000);
+    } finally {
+      setRetryingImportId(null);
+    }
+  }
 
   // Close picker on outside click
   useEffect(() => {
@@ -180,12 +235,12 @@ export function ChannelsPanel({
         created,
         updated,
         deactivated,
-        conversationsImported = 0,
+        importsStarted = 0,
         failed = [],
         skipped = [],
       } = data.synced;
       const nothingChanged =
-        created === 0 && updated === 0 && deactivated === 0 && conversationsImported === 0;
+        created === 0 && updated === 0 && deactivated === 0 && importsStarted === 0;
 
       // Si el webhook no se pudo registrar, no entra ni un mensaje: eso gana
       // sobre cualquier otro resultado del sync.
@@ -213,7 +268,8 @@ export function ChannelsPanel({
         if (created > 0) parts.push(`${created} agregados`);
         if (updated > 0) parts.push(`${updated} actualizados`);
         if (deactivated > 0) parts.push(`${deactivated} desactivados`);
-        if (conversationsImported > 0) parts.push(`${conversationsImported} conversaciones importadas`);
+        // La importacion sigue en la cola: su avance se ve en la tarjeta de cada canal.
+        if (importsStarted > 0) parts.push("importando conversaciones en segundo plano");
         setSyncMessage(parts.join(", "));
       }
       setTimeout(() => setSyncMessage(null), failed.length > 0 ? 10000 : 4000);
@@ -547,6 +603,43 @@ export function ChannelsPanel({
                       })}
                     </span>
                   </div>
+
+                  {(() => {
+                    if (channel.provider !== "zernio") return null;
+                    const status = importStatusView(channel.inbox_import, (iso) =>
+                      new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "numeric" }),
+                    );
+                    if (!status) return null;
+                    return (
+                      <div
+                        role="status"
+                        className={cn(
+                          "mt-3 rounded-md px-2.5 py-1.5 text-[11px]",
+                          status.tone === "warning"
+                            ? "bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                            : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        <p className="flex items-start gap-1.5">
+                          {status.running && <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" aria-hidden />}
+                          {status.tone === "warning" && <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />}
+                          <span>{status.text}</span>
+                        </p>
+                        {status.detail && <p className="mt-1">{status.detail}</p>}
+                        {status.canRetry && (
+                          <button
+                            type="button"
+                            onClick={() => handleRetryImport(channel)}
+                            disabled={retryingImportId === channel.id}
+                            className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                          >
+                            <RefreshCw className={cn("h-3 w-3", retryingImportId === channel.id && "animate-spin")} aria-hidden />
+                            Reintentar
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {(() => {
                     if (channel.provider === "evolution") return null;

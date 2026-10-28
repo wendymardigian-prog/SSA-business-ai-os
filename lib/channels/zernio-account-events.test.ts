@@ -7,19 +7,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHmac } from "node:crypto";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 
-const { getZernioKeyState, listAccounts, syncAccountsAfterChange, backfillInboxConversations, notifyNewChannelAccess } =
+const { getZernioKeyState, listAccounts, syncAccountsAfterChange, startInboxImports, notifyNewChannelAccess } =
   vi.hoisted(() => ({
     getZernioKeyState: vi.fn(),
     listAccounts: vi.fn(),
     syncAccountsAfterChange: vi.fn(),
-    backfillInboxConversations: vi.fn(),
+    startInboxImports: vi.fn(),
     notifyNewChannelAccess: vi.fn(),
   }));
 
 vi.mock("@/lib/integrations/zernio-key", () => ({ getZernioKeyState }));
 vi.mock("@/lib/zernio-client", () => ({ createZernioClient: () => ({ accounts: { listAccounts } }) }));
 vi.mock("@/lib/social/sync-hook", () => ({ syncAccountsAfterChange }));
-vi.mock("@/lib/inbox-sync", () => ({ backfillInboxConversations }));
+vi.mock("@/lib/inbox-import/run", () => ({ startInboxImports }));
 vi.mock("@/lib/channels/new-channel-access", () => ({ notifyNewChannelAccess }));
 
 import { findWorkspaceForSignedEvent, parseAccountEvent, refreshZernioAccounts } from "./zernio-account-events";
@@ -31,7 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   getZernioKeyState.mockResolvedValue({ state: "present", key: "key-simulada" });
   syncAccountsAfterChange.mockResolvedValue([]);
-  backfillInboxConversations.mockResolvedValue({ imported: 0 });
+  startInboxImports.mockResolvedValue({ started: 1, running: 0 });
   notifyNewChannelAccess.mockResolvedValue(undefined);
 });
 
@@ -117,10 +117,9 @@ describe("refreshZernioAccounts", () => {
 
     const nuevo = db.rows("channels").find((r) => r.late_account_id === "zr-ig-2");
     expect(nuevo).toMatchObject({ workspace_id: WS, is_active: true, username: "academia" });
-    expect(backfillInboxConversations).toHaveBeenCalledTimes(1);
-    expect(backfillInboxConversations.mock.calls[0][0].channels).toEqual([
-      { id: nuevo!.id, late_account_id: "zr-ig-2", platform: "instagram" },
-    ]);
+    // La importacion completa del canal nuevo, en la cola, como pasada 1 (con sus repeticiones a 24 h y 7 dias).
+    expect(startInboxImports).toHaveBeenCalledTimes(1);
+    expect(startInboxImports).toHaveBeenCalledWith(db.client, WS, [nuevo!.id], 1);
     expect(syncAccountsAfterChange).toHaveBeenCalledWith(db.client, WS, "webhook account.connected");
   });
 
@@ -130,7 +129,7 @@ describe("refreshZernioAccounts", () => {
 
     await refreshZernioAccounts(db.client as never, WS, "webhook account.connected");
 
-    expect(backfillInboxConversations).not.toHaveBeenCalled();
+    expect(startInboxImports).not.toHaveBeenCalled();
     expect(syncAccountsAfterChange).toHaveBeenCalled();
   });
 
