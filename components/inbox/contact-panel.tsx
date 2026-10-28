@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, type ReactNode } from "react";
 import Link from "next/link";
-import { X, Mail, Phone, Brain, Loader2, ShieldOff, ExternalLink, HeartHandshake } from "lucide-react";
+import { X, Brain, Loader2, ShieldOff, ExternalLink, HeartHandshake } from "lucide-react";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { ContactTasks } from "@/components/tasks/contact-tasks"; // @plantilla-quitar(tareas)
 import { ContactTasksLoader } from "@/components/tasks/contact-tasks-loader"; // @plantilla-quitar(tareas)
@@ -21,6 +21,9 @@ import { NotesSection } from "@/components/contacts/notes-section";
 import { TagsEditor, type TagOption } from "@/components/contacts/tags-editor";
 import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { TemperatureBadge, ActionError } from "@/components/contacts/ui";
+import { InlineField } from "@/components/contacts/inline-field";
+import { contactFieldHref } from "@/lib/contacts/data-groups";
+import type { ContactFieldKey } from "@/lib/contacts/fields";
 import { setDoNotContact, setKnown, updateContact } from "@/lib/actions/contacts";
 import { canUnmarkKnown, knownLabel } from "@/lib/inbox/known";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
@@ -87,6 +90,7 @@ export function ContactPanel({
   allTags = [],
   currentUserId = "",
   isAdmin = false,
+  canEdit = false,
   accounts,
 }: {
   contactId: string | null;
@@ -96,6 +100,8 @@ export function ContactPanel({
   allTags?: TagOption[];
   currentUserId?: string;
   isAdmin?: boolean;
+  /** `contacts.edit`: el nombre y los datos se editan en el lugar (el servidor lo repite). */
+  canEdit?: boolean;
   /** Las cuentas por canal: "Canales" dice por cual cuenta nuestra se habla cuando una red tiene varias. */
   accounts?: InboxAccountsInfo;
 }) {
@@ -200,7 +206,9 @@ export function ContactPanel({
         <ContactTasksLoader contactId={details.contact.id} contactName={details.contact.display_name}>
         {/* @plantilla-hasta(tareas) */}
         <div className="flex-1 overflow-y-auto">
-          <Identity details={details} />
+          <Identity details={details} canEdit={canEdit} onSaved={reload} />
+
+          <BasicData contact={details.contact} canEdit={canEdit} onSaved={reload} />
 
           <PanelSection title="Estado del lead">
             <StatusFields
@@ -283,7 +291,7 @@ export function ContactPanel({
   );
 }
 
-function Identity({ details }: { details: ContactDetails }) {
+function Identity({ details, canEdit, onSaved }: { details: ContactDetails; canEdit: boolean; onSaved: () => void }) {
   const c = details.contact;
   // F17: contacts.instagram_username es la fuente, y si falta, SOLO el canal
   // cuya platform es "instagram". Antes find(ch => ch.username) no filtraba
@@ -292,7 +300,19 @@ function Identity({ details }: { details: ContactDetails }) {
   return (
     <div className="flex flex-col items-center border-b border-border p-5">
       <ContactAvatar avatarUrl={c.avatar_url} displayName={c.display_name} size="lg" />
-      <p className="mt-3 text-sm font-semibold">{c.display_name ?? "Sin nombre"}</p>
+      <div className="mt-3 flex max-w-full justify-center">
+        <InlineField
+          key={c.id}
+          contactId={c.id}
+          field="display_name"
+          value={c.display_name ?? ""}
+          label="Nombre"
+          placeholder="Sin nombre"
+          variant="name"
+          canEdit={canEdit}
+          onSaved={onSaved}
+        />
+      </div>
       {instagramUsername && (
         <a
           href={instagramUrl ?? undefined}
@@ -363,6 +383,51 @@ function TemperatureSelect({ contactId, value, onSaved }: { contactId: string; v
   );
 }
 
+/**
+ * Los datos basicos del contacto, editables sin salir del chat: los mismos
+ * campos (y la misma validacion) que "Datos de contacto" en la ficha. El resto
+ * (email secundario, otras redes) se edita en la ficha completa.
+ */
+const BASIC_FIELDS: { key: ContactFieldKey; label: string; prefix?: string; hint?: string }[] = [
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Teléfono", hint: "Con código de país, ej: +54 9 11 2233 4455" },
+  { key: "whatsapp_phone", label: "WhatsApp", hint: "Solo si es distinto al teléfono" },
+  { key: "instagram_username", label: "Instagram", prefix: "@", hint: "Sin la arroba" },
+  { key: "country", label: "País" },
+];
+
+function BasicData({ contact, canEdit, onSaved }: { contact: Contact; canEdit: boolean; onSaved: () => void }) {
+  return (
+    <PanelSection title="Datos">
+      <dl className="space-y-2">
+        {BASIC_FIELDS.map((f) => {
+          const value = (contact[f.key as keyof Contact] as string | null) ?? "";
+          return (
+            <div key={f.key} className="grid grid-cols-[76px_1fr] items-start gap-2">
+              <dt className="pt-1 text-xs text-muted-foreground">{f.label}</dt>
+              <dd className="min-w-0">
+                <InlineField
+                  key={`${contact.id}:${f.key}`}
+                  contactId={contact.id}
+                  field={f.key}
+                  value={value}
+                  label={f.label}
+                  prefix={f.prefix}
+                  hint={f.hint}
+                  href={contactFieldHref(f.key, value)}
+                  canEdit={canEdit}
+                  onSaved={onSaved}
+                />
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+      {canEdit && <p className="text-[11px] text-muted-foreground">Tocá un dato o el lápiz para editarlo.</p>}
+    </PanelSection>
+  );
+}
+
 function AgentMemory({ contact }: { contact: Contact }) {
   const summary = contact.ai_conversation_summary?.trim();
   return (
@@ -387,17 +452,11 @@ function AgentMemory({ contact }: { contact: Contact }) {
 }
 
 function Channels({ details, accounts }: { details: ContactDetails; accounts?: InboxAccountsInfo }) {
-  const c = details.contact;
-  type Extra = { icon: ReactNode; label: string; value: string };
-  const extras: Extra[] = ([
-    c.phone ? { icon: <Phone className="h-3.5 w-3.5" />, label: "Teléfono", value: c.phone } : null,
-    c.whatsapp_phone && c.whatsapp_phone !== c.phone ? { icon: <Phone className="h-3.5 w-3.5" />, label: "WhatsApp", value: c.whatsapp_phone } : null,
-    c.email ? { icon: <Mail className="h-3.5 w-3.5" />, label: "Email", value: c.email } : null,
-  ] as Array<Extra | null>).filter((x): x is Extra => x !== null);
-
+  // Telefono, WhatsApp y email ya estan (editables) en "Datos": aca solo los
+  // canales por los que el contacto nos escribio.
   return (
     <PanelSection title="Canales">
-      {details.channels.length === 0 && extras.length === 0 ? (
+      {details.channels.length === 0 ? (
         <p className="text-xs text-muted-foreground">Sin canales vinculados.</p>
       ) : (
         <ul className="space-y-1.5 text-sm">
@@ -430,13 +489,6 @@ function Channels({ details, accounts }: { details: ContactDetails; accounts?: I
               </li>
             );
           })}
-          {extras.map((x) => (
-            <li key={x.label} className="flex items-center gap-2">
-              <span className="text-muted-foreground">{x.icon}</span>
-              <span className="text-muted-foreground">{x.label}</span>
-              <span className="truncate">{x.value}</span>
-            </li>
-          ))}
         </ul>
       )}
     </PanelSection>

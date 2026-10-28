@@ -351,6 +351,7 @@ export function InboxView({
             allTags={tags}
             currentUserId={currentUserId}
             isAdmin={isAdmin}
+            canEdit={canEditContacts}
             accounts={accounts}
           />
         </div>

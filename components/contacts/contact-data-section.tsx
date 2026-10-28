@@ -19,7 +19,14 @@ export function ContactDataSection({
   canEdit: boolean;
 }) {
   return (
-    <Section title="Datos de contacto">
+    <Section
+      title="Datos de contacto"
+      action={
+        canEdit ? (
+          <span className="text-xs text-muted-foreground">Tocá un dato o el lápiz para editarlo</span>
+        ) : undefined
+      }
+    >
       <div className="space-y-5 rounded-lg border border-border p-4">
         {CONTACT_DATA_GROUPS.map((group) => (
           <div key={group.id}>

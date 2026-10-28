@@ -412,6 +412,8 @@ export default async function ContactDetailPage({
     ),
   ].map(([id, label]) => ({ id, label }));
   const temperature = contact.lead_temperature as LeadTemperature | null;
+  // Quien no puede editar contactos ve los datos sin lapiz (el servidor lo repite en `updateContact`).
+  const canEditContact = perms.can("contacts.edit");
 
   return (
     <div className="flex h-full flex-col">
@@ -436,7 +438,7 @@ export default async function ContactDetailPage({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                {/* El nombre se edita con un clic. */}
+                {/* El nombre se edita con un clic (el lapiz siempre se ve). */}
                 <InlineField
                   contactId={contact.id}
                   field="display_name"
@@ -444,6 +446,7 @@ export default async function ContactDetailPage({
                   label="Nombre"
                   placeholder="Sin nombre"
                   variant="title"
+                  canEdit={canEditContact}
                 />
                 <LastStatusBadge
                   settings={statusSettings}
@@ -495,7 +498,7 @@ export default async function ContactDetailPage({
 
             <ContactDataSection
               contactId={contact.id}
-              canEdit
+              canEdit={canEditContact}
               values={{
                 email: contact.email ?? "",
                 secondary_email: contact.secondary_email ?? "",
