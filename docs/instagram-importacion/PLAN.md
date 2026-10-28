@@ -1,6 +1,6 @@
 # Plan: traer TODAS las conversaciones de Instagram (y las que empieza el negocio)
 
-28/10/2026. Rama propuesta: `fix/instagram-importar-todo`.
+28/10/2026. Rama: `fix/instagram-importar-todo`. Bloques 1 a 3 hechos; el 4 (salida a produccion y a los clientes) pendiente.
 
 ## Por que
 
@@ -213,9 +213,9 @@ Con Vitest y Zernio simulado (los tests no pueden hacer `fetch` real):
   - con conversacion existente: igual que hoy (test de caracterizacion antes de tocar).
 - **`conversation.started`**: firma invalida 401, evento repetido se saltea, crea la
   conversacion vacia, y si ya existe no la duplica.
-- **`SUBSCRIBED_EVENTS`** incluye `conversation.started` y cada evento suscrito tiene
-  su rama en el receptor (test nuevo: hoy nada fija esa lista, y un evento suscrito sin
-  rama cae en "ignorado" sin avisar).
+- **`SUBSCRIBED_EVENTS`** incluye `conversation.started` (test nuevo en
+  `lib/zernio-webhook.test.ts`), y el receptor tiene su rama con sus casos
+  (`app/api/webhooks/late/route.test.ts`).
 - `npx vitest run`, `npm run lint`, `npx tsc --noEmit` y `npm run build` en verde.
 
 ## Bloque 4 — Salida a produccion y a los clientes
