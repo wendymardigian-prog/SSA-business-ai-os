@@ -207,6 +207,16 @@ describe("el archivo corrupto (F12)", () => {
     expect(isCorruptMedia({ kind: "gif", mime: "text/html", status: "ready" })).toBe(true);
   });
 
+  it("un audio de Instagram llega como video/mp4 y se reproduce, no es corrupto", () => {
+    // Es lo que guarda el webhook: el CDN de Meta sirve las notas de voz como video/mp4.
+    expect(isCorruptMedia({ kind: "audio", mime: "video/mp4", status: "ready" })).toBe(false);
+    expect(isCorruptMedia({ kind: "voice", mime: "video/mp4", status: "ready" })).toBe(false);
+    expect(renderPlan(ready("audio", { mime: "video/mp4" })).component).toBe("audio");
+
+    // Una pagina de error sigue siendo corrupta.
+    expect(isCorruptMedia({ kind: "audio", mime: "text/html", status: "ready" })).toBe(true);
+  });
+
   it("un documento acepta cualquier mime: puede ser cualquier cosa", () => {
     expect(isCorruptMedia({ kind: "document", mime: "application/zip", status: "ready" })).toBe(false);
   });

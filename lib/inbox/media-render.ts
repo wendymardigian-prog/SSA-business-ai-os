@@ -79,11 +79,20 @@ const EXPECTED_FAMILY: Partial<Record<AttachmentKind, string>> = {
  * fallar igual.
  *
  * Un GIF se deja pasar en las dos familias: WhatsApp los manda como video.
+ *
+ * Un audio tambien: el CDN de Meta sirve las notas de voz de Instagram como
+ * `video/mp4` (un mp4 con una sola pista de audio). Sin esta excepcion, TODOS
+ * los audios de Instagram se pintaban como "no se pudo descargar" aunque el
+ * archivo estuviera bien guardado y hasta transcripto (28/10/2026). Un
+ * `<audio>` reproduce el sonido de cualquier contenedor de video.
  */
 export function isCorruptMedia(item: Pick<ChatAttachment, "kind" | "mime" | "status">): boolean {
   if (item.status !== "ready") return false;
   if (!item.mime) return false;
   if (item.kind === "gif") return !item.mime.startsWith("image/") && !item.mime.startsWith("video/");
+  if (item.kind === "audio" || item.kind === "voice") {
+    return !item.mime.startsWith("audio/") && !item.mime.startsWith("video/");
+  }
 
   const expected = EXPECTED_FAMILY[item.kind];
   if (!expected) return false;
