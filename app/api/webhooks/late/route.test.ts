@@ -41,7 +41,9 @@ const applyOptOut = vi.fn();
 const runInboundAutomation = vi.fn();
 const pauseSequencesOnReply = vi.fn();
 const handleMessageSentEcho = vi.fn();
+const ensureZernioConversation = vi.fn();
 vi.mock("@/lib/inbound", () => ({
+  ensureZernioConversation,
   claimWebhookEvent,
   upsertConversation,
   persistInboundMessage,
@@ -108,6 +110,7 @@ function db(
     workspaceSecret?: string | null;
     /** Cuentas de publicacion y metricas (F46): TikTok solo vive aca. */
     social_accounts?: Array<Record<string, unknown>>;
+    conversations?: Array<Record<string, unknown>>;
   } = {},
 ) {
   // Ojo con `??`: workspaceSecret null es "Vault NO tiene secreto", y tiene
@@ -118,6 +121,7 @@ function db(
     {
       channels: options.channels ?? [channelRow()],
       social_accounts: options.social_accounts ?? [],
+      conversations: options.conversations ?? [],
       social_posts: [],
       social_post_comments: [],
       contacts: [],
@@ -211,6 +215,7 @@ beforeEach(() => {
   applyOptOut.mockResolvedValue({ matched: false });
   runInboundAutomation.mockResolvedValue({ claimedBy: null });
   handleMessageSentEcho.mockResolvedValue({ stored: true, messageId: "msg-eco", conversationId: "conv-1" });
+  ensureZernioConversation.mockResolvedValue({ id: "conv-nueva" });
   storeInboundMedia.mockResolvedValue({ items: [], stored: 0, failed: 0 });
 });
 
@@ -346,6 +351,104 @@ describe("webhook de Zernio: que eventos procesa", () => {
     expect(res.status).toBe(200);
     await runAfter();
     expect(handleMessageSentEcho).toHaveBeenCalled();
+  });
+
+  it("message.sent le pasa al eco la persona y la red del canal, para crear la conversacion que empezo el negocio", async () => {
+    db();
+    const persona = { id: "zconv-9", participantId: "igsid-9", participantName: "Stefania", participantUsername: "stefiwilches" };
+    await callRoute(
+      post({
+        id: "evt-s2",
+        event: "message.sent",
+        account: { id: ACCOUNT },
+        conversation: persona,
+        message: { id: "m-out-2", conversationId: "zconv-9", direction: "outgoing", text: "Te paso la guía" },
+      }),
+    );
+    await runAfter();
+
+    expect(handleMessageSentEcho).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: { id: "ch-1", workspace_id: WS, platform: "instagram" },
+        conversation: persona,
+      }),
+    );
+  });
+});
+
+describe("webhook de Zernio: conversation.started (00267)", () => {
+  const started = (over: Record<string, unknown> = {}) => ({
+    id: "evt-cs1",
+    event: "conversation.started",
+    account: { id: ACCOUNT },
+    conversation: {
+      id: "zconv-7",
+      platformConversationId: "ig-thread-7",
+      participantId: "igsid-7",
+      participantName: "Carlos",
+      participantUsername: "carlostorreugarte",
+      status: "active",
+    },
+    startedAt: "2026-10-28T09:00:00.000Z",
+    ...over,
+  });
+
+  it("crea la conversacion de la persona, sin mensaje y sin automatizar", async () => {
+    db();
+    const res = await callRoute(post(started()));
+
+    expect(await res.json()).toEqual({ ok: true, queued: true });
+    await runAfter();
+    expect(ensureZernioConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: { id: "ch-1", workspace_id: WS, platform: "instagram" },
+        lateConversationId: "zconv-7",
+        participant: expect.objectContaining({ participantId: "igsid-7", participantUsername: "carlostorreugarte" }),
+        at: "2026-10-28T09:00:00.000Z",
+        preview: "",
+      }),
+    );
+    expect(runInboundAutomation).not.toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it("si la conversacion ya esta, no la vuelve a crear", async () => {
+    db({ conversations: [{ id: "conv-ya", channel_id: "ch-1", late_conversation_id: "zconv-7" }] });
+    await callRoute(post(started()));
+    await runAfter();
+
+    expect(ensureZernioConversation).not.toHaveBeenCalled();
+  });
+
+  it("con la firma equivocada responde 401 y no crea nada", async () => {
+    db();
+    const res = await callRoute(post(started(), { secret: "otro-secreto" }));
+
+    expect(res.status).toBe(401);
+    await runAfter();
+    expect(ensureZernioConversation).not.toHaveBeenCalled();
+  });
+
+  it("el mismo aviso dos veces se procesa una sola vez", async () => {
+    db();
+    claimWebhookEvent.mockResolvedValueOnce(false);
+    const res = await callRoute(post(started()));
+
+    expect(await res.json()).toEqual({ ok: true, skipped: "evento repetido" });
+  });
+
+  it("sin la persona no hay a quien atarla: se ignora", async () => {
+    db();
+    const res = await callRoute(post(started({ conversation: { id: "zconv-7" } })));
+
+    expect(await res.json()).toEqual({ ok: true, skipped: "conversacion sin persona" });
+  });
+
+  it("una cuenta que no es un canal activo responde 404", async () => {
+    db({ channels: [] });
+    const res = await callRoute(post(started()));
+
+    expect(res.status).toBe(404);
   });
 });
 

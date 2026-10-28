@@ -47,6 +47,8 @@ import {
   runInboundAutomation,
   upsertConversation,
   handleMessageSentEcho,
+  ensureZernioConversation,
+  type ZernioWebhookConversation,
 } from "@/lib/inbound";
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
@@ -215,6 +217,13 @@ async function handleWebhook(request: NextRequest) {
   // y la verificación del Bloque 2 lo tenga en cuenta (F2).
   if (parsed.event === "message.sent") {
     return handleMessageSentWebhook(parsed as MessageSentPayload, body, signature, eventId);
+  }
+
+  // Una conversacion nueva (00267): la crea aunque la persona todavia no haya
+  // escrito (por ejemplo, la empezo el negocio). Es el cinturon de seguridad del
+  // eco `message.sent`, que tambien la crea.
+  if (parsed.event === "conversation.started") {
+    return handleConversationStartedWebhook(parsed as ConversationStartedPayload, body, signature, eventId);
   }
 
   // Una reaccion del contacto (A3): se guarda aparte, no es un mensaje.
@@ -595,7 +604,90 @@ interface MessageSentPayload {
     attachments?: Array<{ type: string; originalType?: string; url: string; payload?: unknown }>;
     sentAt?: string;
   };
+  /** La persona del otro lado (en un saliente, el sender es el negocio). */
+  conversation?: ZernioWebhookConversation | null;
   account: { id: string };
+}
+
+interface ConversationStartedPayload {
+  id?: string;
+  event: "conversation.started";
+  conversation: ZernioWebhookConversation & { id: string };
+  account: { id: string };
+  startedAt?: string;
+}
+
+/**
+ * Una conversacion nueva en Zernio (`conversation.started`). Mismo esqueleto que
+ * los otros receptores: canal por la cuenta, firma, evento repetido, 200 enseguida
+ * y el trabajo en `after()`. Crea el contacto y la conversacion SIN mensaje (el
+ * primero llega por `message.received` o `message.sent`); si ya existe, no la toca.
+ * No dispara automatizaciones ni el agente: nadie escribio nada todavia.
+ */
+async function handleConversationStartedWebhook(
+  payload: ConversationStartedPayload,
+  rawBody: string,
+  signature: string | null,
+  eventId: string | null | undefined
+) {
+  const supabase = await createServiceClient();
+
+  const { data: channel } = await supabase
+    .from("channels")
+    .select("id, workspace_id, platform")
+    .eq("late_account_id", payload.account?.id)
+    .eq("is_active", true)
+    .single();
+
+  if (!channel) {
+    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+  }
+
+  const secret = await resolveWebhookSecret(supabase, channel);
+  if (!secret) {
+    console.error(
+      `[webhook] el workspace ${channel.workspace_id} no tiene el secreto en Vault; no puedo validar la firma`
+    );
+    return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, rawBody, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  if (!(await claimWebhookEvent(supabase, eventId))) {
+    return NextResponse.json({ ok: true, skipped: "evento repetido" });
+  }
+
+  const conversation = payload.conversation;
+  if (!conversation?.id || !conversation.participantId) {
+    return NextResponse.json({ ok: true, skipped: "conversacion sin persona" });
+  }
+
+  after(async () => {
+    try {
+      const { data: known } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("channel_id", channel.id)
+        .eq("late_conversation_id", conversation.id)
+        .maybeSingle();
+      if (known) return;
+
+      const created = await ensureZernioConversation({
+        supabase,
+        channel: { id: channel.id, workspace_id: channel.workspace_id, platform: channel.platform },
+        lateConversationId: conversation.id,
+        participant: conversation,
+        at: payload.startedAt || new Date().toISOString(),
+        preview: "",
+      });
+      if (!created) console.error("[webhook] conversation.started: no pude crear la conversacion");
+    } catch (err) {
+      console.error("Webhook conversation.started processing error:", err);
+    }
+  });
+
+  return NextResponse.json({ ok: true, queued: true });
 }
 
 /**
@@ -613,7 +705,7 @@ async function handleMessageSentWebhook(
 
   const { data: channel } = await supabase
     .from("channels")
-    .select("id, workspace_id")
+    .select("id, workspace_id, platform")
     .eq("late_account_id", payload.account.id)
     .eq("is_active", true)
     .single();
@@ -639,10 +731,13 @@ async function handleMessageSentWebhook(
 
   after(async () => {
     try {
+      // Con la persona de `conversation`: si el negocio empezo la conversacion y
+      // todavia no la tenemos, el eco la crea en vez de descartarse.
       const echo = await handleMessageSentEcho({
         supabase,
-        channel: { id: channel.id, workspace_id: channel.workspace_id },
+        channel: { id: channel.id, workspace_id: channel.workspace_id, platform: channel.platform },
         message: payload.message,
+        conversation: payload.conversation ?? null,
       });
 
       // El mismo helper que los entrantes (F3): un audio que la operadora mando

@@ -21,6 +21,7 @@ import { registerMetricsHandlers } from "@/lib/jobs/handlers/metrics-sync";
 import { registerMetaAdsHandlers } from "@/lib/jobs/handlers/meta-ads-sync";
 import { registerMetaAdThumbnailsHandler } from "@/lib/jobs/handlers/meta-ad-thumbnails";
 import { registerZernioAdOriginHandler } from "@/lib/jobs/handlers/zernio-ad-origin";
+import { registerInboxImportHandlers } from "@/lib/jobs/handlers/inbox-import";
 import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
 import { registerFlowWaitTimeoutHandler } from "@/lib/jobs/handlers/flow-wait-timeout";
@@ -96,6 +97,8 @@ export function registerPublishing(): void {
   registerMetaAdThumbnailsHandler();
   // El anuncio de origen de una conversacion de Instagram, desde Zernio (Tiron 2, A1).
   registerZernioAdOriginHandler();
+  // La importacion de conversaciones de Zernio, por partes y sin tope (00267).
+  registerInboxImportHandlers();
   // Agenda (Etapa 4): crear/mover/borrar el evento en Google y el fin de agenda.
   registerBookingJobHandlers();
   // Los avisos relativos a la hora de la reunion (F44).

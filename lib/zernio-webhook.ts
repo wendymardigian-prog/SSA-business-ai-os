@@ -31,6 +31,7 @@ export type WebhookEvent =
   | "message.received"
   | "comment.received"
   | "message.sent"
+  | "conversation.started"
   | "post.platform.published"
   | "post.platform.failed"
   | "account.connected"
@@ -60,6 +61,9 @@ export const SUBSCRIBED_EVENTS: WebhookEvent[] = [
   "message.received",
   "comment.received",
   "message.sent",
+  // Una conversacion nueva, aunque nadie haya escrito todavia (00267): la que
+  // empieza el negocio entra a la bandeja sin esperar la respuesta de la persona.
+  "conversation.started",
   "post.platform.published",
   "post.platform.failed",
   "account.connected",

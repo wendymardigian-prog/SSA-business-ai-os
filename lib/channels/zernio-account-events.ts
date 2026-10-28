@@ -21,7 +21,7 @@ import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webho
 import { getZernioKeyState } from "@/lib/integrations/zernio-key";
 import { createZernioClient } from "@/lib/zernio-client";
 import { syncZernioChannels, type ZernioListedAccount } from "@/lib/channels/zernio-channels";
-import { backfillInboxConversations } from "@/lib/inbox-sync";
+import { startInboxImports } from "@/lib/inbox-import/run";
 import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
 
 type Db = SupabaseClient<Database>;
@@ -129,13 +129,13 @@ export async function refreshZernioAccounts(service: Db, workspaceId: string, mo
         // hace el boton, pero solo para los canales recien creados.
         if (channels.createdChannels.length > 0) {
           try {
-            await backfillInboxConversations({
-              supabase: service,
+            // Un trabajo por canal nuevo, sin tope y con sus pasadas de 24 h y 7 dias (00267).
+            await startInboxImports(
               service,
-              zernio,
               workspaceId,
-              channels: channels.createdChannels,
-            });
+              channels.createdChannels.map((c) => c.id),
+              1,
+            );
           } catch (err) {
             console.error(`[webhook] no pude traer las conversaciones anteriores (${motivo}):`, err instanceof Error ? err.message : err);
           }

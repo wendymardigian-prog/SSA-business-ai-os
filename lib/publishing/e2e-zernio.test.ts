@@ -479,9 +479,13 @@ describe.each([
     const row = () => db.rows("social_posts").find((p) => p.platform === platform)!;
     expect(row().status).toBe("uploading");
     expect(row().publisher).toBe("zernio");
-    const publishJobs = db.rows("scheduled_jobs").filter((j) => j.type !== "metrics_sync");
+    // Guardar la clave tambien encola la importacion de conversaciones de cada
+    // canal (00267) y la lectura de metricas: no son de publicar.
+    const notPublishing = new Set(["metrics_sync", "inbox_import"]);
+    const publishJobs = db.rows("scheduled_jobs").filter((j) => !notPublishing.has(j.type as string));
     expect(publishJobs).toHaveLength(1);
     expect(publishJobs[0].type).toBe("content_provider_schedule");
+    expect(db.rows("scheduled_jobs").some((j) => j.type === "inbox_import")).toBe(true);
 
     // 4. El cron REAL sube la media y agenda el post en Zernio.
     const ran = await cron();

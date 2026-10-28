@@ -8,7 +8,7 @@ import {
   SUBSCRIBED_EVENTS,
   getOrCreateWorkspaceWebhookSecret,
 } from "@/lib/zernio-webhook";
-import { backfillInboxConversations } from "@/lib/inbox-sync";
+import { startInboxImports } from "@/lib/inbox-import/run";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
 import { syncZernioChannels, type ZernioListedAccount } from "@/lib/channels/zernio-channels";
@@ -80,26 +80,31 @@ export async function POST() {
       webhook = { error: message };
     }
 
-    // Backfill conversations that predate webhook registration (best-effort).
-    let conversationsImported = 0;
+    // Las conversaciones de Zernio que no estan en la bandeja (00267). Ya no se
+    // importan dentro de esta peticion: se encola un trabajo por canal que recorre
+    // TODO lo que Zernio tenga, por partes, y su avance se ve en la tarjeta del
+    // canal. Antes se importaban aca las 200 mas recientes y nada mas, asi que
+    // volver a sincronizar no traia ninguna de las que faltaban.
+    let importsStarted = 0;
+    let importsRunning = 0;
     try {
       const { data: activeChannels } = await supabase
         .from("channels")
-        .select("id, late_account_id, platform")
+        .select("id")
         .eq("workspace_id", workspace.id)
         .eq("provider", "zernio")
         .eq("is_active", true);
 
-      const { imported } = await backfillInboxConversations({
-        supabase,
-        service: await createServiceClient(),
-        zernio,
-        workspaceId: workspace.id,
-        channels: activeChannels ?? [],
-      });
-      conversationsImported = imported;
+      const result = await startInboxImports(
+        await createServiceClient(),
+        workspace.id,
+        (activeChannels ?? []).map((c: { id: string }) => c.id),
+        "auto",
+      );
+      importsStarted = result.started;
+      importsRunning = result.running;
     } catch (err) {
-      console.error("[channels/sync] inbox backfill failed:", err);
+      console.error("[channels/sync] no pude arrancar la importacion de conversaciones:", err);
     }
 
     // La lista que vuelve a la UI si lleva todos los canales, no solo los de
@@ -122,7 +127,8 @@ export async function POST() {
         created,
         updated,
         deactivated,
-        conversationsImported,
+        importsStarted,
+        importsRunning,
         skipped: [...new Set(skipped)],
         failed,
       },

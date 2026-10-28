@@ -98,6 +98,50 @@ Dos aclaraciones que suelen sorprender:
   dejaría el texto del lead en la base aparentando estar borrado, que es lo
   contrario de lo que la política se compromete a cumplir.
 
+## Las conversaciones que entran (importación de Zernio, 00267)
+
+Una conversación de Instagram entra a la tabla `conversations` por uno de estos
+caminos. Ninguno dispara automatizaciones ni el agente salvo el primero:
+
+1. **Un mensaje de la persona** (`message.received`): el de siempre.
+2. **El eco del primer mensaje del negocio** (`message.sent`): si el negocio
+   escribió primero (desde el celular, o una automatización de comentarios
+   mandó el DM) y la persona todavía no contestó, `handleMessageSentEcho` crea
+   el contacto y la conversación con la persona que Zernio manda en
+   `conversation` (`ensureZernioConversation`, sin no leídos). Antes se
+   descartaba con "conversación no encontrada".
+3. **El aviso de conversación nueva** (`conversation.started`): lo mismo, sin
+   mensaje. Es el cinturón de seguridad del 2. Una instalación que ya existía lo
+   recibe recién después de tocar **"Sincronizar canales"** una vez (así Zernio
+   suma el evento al webhook).
+4. **La importación** (trabajo `inbox_import` de la cola): trae las
+   conversaciones que la cuenta ya tenía. Recorre TODO lo que Zernio tenga,
+   activas y archivadas, de a 100 por vuelta, sin tope. Arranca al guardar la
+   clave de Zernio, al conectar una cuenta y con "Sincronizar canales", y se
+   repite sola **a las 24 horas y a los 7 días** de la primera, porque Zernio
+   sigue trayendo el historial viejo de Instagram un rato después de conectar y
+   no avisa cuando termina. Ante un 429 o un 5xx espera 1, 5 y 15 minutos y
+   vuelve a pedir la misma página; después queda "incompleta" con el motivo y
+   un botón **Reintentar** en la tarjeta del canal. El avance vive en
+   `channels.inbox_import` (lo lee y lo pinta `lib/channels/import-status.ts`);
+   las reglas, puras, en `lib/inbox-import/state.ts`, y lo que habla con la base y
+   con Zernio en `lib/inbox-import/run.ts`.
+
+**Antes de la 00267 la importación se cortaba en 200 por cuenta** y corría una
+sola vez: todo lo anterior a las 200 más recientes nunca entraba, y volver a
+sincronizar miraba las mismas 200. Se vio en un cliente (dos cuentas con
+exactamente 200 importadas) el 28/10/2026. Plan y diagnóstico en
+`docs/instagram-importacion/PLAN.md`.
+
+**El techo de Meta sigue:** de antes de conectar la cuenta, Zernio puede traer
+hasta 500 conversaciones. Más atrás no existen por API. Y las conversaciones de
+una cuenta donde OTRA app es la dueña del hilo (ManyChat como app principal)
+no le llegan a Zernio: eso se cambia en Meta, no acá.
+
+La importación trae la conversación, no sus mensajes viejos: en Instagram la
+bandeja lee el hilo en vivo de Zernio, así que se ven igual. Copiarlos a
+`messages` es el backfill de abajo.
+
 ## Backfill
 
 `scripts/backfill-zernio-messages.mjs` trae lo que la API todavía tenga. El
@@ -174,6 +218,7 @@ esperando. Test de regresión: `lib/flow-engine/resume-on-inbound.test.ts`.
 | `app/api/v1/messages/route.ts` | de dónde sale el hilo para la bandeja |
 | `lib/zernio-message.ts` | traduce la respuesta de Zernio (tres trampas documentadas ahí) |
 | `lib/backfill-messages.ts` | el backfill |
+| `lib/inbox-import/` y `lib/inbox-sync.ts` | la importación de conversaciones de Zernio (00267) |
 | `scripts/verify-message-persistence.mjs` | la verificación contra la base real |
 
 ## Los adjuntos (Mejoras de Chat)

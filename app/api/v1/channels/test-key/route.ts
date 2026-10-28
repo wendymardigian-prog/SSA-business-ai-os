@@ -8,7 +8,7 @@ import {
   SUBSCRIBED_EVENTS,
   getOrCreateWorkspaceWebhookSecret,
 } from "@/lib/zernio-webhook";
-import { backfillInboxConversations } from "@/lib/inbox-sync";
+import { startInboxImports } from "@/lib/inbox-import/run";
 import { isSupportedPlatform } from "@/lib/platforms";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
@@ -145,25 +145,26 @@ export async function POST(request: NextRequest) {
   // Un fallo no tumba el guardado: viaja como aviso.
   const warnings = await syncAccountsAfterChange(supabase, workspaceId, "guardar zernio");
 
-  // Backfill conversations that predate webhook registration so a
-  // first-time API-key setup fills the Inbox immediately (best-effort).
+  // Las conversaciones que la cuenta ya tenia (00267): se encola un trabajo por
+  // canal que trae TODO lo que Zernio tenga, por partes y fuera de esta peticion,
+  // y que se repite a las 24 horas y a los 7 dias (Zernio sigue trayendo historial
+  // viejo de Instagram un rato despues de conectar, sin avisar). Best-effort.
   try {
     const { data: activeChannels } = await supabase
       .from("channels")
-      .select("id, late_account_id, platform")
+      .select("id")
       .eq("workspace_id", workspaceId)
       .eq("provider", "zernio")
       .eq("is_active", true);
 
-    await backfillInboxConversations({
-      supabase,
-      service: await createServiceClient(),
-      zernio: createZernioClient(apiKey.trim()),
+    await startInboxImports(
+      await createServiceClient(),
       workspaceId,
-      channels: activeChannels ?? [],
-    });
+      (activeChannels ?? []).map((c: { id: string }) => c.id),
+      "auto",
+    );
   } catch (err) {
-    console.error("[test-key] inbox backfill failed:", err);
+    console.error("[test-key] no pude arrancar la importacion de conversaciones:", err);
   }
 
   return NextResponse.json({ accounts, warnings });

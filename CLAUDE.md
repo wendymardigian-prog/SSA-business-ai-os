@@ -315,7 +315,9 @@ La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e
 
 Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`.
 
-**Varios negocios en una instalacion (25/10/2026).** `00266_workspace_brand` (marca y tono por workspace, bucket publico `brand-assets`, usuario de agenda unico en toda la instalacion): **aplicada y registrada** el 25/10/2026 (version `20261025202218`), antes del deploy, con `verify-workspace-isolation --despues-de-00143` en verde. En un clon nuevo va ANTES de desplegar el codigo (el layout y los formularios leen sus columnas). Ver [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md). **La proxima libre es la `00267`** (confirmar con `list_migrations`).
+**Varios negocios en una instalacion (25/10/2026).** `00266_workspace_brand` (marca y tono por workspace, bucket publico `brand-assets`, usuario de agenda unico en toda la instalacion): **aplicada y registrada** el 25/10/2026 (version `20261025202218`), antes del deploy, con `verify-workspace-isolation --despues-de-00143` en verde. En un clon nuevo va ANTES de desplegar el codigo (el layout y los formularios leen sus columnas). Ver [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md).
+
+**Importacion de conversaciones de Instagram (28/10/2026).** `00267_channel_inbox_import` (`channels.inbox_import`, el avance de la importacion): aditiva, **escrita y SIN aplicar todavia**. Va ANTES de desplegar el codigo (la cola y la pantalla de Canales la leen). Ver la seccion "Importacion de conversaciones de Zernio" mas abajo. **La proxima libre es la `00268`** (confirmar con `list_migrations`).
 
 **Extra I (15/10/2026).** `00224` a `00232` estan **aplicadas y registradas** (metodos de pago, gastos y finanzas, atribucion organica y comisiones); `00233`, `00234` y `00235` se aplicaron el **15/10/2026, despues del merge** y estan **aplicadas y registradas** (versiones `20261015232110`, `20261015232347` y `20261015232649`; ver las cuatro secciones del Extra I mas abajo). **La proxima libre es la `00236`.**
 
@@ -1555,6 +1557,21 @@ Responsable de cada conversación (a mano y con reglas por cuenta), la marca «C
 ## Migraciones
 
 `00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. La `00259` a la `00261` son de «Esperando respuesta» (ver esa sección): **la próxima libre es la `00262`** (confirmar con `list_migrations`).
+
+# Importacion de conversaciones de Zernio (28/10/2026)
+
+Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el negocio. Diagnostico y plan en `docs/instagram-importacion/PLAN.md`; como entra cada conversacion, en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).
+
+## Lo que no se puede romper
+
+- **La importacion es un trabajo de la cola, por partes y sin tope** (`inbox_import`, de a 100 por vuelta, activas y despues archivadas). Nunca vuelve a correr dentro de una peticion: con miles de conversaciones tarda minutos. Antes se cortaba en 200 y volver a sincronizar miraba las mismas 200.
+- **Una corrida a la vez por canal.** Cada corrida tiene su `run_id` y cada vuelta su `step`; el avance se guarda con un UPDATE condicional sobre los dos (`writeStateIfCurrent`). Una vuelta vieja o repetida por la cola no escribe ni encola. `startInboxImport` no arma otra mientras una corre (salvo que lleve media hora sin novedades).
+- **No lanza por un fallo de Zernio**: un 429, un 5xx, la red, Vault sin responder o `meta.failedAccounts` esperan 1, 5 y 15 minutos y vuelven a pedir la MISMA pagina; despues queda `partial` con el motivo y "Reintentar". Un 401/403 o la falta de clave cortan enseguida.
+- **Tres pasadas**: al conectar (o el primer "Sincronizar"), a las 24 horas y a los 7 dias (`inbox_import_pass`). Zernio trae el historial viejo en segundo plano sin avisar; una sola pasada no alcanza. "Sincronizar" en un canal ya importado es una pasada suelta, sin repeticiones.
+- **Lo importado es historia**: no dispara automatizaciones, el agente ni las reglas de asignacion; no pisa una conversacion que ya mantiene el webhook (`ignoreDuplicates` sobre `(channel_id, contact_id)`). Escribe el cliente de servicio, con el workspace del CANAL (que se busca con el de la sesion de quien la arranco).
+- **Una conversacion que empieza el negocio entra igual**: el eco `message.sent` sin conversacion la crea con la persona de `payload.conversation` (`ensureZernioConversation`, regla unica de contactos, sin no leidos, sin sellar `last_interaction_at`); `conversation.started` hace lo mismo sin mensaje. Sin `participantId`, se descarta como antes.
+- **`upsertConversation` no pierde un mensaje por una carrera**: si el insert choca (23505) porque otra llegada creo la conversacion en el mismo instante, usa la que gano.
+- **Despues del deploy, cada instalacion toca "Sincronizar canales" una vez**: arranca la importacion completa y suma `conversation.started` al webhook de Zernio.
 
 # Seguridad
 

@@ -1437,6 +1437,8 @@ export interface Database {
           messaging_window_hours: number | null;
           /** La direccion que recibe y desde la que se responde (00087). */
           email_address: string | null;
+          /** Avance de la importacion de conversaciones desde Zernio (00267, lib/inbox-import/state.ts). */
+          inbox_import: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -1459,6 +1461,7 @@ export interface Database {
           last_error?: string | null;
           disconnected_notified_at?: string | null;
           messaging_window_hours?: number | null;
+          inbox_import?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1479,6 +1482,7 @@ export interface Database {
           last_error?: string | null;
           disconnected_notified_at?: string | null;
           messaging_window_hours?: number | null;
+          inbox_import?: Json | null;
           updated_at?: string;
         };
         Relationships: [
