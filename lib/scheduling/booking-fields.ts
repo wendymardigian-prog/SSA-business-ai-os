@@ -127,6 +127,29 @@ export function uniqueIdentifier(base: string, existing: string[]): string {
   }
 }
 
+/**
+ * La pregunta nueva que agrega el constructor. Su `id` (con el que la pantalla
+ * la edita) tiene que ser distinto de TODOS los `id` y de todos los
+ * `identifier`: el `id` de una pregunta nace igual a su identificador, pero el
+ * identificador despues cambia con la etiqueta y el `id` no. Mirar solo los
+ * identificadores dejaba a la segunda "Nueva pregunta" con el mismo `id` que la
+ * primera, y escribir en una cambiaba las dos.
+ */
+export function newCustomField(type: BookingFieldType, fields: BookingField[]): BookingField {
+  const label = "Nueva pregunta";
+  const taken = fields.flatMap((f) => [f.id, f.identifier]);
+  const identifier = uniqueIdentifier(identifierFromLabel(label), taken);
+  return {
+    id: identifier,
+    type,
+    system: false,
+    label,
+    visibility: "optional",
+    identifier,
+    ...(type === "select" || type === "multiselect" ? { options: ["Opción 1", "Opción 2"] } : {}),
+  };
+}
+
 const optionsSchema = z
   .array(z.string().trim().min(1, "Una opción está vacía").max(OPTION_MAX, tooLong("Cada opción", OPTION_MAX)))
   .min(MIN_OPTIONS, `Cargá al menos ${MIN_OPTIONS} opciones`)
