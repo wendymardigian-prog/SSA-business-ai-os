@@ -179,7 +179,8 @@ const HISTORY_SKIP = [
 ];
 
 const ANYWHERE = [
-  { rule: "nombre propio", re: /\bWendy\b/i },
+  // La palabra va partida: la plantilla de clientes no puede tener el nombre entero (ver export-template.mjs).
+  { rule: "nombre propio", re: new RegExp("\\bWen" + "dy\\b", "i") },
   { rule: "PR", re: /\bPR\s*#\s*\d+/ },
 ];
 
