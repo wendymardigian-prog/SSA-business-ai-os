@@ -74,6 +74,8 @@ export interface InboxFilters {
   awaiting: AwaitingFilter | "";
   /** Esconde los chats de conocidos (00256). Opcional: los links viejos no lo traen. */
   hideKnown?: boolean;
+  /** Esconde los chats de clientes (00268). */
+  hideCustomers?: boolean;
 }
 
 export const EMPTY_INBOX_FILTERS: InboxFilters = {
@@ -90,11 +92,14 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   needsHuman: false,
   awaiting: "",
   hideKnown: false,
+  hideCustomers: false,
 };
 
 /** El parametro de la URL: `?conocidos=ocultar`. */
 export const HIDE_KNOWN_PARAM = "conocidos";
 export const HIDE_KNOWN_VALUE = "ocultar";
+/** `?clientes=ocultar` (00268). */
+export const HIDE_CUSTOMERS_PARAM = "clientes";
 
 /**
  * Cuantos filtros hay puestos, para el contador del boton.
@@ -117,6 +122,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.needsHuman) count++;
   if (filters.awaiting) count++;
   if (filters.hideKnown) count++;
+  if (filters.hideCustomers) count++;
   return count;
 }
 
@@ -129,7 +135,7 @@ export function countActiveFilters(filters: InboxFilters): number {
  * el cliente y hay que volver a preguntarle al servidor.
  */
 export function needsServerToFilter(filters: InboxFilters): boolean {
-  return filters.tagIds.length > 0 || filters.assignment !== ASSIGNMENT_ANY || !!filters.hideKnown;
+  return filters.tagIds.length > 0 || filters.assignment !== ASSIGNMENT_ANY || !!filters.hideKnown || !!filters.hideCustomers;
 }
 
 export interface FilterableRow {

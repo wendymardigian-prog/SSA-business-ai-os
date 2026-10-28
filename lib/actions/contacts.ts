@@ -337,6 +337,77 @@ export async function setKnown(contactId: string, value: boolean): Promise<Conta
   }
 
   revalidatePath("/dashboard/inbox");
+  revalidatePath("/dashboard/contacts");
+  revalidatePath(`/dashboard/contacts/${contactId}`);
+  return { ok: true, contactId };
+}
+
+/**
+ * Marca o quita "Cliente" (00268): hermana de `setKnown`, con los mismos
+ * efectos (el trigger `contacts_customer_effects` asigna sus chats a la persona
+ * configurada para cada cuenta, si hay, y apaga el agente). Tambien se marca
+ * sola al cobrar un pago de una venta (`payments_mark_customer`).
+ *
+ * Marcar pide `contacts.edit`; quitar, haberla puesto o `contacts.delete` (una
+ * marca que vino de un cobro no tiene autor: solo la quita un administrador).
+ */
+export async function setCustomer(contactId: string, value: boolean): Promise<ContactActionResult> {
+  if (typeof contactId !== "string" || typeof value !== "boolean") return { ok: false, error: "Pedido inválido." };
+  const ctx = await getPermissionAction("contacts.edit");
+  if (!ctx) return { ok: false, error: "No tenés permiso para editar contactos" };
+  const { workspace, supabase, user } = ctx;
+
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("id, is_customer, customer_marked_by")
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!contact) return { ok: false, error: "No encontré ese contacto" };
+  if (contact.is_customer === value) return { ok: true, contactId };
+  if (!value && !canUnmarkKnown({ viewerId: user.id, markedBy: contact.customer_marked_by, canDeleteContacts: ctx.can("contacts.delete") })) {
+    return { ok: false, error: "Solo quien lo marcó (o un administrador) puede quitar la marca de cliente" };
+  }
+
+  const service = await createServiceClient();
+  const { data: before } = await service.from("conversations").select("id, assigned_to").eq("contact_id", contactId).is("deleted_at", null);
+
+  const { data: updated, error } = await supabase
+    .from("contacts")
+    .update({
+      is_customer: value,
+      customer_marked_by: value ? user.id : null,
+      customer_marked_at: value ? new Date().toISOString() : null,
+      customer_source: value ? "manual" : null,
+    })
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .select("id");
+  if (error || !updated?.length) {
+    console.error("[contacts] no pude cambiar la marca de cliente:", error?.message ?? "sin filas");
+    return { ok: false, error: "No pude cambiar la marca. Probá de nuevo." };
+  }
+
+  if (value) {
+    await pauseSequencesForOptOut(workspace.id, contactId, user.id, "customer");
+    const previous = new Map((before ?? []).map((c) => [c.id, c.assigned_to]));
+    const { data: after } = await service.from("conversations").select("id, assigned_to").eq("contact_id", contactId).is("deleted_at", null);
+    for (const conversation of after ?? []) {
+      if (conversation.assigned_to && conversation.assigned_to !== previous.get(conversation.id)) {
+        await notifyConversationAssigned(service, {
+          workspaceId: workspace.id,
+          conversationId: conversation.id,
+          assigneeId: conversation.assigned_to,
+          actorId: user.id,
+          reason: "Es un cliente: te llega a vos por la cuenta por la que escribe.",
+        });
+      }
+    }
+  }
+
+  revalidatePath("/dashboard/inbox");
+  revalidatePath("/dashboard/contacts");
   revalidatePath(`/dashboard/contacts/${contactId}`);
   return { ok: true, contactId };
 }
@@ -352,7 +423,7 @@ async function pauseSequencesForOptOut(
   workspaceId: string,
   contactId: string,
   userId: string,
-  reason: "opt_out" | "known" = "opt_out",
+  reason: "opt_out" | "known" | "customer" = "opt_out",
 ): Promise<void> {
   try {
     const service = await createServiceClient();

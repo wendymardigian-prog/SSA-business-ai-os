@@ -141,8 +141,8 @@ misma persona dan un solo contacto. Se reconoce a una persona por un dato fuerte
 (canal, telefono, WhatsApp, email o usuario de una red), nunca por el nombre.
 
 Tambien: los canales vinculados a cada contacto, etiquetas (algunas con efecto),
-campos personalizados, notas, el estado de setter y de vendedor con su historial, la
-marca "conocido", el "no contactar" y las importaciones por CSV. Un Member solo ve los
+campos personalizados, notas, el estado de setter y de vendedor con su historial, las
+marcas "conocido" y "cliente", el "no contactar" y las importaciones por CSV. Un Member solo ve los
 contactos que le corresponden (can_see_contact).`,
     tables: [
       "public.contacts",
@@ -166,6 +166,8 @@ contactos que le corresponden (can_see_contact).`,
       "public.contacts_emit_deanonymized",
       "public.contacts_known_effects",
       "public.contacts_known_on_merge",
+      "public.contacts_customer_effects",
+      "public.contacts_customer_on_merge",
       "public.contact_tags_apply_effects",
       "public.contact_tags_emit",
       "public.contact_custom_fields_emit",
@@ -178,6 +180,7 @@ contactos que le corresponden (can_see_contact).`,
       "private.contact_custom_fields_typed",
       "private.default_contact_status_settings",
       "private.known_assignee",
+      "private.customer_assignee",
       "private.tag_effect_apply",
       "private.tag_effect_release",
     ],
@@ -212,8 +215,10 @@ que su rol tiene en esa cuenta (can_see_conversation).`,
       "public.conversation_rule_pick",
       "public.assign_new_conversation",
       "public.conversations_inherit_known",
+      "public.conversations_inherit_customer",
       "public.conversations_inherit_tag_effects",
       "public.conversations_keep_known_marker",
+      "public.conversations_keep_customer_marker",
       "public.conversations_keep_tag_marker",
       "public.messages_discard_answered_drafts",
       "public.messages_fill_origin",

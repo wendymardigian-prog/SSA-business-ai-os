@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, HeartHandshake, UserRoundSearch } from "lucide-react";
+import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, UserRoundSearch, X } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { noReplyBadge } from "@/lib/inbox/awaiting";
 import { createClient } from "@/lib/supabase/client";
@@ -23,6 +23,11 @@ import type { ConversationRow } from "@/lib/inbox/types";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import { assigneeName } from "@/lib/inbox/assignee";
 import { knownLabel } from "@/lib/inbox/known";
+import { contactMarks, customerLabel } from "@/lib/inbox/marks";
+import { planRowActions, type RowAction } from "@/lib/inbox/row-actions";
+import { setCustomer, setKnown } from "@/lib/actions/contacts";
+import { MarkBadge } from "@/components/contacts/mark-badge";
+import { ConversationRowMenu } from "@/components/inbox/conversation-row-menu";
 import { colorOf, initialsOf } from "@/lib/shared/people";
 import { Avatar } from "@/components/ui/filter-menu";
 import { Tip } from "@/components/ui/tooltip";
@@ -57,6 +62,9 @@ export function ConversationList({
   draftConversationIds = [],
   accounts,
   members = [],
+  currentUserId = "",
+  canEditContacts = false,
+  canDeleteContacts = false,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -76,9 +84,42 @@ export function ConversationList({
   accounts?: InboxAccountsInfo;
   /** El equipo: el circulo del responsable de cada conversacion (00255). */
   members?: { userId: string; label: string }[];
+  /** Para el "⋯" de cada fila: marcar conocido o cliente sin abrir el chat. */
+  currentUserId?: string;
+  canEditContacts?: boolean;
+  canDeleteContacts?: boolean;
 }) {
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
+  // El "⋯" de una fila: que fila esta guardando y el ultimo error.
+  const [rowPending, setRowPending] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  async function runRowAction(conversation: Conversation, action: Exclude<RowAction, "openContact">) {
+    const contactId = conversation.contact_id;
+    if (!contactId) return;
+    setRowPending(conversation.id);
+    setRowError(null);
+    try {
+      const value = action === "markKnown" || action === "markCustomer";
+      const isKnownAction = action === "markKnown" || action === "unmarkKnown";
+      const result = isKnownAction ? await setKnown(contactId, value) : await setCustomer(contactId, value);
+      if (!result.ok) {
+        setRowError(result.error);
+        return;
+      }
+      // Al instante en todas las filas del mismo contacto; el servidor confirma con el refresh.
+      const patch = isKnownAction
+        ? { is_known: value, known_marked_by: value ? currentUserId : null }
+        : { is_customer: value, customer_marked_by: value ? currentUserId : null, customer_source: value ? "manual" : null };
+      setConversations((prev) =>
+        prev.map((c) => (c.contact_id === contactId && c.contacts ? { ...c, contacts: { ...c.contacts, ...patch } } : c)),
+      );
+      router.refresh();
+    } finally {
+      setRowPending(null);
+    }
+  }
   // Relative timestamps depend on the client's clock/locale, which differ from the
   // server's during SSR and trigger a hydration mismatch (React #418, which crashes
   // the inbox in production). Defer time rendering until after mount so the server
@@ -189,6 +230,15 @@ export function ConversationList({
         <InboxStatusControls filters={filters} workspaceId={workspaceId} draftCounts={draftCounts} />
       </div>
 
+      {rowError && (
+        <div role="alert" className="flex items-start gap-2 border-b border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+          <span className="flex-1">{rowError}</span>
+          <button type="button" onClick={() => setRowError(null)} aria-label="Cerrar el aviso" className="rounded p-0.5 hover:bg-red-500/20">
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      )}
+
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
         {conversations.length === 0 ? (
@@ -230,10 +280,27 @@ export function ConversationList({
                 <span className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
               </Link>
             )}
+            {/* El "⋯" de la fila: marcar conocido o cliente sin abrir el chat. Va
+                afuera del boton de la fila (un boton no puede ir adentro de otro). */}
+            <div className="absolute right-1 top-1/2 z-10 -translate-y-1/2">
+              <ConversationRowMenu
+                actions={planRowActions({
+                  contactId: conversation.contact_id,
+                  contact: conversation.contacts,
+                  viewerId: currentUserId,
+                  canEditContacts,
+                  canDeleteContacts,
+                })}
+                contactId={conversation.contact_id}
+                contactName={conversation.contacts?.display_name ?? "este contacto"}
+                pending={rowPending === conversation.id}
+                onAction={(action) => void runRowAction(conversation, action)}
+              />
+            </div>
             <button
               onClick={() => onSelect(conversation)}
               className={cn(
-                "flex w-full items-start gap-3 border-b border-border p-3 text-left transition-colors hover:bg-accent/50",
+                "flex w-full items-start gap-3 border-b border-border py-3 pl-3 pr-9 text-left transition-colors hover:bg-accent/50",
                 selectedId === conversation.id && "bg-accent"
               )}
             >
@@ -264,15 +331,22 @@ export function ConversationList({
                         aria-label="No contactar"
                       />
                     )}
-                    {/* Conocido (00256): que el equipo lo reconozca sin abrirlo. */}
-                    {conversation.contacts?.is_known && (
-                      <HeartHandshake
-                        className="h-3.5 w-3.5 flex-shrink-0 text-violet-600 dark:text-violet-400"
-                        aria-label={knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}
-                      >
-                        <title>{knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}</title>
-                      </HeartHandshake>
-                    )}
+                    {/* Conocido (00256) y Cliente (00268): que el equipo lo reconozca sin abrirlo. */}
+                    {contactMarks(conversation.contacts).map((mark) => (
+                      <MarkBadge
+                        key={mark}
+                        mark={mark}
+                        size="xs"
+                        title={
+                          mark === "known"
+                            ? knownLabel(assigneeName(members, conversation.contacts?.known_marked_by ?? null))
+                            : customerLabel(
+                                assigneeName(members, conversation.contacts?.customer_marked_by ?? null),
+                                conversation.contacts?.customer_source,
+                              )
+                        }
+                      />
+                    ))}
                   </p>
                   <span className="flex flex-shrink-0 items-center gap-1.5">
                     {/* El responsable del chat (00255): quien la mira sabe de quien es sin abrirla. */}

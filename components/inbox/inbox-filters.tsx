@@ -12,6 +12,7 @@ import {
   ASSIGNMENT_MINE,
   HIDE_KNOWN_PARAM,
   HIDE_KNOWN_VALUE,
+  HIDE_CUSTOMERS_PARAM,
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
@@ -238,13 +239,19 @@ export function InboxFiltersMenu({
           </div>
         </FilterGroup>
 
-        <FilterGroup label="Conocidos">
+        <FilterGroup label="Conocidos y clientes">
           <div className="flex flex-wrap gap-1.5">
             <Chip
               active={!!filters.hideKnown}
               onClick={() => setParam(HIDE_KNOWN_PARAM, filters.hideKnown ? "" : HIDE_KNOWN_VALUE)}
             >
               Ocultar conocidos
+            </Chip>
+            <Chip
+              active={!!filters.hideCustomers}
+              onClick={() => setParam(HIDE_CUSTOMERS_PARAM, filters.hideCustomers ? "" : HIDE_KNOWN_VALUE)}
+            >
+              Ocultar clientes
             </Chip>
           </div>
         </FilterGroup>

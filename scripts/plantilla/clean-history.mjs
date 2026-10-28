@@ -276,6 +276,11 @@ export const COMMENT_REWRITES = {
     "Cuando se actualizo avatar_url por ultima vez. Decide si refrescar una foto storage (cada 30 dias) y la retencion (borra la de un contacto storage sin mensajes en 6 meses).",
   "column public.contacts.is_known":
     "Conocido: alguien personal. Apaga el agente, pausa secuencias y sus chats van a la persona de cada cuenta (workspaces.known_contacts_settings).",
+  "column public.contacts.is_customer":
+    "Cliente: ya compro. Mismos efectos que is_known: apaga el agente, pausa secuencias y sus chats van a la persona configurada por cuenta (workspaces.customer_contacts_settings).",
+  "column public.contacts.customer_source": "De donde vino la marca de cliente: manual (una persona) o sale (un cobro).",
+  "column public.conversations.agent_disabled_by_customer":
+    "El agente lo apago la marca de cliente. Se limpia sola si una persona cambia el estado del agente.",
   "column public.contacts.next_followup_date": "Proximo seguimiento. Se carga a mano o lo programa el agente.",
   "column public.contacts.notes":
     "Notas internas del contacto, en un solo texto. Quien cambio que queda en audit_log.",
@@ -342,6 +347,8 @@ export const COMMENT_REWRITES = {
     "Nombre del negocio que ven los leads (agenda, emails). NULL = el de la instalacion (NEXT_PUBLIC_BRAND_NAME).",
   "column public.workspaces.known_contacts_settings":
     'A quien van los chats de un conocido: {"by_channel": {"<channel_id>": "<user_id>"}, "default_user_id": "<user_id>"}. Sin nada, al Owner.',
+  "column public.workspaces.customer_contacts_settings":
+    'A quien van los chats de un cliente: {"by_channel": {"<channel_id>": "<user_id>"}, "default_user_id": "<user_id>"}. Sin nada, el responsable no cambia.',
   "column public.workspaces.opt_out_phrases":
     'Frases que marcan un contacto como "no contactar" cuando aparecen en un mensaje entrante. Se editan desde Ajustes. Se comparan por palabra completa, sin acentos ni mayusculas.',
   "column public.workspaces.scheduling_auto_create_flows": "Crear los 7 flujos sugeridos (apagados) al crear un evento.",

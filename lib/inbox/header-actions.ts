@@ -19,9 +19,9 @@
 
 import type { ConversationStatus } from "@/lib/types/database";
 
-export type MenuAction = "snooze" | "reopen" | "createTask" | "noReply" | "markKnown" | "unmarkKnown"; // @plantilla-quitar(tareas)
-// @plantilla-sin(tareas): export type MenuAction = "snooze" | "reopen" | "noReply" | "markKnown" | "unmarkKnown";
-export type NoteKey = "status" | "flowsPaused" | "agentOffByTag" | "draftMode" | "known";
+export type MenuAction = "snooze" | "reopen" | "createTask" | "noReply" | "markKnown" | "unmarkKnown" | "markCustomer" | "unmarkCustomer"; // @plantilla-quitar(tareas)
+// @plantilla-sin(tareas): export type MenuAction = "snooze" | "reopen" | "noReply" | "markKnown" | "unmarkKnown" | "markCustomer" | "unmarkCustomer";
+export type NoteKey = "status" | "flowsPaused" | "agentOffByTag" | "draftMode" | "known" | "customer";
 
 export interface HeaderInput {
   status: ConversationStatus;
@@ -40,6 +40,8 @@ export interface HeaderInput {
    * pide `contacts.edit`; quitar, haberla puesto o `contacts.delete`.
    */
   known?: { isKnown: boolean; canMark: boolean; canUnmark: boolean };
+  /** Cliente (00268): mismas reglas que el conocido. */
+  customer?: { isCustomer: boolean; canMark: boolean; canUnmark: boolean };
 }
 
 export interface HeaderPlan {
@@ -64,12 +66,15 @@ export function planHeaderActions(input: HeaderInput): HeaderPlan {
   if (input.canMarkNoReply) menu.push("noReply");
   if (input.known && !input.known.isKnown && input.known.canMark) menu.push("markKnown");
   if (input.known?.isKnown && input.known.canUnmark) menu.push("unmarkKnown");
+  if (input.customer && !input.customer.isCustomer && input.customer.canMark) menu.push("markCustomer");
+  if (input.customer?.isCustomer && input.customer.canUnmark) menu.push("unmarkCustomer");
 
   const notes: NoteKey[] = ["status"];
   if (input.isAutomationPaused) notes.push("flowsPaused");
   if (input.agentDisabledByTag) notes.push("agentOffByTag");
   if (input.draftMode) notes.push("draftMode");
   if (input.known?.isKnown) notes.push("known");
+  if (input.customer?.isCustomer) notes.push("customer");
 
   return { primary, menu, notes, hasAlert: notes.length > 1 };
 }
@@ -86,6 +91,10 @@ export const NOTE_TEXT: Record<Exclude<NoteKey, "status">, { title: string; deta
   known: {
     title: "Conocido",
     detail: "Es un contacto personal: el agente no le responde y no recibe secuencias. Las automatizaciones siguen corriendo.",
+  },
+  customer: {
+    title: "Cliente",
+    detail: "Ya compró: el agente no le responde y no recibe secuencias. Las automatizaciones siguen corriendo.",
   },
   draftMode: {
     title: "Modo borrador",

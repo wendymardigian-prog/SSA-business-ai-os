@@ -4,6 +4,9 @@ import { ArrowLeft, Calendar, CalendarClock } from "lucide-react";
 
 import { getWorkspace } from "@/lib/workspace";
 import { requirePermission } from "@/lib/auth/guards";
+import { MarkBadge } from "@/components/contacts/mark-badge";
+import { MarkSection } from "@/components/contacts/mark-section";
+import { contactMarks, markLabel } from "@/lib/inbox/marks";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
@@ -16,7 +19,6 @@ import { getDmLink, platformHandles } from "@/lib/contacts/links";
 
 import {
   DoNotContactBadge,
-  KnownBadge,
   EmptyHint,
   Section,
   TemperatureBadge,
@@ -456,7 +458,18 @@ export default async function ContactDetailPage({
                 />
                 <TemperatureBadge value={temperature} />
                 {contact.do_not_contact && <DoNotContactBadge />}
-                {contact.is_known && <KnownBadge />}
+                {/* Conocido (00256) y Cliente (00268). */}
+                {contactMarks(contact).map((mark) => (
+                  <MarkBadge
+                    key={mark}
+                    mark={mark}
+                    title={markLabel(
+                      mark,
+                      labels.get((mark === "known" ? contact.known_marked_by : contact.customer_marked_by) ?? "") ?? null,
+                      contact.customer_source,
+                    )}
+                  />
+                ))}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
@@ -635,6 +648,29 @@ export default async function ContactDetailPage({
                 locked={!!contact.assignment_locked_at}
                 automaticRule={automaticRulesFromAudit(auditRes.data ?? [])}
               />
+            </Section>
+
+            <Section title="Conocido o cliente">
+              <div className="space-y-5 rounded-lg border border-border p-4">
+                {(["customer", "known"] as const).map((mark) => {
+                  const by = mark === "known" ? contact.known_marked_by : contact.customer_marked_by;
+                  return (
+                    <MarkSection
+                      key={mark}
+                      mark={mark}
+                      contactId={contact.id}
+                      marked={mark === "known" ? contact.is_known : contact.is_customer}
+                      markedBy={by}
+                      markedByName={by ? (labels.get(by) ?? null) : null}
+                      markedAt={mark === "known" ? contact.known_marked_at : contact.customer_marked_at}
+                      source={mark === "customer" ? contact.customer_source : null}
+                      currentUserId={user.id}
+                      canEdit={canEditContact}
+                      canDeleteContacts={perms.can("contacts.delete")}
+                    />
+                  );
+                })}
+              </div>
             </Section>
 
             {/* @plantilla-desde(tareas) */}

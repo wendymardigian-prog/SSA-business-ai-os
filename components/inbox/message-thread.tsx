@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, HeartHandshake, Copy } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, Copy } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -26,7 +26,9 @@ import { CreateTaskButton } from "@/components/tasks/create-task-button"; // @pl
 import { ConversationAssignee } from "@/components/inbox/conversation-assignee";
 import { canUnmarkKnown, knownLabel } from "@/lib/inbox/known";
 import { assigneeName } from "@/lib/inbox/assignee";
-import { setKnown } from "@/lib/actions/contacts";
+import { setCustomer, setKnown } from "@/lib/actions/contacts";
+import { customerLabel } from "@/lib/inbox/marks";
+import { MarkBadge } from "@/components/contacts/mark-badge";
 import { prepareStickerSend, saveStickerFromMessage } from "@/lib/actions/stickers";
 import { stickerCapability } from "@/lib/channels/stickers";
 import { StickerPicker } from "@/components/inbox/sticker-picker";
@@ -1231,7 +1233,29 @@ export function MessageThread({
           canUnmark: canEditContacts && canUnmarkKnown({ viewerId: currentUserId, markedBy: conversation.contacts?.known_marked_by ?? null, canDeleteContacts }),
         }
       : undefined,
+    customer: conversation.contact_id
+      ? {
+          isCustomer: !!conversation.contacts?.is_customer,
+          canMark: canEditContacts,
+          canUnmark: canEditContacts && canUnmarkKnown({ viewerId: currentUserId, markedBy: conversation.contacts?.customer_marked_by ?? null, canDeleteContacts }),
+        }
+      : undefined,
   });
+
+  async function toggleCustomer(value: boolean) {
+    if (!conversation?.contact_id) return;
+    setStatusUpdating(value ? "customer" : "uncustomer");
+    try {
+      const result = await setCustomer(conversation.contact_id, value);
+      if (!result.ok) {
+        setMediaError(result.error);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setStatusUpdating(null);
+    }
+  }
 
   async function toggleKnown(value: boolean) {
     if (!conversation?.contact_id) return;
@@ -1294,11 +1318,19 @@ export function MessageThread({
                 No contactar
               </p>
             )}
-            {/* Conocido (00256): quien lo abrio igual sabe que es personal. */}
-            {conversation.contacts?.is_known && (
-              <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
-                <HeartHandshake className="h-3 w-3" aria-hidden />
-                {knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))}
+            {/* Conocido (00256) y Cliente (00268): quien lo abrio igual sabe que no es un lead. */}
+            {(conversation.contacts?.is_known || conversation.contacts?.is_customer) && (
+              <p className="mt-0.5 flex flex-wrap items-center gap-1">
+                {conversation.contacts.is_customer && (
+                  <MarkBadge
+                    mark="customer"
+                    size="xs"
+                    title={customerLabel(assigneeName(members, conversation.contacts.customer_marked_by ?? null), conversation.contacts.customer_source)}
+                  />
+                )}
+                {conversation.contacts.is_known && (
+                  <MarkBadge mark="known" size="xs" title={knownLabel(assigneeName(members, conversation.contacts.known_marked_by ?? null))} />
+                )}
               </p>
             )}
           </div>
@@ -1386,6 +1418,8 @@ export function MessageThread({
               else if (action === "noReply") void markNoReply();
               else if (action === "markKnown") void toggleKnown(true);
               else if (action === "unmarkKnown") void toggleKnown(false);
+              else if (action === "markCustomer") void toggleCustomer(true);
+              else if (action === "unmarkCustomer") void toggleCustomer(false);
               else setTaskOpen(true); // @plantilla-quitar(tareas)
             }}
           />
