@@ -227,7 +227,16 @@ export function BookManualDialog({
                 setTitle(e.target.value);
                 setEventListOpen(true);
               }}
-              onFocus={() => setEventListOpen(true)}
+              // La lista se abre al tocar el campo, al escribir o con la flecha abajo; no al abrir el
+              // modal (el foco arranca aca y la lista tapaba el campo del invitado).
+              onClick={() => setEventListOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") setEventListOpen(true);
+                else if (e.key === "Escape" && eventListOpen) {
+                  e.stopPropagation();
+                  setEventListOpen(false);
+                }
+              }}
               onBlur={() => setTimeout(() => setEventListOpen(false), 150)}
               placeholder="Ej: Llamada con Ana, o elegí un evento"
               autoComplete="off"

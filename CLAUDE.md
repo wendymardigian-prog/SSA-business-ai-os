@@ -1579,7 +1579,7 @@ Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el
 - La 00268 redefine `tag_effect_release`, `contacts_known_effects` y `assign_new_conversation` (copias con el bloque «00268» marcado): sacar una etiqueta o la marca de conocido ya no prende el agente si sigue otra marca.
 - **El nombre y los datos del contacto se editan con un lápiz siempre visible** (`InlineField`), en la ficha y en el panel de la bandeja (sección «Datos»).
 - **Agendar a mano es un solo modal** (00269, `event_types.is_internal`): ver «Agendar a mano en un solo paso» en [docs/agendamiento.md](docs/agendamiento.md).
-- **00268 y 00269 son aditivas y van ANTES de desplegar el código** (la bandeja y la Agenda leen sus columnas). **La próxima libre es la `00270`** (confirmar con `list_migrations` y las ramas locales).
+- **00268 y 00269 son aditivas y van ANTES de desplegar el código** (la bandeja y la Agenda leen sus columnas): **aplicadas y registradas** el 28/10/2026 (versiones `20261028233701` y `20261028233702`), después de ensayarlas en una transacción que se deshizo sola. **La próxima libre es la `00270`** (confirmar con `list_migrations` y las ramas locales).
 
 # Seguridad
 
