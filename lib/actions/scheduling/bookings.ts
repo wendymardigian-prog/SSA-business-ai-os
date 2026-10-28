@@ -10,6 +10,8 @@ import { evaluateTransition, groupOf, isBookingStatus, TRANSITION_REASON_TEXT } 
 import { cancelBooking, type CancelStatus } from "@/lib/scheduling/booking/cancel";
 import { rescheduleBooking } from "@/lib/scheduling/booking/reschedule";
 import { createBooking } from "@/lib/scheduling/booking/create";
+import { createManualBooking } from "@/lib/scheduling/booking/manual";
+import { planManualBooking, type ManualBookingInput } from "@/lib/scheduling/booking/manual-input";
 import { assignSetterIfEmpty } from "@/lib/scheduling/booking/setter";
 import { occupyBookingSlot, releaseBookingSlot } from "@/lib/scheduling/booking/release";
 import { reassignBookingHost } from "@/lib/scheduling/booking/reassign";
@@ -375,6 +377,46 @@ export async function bookManually(input: {
   await notifyBooking(service, result.bookingId, "booking_created", { actorUserId: ctx.user.id });
   revalidatePath(PATH);
   return { ok: true, data: { uid: result.uid, bookingId: result.bookingId } };
+}
+
+/**
+ * Agendar a mano en un solo paso (octubre 2026): titulo (o un evento), invitado,
+ * dia, hora, duracion y notas, como en Google Calendar. El horario es libre; la
+ * base solo impide que el anfitrion tenga dos reuniones a la vez. Ver
+ * `lib/scheduling/booking/manual.ts`.
+ */
+export async function bookManuallyQuick(input: ManualBookingInput): Promise<BookingActionResult<{ bookingId: string }>> {
+  const ctx = await getPermissionAction("bookings.manage");
+  if (!ctx) return { ok: false, error: "No tenés permiso para agendar." };
+
+  const checked = planManualBooking(input ?? {});
+  if (!checked.ok) return { ok: false, error: checked.error };
+
+  const service = await createServiceClient();
+  const members = await getWorkspaceMembers(ctx.workspace.id);
+  const hostId = checked.plan.eventTypeId ? null : (checked.plan.hostUserId ?? ctx.user.id);
+  const result = await createManualBooking(service, {
+    workspaceId: ctx.workspace.id,
+    workspaceTimezone: (ctx.workspace as { timezone?: string }).timezone ?? "UTC",
+    actorUserId: ctx.user.id,
+    plan: checked.plan,
+    hostName: hostId && hostId !== ctx.user.id ? (members.find((m) => m.userId === hostId)?.name ?? null) : null,
+  });
+  if (!result.ok) return { ok: false, error: result.error };
+
+  // Igual que `bookManually`: si la reunion es de OTRA persona y el contacto no
+  // tiene setter, queda quien agendo. Nunca pisa un setter ni tumba la reunion.
+  if (result.hostUserId !== ctx.user.id) {
+    try {
+      await assignSetterIfEmpty(service, ctx.workspace.id, result.contactId, ctx.user.id);
+    } catch (err) {
+      console.error("[bookManuallyQuick] no pude asignar el setter", err instanceof Error ? err.message : "error");
+    }
+  }
+
+  await notifyBooking(service, result.bookingId, "booking_created", { actorUserId: ctx.user.id });
+  revalidatePath(PATH);
+  return { ok: true, data: { bookingId: result.bookingId } };
 }
 
 function messageFor(reason: string): string {

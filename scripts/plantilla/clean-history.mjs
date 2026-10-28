@@ -281,6 +281,8 @@ export const COMMENT_REWRITES = {
   "column public.contacts.customer_source": "De donde vino la marca de cliente: manual (una persona) o sale (un cobro).",
   "column public.conversations.agent_disabled_by_customer":
     "El agente lo apago la marca de cliente. Se limpia sola si una persona cambia el estado del agente.",
+  "column public.event_types.is_internal":
+    "El evento interno de su duena: sostiene las reuniones agendadas a mano sin elegir un evento. Nunca se publica ni aparece en las listas.",
   "column public.contacts.next_followup_date": "Proximo seguimiento. Se carga a mano o lo programa el agente.",
   "column public.contacts.notes":
     "Notas internas del contacto, en un solo texto. Quien cambio que queda en audit_log.",

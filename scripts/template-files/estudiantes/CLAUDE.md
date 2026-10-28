@@ -265,13 +265,14 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **El historial del contacto** (`lib/contacts/history.ts`) muestra lo automático (automatizaciones, secuencias, emails), no los mensajes del chat.
 - **La foto de perfil** se refresca sola cuando viene de Instagram/WhatsApp (`avatar_source = 'external'`); una subida a mano nunca se pisa (`lib/contacts/avatar.ts`). El @ de Instagram es un link (`lib/contacts/links.ts`).
 
-## Asignación, responsable del chat y «Conocido»
+## Asignación, responsable del chat, «Conocido» y «Cliente»
 
 - **Setter y vendedor por reglas** (Ajustes → Asignación, tabla `assignment_rules`): a mano, por turnos o por condiciones. Algunos nombres internos dicen `sales` (por ejemplo el job que evalúa un contacto): son de la asignación y se dejan así.
 - **El responsable del chat es `conversations.assigned_to`** (la RLS ya lo usa: te asignan un chat → el contacto es «tuyo»). Se cambia con `setConversationAssignee`: con `contacts.assign` a cualquiera; sin la clave, solo «Tomar» uno sin responsable en una cuenta donde respondés. El aviso nunca va a quien asignó.
 - **Reglas por cuenta** (`conversation_assignment_rules`): gana la primera activa que coincide; `assign_new_conversation` corre SOLO en una conversación nueva y nunca pisa un responsable. `conversation_rule_pick` y `pickRuleMember` son gemelas (`assignment-rules.cases.json`).
 - El filtro «Asignación → persona» usa `conversation_people` (responsable + setter + vendedor); «Asignadas a mí» es `?asignado=mias`.
 - **Conocido es una marca del contacto, no una etiqueta** (`is_known`, quién y cuándo). Al marcar, la BASE asigna cada chat a la persona de su cuenta (`workspaces.known_contacts_settings`, si no el Owner) y apaga el agente (`agent_disabled_by_known`). Al quitar, se prende solo lo que apagó la marca. Las secuencias se pausan (motivo `known`); los flujos siguen. Quien no lo marcó ni lo tiene a cargo ve un aviso antes de abrir el chat, que no se marca como leído hasta «Abrir igual».
+- **Cliente es la marca hermana** (`is_customer`, `customer_marked_by/at`, `customer_source`): mismos efectos que Conocido (agente apagado con `agent_disabled_by_customer`, secuencias pausadas con motivo `customer`, aviso antes de abrir). Sus chats van a la persona de `workspaces.customer_contacts_settings`; sin nadie configurado, el responsable NO cambia. Las reglas puras están en `lib/inbox/marks.ts` y cómo se ve cada marca en `components/contacts/mark-badge.tsx`. Cada fila de la lista de chats tiene un menú «⋯» (`planRowActions`) para marcar sin abrir el chat.
 
 ## Bandeja y mensajes
 

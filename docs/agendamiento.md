@@ -86,6 +86,15 @@ perdida.
 - Un 403 por cuota es temporal y se reintenta; un 403 por permisos es
   permanente y no. Eso sale de la documentación, no del plano.
 
+## Agendar a mano en un solo paso (00269, 28/10/2026)
+
+El botón «Agendar» abre UN modal, como en Google Calendar: título (escrito, o un evento elegido de la lista: activos arriba, inactivos abajo), invitado (un contacto que ya existe o uno nuevo con nombre y email), día, hora, duración y notas. Sin evento se elige además quién atiende y el área (por defecto «Otros»).
+
+- **El horario es libre**: no se limita a los turnos del evento ni al aviso mínimo. La base sigue impidiendo que el anfitrión tenga dos reuniones a la vez (`bookings_no_overlap`): si se pisa, avisa y no la crea.
+- **Sin evento, la reunión se cuelga del evento interno del anfitrión** (`event_types.is_internal`, uno por persona, lo crea `ensureInternalEvent`). Nunca se publica (queda `inactive`), no aparece en `listEventTypes` ni en `getEventType` (no se edita) y el agente no lo ve (filtra los inactivos). La reunión guarda su propio título. Así `bookings.event_type_id` sigue siendo obligatorio y la sincronización con Google, los avisos, los flujos y reagendar funcionan igual.
+- Todo pasa por `create_booking` (no se tocó). Las reglas del modal son `planManualBooking` (`lib/scheduling/booking/manual-input.ts`), las mismas que repite `bookManuallyQuick`; el núcleo es `createManualBooking` (`lib/scheduling/booking/manual.ts`). Las notas van a `bookings.internal_notes`.
+- `bookManually` (el asistente de cinco pasos con los turnos del evento) sigue existiendo, pero la pantalla ya no lo usa.
+
 ## Eventos sin calendario ("solo en el sistema", 20/10/2026)
 
 Un evento se puede **activar sin calendario**. Funciona solo dentro del

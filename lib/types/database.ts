@@ -5530,6 +5530,7 @@ export interface Database {
           location_type: LocationType;
           location_text: string | null;
           hide_location_until_booked: boolean;
+          is_internal: boolean;
           status: EventTypeStatus;
           scheduling_type: SchedulingType;
           schedule_id: string | null;
@@ -5568,6 +5569,7 @@ export interface Database {
           location_type?: LocationType;
           location_text?: string | null;
           hide_location_until_booked?: boolean;
+          is_internal?: boolean;
           status?: EventTypeStatus;
           scheduling_type?: SchedulingType;
           schedule_id?: string | null;
@@ -5603,6 +5605,7 @@ export interface Database {
           location_type?: LocationType;
           location_text?: string | null;
           hide_location_until_booked?: boolean;
+          is_internal?: boolean;
           status?: EventTypeStatus;
           schedule_id?: string | null;
           destination_calendar_id?: string | null;
