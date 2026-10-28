@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  SUBSCRIBED_EVENTS,
   ensureWebhookRegistered,
   generateWebhookSecret,
   getOrCreateWorkspaceWebhookSecret,
@@ -251,6 +252,14 @@ describe("ensureWebhookRegistered", () => {
     expect(res.action).toBe("created");
     expect(z.create).toHaveBeenCalledTimes(1);
     expect(z.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("SUBSCRIBED_EVENTS (00267)", () => {
+  it("escucha la conversacion nueva: la que empieza el negocio entra sin esperar la respuesta", () => {
+    expect(SUBSCRIBED_EVENTS).toContain("conversation.started");
+    // Y el eco del saliente, que tambien la crea.
+    expect(SUBSCRIBED_EVENTS).toContain("message.sent");
   });
 });
 

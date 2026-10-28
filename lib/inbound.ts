@@ -21,6 +21,8 @@ import type { IncomingMessage } from "@/lib/flow-engine/types";
 import { fromZernioAttachments, toAttachmentsColumn, type ChatAttachment } from "@/lib/messages/attachments";
 import { isNewerThanLastInbound, outboundCountsAsAnswered } from "@/lib/inbox/unread";
 import { applyConversationRules } from "@/lib/conversations/assignment";
+import { upsertContactForSender } from "@/lib/inbox-sync";
+import { previewForMessage } from "@/lib/message-preview";
 
 type Db = SupabaseClient<Database>;
 
@@ -127,6 +129,30 @@ export async function upsertConversation({
     })
     .select("id, is_automation_paused")
     .single();
+
+  if (error?.code === "23505") {
+    // Otra llegada de la misma persona la creo en el mismo instante (por
+    // ejemplo `conversation.started` y el primer `message.received` juntos): la
+    // tabla admite una por persona y canal. Se usa esa: devolver null aca hacia
+    // que el mensaje que llego segundo no se guardara nunca. Las reglas de
+    // asignacion ya corrieron en la que gano.
+    const { data: winner } = await supabase
+      .from("conversations")
+      .select("id, is_automation_paused")
+      .eq("channel_id", channel.id)
+      .eq("contact_id", contactId)
+      .maybeSingle();
+    if (winner) {
+      if (externalConversationId) {
+        await supabase
+          .from("conversations")
+          .update({ late_conversation_id: externalConversationId })
+          .eq("id", winner.id)
+          .is("late_conversation_id", null);
+      }
+      return { id: winner.id, isAutomationPaused: winner.is_automation_paused };
+    }
+  }
 
   if (error || !created) {
     console.error("[inbound] no pude crear la conversacion:", error?.message);
@@ -689,8 +715,12 @@ export async function runInboundAutomation({
  * backfill del historial a mano. Ahora se guardan como `origin = 'external'`.
  *
  * - Busca la conversación local por su id de Zernio (`late_conversation_id`).
- *   Si no existe todavía, no hay a dónde colgar el mensaje: se saltea (el
- *   backfill/refresco lo traerá con el resto del historial).
+ *   Si no existe todavía es una conversación que EMPEZÓ EL NEGOCIO (escribió
+ *   primero desde el celular, o una automatización de comentarios mandó el DM) y
+ *   la persona todavía no contestó: se crea con `ensureZernioConversation`, con
+ *   la persona que Zernio manda en `conversation`. Antes se descartaba y esa
+ *   conversación no aparecía hasta que la persona respondiera. Sin `participantId`
+ *   no hay a quién atarla y se saltea como antes.
  * - Deduplica por `platform_message_id`: si este saliente es el eco de un envío
  *   propio que ya guardamos (mismo id de Zernio), el índice único lo descarta y
  *   no se marca `external`.
@@ -701,9 +731,10 @@ export async function handleMessageSentEcho({
   supabase,
   channel,
   message,
+  conversation: zernioConversation = null,
 }: {
   supabase: Db;
-  channel: { id: string; workspace_id: string };
+  channel: Pick<ChannelRow, "id" | "workspace_id" | "platform">;
   message: {
     id?: string | null;
     conversationId?: string | null;
@@ -713,6 +744,8 @@ export async function handleMessageSentEcho({
     attachments?: unknown[] | null;
     sentAt?: string | null;
   };
+  /** La persona del otro lado, como la manda Zernio en todos los webhooks de la bandeja. */
+  conversation?: ZernioWebhookConversation | null;
 }): Promise<{
   stored: boolean;
   reason?: string;
@@ -729,19 +762,31 @@ export async function handleMessageSentEcho({
   const lateConversationId = message.conversationId;
   if (!lateConversationId) return { stored: false, reason: "sin conversación" };
 
-  const { data: conversation } = await supabase
+  // El saliente tambien se normaliza (F3): un audio que la operadora mando
+  // desde la app de Instagram tiene que poder escucharse en la bandeja, y su
+  // transcripcion le sirve al agente para no repetir lo que ya se dijo.
+  const items = fromZernioAttachments(message.attachments ?? null);
+
+  const { data: found } = await supabase
     .from("conversations")
     .select("id")
     .eq("channel_id", channel.id)
     .eq("late_conversation_id", lateConversationId)
     .maybeSingle();
 
-  if (!conversation) return { stored: false, reason: "conversación no encontrada" };
-
-  // El saliente tambien se normaliza (F3): un audio que la operadora mando
-  // desde la app de Instagram tiene que poder escucharse en la bandeja, y su
-  // transcripcion le sirve al agente para no repetir lo que ya se dijo.
-  const items = fromZernioAttachments(message.attachments ?? null);
+  let conversation: { id: string } | null = found;
+  if (!conversation) {
+    if (!zernioConversation?.participantId) return { stored: false, reason: "conversación no encontrada" };
+    conversation = await ensureZernioConversation({
+      supabase,
+      channel,
+      lateConversationId,
+      participant: zernioConversation,
+      at: message.sentAt || new Date().toISOString(),
+      preview: previewForMessage({ text: message.text ?? null, attachments: toAttachmentsColumn(items) }),
+    });
+    if (!conversation) return { stored: false, reason: "no pude crear la conversación" };
+  }
 
   const { stored, id } = await insertMessage({
     supabase,
@@ -759,4 +804,88 @@ export async function handleMessageSentEcho({
   });
 
   return { stored, messageId: id, conversationId: conversation.id, items };
+}
+
+/** La persona del otro lado de una conversacion, como la manda Zernio en sus webhooks de la bandeja. */
+export interface ZernioWebhookConversation {
+  id?: string | null;
+  participantId?: string | null;
+  participantName?: string | null;
+  participantUsername?: string | null;
+  participantPicture?: string | null;
+  status?: string | null;
+}
+
+/**
+ * Encuentra o crea la conversacion de Zernio de una persona que todavia no escribio:
+ * una que empezo el negocio (el eco `message.sent` del primer mensaje) o que Zernio
+ * avisa como nueva (`conversation.started`).
+ *
+ * - El contacto se resuelve con `upsertContactForSender` (la regla unica,
+ *   `find_or_link_contact`): nunca por nombre. Sin tocar `last_interaction_at` de
+ *   un contacto que ya existia, porque la persona no hizo nada todavia.
+ * - Si esa persona ya tiene su conversacion en el canal (con otro id de Zernio, o
+ *   sin id), se usa esa y se completa el id si faltaba. No se reabre ni se mueve.
+ * - Si no, se crea con `upsertConversation` sin no leidos: un mensaje nuestro no
+ *   es uno para leer. Pasa por las reglas de asignacion como cualquier
+ *   conversacion nueva.
+ *
+ * No dispara automatizaciones ni el agente. Devuelve null si no se pudo.
+ */
+export async function ensureZernioConversation({
+  supabase,
+  channel,
+  lateConversationId,
+  participant,
+  at,
+  preview,
+}: {
+  supabase: Db;
+  channel: Pick<ChannelRow, "id" | "workspace_id" | "platform">;
+  lateConversationId: string;
+  participant: ZernioWebhookConversation;
+  at: string;
+  preview: string;
+}): Promise<{ id: string } | null> {
+  const participantId = participant.participantId;
+  if (!participantId) return null;
+
+  const contact = await upsertContactForSender({
+    supabase: supabase as unknown as SupabaseClient,
+    channel,
+    senderId: participantId,
+    senderName: participant.participantName || participant.participantUsername || participantId,
+    senderPicture: participant.participantPicture || null,
+    senderUsername: participant.participantUsername || null,
+    interactionAt: at,
+    stampExisting: false,
+  });
+  if (!contact) return null;
+
+  const { data: existing } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("channel_id", channel.id)
+    .eq("contact_id", contact.contactId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase
+      .from("conversations")
+      .update({ late_conversation_id: lateConversationId })
+      .eq("id", existing.id)
+      .is("late_conversation_id", null);
+    return { id: existing.id };
+  }
+
+  const created = await upsertConversation({
+    supabase,
+    channel,
+    contactId: contact.contactId,
+    externalConversationId: lateConversationId,
+    preview,
+    at,
+    incrementUnread: false,
+  });
+  return created ? { id: created.id } : null;
 }

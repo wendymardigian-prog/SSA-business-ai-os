@@ -91,7 +91,7 @@ describe("toMessageRow del backfill (F2)", () => {
 });
 
 describe("handleMessageSentEcho (F2)", () => {
-  const channel = { id: "ch1", workspace_id: "w1" };
+  const channel = { id: "ch1", workspace_id: "w1", platform: "instagram" as const };
   const message = {
     id: "z-msg-1",
     conversationId: "late-conv-1",
@@ -111,7 +111,7 @@ describe("handleMessageSentEcho (F2)", () => {
     expect(inserts[0].platform_native_message_id).toBe("meta-mid-1");
   });
 
-  it("se saltea si la conversación no existe todavía", async () => {
+  it("sin la persona de Zernio, se saltea si la conversación no existe todavía", async () => {
     const { client, inserts } = fakeDb({ conversation: null });
     const res = await handleMessageSentEcho({ supabase: client, channel, message });
     expect(res.stored).toBe(false);
