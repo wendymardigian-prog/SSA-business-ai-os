@@ -13,7 +13,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] E3 · Link de baja, baja en un clic y página pública
 - [x] E4 · Rebotes y quejas desde Resend
 - [x] E5 · Panel (ficha, historial, lista)
-- [ ] E6 · Importador con suscripción y prueba en seco
+- [x] E6 · Importador con suscripción y prueba en seco
 - [ ] E7 · Verificación (`verify-email-subscription.mjs` y tests)
 - [ ] E8 · Remitentes (usuario + dominio verificado de Resend)
 - [ ] Cierre: `CLAUDE.md` («Emails: suscripción y baja»), `docs/importar-contactos-con-suscripcion.md`, limpieza `zz-test-`, PR (sin mergear)
@@ -109,6 +109,16 @@ Rama `feat/suscripcion-email` sin cambios de código (base `782eb01`). Los `veri
 - **Lista:** filtro y columna opcional (hechos en E2).
 - **Ajustes → General → Marca:** «Dirección postal para el pie de los emails» (`workspaces.email_footer_address`, mismo tope que el CHECK, mismo permiso `settings.general`).
 - Tests: `contact-email-status.test.ts`, `email-status.render.test.ts`, `brand-settings.test.ts`.
+
+## E6 · Hecho (29/10/2026)
+
+- **Columnas nuevas** (`lib/csv/map.ts`, con sugerencia automática): «Suscripción a emails» (`email_subscribed`, `suscripcion`, `subscribed`, `estado email`…), «Fecha de baja», «Motivo de la baja» y «Fecha de suscripción». Los valores se leen sin importar mayúsculas ni acentos (`parseImportSubscription`); vacío o no reconocido = error de la fila («Falta el estado de suscripción a emails» / «"quizás" no es un estado de suscripción válido»). El motivo `bounce` / `complaint` empeora el estado; el valor original va al historial (`original_source`). Las fechas con hora respetan el instante; no pueden ser futuras.
+- **Consolidación** (`lib/csv/subscription.ts`): en el navegador, sobre TODO el archivo, antes de partir en tandas; gana el estado más grave (con su fecha) y el consentimiento más viejo. El servidor solo deja que lo consolidado EMPEORE lo de la fila (`effectiveRowSubscription`): un pedido armado a mano no re-suscribe a nadie.
+- **Importar** (`lib/actions/csv-import.ts`): después de completar los datos, `setEmailStatus` en modo `system` con `import:<origen>`, la fecha original y el consentimiento original. Opción «Origen de la importación» (historial + etiqueta `origen:<valor>`).
+- **No dispara automatizaciones**: al terminar cada tanda se marcan como procesados los eventos `contact_created`, `tag_added`, `field_changed` y `assignment_changed` de esos contactos (decisión de Wendy; la ventana de segundos está en PENDIENTE).
+- **«Revisar antes de importar»** (`previewBatch`): la MISMA función por tanda en modo «revisar», que no escribe nada; las personas que «se crearían» viajan entre tandas (`planned`) para que una segunda fila de la misma persona cuente como en la importación real, y respeta la RLS de quien importa. El resumen (y el reporte final) muestran: se crearían / se vincularían (y por qué dato), suscriptos, dados de baja, rebotan, marcaron spam (por persona), cuántos que el archivo decía suscripto siguen dados de baja, filas consolidadas y errores.
+- **Archivo de prueba** `scripts/fixtures/import-wendymardigian-sample.csv` (formato real, 15 filas, los 11 casos). `lib/actions/csv-import-subscription.test.ts` lo corre por la prueba en seco y la importación sobre la misma base en memoria: los dos dan 8 nuevos, 6 vinculados (5 por email, 1 por teléfono), 1 error, 3 filas consolidadas, y por persona 3 suscriptos, 6 dados de baja, 1 rebota, 1 spam, 1 no re-suscripto; las fechas originales y el origen quedan guardados y los eventos de «contacto nuevo» quedan procesados.
+- **Diferencia:** el plan decía «la columna `source` del export» sin más; hoy `source` (no `utm_source`) se queda con «Fuente» porque va antes en el archivo (caracterización). La guía explica cómo cambiarlo.
 
 ## Línea base de los verify-*
 

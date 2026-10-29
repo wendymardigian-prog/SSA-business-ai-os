@@ -6,8 +6,17 @@ import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
 import { recordImportTouches, type ImportTouchAttribution } from "@/lib/contacts/touch-entry";
 import { logAudit } from "@/lib/audit";
-import { findOrCreateContact, type FindOrCreateResult } from "@/lib/contacts/find-or-create";
-import { mapRow, type ColumnMapping, type ImportCustomField } from "@/lib/csv/map";
+import { findContact, findOrCreateContact, type FindOrCreateResult } from "@/lib/contacts/find-or-create";
+import { mapRow, type ColumnMapping, type ImportCustomField, type MappedRow } from "@/lib/csv/map";
+import { identityLockKeys, normalizeIdentity, type ContactIdentity } from "@/lib/contacts/identity";
+import { addressEmailStatus, decideEmailStatus, setEmailStatus, worstEmailStatus, type EmailStatus } from "@/lib/email/subscription";
+import {
+  effectiveRowSubscription,
+  importOriginSlug,
+  parseConsolidated,
+  type RowSubscription,
+  type SubscriptionOutcome,
+} from "@/lib/csv/subscription";
 import type { ContactFieldKey } from "@/lib/contacts/fields";
 import type { Json } from "@/lib/types/database";
 // Los limites viven en su propio modulo: un archivo "use server" solo puede
@@ -57,7 +66,14 @@ export interface BatchCounters {
 }
 
 export type ImportBatchResult =
-  | { ok: true; counters: BatchCounters }
+  | {
+      ok: true;
+      counters: BatchCounters;
+      /** Suscripcion a emails (E6): como quedo cada persona de la tanda (el navegador suma por persona). */
+      subscription: SubscriptionOutcome[];
+      /** Solo la prueba en seco: las identidades que se crearian en esta tanda, para las tandas siguientes. */
+      planned?: Record<string, string>;
+    }
   | { ok: false; error: string };
 
 /** Abre la importacion y devuelve el id con el que se van a mandar las tandas. */
@@ -118,7 +134,30 @@ export interface ImportBatchInput {
   setterId?: string | null;
   vendedorId?: string | null;
   extraTags?: string[];
+  /**
+   * Suscripcion a emails (E6): el origen de la importacion (`wendymardigian`). Va en el historial como
+   * `import:<origen>` y como etiqueta `origen:<origen>`. Sin origen, el nombre del archivo.
+   */
+  origin?: string | null;
+  /**
+   * Lo consolidado de TODO el archivo por email (`consolidateSubscriptions`, en el navegador: las tandas no ven el
+   * archivo entero). Solo puede empeorar lo de cada fila: nunca re-suscribe.
+   */
+  subscriptions?: unknown;
 }
+
+/** La prueba en seco: lo mismo que una tanda, sin escribir nada. */
+export interface PreviewBatchInput extends Omit<ImportBatchInput, "importId"> {
+  fileName: string;
+  /** Las identidades que ya "se crearon" en las tandas anteriores de la prueba (clave → persona). */
+  planned?: Record<string, string>;
+}
+
+/**
+ * Los eventos de automatizacion que la base emite al crear o completar un contacto. Una importacion NO los dispara
+ * (E6): se marcan como procesados al terminar cada tanda. Queda una ventana de unos segundos (ver PENDIENTE).
+ */
+const IMPORT_SUPPRESSED_EVENTS = ["contact_created", "tag_added", "field_changed", "assignment_changed"];
 
 /**
  * Procesa una tanda: valida cada fila, busca si el contacto ya existe y crea o
@@ -126,11 +165,30 @@ export interface ImportBatchInput {
  * fila de csv_imports.
  */
 export async function importBatch(input: ImportBatchInput): Promise<ImportBatchResult> {
+  return runBatch(input, "import");
+}
+
+/**
+ * "Revisar antes de importar" (E6): corre EXACTAMENTE la misma logica que `importBatch` (mapeo, validacion, busqueda
+ * por la regla unica, suscripcion), sin escribir nada. Lo que se crearia en una tanda viaja a las siguientes en
+ * `planned`, asi una persona que aparece dos veces en el archivo cuenta como en la importacion real.
+ */
+export async function previewBatch(input: PreviewBatchInput): Promise<ImportBatchResult> {
+  return runBatch({ ...input, importId: "" }, "preview", input.fileName, input.planned);
+}
+
+async function runBatch(
+  input: ImportBatchInput,
+  mode: "import" | "preview",
+  previewFileName?: string,
+  previewPlanned?: Record<string, string>,
+): Promise<ImportBatchResult> {
   const { workspace, supabase, user } = await getWorkspace();
   // Importar contactos pide `contacts.import` (cambio aprobado del Member, plano §9.3).
   if (!(await getPermissionAction("contacts.import"))) return { ok: false, error: "No tenés permiso para importar contactos" };
 
   const { importId, rows, mapping, offset } = input;
+  const preview = mode === "preview";
 
   if (!Array.isArray(rows) || rows.length === 0) {
     return { ok: false, error: "La tanda vino vacia" };
@@ -140,15 +198,27 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
   }
 
   // Ademas de confirmar que existe, esto pasa por la RLS: nadie puede sumarle
-  // filas a la importacion de otro.
-  const { data: registro } = await supabase
-    .from("csv_imports")
-    .select("id, file_name, imported, updated, errors, error_details")
-    .eq("id", importId)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
+  // filas a la importacion de otro. La prueba en seco no tiene importacion abierta.
+  const registro = preview
+    ? { id: "", file_name: previewFileName ?? "", imported: 0, updated: 0, errors: 0, error_details: [] as unknown }
+    : (
+        await supabase
+          .from("csv_imports")
+          .select("id, file_name, imported, updated, errors, error_details")
+          .eq("id", importId)
+          .eq("workspace_id", workspace.id)
+          .maybeSingle()
+      ).data;
 
   if (!registro) return { ok: false, error: "No encontre esa importacion" };
+
+  // Suscripcion a emails: el origen (para el historial y la etiqueta) y lo consolidado del archivo.
+  const originSlug = importOriginSlug(input.origin) || importOriginSlug(registro.file_name) || "csv";
+  const subscriptionSource = `import:${originSlug}`;
+  const consolidated = parseConsolidated(input.subscriptions);
+  const originTag = importOriginSlug(input.origin) ? `origen:${importOriginSlug(input.origin)}` : null;
+  const extraTags = [...new Set([...(input.extraTags ?? []), ...(originTag ? [originTag] : [])])];
+  const batchStartedAt = new Date().toISOString();
 
   // Los campos personalizados vivos de ESTE workspace: una columna mapeada a un
   // campo que no esta aca (de otro workspace, o borrado) no se importa.
@@ -167,11 +237,12 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
   // "vip" de una planilla de 500 contactos etiquetados igual.
   const validadas = rows.map((row, i) => mapRow(row, mapping, offset + i, customFields));
 
-  const nombresDeTags = new Set(input.extraTags ?? []);
+  const nombresDeTags = new Set(extraTags);
   for (const r of validadas) {
     if (r.ok) for (const t of r.row.tags) nombresDeTags.add(t);
   }
-  const tagIds = await resolveTags(supabase, workspace.id, [...nombresDeTags]);
+  // La prueba en seco no crea etiquetas.
+  const tagIds = preview ? new Map<string, string>() : await resolveTags(supabase, workspace.id, [...nombresDeTags]);
 
   const counters: BatchCounters = { imported: 0, updated: 0, linkedBy: { phone: 0, email: 0, social: 0 }, skippedConflicts: 0, errors: 0, details: [] };
   // Buscar o crear va con el cliente de SERVICIO (la regla unica mira todos los contactos del workspace, no
@@ -183,6 +254,10 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
   const nuevos: string[] = [];
   // La atribucion que trajo la planilla para cada contacto nuevo (F: importacion).
   const atribucion: Record<string, ImportTouchAttribution> = {};
+  // Suscripcion a emails: como quedo cada persona, y (prueba en seco) lo que se crearia.
+  const subscription: SubscriptionOutcome[] = [];
+  const planned: Record<string, string> = { ...(previewPlanned ?? {}) };
+  const tocados = new Set<string>();
 
   for (const result of validadas) {
     if (!result.ok) {
@@ -192,6 +267,37 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
     }
 
     const { patch, tags, custom, attribution } = result.row;
+    const rowSubscription = effectiveRowSubscription(result.row.subscription, consolidated[(patch.email ?? patch.secondary_email ?? "").toLowerCase()] ?? null);
+
+    if (preview) {
+      try {
+        const planOutcome = await previewRow(service, supabase, workspace.id, patch, rowSubscription, planned);
+        if (planOutcome.kind === "invisible") {
+          counters.errors++;
+          counters.details.push({ line: result.row.line, error: "Ya existe un contacto con ese dato. Pedile a un Admin que te lo asigne." });
+          continue;
+        }
+        if (planOutcome.kind === "no_identity") {
+          counters.errors++;
+          counters.details.push({ line: result.row.line, error: "No se pudo guardar el contacto" });
+          continue;
+        }
+        if (planOutcome.kind === "existing") {
+          counters.updated++;
+          counters.skippedConflicts += planOutcome.skipped;
+          if (planOutcome.by === "phone") counters.linkedBy.phone++;
+          else if (planOutcome.by === "email") counters.linkedBy.email++;
+          else counters.linkedBy.social++;
+        } else {
+          counters.imported++;
+        }
+        if (planOutcome.subscription) subscription.push(planOutcome.subscription);
+      } catch (err) {
+        counters.errors++;
+        counters.details.push({ line: result.row.line, error: err instanceof Error ? err.message : "Error inesperado" });
+      }
+      continue;
+    }
 
     try {
       const central = await resolveRow(service, workspace.id, patch, setterId, vendedorId);
@@ -230,8 +336,8 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
       }
 
       // Los de la columna de tags de esta fila, mas los que se eligieron para
-      // todo el archivo.
-      const paraAsignar = [...new Set([...tags, ...(input.extraTags ?? [])])]
+      // todo el archivo (y la del origen).
+      const paraAsignar = [...new Set([...tags, ...extraTags])]
         .map((nombre) => tagIds.get(nombre.toLowerCase()))
         .filter((id): id is string => Boolean(id));
 
@@ -262,12 +368,50 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
         nuevos.push(contactId);
         if (Object.keys(attribution).length > 0) atribucion[contactId] = attribution;
       }
+      tocados.add(contactId);
+
+      // Suscripcion a emails (E6): por la funcion central, como el sistema (nunca re-suscribe), con la fecha original.
+      // Va DESPUES de completar los datos: si la fila le puso el email a un contacto que no lo tenia, la baja alcanza
+      // a esa direccion.
+      if (rowSubscription) {
+        const applied = await setEmailStatus(service, contactId, {
+          status: rowSubscription.status,
+          source: subscriptionSource,
+          mode: "system",
+          occurredAt: rowSubscription.at,
+          subscribedAt: rowSubscription.subscribedAt,
+          address: patch.email ?? patch.secondary_email ?? null,
+          extra: {
+            import_id: importId,
+            ...(rowSubscription.originalSource ? { original_source: rowSubscription.originalSource } : {}),
+          },
+        });
+        subscription.push({ key: contactId, status: applied.status ?? rowSubscription.status, keptExisting: applied.keptExisting });
+      }
     } catch (err) {
       counters.errors++;
       counters.details.push({
         line: result.row.line,
         error: err instanceof Error ? err.message : "Error inesperado",
       });
+    }
+  }
+
+  if (preview) return { ok: true, counters, subscription, planned };
+
+  // Una importacion no dispara automatizaciones (E6): los eventos que la base emitio en esta tanda para estos
+  // contactos (contacto nuevo, etiqueta, campo, asignacion) se marcan como procesados. Nunca tumba la tanda.
+  if (tocados.size > 0) {
+    try {
+      await service
+        .from("automation_events")
+        .update({ processed_at: new Date().toISOString(), error: "importación de contactos (no dispara automatizaciones)" })
+        .in("contact_id", [...tocados])
+        .in("event_type", IMPORT_SUPPRESSED_EVENTS)
+        .is("processed_at", null)
+        .gte("created_at", batchStartedAt);
+    } catch (err) {
+      console.error("[csv-import] no pude apagar los eventos de la importacion:", err instanceof Error ? err.message : "error");
     }
   }
 
@@ -302,7 +446,73 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
     console.error("[csv-import] no pude actualizar los contadores:", updateError.message);
   }
 
-  return { ok: true, counters };
+  return { ok: true, counters, subscription };
+}
+
+type PreviewOutcome =
+  | { kind: "new"; subscription: SubscriptionOutcome | null }
+  | { kind: "existing"; by: string; skipped: number; subscription: SubscriptionOutcome | null }
+  | { kind: "invisible" }
+  | { kind: "no_identity" };
+
+/** El tipo de dato de una clave de identidad, como lo cuenta la importacion. */
+function linkedByOf(key: string): string {
+  return key.startsWith("phone:") ? "phone" : key.startsWith("email:") ? "email" : "social";
+}
+
+/**
+ * Una fila de la prueba en seco: lo que haria la importacion, sin escribir. Busca con la regla unica (`find_only`);
+ * lo que se "crearia" queda en `planned` para que una segunda fila de la misma persona se cuente vinculada, igual
+ * que en la importacion real. El estado de email se decide con la misma tabla que la base, sobre el peor estado
+ * de la direccion en todo el workspace (incluidos los borrados, como la herencia).
+ */
+async function previewRow(
+  service: Awaited<ReturnType<typeof createServiceClient>>,
+  supabase: Client,
+  workspaceId: string,
+  patch: MappedRow["patch"],
+  sub: RowSubscription | null,
+  planned: Record<string, string>,
+): Promise<PreviewOutcome> {
+  const identity: ContactIdentity = {
+    phone: patch.phone, whatsapp_phone: patch.whatsapp_phone, email: patch.email, secondary_email: patch.secondary_email,
+    instagram: patch.instagram_username, tiktok: patch.tiktok_username, x: patch.twitter_username, linkedin: patch.linkedin_profile_url,
+  };
+  const keys = identityLockKeys(normalizeIdentity(identity));
+  const address = patch.email ?? patch.secondary_email ?? null;
+
+  const decide = (key: string, current: EmailStatus): SubscriptionOutcome | null => {
+    if (!sub) return null;
+    const decision = decideEmailStatus(current, sub.status, "system");
+    return { key, status: decision === "apply" ? sub.status : current, keptExisting: decision === "kept" };
+  };
+  const addressStatus = async (): Promise<EmailStatus> => (address ? ((await addressEmailStatus(service, workspaceId, address)) ?? "subscribed") : "subscribed");
+
+  // Una persona que ya "se creo" en esta prueba (otra fila del archivo).
+  // En el orden en que busca la regla unica: telefono, email, redes.
+  const plannedHit = ["phone:", "email:", "instagram:", "tiktok:", "x:", "linkedin:", "facebook:"]
+    .flatMap((prefix) => keys.filter((k) => k.startsWith(prefix)))
+    .find((k) => planned[k]);
+  if (plannedHit) {
+    const person = planned[plannedHit];
+    for (const k of keys) planned[k] ??= person;
+    return { kind: "existing", by: linkedByOf(plannedHit), skipped: 0, subscription: decide(person, sub ? worstEmailStatus([await addressStatus()]) : "subscribed") };
+  }
+
+  const found = await findContact(service, { workspaceId, identity });
+  if (found.status === "no_identity") return { kind: "no_identity" };
+  if (found.contactId) {
+    // Quien importa tiene que poder verlo (su RLS), igual que en la importacion real.
+    const { data: visible } = await supabase.from("contacts").select("id, email_status").eq("id", found.contactId).eq("workspace_id", workspaceId).maybeSingle();
+    if (!visible) return { kind: "invisible" };
+    const own = (visible as { email_status?: string }).email_status ?? "subscribed";
+    const current = worstEmailStatus([own, sub ? await addressStatus() : "subscribed"]);
+    return { kind: "existing", by: found.matchedBy === "phone" ? "phone" : found.matchedBy === "email" ? "email" : "social", skipped: skippedConflictCount(patch, found), subscription: decide(found.contactId, current) };
+  }
+
+  const person = `new:${keys[0] ?? Math.random().toString(36).slice(2)}`;
+  for (const k of keys) planned[k] = person;
+  return { kind: "new", subscription: decide(person, sub ? await addressStatus() : "subscribed") };
 }
 
 /** Cierra la importacion y deja el resultado en el audit log. */
