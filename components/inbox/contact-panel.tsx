@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, type ReactNode } from "react";
 import Link from "next/link";
-import { X, Mail, Phone, Brain, Loader2, ShieldOff, ExternalLink, HeartHandshake } from "lucide-react";
+import { X, Brain, Loader2, ShieldOff, ExternalLink } from "lucide-react";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { ContactTasks } from "@/components/tasks/contact-tasks"; // @plantilla-quitar(tareas)
 import { ContactTasksLoader } from "@/components/tasks/contact-tasks-loader"; // @plantilla-quitar(tareas)
@@ -21,8 +21,13 @@ import { NotesSection } from "@/components/contacts/notes-section";
 import { TagsEditor, type TagOption } from "@/components/contacts/tags-editor";
 import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { TemperatureBadge, ActionError } from "@/components/contacts/ui";
-import { setDoNotContact, setKnown, updateContact } from "@/lib/actions/contacts";
-import { canUnmarkKnown, knownLabel } from "@/lib/inbox/known";
+import { InlineField } from "@/components/contacts/inline-field";
+import { MarkBadge } from "@/components/contacts/mark-badge";
+import { MarkSection } from "@/components/contacts/mark-section";
+import { contactMarks } from "@/lib/inbox/marks";
+import { contactFieldHref } from "@/lib/contacts/data-groups";
+import type { ContactFieldKey } from "@/lib/contacts/fields";
+import { setDoNotContact, updateContact } from "@/lib/actions/contacts";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
 import { getDmLink, platformHandles } from "@/lib/contacts/links";
@@ -87,6 +92,7 @@ export function ContactPanel({
   allTags = [],
   currentUserId = "",
   isAdmin = false,
+  canEdit = false,
   accounts,
 }: {
   contactId: string | null;
@@ -96,6 +102,8 @@ export function ContactPanel({
   allTags?: TagOption[];
   currentUserId?: string;
   isAdmin?: boolean;
+  /** `contacts.edit`: el nombre y los datos se editan en el lugar (el servidor lo repite). */
+  canEdit?: boolean;
   /** Las cuentas por canal: "Canales" dice por cual cuenta nuestra se habla cuando una red tiene varias. */
   accounts?: InboxAccountsInfo;
 }) {
@@ -200,7 +208,9 @@ export function ContactPanel({
         <ContactTasksLoader contactId={details.contact.id} contactName={details.contact.display_name}>
         {/* @plantilla-hasta(tareas) */}
         <div className="flex-1 overflow-y-auto">
-          <Identity details={details} />
+          <Identity details={details} canEdit={canEdit} onSaved={reload} />
+
+          <BasicData contact={details.contact} canEdit={canEdit} onSaved={reload} />
 
           <PanelSection title="Estado del lead">
             <StatusFields
@@ -262,7 +272,29 @@ export function ContactPanel({
 
           <Activity contact={details.contact} />
 
-          <KnownSection contact={details.contact} currentUserId={currentUserId} isAdmin={isAdmin} members={members} onSaved={reload} />
+          {/* Conocido (00256) y Cliente (00268): marcas propias del contacto. */}
+          <div className="mt-6 space-y-5 border-t border-border p-4">
+            {(["customer", "known"] as const).map((mark) => {
+              const c = details.contact;
+              const by = mark === "known" ? c.known_marked_by : c.customer_marked_by;
+              return (
+                <MarkSection
+                  key={mark}
+                  mark={mark}
+                  contactId={c.id}
+                  marked={mark === "known" ? c.is_known : c.is_customer}
+                  markedBy={by}
+                  markedByName={members.find((m) => m.userId === by)?.label ?? null}
+                  markedAt={mark === "known" ? c.known_marked_at : c.customer_marked_at}
+                  source={mark === "customer" ? c.customer_source : null}
+                  currentUserId={currentUserId}
+                  canEdit={canEdit}
+                  canDeleteContacts={isAdmin}
+                  onSaved={reload}
+                />
+              );
+            })}
+          </div>
 
           <DoNotContact contact={details.contact} isAdmin={isAdmin} onSaved={reload} />
         </div>
@@ -283,7 +315,7 @@ export function ContactPanel({
   );
 }
 
-function Identity({ details }: { details: ContactDetails }) {
+function Identity({ details, canEdit, onSaved }: { details: ContactDetails; canEdit: boolean; onSaved: () => void }) {
   const c = details.contact;
   // F17: contacts.instagram_username es la fuente, y si falta, SOLO el canal
   // cuya platform es "instagram". Antes find(ch => ch.username) no filtraba
@@ -292,7 +324,19 @@ function Identity({ details }: { details: ContactDetails }) {
   return (
     <div className="flex flex-col items-center border-b border-border p-5">
       <ContactAvatar avatarUrl={c.avatar_url} displayName={c.display_name} size="lg" />
-      <p className="mt-3 text-sm font-semibold">{c.display_name ?? "Sin nombre"}</p>
+      <div className="mt-3 flex max-w-full justify-center">
+        <InlineField
+          key={c.id}
+          contactId={c.id}
+          field="display_name"
+          value={c.display_name ?? ""}
+          label="Nombre"
+          placeholder="Sin nombre"
+          variant="name"
+          canEdit={canEdit}
+          onSaved={onSaved}
+        />
+      </div>
       {instagramUsername && (
         <a
           href={instagramUrl ?? undefined}
@@ -318,11 +362,9 @@ function Identity({ details }: { details: ContactDetails }) {
             No contactar
           </span>
         )}
-        {c.is_known && (
-          <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
-            Conocido
-          </span>
-        )}
+        {contactMarks(c).map((mark) => (
+          <MarkBadge key={mark} mark={mark} size="xs" />
+        ))}
       </div>
     </div>
   );
@@ -363,6 +405,51 @@ function TemperatureSelect({ contactId, value, onSaved }: { contactId: string; v
   );
 }
 
+/**
+ * Los datos basicos del contacto, editables sin salir del chat: los mismos
+ * campos (y la misma validacion) que "Datos de contacto" en la ficha. El resto
+ * (email secundario, otras redes) se edita en la ficha completa.
+ */
+const BASIC_FIELDS: { key: ContactFieldKey; label: string; prefix?: string; hint?: string }[] = [
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Teléfono", hint: "Con código de país, ej: +54 9 11 2233 4455" },
+  { key: "whatsapp_phone", label: "WhatsApp", hint: "Solo si es distinto al teléfono" },
+  { key: "instagram_username", label: "Instagram", prefix: "@", hint: "Sin la arroba" },
+  { key: "country", label: "País" },
+];
+
+function BasicData({ contact, canEdit, onSaved }: { contact: Contact; canEdit: boolean; onSaved: () => void }) {
+  return (
+    <PanelSection title="Datos">
+      <dl className="space-y-2">
+        {BASIC_FIELDS.map((f) => {
+          const value = (contact[f.key as keyof Contact] as string | null) ?? "";
+          return (
+            <div key={f.key} className="grid grid-cols-[76px_1fr] items-start gap-2">
+              <dt className="pt-1 text-xs text-muted-foreground">{f.label}</dt>
+              <dd className="min-w-0">
+                <InlineField
+                  key={`${contact.id}:${f.key}`}
+                  contactId={contact.id}
+                  field={f.key}
+                  value={value}
+                  label={f.label}
+                  prefix={f.prefix}
+                  hint={f.hint}
+                  href={contactFieldHref(f.key, value)}
+                  canEdit={canEdit}
+                  onSaved={onSaved}
+                />
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+      {canEdit && <p className="text-[11px] text-muted-foreground">Tocá un dato o el lápiz para editarlo.</p>}
+    </PanelSection>
+  );
+}
+
 function AgentMemory({ contact }: { contact: Contact }) {
   const summary = contact.ai_conversation_summary?.trim();
   return (
@@ -387,17 +474,11 @@ function AgentMemory({ contact }: { contact: Contact }) {
 }
 
 function Channels({ details, accounts }: { details: ContactDetails; accounts?: InboxAccountsInfo }) {
-  const c = details.contact;
-  type Extra = { icon: ReactNode; label: string; value: string };
-  const extras: Extra[] = ([
-    c.phone ? { icon: <Phone className="h-3.5 w-3.5" />, label: "Teléfono", value: c.phone } : null,
-    c.whatsapp_phone && c.whatsapp_phone !== c.phone ? { icon: <Phone className="h-3.5 w-3.5" />, label: "WhatsApp", value: c.whatsapp_phone } : null,
-    c.email ? { icon: <Mail className="h-3.5 w-3.5" />, label: "Email", value: c.email } : null,
-  ] as Array<Extra | null>).filter((x): x is Extra => x !== null);
-
+  // Telefono, WhatsApp y email ya estan (editables) en "Datos": aca solo los
+  // canales por los que el contacto nos escribio.
   return (
     <PanelSection title="Canales">
-      {details.channels.length === 0 && extras.length === 0 ? (
+      {details.channels.length === 0 ? (
         <p className="text-xs text-muted-foreground">Sin canales vinculados.</p>
       ) : (
         <ul className="space-y-1.5 text-sm">
@@ -430,13 +511,6 @@ function Channels({ details, accounts }: { details: ContactDetails; accounts?: I
               </li>
             );
           })}
-          {extras.map((x) => (
-            <li key={x.label} className="flex items-center gap-2">
-              <span className="text-muted-foreground">{x.icon}</span>
-              <span className="text-muted-foreground">{x.label}</span>
-              <span className="truncate">{x.value}</span>
-            </li>
-          ))}
         </ul>
       )}
     </PanelSection>
@@ -468,85 +542,6 @@ function Activity({ contact }: { contact: Contact }) {
         )}
       </dl>
     </PanelSection>
-  );
-}
-
-/**
- * Conocido (00256): una marca propia del contacto. Marcar lo hace cualquiera que
- * edite contactos; quitarla, quien la puso o un administrador (el servidor lo
- * repite en `setKnown`).
- */
-function KnownSection({
-  contact,
-  currentUserId,
-  isAdmin,
-  members,
-  onSaved,
-}: {
-  contact: Contact;
-  currentUserId: string;
-  isAdmin: boolean;
-  members: { userId: string; label: string }[];
-  onSaved: () => void;
-}) {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const marked = contact.is_known;
-  const byName = members.find((m) => m.userId === contact.known_marked_by)?.label ?? null;
-  const canUnmark = canUnmarkKnown({ viewerId: currentUserId, markedBy: contact.known_marked_by, canDeleteContacts: isAdmin });
-
-  function apply(next: boolean) {
-    start(async () => {
-      const result = await setKnown(contact.id, next);
-      if (!result.ok) return setError(result.error);
-      setError(null);
-      onSaved();
-    });
-  }
-
-  return (
-    <section className="mt-6 space-y-2 border-t border-border p-4">
-      <h4 className="flex items-center gap-1.5 text-xs font-medium uppercase text-violet-700 dark:text-violet-300">
-        <HeartHandshake className="h-3 w-3" aria-hidden />
-        Conocido
-      </h4>
-      {marked ? (
-        <>
-          <p className="text-xs text-muted-foreground">
-            {knownLabel(byName)}
-            {contact.known_marked_at ? `, desde el ${formatDate(contact.known_marked_at)}` : ""}. El agente no le responde y sus secuencias están pausadas.
-          </p>
-          {canUnmark ? (
-            <button
-              type="button"
-              onClick={() => apply(false)}
-              disabled={pending}
-              className="rounded-lg border border-input px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-50"
-            >
-              Quitar la marca
-            </button>
-          ) : (
-            <p className="text-[11px] text-muted-foreground">Solo quien lo marcó o un administrador puede quitar la marca.</p>
-          )}
-        </>
-      ) : (
-        <>
-          <p className="text-xs text-muted-foreground">
-            Para alguien personal: el equipo lo ve con un ícono y no lo abre, el agente no le responde y sus chats van a la persona de cada cuenta.
-          </p>
-          <button
-            type="button"
-            onClick={() => apply(true)}
-            disabled={pending}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-900 dark:text-violet-300 dark:hover:bg-violet-950/40"
-          >
-            {pending && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
-            Marcar como conocido
-          </button>
-        </>
-      )}
-      <ActionError message={error} />
-    </section>
   );
 }
 

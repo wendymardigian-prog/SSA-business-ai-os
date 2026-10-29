@@ -513,6 +513,8 @@ export type AuditAction =
   | "do_not_contact"
   /** Se marco o se quito un conocido (00256). Lo escribe el trigger contacts_known_effects. */
   | "known"
+  /** Se marco o se quito un cliente (00268). Lo escribe el trigger contacts_customer_effects. */
+  | "customer"
   /** Un evento del CRM disparo un flow (Fase 2, F3/F4). */
   | "automation_triggered"
   /** Se inscribio un contacto en una secuencia (Fase 2, F13/F15). */
@@ -1143,6 +1145,7 @@ export interface Database {
           contact_status_settings: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings: Json;
+          customer_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */ // @plantilla-quitar(ventas)
           max_discount_percent: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days: number; // @plantilla-quitar(ventas)
@@ -1195,6 +1198,7 @@ export interface Database {
           contact_status_settings?: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
+          customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
           sales_auto_create_flows?: boolean; // @plantilla-quitar(ventas)
@@ -1242,6 +1246,7 @@ export interface Database {
           contact_status_settings?: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
+          customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
           sales_auto_create_flows?: boolean; // @plantilla-quitar(ventas)
@@ -1537,6 +1542,10 @@ export interface Database {
           is_known: boolean;
           known_marked_by: string | null;
           known_marked_at: string | null;
+          is_customer: boolean;
+          customer_marked_by: string | null;
+          customer_marked_at: string | null;
+          customer_source: string | null;
           /** Zona IANA del contacto (Etapa 4, 00095). La aprende la agenda y la confirma el agente. */
           timezone: string | null;
           ai_conversation_summary: string | null;
@@ -1606,6 +1615,10 @@ export interface Database {
           is_known?: boolean;
           known_marked_by?: string | null;
           known_marked_at?: string | null;
+          is_customer?: boolean;
+          customer_marked_by?: string | null;
+          customer_marked_at?: string | null;
+          customer_source?: string | null;
           timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
@@ -1651,6 +1664,10 @@ export interface Database {
           is_known?: boolean;
           known_marked_by?: string | null;
           known_marked_at?: string | null;
+          is_customer?: boolean;
+          customer_marked_by?: string | null;
+          customer_marked_at?: string | null;
+          customer_source?: string | null;
           timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
@@ -2142,6 +2159,7 @@ export interface Database {
           no_reply_needed_by: string | null;
           /** El agente lo apago la marca de conocido (00256). */
           agent_disabled_by_known: boolean;
+          agent_disabled_by_customer: boolean;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
@@ -2177,6 +2195,7 @@ export interface Database {
           no_reply_needed_by?: string | null;
           /** El agente lo apago la marca de conocido (00256). */
           agent_disabled_by_known?: boolean;
+          agent_disabled_by_customer?: boolean;
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -2195,6 +2214,7 @@ export interface Database {
           no_reply_needed_by?: string | null;
           /** El agente lo apago la marca de conocido (00256). */
           agent_disabled_by_known?: boolean;
+          agent_disabled_by_customer?: boolean;
           late_conversation_id?: string | null;
           status?: ConversationStatus;
           assigned_to?: string | null;
@@ -5510,6 +5530,7 @@ export interface Database {
           location_type: LocationType;
           location_text: string | null;
           hide_location_until_booked: boolean;
+          is_internal: boolean;
           status: EventTypeStatus;
           scheduling_type: SchedulingType;
           schedule_id: string | null;
@@ -5548,6 +5569,7 @@ export interface Database {
           location_type?: LocationType;
           location_text?: string | null;
           hide_location_until_booked?: boolean;
+          is_internal?: boolean;
           status?: EventTypeStatus;
           scheduling_type?: SchedulingType;
           schedule_id?: string | null;
@@ -5583,6 +5605,7 @@ export interface Database {
           location_type?: LocationType;
           location_text?: string | null;
           hide_location_until_booked?: boolean;
+          is_internal?: boolean;
           status?: EventTypeStatus;
           schedule_id?: string | null;
           destination_calendar_id?: string | null;

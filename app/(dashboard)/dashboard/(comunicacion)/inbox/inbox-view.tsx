@@ -7,7 +7,8 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread, type InboxAsset } from "@/components/inbox/message-thread";
 import { ContactPanel } from "@/components/inbox/contact-panel";
 import { KnownGate } from "@/components/inbox/known-gate";
-import { knownGate } from "@/lib/inbox/known";
+import { knownLabel } from "@/lib/inbox/known";
+import { customerLabel, markGate } from "@/lib/inbox/marks";
 import { assigneeName } from "@/lib/inbox/assignee";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -154,18 +155,15 @@ export function InboxView({
     ? (conversations.find((c) => c.id === selectedId) ?? (selectedFromServer?.id === selectedId ? selectedFromServer : null))
     : null;
 
-  // Conocido (00256): quien no lo marco ni lo tiene a cargo ve primero un aviso,
-  // y el chat no se carga ni se marca como leido hasta que elige abrirlo.
+  // Conocido (00256) y Cliente (00268): quien no lo marco ni lo tiene a cargo
+  // ve primero un aviso, y el chat no se carga ni se marca como leido hasta que
+  // elige abrirlo.
   const [revealedKnown, setRevealedKnown] = useState<Set<string>>(() => new Set());
-  const gated =
-    !!selected &&
-    !revealedKnown.has(selected.id) &&
-    knownGate({
-      isKnown: !!selected.contacts?.is_known,
-      markedBy: selected.contacts?.known_marked_by ?? null,
-      assignedTo: selected.assigned_to ?? null,
-      viewerId: currentUserId,
-    });
+  const gateMark =
+    selected && !revealedKnown.has(selected.id)
+      ? markGate(selected.contacts, { assignedTo: selected.assigned_to ?? null, viewerId: currentUserId })
+      : null;
+  const gated = gateMark !== null;
 
   const replaceQuery = useCallback(
     (next: URLSearchParams) => {
@@ -253,6 +251,9 @@ export function InboxView({
           draftConversationIds={draftConversationIds}
           accounts={accounts}
           members={members}
+          currentUserId={currentUserId}
+          canEditContacts={canEditContacts}
+          canDeleteContacts={canDeleteContacts}
         />
       </div>
 
@@ -299,8 +300,16 @@ export function InboxView({
             </div>
           ) : gated && selected ? (
             <KnownGate
+              mark={gateMark ?? "known"}
+              title={
+                gateMark === "customer"
+                  ? customerLabel(
+                      assigneeName(members, selected.contacts?.customer_marked_by ?? null) ?? assigneeName(members, selected.assigned_to),
+                      selected.contacts?.customer_source,
+                    )
+                  : knownLabel(assigneeName(members, selected.contacts?.known_marked_by ?? null) ?? assigneeName(members, selected.assigned_to))
+              }
               contactName={selected.contacts?.display_name ?? null}
-              ownerName={assigneeName(members, selected.contacts?.known_marked_by ?? null) ?? assigneeName(members, selected.assigned_to)}
               onOpen={() => setRevealedKnown((prev) => new Set(prev).add(selected.id))}
               onBack={handleBack}
             />
@@ -351,6 +360,7 @@ export function InboxView({
             allTags={tags}
             currentUserId={currentUserId}
             isAdmin={isAdmin}
+            canEdit={canEditContacts}
             accounts={accounts}
           />
         </div>

@@ -192,6 +192,7 @@ export default async function ContactsPage({
     temperature: (c.lead_temperature as LeadTemperature | null) ?? null,
     doNotContact: Boolean(c.do_not_contact),
     isKnown: Boolean(c.is_known),
+    isCustomer: Boolean(c.is_customer),
     setterId: (c.setter_id as string | null) ?? null,
     vendedorId: (c.vendedor_id as string | null) ?? null,
     tags: (c.contact_tags ?? [])

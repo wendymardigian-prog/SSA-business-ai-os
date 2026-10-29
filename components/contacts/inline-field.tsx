@@ -22,7 +22,11 @@ import { useViewerTimezone } from "@/components/dashboard-chrome";
  * peor que el error. Un cambio que no cambia nada no llama al servidor.
  *
  * `variant="title"` es el nombre de la ficha: mismo comportamiento, tipografia
- * de titulo.
+ * de titulo. `variant="name"` es el nombre en el panel de la bandeja (mas chico).
+ *
+ * El lapiz se ve SIEMPRE (gris suave, mas fuerte al pasar el mouse): escondido
+ * hasta el hover nadie se daba cuenta de que el dato se podia editar, y en el
+ * celular, sin hover, no aparecia nunca.
  */
 export function InlineField({
   contactId,
@@ -51,7 +55,7 @@ export function InlineField({
   prefix?: string;
   /** Si el valor es un link (un perfil, un correo): se dibuja como link, y se edita con el lapiz. */
   href?: string | null;
-  variant?: "field" | "title";
+  variant?: "field" | "title" | "name";
   /** false: solo lectura (quien no puede editar este contacto). */
   canEdit?: boolean;
   /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
@@ -76,6 +80,7 @@ export function InlineField({
   // Esc descarta: marca para que el `blur` que sigue al desmontar el campo no guarde.
   const discarded = useRef(false);
   const title = variant === "title";
+  const name = variant === "name";
 
   function begin() {
     if (!canEdit || pending) return;
@@ -124,7 +129,7 @@ export function InlineField({
 
   const inputClass = cn(
     "w-full rounded-lg border bg-background px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring",
-    title ? "text-xl font-bold" : "text-sm",
+    title ? "text-xl font-bold" : name ? "text-sm font-semibold" : "text-sm",
     error ? "border-red-500/60" : "border-input",
   );
 
@@ -243,9 +248,10 @@ export function InlineField({
             type="button"
             onClick={begin}
             aria-label={`Editar ${label}`}
-            className="rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+            title={`Editar ${label}`}
+            className="shrink-0 rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground group-hover:text-muted-foreground"
           >
-            <Pencil className="h-3 w-3" aria-hidden />
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
           </button>
         )}
       </span>
@@ -253,7 +259,11 @@ export function InlineField({
   }
 
   if (!canEdit) {
-    return <span className={cn("min-w-0 break-words", title ? "text-xl font-bold" : "text-sm")}>{shown}</span>;
+    return (
+      <span className={cn("min-w-0 break-words", title ? "text-xl font-bold" : name ? "text-sm font-semibold" : "text-sm")}>
+        {shown}
+      </span>
+    );
   }
 
   return (
@@ -261,15 +271,19 @@ export function InlineField({
       type="button"
       onClick={begin}
       aria-label={`Editar ${label}${shownValue ? `: ${shownValue}` : ""}`}
+      title={`Editar ${label}`}
       className={cn(
         "group inline-flex min-w-0 max-w-full items-start gap-1.5 rounded-md text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        title ? "text-xl font-bold" : "-mx-1.5 px-1.5 py-0.5 text-sm",
+        title ? "-mx-1.5 px-1.5 text-xl font-bold" : name ? "-mx-1.5 px-1.5 py-0.5 text-sm font-semibold" : "-mx-1.5 px-1.5 py-0.5 text-sm",
         multiline && "whitespace-pre-wrap",
       )}
     >
       <span className="min-w-0 break-words">{shown}</span>
       <Pencil
-        className="mt-1 h-3 w-3 shrink-0 text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        className={cn(
+          "shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground group-focus-visible:text-foreground",
+          title ? "mt-2 h-4 w-4" : "mt-1 h-3.5 w-3.5",
+        )}
         aria-hidden
       />
     </button>

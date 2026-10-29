@@ -56,7 +56,7 @@ interface RuleResult {
   contact_id?: string | null;
   setter_changed?: boolean;
   setter_old?: string | null;
-  /** "rule" o "known" (00256: el chat de un conocido va a la persona de esa cuenta). */
+  /** "rule", "known" (00256) o "customer" (00268): el chat de un conocido o un cliente va a la persona de esa cuenta. */
   source?: string | null;
 }
 
@@ -77,7 +77,9 @@ export async function applyConversationRules(service: Db, args: { workspaceId: s
     const label =
       result.source === "known"
         ? "Conocido"
-        : result.rule_name?.trim()
+        : result.source === "customer"
+          ? "Cliente"
+          : result.rule_name?.trim()
           ? `Regla «${result.rule_name.trim()}»`
           : "Regla de asignación";
     await auditAsSystem({
@@ -87,7 +89,10 @@ export async function applyConversationRules(service: Db, args: { workspaceId: s
       entityId: args.conversationId,
       action: "assign",
       changes: { assigned_to: { old: null, new: result.assigned_to } },
-      metadata: { rule_id: result.rule_id ?? null, source: result.source === "known" ? "known" : "conversation_rule" },
+      metadata: {
+        rule_id: result.rule_id ?? null,
+        source: result.source === "known" || result.source === "customer" ? result.source : "conversation_rule",
+      },
       label,
     });
     if (result.setter_changed && result.contact_id) {
@@ -107,7 +112,12 @@ export async function applyConversationRules(service: Db, args: { workspaceId: s
       conversationId: args.conversationId,
       assigneeId: result.assigned_to,
       actorId: null,
-      reason: result.source === "known" ? "Es un conocido: te llega a vos por la cuenta por la que escribe." : `${label}.`,
+      reason:
+        result.source === "known"
+          ? "Es un conocido: te llega a vos por la cuenta por la que escribe."
+          : result.source === "customer"
+            ? "Es un cliente: te llega a vos por la cuenta por la que escribe."
+            : `${label}.`,
     });
     return result.assigned_to;
   } catch (err) {

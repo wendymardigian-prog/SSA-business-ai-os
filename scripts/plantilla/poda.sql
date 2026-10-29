@@ -918,6 +918,7 @@ DROP FUNCTION public.payments_refresh_sale_status();
 DROP FUNCTION public.workspace_payment_method(p_workspace uuid, p_key text);
 DROP FUNCTION private.payments_fee_spec_from_snapshot();
 DROP FUNCTION private.payments_validate_method();
+DROP FUNCTION private.payments_mark_customer(); -- el cliente se marca a mano (sin Ventas no hay cobros)
 DROP FUNCTION private.enqueue_payments_overdue_sweep();
 DROP FUNCTION public.ads_crm_metrics(p_level text, p_since date, p_until date, p_ad_account_id text, p_workspace_id uuid); -- version 1, reemplazada por la v2
 

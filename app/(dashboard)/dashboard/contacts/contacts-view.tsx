@@ -1,5 +1,6 @@
 "use client";
 
+import { MarkBadge } from "@/components/contacts/mark-badge";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
@@ -7,7 +8,7 @@ import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, Slider
 
 import { cn } from "@/lib/utils";
 import {
-  DoNotContactBadge, KnownBadge,
+  DoNotContactBadge,
   TagChip,
   TemperatureBadge,
   formatRelative,
@@ -54,6 +55,7 @@ export interface ContactRow {
   doNotContact: boolean;
   /** Conocido (00256). */
   isKnown?: boolean;
+  isCustomer?: boolean;
   setterId: string | null;
   vendedorId: string | null;
   tags: { id: string; name: string; color: string | null }[];
@@ -454,7 +456,8 @@ export function ContactsView({
                         </span>
                         <TemperatureBadge value={contact.temperature} />
                         {contact.doNotContact && <DoNotContactBadge />}
-                        {contact.isKnown && <KnownBadge />}
+                        {contact.isCustomer && <MarkBadge mark="customer" />}
+                        {contact.isKnown && <MarkBadge mark="known" />}
                       </span>
                     </Link>
                   </td>

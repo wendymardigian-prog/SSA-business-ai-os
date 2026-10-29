@@ -126,19 +126,21 @@ export async function processSequenceSteps(): Promise<ProcessResult> {
  * momento y este puede haber una marcada a mano desde la ficha. Es una sola
  * consulta para toda la tanda.
  */
-async function loadBlockedContacts(supabase: Db, enrollments: Enrollment[]): Promise<Map<string, "opt_out" | "known">> {
+async function loadBlockedContacts(supabase: Db, enrollments: Enrollment[]): Promise<Map<string, "opt_out" | "known" | "customer">> {
   const ids = [...new Set(enrollments.map((e) => e.contact_id))];
   const { data } = await supabase
     .from("contacts")
-    .select("id, do_not_contact, deleted_at, is_known")
+    .select("id, do_not_contact, deleted_at, is_known, is_customer")
     .in("id", ids);
 
   // Un conocido (00256) tampoco recibe secuencias: se pausa con su propio motivo,
-  // que se puede reanudar si se le saca la marca.
-  const blocked = new Map<string, "opt_out" | "known">();
+  // que se puede reanudar si se le saca la marca. Un cliente (00268), igual: asi
+  // tambien queda frenado cuando la marca vino sola, de un cobro.
+  const blocked = new Map<string, "opt_out" | "known" | "customer">();
   for (const c of data ?? []) {
     if (c.do_not_contact || c.deleted_at) blocked.set(c.id, "opt_out");
     else if (c.is_known) blocked.set(c.id, "known");
+    else if (c.is_customer) blocked.set(c.id, "customer");
   }
   return blocked;
 }

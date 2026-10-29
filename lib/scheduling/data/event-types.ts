@@ -76,10 +76,12 @@ export interface EventListFilters {
 }
 
 export async function listEventTypes(supabase: Db, workspaceId: string, filters: EventListFilters = {}): Promise<EventTypeRow[]> {
+  // El evento interno de cada persona (00269) sostiene las reuniones sin evento: no es un evento que se elige.
   let query = supabase
     .from("event_types")
     .select("*")
     .eq("workspace_id", workspaceId)
+    .eq("is_internal", false)
     .is("deleted_at", null);
   if (filters.ownerUserId) query = query.eq("owner_user_id", filters.ownerUserId);
   if (filters.categoryIds && filters.categoryIds.length > 0) query = query.in("category_id", filters.categoryIds);
@@ -88,7 +90,8 @@ export async function listEventTypes(supabase: Db, workspaceId: string, filters:
 }
 
 export async function getEventType(supabase: Db, id: string): Promise<EventTypeRow | null> {
-  const { data } = await supabase.from("event_types").select("*").eq("id", id).is("deleted_at", null).maybeSingle();
+  // El interno (00269) no se edita: para la pantalla y las acciones, no existe.
+  const { data } = await supabase.from("event_types").select("*").eq("id", id).eq("is_internal", false).is("deleted_at", null).maybeSingle();
   return (data as EventTypeRow | null) ?? null;
 }
 
@@ -111,6 +114,7 @@ export async function categoryUsage(supabase: Db, workspaceId: string): Promise<
     .from("event_types")
     .select("category_id")
     .eq("workspace_id", workspaceId)
+    .eq("is_internal", false)
     .is("deleted_at", null);
   for (const e of events ?? []) {
     const entry = usage.get(e.category_id) ?? { events: 0, bookings: 0 };

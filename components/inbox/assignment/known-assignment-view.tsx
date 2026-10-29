@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { saveKnownContactsSettings } from "@/lib/actions/conversation-assignment-rules";
+import { saveCustomerContactsSettings, saveKnownContactsSettings } from "@/lib/actions/conversation-assignment-rules";
 import type { KnownSettings } from "@/lib/inbox/known";
 import { ActionError } from "@/components/contacts/ui";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -12,16 +12,19 @@ import type { RuleAccount, RuleMember } from "./conversation-rules-view";
 const control = "h-9 rounded-lg border border-border bg-background px-2 text-sm";
 
 /**
- * Ajustes > Asignación > Conocidos (00256): a quién van los chats de un
- * conocido, cuenta por cuenta. "Instagram 1 → Ana, Instagram 2 → Beto". Una
- * cuenta sin persona usa la por defecto; sin por defecto, el Owner.
+ * Ajustes > Asignación > Conocidos (00256) y Clientes (00268): a quién van los
+ * chats de un conocido o de un cliente, cuenta por cuenta. "Instagram 1 → Ana,
+ * Instagram 2 → Beto". Una cuenta sin persona usa la por defecto; sin por
+ * defecto, un conocido va al Owner y un cliente se queda con su responsable.
  */
 export function KnownAssignmentView({
+  kind = "known",
   settings,
   accounts,
   members,
   ownerName,
 }: {
+  kind?: "known" | "customer";
   settings: KnownSettings;
   accounts: RuleAccount[];
   members: RuleMember[];
@@ -34,17 +37,21 @@ export function KnownAssignmentView({
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
 
+  const fallback = kind === "customer" ? "Nadie: queda su responsable" : ownerName ? `${ownerName} (Owner)` : "El Owner";
   const defaultLabel = defaultUserId
     ? members.find((m) => m.userId === defaultUserId)?.label ?? "la persona por defecto"
-    : ownerName
-      ? `${ownerName} (Owner)`
-      : "el Owner";
+    : kind === "customer"
+      ? "queda su responsable"
+      : ownerName
+        ? `${ownerName} (Owner)`
+        : "el Owner";
 
   function save() {
     setError(null);
     setSaved(false);
     start(async () => {
-      const result = await saveKnownContactsSettings({ byChannel, defaultUserId: defaultUserId || null });
+      const payload = { byChannel, defaultUserId: defaultUserId || null };
+      const result = kind === "customer" ? await saveCustomerContactsSettings(payload) : await saveKnownContactsSettings(payload);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -66,7 +73,7 @@ export function KnownAssignmentView({
           }}
           className={control}
         >
-          <option value="">{ownerName ? `${ownerName} (Owner)` : "El Owner"}</option>
+          <option value="">{fallback}</option>
           {members.map((m) => (
             <option key={m.userId} value={m.userId}>
               {m.label}
@@ -95,7 +102,7 @@ export function KnownAssignmentView({
                 <td className="py-2">
                   <select
                     value={byChannel[a.id] ?? ""}
-                    aria-label={`A quién van los conocidos de ${a.label}`}
+                    aria-label={`A quién van los ${kind === "customer" ? "clientes" : "conocidos"} de ${a.label}`}
                     onChange={(e) => {
                       const value = e.target.value;
                       setByChannel((prev) => {

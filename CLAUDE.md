@@ -1573,6 +1573,14 @@ Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el
 - **`upsertConversation` no pierde un mensaje por una carrera**: si el insert choca (23505) porque otra llegada creo la conversacion en el mismo instante, usa la que gano.
 - **Despues del deploy, cada instalacion toca "Sincronizar canales" una vez**: arranca la importacion completa y suma `conversation.started` al webhook de Zernio.
 
+# Conocido, Cliente y agenda en un paso (28/10/2026)
+
+- **«Cliente» es la marca hermana de «Conocido»** (00268, `contacts.is_customer`): mismos efectos (agente apagado con `agent_disabled_by_customer`, secuencias pausadas con motivo `customer`, aviso antes de abrir el chat) y se marca sola al cobrar un pago positivo de una venta (`payments_mark_customer`, que nunca tumba el pago; en la plantilla de estudiantes se poda). Sus chats van a `workspaces.customer_contacts_settings`; **sin nadie configurado, el responsable NO cambia** (un conocido va al Owner). Reglas puras en `lib/inbox/marks.ts`, cómo se ve cada marca en `components/contacts/mark-badge.tsx`, y cada fila de la lista de chats tiene un menú «⋯» (`lib/inbox/row-actions.ts`).
+- La 00268 redefine `tag_effect_release`, `contacts_known_effects` y `assign_new_conversation` (copias con el bloque «00268» marcado): sacar una etiqueta o la marca de conocido ya no prende el agente si sigue otra marca.
+- **El nombre y los datos del contacto se editan con un lápiz siempre visible** (`InlineField`), en la ficha y en el panel de la bandeja (sección «Datos»).
+- **Agendar a mano es un solo modal** (00269, `event_types.is_internal`): ver «Agendar a mano en un solo paso» en [docs/agendamiento.md](docs/agendamiento.md).
+- **00268 y 00269 son aditivas y van ANTES de desplegar el código** (la bandeja y la Agenda leen sus columnas): **aplicadas y registradas** el 28/10/2026 (versiones `20261028233701` y `20261028233702`), después de ensayarlas en una transacción que se deshizo sola. **La próxima libre es la `00270`** (confirmar con `list_migrations` y las ramas locales).
+
 # Seguridad
 
 ## Autenticacion y sesiones

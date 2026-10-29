@@ -1,36 +1,40 @@
 "use client";
 
-import { HeartHandshake } from "lucide-react";
-import { knownLabel } from "@/lib/inbox/known";
+import { MARK_STYLE } from "@/components/contacts/mark-badge";
+import type { ContactMark } from "@/lib/inbox/marks";
 
 /**
- * Lo que ve otra persona del equipo al abrir el chat de un conocido (00256):
- * un aviso en lugar del hilo. Es un aviso, no un bloqueo: "Abrir igual" entra.
- * Hasta elegir, el chat no se carga ni se marca como leído (la duena lo sigue
- * viendo sin leer).
+ * Lo que ve otra persona del equipo al abrir el chat de un conocido (00256) o
+ * de un cliente (00268): un aviso en lugar del hilo. Es un aviso, no un
+ * bloqueo: "Abrir igual" entra. Hasta elegir, el chat no se carga ni se marca
+ * como leído (quien lo atiende lo sigue viendo sin leer).
  */
 export function KnownGate({
+  mark = "known",
+  title,
   contactName,
-  ownerName,
   onOpen,
   onBack,
 }: {
+  mark?: ContactMark;
+  /** "Conocido de Ana", "Cliente de Beto", "Cliente (compró)". */
+  title: string;
   contactName: string | null;
-  /** Quien lo marco (o su responsable). */
-  ownerName: string | null;
   onOpen: () => void;
   onBack: () => void;
 }) {
+  const { icon: Icon, soft } = MARK_STYLE[mark];
+  const who = contactName ? `${contactName} es` : "Es";
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <span className="grid h-12 w-12 place-items-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
-        <HeartHandshake className="h-6 w-6" aria-hidden />
+      <span className={`grid h-12 w-12 place-items-center rounded-full ${soft}`}>
+        <Icon className="h-6 w-6" aria-hidden />
       </span>
       <div className="max-w-sm space-y-1">
-        <p className="text-sm font-semibold">{knownLabel(ownerName)}</p>
+        <p className="text-sm font-semibold">{title}</p>
         <p className="text-sm text-muted-foreground">
-          {contactName ? `${contactName} es` : "Es"} una conversación personal. Si no te toca a vos, mejor no abrirla: no se va a marcar como
-          leída.
+          {mark === "known" ? `${who} una conversación personal.` : `${who} un cliente y ya tiene quien lo atienda.`} Si no te toca a vos, mejor no
+          abrirla: no se va a marcar como leída.
         </p>
       </div>
       <div className="flex items-center gap-2">

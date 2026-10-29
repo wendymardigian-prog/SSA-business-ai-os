@@ -40,6 +40,7 @@ const PAUSE_REASONS: Record<string, string> = {
   contact_replied: "el contacto respondió",
   opt_out: "pidió no ser contactado",
   known: "es un conocido",
+  customer: "es un cliente",
   sequence_paused: "se pausó la secuencia",
   no_conversation: "no hay una conversación abierta",
   collision: "estaba en más de una secuencia",

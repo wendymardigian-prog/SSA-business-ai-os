@@ -33,6 +33,10 @@ export interface InboxContact {
   /** Conocido (00256): alguien personal. La lista lo marca y abrirlo pide confirmar. */
   is_known?: boolean;
   known_marked_by?: string | null;
+  /** Cliente (00268): ya compro. Igual que el conocido: la lista lo marca y abrirlo pide confirmar. */
+  is_customer?: boolean;
+  customer_marked_by?: string | null;
+  customer_source?: string | null;
 }
 
 export type ConversationRow = Database["public"]["Tables"]["conversations"]["Row"] & {

@@ -253,3 +253,36 @@ export async function saveKnownContactsSettings(input: { byChannel?: unknown; de
   revalidatePath(SETTINGS_PATH);
   return { ok: true };
 }
+
+/**
+ * A quien van los chats de un cliente, por cuenta (00268). Misma forma que la de
+ * los conocidos; sin nada configurado, el responsable no cambia.
+ */
+export async function saveCustomerContactsSettings(input: { byChannel?: unknown; defaultUserId?: unknown }): Promise<Result> {
+  const ctx = await getPermissionAction("assignment.manage");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED };
+  const { service, memberIds, channelIds } = await knownIds(ctx.workspace.id);
+  const checked = checkKnownSettings(input ?? {}, { memberIds, channelIds });
+  if (!checked.ok) return checked;
+
+  const { data: before } = await service.from("workspaces").select("customer_contacts_settings").eq("id", ctx.workspace.id).maybeSingle();
+  const next = serializeKnownSettings(checked.value);
+  const { error } = await service.from("workspaces").update({ customer_contacts_settings: next as unknown as Json }).eq("id", ctx.workspace.id);
+  if (error) {
+    console.error("[clientes] no pude guardar:", error.message);
+    return { ok: false, error: "No pude guardar. Probá de nuevo." };
+  }
+
+  await logAudit({
+    supabase: service,
+    workspaceId: ctx.workspace.id,
+    entityType: "workspace",
+    entityId: ctx.workspace.id,
+    action: "update",
+    changes: { customer_contacts_settings: { old: (before?.customer_contacts_settings ?? {}) as Json, new: next as unknown as Json } },
+    metadata: { section: "customer_contacts_settings" },
+    performedBy: ctx.user.id,
+  });
+  revalidatePath(SETTINGS_PATH);
+  return { ok: true };
+}

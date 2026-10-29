@@ -44,7 +44,7 @@ import { PeriodPopover } from "@/components/dashboards/chat/filters/period-popov
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { agendaSearchHint } from "@/lib/scheduling/agenda-search-hint";
 import { gmtOffsetLabel, timezoneCityLabel } from "@/lib/scheduling/booker/format";
-import { changeBookingStatus, cancelBookingAsHost, searchContactsForBooking, slotsForManualBooking } from "@/lib/actions/scheduling/bookings";
+import { changeBookingStatus, cancelBookingAsHost, searchContactsForBooking } from "@/lib/actions/scheduling/bookings";
 import { DEFAULT_CONFIG_SECTION } from "@/lib/scheduling/config-sections";
 
 /** La pastilla rápida de la lista: los cuatro de siempre, más "Todas" (ahora el default). */
@@ -84,6 +84,9 @@ export function BookingsScreen({
   hostNames,
   categories,
   events,
+  manualHosts,
+  manualAreas,
+  viewerId,
   eventOptions,
   shareableEvents,
   hasEverBooked,
@@ -115,7 +118,12 @@ export function BookingsScreen({
   counts: Record<QuickPick, number>;
   hostNames: Record<string, string>;
   categories: CategoryRow[];
+  /** Todos los eventos (activos e inactivos), para elegir uno al agendar a mano. */
   events: ManualEventOption[];
+  /** Agendar a mano sin evento: quien puede atender y en que area. */
+  manualHosts: Array<{ userId: string; label: string }>;
+  manualAreas: Array<{ id: string; name: string; isDefault: boolean }>;
+  viewerId: string;
   /** Los eventos para el filtro ("Evento"): id y título nomás. */
   eventOptions: Array<{ id: string; title: string }>;
   /** Los eventos activos, para "Compartir" y para el estado vacío del workspace. */
@@ -423,9 +431,9 @@ export function BookingsScreen({
           timeFormat={timeFormat}
           onClose={() => setManualOpen(false)}
           searchContacts={(term) => searchContactsForBooking(term)}
-          loadSlots={async (eventId, from, to, ignoreMinimumNotice) =>
-            (await slotsForManualBooking({ eventTypeId: eventId, from, to, timezone, ignoreMinimumNotice })) as SlotsByDate
-          }
+          hosts={manualHosts}
+          currentUserId={viewerId}
+          areas={manualAreas}
         />
       )}
     </div>

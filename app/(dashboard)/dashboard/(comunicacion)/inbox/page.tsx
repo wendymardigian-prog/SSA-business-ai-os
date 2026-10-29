@@ -14,6 +14,7 @@ import {
   ASSIGNMENT_MINE,
   HIDE_KNOWN_PARAM,
   HIDE_KNOWN_VALUE,
+  HIDE_CUSTOMERS_PARAM,
   statusForQuery,
   type InboxFilters,
   type InboxStatus,
@@ -133,6 +134,8 @@ export default async function InboxPage({
   const awaiting = parseAwaitingFilter(firstParam(params[AWAITING_PARAM]));
   // Conocidos (00256): esconderlos de la lista.
   const hideKnown = firstParam(params[HIDE_KNOWN_PARAM]) === HIDE_KNOWN_VALUE;
+  // Clientes (00268), igual.
+  const hideCustomers = firstParam(params[HIDE_CUSTOMERS_PARAM]) === HIDE_KNOWN_VALUE;
   const page = pickPage(params.page);
   const selectedId = firstParam(params.c);
 
@@ -143,7 +146,7 @@ export default async function InboxPage({
   // datos del contacto de las que vuelven. Es el mismo mecanismo que usa la
   // lista de contactos para filtrar por tag.
   let select =
-    "*, contacts!inner(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at, is_known, known_marked_by)";
+    "*, contacts!inner(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at, is_known, known_marked_by, is_customer, customer_marked_by, customer_source)";
   if (tagIds.length > 0) select += ", tag_match:contacts!inner(contact_tags!inner(tag_id))";
 
   let query = supabase
@@ -185,6 +188,7 @@ export default async function InboxPage({
         : query.lte("reply_window_until", nowIso);
   }
   if (hideKnown) query = query.eq("contacts.is_known", false);
+  if (hideCustomers) query = query.eq("contacts.is_customer", false);
 
   if (search) {
     // La busqueda por nombre del contacto va sobre la tabla embebida; el
@@ -273,7 +277,7 @@ export default async function InboxPage({
     const { data } = await supabase
       .from("conversations")
       .select(
-        "*, contacts(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at, is_known, known_marked_by)",
+        "*, contacts(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at, is_known, known_marked_by, is_customer, customer_marked_by, customer_source)",
       )
       .eq("id", selectedId)
       .eq("workspace_id", workspace.id)
@@ -307,6 +311,7 @@ export default async function InboxPage({
     needsHuman,
     awaiting,
     hideKnown,
+    hideCustomers,
   };
 
   const platformItems = platformOptions.map((p) => ({ value: p, label: platformLabel(p) }));

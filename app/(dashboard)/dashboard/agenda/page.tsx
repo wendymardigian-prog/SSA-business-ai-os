@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { defaultManualCategory } from "@/lib/scheduling/booking/manual";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { canOpenConfig } from "@/lib/scheduling/config-sections";
@@ -306,19 +307,25 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       hostNames={Object.fromEntries(names)}
       categories={categoryRows}
       eventOptions={events.filter((e) => e.status !== "inactive").map((e) => ({ id: e.id, title: e.title }))}
-      events={events
-        .filter((e) => e.status !== "inactive")
-        .map((e) => ({
-          id: e.id,
-          title: e.title,
-          durationMinutes: e.duration_minutes,
-          areaName: null,
-          categoryLabel: categoryLabel(e.category_id, categoryRows),
-          hostName: names.get(e.owner_user_id) ?? "Sin nombre",
-          hidden: e.status === "hidden",
-          fields: visibleFields((e.booking_fields as unknown as BookingField[]) ?? []),
-          color: e.color,
-        }))}
+      // Agendar a mano (un solo paso): TODOS los eventos, los inactivos tambien
+      // (el modal los muestra abajo). El horario es libre, no depende de que el evento este activo.
+      events={events.map((e) => ({
+        id: e.id,
+        title: e.title,
+        durationMinutes: e.duration_minutes,
+        categoryLabel: categoryLabel(e.category_id, categoryRows),
+        hostName: names.get(e.owner_user_id) ?? "Sin nombre",
+        status: e.status as "active" | "hidden" | "inactive",
+        color: e.color,
+      }))}
+      manualHosts={[...names.entries()].map(([userId, label]) => ({ userId, label })).sort((a, b) => a.label.localeCompare(b.label))}
+      manualAreas={(() => {
+        const defaultId = defaultManualCategory(categoryRows);
+        return categoryRows
+          .filter((c) => c.parent_id === null && !c.archived_at)
+          .map((c) => ({ id: c.id, name: c.name, isDefault: c.id === defaultId }));
+      })()}
+      viewerId={ctx.user.id}
       shareableEvents={shareableEvents}
       hasEverBooked={(everCount ?? 0) > 0}
       hasCalendar={defaults?.hasCalendar ?? false}

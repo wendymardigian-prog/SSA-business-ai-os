@@ -91,6 +91,21 @@ export default async function AsignacionSettingsPage() {
         />
 
         <div className="border-t border-border pt-6">
+          <h2 className="text-base font-semibold">Clientes</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Cuando alguien se marca como cliente, sus chats van a la persona de la cuenta por la que escribe. Sin
+            nadie elegido, cada chat se queda con el responsable que ya tenía.
+          </p>
+        </div>
+        <KnownAssignmentView
+          kind="customer"
+          settings={parseKnownSettings(workspace.customer_contacts_settings)}
+          accounts={ruleAccounts}
+          members={memberOptions}
+          ownerName={members.find((m) => m.role === "owner")?.name ?? null}
+        />
+
+        <div className="border-t border-border pt-6">
           <h2 id="asignacion-title" className="text-base font-semibold">
             Contactos: setter, vendedor y referido
           </h2>
