@@ -126,6 +126,20 @@ describe("send_email: cuerpo con formato (editor de texto enriquecido)", () => {
   });
 });
 
+describe("send_email: caracterizacion de 'no contactar' (antes de la suscripcion a emails)", () => {
+  it("un flujo de agenda manda igual a un contacto 'no contactar' (es una reunion que pidio)", async () => {
+    const a = args({ doNotContact: true }) as unknown as { context: { variables: Record<string, unknown> } };
+    a.context.variables = { trigger_scope: "booking" };
+    await sendEmailNode.execute(a as never);
+    expect(sendTransactionalEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "ana@x.com", contactId: "c-1" }));
+  });
+
+  it("'no contactar' tambien frena el envio a una direccion fija del flujo de ese contacto", async () => {
+    await sendEmailNode.execute(args({ to: "fixed", fixedEmail: "equipo@negocio.com", doNotContact: true }));
+    expect(sendTransactionalEmail).not.toHaveBeenCalled();
+  });
+});
+
 describe("send_email: adjuntos de Recursos (auditoria de automatizaciones)", () => {
   it("los adjuntos viajan en el envio", async () => {
     const loader = await import("@/lib/email/flow-attachments");

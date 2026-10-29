@@ -4,10 +4,10 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 
 ## Checklist
 
-- [ ] Paso 0 · Línea base y tests de caracterización (envíos A/B/C/F/G, importador, fusión)
-- [ ] M1 (`00270`) aplicada, registrada y verificada
-- [ ] E1 · Modelo de datos y función central (`00270` + `00271`)
-- [ ] M2 (`00271`) aplicada, registrada y verificada
+- [x] Paso 0 · Línea base y tests de caracterización (envíos A/B/C/F/G, importador, fusión)
+- [x] M1 (`00270`) aplicada, registrada y verificada (29/10/2026, versión `20261029224458`)
+- [x] E1 · Modelo de datos y función central (`00270` + `00271`)
+- [x] M2 (`00271`) aplicada, registrada y verificada (29/10/2026, versión `20261029225041`)
 - [ ] E2 · Puerta de envío `canSendEmailTo`, categoría por envío y secuencias (`00272`)
 - [ ] M3 (`00272`) aplicada, registrada y verificada
 - [ ] E3 · Link de baja, baja en un clic y página pública
@@ -43,11 +43,26 @@ Rama `feat/suscripcion-email` sin cambios de código (base `782eb01`). Los `veri
 
 | Nº | Contenido | Estado |
 |---|---|---|
-| `00270` | columnas de `contacts`, `workspaces.email_footer_address`, índice, backfill | sin escribir |
-| `00271` | `email_address_status`, `set_email_status`, `set_email_status_by_address`, trigger de herencia, guardia, `merge_contacts` | sin escribir |
+| `00270` | columnas de `contacts`, `workspaces.email_footer_address`, índices, backfill | **aplicada y registrada** (`20261029224458`) |
+| `00271` | `email_address_status`, `email_address_send_state`, `set_email_status`, `set_email_status_by_address`, guardia, herencia y regla de la fusión (por trigger) | **aplicada y registrada** (`20261029225041`) |
 | `00272` | CHECK de `email_log.status` (estados `skipped_*`) | sin escribir |
 
 Última migración registrada al empezar: `00269` (`20261028233702`). Primera libre: `00270` (reconfirmar con `list_migrations`). Autorización de Wendy: aplicar `00270`–`00272` sin pedir OK cada vez si cada verificación pasa; si falla una, se para.
+
+## E1 · Hecho (29/10/2026)
+
+**Caracterización previa** (en verde antes de tocar nada): `lib/email/send-reply.characterization.test.ts` (camino B/C), `send-email.test.ts` suma la excepción de agenda y el freno a dirección fija por «no contactar» (camino A), `lib/actions/sales-contract.characterization.test.ts` (camino F, sin mirar «no contactar»), `lib/csv/map.characterization.test.ts` (encabezados reales del export). La copia firmada (G), el procesador de secuencias y la bandeja ya tenían tests; la fusión la cubre `verify-contact-merge`.
+
+**Migraciones.** `00270` se ensayó en una transacción que se deshace sola (1.248 contactos `subscribed`, 0 `updated_at` cambiados, tokens únicos) y se aplicó. `00271` se ensayó con contactos de prueba en otra transacción deshecha (la baja alcanza a los que comparten la dirección, `system` no re-suscribe, idempotente con una sola entrada por contacto, herencia al insertar, rebote, persona sin poder volver desde un rebote, fusión con el peor estado) y se aplicó. Después de cada una: `verify-contact-merge`, `verify-contacts-single-entry`, `verify-optout`, `verify-csv-import`, `verify-crm` y `verify-contact-pipeline` en verde.
+
+**Código.** `lib/email/subscription.ts` (gravedad, tabla de transiciones gemela de `private.email_status_decide` con `subscription-transitions.cases.json`, valores de importación, etiquetas, `canSendEmailTo`, `setEmailStatus`, `setEmailStatusByAddress`); `lib/email/subscription-single-entry.test.ts` (frontera); tipos en `lib/types/database.ts` (las columnas solo en `Row`: TypeScript tampoco deja escribirlas).
+
+**Diferencias con el plan (adaptadas manteniendo el comportamiento):**
+- **La fusión no reescribe `merge_contacts`**: un trigger `contacts_email_on_merge` (al borrar el duplicado con `merged_into`) le da al principal el peor estado. Es el mismo patrón que «Conocido» (00256) y «Cliente» (00268) y evita copiar 270 líneas de una función que funciona. `lib/contacts/merge.ts` no cambia: lista tablas con `contact_id`, no columnas del contacto.
+- **`set_email_status` aplica a todos los contactos que comparten la dirección** (no solo al pedido): así las 10 llamadas en paralelo sobre dos contactos con la misma dirección terminan iguales, y una baja nunca queda a medias.
+- **Los motivos de pausa se guardan como código** (`email_unsubscribed`, `email_bounced`, `email_complained`) y la pantalla los muestra en palabras (`EMAIL_PAUSE_LABELS`): así se distinguen de `opt_out` y se pueden filtrar.
+- **`email_address_send_state`** (además de `email_address_status`): la puerta de envío necesita en una sola consulta el estado, si algún contacto vivo con esa dirección está en «no contactar» y el token del pie.
+- **«No pude comprobar»**: si la base no contesta, un marketing no sale (`skipped_unverifiable`) y un transaccional sí.
 
 ## Línea base de los verify-*
 

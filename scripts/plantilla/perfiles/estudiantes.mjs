@@ -112,6 +112,7 @@ export const MODULES = {
       "lib/actions/sales-attribution.test.ts",
       "lib/actions/sales-automation.ts",
       "lib/actions/sales-contract.ts",
+      "lib/actions/sales-contract.characterization.test.ts",
       "lib/actions/sales-create.test.ts",
       "lib/actions/sales-settings.ts",
       "lib/actions/sales-settings.test.ts",
