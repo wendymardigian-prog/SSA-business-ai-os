@@ -10,7 +10,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] M2 (`00271`) aplicada, registrada y verificada (29/10/2026, versión `20261029225041`)
 - [x] E2 · Puerta de envío `canSendEmailTo`, categoría por envío y secuencias (`00272`)
 - [x] M3 (`00272`) aplicada, registrada y verificada (29/10/2026, versión `20261029230043`)
-- [ ] E3 · Link de baja, baja en un clic y página pública
+- [x] E3 · Link de baja, baja en un clic y página pública
 - [ ] E4 · Rebotes y quejas desde Resend
 - [ ] E5 · Panel (ficha, historial, lista)
 - [ ] E6 · Importador con suscripción y prueba en seco
@@ -84,6 +84,14 @@ Rama `feat/suscripcion-email` sin cambios de código (base `782eb01`). Los `veri
 **Diferencias con el plan:**
 - **El cambio 6 del plan no se aplicó**: el nodo «Enviar email» sigue frenando por «no contactar» del contacto del flujo también a una dirección fija o al anfitrión, como hasta hoy (un test de caracterización lo fija). Era el único cambio de comportamiento que no pedía la suscripción y el más fácil de romper.
 - **«Cancelar envíos pendientes de marketing»**: no hay una cola propia de emails de marketing. Lo que quedaba pendiente (un flujo en un «Esperar», una secuencia) se frena igual: la secuencia se pausa en el momento y el flujo, al retomar, pasa por la puerta.
+
+## E3 · Hecho (29/10/2026)
+
+- `lib/email/unsubscribe.ts` (puro): pie (HTML y texto) con la marca del negocio (`resolveBrand`) y la dirección postal (`workspaces.email_footer_address`), cabeceras `List-Unsubscribe: <https://…/api/email/baja/<token>>` y `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, y la variable `{{unsubscribe_url}}` (se cambia por un marcador https ANTES de limpiar el HTML y la puerta pone el link real; si la plantilla ya lo usa, no se duplica el pie). Los transaccionales no llevan ni pie ni cabeceras.
+- `sendTransactionalEmail` y `sendEmailReply` lo aplican con el token que devuelve la puerta. Chip `unsubscribe_url` en los dos editores de email (lienzo y editor de pasos).
+- `POST /api/email/baja/<token>` (un clic, sin sesión, idempotente: 200 si el token existe, 404 si no, sin datos; `GET` lleva a la página). `/baja/<token>`: abrirla no da de baja; el botón da de baja (`person`, `unsubscribe_page`) y «Me equivoqué» vuelve a suscribir salvo rebote o queja. Solo se muestra la dirección enmascarada y la marca. Tope de 30 pedidos por minuto e IP (`checkLimit`). `baja` sumada a `RESERVED_ROUTES`; el middleware ya deja pasar todo lo que no es `/dashboard`.
+- Tests: `unsubscribe.test.ts`, `unsubscribe-public.test.ts` (página, botones, endpoint) y el bloque E3 de `subscription-gate.test.ts` (pie y cabeceras solo en marketing, con espía sobre lo que va a Resend). Un test encontró que la respuesta por email duplicaba el pie si el texto ya traía el link: arreglado.
+- **Diferencia:** la cabecera `List-Unsubscribe` lleva solo el https (no `mailto:`): los remitentes de Resend no reciben correo, y el plan pedía el mailto solo si había un buzón que lo recibiera.
 
 ## Línea base de los verify-*
 

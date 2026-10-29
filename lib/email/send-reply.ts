@@ -17,7 +17,9 @@ import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { sendViaResend } from "./resend-client";
 import { bareAddress, canReply, replyHeaders, textToHtml } from "./reply";
 import { canSendEmailTo, type EmailCategory, type EmailSkipReason } from "./subscription";
-import { logEmail, recordSkippedEmail } from "./send";
+import { footerBrand, logEmail, recordSkippedEmail } from "./send";
+import { protectUnsubscribeVariable, withUnsubscribe } from "./unsubscribe";
+import { appUrl } from "@/lib/app-url";
 
 type Db = SupabaseClient<Database>;
 
@@ -161,16 +163,30 @@ export async function sendEmailReply(
     ? replyHeaders(last)
     : { subject: params.subject?.trim() || "(sin asunto)", inReplyTo: null, references: null };
 
+  // El link de baja (E3): un texto con {{unsubscribe_url}} lo recibe resuelto; marketing suma el pie y las cabeceras.
+  // La variable se protege con el marcador (no se resuelve aca): asi `withUnsubscribe` sabe que el texto ya trae el link
+  // y no duplica el pie.
+  const base = appUrl();
+  const body = textToHtml(protectUnsubscribeVariable(params.text));
+  const extras = withUnsubscribe({
+    html: body,
+    category: params.category,
+    token: gate.token,
+    appUrl: base,
+    ...(params.category === "marketing" && gate.token ? await footerBrand(service as never, params.workspaceId) : { brandName: "" }),
+  });
+
   const result = await sendViaResend(
     apiKey,
     {
       from: params.channel.email_address,
       to: to as string,
       subject: params.subject?.trim() || headers.subject,
-      html: textToHtml(params.text),
+      html: extras.html,
       headers: {
         ...(headers.inReplyTo ? { "In-Reply-To": headers.inReplyTo } : {}),
         ...(headers.references ? { References: headers.references } : {}),
+        ...extras.headers,
       },
     },
     params.fetchImpl,

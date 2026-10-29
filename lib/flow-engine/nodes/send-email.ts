@@ -21,6 +21,7 @@ import { finalizeEmailHtml, interpolateHtml, isHtmlTemplate } from "@/lib/email/
 import { recordSkippedEmail, sendTransactionalEmail } from "@/lib/email/send";
 import { EMAIL_SKIP_MESSAGES, type EmailCategory } from "@/lib/email/subscription";
 import { stepEmailCategory } from "@/lib/email/categories";
+import { protectUnsubscribeVariable } from "@/lib/email/unsubscribe";
 import { computeQuota } from "@/lib/email/quota";
 import { createNotification } from "@/lib/notifications/create";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
@@ -181,7 +182,9 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
       workspaceId: context.workspaceId,
       to,
       subject: subject || "(sin asunto)",
-      html: finalizeEmailHtml(body, bodyIsHtml),
+      // `{{unsubscribe_url}}` se protege ANTES de limpiar el HTML (un href que no es https se descarta); el link real lo
+      // pone la puerta de envio, que es la que conoce el token de la persona (lib/email/unsubscribe.ts).
+      html: finalizeEmailHtml(protectUnsubscribeVariable(body), bodyIsHtml),
       // `flow` lo distingue de los transaccionales del sistema y de la prueba
       // que manda el editor (`flow_test`), que no cuenta como envío al contacto.
       kind: "flow",

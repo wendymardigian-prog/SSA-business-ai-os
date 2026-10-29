@@ -250,3 +250,76 @@ describe("la puerta unica: todo email a un contacto lleva su categoria", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("el link de baja en lo que sale (E3): pie y cabeceras solo en marketing", () => {
+  const bodyOf = (fetchImpl: ReturnType<typeof okFetch>) => JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+
+  it("sendTransactionalEmail marketing: pie con la marca y cabeceras List-Unsubscribe y List-Unsubscribe-Post", async () => {
+    const fetchImpl = okFetch();
+    await sendTransactionalEmail({
+      workspaceId: WS, to: "ana@x.test", subject: "Novedades", html: "<p>Hola</p>", kind: "flow", contactId: CONTACT, category: "marketing",
+      deps: { supabase: world("subscribed", { token: "tok-9" }).client, fetchImpl: fetchImpl as unknown as typeof fetch },
+    });
+    const body = bodyOf(fetchImpl);
+    expect(body.html).toContain("Darme de baja");
+    expect(body.html).toContain("/baja/tok-9");
+    expect(body.headers["List-Unsubscribe"]).toMatch(/^<https?:\/\/.+\/api\/email\/baja\/tok-9>$/);
+    expect(body.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+  });
+
+  it("sendTransactionalEmail transaccional: ni pie ni cabeceras (el cuerpo sale tal cual)", async () => {
+    const fetchImpl = okFetch();
+    await sendTransactionalEmail({
+      workspaceId: WS, to: "ana@x.test", subject: "Tu reunión", html: "<p>Hola</p>", kind: "flow", contactId: CONTACT, category: "transactional",
+      deps: { supabase: world("subscribed").client, fetchImpl: fetchImpl as unknown as typeof fetch },
+    });
+    const body = bodyOf(fetchImpl);
+    expect(body.html).toBe("<p>Hola</p>");
+    expect(body).not.toHaveProperty("headers");
+  });
+
+  it("sendEmailReply marketing: pie y cabeceras de baja, junto a las del hilo", async () => {
+    const fetchImpl = okFetch();
+    const db = fakeDb(
+      {
+        "messages:select": { data: { email_subject: "Consulta", email_message_id: "<m@x>", email_references: null, email_from: "ana@x.test" } },
+        "email_log:insert": { data: null },
+        "workspaces:select": { data: { brand_name: "Mi Negocio", email_footer_address: "Calle 1" } },
+      },
+      { read_secret: { data: KEY }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "tok-7", matched: true } } },
+    );
+    await sendEmailReply(db.client, {
+      workspaceId: WS, conversationId: "cv-1", channel: { platform: "email", is_active: true, email_address: "hola@negocio.test" },
+      toAddress: "ana@x.test", text: "Novedad", contactOptedOut: false, category: "marketing", fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const body = bodyOf(fetchImpl);
+    expect(body.html).toContain("Recibís este email porque te registraste en Mi Negocio.");
+    expect(body.html).toContain("Calle 1");
+    expect(body.headers).toMatchObject({ "In-Reply-To": "<m@x>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+  });
+
+  it("sendEmailReply transaccional (la bandeja): sin pie ni cabeceras de baja", async () => {
+    const fetchImpl = okFetch();
+    await sendEmailReply(world("subscribed").client, {
+      workspaceId: WS, conversationId: "cv-1", channel: { platform: "email", is_active: true, email_address: "hola@negocio.test" },
+      toAddress: "ana@x.test", text: "Hola", contactOptedOut: false, category: "transactional", fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const body = bodyOf(fetchImpl);
+    expect(body.html).not.toContain("Darme de baja");
+    expect(body.headers).not.toHaveProperty("List-Unsubscribe");
+  });
+
+  it("un {{unsubscribe_url}} escrito en un paso de secuencia sale como el link real", async () => {
+    const fetchImpl = okFetch();
+    await sendEmailReply(world("subscribed", { token: "tok-3" }).client, {
+      workspaceId: WS, conversationId: "cv-1", channel: { platform: "email", is_active: true, email_address: "hola@negocio.test" },
+      toAddress: "ana@x.test", text: "Para no recibir más: {{unsubscribe_url}}", contactOptedOut: false, category: "marketing",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const html = bodyOf(fetchImpl).html as string;
+    expect(html).toContain("/baja/tok-3");
+    expect(html).not.toContain("{{unsubscribe_url}}");
+    // Ya usa el link: no se duplica el pie.
+    expect(html).not.toContain("Recibís este email");
+  });
+});

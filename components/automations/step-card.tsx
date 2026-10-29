@@ -166,7 +166,8 @@ function EmailEditor({ name, step, patch, disabled }: EditorProps) {
           label="Texto del email"
           value={body}
           disabled={disabled}
-          variables={variableKeys}
+          // {{unsubscribe_url}}: el link de baja de la persona (un email de marketing lo lleva igual en el pie).
+          variables={[...variableKeys, "unsubscribe_url"]}
           onChange={(next) => patch({ body: next })}
           extraToolbar={(api) => <InsertAssetButton onInsertText={api.insertText} disabled={disabled} />}
         />

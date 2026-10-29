@@ -30,6 +30,9 @@ import {
   type EmailSkipReason,
 } from "@/lib/email/subscription";
 import type { EmailLogStatus } from "@/lib/types/database";
+import { withUnsubscribe } from "@/lib/email/unsubscribe";
+import { resolveBrand } from "@/lib/brand";
+import { appUrl } from "@/lib/app-url";
 
 export type EmailKind = "team_invite" | "channel_disconnected" | (string & {});
 
@@ -141,6 +144,7 @@ export async function sendTransactionalEmail(
   const supabase = params.deps?.supabase ?? (await serviceClient());
 
   // 0. La suscripcion: un email a un contacto, solo si la direccion lo puede recibir.
+  let unsubscribeToken: string | null = null;
   if (params.category) {
     const gate = await canSendEmailTo(supabase, {
       workspaceId: params.workspaceId,
@@ -153,6 +157,7 @@ export async function sendTransactionalEmail(
       await recordSkippedEmail(supabase, params, gate.reason, gate.message);
       return { ok: false, reason: "skipped", skip: gate.reason, error: gate.message };
     }
+    unsubscribeToken = gate.token;
   }
 
   // 1. Esta conectado Resend?
@@ -212,13 +217,26 @@ export async function sendTransactionalEmail(
     ? `${config.from_name.trim()} <${fromEmail}>`
     : fromEmail;
 
+  // El link de baja (E3): marketing lleva el pie y las cabeceras; un transaccional, nada (solo se resuelve el link si
+  // alguien lo puso a mano). Sin categoria (un email al equipo) el cuerpo sale tal cual.
+  const extras = params.category
+    ? withUnsubscribe({
+        html: params.html,
+        category: params.category,
+        token: unsubscribeToken,
+        appUrl: appUrl(),
+        ...(params.category === "marketing" && unsubscribeToken ? await footerBrand(supabase, params.workspaceId) : { brandName: "" }),
+      })
+    : { html: params.html, headers: {} };
+
   const result = await sendViaResend(
     apiKey,
     {
       from,
       to: params.to,
       subject: params.subject,
-      html: params.html,
+      html: extras.html,
+      ...(Object.keys(extras.headers).length > 0 ? { headers: extras.headers } : {}),
       ...(params.attachments && params.attachments.length > 0 ? { attachments: params.attachments } : {}),
     },
     params.deps?.fetchImpl,
@@ -240,6 +258,24 @@ export async function sendTransactionalEmail(
     last_error: result.error,
   });
   return { ok: false, reason: "failed", error: result.error };
+}
+
+/**
+ * La marca y la direccion postal del pie de un email de marketing. Leer el workspace nunca frena un envio: sin dato,
+ * la marca de la instalacion y sin direccion.
+ */
+export async function footerBrand(supabase: SupabaseClient, workspaceId: string): Promise<{ brandName: string; postalAddress: string | null }> {
+  try {
+    const { data } = await supabase
+      .from("workspaces")
+      .select("brand_name, brand_logo_path, brand_color, email_footer_address")
+      .eq("id", workspaceId)
+      .maybeSingle();
+    const row = data as { brand_name?: string | null; brand_logo_path?: string | null; brand_color?: string | null; email_footer_address?: string | null } | null;
+    return { brandName: resolveBrand(row).name, postalAddress: row?.email_footer_address ?? null };
+  } catch {
+    return { brandName: resolveBrand(null).name, postalAddress: null };
+  }
 }
 
 /** True si el workspace tiene Resend conectado. Para pintar estados en la UI. */

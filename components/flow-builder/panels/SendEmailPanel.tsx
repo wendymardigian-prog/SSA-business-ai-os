@@ -76,7 +76,9 @@ export function SendEmailPanel({
           id="em-body"
           label="Mensaje del email"
           value={data.body ?? ""}
-          variables={availableVariables}
+          // {{unsubscribe_url}}: el link de baja de la persona, por si se lo quiere en otro lugar del texto (sin esto,
+          // un email de marketing lo lleva igual en el pie).
+          variables={[...(availableVariables ?? []), "unsubscribe_url"]}
           onChange={(body) => set({ body })}
           extraToolbar={(api) => <InsertAssetButton onInsertText={api.insertText} />}
         />
