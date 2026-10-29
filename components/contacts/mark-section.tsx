@@ -15,7 +15,7 @@ import { MARK_STYLE } from "@/components/contacts/mark-badge";
  * quien la puso o un administrador (el servidor lo repite).
  */
 
-// Sin Ventas (plantilla de estudiantes) el cliente solo se marca a mano.
+// La marca automatica existe solo donde se registran cobros; si no, el texto no la menciona.
 const AUTO_NOTE = " Se marca solo cuando se cobra una venta."; // @plantilla-quitar(ventas)
 // @plantilla-sin(ventas): const AUTO_NOTE = "";
 
