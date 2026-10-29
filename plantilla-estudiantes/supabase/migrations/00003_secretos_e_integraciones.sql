@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS public.channels (
   disconnected_notified_at timestamp with time zone,
   messaging_window_hours integer,
   email_address text,
+  inbox_import jsonb,
   CONSTRAINT channels_pkey PRIMARY KEY (id),
   CONSTRAINT channels_workspace_id_late_account_id_key UNIQUE (workspace_id, late_account_id),
   CONSTRAINT channels_connection_status_check CHECK ((connection_status = ANY (ARRAY['connected'::text, 'disconnected'::text, 'connecting'::text, 'error'::text, 'unknown'::text]))),
@@ -48,6 +49,7 @@ COMMENT ON COLUMN public.channels.provider IS 'De donde sale la conexion: zernio
 COMMENT ON COLUMN public.channels.connection_status IS 'Estado en vivo. Solo lo mantienen los canales de Evolution; los de Zernio quedan en unknown.';
 COMMENT ON COLUMN public.channels.messaging_window_hours IS 'Horas desde el ultimo mensaje del lead en las que la plataforma deja responder. NULL = default por plataforma (Instagram y Facebook: 24, lo que documenta Meta; el resto: sin ventana). 0 = sin ventana (WhatsApp por Evolution).';
 COMMENT ON COLUMN public.channels.email_address IS 'La direccion que recibe y desde la que se responde. Solo en canales de email.';
+COMMENT ON COLUMN public.channels.inbox_import IS 'Avance de la importacion de conversaciones desde Zernio: run_id, status, pass, phase, cursor, step, scanned, imported. NULL = nunca se importo.';
 
 CREATE TABLE IF NOT EXISTS public.integration_configs (
   id uuid DEFAULT gen_random_uuid() NOT NULL,

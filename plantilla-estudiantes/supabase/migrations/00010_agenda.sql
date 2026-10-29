@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS public.event_types (
   deleted_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  is_internal boolean DEFAULT false NOT NULL,
   CONSTRAINT event_types_pkey PRIMARY KEY (id),
   CONSTRAINT event_types_assignment_check CHECK ((contact_assignment = ANY (ARRAY['none'::text, 'setter_if_empty'::text, 'vendedor_if_empty'::text]))),
   CONSTRAINT event_types_booking_fields_array CHECK ((jsonb_typeof(booking_fields) = 'array'::text)),
@@ -139,6 +140,7 @@ COMMENT ON TABLE public.event_types IS 'Los tipos de llamada que se pueden agend
 COMMENT ON COLUMN public.event_types.conflict_calendar_ids IS 'Calendarios de conflicto propios del evento. Vacio = los del perfil. Los ids inactivos se ignoran al leer.';
 COMMENT ON COLUMN public.event_types.booking_fields IS 'Formulario de reserva, validado con Zod: [{id, type, system, label, visibility, options?, identifier, ...}].';
 COMMENT ON COLUMN public.event_types.unavailable_messages IS 'Que ve el invitado cuando no puede agendar. null = textos por defecto.';
+COMMENT ON COLUMN public.event_types.is_internal IS 'El evento interno de su duena: sostiene las reuniones agendadas a mano sin elegir un evento. Nunca se publica ni aparece en las listas.';
 
 CREATE TABLE IF NOT EXISTS public.bookings (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -749,6 +751,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_categories_name ON public.booking_c
 CREATE UNIQUE INDEX IF NOT EXISTS uq_bookings_uid ON public.bookings USING btree (uid);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_calendars_connection_external ON public.calendars USING btree (connection_id, external_calendar_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_event_types_internal_owner ON public.event_types USING btree (workspace_id, owner_user_id) WHERE (is_internal AND (deleted_at IS NULL));
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_event_types_owner_slug ON public.event_types USING btree (owner_user_id, slug) WHERE (deleted_at IS NULL);
 

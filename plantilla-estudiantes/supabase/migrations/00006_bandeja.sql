@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS public.conversations (
   no_reply_needed_reason text,
   no_reply_needed_by uuid,
   last_message_direction text,
+  agent_disabled_by_customer boolean DEFAULT false NOT NULL,
   CONSTRAINT conversations_pkey PRIMARY KEY (id),
   CONSTRAINT conversations_channel_id_contact_id_key UNIQUE (channel_id, contact_id),
   CONSTRAINT conversations_last_message_direction_check CHECK (((last_message_direction IS NULL) OR (last_message_direction = ANY (ARRAY['inbound'::text, 'outbound'::text])))),
@@ -140,6 +141,7 @@ COMMENT ON COLUMN public.conversations.reply_window_until IS 'Hasta cuando se pu
 COMMENT ON COLUMN public.conversations.no_reply_needed_at IS 'La tanda sin responder no pide respuesta (un gracias, un emoji). Se borra sola cuando el lead vuelve a escribir o le respondemos.';
 COMMENT ON COLUMN public.conversations.no_reply_needed_reason IS 'Quien lo decidio: rule (regla de cierre), agent (el agente) o manual (una persona).';
 COMMENT ON COLUMN public.conversations.last_message_direction IS 'Si el ultimo mensaje de la conversacion fue del contacto (inbound) o nuestro (outbound). Lo mantiene el trigger messages_zz_last_message.';
+COMMENT ON COLUMN public.conversations.agent_disabled_by_customer IS 'El agente lo apago la marca de cliente. Se limpia sola si una persona cambia el estado del agente.';
 
 CREATE TABLE IF NOT EXISTS public.email_log (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -494,6 +496,17 @@ BEGIN
       'source', 'known', 'contact_id', conv.contact_id, 'setter_changed', false, 'setter_old', NULL);
   END IF;
 
+  -- El de un cliente, a la persona configurada para esa cuenta. Sin
+  -- nadie configurado, siguen las reglas de siempre.
+  IF EXISTS (SELECT 1 FROM public.contacts ct WHERE ct.id = conv.contact_id AND ct.is_customer) THEN
+    v_pick := private.customer_assignee(conv.workspace_id, conv.channel_id);
+    IF v_pick IS NOT NULL THEN
+      UPDATE public.conversations SET assigned_to = v_pick WHERE id = conv.id;
+      RETURN jsonb_build_object('status', 'assigned', 'assigned_to', v_pick, 'rule_id', NULL, 'rule_name', NULL,
+        'source', 'customer', 'contact_id', conv.contact_id, 'setter_changed', false, 'setter_old', NULL);
+    END IF;
+  END IF;
+
   SELECT coalesce(array_agg(wm.user_id), '{}'::uuid[]) INTO v_active
   FROM public.workspace_members wm
   WHERE wm.workspace_id = conv.workspace_id;
@@ -759,6 +772,37 @@ $function$;
 COMMENT ON FUNCTION public.conversation_rule_pick(p_mode text, p_member_ids uuid[], p_active_ids uuid[], p_last uuid) IS 'Gemela de pickRuleMember (lib/inbox/assignment-rules.ts). Casos compartidos en lib/inbox/assignment-rules.cases.json.';
 REVOKE ALL ON FUNCTION public.conversation_rule_pick(p_mode text, p_member_ids uuid[], p_active_ids uuid[], p_last uuid) FROM PUBLIC, anon;
 
+CREATE OR REPLACE FUNCTION public.conversations_inherit_customer()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_customer boolean;
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.contact_id IS NOT DISTINCT FROM OLD.contact_id THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT ct.is_customer INTO v_customer FROM public.contacts ct WHERE ct.id = NEW.contact_id;
+
+  IF coalesce(v_customer, false) THEN
+    IF NEW.agent_enabled IS DISTINCT FROM false THEN
+      NEW.agent_enabled := false;
+      NEW.agent_disabled_by_customer := true;
+    END IF;
+  ELSIF TG_OP = 'UPDATE' AND NEW.agent_disabled_by_customer THEN
+    NEW.agent_disabled_by_customer := false;
+    IF NOT NEW.agent_disabled_by_known AND NEW.agent_disabled_by_tag_id IS NULL THEN
+      NEW.agent_enabled := NULL;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.conversations_inherit_customer() FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.conversations_inherit_known()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -837,6 +881,21 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.conversations_inherit_tag_effects() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.conversations_keep_customer_marker()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF NEW.agent_enabled IS DISTINCT FROM OLD.agent_enabled
+     AND NEW.agent_disabled_by_customer IS NOT DISTINCT FROM OLD.agent_disabled_by_customer THEN
+    NEW.agent_disabled_by_customer := false;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.conversations_keep_customer_marker() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.conversations_keep_known_marker()
  RETURNS trigger
@@ -1264,9 +1323,13 @@ CREATE OR REPLACE TRIGGER conversations_a_inherit_tag_effects BEFORE INSERT OR U
 
 CREATE OR REPLACE TRIGGER conversations_a2_inherit_known BEFORE INSERT OR UPDATE OF contact_id ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.conversations_inherit_known();
 
+CREATE OR REPLACE TRIGGER conversations_a3_inherit_customer BEFORE INSERT OR UPDATE OF contact_id ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.conversations_inherit_customer();
+
 CREATE OR REPLACE TRIGGER conversations_b_keep_tag_marker BEFORE UPDATE OF agent_enabled ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.conversations_keep_tag_marker();
 
 CREATE OR REPLACE TRIGGER conversations_b2_keep_known_marker BEFORE UPDATE OF agent_enabled ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.conversations_keep_known_marker();
+
+CREATE OR REPLACE TRIGGER conversations_b3_keep_customer_marker BEFORE UPDATE OF agent_enabled ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.conversations_keep_customer_marker();
 
 CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.conversations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 

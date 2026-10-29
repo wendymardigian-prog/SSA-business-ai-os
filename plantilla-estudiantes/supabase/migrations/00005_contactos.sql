@@ -7,8 +7,8 @@
 -- (canal, telefono, WhatsApp, email o usuario de una red), nunca por el nombre.
 --
 -- Tambien: los canales vinculados a cada contacto, etiquetas (algunas con efecto),
--- campos personalizados, notas, el estado de setter y de vendedor con su historial, la
--- marca "conocido", el "no contactar" y las importaciones por CSV. Un Member solo ve los
+-- campos personalizados, notas, el estado de setter y de vendedor con su historial, las
+-- marcas "conocido" y "cliente", el "no contactar" y las importaciones por CSV. Un Member solo ve los
 -- contactos que le corresponden (can_see_contact).
 -- ============================================================================
 
@@ -69,11 +69,17 @@ CREATE TABLE IF NOT EXISTS public.contacts (
   is_known boolean DEFAULT false NOT NULL,
   known_marked_by uuid,
   known_marked_at timestamp with time zone,
+  is_customer boolean DEFAULT false NOT NULL,
+  customer_marked_by uuid,
+  customer_marked_at timestamp with time zone,
+  customer_source text,
   CONSTRAINT contacts_pkey PRIMARY KEY (id),
   CONSTRAINT contacts_avatar_source_check CHECK ((avatar_source = ANY (ARRAY['external'::text, 'storage'::text, 'manual'::text]))),
+  CONSTRAINT contacts_customer_source_check CHECK (((customer_source IS NULL) OR (customer_source = ANY (ARRAY['manual'::text, 'sale'::text])))),
   CONSTRAINT contacts_last_status_role_check CHECK (((last_status_role IS NULL) OR (last_status_role = ANY (ARRAY['setter'::text, 'closer'::text])))),
   CONSTRAINT contacts_lead_temperature_check CHECK (((lead_temperature IS NULL) OR (lead_temperature = ANY (ARRAY['cold'::text, 'warm'::text, 'hot'::text])))),
   CONSTRAINT contacts_status_dates_check CHECK ((((setter_status IS NULL) = (setter_status_at IS NULL)) AND ((closer_status IS NULL) = (closer_status_at IS NULL)) AND ((last_status IS NULL) = (last_status_role IS NULL)) AND ((last_status IS NULL) = (last_status_at IS NULL)))),
+  CONSTRAINT contacts_customer_marked_by_fkey FOREIGN KEY (customer_marked_by) REFERENCES auth.users(id) ON DELETE SET NULL,
   CONSTRAINT contacts_interest_product_id_fkey FOREIGN KEY (interest_product_id) REFERENCES public.products(id),
   CONSTRAINT contacts_interest_variant_id_fkey FOREIGN KEY (interest_variant_id) REFERENCES public.product_variants(id),
   CONSTRAINT contacts_known_marked_by_fkey FOREIGN KEY (known_marked_by) REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -101,6 +107,8 @@ COMMENT ON COLUMN public.contacts.avatar_source IS 'De donde sale avatar_url. ex
 COMMENT ON COLUMN public.contacts.avatar_updated_at IS 'Cuando se actualizo avatar_url por ultima vez. Decide si refrescar una foto storage (cada 30 dias) y la retencion (borra la de un contacto storage sin mensajes en 6 meses).';
 COMMENT ON COLUMN public.contacts.assignment_locked_at IS 'Se escribe cuando alguien asigna a mano setter o vendedor: desde ahi la asignacion automatica no toca a este contacto.';
 COMMENT ON COLUMN public.contacts.is_known IS 'Conocido: alguien personal. Apaga el agente, pausa secuencias y sus chats van a la persona de cada cuenta (workspaces.known_contacts_settings).';
+COMMENT ON COLUMN public.contacts.is_customer IS 'Cliente: ya compro. Mismos efectos que is_known: apaga el agente, pausa secuencias y sus chats van a la persona configurada por cuenta (workspaces.customer_contacts_settings).';
+COMMENT ON COLUMN public.contacts.customer_source IS 'De donde vino la marca de cliente: manual (una persona) o sale (automatica).';
 
 CREATE TABLE IF NOT EXISTS public.contact_channels (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -527,6 +535,39 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION private.contacts_status_guard() FROM PUBLIC;
 
+CREATE OR REPLACE FUNCTION private.customer_assignee(p_workspace_id uuid, p_channel_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_settings jsonb;
+  v_pick     uuid;
+  v_text     text;
+BEGIN
+  SELECT customer_contacts_settings INTO v_settings FROM public.workspaces WHERE id = p_workspace_id;
+  v_settings := coalesce(v_settings, '{}'::jsonb);
+
+  FOREACH v_text IN ARRAY ARRAY[
+    v_settings -> 'by_channel' ->> p_channel_id::text,
+    v_settings ->> 'default_user_id'
+  ] LOOP
+    CONTINUE WHEN v_text IS NULL OR v_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+    SELECT wm.user_id INTO v_pick
+    FROM public.workspace_members wm
+    WHERE wm.workspace_id = p_workspace_id AND wm.user_id = v_text::uuid;
+    IF v_pick IS NOT NULL THEN
+      RETURN v_pick;
+    END IF;
+  END LOOP;
+
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.customer_assignee(p_workspace_id uuid, p_channel_id uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.customer_assignee(p_workspace_id uuid, p_channel_id uuid) TO service_role;
+
 CREATE OR REPLACE FUNCTION private.default_contact_status_settings()
  RETURNS jsonb
  LANGUAGE sql
@@ -687,10 +728,13 @@ AS $function$
 DECLARE
   v_workspace uuid;
   v_other     uuid;
+  v_known     boolean;
+  v_customer  boolean;
   v_restored  jsonb := '[]'::jsonb;
   v_moved     jsonb := '[]'::jsonb;
 BEGIN
-  SELECT workspace_id INTO v_workspace FROM public.contacts WHERE id = p_contact_id;
+  SELECT workspace_id, is_known, is_customer INTO v_workspace, v_known, v_customer
+  FROM public.contacts WHERE id = p_contact_id;
   IF NOT FOUND THEN
     RETURN;
   END IF;
@@ -711,6 +755,17 @@ BEGIN
     WITH upd AS (
       UPDATE public.conversations
       SET agent_disabled_by_tag_id = v_other
+      WHERE contact_id = p_contact_id AND agent_disabled_by_tag_id = p_tag_id
+      RETURNING id
+    )
+    SELECT COALESCE(jsonb_agg(upd.id), '[]'::jsonb) INTO v_moved FROM upd;
+  -- Si sigue siendo conocido o cliente, la marca pasa a esa y nada se prende.
+  ELSIF coalesce(v_known, false) OR coalesce(v_customer, false) THEN
+    WITH upd AS (
+      UPDATE public.conversations
+      SET agent_disabled_by_tag_id = NULL,
+          agent_disabled_by_known = coalesce(v_known, false),
+          agent_disabled_by_customer = NOT coalesce(v_known, false)
       WHERE contact_id = p_contact_id AND agent_disabled_by_tag_id = p_tag_id
       RETURNING id
     )
@@ -1007,6 +1062,136 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.contact_tags_emit() FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.contacts_customer_effects()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_assigned jsonb := '[]'::jsonb;
+  v_forced   jsonb := '[]'::jsonb;
+  v_restored jsonb := '[]'::jsonb;
+  v_moved    jsonb := '[]'::jsonb;
+  v_tag      uuid;
+BEGIN
+  IF NEW.is_customer IS NOT DISTINCT FROM OLD.is_customer THEN
+    RETURN NULL;
+  END IF;
+
+  IF NEW.is_customer THEN
+    WITH target AS (
+      SELECT c.id, c.assigned_to AS previous, private.customer_assignee(c.workspace_id, c.channel_id) AS next
+      FROM public.conversations c
+      WHERE c.contact_id = NEW.id AND c.deleted_at IS NULL
+    ), upd AS (
+      UPDATE public.conversations c
+      SET assigned_to = target.next
+      FROM target
+      WHERE c.id = target.id AND target.next IS NOT NULL AND c.assigned_to IS DISTINCT FROM target.next
+      RETURNING c.id, target.previous, target.next
+    )
+    SELECT coalesce(jsonb_agg(jsonb_build_object('id', upd.id, 'old', upd.previous, 'new', upd.next)), '[]'::jsonb)
+      INTO v_assigned FROM upd;
+
+    WITH upd AS (
+      UPDATE public.conversations c
+      SET agent_enabled = false, agent_disabled_by_customer = true
+      WHERE c.contact_id = NEW.id AND c.deleted_at IS NULL AND c.agent_enabled IS DISTINCT FROM false
+      RETURNING c.id
+    )
+    SELECT coalesce(jsonb_agg(upd.id), '[]'::jsonb) INTO v_forced FROM upd;
+
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+    VALUES (
+      NEW.workspace_id, 'contact', NEW.id, 'customer',
+      jsonb_build_object('is_customer', jsonb_build_object('old', false, 'new', true)),
+      jsonb_build_object('source', NEW.customer_source, 'conversations_assigned', v_assigned, 'conversations_forced_off', v_forced),
+      auth.uid()
+    );
+    RETURN NULL;
+  END IF;
+
+  -- Quitar. Si sigue siendo conocido, la marca pasa a la de conocido.
+  IF NEW.is_known THEN
+    WITH upd AS (
+      UPDATE public.conversations
+      SET agent_disabled_by_customer = false, agent_disabled_by_known = true
+      WHERE contact_id = NEW.id AND agent_disabled_by_customer
+      RETURNING id
+    )
+    SELECT coalesce(jsonb_agg(upd.id), '[]'::jsonb) INTO v_moved FROM upd;
+  ELSE
+    SELECT ct.tag_id INTO v_tag
+    FROM public.contact_tags ct
+    JOIN public.tags t ON t.id = ct.tag_id
+    WHERE ct.contact_id = NEW.id AND t.disables_agent
+    ORDER BY ct.created_at
+    LIMIT 1;
+
+    IF v_tag IS NOT NULL THEN
+      WITH upd AS (
+        UPDATE public.conversations
+        SET agent_disabled_by_customer = false, agent_disabled_by_tag_id = v_tag
+        WHERE contact_id = NEW.id AND agent_disabled_by_customer
+        RETURNING id
+      )
+      SELECT coalesce(jsonb_agg(upd.id), '[]'::jsonb) INTO v_moved FROM upd;
+    ELSE
+      WITH upd AS (
+        UPDATE public.conversations
+        SET agent_enabled = NULL, agent_disabled_by_customer = false
+        WHERE contact_id = NEW.id AND agent_disabled_by_customer AND agent_enabled = false
+        RETURNING id
+      )
+      SELECT coalesce(jsonb_agg(upd.id), '[]'::jsonb) INTO v_restored FROM upd;
+    END IF;
+  END IF;
+
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+  VALUES (
+    NEW.workspace_id, 'contact', NEW.id, 'customer',
+    jsonb_build_object('is_customer', jsonb_build_object('old', true, 'new', false)),
+    jsonb_build_object('conversations_restored', v_restored, 'still_known', NEW.is_known, 'still_disabled_by_tag_id', v_tag,
+      'conversations_still_disabled', v_moved, 'assignment_kept', true),
+    auth.uid()
+  );
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.contacts_customer_effects() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.contacts_customer_on_merge()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_main uuid;
+BEGIN
+  IF NOT OLD.is_customer OR OLD.deleted_at IS NOT NULL OR NEW.deleted_at IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF NOT (coalesce(NEW.metadata, '{}'::jsonb) ? 'merged_into') THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_main := (NEW.metadata ->> 'merged_into')::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN NULL;
+  END;
+  UPDATE public.contacts
+  SET is_customer = true,
+      customer_marked_by = coalesce(customer_marked_by, OLD.customer_marked_by),
+      customer_marked_at = coalesce(customer_marked_at, OLD.customer_marked_at, now()),
+      customer_source = coalesce(customer_source, OLD.customer_source, 'manual')
+  WHERE id = v_main AND workspace_id = NEW.workspace_id AND NOT is_customer;
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.contacts_customer_on_merge() FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.contacts_emit_changes()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1138,6 +1323,26 @@ BEGIN
       NEW.workspace_id, 'contact', NEW.id, 'known',
       jsonb_build_object('is_known', jsonb_build_object('old', false, 'new', true)),
       jsonb_build_object('conversations_assigned', v_assigned, 'conversations_forced_off', v_forced),
+      auth.uid()
+    );
+    RETURN NULL;
+  END IF;
+
+  -- Si sigue siendo cliente, la marca pasa a la de cliente y nada se prende.
+  IF NEW.is_customer THEN
+    WITH upd AS (
+      UPDATE public.conversations
+      SET agent_disabled_by_known = false, agent_disabled_by_customer = true
+      WHERE contact_id = NEW.id AND agent_disabled_by_known
+      RETURNING id
+    )
+    SELECT coalesce(jsonb_agg(upd.id), '[]'::jsonb) INTO v_moved FROM upd;
+
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+    VALUES (
+      NEW.workspace_id, 'contact', NEW.id, 'known',
+      jsonb_build_object('is_known', jsonb_build_object('old', true, 'new', false)),
+      jsonb_build_object('still_customer', true, 'conversations_still_disabled', v_moved, 'assignment_kept', true),
       auth.uid()
     );
     RETURN NULL;
@@ -1728,6 +1933,8 @@ CREATE INDEX IF NOT EXISTS idx_contacts_alive ON public.contacts USING btree (wo
 
 CREATE INDEX IF NOT EXISTS idx_contacts_closer_status ON public.contacts USING btree (workspace_id, closer_status) WHERE ((deleted_at IS NULL) AND (closer_status IS NOT NULL));
 
+CREATE INDEX IF NOT EXISTS idx_contacts_customer ON public.contacts USING btree (workspace_id) WHERE is_customer;
+
 CREATE INDEX IF NOT EXISTS idx_contacts_deleted_at ON public.contacts USING btree (deleted_at) WHERE (deleted_at IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS idx_contacts_email ON public.contacts USING btree (workspace_id, lower(email)) WHERE (email IS NOT NULL);
@@ -1815,6 +2022,10 @@ CREATE OR REPLACE TRIGGER contacts_automation_changes AFTER UPDATE OF setter_id,
 CREATE OR REPLACE TRIGGER contacts_automation_created AFTER INSERT ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_created();
 
 CREATE OR REPLACE TRIGGER contacts_automation_deanonymized AFTER UPDATE OF display_name, email, secondary_email, phone, whatsapp_phone, instagram_username ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_deanonymized();
+
+CREATE OR REPLACE TRIGGER contacts_customer_effects AFTER UPDATE OF is_customer ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_customer_effects();
+
+CREATE OR REPLACE TRIGGER contacts_customer_on_merge AFTER UPDATE OF deleted_at ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_customer_on_merge();
 
 CREATE OR REPLACE TRIGGER contacts_enqueue_sales_eval AFTER INSERT OR UPDATE OF attribution ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_enqueue_sales_eval();
 

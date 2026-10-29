@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   brand_logo_path text,
   brand_color text,
   ai_language_style text,
+  customer_contacts_settings jsonb DEFAULT '{}'::jsonb NOT NULL,
   CONSTRAINT workspaces_pkey PRIMARY KEY (id),
   CONSTRAINT workspaces_slug_key UNIQUE (slug),
   CONSTRAINT workspaces_ai_daily_limit_action_check CHECK ((ai_daily_limit_action = ANY (ARRAY['disable'::text, 'notify'::text]))),
@@ -93,6 +94,7 @@ COMMENT ON COLUMN public.workspaces.brand_name IS 'Nombre del negocio que ven lo
 COMMENT ON COLUMN public.workspaces.brand_logo_path IS 'Path del logo en el bucket publico brand-assets (<workspace>/logo/<id>.<ext>). NULL = el de la instalacion.';
 COMMENT ON COLUMN public.workspaces.brand_color IS 'Color principal en #rrggbb. NULL = el de la instalacion (NEXT_PUBLIC_BRAND_COLOR).';
 COMMENT ON COLUMN public.workspaces.ai_language_style IS 'Como escribe la IA de este negocio, por ejemplo "español rioplatense (vos/tenés)". NULL = AI_LANGUAGE_STYLE.';
+COMMENT ON COLUMN public.workspaces.customer_contacts_settings IS 'A quien van los chats de un cliente: {"by_channel": {"<channel_id>": "<user_id>"}, "default_user_id": "<user_id>"}. Sin nada, el responsable no cambia.';
 
 CREATE TABLE IF NOT EXISTS public.workspace_roles (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
