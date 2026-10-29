@@ -1,0 +1,25 @@
+# Pendientes: suscripción a emails e importador con suscripción
+
+Formato: **qué quedó** · **por qué** · **qué se decidió**. Avance y plan en `docs/PROGRESS-suscripcion-email.md`.
+
+## Abiertos
+
+- **Ventana de unos segundos en la importación (E6)** · los eventos de automatización (`contact_created`, `tag_added`, `field_changed`, `assignment_changed`) los emiten triggers de la base en el mismo instante en que se inserta el contacto, y el importador los marca como procesados recién al terminar cada tanda de 200 · hoy no tiene efecto real porque los 26 flujos y la única secuencia están en borrador · **antes de hacer una importación con flujos activos hay que cerrar la ventana**: una transacción por tanda, o que los triggers se salteen el evento cuando el contacto viene de una importación. Decidido con Wendy (29/10/2026): se acepta la ventana por ahora y se anota acá.
+- **`inbound_address` (dirección de entrada de email) sin selector de dominio (E8)** · vive en otro proveedor (`resend_inbound`) y exige otro permiso (`channels.manage`), no `integrations.manage` · el selector de usuario + dominio verificado se hace solo para los remitentes de Resend; la dirección de entrada sigue siendo un campo de texto.
+- **Activar los eventos en el panel de Resend (E4)** · el código de rebotes y quejas va a la misma ruta que el correo entrante (`/api/webhooks/resend-inbound`) y usa el mismo secreto de firma · sin ese paso en Resend no llega ningún rebote ni queja. Pasos exactos: se completan cuando E4 esté construido.
+- **El remitente actual usa un dominio sin verificar** · `app@wendymardigian.com` figura como `from_email`, pero en Resend solo está verificado `mail.wendymardigian.com`; los envíos que lo usan fallan con 403 (hoy, las invitaciones de equipo: 2 fallidas en `email_log`) · la pantalla de E8 lo va a avisar en rojo, pero **no se cambia solo**: elige Wendy.
+- **`package.json` y `package-lock.json` no se tocan** · este worktree arrancó sin cuatro paquetes ya declarados (`@tiptap/pm`, `@tiptap/react`, `@tiptap/starter-kit`, `frimousse`) y el build y un test fallaban por eso · `npm install` (29/10/2026) instaló 50 paquetes y **no modificó ni `package.json` ni el lock** (`git status` limpio) · si alguna vez el lock cambia, queda fuera del commit y se anota acá.
+- **Cinco `verify-*` ya fallaban antes de empezar** (29/10/2026) · `verify-attribution` (1: 1179 de 1246 contactos con first_touch, dato real), `verify-publishing` (5), `verify-forms` (1: el `EXPLAIN` elige otro índice), `verify-expenses` (el script se cae en la línea 101 con `TypeError ... reading 'id'`) y `verify-ads-attribution` (1: 702 ms contra el umbral de 300 ms) · ninguna toca email ni contactos · no se arreglan en esta rama; solo se vigila que no empeoren. Detalle en `docs/PROGRESS-suscripcion-email.md`.
+- **`verify-student-schema` y `verify-webhook` sin línea base** · el primero necesita una base local o de referencia (`--db-url`/`--local`) y el segundo una app corriendo (`--target`) · no son de "base viva sola"; no se corrieron.
+- **Nombre exacto del campo del tipo de rebote en Resend** · el plan supone `data.bounce.type` con valor permanente/transitorio · se confirma contra la documentación de Resend al construir E4, antes de decidir hard vs soft.
+- **El token de baja viaja en la fila de `contacts`** · hay `select("*")` sobre `contacts` en toda la app, así que ocultarlo por columna la rompería · el token solo permite darse de baja (no leer ni cambiar nada más); si algún día se quiere ocultar, hay que revisar esos `select("*")` antes.
+
+## Decisiones tomadas
+
+- **Contratos (link y copia firmada) = transaccionales y solo frena el rebote** · no respetan "no contactar" ni la baja de marketing; quien firma o pidió el contrato lo recibe igual (Wendy, 29/10/2026).
+- **Importar sin disparar flujos** · se marcan como procesados los eventos de los contactos de cada tanda, sin tocar los triggers de la base (Wendy, 29/10/2026).
+- **Migraciones `00270`, `00271` y `00272`** · Wendy autorizó aplicarlas en producción sin pedir OK cada vez, siempre que la verificación de cada una pase; si falla una, se para y se anota acá qué falló y cómo volver atrás. El respaldo ya está hecho.
+- **Si el trigger de herencia de estado falla, no es en silencio** · queda un `RAISE WARNING` y una entrada en `audit_log` (`email_status_inherit_failed`); la puerta de envío no depende de ese trigger porque calcula el estado de la dirección entre todos los contactos en el momento de enviar.
+- **Las secuencias no tienen "pasos de email"** · una inscripción tiene un solo canal; la pausa por baja aplica a inscripciones activas sobre un canal de email con algún paso de marketing pendiente, y la categoría se guarda por paso en el jsonb de `sequences.steps`.
+- **Categoría de los flujos existentes sin migrar datos** · si el nodo no la guarda, vale transaccional para flujos de agenda, formularios y sistema, y marketing para los manuales.
+- **Cierre** · PR de `feat/suscripcion-email` a `main` con `gh pr create`; no se mergea.
