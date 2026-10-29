@@ -279,7 +279,7 @@ export const COMMENT_REWRITES = {
     "Conocido: alguien personal. Apaga el agente, pausa secuencias y sus chats van a la persona de cada cuenta (workspaces.known_contacts_settings).",
   "column public.contacts.is_customer":
     "Cliente: ya compro. Mismos efectos que is_known: apaga el agente, pausa secuencias y sus chats van a la persona configurada por cuenta (workspaces.customer_contacts_settings).",
-  "column public.contacts.customer_source": "De donde vino la marca de cliente: manual (una persona) o sale (un cobro).",
+  "column public.contacts.customer_source": "De donde vino la marca de cliente: manual (una persona) o sale (automatica).",
   "column public.conversations.agent_disabled_by_customer":
     "El agente lo apago la marca de cliente. Se limpia sola si una persona cambia el estado del agente.",
   "column public.event_types.is_internal":

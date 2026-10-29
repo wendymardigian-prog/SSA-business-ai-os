@@ -102,6 +102,11 @@ const ALLOW = [
   { kind: "index", key: "public.uq_whatsapp_calls_channel_call", tokens: ["llamada"],
     reason: "indice unico de las llamadas de WhatsApp (por su id en la plataforma)" },
 
+  // Marca Cliente: el origen 'sale' (se marco sola al cobrar) queda en el CHECK aunque la plantilla no tenga
+  // Ventas; sin cobros nunca aparece, y sacarlo romperia la paridad con el proyecto.
+  { kind: "constraint", key: "public.contacts.contacts_customer_source_check", tokens: ["venta"],
+    reason: "Cliente: origen 'sale' de la marca (en la plantilla solo se marca a mano)" },
+
   // Instrucciones de las tareas de IA: la columna se llama "task".
   { kind: "column", key: "public.ai_task_prompt_versions.task", tokens: ["tarea"],
     reason: "nombre de la tarea de IA, no el modulo Tareas" },
