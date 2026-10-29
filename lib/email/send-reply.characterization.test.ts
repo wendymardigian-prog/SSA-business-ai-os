@@ -22,7 +22,7 @@ function db(lastInbound: Record<string, unknown> | null = null) {
       "messages:select": { data: lastInbound },
       "integration_configs:select": { data: null },
     },
-    { read_secret: { data: KEY } },
+    { read_secret: { data: KEY }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: null, matched: true } } },
   );
 }
 
@@ -44,7 +44,7 @@ describe("sendEmailReply (hoy)", () => {
       channel,
       toAddress: "ana@x.test",
       text: "Hola Ana",
-      contactOptedOut: false,
+      contactOptedOut: false, category: "transactional",
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
 
@@ -61,7 +61,7 @@ describe("sendEmailReply (hoy)", () => {
     const fetchImpl = okFetch();
     const d = db({ email_subject: "x", email_message_id: "<m@x>", email_references: null, email_from: "Ana <ANA@x.test>" });
     await sendEmailReply(d.client, {
-      workspaceId: WS, conversationId: CONV, channel, toAddress: null, text: "hola", contactOptedOut: false,
+      workspaceId: WS, conversationId: CONV, channel, toAddress: null, text: "hola", contactOptedOut: false, category: "transactional",
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body)).to).toBe("ana@x.test");
@@ -70,7 +70,7 @@ describe("sendEmailReply (hoy)", () => {
   it("'no contactar' la frena antes de llamar a Resend", async () => {
     const fetchImpl = okFetch();
     const res = await sendEmailReply(db().client, {
-      workspaceId: WS, conversationId: CONV, channel, toAddress: "ana@x.test", text: "hola", contactOptedOut: true,
+      workspaceId: WS, conversationId: CONV, channel, toAddress: "ana@x.test", text: "hola", contactOptedOut: true, category: "transactional",
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(res.ok).toBe(false);
@@ -81,7 +81,7 @@ describe("sendEmailReply (hoy)", () => {
   it("sin hilo previo es un correo nuevo: sin In-Reply-To, con el asunto dado", async () => {
     const fetchImpl = okFetch();
     await sendEmailReply(db(null).client, {
-      workspaceId: WS, conversationId: CONV, channel, toAddress: "ana@x.test", text: "hola", contactOptedOut: false, subject: "Novedades",
+      workspaceId: WS, conversationId: CONV, channel, toAddress: "ana@x.test", text: "hola", contactOptedOut: false, category: "transactional", subject: "Novedades",
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     const body = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
@@ -92,7 +92,7 @@ describe("sendEmailReply (hoy)", () => {
   it("la key de Resend no aparece en el resultado", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: "nope" }), { status: 422 }));
     const res = await sendEmailReply(db().client, {
-      workspaceId: WS, conversationId: CONV, channel, toAddress: "ana@x.test", text: "hola", contactOptedOut: false,
+      workspaceId: WS, conversationId: CONV, channel, toAddress: "ana@x.test", text: "hola", contactOptedOut: false, category: "transactional",
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     expect(res.ok).toBe(false);

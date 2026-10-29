@@ -36,8 +36,15 @@ registerConditionField({
 
 registerConditionField({
   prefix: "is_subscribed",
-  label: "Esta suscripto",
+  label: "Recibe difusiones por chat",
   resolve: ({ contact }) => String(contact.is_subscribed),
+});
+
+registerConditionField({
+  prefix: "email_status",
+  label: "Estado de email",
+  // La columna del contacto (00270). Un contacto viejo sin el dato cuenta como suscripto (el default de la columna).
+  resolve: ({ contact }) => (typeof contact.email_status === "string" ? contact.email_status : "subscribed"),
 });
 
 registerConditionField({

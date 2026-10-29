@@ -285,6 +285,8 @@ const emailData = (screen: EditorScreen) =>
       userIds: z.array(z.string().uuid()).max(50).optional(),
       subject: z.string().max(300),
       body: z.string().max(20000),
+      // "Tipo de email" (suscripcion a emails): sin guardar, el motor usa el de su flujo.
+      category: z.enum(["marketing", "transactional"]).optional(),
       label,
     })
     .passthrough()

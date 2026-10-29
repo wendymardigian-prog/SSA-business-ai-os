@@ -18,7 +18,9 @@ import type { FlowExecutionContext } from "../types";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
 import { finalizeEmailHtml, interpolateHtml, isHtmlTemplate } from "@/lib/email/html";
-import { sendTransactionalEmail } from "@/lib/email/send";
+import { recordSkippedEmail, sendTransactionalEmail } from "@/lib/email/send";
+import { EMAIL_SKIP_MESSAGES, type EmailCategory } from "@/lib/email/subscription";
+import { stepEmailCategory } from "@/lib/email/categories";
 import { computeQuota } from "@/lib/email/quota";
 import { createNotification } from "@/lib/notifications/create";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
@@ -47,6 +49,12 @@ export interface SendEmailNodeData {
   body?: string;
   /** Adjuntos: recursos de la banca con archivo (auditoria de automatizaciones). Hasta 10 y 25 MB en total. */
   attachments?: EmailAttachmentRef[];
+  /**
+   * "Tipo de email" (suscripcion a emails, E2). Marketing no le llega a quien se dio de baja y lleva el link de
+   * baja; transaccional (lo que la persona pidio) sale igual salvo que la direccion rebote. Sin guardar: el de su
+   * flujo (`stepEmailCategory`): transaccional en agenda, formularios, contratos y cobranza; marketing si no.
+   */
+  category?: EmailCategory;
 }
 
 /**
@@ -79,6 +87,10 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
   const body = ((await resolveTexts([interpolated.body], bodyIsHtml))[0] ?? "").trim();
   if (!subject && !body) return;
 
+  // Un flujo de agenda manda igual: es una reunión que la persona pidió.
+  const fromBooking = context.variables?.trigger_scope === BOOKING_TRIGGER_SCOPE;
+  const category = await nodeCategory(supabase, data, context, fromBooking);
+
   let contactEmail: string | null = null;
   if (contactId) {
     const { data: contact } = await supabase
@@ -87,10 +99,16 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
       .eq("id", contactId)
       .maybeSingle();
 
-    // Un flujo de agenda manda igual: es una reunión que la persona pidió.
-    const fromBooking = context.variables?.trigger_scope === BOOKING_TRIGGER_SCOPE;
     if (contact?.do_not_contact && !fromBooking) {
       console.warn(`[flow-engine] el contacto ${contactId} está marcado "no contactar": no se manda el email del nodo ${node.id}`);
+      // Antes el salto no dejaba rastro: ahora queda en el historial del contacto y en la automatización.
+      await recordSkippedEmail(
+        supabase as never,
+        { workspaceId: context.workspaceId, to: contact?.email || "(sin dirección)", subject: subject || "(sin asunto)", kind: "flow", relatedEntityType: "flow", relatedEntityId: context.flowId, contactId },
+        "do_not_contact",
+        EMAIL_SKIP_MESSAGES.do_not_contact,
+      );
+      await markSkipped(supabase, context, node.id, EMAIL_SKIP_MESSAGES.do_not_contact);
       return;
     }
     contactEmail = contact?.email ?? null;
@@ -173,8 +191,15 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
       // quien vaya: el contacto, el anfitrion o una direccion fija.
       contactId,
       ...(loaded.files.length > 0 ? { attachments: loaded.files } : {}),
+      // La suscripcion: marketing no sale a quien se dio de baja; nada sale a una direccion que rebota.
+      category,
       deps: { supabase },
     });
+    // Un salto de la suscripcion no es un fallo: queda anotado como paso salteado y el flujo sigue.
+    if (!result.ok && result.reason === "skipped") {
+      await markSkipped(supabase, context, node.id, result.error);
+      continue;
+    }
     // Antes el resultado no se miraba: un envio rechazado no dejaba rastro en la automatizacion.
     if (!result.ok) {
       try {
@@ -189,6 +214,45 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
         // Anotar el fallo nunca frena el flujo.
       }
     }
+  }
+}
+
+/** La categoria del paso: la elegida en el editor o la de su flujo. Leer el flujo nunca frena el envio. */
+async function nodeCategory(
+  supabase: NodeExecutionArgs<SendEmailNodeData>["supabase"],
+  data: SendEmailNodeData,
+  context: FlowExecutionContext,
+  fromBooking: boolean,
+): Promise<EmailCategory> {
+  if (data.category === "marketing" || data.category === "transactional") return data.category;
+  if (fromBooking) return "transactional";
+  if (!context.flowId) return stepEmailCategory(null, null);
+  try {
+    const { data: flow } = await supabase.from("flows").select("form_id, event_type_id, template_key").eq("id", context.flowId).maybeSingle();
+    return stepEmailCategory(null, (flow as { form_id?: string | null; event_type_id?: string | null; template_key?: string | null } | null) ?? null);
+  } catch {
+    return "marketing";
+  }
+}
+
+/** Un email que no salio porque la persona no lo puede recibir: paso salteado con el motivo (nunca falla el flujo). */
+async function markSkipped(
+  supabase: NodeExecutionArgs<SendEmailNodeData>["supabase"],
+  context: FlowExecutionContext,
+  nodeId: string,
+  reason: string,
+): Promise<void> {
+  try {
+    await supabase.from("analytics_events").insert({
+      workspace_id: context.workspaceId,
+      flow_id: context.flowId,
+      contact_id: context.contactId,
+      event_type: "node_skipped",
+      metadata: { nodeId, nodeType: "send_email", reason },
+    });
+    context.onStepSkipped?.({ nodeId, nodeType: "send_email", label: "Enviar email" });
+  } catch {
+    // Anotar el salto nunca frena el flujo.
   }
 }
 

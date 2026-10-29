@@ -14,6 +14,8 @@ import {
 } from "./steps";
 import type { Database, SequenceStep } from "@/lib/types/database";
 import { aiLanguageStyle } from "@/lib/ai/language-style";
+import { canSendEmailTo, type EmailPauseReason } from "@/lib/email/subscription";
+import { sequenceStepEmailCategory } from "@/lib/email/categories";
 import { loadLanguageStyle } from "@/lib/ai/language-style-load";
 
 /**
@@ -183,7 +185,30 @@ async function processEnrollment(supabase: Db, enrollment: Enrollment): Promise<
     return "advanced";
   }
 
+  // Suscripcion a emails (E2): respaldo antes de cada paso por email. La baja ya pausa las inscripciones en el
+  // momento (set_email_status), pero una que entro por otro camino se frena aca: un paso de marketing a quien se dio
+  // de baja, rebota o marco spam pausa la inscripcion con el motivo; no se reanuda sola.
+  const email = await emailStepGate(supabase, enrollment, sequence.workspace_id, step);
+  if (email.action === "pause") {
+    await pause(supabase, enrollment.id, email.reason);
+    return "paused";
+  }
+  if (email.action === "retry") {
+    await reschedule(supabase, enrollment.id, nextAttemptAt(1));
+    return "retry";
+  }
+  if (email.action === "skip") {
+    await supabase.from("sequence_enrollments").update({ last_error: email.message }).eq("id", enrollment.id);
+    await advance(supabase, enrollment.id, steps, index);
+    return "advanced";
+  }
+
   const delivery = await deliverStep(supabase, enrollment, sequence.workspace_id, step);
+
+  if (delivery === "email_unsubscribed" || delivery === "email_bounced" || delivery === "email_complained") {
+    await pause(supabase, enrollment.id, delivery);
+    return "paused";
+  }
 
   if (delivery === "no_conversation") {
     await pause(supabase, enrollment.id, "no_conversation");
@@ -248,7 +273,37 @@ async function processEnrollment(supabase: Db, enrollment: Enrollment): Promise<
  * existe o que el canal no acepta). Se saltea y queda el motivo anotado, como
  * `unreadable`: reintentar no lo arregla.
  */
-type DeliveryOutcome = "sent" | "failed" | "retry" | "no_conversation" | "unreadable" | "skipped";
+type DeliveryOutcome = "sent" | "failed" | "retry" | "no_conversation" | "unreadable" | "skipped" | EmailPauseReason;
+
+type EmailStepGate =
+  | { action: "send" }
+  | { action: "pause"; reason: EmailPauseReason }
+  | { action: "skip"; message: string }
+  | { action: "retry" };
+
+/**
+ * Un paso que sale por email: se puede mandar? Solo mira las inscripciones sobre un canal de email (Resend); en
+ * WhatsApp o Instagram no hay nada que mirar. "No contactar" ya lo frena `loadBlockedContacts`.
+ */
+async function emailStepGate(supabase: Db, enrollment: Enrollment, workspaceId: string, step: SequenceStep): Promise<EmailStepGate> {
+  const { data: channel } = await supabase.from("channels").select("provider").eq("id", enrollment.channel_id).maybeSingle();
+  if ((channel as { provider?: string } | null)?.provider !== "resend") return { action: "send" };
+
+  const { data: contact } = await supabase.from("contacts").select("email").eq("id", enrollment.contact_id).maybeSingle();
+  const address = (contact as { email?: string | null } | null)?.email;
+  // Sin email en la ficha, responde al ultimo remitente del hilo: la puerta de envio lo mira ahi.
+  if (!address) return { action: "send" };
+
+  const category = sequenceStepEmailCategory(step.emailCategory);
+  const gate = await canSendEmailTo(supabase, { workspaceId, address, category, contactId: enrollment.contact_id });
+  if (gate.ok) return { action: "send" };
+  if (gate.reason === "unverifiable") return { action: "retry" };
+  if (category === "marketing" && (gate.reason === "unsubscribed" || gate.reason === "bounced" || gate.reason === "complained")) {
+    return { action: "pause", reason: `email_${gate.reason}` };
+  }
+  // Un paso transaccional a una direccion que rebota: se saltea con el motivo (la secuencia sigue).
+  return { action: "skip", message: gate.message };
+}
 
 async function deliverStep(
   supabase: Db,
@@ -258,7 +313,9 @@ async function deliverStep(
 ): Promise<DeliveryOutcome> {
   const built = await buildSequenceSendContext(supabase, enrollment, workspaceId);
   if (!built.ok) return "no_conversation";
-  const context = built.context;
+  // La categoria del paso viaja en el contexto: la usan el mensaje, el paso de IA y el recurso.
+  const emailCategory = sequenceStepEmailCategory(step.emailCategory);
+  const context = { ...built.context, emailCategory };
 
   const { data: contact } = await supabase
     .from("contacts")
@@ -335,6 +392,11 @@ async function deliverStep(
   await recordSend(supabase, context, outcome.ok ? text : outcome.failure?.message ?? text, outcome);
 
   if (outcome.ok) return "sent";
+
+  // La puerta de suscripcion lo freno en el envio (una baja que llego entre el chequeo y el envio).
+  if (emailCategory === "marketing" && (outcome.skipped === "unsubscribed" || outcome.skipped === "bounced" || outcome.skipped === "complained")) {
+    return `email_${outcome.skipped}`;
+  }
 
   await supabase
     .from("sequence_enrollments")

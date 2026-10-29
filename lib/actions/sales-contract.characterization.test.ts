@@ -67,3 +67,19 @@ describe("emailContractLink (hoy)", () => {
     expect(h.sendTransactionalEmail).not.toHaveBeenCalled();
   });
 });
+
+describe("emailContractLink: suscripcion a emails (cambio aprobado)", () => {
+  it("va como transaccional: le llega aunque se haya dado de baja de marketing", async () => {
+    setup({});
+    await emailContractLink({ saleId: SALE, formId: FORM });
+    expect(h.sendTransactionalEmail).toHaveBeenCalledWith(expect.objectContaining({ category: "transactional" }));
+    expect(h.sendTransactionalEmail.mock.calls[0][0]).not.toHaveProperty("honorDoNotContact");
+  });
+
+  it("si la puerta lo saltea (el email rebota), avisa con el motivo y no deja el envio en el historial de la venta", async () => {
+    setup({});
+    h.sendTransactionalEmail.mockResolvedValueOnce({ ok: false, reason: "skipped", skip: "bounced", error: "No se mandó: el email de esta persona rebota." } as never);
+    const res = await emailContractLink({ saleId: SALE, formId: FORM });
+    expect(res).toEqual({ ok: false, error: "No se mandó: el email de esta persona rebota." });
+  });
+});

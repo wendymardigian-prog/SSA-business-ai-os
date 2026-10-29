@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { EmailCategoryField } from "@/components/automations/email-category-field";
 import {
   ArrowLeft,
   Plus,
@@ -410,6 +411,21 @@ function StepCard({
           canEdit={canEdit}
           onChange={(delayMinutes) => onChange({ delayMinutes })}
         />
+      )}
+
+      {/* Suscripcion a emails: solo cuenta si la inscripcion va por un canal de email. Marketing por defecto. */}
+      {step.type !== "delay" && (
+        <div className="mt-3">
+          <EmailCategoryField
+            id={`step-${index}-email-category`}
+            value={step.emailCategory}
+            fallback="marketing"
+            disabled={!canEdit}
+            onChange={(emailCategory) => onChange({ emailCategory })}
+            selectClassName="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-default disabled:opacity-70"
+          />
+          <p className="mt-1 text-xs text-muted-foreground/80">Solo cuenta si la secuencia sale por email.</p>
+        </div>
       )}
     </div>
   );

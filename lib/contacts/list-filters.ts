@@ -154,10 +154,10 @@ export function customFilterPlan(f: CustomFilter): CustomFilterPlan {
 export const COLUMNS_STORAGE_KEY = "contacts-columns";
 
 /** Las columnas opcionales fijas; las de campos personalizados son `cf:<id>`. */
-export const OPTIONAL_COLUMNS = ["status", "product"] as const;
+export const OPTIONAL_COLUMNS = ["status", "product", "email_status"] as const;
 export type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number] | `cf:${string}`;
 
-/** Por defecto se ven Estado y Producto; los campos personalizados se suman a mano. */
+/** Por defecto se ven Estado y Producto; el estado de email y los campos personalizados se suman a mano. */
 export const DEFAULT_VISIBLE_COLUMNS: OptionalColumn[] = ["status", "product"];
 
 /** Lee lo guardado. Nunca lanza: algo roto o vacío vuelve a las de por defecto. */

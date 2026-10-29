@@ -23,6 +23,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { sendViaResend } from "@/lib/email/resend-client";
 import { getProvider } from "@/lib/integrations/providers";
+import {
+  canSendEmailTo,
+  EMAIL_SKIP_LOG_STATUS,
+  type EmailCategory,
+  type EmailSkipReason,
+} from "@/lib/email/subscription";
+import type { EmailLogStatus } from "@/lib/types/database";
 
 export type EmailKind = "team_invite" | "channel_disconnected" | (string & {});
 
@@ -44,6 +51,16 @@ export interface SendEmailParams {
   createdBy?: string | null;
   /** Adjuntos en base64 (por ejemplo, un PDF). Omitido = sin adjuntos, como siempre. */
   attachments?: Array<{ filename: string; content: string }>;
+  /**
+   * Suscripcion a emails (E2). Todo email a un CONTACTO lleva su categoria y pasa
+   * por `canSendEmailTo`: marketing no sale a una direccion dada de baja o con
+   * queja; nada sale a una que rebota. Omitido = email al equipo o del sistema
+   * (invitaciones, avisos, pruebas del editor), que no es de ningun contacto: no
+   * se mira la suscripcion. `subscription-gate.test.ts` lista esos casos.
+   */
+  category?: EmailCategory;
+  /** Ademas, frena si algun contacto vivo con esa direccion esta en "no contactar". */
+  honorDoNotContact?: boolean;
   /** Inyeccion para tests. En produccion no se pasa. */
   deps?: {
     supabase?: SupabaseClient;
@@ -54,7 +71,9 @@ export interface SendEmailParams {
 export type SendEmailResult =
   | { ok: true; id: string | null }
   | { ok: false; reason: "not_configured"; error: string }
-  | { ok: false; reason: "failed"; error: string };
+  | { ok: false; reason: "failed"; error: string }
+  /** La puerta de suscripcion lo salteo: queda en email_log con el motivo. No es un fallo. */
+  | { ok: false; reason: "skipped"; skip: EmailSkipReason; error: string };
 
 /** Config del remitente guardada en integration_configs.config. */
 interface ResendConfig {
@@ -69,12 +88,15 @@ async function serviceClient(): Promise<SupabaseClient> {
   return (await createServiceClient()) as unknown as SupabaseClient;
 }
 
-/** Deja constancia del intento. Un fallo aca no cambia el resultado del envio. */
-async function logEmail(
+/**
+ * Deja constancia del intento. Un fallo aca no cambia el resultado del envio.
+ * Exportado para la respuesta por email (`send-reply.ts`), que anota en el mismo lugar.
+ */
+export async function logEmail(
   supabase: SupabaseClient,
   params: SendEmailParams,
   row: {
-    status: "sent" | "failed" | "skipped_not_configured";
+    status: EmailLogStatus;
     provider_message_id?: string | null;
     attempts?: number;
     last_error?: string | null;
@@ -100,10 +122,38 @@ async function logEmail(
   }
 }
 
+/**
+ * Deja anotado un email que no salio porque la persona no lo puede recibir (la
+ * puerta de suscripcion, o "no contactar" en un paso que lo respeta). Nunca lanza.
+ */
+export async function recordSkippedEmail(
+  supabase: SupabaseClient,
+  params: Omit<SendEmailParams, "html" | "deps">,
+  skip: EmailSkipReason,
+  message: string,
+): Promise<void> {
+  await logEmail(supabase, params as SendEmailParams, { status: EMAIL_SKIP_LOG_STATUS[skip] as EmailLogStatus, last_error: message });
+}
+
 export async function sendTransactionalEmail(
   params: SendEmailParams,
 ): Promise<SendEmailResult> {
   const supabase = params.deps?.supabase ?? (await serviceClient());
+
+  // 0. La suscripcion: un email a un contacto, solo si la direccion lo puede recibir.
+  if (params.category) {
+    const gate = await canSendEmailTo(supabase, {
+      workspaceId: params.workspaceId,
+      address: params.to,
+      category: params.category,
+      contactId: params.contactId ?? null,
+      honorDoNotContact: params.honorDoNotContact === true,
+    });
+    if (!gate.ok) {
+      await recordSkippedEmail(supabase, params, gate.reason, gate.message);
+      return { ok: false, reason: "skipped", skip: gate.reason, error: gate.message };
+    }
+  }
 
   // 1. Esta conectado Resend?
   const { data: integration, error: integrationError } = await supabase

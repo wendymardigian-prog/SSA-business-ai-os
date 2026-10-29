@@ -767,7 +767,16 @@ export type LeadTemperature = "cold" | "warm" | "hot";
 /** De donde sale `contacts.avatar_url` (migracion 00104, F16). */
 export type AvatarSource = "external" | "storage" | "manual";
 /** Como termino un envio de email (migracion 00021). */
-export type EmailLogStatus = "sent" | "failed" | "skipped_not_configured";
+export type EmailLogStatus =
+  | "sent"
+  | "failed"
+  | "skipped_not_configured"
+  // Suscripcion a emails (00272): la puerta `canSendEmailTo` lo salteo.
+  | "skipped_unsubscribed"
+  | "skipped_bounced"
+  | "skipped_complained"
+  | "skipped_do_not_contact"
+  | "skipped_unverifiable";
 export type BroadcastStatus =
   | "draft"
   | "scheduled"
@@ -963,6 +972,11 @@ export type SequenceCollisionResolution =
 
 export interface SequenceStep {
   type: "message" | "delay" | "aiMessage" | "asset";
+  /**
+   * "Tipo de email" (suscripcion a emails, E2): solo cuenta cuando la inscripcion va por un canal de email. Sin
+   * guardar = marketing (no le llega a quien se dio de baja, y su baja pausa la inscripcion).
+   */
+  emailCategory?: "marketing" | "transactional";
   /** Texto del paso de mensaje. Admite {{variables}} del contacto. */
   content?: string;
   /** Espera del paso de delay, en minutos. */

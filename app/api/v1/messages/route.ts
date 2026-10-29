@@ -317,11 +317,16 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { conversationId, confirmedDoNotContact, stickerId, retryOf } = body as {
+  const { conversationId, confirmedDoNotContact, confirmedEmailOptOut, stickerId, retryOf } = body as {
     conversationId?: string;
     text?: string;
     media?: IncomingMedia;
     confirmedDoNotContact?: boolean;
+    /**
+     * Suscripcion a emails (E2): responder a mano por email a alguien que se dio de baja de los emails de marketing
+     * (o marco spam) se puede —es una respuesta, no una promocion—, pero no por accidente: la ruta pregunta antes.
+     */
+    confirmedEmailOptOut?: boolean;
     /** El sticker de la biblioteca que se mando (00257): suma un uso. */
     stickerId?: string;
     /** Reintentar ESTE envio fallido (00262): se manda lo que guardo, no lo que diga el pedido. */
@@ -454,12 +459,21 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    // Suscripcion a emails (E2): la respuesta es transaccional (la escribe una persona) y le llega igual a quien se dio
+    // de baja de marketing, pero se pregunta antes. Una direccion que rebota no recibe nada (lo frena la puerta).
+    if (confirmedEmailOptOut !== true) {
+      const optOut = await emailOptOutWarning(supabase, service, conversation.workspace_id, conversationId);
+      if (optOut) {
+        return NextResponse.json({ error: optOut, requiresConfirmation: true, kind: "email_opt_out" }, { status: 409 });
+      }
+    }
     return sendViaResendChannel({
       supabase,
       secrets: service,
       conversationId,
       channel: outChannel,
       contact,
+      contactId: conversation.contact_id,
       text: text!,
       userId: user.id,
     });
@@ -671,12 +685,38 @@ export async function POST(request: NextRequest) {
  * El hilo se arma con `In-Reply-To` y `References` del ultimo entrante: sin
  * eso, la respuesta le llega a la otra persona como un correo suelto.
  */
+/**
+ * Si la direccion a la que va la respuesta se dio de baja de los emails (o marco spam), el texto del aviso. La
+ * direccion es la misma que va a usar `sendEmailReply`: la del ultimo entrante del hilo.
+ */
+async function emailOptOutWarning(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  service: Awaited<ReturnType<typeof createServiceClient>>,
+  workspaceId: string,
+  conversationId: string,
+): Promise<string | null> {
+  const { lastInboundEmail } = await import("@/lib/email/send-reply");
+  const { bareAddress } = await import("@/lib/email/reply");
+  const { addressEmailStatus } = await import("@/lib/email/subscription");
+  const to = bareAddress((await lastInboundEmail(supabase, conversationId))?.from);
+  if (!to) return null;
+  const status = await addressEmailStatus(service, workspaceId, to);
+  if (status === "unsubscribed") {
+    return "Esta persona se dio de baja de los emails de marketing. Una respuesta tuya igual le llega.";
+  }
+  if (status === "complained") {
+    return "Esta persona marcó un email nuestro como spam. Una respuesta tuya igual le llega.";
+  }
+  return null;
+}
+
 async function sendViaResendChannel({
   supabase,
   secrets,
   conversationId,
   channel,
   contact,
+  contactId,
   text,
   userId,
 }: {
@@ -691,6 +731,7 @@ async function sendViaResendChannel({
     is_active: boolean;
   };
   contact: { email?: string | null; do_not_contact?: boolean | null } | null;
+  contactId: string | null;
   text: string;
   userId: string;
 }) {
@@ -710,6 +751,9 @@ async function sendViaResendChannel({
     // aca se pasa en false para no volver a frenarlo.
     contactOptedOut: false,
     secrets,
+    // Una persona respondiendo: transaccional. Solo un rebote la frena (la puerta de suscripcion).
+    category: "transactional",
+    contactId,
   });
 
   if (!result.ok) {

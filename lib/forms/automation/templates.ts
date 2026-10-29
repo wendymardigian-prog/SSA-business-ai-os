@@ -246,7 +246,7 @@ export function blankFormFlowGraph(form: { id: string; type: PublicFormType }): 
 
 const notifyEmailStep = (userEmail: string, subject: string, body: string) => ({
   type: "action",
-  data: { actionType: "send_email", to: "fixed", fixedEmail: userEmail, subject, body },
+  data: { actionType: "send_email", to: "fixed", fixedEmail: userEmail, subject, body, category: "transactional" },
 });
 
 export function formTemplateGraph(key: FormTemplateKey, ctx: FormTemplateContext): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
@@ -260,7 +260,7 @@ export function formTemplateGraph(key: FormTemplateKey, ctx: FormTemplateContext
     case "thank_you_message":
       return chain(triggerNode(form), [
         { type: "sendMessage", data: { messages: [{ text: "¡Hola {{contact.display_name}}! Gracias por responder. Ya recibimos tu respuesta." }], onlyIfPhone: true } },
-        { type: "action", data: { actionType: "send_email", to: "contact", subject: "Gracias por responder", body: "Hola {{contact.display_name}},\n\nGracias por responder «{{form.name}}». Ya recibimos tu respuesta.\n\nUn abrazo." } },
+        { type: "action", data: { actionType: "send_email", to: "contact", category: "transactional", subject: "Gracias por responder", body: "Hola {{contact.display_name}},\n\nGracias por responder «{{form.name}}». Ya recibimos tu respuesta.\n\nUn abrazo." } },
       ]);
 
     case "add_tag":

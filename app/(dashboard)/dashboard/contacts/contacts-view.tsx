@@ -29,6 +29,8 @@ import { NONE, type CustomFieldRef, type CustomFilterOp } from "@/lib/contacts/l
 import { STATUS_ROLE_LABELS, activeStatuses, statusName, type ContactStatusSettings } from "@/lib/contacts/statuses";
 import { interestLabel, offeredProducts, type InterestCatalog } from "@/lib/contacts/interest";
 import { displayCustomValue } from "@/lib/custom-fields";
+import { EMAIL_STATUS_LABELS, EMAIL_STATUSES, type EmailStatus } from "@/lib/email/subscription";
+import { EmailStatusBadge } from "@/components/contacts/email-status-badge";
 import {
   CONTACT_SORTS,
   CONTACT_SORT_HINTS,
@@ -56,6 +58,8 @@ export interface ContactRow {
   /** Conocido (00256). */
   isKnown?: boolean;
   isCustomer?: boolean;
+  /** Suscripcion a emails (00270). */
+  emailStatus: EmailStatus;
   setterId: string | null;
   vendedorId: string | null;
   tags: { id: string; name: string; color: string | null }[];
@@ -86,6 +90,8 @@ interface Filters {
   setterStatus: string;
   closerStatus: string;
   productId: string;
+  /** Estado de email (00270): subscribed | unsubscribed | bounced | complained, o vacio. */
+  emailStatus: string;
   /** El slug del campo personalizado por el que se filtra. */
   customField: string;
 }
@@ -186,7 +192,7 @@ export function ContactsView({
   /** Quita los filtros del menu y deja la busqueda y el orden como estan. */
   function clearMenuFilters() {
     const next = new URLSearchParams(searchParams.toString());
-    for (const key of ["tag", "setter", "vendedor", "temp", "fuente", "medio", "canal", "anon", "estado", "estado_setter", "estado_vendedor", "producto", "campo", "op", "valor", "page"]) next.delete(key);
+    for (const key of ["tag", "setter", "vendedor", "temp", "fuente", "medio", "canal", "anon", "estado", "estado_setter", "estado_vendedor", "producto", "email", "campo", "op", "valor", "page"]) next.delete(key);
     const query = next.toString();
     start(() => router.replace(query ? `${pathname}?${query}` : pathname));
   }
@@ -251,6 +257,12 @@ export function ContactsView({
                   value={filters.temperature}
                   onChange={(v) => setParam("temp", v)}
                   options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
+                />
+                <MenuField
+                  label="Estado de email"
+                  value={filters.emailStatus}
+                  onChange={(v) => setParam("email", v)}
+                  options={EMAIL_STATUSES.map((st) => ({ value: st, label: EMAIL_STATUS_LABELS[st] }))}
                 />
 
                 {/* Pipeline (00245/00246): el ultimo estado, el de cada rol y el producto de interes. */}
@@ -426,6 +438,7 @@ export function ContactsView({
                 <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Setter</th>
                 <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Vendedor</th>
                 {visibleColumns.includes("product") && <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Producto</th>}
+                {visibleColumns.includes("email_status") && <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Email</th>}
                 {customColumns.map((f) => (
                   <th key={f.id} className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">{f.name}</th>
                 ))}
@@ -487,6 +500,11 @@ export function ContactsView({
                   {visibleColumns.includes("product") && (
                     <td className="max-w-48 truncate px-4 py-3 text-sm text-muted-foreground">
                       {interestLabel(interestCatalog, contact.interestProductId, contact.interestVariantId)}
+                    </td>
+                  )}
+                  {visibleColumns.includes("email_status") && (
+                    <td className="px-4 py-3">
+                      <EmailStatusBadge status={contact.emailStatus} prefix="" />
                     </td>
                   )}
                   {customColumns.map((f) => (

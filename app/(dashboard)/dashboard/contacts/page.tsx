@@ -11,6 +11,7 @@ import { firstParam, pickEnum, pickPage, sanitizeSearch } from "@/lib/url-params
 import { customFilterPlan, parseCustomFilter, parsePipelineFilters, pipelineClauses } from "@/lib/contacts/list-filters";
 import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
 import { loadInterestCatalog } from "@/lib/contacts/interest-load";
+import { isEmailStatus } from "@/lib/email/subscription";
 
 /**
  * Lista de contactos.
@@ -65,6 +66,9 @@ export default async function ContactsPage({
   const attribution = parseAttributionFilters(params);
   // Pipeline (00245/00246): estado (el ultimo o el de cada rol) y producto de interes.
   const pipeline = parsePipelineFilters(params);
+  // Suscripcion a emails (00270): el estado de email del contacto. Un valor inventado se ignora.
+  const emailParam = firstParam(params.email);
+  const emailStatus = isEmailStatus(emailParam) ? emailParam : "";
 
   // Los campos personalizados (para el filtro y las columnas), las listas de
   // estados y el catalogo de productos: se piden antes porque el filtro por
@@ -132,6 +136,7 @@ export default async function ContactsPage({
       else query = query.eq(col, customPlan.value as string | number);
     }
   }
+  if (emailStatus) query = query.eq("email_status", emailStatus);
   if (anon === "solo") query = query.eq("is_anonymous", true);
   else if (anon !== "1") query = query.eq("is_anonymous", false);
 
@@ -193,6 +198,7 @@ export default async function ContactsPage({
     doNotContact: Boolean(c.do_not_contact),
     isKnown: Boolean(c.is_known),
     isCustomer: Boolean(c.is_customer),
+    emailStatus: isEmailStatus(c.email_status) ? c.email_status : "subscribed",
     setterId: (c.setter_id as string | null) ?? null,
     vendedorId: (c.vendedor_id as string | null) ?? null,
     tags: (c.contact_tags ?? [])
@@ -228,6 +234,7 @@ export default async function ContactsPage({
         setterStatus: pipeline.setterStatus,
         closerStatus: pipeline.closerStatus,
         productId: pipeline.productId,
+        emailStatus,
         customField: customFilter ? customFilter.field.slug : "",
       }}
       customFilter={customFilter ? { slug: customFilter.field.slug, op: customFilter.op, value: firstParam(params.valor) } : null}

@@ -350,6 +350,19 @@ export interface CanSendInput {
 }
 
 /**
+ * El estado efectivo de una direccion (el peor entre todos los contactos que la
+ * tienen, vivos y borrados). Para avisar ANTES de mandar (la bandeja). `null` si
+ * la base no contesto: quien llama decide.
+ */
+export async function addressEmailStatus(service: Rpc, workspaceId: string, address: string): Promise<EmailStatus | null> {
+  const normalized = normalizeEmailAddress(address);
+  if (!normalized) return "subscribed";
+  const { data, error } = await service.rpc("email_address_status", { p_workspace_id: workspaceId, p_email: normalized });
+  if (error) return null;
+  return isEmailStatus(data) ? data : "subscribed";
+}
+
+/**
  * La regla pura, a partir del estado de la direccion. Separada para testearla sin base.
  */
 export function decideSend(input: {

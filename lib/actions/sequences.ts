@@ -17,6 +17,8 @@ import {
 import { computeNextStepAt, parseSteps } from "@/lib/sequences/steps";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createNotification } from "@/lib/notifications/create";
+import { canSendEmailTo } from "@/lib/email/subscription";
+import { isEmailPause } from "@/lib/sequences/labels";
 import type {
   Json,
   SequenceStatus,
@@ -677,6 +679,12 @@ export async function resumeEnrollment(enrollmentId: string): Promise<SequenceAc
       error: "La secuencia está pausada. Activala primero y después reanudá la inscripción.",
     };
   }
+  // Suscripcion a emails: una pausa por la baja se reanuda a mano, pero solo si la direccion ya puede recibir
+  // marketing (la persona volvio a suscribirse). Si no, se avisa y no se reanuda.
+  if (isEmailPause(enrollment.paused_reason)) {
+    const blocked = await emailStillBlocked(workspace.id, enrollment.contact_id);
+    if (blocked) return { ok: false, error: blocked };
+  }
 
   const { error } = await supabase
     .from("sequence_enrollments")
@@ -708,6 +716,21 @@ export async function resumeEnrollment(enrollmentId: string): Promise<SequenceAc
 
   revalidatePath(detailPath(enrollment.sequence_id));
   return { ok: true };
+}
+
+/**
+ * Si la direccion del contacto todavia no puede recibir marketing, el motivo (para no reanudar). Mira la direccion en
+ * todos los contactos del workspace, igual que la puerta de envio. Si no se puede comprobar, no se reanuda.
+ */
+async function emailStillBlocked(workspaceId: string, contactId: string): Promise<string | null> {
+  const service = await createServiceClient();
+  const { data: contact } = await service.from("contacts").select("email").eq("id", contactId).eq("workspace_id", workspaceId).maybeSingle();
+  const address = contact?.email?.trim();
+  if (!address) return null;
+  const gate = await canSendEmailTo(service, { workspaceId, address, category: "marketing", contactId });
+  if (gate.ok) return null;
+  if (gate.reason === "unverifiable") return "No pude comprobar si la persona sigue dada de baja. Probá de nuevo en un rato.";
+  return `${gate.message.replace(/^No se mandó: /, "No se puede reanudar: ")} Para reanudarla, la persona tiene que volver a suscribirse (o alguien del equipo hacerlo desde su ficha).`;
 }
 
 export async function cancelEnrollment(enrollmentId: string): Promise<SequenceActionResult> {

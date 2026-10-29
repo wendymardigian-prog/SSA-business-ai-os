@@ -14,7 +14,12 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. Avance y plan 
 - **Nombre exacto del campo del tipo de rebote en Resend** · el plan supone `data.bounce.type` con valor permanente/transitorio · se confirma contra la documentación de Resend al construir E4, antes de decidir hard vs soft.
 - **El token de baja viaja en la fila de `contacts`** · hay `select("*")` sobre `contacts` en toda la app, así que ocultarlo por columna la rompería · el token solo permite darse de baja (no leer ni cambiar nada más); si algún día se quiere ocultar, hay que revisar esos `select("*")` antes.
 
+- **El lienzo muestra «Marketing» en un paso de email sin categoría guardada** · los flujos de agenda y cobranza que ya existían no guardan la categoría y el motor los trata como transaccionales por su origen; si alguien abre uno en el lienzo (no en su editor de pasos), el selector muestra el valor por defecto del lienzo (marketing) hasta que se elija uno · el comportamiento real es el del motor; elegir en el selector lo guarda. Los 22 flujos con email son borradores.
+- **Marketing a una dirección que no es de ningún contacto** (dirección fija o de una variable) · no hay contacto ni token de baja · sale sin el link de baja (el pie se arma solo con un token); queda para revisar si se usa.
+
 ## Decisiones tomadas
+
+- **«No contactar» en el nodo «Enviar email» sigue como hoy** · el plan proponía que solo frenara si la dirección era del contacto; se mantuvo el comportamiento actual (frena también una dirección fija o al anfitrión en el flujo de ese contacto) porque la suscripción no lo necesita y un test de caracterización lo fija.
 
 - **Contratos (link y copia firmada) = transaccionales y solo frena el rebote** · no respetan "no contactar" ni la baja de marketing; quien firma o pidió el contrato lo recibe igual (Wendy, 29/10/2026).
 - **Importar sin disparar flujos** · se marcan como procesados los eventos de los contactos de cada tanda, sin tocar los triggers de la base (Wendy, 29/10/2026).

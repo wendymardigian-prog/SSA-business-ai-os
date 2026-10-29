@@ -11,6 +11,7 @@ import { sentContentContext } from "@/lib/attribution/content-variables";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
 import { foldOptionsIntoText } from "./platform-adapter";
+import type { EmailCategory, EmailSkipReason } from "@/lib/email/subscription";
 /**
  * La unica puerta de salida del motor de flows.
  *
@@ -61,6 +62,20 @@ export interface SendContext {
   origin?: "flow" | "sequence";
   /** Las variables del flujo (si el envío nace de uno): de ahí sale la pieza (`content`) que guarda el saliente (F35). */
   variables?: Record<string, unknown>;
+  /**
+   * Suscripcion a emails (E2): solo cuenta si la conversacion es de email. Sin esto, `channelEmailCategory` decide:
+   * marketing en flujos y secuencias, transaccional en el agente (que responde a alguien que escribio).
+   */
+  emailCategory?: EmailCategory;
+}
+
+/**
+ * La categoria de un email que sale por `sendChannelMessage`. Lo que nace de un flujo o de una secuencia es marketing
+ * salvo que el paso diga otra cosa; lo demas (el agente respondiendo un hilo) es transaccional.
+ */
+export function channelEmailCategory(context: Pick<SendContext, "emailCategory" | "origin" | "flowId">): EmailCategory {
+  if (context.emailCategory) return context.emailCategory;
+  return context.origin === "sequence" || context.flowId ? "marketing" : "transactional";
 }
 
 /** Un archivo de nuestro bucket `chat-media`, listo para mandar (F19). */
@@ -106,6 +121,8 @@ export interface SendOutcome {
   platformMessageId?: string | null;
   /** Solo si ok es false. Ya viene traducido para mostrarle a una persona. */
   failure?: FriendlyError;
+  /** Solo email: la puerta de suscripcion lo salteo (la persona se dio de baja, rebota o marco spam). */
+  skipped?: EmailSkipReason;
 }
 
 interface ChannelRow {
@@ -254,11 +271,19 @@ async function sendViaResendChannel(
     text,
     contactOptedOut: contact?.do_not_contact === true,
     secrets,
+    category: channelEmailCategory(context),
+    contactId: context.contactId,
+    // Lo que manda un flujo o una secuencia queda en email_log (historial del contacto, y el webhook de Resend
+    // ubica un rebote por su id). El agente no: su respuesta ya queda en el hilo.
+    ...(context.origin === "sequence" || context.flowId
+      ? { log: { kind: context.origin === "sequence" ? "sequence" : "flow_message", ...(context.flowId ? { relatedEntityType: "flow", relatedEntityId: context.flowId } : {}) } }
+      : {}),
   });
 
   if (!result.ok) {
     return {
       ok: false,
+      ...(result.skipped ? { skipped: result.skipped } : {}),
       failure: {
         // `rate_limited` es lo mas cercano que hay en la union para "el
         // proveedor no contesto, proba de nuevo": lo que importa para el

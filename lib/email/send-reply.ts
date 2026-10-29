@@ -16,6 +16,8 @@ import type { Database } from "@/lib/types/database";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { sendViaResend } from "./resend-client";
 import { bareAddress, canReply, replyHeaders, textToHtml } from "./reply";
+import { canSendEmailTo, type EmailCategory, type EmailSkipReason } from "./subscription";
+import { logEmail, recordSkippedEmail } from "./send";
 
 type Db = SupabaseClient<Database>;
 
@@ -28,6 +30,8 @@ export interface EmailSendResult {
   error?: string;
   /** Reintentar tiene sentido. */
   retryable?: boolean;
+  /** La puerta de suscripcion lo salteo (no es un fallo del proveedor). */
+  skipped?: EmailSkipReason;
 }
 
 /** El ultimo correo entrante del hilo: de ahi salen las cabeceras. */
@@ -78,6 +82,20 @@ export async function sendEmailReply(
      * desde la 00143 `read_secret` solo la ejecuta el servidor.
      */
     secrets?: Db;
+    /**
+     * Suscripcion a emails (E2): marketing (flujos, secuencias) no sale a una
+     * direccion dada de baja o con queja; nada sale a una que rebota. La bandeja y
+     * el agente mandan `transactional` (una persona respondiendo).
+     */
+    category: EmailCategory;
+    /** El contacto de la conversacion, para el historial y el token del pie. */
+    contactId?: string | null;
+    /**
+     * Anotar el envio en `email_log` (los flujos y las secuencias): asi queda en el
+     * historial del contacto y el webhook de Resend ubica un rebote por su id. La
+     * bandeja no lo pasa: su respuesta ya queda en el hilo.
+     */
+    log?: { kind: string; relatedEntityType?: string; relatedEntityId?: string | null };
   },
 ): Promise<EmailSendResult> {
   const last = await lastInboundEmail(supabase, params.conversationId);
@@ -91,6 +109,31 @@ export async function sendEmailReply(
   });
   if (!check.ok) {
     return { ok: false, messageId: null, providerId: null, error: check.error, retryable: false };
+  }
+
+  // La suscripcion: mira la direccion en todos los contactos del workspace, en el momento de enviar. Con el cliente
+  // de servicio (la funcion solo la ejecuta el servidor; la bandeja manda con el del usuario).
+  const service = params.secrets ?? supabase;
+  const gate = await canSendEmailTo(service, {
+    workspaceId: params.workspaceId,
+    address: to as string,
+    category: params.category,
+    contactId: params.contactId ?? null,
+  });
+  const logBase = params.log
+    ? {
+        workspaceId: params.workspaceId,
+        to: to as string,
+        subject: params.subject?.trim() || (last ? replyHeaders(last).subject : "(sin asunto)"),
+        kind: params.log.kind,
+        relatedEntityType: params.log.relatedEntityType,
+        relatedEntityId: params.log.relatedEntityId ?? undefined,
+        contactId: params.contactId ?? null,
+      }
+    : null;
+  if (!gate.ok) {
+    if (logBase) await recordSkippedEmail(service as never, logBase, gate.reason, gate.message);
+    return { ok: false, messageId: null, providerId: null, error: gate.message, retryable: false, skipped: gate.reason };
   }
 
   if (!params.channel.email_address) {
@@ -132,6 +175,12 @@ export async function sendEmailReply(
     },
     params.fetchImpl,
   );
+
+  if (logBase) {
+    await logEmail(service as never, { ...logBase, html: "" }, result.ok
+      ? { status: "sent", provider_message_id: result.id, attempts: result.attempts }
+      : { status: "failed", attempts: result.attempts, last_error: result.error });
+  }
 
   if (!result.ok) {
     return {

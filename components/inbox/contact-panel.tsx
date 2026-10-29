@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useTransition, type ReactNode } from "react";
+import { EmailStatusBadge } from "@/components/contacts/email-status-badge";
 import Link from "next/link";
 import { X, Brain, Loader2, ShieldOff, ExternalLink } from "lucide-react";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
@@ -349,14 +350,20 @@ function Identity({ details, canEdit, onSaved }: { details: ContactDetails; canE
       )}
       <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
         <TemperatureBadge value={c.lead_temperature} />
+        {/* `is_subscribed` es solo de las difusiones por chat: "Suscripto/Dado de baja" se confundia con la baja de
+            los emails (que es el estado de email, abajo). */}
         <span
+          title="Recibe difusiones por chat"
           className={cn(
             "rounded-full px-2.5 py-0.5 text-[10px] font-medium",
             c.is_subscribed ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground",
           )}
         >
-          {c.is_subscribed ? "Suscripto" : "Dado de baja"}
+          {c.is_subscribed ? "Difusiones: sí" : "Sin difusiones"}
         </span>
+        {(c.email || c.secondary_email) && c.email_status && c.email_status !== "subscribed" && (
+          <EmailStatusBadge status={c.email_status} at={c.email_status_at} source={c.email_status_source} className="px-2.5 text-[10px]" />
+        )}
         {c.do_not_contact && (
           <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-[10px] font-semibold text-red-700 dark:bg-red-950/50 dark:text-red-300">
             No contactar

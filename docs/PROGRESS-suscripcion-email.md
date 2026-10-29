@@ -8,8 +8,8 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] M1 (`00270`) aplicada, registrada y verificada (29/10/2026, versión `20261029224458`)
 - [x] E1 · Modelo de datos y función central (`00270` + `00271`)
 - [x] M2 (`00271`) aplicada, registrada y verificada (29/10/2026, versión `20261029225041`)
-- [ ] E2 · Puerta de envío `canSendEmailTo`, categoría por envío y secuencias (`00272`)
-- [ ] M3 (`00272`) aplicada, registrada y verificada
+- [x] E2 · Puerta de envío `canSendEmailTo`, categoría por envío y secuencias (`00272`)
+- [x] M3 (`00272`) aplicada, registrada y verificada (29/10/2026, versión `20261029230043`)
 - [ ] E3 · Link de baja, baja en un clic y página pública
 - [ ] E4 · Rebotes y quejas desde Resend
 - [ ] E5 · Panel (ficha, historial, lista)
@@ -45,7 +45,7 @@ Rama `feat/suscripcion-email` sin cambios de código (base `782eb01`). Los `veri
 |---|---|---|
 | `00270` | columnas de `contacts`, `workspaces.email_footer_address`, índices, backfill | **aplicada y registrada** (`20261029224458`) |
 | `00271` | `email_address_status`, `email_address_send_state`, `set_email_status`, `set_email_status_by_address`, guardia, herencia y regla de la fusión (por trigger) | **aplicada y registrada** (`20261029225041`) |
-| `00272` | CHECK de `email_log.status` (estados `skipped_*`) | sin escribir |
+| `00272` | CHECK de `email_log.status` (estados `skipped_*`) | **aplicada y registrada** (`20261029230043`) |
 
 Última migración registrada al empezar: `00269` (`20261028233702`). Primera libre: `00270` (reconfirmar con `list_migrations`). Autorización de Wendy: aplicar `00270`–`00272` sin pedir OK cada vez si cada verificación pasa; si falla una, se para.
 
@@ -63,6 +63,27 @@ Rama `feat/suscripcion-email` sin cambios de código (base `782eb01`). Los `veri
 - **Los motivos de pausa se guardan como código** (`email_unsubscribed`, `email_bounced`, `email_complained`) y la pantalla los muestra en palabras (`EMAIL_PAUSE_LABELS`): así se distinguen de `opt_out` y se pueden filtrar.
 - **`email_address_send_state`** (además de `email_address_status`): la puerta de envío necesita en una sola consulta el estado, si algún contacto vivo con esa dirección está en «no contactar» y el token del pie.
 - **«No pude comprobar»**: si la base no contesta, un marketing no sale (`skipped_unverifiable`) y un transaccional sí.
+
+## E2 · Hecho (29/10/2026)
+
+**Migración.** `00272` (superconjunto del CHECK de `email_log.status`: `skipped_unsubscribed`, `skipped_bounced`, `skipped_complained`, `skipped_do_not_contact`, `skipped_unverifiable`) ensayada, aplicada y registrada; las 3 filas existentes intactas.
+
+**La puerta.** `sendTransactionalEmail` (parámetro `category`, y `honorDoNotContact`) y `sendEmailReply` (parámetro `category` obligatorio, `contactId` y `log`) consultan `canSendEmailTo` con el cliente de servicio. Un salto no llama a Resend, devuelve `reason: "skipped"` y queda en `email_log` con su motivo.
+
+**Por camino (cada uno con su test con espía):**
+- A · nodo «Enviar email»: campo «Tipo de email» (marketing por defecto en el lienzo; transaccional en el editor de pasos de agenda, formularios y cobranza). Sin guardar, el motor usa el del flujo (`stepEmailCategory`: transaccional si tiene `event_type_id`, `form_id` o `template_key`, o arrancó por una reunión). Un salto es `node_skipped` + `onStepSkipped`, nunca `node_failed`. El salto por «no contactar» ahora queda en `email_log` (`skipped_do_not_contact`) y `node_skipped`.
+- B · `sendChannelMessage` por email: marketing si nace de un flujo o de una secuencia, transaccional si es el agente (`channelEmailCategory`); los de flujos y secuencias quedan en `email_log` con el id de Resend.
+- B4 · secuencias: «Tipo de email» por paso (jsonb, marketing por defecto). Respaldo del procesador antes de cada paso por email: pausa con `email_unsubscribed` / `email_bounced` / `email_complained`, saltea un transaccional a una dirección que rebota, reintenta si la base no contesta. `resumeEnrollment` no reanuda si la dirección sigue sin poder recibir marketing. La pantalla de la secuencia distingue y filtra las pausas por email.
+- C · bandeja: transaccional; a una dirección dada de baja o con queja pregunta antes (409 `email_opt_out`, confirmación en la pantalla); una que rebota no sale.
+- F y G · contratos: transaccionales; solo los frena un rebote (decisión de Wendy). Las copias al equipo no llevan categoría.
+- D, E, H, I (pruebas del editor, avisos, invitaciones): van al equipo, sin categoría; `subscription-gate.test.ts` los lista con su motivo y falla si aparece otro llamador sin categoría.
+- Plantillas: agenda, formularios y cobranza guardan `category: "transactional"`.
+
+**Condiciones y segmentos.** Condición de flujo «Estado de email» (catálogo, registro, simulador y casos); filtro «Estado de email» y columna opcional en la lista de contactos; regla en segmentos. `is_subscribed` no cambió: su etiqueta pasa a «Recibe difusiones por chat» (condición, segmentos y la bandeja, que decía «Suscripto / Dado de baja»).
+
+**Diferencias con el plan:**
+- **El cambio 6 del plan no se aplicó**: el nodo «Enviar email» sigue frenando por «no contactar» del contacto del flujo también a una dirección fija o al anfitrión, como hasta hoy (un test de caracterización lo fija). Era el único cambio de comportamiento que no pedía la suscripción y el más fácil de romper.
+- **«Cancelar envíos pendientes de marketing»**: no hay una cola propia de emails de marketing. Lo que quedaba pendiente (un flujo en un «Esperar», una secuencia) se frena igual: la secuencia se pausa en el momento y el flujo, al retomar, pasa por la puerta.
 
 ## Línea base de los verify-*
 

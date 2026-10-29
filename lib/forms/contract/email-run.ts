@@ -162,6 +162,10 @@ export async function runContractEmail(deps: EmailRunDeps, input: { signatureId:
       relatedEntityId: sig.id,
       contactId: sig.contact_id,
       attachments,
+      // Suscripcion a emails: la copia al firmante es transaccional (la pidio al firmar): solo la frena un rebote,
+      // no "no contactar" ni la baja de marketing (decision de Wendy, 29/10/2026). Las copias al equipo no son de
+      // un contacto.
+      ...(copy ? {} : { category: "transactional" as const }),
       deps: { supabase: db as unknown as SupabaseClient },
     });
 
@@ -181,6 +185,8 @@ export async function runContractEmail(deps: EmailRunDeps, input: { signatureId:
   }
 
   if (result.reason === "not_configured") return markNotSent("Resend no está conectado");
+  // La direccion del firmante rebota: reintentar no lo arregla, y queda anotado en email_log.
+  if (result.reason === "skipped") return markNotSent(result.error);
 
   const status = statusFromError(result.error);
   const kind = classifyEmailError(status, result.error);

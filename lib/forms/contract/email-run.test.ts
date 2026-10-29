@@ -189,3 +189,20 @@ describe("helpers", () => {
     expect(safeReason("x".repeat(500))).toHaveLength(300);
   });
 });
+
+describe("runContractEmail: suscripcion a emails (cambio aprobado)", () => {
+  it("la copia al firmante va como transaccional; las copias al equipo no llevan categoria", async () => {
+    const { deps, sent } = setup({ ccEmails: ["legal@x.com"] });
+    await runContractEmail(deps, { signatureId: SIG });
+    expect(sent[0]).toMatchObject({ to: "ana@x.com", category: "transactional" });
+    expect(sent[1]).toMatchObject({ to: "legal@x.com" });
+    expect(sent[1]).not.toHaveProperty("category");
+  });
+
+  it("si la direccion del firmante rebota, queda 'no enviado' con el motivo y no se reintenta", async () => {
+    const { deps, db, scheduled } = setup({ sendResults: [{ ok: false, reason: "skipped", error: "No se mandó: el email de esta persona rebota." }] });
+    expect(await runContractEmail(deps, { signatureId: SIG })).toBe("not_sent");
+    expect(lastUpdate(db)).toMatchObject({ email_status: "not_sent", email_last_error: "No se mandó: el email de esta persona rebota." });
+    expect(scheduled).toEqual([]);
+  });
+});

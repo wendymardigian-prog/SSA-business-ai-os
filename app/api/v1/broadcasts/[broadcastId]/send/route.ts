@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPermissionAction } from "@/lib/auth/guards";
+import { isEmailStatus } from "@/lib/email/subscription";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getActiveWorkspace } from "@/lib/workspace";
 import { scheduleBroadcastDelivery } from "@/lib/scheduler";
@@ -334,6 +335,16 @@ async function evaluateRule(
         return new Set(); // We only target subscribed contacts
       }
       return new Set(contactIds);
+    }
+
+    case "email_status": {
+      // Suscripcion a emails (00270): el estado de email del contacto. Las difusiones son por chat; esta regla solo
+      // permite segmentar por el (por ejemplo, excluir a quien marco spam).
+      if (!isEmailStatus(rule.value)) return new Set();
+      let query = supabase.from("contacts").select("id").eq("workspace_id", workspaceId).in("id", contactIds);
+      query = rule.operator === "not_equals" ? query.neq("email_status", rule.value) : query.eq("email_status", rule.value);
+      const { data } = await query;
+      return new Set((data ?? []).map((c) => c.id));
     }
 
     case "last_interaction": {
