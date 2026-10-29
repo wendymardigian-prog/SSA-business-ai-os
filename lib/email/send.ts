@@ -31,6 +31,7 @@ import {
 } from "@/lib/email/subscription";
 import type { EmailLogStatus } from "@/lib/types/database";
 import { withUnsubscribe } from "@/lib/email/unsubscribe";
+import { senderFor, type ResendSenderConfig } from "@/lib/email/senders";
 import { resolveBrand } from "@/lib/brand";
 import { appUrl } from "@/lib/app-url";
 
@@ -78,11 +79,6 @@ export type SendEmailResult =
   /** La puerta de suscripcion lo salteo: queda en email_log con el motivo. No es un fallo. */
   | { ok: false; reason: "skipped"; skip: EmailSkipReason; error: string };
 
-/** Config del remitente guardada en integration_configs.config. */
-interface ResendConfig {
-  from_email?: string;
-  from_name?: string;
-}
 
 async function serviceClient(): Promise<SupabaseClient> {
   // Import diferido: lib/supabase/server arrastra next/headers, que no tiene
@@ -182,8 +178,9 @@ export async function sendTransactionalEmail(
     return notConfigured("Resend no esta conectado");
   }
 
-  const config = (integration.config ?? {}) as ResendConfig;
-  const fromEmail = config.from_email?.trim();
+  // El remitente segun la categoria (E8): marketing sale del suyo si esta configurado; si no, del de importantes.
+  const sender = senderFor((integration.config ?? {}) as ResendSenderConfig, params.category);
+  const fromEmail = sender.email;
   if (!fromEmail) {
     return notConfigured("Falta configurar el remitente de Resend");
   }
@@ -213,9 +210,7 @@ export async function sendTransactionalEmail(
   }
 
   // 3. Enviar.
-  const from = config.from_name?.trim()
-    ? `${config.from_name.trim()} <${fromEmail}>`
-    : fromEmail;
+  const from = sender.name ? `${sender.name} <${fromEmail}>` : fromEmail;
 
   // El link de baja (E3): marketing lleva el pie y las cabeceras; un transaccional, nada (solo se resuelve el link si
   // alguien lo puso a mano). Sin categoria (un email al equipo) el cuerpo sale tal cual.
@@ -238,6 +233,7 @@ export async function sendTransactionalEmail(
       html: extras.html,
       ...(Object.keys(extras.headers).length > 0 ? { headers: extras.headers } : {}),
       ...(params.attachments && params.attachments.length > 0 ? { attachments: params.attachments } : {}),
+      ...(sender.replyTo ? { reply_to: sender.replyTo } : {}),
     },
     params.deps?.fetchImpl,
   );

@@ -39,6 +39,8 @@ export interface ResendMessage {
    * se mandan si vienen: un email sin adjuntos sale exactamente igual que antes.
    */
   attachments?: Array<{ filename: string; content: string }>;
+  /** "Responder a" (E8): a donde van las respuestas. Solo se manda si viene. */
+  reply_to?: string;
 }
 
 export type ResendResult =

@@ -15,7 +15,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] E5 · Panel (ficha, historial, lista)
 - [x] E6 · Importador con suscripción y prueba en seco
 - [ ] E7 · Verificación (`verify-email-subscription.mjs` y tests)
-- [ ] E8 · Remitentes (usuario + dominio verificado de Resend)
+- [x] E8 · Remitentes (usuario + dominio verificado de Resend)
 - [ ] Cierre: `CLAUDE.md` («Emails: suscripción y baja»), `docs/importar-contactos-con-suscripcion.md`, limpieza `zz-test-`, PR (sin mergear)
 
 ## Punto de partida (29/10/2026)
@@ -119,6 +119,18 @@ Rama `feat/suscripcion-email` sin cambios de código (base `782eb01`). Los `veri
 - **«Revisar antes de importar»** (`previewBatch`): la MISMA función por tanda en modo «revisar», que no escribe nada; las personas que «se crearían» viajan entre tandas (`planned`) para que una segunda fila de la misma persona cuente como en la importación real, y respeta la RLS de quien importa. El resumen (y el reporte final) muestran: se crearían / se vincularían (y por qué dato), suscriptos, dados de baja, rebotan, marcaron spam (por persona), cuántos que el archivo decía suscripto siguen dados de baja, filas consolidadas y errores.
 - **Archivo de prueba** `scripts/fixtures/import-wendymardigian-sample.csv` (formato real, 15 filas, los 11 casos). `lib/actions/csv-import-subscription.test.ts` lo corre por la prueba en seco y la importación sobre la misma base en memoria: los dos dan 8 nuevos, 6 vinculados (5 por email, 1 por teléfono), 1 error, 3 filas consolidadas, y por persona 3 suscriptos, 6 dados de baja, 1 rebota, 1 spam, 1 no re-suscripto; las fechas originales y el origen quedan guardados y los eventos de «contacto nuevo» quedan procesados.
 - **Diferencia:** el plan decía «la columna `source` del export» sin más; hoy `source` (no `utm_source`) se queda con «Fuente» porque va antes en el archivo (caracterización). La guía explica cómo cambiarlo.
+
+## E8 · Hecho (29/10/2026)
+
+- **Ajustes → Integraciones → Resend → Credenciales**: debajo de la key, «Remitentes» (`components/settings/integrations/resend-senders-form.tsx`): remitente de emails importantes (obligatorio para mandar) y de marketing (opcional; vacío = el de importantes, con la recomendación del subdominio aparte), cada uno con lo de antes del @ + un desplegable de los dominios de la cuenta (solo se eligen los verificados; los demás aparecen deshabilitados con su estado y el link a resend.com/domains), la dirección completa al lado, «Nombre del remitente», «Responder a» y «Actualizar dominios».
+- **Dominios** (`lib/email/resend-domains.ts`): `GET https://api.resend.com/domains` con la key leída en el servidor (Vault, cliente de servicio); al navegador solo vuelven nombres y estados. Memoria de 5 minutos por workspace. Key «solo envío» (401/403) o Resend caído: el aviso «Tu API key no puede listar dominios…» y el dominio pasa a ser un campo de texto. Nunca bloquea.
+- **Guardar** (`lib/actions/resend-senders.ts`, `integrations.manage`): si se pudo listar, el dominio tiene que estar verificado; guarda `from_local`, `from_domain`, `from_email` compuesto, los de marketing y `reply_to` en el mismo `integration_configs.config`. Queda en el historial.
+- **Lo que ya existía no se pisa**: el formulario genérico ya no dibuja el remitente (`ConfigField.hidden`), guardar la key no lo valida (`skipHidden`) y conserva los datos de remitentes guardados. La definición sigue exigiendo `from_email` (el test de `providers` no cambió).
+- **Configuración actual**: al abrir, `app@wendymardigian.com` se separa en usuario + dominio; si el dominio no está verificado aparece en rojo «Tu remitente actual (…) usa un dominio que Resend no tiene verificado: los emails no están saliendo. Elegí un dominio verificado.». **No se cambia solo.**
+- **Envío**: `sendTransactionalEmail` elige el remitente por categoría (`senderFor`) y manda `reply_to` si hay. `sendEmailReply`: un marketing con remitente de marketing sale de ahí con «Responder a» la dirección del canal (así la respuesta vuelve al mismo hilo); lo demás, de la dirección del canal como siempre.
+- **Readiness**: con la lista de dominios avisa ANTES de que falle un envío (dominio del remitente sin verificar); sin lista, como antes.
+- Tests: `senders.test.ts` (armar/separar, validación del usuario, verificados / sin verificar / key sin permiso / API caída con `fetch` simulado, remitente por categoría, readiness, la key nunca en el resultado), `resend-senders.test.ts` (la key nunca en la respuesta al navegador, dominio sin verificar no se guarda, dominio a mano con key restringida).
+- **Diferencias:** la cabecera `List-Unsubscribe` no lleva `mailto:` (ver E3). La dirección de entrada (`inbound_address`) queda como campo de texto (PENDIENTE).
 
 ## Línea base de los verify-*
 

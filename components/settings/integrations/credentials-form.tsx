@@ -166,7 +166,7 @@ export function CredentialsForm({
           );
         })}
 
-        {provider.configFields.map((field) => (
+        {provider.configFields.filter((field) => !field.hidden).map((field) => (
           <div key={field.key}>
             <label htmlFor={`config-${field.key}`} className="text-xs font-medium">
               {field.label}

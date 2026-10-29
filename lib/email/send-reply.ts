@@ -19,6 +19,7 @@ import { bareAddress, canReply, replyHeaders, textToHtml } from "./reply";
 import { canSendEmailTo, type EmailCategory, type EmailSkipReason } from "./subscription";
 import { footerBrand, logEmail, recordSkippedEmail } from "./send";
 import { protectUnsubscribeVariable, withUnsubscribe } from "./unsubscribe";
+import type { ResendSenderConfig } from "./senders";
 import { appUrl } from "@/lib/app-url";
 
 type Db = SupabaseClient<Database>;
@@ -176,10 +177,16 @@ export async function sendEmailReply(
     ...(params.category === "marketing" && gate.token ? await footerBrand(service as never, params.workspaceId) : { brandName: "" }),
   });
 
+  // El remitente (E8): un email de marketing sale del remitente de marketing si hay uno, con "Responder a" la direccion
+  // del canal (asi la respuesta de la persona vuelve a este hilo). Si no, de la direccion del canal, como siempre.
+  const sender = params.category === "marketing" ? await marketingSender(service, params.workspaceId) : null;
+  const fromAddress = sender && sender.email !== params.channel.email_address.toLowerCase() ? sender : null;
+
   const result = await sendViaResend(
     apiKey,
     {
-      from: params.channel.email_address,
+      from: fromAddress ? (fromAddress.name ? `${fromAddress.name} <${fromAddress.email}>` : fromAddress.email) : params.channel.email_address,
+      ...(fromAddress ? { reply_to: params.channel.email_address } : {}),
       to: to as string,
       subject: params.subject?.trim() || headers.subject,
       html: extras.html,
@@ -224,6 +231,24 @@ export async function sendEmailReply(
     messageId: result.id,
     providerId: result.id,
   };
+}
+
+/** El remitente de marketing configurado en Resend (E8), o null. Leerlo nunca frena un envio. */
+async function marketingSender(service: Db, workspaceId: string): Promise<{ email: string; name: string | null } | null> {
+  try {
+    const { data } = await service
+      .from("integration_configs")
+      .select("config")
+      .eq("workspace_id", workspaceId)
+      .eq("type", "email_provider")
+      .eq("provider", "resend")
+      .maybeSingle();
+    const config = ((data as { config?: unknown } | null)?.config ?? {}) as ResendSenderConfig;
+    const email = config.marketing_from_email?.trim().toLowerCase();
+    return email ? { email, name: config.from_name?.trim() || null } : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
