@@ -12,12 +12,16 @@ import { safeBrandColor } from "@/lib/brand";
 
 export const BRAND_NAME_MAX = 60;
 export const LANGUAGE_STYLE_MAX = 200;
+/** La direccion postal del pie de los emails de marketing (00270, mismo tope que su CHECK). */
+export const EMAIL_FOOTER_ADDRESS_MAX = 300;
 export const MAX_LOGO_BYTES = 500 * 1024;
 
 export interface BrandSettingsValues {
   brand_name: string | null;
   brand_color: string | null;
   ai_language_style: string | null;
+  /** Solo si vino en el pedido: asi una pantalla vieja que no lo manda no la borra. */
+  email_footer_address?: string | null;
 }
 
 export type BrandSettingsParse = { ok: true; values: BrandSettingsValues } | { ok: false; error: string };
@@ -29,7 +33,7 @@ function blankToNull(value: unknown): string | null {
 }
 
 /** Lo que manda la pantalla, validado igual que los CHECK de la 00266 (asi el error es claro, no uno de Postgres). */
-export function parseBrandSettings(input: { name?: unknown; color?: unknown; languageStyle?: unknown }): BrandSettingsParse {
+export function parseBrandSettings(input: { name?: unknown; color?: unknown; languageStyle?: unknown; footerAddress?: unknown }): BrandSettingsParse {
   const name = blankToNull(input.name);
   if (name && name.length > BRAND_NAME_MAX) return { ok: false, error: `El nombre puede tener hasta ${BRAND_NAME_MAX} caracteres` };
 
@@ -40,7 +44,15 @@ export function parseBrandSettings(input: { name?: unknown; color?: unknown; lan
   const style = blankToNull(input.languageStyle);
   if (style && style.length > LANGUAGE_STYLE_MAX) return { ok: false, error: `El tono puede tener hasta ${LANGUAGE_STYLE_MAX} caracteres` };
 
-  return { ok: true, values: { brand_name: name, brand_color: color?.toLowerCase() ?? null, ai_language_style: style } };
+  const values: BrandSettingsValues = { brand_name: name, brand_color: color?.toLowerCase() ?? null, ai_language_style: style };
+  if (input.footerAddress !== undefined) {
+    const address = blankToNull(input.footerAddress);
+    if (address && address.length > EMAIL_FOOTER_ADDRESS_MAX) {
+      return { ok: false, error: `La dirección del pie puede tener hasta ${EMAIL_FOOTER_ADDRESS_MAX} caracteres` };
+    }
+    values.email_footer_address = address;
+  }
+  return { ok: true, values };
 }
 
 const DATA_URL = /^data:image\/[a-z+.-]+;base64,([A-Za-z0-9+/]+={0,2})$/;

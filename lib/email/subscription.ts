@@ -126,6 +126,14 @@ export function emailStatusSourceLabel(source: string | null | undefined): strin
   return labels[source] ?? source;
 }
 
+/** Quien cambio el estado, cuando no fue alguien del equipo (el historial de la ficha). */
+export function emailStatusActorLabel(source: string | null | undefined): string {
+  if (source === "unsubscribe_page" || source === "one_click") return "La persona, desde el link de baja";
+  if (source?.startsWith("import:")) return "La importación";
+  if (source === "resend_bounce" || source === "resend_complaint") return "El sistema (aviso de Resend)";
+  return "El sistema";
+}
+
 /** Los motivos de pausa de una inscripcion por la suscripcion a emails. */
 export const EMAIL_PAUSE_REASONS = ["email_unsubscribed", "email_bounced", "email_complained"] as const;
 export type EmailPauseReason = (typeof EMAIL_PAUSE_REASONS)[number];

@@ -26,6 +26,9 @@ import {
   formatRelative,
 } from "@/components/contacts/ui";
 import { ContactActions } from "@/components/contacts/contact-actions";
+import { EmailStatusControl } from "@/components/contacts/email-status-control";
+import { addressEmailStatus, emailStatusActorLabel } from "@/lib/email/subscription";
+import { createServiceClient } from "@/lib/supabase/server";
 import { ContactDataSection } from "@/components/contacts/contact-data-section";
 import { InlineField } from "@/components/contacts/inline-field";
 import { TemperatureField } from "@/components/contacts/temperature-field";
@@ -371,7 +374,11 @@ export default async function ContactDetailPage({
       changes: a.changes as Json | null,
       metadata: a.metadata as Json | null,
       performedAt: a.performed_at,
-      actorLabel: a.performed_by ? (labels.get(a.performed_by) ?? "Alguien del equipo") : "El sistema",
+      actorLabel: a.performed_by
+        ? (labels.get(a.performed_by) ?? "Alguien del equipo")
+        : a.action === "email_status"
+          ? emailStatusActorLabel(((a.metadata ?? {}) as { source?: string }).source)
+          : "El sistema",
     })),
     flowEvents: (flowEventsRes.data ?? []).map((e) => ({ id: e.id, eventType: e.event_type, flowId: e.flow_id, createdAt: e.created_at, metadata: e.metadata as Json | null })),
     enrollments: enrollments.map((e) => ({ id: e.id, sequenceName: e.sequenceName, enrolledAt: e.enrolledAt, completedAt: e.completedAt })),
@@ -416,6 +423,9 @@ export default async function ContactDetailPage({
   const temperature = contact.lead_temperature as LeadTemperature | null;
   // Quien no puede editar contactos ve los datos sin lapiz (el servidor lo repite en `updateContact`).
   const canEditContact = perms.can("contacts.edit");
+  // Suscripcion a emails (E5): el estado del email secundario, si es distinto (otro contacto con esa direccion se dio
+  // de baja). Se calcula con la misma funcion que la puerta de envio, con el cliente de servicio.
+  const secondaryEmailStatus = await secondaryAddressStatus(workspace.id, contact.email, contact.secondary_email, contact.email_status);
 
   return (
     <div className="flex h-full flex-col">
@@ -480,6 +490,20 @@ export default async function ContactDetailPage({
             </div>
           </div>
         </div>
+
+        {(contact.email || contact.secondary_email) && (
+          <div className="mt-4">
+            <EmailStatusControl
+              contactId={contact.id}
+              status={contact.email_status}
+              at={contact.email_status_at}
+              source={contact.email_status_source}
+              secondary={secondaryEmailStatus}
+              canEdit={canEditContact}
+              timeZone={viewerTimezone}
+            />
+          </div>
+        )}
 
         <div className="mt-4">
           <ContactActions
@@ -841,4 +865,24 @@ async function loadSuggestions(
       handle: p.handle,
       candidateName: byId.get(p.contact_id) ?? null,
     }));
+}
+
+/**
+ * El estado efectivo del email secundario, solo si es distinto del del contacto (por ejemplo, otro contacto con esa
+ * direccion se dio de baja). Sin secundario, o si no se puede comprobar, nada: la ficha muestra un solo estado.
+ */
+async function secondaryAddressStatus(
+  workspaceId: string,
+  email: string | null,
+  secondary: string | null,
+  contactStatus: string,
+): Promise<{ status: string } | null> {
+  if (!email?.trim() || !secondary?.trim()) return null;
+  try {
+    const service = await createServiceClient();
+    const status = await addressEmailStatus(service, workspaceId, secondary);
+    return status && status !== contactStatus ? { status } : null;
+  } catch {
+    return null;
+  }
 }

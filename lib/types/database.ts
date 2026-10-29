@@ -501,6 +501,10 @@ export type AuditEntityType =
 export type AuditAction =
   | "create"
   | "update"
+  /** Suscripcion a emails (00271): cambio del estado de email (lo escribe set_email_status). */
+  | "email_status"
+  /** Suscripcion a emails (00271): no se pudo heredar el estado al poner una direccion (nunca en silencio). */
+  | "email_status_inherit_failed"
   /** Pipeline (00245): el agente de IA cambió el estado de setter (se puede revertir). */
   | "setter_status"
   /** Pipeline (00245): cambiaron las listas de estados del negocio. */

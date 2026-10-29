@@ -6,13 +6,15 @@ import { Loader2, Palette, Upload, Trash2, Check } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { resolveBrand, brandName as installationBrandName, brandColorHex as installationColor } from "@/lib/brand";
 import { removeWorkspaceLogo, updateWorkspaceBrand, uploadWorkspaceLogo } from "@/lib/actions/workspace";
-import { BRAND_NAME_MAX, LANGUAGE_STYLE_MAX, MAX_LOGO_BYTES } from "@/lib/brand-settings";
+import { BRAND_NAME_MAX, EMAIL_FOOTER_ADDRESS_MAX, LANGUAGE_STYLE_MAX, MAX_LOGO_BYTES } from "@/lib/brand-settings";
 
 export interface BrandSettingsInitial {
   name: string | null;
   logoPath: string | null;
   color: string | null;
   languageStyle: string | null;
+  /** La dirección postal del pie de los emails de marketing (00270). */
+  footerAddress?: string | null;
   /** El tono de la instalación (`AI_LANGUAGE_STYLE`), para mostrarlo como sugerencia. Lo pasa el servidor. */
   installationStyle: string;
 }
@@ -31,6 +33,7 @@ export function BrandSettings({ initial }: { initial: BrandSettingsInitial }) {
   const [name, setName] = useState(initial.name ?? "");
   const [color, setColor] = useState(initial.color ?? "");
   const [style, setStyle] = useState(initial.languageStyle ?? "");
+  const [footerAddress, setFooterAddress] = useState(initial.footerAddress ?? "");
   const [logoPath, setLogoPath] = useState(initial.logoPath);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -44,7 +47,7 @@ export function BrandSettings({ initial }: { initial: BrandSettingsInitial }) {
     setError(null);
     setSaved(false);
     startSave(async () => {
-      const result = await updateWorkspaceBrand({ name, color, languageStyle: style });
+      const result = await updateWorkspaceBrand({ name, color, languageStyle: style, footerAddress });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -199,6 +202,24 @@ export function BrandSettings({ initial }: { initial: BrandSettingsInitial }) {
           Por ejemplo «español rioplatense (vos/tenés)» o «español mexicano (tú)». Lo usan las respuestas, los resúmenes, el
           análisis de llamadas y el copywriter. {/* @plantilla-quitar(llamadas) */}
           {/* @plantilla-sin(llamadas): las tareas de IA y el copywriter. */}
+        </p>
+      </div>
+
+      <div className="mt-4">
+        <label htmlFor="brand-footer-address" className="text-xs font-medium text-muted-foreground">
+          Dirección postal para el pie de los emails (opcional)
+        </label>
+        <input
+          id="brand-footer-address"
+          type="text"
+          value={footerAddress}
+          maxLength={EMAIL_FOOTER_ADDRESS_MAX}
+          placeholder="Av. Siempre Viva 742, Springfield"
+          onChange={(e) => setFooterAddress(e.target.value)}
+          className={inputClass}
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Va abajo del link para darse de baja en los emails de marketing. Algunas leyes la piden a quien manda emails comerciales.
         </p>
       </div>
 

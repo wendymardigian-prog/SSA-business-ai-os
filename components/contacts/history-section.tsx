@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { describeHistoryItem, type AuditHistoryItem, type HistoryItem } from "@/lib/contacts/history";
 import type { AuditAction, Json } from "@/lib/types/database";
+import { EMAIL_STATUS_LABELS, emailStatusSourceLabel, isEmailStatus } from "@/lib/email/subscription";
 import {
   CALL_ACTION_LABELS, // @plantilla-quitar(llamadas)
   COMMISSION_ACTION_LABELS, // @plantilla-quitar(comisiones)
@@ -44,6 +45,8 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "contact_statuses.updated": "cambió las listas de estados",
   create: "creó el contacto",
   update: "editó el contacto",
+  email_status: "cambió el estado de email",
+  email_status_inherit_failed: "no pudo heredar el estado de email (quedó anotado para revisar)",
   delete: "eliminó el contacto",
   restore: "restauró el contacto",
   assign: "cambió la asignación",
@@ -138,6 +141,7 @@ const FIELD_LABELS: Record<string, string> = {
   do_not_contact_reason: "Motivo de no contactar",
   is_known: "Conocido",
   is_customer: "Cliente",
+  email_status: "Estado de email",
   interest_product: "Producto de interés",
   tags: "Tags",
 };
@@ -167,6 +171,7 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                   {renderLinkNote(item)}
                   {renderImportNote(item)}
                   {renderTagEffectNote(item)}
+                  {renderEmailStatusNote(item)}
                 </li>
               ) : (
                 <li key={item.id} className="rounded-lg border border-border p-3">
@@ -222,7 +227,7 @@ function renderChanges(changes: Json | null) {
             <span className="font-medium text-foreground">
               {FIELD_LABELS[field] ?? field.replace(/^custom:/, "")}
             </span>
-            : {display(change?.old)} → {display(change?.new)}
+            : {display(change?.old, field)} → {display(change?.new, field)}
           </li>
         );
       })}
@@ -317,7 +322,20 @@ function renderTagEffectNote({ action, metadata }: HistoryEntry) {
   );
 }
 
-function display(value: unknown): string {
+/** El cambio de estado de email (00271): de donde vino, el motivo y cuantas secuencias pauso. */
+function renderEmailStatusNote({ action, metadata }: HistoryEntry) {
+  if (action !== "email_status" || !metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const meta = metadata as Record<string, unknown>;
+  const parts = [emailStatusSourceLabel(typeof meta.source === "string" ? meta.source : null)];
+  if (typeof meta.reason === "string" && meta.reason) parts.push(`motivo: ${meta.reason}`);
+  if (typeof meta.original_source === "string" && meta.original_source) parts.push(`en el otro sistema: ${meta.original_source}`);
+  const paused = typeof meta.enrollments_paused === "number" ? meta.enrollments_paused : 0;
+  if (paused > 0) parts.push(`${paused} ${paused === 1 ? "secuencia pausada" : "secuencias pausadas"}`);
+  return <p className="mt-1 text-xs text-muted-foreground">{parts.join(" · ")}</p>;
+}
+
+function display(value: unknown, field?: string): string {
+  if (field === "email_status" && isEmailStatus(value)) return EMAIL_STATUS_LABELS[value];
   if (value === null || value === undefined || value === "") return "vacío";
   if (typeof value === "boolean") return value ? "sí" : "no";
   return String(value);

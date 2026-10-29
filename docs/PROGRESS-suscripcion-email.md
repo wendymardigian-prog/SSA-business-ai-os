@@ -12,7 +12,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] M3 (`00272`) aplicada, registrada y verificada (29/10/2026, versión `20261029230043`)
 - [x] E3 · Link de baja, baja en un clic y página pública
 - [x] E4 · Rebotes y quejas desde Resend
-- [ ] E5 · Panel (ficha, historial, lista)
+- [x] E5 · Panel (ficha, historial, lista)
 - [ ] E6 · Importador con suscripción y prueba en seco
 - [ ] E7 · Verificación (`verify-email-subscription.mjs` y tests)
 - [ ] E8 · Remitentes (usuario + dominio verificado de Resend)
@@ -100,6 +100,15 @@ Rama `feat/suscripcion-email` sin cambios de código (base `782eb01`). Los `veri
 - Firma validada antes de tocar nada, idempotencia por `resend:<svix-id>` (`claimWebhookEvent`), 200 inmediato y el cambio en `after()`. Rebote duro (`Permanent`) → `bounced`; temporal → solo se anota; queja → `complained`; ambos modo `system` por dirección, con `email_id` y el subtipo en el historial. Una dirección que no es de ningún contacto se ignora. Los logs no llevan direcciones ni el cuerpo.
 - Tests: `route.delivery.test.ts` (rebote duro, temporal, queja, firma inválida, firma de otro negocio, sin secreto, repetido, dirección desconocida, otros eventos).
 - Pasos para activar los eventos en el panel de Resend: en `docs/PENDIENTE-suscripcion-email.md`.
+
+## E5 · Hecho (29/10/2026)
+
+- **Ficha:** `EmailStatusControl` con el badge «Email: Suscripto / Dado de baja / Rebota / Marcó spam» (fecha y motivo en el `title`) y el botón «Dar de baja de emails» / «Volver a suscribir». Sacar un rebote o una queja pide un motivo y avisa del riesgo. Si el email secundario tiene otro estado efectivo (otro contacto con esa dirección se dio de baja), se muestran los dos. La bandeja muestra el estado de email cuando no es «Suscripto».
+- **Acción:** `setContactEmailStatus` (`lib/actions/contact-email-status.ts`): pide `contacts.edit` (el mismo permiso que editar el contacto y marcar «no contactar»), lee el contacto con la sesión (la RLS decide) y escribe con el servicio por `set_email_status`, modo `admin`, con quién lo hizo. A mano solo se elige suscripto o dado de baja.
+- **Historial:** las entradas `email_status` se ven con el cambio en palabras («Suscripto → Dado de baja»), quién lo hizo (la persona del equipo, «La persona, desde el link de baja», «La importación», «El sistema (aviso de Resend)»), el origen, el motivo, el valor del otro sistema y cuántas secuencias pausó. `email_status_inherit_failed` también se ve.
+- **Lista:** filtro y columna opcional (hechos en E2).
+- **Ajustes → General → Marca:** «Dirección postal para el pie de los emails» (`workspaces.email_footer_address`, mismo tope que el CHECK, mismo permiso `settings.general`).
+- Tests: `contact-email-status.test.ts`, `email-status.render.test.ts`, `brand-settings.test.ts`.
 
 ## Línea base de los verify-*
 
