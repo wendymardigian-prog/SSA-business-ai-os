@@ -101,6 +101,7 @@ Tres que vale la pena nombrar:
 - **Llamadas de WhatsApp** (la Bandeja registra las llamadas que avisa WhatsApp): no tienen nada que ver con Fathom. Se quedan.
 - **"Webhook" como autor de una acción en el historial**: es genérico (un aviso que llega de un proveedor). Se queda en la lista de autores posibles.
 - **Estado de vendedor (closer) del contacto** y el pipeline de estados: son del CRM, no de Ventas. Se quedan.
+- **El origen "sale" de la marca Cliente** (00268, 28/10/2026): la lista de orígenes permitidos (`contacts_customer_source_check`) sigue admitiendo "sale" (se marcó sola al cobrar). La función que lo escribe al cobrar (`payments_mark_customer`) sí se borra, así que en la plantilla un cliente solo se marca a mano y ese valor nunca aparece.
 - **Una función de atribución** (`meta_touch_utm_counts`) todavía nombra los orígenes "formulario" y "webhook". Es la gemela exacta de una regla del código; tocarla rompería la comprobación de que las dos dicen lo mismo, y como esos orígenes ya no pueden aparecer, no hace ningún efecto.
 
 ## PREGUNTAS para vos
