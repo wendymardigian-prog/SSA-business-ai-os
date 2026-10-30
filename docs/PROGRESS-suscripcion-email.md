@@ -14,9 +14,9 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] E4 · Rebotes y quejas desde Resend
 - [x] E5 · Panel (ficha, historial, lista)
 - [x] E6 · Importador con suscripción y prueba en seco
-- [ ] E7 · Verificación (`verify-email-subscription.mjs` y tests)
+- [x] E7 · Verificación (`verify-email-subscription.mjs` y tests)
 - [x] E8 · Remitentes (usuario + dominio verificado de Resend)
-- [ ] Cierre: `CLAUDE.md` («Emails: suscripción y baja»), `docs/importar-contactos-con-suscripcion.md`, limpieza `zz-test-`, PR (sin mergear)
+- [x] Cierre: `CLAUDE.md` («Emails: suscripción y baja»), `docs/importar-contactos-con-suscripcion.md`, limpieza `zz-test-`, PR (sin mergear)
 
 ## Punto de partida (29/10/2026)
 
@@ -131,6 +131,32 @@ Rama `feat/suscripcion-email` sin cambios de código (base `782eb01`). Los `veri
 - **Readiness**: con la lista de dominios avisa ANTES de que falle un envío (dominio del remitente sin verificar); sin lista, como antes.
 - Tests: `senders.test.ts` (armar/separar, validación del usuario, verificados / sin verificar / key sin permiso / API caída con `fetch` simulado, remitente por categoría, readiness, la key nunca en el resultado), `resend-senders.test.ts` (la key nunca en la respuesta al navegador, dominio sin verificar no se guarda, dominio a mano con key restringida).
 - **Diferencias:** la cabecera `List-Unsubscribe` no lleva `mailto:` (ver E3). La dirección de entrada (`inbound_address`) queda como campo de texto (PENDIENTE).
+
+## E7 · Hecho (29/10/2026) y resultado final
+
+`scripts/verify-email-subscription.mjs` (+ `.impl.ts`, con vite-node para probar el código real de la baja por token) contra la base viva, en un workspace `zz-test-` que crea y borra:
+1. los 35 casos de la tabla de transiciones dan lo mismo en SQL (`private.email_status_decide`) y en TypeScript;
+2. las transiciones de verdad por modo (el sistema no re-suscribe, la persona no vuelve desde un rebote, el equipo necesita motivo, idempotencia, fechas pasadas respetadas y futuras recortadas);
+3. **10 llamadas en paralelo** sobre dos contactos con la misma dirección en mayúsculas distintas: los dos terminan `bounced` y sin entradas duplicadas en `audit_log`;
+4. `email_address_status` con email, secundario, contacto borrado y después de fusionar (el principal se lleva el peor estado);
+5. el token: abrir la página no cambia nada, el clic da de baja (`person`, `one_click`), un segundo clic no duplica, «Me equivoqué» vuelve, desde un rebote no;
+6. la guardia: ni el service role escribe las columnas por fuera (EM003);
+7. la herencia, y su fallo forzado en una transacción que se deshace sola: el alta se hace, queda `email_status_inherit_failed`, y la puerta igual frena (no depende del trigger);
+8. la baja pausa en el momento la secuencia de email con marketing, no la transaccional ni la de WhatsApp, y no se reanuda sola;
+9. ninguna función de la base salvo las centrales nombra esas columnas.
+
+**Corridas finales (29/10/2026), de a una:**
+
+| Chequeo | Resultado |
+|---|---|
+| `npx vitest run` | **1133/1133 archivos, 14.584 tests, salida 0** (partida: 14.360) |
+| `npm run build` | **salida 0** |
+| `npm run lint` | **0 errores**, 37 warnings (los mismos de la partida) |
+| `verify-email-subscription` | **Todo verde, salida 0** |
+| Los 28 `verify-*` que estaban verdes en la partida | **28 en verde** (`verify-sales` falló una vez con un `null` en el armado de la agenda de prueba y corrido solo dio verde: intermitente) |
+| Las 5 que ya fallaban | `verify-publishing` y `verify-expenses` ahora en **verde**; `verify-attribution` (1, dato real) y `verify-ads-attribution` (1, tiempo) **igual que en la partida**; `verify-forms`: el `EXPLAIN` sigue alternando y, además, «el job genera el PDF» da `already` (el cron real de producción procesa el PDF antes que el script). **Corrido con el código de `main` da exactamente lo mismo** (2 fallas del PDF): no es de esta rama. |
+
+Los `verify-*` que usan `.impl.ts` (tasks, forms, eod, publishing, contact-merge) se corrieron con el código de ESTA rama (vite-node con la config del worktree) y el `.env` de la carpeta principal. Limpieza comprobada: 0 datos `zz-test-`.
 
 ## Línea base de los verify-*
 
