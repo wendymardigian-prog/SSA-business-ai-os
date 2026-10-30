@@ -21,15 +21,13 @@ describe("Avatar", () => {
   it("con userId pero sin foto (o sin proveedor), tambien igual", () => {
     expect(renderToStaticMarkup(createElement(Avatar, { initials: "AB", color: "#2563eb", userId: "u1" }))).toBe(BEFORE);
     const html = renderToStaticMarkup(
-      createElement(MemberAvatarsProvider, { avatars: { u2: "https://x/y.jpg" } }, createElement(Avatar, { initials: "AB", color: "#2563eb", userId: "u1" })),
-    );
+      createElement(MemberAvatarsProvider, { avatars: { u2: "https://x/y.jpg" }, children: createElement(Avatar, { initials: "AB", color: "#2563eb", userId: "u1" }) }));
     expect(html).toBe(BEFORE);
   });
 
   it("con foto, la foto", () => {
     const html = renderToStaticMarkup(
-      createElement(MemberAvatarsProvider, { avatars: { u1: "https://x/y.jpg" } }, createElement(Avatar, { initials: "AB", color: "#2563eb", userId: "u1" })),
-    );
+      createElement(MemberAvatarsProvider, { avatars: { u1: "https://x/y.jpg" }, children: createElement(Avatar, { initials: "AB", color: "#2563eb", userId: "u1" }) }));
     expect(html).toContain('<img src="https://x/y.jpg"');
     expect(html).not.toContain(">AB<");
   });
@@ -42,8 +40,7 @@ describe("MemberCircle", () => {
   });
   it("con foto, la foto", () => {
     const html = renderToStaticMarkup(
-      createElement(MemberAvatarsProvider, { avatars: { u1: "https://x/a.jpg" } }, createElement(MemberCircle, { userId: "u1", name: "Ana" })),
-    );
+      createElement(MemberAvatarsProvider, { avatars: { u1: "https://x/a.jpg" }, children: createElement(MemberCircle, { userId: "u1", name: "Ana" }) }));
     expect(html).toContain('src="https://x/a.jpg"');
   });
 });
