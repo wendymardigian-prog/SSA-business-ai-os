@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { ACCOUNT_TABS, accountTabHref, parseAccountTab, type AccountTab } from "@/lib/account/tabs";
 import { cn } from "@/lib/utils";
@@ -19,26 +20,15 @@ export function AccountView({
   profile: ReactNode;
   notifications: ReactNode;
 }) {
-  const [tab, setTab] = useState<AccountTab>(initialTab);
-
-  // Atras / adelante del navegador.
-  useEffect(() => {
-    const onPop = () => setTab(parseAccountTab(new URLSearchParams(window.location.search).get("tab")));
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-
-  // El menu de usuario lleva a esta misma pagina con otra pestaña: Next la
-  // re-renderiza con otro `initialTab` sin desmontar el componente.
-  const [seenInitial, setSeenInitial] = useState(initialTab);
-  if (seenInitial !== initialTab) {
-    setSeenInitial(initialTab);
-    setTab(initialTab);
-  }
+  // La pestaña sale SIEMPRE de la URL: Next sincroniza `useSearchParams` con
+  // `history.pushState`, asi que cambiar de pestaña, el atras del navegador y
+  // los links del menu de usuario dicen lo mismo. `initialTab` es para el
+  // primer pintado del servidor.
+  const searchParams = useSearchParams();
+  const tab: AccountTab = searchParams ? parseAccountTab(searchParams.get("tab")) : initialTab;
 
   function select(next: AccountTab) {
     if (next === tab) return;
-    setTab(next);
     window.history.pushState(null, "", accountTabHref(next));
   }
 
