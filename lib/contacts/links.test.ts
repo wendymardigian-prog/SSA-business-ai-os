@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { getDmLink, platformHandles } from "./links";
+import { getDmLink, platformHandles, channelIdentity, whatsappLidOf } from "./links";
 
 describe("getDmLink", () => {
   it("instagram da ig.me/m/<handle>", () => {
@@ -89,5 +89,36 @@ describe("platformHandles", () => {
       whatsappPhone: null,
       whatsappUrl: null,
     });
+  });
+});
+
+describe("channelIdentity", () => {
+  it("WhatsApp con telefono: el numero y su wa.me", () => {
+    expect(channelIdentity("whatsapp", "+5491122334455", "+5491122334455")).toEqual({
+      url: "https://wa.me/5491122334455",
+      label: "+5491122334455",
+    });
+  });
+
+  it("WhatsApp sin telefono (@lid): el id, aclarando que no hay numero, y SIN link a un numero inventado", () => {
+    expect(channelIdentity("whatsapp", null, "98765432101234@lid")).toEqual({
+      url: null,
+      label: "Sin número · ID 98765432101234",
+    });
+    expect(getDmLink("whatsapp", "98765432101234@lid")).toEqual({ url: null, label: "" });
+  });
+
+  it("Instagram: el @ con su link; sin @, lo que haya", () => {
+    expect(channelIdentity("instagram", "marca", "1789")).toEqual({ url: "https://ig.me/m/marca", label: "@marca" });
+    expect(channelIdentity("instagram", null, null)).toEqual({ url: null, label: "" });
+  });
+});
+
+describe("whatsappLidOf", () => {
+  it("devuelve el @lid del canal de WhatsApp, o null si tiene telefono", () => {
+    expect(whatsappLidOf([{ platform: "instagram", senderId: "1@lid" }, { platform: "whatsapp", senderId: "98765432101234@lid" }])).toBe(
+      "98765432101234@lid",
+    );
+    expect(whatsappLidOf([{ platform: "whatsapp", senderId: "+5491122334455" }])).toBeNull();
   });
 });
