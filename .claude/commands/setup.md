@@ -161,6 +161,7 @@ Explicale que esto le dice a Supabase a qué dirección devolver a alguien despu
 2. **Site URL:** el dominio de Railway, con `https://`.
 3. **Redirect URLs:** agregar el mismo dominio seguido de `/**` (por ejemplo `https://tu-app.up.railway.app/**`).
 4. Guardar.
+5. **"Olvidé mi contraseña" (recomendado):** explicale que Supabase manda ese email, y que con su servidor de correo por defecto manda como mucho 2 por hora. Si ya tiene Resend, que lo conecte en Authentication → Emails → SMTP Settings (host `smtp.resend.com`, puerto `465`, usuario `resend`, y la API key de Resend como contraseña: la pega la persona, nunca por chat) con un remitente de un dominio verificado. Después, en Authentication → Emails → Templates → "Reset password", que pegue la plantilla en español de `docs/cuenta-y-notificaciones.md` (su link funciona aunque el email se abra en otro navegador). Si todavía no tiene Resend, se puede dejar para después: el resto del sistema funciona igual.
 
 ## Paso 5 — El archivo `.env` local
 

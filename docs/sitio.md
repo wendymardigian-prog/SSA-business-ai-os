@@ -33,7 +33,7 @@ El nombre y el logo salen de las variables de marca (`NEXT_PUBLIC_BRAND_NAME` y 
 ## Reglas para las páginas
 
 - **Que sean estáticas o con caché: no leer la sesión.** Una página del sitio no usa `cookies()`, `headers()` ni el cliente de Supabase de la persona. Así carga rápido y no se vuelve dinámica sin querer.
-- **Rutas reservadas.** No pueden llamarse como algo que el sistema ya usa: `dashboard`, `login`, `auth`, `invite`, `api`, `calendario`, `f`, `embed`, `l` (los links con seguimiento de los mensajes). `lib/site/pages.ts` lo valida.
+- **Rutas reservadas.** No pueden llamarse como algo que el sistema ya usa: `dashboard`, `login`, `auth`, `invite`, `api`, `calendario`, `f`, `embed`, `l` (los links con seguimiento de los mensajes), `baja` (la baja de los emails), `recuperar` y `restablecer` (olvidé mi contraseña). `lib/site/pages.ts` lo valida.
 - **Sin embeber.** Las páginas del sitio no se pueden meter en un iframe de otra web (el formulario `/f/<slug>` y el calendario sí).
 - **Quien tiene sesión también ve el sitio.** `/` ya no manda a nadie al dashboard por sí sola: lo hace el login (`/login` con sesión va a `/dashboard`, como siempre).
 
