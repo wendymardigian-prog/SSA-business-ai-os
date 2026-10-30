@@ -5,6 +5,10 @@
  * dos: firma validada antes de tocar nada, idempotencia por el id del
  * evento, 200 inmediato y procesamiento con `after()`.
  *
+ * Suscripcion a emails (E4): tambien recibe `email.bounced` y `email.complained`
+ * (lib/email/delivery-events.ts), con el MISMO secreto y las mismas reglas. Un
+ * rebote duro deja la direccion en `bounced`; una queja, en `complained`.
+ *
  * Lo que hace distinto, y es lo importante de este archivo: **no llama a
  * `maybeScheduleAgentTurn`**. El agente esta hecho para chat —contesta
  * corto y en el momento— y un email contestado asi se lee mal. Ademas
@@ -22,6 +26,7 @@ import { findChannelByAddress, recipientAddress } from "@/lib/email/channel";
 import { processInboundEmail, type InboundEmail } from "@/lib/email/inbound";
 import { fetchReceivedEmail } from "@/lib/email/receiving";
 import { runEmailTriggers } from "@/lib/email/triggers";
+import { applyDeliveryEvent, candidateWorkspaces, isDeliveryEvent, type DeliveryEvent } from "@/lib/email/delivery-events";
 
 interface ResendEvent {
   type?: string;
@@ -52,6 +57,10 @@ async function handle(request: NextRequest) {
     event = JSON.parse(body);
   } catch {
     return NextResponse.json({ error: "JSON invalido" }, { status: 400 });
+  }
+
+  if (isDeliveryEvent(event.type)) {
+    return handleDeliveryEvent(request, body, event as DeliveryEvent);
   }
 
   if (event.type !== "email.received") {
@@ -185,6 +194,54 @@ async function handle(request: NextRequest) {
       );
     } catch (err) {
       console.error("[resend-inbound] error procesando el correo:", err);
+    }
+  });
+
+  return NextResponse.json({ ok: true, queued: true });
+}
+
+/**
+ * Un rebote o una queja (E4). Primero se averigua de que workspace es y se valida la firma con SU secreto; recien
+ * despues se toca algo. 200 inmediato y el cambio de estado en `after()`.
+ */
+async function handleDeliveryEvent(request: NextRequest, body: string, event: DeliveryEvent) {
+  const supabase = await createServiceClient();
+  const headers = {
+    id: request.headers.get("svix-id"),
+    timestamp: request.headers.get("svix-timestamp"),
+    signature: request.headers.get("svix-signature"),
+  };
+
+  let workspaceId: string | null = null;
+  let lastReason: string | null = null;
+  for (const candidate of await candidateWorkspaces(supabase, event)) {
+    const secret = await readSecret(supabase, candidate, SECRET_NAMES.resendInboundWebhookSecret).catch(() => null);
+    if (!secret) continue;
+    const verification = verifySvixSignature({ secret, headers, body });
+    if (verification.ok) {
+      workspaceId = candidate;
+      break;
+    }
+    lastReason = REJECTION_REASONS[verification.reason];
+  }
+
+  if (!workspaceId) {
+    console.error(`[resend-eventos] rechazado: ${lastReason ?? "ningun workspace con secreto del webhook"}`);
+    return NextResponse.json({ error: "Firma invalida" }, { status: 401 });
+  }
+
+  if (!(await claimWebhookEvent(supabase, headers.id ? `resend:${headers.id}` : null))) {
+    return NextResponse.json({ ok: true, skipped: "evento repetido" });
+  }
+
+  const ws = workspaceId;
+  after(async () => {
+    try {
+      const result = await applyDeliveryEvent(supabase, ws, event);
+      // Sin la direccion: el log no lleva datos de la persona.
+      console.log(`[resend-eventos] ${event.type} ${event.data?.email_id ?? "(sin id)"}: ${result.note}`);
+    } catch (err) {
+      console.error("[resend-eventos] error procesando el evento:", err instanceof Error ? err.message : "error");
     }
   });
 

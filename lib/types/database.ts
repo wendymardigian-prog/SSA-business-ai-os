@@ -501,6 +501,10 @@ export type AuditEntityType =
 export type AuditAction =
   | "create"
   | "update"
+  /** Suscripcion a emails (00271): cambio del estado de email (lo escribe set_email_status). */
+  | "email_status"
+  /** Suscripcion a emails (00271): no se pudo heredar el estado al poner una direccion (nunca en silencio). */
+  | "email_status_inherit_failed"
   /** Pipeline (00245): el agente de IA cambió el estado de setter (se puede revertir). */
   | "setter_status"
   /** Pipeline (00245): cambiaron las listas de estados del negocio. */
@@ -767,7 +771,16 @@ export type LeadTemperature = "cold" | "warm" | "hot";
 /** De donde sale `contacts.avatar_url` (migracion 00104, F16). */
 export type AvatarSource = "external" | "storage" | "manual";
 /** Como termino un envio de email (migracion 00021). */
-export type EmailLogStatus = "sent" | "failed" | "skipped_not_configured";
+export type EmailLogStatus =
+  | "sent"
+  | "failed"
+  | "skipped_not_configured"
+  // Suscripcion a emails (00272): la puerta `canSendEmailTo` lo salteo.
+  | "skipped_unsubscribed"
+  | "skipped_bounced"
+  | "skipped_complained"
+  | "skipped_do_not_contact"
+  | "skipped_unverifiable";
 export type BroadcastStatus =
   | "draft"
   | "scheduled"
@@ -963,6 +976,11 @@ export type SequenceCollisionResolution =
 
 export interface SequenceStep {
   type: "message" | "delay" | "aiMessage" | "asset";
+  /**
+   * "Tipo de email" (suscripcion a emails, E2): solo cuenta cuando la inscripcion va por un canal de email. Sin
+   * guardar = marketing (no le llega a quien se dio de baja, y su baja pausa la inscripcion).
+   */
+  emailCategory?: "marketing" | "transactional";
   /** Texto del paso de mensaje. Admite {{variables}} del contacto. */
   content?: string;
   /** Espera del paso de delay, en minutos. */
@@ -1156,6 +1174,8 @@ export interface Database {
           brand_logo_path: string | null;
           brand_color: string | null;
           ai_language_style: string | null;
+          /** Direccion postal opcional del pie de los emails de marketing (00270). */
+          email_footer_address: string | null;
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
           ai_monthly_cost_limit_usd: number | null;
@@ -1207,6 +1227,7 @@ export interface Database {
           brand_logo_path?: string | null;
           brand_color?: string | null;
           ai_language_style?: string | null;
+          email_footer_address?: string | null;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           ai_daily_limit_action?: CostLimitAction;
@@ -1255,6 +1276,7 @@ export interface Database {
           brand_logo_path?: string | null;
           brand_color?: string | null;
           ai_language_style?: string | null;
+          email_footer_address?: string | null;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           ai_daily_limit_action?: CostLimitAction;
@@ -1519,6 +1541,15 @@ export interface Database {
           /** Cuando se actualizo avatar_url por ultima vez (migracion 00104, F16). */
           avatar_updated_at: string | null;
           is_subscribed: boolean;
+          /**
+           * Suscripcion a emails (00270). Solo lectura: se cambia con set_email_status
+           * (00271) via lib/email/subscription.ts. Por eso no esta en Insert ni Update.
+           */
+          email_status: "subscribed" | "unsubscribed" | "bounced" | "complained";
+          email_status_at: string | null;
+          email_status_source: string | null;
+          email_subscribed_at: string | null;
+          email_unsubscribe_token: string;
           last_interaction_at: string | null;
           metadata: Json | null;
           // Datos de CRM (migracion 00022)
@@ -6226,6 +6257,45 @@ export interface Database {
       };
       merge_contacts: {
         Args: { p_workspace_id: string; p_main: string; p_duplicate: string; p_actor: string | null };
+        Returns: Json;
+      };
+      /** Suscripcion a emails (00271): solo service_role, via lib/email/subscription.ts. */
+      set_email_status: {
+        Args: {
+          p_contact_id: string;
+          p_status: string;
+          p_source: string;
+          p_occurred_at?: string | null;
+          p_reason?: string | null;
+          p_performed_by?: string | null;
+          p_mode?: string;
+          p_address?: string | null;
+          p_subscribed_at?: string | null;
+          p_extra?: Json;
+        };
+        Returns: Json;
+      };
+      set_email_status_by_address: {
+        Args: {
+          p_workspace_id: string;
+          p_email: string;
+          p_status: string;
+          p_source: string;
+          p_occurred_at?: string | null;
+          p_reason?: string | null;
+          p_performed_by?: string | null;
+          p_mode?: string;
+          p_subscribed_at?: string | null;
+          p_extra?: Json;
+        };
+        Returns: Json;
+      };
+      email_address_status: {
+        Args: { p_workspace_id: string; p_email: string };
+        Returns: string;
+      };
+      email_address_send_state: {
+        Args: { p_workspace_id: string; p_email: string; p_contact_id?: string | null };
         Returns: Json;
       };
       // @plantilla-desde(tareas)

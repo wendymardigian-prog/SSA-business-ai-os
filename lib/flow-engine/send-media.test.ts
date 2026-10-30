@@ -42,7 +42,7 @@ const { getZernioApiKey, sendEmailReply } = vi.hoisted(() => ({
 vi.mock("@/lib/integrations/zernio-key", () => ({ getZernioApiKey }));
 vi.mock("@/lib/email/send-reply", () => ({ sendEmailReply }));
 
-import { sendChannelMessage, type SendContext } from "./send";
+import { channelEmailCategory, sendChannelMessage, type SendContext } from "./send";
 
 const WS = "ws-1";
 
@@ -254,5 +254,40 @@ describe("las claves se leen con el cliente de servicio (00143)", () => {
     const mailContext: SendContext = { ...waContext, channelId: "ch-mail" };
     await sendChannelMessage(memory.client, mailContext, { text: "hola" }, { secrets: service });
     expect(sendEmailReply).toHaveBeenCalledWith(memory.client, expect.objectContaining({ secrets: service }));
+  });
+});
+
+describe("Email: la categoria de lo que sale por sendChannelMessage (suscripcion a emails)", () => {
+  const mail = (extra: Partial<SendContext> = {}): SendContext => ({ ...waContext, channelId: "ch-mail", ...extra });
+
+  it("un flujo o una secuencia mandan marketing; el agente (que responde un hilo), transaccional", () => {
+    expect(channelEmailCategory({ flowId: "f-1" })).toBe("marketing");
+    expect(channelEmailCategory({ origin: "sequence", flowId: null })).toBe("marketing");
+    expect(channelEmailCategory({ flowId: null })).toBe("transactional");
+    expect(channelEmailCategory({ origin: "sequence", emailCategory: "transactional" })).toBe("transactional");
+  });
+
+  it("un flujo pasa marketing, su contacto y el registro en email_log a sendEmailReply", async () => {
+    const { memory } = db();
+    await sendChannelMessage(memory.client, mail({ flowId: "f-1" }), { text: "hola" });
+    expect(sendEmailReply).toHaveBeenCalledWith(
+      memory.client,
+      expect.objectContaining({ category: "marketing", contactId: "c-1", log: { kind: "flow_message", relatedEntityType: "flow", relatedEntityId: "f-1" } }),
+    );
+  });
+
+  it("el agente pasa transaccional y no escribe email_log (la respuesta ya queda en el hilo)", async () => {
+    const { memory } = db();
+    await sendChannelMessage(memory.client, mail({ flowId: null }), { text: "hola" });
+    const params = (sendEmailReply.mock.calls.at(-1) as unknown as [unknown, Record<string, unknown>])[1];
+    expect(params.category).toBe("transactional");
+    expect(params).not.toHaveProperty("log");
+  });
+
+  it("un salto de la puerta vuelve como `skipped`, no reintentable", async () => {
+    const { memory } = db();
+    sendEmailReply.mockResolvedValueOnce({ ok: false, messageId: null, providerId: null, error: "No se mandó: la persona se dio de baja de los emails.", retryable: false, skipped: "unsubscribed" } as never);
+    const outcome = await sendChannelMessage(memory.client, mail({ origin: "sequence", flowId: null }), { text: "hola" });
+    expect(outcome).toMatchObject({ ok: false, skipped: "unsubscribed", failure: { retryable: false } });
   });
 });

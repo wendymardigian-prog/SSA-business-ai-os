@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ResendSendersForm } from "./resend-senders-form";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -120,7 +121,11 @@ export function IntegrationDetail({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         {activeTab === "credenciales" && (
-          <CredentialsForm provider={provider} data={data} webhookUrl={webhookUrl} />
+          <>
+            <CredentialsForm provider={provider} data={data} webhookUrl={webhookUrl} />
+            {/* Los remitentes de Resend (E8): usuario + dominio verificado, en su propio formulario. */}
+            {provider.id === "resend" && <ResendSendersForm config={data.config} connected={data.status !== "not_connected"} />}
+          </>
         )}
         {activeTab === "cuentas" && showAccounts && (
           <AccountsTab

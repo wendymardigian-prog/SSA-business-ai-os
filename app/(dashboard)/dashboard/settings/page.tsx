@@ -78,6 +78,7 @@ export default async function SettingsPage() {
           logoPath: workspace.brand_logo_path ?? null,
           color: workspace.brand_color ?? null,
           languageStyle: workspace.ai_language_style ?? null,
+          footerAddress: (workspace as { email_footer_address?: string | null }).email_footer_address ?? null,
           installationStyle: aiLanguageStyle(),
         },
       }}

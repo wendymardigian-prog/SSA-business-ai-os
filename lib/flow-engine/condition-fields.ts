@@ -81,9 +81,23 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
   },
   {
     prefix: "is_subscribed",
-    label: "Está suscripto",
+    // Solo las difusiones por chat (broadcasts). La suscripcion a emails es "Estado de email".
+    label: "Recibe difusiones por chat",
     argument: "none",
     valueKind: "boolean", valueType: "boolean", group: "contact",
+  },
+  {
+    prefix: "email_status",
+    label: "Estado de email",
+    argument: "none",
+    valueKind: "text", valueType: "single_select", group: "contact",
+    options: [
+      { value: "subscribed", label: "Suscripto" },
+      { value: "unsubscribed", label: "Dado de baja" },
+      { value: "bounced", label: "Rebota" },
+      { value: "complained", label: "Marcó spam" },
+    ],
+    hint: "Si la persona puede recibir emails de marketing. Un email de marketing no le llega a quien no está suscripto aunque la automatización lo mande.",
   },
   {
     prefix: "variable:",

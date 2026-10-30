@@ -211,8 +211,12 @@ export async function emailContractLink(input: { saleId: string; formId: string 
     relatedEntityId: input.saleId,
     contactId: built.contactId,
     createdBy: ctx.user.id,
+    // Transaccional: la persona pidio el contrato. Solo lo frena un email que rebota (no "no contactar" ni la baja de
+    // marketing; decision de Wendy, 29/10/2026).
+    category: "transactional",
   });
   if (!result.ok) {
+    if (result.reason === "skipped") return { ok: false, error: result.error };
     return { ok: false, error: result.reason === "not_configured" ? "Todavía no conectaste Resend: no se puede mandar por email." : "No se pudo mandar el email. Probá de nuevo." };
   }
   await logAudit({

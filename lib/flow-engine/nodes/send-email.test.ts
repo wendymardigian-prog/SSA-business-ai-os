@@ -5,10 +5,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { sendTransactionalEmail } = vi.hoisted(() => ({
-  sendTransactionalEmail: vi.fn(async () => ({ ok: true as const, id: "msg-1" })),
+const { sendTransactionalEmail, recordSkippedEmail } = vi.hoisted(() => ({
+  sendTransactionalEmail: vi.fn(async (_p: Record<string, unknown>) => ({ ok: true as const, id: "msg-1" }) as Record<string, unknown>),
+  recordSkippedEmail: vi.fn(async () => undefined),
 }));
-vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail }));
+vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail, recordSkippedEmail }));
 vi.mock("@/lib/notifications/create", () => ({ createNotification: vi.fn(async () => true) }));
 
 import { sendEmailNode } from "./send-email";
@@ -66,6 +67,16 @@ describe("send_email: el contacto del registro", () => {
   it("un contacto 'no contactar' no recibe el email (y no queda registro de un envio que no hubo)", async () => {
     await sendEmailNode.execute(args({ doNotContact: true }));
     expect(sendTransactionalEmail).not.toHaveBeenCalled();
+  });
+
+  it("cambio aprobado (suscripcion a emails): el salto por 'no contactar' queda anotado como salteado", async () => {
+    await sendEmailNode.execute(args({ doNotContact: true }));
+    expect(recordSkippedEmail).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ to: "ana@x.com", kind: "flow", contactId: "c-1" }),
+      "do_not_contact",
+      expect.any(String),
+    );
   });
 });
 
@@ -126,6 +137,20 @@ describe("send_email: cuerpo con formato (editor de texto enriquecido)", () => {
   });
 });
 
+describe("send_email: caracterizacion de 'no contactar' (antes de la suscripcion a emails)", () => {
+  it("un flujo de agenda manda igual a un contacto 'no contactar' (es una reunion que pidio)", async () => {
+    const a = args({ doNotContact: true }) as unknown as { context: { variables: Record<string, unknown> } };
+    a.context.variables = { trigger_scope: "booking" };
+    await sendEmailNode.execute(a as never);
+    expect(sendTransactionalEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "ana@x.com", contactId: "c-1" }));
+  });
+
+  it("'no contactar' tambien frena el envio a una direccion fija del flujo de ese contacto", async () => {
+    await sendEmailNode.execute(args({ to: "fixed", fixedEmail: "equipo@negocio.com", doNotContact: true }));
+    expect(sendTransactionalEmail).not.toHaveBeenCalled();
+  });
+});
+
 describe("send_email: adjuntos de Recursos (auditoria de automatizaciones)", () => {
   it("los adjuntos viajan en el envio", async () => {
     const loader = await import("@/lib/email/flow-attachments");
@@ -142,5 +167,62 @@ describe("send_email: adjuntos de Recursos (auditoria de automatizaciones)", () 
     await sendEmailNode.execute(args());
     const call = (sendTransactionalEmail.mock.calls as unknown as Array<[Record<string, unknown>]>)[0][0];
     expect("attachments" in call).toBe(false);
+  });
+});
+
+describe("send_email: suscripcion a emails (el tipo de email y los saltos)", () => {
+  /** El mismo cliente falso, con el flujo que se le diga y los inserts anotados. */
+  function withFlow(flow: Record<string, unknown> | null, overrides: Parameters<typeof args>[0] = {}) {
+    const a = args(overrides) as unknown as { supabase: { from: (t: string) => unknown }; data: Record<string, unknown>; context: Record<string, unknown> };
+    const inserts: Array<{ table: string; row: Record<string, unknown> }> = [];
+    const base = a.supabase.from.bind(a.supabase);
+    a.supabase.from = (table: string) => {
+      const chain = base(table) as Record<string, unknown>;
+      if (table === "flows") chain.maybeSingle = async () => ({ data: flow, error: null });
+      chain.insert = async (row: Record<string, unknown>) => {
+        inserts.push({ table, row });
+        return { error: null };
+      };
+      return chain;
+    };
+    return { a, inserts };
+  }
+  const sentCategory = () => (sendTransactionalEmail.mock.calls[0]?.[0] as { category?: string } | undefined)?.category;
+
+  it("en una automatizacion armada a mano, el email es de marketing por defecto", async () => {
+    const { a } = withFlow({ form_id: null, event_type_id: null, template_key: null });
+    await sendEmailNode.execute(a as never);
+    expect(sentCategory()).toBe("marketing");
+  });
+
+  it("en un flujo de agenda, formularios o del sistema (cobranza), transaccional por defecto", async () => {
+    for (const flow of [{ event_type_id: "et-1" }, { form_id: "fm-1" }, { template_key: "payment_reminder_3d" }]) {
+      vi.clearAllMocks();
+      const { a } = withFlow(flow);
+      await sendEmailNode.execute(a as never);
+      expect(sentCategory()).toBe("transactional");
+    }
+  });
+
+  it("lo elegido en el paso gana sobre el del flujo", async () => {
+    const { a } = withFlow({ event_type_id: "et-1" });
+    a.data.category = "marketing";
+    await sendEmailNode.execute(a as never);
+    expect(sentCategory()).toBe("marketing");
+  });
+
+  it("un flujo que arranco por una reunion es transaccional aunque sea manual", async () => {
+    const { a } = withFlow(null);
+    a.context.variables = { trigger_scope: "booking" };
+    await sendEmailNode.execute(a as never);
+    expect(sentCategory()).toBe("transactional");
+  });
+
+  it("un salto de la puerta queda como paso salteado (no como fallo) y el flujo sigue", async () => {
+    sendTransactionalEmail.mockResolvedValueOnce({ ok: false, reason: "skipped", skip: "unsubscribed", error: "No se mandó: la persona se dio de baja de los emails." });
+    const { a, inserts } = withFlow(null);
+    await expect(sendEmailNode.execute(a as never)).resolves.toBeUndefined();
+    const events = inserts.filter((i) => i.table === "analytics_events").map((i) => i.row.event_type);
+    expect(events).toEqual(["node_skipped"]);
   });
 });

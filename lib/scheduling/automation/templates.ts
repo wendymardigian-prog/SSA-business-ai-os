@@ -208,6 +208,8 @@ export function templateGraph(template: FlowTemplate, eventTypeId: string): { no
       to: "contact",
       subject: template.subject ?? "",
       body: template.body,
+      // Suscripcion a emails: una reunion que la persona pidio. Le llega aunque se haya dado de baja de marketing.
+      category: "transactional",
     },
   });
   edges.push({ id: `${previous}-email`, source: previous, target: "email" });

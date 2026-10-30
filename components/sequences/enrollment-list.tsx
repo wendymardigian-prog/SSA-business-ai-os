@@ -7,7 +7,7 @@ import { Users, XCircle, Play, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { cancelEnrollment, resumeEnrollment } from "@/lib/actions/sequences";
 import { ActionError, formatDateTime } from "@/components/contacts/ui";
-import { enrollmentStatusStyle, isResumable, pauseReasonLabel } from "@/lib/sequences/labels";
+import { enrollmentStatusStyle, isEmailPause, isResumable, pauseGroup, pauseReasonLabel, type PauseGroup } from "@/lib/sequences/labels";
 import type { SequenceEnrollmentStatus } from "@/lib/types/database";
 
 export interface EnrollmentRow {
@@ -35,6 +35,10 @@ export function EnrollmentList({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  // Suscripcion a emails: las pausas por la baja se distinguen de "no contactar" y se pueden filtrar.
+  const [pauseFilter, setPauseFilter] = useState<"all" | PauseGroup>("all");
+  const anyPaused = enrollments.some((e) => e.status === "paused");
+  const shown = pauseFilter === "all" ? enrollments : enrollments.filter((e) => e.status === "paused" && pauseGroup(e.pausedReason) === pauseFilter);
 
   function run(id: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
     setBusy(id);
@@ -63,6 +67,22 @@ export function EnrollmentList({
           {action}
         </div>
 
+        {anyPaused && (
+          <label className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+            Mostrar
+            <select
+              value={pauseFilter}
+              onChange={(e) => setPauseFilter(e.target.value as "all" | PauseGroup)}
+              className="rounded-lg border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="all">Todas las inscripciones</option>
+              <option value="email">Pausadas por la baja de emails</option>
+              <option value="opt_out">Pausadas por «no contactar»</option>
+              <option value="other">Pausadas por otro motivo</option>
+            </select>
+          </label>
+        )}
+
         <ActionError message={error} />
 
         {enrollments.length === 0 ? (
@@ -79,7 +99,10 @@ export function EnrollmentList({
           </div>
         ) : (
           <div className="mt-4 divide-y divide-border rounded-lg border border-border">
-            {enrollments.map((enrollment) => {
+            {shown.length === 0 && (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">No hay inscripciones pausadas por ese motivo.</p>
+            )}
+            {shown.map((enrollment) => {
               const status = enrollmentStatusStyle(enrollment.status);
               const reason = pauseReasonLabel(enrollment.pausedReason);
               const working = busy === enrollment.id;
@@ -94,6 +117,11 @@ export function EnrollmentList({
                       >
                         {enrollment.contactName}
                       </Link>
+                      {isEmailPause(enrollment.pausedReason) && (
+                        <span className="inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                          Email
+                        </span>
+                      )}
                       {enrollment.hasOpenCollision && (
                         <span className="inline-flex shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
                           Colisión

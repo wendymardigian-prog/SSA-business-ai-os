@@ -165,6 +165,7 @@ export function ColumnsMenu({
   const options: Array<{ value: OptionalColumn; label: string }> = [
     { value: "status", label: "Estado" },
     { value: "product", label: "Producto de interés" },
+    { value: "email_status", label: "Estado de email" },
     ...fields.map((f) => ({ value: `cf:${f.id}` as OptionalColumn, label: f.name })),
   ];
   return (

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { SENDER_CONFIG_KEYS } from "@/lib/email/senders";
 import { SOCIAL_PROVIDER_IDS, syncAccountsAfterChange } from "@/lib/social/sync-hook";
 import { createServiceClient } from "@/lib/supabase/server";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
@@ -75,7 +76,13 @@ function cleanConfigOf(
  * verifica la key. Como el upsert reemplaza la fila entera, sin esto un
  * guardado que no re-escribe la key los borra.
  */
-const DISCOVERED_CONFIG_KEYS = ["youtube_profile_id", "models", "models_checked_at"] as const;
+const DISCOVERED_CONFIG_KEYS = [
+  "youtube_profile_id",
+  "models",
+  "models_checked_at",
+  // Los remitentes de Resend (E8) se guardan en su propio formulario: volver a guardar la key no los pisa.
+  ...SENDER_CONFIG_KEYS,
+] as const;
 
 function discoveredConfigOf(previous: unknown): Record<string, Json> {
   if (!previous || typeof previous !== "object" || Array.isArray(previous)) return {};
@@ -154,7 +161,9 @@ export async function saveIntegration(
     toStore.push({ field, value });
   }
 
-  const configCheck = validateConfig(provider.id, config);
+  // Los campos que se editan en su propio formulario (los remitentes de Resend, E8) no se validan ni se escriben
+  // desde aca: se conservan los guardados.
+  const configCheck = validateConfig(provider.id, config, { skipHidden: true });
   if (!configCheck.ok) return configCheck;
 
   // La prueba va antes de escribir nada: si la clave no sirve, no queda

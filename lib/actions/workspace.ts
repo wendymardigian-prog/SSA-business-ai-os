@@ -277,6 +277,8 @@ export async function updateWorkspaceBrand(input: {
   name: string;
   color: string;
   languageStyle: string;
+  /** La direccion postal del pie de los emails de marketing (suscripcion a emails, 00270). */
+  footerAddress?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const ctx = await getPermissionAction("settings.general");
   if (!ctx) return { ok: false, error: NO_BRAND_PERMISSION };
@@ -288,7 +290,7 @@ export async function updateWorkspaceBrand(input: {
   const service = await createServiceClient();
   const { data: before } = await service
     .from("workspaces")
-    .select("brand_name, brand_color, ai_language_style")
+    .select("brand_name, brand_color, ai_language_style, email_footer_address")
     .eq("id", workspace.id)
     .maybeSingle();
 

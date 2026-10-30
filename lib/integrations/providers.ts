@@ -30,6 +30,11 @@ export interface ConfigField {
   defaultValue?: string;
   /** Devuelve el mensaje de error, o null si el valor esta bien. */
   validate?: (value: string) => string | null;
+  /**
+   * Se edita en su propio formulario, no en el generico (los remitentes de Resend, E8: usuario + dominio
+   * verificado). El generico no lo dibuja, y volver a guardar la key conserva el valor guardado.
+   */
+  hidden?: boolean;
 }
 
 /**
@@ -524,10 +529,15 @@ export const PROVIDERS: ProviderDefinition[] = [
     section: "connections",
     visible: true,
     label: "Resend",
-    description: "Envio de emails salientes: invitaciones al equipo y avisos del sistema.",
+    description: "Envio de emails salientes: los importantes (agenda, contratos, invitaciones, avisos) y los de marketing.",
     secretName: SECRET_NAMES.resendApiKey,
     keyPrefix: "re_",
     minKeyLength: 20,
+    // Los remitentes se eligen en su propio formulario (usuario + dominio verificado de Resend, E8:
+    // components/settings/integrations/resend-senders-form.tsx). Siguen declarados aca porque `from_email` es lo que
+    // leen el envio, el aviso de readiness y la tarjeta. Guardar la key no los valida (`skipHidden`): el remitente
+    // se elige DESPUES, con la lista de dominios que trae esa key; hasta entonces los emails no salen (y la pantalla
+    // lo dice).
     configFields: [
       {
         key: "from_email",
@@ -536,6 +546,7 @@ export const PROVIDERS: ProviderDefinition[] = [
         placeholder: "hola@tudominio.com",
         required: true,
         validate: isEmail,
+        hidden: true,
       },
       {
         key: "from_name",
@@ -543,6 +554,7 @@ export const PROVIDERS: ProviderDefinition[] = [
         hint: "Como aparece en la bandeja de quien recibe. Opcional.",
         placeholder: "Tu Negocio",
         required: false,
+        hidden: true,
       },
     ],
     docsUrl: "https://resend.com/api-keys",
@@ -823,11 +835,14 @@ export function validateApiKey(providerId: string, value: string): ValidationRes
 export function validateConfig(
   providerId: string,
   config: Record<string, string>,
+  /** `skipHidden`: no mira los campos que se editan en su propio formulario (los remitentes de Resend). */
+  opts: { skipHidden?: boolean } = {},
 ): ValidationResult {
   const provider = getProvider(providerId);
   if (!provider) return { ok: false, error: `Integracion desconocida: ${providerId}` };
 
   for (const field of provider.configFields) {
+    if (opts.skipHidden && field.hidden) continue;
     const raw = (config[field.key] ?? "").trim();
     if (!raw) {
       if (field.required) return { ok: false, error: `Falta completar "${field.label}"` };

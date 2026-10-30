@@ -784,10 +784,11 @@ export function MessageThread({
     handleSend();
   }
 
-  async function handleSend(confirmedDoNotContact = false) {
-    if (!input.trim() || !conversation || sending) return;
+  async function handleSend(confirmedDoNotContact = false, confirmedEmailOptOut = false, textOverride?: string) {
+    const raw = textOverride ?? input;
+    if (!raw.trim() || !conversation || (sending && textOverride === undefined)) return;
 
-    const text = input.trim();
+    const text = raw.trim();
     setInput("");
     setSending(true);
 
@@ -840,11 +841,22 @@ export function MessageThread({
       const res = await fetch("/api/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: conversation.id, text, confirmedDoNotContact }),
+        body: JSON.stringify({ conversationId: conversation.id, text, confirmedDoNotContact, confirmedEmailOptOut }),
       });
 
       if (!res.ok) {
-        const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: Message | null };
+        const errorData = (await res.json().catch(() => ({}))) as { error?: string; message?: Message | null; requiresConfirmation?: boolean; kind?: string };
+        // Suscripcion a emails: la persona se dio de baja de los emails de marketing. Una respuesta le llega igual,
+        // pero se pregunta antes (como "no contactar"). Si no confirma, el texto vuelve al cuadro.
+        if (res.status === 409 && errorData.requiresConfirmation && errorData.kind === "email_opt_out") {
+          setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+          if (window.confirm(`${errorData.error ?? "Esta persona se dio de baja de los emails."} ¿La mandás igual?`)) {
+            await handleSend(confirmedDoNotContact, true, text);
+          } else {
+            setInput(text);
+          }
+          return;
+        }
         // 00262: el servidor devuelve la fila fallida que guardo (con su id y
         // el motivo): reemplaza al optimista y se puede reintentar.
         const storedFailure = errorData.message;

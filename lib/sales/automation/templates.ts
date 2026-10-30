@@ -122,7 +122,7 @@ export function salesTemplateGraph(template: SalesFlowTemplate): { nodes: Canvas
       type: "action",
       position: { x: 0, y: 320 },
       // El alias exacto del registro (lib/flow-engine/nodes/send-email.ts): con otro nombre el motor no resuelve el nodo.
-      data: { actionType: "send_email", to: "contact", subject: template.subject, body: template.body },
+      data: { actionType: "send_email", to: "contact", subject: template.subject, body: template.body, category: "transactional" },
     },
   ];
   const edges: CanvasEdge[] = [

@@ -1,0 +1,43 @@
+{
+  "_comment": "Tabla de transiciones del estado de email. La usan lib/email/subscription.ts (decideEmailStatus, vitest) y private.email_status_decide (SQL, scripts/verify-email-subscription.mjs). Si se cambia una regla, se cambia en las dos y se suma el caso. Resultados: apply | noop | kept | reason_required | invalid.",
+  "cases": [
+    { "from": "subscribed", "to": "subscribed", "mode": "system", "expect": "noop" },
+    { "from": "subscribed", "to": "unsubscribed", "mode": "system", "expect": "apply" },
+    { "from": "subscribed", "to": "bounced", "mode": "system", "expect": "apply" },
+    { "from": "subscribed", "to": "complained", "mode": "system", "expect": "apply" },
+    { "from": "unsubscribed", "to": "subscribed", "mode": "system", "expect": "kept" },
+    { "from": "unsubscribed", "to": "unsubscribed", "mode": "system", "expect": "noop" },
+    { "from": "unsubscribed", "to": "bounced", "mode": "system", "expect": "apply" },
+    { "from": "unsubscribed", "to": "complained", "mode": "system", "expect": "apply" },
+    { "from": "bounced", "to": "subscribed", "mode": "system", "expect": "kept" },
+    { "from": "bounced", "to": "unsubscribed", "mode": "system", "expect": "kept" },
+    { "from": "bounced", "to": "complained", "mode": "system", "expect": "apply" },
+    { "from": "complained", "to": "subscribed", "mode": "system", "expect": "kept" },
+    { "from": "complained", "to": "unsubscribed", "mode": "system", "expect": "kept" },
+    { "from": "complained", "to": "bounced", "mode": "system", "expect": "kept" },
+
+    { "from": "subscribed", "to": "unsubscribed", "mode": "person", "expect": "apply" },
+    { "from": "unsubscribed", "to": "subscribed", "mode": "person", "expect": "apply" },
+    { "from": "unsubscribed", "to": "unsubscribed", "mode": "person", "expect": "noop" },
+    { "from": "bounced", "to": "subscribed", "mode": "person", "expect": "kept" },
+    { "from": "complained", "to": "subscribed", "mode": "person", "expect": "kept" },
+    { "from": "bounced", "to": "unsubscribed", "mode": "person", "expect": "kept" },
+    { "from": "subscribed", "to": "bounced", "mode": "person", "expect": "kept" },
+    { "from": "subscribed", "to": "complained", "mode": "person", "expect": "kept" },
+
+    { "from": "subscribed", "to": "unsubscribed", "mode": "admin", "expect": "apply" },
+    { "from": "unsubscribed", "to": "subscribed", "mode": "admin", "expect": "apply" },
+    { "from": "subscribed", "to": "bounced", "mode": "admin", "expect": "apply" },
+    { "from": "bounced", "to": "unsubscribed", "mode": "admin", "expect": "apply" },
+    { "from": "bounced", "to": "subscribed", "mode": "admin", "expect": "reason_required" },
+    { "from": "bounced", "to": "subscribed", "mode": "admin", "reason": "   ", "expect": "reason_required" },
+    { "from": "bounced", "to": "subscribed", "mode": "admin", "reason": "Confirmó por teléfono que el buzón ya anda", "expect": "apply" },
+    { "from": "complained", "to": "subscribed", "mode": "admin", "expect": "reason_required" },
+    { "from": "complained", "to": "subscribed", "mode": "admin", "reason": "Pidió volver a recibirlos", "expect": "apply" },
+    { "from": "complained", "to": "complained", "mode": "admin", "expect": "noop" },
+
+    { "from": "subscribed", "to": "unsubscribed", "mode": "robot", "expect": "invalid" },
+    { "from": "subscribed", "to": "maybe", "mode": "system", "expect": "invalid" },
+    { "from": "subscribed", "to": "maybe", "mode": "admin", "expect": "invalid" }
+  ]
+}

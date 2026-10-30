@@ -15,6 +15,7 @@
 
 import { validateContactField, type ContactFieldKey, CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { CUSTOM_VALUE_ERROR_MESSAGES, normalizeCustomValue } from "@/lib/custom-fields";
+import { isSubscriptionTarget, rowSubscription, type RowSubscription, type SubscriptionTarget, type RawSubscriptionCells } from "./subscription";
 
 /** Las columnas de atribución que puede traer el archivo (todas opcionales). */
 export const ATTRIBUTION_TARGETS = ["attr:source", "attr:medium", "attr:campaign", "attr:first_touch_at"] as const;
@@ -34,7 +35,7 @@ export type CustomTarget = `custom:${string}`;
  * Ademas de los campos del contacto, el CSV puede traer tags, campos
  * personalizados y datos de atribución.
  */
-export type ImportColumnTarget = ContactFieldKey | "tags" | AttributionTarget | CustomTarget | "";
+export type ImportColumnTarget = ContactFieldKey | "tags" | AttributionTarget | SubscriptionTarget | CustomTarget | "";
 
 /** Lo que el mapeo necesita saber de un campo personalizado. */
 export interface ImportCustomField {
@@ -96,6 +97,14 @@ const HEADER_HINTS: Partial<Record<ImportColumnTarget, string[]>> = {
     "fecha primer contacto", "fecha del primer contacto", "primer contacto", "fecha de alta", "fecha alta",
     "fecha de creacion", "created at", "fecha de ingreso",
   ],
+  // Suscripcion a emails (E6): el estado que tenia la persona en el otro sistema.
+  "sub:status": [
+    "email subscribed", "suscripcion", "suscripcion a emails", "suscripcion email", "suscripto", "suscrito", "subscribed",
+    "estado email", "estado de email", "email status",
+  ],
+  "sub:unsubscribed_at": ["unsubscribed at", "fecha de baja", "fecha baja"],
+  "sub:unsubscribe_source": ["unsubscribe source", "motivo baja", "motivo de baja", "motivo de la baja"],
+  "sub:subscribed_at": ["subscribed at", "fecha suscripcion", "fecha de suscripcion"],
 };
 
 /** Minusculas, sin acentos y sin puntuacion, para comparar nombres de columna. */
@@ -151,6 +160,8 @@ export interface MappedRow {
   custom: Record<string, string>;
   /** Atribución que trajo el archivo (vacío si no trajo nada). */
   attribution: RowAttribution;
+  /** Suscripcion a emails (E6). `null` = el archivo no trae la columna: el estado no se toca. */
+  subscription: RowSubscription | null;
 }
 
 export type RowResult = { ok: true; row: MappedRow } | { ok: false; line: number; error: string };
@@ -175,6 +186,7 @@ export function mapRow(
   const tags: string[] = [];
   const custom: Record<string, string> = {};
   const attribution: RowAttribution = {};
+  const subscriptionCells: RawSubscriptionCells = {};
   const fieldsById = new Map(customFields.map((f) => [f.id, f]));
 
   for (let i = 0; i < mapping.length; i++) {
@@ -201,6 +213,14 @@ export function mapRow(
       const value = normalizeCustomValue(field.type, raw);
       if (!value.ok) return { ok: false, line, error: `${field.name} ${CUSTOM_VALUE_ERROR_MESSAGES[value.reason]}` };
       custom[field.id] = value.value;
+      continue;
+    }
+
+    if (isSubscriptionTarget(target)) {
+      if (target === "sub:status") subscriptionCells.status = raw;
+      if (target === "sub:unsubscribed_at") subscriptionCells.unsubscribedAt = raw;
+      if (target === "sub:unsubscribe_source") subscriptionCells.unsubscribeSource = raw;
+      if (target === "sub:subscribed_at") subscriptionCells.subscribedAt = raw;
       continue;
     }
 
@@ -245,7 +265,12 @@ export function mapRow(
     };
   }
 
-  return { ok: true, row: { line, patch, tags, custom, attribution } };
+  // Suscripcion a emails: con la columna mapeada, una celda vacia o un valor que no se entiende es un error de la fila
+  // (importarla como "suscripto" podria re-suscribir a alguien que se habia dado de baja).
+  const sub = rowSubscription(subscriptionCells, mapping.some((m) => m.target === "sub:status"), new Date(`${today}T23:59:59.999Z`));
+  if (!sub.ok) return { ok: false, line, error: sub.error };
+
+  return { ok: true, row: { line, patch, tags, custom, attribution, subscription: sub.value } };
 }
 
 /** Las columnas que se van a importar, para el resumen previo. */

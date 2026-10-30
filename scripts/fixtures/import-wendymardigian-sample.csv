@@ -1,0 +1,16 @@
+id,email,email_normalized,nombre,telefono,instagram,negocio,source,canal,lead_status,utm_source,utm_medium,utm_campaign,created_at,email_subscribed,subscribed_at,unsubscribed_at,unsubscribe_source
+1,sub1@example.com,sub1@example.com,Suscripta Normal,,,Negocio Uno,web,form,nuevo,google,cpc,otono,2025-01-10 14:02:11+00,true,2025-01-10 14:02:11+00,,
+2,baja.footer@example.com,baja.footer@example.com,Baja Pie,,,,web,form,nuevo,,,,2025-02-03 09:15:00+00,false,2025-02-03 09:15:00+00,2025-05-01 18:30:00+00,email_footer
+3,baja.oneclick@example.com,baja.oneclick@example.com,Baja Un Clic,,,,web,form,nuevo,,,,2025-02-04 10:00:00+00,false,2025-02-04 10:00:00+00,2025-05-02 08:00:00+00,one_click_header
+4,rebote@example.com,rebote@example.com,Rebota,,,,web,form,nuevo,,,,2025-03-01 12:00:00+00,false,2025-03-01 12:00:00+00,2025-06-01 07:45:00+00,bounce
+5,queja@example.com,queja@example.com,Marco Spam,,,,web,form,nuevo,,,,2025-03-02 12:00:00+00,false,2025-03-02 12:00:00+00,2025-06-02 21:10:00+00,complaint
+6,triple@example.com,triple@example.com,Triple Uno,,,,web,form,nuevo,,,,2025-02-01 10:00:00+00,false,2025-02-01 10:00:00+00,2025-07-01 10:00:00+00,email_footer
+7,triple@example.com,triple@example.com,Triple Dos,,,,web,form,nuevo,,,,2025-03-01 10:00:00+00,true,2025-03-01 10:00:00+00,,
+8,triple@example.com,triple@example.com,Triple Tres,,,,web,form,nuevo,,,,2025-01-15 10:00:00+00,true,2025-01-15 10:00:00+00,,
+9,MAYUS@Example.com,mayus@example.com,Mayusculas,,,,web,form,nuevo,,,,2025-04-01 10:00:00+00,true,2025-04-01 10:00:00+00,,
+10,mayus@example.com,mayus@example.com,Minusculas,,,,web,form,nuevo,,,,2025-04-02 10:00:00+00,false,2025-04-02 10:00:00+00,2025-08-01 10:00:00+00,email_footer
+11,existe.suscripto@example.com,existe.suscripto@example.com,Ya Existe Suscripto,,,,web,form,nuevo,,,,2025-05-01 10:00:00+00,false,2025-05-01 10:00:00+00,2025-09-01 10:00:00+00,admin_manual
+12,existe.baja@example.com,existe.baja@example.com,Ya Existe De Baja,,,,web,form,nuevo,,,,2025-05-02 10:00:00+00,true,2025-05-02 10:00:00+00,,
+13,nuevo.email@example.com,nuevo.email@example.com,Por Telefono,+5491155550001,,,web,form,nuevo,,,,2025-05-03 10:00:00+00,true,2025-05-03 10:00:00+00,,
+14,,,Solo Telefono,+5491155550002,,,web,form,nuevo,,,,2025-05-04 10:00:00+00,true,2025-05-04 10:00:00+00,,
+15,sin.estado@example.com,sin.estado@example.com,Sin Estado,,,,web,form,nuevo,,,,2025-05-05 10:00:00+00,,,,

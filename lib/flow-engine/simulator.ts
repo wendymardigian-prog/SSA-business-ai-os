@@ -60,6 +60,8 @@ export interface SimulationConfig {
     tags?: string[];
     customFields?: Record<string, string>;
     isSubscribed?: boolean;
+    /** Suscripcion a emails: el estado de email del contacto de prueba. Sin dato, suscripto. */
+    emailStatus?: string;
   };
   /**
    * Valores de prueba por ruta de campo (`answer.facturacion`, `booking.status`,
@@ -265,6 +267,8 @@ export function simulateFlow(
             fieldValue = "instagram"; // simulated
           } else if (c.field === "is_subscribed") {
             fieldValue = String(config.mockContact?.isSubscribed ?? true);
+          } else if (c.field === "email_status") {
+            fieldValue = config.mockContact?.emailStatus ?? "subscribed";
           } else if (c.field.startsWith("tag:")) {
             const tagName = c.field.replace("tag:", "");
             fieldValue = String(
@@ -314,6 +318,7 @@ export function simulateFlow(
           if (field === "contact.tags") return config.mockContact?.tags ?? [];
           if (field === "platform") return "instagram"; // simulated
           if (field === "is_subscribed") return String(config.mockContact?.isSubscribed ?? true);
+          if (field === "email_status") return config.mockContact?.emailStatus ?? "subscribed";
           if (field.startsWith("tag:")) return String(config.mockContact?.tags?.includes(field.slice(4)) ?? false);
           if (field.startsWith("variable:")) return variables[field.slice(9)];
           // Un campo personalizado, o lo que la prueba no sabe: sin dato (vacio).

@@ -16,6 +16,11 @@ import type { Database } from "@/lib/types/database";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { sendViaResend } from "./resend-client";
 import { bareAddress, canReply, replyHeaders, textToHtml } from "./reply";
+import { canSendEmailTo, type EmailCategory, type EmailSkipReason } from "./subscription";
+import { footerBrand, logEmail, recordSkippedEmail } from "./send";
+import { protectUnsubscribeVariable, withUnsubscribe } from "./unsubscribe";
+import type { ResendSenderConfig } from "./senders";
+import { appUrl } from "@/lib/app-url";
 
 type Db = SupabaseClient<Database>;
 
@@ -28,6 +33,8 @@ export interface EmailSendResult {
   error?: string;
   /** Reintentar tiene sentido. */
   retryable?: boolean;
+  /** La puerta de suscripcion lo salteo (no es un fallo del proveedor). */
+  skipped?: EmailSkipReason;
 }
 
 /** El ultimo correo entrante del hilo: de ahi salen las cabeceras. */
@@ -78,6 +85,20 @@ export async function sendEmailReply(
      * desde la 00143 `read_secret` solo la ejecuta el servidor.
      */
     secrets?: Db;
+    /**
+     * Suscripcion a emails (E2): marketing (flujos, secuencias) no sale a una
+     * direccion dada de baja o con queja; nada sale a una que rebota. La bandeja y
+     * el agente mandan `transactional` (una persona respondiendo).
+     */
+    category: EmailCategory;
+    /** El contacto de la conversacion, para el historial y el token del pie. */
+    contactId?: string | null;
+    /**
+     * Anotar el envio en `email_log` (los flujos y las secuencias): asi queda en el
+     * historial del contacto y el webhook de Resend ubica un rebote por su id. La
+     * bandeja no lo pasa: su respuesta ya queda en el hilo.
+     */
+    log?: { kind: string; relatedEntityType?: string; relatedEntityId?: string | null };
   },
 ): Promise<EmailSendResult> {
   const last = await lastInboundEmail(supabase, params.conversationId);
@@ -91,6 +112,31 @@ export async function sendEmailReply(
   });
   if (!check.ok) {
     return { ok: false, messageId: null, providerId: null, error: check.error, retryable: false };
+  }
+
+  // La suscripcion: mira la direccion en todos los contactos del workspace, en el momento de enviar. Con el cliente
+  // de servicio (la funcion solo la ejecuta el servidor; la bandeja manda con el del usuario).
+  const service = params.secrets ?? supabase;
+  const gate = await canSendEmailTo(service, {
+    workspaceId: params.workspaceId,
+    address: to as string,
+    category: params.category,
+    contactId: params.contactId ?? null,
+  });
+  const logBase = params.log
+    ? {
+        workspaceId: params.workspaceId,
+        to: to as string,
+        subject: params.subject?.trim() || (last ? replyHeaders(last).subject : "(sin asunto)"),
+        kind: params.log.kind,
+        relatedEntityType: params.log.relatedEntityType,
+        relatedEntityId: params.log.relatedEntityId ?? undefined,
+        contactId: params.contactId ?? null,
+      }
+    : null;
+  if (!gate.ok) {
+    if (logBase) await recordSkippedEmail(service as never, logBase, gate.reason, gate.message);
+    return { ok: false, messageId: null, providerId: null, error: gate.message, retryable: false, skipped: gate.reason };
   }
 
   if (!params.channel.email_address) {
@@ -118,20 +164,46 @@ export async function sendEmailReply(
     ? replyHeaders(last)
     : { subject: params.subject?.trim() || "(sin asunto)", inReplyTo: null, references: null };
 
+  // El link de baja (E3): un texto con {{unsubscribe_url}} lo recibe resuelto; marketing suma el pie y las cabeceras.
+  // La variable se protege con el marcador (no se resuelve aca): asi `withUnsubscribe` sabe que el texto ya trae el link
+  // y no duplica el pie.
+  const base = appUrl();
+  const body = textToHtml(protectUnsubscribeVariable(params.text));
+  const extras = withUnsubscribe({
+    html: body,
+    category: params.category,
+    token: gate.token,
+    appUrl: base,
+    ...(params.category === "marketing" && gate.token ? await footerBrand(service as never, params.workspaceId) : { brandName: "" }),
+  });
+
+  // El remitente (E8): un email de marketing sale del remitente de marketing si hay uno, con "Responder a" la direccion
+  // del canal (asi la respuesta de la persona vuelve a este hilo). Si no, de la direccion del canal, como siempre.
+  const sender = params.category === "marketing" ? await marketingSender(service, params.workspaceId) : null;
+  const fromAddress = sender && sender.email !== params.channel.email_address.toLowerCase() ? sender : null;
+
   const result = await sendViaResend(
     apiKey,
     {
-      from: params.channel.email_address,
+      from: fromAddress ? (fromAddress.name ? `${fromAddress.name} <${fromAddress.email}>` : fromAddress.email) : params.channel.email_address,
+      ...(fromAddress ? { reply_to: params.channel.email_address } : {}),
       to: to as string,
       subject: params.subject?.trim() || headers.subject,
-      html: textToHtml(params.text),
+      html: extras.html,
       headers: {
         ...(headers.inReplyTo ? { "In-Reply-To": headers.inReplyTo } : {}),
         ...(headers.references ? { References: headers.references } : {}),
+        ...extras.headers,
       },
     },
     params.fetchImpl,
   );
+
+  if (logBase) {
+    await logEmail(service as never, { ...logBase, html: "" }, result.ok
+      ? { status: "sent", provider_message_id: result.id, attempts: result.attempts }
+      : { status: "failed", attempts: result.attempts, last_error: result.error });
+  }
 
   if (!result.ok) {
     return {
@@ -159,6 +231,24 @@ export async function sendEmailReply(
     messageId: result.id,
     providerId: result.id,
   };
+}
+
+/** El remitente de marketing configurado en Resend (E8), o null. Leerlo nunca frena un envio. */
+async function marketingSender(service: Db, workspaceId: string): Promise<{ email: string; name: string | null } | null> {
+  try {
+    const { data } = await service
+      .from("integration_configs")
+      .select("config")
+      .eq("workspace_id", workspaceId)
+      .eq("type", "email_provider")
+      .eq("provider", "resend")
+      .maybeSingle();
+    const config = ((data as { config?: unknown } | null)?.config ?? {}) as ResendSenderConfig;
+    const email = config.marketing_from_email?.trim().toLowerCase();
+    return email ? { email, name: config.from_name?.trim() || null } : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

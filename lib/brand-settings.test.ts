@@ -67,3 +67,16 @@ describe("la ruta del logo", () => {
     expect(isOwnLogoPath("ws-1", null)).toBe(false);
   });
 });
+
+describe("parseBrandSettings: la direccion del pie de los emails (suscripcion a emails)", () => {
+  it("se guarda limpia; vacia = NULL; sin mandarla, no se toca", () => {
+    expect(parseBrandSettings({ footerAddress: "  Av. Siempre Viva 742  " })).toMatchObject({ ok: true, values: { email_footer_address: "Av. Siempre Viva 742" } });
+    expect(parseBrandSettings({ footerAddress: "  " })).toMatchObject({ ok: true, values: { email_footer_address: null } });
+    const without = parseBrandSettings({ name: "X" });
+    expect(without.ok && "email_footer_address" in without.values).toBe(false);
+  });
+
+  it("con el mismo tope que el CHECK de la base", () => {
+    expect(parseBrandSettings({ footerAddress: "x".repeat(301) })).toMatchObject({ ok: false });
+  });
+});

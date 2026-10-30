@@ -93,6 +93,9 @@ export const CONDITION_CASES: ConditionCase[] = (() => {
     { name: "platform: distinto", conditions: [{ field: "platform", operator: "equals", value: "instagram" }], out: F },
     { name: "is_subscribed true", conditions: [{ field: "is_subscribed", operator: "equals", value: "true" }], out: T },
     { name: "is_subscribed false", conditions: [{ field: "is_subscribed", operator: "equals", value: "true" }], contact: contactWith({ is_subscribed: false }), out: F },
+    { name: "email_status: suscripto por defecto", conditions: [{ field: "email_status", operator: "equals", value: "subscribed" }], out: T },
+    { name: "email_status: dado de baja", conditions: [{ field: "email_status", operator: "equals", value: "unsubscribed" }], contact: contactWith({ email_status: "unsubscribed" }), out: T },
+    { name: "email_status: rebota no es suscripto", conditions: [{ field: "email_status", operator: "equals", value: "subscribed" }], contact: contactWith({ email_status: "bounced" }), out: F },
     // Secuencias
     { name: "sequence: inscripta", conditions: [{ field: "sequence:s1", operator: "equals", value: "true" }], enrollments: [{ id: "e" }], out: T },
     { name: "sequence: no inscripta", conditions: [{ field: "sequence:s1", operator: "equals", value: "true" }], enrollments: [], out: F },

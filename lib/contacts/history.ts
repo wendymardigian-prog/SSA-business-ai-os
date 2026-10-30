@@ -29,7 +29,7 @@
  * Puro: sin base ni React.
  */
 
-import type { AuditAction, Json } from "@/lib/types/database";
+import type { AuditAction, EmailLogStatus, Json } from "@/lib/types/database";
 import { STATUS_ROLE_LABELS, statusName, type ContactStatusSettings, type StatusRole } from "./statuses";
 
 export interface AuditHistoryItem {
@@ -68,7 +68,7 @@ export interface EmailHistoryItem {
   at: string;
   to: string;
   subject: string;
-  status: "sent" | "failed" | "skipped_not_configured";
+  status: EmailLogStatus;
   /** El flow que lo mando, si se sabe. */
   flowName: string | null;
 }
@@ -142,9 +142,23 @@ function pathLabelOf(metadata: Json | null): string | null {
   return typeof label === "string" && label.trim() ? label.trim() : null;
 }
 
+const EMAIL_LOG_STATUSES: readonly EmailLogStatus[] = [
+  "sent", "failed", "skipped_not_configured",
+  "skipped_unsubscribed", "skipped_bounced", "skipped_complained", "skipped_do_not_contact", "skipped_unverifiable",
+];
+
 function isEmailStatus(value: string): value is EmailHistoryItem["status"] {
-  return value === "sent" || value === "failed" || value === "skipped_not_configured";
+  return (EMAIL_LOG_STATUSES as readonly string[]).includes(value);
 }
+
+/** Por que la puerta de envio salteo un email (00272), en palabras. */
+const EMAIL_SKIP_REASON_TEXT: Partial<Record<EmailLogStatus, string>> = {
+  skipped_unsubscribed: "se dio de baja de los emails",
+  skipped_bounced: "su email rebota",
+  skipped_complained: "marcó un email como spam",
+  skipped_do_not_contact: "está marcado «no contactar»",
+  skipped_unverifiable: "no se pudo comprobar si se dio de baja",
+};
 
 export function buildContactHistory(input: BuildHistoryInput): HistoryItem[] {
   const items: HistoryItem[] = [];
@@ -272,6 +286,8 @@ export function describeHistoryItem(item: Exclude<HistoryItem, AuditHistoryItem>
       if (item.status === "skipped_not_configured") {
         return { actor: "El sistema", text: `no mandó el email «${item.subject}» a ${item.to}: el correo no está conectado${via}` };
       }
+      const skipText = EMAIL_SKIP_REASON_TEXT[item.status];
+      if (skipText) return { actor: "El sistema", text: `no mandó el email «${item.subject}» a ${item.to}: ${skipText}${via}` };
       return { actor: "El sistema", text: `no pudo mandar el email «${item.subject}» a ${item.to}${via}` };
     }
     case "status": {

@@ -44,7 +44,27 @@ const PAUSE_REASONS: Record<string, string> = {
   sequence_paused: "se pausó la secuencia",
   no_conversation: "no hay una conversación abierta",
   collision: "estaba en más de una secuencia",
+  // Suscripcion a emails (00271): se pausa en el momento de la baja y no se reanuda sola.
+  email_unsubscribed: "se dio de baja de los emails",
+  email_bounced: "el email rebota",
+  email_complained: "marcó el email como spam",
 };
+
+/** Los motivos de pausa por la suscripcion a emails (para distinguirlos de "no contactar" y filtrar). */
+export const EMAIL_PAUSE_REASON_KEYS = ["email_unsubscribed", "email_bounced", "email_complained"] as const;
+
+export function isEmailPause(reason: string | null | undefined): boolean {
+  return !!reason && (EMAIL_PAUSE_REASON_KEYS as readonly string[]).includes(reason);
+}
+
+/** El grupo de una pausa, para el filtro de la pantalla de la secuencia. */
+export type PauseGroup = "email" | "opt_out" | "other";
+
+export function pauseGroup(reason: string | null | undefined): PauseGroup {
+  if (isEmailPause(reason)) return "email";
+  if (reason === "opt_out") return "opt_out";
+  return "other";
+}
 
 export function pauseReasonLabel(reason: string | null | undefined): string | null {
   if (!reason) return null;

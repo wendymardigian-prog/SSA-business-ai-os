@@ -6,6 +6,7 @@ import { RichTextEditor } from "@/components/editor/rich-text-editor";
 import { InsertAssetButton } from "@/components/response-assets/insert-asset-button";
 import { VariableChips } from "./variable-chips";
 import { EmailAttachmentsField } from "./EmailAttachmentsField";
+import { EmailCategoryField } from "@/components/automations/email-category-field";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -57,6 +58,9 @@ export function SendEmailPanel({
         {/* @plantilla-sin(webhooks): {mode === "contact" && <p className="mt-1.5 text-xs text-muted-foreground">Necesita un contacto: en un flujo sin contacto, el paso se saltea.</p>} */}
       </div>
 
+      {/* Suscripcion a emails: en una automatizacion armada a mano, marketing por defecto (no le llega a quien se dio de baja). */}
+      <EmailCategoryField id="em-category" value={data.category} fallback="marketing" onChange={(category) => set({ category })} labelClassName={labelClass} selectClassName={inputClass} />
+
       <div>
         <div className="flex items-center justify-between">
           <label htmlFor="em-subject" className={labelClass}>Asunto</label>
@@ -72,7 +76,9 @@ export function SendEmailPanel({
           id="em-body"
           label="Mensaje del email"
           value={data.body ?? ""}
-          variables={availableVariables}
+          // {{unsubscribe_url}}: el link de baja de la persona, por si se lo quiere en otro lugar del texto (sin esto,
+          // un email de marketing lo lleva igual en el pie).
+          variables={[...(availableVariables ?? []), "unsubscribe_url"]}
           onChange={(body) => set({ body })}
           extraToolbar={(api) => <InsertAssetButton onInsertText={api.insertText} />}
         />

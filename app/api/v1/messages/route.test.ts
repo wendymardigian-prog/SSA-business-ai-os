@@ -43,6 +43,18 @@ vi.mock("@/lib/auth/guards", () => ({
   }),
 }));
 
+// Suscripcion a emails (E2): la respuesta por email de la bandeja. Se simulan el envio y el estado de la direccion.
+const emailMocks = vi.hoisted(() => ({
+  sendEmailReply: vi.fn(),
+  lastInboundEmail: vi.fn(async () => ({ subject: "Consulta", messageId: "<m@x>", references: null, from: "Ana <ana@x.test>" })),
+  addressEmailStatus: vi.fn(async () => "subscribed" as string | null),
+}));
+vi.mock("@/lib/email/send-reply", () => ({ sendEmailReply: emailMocks.sendEmailReply, lastInboundEmail: emailMocks.lastInboundEmail }));
+vi.mock("@/lib/email/subscription", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/email/subscription")>()),
+  addressEmailStatus: emailMocks.addressEmailStatus,
+}));
+
 import { POST } from "./route";
 
 const CONV = "cv-1";
@@ -499,5 +511,62 @@ describe("POST /api/v1/messages: permiso por cuenta (00249)", () => {
     const response = await call({ conversationId: CONV, media: { kind: "image", storagePath: `${WS}/${CONV}/x.jpg` } });
     expect(response.status).toBe(403);
     expect(sendChannelMessage).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("POST /api/v1/messages: respuesta por email y la suscripcion (E2)", () => {
+  const mailConversation = () =>
+    conversation({
+      channel_id: "ch-mail",
+      channels: { id: "ch-mail", workspace_id: WS, provider: "resend", platform: "email", late_account_id: null, evolution_instance: null, email_address: "hola@negocio.test", is_active: true },
+    });
+
+  beforeEach(() => {
+    emailMocks.sendEmailReply.mockResolvedValue({ ok: true, messageId: "re_1", providerId: "re_1" });
+    emailMocks.addressEmailStatus.mockResolvedValue("subscribed");
+  });
+
+  it("una respuesta a mano es transaccional y lleva el contacto de la conversacion", async () => {
+    const { client } = fakeClient({ conversation: mailConversation() });
+    createClient.mockResolvedValue(client);
+    const response = await call({ conversationId: CONV, text: "Hola Ana" });
+    expect(response.status).toBe(201);
+    expect(emailMocks.sendEmailReply).toHaveBeenCalledWith(client, expect.objectContaining({ category: "transactional", contactId: "c-1", secrets: SERVICE }));
+  });
+
+  for (const status of ["unsubscribed", "complained"]) {
+    it(`a quien esta '${status}' se pregunta antes (409) y no se manda; confirmando, sale`, async () => {
+      emailMocks.addressEmailStatus.mockResolvedValue(status);
+      const { client } = fakeClient({ conversation: mailConversation() });
+      createClient.mockResolvedValue(client);
+
+      const first = await call({ conversationId: CONV, text: "Hola" });
+      expect(first.status).toBe(409);
+      expect(await first.json()).toMatchObject({ requiresConfirmation: true, kind: "email_opt_out" });
+      expect(emailMocks.sendEmailReply).not.toHaveBeenCalled();
+      expect(emailMocks.addressEmailStatus).toHaveBeenCalledWith(SERVICE, WS, "ana@x.test");
+
+      const second = await call({ conversationId: CONV, text: "Hola", confirmedEmailOptOut: true });
+      expect(second.status).toBe(201);
+      expect(emailMocks.sendEmailReply).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it("una direccion que rebota: la puerta la frena y la bandeja muestra el motivo (sin mandar)", async () => {
+    emailMocks.addressEmailStatus.mockResolvedValue("bounced");
+    emailMocks.sendEmailReply.mockResolvedValue({ ok: false, messageId: null, providerId: null, error: "No se mandó: el email de esta persona rebota.", retryable: false, skipped: "bounced" });
+    const { client } = fakeClient({ conversation: mailConversation() });
+    createClient.mockResolvedValue(client);
+    const response = await call({ conversationId: CONV, text: "Hola" });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "No se mandó: el email de esta persona rebota." });
+  });
+
+  it("WhatsApp o Instagram no preguntan por la suscripcion a emails", async () => {
+    const { client } = fakeClient({ conversation: conversation() });
+    createClient.mockResolvedValue(client);
+    await call({ conversationId: CONV, text: "hola" });
+    expect(emailMocks.addressEmailStatus).not.toHaveBeenCalled();
   });
 });

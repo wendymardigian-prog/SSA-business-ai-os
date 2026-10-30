@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Lock, MoreHorizontal } from "lucide-react";
 import { InsertAssetButton } from "@/components/response-assets/insert-asset-button";
+import { EmailCategoryField } from "./email-category-field";
 import { PopoverMenu, type MenuItem } from "@/components/automations/popover-menu";
 import { useStepEditor } from "@/components/automations/step-tree-context";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
@@ -143,6 +144,8 @@ function EmailEditor({ name, step, patch, disabled }: EditorProps) {
         )}
       </div>
       {to === "users" && <MemberPicker name={`${name}-users`} value={Array.isArray(d.userIds) ? (d.userIds as string[]) : []} onChange={(userIds) => patch({ userIds })} disabled={disabled} />}
+      {/* Estas pantallas (agenda, formularios, cobranza) mandan lo que la persona pidio: transaccional por defecto. */}
+      <EmailCategoryField id={`${name}-category`} value={d.category} fallback="transactional" disabled={disabled} onChange={(category) => patch({ category })} selectClassName={inputClass} />
       <div className="space-y-1">
         <label htmlFor={`${name}-subject`} className="text-xs text-muted-foreground">
           Asunto
@@ -163,7 +166,8 @@ function EmailEditor({ name, step, patch, disabled }: EditorProps) {
           label="Texto del email"
           value={body}
           disabled={disabled}
-          variables={variableKeys}
+          // {{unsubscribe_url}}: el link de baja de la persona (un email de marketing lo lleva igual en el pie).
+          variables={[...variableKeys, "unsubscribe_url"]}
           onChange={(next) => patch({ body: next })}
           extraToolbar={(api) => <InsertAssetButton onInsertText={api.insertText} disabled={disabled} />}
         />

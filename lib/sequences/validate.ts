@@ -68,7 +68,7 @@ export function validateSequenceSteps(raw: unknown): Validated<SequenceStep[]> {
           error: `El mensaje del paso ${position} es muy largo (máximo ${MAX_STEP_CONTENT} caracteres)`,
         };
       }
-      steps.push({ type: "message", content });
+      steps.push(withEmailCategory({ type: "message", content }, step));
       continue;
     }
 
@@ -111,7 +111,7 @@ export function validateSequenceSteps(raw: unknown): Validated<SequenceStep[]> {
         }
         clean.contextMessages = n;
       }
-      steps.push(clean);
+      steps.push(withEmailCategory(clean, step));
       continue;
     }
 
@@ -133,7 +133,7 @@ export function validateSequenceSteps(raw: unknown): Validated<SequenceStep[]> {
         }
         clean.caption = caption;
       }
-      steps.push(clean);
+      steps.push(withEmailCategory(clean, step));
       continue;
     }
 
@@ -141,6 +141,15 @@ export function validateSequenceSteps(raw: unknown): Validated<SequenceStep[]> {
   }
 
   return { ok: true, value: steps };
+}
+
+/**
+ * "Tipo de email" (suscripcion a emails): solo se guarda si vino con un valor valido. Sin guardar = marketing. Solo
+ * cuenta cuando la inscripcion va por un canal de email.
+ */
+function withEmailCategory(clean: SequenceStep, raw: Partial<SequenceStep>): SequenceStep {
+  if (raw.emailCategory === "marketing" || raw.emailCategory === "transactional") clean.emailCategory = raw.emailCategory;
+  return clean;
 }
 
 /**

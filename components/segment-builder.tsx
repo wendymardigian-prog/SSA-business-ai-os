@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { EMAIL_STATUS_LABELS, EMAIL_STATUSES } from "@/lib/email/subscription";
 import { Plus, X, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -28,6 +29,7 @@ export type FilterField =
   | "custom_field"
   | "platform"
   | "is_subscribed"
+  | "email_status"
   | "last_interaction";
 
 export interface FilterRule {
@@ -55,7 +57,7 @@ const fieldConfig: Record<
   {
     label: string;
     operators: { value: FilterOperator; label: string }[];
-    valueType: "tag" | "custom_field" | "platform" | "boolean" | "date" | "text";
+    valueType: "tag" | "custom_field" | "platform" | "boolean" | "date" | "text" | "email_status";
   }
 > = {
   has_tag: {
@@ -88,9 +90,18 @@ const fieldConfig: Record<
     valueType: "platform",
   },
   is_subscribed: {
-    label: "Subscribed",
+    // Solo las difusiones por chat. La suscripcion a emails es "Estado de email".
+    label: "Recibe difusiones por chat",
     operators: [{ value: "equals", label: "is" }],
     valueType: "boolean",
+  },
+  email_status: {
+    label: "Estado de email",
+    operators: [
+      { value: "equals", label: "is" },
+      { value: "not_equals", label: "is not" },
+    ],
+    valueType: "email_status",
   },
   last_interaction: {
     label: "Last interaction",
@@ -256,6 +267,21 @@ function FilterRuleRow({
             {PLATFORMS.map((p) => (
               <option key={p} value={p}>
                 {PLATFORM_LABELS[p]}
+              </option>
+            ))}
+          </select>
+        );
+      case "email_status":
+        return (
+          <select
+            value={rule.value}
+            onChange={(e) => onChange({ ...rule, value: e.target.value })}
+            className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">Elegí...</option>
+            {EMAIL_STATUSES.map((st) => (
+              <option key={st} value={st}>
+                {EMAIL_STATUS_LABELS[st]}
               </option>
             ))}
           </select>

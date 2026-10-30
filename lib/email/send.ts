@@ -23,6 +23,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { sendViaResend } from "@/lib/email/resend-client";
 import { getProvider } from "@/lib/integrations/providers";
+import {
+  canSendEmailTo,
+  EMAIL_SKIP_LOG_STATUS,
+  type EmailCategory,
+  type EmailSkipReason,
+} from "@/lib/email/subscription";
+import type { EmailLogStatus } from "@/lib/types/database";
+import { withUnsubscribe } from "@/lib/email/unsubscribe";
+import { senderFor, type ResendSenderConfig } from "@/lib/email/senders";
+import { resolveBrand } from "@/lib/brand";
+import { appUrl } from "@/lib/app-url";
 
 export type EmailKind = "team_invite" | "channel_disconnected" | (string & {});
 
@@ -44,6 +55,16 @@ export interface SendEmailParams {
   createdBy?: string | null;
   /** Adjuntos en base64 (por ejemplo, un PDF). Omitido = sin adjuntos, como siempre. */
   attachments?: Array<{ filename: string; content: string }>;
+  /**
+   * Suscripcion a emails (E2). Todo email a un CONTACTO lleva su categoria y pasa
+   * por `canSendEmailTo`: marketing no sale a una direccion dada de baja o con
+   * queja; nada sale a una que rebota. Omitido = email al equipo o del sistema
+   * (invitaciones, avisos, pruebas del editor), que no es de ningun contacto: no
+   * se mira la suscripcion. `subscription-gate.test.ts` lista esos casos.
+   */
+  category?: EmailCategory;
+  /** Ademas, frena si algun contacto vivo con esa direccion esta en "no contactar". */
+  honorDoNotContact?: boolean;
   /** Inyeccion para tests. En produccion no se pasa. */
   deps?: {
     supabase?: SupabaseClient;
@@ -54,13 +75,10 @@ export interface SendEmailParams {
 export type SendEmailResult =
   | { ok: true; id: string | null }
   | { ok: false; reason: "not_configured"; error: string }
-  | { ok: false; reason: "failed"; error: string };
+  | { ok: false; reason: "failed"; error: string }
+  /** La puerta de suscripcion lo salteo: queda en email_log con el motivo. No es un fallo. */
+  | { ok: false; reason: "skipped"; skip: EmailSkipReason; error: string };
 
-/** Config del remitente guardada en integration_configs.config. */
-interface ResendConfig {
-  from_email?: string;
-  from_name?: string;
-}
 
 async function serviceClient(): Promise<SupabaseClient> {
   // Import diferido: lib/supabase/server arrastra next/headers, que no tiene
@@ -69,12 +87,15 @@ async function serviceClient(): Promise<SupabaseClient> {
   return (await createServiceClient()) as unknown as SupabaseClient;
 }
 
-/** Deja constancia del intento. Un fallo aca no cambia el resultado del envio. */
-async function logEmail(
+/**
+ * Deja constancia del intento. Un fallo aca no cambia el resultado del envio.
+ * Exportado para la respuesta por email (`send-reply.ts`), que anota en el mismo lugar.
+ */
+export async function logEmail(
   supabase: SupabaseClient,
   params: SendEmailParams,
   row: {
-    status: "sent" | "failed" | "skipped_not_configured";
+    status: EmailLogStatus;
     provider_message_id?: string | null;
     attempts?: number;
     last_error?: string | null;
@@ -100,10 +121,40 @@ async function logEmail(
   }
 }
 
+/**
+ * Deja anotado un email que no salio porque la persona no lo puede recibir (la
+ * puerta de suscripcion, o "no contactar" en un paso que lo respeta). Nunca lanza.
+ */
+export async function recordSkippedEmail(
+  supabase: SupabaseClient,
+  params: Omit<SendEmailParams, "html" | "deps">,
+  skip: EmailSkipReason,
+  message: string,
+): Promise<void> {
+  await logEmail(supabase, params as SendEmailParams, { status: EMAIL_SKIP_LOG_STATUS[skip] as EmailLogStatus, last_error: message });
+}
+
 export async function sendTransactionalEmail(
   params: SendEmailParams,
 ): Promise<SendEmailResult> {
   const supabase = params.deps?.supabase ?? (await serviceClient());
+
+  // 0. La suscripcion: un email a un contacto, solo si la direccion lo puede recibir.
+  let unsubscribeToken: string | null = null;
+  if (params.category) {
+    const gate = await canSendEmailTo(supabase, {
+      workspaceId: params.workspaceId,
+      address: params.to,
+      category: params.category,
+      contactId: params.contactId ?? null,
+      honorDoNotContact: params.honorDoNotContact === true,
+    });
+    if (!gate.ok) {
+      await recordSkippedEmail(supabase, params, gate.reason, gate.message);
+      return { ok: false, reason: "skipped", skip: gate.reason, error: gate.message };
+    }
+    unsubscribeToken = gate.token;
+  }
 
   // 1. Esta conectado Resend?
   const { data: integration, error: integrationError } = await supabase
@@ -127,8 +178,9 @@ export async function sendTransactionalEmail(
     return notConfigured("Resend no esta conectado");
   }
 
-  const config = (integration.config ?? {}) as ResendConfig;
-  const fromEmail = config.from_email?.trim();
+  // El remitente segun la categoria (E8): marketing sale del suyo si esta configurado; si no, del de importantes.
+  const sender = senderFor((integration.config ?? {}) as ResendSenderConfig, params.category);
+  const fromEmail = sender.email;
   if (!fromEmail) {
     return notConfigured("Falta configurar el remitente de Resend");
   }
@@ -158,9 +210,19 @@ export async function sendTransactionalEmail(
   }
 
   // 3. Enviar.
-  const from = config.from_name?.trim()
-    ? `${config.from_name.trim()} <${fromEmail}>`
-    : fromEmail;
+  const from = sender.name ? `${sender.name} <${fromEmail}>` : fromEmail;
+
+  // El link de baja (E3): marketing lleva el pie y las cabeceras; un transaccional, nada (solo se resuelve el link si
+  // alguien lo puso a mano). Sin categoria (un email al equipo) el cuerpo sale tal cual.
+  const extras = params.category
+    ? withUnsubscribe({
+        html: params.html,
+        category: params.category,
+        token: unsubscribeToken,
+        appUrl: appUrl(),
+        ...(params.category === "marketing" && unsubscribeToken ? await footerBrand(supabase, params.workspaceId) : { brandName: "" }),
+      })
+    : { html: params.html, headers: {} };
 
   const result = await sendViaResend(
     apiKey,
@@ -168,8 +230,10 @@ export async function sendTransactionalEmail(
       from,
       to: params.to,
       subject: params.subject,
-      html: params.html,
+      html: extras.html,
+      ...(Object.keys(extras.headers).length > 0 ? { headers: extras.headers } : {}),
       ...(params.attachments && params.attachments.length > 0 ? { attachments: params.attachments } : {}),
+      ...(sender.replyTo ? { reply_to: sender.replyTo } : {}),
     },
     params.deps?.fetchImpl,
   );
@@ -190,6 +254,24 @@ export async function sendTransactionalEmail(
     last_error: result.error,
   });
   return { ok: false, reason: "failed", error: result.error };
+}
+
+/**
+ * La marca y la direccion postal del pie de un email de marketing. Leer el workspace nunca frena un envio: sin dato,
+ * la marca de la instalacion y sin direccion.
+ */
+export async function footerBrand(supabase: SupabaseClient, workspaceId: string): Promise<{ brandName: string; postalAddress: string | null }> {
+  try {
+    const { data } = await supabase
+      .from("workspaces")
+      .select("brand_name, brand_logo_path, brand_color, email_footer_address")
+      .eq("id", workspaceId)
+      .maybeSingle();
+    const row = data as { brand_name?: string | null; brand_logo_path?: string | null; brand_color?: string | null; email_footer_address?: string | null } | null;
+    return { brandName: resolveBrand(row).name, postalAddress: row?.email_footer_address ?? null };
+  } catch {
+    return { brandName: resolveBrand(null).name, postalAddress: null };
+  }
 }
 
 /** True si el workspace tiene Resend conectado. Para pintar estados en la UI. */
