@@ -1629,7 +1629,7 @@ Cada persona del equipo tiene su página (`/dashboard/cuenta`, pestañas Perfil 
 
 ## Migraciones
 
-`00273` (tabla y bucket) y `00274` (preferencias, `team_alerts_settings`, `workspace_member_profiles` con la foto —la definición vieja completa en su cabecera— y la función que encola) son aditivas y van **ANTES** del deploy; `00275` (el trigger) va **DESPUÉS**. **Escritas y SIN aplicar todavía.** **La próxima libre es la `00276`** (confirmar con `list_migrations` y las ramas locales).
+`00273` (tabla y bucket) y `00274` (preferencias, `team_alerts_settings`, `workspace_member_profiles` con la foto —la definición vieja completa en su cabecera— y la función que encola) son aditivas y van **ANTES** del deploy; `00275` (el trigger) va **DESPUÉS**. La `00273` y la `00274` están **aplicadas y registradas** (30/10/2026, versiones `20261030183536` y `20261030183537`), con `verify-account` y `verify-workspace-isolation --despues-de-00143` en verde; la `00275` va **después del deploy**. **La próxima libre es la `00276`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-account.mjs                    # RLS, bucket, preferencias, team_alerts_settings, workspace_member_profiles

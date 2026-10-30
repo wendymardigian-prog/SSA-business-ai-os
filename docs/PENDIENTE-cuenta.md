@@ -4,8 +4,8 @@ Lo que quedó afuera de esta tanda, a propósito, y lo que falta hacer a mano.
 
 ## Para que funcione en producción
 
-1. Aplicar `00273` y `00274` (aditivas) **antes** de desplegar, y `00275` **después** del deploy. Registrar cada una en `supabase_migrations.schema_migrations`.
-2. `node scripts/verify-account.mjs` (y `--despues-de-00275`).
+1. ~~`00273` y `00274`~~: **aplicadas y registradas** el 30/10/2026, con `verify-account` en verde.
+2. **Después del deploy**: aplicar y registrar la `00275`, y correr `node scripts/verify-account.mjs --despues-de-00275`.
 3. En Supabase Auth: SMTP propio con Resend y la plantilla "Reset password" en español (texto en `docs/cuenta-y-notificaciones.md`).
 4. Ajustes → General → "Avisos al equipo por WhatsApp": elegir el WhatsApp (producción hoy no tiene WhatsApp conectado, así que la columna queda deshabilitada hasta que se conecte uno).
 
