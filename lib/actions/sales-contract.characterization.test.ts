@@ -2,7 +2,7 @@
  * Caracterizacion de `emailContractLink` (camino F del inventario de envios),
  * escrita ANTES de la suscripcion a emails: el link del contrato se manda al
  * email del contacto por el envio transaccional, sin mirar "no contactar".
- * La decision de Wendy (29/10/2026) es mantenerlo: solo un rebote lo frena.
+ * La decision aprobada el 29/10/2026 es mantenerlo: solo un rebote lo frena.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

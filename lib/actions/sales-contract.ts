@@ -212,7 +212,7 @@ export async function emailContractLink(input: { saleId: string; formId: string 
     contactId: built.contactId,
     createdBy: ctx.user.id,
     // Transaccional: la persona pidio el contrato. Solo lo frena un email que rebota (no "no contactar" ni la baja de
-    // marketing; decision de Wendy, 29/10/2026).
+    // marketing; decision aprobada el 29/10/2026).
     category: "transactional",
   });
   if (!result.ok) {

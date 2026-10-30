@@ -60,7 +60,7 @@ describe("el historial", () => {
   it("quien lo hizo, cuando no fue alguien del equipo", () => {
     expect(emailStatusActorLabel("unsubscribe_page")).toBe("La persona, desde el link de baja");
     expect(emailStatusActorLabel("one_click")).toBe("La persona, desde el link de baja");
-    expect(emailStatusActorLabel("import:wendymardigian")).toBe("La importación");
+    expect(emailStatusActorLabel("import:otro-sistema")).toBe("La importación");
     expect(emailStatusActorLabel("resend_bounce")).toBe("El sistema (aviso de Resend)");
     expect(emailStatusActorLabel("inherit")).toBe("El sistema");
   });
@@ -75,7 +75,7 @@ describe("el historial", () => {
             at: "2026-10-29T12:00:00Z",
             action: "email_status",
             changes: { email_status: { old: "subscribed", new: "unsubscribed" } },
-            metadata: { source: "import:wendymardigian", original_source: "email_footer", enrollments_paused: 2 },
+            metadata: { source: "import:otro-sistema", original_source: "email_footer", enrollments_paused: 2 },
             actorLabel: "La importación",
             flowName: null,
           },
@@ -86,7 +86,7 @@ describe("el historial", () => {
     expect(out).toContain("cambió el estado de email");
     expect(out).toContain("Estado de email");
     expect(out).toContain("Suscripto → Dado de baja");
-    expect(out).toContain("importación (wendymardigian)");
+    expect(out).toContain("importación (otro-sistema)");
     expect(out).toContain("en el otro sistema: email_footer");
     expect(out).toContain("2 secuencias pausadas");
   });

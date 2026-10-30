@@ -20,13 +20,13 @@ import { loadResendDomains, saveResendSenders } from "./resend-senders";
 
 function setup(opts: { status?: number; domains?: Array<{ name: string; status: string }>; existing?: boolean } = {}) {
   const user = fakeDb({
-    "integration_configs:select": { data: opts.existing === false ? null : { id: "cfg-1", config: { from_email: "app@wendymardigian.com", from_name: "Wendy" } } },
+    "integration_configs:select": { data: opts.existing === false ? null : { id: "cfg-1", config: { from_email: "app@negocio-demo.com", from_name: "Ana" } } },
     "integration_configs:update": { data: null },
   });
   h.ctx = { supabase: user.client, workspace: { id: `ws-${Math.random()}` }, user: { id: "u-1" } };
   h.service = fakeDb({}, { read_secret: { data: KEY } });
   const status = opts.status ?? 200;
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ data: opts.domains ?? [{ name: "mail.wendymardigian.com", status: "verified" }, { name: "wendymardigian.com", status: "pending" }] }), { status })));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ data: opts.domains ?? [{ name: "mail.negocio-demo.com", status: "verified" }, { name: "negocio-demo.com", status: "pending" }] }), { status })));
   return { user };
 }
 
@@ -46,7 +46,7 @@ describe("loadResendDomains", () => {
   it("devuelve nombres y estados; la key NO aparece en la respuesta", async () => {
     setup();
     const res = await loadResendDomains();
-    expect(res).toEqual({ ok: true, domains: [{ name: "mail.wendymardigian.com", status: "verified" }, { name: "wendymardigian.com", status: "pending" }] });
+    expect(res).toEqual({ ok: true, domains: [{ name: "mail.negocio-demo.com", status: "verified" }, { name: "negocio-demo.com", status: "pending" }] });
     expect(JSON.stringify(res)).not.toContain(KEY);
   });
 
@@ -61,15 +61,15 @@ describe("loadResendDomains", () => {
 describe("saveResendSenders", () => {
   it("un dominio verificado: guarda usuario, dominio y el from_email compuesto, y conserva lo demas de la config", async () => {
     const { user } = setup();
-    expect(await saveResendSenders({ fromLocal: "hola", fromDomain: "mail.wendymardigian.com", fromName: "Wendy" })).toEqual({ ok: true });
+    expect(await saveResendSenders({ fromLocal: "hola", fromDomain: "mail.negocio-demo.com", fromName: "Ana" })).toEqual({ ok: true });
     const saved = user.writesTo("integration_configs")[0].values as { config: Record<string, unknown> };
-    expect(saved.config).toMatchObject({ from_local: "hola", from_domain: "mail.wendymardigian.com", from_email: "hola@mail.wendymardigian.com", from_name: "Wendy" });
+    expect(saved.config).toMatchObject({ from_local: "hola", from_domain: "mail.negocio-demo.com", from_email: "hola@mail.negocio-demo.com", from_name: "Ana" });
     expect(JSON.stringify(saved)).not.toContain(KEY);
   });
 
   it("un dominio que Resend no tiene verificado no se guarda y se explica por que", async () => {
     const { user } = setup();
-    const res = await saveResendSenders({ fromLocal: "app", fromDomain: "wendymardigian.com" });
+    const res = await saveResendSenders({ fromLocal: "app", fromDomain: "negocio-demo.com" });
     expect(res).toMatchObject({ ok: false, error: expect.stringContaining("no está verificado") });
     expect(user.writesTo("integration_configs")).toEqual([]);
   });
@@ -82,6 +82,6 @@ describe("saveResendSenders", () => {
 
   it("sin Resend conectado no hay nada que guardar", async () => {
     setup({ existing: false });
-    expect(await saveResendSenders({ fromLocal: "hola", fromDomain: "mail.wendymardigian.com" })).toMatchObject({ ok: false });
+    expect(await saveResendSenders({ fromLocal: "hola", fromDomain: "mail.negocio-demo.com" })).toMatchObject({ ok: false });
   });
 });

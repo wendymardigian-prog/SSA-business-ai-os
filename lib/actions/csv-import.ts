@@ -135,7 +135,7 @@ export interface ImportBatchInput {
   vendedorId?: string | null;
   extraTags?: string[];
   /**
-   * Suscripcion a emails (E6): el origen de la importacion (`wendymardigian`). Va en el historial como
+   * Suscripcion a emails (E6): el origen de la importacion (`otro-sistema`). Va en el historial como
    * `import:<origen>` y como etiqueta `origen:<origen>`. Sin origen, el nombre del archivo.
    */
   origin?: string | null;

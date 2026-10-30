@@ -19,7 +19,7 @@ import { POST, GET } from "@/app/api/email/baja/[token]/route";
 function world(opts: { contact?: Record<string, unknown> | null; allowed?: boolean; status?: string } = {}) {
   const db = fakeDb(
     {
-      "contacts:select": { data: opts.contact === undefined ? { id: "c-1", workspace_id: "ws-1", email: "wendy@gmail.com", secondary_email: null, email_status: opts.status ?? "subscribed" } : opts.contact },
+      "contacts:select": { data: opts.contact === undefined ? { id: "c-1", workspace_id: "ws-1", email: "ana@gmail.com", secondary_email: null, email_status: opts.status ?? "subscribed" } : opts.contact },
       "workspaces:select": { data: { brand_name: "Mi Negocio" } },
     },
     {
@@ -57,8 +57,8 @@ describe("lo que ve la persona", () => {
     const db = world();
     const target = await loadUnsubscribeTarget(db.client, TOKEN);
     const view = publicView(target!);
-    expect(view).toEqual({ maskedAddress: "w***@gmail.com", status: "subscribed", brandName: "Mi Negocio", canResubscribe: true });
-    expect(JSON.stringify(view)).not.toContain("wendy");
+    expect(view).toEqual({ maskedAddress: "a***@gmail.com", status: "subscribed", brandName: "Mi Negocio", canResubscribe: true });
+    expect(JSON.stringify(view)).not.toContain("ana@");
     expect(JSON.stringify(view)).not.toContain("c-1");
   });
 
@@ -81,9 +81,9 @@ describe("dar de baja y volver", () => {
   it("el boton da de baja como la propia persona, en la direccion del contacto", async () => {
     const db = world();
     const out = await applyUnsubscribeAction(db.client, { token: TOKEN, ip: "1.2.3.4", action: "unsubscribe", source: "unsubscribe_page" });
-    expect(out).toMatchObject({ ok: true, view: { status: "unsubscribed", maskedAddress: "w***@gmail.com" } });
+    expect(out).toMatchObject({ ok: true, view: { status: "unsubscribed", maskedAddress: "a***@gmail.com" } });
     expect(db.rpcCalls.find((c) => c.name === "set_email_status")?.args).toMatchObject({
-      p_contact_id: "c-1", p_status: "unsubscribed", p_source: "unsubscribe_page", p_mode: "person", p_address: "wendy@gmail.com",
+      p_contact_id: "c-1", p_status: "unsubscribed", p_source: "unsubscribe_page", p_mode: "person", p_address: "ana@gmail.com",
     });
   });
 

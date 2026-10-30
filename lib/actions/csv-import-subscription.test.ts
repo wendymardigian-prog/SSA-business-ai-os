@@ -1,6 +1,6 @@
 /**
  * El importador con suscripcion a emails (E6), con el archivo de prueba del formato
- * real de wendymardigian.com (`scripts/fixtures/import-wendymardigian-sample.csv`).
+ * real de negocio-demo.com (`scripts/fixtures/import-otro-sistema-sample.csv`).
  *
  * Se corren las acciones REALES (la prueba en seco y la importacion) sobre una base
  * en memoria con la regla unica y `set_email_status` simuladas con la MISMA tabla de
@@ -36,7 +36,7 @@ vi.mock("@/lib/auth/guards", () => ({
 
 const { importBatch, previewBatch } = await import("./csv-import");
 
-const FILE = readFileSync(join(__dirname, "..", "..", "scripts", "fixtures", "import-wendymardigian-sample.csv"), "utf8");
+const FILE = readFileSync(join(__dirname, "..", "..", "scripts", "fixtures", "import-otro-sistema-sample.csv"), "utf8");
 const parsed = parseCsv(FILE);
 const mapping = suggestMapping(parsed.headers);
 
@@ -154,7 +154,7 @@ describe("el archivo de prueba con el formato real", () => {
 
   async function run(kind: "preview" | "import") {
     const c = consolidated();
-    const input = { rows: parsed.rows, mapping, offset: 0, origin: "wendymardigian", subscriptions: c.byEmail };
+    const input = { rows: parsed.rows, mapping, offset: 0, origin: "otro-sistema", subscriptions: c.byEmail };
     const res = kind === "preview" ? await previewBatch({ ...input, fileName: "export.csv" }) : await importBatch({ ...input, importId: "imp-1" });
     if (!res.ok) throw new Error(res.error);
     return { counters: res.counters, totals: subscriptionTotals(res.subscription as SubscriptionOutcome[]), consolidated: c.consolidatedRows };
@@ -184,7 +184,7 @@ describe("el archivo de prueba con el formato real", () => {
     const contacts = db.tables.contacts as Row[];
     const byEmail = (e: string) => contacts.find((c) => addrOf(c).includes(e))!;
     expect(byEmail("existe.baja@example.com").email_status).toBe("unsubscribed");
-    expect(byEmail("existe.suscripto@example.com")).toMatchObject({ email_status: "unsubscribed", email_status_source: "import:wendymardigian" });
+    expect(byEmail("existe.suscripto@example.com")).toMatchObject({ email_status: "unsubscribed", email_status_source: "import:otro-sistema" });
     expect(byEmail("baja.footer@example.com")).toMatchObject({ email_status: "unsubscribed", email_status_at: "2025-05-01T18:30:00.000Z" });
     expect(byEmail("rebote@example.com").email_status).toBe("bounced");
     expect(byEmail("queja@example.com").email_status).toBe("complained");
@@ -193,7 +193,7 @@ describe("el archivo de prueba con el formato real", () => {
     expect((contacts.find((c) => c.id === "existe-c") as Row).email).toBe("nuevo.email@example.com");
     // Ninguna llamada pidio otra cosa que modo sistema.
     expect(db.rpcCalls.filter((c) => c.name === "set_email_status").every((c) => c.args.p_mode === "system")).toBe(true);
-    expect(db.rpcCalls.find((c) => c.name === "set_email_status")?.args).toMatchObject({ p_source: "import:wendymardigian" });
+    expect(db.rpcCalls.find((c) => c.name === "set_email_status")?.args).toMatchObject({ p_source: "import:otro-sistema" });
   });
 
   it("la importacion no dispara automatizaciones: los eventos de 'contacto nuevo' quedan procesados", async () => {
@@ -205,6 +205,6 @@ describe("el archivo de prueba con el formato real", () => {
 
   it("el origen va como etiqueta origen:<valor>", async () => {
     await run("import");
-    expect((db.tables.tags as Row[]).map((t) => t.name)).toContain("origen:wendymardigian");
+    expect((db.tables.tags as Row[]).map((t) => t.name)).toContain("origen:otro-sistema");
   });
 });
