@@ -3,7 +3,8 @@
  *
  * El aviso va al centro de notificaciones (tabla `notifications`, F18): la
  * campana lo muestra en el momento por Realtime y queda con estado de leido.
- * Ademas se manda por email a los Owner/Admin si hay Resend conectado.
+ * El email y el WhatsApp los manda el job de entrega segun lo que eligio cada
+ * persona (Mi cuenta → Notificaciones); por defecto, Owner/Admin lo reciben por email.
  *
  * Hasta el Bloque 3 esto escribia en analytics_events, que era el sustituto
  * declarado mientras no existia la tabla. El unico cambio fue el destino: la
@@ -17,10 +18,6 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { sendTransactionalEmail } from "@/lib/email/send";
-import { channelAlertEmail } from "@/lib/email/templates";
-import { resolveBrand } from "@/lib/brand";
-import { appUrl } from "@/lib/app-url";
 import { createNotificationOnce } from "@/lib/notifications/create";
 
 export type NotificationKind =
@@ -75,49 +72,7 @@ export async function notifyWorkspaceAdmins({
     withinMinutes: 60,
   });
 
-  // Email a los admins. Best-effort en dos sentidos: si Resend no esta
-  // conectado no pasa nada (el aviso ya quedo en pantalla), y si algo falla se
-  // loguea sin cortar.
-  try {
-    const emails = await workspaceAdminEmails(supabase, workspaceId);
-    if (emails.length === 0) return;
-
-    const { data: ws } = await supabase.from("workspaces").select("name, brand_name, brand_color").eq("id", workspaceId).maybeSingle();
-    const brand = resolveBrand(ws);
-    const content = channelAlertEmail({ title, body, appUrl: appUrl(), businessName: ws?.brand_name?.trim() || ws?.name || null, brandColor: brand.colorHex });
-
-    for (const email of emails) {
-      await sendTransactionalEmail({
-        workspaceId,
-        to: email,
-        subject: content.subject,
-        html: content.html,
-        kind: kind,
-      });
-    }
-  } catch (err) {
-    console.error(
-      "[aviso] no pude mandar el aviso por email:",
-      err instanceof Error ? err.message : String(err),
-    );
-  }
-}
-
-/** Los emails de los Owner y Admin del workspace. */
-export async function workspaceAdminEmails(
-  supabase: SupabaseClient,
-  workspaceId: string,
-): Promise<string[]> {
-  const { data: members } = await supabase
-    .from("workspace_members")
-    .select("user_id")
-    .eq("workspace_id", workspaceId)
-    .in("role", ["owner", "admin"]);
-
-  const emails: string[] = [];
-  for (const member of members ?? []) {
-    const { data } = await supabase.auth.admin.getUserById(member.user_id);
-    if (data?.user?.email) emails.push(data.user.email);
-  }
-  return emails;
+  // El email (y el WhatsApp) ya no salen de aca: los manda el job de entrega a quien
+  // lo eligio en Mi cuenta → Notificaciones (`lib/notifications/deliver.ts`). Por
+  // defecto, el aviso de canal desconectado le llega por email a Owner/Admin, igual que antes.
 }

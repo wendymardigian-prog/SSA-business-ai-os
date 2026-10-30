@@ -67,12 +67,18 @@ export function teamInviteEmail(params: {
   };
 }
 
-/** Aviso a los admins de que un canal se cayo o cambio de estado. */
-export function channelAlertEmail(params: {
+/**
+ * Un aviso de la campana que la persona eligio recibir tambien por email
+ * (Mi cuenta → Notificaciones). Siempre dice de que negocio es y lleva al
+ * mismo lugar que el aviso en la campana; al pie, donde se cambia.
+ */
+export function teamNotificationEmail(params: {
   title: string;
-  body: string;
-  appUrl: string;
-  /** El negocio del canal: con dos negocios en la instalación, el admin tiene que saber de cuál es. */
+  body?: string | null;
+  /** Link absoluto a lo que avisa, o null si el aviso no lleva a ningun lado. */
+  url: string | null;
+  /** Link absoluto a Mi cuenta → Notificaciones. */
+  settingsUrl: string;
   businessName?: string | null;
   brandColor?: string | null;
 }): EmailContent {
@@ -81,8 +87,11 @@ export function channelAlertEmail(params: {
     html: layout(`
       ${params.businessName ? `<p style="font-size:13px;color:#6b7280;margin:0 0 8px;">${escapeHtml(params.businessName)}</p>` : ""}
       <h1 style="font-size:20px;margin:0 0 12px;">${escapeHtml(params.title)}</h1>
-      <p style="font-size:15px;line-height:1.6;margin:0;">${escapeHtml(params.body)}</p>
-      ${button(`${params.appUrl}/dashboard/channels`, "Ver los canales", params.brandColor)}
+      ${params.body ? `<p style="font-size:15px;line-height:1.6;margin:0;">${escapeHtml(params.body)}</p>` : ""}
+      ${params.url ? button(params.url, "Ver en el sistema", params.brandColor) : ""}
+      <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:24px 0 0;">
+        Te llega porque lo elegiste en Mi cuenta. <a href="${escapeHtml(params.settingsUrl)}" style="color:#6b7280;">Cambiar qué avisos recibo</a>
+      </p>
     `),
   };
 }

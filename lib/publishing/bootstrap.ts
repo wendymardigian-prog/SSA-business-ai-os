@@ -39,6 +39,7 @@ import { registerPaymentsOverdueSweepHandler } from "@/lib/jobs/handlers/payment
 import { registerTasksDueSweepHandler } from "@/lib/jobs/handlers/tasks-due-sweep"; // @plantilla-quitar(tareas)
 import { registerFinanceDailyHandler } from "@/lib/jobs/handlers/finance-daily"; // @plantilla-quitar(finanzas)
 import { registerCommentBackfillHandlers } from "@/lib/jobs/handlers/comment-backfill";
+import { registerNotificationDeliverHandler } from "@/lib/jobs/handlers/notification-deliver";
 import { registerCommissionsPaymentHandler } from "@/lib/jobs/handlers/commissions-payment"; // @plantilla-quitar(comisiones)
 import { registerEodReminderHandler } from "@/lib/jobs/handlers/eod-reminder"; // @plantilla-quitar(formularios)
 import { registerPaymentRelativeHandler } from "@/lib/jobs/handlers/payment-relative"; // @plantilla-quitar(ventas)
@@ -138,6 +139,8 @@ export function registerPublishing(): void {
   registerTasksDueSweepHandler(); // @plantilla-quitar(tareas)
   registerFinanceDailyHandler(); // @plantilla-quitar(finanzas)
   registerCommentBackfillHandlers();
+  // Mi cuenta → Notificaciones (00274/00275): los avisos por email y WhatsApp.
+  registerNotificationDeliverHandler();
   registerCommissionsPaymentHandler(); // @plantilla-quitar(comisiones)
   // @plantilla-desde(formularios)
   // Reporte de fin de día (E13): el recordatorio.

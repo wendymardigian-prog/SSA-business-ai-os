@@ -175,7 +175,7 @@ const ROOT = resolve(__dirname, "..", "..");
  * suscripcion). Cada uno con su motivo; sumar uno aca tiene que ser una decision.
  */
 const TEAM_ONLY: Record<string, string> = {
-  [join("lib", "notifications.ts")]: "avisos de canal a Owner/Admin",
+  [join("lib", "jobs", "handlers", "notification-deliver.ts")]: "los avisos de la campana que cada persona del equipo eligio recibir por email (Mi cuenta)",
   [join("lib", "actions", "team.ts")]: "invitaciones al equipo",
   [join("lib", "actions", "forms", "flows.ts")]: "la prueba del editor de formularios: va a quien la pide",
   [join("lib", "actions", "scheduling", "event-flows.ts")]: "la prueba del editor de la agenda: va a quien la pide",
