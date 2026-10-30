@@ -1,7 +1,7 @@
 import { ALL_PERMISSION_KEYS } from "@/lib/auth/permissions";
 import { describe, it, expect } from "vitest";
 import { isNavItemActive, activeNavHref } from "./active";
-import { NAV_ITEMS, visibleNavItems } from "./items";
+import { NAV_ITEMS, PROFILE_MENU_ROUTES, visibleNavItems } from "./items";
 import { PAGE_META } from "./page-actions";
 import { activeSettingsTab } from "@/lib/settings/tabs";
 
@@ -117,7 +117,11 @@ describe("exactamente un item activo en cualquier ruta real del dashboard (N4)",
   const admin = visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS, flags: { eod: true, settings: true, inbox: true } });
   const member = visibleNavItems(NAV_ITEMS, { permissionKeys: [], flags: { settings: true } });
 
-  for (const patron of Object.keys(PAGE_META)) {
+  it("las pantallas del menu de usuario no marcan ningun item del menu lateral", () => {
+    for (const pathname of PROFILE_MENU_ROUTES) expect(activeNavHref(pathname, admin), pathname).toBeNull();
+  });
+
+  for (const patron of Object.keys(PAGE_META).filter((p) => !PROFILE_MENU_ROUTES.includes(p))) {
     it(`${patron}: exactamente un item activo para un admin`, () => {
       // Un admin ve TODO el menu, asi que para cualquier ruta real tiene que
       // haber un ganador: cero seria un item nuevo sin alsoActiveOn, y dos

@@ -2,13 +2,16 @@
 
 import { useState, useRef, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronUp, Clock, LogOut, Moon, Sun } from "lucide-react";
+import Link from "next/link";
+import { Bell, ChevronUp, Clock, LogOut, Moon, Sun, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useHtmlClass } from "@/components/use-html-class";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { setViewerTimezone } from "@/lib/actions/user-preferences";
 import { listTimeZones } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
+import { UserAvatar } from "@/components/account/user-avatar";
+import { accountTabHref } from "@/lib/account/tabs";
 
 /**
  * El boton de perfil del pie del menu (menu lateral y panel del telefono).
@@ -27,6 +30,8 @@ export interface ProfileUser {
   email?: string;
   /** Lo que guarda el registro: full_name. El resto del repo lee lo mismo. */
   user_metadata?: Record<string, unknown> | null;
+  /** La foto de Mi cuenta (00273), si subio una. */
+  avatarUrl?: string | null;
 }
 
 function nombreDe(user: ProfileUser) {
@@ -107,7 +112,11 @@ export function ProfileMenu({
   function toggleTheme() {
     const next = !dark;
     document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
+    try {
+      localStorage.setItem("theme", next ? "dark" : "light");
+    } catch {
+      // Sin localStorage (navegacion privada) el tema vale para esta pestaña.
+    }
   }
 
   async function handleSignOut() {
@@ -126,12 +135,7 @@ export function ProfileMenu({
         title={collapsed ? principal : undefined}
         className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-sidebar-accent md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0"
       >
-        <span
-          aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary"
-        >
-          {inicialesDe(nombre, user.email)}
-        </span>
+        <UserAvatar src={user.avatarUrl} initials={inicialesDe(nombre, user.email)} size={32} className="text-xs" />
         <span className="min-w-0 flex-1 collapsed:hidden">
           <span className="block truncate text-sm font-medium text-sidebar-foreground">{principal}</span>
           {secundario && (
@@ -152,13 +156,32 @@ export function ProfileMenu({
         // min-w-52 es para el menu colapsado, donde el boton mide 48 px: el
         // desplegable se sale hacia el contenido, que es lo unico que se puede.
         <div className="absolute bottom-full left-0 z-50 mb-1 w-full min-w-52 rounded-lg border border-border bg-popover p-1 shadow-lg">
+          <Link
+            href={accountTabHref("perfil")}
+            onClick={() => setOpen(false)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:min-h-0"
+          >
+            <UserRound className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Mi perfil
+          </Link>
+          <Link
+            href={accountTabHref("notificaciones")}
+            onClick={() => setOpen(false)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:min-h-0"
+          >
+            <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Notificaciones
+          </Link>
+
+          <div className="my-1 border-t border-border" />
+
           <button
             type="button"
             onClick={toggleTheme}
             className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:min-h-0"
           >
             {dark ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
-            {dark ? "Light mode" : "Dark mode"}
+            {dark ? "Modo claro" : "Modo oscuro"}
           </button>
 
           <label className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground md:min-h-0">
@@ -187,7 +210,7 @@ export function ProfileMenu({
             className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:min-h-0"
           >
             <LogOut className="h-4 w-4 shrink-0" />
-            Sign out
+            Cerrar sesión
           </button>
         </div>
       )}
