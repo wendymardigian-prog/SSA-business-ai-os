@@ -14,7 +14,7 @@ import { createContext, useContext, type ReactNode } from "react";
  */
 const MemberAvatarsContext = createContext<Readonly<Record<string, string>>>({});
 
-export function MemberAvatarsProvider({ avatars, children }: { avatars: Readonly<Record<string, string>>; children: ReactNode }) {
+export function MemberAvatarsProvider({ avatars, children }: { avatars: Readonly<Record<string, string>>; children?: ReactNode }) {
   return <MemberAvatarsContext.Provider value={avatars}>{children}</MemberAvatarsContext.Provider>;
 }
 

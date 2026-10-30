@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Bell, Mail, MessageCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -54,8 +54,8 @@ export function NotificationsTab({ sections, initialPrefs, email, whatsapp }: No
   const [pending, setPending] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [savedOnce, setSavedOnce] = useState(false);
-  const queueRef = useRef<ReturnType<typeof createSaveQueue> | null>(null);
-  if (!queueRef.current) queueRef.current = createSaveQueue(setPending);
+  // Una sola cola por pantalla: los cambios se guardan de a uno y en orden.
+  const [queue] = useState(() => createSaveQueue(setPending));
 
   const whatsappReady = whatsapp.channelReady && Boolean(whatsapp.number);
   const available: Record<NotificationChannel, boolean> = { bell: true, email: email.configured, whatsapp: whatsappReady };
@@ -75,7 +75,7 @@ export function NotificationsTab({ sections, initialPrefs, email, whatsapp }: No
       return next;
     });
     setError(null);
-    queueRef.current!.enqueue(async () => {
+    queue.enqueue(async () => {
       const result = await setNotificationPref({ eventKey, channel, value, browserTimezone: browserTimezone() });
       if (!result.ok) {
         setError(result.error);
@@ -101,7 +101,7 @@ export function NotificationsTab({ sections, initialPrefs, email, whatsapp }: No
     setError(null);
     const before = prefs;
     setPrefs({});
-    await queueRef.current!.enqueue(async () => {
+    await queue.enqueue(async () => {
       const result = await resetNotificationPrefs({ browserTimezone: browserTimezone() });
       if (!result.ok) {
         setError(result.error);
