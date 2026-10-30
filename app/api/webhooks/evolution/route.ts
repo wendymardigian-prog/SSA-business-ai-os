@@ -36,7 +36,7 @@ import { inheritedContentContext, resolveInboundOriginExtras } from "@/lib/attri
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { fetchProfilePictureUrl } from "@/lib/evolution-client";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
-import { jidToPhone } from "@/lib/phone";
+import { resolveWhatsappSender, type WhatsappMessageKey, type WhatsappSender } from "@/lib/whatsapp-sender";
 import { handleWhatsappReaction, parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import {
   describeAttachment,
@@ -62,7 +62,7 @@ interface EvolutionPayload {
   event?: string;
   instance?: string;
   data?: {
-    key?: { remoteJid?: string; fromMe?: boolean; id?: string };
+    key?: WhatsappMessageKey & { fromMe?: boolean; id?: string };
     pushName?: string;
     message?: Record<string, unknown>;
     messageType?: string;
@@ -148,11 +148,13 @@ async function handleWebhook(request: NextRequest) {
   // hilo y una perdida avisa al responsable. No es un mensaje.
   if (event === "call") {
     const call = parseCallEvent(payload.data);
-    const callPhone = call ? jidToPhone(call.fromJid) : null;
-    if (!call || !callPhone) return NextResponse.json({ ok: true, skipped: "llamada sin telefono utilizable" });
+    // `parseCallEvent` ya prefiere el telefono real (callerPn) a un @lid; si solo hay
+    // @lid, la llamada igual se registra en su conversacion.
+    const caller = call ? resolveWhatsappSender({ remoteJid: call.fromJid }) : null;
+    if (!call || !caller) return NextResponse.json({ ok: true, skipped: "llamada sin remitente utilizable" });
     after(async () => {
       try {
-        await processCall(supabase, channel, call, callPhone);
+        await processCall(supabase, channel, call, caller);
       } catch (err) {
         console.error("[evolution] error procesando la llamada:", err instanceof Error ? err.message : err);
       }
@@ -164,21 +166,21 @@ async function handleWebhook(request: NextRequest) {
     return NextResponse.json({ ok: true, skipped: event || "sin evento" });
   }
 
-  const jid = payload.data?.key?.remoteJid;
-  const phone = jidToPhone(jid);
-
-  // Grupos (@g.us) y JIDs anonimizados (@lid) no traen un telefono real detras,
-  // asi que no hay un lead a quien atribuirle el mensaje.
-  if (!phone) {
-    return NextResponse.json({ ok: true, skipped: "sin telefono utilizable" });
+  // Quien es la otra persona: su telefono o, si WhatsApp no lo comparte, su @lid.
+  // Antes un @lid se descartaba aca ("sin telefono utilizable") y esa conversacion
+  // nunca entraba al sistema. Grupos, estados y canales siguen afuera: no son un lead.
+  const resolved = resolveWhatsappSender(payload.data?.key);
+  if (!resolved) {
+    return NextResponse.json({ ok: true, skipped: "no es una conversacion con una persona" });
   }
+  const sender = await withKnownLid(supabase, channel, resolved);
 
   // Una reaccion NO es un mensaje (A3): se guarda aparte y el camino termina aca. Si siguiera, entraria como un
   // entrante vacio, sumaria un no leido y le daria turno al flow o al agente por algo que nadie dijo.
   const reaction = parseBaileysReaction(payload.data?.message);
   if (reaction) {
     const outcome = await handleWhatsappReaction(supabase, channel, {
-      phone,
+      senderId: sender.id,
       reaction,
       fromMe: payload.data?.key?.fromMe === true,
     });
@@ -199,7 +201,7 @@ async function handleWebhook(request: NextRequest) {
   // de contestarle a Evolution.
   after(async () => {
     try {
-      await processMessage(supabase, channel, payload, phone);
+      await processMessage(supabase, channel, payload, sender);
     } catch (err) {
       console.error("[evolution] error procesando el mensaje:", err);
     }
@@ -213,15 +215,16 @@ async function handleWebhook(request: NextRequest) {
  * siempre, la transicion en la base (`record_whatsapp_call`, atomica) y, si la
  * llamada RECIEN quedo sin atender, un no leido, el preview y el aviso.
  */
-async function processCall(supabase: Db, channel: ChannelRow, call: ParsedCallEvent, phone: string) {
+async function processCall(supabase: Db, channel: ChannelRow, call: ParsedCallEvent, caller: WhatsappSender) {
+  const sender = await withKnownLid(supabase, channel, caller);
   const contact = await upsertContactForSender({
     supabase,
     channel,
-    senderId: phone,
-    senderName: phone,
-    senderUsername: phone,
+    senderId: sender.id,
+    senderName: sender.phone ?? UNKNOWN_WHATSAPP_NAME,
+    senderUsername: sender.phone,
     senderPicture: null,
-    senderPhone: phone,
+    senderPhone: sender.phone,
     interactionAt: call.at,
   });
   if (!contact) {
@@ -330,7 +333,7 @@ async function processMessage(
   supabase: Db,
   channel: ChannelRow,
   payload: EvolutionPayload,
-  phone: string,
+  sender: WhatsappSender,
 ) {
   const data = payload.data;
   const messageId = data?.key?.id ?? null;
@@ -353,16 +356,20 @@ async function processMessage(
   const contact = await upsertContactForSender({
     supabase,
     channel,
-    senderId: phone,
+    // El telefono o, si WhatsApp no lo comparte, el @lid: es la identidad de esta
+    // persona en el canal y a donde se le contesta.
+    senderId: sender.id,
     // Si el mensaje salio de nuestro telefono, pushName es nuestro nombre, no
-    // el del lead: se usa el numero antes que ensuciar la ficha.
-    senderName: (!fromMe && data?.pushName) || phone,
-    senderUsername: phone,
+    // el del lead: se usa el numero antes que ensuciar la ficha. Sin numero (un
+    // @lid), un nombre generico que la persona puede cambiar.
+    senderName: (!fromMe && data?.pushName) || sender.phone || UNKNOWN_WHATSAPP_NAME,
+    senderUsername: sender.phone,
     senderPicture: null,
     // El telefono es la clave fuerte de deduplicacion: si este lead ya escribio
     // por Instagram y alguien le cargo el numero, se vincula al mismo contacto
-    // en vez de crear uno nuevo (find_or_link_contact, migracion 00025).
-    senderPhone: phone,
+    // en vez de crear uno nuevo (find_or_link_contact, migracion 00025). Con un
+    // @lid no hay telefono: el contacto se identifica por el canal.
+    senderPhone: sender.phone,
     interactionAt: at,
   });
 
@@ -533,7 +540,7 @@ async function processMessage(
     isFirstMessage: !contact.existed,
     incomingMessage: {
       text: text || undefined,
-      sender: { id: phone, name: data?.pushName || undefined },
+      sender: { id: sender.id, name: data?.pushName || undefined },
       // El anuncio de "clic a WhatsApp", para el filtro «Solo si vino de un anuncio» y {{message_origin.*}}.
       ...(adOriginOfBaileys(data?.message) ?? {}),
     },
@@ -563,8 +570,34 @@ async function processMessage(
         supabase,
         workspaceId: channel.workspace_id,
         contactId: contact.contactId,
-        resolveSourceUrl: () => fetchProfilePictureUrl(config, instance, phone),
+        resolveSourceUrl: () => fetchProfilePictureUrl(config, instance, sender.id),
       });
     }
+  }
+}
+
+/** El nombre de un contacto de WhatsApp del que no sabemos ni el nombre ni el numero. */
+const UNKNOWN_WHATSAPP_NAME = "Contacto de WhatsApp";
+
+/**
+ * Si la persona ya entro antes SOLO con su @lid (sin telefono) y ahora llega con
+ * los dos, se sigue usando el @lid como identidad: asi el mensaje cae en el mismo
+ * contacto y la misma conversacion, y el telefono se le suma a la ficha
+ * (find_or_link_contact completa los datos de un remitente conocido). Si no, el
+ * telefono, como siempre. Nunca lanza: ante un error, la identidad de siempre.
+ */
+async function withKnownLid(supabase: Db, channel: ChannelRow, sender: WhatsappSender): Promise<WhatsappSender> {
+  if (!sender.phone || !sender.lid || sender.id === sender.lid) return sender;
+  try {
+    const { data } = await supabase
+      .from("contact_channels")
+      .select("contact_id")
+      .eq("channel_id", channel.id)
+      .eq("platform_sender_id", sender.lid)
+      .maybeSingle();
+    return data ? { ...sender, id: sender.lid } : sender;
+  } catch (err) {
+    console.error("[evolution] no pude buscar el @lid conocido:", err instanceof Error ? err.message : err);
+    return sender;
   }
 }

@@ -93,6 +93,13 @@ describe("sendText", () => {
     expect(calls[1].body).toEqual({ number: "5491122334455", textMessage: { text: "hola" } });
   });
 
+  it("a una persona sin telefono (@lid) le manda al @lid entero, no a un numero inventado", async () => {
+    resetVersionCache();
+    const calls = mockFetch([v2, { body: { key: { id: "MSG3" } } }]);
+    await sendText(config, "ssa-abc", "98765432101234@lid", "hola");
+    expect(calls[1].body).toEqual({ number: "98765432101234@lid", text: "hola" });
+  });
+
   it("no llama a Evolution con un numero invalido", async () => {
     mockFetch([v2]);
     await expect(sendText(config, "ssa-abc", "1234", "hola")).rejects.toThrow(/invalido/);

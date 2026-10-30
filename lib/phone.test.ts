@@ -5,6 +5,7 @@ import {
   phoneToJid,
   isGroupJid,
   isLidJid,
+  normalizeLidJid,
   toEvolutionNumber,
 } from "./phone";
 
@@ -70,5 +71,19 @@ describe("toEvolutionNumber", () => {
     expect(toEvolutionNumber("+5491122334455")).toBe("5491122334455");
     expect(toEvolutionNumber("5491122334455@s.whatsapp.net")).toBe("5491122334455");
     expect(toEvolutionNumber("120363001122334455@g.us")).toBeNull();
+  });
+
+  it("un @lid viaja entero: Evolution lo acepta como destino y le llega a esa persona", () => {
+    expect(toEvolutionNumber("98765432101234@lid")).toBe("98765432101234@lid");
+    expect(toEvolutionNumber("98765432101234:3@lid")).toBe("98765432101234@lid");
+  });
+});
+
+describe("normalizeLidJid", () => {
+  it("limpia el @lid y descarta lo que no lo es", () => {
+    expect(normalizeLidJid("98765432101234:3@lid")).toBe("98765432101234@lid");
+    expect(normalizeLidJid("5491122334455@s.whatsapp.net")).toBeNull();
+    expect(normalizeLidJid("12@lid")).toBeNull();
+    expect(normalizeLidJid(null)).toBeNull();
   });
 });
