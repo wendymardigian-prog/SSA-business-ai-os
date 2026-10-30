@@ -163,7 +163,7 @@ export async function runContractEmail(deps: EmailRunDeps, input: { signatureId:
       contactId: sig.contact_id,
       attachments,
       // Suscripcion a emails: la copia al firmante es transaccional (la pidio al firmar): solo la frena un rebote,
-      // no "no contactar" ni la baja de marketing (decision de Wendy, 29/10/2026). Las copias al equipo no son de
+      // no "no contactar" ni la baja de marketing (decision aprobada el 29/10/2026). Las copias al equipo no son de
       // un contacto.
       ...(copy ? {} : { category: "transactional" as const }),
       deps: { supabase: db as unknown as SupabaseClient },

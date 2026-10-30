@@ -17,21 +17,21 @@ import { fakeDb } from "@/lib/testing/fake-db";
 
 const KEY = "re_key_secreta_de_prueba_123456";
 const DOMAINS: ResendDomain[] = [
-  { name: "mail.wendymardigian.com", status: "verified" },
-  { name: "news.wendymardigian.com", status: "verified" },
-  { name: "wendymardigian.com", status: "pending" },
+  { name: "mail.negocio-demo.com", status: "verified" },
+  { name: "news.negocio-demo.com", status: "verified" },
+  { name: "negocio-demo.com", status: "pending" },
   { name: "viejo.com", status: "failed" },
 ];
 
 describe("la direccion: usuario + dominio", () => {
   it("se arma y se separa", () => {
-    expect(composeAddress(" hola ", "Mail.WendyMardigian.com")).toBe("hola@mail.wendymardigian.com");
-    expect(splitAddress("app@wendymardigian.com")).toEqual({ local: "app", domain: "wendymardigian.com" });
+    expect(composeAddress(" hola ", "Mail.Negocio-Demo.com")).toBe("hola@mail.negocio-demo.com");
+    expect(splitAddress("app@negocio-demo.com")).toEqual({ local: "app", domain: "negocio-demo.com" });
     expect(splitAddress("sin-arroba")).toBeNull();
   });
 
   it("una config vieja (solo from_email) se separa al abrir la pantalla", () => {
-    expect(senderParts({ from_email: "app@wendymardigian.com" }, "important")).toEqual({ local: "app", domain: "wendymardigian.com" });
+    expect(senderParts({ from_email: "app@negocio-demo.com" }, "important")).toEqual({ local: "app", domain: "negocio-demo.com" });
     expect(senderParts({ from_local: "hola", from_domain: "mail.x.com", from_email: "otro@y.com" }, "important")).toEqual({ local: "hola", domain: "mail.x.com" });
     expect(senderParts({}, "marketing")).toEqual({ local: "", domain: "" });
   });
@@ -54,9 +54,9 @@ describe("la direccion: usuario + dominio", () => {
 
 describe("guardar los remitentes", () => {
   it("con la lista: solo un dominio verificado; se guarda tambien el from_email compuesto", () => {
-    const ok = parseSenderInput({ fromLocal: "hola", fromDomain: "mail.wendymardigian.com", fromName: "Wendy" }, DOMAINS);
-    expect(ok).toMatchObject({ ok: true, config: { from_local: "hola", from_domain: "mail.wendymardigian.com", from_email: "hola@mail.wendymardigian.com", from_name: "Wendy" } });
-    expect(parseSenderInput({ fromLocal: "app", fromDomain: "wendymardigian.com" }, DOMAINS)).toMatchObject({ ok: false, error: expect.stringContaining("no está verificado") });
+    const ok = parseSenderInput({ fromLocal: "hola", fromDomain: "mail.negocio-demo.com", fromName: "Ana" }, DOMAINS);
+    expect(ok).toMatchObject({ ok: true, config: { from_local: "hola", from_domain: "mail.negocio-demo.com", from_email: "hola@mail.negocio-demo.com", from_name: "Ana" } });
+    expect(parseSenderInput({ fromLocal: "app", fromDomain: "negocio-demo.com" }, DOMAINS)).toMatchObject({ ok: false, error: expect.stringContaining("no está verificado") });
     expect(parseSenderInput({ fromLocal: "app", fromDomain: "otro.com" }, DOMAINS)).toMatchObject({ ok: false, error: expect.stringContaining("no está en tu cuenta") });
   });
 
@@ -65,15 +65,15 @@ describe("guardar los remitentes", () => {
   });
 
   it("marketing es opcional; si se completa, tambien tiene que ser un dominio verificado", () => {
-    const both = parseSenderInput({ fromLocal: "hola", fromDomain: "mail.wendymardigian.com", marketingLocal: "novedades", marketingDomain: "news.wendymardigian.com" }, DOMAINS);
-    expect(both).toMatchObject({ ok: true, config: { marketing_from_email: "novedades@news.wendymardigian.com" } });
-    expect(parseSenderInput({ fromLocal: "hola", fromDomain: "mail.wendymardigian.com", marketingLocal: "n", marketingDomain: "viejo.com" }, DOMAINS)).toMatchObject({ ok: false });
-    expect(parseSenderInput({ fromLocal: "hola", fromDomain: "mail.wendymardigian.com" }, DOMAINS)).toMatchObject({ ok: true, config: { marketing_from_email: "" } });
+    const both = parseSenderInput({ fromLocal: "hola", fromDomain: "mail.negocio-demo.com", marketingLocal: "novedades", marketingDomain: "news.negocio-demo.com" }, DOMAINS);
+    expect(both).toMatchObject({ ok: true, config: { marketing_from_email: "novedades@news.negocio-demo.com" } });
+    expect(parseSenderInput({ fromLocal: "hola", fromDomain: "mail.negocio-demo.com", marketingLocal: "n", marketingDomain: "viejo.com" }, DOMAINS)).toMatchObject({ ok: false });
+    expect(parseSenderInput({ fromLocal: "hola", fromDomain: "mail.negocio-demo.com" }, DOMAINS)).toMatchObject({ ok: true, config: { marketing_from_email: "" } });
   });
 
   it("'Responder a' tiene que ser un email completo", () => {
-    expect(parseSenderInput({ fromLocal: "hola", fromDomain: "mail.wendymardigian.com", replyTo: "no-es" }, DOMAINS)).toMatchObject({ ok: false });
-    expect(parseSenderInput({ fromLocal: "hola", fromDomain: "mail.wendymardigian.com", replyTo: "Wendy@Gmail.com" }, DOMAINS)).toMatchObject({ ok: true, config: { reply_to: "wendy@gmail.com" } });
+    expect(parseSenderInput({ fromLocal: "hola", fromDomain: "mail.negocio-demo.com", replyTo: "no-es" }, DOMAINS)).toMatchObject({ ok: false });
+    expect(parseSenderInput({ fromLocal: "hola", fromDomain: "mail.negocio-demo.com", replyTo: "Ana@Gmail.com" }, DOMAINS)).toMatchObject({ ok: true, config: { reply_to: "ana@gmail.com" } });
   });
 });
 
@@ -103,19 +103,19 @@ describe("el remitente segun la categoria", () => {
 
 describe("el aviso de un remitente con dominio sin verificar", () => {
   it("con la lista, en rojo y sin cambiar nada solo", () => {
-    expect(unverifiedSenderWarning("app@wendymardigian.com", DOMAINS)).toBe(
-      "Tu remitente actual (app@wendymardigian.com) usa un dominio que Resend no tiene verificado: los emails no están saliendo. Elegí un dominio verificado.",
+    expect(unverifiedSenderWarning("app@negocio-demo.com", DOMAINS)).toBe(
+      "Tu remitente actual (app@negocio-demo.com) usa un dominio que Resend no tiene verificado: los emails no están saliendo. Elegí un dominio verificado.",
     );
-    expect(unverifiedSenderWarning("hola@mail.wendymardigian.com", DOMAINS)).toBeNull();
-    expect(unverifiedSenderWarning("app@wendymardigian.com", null)).toBeNull();
+    expect(unverifiedSenderWarning("hola@mail.negocio-demo.com", DOMAINS)).toBeNull();
+    expect(unverifiedSenderWarning("app@negocio-demo.com", null)).toBeNull();
   });
 
   it("readiness avisa ANTES de que falle un envio", () => {
-    const r = describeEmailReadiness({ integration: { is_active: true, from_email: "app@wendymardigian.com" }, lastLog: null, domains: DOMAINS });
+    const r = describeEmailReadiness({ integration: { is_active: true, from_email: "app@negocio-demo.com" }, lastLog: null, domains: DOMAINS });
     expect(r).toMatchObject({ ok: false, reason: "rejected" });
-    expect(describeEmailReadiness({ integration: { is_active: true, from_email: "hola@mail.wendymardigian.com" }, lastLog: null, domains: DOMAINS })).toEqual({ ok: true });
+    expect(describeEmailReadiness({ integration: { is_active: true, from_email: "hola@mail.negocio-demo.com" }, lastLog: null, domains: DOMAINS })).toEqual({ ok: true });
     // Sin lista, como antes.
-    expect(describeEmailReadiness({ integration: { is_active: true, from_email: "app@wendymardigian.com" }, lastLog: null })).toEqual({ ok: true });
+    expect(describeEmailReadiness({ integration: { is_active: true, from_email: "app@negocio-demo.com" }, lastLog: null })).toEqual({ ok: true });
   });
 });
 
@@ -124,9 +124,9 @@ describe("listar los dominios de Resend (fetch simulado)", () => {
   const respond = (status: number, body: unknown) => vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status }));
 
   it("verificados y no verificados, con la key en la cabecera y nunca en el resultado", async () => {
-    const fetchImpl = respond(200, { object: "list", data: [{ id: "1", name: "Mail.Wendymardigian.com", status: "verified" }, { id: "2", name: "wendymardigian.com", status: "pending" }] });
+    const fetchImpl = respond(200, { object: "list", data: [{ id: "1", name: "Mail.negocio-demo.com", status: "verified" }, { id: "2", name: "negocio-demo.com", status: "pending" }] });
     const res = await listResendDomains(KEY, fetchImpl as unknown as typeof fetch);
-    expect(res).toEqual({ ok: true, domains: [{ name: "mail.wendymardigian.com", status: "verified" }, { name: "wendymardigian.com", status: "pending" }] });
+    expect(res).toEqual({ ok: true, domains: [{ name: "mail.negocio-demo.com", status: "verified" }, { name: "negocio-demo.com", status: "pending" }] });
     expect((fetchImpl.mock.calls[0][1] as RequestInit).headers).toMatchObject({ Authorization: `Bearer ${KEY}` });
     expect(JSON.stringify(res)).not.toContain(KEY);
   });

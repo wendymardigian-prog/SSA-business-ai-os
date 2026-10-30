@@ -1,6 +1,6 @@
 /**
  * Caracterizacion del mapeo del importador con los encabezados reales del export
- * de wendymardigian.com, escrita ANTES de la suscripcion a emails.
+ * de negocio-demo.com, escrita ANTES de la suscripcion a emails.
  *
  * Fija como se mapean hoy las columnas que NO son de suscripcion: tienen que
  * seguir igual despues de sumar las columnas de suscripcion (E6). Las de

@@ -91,12 +91,12 @@ describe("valores de una importacion", () => {
 
 describe("lo que se muestra", () => {
   it("enmascara la direccion: solo la primera letra y el dominio", () => {
-    expect(maskEmailAddress("wendy@gmail.com")).toBe("w***@gmail.com");
+    expect(maskEmailAddress("ana@gmail.com")).toBe("a***@gmail.com");
     expect(maskEmailAddress("sinarroba")).toBe("***");
   });
 
   it("el origen se lee en palabras; una importacion lleva su etiqueta", () => {
-    expect(emailStatusSourceLabel("import:wendymardigian")).toBe("importación (wendymardigian)");
+    expect(emailStatusSourceLabel("import:otro-sistema")).toBe("importación (otro-sistema)");
     expect(emailStatusSourceLabel("one_click")).toContain("un clic");
     expect(emailStatusSourceLabel(null)).toBe("alta del contacto");
   });
