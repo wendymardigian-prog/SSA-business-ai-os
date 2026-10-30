@@ -7,6 +7,8 @@ import {
   fetchProfilePictureUrl,
   getBase64FromMediaMessage,
   getConnectionState,
+  findStoredChats,
+  findStoredMessagesPage,
   getInstanceStatus,
   getMajorVersion,
   getQrCode,
@@ -502,5 +504,25 @@ describe("reconnectInstance (reconectar reusa la instancia)", () => {
     expect(calls.some((c) => c.method === "DELETE" && c.url.endsWith("/instance/delete/ssa-abc"))).toBe(true);
     expect(creates(calls)).toHaveLength(1);
     onlySameName(calls);
+  });
+});
+
+describe("historial guardado en Evolution (solo lectura)", () => {
+  it("findStoredChats pide los chats con su tope y devuelve la lista", async () => {
+    const calls = mockFetch([{ body: [{ remoteJid: "5491122334455@s.whatsapp.net" }] }]);
+    const chats = await findStoredChats(config, "ssa-abc", 5000);
+    expect(calls[0].url).toBe("https://evo.test/chat/findChats/ssa-abc");
+    expect(calls[0].body).toEqual({ where: {}, take: 5000, skip: 0 });
+    expect(chats).toEqual([{ remoteJid: "5491122334455@s.whatsapp.net" }]);
+  });
+
+  it("findStoredMessagesPage lee el total y la pagina pedida; una respuesta rara da cero", async () => {
+    let calls = mockFetch([{ body: { messages: { total: 12, pages: 12, currentPage: 3, records: [{ messageTimestamp: 1 }] } } }]);
+    expect(await findStoredMessagesPage(config, "ssa-abc", 3, 1)).toEqual({ total: 12, pages: 12, records: [{ messageTimestamp: 1 }] });
+    expect(calls[0].url).toBe("https://evo.test/chat/findMessages/ssa-abc");
+    expect(calls[0].body).toEqual({ where: {}, page: 3, offset: 1 });
+
+    calls = mockFetch([{ body: {} }]);
+    expect(await findStoredMessagesPage(config, "ssa-abc", 1, 1)).toEqual({ total: 0, pages: 0, records: [] });
   });
 });
