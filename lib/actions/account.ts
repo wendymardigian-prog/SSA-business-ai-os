@@ -5,7 +5,20 @@ import { revalidatePath } from "next/cache";
 import { createClient as createPlainClient } from "@supabase/supabase-js";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isOwnAvatarPath, userAvatarPath, userAvatarPublicUrl, USER_AVATARS_BUCKET } from "@/lib/account/avatar";
-import { parseAvatarDataUrl, parseContactInput, parseDisplayName, parsePasswordChange } from "@/lib/account/validation";
+import { effectiveWhatsApp, parseAvatarDataUrl, parseContactInput, parseDisplayName, parsePasswordChange } from "@/lib/account/validation";
+import { getWorkspace } from "@/lib/workspace";
+import { checkLimit } from "@/lib/antispam/rate-limit";
+import { sendTeamWhatsApp } from "@/lib/notifications/team-whatsapp";
+import {
+  eventByKey,
+  NOTIFICATION_CHANNELS,
+  parseStoredPrefs,
+  withPref,
+  type NotificationChannel,
+  type StoredPrefs,
+} from "@/lib/notifications/preferences";
+import { isValidTimeZone } from "@/lib/timezone";
+import type { Json } from "@/lib/types/database";
 
 /**
  * Mi cuenta → Perfil (00273). Cada accion es de la PERSONA logueada: el
@@ -191,5 +204,116 @@ export async function changeMyPassword(input: { current: string; next: string; c
     return { ok: false, error: "No pude cambiar la contraseña. Probá de nuevo." };
   }
 
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Notificaciones (00274)
+// ---------------------------------------------------------------------------
+
+/**
+ * Prende o apaga UN canal de UN evento. La pantalla los manda de a uno y en
+ * orden (cola serial), asi que leer-mezclar-escribir alcanza.
+ *
+ * `browserTimezone`: si la persona todavia no tiene fila en user_preferences
+ * (la zona se guarda sola en el primer ingreso), se crea con la zona del
+ * navegador, como la hubiera creado el arranque.
+ */
+export async function setNotificationPref(input: {
+  eventKey: string;
+  channel: string;
+  value: boolean;
+  browserTimezone?: string;
+}): Promise<{ ok: true; prefs: StoredPrefs } | { ok: false; error: string }> {
+  const event = eventByKey(input.eventKey);
+  if (!event) return { ok: false, error: "Ese aviso no existe." };
+  if (!(NOTIFICATION_CHANNELS as readonly string[]).includes(input.channel)) return { ok: false, error: "Ese canal no existe." };
+  if (typeof input.value !== "boolean") return { ok: false, error: "Valor inválido." };
+
+  const ctx = await sessionUser();
+  if (!ctx) return { ok: false, error: NO_SESSION };
+
+  const { data: row, error: readError } = await ctx.supabase
+    .from("user_preferences")
+    .select("notification_prefs")
+    .eq("user_id", ctx.user.id)
+    .maybeSingle();
+  if (readError) {
+    console.error("[avisos] no pude leer las preferencias:", readError.message);
+    return { ok: false, error: "No pude guardar el cambio. Probá de nuevo." };
+  }
+
+  const next = withPref(parseStoredPrefs(row?.notification_prefs), event.key, input.channel as NotificationChannel, input.value);
+  const saved = await writePrefs(ctx, next, Boolean(row), input.browserTimezone);
+  if (!saved) return { ok: false, error: "No pude guardar el cambio. Probá de nuevo." };
+
+  revalidatePath("/dashboard", "layout");
+  return { ok: true, prefs: next };
+}
+
+/** Vuelve todos los avisos a los valores por defecto. */
+export async function resetNotificationPrefs(input: { browserTimezone?: string } = {}): Promise<Result> {
+  const ctx = await sessionUser();
+  if (!ctx) return { ok: false, error: NO_SESSION };
+  const { data: row } = await ctx.supabase.from("user_preferences").select("user_id").eq("user_id", ctx.user.id).maybeSingle();
+  const saved = await writePrefs(ctx, {}, Boolean(row), input.browserTimezone);
+  if (!saved) return { ok: false, error: "No pude restablecer los avisos. Probá de nuevo." };
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+async function writePrefs(
+  ctx: NonNullable<Awaited<ReturnType<typeof sessionUser>>>,
+  prefs: StoredPrefs,
+  exists: boolean,
+  browserTimezone: string | undefined,
+): Promise<boolean> {
+  const value = prefs as unknown as Json;
+  if (exists) {
+    const { error } = await ctx.supabase.from("user_preferences").update({ notification_prefs: value }).eq("user_id", ctx.user.id);
+    if (error) console.error("[avisos] no pude guardar las preferencias:", error.message);
+    return !error;
+  }
+  const timezone = browserTimezone && isValidTimeZone(browserTimezone) ? browserTimezone : "UTC";
+  const { error } = await ctx.supabase
+    .from("user_preferences")
+    .insert({ user_id: ctx.user.id, timezone, timezone_source: "browser", notification_prefs: value });
+  // 23505: la fila aparecio entre la lectura y esto (el arranque guardo la zona). Se reintenta como update.
+  if (error?.code === "23505") return writePrefs(ctx, prefs, true, browserTimezone);
+  if (error) console.error("[avisos] no pude crear las preferencias:", error.message);
+  return !error;
+}
+
+/**
+ * "Mandarme un WhatsApp de prueba": desde el WhatsApp de avisos del negocio
+ * al numero de la persona. Tres por hora.
+ */
+export async function sendMyTestWhatsApp(): Promise<Result> {
+  const { user, workspace } = await getWorkspace();
+  const ctx = await sessionUser();
+  if (!ctx || ctx.user.id !== user.id) return { ok: false, error: NO_SESSION };
+
+  const { data: profile } = await ctx.supabase
+    .from("user_profiles")
+    .select("phone, whatsapp_phone, whatsapp_same_as_phone")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const number = effectiveWhatsApp(profile);
+  if (!number) return { ok: false, error: "Primero guardá tu WhatsApp." };
+
+  const service = await createServiceClient();
+  const limit = await checkLimit(service, { key: `account:wa-test:${user.id}`, max: 3, windowMs: 60 * 60_000 });
+  if (!limit.allowed) return { ok: false, error: "Ya mandaste tres pruebas en la última hora. Probá más tarde." };
+
+  const businessName = workspace.brand_name?.trim() || workspace.name;
+  const result = await sendTeamWhatsApp(
+    service,
+    workspace.id,
+    number,
+    `${businessName}: este es un mensaje de prueba. Así te van a llegar los avisos que elijas en Mi cuenta → Notificaciones.`,
+  );
+  if (!result.ok) {
+    return { ok: false, error: result.reason === "failed" ? `No se pudo mandar: ${result.error} Revisá el número.` : result.error };
+  }
   return { ok: true };
 }
