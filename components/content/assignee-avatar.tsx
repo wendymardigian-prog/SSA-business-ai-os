@@ -5,7 +5,7 @@ import type { AssigneeInfo } from "@/lib/content/assignee";
 /**
  * El responsable de una pieza como un circulo con sus iniciales.
  *
- * El sistema no guarda fotos de perfil del equipo, asi que el circulo lleva iniciales, con un color que es siempre el
+ * Con la foto de Mi cuenta si la persona subio una (00273); si no, sus iniciales, con un color que es siempre el
  * mismo para la misma persona. Sin responsable, un circulo vacio con guiones.
  */
 export function AssigneeAvatar({ assignee, size = "md" }: { assignee: AssigneeInfo | null; size?: "sm" | "md" }) {
@@ -25,7 +25,7 @@ export function AssigneeAvatar({ assignee, size = "md" }: { assignee: AssigneeIn
   }
   return (
     <span title={`Responsable: ${assignee.name}`} role="img" aria-label={`Responsable: ${assignee.name}`} className="inline-flex">
-      <Avatar initials={initialsOf(assignee.name)} color={colorOf(assignee.id)} size={size} />
+      <Avatar initials={initialsOf(assignee.name)} color={colorOf(assignee.id)} size={size} userId={assignee.id} />
     </span>
   );
 }

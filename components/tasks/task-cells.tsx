@@ -209,7 +209,7 @@ function FollowersDisplay({ ids, names }: { ids: readonly string[]; names: Reado
       <span className="flex -space-x-1.5">
         {shown.map((id) => (
           <span key={id} className="rounded-full ring-2 ring-background">
-            <Avatar initials={initialsOf(names.get(id) ?? "?")} color={colorOf(id)} />
+            <Avatar initials={initialsOf(names.get(id) ?? "?")} color={colorOf(id)} userId={id} />
           </span>
         ))}
       </span>

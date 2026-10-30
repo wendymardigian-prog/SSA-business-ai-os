@@ -9,6 +9,7 @@ import type { Database } from "@/lib/types/database";
 import type { SlotsByDate } from "@/lib/scheduling/types";
 import { getAvailableSlots } from "@/lib/scheduling/slots";
 import { buildSlotsInput, findPublicEvent } from "@/lib/scheduling/data/slots-input";
+import { hostAvatarUrl } from "@/lib/account/host-avatar";
 
 type Db = SupabaseClient<Database>;
 
@@ -111,7 +112,7 @@ export async function getPublicEvent(service: Db, username: string, slug: string
     locationText: event.hide_location_until_booked ? null : event.location_text,
     color: event.color,
     hostName: profile.display_name,
-    hostAvatarUrl: profile.avatar_url,
+    hostAvatarUrl: await hostAvatarUrl(service, profile.user_id, profile.avatar_url),
     hostWelcome: profile.welcome_message,
     timeFormat: profile.time_format,
     fields: event.booking_fields,

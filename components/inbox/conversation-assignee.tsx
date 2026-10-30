@@ -63,7 +63,7 @@ export function ConversationAssignee({
   }
 
   const circle = shown ? (
-    <Avatar initials={initialsOf(name ?? "?")} color={colorOf(shown)} size="md" />
+    <Avatar initials={initialsOf(name ?? "?")} color={colorOf(shown)} size="md" userId={shown} />
   ) : (
     <span className="grid h-[22px] w-[22px] place-items-center rounded-full border border-dashed border-border text-[10px] text-muted-foreground" aria-hidden>
       ?
@@ -107,7 +107,7 @@ export function ConversationAssignee({
             key={m.userId}
             checked={shown === m.userId}
             onSelect={() => change(m.userId)}
-            leading={<Avatar initials={initialsOf(m.label)} color={colorOf(m.userId)} size="sm" />}
+            leading={<Avatar initials={initialsOf(m.label)} color={colorOf(m.userId)} size="sm" userId={m.userId} />}
             title={m.userId === currentUserId ? `${m.label} (vos)` : m.label}
           />
         ))}

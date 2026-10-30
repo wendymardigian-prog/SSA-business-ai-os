@@ -133,7 +133,7 @@ function filterMembers(members: readonly MemberLite[], query: string): MemberLit
 function Person({ m }: { m: MemberLite }) {
   return (
     <>
-      <Avatar initials={initialsOf(m.name)} color={colorOf(m.id)} />
+      <Avatar initials={initialsOf(m.name)} color={colorOf(m.id)} userId={m.id} />
       <span className="truncate">{m.name}</span>
     </>
   );

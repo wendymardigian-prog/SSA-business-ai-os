@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { initialsOf } from "@/lib/shared/people";
+import { useMemberAvatar } from "./member-avatars";
 
 /**
  * El circulo de una persona del equipo: su foto (00273) o, si no tiene o no
@@ -57,4 +59,13 @@ export function UserAvatar({
       {initials}
     </span>
   );
+}
+
+/**
+ * El circulo de una persona del equipo por su id: la foto sale de
+ * `MemberAvatarsProvider` (la carga el layout), si no sus iniciales.
+ */
+export function MemberCircle({ userId, name, size = 36, className }: { userId: string; name: string; size?: number; className?: string }) {
+  const photo = useMemberAvatar(userId);
+  return <UserAvatar src={photo} initials={initialsOf(name)} size={size} className={className} />;
 }
