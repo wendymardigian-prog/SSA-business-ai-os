@@ -48983,3 +48983,312 @@ ALTER TABLE public.email_log ADD CONSTRAINT email_log_status_check
     'skipped_unsubscribed', 'skipped_bounced', 'skipped_complained',
     'skipped_do_not_contact', 'skipped_unverifiable'
   ]));
+
+-- ============================================================
+-- MIGRATION 273: USER PROFILES
+-- ============================================================
+-- ============================================================
+-- 00273_user_profiles.sql
+--
+-- Mi cuenta: los datos personales de cada persona del equipo.
+--
+-- Hasta ahora una persona no tenia donde guardar lo suyo: el nombre vive en
+-- `auth.users.user_metadata.full_name` (y ahi sigue: lo leen todos, ver
+-- `workspace_member_profiles`), y no habia foto ni telefono. Esta tabla guarda
+-- la foto, el telefono y el WhatsApp de la PERSONA, iguales en todos los
+-- negocios de la instalacion (igual que `user_preferences`, 00121).
+--
+-- El WhatsApp se usa SOLO para mandarle a la persona los avisos que ella
+-- elija en Mi cuenta → Notificaciones (00274/00275). Nadie mas lo lee desde el
+-- navegador: la RLS deja ver, crear y editar unicamente la fila propia, y el
+-- servidor lo lee con el cliente de servicio para mandar un aviso.
+--
+-- Bucket `user-avatars`: publico para leer (la foto se muestra en toda la app
+-- y en la pagina publica de reserva), SIN policies de escritura: sube y borra
+-- el service role desde la Server Action, despues de validar el archivo por
+-- sus bytes. Es el mismo criterio que `chat-media` (00102). El bucket
+-- `avatars` (00095) no sirve para esto: su policy deja escribir a cualquier
+-- miembro en la carpeta de cualquiera.
+--
+-- Aditiva: se aplica ANTES de desplegar el codigo (la pagina Mi cuenta la lee).
+--
+-- Como volver atras:
+--   DROP TABLE IF EXISTS public.user_profiles;
+--   DELETE FROM storage.objects WHERE bucket_id = 'user-avatars';  (desde el panel o la API de Storage)
+--   DELETE FROM storage.buckets WHERE id = 'user-avatars';
+-- Riesgo: bajo. Tabla y bucket nuevos; no cambia nada existente.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+  user_id                uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  -- Ruta dentro del bucket `user-avatars` (<user_id>/<archivo>), nunca una URL.
+  avatar_path            text,
+  -- Telefono con codigo de pais, normalizado (+5491122334455).
+  phone                  text,
+  -- El WhatsApp, si es otro numero. Con `whatsapp_same_as_phone` se usa `phone`.
+  whatsapp_phone         text,
+  whatsapp_same_as_phone boolean NOT NULL DEFAULT true,
+  created_at             timestamptz NOT NULL DEFAULT now(),
+  updated_at             timestamptz NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_profiles_phone_check') THEN
+    ALTER TABLE public.user_profiles ADD CONSTRAINT user_profiles_phone_check
+      CHECK (phone IS NULL OR phone ~ '^\+[0-9]{8,15}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_profiles_whatsapp_phone_check') THEN
+    ALTER TABLE public.user_profiles ADD CONSTRAINT user_profiles_whatsapp_phone_check
+      CHECK (whatsapp_phone IS NULL OR whatsapp_phone ~ '^\+[0-9]{8,15}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_profiles_avatar_path_check') THEN
+    -- La foto vive SIEMPRE en la carpeta de su persona.
+    ALTER TABLE public.user_profiles ADD CONSTRAINT user_profiles_avatar_path_check
+      CHECK (avatar_path IS NULL OR avatar_path LIKE user_id::text || '/%');
+  END IF;
+END $$;
+
+COMMENT ON TABLE public.user_profiles IS
+  'Datos personales de cada persona del equipo (foto, telefono, WhatsApp), iguales en todos los negocios. El nombre sigue en auth.users.user_metadata.full_name.';
+COMMENT ON COLUMN public.user_profiles.whatsapp_phone IS
+  'WhatsApp para los avisos que la persona elija. Solo se usa si whatsapp_same_as_phone es false; si no, vale phone.';
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.user_profiles;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.user_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Cada uno ve, crea y edita UNICAMENTE su propia fila (mismo patron que
+-- user_preferences, 00121/00124). Sin policy de DELETE: se borra en cascada
+-- con el usuario.
+DROP POLICY IF EXISTS user_profiles_select ON public.user_profiles;
+CREATE POLICY user_profiles_select ON public.user_profiles
+  FOR SELECT USING (user_id = (select auth.uid()));
+
+DROP POLICY IF EXISTS user_profiles_insert ON public.user_profiles;
+CREATE POLICY user_profiles_insert ON public.user_profiles
+  FOR INSERT WITH CHECK (user_id = (select auth.uid()));
+
+DROP POLICY IF EXISTS user_profiles_update ON public.user_profiles;
+CREATE POLICY user_profiles_update ON public.user_profiles
+  FOR UPDATE USING (user_id = (select auth.uid())) WITH CHECK (user_id = (select auth.uid()));
+
+REVOKE ALL ON public.user_profiles FROM anon;
+GRANT SELECT, INSERT, UPDATE ON public.user_profiles TO authenticated;
+GRANT ALL ON public.user_profiles TO service_role;
+
+-- ------------------------------------------------------------
+-- Bucket user-avatars
+-- ------------------------------------------------------------
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('user-avatars', 'user-avatars', true, 2097152, ARRAY['image/jpeg', 'image/png', 'image/webp'])
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE storage.buckets
+SET public = true,
+    file_size_limit = 2097152,
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']
+WHERE id = 'user-avatars';
+
+-- Sin policies sobre storage.objects a proposito: leer es publico por el
+-- bucket, y escribir o borrar solo lo hace el service role.
+
+-- ============================================================
+-- MIGRATION 274: NOTIFICATION PREFS
+-- ============================================================
+-- ============================================================
+-- 00274_notification_prefs.sql
+--
+-- Mi cuenta → Notificaciones: cada persona elige que avisos le llegan y por
+-- donde (campana, email, WhatsApp).
+--
+--   1. `user_preferences.notification_prefs`: lo que la persona cambio. Lo
+--      que no esta en el jsonb usa el valor por defecto del catalogo en
+--      TypeScript (`lib/notifications/preferences.ts`): sumar un tipo de aviso
+--      no necesita migracion. Forma: { "<evento>": { "bell": bool,
+--      "email": bool, "whatsapp": bool } }, con cualquiera de las claves.
+--   2. `workspaces.team_alerts_settings`: desde que WhatsApp del negocio se
+--      mandan los avisos al equipo ({ "whatsapp_channel_id": uuid }). Lo
+--      elige Owner/Admin en Ajustes → General.
+--   3. `workspace_member_profiles` suma `avatar_path` (la foto de cada
+--      persona, de `user_profiles`, 00273). Cambia el tipo de lo que
+--      devuelve, asi que se borra y se vuelve a crear.
+--   4. `private.enqueue_notification_delivery()`: la FUNCION del trigger que
+--      encola la entrega por email y WhatsApp de cada aviso. El trigger en si
+--      es la 00275, que se aplica DESPUES de desplegar el codigo que ejecuta
+--      los jobs `notification_deliver` (si no, la cola los marcaria como
+--      fallidos por tipo desconocido).
+--
+-- Los DEFAULT son literales: un DEFAULT se evalua con los permisos de quien
+-- inserta y nunca puede llamar a una funcion de `private` (00248).
+--
+-- Aditiva: se aplica ANTES de desplegar el codigo.
+--
+-- Definicion vieja de workspace_member_profiles (00141), letra por letra,
+-- para volver atras:
+--   CREATE OR REPLACE FUNCTION public.workspace_member_profiles(p_workspace_id uuid)
+--   RETURNS TABLE (user_id uuid, role text, role_id uuid, joined_at timestamptz, email text, full_name text, meta_name text)
+--   LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+--   AS $$
+--     SELECT m.user_id, m.role::text, m.role_id, m.created_at, u.email::text,
+--       u.raw_user_meta_data ->> 'full_name', u.raw_user_meta_data ->> 'name'
+--     FROM public.workspace_members m
+--     LEFT JOIN auth.users u ON u.id = m.user_id
+--     WHERE m.workspace_id = p_workspace_id;
+--   $$;
+--   COMMENT ON FUNCTION public.workspace_member_profiles(uuid) IS
+--     'Miembros de un workspace con email y nombre (de auth.users) en una sola consulta. Solo service_role: reemplaza N llamadas a auth.admin.getUserById.';
+--   REVOKE ALL ON FUNCTION public.workspace_member_profiles(uuid) FROM PUBLIC, anon, authenticated;
+--   GRANT EXECUTE ON FUNCTION public.workspace_member_profiles(uuid) TO service_role;
+--
+-- Como volver atras (en este orden):
+--   DROP TRIGGER IF EXISTS notifications_enqueue_delivery ON public.notifications;   (00275)
+--   DROP FUNCTION IF EXISTS private.enqueue_notification_delivery();
+--   DROP FUNCTION IF EXISTS public.workspace_member_profiles(uuid);  (y recrear la de arriba)
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS team_alerts_settings;
+--   ALTER TABLE public.user_preferences DROP COLUMN IF EXISTS notification_prefs;
+-- Riesgo: bajo. Dos columnas con default, una funcion que devuelve una
+-- columna mas (los que la llaman leen por nombre) y una funcion sin trigger.
+-- ============================================================
+
+SET search_path = '';
+
+-- 1. Preferencias de notificaciones por persona -------------------------------
+
+ALTER TABLE public.user_preferences
+  ADD COLUMN IF NOT EXISTS notification_prefs jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_preferences_notification_prefs_check') THEN
+    ALTER TABLE public.user_preferences ADD CONSTRAINT user_preferences_notification_prefs_check
+      CHECK (jsonb_typeof(notification_prefs) = 'object');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.user_preferences.notification_prefs IS
+  'Lo que la persona cambio de sus avisos: { evento: { bell, email, whatsapp } }. Lo que falta usa el valor por defecto de lib/notifications/preferences.ts.';
+
+COMMENT ON TABLE public.user_preferences IS
+  'Preferencias por persona, no por workspace: la zona horaria y que avisos le llegan y por donde.';
+
+-- 2. Desde que WhatsApp se avisa al equipo -------------------------------------
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS team_alerts_settings jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_team_alerts_settings_check' AND conrelid = 'public.workspaces'::regclass) THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_team_alerts_settings_check
+      CHECK (jsonb_typeof(team_alerts_settings) = 'object');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.team_alerts_settings IS
+  'Avisos al equipo: { whatsapp_channel_id } = el canal de WhatsApp (Evolution) desde el que se mandan. Sin canal, nadie recibe avisos por WhatsApp.';
+
+-- 3. Los miembros con su foto --------------------------------------------------
+
+DROP FUNCTION IF EXISTS public.workspace_member_profiles(uuid);
+
+CREATE FUNCTION public.workspace_member_profiles(p_workspace_id uuid)
+RETURNS TABLE (
+  user_id uuid,
+  role text,
+  role_id uuid,
+  joined_at timestamptz,
+  email text,
+  full_name text,
+  meta_name text,
+  avatar_path text
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT
+    m.user_id,
+    m.role::text,
+    m.role_id,
+    m.created_at,
+    u.email::text,
+    u.raw_user_meta_data ->> 'full_name',
+    u.raw_user_meta_data ->> 'name',
+    p.avatar_path
+  FROM public.workspace_members m
+  LEFT JOIN auth.users u ON u.id = m.user_id
+  LEFT JOIN public.user_profiles p ON p.user_id = m.user_id
+  WHERE m.workspace_id = p_workspace_id;
+$$;
+
+COMMENT ON FUNCTION public.workspace_member_profiles(uuid) IS
+  'Miembros de un workspace con email, nombre (de auth.users) y foto (de user_profiles) en una sola consulta. Solo service_role.';
+
+REVOKE ALL ON FUNCTION public.workspace_member_profiles(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.workspace_member_profiles(uuid) TO service_role;
+
+-- 4. La funcion que encola la entrega (el trigger es la 00275) ------------------
+
+CREATE OR REPLACE FUNCTION private.enqueue_notification_delivery()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  -- Un aviso NUNCA deja de guardarse por esto: si no se puede encolar, queda
+  -- solo en la campana y se avisa en el log.
+  BEGIN
+    INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+    VALUES ('notification_deliver', jsonb_build_object('notification_id', NEW.id), now(),
+            'notification_deliver:' || NEW.id::text)
+    ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'enqueue_notification_delivery: no pude encolar el aviso %: %', NEW.id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_notification_delivery() FROM PUBLIC, anon, authenticated;
+
+-- ============================================================
+-- MIGRATION 275: NOTIFICATION DELIVERY TRIGGER
+-- ============================================================
+-- ============================================================
+-- 00275_notification_delivery_trigger.sql
+--
+-- SE APLICA DESPUES DEL DEPLOY: el codigo que ejecuta los jobs
+-- `notification_deliver` (lib/jobs/handlers/notification-deliver.ts) tiene que
+-- estar desplegado antes. Si no, la cola marcaria esos jobs como fallidos por
+-- tipo desconocido y ningun aviso saldria por email ni WhatsApp.
+--
+-- Conecta `private.enqueue_notification_delivery()` (00274) con
+-- `public.notifications`: cada aviso nuevo, venga del codigo o del SQL (los
+-- `draft_window` de la 00072), encola su entrega. El job decide a quien y por
+-- donde segun las preferencias de cada persona. La funcion esta envuelta en
+-- EXCEPTION: un aviso NUNCA deja de guardarse por esto.
+--
+-- Los avisos que ya existian antes de esta migracion no se mandan (no hay
+-- barrido hacia atras a proposito).
+--
+-- Despues de aplicarla:
+--   node scripts/verify-account.mjs --despues-de-00275
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS notifications_enqueue_delivery ON public.notifications;
+--   UPDATE public.scheduled_jobs SET status = 'failed', last_error = 'cancelado' WHERE type = 'notification_deliver' AND status = 'pending';
+-- Riesgo: bajo. Solo encola.
+-- ============================================================
+
+SET search_path = '';
+
+DROP TRIGGER IF EXISTS notifications_enqueue_delivery ON public.notifications;
+CREATE TRIGGER notifications_enqueue_delivery
+  AFTER INSERT ON public.notifications
+  FOR EACH ROW EXECUTE FUNCTION private.enqueue_notification_delivery();

@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/server";
+import { userAvatarPublicUrl } from "@/lib/account/avatar";
 
 /**
  * Nombres de los miembros del workspace, para los desplegables de setter y
@@ -22,6 +23,8 @@ export interface WorkspaceMemberInfo {
   role: string;
   name: string;
   email: string;
+  /** La foto de Mi cuenta (00273/00274), o null. */
+  avatarUrl: string | null;
 }
 
 export const getWorkspaceMembers = cache(
@@ -40,6 +43,8 @@ export const getWorkspaceMembers = cache(
           role: p.role,
           email: p.email ?? "",
           name: memberDisplayName(p.full_name, p.meta_name, p.email),
+          // Una base sin la 00274 no devuelve la columna: sin foto.
+          avatarUrl: userAvatarPublicUrl((p as { avatar_path?: string | null }).avatar_path ?? null),
         }))
         .sort((a, b) => a.name.localeCompare(b.name, "es"));
     }
@@ -68,6 +73,7 @@ export const getWorkspaceMembers = cache(
             user?.user_metadata?.name as string | undefined,
             user?.email,
           ),
+          avatarUrl: null,
         };
       }),
     );

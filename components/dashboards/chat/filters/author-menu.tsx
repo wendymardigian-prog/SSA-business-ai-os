@@ -53,7 +53,7 @@ export function AuthorMenu({
         group ? (
           <Avatar initials={group.initials} color={group.color} size="sm" />
         ) : member ? (
-          <Avatar initials={initialsOf(member.label)} color="var(--c-team)" size="sm" />
+          <Avatar initials={initialsOf(member.label)} color="var(--c-team)" size="sm" userId={member.id} />
         ) : undefined
       }
       value={shortLabel}
@@ -81,7 +81,7 @@ export function AuthorMenu({
           key={m.id}
           checked={value === m.id}
           onSelect={() => onChange(m.id)}
-          leading={<Avatar initials={initialsOf(m.label)} color="var(--c-team)" />}
+          leading={<Avatar initials={initialsOf(m.label)} color="var(--c-team)" userId={m.id} />}
           title={m.label}
           description={m.role}
         />

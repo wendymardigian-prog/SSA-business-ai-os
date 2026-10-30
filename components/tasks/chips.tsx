@@ -54,7 +54,7 @@ export function PersonBadge({ id, name, empty = "Sin responsable", compact = fal
   const label = name ?? "Alguien del equipo";
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      <Avatar initials={initialsOf(label)} color={colorOf(id)} />
+      <Avatar initials={initialsOf(label)} color={colorOf(id)} userId={id} />
       {!compact && <span className="truncate text-sm">{label}</span>}
       {compact && <span className="sr-only">{label}</span>}
     </span>

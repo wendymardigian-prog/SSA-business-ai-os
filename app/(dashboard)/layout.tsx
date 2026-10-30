@@ -10,6 +10,9 @@ import { DashboardChromeProvider } from "@/components/dashboard-chrome";
 import { TimezoneBootstrap } from "@/components/timezone-bootstrap";
 import { eodNavFlag } from "@/lib/eod/nav-flag"; // @plantilla-quitar(formularios)
 import { visibleSettingsTabs } from "@/lib/settings/tabs";
+import { getMyProfile } from "@/lib/account/profile";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
+import { MemberAvatarsProvider } from "@/components/account/member-avatars";
 
 export default async function DashboardLayout({
   children,
@@ -20,7 +23,7 @@ export default async function DashboardLayout({
 
   // El conteo se calcula en el servidor para que la campana no arranque en cero
   // y salte a su valor real un instante despues.
-  const [{ data: memberships }, unreadNotifications, draftCounts, permissionContext, savedTimezone, hasEod] = await Promise.all([
+  const [{ data: memberships }, unreadNotifications, draftCounts, permissionContext, savedTimezone, hasEod, myProfile, members] = await Promise.all([
     supabase
       .from("workspace_members")
       .select("role, workspaces(id, name, slug, brand_name, brand_logo_path, brand_color)")
@@ -36,7 +39,16 @@ export default async function DashboardLayout({
     // "Mi reporte del día": si la persona está en la audiencia de algún EOD publicado (caché de 60 s). // @plantilla-quitar(formularios)
     eodNavFlag(workspace.id, user.id), // @plantilla-quitar(formularios)
     // @plantilla-sin(formularios): Promise.resolve(false),
+    // La foto del menu de usuario (Mi cuenta, 00273).
+    getMyProfile(),
+    // Las fotos del equipo, para los circulos de cada persona en todo el panel (solo id → URL viaja al navegador).
+    getWorkspaceMembers(workspace.id),
   ]);
+  const memberAvatars: Record<string, string> = {};
+  for (const m of members) if (m.avatarUrl) memberAvatars[m.userId] = m.avatarUrl;
+  // La propia sale de la sesion (recien subida, antes de que la lista se vuelva a pedir).
+  if (myProfile.avatarUrl) memberAvatars[user.id] = myProfile.avatarUrl;
+  const profileUser = { ...user, avatarUrl: myProfile.avatarUrl };
   // "Ajustes" se ve para quien tenga al menos una pestaña (plano formularios-ui, D4): Recursos e
   // Integraciones ya no son items del menu, se llega por ahi.
   const navFlags = {
@@ -66,15 +78,16 @@ export default async function DashboardLayout({
   // desaparece, y con h-screen el pie de la pantalla queda tapado.
   return (
     <DashboardChromeProvider
-      value={{ workspace, user, workspaces, role, permissionKeys, navFlags, unreadNotifications, draftCounts, viewerTimezone }}
+      value={{ workspace, user: profileUser, workspaces, role, permissionKeys, navFlags, unreadNotifications, draftCounts, viewerTimezone }}
     >
+      <MemberAvatarsProvider avatars={memberAvatars}>
       <TimezoneBootstrap hasSaved={savedTimezone !== null} />
       {/* El color de ESTE negocio (00266) pisa el de la instalacion que pone app/layout.tsx: va despues, con los mismos selectores. */}
       {workspaceColorCss && <style dangerouslySetInnerHTML={{ __html: workspaceColorCss }} />}
       <div className="flex h-dvh">
         <Sidebar
           workspace={workspace}
-          user={user}
+          user={profileUser}
           role={role}
           permissionKeys={permissionKeys}
           workspaces={workspaces}
@@ -92,6 +105,7 @@ export default async function DashboardLayout({
         */}
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
       </div>
+      </MemberAvatarsProvider>
     </DashboardChromeProvider>
   );
 }

@@ -68,6 +68,13 @@ export interface NavItemMeta {
   requires?: NavFlag;
 }
 
+/**
+ * Pantallas que NO cuelgan del menu lateral: se abren desde el menu de usuario
+ * del pie (Mi cuenta, 00273). En ellas ningun item del menu queda marcado, y
+ * esta bien: es lo de la persona, no una seccion del negocio.
+ */
+export const PROFILE_MENU_ROUTES: readonly string[] = ["/dashboard/cuenta"];
+
 export const NAV_ITEMS: NavItemMeta[] = [
   // alsoActiveOn: "/dashboard/dashboards" (sin el /chat) para que las otras
   // pantallas de dashboards (ads, content, unified y sus detalles) tambien

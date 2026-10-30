@@ -1207,7 +1207,7 @@ Claude Code** (no hay editor visual). Guia completa en [docs/sitio.md](docs/siti
 - La home (`app/(sitio)/page.tsx`) **por defecto redirige a `/login`**. Cada clon la reemplaza
   por la suya.
 - Las paginas son **estaticas o con cache: no leen la sesion**. No pueden llamarse como una ruta
-  reservada: `dashboard`, `login`, `auth`, `invite`, `api`, `calendario`, `f`, `embed`.
+  reservada: `dashboard`, `login`, `auth`, `invite`, `api`, `calendario`, `f`, `embed`, `l`, `baja`, `recuperar`, `restablecer`.
 - Cada pagina nueva se suma a `lib/site/pages.ts` (sitemap y `robots`). `robots.txt` **sigue
   bloqueando todo** salvo esas paginas.
 - Un formulario se pone con `<Formulario slug="…" />`: muestra siempre la version publicada
@@ -1621,6 +1621,31 @@ Quién puede recibir emails de marketing, link de baja en un clic, rebotes y que
 
 ```
 node scripts/verify-email-subscription.mjs   # transiciones (SQL↔TS), 10 llamadas en paralelo, direcciones, token, guardia, herencia (y su fallo forzado), secuencias, funciones
+```
+
+# Mi cuenta: perfil y notificaciones (construido, 30/10/2026)
+
+Cada persona del equipo tiene su página (`/dashboard/cuenta`, pestañas Perfil y Notificaciones), abierta desde el menú de usuario del pie («Mi perfil» y «Notificaciones»). Resumen en [docs/cuenta-y-notificaciones.md](docs/cuenta-y-notificaciones.md); pendientes en `docs/PENDIENTE-cuenta.md`.
+
+## Lo que no se puede romper
+
+- **Todo sale de la sesión**: ninguna acción de Mi cuenta (`lib/actions/account.ts`) recibe un usuario del navegador, y la página no pide permisos. El nombre sigue en `user_metadata.full_name` (se cambia con `updateUser` y se renueva la sesión: el panel lo lee del token).
+- **`user_profiles` (00273)**: solo la fila propia (RLS), sin DELETE. El teléfono se guarda normalizado (`+<dígitos>`, CHECK) y la foto siempre en la carpeta de su persona (CHECK). **El bucket `user-avatars` es público y NO tiene policies de escritura**: sube y borra el servidor después de validar los bytes (`parseAvatarDataUrl`). La pantalla recorta la foto a 384 px (una Server Action acepta 1 MB).
+- **Las fotos del equipo viajan una vez**: el layout carga `id → URL` (`workspace_member_profiles` devuelve `avatar_path` desde la 00274) y `MemberAvatarsProvider` las reparte; `Avatar` con `userId` la busca ahí. **Sin foto, `Avatar` dibuja exactamente el mismo HTML de antes** (`member-avatars.test.ts`).
+- **Un solo catálogo de avisos para las preferencias**: `lib/notifications/preferences.ts` (eventos que agrupan tipos, sección, a quién le puede llegar y defaults). Cada tipo de `NOTIFICATION_TYPES` está en UN evento (`preferences.test.ts`): **un tipo de aviso nuevo se suma a un evento en el mismo cambio**. Lo guardado es solo lo que difiere del default (`withPref`).
+- **La campana muestra lo propio y lo general**, sin lo silenciado (`lib/notifications/bell-filter.ts`, en `listNotifications`, `countUnreadNotifications` y `markAllNotificationsRead`). `can_see_notification` y la RLS de `notifications` NO cambiaron.
+- **Email y WhatsApp los manda SOLO el job `notification_deliver`** (`lib/notifications/deliver.ts`), que encola el trigger de la 00275 en cada aviso (en `EXCEPTION`: nunca tumba el insert). Nunca lanza por un proveedor (reagenda a 1, 5 y 15 min), anota cada envío en `metadata.delivered` (un reintento no repite), tope de uno por persona, evento y cosa cada 10 minutos, y no manda avisos de más de 24 h. `notifyWorkspaceAdmins` ya no manda email propio.
+- **El WhatsApp al equipo sale del canal elegido en Ajustes → General** (`workspaces.team_alerts_settings`, `settings.general`) por `sendTeamWhatsApp` → `sendEvolutionDirect`: no crea contactos ni conversaciones. El email al equipo va sin `category` (está en la lista de `subscription-gate.test.ts`).
+- **Olvidé mi contraseña**: `/recuperar` responde siempre lo mismo (no revela cuentas; tope por IP y por email), el link vuelve por `/auth/callback` o `/auth/confirm` (token_hash, la plantilla en español) y `/restablecer` pone la nueva. `recuperar` y `restablecer` son rutas reservadas del sitio y `/auth/confirm` pasa el middleware como el callback.
+- **La pestaña de Mi cuenta sale de la URL** (`useSearchParams` + `history.pushState`): el menú de usuario y el «atrás» la cambian. Mi cuenta no marca ningún ítem del menú lateral (`PROFILE_MENU_ROUTES`).
+
+## Migraciones
+
+`00273` (tabla y bucket) y `00274` (preferencias, `team_alerts_settings`, `workspace_member_profiles` con la foto —la definición vieja completa en su cabecera— y la función que encola) son aditivas y van **ANTES** del deploy; `00275` (el trigger) va **DESPUÉS**. La `00273` y la `00274` están **aplicadas y registradas** (30/10/2026, versiones `20261030183536` y `20261030183537`), con `verify-account` y `verify-workspace-isolation --despues-de-00143` en verde; la `00275` va **después del deploy**. **La próxima libre es la `00276`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-account.mjs                    # RLS, bucket, preferencias, team_alerts_settings, workspace_member_profiles
+node scripts/verify-account.mjs --despues-de-00275 # además, que cada aviso encole su entrega
 ```
 
 # Seguridad

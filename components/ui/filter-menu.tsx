@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMemberAvatar } from "@/components/account/member-avatars";
 import { isFormField, menuKeyAction, MENU_ITEM_SELECTOR } from "@/lib/ui/menu-keys";
 
 /**
@@ -249,8 +250,38 @@ export function ColorDot({ color }: { color: string }) {
   return <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />;
 }
 
-/** El avatar redondo de una persona o de un grupo. */
-export function Avatar({ initials, color, size = "md" }: { initials: string; color: string; size?: "sm" | "md" }) {
+/**
+ * El avatar redondo de una persona o de un grupo.
+ *
+ * Con `userId` (una persona del equipo) muestra su foto de Mi cuenta si tiene
+ * una (`MemberAvatarsProvider`); si no tiene, o no carga, las iniciales de
+ * siempre. Sin `userId` se ve exactamente como antes.
+ */
+export function Avatar({
+  initials,
+  color,
+  size = "md",
+  userId,
+}: {
+  initials: string;
+  color: string;
+  size?: "sm" | "md";
+  userId?: string | null;
+}) {
+  const photo = useMemberAvatar(userId);
+  const [failed, setFailed] = useState<string | null>(null);
+  if (photo && failed !== photo) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- foto chica de Storage; next/image no suma nada aca
+      <img
+        src={photo}
+        alt=""
+        aria-hidden
+        onError={() => setFailed(photo)}
+        className={cn("shrink-0 rounded-full object-cover", size === "sm" ? "h-[18px] w-[18px]" : "h-[22px] w-[22px]")}
+      />
+    );
+  }
   return (
     <span
       className={cn(

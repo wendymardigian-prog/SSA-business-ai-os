@@ -2,6 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
+import { getMyNotificationPrefs } from "@/lib/account/notification-prefs";
+import { mutedBellTypes } from "@/lib/notifications/preferences";
+import { bellRecipientFilter, mutedTypesList } from "@/lib/notifications/bell-filter";
 
 /**
  * Server Actions del centro de notificaciones (F18).
@@ -13,7 +16,16 @@ import { getWorkspace } from "@/lib/workspace";
  * Quien puede marcar que es la RLS (can_see_notification): estas funciones no
  * repiten esa logica, solo la ejercen. Un update sobre un aviso que no le
  * corresponde no falla con error: no toca ninguna fila, que es lo correcto.
+ *
+ * Encima de la RLS, la campana muestra solo lo propio y lo general, sin lo que
+ * la persona silencio (Mi cuenta → Notificaciones, `lib/notifications/bell-filter.ts`).
  */
+
+/** El filtro de la campana de quien esta logueado: lo propio y lo general, sin lo silenciado. */
+async function bellScope() {
+  const [{ supabase, workspace, user }, prefs] = await Promise.all([getWorkspace(), getMyNotificationPrefs()]);
+  return { supabase, workspace, recipients: bellRecipientFilter(user.id), muted: mutedTypesList(mutedBellTypes(prefs)) };
+}
 
 export type NotificationActionResult = { ok: true; updated: number } | { ok: false; error: string };
 
@@ -41,21 +53,21 @@ export async function markNotificationRead(
 }
 
 /**
- * Marca como leidas todas las que esta persona puede ver.
- *
- * El alcance de "todas" lo decide la RLS: para un Member son las suyas, para un
- * Owner/Admin las del workspace. Por eso el update no lleva mas filtro que el
- * workspace y el no-leidas.
+ * Marca como leidas todas las que esta persona ve en SU campana: las propias y
+ * las generales (no las personales de otros, aunque la RLS se las deje ver a
+ * un Owner/Admin), y no las que silencio.
  */
 export async function markAllNotificationsRead(): Promise<NotificationActionResult> {
-  const { supabase, workspace } = await getWorkspace();
+  const { supabase, workspace, recipients, muted } = await bellScope();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("workspace_id", workspace.id)
     .is("read_at", null)
-    .select("id");
+    .or(recipients);
+  if (muted) query = query.not("type", "in", muted);
+  const { data, error } = await query.select("id");
 
   if (error) {
     console.error("[notificaciones] no pude marcar todas como leidas:", error.message);
@@ -79,20 +91,21 @@ export interface NotificationItem {
 }
 
 /**
- * Las ultimas notificaciones visibles para esta persona.
+ * Las ultimas notificaciones de la campana de esta persona.
  *
  * La campana la llama al abrirse y cuando Realtime avisa que hubo un cambio.
- * No hace falta filtrar por rol: la RLS ya devuelve solo lo que corresponde.
+ * La RLS decide que puede ver; `bellScope` deja lo propio y lo general, sin lo silenciado.
  */
 export async function listNotifications(limit = 20): Promise<NotificationItem[]> {
-  const { supabase, workspace } = await getWorkspace();
+  const { supabase, workspace, recipients, muted } = await bellScope();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("notifications")
     .select("id, type, title, body, entity_type, entity_id, metadata, read_at, created_at")
     .eq("workspace_id", workspace.id)
-    .order("created_at", { ascending: false })
-    .limit(Math.min(Math.max(limit, 1), 50));
+    .or(recipients);
+  if (muted) query = query.not("type", "in", muted);
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(Math.min(Math.max(limit, 1), 50));
 
   if (error) {
     console.error("[notificaciones] listado fallido:", error.message);
@@ -114,13 +127,16 @@ export async function listNotifications(limit = 20): Promise<NotificationItem[]>
 
 /** Cuantas sin leer. Alimenta el numerito de la campana. */
 export async function countUnreadNotifications(): Promise<number> {
-  const { supabase, workspace } = await getWorkspace();
+  const { supabase, workspace, recipients, muted } = await bellScope();
 
-  const { count, error } = await supabase
+  let query = supabase
     .from("notifications")
     .select("id", { count: "exact", head: true })
     .eq("workspace_id", workspace.id)
-    .is("read_at", null);
+    .is("read_at", null)
+    .or(recipients);
+  if (muted) query = query.not("type", "in", muted);
+  const { count, error } = await query;
 
   if (error) {
     console.error("[notificaciones] no pude contar las no leidas:", error.message);

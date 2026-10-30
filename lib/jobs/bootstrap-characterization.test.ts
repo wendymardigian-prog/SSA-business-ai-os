@@ -58,6 +58,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "meta_ad_thumbnails",
       "meta_ads_sync",
       "metrics_sync",
+      // Mi cuenta → Notificaciones (00275): la entrega de un aviso por email y WhatsApp.
+      "notification_deliver",
       // Ventas (B4): los recordatorios relativos al vencimiento de un pago y el barrido de mora. // @plantilla-quitar(ventas)
       "payment_relative_trigger", // @plantilla-quitar(ventas)
       "payments_overdue_sweep", // @plantilla-quitar(ventas)

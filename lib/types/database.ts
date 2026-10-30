@@ -1163,6 +1163,7 @@ export interface Database {
           contact_status_settings: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings: Json;
+          team_alerts_settings: Json;
           customer_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */ // @plantilla-quitar(ventas)
           max_discount_percent: number | null; // @plantilla-quitar(ventas)
@@ -1218,6 +1219,7 @@ export interface Database {
           contact_status_settings?: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
+          team_alerts_settings?: Json;
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
@@ -1267,6 +1269,7 @@ export interface Database {
           contact_status_settings?: Json;
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
+          team_alerts_settings?: Json;
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
@@ -2721,6 +2724,8 @@ export interface Database {
           user_id: string;
           timezone: string;
           timezone_source: string;
+          /** 00274: { evento: { bell, email, whatsapp } }; lo que falta usa el default del catalogo. */
+          notification_prefs: Json;
           created_at: string;
           updated_at: string;
         };
@@ -2728,12 +2733,43 @@ export interface Database {
           user_id: string;
           timezone: string;
           timezone_source?: string;
+          notification_prefs?: Json;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           timezone?: string;
           timezone_source?: string;
+          notification_prefs?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      /** 00273: datos personales de cada persona del equipo (solo su propia fila). */
+      user_profiles: {
+        Row: {
+          user_id: string;
+          avatar_path: string | null;
+          phone: string | null;
+          whatsapp_phone: string | null;
+          whatsapp_same_as_phone: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          avatar_path?: string | null;
+          phone?: string | null;
+          whatsapp_phone?: string | null;
+          whatsapp_same_as_phone?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          avatar_path?: string | null;
+          phone?: string | null;
+          whatsapp_phone?: string | null;
+          whatsapp_same_as_phone?: boolean;
           updated_at?: string;
         };
         Relationships: [];
@@ -6360,6 +6396,8 @@ export interface Database {
           email: string | null;
           full_name: string | null;
           meta_name: string | null;
+          /** 00274: la foto de user_profiles. */
+          avatar_path: string | null;
         }[];
       };
       // @plantilla-desde(formularios)

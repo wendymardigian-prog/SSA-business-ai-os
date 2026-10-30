@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BrandMark } from "@/components/brand-mark";
@@ -81,9 +82,14 @@ function LoginForm() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium mb-1.5">
-              Contraseña
-            </label>
+            <div className="mb-1.5 flex items-baseline justify-between gap-2">
+              <label htmlFor="password" className="block text-sm font-medium">
+                Contraseña
+              </label>
+              <Link href="/recuperar" className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </div>
             <input
               id="password"
               type="password"

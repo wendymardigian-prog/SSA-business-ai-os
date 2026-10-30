@@ -8,6 +8,7 @@ import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
+import { TeamAlertsSettings } from "@/components/settings/team-alerts-settings";
 import { BrandSettings, type BrandSettingsInitial } from "@/components/settings/brand-settings";
 import { SalesSettings } from "@/components/settings/sales-settings"; // @plantilla-quitar(ventas)
 import { FinanceSettings } from "@/components/settings/finance-settings"; // @plantilla-quitar(finanzas)
@@ -68,6 +69,7 @@ export function SettingsView({
   financeAuto, // @plantilla-quitar(finanzas)
   paymentTasks, // @plantilla-quitar(tareas)
   attributionSettings,
+  teamAlerts,
 }: {
   workspace: WorkspaceSettings;
   canViewAiCosts: boolean;
@@ -87,6 +89,8 @@ export function SettingsView({
   paymentTasks: TaskPaymentState; // @plantilla-quitar(tareas)
   /** La configuración de «Atribución» (Extra I, F31); solo se muestra con `settings.general`. */
   attributionSettings: AttributionSettings;
+  /** «Avisos al equipo por WhatsApp» (Mi cuenta, 00274): los WhatsApp que pueden mandar y el elegido. */
+  teamAlerts: { channels: Array<{ id: string; name: string }>; selectedId: string | null };
 }) {
   // Lo que cada persona puede ver, serializable desde el servidor: una función `can(key)` real para las secciones.
   const allowed: Record<string, boolean> = { "settings.general": canGeneral, "sales.settings": canSales, "expenses.manage": canFinance };
@@ -209,6 +213,10 @@ export function SettingsView({
               <hr className="border-border" />
 
               <BrandSettings initial={workspace.brand} />
+
+              <hr className="border-border" />
+
+              <TeamAlertsSettings channels={teamAlerts.channels} selectedId={teamAlerts.selectedId} />
             </section>
 
             <hr className="border-border" />

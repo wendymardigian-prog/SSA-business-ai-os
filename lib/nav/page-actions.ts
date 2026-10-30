@@ -282,6 +282,11 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip: "Qué pasa cuando alguien responde este formulario: cuándo, bajo qué condición y qué se hace.",
   },
   // @plantilla-hasta(formularios)
+  // ── Mi cuenta (00273) ─────────────────────────────────────────────────
+  "/dashboard/cuenta": {
+    title: "Mi cuenta",
+    tooltip: "Tu nombre, tu foto, tus datos de contacto, tu contraseña y qué avisos te llegan y por dónde. Es tuyo: no cambia nada para el resto del equipo.",
+  },
   // ── Agenda (Etapa 4) ──────────────────────────────────────────────────
   "/dashboard/agenda": {
     title: "Agenda",

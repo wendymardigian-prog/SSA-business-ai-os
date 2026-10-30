@@ -10,6 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { BookingStatus } from "@/lib/scheduling/types";
 import { inviteeActions, type InviteeActions } from "@/lib/scheduling/booking-page";
+import { hostAvatarUrl } from "@/lib/account/host-avatar";
 
 type Db = SupabaseClient<Database>;
 
@@ -57,10 +58,12 @@ export async function findBookingByUid(service: Db, uid: string): Promise<Public
     service.from("workspaces").select("id, scheduling_public_base_url").eq("id", booking.workspace_id).maybeSingle(),
   ]);
   if (!event) return null;
+  // Sin foto de agenda, la de Mi cuenta (00273).
+  const hostProfile = profile && !profile.avatar_url ? { ...profile, avatar_url: await hostAvatarUrl(service, profile.user_id, null) } : profile;
   return {
     booking,
     event,
-    profile: profile ?? null,
+    profile: hostProfile ?? null,
     workspace: { id: booking.workspace_id, scheduling_public_base_url: workspace?.scheduling_public_base_url ?? null },
   };
 }

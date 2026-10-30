@@ -11,6 +11,7 @@ import { financeContextOf } from "@/lib/finance/context"; // @plantilla-quitar(f
 import { loadCategoryUsage } from "@/lib/finance/totals-load"; // @plantilla-quitar(finanzas)
 import { loadFinanceAuto } from "@/lib/finance/auto-card-load"; // @plantilla-quitar(finanzas)
 import { parseAttributionSettings } from "@/lib/attribution/settings";
+import { parseTeamAlertsSettings } from "@/lib/notifications/team-alerts-settings";
 import { SettingsView } from "./settings-view";
 
 export default async function SettingsPage() {
@@ -58,6 +59,25 @@ export default async function SettingsPage() {
     : { processorRows: [], metaRows: [], autoCloseDays: financeContextOf(ctx).settings.auto_close_days, vendors: [], metaFailed: false };
   // @plantilla-hasta(finanzas)
 
+  // «Avisos al equipo por WhatsApp» (Mi cuenta → Notificaciones, 00274): los WhatsApp conectados que pueden mandar.
+  const canGeneral = can("settings.general");
+  const { data: whatsappChannels } = canGeneral
+    ? await supabase
+        .from("channels")
+        .select("id, display_name, username, evolution_instance")
+        .eq("workspace_id", workspace.id)
+        .eq("platform", "whatsapp")
+        .eq("provider", "evolution")
+        .eq("is_active", true)
+        .order("created_at")
+    : { data: [] };
+  const teamAlerts = {
+    channels: (whatsappChannels ?? [])
+      .filter((c) => !!c.evolution_instance)
+      .map((c) => ({ id: c.id, name: c.display_name?.trim() || c.username?.trim() || "WhatsApp" })),
+    selectedId: parseTeamAlertsSettings((workspace as unknown as { team_alerts_settings?: unknown }).team_alerts_settings).whatsappChannelId,
+  };
+
   return (
     <SettingsView
       workspace={{
@@ -84,7 +104,8 @@ export default async function SettingsPage() {
       }}
       canViewAiCosts={canViewAiCosts}
       canViewAudit={can("audit.view")}
-      canGeneral={can("settings.general")}
+      canGeneral={canGeneral}
+      teamAlerts={teamAlerts}
       canSales={canSales}
       canFinance={canFinance}
       financeCategories={canFinance ? financeContextOf(ctx).settings.expense_categories : []} // @plantilla-quitar(finanzas)

@@ -1,5 +1,6 @@
 "use client";
 
+import { MemberCircle } from "@/components/account/user-avatar";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -280,9 +281,7 @@ export function TeamView({
                     <div key={member.userId} className="rounded-xl border border-border bg-card p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground">
-                            {member.name.charAt(0).toUpperCase()}
-                          </div>
+                          <MemberCircle userId={member.userId} name={member.name} size={36} className="text-sm" />
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <p className="truncate text-sm font-medium">{member.name}</p>
