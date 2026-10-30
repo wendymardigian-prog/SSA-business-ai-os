@@ -153,6 +153,81 @@ afterEach(() => {
   vi.resetModules();
 });
 
+describe("webhook de Evolution: una persona sin telefono (@lid)", () => {
+  // EL ARREGLO (30/10/2026): WhatsApp a veces identifica a la persona con un @lid en
+  // vez del numero. Antes estos mensajes se descartaban y la conversacion, que se
+  // veia en el celular, nunca entraba al sistema.
+  it("ya no se descarta: crea el contacto por su @lid, con su nombre y sin telefono, y sigue el camino de siempre", async () => {
+    db();
+    const res = await callRoute(post(message({ key: { remoteJid: "98765432101234@lid", fromMe: false, id: "m-lid" } })));
+
+    expect(await res.json()).toEqual({ ok: true, queued: true });
+    await runAfter();
+    expect(upsertContactForSender).toHaveBeenCalledWith(
+      expect.objectContaining({
+        senderId: "98765432101234@lid",
+        senderName: "Lead de prueba",
+        senderPhone: null,
+        senderUsername: null,
+      }),
+    );
+    expect(insertMessage).toHaveBeenCalledWith(expect.objectContaining({ direction: "inbound", platformMessageId: "m-lid" }));
+    expect(runInboundAutomation).toHaveBeenCalledWith(
+      expect.objectContaining({ incomingMessage: expect.objectContaining({ sender: expect.objectContaining({ id: "98765432101234@lid" }) }) }),
+    );
+    expect(maybeScheduleAgentTurn).toHaveBeenCalled();
+  });
+
+  it("un @lid sin nombre ni numero queda con un nombre generico, no con el id", async () => {
+    db();
+    await callRoute(post(message({ key: { remoteJid: "98765432101234@lid", fromMe: false, id: "m" }, pushName: undefined })));
+    await runAfter();
+
+    expect(upsertContactForSender).toHaveBeenCalledWith(expect.objectContaining({ senderName: "Contacto de WhatsApp" }));
+  });
+
+  it("con el telefono real al lado (remoteJidAlt), la identidad es el telefono", async () => {
+    db();
+    await callRoute(
+      post(message({ key: { remoteJid: "98765432101234@lid", remoteJidAlt: "5491122223333@s.whatsapp.net", fromMe: false, id: "m" } })),
+    );
+    await runAfter();
+
+    expect(upsertContactForSender).toHaveBeenCalledWith(
+      expect.objectContaining({ senderId: "+5491122223333", senderPhone: "+5491122223333" }),
+    );
+  });
+
+  it("si la persona ya entro SOLO con su @lid y ahora llega con los dos, sigue en el mismo contacto y suma el telefono", async () => {
+    const memory = memoryDb({
+      channels: [channelRow()],
+      contact_channels: [{ id: "cc-lid", channel_id: CHANNEL_ID, contact_id: "contact-lid", platform_sender_id: "98765432101234@lid" }],
+    });
+    createServiceClient.mockResolvedValue(memory.client);
+    await callRoute(
+      post(message({ key: { remoteJid: "98765432101234@lid", remoteJidAlt: "5491122223333@s.whatsapp.net", fromMe: false, id: "m" } })),
+    );
+    await runAfter();
+
+    expect(upsertContactForSender).toHaveBeenCalledWith(
+      expect.objectContaining({ senderId: "98765432101234@lid", senderPhone: "+5491122223333" }),
+    );
+  });
+
+  it("lo que mandamos desde el celular a un @lid tambien se guarda, como saliente externo", async () => {
+    db();
+    await callRoute(post(message({ key: { remoteJid: "98765432101234@lid", fromMe: true, id: "m-out" } })));
+    await runAfter();
+
+    expect(upsertContactForSender).toHaveBeenCalledWith(
+      // pushName es NUESTRO nombre: no va a la ficha del lead.
+      expect.objectContaining({ senderId: "98765432101234@lid", senderName: "Contacto de WhatsApp" }),
+    );
+    expect(insertMessage).toHaveBeenCalledWith(expect.objectContaining({ direction: "outbound", origin: "external" }));
+    expect(runInboundAutomation).not.toHaveBeenCalled();
+  });
+});
+
 describe("webhook de Evolution: el token", () => {
   it("con el token correcto acepta el mensaje y responde 200", async () => {
     db();
@@ -226,7 +301,15 @@ describe("webhook de Evolution: que mensajes procesa", () => {
       post(message({ key: { remoteJid: "123-456@g.us", fromMe: false, id: "m" } })),
     );
 
-    expect(await res.json()).toEqual({ ok: true, skipped: "sin telefono utilizable" });
+    expect(await res.json()).toEqual({ ok: true, skipped: "no es una conversacion con una persona" });
+  });
+
+  it("un estado o un canal de WhatsApp tampoco: no son una persona", async () => {
+    db();
+    for (const remoteJid of ["status@broadcast", "1203630011@newsletter"]) {
+      const res = await callRoute(post(message({ key: { remoteJid, fromMe: false, id: "m" } })));
+      expect(await res.json()).toEqual({ ok: true, skipped: "no es una conversacion con una persona" });
+    }
   });
 
   it("el mismo mensaje dos veces se procesa una sola vez", async () => {

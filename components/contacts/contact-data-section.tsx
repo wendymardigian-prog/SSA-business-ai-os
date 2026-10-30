@@ -12,11 +12,18 @@ export function ContactDataSection({
   contactId,
   values,
   canEdit,
+  whatsappLid = null,
 }: {
   contactId: string;
   /** El valor guardado de cada campo ("" si no hay). */
   values: Partial<Record<ContactFieldKey, string>>;
   canEdit: boolean;
+  /**
+   * El id de WhatsApp (@lid) de un contacto que llego sin telefono. Lo captura el
+   * sistema del mensaje y no se edita: se muestra en "Redes" para que se sepa que
+   * la persona escribe por WhatsApp aunque no tengamos su numero.
+   */
+  whatsappLid?: string | null;
 }) {
   return (
     <Section
@@ -57,6 +64,14 @@ export function ContactDataSection({
                   </div>
                 );
               })}
+              {group.id === "redes" && whatsappLid && (
+                <div className="min-w-0">
+                  <dt className="mb-0.5 text-xs text-muted-foreground">WhatsApp (sin número)</dt>
+                  <dd className="min-w-0 truncate text-sm" title="WhatsApp no compartió el número de esta persona: este es su id, y por acá se le responde.">
+                    ID {whatsappLid.replace("@lid", "")}
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
         ))}

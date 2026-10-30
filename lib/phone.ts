@@ -3,7 +3,9 @@
  *
  * Un JID es como WhatsApp identifica a alguien: "5491122334455@s.whatsapp.net"
  * para una persona, "...@g.us" para un grupo y "...@lid" para un identificador
- * anonimizado (WhatsApp lo usa en comunidades y canales; no trae el telefono).
+ * anonimizado: WhatsApp lo usa cuando no comparte el telefono de la persona
+ * (quien oculta su numero o usa nombre de usuario, comunidades, canales). Un
+ * @lid no es un telefono, pero SI identifica a la persona: se le puede escribir.
  *
  * El telefono se guarda siempre normalizado como "+<digitos>" para que la
  * deduplicacion cross-canal del Bloque 3 compare manzanas con manzanas.
@@ -47,6 +49,17 @@ export function isLidJid(jid: string | null | undefined): boolean {
 }
 
 /**
+ * Un @lid limpio: "98765432101234@lid" (sin el ":12" de un dispositivo). null si
+ * no es un @lid o no tiene digitos. Es como se guarda la identidad de WhatsApp de
+ * una persona cuya conversacion llega sin telefono.
+ */
+export function normalizeLidJid(jid: string | null | undefined): string | null {
+  if (!jid || !isLidJid(jid)) return null;
+  const digits = jid.split("@")[0].split(":")[0].replace(/\D/g, "");
+  return digits.length >= 6 ? `${digits}${LID_SUFFIX}` : null;
+}
+
+/**
  * Telefono normalizado a partir de un JID. null para grupos, para @lid y para
  * cualquier cosa que no parezca un numero.
  */
@@ -66,9 +79,14 @@ export function phoneToJid(phone: string | null | undefined): string | null {
 /**
  * Como se manda un numero a Evolution API: solo digitos, sin "+".
  * Acepta tanto un telefono como un JID entero.
+ *
+ * Un @lid viaja ENTERO ("98765432101234@lid"): Evolution lo deja tal cual
+ * (`createJid`) y el mensaje le llega a esa persona. Convertirlo a digitos lo
+ * mandaria a un numero que no existe.
  */
 export function toEvolutionNumber(phoneOrJid: string | null | undefined): string | null {
   if (!phoneOrJid) return null;
+  if (isLidJid(phoneOrJid)) return normalizeLidJid(phoneOrJid);
   const phone = phoneOrJid.includes("@") ? jidToPhone(phoneOrJid) : normalizePhone(phoneOrJid);
   return phone ? phone.slice(1) : null;
 }

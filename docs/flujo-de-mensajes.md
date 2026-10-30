@@ -98,6 +98,26 @@ Dos aclaraciones que suelen sorprender:
   dejaría el texto del lead en la base aparentando estar borrado, que es lo
   contrario de lo que la política se compromete a cumplir.
 
+## WhatsApp sin teléfono (`@lid`, 30/10/2026)
+
+WhatsApp ya no siempre comparte el número de la persona: a veces la identifica con
+un `@lid` (`98765432101234@lid`), un id interno. Evolution 2.3.7 lo reemplaza por el
+teléfono antes de mandarnos el webhook **solo cuando lo sabe** (`key.remoteJidAlt`;
+otras versiones lo mandan en `senderPn`, `participantPn` o `participantAlt`). Si nos
+llega un `@lid`, nadie sabe el número.
+
+Hasta el 30/10/2026 el receptor descartaba esos mensajes y la conversación, que se
+veía en el celular, no entraba nunca. Ahora:
+
+- La identidad es el teléfono o, si no hay, el `@lid` (`lib/whatsapp-sender.ts`). El
+  contacto nace con el nombre del perfil de WhatsApp (o "Contacto de WhatsApp") y sin
+  teléfono, y se le responde al `@lid` (Evolution lo acepta como destino).
+- Si esa persona después llega con su número, sigue en el mismo contacto y se le suma
+  el teléfono. Si llega por otro lado sin pasar por el `@lid` (por ejemplo, alguien
+  le carga el número a mano en otro contacto), pueden quedar dos: se juntan con la
+  fusión de contactos.
+- Grupos, estados, difusiones y canales de WhatsApp siguen afuera: no son un lead.
+
 ## Las conversaciones que entran (importación de Zernio, 00267)
 
 Una conversación de Instagram entra a la tabla `conversations` por uno de estos

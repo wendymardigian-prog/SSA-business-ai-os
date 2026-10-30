@@ -3,6 +3,8 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { isAdminRole } from "@/lib/auth/roles";
 import { platformLabel, type Platform } from "@/lib/platforms";
 import { firstParam, listParam, pickEnum, pickIds, pickPage, sanitizeSearch } from "@/lib/url-params";
+import { contactSearchFilter } from "@/lib/contacts/search";
+import { contactIdsByWhatsappLid } from "@/lib/contacts/search-lid";
 import { resolveDateRange, DATE_PRESETS, type DatePreset } from "@/lib/dates";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import {
@@ -191,10 +193,13 @@ export default async function InboxPage({
   if (hideCustomers) query = query.eq("contacts.is_customer", false);
 
   if (search) {
-    // La busqueda por nombre del contacto va sobre la tabla embebida; el
-    // preview sobre la propia. PostgREST no puede combinarlas con un OR, asi
-    // que se busca por nombre, que es lo que se usa para encontrar a alguien.
-    query = query.ilike("contacts.display_name", `%${search}%`);
+    // Sobre el contacto (la tabla embebida): nombre, emails, telefonos, los @ y el
+    // id de WhatsApp de quien escribio sin numero. La misma regla que Contactos
+    // (lib/contacts/search.ts). El preview del mensaje no entra: PostgREST no
+    // combina en un OR la tabla propia con la embebida.
+    const lidContactIds = await contactIdsByWhatsappLid(supabase, workspace.id, search);
+    const filter = contactSearchFilter(search, lidContactIds);
+    if (filter) query = query.or(filter, { referencedTable: "contacts" });
   }
 
   if (assignment === ASSIGNMENT_UNASSIGNED) {
@@ -326,7 +331,7 @@ export default async function InboxPage({
         left={<SectionTabs />}
         filters={
           <>
-            <SectionSearch value={filters.search} placeholder="Buscar por nombre" label="Buscar conversaciones" />
+            <SectionSearch value={filters.search} placeholder="Buscar por nombre, teléfono o usuario" label="Buscar conversaciones" />
             <InboxChannelMenu filters={filters} accounts={accounts} multiPlatforms={multiAccountPlatforms(accounts)} />
             <InboxFiltersMenu filters={filters} tags={tags} members={memberItems} />
           </>

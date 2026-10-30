@@ -50,21 +50,23 @@ export function parseZernioReaction(payload: unknown): ParsedReaction | null {
 }
 
 /**
- * WhatsApp: guarda la reaccion en la conversacion de ESE numero en ESE canal.
+ * WhatsApp: guarda la reaccion en la conversacion de ESA persona en ESE canal.
+ * `senderId` es su identidad en el canal: el telefono o, si WhatsApp no lo
+ * comparte, su @lid (lib/whatsapp-sender.ts).
  * `fromMe` es verdadero cuando la puso el telefono del negocio (WhatsApp Web o
  * la app): cuenta como del negocio, no del contacto.
  */
 export async function handleWhatsappReaction(
   service: Db,
   channel: { id: string; workspace_id: string },
-  args: { phone: string; reaction: ParsedReaction; fromMe: boolean },
+  args: { senderId: string; reaction: ParsedReaction; fromMe: boolean },
 ): Promise<"saved" | "ignored"> {
   try {
     const { data: link } = await service
       .from("contact_channels")
       .select("contact_id")
       .eq("channel_id", channel.id)
-      .eq("platform_sender_id", args.phone)
+      .eq("platform_sender_id", args.senderId)
       .maybeSingle();
     if (!link?.contact_id) return "ignored";
 

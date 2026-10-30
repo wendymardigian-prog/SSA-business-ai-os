@@ -16,6 +16,7 @@
  */
 
 import type { Platform } from "@/lib/platforms";
+import { isLidJid, normalizeLidJid } from "@/lib/phone";
 
 export interface DmLink {
   url: string | null;
@@ -39,6 +40,8 @@ export function getDmLink(platform: Platform, username: string | null): DmLink {
         ? { url: `https://reddit.com/message/compose/?to=${handle}`, label: `reddit.com/.../to=${handle}` }
         : { url: null, label: "" };
     case "whatsapp": {
+      // Un @lid no es un telefono: wa.me/<id> llevaria a un numero que no existe.
+      if (isLidJid(handle)) return { url: null, label: "" };
       // Zernio guarda el numero formateado para mostrar ("+34 902 80 82 90");
       // wa.me rechaza cualquier cosa que no sean digitos.
       const digits = handle.replace(/\D/g, "");
@@ -86,4 +89,37 @@ export function platformHandles(contact: ContactForHandles, channels: ContactCha
   const { url: whatsappUrl } = getDmLink("whatsapp", whatsappPhone);
 
   return { instagramUsername, instagramUrl, whatsappPhone, whatsappUrl };
+}
+
+/**
+ * Como se muestra la identidad de un contacto en un canal ("Canales vinculados" de
+ * la ficha y "Canales" del panel de la bandeja): el @ con su link, el telefono de
+ * WhatsApp con su wa.me, o, si WhatsApp no compartio el numero, su id (@lid) sin
+ * link, aclarando que no hay telefono.
+ */
+export function channelIdentity(
+  platform: Platform | string,
+  username: string | null | undefined,
+  senderId: string | null | undefined,
+): DmLink {
+  if (platform === "whatsapp") {
+    const lid = normalizeLidJid(senderId) ?? normalizeLidJid(username);
+    if (lid) return { url: null, label: `Sin número · ID ${lid.replace("@lid", "")}` };
+    const raw = username || senderId || "";
+    return { url: getDmLink("whatsapp", raw).url, label: raw };
+  }
+  const raw = username || senderId || "";
+  if (!raw) return { url: null, label: "" };
+  const { url } = getDmLink(platform as Platform, raw);
+  return { url, label: username ? `@${username}` : raw };
+}
+
+/** El @lid de WhatsApp de un contacto (el de su canal), si llego sin telefono. */
+export function whatsappLidOf(channels: Array<{ platform: Platform | string; senderId?: string | null }>): string | null {
+  for (const ch of channels) {
+    if (ch.platform !== "whatsapp") continue;
+    const lid = normalizeLidJid(ch.senderId);
+    if (lid) return lid;
+  }
+  return null;
 }

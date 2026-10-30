@@ -1558,6 +1558,18 @@ Responsable de cada conversación (a mano y con reglas por cuenta), la marca «C
 
 `00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. La `00259` a la `00261` son de «Esperando respuesta» (ver esa sección): **la próxima libre es la `00262`** (confirmar con `list_migrations`).
 
+# WhatsApp sin telefono (@lid) y el buscador (30/10/2026)
+
+WhatsApp a veces identifica a la persona con un `@lid` (un id interno) en vez de su numero. Evolution 2.3.7 lo cambia por el telefono antes de avisarnos SOLO cuando lo sabe (`key.remoteJidAlt`), asi que un `@lid` nos llega cuando nadie sabe el numero. Hasta esta fecha el receptor lo descartaba ("sin telefono utilizable") y esa conversacion nunca entraba. Detalle en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).
+
+## Lo que no se puede romper
+
+- **La identidad de WhatsApp es el telefono o, si no hay, el `@lid`** (`resolveWhatsappSender`, `lib/whatsapp-sender.ts`, puro): va en `contact_channels.platform_sender_id`, y es tambien a donde se contesta. Grupos, estados (`status@broadcast`), difusiones y canales (`@newsletter`) no son una persona y se ignoran.
+- **Un `@lid` se manda ENTERO a Evolution** (`toEvolutionNumber`): Evolution lo acepta como destino (`createJid` no lo toca). Convertirlo a digitos lo mandaria a un numero que no existe. `getDmLink` no arma `wa.me` con un `@lid`.
+- **Un contacto que entro SOLO con su `@lid` y despues llega con los dos sigue siendo el mismo** (`withKnownLid` en el receptor: si el `@lid` ya esta vinculado en el canal, se usa como identidad y `find_or_link_contact` le suma el telefono). No se toco ninguna funcion protegida de contactos: un `@lid` entra por la identidad del canal.
+- **El id de WhatsApp se ve de solo lectura** en "Redes" de la ficha y en "Datos" del panel de la bandeja (`whatsappLidOf`, `channelIdentity` en `lib/contacts/links.ts`). Evolution no manda ningun @usuario de WhatsApp: solo el nombre del perfil (`pushName`).
+- **La bandeja y Contactos buscan con la MISMA regla** (`contactSearchFilter`, `lib/contacts/search.ts`): nombre, emails, telefonos (tambien escritos con espacios o guiones), los @ de Instagram, TikTok y X (con o sin la arroba) y el `@lid` (que vive en `contact_channels` y se busca aparte con `contactIdsByWhatsappLid`, con el cliente del usuario). En la bandeja el filtro va sobre la tabla embebida (`or(..., { referencedTable: "contacts" })`).
+
 # Importacion de conversaciones de Zernio (28/10/2026)
 
 Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el negocio. Diagnostico y plan en `docs/instagram-importacion/PLAN.md`; como entra cada conversacion, en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).

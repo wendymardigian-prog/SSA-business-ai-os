@@ -15,7 +15,7 @@ import { loadMetaNames } from "@/lib/contacts/meta-names";
 import type { AuditAction, Json, LeadTemperature } from "@/lib/types/database";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
-import { getDmLink, platformHandles } from "@/lib/contacts/links";
+import { channelIdentity, platformHandles, whatsappLidOf } from "@/lib/contacts/links";
 
 import {
   DoNotContactBadge,
@@ -536,6 +536,12 @@ export default async function ContactDetailPage({
             <ContactDataSection
               contactId={contact.id}
               canEdit={canEditContact}
+              whatsappLid={whatsappLidOf(
+                channels.map((cc) => ({
+                  platform: (cc.channels as { platform?: string } | null)?.platform ?? "",
+                  senderId: cc.platform_sender_id,
+                })),
+              )}
               values={{
                 email: contact.email ?? "",
                 secondary_email: contact.secondary_email ?? "",
@@ -780,12 +786,9 @@ export default async function ContactDetailPage({
                       username?: string;
                     } | null;
                     const platform = ch?.platform ?? "";
-                    // El telefono de WhatsApp no es un @handle (Evolution
-                    // manda platform_username = telefono).
-                    const isHandle = platform !== "whatsapp";
-                    const raw = cc.platform_username || cc.platform_sender_id;
-                    const { url } = getDmLink(platform as never, cc.platform_username ?? cc.platform_sender_id);
-                    const label = raw ? (isHandle && cc.platform_username ? `@${raw}` : raw) : "";
+                    // El @ con su link, el telefono de WhatsApp con su wa.me, o su
+                    // @lid si WhatsApp no compartio el numero (lib/contacts/links.ts).
+                    const { url, label } = channelIdentity(platform, cc.platform_username, cc.platform_sender_id);
                     return (
                       <li
                         key={cc.id}

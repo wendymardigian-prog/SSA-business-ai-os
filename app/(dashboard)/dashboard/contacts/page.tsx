@@ -8,6 +8,8 @@ import { isSupportedPlatform, platformLabel } from "@/lib/platforms";
 import { LEAD_TEMPERATURES } from "@/lib/contacts/fields";
 import { contactOrderClauses, parseContactSort } from "@/lib/contacts/sort";
 import { firstParam, pickEnum, pickPage, sanitizeSearch } from "@/lib/url-params";
+import { contactSearchFilter } from "@/lib/contacts/search";
+import { contactIdsByWhatsappLid } from "@/lib/contacts/search-lid";
 import { customFilterPlan, parseCustomFilter, parsePipelineFilters, pipelineClauses } from "@/lib/contacts/list-filters";
 import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
 import { loadInterestCatalog } from "@/lib/contacts/interest-load";
@@ -100,19 +102,12 @@ export default async function ContactsPage({
     .is("deleted_at", null);
 
   if (search) {
-    const like = `%${search}%`;
-    query = query.or(
-      [
-        `display_name.ilike.${like}`,
-        `email.ilike.${like}`,
-        `secondary_email.ilike.${like}`,
-        `phone.ilike.${like}`,
-        `whatsapp_phone.ilike.${like}`,
-        `instagram_username.ilike.${like}`,
-        `tiktok_username.ilike.${like}`,
-        `twitter_username.ilike.${like}`,
-      ].join(","),
-    );
+    // La misma regla que la bandeja (lib/contacts/search.ts): ademas de nombre,
+    // emails, telefonos y los @, el telefono escrito con espacios y el id de
+    // WhatsApp de quien escribio sin numero.
+    const lidContactIds = await contactIdsByWhatsappLid(supabase, workspace.id, search);
+    const filter = contactSearchFilter(search, lidContactIds);
+    if (filter) query = query.or(filter);
   }
 
   if (tagId) query = query.eq("tag_match.tag_id", tagId);

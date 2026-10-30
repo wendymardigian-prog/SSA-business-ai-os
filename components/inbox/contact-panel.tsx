@@ -31,7 +31,7 @@ import type { ContactFieldKey } from "@/lib/contacts/fields";
 import { setDoNotContact, updateContact } from "@/lib/actions/contacts";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
-import { getDmLink, platformHandles } from "@/lib/contacts/links";
+import { channelIdentity, platformHandles, whatsappLidOf } from "@/lib/contacts/links";
 import { platformLabel } from "@/lib/platforms";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import type { Database, LeadTemperature, Platform } from "@/lib/types/database";
@@ -211,7 +211,12 @@ export function ContactPanel({
         <div className="flex-1 overflow-y-auto">
           <Identity details={details} canEdit={canEdit} onSaved={reload} />
 
-          <BasicData contact={details.contact} canEdit={canEdit} onSaved={reload} />
+          <BasicData
+            contact={details.contact}
+            canEdit={canEdit}
+            onSaved={reload}
+            whatsappLid={whatsappLidOf(details.channels)}
+          />
 
           <PanelSection title="Estado del lead">
             <StatusFields
@@ -425,7 +430,18 @@ const BASIC_FIELDS: { key: ContactFieldKey; label: string; prefix?: string; hint
   { key: "country", label: "País" },
 ];
 
-function BasicData({ contact, canEdit, onSaved }: { contact: Contact; canEdit: boolean; onSaved: () => void }) {
+function BasicData({
+  contact,
+  canEdit,
+  onSaved,
+  whatsappLid,
+}: {
+  contact: Contact;
+  canEdit: boolean;
+  onSaved: () => void;
+  /** El id de WhatsApp de una persona que escribio sin compartir su numero. Solo lectura. */
+  whatsappLid: string | null;
+}) {
   return (
     <PanelSection title="Datos">
       <dl className="space-y-2">
@@ -451,6 +467,17 @@ function BasicData({ contact, canEdit, onSaved }: { contact: Contact; canEdit: b
             </div>
           );
         })}
+        {whatsappLid && (
+          <div className="grid grid-cols-[76px_1fr] items-start gap-2">
+            <dt className="pt-1 text-xs text-muted-foreground">WhatsApp ID</dt>
+            <dd
+              className="min-w-0 truncate pt-1 text-sm"
+              title="WhatsApp no compartió el número de esta persona: este es su id, y por acá se le responde."
+            >
+              {whatsappLid.replace("@lid", "")} <span className="text-xs text-muted-foreground">(sin número)</span>
+            </dd>
+          </div>
+        )}
       </dl>
       {canEdit && <p className="text-[11px] text-muted-foreground">Tocá un dato o el lápiz para editarlo.</p>}
     </PanelSection>
@@ -490,13 +517,14 @@ function Channels({ details, accounts }: { details: ContactDetails; accounts?: I
       ) : (
         <ul className="space-y-1.5 text-sm">
           {details.channels.map((ch, i) => {
-            // El telefono de WhatsApp no es un @handle: Evolution manda
-            // senderUsername=phone, asi que ch.username para WhatsApp es el
-            // numero, no un usuario.
-            const isHandle = ch.platform !== "whatsapp";
-            const raw = ch.username || (ch.platform === "whatsapp" ? ch.senderId : null);
-            const { url } = getDmLink(ch.platform, raw);
-            const label = raw ? (isHandle ? `@${raw}` : raw) : "";
+            // El @ con su link, el telefono de WhatsApp con su wa.me, o su @lid si
+            // WhatsApp no compartio el numero (lib/contacts/links.ts). El id
+            // interno de otras redes no se muestra.
+            const { url, label } = channelIdentity(
+              ch.platform,
+              ch.username,
+              ch.platform === "whatsapp" ? ch.senderId : null,
+            );
             // Con varias cuentas de la misma red: la nuestra por la que habla.
             const ourAccount = accountToShow(accounts, { channel_id: ch.channelId, platform: ch.platform });
             return (
