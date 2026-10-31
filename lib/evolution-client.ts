@@ -818,3 +818,62 @@ export async function fetchProfilePictureUrl(
     ? raw.profilePictureUrl
     : null;
 }
+
+// ── Historial guardado en Evolution (revision, solo lectura) ───────────────────
+
+/** Un chat como lo devuelve `POST /chat/findChats` (v2). Solo lo que se usa. */
+export interface EvolutionStoredChat {
+  remoteJid?: string | null;
+  pushName?: string | null;
+  updatedAt?: string | null;
+  lastMessage?: { messageTimestamp?: number | string | null; key?: { fromMe?: boolean } | null } | null;
+}
+
+/**
+ * Los chats que Evolution tiene guardados para una instancia, los mas recientes
+ * primero. NO le pide nada a WhatsApp: lee la base del propio Evolution. `take`
+ * acota cuantos (sin tope, la consulta no tiene limite).
+ */
+export async function findStoredChats(
+  config: EvolutionConfig,
+  instanceName: string,
+  take: number,
+): Promise<EvolutionStoredChat[]> {
+  const raw = await request<unknown>(config, "POST", `/chat/findChats/${encodeURIComponent(instanceName)}`, {
+    where: {},
+    take,
+    skip: 0,
+  });
+  return Array.isArray(raw) ? (raw as EvolutionStoredChat[]) : [];
+}
+
+/** Una pagina de `POST /chat/findMessages` (v2): `offset` es el tamaño de pagina; los mas nuevos primero. */
+export interface EvolutionStoredMessagesPage {
+  total: number;
+  pages: number;
+  records: Array<{ messageTimestamp?: number | string | null; key?: { remoteJid?: string | null; fromMe?: boolean } | null }>;
+}
+
+/**
+ * Una pagina de los mensajes que Evolution tiene guardados para una instancia. NO
+ * le pide nada a WhatsApp. Con `page` = la ultima y `offset` = 1 trae el mas viejo.
+ */
+export async function findStoredMessagesPage(
+  config: EvolutionConfig,
+  instanceName: string,
+  page: number,
+  offset: number,
+): Promise<EvolutionStoredMessagesPage> {
+  const raw = await request<{ messages?: { total?: number; pages?: number; records?: unknown[] } }>(
+    config,
+    "POST",
+    `/chat/findMessages/${encodeURIComponent(instanceName)}`,
+    { where: {}, page, offset },
+  );
+  const messages = raw?.messages;
+  return {
+    total: typeof messages?.total === "number" ? messages.total : 0,
+    pages: typeof messages?.pages === "number" ? messages.pages : 0,
+    records: Array.isArray(messages?.records) ? (messages!.records as EvolutionStoredMessagesPage["records"]) : [],
+  };
+}

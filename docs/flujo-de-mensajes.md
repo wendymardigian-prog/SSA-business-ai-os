@@ -98,6 +98,27 @@ Dos aclaraciones que suelen sorprender:
   dejaría el texto del lead en la base aparentando estar borrado, que es lo
   contrario de lo que la política se compromete a cumplir.
 
+## El historial de WhatsApp (revisión, 30/10/2026)
+
+WhatsApp no tiene una API de historial: lo único que existe es lo que WhatsApp le
+manda a Evolution **cuando se escanea el QR** (el historial reciente, salvo que la
+instancia tenga `syncFullHistory`) y lo que Evolution recibe desde entonces. Evolution
+lo guarda en su propia base si su `DATABASE_SAVE_DATA_HISTORIC` está prendido.
+
+**La revisión** (Canales → la tarjeta del número → "Historial" → "Revisar historial")
+lee esa base, sin escribir nada y sin hablar con WhatsApp, y dice cuántas
+conversaciones con personas hay guardadas, cuántas no están en la bandeja, cuántos
+mensajes y desde cuándo, y si hay mensajes de antes de conectar el número.
+
+**La importación todavía no existe.** El plan, si la revisión muestra que vale la pena:
+un trabajo de la cola por partes (como el de Instagram, con `channels.inbox_import`),
+que crea contacto y conversación por `find_or_link_contact` con la misma identidad
+del receptor (teléfono o `@lid`), guarda los mensajes como historia (sin no leídos,
+automatizaciones, agente ni toques de atribución, deduplicados por
+`platform_message_id`), deja **cerradas** las conversaciones sin movimiento hace más
+de 7 días (para no llenar "Esperando respuesta") y saltea grupos. La media vieja puede
+no estar más disponible en WhatsApp: el texto entra igual.
+
 ## WhatsApp sin teléfono (`@lid`, 30/10/2026)
 
 WhatsApp ya no siempre comparte el número de la persona: a veces la identifica con

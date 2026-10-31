@@ -1558,6 +1558,14 @@ Responsable de cada conversación (a mano y con reglas por cuenta), la marca «C
 
 `00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. La `00259` a la `00261` son de «Esperando respuesta» (ver esa sección): **la próxima libre es la `00262`** (confirmar con `list_migrations`).
 
+# Historial de WhatsApp: la revision (30/10/2026)
+
+Antes de importar el historial de WhatsApp se REVISA que hay: la tarjeta de cada numero en Canales tiene "Historial" → "Revisar historial" (`WhatsappHistoryReview`, accion `reviewWhatsappHistory`, `channels.manage`). La importacion todavia NO existe; el plan esta en `docs/flujo-de-mensajes.md` ("El historial de WhatsApp").
+
+- **Solo lectura, y sin hablar con WhatsApp**: lee la base del propio Evolution (`POST /chat/findChats` con `take`, y `POST /chat/findMessages` de a un mensaje para el total, el mas nuevo y el mas viejo) y cruza con `contact_channels`. No hay riesgo de bloqueo del numero y no escribe nada.
+- **Evolution guarda lo que WhatsApp le mando al escanear el QR** (si su `DATABASE_SAVE_DATA_HISTORIC` esta prendido) y lo que recibio despues. Con `syncFullHistory` apagado (como creamos las instancias), WhatsApp manda solo historial reciente. Pedir el completo obliga a volver a escanear el QR.
+- El resumen es puro (`summarizeHistory`, `lib/whatsapp-history/review.ts`) y su texto tambien (`reviewText`): personas (sin grupos, estados ni canales, con el mismo `resolveWhatsappSender` del receptor), cuantas sin numero, cuantas faltan en la bandeja y si hay mensajes de antes de conectar.
+
 # WhatsApp sin telefono (@lid) y el buscador (30/10/2026)
 
 WhatsApp a veces identifica a la persona con un `@lid` (un id interno) en vez de su numero. Evolution 2.3.7 lo cambia por el telefono antes de avisarnos SOLO cuando lo sabe (`key.remoteJidAlt`), asi que un `@lid` nos llega cuando nadie sabe el numero. Hasta esta fecha el receptor lo descartaba ("sin telefono utilizable") y esa conversacion nunca entraba. Detalle en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).
