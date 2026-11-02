@@ -123,7 +123,7 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
                   type="button"
                   aria-pressed={filters.pill === p}
                   onClick={() => go({ pill: filters.pill === p ? null : p, status: [] })}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${filters.pill === p ? "border-primary bg-primary/10 font-medium text-primary" : "border-border hover:bg-accent"}`}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${filters.pill === p ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border hover:bg-accent"}`}
                 >
                   {PILL_LABELS[p]}
                   <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{data.pills[p]}</span>

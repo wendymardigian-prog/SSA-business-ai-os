@@ -298,7 +298,7 @@ export function SocialView({
                   href={profile.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-primary underline underline-offset-2"
+                  className="text-sm text-primary-ink underline underline-offset-2"
                 >
                   {profile.website}
                 </a>

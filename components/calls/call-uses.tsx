@@ -143,7 +143,7 @@ export function CallUsesCard({ data }: { data: CallUsesData }) {
               <li key={i.id}>{i.title}</li>
             ))}
           </ul>
-          <Link href="/dashboard/content" className="mt-1 inline-block text-xs text-primary underline-offset-2 hover:underline">Verlas en el banco de ideas</Link>
+          <Link href="/dashboard/content" className="mt-1 inline-block text-xs text-primary-ink underline-offset-2 hover:underline">Verlas en el banco de ideas</Link>
         </div>
       )}
 

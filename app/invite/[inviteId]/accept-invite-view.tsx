@@ -106,7 +106,7 @@ export function AcceptInviteView({
           <div className="p-6 text-center">
             <h2 className="text-lg font-semibold">{workspaceName}</h2>
             <div className="mt-2 flex items-center justify-center gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-foreground ring-1 ring-inset ring-primary/25">
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-foreground ring-1 ring-inset ring-primary-edge/25">
                 {roleIcons[role] ?? roleIcons.member}
                 {roleName ?? roleLabels[role] ?? role}
               </span>

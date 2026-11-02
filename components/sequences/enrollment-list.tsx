@@ -113,7 +113,7 @@ export function EnrollmentList({
                     <div className="flex items-center gap-2">
                       <Link
                         href={`/dashboard/contacts/${enrollment.contactId}`}
-                        className="truncate text-sm font-medium hover:text-primary"
+                        className="truncate text-sm font-medium hover:text-primary-ink"
                       >
                         {enrollment.contactName}
                       </Link>

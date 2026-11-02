@@ -56,7 +56,7 @@ export function CustomFieldFilter({
             setValue("");
             if (!e.target.value) onApply({ campo: "", op: "", valor: "" });
           }}
-          className={cn(inputClass, current ? "border-primary" : "")}
+          className={cn(inputClass, current ? "border-primary-edge" : "")}
         >
           <option value="">Ninguno</option>
           {fields.map((f) => (

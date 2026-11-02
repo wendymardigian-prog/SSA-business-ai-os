@@ -40,7 +40,7 @@ export function ChipMultiSelect({
         onChange={(e) => {
           if (e.target.value) onChange([...selected, e.target.value]);
         }}
-        className={`h-9 max-w-full rounded-lg border bg-background px-2 text-sm ${selected.length > 0 ? "border-primary text-primary" : "border-border"}`}
+        className={`h-9 max-w-full rounded-lg border bg-background px-2 text-sm ${selected.length > 0 ? "border-primary-edge text-primary-ink" : "border-border"}`}
       >
         <option value="">{selected.length > 0 ? `${label} (${selected.length})` : label}</option>
         {groups.map((g) => {

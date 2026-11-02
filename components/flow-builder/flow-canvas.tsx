@@ -530,7 +530,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             className={cn(
               "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
               testPanelOpen
-                ? "border-primary bg-primary/10 text-primary"
+                ? "border-primary-edge bg-primary/10 text-primary-ink"
                 : "border-border bg-background hover:bg-accent"
             )}
           >
@@ -548,7 +548,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             className={cn(
               "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
               versionPanelOpen
-                ? "border-primary bg-primary/10 text-primary"
+                ? "border-primary-edge bg-primary/10 text-primary-ink"
                 : "border-border bg-background hover:bg-accent"
             )}
           >

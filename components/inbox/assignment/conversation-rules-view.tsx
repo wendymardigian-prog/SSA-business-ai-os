@@ -222,7 +222,7 @@ function RuleForm({
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-primary/40 bg-primary/5 p-4">
+    <div className="space-y-4 rounded-xl border border-primary-edge/40 bg-primary/5 p-4">
       <label className="block space-y-1">
         <span className="text-xs font-medium">Nombre (opcional)</span>
         <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="Ej: Instagram principal" className={cn(control, "w-full")} />
@@ -237,7 +237,7 @@ function RuleForm({
         {!allAccounts && (
           <div className="flex flex-wrap gap-2">
             {accounts.map((a) => (
-              <label key={a.id} className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1 text-xs", channelIds.includes(a.id) ? "border-primary bg-primary/10" : "border-border")}>
+              <label key={a.id} className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1 text-xs", channelIds.includes(a.id) ? "border-primary-edge bg-primary/10" : "border-border")}>
                 <input type="checkbox" className="sr-only" checked={channelIds.includes(a.id)} onChange={() => setChannelIds((prev) => toggle(prev, a.id))} />
                 <PlatformIcon platform={a.platform} className="h-3.5 w-3.5" size={14} />
                 {a.label}
@@ -274,7 +274,7 @@ function RuleForm({
         ) : (
           <div className="flex flex-wrap gap-2">
             {members.map((m) => (
-              <label key={m.userId} className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1 text-xs", memberIds.includes(m.userId) ? "border-primary bg-primary/10" : "border-border")}>
+              <label key={m.userId} className={cn("inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1 text-xs", memberIds.includes(m.userId) ? "border-primary-edge bg-primary/10" : "border-border")}>
                 <input type="checkbox" className="sr-only" checked={memberIds.includes(m.userId)} onChange={() => setMemberIds((prev) => toggle(prev, m.userId))} />
                 {m.label}
               </label>

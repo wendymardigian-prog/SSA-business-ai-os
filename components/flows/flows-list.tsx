@@ -91,7 +91,7 @@ export function FlowsList({
           }}
           placeholder="Buscar automatizaciones"
           autoComplete="off"
-          className="h-8 w-[170px] rounded-lg border border-input bg-background pl-8 pr-2 text-[13px] placeholder:text-muted-foreground focus:border-primary focus:outline-none topbar:w-[210px] [&::-webkit-search-cancel-button]:hidden"
+          className="h-8 w-[170px] rounded-lg border border-input bg-background pl-8 pr-2 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none topbar:w-[210px] [&::-webkit-search-cancel-button]:hidden"
         />
       </label>
       <FilterMenu
@@ -188,7 +188,7 @@ export function FlowsList({
                 </span>
               ))}
               {filtered && (
-                <button type="button" onClick={() => setQuery(EMPTY_FLOW_QUERY)} className="font-medium text-primary hover:underline">
+                <button type="button" onClick={() => setQuery(EMPTY_FLOW_QUERY)} className="font-medium text-primary-ink hover:underline">
                   Limpiar filtros
                 </button>
               )}
@@ -197,15 +197,15 @@ export function FlowsList({
             {visible.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-10 text-center">
                 <p className="text-sm font-medium">Ninguna automatización coincide con estos filtros.</p>
-                <button type="button" onClick={() => setQuery(EMPTY_FLOW_QUERY)} className="mt-2 text-sm font-medium text-primary hover:underline">
+                <button type="button" onClick={() => setQuery(EMPTY_FLOW_QUERY)} className="mt-2 text-sm font-medium text-primary-ink hover:underline">
                   Ver todas
                 </button>
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {visible.map((flow) => (
-                  <div key={flow.id} className="group relative flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50">
-                    <Link href={`/dashboard/flows/${flow.id}`} className="absolute inset-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary" aria-label={`Abrir ${flow.name}`} />
+                  <div key={flow.id} className="group relative flex flex-col rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary-edge/50">
+                    <Link href={`/dashboard/flows/${flow.id}`} className="absolute inset-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-edge" aria-label={`Abrir ${flow.name}`} />
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium", STATUS_CLASSES[flow.status])}>{FLOW_STATUS_LABELS[flow.status]}</span>
@@ -227,7 +227,7 @@ export function FlowsList({
                         </div>
                       )}
                     </div>
-                    <h3 className="mt-2 break-words font-medium transition-colors group-hover:text-primary">{flow.name}</h3>
+                    <h3 className="mt-2 break-words font-medium transition-colors group-hover:text-primary-ink">{flow.name}</h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {flow.triggerLabel} · {flow.stepCount === 1 ? "1 paso" : `${flow.stepCount} pasos`}
                     </p>
@@ -245,7 +245,7 @@ export function FlowsList({
                             onClick={() => toggleCategory(c)}
                             className={cn(
                               "rounded-full px-2 py-0.5 text-[11px] font-medium",
-                              selectedKeys.has(categoryKey(c)) ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary hover:bg-primary/20",
+                              selectedKeys.has(categoryKey(c)) ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary-ink hover:bg-primary/20",
                             )}
                             title={`Filtrar por «${c}»`}
                           >

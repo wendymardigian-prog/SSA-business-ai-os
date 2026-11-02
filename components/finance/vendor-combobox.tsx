@@ -168,7 +168,7 @@ export function VendorCombobox({
             >
               <span className="min-w-0 flex-1 truncate">{v.name}</span>
               {v.archived_at && <span className="text-[11px] text-muted-foreground">archivado</span>}
-              {v.id === value && <Check className="h-3.5 w-3.5 text-primary" aria-hidden />}
+              {v.id === value && <Check className="h-3.5 w-3.5 text-primary-ink" aria-hidden />}
             </li>
           ))}
           {canCreate && (
@@ -181,7 +181,7 @@ export function VendorCombobox({
                 void create();
               }}
               onMouseEnter={() => setActive(found.length)}
-              className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-primary ${active === found.length ? "bg-accent" : ""}`}
+              className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-primary-ink ${active === found.length ? "bg-accent" : ""}`}
             >
               {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Plus className="h-3.5 w-3.5" aria-hidden />}
               <span className="min-w-0 flex-1 truncate">Nuevo proveedor: {query.trim()}</span>

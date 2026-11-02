@@ -342,7 +342,7 @@ export function DraftBadge({ counts, onNavigate }: { counts: PendingDraftCounts;
           <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">{counts.mine}</span>
         )}
         {total !== null && total > counts.mine && (
-          <span className={cn(counts.mine > 0 ? "text-[10px] text-sidebar-foreground/60" : "rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary")}>
+          <span className={cn(counts.mine > 0 ? "text-[10px] text-sidebar-foreground/60" : "rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-ink")}>
             {counts.mine > 0 ? `· ${total}` : total}
           </span>
         )}

@@ -54,7 +54,7 @@ export function ActionsTab({ data }: { data: AgentScreenData }) {
           aria-label="Agente"
           value={filters.agente}
           onChange={(e) => setParam("agente", e.target.value)}
-          className={cn("rounded-lg border bg-background px-3 py-2 text-sm", filters.agente !== data.agent.id ? "border-primary" : "border-input text-muted-foreground")}
+          className={cn("rounded-lg border bg-background px-3 py-2 text-sm", filters.agente !== data.agent.id ? "border-primary-edge" : "border-input text-muted-foreground")}
         >
           {options.agents.map((a) => (
             <option key={a.id} value={a.id}>
@@ -75,7 +75,7 @@ export function ActionsTab({ data }: { data: AgentScreenData }) {
           ]}
         />
         {filters.contacto && (
-          <button type="button" onClick={() => setParam("contacto", "")} className="rounded-full border border-primary px-2 py-1 text-xs">
+          <button type="button" onClick={() => setParam("contacto", "")} className="rounded-full border border-primary-edge px-2 py-1 text-xs">
             Solo este contacto ×
           </button>
         )}

@@ -100,7 +100,7 @@ export function UnlinkedList({ data, view, days, canManage }: { data: UnlinkedPa
                 <span className="text-xs text-muted-foreground">
                   {row.when} · {row.origin}
                 </span>
-                {row.status === "manual" && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Vinculado a mano</span>}
+                {row.status === "manual" && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">Vinculado a mano</span>}
                 {row.status === "ignored" && <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">Ignorado</span>}
               </div>
 

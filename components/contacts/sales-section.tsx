@@ -75,7 +75,7 @@ export function ContactSalesSection({
       )}
       {total > sales.length && (
         <p className="pt-2 text-sm">
-          <Link href={`/dashboard/ventas?q=${encodeURIComponent(contact.name)}`} className="text-primary underline-offset-2 hover:underline">Ver todas ({total})</Link>
+          <Link href={`/dashboard/ventas?q=${encodeURIComponent(contact.name)}`} className="text-primary-ink underline-offset-2 hover:underline">Ver todas ({total})</Link>
         </p>
       )}
       {open && wizard && <SaleWizard config={wizard} initial={{ contact, productId: interest?.productId ?? null, variantId: interest?.variantId ?? null }} onClose={() => setOpen(false)} />}

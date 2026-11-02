@@ -79,7 +79,7 @@ export function FormCanvas({
         {isForm && design && onDesign && (
           <div
             onClick={() => onSelect({ kind: "form" })}
-            className={cn("space-y-1 rounded-xl border border-transparent p-2", selection.kind === "form" && "border-primary ring-1 ring-primary")}
+            className={cn("space-y-1 rounded-xl border border-transparent p-2", selection.kind === "form" && "border-primary-edge ring-1 ring-primary-edge")}
           >
             <input
               aria-label="Título del formulario"
@@ -113,7 +113,7 @@ export function FormCanvas({
             {!disabled && (
               <div className="flex flex-wrap justify-center gap-1.5">
                 {emptyShortcuts(formType).map((s) => (
-                  <button key={s.type} type="button" disabled={atLimit} onClick={() => onAdd(s.type)} className="rounded-full border border-border px-3 py-1 text-xs hover:border-primary hover:bg-accent">
+                  <button key={s.type} type="button" disabled={atLimit} onClick={() => onAdd(s.type)} className="rounded-full border border-border px-3 py-1 text-xs hover:border-primary-edge hover:bg-accent">
                     {s.label}
                   </button>
                 ))}
@@ -171,7 +171,7 @@ export function FormCanvas({
           <button
             type="button"
             onClick={() => onSelect({ kind: "end" })}
-            className={cn("w-full rounded-2xl border bg-background p-5 text-left shadow-sm transition-colors", selection.kind === "end" ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40")}
+            className={cn("w-full rounded-2xl border bg-background p-5 text-left shadow-sm transition-colors", selection.kind === "end" ? "border-primary-edge ring-1 ring-primary-edge" : "border-border hover:border-primary-edge/40")}
           >
             <span className="flex items-start gap-3">
               <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">

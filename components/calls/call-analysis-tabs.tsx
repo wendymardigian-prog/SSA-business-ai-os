@@ -38,7 +38,7 @@ const yn = (v: boolean | null) => (v === null ? "—" : v ? "Sí" : "No");
 function Ts({ ts, onJump }: { ts: string | null; onJump?: (ts: string) => void }) {
   if (!ts) return null;
   return onJump ? (
-    <button type="button" onClick={() => onJump(ts)} className="ml-1 text-[10px] tabular-nums text-primary hover:underline" title="Ir a ese momento de la transcripción">[{ts}]</button>
+    <button type="button" onClick={() => onJump(ts)} className="ml-1 text-[10px] tabular-nums text-primary-ink hover:underline" title="Ir a ese momento de la transcripción">[{ts}]</button>
   ) : (
     <span className="ml-1 text-[10px] tabular-nums text-muted-foreground">[{ts}]</span>
   );

@@ -87,7 +87,7 @@ export function ConditionTreeEditor({
               onRemove={() => onChange(removeGroupCondition(tree, gi, ci))}
             />
           ))}
-          <button type="button" disabled={disabled} onClick={() => onChange(addGroupCondition(tree, gi, firstField))} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+          <button type="button" disabled={disabled} onClick={() => onChange(addGroupCondition(tree, gi, firstField))} className="inline-flex items-center gap-1 text-xs font-medium text-primary-ink hover:underline">
             <Plus className="h-3.5 w-3.5" aria-hidden />
             Condición en el grupo
           </button>
@@ -95,11 +95,11 @@ export function ConditionTreeEditor({
       ))}
 
       <div className="flex flex-wrap gap-3">
-        <button type="button" disabled={disabled} onClick={() => onChange(addRootCondition(tree, firstField))} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+        <button type="button" disabled={disabled} onClick={() => onChange(addRootCondition(tree, firstField))} className="inline-flex items-center gap-1 text-xs font-medium text-primary-ink hover:underline">
           <Plus className="h-3.5 w-3.5" aria-hidden />
           Condición
         </button>
-        <button type="button" disabled={disabled} onClick={() => onChange(addGroup(tree, firstField))} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+        <button type="button" disabled={disabled} onClick={() => onChange(addGroup(tree, firstField))} className="inline-flex items-center gap-1 text-xs font-medium text-primary-ink hover:underline">
           <Plus className="h-3.5 w-3.5" aria-hidden />
           Grupo
         </button>

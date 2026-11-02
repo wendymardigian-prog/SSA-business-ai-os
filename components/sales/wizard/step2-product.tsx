@@ -52,7 +52,7 @@ export function Step2Product({
         <p className="font-medium">Todavía no hay productos para vender</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {config.canManageCatalog ? (
-            <>Creá tu primer producto y publicale un precio en <Link className="font-medium text-primary underline-offset-2 hover:underline" href="/dashboard/settings/productos">Ajustes › Productos</Link>.</>
+            <>Creá tu primer producto y publicale un precio en <Link className="font-medium text-primary-ink underline-offset-2 hover:underline" href="/dashboard/settings/productos">Ajustes › Productos</Link>.</>
           ) : (
             "Pedile a un admin que cargue un producto con su precio."
           )}
@@ -99,7 +99,7 @@ export function Step2Product({
       </div>
       {product?.variants.some((v) => v.unavailable) && (
         <p className="text-xs text-muted-foreground">
-          Hay variantes que no se ofrecen porque no tienen un precio vigente.{config.canManageCatalog && <> Publicá una versión en <Link className="text-primary underline-offset-2 hover:underline" href={`/dashboard/settings/productos/${product.id}`}>el producto</Link>.</>}
+          Hay variantes que no se ofrecen porque no tienen un precio vigente.{config.canManageCatalog && <> Publicá una versión en <Link className="text-primary-ink underline-offset-2 hover:underline" href={`/dashboard/settings/productos/${product.id}`}>el producto</Link>.</>}
         </p>
       )}
       {variant && <p className="text-xs text-muted-foreground">{variant.detail}</p>}

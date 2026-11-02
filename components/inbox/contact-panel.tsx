@@ -348,7 +348,7 @@ function Identity({ details, canEdit, onSaved }: { details: ContactDetails; canE
           href={instagramUrl ?? undefined}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-0.5 text-xs text-primary hover:underline"
+          className="mt-0.5 text-xs text-primary-ink hover:underline"
         >
           @{instagramUsername}
         </a>
@@ -532,7 +532,7 @@ function Channels({ details, accounts }: { details: ContactDetails; accounts?: I
                 <PlatformIcon platform={ch.platform} className="h-3.5 w-3.5" size={14} />
                 <span className="text-muted-foreground">{platformLabel(ch.platform)}</span>
                 {url && label ? (
-                  <a href={url} target="_blank" rel="noopener noreferrer" className="truncate text-primary hover:underline">
+                  <a href={url} target="_blank" rel="noopener noreferrer" className="truncate text-primary-ink hover:underline">
                     {label}
                   </a>
                 ) : (

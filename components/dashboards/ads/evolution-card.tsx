@@ -27,7 +27,7 @@ export function EvolutionCard({ rows, currency }: { rows: AdsRow[]; currency: st
     <section className="space-y-3 rounded-xl border border-border bg-card p-3" aria-label="Evolución diaria">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <Activity className="h-4 w-4 text-primary" aria-hidden /> Evolución diaria
+          <Activity className="h-4 w-4 text-primary-ink" aria-hidden /> Evolución diaria
         </h3>
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <label className="flex items-center gap-1.5">

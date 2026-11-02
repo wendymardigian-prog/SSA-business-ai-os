@@ -276,7 +276,7 @@ export function EventEditorView({
             <span className="text-sm text-muted-foreground">Duración</span>
             <div className="flex flex-wrap items-center gap-2">
               {DURATION_PRESETS.map((d) => (
-                <button key={d} type="button" onClick={() => setDuration(d)} className={`rounded-full border px-3 py-1 text-sm ${duration === d ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>{d} min</button>
+                <button key={d} type="button" onClick={() => setDuration(d)} className={`rounded-full border px-3 py-1 text-sm ${duration === d ? "border-primary-edge bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>{d} min</button>
               ))}
               <input type="number" min={5} max={480} value={duration} onChange={(e) => setDuration(Number(e.target.value))} aria-label="Duración personalizada" className="h-8 w-20 rounded-lg border border-input bg-background px-2 text-sm" />
             </div>
@@ -309,7 +309,7 @@ export function EventEditorView({
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
                 {([["google_meet", "Google Meet"], ["manual", "Ubicación manual"]] as const).map(([key, label]) => (
-                  <button key={key} type="button" onClick={() => setLocationType(key)} className={`rounded-full border px-3 py-1 text-sm ${locationType === key ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>{label}</button>
+                  <button key={key} type="button" onClick={() => setLocationType(key)} className={`rounded-full border px-3 py-1 text-sm ${locationType === key ? "border-primary-edge bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>{label}</button>
                 ))}
               </div>
               {locationType === "manual" && <input value={locationText} onChange={(e) => setLocationText(e.target.value)} maxLength={500} className={inputClass} placeholder="Dirección o instrucción" />}
@@ -322,7 +322,7 @@ export function EventEditorView({
             <span className="text-sm text-muted-foreground">Estado</span>
             <div className="flex flex-wrap gap-2">
               {EVENT_STATUSES.map((s) => (
-                <button key={s} type="button" onClick={() => setStatus(s)} className={`rounded-full border px-3 py-1 text-sm ${status === s ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>{EVENT_STATUS_LABELS[s]}</button>
+                <button key={s} type="button" onClick={() => setStatus(s)} className={`rounded-full border px-3 py-1 text-sm ${status === s ? "border-primary-edge bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>{EVENT_STATUS_LABELS[s]}</button>
               ))}
             </div>
 
@@ -365,7 +365,7 @@ export function EventEditorView({
               {selectedSchedule && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   {summarizeSchedule(selectedSchedule.weeklyHours)} · {selectedSchedule.timezone.replace(/_/g, " ")} ·{" "}
-                  <Link href={`/dashboard/agenda/configuracion/disponibilidad?horario=${selectedSchedule.id}`} className="text-primary underline">editarlo</Link>
+                  <Link href={`/dashboard/agenda/configuracion/disponibilidad?horario=${selectedSchedule.id}`} className="text-primary-ink underline">editarlo</Link>
                 </p>
               )}
             </div>
@@ -381,10 +381,10 @@ export function EventEditorView({
             <span className="text-sm text-muted-foreground">Revisar conflictos en</span>
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => setConflictMode("profile")} className={`rounded-full border px-3 py-1 text-sm ${conflictMode === "profile" ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>
+                <button type="button" onClick={() => setConflictMode("profile")} className={`rounded-full border px-3 py-1 text-sm ${conflictMode === "profile" ? "border-primary-edge bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>
                   Usar los de mi perfil ({profileDefaults.conflictCount})
                 </button>
-                <button type="button" onClick={() => setConflictMode("custom")} className={`rounded-full border px-3 py-1 text-sm ${conflictMode === "custom" ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>
+                <button type="button" onClick={() => setConflictMode("custom")} className={`rounded-full border px-3 py-1 text-sm ${conflictMode === "custom" ? "border-primary-edge bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>
                   Elegir para este evento
                 </button>
               </div>
@@ -408,7 +408,7 @@ export function EventEditorView({
           </div>
           <p className="border-t border-border pt-3 text-xs text-muted-foreground">
             Tus agendas del sistema siempre bloquean, sin importar esta selección. Las excepciones y el tiempo fuera se cargan en{" "}
-            <Link href="/dashboard/agenda/configuracion/disponibilidad" className="text-primary underline">Disponibilidad</Link> y aplican solos.
+            <Link href="/dashboard/agenda/configuracion/disponibilidad" className="text-primary-ink underline">Disponibilidad</Link> y aplican solos.
           </p>
         </section>
       )}

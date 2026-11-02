@@ -175,7 +175,7 @@ export function AttributionField({
             type="button"
             disabled={disabled}
             onClick={() => onChange(notice.action.to === "last_touch" ? backToLastTouch() : chooseTouch(suggestion!.touchId))}
-            className="font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+            className="font-medium text-primary-ink underline-offset-2 hover:underline disabled:opacity-50"
           >
             {notice.action.label}
           </button>
@@ -185,7 +185,7 @@ export function AttributionField({
       {open && (
         <div className="space-y-3 border-t border-border pt-3">
           {value.mode !== "last_touch" && (
-            <button type="button" onClick={() => onChange(backToLastTouch())} className="text-xs font-medium text-primary underline-offset-2 hover:underline">
+            <button type="button" onClick={() => onChange(backToLastTouch())} className="text-xs font-medium text-primary-ink underline-offset-2 hover:underline">
               Volver al último toque
             </button>
           )}
@@ -240,7 +240,7 @@ export function AttributionField({
                 })}
               </ul>
               {cursor && (
-                <button type="button" onClick={loadMore} disabled={loading} className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50">
+                <button type="button" onClick={loadMore} disabled={loading} className="mt-2 text-xs font-medium text-primary-ink underline-offset-2 hover:underline disabled:opacity-50">
                   Ver más
                 </button>
               )}

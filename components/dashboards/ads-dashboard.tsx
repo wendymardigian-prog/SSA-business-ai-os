@@ -92,7 +92,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
         <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
           <div className="w-full max-w-xl space-y-6 rounded-2xl border border-border bg-card p-6">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
-              <BarChart2 className="h-7 w-7 text-primary" aria-hidden />
+              <BarChart2 className="h-7 w-7 text-primary-ink" aria-hidden />
             </div>
             <div className="space-y-2 text-center">
               <h2 className="text-2xl font-bold">Conectar Meta Ads</h2>

@@ -28,7 +28,7 @@ export function AudienceCard({ result }: { result: Live<BreakdownRow[]> }) {
   return (
     <section className={CARD} aria-label="Audiencia — Edad y género">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Users className="h-4 w-4 text-primary" aria-hidden /> Audiencia — Edad &amp; Género
+        <Users className="h-4 w-4 text-primary-ink" aria-hidden /> Audiencia — Edad &amp; Género
       </h3>
       {data.length === 0 ? (
         <LiveError result={result} className="flex h-40 items-center justify-center text-xs text-muted-foreground" />
@@ -103,7 +103,7 @@ export function HourlyCard({ result, currency }: { result: Live<BreakdownRow[]>;
     <section className={CARD} aria-label="Rendimiento por hora del día">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Clock className="h-4 w-4 text-primary" aria-hidden /> Rendimiento por hora del día
+          <Clock className="h-4 w-4 text-primary-ink" aria-hidden /> Rendimiento por hora del día
         </h3>
         <PillToggle
           label="Métrica por hora"

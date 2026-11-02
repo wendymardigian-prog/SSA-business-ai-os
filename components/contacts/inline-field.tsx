@@ -240,7 +240,7 @@ export function InlineField({
   if (href && shownValue) {
     return (
       <span className="group inline-flex min-w-0 items-center gap-1.5">
-        <a href={href} target="_blank" rel="noopener noreferrer" className="min-w-0 truncate text-sm text-primary hover:underline">
+        <a href={href} target="_blank" rel="noopener noreferrer" className="min-w-0 truncate text-sm text-primary-ink hover:underline">
           {shown}
         </a>
         {canEdit && (

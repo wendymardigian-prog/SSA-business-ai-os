@@ -51,7 +51,7 @@ try{if(localStorage.getItem("nav-tools-open")==="1")document.documentElement.cla
           Se pisan DOS pares de variables, no uno: `--primary`/`--ring` (los
           que usa el codigo que escribe `var(--primary)` a mano) y
           `--color-primary`/`--color-ring` (los que Tailwind v4 usa de verdad
-          para las utilidades `bg-primary`/`ring-primary`: @theme los declara
+          para las utilidades `bg-primary`/`ring-primary-edge`: @theme los declara
           UNA vez en :root como `var(--primary)`, pero .dark y [data-theme]
           los redefinen con un oklch literal, asi que de ahi para abajo ya no
           siguen a `--primary`. Ver el comentario de app/globals.css:220.

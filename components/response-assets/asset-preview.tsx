@@ -129,7 +129,7 @@ export function TranscriptBlock({
             type="button"
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
-            className="mt-1 text-xs font-medium text-primary hover:underline"
+            className="mt-1 text-xs font-medium text-primary-ink hover:underline"
           >
             {expanded ? "Ver menos" : "Ver todo"}
           </button>

@@ -154,7 +154,7 @@ export function Historial({ entityType, entityId, names, timeZone, pageSize }: H
           type="button"
           disabled={loadingMore}
           onClick={() => void loadMore()}
-          className="mt-3 text-sm text-primary underline disabled:opacity-50"
+          className="mt-3 text-sm text-primary-ink underline disabled:opacity-50"
         >
           {loadingMore ? "Cargando…" : "Ver más"}
         </button>

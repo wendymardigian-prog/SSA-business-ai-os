@@ -94,7 +94,7 @@ export function InboundDrawer({ endpointId, inboundId, timeZone, onClose, onChan
             <div role="tablist" className="flex gap-1 border-b border-border">
               {(["data", "result"] as const).map((t) => (
                 <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
-                  className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${tab === t ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                  className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${tab === t ? "border-primary-edge font-medium" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
                   {t === "data" ? "Datos" : "Resultado"}
                 </button>
               ))}

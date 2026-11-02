@@ -162,7 +162,7 @@ export function DraftsView({
           <FilterSelect label="Canal" value={filters.canal} onChange={(v) => setParam("canal", v)} options={channels.map((c) => ({ value: c.id, label: c.label }))} />
         )}
         {filters.contacto && (
-          <button type="button" onClick={() => setParam("contacto", "")} className="rounded-full border border-primary px-2.5 py-1 text-xs">
+          <button type="button" onClick={() => setParam("contacto", "")} className="rounded-full border border-primary-edge px-2.5 py-1 text-xs">
             Un contacto ✕
           </button>
         )}

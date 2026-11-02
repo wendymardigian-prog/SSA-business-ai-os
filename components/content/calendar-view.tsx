@@ -169,11 +169,11 @@ export function ContentCalendar({
               onDragOver={(e) => canPublish && e.preventDefault()}
               onDrop={() => canPublish && dropOn(day.iso)}
               className={`min-h-24 bg-card p-1.5 ${day.inMonth ? "" : "opacity-40"} ${
-                day.iso === today ? "ring-1 ring-inset ring-primary" : ""
+                day.iso === today ? "ring-1 ring-inset ring-primary-edge" : ""
               } ${dragging && canPublish ? "outline-dashed outline-1 outline-border" : ""}`}
             >
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className={day.iso === today ? "font-semibold text-primary" : ""}>
+                <span className={day.iso === today ? "font-semibold text-primary-ink" : ""}>
                   {day.number}
                 </span>
                 {/* El número del día cambia con "Contar": piezas nuevas o

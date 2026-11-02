@@ -374,7 +374,7 @@ function PaletteEntry({ item, locked, onAdd }: { item: PaletteItem; locked: bool
       className={
         locked
           ? "cursor-not-allowed rounded-lg border border-border bg-background px-3 py-2 text-sm opacity-50"
-          : "cursor-grab rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary active:cursor-grabbing"
+          : "cursor-grab rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary-edge active:cursor-grabbing"
       }
     >
       <div className={blocked ? "flex items-center gap-2.5 opacity-70" : "flex items-center gap-2.5"}>
@@ -431,7 +431,7 @@ export function NodePalette({ memberFlow = false, locked = false, onAdd }: { mem
             disabled={locked}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar (atajo: /)"
-            className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge disabled:opacity-50"
           />
         </label>
         {locked && (

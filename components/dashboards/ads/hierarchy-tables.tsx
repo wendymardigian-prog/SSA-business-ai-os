@@ -205,7 +205,7 @@ function LevelTable({
           <tr className="font-bold">
             <td className={`${TD} text-foreground`}>Total</td>
             {level !== "ad" && <td className={TD} />}
-            <td className={`${TD} text-right text-primary`}>{m(totals.spend)}</td>
+            <td className={`${TD} text-right text-primary-ink`}>{m(totals.spend)}</td>
             <td className={TD_NUM}>{count(totals.impressions)}</td>
             {level !== "ad" && <td className={TD_NUM}>{count(totals.reach)}</td>}
             {level !== "ad" && <td className={TD_NUM}>{totals.frequency?.toFixed(2) ?? "—"}</td>}

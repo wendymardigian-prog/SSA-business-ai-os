@@ -104,7 +104,7 @@ export const AssetFilterBar = forwardRef<
                 "inline-flex items-center gap-1 rounded-full border px-2 text-[11px] transition-colors",
                 compact ? "h-6" : "h-7",
                 tag.selected
-                  ? "border-primary bg-primary/10 text-foreground"
+                  ? "border-primary-edge bg-primary/10 text-foreground"
                   : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
@@ -152,7 +152,7 @@ function KindChip({
         disabled
           ? "cursor-not-allowed border-dashed border-border text-muted-foreground/50"
           : active
-            ? "border-primary bg-primary/10 text-foreground"
+            ? "border-primary-edge bg-primary/10 text-foreground"
             : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >

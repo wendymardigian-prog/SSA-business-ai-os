@@ -51,7 +51,7 @@ export function PaymentTasksCard({ initial }: { initial: TaskPaymentState }) {
         <ul className="mt-2 space-y-1 pl-7 text-xs">
           {state.flows.map((f) => (
             <li key={f.id}>
-              <Link href={`/dashboard/flows/${f.id}`} className="font-medium text-primary underline-offset-2 hover:underline">{f.name}</Link>
+              <Link href={`/dashboard/flows/${f.id}`} className="font-medium text-primary-ink underline-offset-2 hover:underline">{f.name}</Link>
               <span className="text-muted-foreground"> · {f.status === "published" ? "publicado" : "borrador"}</span>
             </li>
           ))}

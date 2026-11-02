@@ -115,7 +115,7 @@ export function EodQuestion({
                 key={option}
                 className={cn(
                   "flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm",
-                  on ? "border-primary bg-primary/10" : "border-border",
+                  on ? "border-primary-edge bg-primary/10" : "border-border",
                   disabled && "cursor-not-allowed opacity-60",
                 )}
               >

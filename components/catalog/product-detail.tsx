@@ -106,7 +106,7 @@ export function ProductDetail({
         {/* Volver a la lista: la flecha de la barra de arriba queda chica y lejos del contenido. */}
         <Link
           href="/dashboard/settings/productos"
-          className="-mb-2 inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="-mb-2 inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-edge"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
           Productos
@@ -123,7 +123,7 @@ export function ProductDetail({
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={TAXONOMY_NAME_MAX}
-              className="h-10 min-w-0 flex-1 rounded-lg sm:max-w-xs border border-transparent bg-transparent px-2 text-lg font-semibold hover:border-border focus:border-primary focus:outline-none"
+              className="h-10 min-w-0 flex-1 rounded-lg sm:max-w-xs border border-transparent bg-transparent px-2 text-lg font-semibold hover:border-border focus:border-primary-edge focus:outline-none"
             />
             <button
               type="button"
@@ -216,7 +216,7 @@ export function ProductDetail({
                     <div
                       className={cn(
                         "rounded-lg border p-3 transition-colors",
-                        isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-accent/40",
+                        isSelected ? "border-primary-edge bg-primary/5" : "border-border hover:bg-accent/40",
                         row.archived && "opacity-60",
                       )}
                     >

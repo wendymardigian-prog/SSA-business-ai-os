@@ -55,7 +55,7 @@ export function ResponsibleFilter({
         onClick={() => setOpen((v) => !v)}
         className={cn(
           "flex h-8 max-w-[14rem] items-center gap-1.5 rounded-lg border bg-background px-2 text-sm",
-          selected.length > 0 ? "border-primary bg-primary/10" : "border-border",
+          selected.length > 0 ? "border-primary-edge bg-primary/10" : "border-border",
         )}
       >
         <span className="shrink-0 text-muted-foreground">Responsable:</span>

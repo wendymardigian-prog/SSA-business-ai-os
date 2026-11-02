@@ -89,7 +89,7 @@ export function AutoSaveText({
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setText(e.target.value),
   };
 
-  const base = "w-full rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm outline-none transition-colors hover:border-input focus:border-primary focus:bg-background disabled:cursor-default disabled:hover:border-transparent";
+  const base = "w-full rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm outline-none transition-colors hover:border-input focus:border-primary-edge focus:bg-background disabled:cursor-default disabled:hover:border-transparent";
 
   if (multiline) {
     return (
@@ -165,7 +165,7 @@ export function DatePill({
     <span className="inline-flex items-center gap-1">
       <span
         className={cn(
-          "relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] transition-colors focus-within:border-primary",
+          "relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] transition-colors focus-within:border-primary-edge",
           !disabled && "hover:border-muted-foreground/60",
           disabled && "opacity-80",
           !value && "text-muted-foreground",
@@ -225,7 +225,7 @@ export function DurationSelect({
 }) {
   const list = value !== null && !options.includes(value) ? [...options, value].sort((a, b) => a - b) : options;
   return (
-    <span title={title} className={cn("relative inline-flex h-8 items-center rounded-lg border border-input bg-background text-[13px] transition-colors focus-within:border-primary", !disabled && "hover:border-muted-foreground/60", disabled && "opacity-60")}>
+    <span title={title} className={cn("relative inline-flex h-8 items-center rounded-lg border border-input bg-background text-[13px] transition-colors focus-within:border-primary-edge", !disabled && "hover:border-muted-foreground/60", disabled && "opacity-60")}>
       <Timer className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden />
       <select
         value={value === null ? "" : String(value)}

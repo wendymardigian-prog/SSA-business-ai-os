@@ -93,7 +93,7 @@ export function SectionEditor({
               <button type="button" aria-label={`Sacar el punto ${i + 1}`} onClick={() => setDraft((Array.isArray(draft) ? draft : []).filter((_, j) => j !== i))} className="self-start rounded-md p-2 text-red-700 hover:bg-accent"><Trash2 className="h-4 w-4" aria-hidden /></button>
             </div>
           ))}
-          <button type="button" onClick={() => setDraft([...(Array.isArray(draft) ? draft : []), ""])} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"><Plus className="h-3.5 w-3.5" aria-hidden /> Agregar</button>
+          <button type="button" onClick={() => setDraft([...(Array.isArray(draft) ? draft : []), ""])} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline"><Plus className="h-3.5 w-3.5" aria-hidden /> Agregar</button>
         </div>
       )}
 
@@ -111,7 +111,7 @@ export function SectionEditor({
             </fieldset>
           ))}
           {!form.fixedBy && (
-            <button type="button" onClick={() => setDraft([...(Array.isArray(draft) ? draft : []), blankItem(section)])} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"><Plus className="h-3.5 w-3.5" aria-hidden /> Agregar</button>
+            <button type="button" onClick={() => setDraft([...(Array.isArray(draft) ? draft : []), blankItem(section)])} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline"><Plus className="h-3.5 w-3.5" aria-hidden /> Agregar</button>
           )}
         </div>
       )}

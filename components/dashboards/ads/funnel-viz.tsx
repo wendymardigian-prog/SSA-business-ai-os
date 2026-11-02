@@ -21,7 +21,7 @@ export function FunnelCard({ totals, currency }: { totals: AdsTotals; currency: 
   return (
     <section className="space-y-3 rounded-xl border border-border bg-card p-3" aria-label="Funnel de conversión">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <TrendingDown className="h-4 w-4 text-primary" aria-hidden /> Funnel de conversión
+        <TrendingDown className="h-4 w-4 text-primary-ink" aria-hidden /> Funnel de conversión
       </h3>
       <div className="space-y-1">
         {steps.map((step, i) => {

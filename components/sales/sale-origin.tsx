@@ -65,7 +65,7 @@ export function SaleOrigin({ view, timeZone, onChange }: { view: SaleAttribution
             )}
             {view.note && <p className="text-xs text-muted-foreground">{view.note}</p>}
             {view.ad.href && (
-              <Link href={view.ad.href} className="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline">
+              <Link href={view.ad.href} className="inline-flex items-center gap-1 text-xs text-primary-ink underline-offset-2 hover:underline">
                 Ver el anuncio <ExternalLink className="h-3 w-3" aria-hidden />
               </Link>
             )}

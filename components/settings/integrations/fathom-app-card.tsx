@@ -173,7 +173,7 @@ export function FathomAppCard({
           {open ? "Cerrar" : saved ? "Reemplazar claves" : "Conectar"}
         </button>
         {saved && (
-          <Link href="/dashboard/llamadas/mi-fathom" className="mt-2 block text-center text-[11px] text-primary underline-offset-2 hover:underline">
+          <Link href="/dashboard/llamadas/mi-fathom" className="mt-2 block text-center text-[11px] text-primary-ink underline-offset-2 hover:underline">
             Cada closer conecta su cuenta en Llamadas &gt; Mi Fathom
           </Link>
         )}

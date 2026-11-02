@@ -344,7 +344,7 @@ export function TestPanel({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Escribí un mensaje de prueba…"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
             onKeyDown={(e) => {
               if (e.key === "Enter") runTest();
             }}
@@ -359,7 +359,7 @@ export function TestPanel({
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="vip, cliente"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
           />
         </div>
         <button

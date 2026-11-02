@@ -285,7 +285,7 @@ export function RoleEditor({
                 <button
                   type="button"
                   onClick={() => toggleGroup(toggleable, stateOfGroup !== "all")}
-                  className="float-right text-[11px] font-medium text-primary underline underline-offset-2"
+                  className="float-right text-[11px] font-medium text-primary-ink underline underline-offset-2"
                 >
                   {stateOfGroup === "all" ? "Ninguno" : "Todos"}
                 </button>

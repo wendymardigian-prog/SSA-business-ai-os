@@ -140,7 +140,7 @@ export function AvailabilityView({
                 type="button"
                 aria-pressed={active}
                 onClick={() => guardRef.guard(() => router.push(query(s.id)))}
-                className={`rounded-xl border p-4 text-left transition-colors ${active ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted/40"}`}
+                className={`rounded-xl border p-4 text-left transition-colors ${active ? "border-primary-edge bg-primary/5" : "border-border bg-card hover:bg-muted/40"}`}
               >
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold">{s.name}</h3>
@@ -190,7 +190,7 @@ export function AvailabilityView({
                 <span className="rounded-full border border-border px-2 py-0.5 text-xs">{OUT_OF_OFFICE_REASON_LABELS[o.reason]}</span>
                 {o.note && <span className="text-xs text-muted-foreground">{o.note}</span>}
                 <span className="ml-auto flex gap-2 text-xs">
-                  <button type="button" onClick={() => setModal({ kind: "ooo", editing: o })} className="text-primary">Editar</button>
+                  <button type="button" onClick={() => setModal({ kind: "ooo", editing: o })} className="text-primary-ink">Editar</button>
                   <button type="button" disabled={pending} onClick={() => run(() => deleteOutOfOffice({ id: o.id, forUserId: isSelf ? null : targetUserId }), (r) => r.ok && flash("Tiempo fuera borrado"))} className="text-red-600">Borrar</button>
                 </span>
               </li>
@@ -420,7 +420,7 @@ function ScheduleEditorCard({
                     <span className="font-medium">{formatDateLong(new Date(`${o.date}T12:00:00Z`), "UTC")}</span>
                     <span className="text-muted-foreground">{o.ranges.length === 0 ? "No disponible todo el día" : `Solo ${o.ranges.map((r) => `${shortTime(r.start)}–${shortTime(r.end)}`).join(" y ")}`}</span>
                     <span className="ml-auto flex gap-2 text-xs">
-                      <button type="button" onClick={() => setModal({ kind: "override", editing: o })} className="text-primary">Editar</button>
+                      <button type="button" onClick={() => setModal({ kind: "override", editing: o })} className="text-primary-ink">Editar</button>
                       <button type="button" disabled={busy} onClick={() => run(() => deleteOverride({ scheduleId: selected.id, date: o.date }), (r) => r.ok && flash("Excepción borrada"))} className="text-red-600">Borrar</button>
                     </span>
                   </li>
@@ -433,9 +433,9 @@ function ScheduleEditorCard({
           <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-3 text-xs text-muted-foreground">
             <span>Zona horaria del horario: {timezoneCityLabel(selected.timezone)} ({gmtOffsetLabel(new Date(), selected.timezone)})</span>
             {!selected.is_default && (
-              <button type="button" disabled={busy} onClick={() => run(() => setDefaultSchedule(selected.id), (r) => r.ok && flash(`Ahora ${selected.name} es el horario por defecto`))} className="text-primary">Marcar por defecto</button>
+              <button type="button" disabled={busy} onClick={() => run(() => setDefaultSchedule(selected.id), (r) => r.ok && flash(`Ahora ${selected.name} es el horario por defecto`))} className="text-primary-ink">Marcar por defecto</button>
             )}
-            <button type="button" disabled={busy} onClick={() => run(() => duplicateSchedule(selected.id), (r) => r.ok && flash("Horario duplicado"))} className="text-primary">Duplicar</button>
+            <button type="button" disabled={busy} onClick={() => run(() => duplicateSchedule(selected.id), (r) => r.ok && flash("Horario duplicado"))} className="text-primary-ink">Duplicar</button>
             {!selected.is_default && (
               <button type="button" disabled={busy} onClick={() => setModal({ kind: "delete", scheduleId: selected.id, replacement: schedules.find((s) => s.is_default)?.id ?? null, events: eventsForSchedule(events, selected).filter((e) => e.on).length })} className="text-red-600">Borrar</button>
             )}

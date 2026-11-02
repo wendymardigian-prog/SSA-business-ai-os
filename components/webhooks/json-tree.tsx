@@ -62,7 +62,7 @@ export function JsonTree({
         ))}
       </ul>
       {hidden > 0 && (
-        <button type="button" onClick={() => setLimit((l) => l + maxLeaves)} className="mt-2 text-xs font-medium text-primary hover:underline">
+        <button type="button" onClick={() => setLimit((l) => l + maxLeaves)} className="mt-2 text-xs font-medium text-primary-ink hover:underline">
           Ver más ({hidden} más)
         </button>
       )}

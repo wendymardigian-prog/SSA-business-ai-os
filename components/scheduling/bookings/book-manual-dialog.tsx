@@ -269,7 +269,7 @@ export function BookManualDialog({
                                 {e.status === "hidden" ? " · oculto" : ""}
                               </span>
                             </span>
-                            {e.id === eventId && <Check className="h-4 w-4 text-primary" aria-hidden />}
+                            {e.id === eventId && <Check className="h-4 w-4 text-primary-ink" aria-hidden />}
                           </button>
                         ))}
                       </div>
@@ -286,7 +286,7 @@ export function BookManualDialog({
                 <button
                   type="button"
                   onClick={() => setEventId(null)}
-                  className="font-medium text-primary hover:underline"
+                  className="font-medium text-primary-ink hover:underline"
                 >
                   Quitar el evento
                 </button>
@@ -313,7 +313,7 @@ export function BookManualDialog({
                     setContact(null);
                     setGuestTerm("");
                   }}
-                  className="shrink-0 text-xs font-medium text-primary hover:underline"
+                  className="shrink-0 text-xs font-medium text-primary-ink hover:underline"
                 >
                   Cambiar
                 </button>
@@ -355,7 +355,7 @@ export function BookManualDialog({
                     setEmail("");
                     setPhone("");
                   }}
-                  className="text-xs font-medium text-primary hover:underline"
+                  className="text-xs font-medium text-primary-ink hover:underline"
                 >
                   Buscar un contacto que ya existe
                 </button>
@@ -391,7 +391,7 @@ export function BookManualDialog({
                     <button
                       type="button"
                       onClick={startNewGuest}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-primary hover:bg-accent"
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-primary-ink hover:bg-accent"
                     >
                       <UserPlus className="h-4 w-4" aria-hidden />
                       Agregar «{guestTerm.trim()}» como invitado nuevo
@@ -399,7 +399,7 @@ export function BookManualDialog({
                   </div>
                 )}
                 {!guestTerm.trim() && (
-                  <button type="button" onClick={startNewGuest} className="mt-1.5 text-xs font-medium text-primary hover:underline">
+                  <button type="button" onClick={startNewGuest} className="mt-1.5 text-xs font-medium text-primary-ink hover:underline">
                     O cargá un invitado nuevo
                   </button>
                 )}

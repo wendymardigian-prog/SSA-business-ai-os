@@ -146,7 +146,7 @@ export function ActivityTrigger({
             {runsHref && runIds.length > 0 && (
               <div className="mt-3 border-t border-border pt-2">
                 {runIds.slice(0, 3).map((id, index) => (
-                  <Link key={id} href={`${runsHref}/${id}`} className="block py-1 text-xs font-medium text-primary underline-offset-2 hover:underline">
+                  <Link key={id} href={`${runsHref}/${id}`} className="block py-1 text-xs font-medium text-primary-ink underline-offset-2 hover:underline">
                     Ver la corrida completa{runIds.length > 1 ? ` (${index + 1})` : ""}
                   </Link>
                 ))}

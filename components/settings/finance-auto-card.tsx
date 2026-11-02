@@ -118,7 +118,7 @@ export function FinanceAutoCard({
           ) : meta.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No hay cuentas publicitarias de Meta conectadas.{" "}
-              <Link href="/dashboard/settings/integrations" className="font-medium text-primary underline-offset-2 hover:underline">Conectá Meta en Integraciones</Link>{" "}
+              <Link href="/dashboard/settings/integrations" className="font-medium text-primary-ink underline-offset-2 hover:underline">Conectá Meta en Integraciones</Link>{" "}
               para automatizar la pauta.
             </p>
           ) : (

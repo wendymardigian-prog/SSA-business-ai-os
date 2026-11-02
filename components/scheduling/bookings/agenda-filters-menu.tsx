@@ -207,7 +207,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       aria-checked={active}
       className={cn(
         "rounded-full border px-2.5 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active ? "border-primary bg-primary/10 font-medium text-primary" : "border-border text-muted-foreground hover:bg-accent",
+        active ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border text-muted-foreground hover:bg-accent",
       )}
     >
       {children}

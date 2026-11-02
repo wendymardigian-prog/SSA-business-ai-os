@@ -194,7 +194,7 @@ export function FormBuilder({
                         <TooLong id={`${f.id}-opt-${oi}-err`} message={issues.options[oi]} />
                         </div>
                       ))}
-                      <button type="button" disabled={disabled || (f.options ?? []).length >= MAX_OPTIONS} onClick={() => update(f.id, { options: [...(f.options ?? []), `Opción ${(f.options ?? []).length + 1}`] })} className="text-xs text-primary disabled:opacity-40">
+                      <button type="button" disabled={disabled || (f.options ?? []).length >= MAX_OPTIONS} onClick={() => update(f.id, { options: [...(f.options ?? []), `Opción ${(f.options ?? []).length + 1}`] })} className="text-xs text-primary-ink disabled:opacity-40">
                         + Opción
                       </button>
                     </div>

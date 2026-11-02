@@ -522,7 +522,7 @@ function PublishModeBlock({
           title={card.selfDisabledReason ?? undefined}
           onClick={() => onSetAuto(false)}
           className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
-            card.mode === "self" ? "border-primary bg-primary/5" : "border-border"
+            card.mode === "self" ? "border-primary-edge bg-primary/5" : "border-border"
           }`}
         >
           <b className="block">La subo yo</b>
@@ -538,7 +538,7 @@ function PublishModeBlock({
           title={systemReason ?? (!canSchedule ? "Revisá los avisos del formato primero." : undefined)}
           onClick={() => onSetAuto(true)}
           className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
-            card.mode === "system" ? "border-primary bg-primary/5" : "border-border"
+            card.mode === "system" ? "border-primary-edge bg-primary/5" : "border-border"
           }`}
         >
           <b className="block">El sistema la publica</b>

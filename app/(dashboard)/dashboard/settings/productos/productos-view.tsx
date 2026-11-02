@@ -56,7 +56,7 @@ function dismissNoticeForever() {
 }
 
 const inputClass =
-  "h-9 min-w-0 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary";
+  "h-9 min-w-0 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary-edge";
 
 /**
  * Ajustes -> Productos: lo que vende el negocio (lista).

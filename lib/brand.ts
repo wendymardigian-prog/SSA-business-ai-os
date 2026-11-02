@@ -163,30 +163,82 @@ export function mixHex(hex: string, other: string, amount: number): string {
 }
 
 /**
+ * El color de marca ajustado para que se lea sobre `background` con al menos
+ * `minRatio` de contraste: el mismo color si ya alcanza; si no, se oscurece
+ * (fondo claro) o se aclara (fondo oscuro) de a poco hasta alcanzarlo.
+ */
+export function readableInkOn(hex: string | null | undefined, background: string, minRatio = 4.5): string | null {
+  const color = safeBrandColor(hex);
+  const bg = safeBrandColor(background);
+  if (!color || !bg) return null;
+  const toward = luminance(bg) > 0.18 ? "#000000" : "#ffffff";
+  for (let step = 0; step <= 20; step++) {
+    const candidate = mixHex(color, toward, step * 0.05);
+    if (contrastRatio(candidate, bg) >= minRatio) return candidate;
+  }
+  return toward === "#000000" ? BRAND_TEXT_DARK : BRAND_TEXT_LIGHT;
+}
+
+/**
  * El color de marca para usar COMO TEXTO sobre un fondo blanco (un link, un
  * titulo chico): el mismo color si ya se lee (contraste 4,5), si no, oscurecido
  * de a poco hasta que se lea. Un color claro nunca queda como texto ilegible.
  */
 export function readableInkOnWhite(hex: string | null | undefined): string {
+  return readableInkOn(hex, "#ffffff") ?? BRAND_TEXT_DARK;
+}
+
+/**
+ * Las superficies del panel contra las que se mide (app/globals.css): la mas
+ * oscura del tema claro (`--muted`, oklch 0.97) y la mas clara del oscuro
+ * (`--muted`, oklch 0.269). Si se lee ahi, se lee en el fondo y en las tarjetas.
+ */
+export const PANEL_LIGHT_SURFACE = "#f5f5f5";
+export const PANEL_DARK_SURFACE = "#262626";
+
+/**
+ * Las dos versiones del color de marca que usa el panel ademas del color tal
+ * cual (que pinta fondos: botones, chips):
+ * - `ink`: COMO LETRA (`text-primary-ink`), contraste 4,5 (texto normal, WCAG).
+ * - `edge`: COMO BORDE, contorno o anillo de foco (`border-primary-edge`,
+ *   `ring-primary-edge`, `--ring`), contraste 3 (elementos de interfaz, WCAG).
+ * Una para el tema claro y otra para el oscuro: un azul marino se lee sobre
+ * blanco pero no sobre negro, y un amarillo al reves.
+ */
+export function brandInkColors(hex: string): { light: { ink: string; edge: string }; dark: { ink: string; edge: string } } | null {
   const color = safeBrandColor(hex);
-  if (!color) return BRAND_TEXT_DARK;
-  for (let step = 0; step <= 20; step++) {
-    const candidate = mixHex(color, "#000000", step * 0.05);
-    if (contrastRatio(candidate, "#ffffff") >= 4.5) return candidate;
-  }
-  return BRAND_TEXT_DARK;
+  if (!color) return null;
+  return {
+    light: { ink: readableInkOn(color, PANEL_LIGHT_SURFACE, 4.5)!, edge: readableInkOn(color, PANEL_LIGHT_SURFACE, 3)! },
+    dark: { ink: readableInkOn(color, PANEL_DARK_SURFACE, 4.5)!, edge: readableInkOn(color, PANEL_DARK_SURFACE, 3)! },
+  };
 }
 
 /**
  * El CSS que pinta el color principal. Recibe un hex YA validado
  * (`brandColorHex` o `safeBrandColor`): se inyecta como texto en un <style>.
  *
- * Pisa tambien el color del texto que va encima (`--primary-foreground`): sin
- * eso, un color claro dejaba los botones con letras blancas ilegibles.
+ * Pisa tambien:
+ * - el color del texto que va encima (`--primary-foreground`): sin eso, un
+ *   color claro dejaba los botones con letras blancas ilegibles;
+ * - el color de marca como letra (`--primary-ink`) y como borde o anillo de
+ *   foco (`--primary-edge`, `--ring`), uno por tema (`brandInkColors`): sin eso,
+ *   un color claro dejaba los links casi invisibles sobre blanco, y uno oscuro,
+ *   sobre el tema oscuro.
+ *
+ * `.dark` va DESPUES de `:root` a proposito: los dos estan en el <html> y tienen
+ * la misma especificidad, asi que gana el de mas abajo.
  */
 export function brandColorCss(hex: string): string {
   const color = safeBrandColor(hex);
-  if (!color) return "";
+  const inks = color ? brandInkColors(color) : null;
+  if (!color || !inks) return "";
   const text = readableTextOn(color);
-  return `:root,.dark,[data-theme="dark"],[data-theme="light"]{--primary:${color} !important;--ring:${color} !important;--color-primary:${color} !important;--color-ring:${color} !important;--primary-foreground:${text} !important;--color-primary-foreground:${text} !important;}`;
+  const theme = ({ ink, edge }: { ink: string; edge: string }) =>
+    `--primary-ink:${ink} !important;--color-primary-ink:${ink} !important;--primary-edge:${edge} !important;--color-primary-edge:${edge} !important;--ring:${edge} !important;--color-ring:${edge} !important;`;
+  return (
+    `:root,.dark,[data-theme="dark"],[data-theme="light"]{--primary:${color} !important;--color-primary:${color} !important;--primary-foreground:${text} !important;--color-primary-foreground:${text} !important;}` +
+    `:root,[data-theme="light"]{${theme(inks.light)}}` +
+    `.dark,[data-theme="dark"]{${theme(inks.dark)}}`
+  );
 }

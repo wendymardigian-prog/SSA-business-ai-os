@@ -25,7 +25,7 @@ export function TasksToggle({ mode, onMode }: { mode: TasksMode; onMode: (mode: 
         onClick={() => onMode(mode === "off" ? "mine" : "off")}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium",
-          mode !== "off" ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted",
+          mode !== "off" ? "border-primary-edge bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted",
         )}
       >
         <CheckSquare className="h-3.5 w-3.5" aria-hidden /> Tareas

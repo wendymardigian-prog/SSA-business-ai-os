@@ -163,10 +163,10 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
                 type="button"
                 aria-pressed={filters.pill === p}
                 onClick={() => go({ pill: filters.pill === p ? null : p })}
-                className={`rounded-xl border p-3 text-left transition-colors ${filters.pill === p ? "border-primary bg-primary/10" : "border-border hover:bg-accent"} ${p === "anuladas" && filters.pill !== p ? "bg-zinc-500/5 text-muted-foreground" : ""}`}
+                className={`rounded-xl border p-3 text-left transition-colors ${filters.pill === p ? "border-primary-edge bg-primary/10" : "border-border hover:bg-accent"} ${p === "anuladas" && filters.pill !== p ? "bg-zinc-500/5 text-muted-foreground" : ""}`}
               >
                 <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span className={filters.pill === p ? "font-medium text-primary" : ""}>{COMMISSION_PILL_LABELS[p]}</span>
+                  <span className={filters.pill === p ? "font-medium text-primary-ink" : ""}>{COMMISSION_PILL_LABELS[p]}</span>
                   <span className="rounded-full bg-muted px-1.5 text-[11px]">{pills[p].count}</span>
                 </span>
                 <span className={`mt-1 block text-base font-semibold tabular-nums ${p === "anuladas" ? "text-muted-foreground" : ""}`}>{formatUsd(pills[p].cents)}</span>
@@ -252,7 +252,7 @@ export function CommissionsList({ data, extras, mine, canViewExpenses, canViewSa
                     <dd className={`text-sm font-medium tabular-nums ${s === "anulada" ? "text-muted-foreground" : ""}`}>{formatUsd(totals.byStatus[s].cents)}</dd>
                   </div>
                 ))}
-                <div className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5">
+                <div className="rounded-lg border border-primary-edge/40 bg-primary/5 px-3 py-1.5">
                   <dt className="text-[11px] text-muted-foreground">Total sin anuladas · {totals.total.count}</dt>
                   <dd className="text-sm font-semibold tabular-nums">{formatUsd(totals.total.cents)}</dd>
                 </div>
@@ -488,7 +488,7 @@ function ExpenseCell({ r, canViewExpenses }: { r: CommissionListRow; canViewExpe
   const text = expenseCellText(r.status, !!r.expense);
   if (!text || !r.expense) return <span className="text-muted-foreground">—</span>;
   return canViewExpenses ? (
-    <Link href={`/dashboard/finanzas/gastos/${r.expense.expense_id}`} className="whitespace-nowrap text-primary underline-offset-2 hover:underline">{text}</Link>
+    <Link href={`/dashboard/finanzas/gastos/${r.expense.expense_id}`} className="whitespace-nowrap text-primary-ink underline-offset-2 hover:underline">{text}</Link>
   ) : (
     <span className="whitespace-nowrap">{text}</span>
   );
@@ -574,7 +574,7 @@ function CommissionCard({ r, extras, own, selection, selectionEnabled, canViewEx
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <CommissionStatusChip status={r.status} />
         <span className="text-xs"><ExpenseCell r={r} canViewExpenses={canViewExpenses} /></span>
-        <Link href={href} scroll={false} className="ml-auto text-xs text-primary underline-offset-2 hover:underline">Ver ficha</Link>
+        <Link href={href} scroll={false} className="ml-auto text-xs text-primary-ink underline-offset-2 hover:underline">Ver ficha</Link>
       </div>
     </li>
   );

@@ -151,7 +151,7 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
       type="button"
       onClick={onClick}
       className={`border-b-2 pb-2 text-sm font-medium ${
-        active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+        active ? "border-primary-edge text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
       }`}
     >
       {label}

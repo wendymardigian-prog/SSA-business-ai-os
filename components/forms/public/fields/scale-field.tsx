@@ -51,7 +51,7 @@ export function NpsField({ field, value, onChange, error, locked, onInteract }: 
                 onClick={() => onChange(n)}
                 className={cn(
                   "rounded-lg border py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70",
-                  current === n ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background hover:bg-muted",
+                  current === n ? "border-primary-edge bg-primary text-primary-foreground" : "border-input bg-background hover:bg-muted",
                 )}
               >
                 {n}

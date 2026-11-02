@@ -48,10 +48,10 @@ export function SystemStatusCard({ status }: SystemStatusCardProps) {
             <p key={line}>{line}</p>
           ))}
           <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
-            <Link href="/dashboard/agents/runs?resultado=error" className="font-medium text-primary underline-offset-2 hover:underline">
+            <Link href="/dashboard/agents/runs?resultado=error" className="font-medium text-primary-ink underline-offset-2 hover:underline">
               Ver corridas con error
             </Link>
-            <Link href="/dashboard/settings/integrations" className="font-medium text-primary underline-offset-2 hover:underline">
+            <Link href="/dashboard/settings/integrations" className="font-medium text-primary-ink underline-offset-2 hover:underline">
               Ver Integraciones
             </Link>
           </div>

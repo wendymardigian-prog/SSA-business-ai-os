@@ -103,7 +103,7 @@ export function SummaryDashboard({ data }: { data: FinanceDashboardData }) {
               }
             />
             {!data.hasExpenses && !data.loadError && (
-              <Link href={addHref} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+              <Link href={addHref} className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary-ink hover:underline">
                 <Plus className="size-3.5" aria-hidden /> Cargar un gasto
               </Link>
             )}

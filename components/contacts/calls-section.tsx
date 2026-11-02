@@ -16,7 +16,7 @@ export function ContactCallsSection({ calls, total, contactId, timeZone }: { cal
       <CallSectionList rows={calls} timeZone={timeZone} />
       {total > CONTACT_CALLS_LIMIT && (
         <p className="pt-2 text-sm">
-          <Link href={viewAllCallsHref(contactId)} className="text-primary underline-offset-2 hover:underline">
+          <Link href={viewAllCallsHref(contactId)} className="text-primary-ink underline-offset-2 hover:underline">
             Ver todas ({total})
           </Link>
         </p>

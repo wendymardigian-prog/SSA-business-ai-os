@@ -332,7 +332,7 @@ export function ContactsView({
                         onChange={(e) => setParam("anon", e.target.value)}
                         className={cn(
                           "w-full rounded-lg border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring",
-                          filters.anon ? "border-primary" : "border-input",
+                          filters.anon ? "border-primary-edge" : "border-input",
                         )}
                       >
                         <option value="">Ocultos</option>
@@ -592,7 +592,7 @@ function MenuField({
         onChange={(e) => onChange(e.target.value)}
         className={cn(
           "w-full rounded-lg border bg-background px-2.5 py-1.5 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-ring",
-          value ? "border-primary text-foreground" : "border-input text-muted-foreground",
+          value ? "border-primary-edge text-foreground" : "border-input text-muted-foreground",
         )}
       >
         <option value="">Todos</option>

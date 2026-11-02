@@ -26,7 +26,7 @@ const EMPTY = "flex h-[140px] items-center justify-center text-xs text-muted-for
 function Title({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
     <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-      <span className="text-primary">{icon}</span> {children}
+      <span className="text-primary-ink">{icon}</span> {children}
     </h3>
   );
 }

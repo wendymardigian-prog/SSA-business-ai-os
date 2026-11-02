@@ -16,7 +16,7 @@ const TYPE_ICON: Record<FormType, LucideIcon> = {
 
 /** Clases completas (Tailwind genera lo que lee en el codigo): el icono, su fondo y la barra de cada tipo. */
 export const FORM_TYPE_TONE: Record<FormType, { tile: string; bar: string }> = {
-  custom: { tile: "bg-primary/15 text-primary", bar: "bg-primary" },
+  custom: { tile: "bg-primary/15 text-primary-ink", bar: "bg-primary" },
   survey: { tile: "bg-c-auto/15 text-c-auto", bar: "bg-c-auto" },
   contract: { tile: "bg-c-team/15 text-c-team", bar: "bg-c-team" },
   eod: { tile: "bg-li/15 text-li", bar: "bg-li" },

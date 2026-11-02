@@ -174,7 +174,7 @@ export function ContentList({
                     {row.pillar && <PillarDot tag={row.pillar} />}
                     {showPaidIndicator(showPaid, row.paid) && (
                       <span
-                        className="ml-2 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                        className="ml-2 rounded-full border border-primary-edge/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-ink"
                         title="Tiene al menos un anuncio de Meta vinculado"
                       >
                         Pautada

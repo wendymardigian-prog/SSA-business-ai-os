@@ -136,7 +136,7 @@ export function ClassificationConfig({ data }: { data: Data }) {
           })}
         </ol>
         {!readOnly && (
-          <button type="button" onClick={() => patch({ rules: [...settings.rules, { id: `r-${Date.now().toString(36)}`, on: true, cond: "title_contains", value: [], type: "otra" }] })} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+          <button type="button" onClick={() => patch({ rules: [...settings.rules, { id: `r-${Date.now().toString(36)}`, on: true, cond: "title_contains", value: [], type: "otra" }] })} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline">
             <Plus className="h-3.5 w-3.5" aria-hidden /> Agregar regla
           </button>
         )}

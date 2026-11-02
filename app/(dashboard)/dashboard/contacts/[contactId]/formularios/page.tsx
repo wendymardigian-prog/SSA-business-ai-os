@@ -51,7 +51,7 @@ export default async function ContactFormsPage({
       <PageHeader title={`Formularios de ${name}`} tooltip="Todas las respuestas de formularios de este contacto." />
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <p className="mb-3 text-sm">
-          <Link href={`/dashboard/contacts/${contact.id}`} className="text-primary underline-offset-2 hover:underline">
+          <Link href={`/dashboard/contacts/${contact.id}`} className="text-primary-ink underline-offset-2 hover:underline">
             Volver a la ficha
           </Link>
           <span className="ml-3 text-muted-foreground">{totalLabel(total)}</span>

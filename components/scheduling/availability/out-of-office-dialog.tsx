@@ -117,7 +117,7 @@ export function OutOfOfficeDialog({
           <p className="text-xs font-medium">Motivo</p>
           <div role="radiogroup" aria-label="Motivo" className="mt-1 flex flex-wrap gap-2">
             {OUT_OF_OFFICE_REASONS.map((r) => (
-              <button key={r} type="button" role="radio" aria-checked={reason === r} onClick={() => setReason(r)} className={`rounded-full border px-3 py-1 text-sm ${reason === r ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>
+              <button key={r} type="button" role="radio" aria-checked={reason === r} onClick={() => setReason(r)} className={`rounded-full border px-3 py-1 text-sm ${reason === r ? "border-primary-edge bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}>
                 {OUT_OF_OFFICE_REASON_LABELS[r]}
               </button>
             ))}
@@ -133,7 +133,7 @@ export function OutOfOfficeDialog({
               {conflicts.map((c) => (
                 <li key={c.id} className="flex flex-wrap items-center gap-2 text-xs">
                   <span>{formatDateTimeWithZone(c.start_at, timezone)} · {c.contact_name ?? "Sin nombre"} ({c.event_title ?? "evento"})</span>
-                  <Link href={`/dashboard/agenda?agenda=${c.id}`} className="text-primary underline">Reagendar</Link>
+                  <Link href={`/dashboard/agenda?agenda=${c.id}`} className="text-primary-ink underline">Reagendar</Link>
                 </li>
               ))}
             </ul>

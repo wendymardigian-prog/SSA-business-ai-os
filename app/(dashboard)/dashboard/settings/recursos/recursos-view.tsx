@@ -308,7 +308,7 @@ function BankEmptyState({ canManage, onNew }: { canManage: boolean; onNew: (kind
               key={kind}
               type="button"
               onClick={() => onNew(kind)}
-              className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm hover:border-primary hover:bg-muted"
+              className="flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm hover:border-primary-edge hover:bg-muted"
             >
               <AssetKindIcon kind={kind} className="h-4 w-4 text-muted-foreground" />
               {ASSET_KIND_LABEL[kind]}

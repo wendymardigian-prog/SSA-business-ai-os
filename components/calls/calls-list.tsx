@@ -214,13 +214,13 @@ export function CallsList(props: Props) {
         {props.nudgeConnect && (
           <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
             <span>Todavía no conectaste tu Fathom: tus llamadas no entran solas.</span>
-            <Link href="/dashboard/llamadas/mi-fathom" className="font-medium text-primary underline-offset-2 hover:underline">Conectá tu Fathom</Link>
+            <Link href="/dashboard/llamadas/mi-fathom" className="font-medium text-primary-ink underline-offset-2 hover:underline">Conectá tu Fathom</Link>
           </div>
         )}
         {filters.contacto && (
           <p role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-4 py-2 text-sm">
             <span>Mostrando solo las llamadas de <strong>{props.contactFilterName ?? "este contacto"}</strong>.</span>
-            <button type="button" onClick={() => go({ contacto: "" })} className="font-medium text-primary underline-offset-2 hover:underline">Ver todas las llamadas</button>
+            <button type="button" onClick={() => go({ contacto: "" })} className="font-medium text-primary-ink underline-offset-2 hover:underline">Ver todas las llamadas</button>
           </p>
         )}
         {syncMessage && (
@@ -466,16 +466,16 @@ function EmptyState(props: Props & { onImport: () => void }) {
     return (
       <div className="mx-auto mt-6 max-w-xl rounded-xl border border-border bg-card p-6">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Phone className="h-5 w-5" aria-hidden /></span>
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary-ink"><Phone className="h-5 w-5" aria-hidden /></span>
           <div>
             <h2 className="text-base font-semibold">Todavía no hay llamadas</h2>
             <p className="text-sm text-muted-foreground">Tus closers conectan Fathom y las llamadas entran solas.</p>
           </div>
         </div>
         <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm">
-          <li>Un admin carga la app de Fathom en <Link className="text-primary underline-offset-2 hover:underline" href="/dashboard/settings/integrations">Integraciones</Link>.</li>
-          <li>Un admin marca a los closers en <Link className="text-primary underline-offset-2 hover:underline" href="/dashboard/settings/team">Equipo</Link>.</li>
-          <li>Cada closer conecta su cuenta en <Link className="text-primary underline-offset-2 hover:underline" href="/dashboard/llamadas/mi-fathom">Mi Fathom</Link>.</li>
+          <li>Un admin carga la app de Fathom en <Link className="text-primary-ink underline-offset-2 hover:underline" href="/dashboard/settings/integrations">Integraciones</Link>.</li>
+          <li>Un admin marca a los closers en <Link className="text-primary-ink underline-offset-2 hover:underline" href="/dashboard/settings/team">Equipo</Link>.</li>
+          <li>Cada closer conecta su cuenta en <Link className="text-primary-ink underline-offset-2 hover:underline" href="/dashboard/llamadas/mi-fathom">Mi Fathom</Link>.</li>
         </ol>
         {props.canEdit && (
           <button type="button" onClick={props.onImport} className="mt-4 text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground">

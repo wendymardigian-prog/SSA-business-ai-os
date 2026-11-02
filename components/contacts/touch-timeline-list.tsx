@@ -61,7 +61,7 @@ function TouchRow({ item, timeZone, adHref }: { item: TimelineItem; timeZone: st
         <ChannelChip channel={item.channel} />
         <span className="text-xs font-medium">{item.originLabel}</span>
         {item.markLabels.map((label) => (
-          <span key={label} className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+          <span key={label} className="rounded-full border border-primary-edge/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">
             {label}
           </span>
         ))}

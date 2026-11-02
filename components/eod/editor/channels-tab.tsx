@@ -85,7 +85,7 @@ export function ChannelsTab({
         </div>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {channels.map((channel) => (
-            <li key={channel.key} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2", channel.key === open?.key ? "border-primary bg-primary/5" : "border-border")}>
+            <li key={channel.key} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2", channel.key === open?.key ? "border-primary-edge bg-primary/5" : "border-border")}>
               <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm">
                 <input type="checkbox" className="h-4 w-4" checked={channel.enabled} disabled={disabled} onChange={(e) => toggle(channel, e.target.checked)} />
                 <span className="truncate">{channel.label}</span>

@@ -47,7 +47,7 @@ export function DetailTabs({
           aria-current={shown === t.key ? "page" : undefined}
           className={cn(
             "whitespace-nowrap border-b-2 px-3 pb-3 text-sm font-medium transition-colors",
-            shown === t.key ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+            shown === t.key ? "border-primary-edge text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
           {t.label}

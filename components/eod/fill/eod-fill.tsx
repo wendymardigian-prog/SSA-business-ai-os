@@ -253,7 +253,7 @@ export function EodFill({ page }: { page: FillPageData }) {
                       onClick={() => update((d) => setChannelSelected(d, channel.key, !(d.channels[channel.key]?.selected === true)))}
                       className={cn(
                         "min-h-11 rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60",
-                        on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:bg-accent",
+                        on ? "border-primary-edge bg-primary text-primary-foreground" : "border-border bg-background hover:bg-accent",
                       )}
                     >
                       {channel.label}

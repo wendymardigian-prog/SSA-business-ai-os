@@ -81,7 +81,7 @@ export function KnowledgeTab({ data }: { data: AgentScreenData }) {
                       onClick={() => toggleTag(tag)}
                       className={cn(
                         "rounded-full border px-2.5 py-1 text-xs transition-colors",
-                        tags.includes(tag) ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent",
+                        tags.includes(tag) ? "border-primary-edge bg-primary text-primary-foreground" : "border-border hover:bg-accent",
                       )}
                     >
                       {tag}

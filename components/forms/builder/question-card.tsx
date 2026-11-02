@@ -56,7 +56,7 @@ function QuestionCardImpl({ field, index, count, selected, disabled, conditionCh
       className={cn(
         // Como el prototipo: sin borde hasta que se pasa el mouse o se elige (el rojo de un problema se ve siempre).
         "group relative rounded-xl border p-3 transition-colors",
-        selected ? "border-primary bg-card ring-1 ring-primary" : "border-transparent hover:border-border",
+        selected ? "border-primary-edge bg-card ring-1 ring-primary-edge" : "border-transparent hover:border-border",
         problemList.length > 0 && !selected && "border-red-400 dark:border-red-500/60",
       )}
     >
@@ -85,7 +85,7 @@ function QuestionCardImpl({ field, index, count, selected, disabled, conditionCh
               <GitBranch className="h-3 w-3 shrink-0" aria-hidden /> <span className="truncate">{conditionChip}</span>
             </span>
           )}
-          {mappingChip && <span className="truncate rounded-full bg-primary/10 px-2 py-0.5 text-[10.5px] text-primary">{mappingChip}</span>}
+          {mappingChip && <span className="truncate rounded-full bg-primary/10 px-2 py-0.5 text-[10.5px] text-primary-ink">{mappingChip}</span>}
           {extraChip && <span className="truncate rounded-full bg-muted px-2 py-0.5 text-[10.5px]">{extraChip}</span>}
         </span>
         {!disabled && (

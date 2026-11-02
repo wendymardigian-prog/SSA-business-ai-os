@@ -116,7 +116,7 @@ function Cell({ column, row, currency, onOpen, titleNote }: { column: ColumnDef;
     const href = column.href?.(row);
     if (!href) return <span>—</span>;
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary underline underline-offset-4">
+      <a href={href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-primary-ink underline underline-offset-4">
         Ver
       </a>
     );
@@ -318,7 +318,7 @@ export function CrmLevelTable({
               <tr className="font-bold">
                 <td className="sticky left-0 z-[1] bg-card px-2 py-2 text-foreground">Total</td>
                 {columns.map((column) => (
-                  <td key={column.id} className={`${TD} ${column.kind === "text" || column.kind === "status" || column.kind === "link" ? "text-left" : ""} ${column.id === "spend" ? "text-primary" : ""}`}>
+                  <td key={column.id} className={`${TD} ${column.kind === "text" || column.kind === "status" || column.kind === "link" ? "text-left" : ""} ${column.id === "spend" ? "text-primary-ink" : ""}`}>
                     <Cell
                       column={column}
                       row={total}

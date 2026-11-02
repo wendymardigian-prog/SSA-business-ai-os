@@ -95,10 +95,10 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
                 type="button"
                 aria-pressed={filters.pill === p}
                 onClick={() => go({ pill: filters.pill === p ? null : p })}
-                className={`rounded-xl border p-3 text-left transition-colors ${filters.pill === p ? "border-primary bg-primary/10" : "border-border hover:bg-accent"}`}
+                className={`rounded-xl border p-3 text-left transition-colors ${filters.pill === p ? "border-primary-edge bg-primary/10" : "border-border hover:bg-accent"}`}
               >
                 <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span className={filters.pill === p ? "font-medium text-primary" : ""}>{EXPENSE_PILL_LABELS[p]}</span>
+                  <span className={filters.pill === p ? "font-medium text-primary-ink" : ""}>{EXPENSE_PILL_LABELS[p]}</span>
                   <span className="rounded-full bg-muted px-1.5 text-[11px]">{pills[p].count}</span>
                 </span>
                 <span className="mt-1 block text-base font-semibold tabular-nums">{formatUsd(pills[p].cents)}</span>
@@ -202,7 +202,7 @@ export function ExpensesList({ data }: { data: ExpenseListData }) {
                     <dd className="text-sm font-medium tabular-nums">{formatUsd(totals.byStatus[s].cents)}</dd>
                   </div>
                 ))}
-                <div className="rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5">
+                <div className="rounded-lg border border-primary-edge/40 bg-primary/5 px-3 py-1.5">
                   <dt className="text-[11px] text-muted-foreground">Total sin anulados · {totals.total.count}</dt>
                   <dd className="text-sm font-semibold tabular-nums">{formatUsd(totals.total.cents)}</dd>
                 </div>
@@ -405,7 +405,7 @@ function ExpenseCard({ r, data, onPay }: { r: ExpenseListRow; data: ExpenseListD
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <CategoryChip data={data} categoryKey={r.category_key} />
-        <Link href={`/dashboard/finanzas/gastos/${r.id}`} className="ml-auto text-xs text-primary underline-offset-2 hover:underline">Ver ficha</Link>
+        <Link href={`/dashboard/finanzas/gastos/${r.id}`} className="ml-auto text-xs text-primary-ink underline-offset-2 hover:underline">Ver ficha</Link>
         {data.canManage && PAYABLE.has(r.status) && (
           <button type="button" onClick={onPay} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-accent" aria-label={`Pagar ${r.concept}`}>Pagar</button>
         )}

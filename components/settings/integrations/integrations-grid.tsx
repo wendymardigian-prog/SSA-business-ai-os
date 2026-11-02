@@ -239,7 +239,7 @@ function ChipButton({
       disabled={disabled}
       aria-pressed={active}
       className={`h-7 rounded-full border px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
-        active ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-accent"
+        active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border hover:bg-accent"
       }`}
     >
       {label}

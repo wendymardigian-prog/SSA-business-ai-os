@@ -434,7 +434,7 @@ export function TeamView({
                     {!emailConfigured && (
                       <p className="text-xs text-muted-foreground">
                         El email todavía no está conectado.{" "}
-                        <Link href="/dashboard/settings/integrations" className="text-primary underline underline-offset-2 hover:opacity-80">
+                        <Link href="/dashboard/settings/integrations" className="text-primary-ink underline underline-offset-2 hover:opacity-80">
                           Conectá el email en Integraciones
                         </Link>{" "}
                         para que las invitaciones salgan solas.
@@ -447,7 +447,7 @@ export function TeamView({
                   <div role="alert" className="mt-3 text-xs text-destructive">
                     <p>{inviteError.message}</p>
                     {inviteError.existingUrl && (
-                      <button type="button" onClick={() => copyLink("existing", inviteError.existingUrl!)} className="mt-1 inline-flex items-center gap-1 text-primary underline underline-offset-2">
+                      <button type="button" onClick={() => copyLink("existing", inviteError.existingUrl!)} className="mt-1 inline-flex items-center gap-1 text-primary-ink underline underline-offset-2">
                         {copied === "existing" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         {copied === "existing" ? "Link copiado" : "Copiar el link de esa invitación"}
                       </button>
@@ -609,7 +609,7 @@ export function TeamView({
                     </ul>
                   )}
                   {history.page < history.pages && (
-                    <button type="button" onClick={() => setHistoryPage(history.page + 1)} className="mt-3 text-xs font-medium text-primary underline underline-offset-2">
+                    <button type="button" onClick={() => setHistoryPage(history.page + 1)} className="mt-3 text-xs font-medium text-primary-ink underline underline-offset-2">
                       Ver más
                     </button>
                   )}

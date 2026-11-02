@@ -122,7 +122,7 @@ export function EmailAttachmentsField({ value, onChange }: { value: unknown; onC
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Buscar un archivo, imagen, audio o video…"
-              className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs focus:border-primary focus:outline-none"
+              className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs focus:border-primary-edge focus:outline-none"
             />
           </label>
           <div className="mt-2 max-h-48 overflow-y-auto">

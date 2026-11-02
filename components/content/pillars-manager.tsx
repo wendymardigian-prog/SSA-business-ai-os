@@ -93,7 +93,7 @@ export function PillarsManager({ pillars }: { pillars: PillarRow[] }) {
           onChange={(e) => setNewName(e.target.value)}
           maxLength={TAXONOMY_NAME_MAX}
           placeholder="Nuevo pilar"
-          className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary-edge"
         />
         <button
           type="submit"
@@ -143,7 +143,7 @@ export function PillarsManager({ pillars }: { pillars: PillarRow[] }) {
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     maxLength={TAXONOMY_NAME_MAX}
-                    className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-primary"
+                    className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm outline-none focus:border-primary-edge"
                   />
                   <button
                     type="submit"

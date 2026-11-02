@@ -27,7 +27,7 @@ function Toggle({ pressed, onClick, children, className }: { pressed: boolean; o
       type="button"
       aria-pressed={pressed}
       onClick={onClick}
-      className={cn("h-8 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-medium transition-colors", pressed ? "border-primary bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60", className)}
+      className={cn("h-8 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-medium transition-colors", pressed ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60", className)}
     >
       {children}
     </button>
@@ -46,7 +46,7 @@ function ChipGroup({ legend, options, selected, onChange }: { legend: string; op
             type="button"
             aria-pressed={selected.includes(o.value)}
             onClick={() => onChange(toggleValue(selected, o.value))}
-            className={cn("h-7 rounded-full border px-2.5 text-xs transition-colors", selected.includes(o.value) ? "border-primary bg-primary/10 font-medium" : "border-input hover:border-muted-foreground/60")}
+            className={cn("h-7 rounded-full border px-2.5 text-xs transition-colors", selected.includes(o.value) ? "border-primary-edge bg-primary/10 font-medium" : "border-input hover:border-muted-foreground/60")}
           >
             {o.label}
           </button>
@@ -172,7 +172,7 @@ export function FiltersBar({
           aria-expanded={open}
           aria-controls={open ? panelId : undefined}
           aria-haspopup="dialog"
-          className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors", panelFilters > 0 || open ? "border-primary bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60")}
+          className={cn("inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors", panelFilters > 0 || open ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60")}
         >
           <ListFilter className="h-3.5 w-3.5" aria-hidden /> Filtros
           {panelFilters > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{panelFilters}</span>}

@@ -95,7 +95,7 @@ export function TasksBoard({ rows, today, canEdit, busy, source, onOpen, onStatu
                 if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((o) => (o?.status === status ? null : o));
               }}
               onDrop={(e) => onDrop(e, status)}
-              className={cn("flex min-h-[200px] flex-col rounded-xl border border-border bg-muted/30 p-2 transition-colors", over?.status === status && "border-primary/60 bg-primary/5")}
+              className={cn("flex min-h-[200px] flex-col rounded-xl border border-border bg-muted/30 p-2 transition-colors", over?.status === status && "border-primary-edge/60 bg-primary/5")}
             >
               <header className="flex items-center gap-2 px-1 pb-2 pt-1">
                 <span className={cn("grid h-6 w-6 place-items-center rounded-full", STATUS_TONE[status])}>

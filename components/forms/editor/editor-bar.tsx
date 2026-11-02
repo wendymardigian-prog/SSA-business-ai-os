@@ -96,7 +96,7 @@ export function EditorBar({
         maxLength={120}
         aria-label="Nombre interno"
         title="Nombre interno · solo lo ve tu equipo"
-        className="hidden h-8 w-[220px] min-w-[60px] max-w-full truncate rounded-lg border border-transparent bg-transparent px-2 text-[14.5px] font-semibold text-foreground hover:border-border focus:border-primary focus:bg-card focus:outline-none read-only:cursor-default read-only:hover:border-transparent topbar:block"
+        className="hidden h-8 w-[220px] min-w-[60px] max-w-full truncate rounded-lg border border-transparent bg-transparent px-2 text-[14.5px] font-semibold text-foreground hover:border-border focus:border-primary-edge focus:bg-card focus:outline-none read-only:cursor-default read-only:hover:border-transparent topbar:block"
       />
     </span>
   );
@@ -112,7 +112,7 @@ export function EditorBar({
           <>
             {tab.label}
             {tab.count !== undefined && (
-              <span className={cn("rounded-full px-1.5 text-[11px] font-semibold leading-[17px] tabular-nums", tab.active ? "bg-primary/15 text-primary" : "bg-background/70 text-muted-foreground")}>
+              <span className={cn("rounded-full px-1.5 text-[11px] font-semibold leading-[17px] tabular-nums", tab.active ? "bg-primary/15 text-primary-ink" : "bg-background/70 text-muted-foreground")}>
                 {tab.count.toLocaleString("es-AR")}
               </span>
             )}
@@ -192,7 +192,7 @@ export function EditorBar({
       aria-current={view.metrics.active ? "page" : undefined}
       className={cn(
         "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
-        view.metrics.active ? "border-primary bg-primary/10 text-primary" : "border-input bg-background hover:border-muted-foreground/60",
+        view.metrics.active ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input bg-background hover:border-muted-foreground/60",
       )}
     >
       <BarChart3 className="h-4 w-4" aria-hidden />

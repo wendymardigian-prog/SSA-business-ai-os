@@ -75,7 +75,7 @@ export function NewEventDialog({
   }
 
   const inputClass = "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm";
-  const pill = (on: boolean) => `rounded-full border px-3 py-1 text-sm ${on ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`;
+  const pill = (on: boolean) => `rounded-full border px-3 py-1 text-sm ${on ? "border-primary-edge bg-primary/10 font-medium" : "border-border hover:bg-muted"}`;
 
   return (
     <ContentDialog
@@ -162,8 +162,8 @@ export function NewEventDialog({
               ["google_meet", "Google Meet", "El link se crea solo con cada agenda"],
               ["manual", "Ubicación manual", "Una dirección o una instrucción (\"te mando el link por WhatsApp\")"],
             ] as const).map(([key, label, sub]) => (
-              <button key={key} type="button" role="radio" aria-checked={locationType === key} onClick={() => setLocationType(key)} className={`flex w-full items-start gap-2 rounded-lg border p-2 text-left ${locationType === key ? "border-primary bg-primary/10" : "border-border"}`}>
-                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${locationType === key ? "border-primary bg-primary" : "border-muted-foreground"}`} />
+              <button key={key} type="button" role="radio" aria-checked={locationType === key} onClick={() => setLocationType(key)} className={`flex w-full items-start gap-2 rounded-lg border p-2 text-left ${locationType === key ? "border-primary-edge bg-primary/10" : "border-border"}`}>
+                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${locationType === key ? "border-primary-edge bg-primary" : "border-muted-foreground"}`} />
                 <span>
                   <span className="block text-sm font-medium">{label}</span>
                   <span className="block text-xs text-muted-foreground">{sub}</span>

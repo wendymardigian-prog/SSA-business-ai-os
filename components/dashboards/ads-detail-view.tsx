@@ -249,7 +249,7 @@ export function AdsDetailView({
               {crumb.href ? (
                 <Link
                   href={crumb.href}
-                  className="max-w-[12rem] truncate rounded px-1 py-0.5 font-medium text-primary hover:bg-accent hover:underline sm:max-w-[20rem]"
+                  className="max-w-[12rem] truncate rounded px-1 py-0.5 font-medium text-primary-ink hover:bg-accent hover:underline sm:max-w-[20rem]"
                 >
                   {crumb.label}
                 </Link>
@@ -265,12 +265,12 @@ export function AdsDetailView({
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-bold leading-tight text-foreground">{detail.objectName || detail.objectId}</h2>
           {level !== "ad" && meta.objective && (
-            <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            <span className="rounded-full border border-primary-edge/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary-ink">
               {objectiveLabel(meta.objective)}
             </span>
           )}
           {level === "ad" && creativeType && (
-            <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            <span className="rounded-full border border-primary-edge/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary-ink">
               {creativeType}
             </span>
           )}

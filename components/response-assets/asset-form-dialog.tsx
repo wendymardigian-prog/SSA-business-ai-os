@@ -157,7 +157,7 @@ export function AssetFormDialog({
               key={k}
               type="button"
               onClick={() => setKind(k)}
-              className="flex items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring"
+              className="flex items-start gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary-edge hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-muted">
                 <AssetKindIcon kind={k} className="h-4 w-4" />
@@ -576,7 +576,7 @@ export function AssetFormDialog({
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-medium text-muted-foreground">Transcripción</p>
             {!editingTranscript && existing.transcriptStatus !== "pending" && (
-              <button type="button" onClick={() => setEditingTranscript(true)} className="text-xs font-medium text-primary hover:underline">
+              <button type="button" onClick={() => setEditingTranscript(true)} className="text-xs font-medium text-primary-ink hover:underline">
                 {existing.transcriptStatus === "ready" ? "Corregir" : "Escribirla a mano"}
               </button>
             )}

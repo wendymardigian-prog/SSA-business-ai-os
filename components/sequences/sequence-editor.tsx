@@ -639,7 +639,7 @@ function AddStepButton({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2 text-xs text-muted-foreground transition-colors hover:border-primary-edge/50 hover:text-foreground"
       >
         <Plus className="h-3.5 w-3.5" />
         Agregar paso

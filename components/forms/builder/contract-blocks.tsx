@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 const CONTRACT_FORMAT: RichTextFormat = { load: markdownToEditorDoc, save: editorDocToMarkdown };
 
 const blockClass = (selected: boolean) =>
-  cn("rounded-xl border p-3 transition-colors", selected ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/40");
+  cn("rounded-xl border p-3 transition-colors", selected ? "border-primary-edge ring-1 ring-primary-edge" : "border-border hover:border-primary-edge/40");
 
 export function ContractTextBlock({
   formId,

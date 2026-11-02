@@ -114,7 +114,7 @@ export function VendorsList({
                   type="button"
                   aria-pressed={view === v}
                   onClick={() => setView(v)}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${view === v ? "border-primary bg-primary/10 font-medium text-primary" : "border-border hover:bg-accent"}`}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${view === v ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border hover:bg-accent"}`}
                 >
                   {v === "activos" ? "Activos" : "Archivados"}
                   <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{counts[v]}</span>

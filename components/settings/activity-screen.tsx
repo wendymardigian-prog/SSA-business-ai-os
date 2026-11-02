@@ -146,7 +146,7 @@ export function ActivityScreen({
                       </div>
                       <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
                         <time dateTime={r.performed_at}>{formatWhen(r.performed_at, timeZone)}</time>
-                        {href && <Link href={href} className="text-primary underline-offset-2 hover:underline">Ver</Link>}
+                        {href && <Link href={href} className="text-primary-ink underline-offset-2 hover:underline">Ver</Link>}
                       </div>
                     </li>
                   );

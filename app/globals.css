@@ -5,6 +5,16 @@
   --color-foreground: var(--foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  /*
+   * El color de marca COMO LETRA (`text-primary-ink`) y COMO BORDE o anillo
+   * (`border-primary-edge`, `ring-primary-edge`). Sin marca, son el mismo
+   * `--primary` de siempre; con una, `brandColorCss` (lib/brand.ts) los ajusta
+   * para que se lean sobre el fondo de cada tema (un color clarito como letra
+   * sobre blanco no se ve). `text-primary` / `border-primary` a secas quedan
+   * para cuando hace falta el color exacto (por ejemplo, encima de bg-primary).
+   */
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-edge: var(--primary-edge);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -90,6 +100,8 @@
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.511 0.217 275);
   --primary-foreground: oklch(0.985 0 0);
+  --primary-ink: var(--primary);
+  --primary-edge: var(--primary);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -167,6 +179,8 @@
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.585 0.217 275);
   --primary-foreground: oklch(0.985 0 0);
+  --primary-ink: var(--primary);
+  --primary-edge: var(--primary);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -234,6 +248,8 @@
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.585 0.217 275);
   --primary-foreground: oklch(0.985 0 0);
+  --primary-ink: var(--primary);
+  --primary-edge: var(--primary);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -259,6 +275,8 @@
   --color-popover-foreground: oklch(0.985 0 0);
   --color-primary: oklch(0.585 0.217 275);
   --color-primary-foreground: oklch(0.985 0 0);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-edge: var(--primary-edge);
   --color-secondary: oklch(0.269 0 0);
   --color-secondary-foreground: oklch(0.985 0 0);
   --color-muted: oklch(0.269 0 0);
@@ -282,6 +300,8 @@
   --popover-foreground: oklch(0.145 0 0);
   --primary: oklch(0.511 0.217 275);
   --primary-foreground: oklch(0.985 0 0);
+  --primary-ink: var(--primary);
+  --primary-edge: var(--primary);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -307,6 +327,8 @@
   --color-popover-foreground: oklch(0.145 0 0);
   --color-primary: oklch(0.511 0.217 275);
   --color-primary-foreground: oklch(0.985 0 0);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-edge: var(--primary-edge);
   --color-secondary: oklch(0.97 0 0);
   --color-secondary-foreground: oklch(0.205 0 0);
   --color-muted: oklch(0.97 0 0);

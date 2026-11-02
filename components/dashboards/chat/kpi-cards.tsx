@@ -91,7 +91,7 @@ export function KpiCards({
         <p className="text-[26px] font-semibold leading-tight tracking-tight text-warn tabular-nums">{formatCount(waitingNow.canReply)}</p>
         <Link
           href={`/dashboard/inbox?${AWAITING_PARAM}=responder`}
-          className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+          className="text-xs font-medium text-primary-ink underline-offset-2 hover:underline"
         >
           Ver en Inbox
         </Link>

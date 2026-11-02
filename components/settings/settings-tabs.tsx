@@ -44,7 +44,7 @@ export function SettingsTabs() {
           className={cn(
             "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
             tab.href === active
-              ? "border-primary text-foreground"
+              ? "border-primary-edge text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >

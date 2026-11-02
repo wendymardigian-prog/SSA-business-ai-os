@@ -246,17 +246,17 @@ function MessageBubble({
 
       {!isInbound && !isBot && (
         <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-          <User className="h-3.5 w-3.5 text-primary" />
+          <User className="h-3.5 w-3.5 text-primary-ink" />
         </div>
       )}
       {!isInbound && isBot && (
         <div className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
           {activity && message.sent_by_agent_id ? (
             <ActivityTrigger activity={activity} variant="bot" runsHref={runsHref}>
-              <Bot className="h-3.5 w-3.5 text-primary" />
+              <Bot className="h-3.5 w-3.5 text-primary-ink" />
             </ActivityTrigger>
           ) : (
-            <Bot className="h-3.5 w-3.5 text-primary" />
+            <Bot className="h-3.5 w-3.5 text-primary-ink" />
           )}
         </div>
       )}

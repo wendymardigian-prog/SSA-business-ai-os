@@ -140,7 +140,7 @@ function AccountRow({
     >
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">{leading}</span>
       <span className={cn("min-w-0 flex-1 truncate", checked && "font-medium")}>{title}</span>
-      {checked && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden />}
+      {checked && <Check className="h-4 w-4 shrink-0 text-primary-ink" aria-hidden />}
     </button>
   );
 }
@@ -398,7 +398,7 @@ export function InboxStatusControls({
         aria-label="Estado de los chats"
         className={cn(
           "h-8 rounded-lg border pl-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring",
-          notDefault ? "border-primary bg-primary/10 text-primary" : "border-input bg-background",
+          notDefault ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input bg-background",
         )}
       >
         {INBOX_STATUS_VALUES.map((value) => (
@@ -456,7 +456,7 @@ function Chip({
       className={cn(
         "rounded-full border px-2.5 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "border-primary bg-primary/10 font-medium text-primary"
+          ? "border-primary-edge bg-primary/10 font-medium text-primary-ink"
           : "border-border text-muted-foreground hover:bg-accent",
       )}
     >

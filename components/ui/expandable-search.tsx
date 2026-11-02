@@ -108,8 +108,8 @@ export function ExpandableSearch({
         // Respaldo nativo: en la franja del telefono el cartel queda cortado por el scroll.
         title={hint ?? undefined}
         className={cn(
-          "h-8 w-44 rounded-lg border border-input bg-background pl-8 pr-8 text-[13px] placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring sm:w-56",
-          value !== "" && "border-primary",
+          "h-8 w-44 rounded-lg border border-input bg-background pl-8 pr-8 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none focus:ring-2 focus:ring-ring sm:w-56",
+          value !== "" && "border-primary-edge",
           inputClassName,
         )}
       />

@@ -222,7 +222,7 @@ export function RuleFormFields({ draft, set, errors, role, editor, lookups, uid 
           <legend className="text-xs font-medium">Tipo de cálculo</legend>
           <div className="flex flex-wrap gap-2">
             {(["percent", "fixed"] as const).map((type) => (
-              <label key={type} className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${draft.calcType === type ? "border-primary bg-primary/10 font-medium" : "border-border"}`}>
+              <label key={type} className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${draft.calcType === type ? "border-primary-edge bg-primary/10 font-medium" : "border-border"}`}>
                 <input type="radio" name={id("calc")} checked={draft.calcType === type} onChange={() => set({ calcType: type })} className="sr-only" />
                 {type === "percent" ? "Un porcentaje" : "Un monto fijo"}
               </label>
@@ -245,7 +245,7 @@ export function RuleFormFields({ draft, set, errors, role, editor, lookups, uid 
                   { value: "gross", title: "Cobrado", text: "Lo que pagó el cliente." },
                   { value: "net_of_fees", title: "Neto del procesador", text: "Lo cobrado menos lo que se queda el procesador de pagos." },
                 ] as const).map((o) => (
-                  <label key={o.value} className={`block cursor-pointer rounded-lg border p-2.5 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${draft.base === o.value ? "border-primary bg-primary/10" : "border-border"}`}>
+                  <label key={o.value} className={`block cursor-pointer rounded-lg border p-2.5 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring ${draft.base === o.value ? "border-primary-edge bg-primary/10" : "border-border"}`}>
                     <input type="radio" name={id("base")} checked={draft.base === o.value} onChange={() => set({ base: o.value })} className="sr-only" />
                     <span className="block font-medium">{o.title}</span>
                     <span className="block text-xs text-muted-foreground">{o.text}</span>

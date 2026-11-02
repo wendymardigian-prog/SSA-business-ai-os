@@ -11,6 +11,10 @@ import {
   readableInkOnWhite,
   contrastRatio,
   mixHex,
+  readableInkOn,
+  brandInkColors,
+  PANEL_LIGHT_SURFACE,
+  PANEL_DARK_SURFACE,
   BRAND_TEXT_DARK,
   BRAND_TEXT_LIGHT,
 } from "./brand";
@@ -179,5 +183,47 @@ describe("legibilidad del color de marca", () => {
     expect(brandColorCss("#fde047")).toContain(`--primary-foreground:${BRAND_TEXT_DARK} !important`);
     expect(brandColorCss("#fde047")).toContain(`--color-primary-foreground:${BRAND_TEXT_DARK} !important`);
     expect(brandColorCss("#1d4ed8")).toContain(`--primary-foreground:${BRAND_TEXT_LIGHT} !important`);
+  });
+});
+
+describe("el color de marca como letra y como borde en el panel", () => {
+  const randomHex = () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}`;
+
+  it("cualquier color queda legible como letra (4,5) y como borde (3) en los dos temas", () => {
+    for (let i = 0; i < 500; i++) {
+      const inks = brandInkColors(randomHex())!;
+      expect(contrastRatio(inks.light.ink, PANEL_LIGHT_SURFACE)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(inks.light.edge, PANEL_LIGHT_SURFACE)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(inks.dark.ink, PANEL_DARK_SURFACE)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(inks.dark.edge, PANEL_DARK_SURFACE)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("un color que ya se lee no se toca", () => {
+    expect(brandInkColors("#1d4ed8")!.light.ink).toBe("#1d4ed8");
+    expect(brandInkColors("#fde047")!.dark.ink).toBe("#fde047");
+  });
+
+  it("un amarillo se oscurece en el tema claro y un azul marino se aclara en el oscuro", () => {
+    expect(brandInkColors("#fde047")!.light.ink).not.toBe("#fde047");
+    expect(brandInkColors("#1e3a8a")!.dark.ink).not.toBe("#1e3a8a");
+  });
+
+  it("readableInkOn rechaza valores invalidos", () => {
+    expect(readableInkOn("red", "#ffffff")).toBeNull();
+    expect(readableInkOn("#ffffff", "x")).toBeNull();
+    expect(brandInkColors("x;}")).toBeNull();
+  });
+
+  it("brandColorCss pinta la letra y el borde por tema, con el oscuro despues del claro", () => {
+    const css = brandColorCss("#fde047");
+    const inks = brandInkColors("#fde047")!;
+    const light = css.indexOf(':root,[data-theme="light"]{');
+    const dark = css.indexOf('.dark,[data-theme="dark"]{');
+    expect(light).toBeGreaterThan(0);
+    expect(dark).toBeGreaterThan(light);
+    expect(css.slice(light, dark)).toContain(`--color-primary-ink:${inks.light.ink} !important`);
+    expect(css.slice(light, dark)).toContain(`--ring:${inks.light.edge} !important`);
+    expect(css.slice(dark)).toContain(`--color-primary-edge:${inks.dark.edge} !important`);
   });
 });
