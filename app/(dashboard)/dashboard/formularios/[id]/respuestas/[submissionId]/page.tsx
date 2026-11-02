@@ -91,6 +91,7 @@ export default async function RespuestaPage({ params }: { params: Promise<{ id: 
         versionNumber: version?.version_number ?? null,
         origin: typeof meta.origin === "string" ? meta.origin : null,
         sitePath: typeof meta.site_path === "string" ? meta.site_path : null,
+        metaEventId: typeof meta.meta_event_id === "string" ? meta.meta_event_id : null,
         timezone: typeof meta.timezone === "string" ? meta.timezone : null,
         contactCreated: submission.contact_created,
         matchedBy: dedupe.matched_by ?? null,

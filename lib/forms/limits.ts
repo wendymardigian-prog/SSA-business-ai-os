@@ -22,8 +22,14 @@ export const FORM_LIMITS = {
   signatureMaxBytes: 200 * 1024,
   /** Días de vigencia de un link firmado por contacto. */
   signedLinkDays: 60,
-  /** Tamaño máximo del cuerpo de un envío (3 archivos de 10 MB por campo, con margen). */
+  /**
+   * Tamaño máximo del cuerpo de un envío con archivos o firma (3 archivos de 10 MB por campo,
+   * con margen). La ruta lo aplica ANTES de leer el cuerpo (413), mirando `Content-Length` y
+   * cortando la lectura si se pasa (`lib/http/read-capped.ts`).
+   */
   maxBodyMb: 35,
+  /** El mismo tope para un formulario SIN archivos ni firma: solo texto, nunca necesita más. */
+  maxBodyKbNoFiles: 64,
 } as const;
 
 export const HOUR_MS = 60 * 60 * 1000;

@@ -31,6 +31,8 @@ export interface SubmissionView {
   origin: string | null;
   sitePath: string | null;
   timezone: string | null;
+  /** El id del evento del Pixel de Meta que mandó la web (para la API de Conversiones). */
+  metaEventId?: string | null;
   contactCreated: boolean;
   matchedBy: string | null;
   /** Datos de la respuesta que coinciden con OTRO contacto (R5). */
@@ -154,6 +156,12 @@ export function SubmissionDetail({
                   {submission.sitePath ? ` · ${submission.sitePath}` : ""}
                 </dd>
               </div>
+              {submission.metaEventId && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">Evento de Meta</dt>
+                  <dd className="break-all font-mono text-xs">{submission.metaEventId}</dd>
+                </div>
+              )}
               {formType === "survey" && (
                 <div>
                   <dt className="text-xs text-muted-foreground">Puntaje</dt>

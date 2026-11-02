@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { submitForm, safeFileName, buildAttribution, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
+import { submitForm, safeFileName, buildAttribution, bodyLimitBytes, metaEventIdOf, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
 import { newField, type FormField } from "./fields";
 import { NO_BUSINESS_SIGNER } from "./defaults";
 
@@ -716,5 +716,70 @@ describe("submitForm: contratos (FO3)", () => {
     await submitForm(ports, baseInput({ answers: { nombre: "Ana" }, signature: goodSignature, signature_strokes: 3, accepted: true }));
     expect(saves[0].contract).toBeNull();
     expect(ports.uploadContractFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitForm: la web de un cliente (origin site)", () => {
+  it("sin version_id y con origin site usa la versión publicada", async () => {
+    const form = makeForm([field("email", "email", { required: true })]);
+    const { ports, saves } = makePorts(form);
+    const out = await submitForm(ports, baseInput({ version_id: undefined, origin: "site", answers: { email: "a@x.com" } }));
+    expect(out.status).toBe(200);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].meta).toMatchObject({ origin: "site" });
+  });
+
+  it("sin version_id y sin origin site sigue siendo 400 (los formularios propios no cambian)", async () => {
+    const { ports, saves } = makePorts(makeForm([field("email", "email")]));
+    const out = await submitForm(ports, baseInput({ version_id: undefined, answers: { email: "a@x.com" } }));
+    expect(out.status).toBe(400);
+    expect(out.body).toMatchObject({ ok: false, error: "invalid_request" });
+    expect(saves).toEqual([]);
+  });
+
+  it("sin version_id un error de validación es 400 con los campos, nunca 409", async () => {
+    const { ports } = makePorts(makeForm([field("email", "email", { required: true })]));
+    const out = await submitForm(ports, baseInput({ version_id: undefined, origin: "site", answers: {} }));
+    expect(out.status).toBe(400);
+    expect(out.body).toMatchObject({ error: "invalid", fields: { email: expect.any(String) } });
+  });
+
+  it("guarda el meta_event_id en meta (no en la atribución) y conserva fbp y fbc", async () => {
+    const { ports, saves } = makePorts(makeForm([field("email", "email")]));
+    await submitForm(
+      ports,
+      baseInput({
+        origin: "site",
+        answers: { email: "a@x.com" },
+        attribution: { utm_source: "ig", fbp: "fb.1.123.456", fbc: "fb.1.123.AbC", meta_event_id: "lead-7f3a.1" },
+      }),
+    );
+    expect(saves[0].meta).toMatchObject({ meta_event_id: "lead-7f3a.1" });
+    expect(saves[0].attribution).toMatchObject({ utm_source: "ig", fbp: "fb.1.123.456", fbc: "fb.1.123.AbC" });
+    expect(saves[0].attribution).not.toHaveProperty("meta_event_id");
+  });
+
+  it("un meta_event_id con forma rara no se guarda", () => {
+    expect(metaEventIdOf({ meta_event_id: "<script>" })).toBeNull();
+    expect(metaEventIdOf({ meta_event_id: "x".repeat(101) })).toBeNull();
+    expect(metaEventIdOf({ meta_event_id: 42 })).toBeNull();
+    expect(metaEventIdOf(null)).toBeNull();
+    expect(metaEventIdOf({ meta_event_id: " abc_123:9 " })).toBe("abc_123:9");
+  });
+
+  it("el honeypot lleno con origin site tampoco guarda nada", async () => {
+    const { ports, saves, rejected } = makePorts(makeForm([field("email", "email")]));
+    const out = await submitForm(ports, baseInput({ version_id: undefined, origin: "site", honeypot: "bot", answers: { email: "a@x.com" } }));
+    expect(out.status).toBe(200);
+    expect(saves).toEqual([]);
+    expect(rejected).toEqual(["honeypot"]);
+  });
+});
+
+describe("bodyLimitBytes: el tope del cuerpo según el formulario", () => {
+  it("solo texto: 64 KB; con archivos o contrato: 35 MB", () => {
+    expect(bodyLimitBytes(makeForm([field("email", "email")]))).toBe(64 * 1024);
+    expect(bodyLimitBytes(makeForm([field("file", "cv")]))).toBe(35 * 1024 * 1024);
+    expect(bodyLimitBytes(makeForm([], { type: "contract" }))).toBe(35 * 1024 * 1024);
   });
 });

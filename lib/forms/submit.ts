@@ -201,7 +201,9 @@ export interface SubmitOutcome {
 
 const payloadSchema = z.object({
   idempotency_key: z.string().uuid(),
-  version_id: z.string().uuid(),
+  // Obligatorio salvo en la web de un cliente (`origin: "site"`): una web externa no puede leer la versión
+  // y se usa la publicada. Los formularios propios lo siguen mandando (con él, el 409 `form_changed`).
+  version_id: z.string().uuid().optional(),
   answers: z.record(z.string(), z.unknown()),
   honeypot: z.string().max(500).optional(),
   attribution: z.unknown().optional(),
@@ -317,6 +319,9 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   const parsed = payloadSchema.safeParse(input.payload);
   if (!parsed.success) return fail(400, "invalid_request", { message: "El envío no es válido. Recargá la página e intentá de nuevo." });
   const payload = parsed.data;
+  if (!payload.version_id && payload.origin !== "site") {
+    return fail(400, "invalid_request", { message: "El envío no es válido. Recargá la página e intentá de nuevo." });
+  }
 
   // 4. Idempotencia.
   const already = await ports.findSubmission(form.id, payload.idempotency_key);
@@ -336,7 +341,8 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   }
 
   // 6 y 7. Validación total contra la versión VIGENTE.
-  const versionChanged = payload.version_id !== form.versionId;
+  // Sin `version_id` (la web de un cliente) se valida contra la publicada y no hay 409.
+  const versionChanged = payload.version_id !== undefined && payload.version_id !== form.versionId;
   const attribution = buildAttribution(payload, input.cookieHeader);
 
   const answersIn: Record<string, unknown> = { ...payload.answers };
@@ -607,7 +613,31 @@ function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayloa
     ...(origin === "site" && normalizeSitePath(payload.site_path) ? { site_path: normalizeSitePath(payload.site_path) } : {}),
     timezone: payload.client_meta?.timezone ?? null,
     locale: payload.client_meta?.locale ?? null,
+    // El id del evento del Pixel de Meta que mandó la web (para no contar dos veces el mismo lead cuando se sume
+    // la API de Conversiones). Es de ESTE envío, no del toque: no va en la atribución.
+    ...(metaEventIdOf(payload.attribution) ? { meta_event_id: metaEventIdOf(payload.attribution) } : {}),
     // Datos que no se pudieron guardar en el contacto (país no reconocido…): el detalle de la respuesta los muestra.
     ...(contactNotes.length > 0 ? { contact_notes: contactNotes.map((n) => ({ ...n, text: n.text.slice(0, 100) })) } : {}),
   };
+}
+
+/** Lo que se acepta como id de evento del Pixel: letras, números y `._:-`, hasta 100. */
+export const META_EVENT_ID_PATTERN = /^[A-Za-z0-9._:-]{1,100}$/;
+
+/** El `meta_event_id` que la web manda dentro de `attribution`, si tiene forma válida. */
+export function metaEventIdOf(attribution: unknown): string | null {
+  if (!attribution || typeof attribution !== "object" || Array.isArray(attribution)) return null;
+  const raw = (attribution as Record<string, unknown>).meta_event_id;
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return META_EVENT_ID_PATTERN.test(value) ? value : null;
+}
+
+/**
+ * El tope del cuerpo de un envío a este formulario: con archivos o firma (contrato), el grande;
+ * solo texto, 64 KB. La ruta lo aplica antes de leer (413).
+ */
+export function bodyLimitBytes(form: Pick<LoadedForm, "type" | "fields">): number {
+  const big = form.type === "contract" || form.fields.some((f) => f.type === "file");
+  return big ? FORM_LIMITS.maxBodyMb * 1024 * 1024 : FORM_LIMITS.maxBodyKbNoFiles * 1024;
 }
