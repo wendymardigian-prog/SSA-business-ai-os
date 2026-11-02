@@ -329,6 +329,12 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Integracion",
     tooltip: "Credenciales, cuentas conectadas y actividad de esta integracion.",
   },
+  // @plantilla-desde(formularios)
+  "/dashboard/settings/integrations/sitio-web": {
+    title: "Tu sitio web",
+    tooltip: "Las direcciones desde las que tu web puede mandar formularios a este sistema, y la guía para conectarla.",
+  },
+  // @plantilla-hasta(formularios)
   // @plantilla-desde(webhooks)
   "/dashboard/settings/integrations/webhooks": {
     title: "Webhooks entrantes",
