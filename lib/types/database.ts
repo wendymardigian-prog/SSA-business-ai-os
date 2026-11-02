@@ -1164,6 +1164,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings: Json;
           team_alerts_settings: Json;
+          website_settings: Json;
           customer_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */ // @plantilla-quitar(ventas)
           max_discount_percent: number | null; // @plantilla-quitar(ventas)
@@ -1220,6 +1221,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
+          website_settings?: Json;
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
@@ -1270,6 +1272,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
+          website_settings?: Json;
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
