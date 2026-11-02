@@ -54,6 +54,13 @@ async function loadRoleToGive(
   };
 }
 
+/** Como se presenta quien invita en el correo: su nombre, o si no tiene, su email. */
+function inviterNameOf(user: { email?: string | null; user_metadata?: Record<string, unknown> | null }): string | null {
+  const meta = user.user_metadata ?? {};
+  const name = typeof meta.full_name === "string" ? meta.full_name : typeof meta.name === "string" ? meta.name : "";
+  return name.trim() || user.email?.trim() || null;
+}
+
 /** Manda el correo de la invitacion y dice como salio. Nunca lanza: el link sirve igual. */
 async function sendInviteEmail(
   ctx: PermissionContext,
@@ -64,7 +71,8 @@ async function sendInviteEmail(
     workspaceName: ctx.workspace.name,
     inviteUrl: inviteUrl(invite.id),
     roleLabel: roleName,
-    brandColor: resolveBrand(ctx.workspace).colorHex,
+    inviterName: inviterNameOf(ctx.user),
+    brand: resolveBrand(ctx.workspace),
   });
   const sent = await sendTransactionalEmail({
     workspaceId: ctx.workspace.id,

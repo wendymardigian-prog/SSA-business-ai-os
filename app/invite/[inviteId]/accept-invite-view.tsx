@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Crown, Shield, User, Loader2 } from "lucide-react";
+import { Crown, Shield, User, Loader2 } from "lucide-react";
 import { acceptInvite, registerFromInvite } from "@/lib/actions/team";
 import Link from "next/link";
 import { BrandMark } from "@/components/brand-mark";
+import type { Brand } from "@/lib/brand";
+import { InviteShell } from "./invite-shell";
 
 const roleIcons: Record<string, React.ReactNode> = {
   owner: <Crown className="h-3.5 w-3.5" />,
@@ -20,6 +22,7 @@ const roleLabels: Record<string, string> = {
 };
 
 export function AcceptInviteView({
+  brand,
   inviteId,
   workspaceName,
   inviterName,
@@ -29,6 +32,8 @@ export function AcceptInviteView({
   isLoggedIn,
   currentUserEmail,
 }: {
+  /** La marca del negocio que invita (su logo y color, o los de la instalacion). */
+  brand?: Brand;
   inviteId: string;
   workspaceName: string;
   inviterName: string;
@@ -84,30 +89,32 @@ export function AcceptInviteView({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm space-y-6">
+    <InviteShell>
+      <div className="space-y-6">
         <div className="text-center">
-          <BrandMark size={48} className="mx-auto mb-3" />
-          <h1 className="text-2xl font-bold">¡Te invitaron!</h1>
+          <BrandMark size={64} className="mx-auto mb-4 rounded-2xl shadow-sm" brand={brand} />
+          <h1 className="text-2xl font-bold tracking-tight">¡Te invitaron!</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {inviterName} te invitó a sumarte a
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Users className="h-6 w-6 text-primary" />
+        {/* La franja de arriba y el fondo del rol van con el color del negocio; el texto no
+            (un color claro como texto sobre blanco no se lee). */}
+        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="h-1.5 bg-primary" aria-hidden />
+          <div className="p-6 text-center">
+            <h2 className="text-lg font-semibold">{workspaceName}</h2>
+            <div className="mt-2 flex items-center justify-center gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-foreground ring-1 ring-inset ring-primary/25">
+                {roleIcons[role] ?? roleIcons.member}
+                {roleName ?? roleLabels[role] ?? role}
+              </span>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Invitación para <span className="font-medium text-foreground">{email}</span>
+            </p>
           </div>
-          <h2 className="mt-3 text-lg font-semibold">{workspaceName}</h2>
-          <div className="mt-2 flex items-center justify-center gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
-              {roleIcons[role] ?? roleIcons.member}
-              {roleName ?? roleLabels[role] ?? role}
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Invitación para {email}
-          </p>
         </div>
 
         {isLoggedIn && !emailMismatch && (
@@ -213,6 +220,6 @@ export function AcceptInviteView({
           </div>
         )}
       </div>
-    </div>
+    </InviteShell>
   );
 }

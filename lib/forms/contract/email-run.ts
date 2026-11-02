@@ -20,6 +20,8 @@ import { classifyEmailError, emailJobKey, nextEmailRetryAt } from "./email-retry
 import { contractStorage, type ContractStorage } from "./storage";
 import { parseStoredContractConfig } from "./config";
 import { bodyToHtml } from "@/lib/flow-engine/nodes/send-email";
+import { brandedEmailHtml } from "@/lib/email/templates";
+import { resolveBrand, type WorkspaceBrandFields } from "@/lib/brand";
 
 type Db = SupabaseClient<Database>;
 
@@ -134,20 +136,30 @@ export async function runContractEmail(deps: EmailRunDeps, input: { signatureId:
   const [{ data: form }, { data: version }, { data: workspace }] = await Promise.all([
     db.from("forms").select("name, contract_config").eq("id", sig.form_id).maybeSingle(),
     db.from("form_versions").select("version_number").eq("id", sig.form_version_id).maybeSingle(),
-    db.from("workspaces").select("timezone").eq("id", sig.workspace_id).maybeSingle(),
+    db.from("workspaces").select("timezone, brand_name, brand_logo_path, brand_color").eq("id", sig.workspace_id).maybeSingle(),
   ]);
   const config = parseStoredContractConfig(form?.contract_config, form?.name ?? "Contrato");
   const title = config.title || form?.name || "Contrato";
   const signedAt = signedAtText(sig.signed_at, (workspace as { timezone?: string } | null)?.timezone);
   const fingerprint = `${sig.text_sha256.slice(0, 16)}…`;
   const subject = `Tu copia firmada: ${title}`;
-  const html = bodyToHtml(
-    `Hola${sig.signer_name ? ` ${sig.signer_name}` : ""},\n\nAdjuntamos la copia firmada de «${title}».\n\nFecha de la firma: ${signedAt}.\nLa huella del documento es ${fingerprint}\n\nGuardá este archivo: es tu constancia.`,
-  );
+  // Con la marca del negocio (logo, color y nombre): el firmante lo recibe de ESE negocio.
+  const brand = resolveBrand(workspace as WorkspaceBrandFields | null);
+  const html = brandedEmailHtml({
+    brand,
+    preheader: `Tu copia firmada de «${title}»`,
+    body: bodyToHtml(
+      `Hola${sig.signer_name ? ` ${sig.signer_name}` : ""},\n\nAdjuntamos la copia firmada de «${title}».\n\nFecha de la firma: ${signedAt}.\nLa huella del documento es ${fingerprint}\n\nGuardá este archivo: es tu constancia.`,
+    ),
+  });
   const copySubject = `Se firmó: ${title}`;
-  const copyHtml = bodyToHtml(
-    `Se firmó «${title}».\n\nFirmante: ${sig.signer_name || "(sin nombre)"} (${sig.signer_email}).\nFecha de la firma: ${signedAt}.\nLa huella del documento es ${fingerprint}\n\nAdjuntamos el PDF firmado.`,
-  );
+  const copyHtml = brandedEmailHtml({
+    brand,
+    preheader: `Se firmó «${title}»`,
+    body: bodyToHtml(
+      `Se firmó «${title}».\n\nFirmante: ${sig.signer_name || "(sin nombre)"} (${sig.signer_email}).\nFecha de la firma: ${signedAt}.\nLa huella del documento es ${fingerprint}\n\nAdjuntamos el PDF firmado.`,
+    ),
+  });
   const filename = `contrato-${safeFileName(title)}-v${version?.version_number ?? 1}.pdf`;
   const attachments = [{ filename, content: Buffer.from(pdf).toString("base64") }];
 

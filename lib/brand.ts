@@ -104,12 +104,89 @@ export function resolveBrand(workspace?: WorkspaceBrandFields | null): Brand {
   return { name, logoUrl, colorHex, initial: (name.trim()[0] ?? "P").toUpperCase() };
 }
 
+// ------------------------------------------------------------
+// Legibilidad del color de marca
+//
+// Un negocio puede elegir cualquier color, tambien uno muy claro (amarillo,
+// celeste, crema). Lo que va ENCIMA del color (el texto de un boton, la
+// inicial del monograma) no puede ser siempre blanco: se elige entre un claro
+// y un oscuro el que mas contraste tiene contra ese fondo (formula de WCAG).
+// Y lo que usa el color COMO texto sobre blanco (un link en un email) se
+// oscurece lo justo para que se lea.
+// ------------------------------------------------------------
+
+/** El texto claro y el oscuro que se ponen encima del color de marca. */
+export const BRAND_TEXT_LIGHT = "#ffffff";
+export const BRAND_TEXT_DARK = "#111827";
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function rgbToHex([r, g, b]: [number, number, number]): string {
+  return `#${[r, g, b].map((c) => Math.round(Math.min(255, Math.max(0, c))).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** La luminancia relativa de WCAG (0 = negro, 1 = blanco). */
+function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** El contraste de WCAG entre dos colores #rrggbb (de 1 a 21; 4,5 es lo minimo para texto normal). */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * El color del texto que va ENCIMA del color de marca: claro sobre un color
+ * oscuro, oscuro sobre uno claro (el que mas contraste tenga). Un valor que no
+ * es un hex valido devuelve el claro, como siempre fueron los botones.
+ */
+export function readableTextOn(hex: string | null | undefined): string {
+  const color = safeBrandColor(hex);
+  if (!color) return BRAND_TEXT_LIGHT;
+  return contrastRatio(color, BRAND_TEXT_LIGHT) >= contrastRatio(color, BRAND_TEXT_DARK) ? BRAND_TEXT_LIGHT : BRAND_TEXT_DARK;
+}
+
+/** Mezcla `hex` con `other`: `amount` 0 = `hex` tal cual, 1 = `other`. Los dos ya validados. */
+export function mixHex(hex: string, other: string, amount: number): string {
+  const a = hexToRgb(hex);
+  const b = hexToRgb(other);
+  const t = Math.min(1, Math.max(0, amount));
+  return rgbToHex([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+}
+
+/**
+ * El color de marca para usar COMO TEXTO sobre un fondo blanco (un link, un
+ * titulo chico): el mismo color si ya se lee (contraste 4,5), si no, oscurecido
+ * de a poco hasta que se lea. Un color claro nunca queda como texto ilegible.
+ */
+export function readableInkOnWhite(hex: string | null | undefined): string {
+  const color = safeBrandColor(hex);
+  if (!color) return BRAND_TEXT_DARK;
+  for (let step = 0; step <= 20; step++) {
+    const candidate = mixHex(color, "#000000", step * 0.05);
+    if (contrastRatio(candidate, "#ffffff") >= 4.5) return candidate;
+  }
+  return BRAND_TEXT_DARK;
+}
+
 /**
  * El CSS que pinta el color principal. Recibe un hex YA validado
  * (`brandColorHex` o `safeBrandColor`): se inyecta como texto en un <style>.
+ *
+ * Pisa tambien el color del texto que va encima (`--primary-foreground`): sin
+ * eso, un color claro dejaba los botones con letras blancas ilegibles.
  */
 export function brandColorCss(hex: string): string {
   const color = safeBrandColor(hex);
   if (!color) return "";
-  return `:root,.dark,[data-theme="dark"],[data-theme="light"]{--primary:${color} !important;--ring:${color} !important;--color-primary:${color} !important;--color-ring:${color} !important;}`;
+  const text = readableTextOn(color);
+  return `:root,.dark,[data-theme="dark"],[data-theme="light"]{--primary:${color} !important;--ring:${color} !important;--color-primary:${color} !important;--color-ring:${color} !important;--primary-foreground:${text} !important;--color-primary-foreground:${text} !important;}`;
 }

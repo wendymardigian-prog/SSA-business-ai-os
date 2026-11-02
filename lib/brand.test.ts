@@ -1,5 +1,19 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { brandName, brandLogoUrl, brandColorHex, brandInitial, resolveBrand, safeBrandColor, brandColorCss } from "./brand";
+import {
+  brandName,
+  brandLogoUrl,
+  brandColorHex,
+  brandInitial,
+  resolveBrand,
+  safeBrandColor,
+  brandColorCss,
+  readableTextOn,
+  readableInkOnWhite,
+  contrastRatio,
+  mixHex,
+  BRAND_TEXT_DARK,
+  BRAND_TEXT_LIGHT,
+} from "./brand";
 
 const KEYS = ["NEXT_PUBLIC_BRAND_NAME", "NEXT_PUBLIC_BRAND_LOGO_URL", "NEXT_PUBLIC_BRAND_COLOR"] as const;
 
@@ -119,5 +133,51 @@ describe("resolveBrand (marca de un negocio, 00266)", () => {
   it("brandColorCss solo acepta un hex valido", () => {
     expect(brandColorCss("#aabbcc")).toContain("--primary:#aabbcc !important");
     expect(brandColorCss("x;}")).toBe("");
+  });
+});
+
+describe("legibilidad del color de marca", () => {
+  it("sobre un color oscuro el texto va claro", () => {
+    for (const c of ["#111827", "#4f46e5", "#1d4ed8", "#7c3aed", "#b91c1c", "#065f46"]) {
+      expect(readableTextOn(c)).toBe(BRAND_TEXT_LIGHT);
+    }
+  });
+
+  it("sobre un color claro el texto va oscuro", () => {
+    for (const c of ["#ffffff", "#fde047", "#a5f3fc", "#fef3c7", "#bbf7d0", "#f9a8d4", "#facc15"]) {
+      expect(readableTextOn(c)).toBe(BRAND_TEXT_DARK);
+    }
+  });
+
+  it("el texto elegido siempre es el de mas contraste", () => {
+    for (let i = 0; i < 400; i++) {
+      const c = `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}`;
+      const chosen = readableTextOn(c);
+      const other = chosen === BRAND_TEXT_LIGHT ? BRAND_TEXT_DARK : BRAND_TEXT_LIGHT;
+      expect(contrastRatio(c, chosen)).toBeGreaterThanOrEqual(contrastRatio(c, other));
+    }
+  });
+
+  it("un valor invalido devuelve el texto claro de siempre", () => {
+    expect(readableTextOn(null)).toBe(BRAND_TEXT_LIGHT);
+    expect(readableTextOn("red")).toBe(BRAND_TEXT_LIGHT);
+  });
+
+  it("como texto sobre blanco, un color claro se oscurece hasta leerse", () => {
+    const ink = readableInkOnWhite("#fde047");
+    expect(contrastRatio(ink, "#ffffff")).toBeGreaterThanOrEqual(4.5);
+    expect(readableInkOnWhite("#1d4ed8")).toBe("#1d4ed8");
+    expect(readableInkOnWhite(null)).toBe(BRAND_TEXT_DARK);
+  });
+
+  it("mixHex mezcla en los extremos", () => {
+    expect(mixHex("#000000", "#ffffff", 0)).toBe("#000000");
+    expect(mixHex("#000000", "#ffffff", 1)).toBe("#ffffff");
+  });
+
+  it("brandColorCss pisa tambien el color del texto de los botones", () => {
+    expect(brandColorCss("#fde047")).toContain(`--primary-foreground:${BRAND_TEXT_DARK} !important`);
+    expect(brandColorCss("#fde047")).toContain(`--color-primary-foreground:${BRAND_TEXT_DARK} !important`);
+    expect(brandColorCss("#1d4ed8")).toContain(`--primary-foreground:${BRAND_TEXT_LIGHT} !important`);
   });
 });
