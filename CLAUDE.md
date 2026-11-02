@@ -1657,6 +1657,8 @@ node scripts/verify-account.mjs                    # RLS, bucket, preferencias, 
 node scripts/verify-account.mjs --despues-de-00275 # además, que cada aviso encole su entrega
 ```
 
+**SECURITY DEFINER cerradas para anon (2/11/2026).** `00276_security_definer_not_callable_by_anon`: a `can_give_role`, `can_grant_permissions` e `is_own_role` se les saca PUBLIC y anon (authenticated se queda: lo necesitan las policies de equipo), y a diez trigger functions de Agenda, Ventas, mensajes y roles se les saca PUBLIC, anon y authenticated (como la 00048). **Aplicada y registrada** el 2/11/2026 (versión `20261102230245`), con `verify-roles --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212 --despues-de-00249` en verde antes y después. En el linter, «Public Can Execute SECURITY DEFINER Function» queda solo con `get_public_form` (pública a propósito: `/f/[slug]`). Toda SECURITY DEFINER nueva lleva su `REVOKE ALL ... FROM PUBLIC, anon` (y `GRANT` explícito): la `00000` le da EXECUTE a anon por defecto. **La próxima libre es la `00277`** (confirmar con `list_migrations` y las ramas locales).
+
 # Seguridad
 
 ## Autenticacion y sesiones
