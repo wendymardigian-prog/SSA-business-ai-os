@@ -3,30 +3,30 @@ import { teamInviteEmail, teamNotificationEmail, brandedEmailHtml, emailTheme } 
 import { BRAND_TEXT_DARK, BRAND_TEXT_LIGHT, contrastRatio, type Brand } from "@/lib/brand";
 
 const brand = (over: Partial<Brand> = {}): Brand => ({
-  name: "Alma Expeditions",
+  name: "Negocio Demo",
   logoUrl: null,
   colorHex: "#1d4ed8",
-  initial: "A",
+  initial: "N",
   ...over,
 });
 
 const invite = (b: Brand) =>
   teamInviteEmail({
-    workspaceName: "ALMA Workspace",
+    workspaceName: "Equipo Demo",
     inviteUrl: "https://app.ejemplo.com/invite/abc",
     roleLabel: "Admin",
-    inviterName: "Wendy",
+    inviterName: "Ana",
     brand: b,
   });
 
 describe("teamInviteEmail", () => {
   it("lleva el color del negocio en la franja y el boton, con texto claro sobre un color oscuro", () => {
     const { html, subject } = invite(brand());
-    expect(subject).toBe("Te invitaron a ALMA Workspace");
+    expect(subject).toBe("Te invitaron a Equipo Demo");
     expect(html).toContain('bgcolor="#1d4ed8"');
     expect(html).toContain(`color:${BRAND_TEXT_LIGHT};text-decoration:none`);
     expect(html).toContain("Aceptar la invitación");
-    expect(html).toContain("<strong>Wendy</strong> te invitó");
+    expect(html).toContain("<strong>Ana</strong> te invitó");
     expect(html).toContain("Admin");
   });
 
@@ -45,13 +45,13 @@ describe("teamInviteEmail", () => {
 
   it("con logo muestra la imagen con el nombre como texto alternativo", () => {
     const { html } = invite(brand({ logoUrl: "https://x.supabase.co/storage/v1/object/public/brand-assets/ws/logo.png" }));
-    expect(html).toContain('<img src="https://x.supabase.co/storage/v1/object/public/brand-assets/ws/logo.png" alt="Alma Expeditions"');
+    expect(html).toContain('<img src="https://x.supabase.co/storage/v1/object/public/brand-assets/ws/logo.png" alt="Negocio Demo"');
   });
 
   it("sin logo muestra la inicial en un cuadrado del color", () => {
     const { html } = invite(brand());
     expect(html).not.toContain("<img");
-    expect(html).toMatch(/bgcolor="#1d4ed8" style="width:56px[^"]*">A<\/td>/);
+    expect(html).toMatch(/bgcolor="#1d4ed8" style="width:56px[^"]*">N<\/td>/);
   });
 
   it("sin color de marca usa un gris casi negro, con texto claro", () => {
@@ -87,10 +87,10 @@ describe("teamNotificationEmail", () => {
       body: "Te asignaron algo",
       url: "https://a.com/t/1",
       settingsUrl: "https://a.com/dashboard/cuenta?tab=notificaciones",
-      businessName: "Alma",
+      businessName: "Demo",
       brand: brand({ colorHex: "#a5f3fc" }),
     });
-    expect(subject).toBe("Alma: Nueva tarea");
+    expect(subject).toBe("Demo: Nueva tarea");
     expect(html).toContain("Ver en el sistema");
     expect(html).toContain(`color:${BRAND_TEXT_DARK};text-decoration:none`);
     expect(html).toContain("Cambiar qué avisos recibo");
@@ -104,6 +104,6 @@ describe("teamNotificationEmail", () => {
 
 describe("brandedEmailHtml", () => {
   it("firma con el nombre del negocio", () => {
-    expect(brandedEmailHtml({ brand: brand(), body: "<p>x</p>" })).toContain("Enviado por Alma Expeditions");
+    expect(brandedEmailHtml({ brand: brand(), body: "<p>x</p>" })).toContain("Enviado por Negocio Demo");
   });
 });
