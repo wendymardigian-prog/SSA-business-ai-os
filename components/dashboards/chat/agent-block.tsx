@@ -232,7 +232,7 @@ export function AgentActionsCard({ actions, actionsHref }: { actions: AgentActio
             {reverted > 0 ? ` ${reverted} ya se revirtieron.` : ""}
           </span>
           {actionsHref && (
-            <Link href={actionsHref} className="font-medium text-primary underline-offset-2 hover:underline">
+            <Link href={actionsHref} className="font-medium text-primary-ink underline-offset-2 hover:underline">
               Ver acciones
             </Link>
           )}
@@ -321,7 +321,7 @@ export function ApprovalCard({
       footer={
         <>
           <span>Descartar a propósito no cuenta como ventana perdida.</span>
-          <Link href={queueHref} className="font-medium text-primary underline-offset-2 hover:underline">
+          <Link href={queueHref} className="font-medium text-primary-ink underline-offset-2 hover:underline">
             Abrir la cola
           </Link>
         </>

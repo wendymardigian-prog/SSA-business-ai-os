@@ -375,7 +375,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
         {done.download && <ContractCopyButton url={done.download.url} />}
         {preview && (
           <div>
-            <button type="button" onClick={() => setDone(null)} className="text-sm font-medium text-primary hover:underline">
+            <button type="button" onClick={() => setDone(null)} className="text-sm font-medium text-primary-ink hover:underline">
               Volver al formulario
             </button>
           </div>

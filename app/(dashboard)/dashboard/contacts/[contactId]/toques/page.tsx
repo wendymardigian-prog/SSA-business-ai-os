@@ -134,7 +134,7 @@ function TouchesShell({ contactId, name, total, children }: { contactId: string;
       <PageHeader title={`Toques de ${name}`} tooltip="Todas las veces que esta persona interactuó, del más nuevo al más viejo, con el canal y de dónde vino cada una." />
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <p className="mb-3 text-sm">
-          <Link href={`/dashboard/contacts/${contactId}`} className="text-primary underline-offset-2 hover:underline">
+          <Link href={`/dashboard/contacts/${contactId}`} className="text-primary-ink underline-offset-2 hover:underline">
             Volver a la ficha
           </Link>
           {total !== undefined && (

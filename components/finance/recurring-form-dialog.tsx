@@ -288,7 +288,7 @@ function Choice<T extends string>({
         {options.map((o) => (
           <label
             key={o.value}
-            className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm focus-within:ring-2 focus-within:ring-ring ${value === o.value ? "border-primary bg-primary/10 font-medium text-primary" : "border-border hover:bg-accent"}`}
+            className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm focus-within:ring-2 focus-within:ring-ring ${value === o.value ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border hover:bg-accent"}`}
           >
             <input type="radio" name={name} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} className="sr-only" />
             {o.label}

@@ -111,7 +111,7 @@ export function BookingView({
           className={
             cancelled
               ? "grid h-12 w-12 place-items-center rounded-full bg-muted text-muted-foreground"
-              : "grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary"
+              : "grid h-12 w-12 place-items-center rounded-full bg-primary/15 text-primary-ink"
           }
         >
           {cancelled ? <X className="h-6 w-6" /> : <Check className="h-6 w-6" />}
@@ -154,7 +154,7 @@ export function BookingView({
                   <Clock className="h-4 w-4" aria-hidden /> Preparando el link de Meet…
                 </span>
               ) : meetUrl ? (
-                <a href={meetUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary underline">
+                <a href={meetUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-primary-ink underline">
                   <Video className="h-4 w-4" aria-hidden /> Entrar a Google Meet
                 </a>
               ) : (

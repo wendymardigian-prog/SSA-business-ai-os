@@ -1,4 +1,4 @@
-import { resolveBrand, type Brand } from "@/lib/brand";
+import { readableTextOn, resolveBrand, type Brand } from "@/lib/brand";
 
 /**
  * El logo del producto, o un monograma si el cliente no subio uno.
@@ -10,7 +10,7 @@ import { resolveBrand, type Brand } from "@/lib/brand";
 export function BrandMark({ size = 48, className, brand }: { size?: number; className?: string; brand?: Brand }) {
   // Sin `brand`, la marca de la instalacion (login, invitacion). Adentro del
   // panel se pasa la del negocio (`resolveBrand(workspace)`).
-  const { name, logoUrl, initial } = brand ?? resolveBrand();
+  const { name, logoUrl, initial, colorHex } = brand ?? resolveBrand();
 
   if (logoUrl) {
     return (
@@ -33,8 +33,10 @@ export function BrandMark({ size = 48, className, brand }: { size?: number; clas
         width: size,
         height: size,
         borderRadius: size * 0.22,
-        background: "var(--primary)",
-        color: "var(--primary-foreground)",
+        // Con una marca pasada, su propio color (la vista previa de Ajustes muestra el que se esta eligiendo);
+        // la inicial, clara u oscura segun ese color (lib/brand.ts, readableTextOn).
+        background: brand && colorHex ? colorHex : "var(--primary)",
+        color: brand && colorHex ? readableTextOn(colorHex) : "var(--primary-foreground)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

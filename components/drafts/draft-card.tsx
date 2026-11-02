@@ -272,7 +272,7 @@ function ProposedReply({ draft, decision }: { draft: DraftQueueRow; decision: De
           </p>
           {failure.hint && <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">{failure.hint}</p>}
           {failure.href && (
-            <Link href={failure.href} className="mt-1.5 inline-block text-xs font-medium text-primary underline underline-offset-2">
+            <Link href={failure.href} className="mt-1.5 inline-block text-xs font-medium text-primary-ink underline underline-offset-2">
               {failure.hrefLabel}
             </Link>
           )}

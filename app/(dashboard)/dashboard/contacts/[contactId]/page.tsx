@@ -804,7 +804,7 @@ export default async function ContactDetailPage({
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="truncate text-xs text-primary hover:underline"
+                              className="truncate text-xs text-primary-ink hover:underline"
                             >
                               {label}
                             </a>

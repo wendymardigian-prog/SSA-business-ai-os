@@ -80,7 +80,7 @@ export function PatternsSection({
             subtitle={selected ? undefined : "Todas las conversaciones del período"}
             actions={
               selected ? (
-                <button type="button" onClick={() => onSelectCategory(null)} className="text-xs font-medium text-primary underline-offset-2 hover:underline">
+                <button type="button" onClick={() => onSelectCategory(null)} className="text-xs font-medium text-primary-ink underline-offset-2 hover:underline">
                   Ver todas las respuestas
                 </button>
               ) : undefined
@@ -466,7 +466,7 @@ export function QualityLineRow({
         <b className="font-semibold text-foreground">{unclassifiedPending}</b> sin clasificar
         {classifiedToday > 0 && <span> · {classifiedToday} clasificados hoy</span>}
       </span>
-      <Link href="/dashboard/agents/tareas/message_classification" className="ml-auto font-medium text-primary underline-offset-2 hover:underline">
+      <Link href="/dashboard/agents/tareas/message_classification" className="ml-auto font-medium text-primary-ink underline-offset-2 hover:underline">
         Ver calidad y configuración →
       </Link>
     </div>

@@ -35,7 +35,7 @@ export function AttributionSection({ view, contactId }: { view: AttributionView;
 
           {contactId && (
             <p className="text-xs">
-              <Link href={`/dashboard/contacts/${contactId}/toques`} className="text-primary underline-offset-2 hover:underline">
+              <Link href={`/dashboard/contacts/${contactId}/toques`} className="text-primary-ink underline-offset-2 hover:underline">
                 Ver todos los toques
               </Link>
             </p>

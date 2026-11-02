@@ -24,7 +24,7 @@ export function OriginChip({ chip }: { chip: OriginChipView }) {
         <Link
           href={chip.href}
           title={chip.text}
-          className={`${className} transition-colors hover:border-primary/50 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring`}
+          className={`${className} transition-colors hover:border-primary-edge/50 hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring`}
         >
           {content}
         </Link>

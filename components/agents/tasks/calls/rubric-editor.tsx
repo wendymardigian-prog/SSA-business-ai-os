@@ -143,7 +143,7 @@ function Column({ side, title, list, readOnly, onChange }: { side: "closer" | "l
       </ul>
       {!readOnly && (
         <div className="border-t border-border px-3 py-2">
-          <button type="button" onClick={add} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+          <button type="button" onClick={add} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline">
             <Plus className="h-3.5 w-3.5" aria-hidden /> {side === "closer" ? "Agregar criterio" : "Agregar creencia"}
           </button>
         </div>

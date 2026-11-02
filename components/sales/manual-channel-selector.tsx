@@ -38,7 +38,7 @@ export function ManualChannelSelector({ members, onUse }: { members: WizardMembe
               type="button"
               aria-pressed={draft.kind === c.kind}
               onClick={() => pick(c.kind)}
-              className={cn("rounded-lg border px-3 py-1.5 text-xs font-medium", draft.kind === c.kind ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent")}
+              className={cn("rounded-lg border px-3 py-1.5 text-xs font-medium", draft.kind === c.kind ? "border-primary-edge bg-primary text-primary-foreground" : "border-border hover:bg-accent")}
             >
               {c.label}
             </button>
@@ -130,7 +130,7 @@ export function ManualChannelSelector({ members, onUse }: { members: WizardMembe
                 type="button"
                 aria-pressed={draft.referrerMode === type}
                 onClick={() => set({ referrer: null, referrerMode: type })}
-                className={cn("rounded-lg border px-3 py-1.5 text-xs font-medium", draft.referrerMode === type ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-accent")}
+                className={cn("rounded-lg border px-3 py-1.5 text-xs font-medium", draft.referrerMode === type ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-border hover:bg-accent")}
               >
                 {type === "contact" ? "Un contacto" : "Alguien del equipo"}
               </button>
@@ -194,7 +194,7 @@ export function ManualChannelSelector({ members, onUse }: { members: WizardMembe
           type="button"
           aria-expanded={draft.kind === "utm"}
           onClick={() => (draft.kind === "utm" ? setDraft(EMPTY_DRAFT) : pick("utm"))}
-          className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+          className="text-xs font-medium text-primary-ink underline-offset-2 hover:underline"
         >
           {draft.kind === "utm" ? "Cerrar «Avanzado»" : "Avanzado: cargar los campos UTM"}
         </button>

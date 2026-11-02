@@ -179,7 +179,7 @@ function SendContractModal({ saleId, canManageForms, onClose }: { saleId: string
           <fieldset className="space-y-1.5" disabled={!!link}>
             <legend className="mb-1 text-xs font-medium">Contrato</legend>
             {forms.map((f) => (
-              <label key={f.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+              <label key={f.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary-edge has-[:checked]:bg-primary/5">
                 <input type="radio" name="contract" value={f.id} checked={formId === f.id} onChange={() => setFormId(f.id)} />
                 <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
                 <span className="text-xs text-muted-foreground">versión {f.versionNumber}</span>

@@ -289,7 +289,7 @@ export function BookingsScreen({
         {needsProfile && (
           <p className="rounded-xl border border-border bg-muted/50 p-3 text-sm">
             Todavía no configuraste tu agenda.{" "}
-            <Link href="/dashboard/agenda/configuracion/ajustes" className="text-primary underline">
+            <Link href="/dashboard/agenda/configuracion/ajustes" className="text-primary-ink underline">
               Empezá por acá
             </Link>
             .

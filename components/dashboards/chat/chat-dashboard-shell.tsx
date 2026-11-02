@@ -202,7 +202,7 @@ export function ChatDashboardShell({
               subtitle="Cómo trabaja con las conversaciones nuevas"
               action={
                 agentHref ? (
-                  <Link href={agentHref} className="text-xs font-medium text-primary underline-offset-2 hover:underline">
+                  <Link href={agentHref} className="text-xs font-medium text-primary-ink underline-offset-2 hover:underline">
                     Ver runs y acciones en Agentes →
                   </Link>
                 ) : null

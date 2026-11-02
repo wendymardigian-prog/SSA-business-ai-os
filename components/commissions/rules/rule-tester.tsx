@@ -186,12 +186,12 @@ export function RuleTester({
             <fieldset className="space-y-1.5">
               <legend className="sr-only">Cobro a probar</legend>
               {payments.payments.map((p) => (
-                <label key={p.id} className={cn("flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring", targetKey === `payment:${p.id}` ? "border-primary bg-primary/10" : "border-border")}>
+                <label key={p.id} className={cn("flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring", targetKey === `payment:${p.id}` ? "border-primary-edge bg-primary/10" : "border-border")}>
                   <input type="radio" name={`${uid}-target`} checked={targetKey === `payment:${p.id}`} onChange={() => setTargetKey(`payment:${p.id}`)} className="mt-1" />
                   <span className="min-w-0 break-words">{paymentOptionLabel(p, methodNames)}</span>
                 </label>
               ))}
-              <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring", targetKey === "hypothetical" ? "border-primary bg-primary/10" : "border-border")}>
+              <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring", targetKey === "hypothetical" ? "border-primary-edge bg-primary/10" : "border-border")}>
                 <input type="radio" name={`${uid}-target`} checked={targetKey === "hypothetical"} onChange={() => setTargetKey("hypothetical")} className="mt-1" />
                 <span className="min-w-0">Un cobro hipotético<span className="block text-xs text-muted-foreground">Un monto y un método a elección; cuenta como el próximo pago de la venta.</span></span>
               </label>

@@ -122,7 +122,7 @@ export function TriggerPicker({ open, currentKey, onPick, onClose, title = "¿C�
               }}
               placeholder="Buscar: reunión, etiqueta, pago, formulario…" // @plantilla-quitar(ventas,formularios)
               // @plantilla-sin(ventas,formularios): placeholder="Buscar: reunión, etiqueta, mensaje, comentario…"
-              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
             />
           </label>
         </div>
@@ -147,8 +147,8 @@ export function TriggerPicker({ open, currentKey, onPick, onClose, title = "¿C�
                         type="button"
                         onClick={() => pick(choice)}
                         className={cn(
-                          "rounded-lg border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-primary",
-                          currentKey === choice.key ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30" : "border-border bg-background hover:border-primary/50 hover:bg-accent",
+                          "rounded-lg border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-primary-edge",
+                          currentKey === choice.key ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30" : "border-border bg-background hover:border-primary-edge/50 hover:bg-accent",
                         )}
                       >
                         <p className="text-sm font-medium text-foreground">{choice.label}</p>

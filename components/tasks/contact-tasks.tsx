@@ -140,7 +140,7 @@ function Body({ ct, onRetry }: { ct: ContactTasksCtx; onRetry: () => void }) {
         <button
           type="button"
           onClick={() => wb.startCreate({ contact_id: contactId })}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-border px-2.5 text-sm text-muted-foreground hover:border-primary hover:text-foreground"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-border px-2.5 text-sm text-muted-foreground hover:border-primary-edge hover:text-foreground"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden /> Agregar tarea
         </button>

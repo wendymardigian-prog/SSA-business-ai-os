@@ -36,7 +36,7 @@ function Row({ active, selected, onPick, children, id }: { active: boolean; sele
       className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent", active && "bg-accent")}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
-      {selected && <Check className="h-4 w-4 shrink-0 text-primary" aria-hidden />}
+      {selected && <Check className="h-4 w-4 shrink-0 text-primary-ink" aria-hidden />}
     </button>
   );
 }
@@ -78,7 +78,7 @@ function SearchBox({ value, onChange, placeholder, onKeyDown, listId, activeId }
         aria-expanded
         aria-controls={listId}
         aria-activedescendant={activeId}
-        className="h-8 w-full rounded-lg border border-input bg-background pl-7 pr-2 text-sm outline-none focus:border-primary"
+        className="h-8 w-full rounded-lg border border-input bg-background pl-7 pr-2 text-sm outline-none focus:border-primary-edge"
       />
     </div>
   );
@@ -274,7 +274,7 @@ export function ProjectPicker({
             )}
             {o.kind === "create" && (
               <>
-                <Plus className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+                <Plus className="h-3.5 w-3.5 shrink-0 text-primary-ink" aria-hidden />
                 <span className="truncate">Crear «{o.text}»</span>
               </>
             )}

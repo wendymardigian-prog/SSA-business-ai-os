@@ -1,5 +1,23 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { brandName, brandLogoUrl, brandColorHex, brandInitial, resolveBrand, safeBrandColor, brandColorCss } from "./brand";
+import {
+  brandName,
+  brandLogoUrl,
+  brandColorHex,
+  brandInitial,
+  resolveBrand,
+  safeBrandColor,
+  brandColorCss,
+  readableTextOn,
+  readableInkOnWhite,
+  contrastRatio,
+  mixHex,
+  readableInkOn,
+  brandInkColors,
+  PANEL_LIGHT_SURFACE,
+  PANEL_DARK_SURFACE,
+  BRAND_TEXT_DARK,
+  BRAND_TEXT_LIGHT,
+} from "./brand";
 
 const KEYS = ["NEXT_PUBLIC_BRAND_NAME", "NEXT_PUBLIC_BRAND_LOGO_URL", "NEXT_PUBLIC_BRAND_COLOR"] as const;
 
@@ -119,5 +137,93 @@ describe("resolveBrand (marca de un negocio, 00266)", () => {
   it("brandColorCss solo acepta un hex valido", () => {
     expect(brandColorCss("#aabbcc")).toContain("--primary:#aabbcc !important");
     expect(brandColorCss("x;}")).toBe("");
+  });
+});
+
+describe("legibilidad del color de marca", () => {
+  it("sobre un color oscuro el texto va claro", () => {
+    for (const c of ["#111827", "#4f46e5", "#1d4ed8", "#7c3aed", "#b91c1c", "#065f46"]) {
+      expect(readableTextOn(c)).toBe(BRAND_TEXT_LIGHT);
+    }
+  });
+
+  it("sobre un color claro el texto va oscuro", () => {
+    for (const c of ["#ffffff", "#fde047", "#a5f3fc", "#fef3c7", "#bbf7d0", "#f9a8d4", "#facc15"]) {
+      expect(readableTextOn(c)).toBe(BRAND_TEXT_DARK);
+    }
+  });
+
+  it("el texto elegido siempre es el de mas contraste", () => {
+    for (let i = 0; i < 400; i++) {
+      const c = `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}`;
+      const chosen = readableTextOn(c);
+      const other = chosen === BRAND_TEXT_LIGHT ? BRAND_TEXT_DARK : BRAND_TEXT_LIGHT;
+      expect(contrastRatio(c, chosen)).toBeGreaterThanOrEqual(contrastRatio(c, other));
+    }
+  });
+
+  it("un valor invalido devuelve el texto claro de siempre", () => {
+    expect(readableTextOn(null)).toBe(BRAND_TEXT_LIGHT);
+    expect(readableTextOn("red")).toBe(BRAND_TEXT_LIGHT);
+  });
+
+  it("como texto sobre blanco, un color claro se oscurece hasta leerse", () => {
+    const ink = readableInkOnWhite("#fde047");
+    expect(contrastRatio(ink, "#ffffff")).toBeGreaterThanOrEqual(4.5);
+    expect(readableInkOnWhite("#1d4ed8")).toBe("#1d4ed8");
+    expect(readableInkOnWhite(null)).toBe(BRAND_TEXT_DARK);
+  });
+
+  it("mixHex mezcla en los extremos", () => {
+    expect(mixHex("#000000", "#ffffff", 0)).toBe("#000000");
+    expect(mixHex("#000000", "#ffffff", 1)).toBe("#ffffff");
+  });
+
+  it("brandColorCss pisa tambien el color del texto de los botones", () => {
+    expect(brandColorCss("#fde047")).toContain(`--primary-foreground:${BRAND_TEXT_DARK} !important`);
+    expect(brandColorCss("#fde047")).toContain(`--color-primary-foreground:${BRAND_TEXT_DARK} !important`);
+    expect(brandColorCss("#1d4ed8")).toContain(`--primary-foreground:${BRAND_TEXT_LIGHT} !important`);
+  });
+});
+
+describe("el color de marca como letra y como borde en el panel", () => {
+  const randomHex = () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0")}`;
+
+  it("cualquier color queda legible como letra (4,5) y como borde (3) en los dos temas", () => {
+    for (let i = 0; i < 500; i++) {
+      const inks = brandInkColors(randomHex())!;
+      expect(contrastRatio(inks.light.ink, PANEL_LIGHT_SURFACE)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(inks.light.edge, PANEL_LIGHT_SURFACE)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(inks.dark.ink, PANEL_DARK_SURFACE)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(inks.dark.edge, PANEL_DARK_SURFACE)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("un color que ya se lee no se toca", () => {
+    expect(brandInkColors("#1d4ed8")!.light.ink).toBe("#1d4ed8");
+    expect(brandInkColors("#fde047")!.dark.ink).toBe("#fde047");
+  });
+
+  it("un amarillo se oscurece en el tema claro y un azul marino se aclara en el oscuro", () => {
+    expect(brandInkColors("#fde047")!.light.ink).not.toBe("#fde047");
+    expect(brandInkColors("#1e3a8a")!.dark.ink).not.toBe("#1e3a8a");
+  });
+
+  it("readableInkOn rechaza valores invalidos", () => {
+    expect(readableInkOn("red", "#ffffff")).toBeNull();
+    expect(readableInkOn("#ffffff", "x")).toBeNull();
+    expect(brandInkColors("x;}")).toBeNull();
+  });
+
+  it("brandColorCss pinta la letra y el borde por tema, con el oscuro despues del claro", () => {
+    const css = brandColorCss("#fde047");
+    const inks = brandInkColors("#fde047")!;
+    const light = css.indexOf(':root,[data-theme="light"]{');
+    const dark = css.indexOf('.dark,[data-theme="dark"]{');
+    expect(light).toBeGreaterThan(0);
+    expect(dark).toBeGreaterThan(light);
+    expect(css.slice(light, dark)).toContain(`--color-primary-ink:${inks.light.ink} !important`);
+    expect(css.slice(light, dark)).toContain(`--ring:${inks.light.edge} !important`);
+    expect(css.slice(dark)).toContain(`--color-primary-edge:${inks.dark.edge} !important`);
   });
 });

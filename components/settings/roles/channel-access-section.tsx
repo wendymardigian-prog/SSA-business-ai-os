@@ -209,7 +209,7 @@ function ModeOption({
       title={disabled && !checked ? "No podés dar permisos que no tenés" : undefined}
       className={cn(
         "flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs",
-        checked ? "border-primary bg-primary/5" : "border-border",
+        checked ? "border-primary-edge bg-primary/5" : "border-border",
         disabled && !checked && "cursor-not-allowed opacity-60",
       )}
     >

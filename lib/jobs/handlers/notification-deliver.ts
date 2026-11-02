@@ -14,7 +14,7 @@ import type { Database } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { scheduleJob } from "@/lib/scheduler";
 import { appUrl } from "@/lib/app-url";
-import { resolveBrand } from "@/lib/brand";
+import { resolveBrand, type Brand } from "@/lib/brand";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { teamNotificationEmail } from "@/lib/email/templates";
 import { accountTabHref } from "@/lib/account/tabs";
@@ -38,14 +38,16 @@ export function whatsappText(businessName: string, n: Pick<DeliveryNotification,
 
 export function realDeliverDeps(db: Db): DeliverDeps {
   const base = dbDeliverDeps(db);
-  const brandCache = new Map<string, { name: string; color: string | null }>();
+  const brandCache = new Map<string, { name: string; brand: Brand }>();
   const channelCache = new Map<string, TeamAlertsChannel | null>();
 
   async function brandOf(workspaceId: string) {
     const cached = brandCache.get(workspaceId);
     if (cached) return cached;
     const { data } = await db.from("workspaces").select("name, brand_name, brand_logo_path, brand_color").eq("id", workspaceId).maybeSingle();
-    const brand = { name: data?.brand_name?.trim() || data?.name || "Tu negocio", color: resolveBrand(data).colorHex };
+    // `name` va en el asunto y el WhatsApp (su marca o su nombre de workspace); la cabecera del email
+    // (logo, nombre y color) es la de `resolveBrand`, igual que la invitacion.
+    const brand = { name: data?.brand_name?.trim() || data?.name || "Tu negocio", brand: resolveBrand(data) };
     brandCache.set(workspaceId, brand);
     return brand;
   }
@@ -65,7 +67,7 @@ export function realDeliverDeps(db: Db): DeliverDeps {
         url: absolute(link),
         settingsUrl: `${appUrl()}${accountTabHref("notificaciones")}`,
         businessName: brand.name,
-        brandColor: brand.color,
+        brand: brand.brand,
       });
       // Un aviso al EQUIPO: sin categoria (no es de ningun contacto; subscription-gate.test.ts lo lista).
       const result = await sendTransactionalEmail({

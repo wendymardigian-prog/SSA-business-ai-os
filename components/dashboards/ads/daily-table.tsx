@@ -49,7 +49,7 @@ export function DailyTableCard({
   return (
     <section className="space-y-3 rounded-xl border border-border bg-card p-3" aria-label="Métricas por día">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <CalendarDays className="h-4 w-4 text-primary" aria-hidden /> Métricas por día
+        <CalendarDays className="h-4 w-4 text-primary-ink" aria-hidden /> Métricas por día
       </h3>
       {sorted.length === 0 ? (
         <div className="py-8 text-center text-sm text-muted-foreground">Sin datos para el período seleccionado</div>

@@ -121,7 +121,7 @@ export function RecurringList({ data }: { data: RecurringScreenData }) {
                     key={f}
                     href={estadoHref(f)}
                     aria-current={estado === f ? "page" : undefined}
-                    className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${estado === f ? "border-primary bg-primary/10 font-medium text-primary" : "border-border hover:bg-accent"}`}
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${estado === f ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border hover:bg-accent"}`}
                   >
                     {ESTADO_LABELS[f]}
                     <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{counts[f]}</span>

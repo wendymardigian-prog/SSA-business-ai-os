@@ -324,7 +324,7 @@ export function BookingDetailPanel({
             <dd className="flex flex-wrap items-center gap-2">
               {booking.hostName}
               {canReassign && isActive(booking.status) && hostOptions.length > 0 && !reassignOpen && (
-                <button type="button" onClick={() => setReassignOpen(true)} className="text-xs text-primary underline">
+                <button type="button" onClick={() => setReassignOpen(true)} className="text-xs text-primary-ink underline">
                   Reasignar
                 </button>
               )}
@@ -333,7 +333,7 @@ export function BookingDetailPanel({
             <dd>
               {booking.locationType === "google_meet" ? (
                 booking.meetUrl ? (
-                  <a href={booking.meetUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                  <a href={booking.meetUrl} target="_blank" rel="noopener noreferrer" className="text-primary-ink underline">
                     Google Meet
                   </a>
                 ) : (

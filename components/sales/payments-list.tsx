@@ -76,7 +76,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
               type="button"
               aria-pressed={filters.pill === p}
               onClick={() => go({ pill: filters.pill === p ? null : p, status: [] })}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${filters.pill === p ? "border-primary bg-primary/10 font-medium text-primary" : "border-border hover:bg-accent"}`}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm ${filters.pill === p ? "border-primary-edge bg-primary/10 font-medium text-primary-ink" : "border-border hover:bg-accent"}`}
             >
               {PAYMENT_PILL_LABELS[p]}
               <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{data.pills[p]}</span>
@@ -203,7 +203,7 @@ export function PaymentsList({ data }: { data: PaymentsListData }) {
                     <div><dt className="text-muted-foreground">Desfase</dt><dd><span className={`inline-flex rounded-full px-1.5 py-0.5 text-[11px] font-medium ${DELAY_TONE_CLASSES[r.delay.tone]}`}>{r.delay.label}</span></dd></div>
                   </dl>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Link href={`/dashboard/ventas/${r.saleId}`} className="text-xs text-primary underline-offset-2 hover:underline">Ver venta</Link>
+                    <Link href={`/dashboard/ventas/${r.saleId}`} className="text-xs text-primary-ink underline-offset-2 hover:underline">Ver venta</Link>
                     {r.canAct.markPaid && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "paid", row: r })}>Cobrar</button>}
                     {r.canAct.reschedule && <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent" onClick={() => setAction({ kind: "reschedule", row: r })}>Reprogramar</button>}
                   </div>

@@ -52,7 +52,7 @@ export function ReactionChips({
                 onClick={onRemoveMine}
                 aria-label={`${label}. Tocá para quitar tu reacción`}
                 title="Tocá para quitar tu reacción"
-                className="inline-flex h-6 items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-1.5 text-xs hover:bg-primary/20 disabled:opacity-60"
+                className="inline-flex h-6 items-center gap-1 rounded-full border border-primary-edge/50 bg-primary/10 px-1.5 text-xs hover:bg-primary/20 disabled:opacity-60"
               >
                 {content}
               </button>
@@ -129,7 +129,7 @@ export function ReactButton({
                   aria-label={`Reaccionar con ${emoji}`}
                   aria-pressed={mine === emoji}
                   onClick={() => choose(emoji)}
-                  className={cn("flex h-11 w-11 items-center justify-center rounded-lg text-2xl hover:bg-accent", mine === emoji && "bg-accent ring-1 ring-primary/50")}
+                  className={cn("flex h-11 w-11 items-center justify-center rounded-lg text-2xl hover:bg-accent", mine === emoji && "bg-accent ring-1 ring-primary-edge/50")}
                 >
                   {emoji}
                 </button>

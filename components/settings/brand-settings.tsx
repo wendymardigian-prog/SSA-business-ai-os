@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Palette, Upload, Trash2, Check } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
-import { resolveBrand, brandName as installationBrandName, brandColorHex as installationColor } from "@/lib/brand";
+import { resolveBrand, readableTextOn, brandName as installationBrandName, brandColorHex as installationColor } from "@/lib/brand";
 import { removeWorkspaceLogo, updateWorkspaceBrand, uploadWorkspaceLogo } from "@/lib/actions/workspace";
 import { BRAND_NAME_MAX, EMAIL_FOOTER_ADDRESS_MAX, LANGUAGE_STYLE_MAX, MAX_LOGO_BYTES } from "@/lib/brand-settings";
 
@@ -182,6 +182,19 @@ export function BrandSettings({ initial }: { initial: BrandSettingsInitial }) {
               className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
+          {preview.colorHex && (
+            <div className="mt-2 flex items-center gap-2">
+              {/* Lo mismo que ven los botones del panel, la invitacion y los emails: el texto va claro u
+                  oscuro segun el color, para que siempre se lea (lib/brand.ts, readableTextOn). */}
+              <span
+                className="inline-flex rounded-md border border-black/10 px-3 py-1 text-xs font-semibold"
+                style={{ background: preview.colorHex, color: readableTextOn(preview.colorHex) }}
+              >
+                Así se ve un botón
+              </span>
+              <span className="text-[11px] text-muted-foreground">El texto se pone claro u oscuro solo, para que se lea.</span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -162,7 +162,7 @@ export function ExpenseDetail({ data, commissions }: { data: ExpenseDetailData; 
                 {e.vendor_id ? (
                   <span className="flex flex-wrap items-center gap-x-2">
                     {vendorLabel(vendors, e.vendor_id)}
-                    <Link href={expensesHref({ vendors: [e.vendor_id] })} className="text-xs text-primary underline-offset-2 hover:underline">Ver sus gastos</Link>
+                    <Link href={expensesHref({ vendors: [e.vendor_id] })} className="text-xs text-primary-ink underline-offset-2 hover:underline">Ver sus gastos</Link>
                   </span>
                 ) : "Sin proveedor"}
               </Row>
@@ -185,7 +185,7 @@ export function ExpenseDetail({ data, commissions }: { data: ExpenseDetailData; 
             <p className="text-sm font-medium">{origin.title}</p>
             {origin.detail && <p className="mt-0.5 text-sm text-muted-foreground">{origin.detail}</p>}
             {origin.href && origin.linkLabel && (
-              <Link href={origin.href} className="mt-1 inline-flex items-center gap-1 text-sm text-primary underline-offset-2 hover:underline">
+              <Link href={origin.href} className="mt-1 inline-flex items-center gap-1 text-sm text-primary-ink underline-offset-2 hover:underline">
                 {origin.linkLabel} <ExternalLink className="h-3 w-3" aria-hidden />
               </Link>
             )}

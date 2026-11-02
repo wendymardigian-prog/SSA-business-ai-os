@@ -104,12 +104,141 @@ export function resolveBrand(workspace?: WorkspaceBrandFields | null): Brand {
   return { name, logoUrl, colorHex, initial: (name.trim()[0] ?? "P").toUpperCase() };
 }
 
+// ------------------------------------------------------------
+// Legibilidad del color de marca
+//
+// Un negocio puede elegir cualquier color, tambien uno muy claro (amarillo,
+// celeste, crema). Lo que va ENCIMA del color (el texto de un boton, la
+// inicial del monograma) no puede ser siempre blanco: se elige entre un claro
+// y un oscuro el que mas contraste tiene contra ese fondo (formula de WCAG).
+// Y lo que usa el color COMO texto sobre blanco (un link en un email) se
+// oscurece lo justo para que se lea.
+// ------------------------------------------------------------
+
+/** El texto claro y el oscuro que se ponen encima del color de marca. */
+export const BRAND_TEXT_LIGHT = "#ffffff";
+export const BRAND_TEXT_DARK = "#111827";
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function rgbToHex([r, g, b]: [number, number, number]): string {
+  return `#${[r, g, b].map((c) => Math.round(Math.min(255, Math.max(0, c))).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** La luminancia relativa de WCAG (0 = negro, 1 = blanco). */
+function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** El contraste de WCAG entre dos colores #rrggbb (de 1 a 21; 4,5 es lo minimo para texto normal). */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * El color del texto que va ENCIMA del color de marca: claro sobre un color
+ * oscuro, oscuro sobre uno claro (el que mas contraste tenga). Un valor que no
+ * es un hex valido devuelve el claro, como siempre fueron los botones.
+ */
+export function readableTextOn(hex: string | null | undefined): string {
+  const color = safeBrandColor(hex);
+  if (!color) return BRAND_TEXT_LIGHT;
+  return contrastRatio(color, BRAND_TEXT_LIGHT) >= contrastRatio(color, BRAND_TEXT_DARK) ? BRAND_TEXT_LIGHT : BRAND_TEXT_DARK;
+}
+
+/** Mezcla `hex` con `other`: `amount` 0 = `hex` tal cual, 1 = `other`. Los dos ya validados. */
+export function mixHex(hex: string, other: string, amount: number): string {
+  const a = hexToRgb(hex);
+  const b = hexToRgb(other);
+  const t = Math.min(1, Math.max(0, amount));
+  return rgbToHex([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+}
+
+/**
+ * El color de marca ajustado para que se lea sobre `background` con al menos
+ * `minRatio` de contraste: el mismo color si ya alcanza; si no, se oscurece
+ * (fondo claro) o se aclara (fondo oscuro) de a poco hasta alcanzarlo.
+ */
+export function readableInkOn(hex: string | null | undefined, background: string, minRatio = 4.5): string | null {
+  const color = safeBrandColor(hex);
+  const bg = safeBrandColor(background);
+  if (!color || !bg) return null;
+  const toward = luminance(bg) > 0.18 ? "#000000" : "#ffffff";
+  for (let step = 0; step <= 20; step++) {
+    const candidate = mixHex(color, toward, step * 0.05);
+    if (contrastRatio(candidate, bg) >= minRatio) return candidate;
+  }
+  return toward === "#000000" ? BRAND_TEXT_DARK : BRAND_TEXT_LIGHT;
+}
+
+/**
+ * El color de marca para usar COMO TEXTO sobre un fondo blanco (un link, un
+ * titulo chico): el mismo color si ya se lee (contraste 4,5), si no, oscurecido
+ * de a poco hasta que se lea. Un color claro nunca queda como texto ilegible.
+ */
+export function readableInkOnWhite(hex: string | null | undefined): string {
+  return readableInkOn(hex, "#ffffff") ?? BRAND_TEXT_DARK;
+}
+
+/**
+ * Las superficies del panel contra las que se mide (app/globals.css): la mas
+ * oscura del tema claro (`--muted`, oklch 0.97) y la mas clara del oscuro
+ * (`--muted`, oklch 0.269). Si se lee ahi, se lee en el fondo y en las tarjetas.
+ */
+export const PANEL_LIGHT_SURFACE = "#f5f5f5";
+export const PANEL_DARK_SURFACE = "#262626";
+
+/**
+ * Las dos versiones del color de marca que usa el panel ademas del color tal
+ * cual (que pinta fondos: botones, chips):
+ * - `ink`: COMO LETRA (`text-primary-ink`), contraste 4,5 (texto normal, WCAG).
+ * - `edge`: COMO BORDE, contorno o anillo de foco (`border-primary-edge`,
+ *   `ring-primary-edge`, `--ring`), contraste 3 (elementos de interfaz, WCAG).
+ * Una para el tema claro y otra para el oscuro: un azul marino se lee sobre
+ * blanco pero no sobre negro, y un amarillo al reves.
+ */
+export function brandInkColors(hex: string): { light: { ink: string; edge: string }; dark: { ink: string; edge: string } } | null {
+  const color = safeBrandColor(hex);
+  if (!color) return null;
+  return {
+    light: { ink: readableInkOn(color, PANEL_LIGHT_SURFACE, 4.5)!, edge: readableInkOn(color, PANEL_LIGHT_SURFACE, 3)! },
+    dark: { ink: readableInkOn(color, PANEL_DARK_SURFACE, 4.5)!, edge: readableInkOn(color, PANEL_DARK_SURFACE, 3)! },
+  };
+}
+
 /**
  * El CSS que pinta el color principal. Recibe un hex YA validado
  * (`brandColorHex` o `safeBrandColor`): se inyecta como texto en un <style>.
+ *
+ * Pisa tambien:
+ * - el color del texto que va encima (`--primary-foreground`): sin eso, un
+ *   color claro dejaba los botones con letras blancas ilegibles;
+ * - el color de marca como letra (`--primary-ink`) y como borde o anillo de
+ *   foco (`--primary-edge`, `--ring`), uno por tema (`brandInkColors`): sin eso,
+ *   un color claro dejaba los links casi invisibles sobre blanco, y uno oscuro,
+ *   sobre el tema oscuro.
+ *
+ * `.dark` va DESPUES de `:root` a proposito: los dos estan en el <html> y tienen
+ * la misma especificidad, asi que gana el de mas abajo.
  */
 export function brandColorCss(hex: string): string {
   const color = safeBrandColor(hex);
-  if (!color) return "";
-  return `:root,.dark,[data-theme="dark"],[data-theme="light"]{--primary:${color} !important;--ring:${color} !important;--color-primary:${color} !important;--color-ring:${color} !important;}`;
+  const inks = color ? brandInkColors(color) : null;
+  if (!color || !inks) return "";
+  const text = readableTextOn(color);
+  const theme = ({ ink, edge }: { ink: string; edge: string }) =>
+    `--primary-ink:${ink} !important;--color-primary-ink:${ink} !important;--primary-edge:${edge} !important;--color-primary-edge:${edge} !important;--ring:${edge} !important;--color-ring:${edge} !important;`;
+  return (
+    `:root,.dark,[data-theme="dark"],[data-theme="light"]{--primary:${color} !important;--color-primary:${color} !important;--primary-foreground:${text} !important;--color-primary-foreground:${text} !important;}` +
+    `:root,[data-theme="light"]{${theme(inks.light)}}` +
+    `.dark,[data-theme="dark"]{${theme(inks.dark)}}`
+  );
 }

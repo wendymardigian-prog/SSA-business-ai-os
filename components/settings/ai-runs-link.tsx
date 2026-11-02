@@ -17,7 +17,7 @@ export function AiRunsLink({ canView }: { canView: boolean }) {
   return (
     <Link
       href={AI_RUNS_HREF}
-      className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-2 hover:underline"
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-ink underline-offset-2 hover:underline"
     >
       Ver corridas de IA →
     </Link>

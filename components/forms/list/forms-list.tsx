@@ -197,7 +197,7 @@ export function FormsList({
                 </span>
               ))}
               {summary.filtered && (
-                <button type="button" onClick={clearAll} className="font-medium text-primary hover:underline">
+                <button type="button" onClick={clearAll} className="font-medium text-primary-ink hover:underline">
                   Limpiar todo
                 </button>
               )}
@@ -251,7 +251,7 @@ export function FormsList({
                   <button
                     type="button"
                     onClick={() => setCreating(true)}
-                    className="flex min-h-[178px] w-full flex-col items-center justify-center gap-1.5 rounded-[14px] border-[1.5px] border-dashed border-border text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+                    className="flex min-h-[178px] w-full flex-col items-center justify-center gap-1.5 rounded-[14px] border-[1.5px] border-dashed border-border text-sm font-medium text-muted-foreground transition-colors hover:border-primary-edge hover:bg-primary/10 hover:text-primary-ink"
                   >
                     <span className="text-xl leading-none" aria-hidden>
                       +
@@ -309,7 +309,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (next: string
         }}
         placeholder="Buscar formularios"
         autoComplete="off"
-        className="h-8 w-[150px] rounded-lg border border-input bg-background pl-8 pr-2 text-[13px] placeholder:text-muted-foreground focus:border-primary focus:outline-none topbar:w-[170px] [&::-webkit-search-cancel-button]:hidden"
+        className="h-8 w-[150px] rounded-lg border border-input bg-background pl-8 pr-2 text-[13px] placeholder:text-muted-foreground focus:border-primary-edge focus:outline-none topbar:w-[170px] [&::-webkit-search-cancel-button]:hidden"
       />
     </label>
   );
@@ -332,7 +332,7 @@ function FormCard({ view, menu }: { view: FormCardView; menu: React.ReactNode })
         aria-label={`Abrir ${view.name}`}
         className={cn(
           "flex h-full min-w-0 flex-col gap-2 rounded-[14px] border border-border bg-card px-4 pb-3 pt-3.5 text-left transition-all",
-          "hover:-translate-y-px hover:border-muted-foreground/50 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+          "hover:-translate-y-px hover:border-muted-foreground/50 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-edge",
           view.archived && "opacity-60",
         )}
       >
@@ -507,7 +507,7 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <legend className="block text-xs font-semibold">Tipo</legend>
           <div className="mt-1 space-y-2">
             {FORM_TYPES.map((t) => (
-              <label key={t} className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", type === t ? "border-primary bg-primary/5" : "border-border")}>
+              <label key={t} className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", type === t ? "border-primary-edge bg-primary/5" : "border-border")}>
                 <input type="radio" name="form-type" value={t} checked={type === t} onChange={() => setType(t)} className="mt-0.5" />
                 <span>
                   <span className="font-medium">{CREATE_LABEL[t]}</span>
@@ -522,14 +522,14 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <fieldset>
             <legend className="block text-xs font-semibold">¿Para qué rol?</legend>
             <div className="mt-1 space-y-2">
-              <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", variant === "setter" ? "border-primary bg-primary/5" : "border-border")}>
+              <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", variant === "setter" ? "border-primary-edge bg-primary/5" : "border-border")}>
                 <input type="radio" name="eod-variant" checked={variant === "setter"} onChange={() => setVariant("setter")} className="mt-0.5" />
                 <span>
                   <span className="font-medium">Setters (con canales)</span>
                   <span className="block text-xs text-muted-foreground">Nace con la plantilla: horas, rendimiento y seis preguntas por canal en Instagram, WhatsApp y LinkedIn.</span>
                 </span>
               </label>
-              <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", variant === "general" ? "border-primary bg-primary/5" : "border-border")}>
+              <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", variant === "general" ? "border-primary-edge bg-primary/5" : "border-border")}>
                 <input type="radio" name="eod-variant" checked={variant === "general"} onChange={() => setVariant("general")} className="mt-0.5" />
                 <span>
                   <span className="font-medium">Otro rol</span>

@@ -31,7 +31,7 @@ export function AddQuestionPicker({
         type="button"
         disabled={disabled}
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border px-3 py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary-edge hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
       >
         <Plus className="h-4 w-4" aria-hidden /> {label}
       </button>
@@ -59,7 +59,7 @@ export function AddQuestionPicker({
                     onPick(type);
                     setOpen(false);
                   }}
-                  className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-left text-sm hover:border-primary hover:bg-accent"
+                  className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-left text-sm hover:border-primary-edge hover:bg-accent"
                 >
                   <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                   {typeLabel}

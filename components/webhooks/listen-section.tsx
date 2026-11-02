@@ -74,7 +74,7 @@ export function ListenSection({ endpoint, timeZone, onChanged, compact = false }
 
       {(expired || !listening) && (
         <details className="mt-3 text-sm" open={expired}>
-          <summary className="cursor-pointer text-xs font-medium text-primary">{expired ? "No llegó nada en 15 minutos: pegá un JSON de ejemplo" : "Pegar un JSON de ejemplo a mano"}</summary>
+          <summary className="cursor-pointer text-xs font-medium text-primary-ink">{expired ? "No llegó nada en 15 minutos: pegá un JSON de ejemplo" : "Pegar un JSON de ejemplo a mano"}</summary>
           <textarea aria-label="JSON de ejemplo" value={paste} onChange={(e) => setPaste(e.target.value)} rows={5} placeholder='{"email": "ana@mail.com", "name": "Ana"}' className="mt-2 w-full rounded-lg border border-border bg-background p-2 font-mono text-xs" />
           <button type="button" disabled={pending || !paste.trim()} onClick={() => start(async () => { setError(null); const r = await saveWebhookSampleFromJson(endpoint.id, paste); if (!r.ok) setError(r.error); else { setPaste(""); setListenUntil(null); onChanged(); } })} className="mt-2 h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-50">Guardar como ejemplo</button>
           <p className="mt-1 text-xs text-muted-foreground">También podés abrir un envío del historial y elegir «Usar como ejemplo».</p>

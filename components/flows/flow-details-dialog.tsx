@@ -96,7 +96,7 @@ export function FlowDetailsDialog({
             <label htmlFor="fd-name" className="mb-1.5 block text-xs font-semibold">
               Nombre
             </label>
-            <input id="fd-name" value={name} maxLength={MAX_FLOW_NAME_LENGTH} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" />
+            <input id="fd-name" value={name} maxLength={MAX_FLOW_NAME_LENGTH} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge" />
           </div>
           <div>
             <label htmlFor="fd-description" className="mb-1.5 block text-xs font-semibold">
@@ -109,7 +109,7 @@ export function FlowDetailsDialog({
               rows={3}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Por ejemplo: le manda el link de la agenda a quien escribe «info» y lo etiqueta como interesado."
-              className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
             />
             <p className="mt-1 text-right text-[11px] text-muted-foreground">
               {description.length}/{MAX_DESCRIPTION_LENGTH}

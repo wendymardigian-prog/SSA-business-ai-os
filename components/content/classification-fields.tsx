@@ -422,7 +422,7 @@ export function ClassificationFields({
                   }
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full",
-                    on ? "ring-2 ring-primary" : "opacity-60 hover:opacity-100",
+                    on ? "ring-2 ring-primary-edge" : "opacity-60 hover:opacity-100",
                   )}
                 >
                   <NetworkBadge platform={platform} />

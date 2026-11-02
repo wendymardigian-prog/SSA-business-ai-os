@@ -69,7 +69,7 @@ export async function MetricsStrip({
         {tiles.map((t) => (
           <div
             key={t.label}
-            className={`rounded-xl border p-3 ${t.highlight ? "border-primary/40 bg-primary/5" : "border-border"}`}
+            className={`rounded-xl border p-3 ${t.highlight ? "border-primary-edge/40 bg-primary/5" : "border-border"}`}
             title={t.hint}
           >
             <p className="text-[11px] font-medium text-muted-foreground">{t.label}</p>

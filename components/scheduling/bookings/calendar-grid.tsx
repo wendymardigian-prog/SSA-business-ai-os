@@ -267,7 +267,7 @@ export function BookingsCalendar({
                 ))}
               {/* @plantilla-hasta(tareas) */}
               {ghost && ghostDate === date && view === "month" && (
-                <span className="truncate rounded border border-dashed border-primary bg-primary/10 px-1.5 py-0.5 text-[11px]">{ghost.label}</span>
+                <span className="truncate rounded border border-dashed border-primary-edge bg-primary/10 px-1.5 py-0.5 text-[11px]">{ghost.label}</span>
               )}
             </div>
           </div>
@@ -364,7 +364,7 @@ export function BookingsCalendar({
                 {ghost && ghostDate === date && (
                   <div
                     aria-label={`Nuevo horario: ${ghost.label}`}
-                    className="pointer-events-none absolute inset-x-1 z-10 rounded-md border-2 border-dashed border-primary bg-primary/10 px-1.5 py-1 text-[11px] font-medium"
+                    className="pointer-events-none absolute inset-x-1 z-10 rounded-md border-2 border-dashed border-primary-edge bg-primary/10 px-1.5 py-1 text-[11px] font-medium"
                     style={{ top: ((ghostMinutes - FIRST_HOUR * 60) / 60) * HOUR_PX, height: Math.max(MIN_CARD_PX, (ghost.durationMinutes / 60) * HOUR_PX) }}
                   >
                     {ghost.label}

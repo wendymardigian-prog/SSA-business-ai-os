@@ -190,7 +190,7 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
         <ol className="mt-2 flex items-center gap-2 text-xs" aria-label="Pasos">
           {STEPS.map((label, i) => (
             <li key={label} aria-current={i === step ? "step" : undefined} className={`flex items-center gap-1.5 ${i === step ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-              <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] ${i < step ? "border-primary bg-primary text-primary-foreground" : i === step ? "border-primary text-primary" : "border-border"}`}>
+              <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] ${i < step ? "border-primary-edge bg-primary text-primary-foreground" : i === step ? "border-primary-edge text-primary-ink" : "border-border"}`}>
                 {i < step ? <Check className="h-3 w-3" aria-hidden /> : i + 1}
               </span>
               <span className="hidden sm:inline">{label}</span>

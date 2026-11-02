@@ -139,7 +139,7 @@ export function CommissionDrawer({ detail, extras, members, roles, lookups, filt
                   ]}
                 />
                 {can.sales ? (
-                  <Link href={`/dashboard/ventas/${d.sale.id}`} className="mt-2 inline-flex items-center gap-1 text-sm text-primary underline-offset-2 hover:underline">
+                  <Link href={`/dashboard/ventas/${d.sale.id}`} className="mt-2 inline-flex items-center gap-1 text-sm text-primary-ink underline-offset-2 hover:underline">
                     Ver la venta <ExternalLink className="h-3 w-3" aria-hidden />
                   </Link>
                 ) : null}
@@ -165,7 +165,7 @@ export function CommissionDrawer({ detail, extras, members, roles, lookups, filt
                   <p className="mt-2 text-sm">
                     <span className="text-muted-foreground">Pieza: </span>
                     {attribution.piece.id && can.content ? (
-                      <Link href={`/dashboard/content?piece=${attribution.piece.id}`} className="text-primary underline-offset-2 hover:underline">{attribution.piece.title}</Link>
+                      <Link href={`/dashboard/content?piece=${attribution.piece.id}`} className="text-primary-ink underline-offset-2 hover:underline">{attribution.piece.title}</Link>
                     ) : (
                       attribution.piece.title
                     )}
@@ -175,7 +175,7 @@ export function CommissionDrawer({ detail, extras, members, roles, lookups, filt
                   <p className="mt-1 text-sm">
                     <span className="text-muted-foreground">Anuncio: </span>
                     {attribution.ad.id && can.ads ? (
-                      <Link href={`/dashboard/dashboards/ads/ads/${attribution.ad.id}`} className="text-primary underline-offset-2 hover:underline">{attribution.ad.name}</Link>
+                      <Link href={`/dashboard/dashboards/ads/ads/${attribution.ad.id}`} className="text-primary-ink underline-offset-2 hover:underline">{attribution.ad.name}</Link>
                     ) : (
                       attribution.ad.name
                     )}
@@ -205,7 +205,7 @@ export function CommissionDrawer({ detail, extras, members, roles, lookups, filt
               )}
               {d.rule.comparison.archived && <p className="mt-2 text-xs text-muted-foreground">Esa regla está archivada: ya no se aplica a pagos nuevos.</p>}
               {d.canManage && (
-                <Link href="/dashboard/finanzas/comisiones/reglas" className="mt-2 inline-flex items-center gap-1 text-sm text-primary underline-offset-2 hover:underline">
+                <Link href="/dashboard/finanzas/comisiones/reglas" className="mt-2 inline-flex items-center gap-1 text-sm text-primary-ink underline-offset-2 hover:underline">
                   Ver las reglas <ExternalLink className="h-3 w-3" aria-hidden />
                 </Link>
               )}
@@ -220,7 +220,7 @@ export function CommissionDrawer({ detail, extras, members, roles, lookups, filt
                   {d.expense.paid_date ? ` el ${formatCivilDate(d.expense.paid_date)}` : d.expense.scheduled_date ? ` para el ${formatCivilDate(d.expense.scheduled_date)}` : ""}
                 </p>
                 {can.expenses && (
-                  <Link href={`/dashboard/finanzas/gastos/${d.expense.expense_id}`} className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline">
+                  <Link href={`/dashboard/finanzas/gastos/${d.expense.expense_id}`} className="inline-flex items-center gap-1 text-primary-ink underline-offset-2 hover:underline">
                     Ver el gasto <ExternalLink className="h-3 w-3" aria-hidden />
                   </Link>
                 )}

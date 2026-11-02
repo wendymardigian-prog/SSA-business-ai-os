@@ -225,7 +225,7 @@ export function SettingsView({
             <section id="conversaciones" className="scroll-mt-20 space-y-6">
               <p className="text-xs text-muted-foreground">
                 Quién ve qué leads se define por rol, en{" "}
-                <Link href="/dashboard/settings/roles" className="text-primary underline underline-offset-2">
+                <Link href="/dashboard/settings/roles" className="text-primary-ink underline underline-offset-2">
                   Ajustes → Roles
                 </Link>
                 .
@@ -356,7 +356,7 @@ export function SettingsView({
                 <section id="actividad" className="scroll-mt-20 space-y-2">
                   <p className="text-sm text-muted-foreground">
                     Quién hizo qué y cuándo en todo el workspace:{" "}
-                    <Link href="/dashboard/settings/actividad" className="font-medium text-primary underline-offset-2 hover:underline">
+                    <Link href="/dashboard/settings/actividad" className="font-medium text-primary-ink underline-offset-2 hover:underline">
                       Ver la actividad
                     </Link>
                     .
@@ -372,7 +372,7 @@ export function SettingsView({
                 <section id="ia" className="scroll-mt-20 space-y-6">
                   <p className="text-sm text-muted-foreground">
                     Los topes de gasto de IA y sus avisos se configuran en{" "}
-                    <Link href="/dashboard/agents" className="font-medium text-primary underline-offset-2 hover:underline">
+                    <Link href="/dashboard/agents" className="font-medium text-primary-ink underline-offset-2 hover:underline">
                       Agentes → Gasto de IA
                     </Link>
                     .

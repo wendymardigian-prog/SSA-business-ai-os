@@ -203,7 +203,7 @@ export function ConversationAgentToggle({
                   selected ? "bg-accent" : "hover:bg-accent",
                 )}
               >
-                <Check className={cn("mt-0.5 h-3.5 w-3.5 flex-shrink-0", selected ? "text-primary" : "invisible")} aria-hidden />
+                <Check className={cn("mt-0.5 h-3.5 w-3.5 flex-shrink-0", selected ? "text-primary-ink" : "invisible")} aria-hidden />
                 <span className="min-w-0">
                   <span className="block text-xs font-medium text-foreground">{MODE_LABELS[m]}</span>
                   <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{agentModeOptionHelp(m, info)}</span>

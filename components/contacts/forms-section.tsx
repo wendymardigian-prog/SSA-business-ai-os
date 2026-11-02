@@ -42,7 +42,7 @@ export function ContactFormsSection({ rows, total, contactId, timeZone }: { rows
           <ContactFormsList rows={rows} timeZone={timeZone} />
           {total > CONTACT_FORMS_LIMIT && (
             <p className="pt-2 text-sm">
-              <Link href={viewAllFormsHref(contactId)} className="text-primary underline-offset-2 hover:underline">
+              <Link href={viewAllFormsHref(contactId)} className="text-primary-ink underline-offset-2 hover:underline">
                 Ver todas ({total})
               </Link>
             </p>

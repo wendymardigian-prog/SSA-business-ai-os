@@ -78,7 +78,7 @@ export function ComparisonCards({
       <section className={`${CARD} lg:col-span-2`} aria-label={isCampaigns ? "Comparativa por campaña" : "Comparativa por anuncio"}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <BarChart2 className="h-4 w-4 text-primary" aria-hidden />
+            <BarChart2 className="h-4 w-4 text-primary-ink" aria-hidden />
             {isCampaigns ? "Comparativa por campaña" : "Comparativa por anuncio"}
           </h3>
           <PillToggle options={COMPARE_OPTIONS} value={metric} onChange={setMetric} label="Métrica de la comparativa" />

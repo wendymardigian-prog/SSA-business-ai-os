@@ -149,7 +149,7 @@ export function FilterMenu({
         className={cn(
           "flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border text-[13px] font-medium transition-colors",
           compact ? "relative w-8 justify-center" : "gap-2 px-2.5",
-          active ? "border-primary bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
+          active ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
         )}
       >
         {icon}
@@ -240,7 +240,7 @@ export function MenuOption({
         {description && <span className="block text-xs text-muted-foreground">{description}</span>}
       </span>
       {trailing !== undefined && !checked && <span className="text-xs tabular-nums text-muted-foreground">{trailing}</span>}
-      {checked && <span className="text-primary" aria-hidden>✓</span>}
+      {checked && <span className="text-primary-ink" aria-hidden>✓</span>}
     </button>
   );
 }

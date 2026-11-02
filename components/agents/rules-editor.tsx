@@ -106,7 +106,7 @@ export function RulesEditor({
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Reglas de respuesta</h3>
         {rules.length === 0 && (
-          <button type="button" onClick={loadTemplate} className="text-xs text-primary underline underline-offset-2">
+          <button type="button" onClick={loadTemplate} className="text-xs text-primary-ink underline underline-offset-2">
             Cargar plantilla
           </button>
         )}
@@ -149,7 +149,7 @@ export function RulesEditor({
               <button
                 type="button"
                 onClick={() => patchRule(rule.id, { conditions: [...rule.conditions, { field: "inbound.text", op: "contains_any", value: [] }] })}
-                className="text-xs text-primary underline underline-offset-2"
+                className="text-xs text-primary-ink underline underline-offset-2"
               >
                 + y además…
               </button>
@@ -170,7 +170,7 @@ export function RulesEditor({
         ))}
       </ol>
 
-      <button type="button" onClick={addRule} className="flex items-center gap-1 text-sm text-primary underline underline-offset-2">
+      <button type="button" onClick={addRule} className="flex items-center gap-1 text-sm text-primary-ink underline underline-offset-2">
         <Plus className="h-4 w-4" /> Agregar regla
       </button>
 

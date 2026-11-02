@@ -47,7 +47,7 @@ export function TaskLine({ task, wb, ownerName }: { task: TaskRow; wb: TaskWorkb
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             if (e.key === "Escape") setEditingDue(false);
           }}
-          className="h-7 w-[8.5rem] shrink-0 rounded-md border border-primary bg-background px-1 text-xs"
+          className="h-7 w-[8.5rem] shrink-0 rounded-md border border-primary-edge bg-background px-1 text-xs"
         />
       ) : (
         <button type="button" disabled={!canEdit} onClick={() => setEditingDue(true)} aria-label="Cambiar el vencimiento" className={cn("shrink-0 rounded px-1 text-xs tabular-nums hover:bg-accent", tone, !canEdit && "cursor-default hover:bg-transparent")}>

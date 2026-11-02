@@ -115,7 +115,7 @@ export function PeriodPopover<P extends string>({
         onClick={toggle}
         className={cn(
           "flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-[13px] font-medium transition-colors",
-          urlCivil ? "border-primary bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
+          urlCivil ? "border-primary-edge bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
         )}
       >
         <Calendar className="h-4 w-4 shrink-0" aria-hidden />
@@ -356,7 +356,7 @@ function MonthCalendar({
               aria-pressed={isStart || isEnd}
               className={cn(
                 "grid h-[34px] place-items-center text-[13px] tabular-nums transition-colors",
-                inside && !isStart && !isEnd && "bg-primary/15 text-primary",
+                inside && !isStart && !isEnd && "bg-primary/15 text-primary-ink",
                 isStart && !isEnd && "rounded-l-lg bg-primary text-primary-foreground",
                 isEnd && !isStart && "rounded-r-lg bg-primary text-primary-foreground",
                 isStart && isEnd && "rounded-lg bg-primary text-primary-foreground",

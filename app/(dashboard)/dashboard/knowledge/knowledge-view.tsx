@@ -278,7 +278,7 @@ export function KnowledgeView({ documents, voyageConnected }: Props) {
         )}
 
         {dragging && (
-          <div className="mb-4 rounded-lg border-2 border-dashed border-primary bg-primary/5 p-4 text-center text-sm font-medium text-primary">
+          <div className="mb-4 rounded-lg border-2 border-dashed border-primary-edge bg-primary/5 p-4 text-center text-sm font-medium text-primary-ink">
             Solta los archivos para subirlos
           </div>
         )}
@@ -385,7 +385,7 @@ function DocumentRow({
           <div className="flex flex-wrap items-center gap-2">
             <Link
               href={`/dashboard/knowledge/${document.id}`}
-              className="font-medium transition-colors hover:text-primary"
+              className="font-medium transition-colors hover:text-primary-ink"
             >
               {document.title}
             </Link>

@@ -152,7 +152,7 @@ export function TaskCell(props: CellProps) {
     case "source": {
       const info = formatSource(view.task, env.source);
       body = info.href ? (
-        <Link href={info.href} onClick={(e) => e.stopPropagation()} className="truncate text-xs text-primary hover:underline">{info.label}</Link>
+        <Link href={info.href} onClick={(e) => e.stopPropagation()} className="truncate text-xs text-primary-ink hover:underline">{info.label}</Link>
       ) : (
         <span className="truncate text-xs text-muted-foreground">{info.label}</span>
       );
@@ -261,7 +261,7 @@ function TitleEditor({
         else if (action === "commit") finish();
         else finish(action === "commit-next" ? 1 : -1);
       }}
-      className="h-7 w-full rounded-md border border-primary bg-background px-1.5 text-sm outline-none"
+      className="h-7 w-full rounded-md border border-primary-edge bg-background px-1.5 text-sm outline-none"
     />
   );
 }
@@ -319,7 +319,7 @@ function DateEditor({
         aria-label="Fecha de vencimiento"
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
-        className="h-7 min-w-0 flex-1 rounded-md border border-primary bg-background px-1 text-sm outline-none"
+        className="h-7 min-w-0 flex-1 rounded-md border border-primary-edge bg-background px-1 text-sm outline-none"
       />
       {initial && (
         <button
@@ -333,7 +333,7 @@ function DateEditor({
         </button>
       )}
       {value && !showTime && (
-        <button type="button" onClick={() => setShowTime(true)} className="h-7 shrink-0 rounded-md px-1.5 text-xs text-primary hover:bg-accent">
+        <button type="button" onClick={() => setShowTime(true)} className="h-7 shrink-0 rounded-md px-1.5 text-xs text-primary-ink hover:bg-accent">
           Agregar hora
         </button>
       )}
@@ -346,7 +346,7 @@ function DateEditor({
             aria-label="Hora de vencimiento"
             onChange={(e) => setTime(e.target.value)}
             onKeyDown={onKeyDown}
-            className="h-7 w-[6.5rem] shrink-0 rounded-md border border-primary bg-background px-1 text-sm outline-none"
+            className="h-7 w-[6.5rem] shrink-0 rounded-md border border-primary-edge bg-background px-1 text-sm outline-none"
           />
           <button
             type="button"

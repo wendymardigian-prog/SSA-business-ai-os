@@ -87,7 +87,7 @@ export function UnifiedDashboard({
                 {notice}{" "}
                 <Link
                   href="/dashboard/settings/integrations"
-                  className="text-primary underline underline-offset-2"
+                  className="text-primary-ink underline underline-offset-2"
                 >
                   Integraciones
                 </Link>

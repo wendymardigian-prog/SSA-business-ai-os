@@ -185,7 +185,7 @@ export function BranchCard({ step }: { step: BranchStep }) {
           edit((t) => addBranchPathWithDefault(t, step.id, catalog, undefined, id));
           setOpen((o) => ({ ...o, [id]: true }));
         }}
-        className="inline-flex items-center gap-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-primary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="inline-flex items-center gap-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-primary-edge hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
         <Plus className="h-4 w-4" aria-hidden /> {canAddPath(step.paths.length) ? "Camino" : `Máximo ${MAX_PATHS} caminos`}
       </button>

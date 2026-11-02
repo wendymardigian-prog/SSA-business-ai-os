@@ -459,7 +459,7 @@ function FilterGroupCard({
       <button
         type="button"
         onClick={addRule}
-        className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+        className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:text-primary-ink/80 transition-colors"
       >
         <Plus className="h-3 w-3" />
         Add filter
@@ -575,7 +575,7 @@ export function SegmentBuilder({
       <button
         type="button"
         onClick={addGroup}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:border-primary-edge hover:text-primary-ink transition-colors"
       >
         <Plus className="h-3 w-3" />
         Add filter group

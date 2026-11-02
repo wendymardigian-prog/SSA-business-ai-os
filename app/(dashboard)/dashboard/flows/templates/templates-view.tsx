@@ -373,7 +373,7 @@ export function TemplatesView({ workspaceId }: { workspaceId: string }) {
             return (
               <div
                 key={template.id}
-                className="group rounded-xl border border-border bg-card p-6 transition-colors hover:border-primary/50"
+                className="group rounded-xl border border-border bg-card p-6 transition-colors hover:border-primary-edge/50"
               >
                 {/* Icon + category */}
                 <div className="flex items-start justify-between">
@@ -391,7 +391,7 @@ export function TemplatesView({ workspaceId }: { workspaceId: string }) {
                 </div>
 
                 {/* Name + description */}
-                <h3 className="mt-4 text-sm font-semibold group-hover:text-primary transition-colors">
+                <h3 className="mt-4 text-sm font-semibold group-hover:text-primary-ink transition-colors">
                   {template.name}
                 </h3>
                 <p className="mt-2 text-xs text-muted-foreground leading-relaxed">

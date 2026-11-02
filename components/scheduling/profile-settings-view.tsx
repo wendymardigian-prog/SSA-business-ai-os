@@ -226,7 +226,7 @@ export function ProfileSettingsView({
                 role="radio"
                 aria-checked={form.timeFormat === tf}
                 onClick={() => setForm({ ...form, timeFormat: tf })}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${form.timeFormat === tf ? "border-primary bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${form.timeFormat === tf ? "border-primary-edge bg-primary/10 font-medium" : "border-border hover:bg-muted"}`}
               >
                 {tf === "12h" ? "12 horas" : "24 horas"}
               </button>

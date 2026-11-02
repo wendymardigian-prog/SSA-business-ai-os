@@ -134,8 +134,8 @@ export function OverrideDialog({
               ["off", "No disponible todo el día", "No se ofrecen horarios"],
               ["hours", "Horario distinto", "Reemplaza el horario semanal de ese día"],
             ].map(([key, title, sub]) => (
-              <button key={key} type="button" role="radio" aria-checked={mode === key} onClick={() => setMode(key as "off" | "hours")} className={`flex w-full items-start gap-2 rounded-lg border p-2 text-left ${mode === key ? "border-primary bg-primary/10" : "border-border"}`}>
-                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${mode === key ? "border-primary bg-primary" : "border-muted-foreground"}`} />
+              <button key={key} type="button" role="radio" aria-checked={mode === key} onClick={() => setMode(key as "off" | "hours")} className={`flex w-full items-start gap-2 rounded-lg border p-2 text-left ${mode === key ? "border-primary-edge bg-primary/10" : "border-border"}`}>
+                <span className={`mt-1 h-3 w-3 shrink-0 rounded-full border ${mode === key ? "border-primary-edge bg-primary" : "border-muted-foreground"}`} />
                 <span>
                   <span className="block text-sm font-medium">{title}</span>
                   <span className="block text-xs text-muted-foreground">{sub}</span>
@@ -155,7 +155,7 @@ export function OverrideDialog({
                   )}
                 </div>
               ))}
-              <button type="button" onClick={() => setRanges([...ranges, { start: ranges[ranges.length - 1]?.end ?? "14:00", end: "18:00" }])} className="text-xs text-primary">+ Rango</button>
+              <button type="button" onClick={() => setRanges([...ranges, { start: ranges[ranges.length - 1]?.end ?? "14:00", end: "18:00" }])} className="text-xs text-primary-ink">+ Rango</button>
               {overlap && <p className="text-xs text-red-600">Dos rangos se superponen.</p>}
             </div>
           )}

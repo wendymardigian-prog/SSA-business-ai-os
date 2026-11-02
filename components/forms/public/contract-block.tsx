@@ -30,7 +30,7 @@ function Runs({ runs }: { runs: InlineRun[] }) {
         // `href` ya pasó `safeHref` (solo http, https, mailto y tel): nunca un `javascript:`.
         if (run.href) {
           node = (
-            <a href={run.href} target="_blank" rel="noopener noreferrer nofollow" className="text-primary underline underline-offset-2">
+            <a href={run.href} target="_blank" rel="noopener noreferrer nofollow" className="text-primary-ink underline underline-offset-2">
               {node}
             </a>
           );

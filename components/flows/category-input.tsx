@@ -50,11 +50,11 @@ export function CategoryInput({
   return (
     <div className="relative">
       <div
-        className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary"
+        className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 focus-within:border-primary-edge focus-within:ring-1 focus-within:ring-primary-edge"
         onClick={() => inputRef.current?.focus()}
       >
         {values.map((value) => (
-          <span key={value} className="inline-flex h-7 max-w-[14rem] items-center gap-1 rounded-full bg-primary/10 px-2.5 text-xs font-medium text-primary">
+          <span key={value} className="inline-flex h-7 max-w-[14rem] items-center gap-1 rounded-full bg-primary/10 px-2.5 text-xs font-medium text-primary-ink">
             <span className="truncate">{value}</span>
             <button type="button" onClick={() => onChange(values.filter((v) => v !== value))} aria-label={`Quitar la categoría ${value}`} className="rounded-full p-0.5 hover:bg-primary/20">
               <X className="h-3 w-3" aria-hidden />

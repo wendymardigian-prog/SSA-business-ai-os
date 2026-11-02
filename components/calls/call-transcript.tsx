@@ -66,7 +66,7 @@ export function CallTranscript({ lines, quotes, jumpRef }: { lines: TLine[]; quo
           <div
             key={i}
             ref={(el) => { refs.current[i] = el; }}
-            className={`rounded px-2 py-1 text-sm ${quoted[i] ? "border-l-2 border-amber-500 bg-amber-500/10" : ""} ${searching && hits.has(i) ? "ring-1 ring-primary" : ""}`}
+            className={`rounded px-2 py-1 text-sm ${quoted[i] ? "border-l-2 border-amber-500 bg-amber-500/10" : ""} ${searching && hits.has(i) ? "ring-1 ring-primary-edge" : ""}`}
           >
             <span className="font-medium">{l.speaker?.display_name || "—"}</span>
             {l.timestamp && <span className="ml-1 text-[11px] tabular-nums text-muted-foreground">{transcriptStartLabel(l.timestamp)}</span>}

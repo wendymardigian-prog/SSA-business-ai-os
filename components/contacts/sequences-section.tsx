@@ -64,7 +64,7 @@ export function ContactSequencesSection({
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/dashboard/sequences/${enrollment.sequenceId}`}
-                      className="text-sm font-medium hover:text-primary"
+                      className="text-sm font-medium hover:text-primary-ink"
                     >
                       {enrollment.sequenceName}
                     </Link>

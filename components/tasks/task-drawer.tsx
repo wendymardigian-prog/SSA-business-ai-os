@@ -269,15 +269,15 @@ function DrawerBody(props: TaskDrawerProps) {
 
             <div className="flex flex-wrap gap-x-6 gap-y-2 border-b border-border px-4 py-3 text-sm" aria-label="Vínculos y origen">
               <Meta label="Contacto">
-                {task.contact_id ? <Link href={`/dashboard/contacts/${task.contact_id}`} className="text-primary hover:underline">{contactName ?? "Ver contacto"}</Link> : <span className="text-muted-foreground">Sin contacto</span>}
+                {task.contact_id ? <Link href={`/dashboard/contacts/${task.contact_id}`} className="text-primary-ink hover:underline">{contactName ?? "Ver contacto"}</Link> : <span className="text-muted-foreground">Sin contacto</span>}
               </Meta>
               <Meta label="Conversación">
-                {task.conversation_id ? <Link href={`/dashboard/inbox?c=${task.conversation_id}`} className="text-primary hover:underline">Abrir</Link> : <span className="text-muted-foreground">Sin conversación</span>}
+                {task.conversation_id ? <Link href={`/dashboard/inbox?c=${task.conversation_id}`} className="text-primary-ink hover:underline">Abrir</Link> : <span className="text-muted-foreground">Sin conversación</span>}
               </Meta>
               <Meta label="Creada por">
                 {(() => {
                   const info = formatSource(task, source);
-                  return info.href ? <Link href={info.href} className="text-primary hover:underline">{info.label}</Link> : <span>{info.label}</span>;
+                  return info.href ? <Link href={info.href} className="text-primary-ink hover:underline">{info.label}</Link> : <span>{info.label}</span>;
                 })()}
               </Meta>
             </div>
@@ -350,14 +350,14 @@ function PickerButton({ refEl, onClick, children, label, disabled, pill = false,
     const look = cn("inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg border px-2.5 text-[13px]", tone ? `${tone} border-transparent` : "border-input bg-background");
     if (disabled) return <span className={cn(look, "opacity-80")}>{children}</span>;
     return (
-      <button ref={refEl} type="button" onClick={onClick} aria-label={label} className={cn(look, "transition-colors hover:border-muted-foreground/60 focus-visible:border-primary focus-visible:outline-none")}>
+      <button ref={refEl} type="button" onClick={onClick} aria-label={label} className={cn(look, "transition-colors hover:border-muted-foreground/60 focus-visible:border-primary-edge focus-visible:outline-none")}>
         {children}
       </button>
     );
   }
   if (disabled) return <div className="px-2 py-1">{children}</div>;
   return (
-    <button ref={refEl} type="button" onClick={onClick} aria-label={label} className="flex min-h-8 w-full items-center rounded-lg border border-transparent px-2 py-1 text-left transition-colors hover:border-input hover:bg-accent/40 focus-visible:border-primary focus-visible:outline-none">
+    <button ref={refEl} type="button" onClick={onClick} aria-label={label} className="flex min-h-8 w-full items-center rounded-lg border border-transparent px-2 py-1 text-left transition-colors hover:border-input hover:bg-accent/40 focus-visible:border-primary-edge focus-visible:outline-none">
       {children}
     </button>
   );
@@ -374,7 +374,7 @@ function HeaderIconButton({ refEl, children, label, title, onClick, disabled, ac
       aria-label={label}
       aria-pressed={pressed}
       title={title}
-      className={cn("relative grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-accent hover:text-foreground disabled:cursor-default disabled:hover:bg-transparent", active ? "text-primary" : "text-muted-foreground", pressed && "bg-accent")}
+      className={cn("relative grid h-8 w-8 shrink-0 place-items-center rounded-lg hover:bg-accent hover:text-foreground disabled:cursor-default disabled:hover:bg-transparent", active ? "text-primary-ink" : "text-muted-foreground", pressed && "bg-accent")}
     >
       {children}
       {badge ? <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">{badge}</span> : null}
@@ -499,7 +499,7 @@ function BlockerPicker({
     <FloatingPanel anchor={anchor} onClose={onClose} label="Elegir un bloqueante" width={340}>
       <div className="relative mb-1">
         <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
-        <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar una tarea" aria-label="Buscar una tarea" className="h-8 w-full rounded-lg border border-input bg-background pl-7 pr-2 text-sm outline-none focus:border-primary" />
+        <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar una tarea" aria-label="Buscar una tarea" className="h-8 w-full rounded-lg border border-input bg-background pl-7 pr-2 text-sm outline-none focus:border-primary-edge" />
       </div>
       <ul role="listbox" aria-label="Tareas">
         {options.map((t) => {

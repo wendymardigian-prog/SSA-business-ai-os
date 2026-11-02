@@ -94,7 +94,7 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
                 <Link
                   key={sequence.id}
                   href={`/dashboard/sequences/${sequence.id}`}
-                  className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50"
+                  className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary-edge/50"
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -102,7 +102,7 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
                     </div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-medium transition-colors group-hover:text-primary">
+                        <h3 className="font-medium transition-colors group-hover:text-primary-ink">
                           {sequence.name}
                         </h3>
                         <span

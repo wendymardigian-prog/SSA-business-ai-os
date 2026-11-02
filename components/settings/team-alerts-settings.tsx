@@ -56,7 +56,7 @@ export function TeamAlertsSettings({
       {channels.length === 0 && !missing ? (
         <p className="mt-3 text-xs text-muted-foreground">
           No hay ningún WhatsApp conectado.{" "}
-          <Link href="/dashboard/channels" className="text-primary underline underline-offset-2">
+          <Link href="/dashboard/channels" className="text-primary-ink underline underline-offset-2">
             Conectar uno en Canales
           </Link>
           .

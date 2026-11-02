@@ -171,7 +171,7 @@ function ConfigField({
                 }}
                 className={cn(
                   "rounded-full border px-2.5 py-1 text-xs transition-colors disabled:opacity-50",
-                  on ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent",
+                  on ? "border-primary-edge bg-primary text-primary-foreground" : "border-border hover:bg-accent",
                 )}
               >
                 {o.label}

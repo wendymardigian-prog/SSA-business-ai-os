@@ -51,7 +51,7 @@ export function UserAvatar({
       aria-hidden="true"
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full font-semibold",
-        color ? "text-white" : "bg-primary/15 text-primary",
+        color ? "text-white" : "bg-primary/15 text-primary-ink",
         className,
       )}
       style={color ? { ...style, backgroundColor: color } : style}

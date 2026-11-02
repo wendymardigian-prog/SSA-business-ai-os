@@ -372,7 +372,7 @@ export function GrowthView({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, channelId: e.target.value }))
                   }
-                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary-edge"
                 >
                   {channels.map((ch) => (
                     <option key={ch.id} value={ch.id}>
@@ -393,7 +393,7 @@ export function GrowthView({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, flowId: e.target.value }))
                   }
-                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary-edge"
                 >
                   {flows.map((flow) => (
                     <option key={flow.id} value={flow.id}>
@@ -415,7 +415,7 @@ export function GrowthView({
                     setForm((f) => ({ ...f, keywords: e.target.value }))
                   }
                   placeholder="info, price, details"
-                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary-edge"
                 />
               </div>
 
@@ -435,7 +435,7 @@ export function GrowthView({
                         | "startsWith",
                     }))
                   }
-                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary-edge"
                 >
                   <option value="contains">Contains</option>
                   <option value="exact">Exact match</option>
@@ -455,7 +455,7 @@ export function GrowthView({
                     setForm((f) => ({ ...f, replyText: e.target.value }))
                   }
                   placeholder="Check your DMs! We just sent you more info."
-                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary-edge"
                 />
                 <p className="mt-1 text-[11px] text-muted-foreground/60">
                   If set, this will be posted as a public reply to the matching
@@ -475,7 +475,7 @@ export function GrowthView({
                     setForm((f) => ({ ...f, postIds: e.target.value }))
                   }
                   placeholder="Leave empty to match comments on all posts"
-                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary-edge"
                 />
                 <p className="mt-1 text-[11px] text-muted-foreground/60">
                   Limit this rule to specific Zernio post IDs. If empty, all posts

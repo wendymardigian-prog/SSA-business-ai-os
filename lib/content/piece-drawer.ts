@@ -39,7 +39,7 @@ export const STATUS_COLOR: Record<ContentPostStatus, string> = {
   draft: "var(--muted-foreground)",
   in_production: "var(--zn)",
   in_review: "var(--c-auto)",
-  approved: "var(--primary)",
+  approved: "var(--primary-ink)",
   scheduled: "var(--li)",
   publishing: "var(--li)",
   published: "var(--good)",

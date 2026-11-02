@@ -653,7 +653,7 @@ export function ChannelsPanel({
                           href={dm.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="min-w-0 flex-1 truncate rounded-md bg-muted px-2.5 py-1 text-[11px] font-mono text-primary hover:underline"
+                          className="min-w-0 flex-1 truncate rounded-md bg-muted px-2.5 py-1 text-[11px] font-mono text-primary-ink hover:underline"
                           title={dm.url}
                         >
                           {dm.label}

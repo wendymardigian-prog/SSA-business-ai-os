@@ -131,7 +131,7 @@ export function SaleEditDialog({ sale, contactName, config, onClose, openAttribu
         {changingContact ? <ContactSearch onPick={(c) => { setContact(c); setChangingContact(false); }} onCreate={() => setChangingContact(false)} /> : (
           <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
             <span className="min-w-0 flex-1 truncate font-medium">{contact.name}</span>
-            {!locked && <button type="button" onClick={() => setChangingContact(true)} className="text-xs font-medium text-primary underline-offset-2 hover:underline">Cambiar</button>}
+            {!locked && <button type="button" onClick={() => setChangingContact(true)} className="text-xs font-medium text-primary-ink underline-offset-2 hover:underline">Cambiar</button>}
           </div>
         )}
       </section>

@@ -41,7 +41,7 @@ export function ColumnsMenu({ prefs, onChange, level }: { prefs: ColumnPrefs; on
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar una columna…"
-          className="h-8 w-full rounded-lg border border-border bg-background pl-7 pr-2 text-xs placeholder:text-muted-foreground/70 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          className="h-8 w-full rounded-lg border border-border bg-background pl-7 pr-2 text-xs placeholder:text-muted-foreground/70 focus:border-primary-edge focus:outline-none focus:ring-1 focus:ring-primary-edge"
         />
       </label>
 

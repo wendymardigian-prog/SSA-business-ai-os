@@ -108,7 +108,7 @@ export function CategoriesView({
                   <span className="ml-auto flex items-center gap-2 text-xs">
                     <button type="button" disabled={pending || i === 0} aria-label={`Subir ${type.name}`} onClick={() => run(() => reorderCategory({ id: type.id, toIndex: i - 1 }))} className="rounded px-1.5 py-1 text-muted-foreground hover:bg-muted disabled:opacity-30">↑</button>
                     <button type="button" disabled={pending || i === types.length - 1} aria-label={`Bajar ${type.name}`} onClick={() => run(() => reorderCategory({ id: type.id, toIndex: i + 1 }))} className="rounded px-1.5 py-1 text-muted-foreground hover:bg-muted disabled:opacity-30">↓</button>
-                    <button type="button" onClick={() => { setName(type.name); setModal({ kind: "rename", category: type }); }} className="text-primary">Renombrar</button>
+                    <button type="button" onClick={() => { setName(type.name); setModal({ kind: "rename", category: type }); }} className="text-primary-ink">Renombrar</button>
                     <button type="button" disabled={pending} onClick={() => run(() => archiveCategory({ id: type.id }))} className="text-red-600">Archivar</button>
                   </span>
                 )}
@@ -131,7 +131,7 @@ export function CategoriesView({
                   <span>{c.name}</span>
                   {c.parent_id && <span className="text-xs">tipo</span>}
                   {canEdit && (
-                    <button type="button" disabled={pending} onClick={() => run(() => archiveCategory({ id: c.id, restore: true }))} className="ml-auto text-xs text-primary">
+                    <button type="button" disabled={pending} onClick={() => run(() => archiveCategory({ id: c.id, restore: true }))} className="ml-auto text-xs text-primary-ink">
                       Restaurar
                     </button>
                   )}

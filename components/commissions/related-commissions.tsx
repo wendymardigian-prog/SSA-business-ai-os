@@ -37,7 +37,7 @@ export function RelatedCommissions({
           <Users className="h-4 w-4" aria-hidden /> {heading}
         </h2>
         {variant === "sale" && saleId && list.items.length > 0 && (
-          <Link href={commissionsHref({ saleId })} className="text-xs text-primary underline-offset-2 hover:underline">Ver en Comisiones</Link>
+          <Link href={commissionsHref({ saleId })} className="text-xs text-primary-ink underline-offset-2 hover:underline">Ver en Comisiones</Link>
         )}
       </div>
 

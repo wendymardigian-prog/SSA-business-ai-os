@@ -58,7 +58,7 @@ export function InspectorForm({
           {onOpenContact && (
             <>
               {" · "}
-              <button type="button" onClick={onOpenContact} className="text-primary underline hover:no-underline">
+              <button type="button" onClick={onOpenContact} className="text-primary-ink underline hover:no-underline">
                 ver el mapeo
               </button>
             </>
