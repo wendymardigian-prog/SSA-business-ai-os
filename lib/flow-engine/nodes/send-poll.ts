@@ -17,10 +17,8 @@
 import type { FlowExecutionContext } from "../types";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
-import { getEvolutionConfig } from "@/lib/evolution-config";
-import { sendPoll } from "@/lib/evolution-client";
 import { validatePoll } from "@/lib/whatsapp-groups/poll";
-import type { Json } from "@/lib/types/database";
+import { sendToGroup } from "@/lib/whatsapp-groups/send";
 
 export interface SendPollData {
   /** El grupo (`whatsapp_groups.id`). */
@@ -101,41 +99,9 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     if (capError) console.error("[flow-engine] no pude reclamar el envío de la encuesta, dejo pasar:", capError.message);
     else if (allowed === false) return await skip("El canal llegó al tope de mensajes automáticos de la hora: no se mandó.", { rate_limited: true });
 
-    const config = await getEvolutionConfig(supabase, context.workspaceId);
-    if (!config) return await skip("WhatsApp no está configurado en este entorno.");
-
-    const poll = validation.poll;
-    let platformId: string | null = null;
-    let sendError: string | null = null;
-    try {
-      platformId = (await sendPoll(config, channel.evolution_instance, group.group_jid, poll)).id;
-    } catch (err) {
-      sendError = err instanceof Error ? err.message.slice(0, 300) : "No se pudo mandar la encuesta.";
-    }
-
-    // Queda en el hilo del grupo con el flujo y el paso que la mandaron (si el eco ya llego, se completa ese).
-    const row = {
-      workspace_id: group.workspace_id,
-      group_id: group.id,
-      platform_message_id: platformId,
-      direction: "outbound" as const,
-      text: null,
-      poll: { name: poll.name, options: poll.values, selectableCount: poll.selectableCount } as unknown as Json,
-      origin: "flow" as const,
-      status: sendError ? ("failed" as const) : ("sent" as const),
-      send_error: sendError,
-      sent_by_flow_id: context.flowId,
-      sent_by_node_id: node.id,
-    };
-    const { error: saveError } = platformId
-      ? await supabase.from("whatsapp_group_messages").upsert(row, { onConflict: "group_id,platform_message_id" })
-      : await supabase.from("whatsapp_group_messages").insert(row);
-    if (saveError) console.error("[flow-engine] no pude guardar la encuesta en el hilo del grupo:", saveError.message);
-    if (!sendError) {
-      await supabase.from("whatsapp_groups").update({ last_message_at: new Date().toISOString(), last_message_preview: `📊 ${poll.name}` }).eq("id", group.id);
-    } else {
-      await skip(`WhatsApp no aceptó la encuesta: ${sendError}`);
-    }
+    // El mismo envio que la bandeja: queda en el hilo del grupo con el flujo y el paso que la mandaron.
+    const result = await sendToGroup(supabase, group, { poll: validation.poll }, { userId: null, flowId: context.flowId, nodeId: node.id });
+    if (!result.ok) await skip(`No se mandó la encuesta: ${result.error}`);
   } catch (err) {
     await skip("Algo falló al mandar la encuesta.", { error: err instanceof Error ? err.message.slice(0, 200) : "error" });
   }
