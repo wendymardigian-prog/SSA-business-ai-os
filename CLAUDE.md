@@ -1606,9 +1606,9 @@ Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el
 
 Quién puede recibir emails de marketing, link de baja en un clic, rebotes y quejas de Resend, panel e importador que conserva la suscripción de otro sistema. Plan y avance en `docs/PROGRESS-suscripcion-email.md`, pendientes en `docs/PENDIENTE-suscripcion-email.md`, guía de importación en [docs/importar-contactos-con-suscripcion.md](docs/importar-contactos-con-suscripcion.md).
 
-## Los cuatro estados
+## Los cinco estados
 
-`contacts.email_status`: `subscribed` (Suscripto), `unsubscribed` (Dado de baja), `bounced` (Rebota) y `complained` (Marcó spam), con `email_status_at`, `email_status_source`, `email_subscribed_at` y `email_unsubscribe_token`. Vale para las dos direcciones del contacto. **El estado de una DIRECCIÓN es el peor entre todos los contactos del workspace que la tienen, incluidos los borrados** (`email_address_status`): borrar un contacto o pasar el email a otro no "borra" una baja. `is_subscribed` es OTRA cosa: solo las difusiones por chat (etiqueta «Recibe difusiones por chat»), y no cambió.
+`contacts.email_status`: `subscribed` (Suscripto), `not_subscribed` (Sin suscribir, 00278: nunca aceptó marketing en un formulario), `unsubscribed` (Dado de baja), `bounced` (Rebota) y `complained` (Marcó spam), con `email_status_at`, `email_status_source`, `email_subscribed_at` y `email_unsubscribe_token`. Vale para las dos direcciones del contacto. **El estado de una DIRECCIÓN es el peor entre todos los contactos del workspace que la tienen, incluidos los borrados** (`email_address_status`): borrar un contacto o pasar el email a otro no "borra" una baja. `is_subscribed` es OTRA cosa: solo las difusiones por chat (etiqueta «Recibe difusiones por chat»), y no cambió.
 
 ## Lo que no se puede romper
 
@@ -1630,6 +1630,30 @@ Quién puede recibir emails de marketing, link de baja en un clic, rebotes y que
 
 ```
 node scripts/verify-email-subscription.mjs   # transiciones (SQL↔TS), 10 llamadas en paralelo, direcciones, token, guardia, herencia (y su fallo forzado), secuencias, funciones
+```
+
+# La web de un cliente: formularios desde otro dominio (2/11/2026)
+
+La web propia de un negocio (otro dominio, sin servidor) manda sus formularios desde el navegador y pide links de baja nuevos. Pantalla: **Ajustes → Integraciones → Tu sitio web**; guía que viaja a los clientes: `/conectar-web` (`.claude/commands/conectar-web.md`); detalle en [docs/formularios.md](docs/formularios.md) («La web propia de un negocio»).
+
+## Lo que no se puede romper
+
+- **Nada de un negocio en el código**: los dominios son de cada workspace (`workspaces.website_settings`, 00277), se cargan en la pantalla (`integrations.manage`) y se validan en `lib/settings/website.ts` (https exacto, sin ruta; `http://localhost` solo de desarrollo). Sirve igual con un despliegue por cliente o varios negocios en uno: el negocio sale del recurso (el slug del formulario o el del workspace), nunca de una variable global.
+- **CORS en un solo lugar** (`lib/http/cors.ts`): el origen exacto, nunca `*`, sin credenciales, `Vary: Origin` siempre. Lo usan el envío, el beacon y el link de baja.
+- **El servidor rechaza un origen ajeno** (403 `origin_not_allowed`, sin guardar): un envío con FormData no tiene preflight y CORS solo esconde la respuesta. Sin `Origin` (curl) o de la propia app (`/f/`, embed, dominio propio apuntado a la app: `selfOrigins`) pasa como siempre. Ante un error leyendo los orígenes, la lista queda VACÍA (nunca se abre de más).
+- **El tope del cuerpo va antes de leerlo** (`readBytesCapped`): 413 por `Content-Length` o cortando la lectura. 35 MB con archivos o firma, 64 KB solo texto (`bodyLimitBytes`).
+- **`version_id` es opcional solo con `origin: "site"`**; para el resto sigue siendo obligatorio.
+- **`meta_event_id` va a `form_submissions.meta`**, no a la lista de atribución (`lib/attribution/keys.ts` no cambió).
+- **El link de baja nuevo** (`/api/public/email/unsubscribe-link?workspace=<slug>`) responde siempre `{ ok: true }`, manda después de responder (`after()`), nunca loguea el email y toma el token con `email_address_send_state`.
+- **«Sin suscribir» (`not_subscribed`, 00278)**: quinto estado de email. No recibe marketing; lo transaccional sí. Lo pone la casilla de marketing de un formulario SIN marcar y solo con contacto NUEVO; el modo `consent` (casilla marcada) solo saca de ahí, nunca levanta una baja, un rebote ni una queja. Gravedad: complained 5 > bounced 4 > unsubscribed 3 > not_subscribed 2 > subscribed 1. Gemelas SQL↔TS con `subscription-transitions.cases.json`.
+
+## Migraciones
+
+`00277` (`workspaces.website_settings`, aditiva) y `00278` (`not_subscribed`, el modo `consent`; reescribe `email_status_rank`, `email_status_decide`, `email_status_apply` y `email_pause_enrollments` con las definiciones viejas en la cabecera). Las dos van ANTES de desplegar el código. **La próxima libre es la `00279`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-forms.mjs                 # incluye «La web de un cliente» (dos negocios, dos pasos, Sin suscribir, link de baja)
+node scripts/verify-email-subscription.mjs    # incluye el bloque 10 (Sin suscribir y el modo consent)
 ```
 
 # Mi cuenta: perfil y notificaciones (construido, 30/10/2026)

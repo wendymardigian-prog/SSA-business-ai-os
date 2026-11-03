@@ -168,6 +168,18 @@ El modo, la firma del negocio y las copias viven en `forms.contract_config` (`li
 
 El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante y el seguimiento. Para páginas del propio proyecto: `<Formulario slug="…" />` ([sitio.md](sitio.md)).
 
+### La web propia de un negocio (otro dominio, 2/11/2026)
+
+Una web externa (un sitio estático, sin servidor) manda sus formularios **desde el navegador** a `POST /api/public/forms/<slug>/submit`. La guía paso a paso que viaja a los clientes es el comando `/conectar-web` (`.claude/commands/conectar-web.md`); la pantalla es **Ajustes → Integraciones → Tu sitio web**.
+
+- **Orígenes por negocio** (`workspaces.website_settings`, 00277): dominios exactos (`https://`, sin ruta; `http://localhost` solo marcado de desarrollo). Validación en `lib/settings/website.ts`, CORS en `lib/http/cors.ts`. El negocio sale del recurso: el slug del formulario (`lib/forms/site-origins.ts`) o el del workspace. Nunca `*`, sin credenciales, `Vary: Origin` siempre.
+- **El servidor también rechaza** un `Origin` que no es la propia app ni uno permitido: **403 `origin_not_allowed`**, sin guardar. CORS solo esconde la respuesta y un envío con FormData no tiene preflight. Sin `Origin` (curl) o de la propia app (`/f/`, embed, dominio propio apuntado a la app), igual que siempre.
+- **JSON o multipart.** Con `origin: "site"`, `version_id` es opcional: se usa la versión publicada y no hay 409 `form_changed`.
+- **Tope del cuerpo antes de leerlo** (413): 35 MB con archivos o firma, 64 KB solo texto, cortando un cuerpo sin tamaño declarado (`lib/http/read-capped.ts`).
+- **`meta_event_id`** (el id del evento del Pixel) va en `attribution` y se guarda en `form_submissions.meta.meta_event_id`, **no** en la atribución (es del envío, no del toque). `fbp`/`fbc` ya entraban por `attribution`.
+- **La casilla de emails de marketing**: una pregunta de consentimiento mapeada a "Suscripción a emails de marketing" (`MARKETING_CONSENT_TARGET`, solo de formularios: no está en `FIXED_TARGETS`). Sin marcar y con contacto NUEVO → **Sin suscribir** (00278); marcada → modo `consent`, que solo saca de Sin suscribir. Se aplica después de guardar (`marketingConsentAction`), en `try/catch`; `submit_form_response` no se tocó.
+- **Link de baja nuevo**: `POST /api/public/email/unsubscribe-link?workspace=<slug del workspace>` (`lib/email/unsubscribe-link.ts`): siempre `{ ok: true }`, el envío va en `after()`, 5/h por IP y 3/día por email.
+
 ## Lo que no se puede romper
 
 - La definición pública **solo** por `get_public_form`.
