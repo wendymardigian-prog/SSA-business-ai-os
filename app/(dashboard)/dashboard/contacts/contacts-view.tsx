@@ -25,8 +25,17 @@ import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-m
 import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { LastStatusBadge } from "@/components/contacts/status-fields";
 import { ColumnsMenu, CustomFieldFilter, useVisibleColumns } from "@/components/contacts/list-pipeline-controls";
-import { NONE, type CustomFieldRef, type CustomFilterOp } from "@/lib/contacts/list-filters";
-import { STATUS_ROLE_LABELS, activeStatuses, statusName, type ContactStatusSettings } from "@/lib/contacts/statuses";
+import { type CustomFieldRef, type CustomFilterOp } from "@/lib/contacts/list-filters";
+import {
+  CONTACT_FILTER_PARAMS,
+  MENU_FILTER_PARAMS,
+  NONE,
+  countActiveFilters,
+  countMenuFilters,
+  type ContactListFilters,
+} from "@/lib/contacts/list-query";
+import { MultiFilterField } from "@/components/ui/multi-filter-field";
+import { STATUS_ROLE_LABELS, activeStatuses, statusName, type ContactStatus, type ContactStatusSettings } from "@/lib/contacts/statuses";
 import { interestLabel, offeredProducts, type InterestCatalog } from "@/lib/contacts/interest";
 import { displayCustomValue } from "@/lib/custom-fields";
 import { EMAIL_STATUS_LABELS, EMAIL_STATUSES, type EmailStatus } from "@/lib/email/subscription";
@@ -47,6 +56,9 @@ import {
  * se puede compartir por link.
  */
 
+/** Los parametros de la URL de cada filtro. */
+const P = CONTACT_FILTER_PARAMS;
+
 export interface ContactRow {
   id: string;
   displayName: string | null;
@@ -66,34 +78,14 @@ export interface ContactRow {
   /** Pipeline (00245): el ultimo estado. */
   lastStatusRole: "setter" | "closer" | null;
   lastStatus: string | null;
+  /** El estado de cada rol (00245): las columnas del Kanban. */
+  setterStatus: string | null;
+  closerStatus: string | null;
   /** Producto de interes (00246). */
   interestProductId: string | null;
   interestVariantId: string | null;
   /** Campos personalizados: id del campo -> valor guardado. */
   custom: Record<string, string>;
-}
-
-interface Filters {
-  search: string;
-  tagId: string;
-  setterId: string;
-  vendedorId: string;
-  temperature: string;
-  platform: string;
-  /** "" oculta los anonimos, "1" los suma, "solo" muestra unicamente esos. */
-  anon: string;
-  /** Fuente y medio del PRIMER toque de atribucion (F88). */
-  source: string;
-  medium: string;
-  /** Pipeline (00245/00246): `rol:clave`, la clave o "ninguno", el id del producto o "ninguno". */
-  lastStatus: string;
-  setterStatus: string;
-  closerStatus: string;
-  productId: string;
-  /** Estado de email (00270): subscribed | unsubscribed | bounced | complained, o vacio. */
-  emailStatus: string;
-  /** El slug del campo personalizado por el que se filtra. */
-  customField: string;
 }
 
 export function ContactsView({
@@ -119,7 +111,7 @@ export function ContactsView({
   tags: { id: string; name: string; color: string | null; disablesAgent?: boolean; assignsTo?: string | null }[];
   platforms: { value: string; label: string }[];
   members: { userId: string; label: string }[];
-  filters: Filters;
+  filters: ContactListFilters;
   /** Cuantos contactos hay sin datos, esten o no en la lista. */
   anonymousCount: number;
   /** El orden de la lista (`?orden=`). */
@@ -136,6 +128,7 @@ export function ContactsView({
   const [creating, setCreating] = useState(false);
 
   const memberLabel = new Map(members.map((m) => [m.userId, m.label]));
+  const memberOptions = [{ value: NONE, label: "Sin asignar" }, ...members.map((m) => ({ value: m.userId, label: m.label }))];
   // Las columnas opcionales (Estado, Producto, campos personalizados): preferencia de cada persona.
   const { columns: visibleColumns, toggle: toggleColumn } = useVisibleColumns(customFields.map((f) => f.id));
   const customColumns = customFields.filter((f) => visibleColumns.includes(`cf:${f.id}`));
@@ -161,8 +154,8 @@ export function ContactsView({
   }
   // Los filtros puestos. La busqueda cuenta aparte (tiene su propio indicador en
   // la lupa): el globito del boton de filtros es solo de lo que esta adentro del menu.
-  const activeCount = Object.entries(filters).filter(([, v]) => v).length;
-  const menuFilterCount = Object.entries(filters).filter(([key, v]) => key !== "search" && v).length;
+  const activeCount = countActiveFilters(filters);
+  const menuFilterCount = countMenuFilters(filters);
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
 
   /** Escribe un parametro en la URL. Cualquier cambio de filtro vuelve a la pagina 1. */
@@ -185,6 +178,15 @@ export function ContactsView({
     start(() => router.replace(`${pathname}?${next.toString()}`));
   }
 
+  /** Un filtro de varias opciones: reemplaza la lista entera (`?setter=a&setter=b`). Vuelve a la pagina 1. */
+  function setList(key: string, values: readonly string[]) {
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete(key);
+    for (const v of values) next.append(key, v);
+    next.delete("page");
+    start(() => router.replace(`${pathname}?${next.toString()}`));
+  }
+
   function clearAll() {
     start(() => router.replace(pathname));
   }
@@ -192,7 +194,7 @@ export function ContactsView({
   /** Quita los filtros del menu y deja la busqueda y el orden como estan. */
   function clearMenuFilters() {
     const next = new URLSearchParams(searchParams.toString());
-    for (const key of ["tag", "setter", "vendedor", "temp", "fuente", "medio", "canal", "anon", "estado", "estado_setter", "estado_vendedor", "producto", "email", "campo", "op", "valor", "page"]) next.delete(key);
+    for (const key of [...MENU_FILTER_PARAMS, "page"]) next.delete(key);
     const query = next.toString();
     start(() => router.replace(query ? `${pathname}?${query}` : pathname));
   }
@@ -234,64 +236,68 @@ export function ContactsView({
             >
               <div className="space-y-2 px-2.5 pb-2">
                 <MenuGroupLabel>Asignación y etiquetas</MenuGroupLabel>
-                <MenuField
-                  label="Tag"
-                  value={filters.tagId}
-                  onChange={(v) => setParam("tag", v)}
-                  options={tags.map((t) => ({ value: t.id, label: t.name }))}
+                <MultiFilterField
+                  label="Etiqueta"
+                  selected={filters.tagIds}
+                  onChange={(v) => setList(P.tagIds, v)}
+                  options={tags.map((t) => ({ value: t.id, label: t.name, color: t.color }))}
                 />
-                <MenuField
+                <MultiFilterField
                   label="Setter"
-                  value={filters.setterId}
-                  onChange={(v) => setParam("setter", v)}
-                  options={members.map((m) => ({ value: m.userId, label: m.label }))}
+                  selected={filters.setterIds}
+                  onChange={(v) => setList(P.setterIds, v)}
+                  options={memberOptions}
                 />
-                <MenuField
+                <MultiFilterField
                   label="Vendedor"
-                  value={filters.vendedorId}
-                  onChange={(v) => setParam("vendedor", v)}
-                  options={members.map((m) => ({ value: m.userId, label: m.label }))}
+                  selected={filters.vendedorIds}
+                  onChange={(v) => setList(P.vendedorIds, v)}
+                  options={memberOptions}
                 />
-                <MenuField
+                <MultiFilterField
                   label="Temperatura"
-                  value={filters.temperature}
-                  onChange={(v) => setParam("temp", v)}
+                  selected={filters.temperatures}
+                  onChange={(v) => setList(P.temperatures, v)}
                   options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
                 />
-                <MenuField
+                <MultiFilterField
                   label="Estado de email"
-                  value={filters.emailStatus}
-                  onChange={(v) => setParam("email", v)}
+                  selected={filters.emailStatuses}
+                  onChange={(v) => setList(P.emailStatuses, v)}
                   options={EMAIL_STATUSES.map((st) => ({ value: st, label: EMAIL_STATUS_LABELS[st] }))}
                 />
 
                 {/* Pipeline (00245/00246): el ultimo estado, el de cada rol y el producto de interes. */}
                 <MenuGroupLabel>Pipeline</MenuGroupLabel>
-                <MenuField
+                <MultiFilterField
                   label="Último estado"
-                  value={filters.lastStatus}
-                  onChange={(v) => setParam("estado", v)}
+                  selected={filters.lastStatuses.map((st) => `${st.role}:${st.key}`)}
+                  onChange={(v) => setList(P.lastStatuses, v)}
                   options={(["setter", "closer"] as const).flatMap((role) =>
-                    activeStatuses(statusSettings[role]).map((st) => ({ value: `${role}:${st.key}`, label: `${st.name} (${STATUS_ROLE_LABELS[role].toLowerCase()})` })),
+                    activeStatuses(statusSettings[role]).map((st) => ({
+                      value: `${role}:${st.key}`,
+                      label: `${st.name} (${STATUS_ROLE_LABELS[role].toLowerCase()})`,
+                      color: st.color,
+                    })),
                   )}
                 />
-                <MenuField
+                <MultiFilterField
                   label="Estado de setter"
-                  value={filters.setterStatus}
-                  onChange={(v) => setParam("estado_setter", v)}
-                  options={[{ value: NONE, label: "Sin estado" }, ...statusSettings.setter.map((st) => ({ value: st.key, label: statusName(statusSettings.setter, st.key) }))]}
+                  selected={filters.setterStatuses}
+                  onChange={(v) => setList(P.setterStatuses, v)}
+                  options={statusOptions(statusSettings.setter)}
                 />
-                <MenuField
+                <MultiFilterField
                   label="Estado de vendedor"
-                  value={filters.closerStatus}
-                  onChange={(v) => setParam("estado_vendedor", v)}
-                  options={[{ value: NONE, label: "Sin estado" }, ...statusSettings.closer.map((st) => ({ value: st.key, label: statusName(statusSettings.closer, st.key) }))]}
+                  selected={filters.closerStatuses}
+                  onChange={(v) => setList(P.closerStatuses, v)}
+                  options={statusOptions(statusSettings.closer)}
                 />
                 {interestCatalog.length > 0 && (
-                  <MenuField
+                  <MultiFilterField
                     label="Producto de interés"
-                    value={filters.productId}
-                    onChange={(v) => setParam("producto", v)}
+                    selected={filters.productIds}
+                    onChange={(v) => setList(P.productIds, v)}
                     options={[{ value: NONE, label: "Sin producto" }, ...offeredProducts(interestCatalog, null).map((p) => ({ value: p.id, label: p.name }))]}
                   />
                 )}
@@ -305,19 +311,19 @@ export function ContactsView({
                 {/* Por el PRIMER toque, y el nombre lo dice: "entraron por un comentario"
                     no es "alguna vez comentaron". */}
                 <MenuGroupLabel>De dónde vinieron</MenuGroupLabel>
-                <MenuField
+                <MultiFilterField
                   label="Origen (1.er toque)"
-                  value={filters.source}
-                  onChange={(v) => setParam("fuente", v)}
-                  options={SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] }))}
+                  selected={filters.sources}
+                  onChange={(v) => setList(P.sources, v)}
+                  options={SOURCES.map((src) => ({ value: src, label: SOURCE_LABELS[src] }))}
                 />
-                <MenuField
+                <MultiFilterField
                   label="Medio (1.er toque)"
-                  value={filters.medium}
-                  onChange={(v) => setParam("medio", v)}
+                  selected={filters.mediums}
+                  onChange={(v) => setList(P.mediums, v)}
                   options={MEDIUMS.map((m) => ({ value: m, label: MEDIUM_LABELS[m] }))}
                 />
-                <MenuField label="Canal" value={filters.platform} onChange={(v) => setParam("canal", v)} options={platforms} />
+                <MultiFilterField label="Canal" selected={filters.platforms} onChange={(v) => setList(P.platforms, v)} options={platforms} />
 
                 {/* Los contactos sin datos se ocultan por defecto, asi que este
                     selector no arranca vacio como los otros: su opcion neutra ya es
@@ -329,7 +335,7 @@ export function ContactsView({
                       <span className="sr-only">Contactos sin datos</span>
                       <select
                         value={filters.anon}
-                        onChange={(e) => setParam("anon", e.target.value)}
+                        onChange={(e) => setParam(P.anon, e.target.value)}
                         className={cn(
                           "w-full rounded-lg border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring",
                           filters.anon ? "border-primary-edge" : "border-input",
@@ -571,39 +577,9 @@ export function ContactsView({
   );
 }
 
-/** Un filtro dentro del menu: su nombre arriba y un selector que ocupa el ancho. Sin opciones, no se dibuja. */
-function MenuField({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  if (options.length === 0) return null;
-  return (
-    <label className="block">
-      <span className="mb-0.5 block text-xs text-muted-foreground">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(
-          "w-full rounded-lg border bg-background px-2.5 py-1.5 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-ring",
-          value ? "border-primary-edge text-foreground" : "border-input text-muted-foreground",
-        )}
-      >
-        <option value="">Todos</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+/** Los estados de un rol para el filtro: "Sin estado" y todos (los archivados lo dicen en el nombre). */
+function statusOptions(list: readonly ContactStatus[]) {
+  return [{ value: NONE, label: "Sin estado" }, ...list.map((st) => ({ value: st.key, label: statusName(list, st.key), color: st.color }))];
 }
 
 function PageButton({

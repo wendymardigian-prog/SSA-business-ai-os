@@ -1,60 +1,17 @@
 /**
- * Los filtros y columnas nuevos de la lista de contactos (pipeline, 00244-00246):
- * estado, producto de interés y campos personalizados.
+ * El filtro por campo personalizado (00244) y las columnas elegidas de la lista
+ * de contactos. El resto de los filtros vive en `list-query.ts`.
  *
  * Puro: lo usan la página (para armar la consulta) y la vista (para los
  * controles). Todo viene de la URL, así que se valida contra lo que existe:
  * un valor inventado se ignora en vez de romper la consulta.
  */
 import { normalizeCustomValue } from "@/lib/custom-fields";
-import { STATUS_KEY_RE, parseLastStatusParam, type StatusRole } from "./statuses";
 
-// ---------------------------------------------------------------------------
-// Estado y producto
-// ---------------------------------------------------------------------------
-
-export interface PipelineFilters {
-  /** `?estado=setter:calificado`: el ÚLTIMO estado. */
-  lastStatus: { role: StatusRole; key: string } | null;
-  /** `?estado_setter=` y `?estado_vendedor=`: el estado de cada rol. "ninguno" = sin estado. */
-  setterStatus: string;
-  closerStatus: string;
-  /** `?producto=<id>` o "ninguno". */
-  productId: string;
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** "ninguno" en un filtro: sin estado, sin producto, sin asignar. */
 export const NONE = "ninguno";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
-const statusParam = (raw: string) => (raw === NONE || STATUS_KEY_RE.test(raw) ? raw : "");
-
-export function parsePipelineFilters(params: Record<string, string | string[] | undefined>): PipelineFilters {
-  const product = first(params.producto);
-  return {
-    lastStatus: parseLastStatusParam(first(params.estado)),
-    setterStatus: statusParam(first(params.estado_setter)),
-    closerStatus: statusParam(first(params.estado_vendedor)),
-    productId: product === NONE || UUID.test(product) ? product : "",
-  };
-}
-
-/** Las condiciones para la consulta de contactos: `eq` o `is null` sobre una columna. */
-export function pipelineClauses(f: PipelineFilters): Array<{ column: string; op: "eq" | "is_null"; value?: string }> {
-  const out: Array<{ column: string; op: "eq" | "is_null"; value?: string }> = [];
-  if (f.lastStatus) {
-    out.push({ column: "last_status_role", op: "eq", value: f.lastStatus.role });
-    out.push({ column: "last_status", op: "eq", value: f.lastStatus.key });
-  }
-  const byRole = (column: string, value: string) => {
-    if (!value) return;
-    out.push(value === NONE ? { column, op: "is_null" } : { column, op: "eq", value });
-  };
-  byRole("setter_status", f.setterStatus);
-  byRole("closer_status", f.closerStatus);
-  byRole("interest_product_id", f.productId);
-  return out;
-}
 
 // ---------------------------------------------------------------------------
 // Campos personalizados
