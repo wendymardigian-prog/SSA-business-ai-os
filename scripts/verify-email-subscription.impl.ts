@@ -306,8 +306,10 @@ END $do$;`);
 
     const nuevo = await contact(ws, { display_name: "zz-test hereda sin suscribir", email: `zz-nosub2-${stamp}@example.com` });
     await setStatus(nuevo, { p_status: "not_subscribed", p_source: "form_consent", p_mode: "system" });
+    // Dos contactos VIVOS no pueden compartir el email (00205): el primero queda borrado.
+    await svc.from("contacts").update({ deleted_at: new Date().toISOString() }).eq("id", nuevo);
     const otro = await contact(ws, { display_name: "zz-test misma direccion", email: `ZZ-NOSUB2-${stamp}@example.com` });
-    check((await statusOf(otro)) === "not_subscribed", "otro contacto con la misma dirección hereda Sin suscribir");
+    check((await statusOf(otro)) === "not_subscribed", "un contacto nuevo con la dirección de uno borrado hereda Sin suscribir");
   }
 
   console.log("\n— 9. Ninguna otra funcion escribe esas columnas —");

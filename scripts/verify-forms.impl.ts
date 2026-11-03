@@ -1539,6 +1539,21 @@ try {
     const { data: p1bContact } = await svc.from("contacts").select("email_status").eq("id", p1bRow.contact_id!).single();
     check(p1bContact?.email_status === "subscribed", "con la casilla marcada queda Suscripto");
 
+    // Un contacto que YA está Suscripto y manda la casilla sin marcar: sigue Suscripto (no marcar no es pedir la baja).
+    await submitForm(ports(ws.id), input(step1Slug, { idempotency_key: randomUUID(), origin: "site", answers: { name: "Acepta", email: email2, email_consent: false }, honeypot: "" }));
+    const { data: stillSub } = await svc.from("contacts").select("email_status").eq("id", p1bRow.contact_id!).single();
+    check(stillSub?.email_status === "subscribed", "un contacto Suscripto que manda la casilla sin marcar sigue Suscripto");
+
+    // Una persona que ya existía (contacto borrado, suscripto) vuelve sin marcar la casilla: nace un contacto
+    // nuevo, pero la persona no es nueva, así que no pasa a Sin suscribir.
+    const emailBorrado = `zz-web-borrado-${stamp}@example.test`;
+    const { data: borrado } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test borrado", email: emailBorrado }).select("id").single();
+    await svc.from("contacts").update({ deleted_at: new Date().toISOString() }).eq("id", borrado!.id);
+    const vuelve = await submitForm(ports(ws.id), input(step1Slug, { idempotency_key: randomUUID(), origin: "site", answers: { name: "Vuelve", email: emailBorrado, email_consent: false }, honeypot: "" }));
+    const vuelveRow = (await svc.from("form_submissions").select("contact_id, contact_created").eq("id", String(vuelve.body.submission_id)).single()).data!;
+    const { data: vuelveContact } = await svc.from("contacts").select("email_status").eq("id", vuelveRow.contact_id!).single();
+    check(vuelveRow.contact_created === true && vuelveContact?.email_status === "subscribed", "si el email ya estaba en un contacto borrado, el contacto nuevo NO queda Sin suscribir", JSON.stringify({ vuelveRow, vuelveContact }));
+
     // Paso 2: el mismo contacto suma el teléfono y el WhatsApp.
     const p2 = await submitForm(ports(ws.id), input(step2Slug, { idempotency_key: randomUUID(), origin: "site", answers: { email, phone: "+5491122334455", whatsapp: "+5491122334455" }, honeypot: "" }));
     const p2Row = (await svc.from("form_submissions").select("contact_id, contact_created").eq("id", String(p2.body.submission_id)).single()).data!;
