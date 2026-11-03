@@ -11,6 +11,7 @@ import { SendAssetPanel } from "./SendAssetPanel";
 import { CreateTaskPanel } from "./CreateTaskPanel"; // @plantilla-quitar(tareas)
 import { CompleteTaskPanel } from "./CompleteTaskPanel"; // @plantilla-quitar(tareas)
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
+import { SendPollPanel } from "./SendPollPanel";
 import { SendEmailPanel } from "./SendEmailPanel";
 import { CancelBookingPanel, NotifyTeamPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
 import { VariableChips } from "./variable-chips";
@@ -84,6 +85,9 @@ export function ActionPanel({ data: rawData, onChange, availableVariables }: Act
     // Tirón 2, D3: un aviso por WhatsApp a un número que puede no ser de ningún contacto.
     case "send_whatsapp_number" as NodeType:
       return <SendWhatsAppNumberPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+    // Grupos de WhatsApp: una encuesta a un grupo activado.
+    case "send_poll" as NodeType:
+      return <SendPollPanel data={rawData} onChange={onChange} />;
     // Etapa 4 (F46) + Tirón 2, D4: el email, ahora también a la dirección de una variable.
     case "send_email" as NodeType:
       return <SendEmailPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;

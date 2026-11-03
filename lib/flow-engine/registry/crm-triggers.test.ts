@@ -197,6 +197,10 @@ describe("los tres tipos nuevos estan registrados", () => {
       "task_overdue", // @plantilla-quitar(tareas)
       // Webhooks entrantes (Extra L): de evento, pero corre directo y no por la cola. // @plantilla-quitar(webhooks)
       "webhook_received", // @plantilla-quitar(webhooks)
+      // Grupos de WhatsApp (00282): alguien se unio, reacciono o voto en un grupo activado.
+      "whatsapp_group_joined",
+      "whatsapp_group_poll_vote",
+      "whatsapp_group_reaction",
     ]);
     // Los tres relativos de agenda los agenda un job, igual que inactividad.
     // Tambien los dos de pagos (antes y despues del vencimiento).  @plantilla-quitar(ventas)

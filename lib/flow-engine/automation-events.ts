@@ -136,7 +136,12 @@ async function processContactEvent(
       continue;
     }
 
-    if (!conversation) {
+    // Un disparador puede elegir por donde responde (los grupos de WhatsApp: el chat privado en el numero del
+    // grupo). Sin declararlo, o si no pudo, la conversacion mas reciente de siempre.
+    const own = definition.conversationFor ? await definition.conversationFor(args) : null;
+    const replyVia = own ?? conversation;
+
+    if (!replyVia) {
       console.warn(
         `[cron/automation-events] el contacto ${event.contact_id} no tiene conversacion: el flow ${trigger.flow_id} no va a poder enviar por un canal`
       );
@@ -151,9 +156,9 @@ async function processContactEvent(
       await executeFlow(supabase, {
         triggerId: trigger.id,
         flowId: trigger.flow_id,
-        channelId: conversation?.channel_id ?? "",
+        channelId: replyVia?.channel_id ?? "",
         contactId: event.contact_id,
-        conversationId: conversation?.id ?? "",
+        conversationId: replyVia?.id ?? "",
         workspaceId: event.workspace_id,
         // Que disparo el flujo: lo declara el disparador (agenda, formulario, venta...) y el id es el del evento.
         source: { type: definition.sourceType ?? "contact", id: event.id },

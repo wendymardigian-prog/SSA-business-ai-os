@@ -24,6 +24,7 @@ export const CONTACT_FREE_NODE_TYPES = [
   "httpRequest",
   "notify_team",
   "send_email",
+  "send_poll",
   "send_whatsapp_number",
   "upsert_contact", // @plantilla-quitar(webhooks)
 ] as const;

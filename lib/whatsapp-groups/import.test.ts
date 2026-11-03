@@ -67,7 +67,7 @@ describe("runGroupImport", () => {
       throw new Error("502");
     });
     expect(await runGroupImport(memory.client as never, { workspaceId: "ws-1", groupId: "g-1", requestedBy: null }, { fetchParticipants, schedule: schedule as never, now: () => NOW })).toBe("retry");
-    expect(schedule.mock.calls[0][3]).toEqual(new Date(NOW.getTime() + 60_000));
+    expect((schedule.mock.calls[0] as unknown[])[3]).toEqual(new Date(NOW.getTime() + 60_000));
     expect(await runGroupImport(memory.client as never, { workspaceId: "ws-1", groupId: "g-1", requestedBy: null, attempt: 4 }, { fetchParticipants, schedule: schedule as never, now: () => NOW })).toBe("gave_up");
   });
 

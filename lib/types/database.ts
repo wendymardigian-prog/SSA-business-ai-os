@@ -907,7 +907,11 @@ export type TriggerType =
   | "webhook_received" // @plantilla-quitar(webhooks)
   /** Tareas (00199): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto.  @plantilla-quitar(tareas) */
   | "task_completed" // @plantilla-quitar(tareas)
-  | "task_overdue"; // @plantilla-quitar(tareas)
+  | "task_overdue" // @plantilla-quitar(tareas)
+  // Grupos de WhatsApp (CHECK de la migracion 00282): alguien se unio, reacciono o voto en un grupo activado.
+  | "whatsapp_group_joined"
+  | "whatsapp_group_reaction"
+  | "whatsapp_group_poll_vote";
 export type FlowSessionStatus =
   | "active"
   | "completed"

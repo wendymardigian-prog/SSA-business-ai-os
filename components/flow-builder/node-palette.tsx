@@ -1,6 +1,6 @@
 "use client";
 
-import {
+import { BarChart3,
   Zap,
   MessageSquare,
   Split,
@@ -241,6 +241,16 @@ const categories: PaletteCategory[] = [
         description: "Un aviso a un número fijo o de una variable (no necesita contacto)",
         synonyms: ["whatsapp", "aviso", "telefono"],
         actionType: "send_whatsapp_number",
+      },
+      // Grupos de WhatsApp: una encuesta a un grupo activado (sirve sin contacto).
+      {
+        type: "action",
+        nodeType: "send_poll",
+        label: "Enviar encuesta",
+        icon: BarChart3,
+        description: "Una encuesta de WhatsApp a un grupo activado",
+        synonyms: ["encuesta", "grupo", "votacion", "whatsapp", "poll"],
+        actionType: "send_poll",
       },
       // E15: un aviso al equipo en la campana (sirve también en flujos sin contacto).
       {

@@ -269,6 +269,13 @@ export interface TriggerDefinition {
    * la vida) y los de agenda usan la agenda.
    */
   dedupeKeyFor?(args: TriggerEventArgs): string;
+  /**
+   * Por que conversacion responde el flujo de un evento de CONTACTO. Sin declararlo, la mas reciente del contacto
+   * (lo de siempre). Los grupos de WhatsApp lo declaran: el flujo le escribe por privado en el MISMO numero del
+   * grupo, y si todavia no hay conversacion se crea una (sin no leidos). Se llama recien cuando el disparo ya se
+   * reclamo, asi un evento que no dispara nada no crea conversaciones. null = usar la de siempre.
+   */
+  conversationFor?(args: TriggerEventArgs): Promise<{ id: string; channel_id: string } | null>;
   /** Variables que este trigger le suma al contexto del flow. */
   variablesFor?(args: TriggerEventArgs): Promise<Record<string, unknown>> | Record<string, unknown>;
   /**

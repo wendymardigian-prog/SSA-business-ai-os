@@ -11,6 +11,7 @@ import {
   Phone,
   Search,
   Users,
+  UsersRound,
   Webhook,
   X,
   Zap,
@@ -36,6 +37,7 @@ export const TRIGGER_GROUP_ICONS: Record<TriggerGroupKey, LucideIcon> = {
   tareas: Zap, // @plantilla-quitar(tareas)
   llamadas: Phone, // @plantilla-quitar(llamadas)
   webhooks: Webhook, // @plantilla-quitar(webhooks)
+  grupos_whatsapp: UsersRound,
   equipo: Bot, // @plantilla-quitar(formularios)
 };
 

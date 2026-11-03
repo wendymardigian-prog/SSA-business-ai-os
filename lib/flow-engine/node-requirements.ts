@@ -49,6 +49,7 @@ export const REQUIREMENT_INFO: Record<Requirement, RequirementInfo> = {
 export const NODE_REQUIREMENTS: Readonly<Record<string, readonly Requirement[]>> = {
   send_email: ["email"],
   send_whatsapp_number: ["whatsapp_channel"],
+  send_poll: ["whatsapp_channel"],
   aiResponse: ["ai"],
   pauseAgent: ["agent"],
   resumeAgent: ["agent"],
@@ -60,6 +61,7 @@ export const NODE_REQUIREMENTS: Readonly<Record<string, readonly Requirement[]>>
 const NODE_NAMES: Readonly<Record<string, string>> = {
   send_email: "Enviar email",
   send_whatsapp_number: "Enviar WhatsApp a un número",
+  send_poll: "Enviar encuesta",
   aiResponse: "Respuesta con IA",
   pauseAgent: "Pausar agente de IA",
   resumeAgent: "Reanudar agente de IA",
