@@ -57,9 +57,9 @@ export interface SendContext {
   nodeId?: string | null;
   /**
    * Origen del saliente (F2). Por defecto `flow`; las secuencias pasan
-   * `sequence`. Determina `messages.origin`.
+   * `sequence` y la cola de envios masivos `broadcast`. Determina `messages.origin`.
    */
-  origin?: "flow" | "sequence";
+  origin?: "flow" | "sequence" | "broadcast";
   /** Las variables del flujo (si el envío nace de uno): de ahí sale la pieza (`content`) que guarda el saliente (F35). */
   variables?: Record<string, unknown>;
   /**
@@ -75,7 +75,7 @@ export interface SendContext {
  */
 export function channelEmailCategory(context: Pick<SendContext, "emailCategory" | "origin" | "flowId">): EmailCategory {
   if (context.emailCategory) return context.emailCategory;
-  return context.origin === "sequence" || context.flowId ? "marketing" : "transactional";
+  return context.origin === "sequence" || context.origin === "broadcast" || context.flowId ? "marketing" : "transactional";
 }
 
 /** Un archivo de nuestro bucket `chat-media`, listo para mandar (F19). */

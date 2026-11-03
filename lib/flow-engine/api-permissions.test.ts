@@ -35,7 +35,7 @@ vi.mock("@/lib/supabase/server", () => ({
   },
 }));
 vi.mock("@/lib/flow-engine/publish", () => ({ publishFlow: vi.fn(async () => { touched.calls++; return { ok: false, error: "x", status: 400 }; }) }));
-vi.mock("@/lib/scheduler", () => ({ scheduleBroadcastDelivery: vi.fn() }));
+vi.mock("@/lib/broadcasts/core", () => ({ createBroadcastDraft: vi.fn(), saveBroadcastDraft: vi.fn(), queueBroadcast: vi.fn(async () => { touched.calls++; return { ok: false, error: "x" }; }) }));
 vi.mock("@/lib/flow-engine/member-flow-db", () => ({ checkMemberFlow: vi.fn() }));
 
 const flows = await import("@/app/api/v1/flows/route");

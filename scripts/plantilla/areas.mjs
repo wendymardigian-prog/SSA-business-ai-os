@@ -252,7 +252,8 @@ columnas aplican y la base rechaza una forma invalida.`,
     title: "Automatizaciones",
     header: `Flujos (con su borrador, sus versiones publicadas y sus disparadores), las sesiones
 que los ejecutan, la cola de eventos del CRM que los arranca, las secuencias (drip)
-con su auto-pausa cuando el contacto responde, los envios masivos y sus analiticas.`,
+con su auto-pausa cuando el contacto responde, los envios masivos (con su cola y el
+ritmo de cada canal) y sus analiticas.`,
     tables: [
       "public.flows",
       "public.flow_versions",
@@ -265,6 +266,7 @@ con su auto-pausa cuando el contacto responde, los envios masivos y sus analitic
       "public.sequence_enrollments",
       "public.broadcasts",
       "public.broadcast_recipients",
+      "public.channel_send_lanes",
       "public.analytics_events",
     ],
     functions: [
@@ -274,6 +276,9 @@ con su auto-pausa cuando el contacto responde, los envios masivos y sus analitic
       "public.claim_sequence_enrollments",
       "public.increment_broadcast_failed",
       "public.increment_broadcast_sent",
+      "public.claim_lane_slot",
+      "public.claim_broadcast_recipient",
+      "public.refresh_broadcast_counts",
       "private.fill_automation_source",
     ],
   },

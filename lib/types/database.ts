@@ -787,8 +787,13 @@ export type BroadcastStatus =
   | "draft"
   | "scheduled"
   | "sending"
+  // 00285: pausado a mano (la cola no toma sus destinatarios hasta reanudar).
+  | "paused"
   | "completed"
   | "cancelled";
+
+/** Estado de un destinatario de broadcast, el item de la cola de envios (00285). */
+export type BroadcastRecipientStatus = "pending" | "sending" | "sent" | "failed" | "skipped" | "cancelled";
 /**
  * `cancelled`: un aviso relativo que ya no corresponde se
  * anula en vez de borrarse, y el runner solo toma `pending`.
@@ -1474,6 +1479,8 @@ export interface Database {
           disconnected_notified_at: string | null;
           /** Ventana de mensajeria en horas; NULL = default por plataforma (00070). */
           messaging_window_hours: number | null;
+          /** El techo de ritmo de los envios masivos por este canal (00285). null = el de siempre. */
+          send_policy: Json | null;
           /** La direccion que recibe y desde la que se responde (00087). */
           email_address: string | null;
           /** Avance de la importacion de conversaciones desde Zernio (00267, lib/inbox-import/state.ts). */
@@ -1500,6 +1507,7 @@ export interface Database {
           last_error?: string | null;
           disconnected_notified_at?: string | null;
           messaging_window_hours?: number | null;
+          send_policy?: Json | null;
           inbox_import?: Json | null;
           created_at?: string;
           updated_at?: string;
@@ -1521,6 +1529,7 @@ export interface Database {
           last_error?: string | null;
           disconnected_notified_at?: string | null;
           messaging_window_hours?: number | null;
+          send_policy?: Json | null;
           inbox_import?: Json | null;
           updated_at?: string;
         };
@@ -2490,7 +2499,9 @@ export interface Database {
           workspace_id: string;
           name: string;
           status: BroadcastStatus;
+          /** Legado (00001): ya no se escribe. El mensaje vive en `message_variants`. */
           message_content: Json;
+          /** Legado (00001): ya no se escribe. La audiencia vive en `audience_params`. */
           segment_filter: Json | null;
           scheduled_for: string | null;
           total_recipients: number;
@@ -2499,13 +2510,30 @@ export interface Database {
           failed: number;
           created_at: string;
           updated_at: string;
+          // 00285
+          channel_id: string | null;
+          /** Los mismos parametros de URL que la lista de Contactos. */
+          audience_params: Json;
+          include_phone_only: boolean;
+          /** Hasta 5 textos; a cada destinatario le toca uno. En email, el cuerpo es el primero. */
+          message_variants: Json;
+          email_subject: string | null;
+          skip_missing_variables: boolean;
+          /** Ritmo propio (solo puede ir mas lento que el numero). */
+          pace: Json;
+          skipped: number;
+          created_by: string | null;
+          started_at: string | null;
+          paused_at: string | null;
+          cancelled_at: string | null;
+          completed_at: string | null;
         };
         Insert: {
           id?: string;
           workspace_id: string;
           name: string;
           status?: BroadcastStatus;
-          message_content: Json;
+          message_content?: Json;
           segment_filter?: Json | null;
           scheduled_for?: string | null;
           total_recipients?: number;
@@ -2514,6 +2542,19 @@ export interface Database {
           failed?: number;
           created_at?: string;
           updated_at?: string;
+          channel_id?: string | null;
+          audience_params?: Json;
+          include_phone_only?: boolean;
+          message_variants?: Json;
+          email_subject?: string | null;
+          skip_missing_variables?: boolean;
+          pace?: Json;
+          skipped?: number;
+          created_by?: string | null;
+          started_at?: string | null;
+          paused_at?: string | null;
+          cancelled_at?: string | null;
+          completed_at?: string | null;
         };
         Update: {
           name?: string;
@@ -2526,6 +2567,18 @@ export interface Database {
           delivered?: number;
           failed?: number;
           updated_at?: string;
+          channel_id?: string | null;
+          audience_params?: Json;
+          include_phone_only?: boolean;
+          message_variants?: Json;
+          email_subject?: string | null;
+          skip_missing_variables?: boolean;
+          pace?: Json;
+          skipped?: number;
+          started_at?: string | null;
+          paused_at?: string | null;
+          cancelled_at?: string | null;
+          completed_at?: string | null;
         };
         Relationships: [
           {
@@ -2533,6 +2586,13 @@ export interface Database {
             columns: ["workspace_id"];
             isOneToOne: false;
             referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "broadcasts_channel_id_fkey";
+            columns: ["channel_id"];
+            isOneToOne: false;
+            referencedRelation: "channels";
             referencedColumns: ["id"];
           },
         ];
@@ -2543,23 +2603,49 @@ export interface Database {
           broadcast_id: string;
           contact_id: string;
           channel_id: string;
-          status: string;
+          status: BroadcastRecipientStatus;
           sent_at: string | null;
           error_message: string | null;
+          // 00285
+          workspace_id: string | null;
+          /** A donde sale: el id en el canal de WhatsApp (telefono o @lid) o el email. */
+          target: string | null;
+          variant_index: number;
+          skip_reason: string | null;
+          conversation_id: string | null;
+          attempts: number;
+          next_attempt_at: string | null;
+          claimed_at: string | null;
+          created_at: string;
         };
         Insert: {
           id?: string;
           broadcast_id: string;
           contact_id: string;
           channel_id: string;
-          status?: string;
+          status?: BroadcastRecipientStatus;
           sent_at?: string | null;
           error_message?: string | null;
+          workspace_id?: string | null;
+          target?: string | null;
+          variant_index?: number;
+          skip_reason?: string | null;
+          conversation_id?: string | null;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          claimed_at?: string | null;
+          created_at?: string;
         };
         Update: {
-          status?: string;
+          status?: BroadcastRecipientStatus;
           sent_at?: string | null;
           error_message?: string | null;
+          target?: string | null;
+          skip_reason?: string | null;
+          conversation_id?: string | null;
+          attempts?: number;
+          next_attempt_at?: string | null;
+          claimed_at?: string | null;
         };
         Relationships: [
           {
@@ -2584,6 +2670,35 @@ export interface Database {
             referencedColumns: ["id"];
           },
         ];
+      };
+      /** El carril de envios masivos de cada canal (00285). Escribe solo el servidor. */
+      channel_send_lanes: {
+        Row: {
+          channel_id: string;
+          workspace_id: string;
+          next_send_at: string;
+          consecutive_failures: number;
+          paused_at: string | null;
+          paused_reason: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          channel_id: string;
+          workspace_id: string;
+          next_send_at?: string;
+          consecutive_failures?: number;
+          paused_at?: string | null;
+          paused_reason?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          next_send_at?: string;
+          consecutive_failures?: number;
+          paused_at?: string | null;
+          paused_reason?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       scheduled_jobs: {
         Row: {
@@ -7026,6 +7141,21 @@ export interface Database {
           p_limit?: number;
         };
         Returns: boolean;
+      };
+      /** Cola de envios (00285): toma el lugar del carril si ya vencio y lo corre a `p_next`. Solo service_role. */
+      claim_lane_slot: {
+        Args: { p_channel_id: string; p_next: string };
+        Returns: boolean;
+      };
+      /** El proximo destinatario pendiente de un broadcast, reservado (pending -> sending). Solo service_role. */
+      claim_broadcast_recipient: {
+        Args: { p_broadcast_id: string };
+        Returns: Database["public"]["Tables"]["broadcast_recipients"]["Row"][];
+      };
+      /** Recalcula los contadores desde los destinatarios y cierra el broadcast si no queda nada. Solo service_role. */
+      refresh_broadcast_counts: {
+        Args: { p_broadcast_id: string };
+        Returns: string;
       };
       /**
        * Reclama las inscripciones vencidas para una corrida del cron

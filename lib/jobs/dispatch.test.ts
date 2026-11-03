@@ -37,7 +37,7 @@ describe("que jobs toma el runner", () => {
   });
 
   it("los demas tipos si", () => {
-    for (const type of ["index_document", "conversation_close", "resume_flow", "send_broadcast", "bg_task"]) {
+    for (const type of ["index_document", "conversation_close", "resume_flow", "bg_task"]) {
       expect(isExcludedFromRunner(type), type).toBe(false);
     }
   });
