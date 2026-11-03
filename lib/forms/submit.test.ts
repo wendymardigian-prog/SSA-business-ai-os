@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { submitForm, safeFileName, buildAttribution, bodyLimitBytes, metaEventIdOf, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
+import { submitForm, safeFileName, buildAttribution, bodyLimitBytes, metaEventIdOf, marketingConsentAction, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
 import { newField, type FormField } from "./fields";
 import { NO_BUSINESS_SIGNER } from "./defaults";
 
@@ -781,5 +781,68 @@ describe("bodyLimitBytes: el tope del cuerpo según el formulario", () => {
     expect(bodyLimitBytes(makeForm([field("email", "email")]))).toBe(64 * 1024);
     expect(bodyLimitBytes(makeForm([field("file", "cv")]))).toBe(35 * 1024 * 1024);
     expect(bodyLimitBytes(makeForm([], { type: "contract" }))).toBe(35 * 1024 * 1024);
+  });
+});
+
+describe("la casilla de emails de marketing (00278)", () => {
+  const consentForm = (required = false) =>
+    makeForm([field("email", "email", { required: true }), field("consent", "email_consent", { required, consentText: "Acepto emails" })], {
+      contactConfig: {
+        mode: "create_or_link",
+        update: "fill_empty",
+        map: [
+          { fieldKey: "email", target: "contact.email" },
+          { fieldKey: "email_consent", target: "contact.email_marketing_consent" },
+        ],
+      },
+    });
+  const created = { contactId: "c-1", contactCreated: true };
+  const existing = { contactId: "c-1", contactCreated: false };
+
+  it("marcada: sale de Sin suscribir (modo consent), con contacto nuevo o existente", () => {
+    expect(marketingConsentAction(consentForm(), { email_consent: true }, created)).toEqual({ status: "subscribed", mode: "consent" });
+    expect(marketingConsentAction(consentForm(), { email_consent: true }, existing)).toEqual({ status: "subscribed", mode: "consent" });
+  });
+
+  it("sin marcar y contacto NUEVO: Sin suscribir", () => {
+    expect(marketingConsentAction(consentForm(), { email_consent: false }, created)).toEqual({ status: "not_subscribed", mode: "system" });
+    expect(marketingConsentAction(consentForm(), {}, created)).toEqual({ status: "not_subscribed", mode: "system" });
+  });
+
+  it("sin marcar y contacto que YA existía: no se toca", () => {
+    expect(marketingConsentAction(consentForm(), { email_consent: false }, existing)).toBeNull();
+  });
+
+  it("sin la casilla mapeada, sin contacto o con el vínculo apagado: nada", () => {
+    const unmapped = { ...consentForm(), contactConfig: { mode: "create_or_link" as const, update: "fill_empty" as const, map: [] } };
+    expect(marketingConsentAction(unmapped, { email_consent: false }, created)).toBeNull();
+    expect(marketingConsentAction(consentForm(), { email_consent: false }, { contactId: null, contactCreated: false })).toBeNull();
+    const off = { ...consentForm(), contactConfig: { ...consentForm().contactConfig, mode: "none" as const } };
+    expect(marketingConsentAction(off, { email_consent: false }, created)).toBeNull();
+  });
+
+  it("el envío la aplica DESPUÉS de guardar, y si falla el envío sigue siendo un éxito", async () => {
+    const applied: unknown[] = [];
+    const { ports } = makePorts(consentForm(), {
+      save: vi.fn(async () => ({ ok: true as const, duplicate: false, submissionId: "sub-1", status: "received", contactId: "c-1", contactCreated: true, matchedBy: null, conflictContactId: null })),
+      applyEmailConsent: vi.fn(async (input) => {
+        applied.push(input.action);
+        throw new Error("la base no contestó");
+      }),
+    });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const out = await submitForm(ports, baseInput({ answers: { email: "a@x.com", email_consent: false } }));
+    expect(out.status).toBe(200);
+    expect(applied).toEqual([{ status: "not_subscribed", mode: "system" }]);
+  });
+
+  it("un envío repetido (idempotencia) no la vuelve a aplicar", async () => {
+    const apply = vi.fn(async () => undefined);
+    const { ports } = makePorts(consentForm(), {
+      save: vi.fn(async () => ({ ok: true as const, duplicate: true, submissionId: "sub-1", status: "received", contactId: "c-1", contactCreated: true, matchedBy: null, conflictContactId: null })),
+      applyEmailConsent: apply,
+    });
+    await submitForm(ports, baseInput({ answers: { email: "a@x.com", email_consent: false } }));
+    expect(apply).not.toHaveBeenCalled();
   });
 });

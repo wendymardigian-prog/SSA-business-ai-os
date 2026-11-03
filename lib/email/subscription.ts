@@ -1,8 +1,9 @@
 /**
  * Suscripcion a emails: la UNICA puerta del estado de email de un contacto.
  *
- * Cuatro estados (`contacts.email_status`, 00270): `subscribed`, `unsubscribed`,
- * `bounced` y `complained`. Valen para las dos direcciones del contacto (email y
+ * Cinco estados (`contacts.email_status`, 00270 y 00278): `subscribed`,
+ * `not_subscribed` (nunca acepto marketing: dejo un formulario sin marcar la casilla),
+ * `unsubscribed`, `bounced` y `complained`. Valen para las dos direcciones del contacto (email y
  * secundario). `is_subscribed` es otra cosa: las difusiones por chat, y no se toca.
  *
  * Dos reglas que no se pueden romper:
@@ -28,11 +29,15 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const EMAIL_STATUSES = ["subscribed", "unsubscribed", "bounced", "complained"] as const;
+export const EMAIL_STATUSES = ["subscribed", "not_subscribed", "unsubscribed", "bounced", "complained"] as const;
 export type EmailStatus = (typeof EMAIL_STATUSES)[number];
 
-/** Quien pide el cambio: un proceso automatico, la propia persona o alguien del equipo. */
-export type EmailStatusMode = "system" | "person" | "admin";
+/**
+ * Quien pide el cambio: un proceso automatico, la propia persona, alguien del equipo, o
+ * `consent`: la casilla de marketing MARCADA en un formulario (00278), que solo saca de
+ * `not_subscribed` y nunca levanta una baja (cualquiera puede llenar un formulario con un email ajeno).
+ */
+export type EmailStatusMode = "system" | "person" | "admin" | "consent";
 
 /** Marketing respeta la baja; transaccional (agenda, contratos, respuestas) solo frena un rebote. */
 export type EmailCategory = "marketing" | "transactional";
@@ -41,14 +46,16 @@ export function isEmailStatus(value: unknown): value is EmailStatus {
   return typeof value === "string" && (EMAIL_STATUSES as readonly string[]).includes(value);
 }
 
-/** Gravedad: complained > bounced > unsubscribed > subscribed. Desconocido = 0. */
+/** Gravedad: complained > bounced > unsubscribed > not_subscribed > subscribed. Desconocido = 0. */
 export function emailStatusRank(status: string | null | undefined): number {
   switch (status) {
     case "complained":
-      return 4;
+      return 5;
     case "bounced":
-      return 3;
+      return 4;
     case "unsubscribed":
+      return 3;
+    case "not_subscribed":
       return 2;
     case "subscribed":
       return 1;
@@ -77,12 +84,15 @@ export type EmailStatusDecision = "apply" | "noop" | "kept" | "reason_required" 
  * casos de `subscription-transitions.cases.json`.
  */
 export function decideEmailStatus(from: string, to: string, mode: string, reason?: string | null): EmailStatusDecision {
-  if (mode !== "system" && mode !== "person" && mode !== "admin") return "invalid";
+  if (mode !== "system" && mode !== "person" && mode !== "admin" && mode !== "consent") return "invalid";
   if (emailStatusRank(to) === 0 || emailStatusRank(from) === 0) return "invalid";
   if (from === to) return "noop";
 
   if (mode === "system") {
     return to !== "subscribed" && emailStatusRank(to) > emailStatusRank(from) ? "apply" : "kept";
+  }
+  if (mode === "consent") {
+    return from === "not_subscribed" && to === "subscribed" ? "apply" : "kept";
   }
   if (mode === "person") {
     if (from === "bounced" || from === "complained") return "kept";
@@ -100,6 +110,7 @@ export function decideEmailStatus(from: string, to: string, mode: string, reason
 
 export const EMAIL_STATUS_LABELS: Record<EmailStatus, string> = {
   subscribed: "Suscripto",
+  not_subscribed: "Sin suscribir",
   unsubscribed: "Dado de baja",
   bounced: "Rebota",
   complained: "Marcó spam",
@@ -122,6 +133,7 @@ export function emailStatusSourceLabel(source: string | null | undefined): strin
     resend_complaint: "una queja de spam",
     inherit: "la misma dirección, dada de baja en otro contacto",
     merge: "una fusión de contactos",
+    form_consent: "la casilla de emails de un formulario",
   };
   return labels[source] ?? source;
 }
@@ -135,7 +147,7 @@ export function emailStatusActorLabel(source: string | null | undefined): string
 }
 
 /** Los motivos de pausa de una inscripcion por la suscripcion a emails. */
-export const EMAIL_PAUSE_REASONS = ["email_unsubscribed", "email_bounced", "email_complained"] as const;
+export const EMAIL_PAUSE_REASONS = ["email_not_subscribed", "email_unsubscribed", "email_bounced", "email_complained"] as const;
 export type EmailPauseReason = (typeof EMAIL_PAUSE_REASONS)[number];
 
 export function isEmailPauseReason(reason: string | null | undefined): reason is EmailPauseReason {
@@ -143,6 +155,7 @@ export function isEmailPauseReason(reason: string | null | undefined): reason is
 }
 
 export const EMAIL_PAUSE_LABELS: Record<EmailPauseReason, string> = {
+  email_not_subscribed: "No aceptó emails de marketing",
   email_unsubscribed: "Se dio de baja de los emails",
   email_bounced: "El email rebota",
   email_complained: "Marcó el email como spam",
@@ -193,6 +206,16 @@ const IMPORT_STATUS_VALUES: Record<string, EmailStatus> = {
   complained: "complained",
   complaint: "complained",
   spam: "complained",
+  // Nunca acepto marketing (00278). "no" sigue siendo una baja: en otro sistema suele serlo.
+  not_subscribed: "not_subscribed",
+  "not subscribed": "not_subscribed",
+  "never subscribed": "not_subscribed",
+  "no suscripto": "not_subscribed",
+  "no suscrito": "not_subscribed",
+  "no suscripta": "not_subscribed",
+  "no suscrita": "not_subscribed",
+  "sin suscribir": "not_subscribed",
+  "sin consentimiento": "not_subscribed",
 };
 
 /**
@@ -320,7 +343,7 @@ export async function setEmailStatusByAddress(
 // La puerta de envio
 // ------------------------------------------------------------
 
-export type EmailSkipReason = "unsubscribed" | "bounced" | "complained" | "do_not_contact" | "unverifiable";
+export type EmailSkipReason = "not_subscribed" | "unsubscribed" | "bounced" | "complained" | "do_not_contact" | "unverifiable";
 
 export type EmailGate =
   | { ok: true; status: EmailStatus; matched: boolean; token: string | null }
@@ -328,6 +351,7 @@ export type EmailGate =
 
 /** El estado que queda en `email_log` cuando se saltea un envio (00272). */
 export const EMAIL_SKIP_LOG_STATUS: Record<EmailSkipReason, string> = {
+  not_subscribed: "skipped_not_subscribed",
   unsubscribed: "skipped_unsubscribed",
   bounced: "skipped_bounced",
   complained: "skipped_complained",
@@ -336,6 +360,7 @@ export const EMAIL_SKIP_LOG_STATUS: Record<EmailSkipReason, string> = {
 };
 
 export const EMAIL_SKIP_MESSAGES: Record<EmailSkipReason, string> = {
+  not_subscribed: "No se mandó: la persona no aceptó emails de marketing.",
   unsubscribed: "No se mandó: la persona se dio de baja de los emails.",
   bounced: "No se mandó: el email de esta persona rebota.",
   complained: "No se mandó: la persona marcó un email como spam.",
@@ -381,6 +406,7 @@ export function decideSend(input: {
 }): EmailSkipReason | null {
   if (input.status === "bounced") return "bounced";
   if (input.honorDoNotContact && input.doNotContact) return "do_not_contact";
+  if (input.category === "marketing" && input.status === "not_subscribed") return "not_subscribed";
   if (input.category === "marketing" && input.status === "unsubscribed") return "unsubscribed";
   if (input.category === "marketing" && input.status === "complained") return "complained";
   return null;

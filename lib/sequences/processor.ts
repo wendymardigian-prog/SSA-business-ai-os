@@ -298,7 +298,7 @@ async function emailStepGate(supabase: Db, enrollment: Enrollment, workspaceId: 
   const gate = await canSendEmailTo(supabase, { workspaceId, address, category, contactId: enrollment.contact_id });
   if (gate.ok) return { action: "send" };
   if (gate.reason === "unverifiable") return { action: "retry" };
-  if (category === "marketing" && (gate.reason === "unsubscribed" || gate.reason === "bounced" || gate.reason === "complained")) {
+  if (category === "marketing" && (gate.reason === "not_subscribed" || gate.reason === "unsubscribed" || gate.reason === "bounced" || gate.reason === "complained")) {
     return { action: "pause", reason: `email_${gate.reason}` };
   }
   // Un paso transaccional a una direccion que rebota: se saltea con el motivo (la secuencia sigue).
@@ -394,7 +394,7 @@ async function deliverStep(
   if (outcome.ok) return "sent";
 
   // La puerta de suscripcion lo freno en el envio (una baja que llego entre el chequeo y el envio).
-  if (emailCategory === "marketing" && (outcome.skipped === "unsubscribed" || outcome.skipped === "bounced" || outcome.skipped === "complained")) {
+  if (emailCategory === "marketing" && (outcome.skipped === "not_subscribed" || outcome.skipped === "unsubscribed" || outcome.skipped === "bounced" || outcome.skipped === "complained")) {
     return `email_${outcome.skipped}`;
   }
 

@@ -15,6 +15,7 @@
 
 import {
   emailStatusRank,
+  isEmailStatus,
   mapUnsubscribeSource,
   normalizeEmailAddress,
   parseImportSubscription,
@@ -184,7 +185,7 @@ export function parseConsolidated(raw: unknown): Record<string, RowSubscription>
     const key = normalizeEmailAddress(email);
     const v = value as Partial<RowSubscription> | null;
     if (!key || !v || typeof v !== "object") continue;
-    if (v.status !== "subscribed" && v.status !== "unsubscribed" && v.status !== "bounced" && v.status !== "complained") continue;
+    if (!isEmailStatus(v.status)) continue;
     const iso = (x: unknown) => (typeof x === "string" && !Number.isNaN(Date.parse(x)) ? new Date(x).toISOString() : null);
     out[key] = {
       status: v.status,
@@ -211,6 +212,8 @@ export function importOriginSlug(raw: string | null | undefined): string {
 /** Los totales de suscripcion de una importacion (por persona, no por fila). */
 export interface SubscriptionTotals {
   subscribed: number;
+  /** Nunca aceptaron marketing (00278). */
+  not_subscribed: number;
   unsubscribed: number;
   bounced: number;
   complained: number;
@@ -234,7 +237,7 @@ export function subscriptionTotals(outcomes: SubscriptionOutcome[]): Subscriptio
     const status = prev && emailStatusRank(prev.status) > emailStatusRank(o.status) ? prev.status : o.status;
     byKey.set(o.key, { status, kept: (prev?.kept ?? false) || o.keptExisting });
   }
-  const totals: SubscriptionTotals = { subscribed: 0, unsubscribed: 0, bounced: 0, complained: 0, notResubscribed: 0 };
+  const totals: SubscriptionTotals = { subscribed: 0, not_subscribed: 0, unsubscribed: 0, bounced: 0, complained: 0, notResubscribed: 0 };
   for (const { status, kept } of byKey.values()) {
     totals[status]++;
     if (kept) totals.notResubscribed++;

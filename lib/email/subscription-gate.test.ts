@@ -43,10 +43,12 @@ function world(status: EmailStatus, opts: { doNotContact?: boolean; token?: stri
 
 afterEach(() => vi.restoreAllMocks());
 
-const STATUSES: EmailStatus[] = ["subscribed", "unsubscribed", "bounced", "complained"];
+const STATUSES: EmailStatus[] = ["subscribed", "not_subscribed", "unsubscribed", "bounced", "complained"];
 /** Lo que tiene que pasar: llega a Resend o no. */
 const EXPECT: Record<EmailStatus, { marketing: boolean; transactional: boolean }> = {
   subscribed: { marketing: true, transactional: true },
+  // 00278: la casilla de un formulario sin marcar. Lo transaccional (la clase, la agenda) llega igual.
+  not_subscribed: { marketing: false, transactional: true },
   unsubscribed: { marketing: false, transactional: true },
   bounced: { marketing: false, transactional: false },
   complained: { marketing: false, transactional: true },

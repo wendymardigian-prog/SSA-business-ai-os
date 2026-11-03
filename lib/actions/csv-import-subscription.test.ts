@@ -132,7 +132,7 @@ const EXPECTED = {
   linkedBy: { phone: 1, email: 5, social: 0 },
   errors: 1,
   consolidated: 3,
-  subscription: { subscribed: 3, unsubscribed: 6, bounced: 1, complained: 1, notResubscribed: 1 },
+  subscription: { subscribed: 3, not_subscribed: 0, unsubscribed: 6, bounced: 1, complained: 1, notResubscribed: 1 },
 };
 
 describe("el archivo de prueba con el formato real", () => {

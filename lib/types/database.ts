@@ -780,7 +780,9 @@ export type EmailLogStatus =
   | "skipped_bounced"
   | "skipped_complained"
   | "skipped_do_not_contact"
-  | "skipped_unverifiable";
+  | "skipped_unverifiable"
+  // 00278: marketing a quien nunca acepto (la casilla de un formulario sin marcar).
+  | "skipped_not_subscribed";
 export type BroadcastStatus =
   | "draft"
   | "scheduled"
@@ -1551,7 +1553,7 @@ export interface Database {
            * Suscripcion a emails (00270). Solo lectura: se cambia con set_email_status
            * (00271) via lib/email/subscription.ts. Por eso no esta en Insert ni Update.
            */
-          email_status: "subscribed" | "unsubscribed" | "bounced" | "complained";
+          email_status: "subscribed" | "not_subscribed" | "unsubscribed" | "bounced" | "complained";
           email_status_at: string | null;
           email_status_source: string | null;
           email_subscribed_at: string | null;

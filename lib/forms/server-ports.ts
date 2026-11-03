@@ -18,6 +18,7 @@ import { notifyRecipients, contactOutcome, notificationContent } from "./notify"
 import { parseStoredContractConfig } from "./contract/config";
 import { CONTRACTS_BUCKET } from "./contract/storage";
 import { recordFormTouch } from "@/lib/contacts/touch-entry";
+import { setEmailStatus } from "@/lib/email/subscription";
 import { createNotification } from "@/lib/notifications/create";
 import { SLUG_PATTERN } from "./list";
 import { isPublicFormType, type FormField } from "./fields";
@@ -196,6 +197,16 @@ export function createSubmitPorts(service: Db): SubmitPorts {
         formId: form.id,
         formName: form.name,
         attribution,
+      });
+    },
+
+    async applyEmailConsent({ form, submissionId, contactId, action }) {
+      // La puerta única del estado de email (00271/00278): aplica a todos los contactos con esa dirección.
+      await setEmailStatus(service, contactId, {
+        status: action.status,
+        mode: action.mode,
+        source: "form_consent",
+        extra: { form_id: form.id, submission_id: submissionId },
       });
     },
 

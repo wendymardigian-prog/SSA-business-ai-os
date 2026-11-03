@@ -331,3 +331,33 @@ describe("lo que dicen el campo y la pestaña Contacto (R4)", () => {
     expect(pruneContactConfig(cfg, [email, ig], customs)).toBe(cfg);
   });
 });
+
+describe("la casilla de emails de marketing como destino (00278)", () => {
+  it("solo la acepta una pregunta de consentimiento, y se ofrece en el grupo Contacto", async () => {
+    const { targetAccepts, targetsFor, validateContactConfig, MARKETING_CONSENT_TARGET, targetLabel } = await import("./contact-config");
+    const { newField } = await import("./fields");
+    const consent = newField("consent", "email_consent", "Acepto");
+    const text = newField("short_text", "nombre", "Nombre");
+    expect(targetAccepts(consent, MARKETING_CONSENT_TARGET)).toBe(true);
+    expect(targetAccepts(text, MARKETING_CONSENT_TARGET)).toBe(false);
+    expect(targetsFor(consent, []).map((t) => t.value)).toContain(MARKETING_CONSENT_TARGET);
+    expect(targetsFor(text, []).map((t) => t.value)).not.toContain(MARKETING_CONSENT_TARGET);
+    expect(targetLabel(MARKETING_CONSENT_TARGET, [])).toBe("Suscripción a emails de marketing");
+    const ok = validateContactConfig({ mode: "create_or_link", update: "fill_empty", map: [{ fieldKey: "email_consent", target: MARKETING_CONSENT_TARGET }] }, [consent], []);
+    expect(ok.ok).toBe(true);
+    const bad = validateContactConfig({ mode: "create_or_link", update: "fill_empty", map: [{ fieldKey: "nombre", target: MARKETING_CONSENT_TARGET }] }, [text], []);
+    expect(bad.ok).toBe(false);
+  });
+
+  it("no viaja a la base como dato del contacto (el mapeo la ignora)", async () => {
+    const { applyContactMapping } = await import("./contact-mapping");
+    const { newField } = await import("./fields");
+    const hint = applyContactMapping(
+      [newField("consent", "email_consent", "Acepto")],
+      { mode: "create_or_link", update: "fill_empty", map: [{ fieldKey: "email_consent", target: "contact.email_marketing_consent" }] },
+      { email_consent: true },
+      [],
+    );
+    expect(hint).toEqual({ custom: {} });
+  });
+});

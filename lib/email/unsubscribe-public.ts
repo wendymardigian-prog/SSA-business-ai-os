@@ -54,7 +54,7 @@ export function publicView(target: UnsubscribeTarget): UnsubscribeView {
     maskedAddress: maskEmailAddress(target.address),
     status: target.status,
     brandName: target.brandName,
-    canResubscribe: target.status === "subscribed" || target.status === "unsubscribed",
+    canResubscribe: target.status === "subscribed" || target.status === "not_subscribed" || target.status === "unsubscribed",
   };
 }
 

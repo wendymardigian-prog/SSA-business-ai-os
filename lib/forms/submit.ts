@@ -51,7 +51,7 @@ import { answerToText } from "./responses";
 import { normalizeSitePath } from "./site-submit";
 import { applyContactMappingDetailed } from "./contact-mapping";
 import type { ContactNote } from "./contact-outcome";
-import type { ContactConfig, CustomFieldDef } from "./contact-config";
+import { MARKETING_CONSENT_TARGET, type ContactConfig, type CustomFieldDef } from "./contact-config";
 import type { ContractConfig } from "./defaults";
 import { validateSignature } from "./contract/signature";
 import { buildLegal } from "./contract/legal";
@@ -154,6 +154,16 @@ export interface SubmitPorts {
     submissionId: string;
     contactId: string;
     attribution: Record<string, unknown>;
+  }): Promise<void>;
+  /**
+   * La casilla de emails de marketing (00278): cambia la suscripción del contacto con la regla de
+   * `marketingConsentAction`. Opcional para los puertos de prueba que no la necesitan.
+   */
+  applyEmailConsent?(input: {
+    form: LoadedForm;
+    submissionId: string;
+    contactId: string;
+    action: MarketingConsentAction;
   }): Promise<void>;
   /** Avisa de la respuesta nueva a quien corresponda. */
   notify(input: {
@@ -513,7 +523,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   }
 
   // 11. Lo que va DESPUÉS del commit: el toque y el aviso. Una falla acá se registra y nada más.
-  if (!saved.duplicate) await afterSave(ports, form, saved, attribution);
+  if (!saved.duplicate) await afterSave(ports, form, saved, attribution, values);
 
   // 12. Responder.
   logResult(form.id, saved.duplicate ? "duplicate" : "saved", saved.submissionId);
@@ -570,6 +580,7 @@ async function afterSave(
   form: LoadedForm,
   saved: Extract<SaveResult, { ok: true }>,
   attribution: Record<string, unknown>,
+  values: Record<string, unknown>,
 ): Promise<void> {
   if (saved.contactId) {
     try {
@@ -577,6 +588,16 @@ async function afterSave(
     } catch {
       // Sin detalles: el error podría traer datos de la persona.
       console.error(`[forms] no pude anotar el toque (form=${form.id}, submission=${saved.submissionId})`);
+    }
+    // La casilla de marketing: también en una respuesta marcada como spam (un contacto creado sin la
+    // casilla no tiene que quedar "Suscripto").
+    const action = marketingConsentAction(form, values, saved);
+    if (action && ports.applyEmailConsent) {
+      try {
+        await ports.applyEmailConsent({ form, submissionId: saved.submissionId, contactId: saved.contactId, action });
+      } catch {
+        console.error(`[forms] no pude aplicar la casilla de emails (form=${form.id}, submission=${saved.submissionId})`);
+      }
     }
   }
   // Una respuesta marcada como spam no avisa a nadie.
@@ -640,4 +661,32 @@ export function metaEventIdOf(attribution: unknown): string | null {
 export function bodyLimitBytes(form: Pick<LoadedForm, "type" | "fields">): number {
   const big = form.type === "contract" || form.fields.some((f) => f.type === "file");
   return big ? FORM_LIMITS.maxBodyMb * 1024 * 1024 : FORM_LIMITS.maxBodyKbNoFiles * 1024;
+}
+
+/** Lo que hace la casilla de emails de marketing con la suscripción del contacto (00278). */
+export type MarketingConsentAction =
+  | { status: "subscribed"; mode: "consent" }
+  | { status: "not_subscribed"; mode: "system" };
+
+/**
+ * La regla de la casilla "Suscripción a emails de marketing" de un formulario:
+ *   - marcada → `subscribed` en modo `consent`: solo saca de "Sin suscribir" (la base nunca
+ *     levanta una baja, un rebote ni una queja con este modo);
+ *   - sin marcar (o sin responder) y la respuesta CREÓ el contacto → `not_subscribed`;
+ *   - sin marcar y el contacto ya existía → nada: un "no" en un formulario no le saca la
+ *     suscripción a quien ya la tenía.
+ * Sin la casilla mapeada, sin contacto o con el vínculo apagado, nada.
+ */
+export function marketingConsentAction(
+  form: Pick<LoadedForm, "fields" | "contactConfig">,
+  values: Record<string, unknown>,
+  saved: Pick<SavedContact, "contactId" | "contactCreated">,
+): MarketingConsentAction | null {
+  if (!saved.contactId || form.contactConfig.mode === "none") return null;
+  const entry = form.contactConfig.map.find((m) => m.target === MARKETING_CONSENT_TARGET);
+  if (!entry) return null;
+  const field = form.fields.find((f) => f.key === entry.fieldKey);
+  if (!field || field.type !== "consent") return null;
+  if (values[entry.fieldKey] === true) return { status: "subscribed", mode: "consent" };
+  return saved.contactCreated ? { status: "not_subscribed", mode: "system" } : null;
 }

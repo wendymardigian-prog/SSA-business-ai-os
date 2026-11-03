@@ -701,6 +701,9 @@ async function emailOptOutWarning(
   const to = bareAddress((await lastInboundEmail(supabase, conversationId))?.from);
   if (!to) return null;
   const status = await addressEmailStatus(service, workspaceId, to);
+  if (status === "not_subscribed") {
+    return "Esta persona no aceptó emails de marketing. Una respuesta tuya igual le llega.";
+  }
   if (status === "unsubscribed") {
     return "Esta persona se dio de baja de los emails de marketing. Una respuesta tuya igual le llega.";
   }

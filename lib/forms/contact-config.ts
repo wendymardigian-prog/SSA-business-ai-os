@@ -52,6 +52,21 @@ export const FIXED_TARGET_LABELS: Record<FixedTarget, string> = {
   "contact.youtube_channel_id": SOCIAL_LABELS.youtube,
 };
 
+/**
+ * La casilla de emails de marketing (00278). No es una columna que se completa: decide la suscripción.
+ * Si la respuesta CREÓ el contacto y la casilla vino sin marcar, el contacto queda "Sin suscribir"; si
+ * vino marcada, saca de "Sin suscribir" (nunca levanta una baja). Lo aplica `lib/forms/submit.ts`
+ * después de guardar (`marketingConsentAction`). Es solo de formularios: por eso no está en
+ * `FIXED_TARGETS` (que también usan los webhooks).
+ */
+export const MARKETING_CONSENT_TARGET = "contact.email_marketing_consent";
+export const MARKETING_CONSENT_LABEL = "Suscripción a emails de marketing";
+
+/** ¿Es un destino fijo que conocen los formularios (una columna del contacto o la casilla de marketing)? */
+export function isKnownFixedTarget(target: string): boolean {
+  return target === MARKETING_CONSENT_TARGET || (FIXED_TARGETS as readonly string[]).includes(target);
+}
+
 /** El destino del contacto de cada red social (`contact.<columna>`). */
 export const SOCIAL_TARGET: Record<SocialPlatform, FixedTarget> = {
   instagram: "contact.instagram_username",
@@ -156,6 +171,8 @@ export function targetAccepts(
     }
   }
 
+  if (target === MARKETING_CONSENT_TARGET) return type === "consent";
+
   switch (target as FixedTarget) {
     case "contact.display_name":
     case "contact.first_name_part":
@@ -219,7 +236,7 @@ export function validateContactConfig(input: unknown, fields: FormField[], custo
       if (def && !targetAccepts(field, entry.target, def.type)) {
         errors.push(`"${field.label}" (${FORM_TYPE_NAME[field.type]}) no se puede guardar en "${def.name}" (${def.type})`);
       }
-    } else if (!(FIXED_TARGETS as readonly string[]).includes(entry.target)) {
+    } else if (!isKnownFixedTarget(entry.target)) {
       errors.push(`Destino desconocido: ${entry.target}`);
     } else if (!targetAccepts(field, entry.target)) {
       errors.push(`"${field.label}" (${FORM_TYPE_NAME[field.type]}) no se puede guardar en "${targetLabel(entry.target, customFields)}"`);
@@ -250,12 +267,14 @@ export function targetLabel(target: string, customFields: CustomFieldDef[]): str
     const def = customFields.find((c) => c.slug === customSlugOf(target));
     return def ? `Campo personalizado: ${def.name}` : "Campo personalizado (ya no existe)";
   }
+  if (target === MARKETING_CONSENT_TARGET) return MARKETING_CONSENT_LABEL;
   return FIXED_TARGET_LABELS[target as FixedTarget] ?? target;
 }
 
 /** Destinos que se ofrecen para un campo, ya filtrados por compatibilidad. */
 export function targetsFor(field: FormField, customFields: CustomFieldDef[]): Array<{ value: string; label: string; group: "Contacto" | "Campos personalizados" }> {
-  const fixed = FIXED_TARGETS.filter((t) => targetAccepts(field, t)).map((t) => ({ value: t, label: FIXED_TARGET_LABELS[t], group: "Contacto" as const }));
+  const fixed = FIXED_TARGETS.filter((t) => targetAccepts(field, t)).map((t) => ({ value: t as string, label: FIXED_TARGET_LABELS[t], group: "Contacto" as const }));
+  if (targetAccepts(field, MARKETING_CONSENT_TARGET)) fixed.push({ value: MARKETING_CONSENT_TARGET, label: MARKETING_CONSENT_LABEL, group: "Contacto" as const });
   const custom = customFields
     .filter((c) => targetAccepts(field, `${CUSTOM_PREFIX}${c.slug}`, c.type))
     .map((c) => ({ value: `${CUSTOM_PREFIX}${c.slug}`, label: c.name, group: "Campos personalizados" as const }));
@@ -395,7 +414,7 @@ export function pruneContactConfig(config: ContactConfig, fields: FormField[], c
       const def = customFields.find((c) => c.slug === customSlugOf(entry.target));
       // Un campo personalizado borrado se conserva (la pantalla lo marca; el envío lo ignora).
       if (def && !targetAccepts(field, entry.target, def.type)) continue;
-    } else if (!(FIXED_TARGETS as readonly string[]).includes(entry.target) || !targetAccepts(field, entry.target)) {
+    } else if (!isKnownFixedTarget(entry.target) || !targetAccepts(field, entry.target)) {
       continue;
     }
     seenFields.add(entry.fieldKey);
