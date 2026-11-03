@@ -1,5 +1,5 @@
 /**
- * La suscripcion a emails contra la base real (00270-00272). Lo lanza
+ * La suscripcion a emails contra la base real (00270-00272 y 00278). Lo lanza
  * `scripts/verify-email-subscription.mjs`.
  *
  * Que prueba:
@@ -17,6 +17,8 @@
  *     se deshace sola): queda anotada y la puerta de envio igual frena.
  *  8. La baja pausa en el momento las secuencias de email con marketing, y no las reanuda.
  *  9. Ninguna funcion de la base salvo las centrales escribe esas columnas.
+ * 10. Sin suscribir (00278): la casilla sin marcar, la puerta de envio (marketing no,
+ *     transaccional si), el modo consent que nunca levanta una baja y la herencia.
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -279,6 +281,33 @@ END $do$;`);
     check((await state(eMarketing)).status === "paused", "volver a suscribirse NO la reanuda sola");
     await setStatus(c, { p_status: "bounced", p_source: "resend_bounce", p_mode: "system" });
     check((await state(eMarketing)).paused_reason === "email_unsubscribed", "una pausa ya hecha no se pisa");
+  }
+
+  console.log("\n— 10. Sin suscribir y la casilla de marketing (00278) —");
+  {
+    const c = await contact(ws, { display_name: "zz-test sin suscribir", email: `zz-nosub-${stamp}@example.com` });
+    let r = await setStatus(c, { p_status: "not_subscribed", p_source: "form_consent", p_mode: "system" });
+    check(!r.error && (await statusOf(c)) === "not_subscribed", "el sistema pone Sin suscribir sobre un suscripto (contacto nuevo sin la casilla)", r.error?.message);
+
+    const marketing = await canSendEmailTo(svc, { workspaceId: ws, address: `zz-nosub-${stamp}@example.com`, category: "marketing", contactId: c });
+    const transactional = await canSendEmailTo(svc, { workspaceId: ws, address: `zz-nosub-${stamp}@example.com`, category: "transactional", contactId: c });
+    check(!marketing.ok && marketing.reason === "not_subscribed", "un marketing NO sale a quien está Sin suscribir");
+    check(transactional.ok, "un transaccional (la clase, la agenda) SÍ sale");
+
+    r = await setStatus(c, { p_status: "subscribed", p_source: "form_consent", p_mode: "consent" });
+    check(!r.error && (await statusOf(c)) === "subscribed", "la casilla marcada (modo consent) lo suscribe", r.error?.message);
+
+    await setStatus(c, { p_status: "unsubscribed", p_source: "unsubscribe_page", p_mode: "person" });
+    r = await setStatus(c, { p_status: "subscribed", p_source: "form_consent", p_mode: "consent" });
+    check(!r.error && (r.data as { kept_existing: boolean }).kept_existing === true && (await statusOf(c)) === "unsubscribed", "la casilla marcada NUNCA levanta una baja (kept_existing)");
+
+    r = await setStatus(c, { p_status: "not_subscribed", p_source: "form_consent", p_mode: "system" });
+    check((await statusOf(c)) === "unsubscribed", "Sin suscribir no pisa una baja (es menos grave)");
+
+    const nuevo = await contact(ws, { display_name: "zz-test hereda sin suscribir", email: `zz-nosub2-${stamp}@example.com` });
+    await setStatus(nuevo, { p_status: "not_subscribed", p_source: "form_consent", p_mode: "system" });
+    const otro = await contact(ws, { display_name: "zz-test misma direccion", email: `ZZ-NOSUB2-${stamp}@example.com` });
+    check((await statusOf(otro)) === "not_subscribed", "otro contacto con la misma dirección hereda Sin suscribir");
   }
 
   console.log("\n— 9. Ninguna otra funcion escribe esas columnas —");
