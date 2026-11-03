@@ -15,7 +15,7 @@ Rama `feat/resend-conexion`, desde `origin/main` en `a1a8503` (2/11/2026). Pendi
 
 - [x] Caracterización (`route.received.test.ts`, 8 casos, en verde contra el código de antes): el receptor (`email.received` con dirección exacta, firma inválida, duplicado, dirección desconocida), el "desde" de la respuesta y la elección del secreto. En verde antes de tocar nada.
 - [x] **R2 · Webhook automático**: URL en `lib/webhook-url.ts`, `lib/email/resend-webhook.ts` (crear, adoptar, nunca tocar uno ajeno), las acciones y la conexión sola al guardar una key de acceso completo.
-- [ ] **R3 · El secreto deja de depender de la recepción**: `?w=` en el receptor, rebotes y quejas sin recepción activa, `last_event_at`.
+- [x] **R3 · El secreto deja de depender de la recepción**: `?w=` en el receptor, rebotes y quejas sin recepción activa, `last_event_at`.
 - [ ] **R4 · Recepción por dominio**: canal por dominio, la respuesta sale desde la dirección a la que escribieron, el estado del dominio y "Responder a" sugerido.
 - [ ] **R1 · Una sola tarjeta**: `resend_inbound` oculta y redirigida; Conexión, Remitentes, Webhook y Recepción en la tarjeta Resend.
 - [ ] **R5 · Checklist y "Probar"**: estado con ✓/✗ y una prueba de solo lectura.
@@ -42,6 +42,7 @@ Rama `feat/resend-conexion`, desde `origin/main` en `a1a8503` (2/11/2026). Pendi
 ## Hecho por requisito
 
 - **R2**: `lib/webhook-url.ts` (`"resend"`, `resendWebhookUrl`); `lib/email/resend-api.ts` (llamada clasificada y `probeResendKey`); `lib/email/resend-webhook.ts` (dueño del webhook, crear, adoptar, actualizar, inspeccionar; sin borrar); `lib/email/resend-config.ts` (claves planas); `lib/email/resend-connection.ts` (núcleo: Vault y config); `lib/actions/resend-connection.ts` (conectar, pegar y quitar el secreto); `testConnection` prueba Resend; `saveIntegration` conecta sola con acceso completo. Tests: `resend-webhook.test.ts` (18, incluido «nunca toca uno ajeno»), `resend-connection.test.ts` (12), `integrations-resend.test.ts` (6), `resend-connection.test.ts` de acciones (4) y `test-connection.test.ts` (+5).
+- **R3**: el receptor (`app/api/webhooks/resend-inbound/route.ts`) lee `?w=`. Con el parámetro verifica SOLO con el secreto de ese negocio, tanto rebotes y quejas como emails; sin él, todo como antes. Un `w` que no es un UUID da 401. `touchLastEvent` anota `last_event_at` (solo esa columna, a lo sumo una vez por minuto, en `after()`). En el mismo cambio, el receptor ya ubica el canal por dominio (R4, `lib/email/inbound-address.ts`): comparten el código. Tests: `route.domain.test.ts` (14: rebote y queja sin canal, dos negocios, `?w=` con firma ajena → 401, el último aviso, dominio, copia oculta, mismo dominio en dos negocios con y sin `?w=`) e `inbound-address.test.ts` (11). La caracterización y los rebotes de antes siguen en verde sin cambios.
 
 ## Migraciones
 
