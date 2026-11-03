@@ -43,6 +43,17 @@ export function isGroupJid(jid: string | null | undefined): boolean {
   return !!jid && jid.endsWith(GROUP_SUFFIX);
 }
 
+/**
+ * El JID de un grupo, limpio: "120363001122334455@g.us" (o el viejo
+ * "5491122334455-1600000000@g.us"). null si no es un grupo.
+ */
+export function normalizeGroupJid(jid: string | null | undefined): string | null {
+  const trimmed = jid?.trim();
+  if (!trimmed || !isGroupJid(trimmed)) return null;
+  const user = trimmed.split("@")[0];
+  return /^\d{6,}(-\d+)?$/.test(user) ? `${user}${GROUP_SUFFIX}` : null;
+}
+
 /** True para los JID anonimizados, que no traen telefono utilizable. */
 export function isLidJid(jid: string | null | undefined): boolean {
   return !!jid && jid.endsWith(LID_SUFFIX);

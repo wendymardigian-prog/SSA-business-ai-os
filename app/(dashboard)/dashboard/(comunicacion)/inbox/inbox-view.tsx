@@ -50,6 +50,7 @@ export function InboxView({
   isAdmin,
   draftCounts,
   draftConversationIds = [],
+  hasGroups = false,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -95,6 +96,8 @@ export function InboxView({
   draftCounts?: PendingDraftCounts;
   /** Las conversaciones de la pagina con un borrador vivo: llevan un chip. */
   draftConversationIds?: string[];
+  /** Hay grupos de WhatsApp activados para ver (00280). */
+  hasGroups?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -254,6 +257,7 @@ export function InboxView({
           currentUserId={currentUserId}
           canEditContacts={canEditContacts}
           canDeleteContacts={canDeleteContacts}
+          hasGroups={hasGroups}
         />
       </div>
 

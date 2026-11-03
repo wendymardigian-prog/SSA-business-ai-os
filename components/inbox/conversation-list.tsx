@@ -34,6 +34,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { conversationListPreview } from "@/lib/inbox/last-message";
 import { listTimeLabel } from "@/lib/inbox/day-label";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import { InboxViewSwitch } from "@/components/inbox/inbox-view-switch";
 
 type Conversation = ConversationRow;
 
@@ -65,6 +66,7 @@ export function ConversationList({
   currentUserId = "",
   canEditContacts = false,
   canDeleteContacts = false,
+  hasGroups = false,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -88,6 +90,8 @@ export function ConversationList({
   currentUserId?: string;
   canEditContacts?: boolean;
   canDeleteContacts?: boolean;
+  /** Hay grupos de WhatsApp activados que esta persona ve: se muestra «Chats | Grupos» (00280). */
+  hasGroups?: boolean;
 }) {
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
@@ -227,6 +231,7 @@ export function ConversationList({
             {total === 1 ? "1 chat" : `${total} chats`}
           </span>
         </div>
+        {hasGroups && <InboxViewSwitch current="chats" />}
         <InboxStatusControls filters={filters} workspaceId={workspaceId} draftCounts={draftCounts} />
       </div>
 

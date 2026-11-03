@@ -49,7 +49,7 @@ export const CHANNEL_LABELS: Record<TouchChannel, string> = {
 export const PAID_MEDIUMS: readonly string[] = ["paid_social", "cpc", "ppc", "paid", "display", "paidsocial", "paid_search"];
 
 /** Los `medium` que dicen "esto vino de nuestro contenido" aunque no se sepa de que pieza. */
-export const ORGANIC_MEDIUMS: readonly string[] = ["comment", "story_reply", "story_mention", "organic_social", "social", "dm_link"];
+export const ORGANIC_MEDIUMS: readonly string[] = ["comment", "story_reply", "story_mention", "organic_social", "social", "dm_link", "whatsapp_group"];
 
 /** Redes en las que un DM sin mas dato es contenido organico (en WhatsApp o email no hay forma de saberlo). */
 export const ORGANIC_DM_SOURCES: readonly string[] = ["instagram", "tiktok", "facebook", "youtube", "linkedin", "threads", "twitter"];

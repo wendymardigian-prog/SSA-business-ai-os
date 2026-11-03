@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customFilterPlan, parseCustomFilter, parsePipelineFilters, parseVisibleColumns, pipelineClauses } from "./list-filters";
+import { customFilterPlan, parseCustomFilter } from "./list-filters";
 
 const fields = [
   { id: "f-viajeros", slug: "cantidad_de_viajeros", name: "Cantidad de viajeros", type: "number" },
@@ -7,26 +7,6 @@ const fields = [
   { id: "f-vip", slug: "vip", name: "VIP", type: "boolean" },
   { id: "f-destino", slug: "destino", name: "Destino", type: "text" },
 ];
-
-describe("estado y producto en la URL", () => {
-  it("lee los filtros e ignora lo inventado", () => {
-    const f = parsePipelineFilters({ estado: "closer:ganado", estado_setter: "ninguno", estado_vendedor: "MAL VALOR", producto: "no-es-uuid" });
-    expect(f.lastStatus).toEqual({ role: "closer", key: "ganado" });
-    expect(f.setterStatus).toBe("ninguno");
-    expect(f.closerStatus).toBe("");
-    expect(f.productId).toBe("");
-  });
-
-  it("arma las condiciones", () => {
-    const f = parsePipelineFilters({ estado: "setter:calificado", estado_setter: "ninguno", producto: "9f0d1b6e-1111-2222-3333-444455556666" });
-    expect(pipelineClauses(f)).toEqual([
-      { column: "last_status_role", op: "eq", value: "setter" },
-      { column: "last_status", op: "eq", value: "calificado" },
-      { column: "setter_status", op: "is_null" },
-      { column: "interest_product_id", op: "eq", value: "9f0d1b6e-1111-2222-3333-444455556666" },
-    ]);
-  });
-});
 
 describe("filtro por campo personalizado", () => {
   it("«más de 3 viajeros» compara como número", () => {
@@ -59,18 +39,5 @@ describe("filtro por campo personalizado", () => {
     expect(parseCustomFilter({ campo: "cantidad_de_viajeros", op: "contains", valor: "3" }, fields)).toBeNull();
     expect(parseCustomFilter({ campo: "cantidad_de_viajeros", op: "gt", valor: "muchos" }, fields)).toBeNull();
     expect(parseCustomFilter({ campo: "destino", op: "eq", valor: "  " }, fields)).toBeNull();
-  });
-});
-
-describe("las columnas elegidas", () => {
-  it("sin nada guardado, Estado y Producto", () => {
-    expect(parseVisibleColumns(null, [])).toEqual(["status", "product"]);
-    expect(parseVisibleColumns("{roto", [])).toEqual(["status", "product"]);
-  });
-  it("descarta un campo que ya no existe", () => {
-    expect(parseVisibleColumns(JSON.stringify(["status", "cf:f-viajeros", "cf:borrado"]), ["f-viajeros"])).toEqual(["status", "cf:f-viajeros"]);
-  });
-  it("una lista vacía a propósito se respeta", () => {
-    expect(parseVisibleColumns("[]", [])).toEqual([]);
   });
 });

@@ -119,6 +119,8 @@ const ORIGIN_LABEL: Record<string, string> = {
   webhook: "Webhook", // @plantilla-quitar(webhooks)
   manual: "Carga manual",
   import: "Importación",
+  link_click: "Clic en un link",
+  whatsapp_group: "Grupo de WhatsApp",
 };
 
 export const originLabel = (origin: string | null): string | null => (origin ? (ORIGIN_LABEL[origin] ?? origin) : null);

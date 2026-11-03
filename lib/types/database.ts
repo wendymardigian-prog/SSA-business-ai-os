@@ -907,7 +907,11 @@ export type TriggerType =
   | "webhook_received" // @plantilla-quitar(webhooks)
   /** Tareas (00199): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto.  @plantilla-quitar(tareas) */
   | "task_completed" // @plantilla-quitar(tareas)
-  | "task_overdue"; // @plantilla-quitar(tareas)
+  | "task_overdue" // @plantilla-quitar(tareas)
+  // Grupos de WhatsApp (CHECK de la migracion 00282): alguien se unio, reacciono o voto en un grupo activado.
+  | "whatsapp_group_joined"
+  | "whatsapp_group_reaction"
+  | "whatsapp_group_poll_vote";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -4477,6 +4481,256 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Grupos de WhatsApp activados en un numero (00280). Escribe solo el servidor. */
+      whatsapp_groups: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          channel_id: string;
+          group_jid: string;
+          subject: string;
+          picture_url: string | null;
+          size: number | null;
+          announce: boolean;
+          in_inbox: boolean;
+          save_contacts: boolean;
+          last_message_at: string | null;
+          last_message_preview: string | null;
+          unread_count: number;
+          left_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          channel_id: string;
+          group_jid: string;
+          subject: string;
+          picture_url?: string | null;
+          size?: number | null;
+          announce?: boolean;
+          in_inbox?: boolean;
+          save_contacts?: boolean;
+          last_message_at?: string | null;
+          last_message_preview?: string | null;
+          unread_count?: number;
+          left_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          channel_id?: string;
+          group_jid?: string;
+          subject?: string;
+          picture_url?: string | null;
+          size?: number | null;
+          announce?: boolean;
+          in_inbox?: boolean;
+          save_contacts?: boolean;
+          last_message_at?: string | null;
+          last_message_preview?: string | null;
+          unread_count?: number;
+          left_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      /** Miembros de un grupo activado (00280). participant_id = telefono o @lid. */
+      whatsapp_group_members: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          group_id: string;
+          participant_id: string;
+          phone: string | null;
+          lid: string | null;
+          display_name: string | null;
+          is_admin: boolean;
+          source: "join" | "import" | "activity";
+          joined_at: string;
+          left_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          group_id: string;
+          participant_id: string;
+          phone?: string | null;
+          lid?: string | null;
+          display_name?: string | null;
+          is_admin?: boolean;
+          source?: "join" | "import" | "activity";
+          joined_at?: string;
+          left_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          group_id?: string;
+          participant_id?: string;
+          phone?: string | null;
+          lid?: string | null;
+          display_name?: string | null;
+          is_admin?: boolean;
+          source?: "join" | "import" | "activity";
+          joined_at?: string;
+          left_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      /** Mensajes de un grupo activado (00280). poll = {name, options[], selectableCount}. */
+      whatsapp_group_messages: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          group_id: string;
+          platform_message_id: string | null;
+          direction: "inbound" | "outbound";
+          sender_participant_id: string | null;
+          sender_name: string | null;
+          text: string | null;
+          attachments: Json | null;
+          poll: Json | null;
+          origin: "app" | "external" | "flow";
+          status: "pending" | "sent" | "failed";
+          send_error: string | null;
+          sent_by_user_id: string | null;
+          sent_by_flow_id: string | null;
+          sent_by_node_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          group_id: string;
+          platform_message_id?: string | null;
+          direction: "inbound" | "outbound";
+          sender_participant_id?: string | null;
+          sender_name?: string | null;
+          text?: string | null;
+          attachments?: Json | null;
+          poll?: Json | null;
+          origin?: "app" | "external" | "flow";
+          status?: "pending" | "sent" | "failed";
+          send_error?: string | null;
+          sent_by_user_id?: string | null;
+          sent_by_flow_id?: string | null;
+          sent_by_node_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          group_id?: string;
+          platform_message_id?: string | null;
+          direction?: "inbound" | "outbound";
+          sender_participant_id?: string | null;
+          sender_name?: string | null;
+          text?: string | null;
+          attachments?: Json | null;
+          poll?: Json | null;
+          origin?: "app" | "external" | "flow";
+          status?: "pending" | "sent" | "failed";
+          send_error?: string | null;
+          sent_by_user_id?: string | null;
+          sent_by_flow_id?: string | null;
+          sent_by_node_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      /** Reacciones en un grupo (00280): una por persona y mensaje. */
+      whatsapp_group_reactions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          group_id: string;
+          message_id: string;
+          participant_id: string;
+          from_me: boolean;
+          emoji: string;
+          removed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          group_id: string;
+          message_id: string;
+          participant_id: string;
+          from_me?: boolean;
+          emoji: string;
+          removed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          group_id?: string;
+          message_id?: string;
+          participant_id?: string;
+          from_me?: boolean;
+          emoji?: string;
+          removed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      /** El voto vigente de cada persona en una encuesta de un grupo (00280). */
+      whatsapp_poll_votes: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          group_id: string;
+          message_id: string;
+          participant_id: string;
+          selected_options: string[];
+          voted_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          group_id: string;
+          message_id: string;
+          participant_id: string;
+          selected_options?: string[];
+          voted_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          group_id?: string;
+          message_id?: string;
+          participant_id?: string;
+          selected_options?: string[];
+          voted_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
       /** Biblioteca de stickers de WhatsApp (00257). Escribe solo el servidor. */
       stickers: {
         Row: {
@@ -5295,7 +5549,7 @@ export interface Database {
           landing_page: string | null;
           /** La URL de entrada completa, con todos sus parametros menos los sensibles (00215). Puede traer datos de la persona: nunca se loguea. */
           entry_url: string | null;
-          origin: "dm" | "comment" | "booking" | "form" | "manual" | "import" | "webhook" | "link_click";
+          origin: "dm" | "comment" | "booking" | "form" | "manual" | "import" | "webhook" | "link_click" | "whatsapp_group";
           dedupe_key: string;
           raw: Json;
           /** El vinculo con el catalogo de Meta (00192). */
@@ -6366,6 +6620,11 @@ export interface Database {
       // @plantilla-hasta(llamadas)
       /** Agenda v2 (00129): valores de fuente/medio/campaña para el filtro UTM. */
       booking_utm_options: {
+        Args: { p_workspace_id: string };
+        Returns: Json;
+      };
+      /** Opciones de los filtros de atribución de la lista de contactos (00283). SECURITY INVOKER. */
+      contact_attribution_options: {
         Args: { p_workspace_id: string };
         Returns: Json;
       };

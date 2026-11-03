@@ -187,3 +187,21 @@ export function canGrantChannels(actor: ChannelsConfig, wanted: ChannelsConfig |
   }
   return true;
 }
+
+// ── Grupos de WhatsApp (00280) ────────────────────────────────────────────────
+//
+// Un grupo es de una CUENTA (el numero de WhatsApp) y no tiene responsable: se lo trata como una conversacion
+// sin asignar. Lo ve quien tiene esa cuenta con alcance «todas» o «asignadas + sin asignar»; escribir pide
+// ademas «responde». Owner y Admin, siempre (lo resuelve quien llama, como en la base). Gemelas de
+// `public.can_see_whatsapp_group` / `public.can_write_whatsapp_group`, con los casos de
+// `whatsapp-group-access.cases.json`.
+
+/** Si el permiso de la cuenta deja ver sus grupos. */
+export function canSeeWhatsappGroup(grant: ChannelGrant | null | undefined): boolean {
+  return grant?.scope === "all" || grant?.scope === "own_unassigned";
+}
+
+/** Si el permiso de la cuenta deja escribir en sus grupos (y mandar encuestas). */
+export function canWriteWhatsappGroup(grant: ChannelGrant | null | undefined): boolean {
+  return canSeeWhatsappGroup(grant) && grant?.reply === true;
+}

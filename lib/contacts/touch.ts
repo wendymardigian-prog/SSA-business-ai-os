@@ -123,6 +123,8 @@ const RAW_KEYS = new Set([
   "channel", "referrer_contact_id", "referrer_user_id",
   // La cuenta por la que entro el toque (varias cuentas de la misma red): la clave en el proveedor y su nombre.
   "account_id", "account_label",
+  // Grupos de WhatsApp (00281): de que grupo vino y que paso (se unio, se importo o aparecio por actividad).
+  "group_jid", "group_event",
 ]);
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

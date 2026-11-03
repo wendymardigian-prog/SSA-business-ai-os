@@ -57,11 +57,13 @@ export const MEDIUMS = [
   // Extra I: un clic en un link con seguimiento de un DM, y el referido que carga una persona a mano en la venta.
   "dm_link",
   "referral_person",
+  // Grupos de WhatsApp (00281): alguien que se unio a un grupo activado. Cuenta como organico.
+  "whatsapp_group",
 ] as const;
 export type KnownMedium = (typeof MEDIUMS)[number];
 
 /** Por qué camino técnico entró el toque (columna `origin`). */
-export const ORIGINS = ["dm", "comment", "booking", "form", "manual", "import", "webhook", "link_click"] as const;
+export const ORIGINS = ["dm", "comment", "booking", "form", "manual", "import", "webhook", "link_click", "whatsapp_group"] as const;
 export type TouchOrigin = (typeof ORIGINS)[number];
 
 /**
@@ -175,6 +177,7 @@ export const MEDIUM_LABELS: Record<KnownMedium, string> = {
   import: "importación",
   dm_link: "link de un mensaje",
   referral_person: "referido",
+  whatsapp_group: "grupo de WhatsApp",
 };
 
 /**
@@ -208,6 +211,7 @@ export const ORIGIN_LABELS: Record<TouchOrigin, string> = { // @plantilla-quitar
   import: "Importación",
   webhook: "Webhook", // @plantilla-quitar(webhooks)
   link_click: "Clic en un link",
+  whatsapp_group: "Grupo de WhatsApp",
 };
 
 // ── El canal de un toque (Extra I, F37) ──────────────────────────────────────

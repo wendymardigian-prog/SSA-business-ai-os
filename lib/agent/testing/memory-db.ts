@@ -101,6 +101,8 @@ export function memoryDb(
     let mode: "select" | "insert" | "update" | "delete" | "upsert" = "select";
     /** Columnas de `onConflict` del upsert, ya separadas. */
     let conflictCols: string[] = [];
+    /** `ignoreDuplicates` del upsert: una fila que ya existe no se toca ni se devuelve (ON CONFLICT DO NOTHING). */
+    let ignoreDuplicates = false;
     let payload: Row | Row[] | null = null;
     let selectCols: string | null = null;
     let countMode = false;
@@ -140,7 +142,9 @@ export function memoryDb(
           const existing = conflictCols.length
             ? rows.find((r) => conflictCols.every((col) => r[col] === values[col]))
             : undefined;
-          if (existing) {
+          if (existing && ignoreDuplicates) {
+            continue;
+          } else if (existing) {
             Object.assign(existing, defined);
             generate?.(existing);
             result.push(existing);
@@ -204,9 +208,10 @@ export function memoryDb(
         payload = values;
         return b;
       },
-      upsert: (values: Row | Row[], opts?: { onConflict?: string }) => {
+      upsert: (values: Row | Row[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }) => {
         mode = "upsert";
         payload = values;
+        ignoreDuplicates = opts?.ignoreDuplicates === true;
         conflictCols = (opts?.onConflict ?? "").split(",").map((c) => c.trim()).filter(Boolean);
         return b;
       },

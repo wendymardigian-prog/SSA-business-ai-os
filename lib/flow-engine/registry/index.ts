@@ -23,6 +23,7 @@ import "./sales-triggers"; // @plantilla-quitar(ventas)
 import "./eod-triggers"; // @plantilla-quitar(formularios)
 import "./webhook-triggers"; // @plantilla-quitar(webhooks)
 import "./task-triggers"; // @plantilla-quitar(tareas)
+import "./whatsapp-group-triggers";
 import "./guards";
 
 export * from "./registry";

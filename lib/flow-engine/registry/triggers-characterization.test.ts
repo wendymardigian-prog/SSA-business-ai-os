@@ -39,8 +39,8 @@ describe("triggers registrados", () => {
       expect(t.eventTypes).toEqual([type]);
     }
     // + los tres de Formularios, los seis de Ventas, el del reporte de fin de día y el de webhooks (ver abajo),
-    // + los dos de Tareas (task_completed, task_overdue).
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2);
+    // + los dos de Tareas (task_completed, task_overdue) y los tres de grupos de WhatsApp.
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2 + 3);
   });
   // @plantilla-hasta(llamadas)
 

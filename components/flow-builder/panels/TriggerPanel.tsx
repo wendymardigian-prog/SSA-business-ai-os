@@ -12,6 +12,7 @@ import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric"; // @plantilla-quitar(ll
 import { FormTriggerPanel } from "./FormTriggerPanel"; // @plantilla-quitar(formularios)
 import { WebhookTriggerPanel } from "./WebhookTriggerPanel"; // @plantilla-quitar(webhooks)
 import { TaskTriggerPanel } from "./TaskTriggerPanel"; // @plantilla-quitar(tareas)
+import { WhatsappGroupTriggerPanel } from "./WhatsappGroupTriggerPanel";
 import { SalesTriggerPanel } from "./SalesTriggerPanel"; // @plantilla-quitar(ventas)
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 
@@ -598,6 +599,11 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
       {/* @plantilla-desde(webhooks) */}
       {triggerType === "webhook_received" && <WebhookTriggerPanel flowId={flowId} data={data} onChange={onChange} sendsMessages={sendsMessages} />}
       {/* @plantilla-hasta(webhooks) */}
+
+      {/* Grupos de WhatsApp: en qué grupos, a qué mensaje o encuesta, con qué emoji u opción */}
+      {(triggerType === "whatsapp_group_joined" || triggerType === "whatsapp_group_reaction" || triggerType === "whatsapp_group_poll_vote") && (
+        <WhatsappGroupTriggerPanel triggerType={triggerType} data={data as Record<string, unknown>} onChange={onChange as (d: Record<string, unknown>) => void} />
+      )}
 
       {/* F5: ventana de inactividad */}
       {triggerType === "inactivity" && (

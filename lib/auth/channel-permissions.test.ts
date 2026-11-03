@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import cases from "./channel-permissions.cases.json";
+import groupCases from "./whatsapp-group-access.cases.json";
 import {
+  canSeeWhatsappGroup,
+  canWriteWhatsappGroup,
   ALL_CHANNELS,
   applyToEveryChannel,
   canGrantChannels,
@@ -94,5 +97,18 @@ describe("los roles de sistema", () => {
   });
   it("Owner y Admin: todas, todas, responden", () => {
     expect(ALL_CHANNELS).toEqual({ mode: "all", all: { scope: "all", reply: true } });
+  });
+});
+
+describe("grupos de WhatsApp (00280): quien ve y quien escribe", () => {
+  it.each(groupCases.cases)("$name", (c) => {
+    const grant = grantFor(c.channels as ChannelsConfig, "CH");
+    expect(canSeeWhatsappGroup(grant)).toBe(c.see);
+    expect(canWriteWhatsappGroup(grant)).toBe(c.write);
+  });
+
+  it("sin permiso de la cuenta, nada", () => {
+    expect(canSeeWhatsappGroup(null)).toBe(false);
+    expect(canWriteWhatsappGroup(undefined)).toBe(false);
   });
 });

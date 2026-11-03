@@ -24,6 +24,7 @@ import {
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { AWAITING_PARAM, awaitingQueryBounds, parseAwaitingFilter } from "@/lib/inbox/awaiting";
 import { InboxView } from "./inbox-view";
+import { GroupsInbox } from "./groups-inbox";
 import type { InboxAsset } from "@/components/inbox/message-thread";
 import { toBankAsset } from "@/lib/response-assets/list";
 import { getPermissionContext } from "@/lib/auth/guards";
@@ -66,11 +67,13 @@ export default async function InboxPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  // Los grupos de WhatsApp activados tienen su propia vista (00280): no son conversaciones con un lead.
+  if (firstParam(params.vista) === "grupos") return <GroupsInbox params={params} />;
   const { workspace, supabase, user, role } = await getWorkspace();
 
   // Lo que necesitan los filtros para poder validar lo que viene de la URL:
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
-  const [tagsRes, channelsRes, members, agentsRes, aiProviders] = await Promise.all([
+  const [tagsRes, channelsRes, members, agentsRes, aiProviders, groupsCount] = await Promise.all([
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
     supabase.from("channels").select("id, platform, provider, username, display_name").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
@@ -78,6 +81,8 @@ export default async function InboxPage({
     supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", workspace.id).is("deleted_at", null),
     // Las IAs conectadas (E1): un agente encendido cuya IA no esta conectada no puede responder.
     listConnectedAiProviders(workspace.id),
+    // ¿Hay grupos de WhatsApp para ver? (00280) Solo para mostrar «Chats | Grupos»; la RLS cuenta los que ve.
+    supabase.from("whatsapp_groups").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("in_inbox", true).is("left_at", null),
   ]);
 
   // Por canal, si el agente lo atiende: decide si el toggle se puede operar.
@@ -369,6 +374,7 @@ export default async function InboxPage({
       isAdmin={isAdminRole(role)}
       draftCounts={draftCounts}
       draftConversationIds={draftConversationIds}
+      hasGroups={(groupsCount.count ?? 0) > 0}
         />
       </div>
     </div>

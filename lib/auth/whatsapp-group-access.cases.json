@@ -1,0 +1,12 @@
+{
+  "_comment": "Casos compartidos entre canSeeWhatsappGroup/canWriteWhatsappGroup (TS, lib/auth/channel-permissions.ts) y public.can_see_whatsapp_group/can_write_whatsapp_group (SQL, 00280; scripts/verify-whatsapp-groups.mjs los corre con un rol personalizado). `channels` es la bandeja del rol; el grupo es de la cuenta CH. Owner y Admin siempre ven y escriben.",
+  "cases": [
+    { "name": "todas las cuentas, alcance todas, responde", "channels": { "mode": "all", "all": { "scope": "all", "reply": true } }, "see": true, "write": true },
+    { "name": "todas las cuentas, alcance todas, sin responder", "channels": { "mode": "all", "all": { "scope": "all", "reply": false } }, "see": true, "write": false },
+    { "name": "asignadas + sin asignar: un grupo no tiene responsable, se ve", "channels": { "mode": "all", "all": { "scope": "own_unassigned", "reply": true } }, "see": true, "write": true },
+    { "name": "solo asignadas (el Member de sistema): un grupo no es de nadie, no se ve", "channels": { "mode": "all", "all": { "scope": "own", "reply": true } }, "see": false, "write": false },
+    { "name": "cuenta elegida con alcance todas", "channels": { "mode": "custom", "byChannel": { "CH": { "scope": "all", "reply": true } } }, "see": true, "write": true },
+    { "name": "otra cuenta elegida, esta no", "channels": { "mode": "custom", "byChannel": { "OTRA": { "scope": "all", "reply": true } } }, "see": false, "write": false },
+    { "name": "sin cuentas", "channels": { "mode": "custom", "byChannel": {} }, "see": false, "write": false }
+  ]
+}
