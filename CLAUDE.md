@@ -1566,7 +1566,7 @@ Tabla y Kanban (`?vista=kanban`) con los MISMOS filtros: un solo planificador (`
 - **Todo filtro pasa por `parseContactListFilters` / `contactListPlan`**: así aplica igual a la tabla, al Kanban y a "Cargar más". Cada valor de la URL pasa por el `accepts` de su filtro; un texto libre solo por `.in()` (`isSafeText`), nunca adentro de un `or` armado a mano.
 - **Registros relacionados**: las "tiene" de una tabla van en UN join `!inner`; cada "no tiene" es su anti-join. Respetan la RLS de cada tabla. Las columnas relacionadas se cargan solo para la página visible y solo si están visibles (`loadContactColumnCells`).
 - **Las áreas de Ventas, Formularios, Tareas y Llamadas** son archivos propios (en el perfil de estudiantes) y su línea en `list-modules.ts` lleva la marca.
-- **`00283_contacts_list_filters`** (aditiva: `contact_attribution_options` SECURITY INVOKER + índices): **escrita y SIN aplicar**. Puede ir antes o después del deploy; sin ella, los filtros de campaña, contenido y término no tienen opciones. **La próxima libre es la `00284`** (confirmar con `list_migrations` y las ramas locales).
+- **`00283_contacts_list_filters`** (aditiva: `contact_attribution_options` SECURITY INVOKER + índices): **aplicada y registrada** el 3/11/2026 (versión `20261103154823`), antes del merge. En un clon nuevo puede ir antes o después del deploy; sin ella, los filtros de campaña, contenido y término no tienen opciones. **La próxima libre es la `00284`** (confirmar con `list_migrations` y las ramas locales).
 
 # Historial de WhatsApp: la revision (30/10/2026)
 
