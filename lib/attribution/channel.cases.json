@@ -1151,6 +1151,69 @@
         "content_post_id": null
       },
       "expected": "paid"
+    },
+    {
+      "name": "organic: alguien que se unio a un grupo de WhatsApp (00281)",
+      "input": {
+        "origin": "whatsapp_group",
+        "medium": "whatsapp_group",
+        "source": "whatsapp",
+        "ad_id": null,
+        "adset_id": null,
+        "campaign_id": null,
+        "meta_ad_id": null,
+        "meta_campaign_id": null,
+        "gclid": null,
+        "ttclid": null,
+        "li_fat_id": null,
+        "ctwa_clid": null,
+        "fbclid": null,
+        "social_post_id": null,
+        "content_post_id": null
+      },
+      "expected": "organic"
+    },
+    {
+      "name": "organic: medium whatsapp_group con mayusculas y espacios",
+      "input": {
+        "origin": "whatsapp_group",
+        "medium": " WhatsApp_Group ",
+        "source": "whatsapp",
+        "ad_id": null,
+        "adset_id": null,
+        "campaign_id": null,
+        "meta_ad_id": null,
+        "meta_campaign_id": null,
+        "gclid": null,
+        "ttclid": null,
+        "li_fat_id": null,
+        "ctwa_clid": null,
+        "fbclid": null,
+        "social_post_id": null,
+        "content_post_id": null
+      },
+      "expected": "organic"
+    },
+    {
+      "name": "direct: el origen whatsapp_group sin el medium no alcanza",
+      "input": {
+        "origin": "whatsapp_group",
+        "medium": null,
+        "source": "whatsapp",
+        "ad_id": null,
+        "adset_id": null,
+        "campaign_id": null,
+        "meta_ad_id": null,
+        "meta_campaign_id": null,
+        "gclid": null,
+        "ttclid": null,
+        "li_fat_id": null,
+        "ctwa_clid": null,
+        "fbclid": null,
+        "social_post_id": null,
+        "content_post_id": null
+      },
+      "expected": "direct"
     }
   ]
 }

@@ -39,6 +39,7 @@ export const TIMELINE_ORIGIN_LABELS: Record<string, string> = {
   dm: "Mensaje directo",
   comment: "Comentario",
   link_click: "Clic en un link",
+  whatsapp_group: "Grupo de WhatsApp",
   booking: "Agenda",
   form: "Formulario", // @plantilla-quitar(formularios)
   webhook: "Webhook", // @plantilla-quitar(webhooks)
