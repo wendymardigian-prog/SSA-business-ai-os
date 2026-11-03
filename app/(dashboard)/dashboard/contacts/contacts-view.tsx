@@ -4,7 +4,7 @@ import { MarkBadge } from "@/components/contacts/mark-badge";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, ArrowUpDown, Table2, KanbanSquare, Columns3 } from "lucide-react";
+import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, ArrowUpDown, Table2, KanbanSquare, Columns3, Radio } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/components/contacts/ui";
 import { bulkAddTag, createContact } from "@/lib/actions/contacts";
 import { loadContactColumnCells } from "@/lib/actions/contacts-columns";
+import { createBroadcast } from "@/lib/actions/broadcasts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BULK_TAG_LIMIT, describeEffect, hasEffect, sortEffectFirst } from "@/lib/tags/effects";
 import type { LeadTemperature } from "@/lib/types/database";
@@ -110,6 +111,7 @@ export function ContactsView({
   filters,
   anonymousCount,
   sort,
+  canBroadcast = false,
   view,
   grouping,
   kanban,
@@ -130,6 +132,8 @@ export function ContactsView({
   filters: ContactListFilters;
   /** Cuantos contactos hay sin datos, esten o no en la lista. */
   anonymousCount: number;
+  /** Quien puede mandar broadcasts ve "Mandar un broadcast a estos contactos" con los filtros puestos. */
+  canBroadcast?: boolean;
   /** El orden de la lista (`?orden=`). */
   sort: ContactSort;
   /** Tabla o Kanban (`?vista=`), y por qué estado se agrupa el Kanban (`?agrupar=`). */
@@ -148,6 +152,7 @@ export function ContactsView({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, start] = useTransition();
+  const [creatingBroadcast, startBroadcast] = useTransition();
   const [creating, setCreating] = useState(false);
 
   const memberLabel = new Map(members.map((m) => [m.userId, m.label]));
@@ -402,6 +407,26 @@ export function ContactsView({
         onRemoveCustom={() => setParams(Object.fromEntries(CUSTOM_FILTER_PARAMS.map((k) => [k, ""])))}
         onClear={clearMenuFilters}
       />
+
+      {canBroadcast && activeCount > 0 && (
+        <div className="flex items-center gap-2 border-b border-border px-4 py-1.5 text-xs md:px-8">
+          <button
+            type="button"
+            disabled={creatingBroadcast}
+            onClick={() =>
+              startBroadcast(async () => {
+                // Los mismos parametros de la URL: el broadcast arranca con exactamente esta audiencia.
+                const res = await createBroadcast({ audienceQuery: searchParams.toString() });
+                if (res.ok) router.push(`/dashboard/broadcasts/${res.id}`);
+              })
+            }
+            className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-medium text-primary-ink hover:bg-accent disabled:opacity-50"
+          >
+            <Radio className="h-3.5 w-3.5" aria-hidden />
+            Mandar un broadcast a estos contactos
+          </button>
+        </div>
+      )}
 
       {bulkNotice && (
         <div role="status" className="flex items-center justify-between gap-2 border-b border-border bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 md:px-8">

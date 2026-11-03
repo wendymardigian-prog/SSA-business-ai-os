@@ -90,9 +90,7 @@ export function BroadcastEditor({
 
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [reach, setReach] = useState<AudiencePreview | null>(null);
-  const [reachState, setReachState] = useState<"idle" | "loading" | "error">("idle");
-  const [reachError, setReachError] = useState<string | null>(null);
+  const [reachResult, setReachResult] = useState<{ key: string; preview: AudiencePreview | null; error: string | null } | null>(null);
   const [showSample, setShowSample] = useState(false);
   const [messagePreview, setMessagePreview] = useState<MessagePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -101,6 +99,17 @@ export function BroadcastEditor({
   const [queueError, setQueueError] = useState<string | null>(null);
   const [queuing, startQueue] = useTransition();
   const [deleting, startDelete] = useTransition();
+  // "Ahora" para la fecha estimada y para avisar una fecha programada que ya pasó. Se mide en un efecto (no en el render) y se renueva cada minuto.
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setNowMs(Date.now());
+    const first = setTimeout(tick, 0);
+    const every = setInterval(tick, 60_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+    };
+  }, []);
 
   const channel = channels.find((c) => c.id === channelId) ?? null;
   const kind = channel?.kind ?? null;
@@ -126,14 +135,16 @@ export function BroadcastEditor({
   );
   const firstRender = useRef(true);
   const latestPatch = useRef(patch);
-  latestPatch.current = patch;
+  useEffect(() => {
+    latestPatch.current = patch;
+  }, [patch]);
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
       return;
     }
-    setSaveState("saving");
     const t = setTimeout(async () => {
+      setSaveState("saving");
       const res = await saveBroadcast(draft.id, latestPatch.current);
       setSaveState(res.ok ? "saved" : "error");
       setSaveError(res.ok ? null : res.error);
@@ -142,29 +153,26 @@ export function BroadcastEditor({
   }, [patch, draft.id]);
 
   // ── A cuántos les llega ───────────────────────────────────────────────
+  // El conteo vale para los filtros, el canal y la casilla con los que se pidió: si cambió algo, está "contando".
+  const reachKey = JSON.stringify([params, channelId, includePhoneOnly]);
   useEffect(() => {
-    if (!channelId) {
-      setReach(null);
-      return;
-    }
-    setReachState("loading");
+    if (!channelId) return;
     let cancelled = false;
     const t = setTimeout(async () => {
       const res = await previewBroadcastAudience({ audienceParams: params, channelId, includePhoneOnly });
       if (cancelled) return;
-      if (res.ok) {
-        setReach(res.preview);
-        setReachState("idle");
-      } else {
-        setReachError(res.error);
-        setReachState("error");
-      }
+      setReachResult(res.ok ? { key: reachKey, preview: res.preview, error: null } : { key: reachKey, preview: null, error: res.error });
     }, 600);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [params, channelId, includePhoneOnly]);
+  }, [params, channelId, includePhoneOnly, reachKey]);
+  const reachFresh = reachResult?.key === reachKey;
+  // Mientras cuenta de nuevo se sigue mostrando el número anterior (atenuado).
+  const reach = reachResult?.preview ?? null;
+  const reachState: "idle" | "loading" | "error" = !reachFresh ? "loading" : reachResult?.error ? "error" : "idle";
+  const reachError = reachResult?.error ?? null;
 
   // ── Filtros (estado local, mismas reglas que Contactos) ───────────────
   function setList(param: string, values: readonly string[]) {
@@ -205,10 +213,9 @@ export function BroadcastEditor({
       el?.setSelectionRange(start + token.length, start + token.length);
     });
   }
-  const noFallback = useMemo(() => {
-    const all = [...variants, kind === "email" ? emailSubject : ""];
-    return [...new Set(all.flatMap((t) => templateVariables(t).filter((v) => !v.hasFallback).map((v) => v.path)))];
-  }, [variants, emailSubject, kind]);
+  const noFallback = [
+    ...new Set([...variants, kind === "email" ? emailSubject : ""].flatMap((t) => templateVariables(t).filter((v) => !v.hasFallback).map((v) => v.path))),
+  ];
 
   function runMessagePreview() {
     setPreviewError(null);
@@ -226,11 +233,12 @@ export function BroadcastEditor({
   const ownPace = parseBroadcastPace(pace);
   const effectivePolicy = channel ? combinePolicies(channel.policy, ownPace) : null;
   const sendable = reach?.reach.sendable ?? 0;
-  const eta = effectivePolicy && sendable > 0 ? estimateFinish(sendable, effectivePolicy, scheduledIso ? new Date(scheduledIso) : new Date(), timeZone) : null;
+  const etaFrom = scheduledIso ? new Date(scheduledIso) : nowMs !== null ? new Date(nowMs) : null;
+  const eta = effectivePolicy && sendable > 0 && etaFrom ? estimateFinish(sendable, effectivePolicy, etaFrom, timeZone) : null;
   const problems = [
     ...draftProblems({ channel_id: channelId, message_variants: variants, email_subject: emailSubject }, kind, customFields),
     ...(scheduleMode === "later" && !scheduledIso ? ["Elegí el día y la hora del envío."] : []),
-    ...(scheduleMode === "later" && scheduledIso && new Date(scheduledIso).getTime() < Date.now() ? ["La fecha programada ya pasó."] : []),
+    ...(scheduleMode === "later" && scheduledIso && nowMs !== null && new Date(scheduledIso).getTime() < nowMs ? ["La fecha programada ya pasó."] : []),
     ...(reach && sendable === 0 ? ["Con estos filtros y este canal no queda nadie a quien mandarle."] : []),
   ];
   const ready = problems.length === 0 && reach !== null && reachState === "idle";
@@ -595,7 +603,7 @@ export function BroadcastEditor({
                 )}
               </details>
             )}
-            {sendable > 0 && (
+            {sendable > 0 && etaFrom && (
               <p className="text-sm">
                 {eta ? (
                   <>
