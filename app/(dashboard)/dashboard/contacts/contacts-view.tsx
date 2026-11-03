@@ -4,7 +4,7 @@ import { MarkBadge } from "@/components/contacts/mark-badge";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, SlidersHorizontal, ArrowUpDown } from "lucide-react";
+import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, SlidersHorizontal, ArrowUpDown, Table2, KanbanSquare, Columns3 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -35,6 +35,17 @@ import {
   type ContactListFilters,
 } from "@/lib/contacts/list-query";
 import { MultiFilterField } from "@/components/ui/multi-filter-field";
+import { ContactsKanban } from "@/components/contacts/contacts-kanban";
+import {
+  DEFAULT_KANBAN_GROUPING,
+  KANBAN_GROUPINGS,
+  KANBAN_GROUPING_STORAGE_KEY,
+  groupingRole,
+  parseKanbanGrouping,
+  type ContactView,
+  type KanbanColumn,
+  type KanbanGrouping,
+} from "@/lib/contacts/kanban";
 import { STATUS_ROLE_LABELS, activeStatuses, statusName, type ContactStatus, type ContactStatusSettings } from "@/lib/contacts/statuses";
 import { interestLabel, offeredProducts, type InterestCatalog } from "@/lib/contacts/interest";
 import { displayCustomValue } from "@/lib/custom-fields";
@@ -99,6 +110,10 @@ export function ContactsView({
   filters,
   anonymousCount,
   sort,
+  view,
+  grouping,
+  kanban,
+  canEdit,
   customFilter,
   customFields,
   statusSettings,
@@ -116,6 +131,13 @@ export function ContactsView({
   anonymousCount: number;
   /** El orden de la lista (`?orden=`). */
   sort: ContactSort;
+  /** Tabla o Kanban (`?vista=`), y por qué estado se agrupa el Kanban (`?agrupar=`). */
+  view: ContactView;
+  grouping: KanbanGrouping;
+  /** Las columnas del Kanban; null en la tabla. */
+  kanban: KanbanColumn[] | null;
+  /** Puede cambiar estados (`contacts.edit`): sin esto las tarjetas no se arrastran. */
+  canEdit: boolean;
   customFilter: { slug: string; op: CustomFilterOp; value: string } | null;
   customFields: CustomFieldRef[];
   statusSettings: ContactStatusSettings;
@@ -187,6 +209,42 @@ export function ContactsView({
     start(() => router.replace(`${pathname}?${next.toString()}`));
   }
 
+  /**
+   * Cambia de vista. Al pasar al Kanban sin una agrupación en la URL, usa la
+   * última que eligió esta persona (localStorage, siempre en try/catch).
+   */
+  function changeView(next: ContactView) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
+    if (next === "kanban") {
+      params.set("vista", "kanban");
+      if (!params.get("agrupar")) {
+        let saved: string | null = null;
+        try {
+          saved = window.localStorage.getItem(KANBAN_GROUPING_STORAGE_KEY);
+        } catch {
+          saved = null;
+        }
+        const remembered = parseKanbanGrouping(saved ?? undefined);
+        if (remembered !== DEFAULT_KANBAN_GROUPING) params.set("agrupar", remembered);
+      }
+    } else {
+      params.delete("vista");
+      params.delete("agrupar");
+    }
+    setPicked(new Set());
+    start(() => router.replace(`${pathname}?${params.toString()}`));
+  }
+
+  function changeGrouping(next: KanbanGrouping) {
+    try {
+      window.localStorage.setItem(KANBAN_GROUPING_STORAGE_KEY, next);
+    } catch {
+      // Sin almacenamiento (modo privado): la elección vale solo para esta URL.
+    }
+    setParam("agrupar", next === DEFAULT_KANBAN_GROUPING ? "" : next);
+  }
+
   function clearAll() {
     start(() => router.replace(pathname));
   }
@@ -204,7 +262,28 @@ export function ContactsView({
       <PageHeader
         route="/dashboard/contacts"
         left={
-          <span className="hidden truncate text-xs text-muted-foreground lg:inline">
+          <span className="flex shrink-0 items-center gap-2">
+          <nav aria-label="Vista" className="flex shrink-0 rounded-lg bg-muted/60 p-0.5">
+            {([["tabla", "Tabla", Table2], ["kanban", "Kanban", KanbanSquare]] as const).map(([option, label, Icon]) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={view === option}
+                onClick={() => view !== option && changeView(option)}
+                className={cn(
+                  "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm",
+                  view === option ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sr-only sm:hidden">{label}</span>
+              </button>
+            ))}
+          </nav>
+          {/* El total solo con espacio de sobra: con el selector de vista al lado, a
+              1024 px empujaba el titulo hasta desaparecer. */}
+          <span className="hidden truncate text-xs text-muted-foreground xl:inline">
             {total} {total === 1 ? "contacto" : "contactos"}
             {activeCount > 0 && " con los filtros aplicados"}
             {/* Que la lista pase de 171 a 72 sin decir por que parece que se
@@ -215,6 +294,7 @@ export function ContactsView({
                 {anonymousCount} sin datos {anonymousCount === 1 ? "oculto" : "ocultos"}
               </span>
             )}
+          </span>
           </span>
         }
         filters={
@@ -367,7 +447,24 @@ export function ContactsView({
               </div>
             </FilterMenu>
 
-            <ColumnsMenu fields={customFields} columns={visibleColumns} onToggle={toggleColumn} />
+            {view === "kanban" ? (
+              // Solo icono, como Filtros y Columnas: con el nombre no entraba en la barra
+              // a 1024 px. Las columnas del tablero ya dicen por qué se agrupa.
+              <FilterMenu
+                label={`Agrupar por: ${KANBAN_GROUPINGS.find((g) => g.key === grouping)?.label ?? ""}`}
+                compact
+                active={false}
+                icon={<Columns3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+                menuClassName="topbar:w-[240px]"
+              >
+                <MenuGroupLabel>Columnas del Kanban</MenuGroupLabel>
+                {KANBAN_GROUPINGS.map((g) => (
+                  <MenuOption key={g.key} checked={grouping === g.key} onSelect={() => changeGrouping(g.key)} title={g.label} />
+                ))}
+              </FilterMenu>
+            ) : (
+              <ColumnsMenu fields={customFields} columns={visibleColumns} onToggle={toggleColumn} />
+            )}
 
             {/* Los ajustes de la tabla: hoy, el orden. */}
             <FilterMenu
@@ -419,6 +516,21 @@ export function ContactsView({
         </div>
       )}
 
+      {view === "kanban" && kanban ? (
+        <div className="min-h-0 flex-1">
+          {total === 0 && activeCount === 0 ? (
+            <EmptyState filtered={false} onClear={clearAll} onCreate={() => setCreating(true)} />
+          ) : (
+            <ContactsKanban
+              columns={kanban}
+              role={groupingRole(grouping)}
+              canEdit={canEdit}
+              memberLabel={memberLabel}
+              interestCatalog={interestCatalog}
+            />
+          )}
+        </div>
+      ) : (
       <div className="flex-1 overflow-auto">
         {contacts.length === 0 ? (
           <EmptyState filtered={activeCount > 0} onClear={clearAll} onCreate={() => setCreating(true)} />
@@ -535,7 +647,9 @@ export function ContactsView({
         )}
       </div>
 
-      {lastPage > 1 && (
+      )}
+
+      {view === "tabla" && lastPage > 1 && (
         <div className="flex items-center justify-between border-t border-border px-8 py-3">
           <p className="text-xs text-muted-foreground">
             Página {page} de {lastPage}

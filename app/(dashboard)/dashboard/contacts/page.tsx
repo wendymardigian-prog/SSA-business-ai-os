@@ -4,11 +4,21 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { ContactsView, type ContactRow } from "./contacts-view";
 import type { LeadTemperature } from "@/lib/types/database";
 import { platformLabel } from "@/lib/platforms";
-import { contactOrderClauses, parseContactSort } from "@/lib/contacts/sort";
+import { contactOrderClauses, parseContactSort, type ContactSort } from "@/lib/contacts/sort";
 import { firstParam, pickPage, sanitizeSearch } from "@/lib/url-params";
-import { contactSearchFilter } from "@/lib/contacts/search";
-import { contactIdsByWhatsappLid } from "@/lib/contacts/search-lid";
-import { applyListClauses, contactListPlan, contactListSelect, customFilterRawValue, parseContactListFilters } from "@/lib/contacts/list-query";
+import { customFilterRawValue, type ContactListFilters, type ContactListPlan } from "@/lib/contacts/list-query";
+import { contactListQuery, loadCustomFieldRefs, loadKanbanColumn, prepareContactList } from "@/lib/contacts/list-load";
+import {
+  KANBAN_PAGE_SIZE,
+  groupingRole,
+  kanbanColumnDefs,
+  parseContactView,
+  parseKanbanGrouping,
+  visibleKanbanColumns,
+  type KanbanColumn,
+  type KanbanGrouping,
+} from "@/lib/contacts/kanban";
+import type { ContactStatusSettings } from "@/lib/contacts/statuses";
 import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
 import { loadInterestCatalog } from "@/lib/contacts/interest-load";
 import { isEmailStatus } from "@/lib/email/subscription";
@@ -28,9 +38,15 @@ import { isEmailStatus } from "@/lib/email/subscription";
  *
  * El estado de los filtros vive en la URL, asi que una vista filtrada se puede
  * compartir o guardar en favoritos.
+ *
+ * Dos vistas con los MISMOS filtros (`lib/contacts/list-query.ts`): la tabla
+ * paginada y el Kanban (`?vista=kanban`), una columna por estado de setter o de
+ * vendedor (`?agrupar=`), cada una con su total y sus primeras tarjetas.
  */
 
 const PAGE_SIZE = 25;
+
+type Client = Awaited<ReturnType<typeof getWorkspace>>["supabase"];
 
 export default async function ContactsPage({
   searchParams,
@@ -39,48 +55,28 @@ export default async function ContactsPage({
 }) {
   const params = await searchParams;
   // Equipo y roles (F21): la pagina pide su permiso; el alcance de los contactos lo sigue aplicando la RLS.
-  await requirePermission("contacts.view");
+  const permission = await requirePermission("contacts.view");
   const { workspace, supabase } = await getWorkspace();
 
   const search = sanitizeSearch(firstParam(params.q));
   const page = pickPage(params.page);
   // El orden de la lista (`?orden=`): una lista cerrada, con el de siempre por defecto.
   const sort = parseContactSort(params.orden);
+  const view = parseContactView(params.vista);
+  const grouping = parseKanbanGrouping(params.agrupar);
 
   // Los campos personalizados (para el filtro y las columnas), las listas de
   // estados y el catalogo de productos: se piden antes porque el filtro por
   // campo necesita saber su tipo.
-  const [fieldDefsRes, statusSettings, interestCatalog] = await Promise.all([
-    supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).is("deleted_at", null).order("name"),
+  const [customFields, statusSettings, interestCatalog] = await Promise.all([
+    loadCustomFieldRefs(supabase, workspace.id),
     loadContactStatusSettings(workspace.id),
     loadInterestCatalog(supabase, workspace.id),
   ]);
-  const customFields = fieldDefsRes.data ?? [];
 
   // Todos los filtros salen de la URL y se validan en UN lugar
   // (lib/contacts/list-query.ts): lo mismo que filtra la tabla filtra el Kanban.
-  const filters = parseContactListFilters(params, customFields, search);
-
-  // La misma regla de busqueda que la bandeja (lib/contacts/search.ts): ademas de
-  // nombre, emails, telefonos y los @, el telefono escrito con espacios y el id de
-  // WhatsApp de quien escribio sin numero.
-  let searchFilter: string | null = null;
-  if (search) {
-    const lidContactIds = await contactIdsByWhatsappLid(supabase, workspace.id, search);
-    searchFilter = contactSearchFilter(search, lidContactIds);
-  }
-  const plan = contactListPlan(filters, searchFilter);
-
-  const query = applyListClauses(
-    supabase
-      .from("contacts")
-      .select(contactListSelect("*, contact_tags(tag_id, tags(id, name, color))", plan), { count: "exact" })
-      .eq("workspace_id", workspace.id)
-      .is("deleted_at", null),
-    plan.clauses,
-  );
-
-  const from = (page - 1) * PAGE_SIZE;
+  const { filters, plan } = await prepareContactList(supabase, workspace.id, params, customFields, search);
 
   // Cuantos quedaron afuera por ser anonimos. Sin este numero, la lista pasa de
   // 171 a 72 sin explicacion y parece que se perdieron contactos.
@@ -91,22 +87,94 @@ export default async function ContactsPage({
     .is("deleted_at", null)
     .eq("is_anonymous", true);
 
-  const [contactsRes, tagsRes, channelsRes, members, anonymousRes] = await Promise.all([
-    contactOrderClauses(sort)
-      .reduce(
-        (q, clause) => q.order(clause.column, { ascending: clause.ascending, nullsFirst: clause.nullsFirst }),
-        query,
-      )
-      .range(from, from + PAGE_SIZE - 1),
+  const [listing, tagsRes, channelsRes, members, anonymousRes] = await Promise.all([
+    view === "kanban"
+      ? loadKanban(supabase, workspace.id, plan, statusSettings, grouping, filters, sort)
+      : loadTablePage(supabase, workspace.id, plan, sort, page, customFields.length > 0),
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
-    supabase
-      .from("channels")
-      .select("platform")
-      .eq("workspace_id", workspace.id)
-      .eq("is_active", true),
+    supabase.from("channels").select("platform").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
     anonymousQuery,
   ]);
+
+  const platforms = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort();
+
+  return (
+    <ContactsView
+      contacts={listing.contacts}
+      total={listing.total}
+      page={page}
+      pageSize={PAGE_SIZE}
+      view={view}
+      grouping={grouping}
+      kanban={listing.kanban}
+      canEdit={permission.can("contacts.edit")}
+      tags={(tagsRes.data ?? []).map((t) => ({
+        id: t.id,
+        name: t.name,
+        color: t.color,
+        disablesAgent: t.disables_agent,
+        assignsTo: t.assigns_to,
+      }))}
+      platforms={platforms.map((p) => ({ value: p, label: platformLabel(p) }))}
+      members={members.map((m) => ({ userId: m.userId, label: m.name }))}
+      filters={filters}
+      customFilter={filters.custom ? { slug: filters.custom.field.slug, op: filters.custom.op, value: customFilterRawValue(params) } : null}
+      customFields={customFields}
+      statusSettings={statusSettings}
+      interestCatalog={interestCatalog}
+      anonymousCount={anonymousRes.count ?? 0}
+      sort={sort}
+    />
+  );
+}
+
+interface Listing {
+  contacts: ContactRow[];
+  total: number;
+  kanban: KanbanColumn[] | null;
+}
+
+/**
+ * El Kanban: una consulta por columna, en paralelo. Cada una trae su total con
+ * los filtros puestos y sus primeras tarjetas. Si se filtra por estados del
+ * mismo rol que se agrupa, solo esas columnas.
+ */
+async function loadKanban(
+  supabase: Client,
+  workspaceId: string,
+  plan: ContactListPlan,
+  statusSettings: ContactStatusSettings,
+  grouping: KanbanGrouping,
+  filters: ContactListFilters,
+  sort: ContactSort,
+): Promise<Listing> {
+  const role = groupingRole(grouping);
+  const defs = kanbanColumnDefs(statusSettings[role], role === "setter" ? filters.setterStatuses : filters.closerStatuses);
+  const loaded = await Promise.all(
+    defs.map(async (def) => {
+      const column = await loadKanbanColumn(supabase, workspaceId, plan, role, def.key, sort, 0, KANBAN_PAGE_SIZE);
+      return { ...def, cards: column.cards, total: column.total };
+    }),
+  );
+  const kanban = visibleKanbanColumns(loaded);
+  return { contacts: [], total: kanban.reduce((sum, c) => sum + c.total, 0), kanban };
+}
+
+/** La tabla: una pagina de contactos con sus etiquetas y los valores de los campos personalizados. */
+async function loadTablePage(
+  supabase: Client,
+  workspaceId: string,
+  plan: ContactListPlan,
+  sort: ContactSort,
+  page: number,
+  withCustomFields: boolean,
+): Promise<Listing> {
+  const from = (page - 1) * PAGE_SIZE;
+  const query = contactListQuery(supabase, workspaceId, "*, contact_tags(tag_id, tags(id, name, color))", plan);
+  const contactsRes = await contactOrderClauses(sort)
+    .reduce((q, clause) => q.order(clause.column, { ascending: clause.ascending, nullsFirst: clause.nullsFirst }), query)
+    .range(from, from + PAGE_SIZE - 1);
 
   if (contactsRes.error) {
     console.error("[contacts] listado fallido:", contactsRes.error.message);
@@ -123,7 +191,7 @@ export default async function ContactsPage({
   // Los valores de los campos personalizados de ESTA pagina (para las columnas que la persona elija).
   const pageIds = rows.map((c) => c.id as string);
   const customValues: Record<string, Record<string, string>> = {};
-  if (pageIds.length > 0 && customFields.length > 0) {
+  if (pageIds.length > 0 && withCustomFields) {
     const { data: values } = await supabase.from("contact_custom_fields").select("contact_id, field_id, value").in("contact_id", pageIds);
     for (const v of values ?? []) (customValues[v.contact_id] ??= {})[v.field_id] = v.value;
   }
@@ -153,30 +221,5 @@ export default async function ContactsPage({
     custom: customValues[c.id as string] ?? {},
   }));
 
-  const platforms = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort();
-
-  return (
-    <ContactsView
-      contacts={contacts}
-      total={contactsRes.count ?? 0}
-      page={page}
-      pageSize={PAGE_SIZE}
-      tags={(tagsRes.data ?? []).map((t) => ({
-        id: t.id,
-        name: t.name,
-        color: t.color,
-        disablesAgent: t.disables_agent,
-        assignsTo: t.assigns_to,
-      }))}
-      platforms={platforms.map((p) => ({ value: p, label: platformLabel(p) }))}
-      members={members.map((m) => ({ userId: m.userId, label: m.name }))}
-      filters={filters}
-      customFilter={filters.custom ? { slug: filters.custom.field.slug, op: filters.custom.op, value: customFilterRawValue(params) } : null}
-      customFields={customFields}
-      statusSettings={statusSettings}
-      interestCatalog={interestCatalog}
-      anonymousCount={anonymousRes.count ?? 0}
-      sort={sort}
-    />
-  );
+  return { contacts, total: contactsRes.count ?? 0, kanban: null };
 }
