@@ -730,6 +730,33 @@ describe("webhook de Evolution: reacciones (A3)", () => {
     expect(insertMessage).not.toHaveBeenCalled();
   });
 
+  it("un voto de encuesta en un chat privado NO es un mensaje: nada de no leidos, flows, agente ni toques", async () => {
+    db();
+    const res = await callRoute(
+      post({
+        event: "messages.upsert",
+        instance: INSTANCE,
+        data: {
+          key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: false, id: "vote-evt-1" },
+          pushName: "Lead de prueba",
+          message: { pollUpdateMessage: { pollCreationMessageKey: { id: "poll-1" }, vote: { selectedOptions: ["Lunes"] } } },
+          messageType: "pollUpdateMessage",
+          messageTimestamp: 1_760_000_000,
+        },
+      }),
+    );
+    await runAfter();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, skipped: "voto de encuesta" });
+    expect(claimWebhookEvent).not.toHaveBeenCalled();
+    expect(insertMessage).not.toHaveBeenCalled();
+    expect(upsertConversation).not.toHaveBeenCalled();
+    expect(runInboundAutomation).not.toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
+    expect(recordInboundTouch).not.toHaveBeenCalled();
+  });
+
   it("un mensaje comun sigue el camino de siempre", async () => {
     db();
     const res = await callRoute(post(message()));

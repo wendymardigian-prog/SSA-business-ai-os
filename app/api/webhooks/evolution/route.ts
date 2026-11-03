@@ -38,6 +38,7 @@ import { fetchProfilePictureUrl } from "@/lib/evolution-client";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { resolveWhatsappSender, type WhatsappMessageKey, type WhatsappSender } from "@/lib/whatsapp-sender";
 import { handleWhatsappReaction, parseBaileysReaction } from "@/lib/messages/reactions-inbound";
+import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
 import {
   describeAttachment,
   extractText,
@@ -185,6 +186,12 @@ async function handleWebhook(request: NextRequest) {
       fromMe: payload.data?.key?.fromMe === true,
     });
     return NextResponse.json({ ok: true, handled: "reaction", outcome });
+  }
+
+  // Un voto de encuesta tampoco es un mensaje: antes entraba como un entrante vacio «📊 Encuesta» (no leido,
+  // flujos, agente). En un chat privado no dispara nada: los disparadores de encuestas son de grupos.
+  if (parseBaileysPollVote(payload.data?.message)) {
+    return NextResponse.json({ ok: true, skipped: "voto de encuesta" });
   }
 
   const messageId = payload.data?.key?.id ?? null;
