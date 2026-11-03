@@ -1,9 +1,11 @@
 /**
  * Receptor de los webhooks de Evolution API (WhatsApp por Baileys).
  *
- * Evolution manda dos eventos que nos importan:
- * - messages.upsert: mensaje nuevo, del lead o mandado desde el celular
+ * Evolution manda estos eventos que nos importan:
+ * - messages.upsert: mensaje nuevo, del lead o mandado desde el celular (o de un grupo activado)
  * - connection.update: la sesion se abrio, se esta abriendo o se cayo
+ * - call: una llamada (00258)
+ * - group-participants.update: alguien entro o salio de un grupo (Grupos de WhatsApp, 00280)
  *
  * Autenticacion: esta URL es publica, asi que se exige el header
  * x-webhook-token, el mismo que se configura al crear la instancia
@@ -39,6 +41,9 @@ import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { resolveWhatsappSender, type WhatsappMessageKey, type WhatsappSender } from "@/lib/whatsapp-sender";
 import { handleWhatsappReaction, parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
+import { withKnownLid } from "@/lib/whatsapp-known-lid";
+import { groupJidOfMessage, parseGroupParticipantsEvent } from "@/lib/whatsapp-groups/parse";
+import { handleGroupMessage, handleGroupParticipants, loadActiveGroup } from "@/lib/whatsapp-groups/inbound";
 import {
   describeAttachment,
   extractText,
@@ -163,8 +168,42 @@ async function handleWebhook(request: NextRequest) {
     return NextResponse.json({ ok: true, queued: "call" });
   }
 
+  // Quien entra o sale de un grupo (Grupos de WhatsApp, 00280). Solo cuenta para los grupos activados; nunca es
+  // un mensaje. Evolution lo nombra con guion ("group-participants.update").
+  if (event === "group-participants.update" || event === "group.participants.update") {
+    const groupEvent = parseGroupParticipantsEvent(payload.data);
+    if (!groupEvent) return NextResponse.json({ ok: true, skipped: "aviso de grupo ilegible" });
+    after(async () => {
+      try {
+        await handleGroupParticipants(supabase, channel, groupEvent);
+      } catch (err) {
+        console.error("[evolution] error procesando los miembros del grupo:", err instanceof Error ? err.message : err);
+      }
+    });
+    return NextResponse.json({ ok: true, queued: "group-participants" });
+  }
+
   if (event !== "messages.upsert") {
     return NextResponse.json({ ok: true, skipped: event || "sin evento" });
+  }
+
+  // Un mensaje de un GRUPO: solo se guarda si el negocio activo ese grupo (si no, se ignora como siempre). No es
+  // una conversacion con un lead: no pasa por el agente, ni por los flujos de mensajes, ni suma a la bandeja privada.
+  const groupJid = groupJidOfMessage(payload.data?.key);
+  if (groupJid) {
+    const group = await loadActiveGroup(supabase, channel.id, groupJid);
+    if (!group) return NextResponse.json({ ok: true, skipped: "grupo no activado" });
+    const groupMessageId = payload.data?.key?.id ?? null;
+    const claimedGroup = await claimWebhookEvent(supabase, groupMessageId ? `evolution:${channel.id}:${groupJid}:${groupMessageId}` : null);
+    if (!claimedGroup) return NextResponse.json({ ok: true, skipped: "evento repetido" });
+    after(async () => {
+      try {
+        await handleGroupMessage(supabase, channel, group, payload.data ?? {});
+      } catch (err) {
+        console.error("[evolution] error procesando el mensaje del grupo:", err instanceof Error ? err.message : err);
+      }
+    });
+    return NextResponse.json({ ok: true, queued: "group-message" });
   }
 
   // Quien es la otra persona: su telefono o, si WhatsApp no lo comparte, su @lid.
@@ -586,25 +625,3 @@ async function processMessage(
 /** El nombre de un contacto de WhatsApp del que no sabemos ni el nombre ni el numero. */
 const UNKNOWN_WHATSAPP_NAME = "Contacto de WhatsApp";
 
-/**
- * Si la persona ya entro antes SOLO con su @lid (sin telefono) y ahora llega con
- * los dos, se sigue usando el @lid como identidad: asi el mensaje cae en el mismo
- * contacto y la misma conversacion, y el telefono se le suma a la ficha
- * (find_or_link_contact completa los datos de un remitente conocido). Si no, el
- * telefono, como siempre. Nunca lanza: ante un error, la identidad de siempre.
- */
-async function withKnownLid(supabase: Db, channel: ChannelRow, sender: WhatsappSender): Promise<WhatsappSender> {
-  if (!sender.phone || !sender.lid || sender.id === sender.lid) return sender;
-  try {
-    const { data } = await supabase
-      .from("contact_channels")
-      .select("contact_id")
-      .eq("channel_id", channel.id)
-      .eq("platform_sender_id", sender.lid)
-      .maybeSingle();
-    return data ? { ...sender, id: sender.lid } : sender;
-  } catch (err) {
-    console.error("[evolution] no pude buscar el @lid conocido:", err instanceof Error ? err.message : err);
-    return sender;
-  }
-}

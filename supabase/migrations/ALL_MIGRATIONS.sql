@@ -50231,9 +50231,10 @@ BEGIN
   END IF;
 END $$;
 
+-- No parcial a proposito: PostgREST no puede apuntar un `on_conflict` a un indice parcial. Un envio fallido (sin
+-- id de WhatsApp) no choca con nadie: en un indice unico los NULL son distintos entre si.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_whatsapp_group_messages_platform
-  ON public.whatsapp_group_messages (group_id, platform_message_id)
-  WHERE platform_message_id IS NOT NULL;
+  ON public.whatsapp_group_messages (group_id, platform_message_id);
 
 CREATE INDEX IF NOT EXISTS idx_whatsapp_group_messages_thread
   ON public.whatsapp_group_messages (group_id, created_at DESC);
