@@ -8,7 +8,9 @@ import {
   contactListSelect,
   countActiveFilters,
   countMenuFilters,
+  filterValues,
   parseContactListFilters,
+  relatedPlan,
   type ListClause,
 } from "./list-query";
 
@@ -24,18 +26,18 @@ const clausesOf = (params: Record<string, string | string[]>) =>
 describe("leer los filtros de la URL", () => {
   it("un link viejo de un solo valor sigue funcionando", () => {
     const f = parse({ setter: A, temp: "hot", fuente: "instagram", estado_setter: "calificado", estado: "closer:ganado" });
-    expect(f.setterIds).toEqual([A]);
-    expect(f.temperatures).toEqual(["hot"]);
-    expect(f.sources).toEqual(["instagram"]);
-    expect(f.setterStatuses).toEqual(["calificado"]);
-    expect(f.lastStatuses).toEqual([{ role: "closer", key: "ganado" }]);
+    expect(filterValues(f, "setter")).toEqual([A]);
+    expect(filterValues(f, "temp")).toEqual(["hot"]);
+    expect(filterValues(f, "fuente")).toEqual(["instagram"]);
+    expect(filterValues(f, "estado_setter")).toEqual(["calificado"]);
+    expect(filterValues(f, "estado")).toEqual(["closer:ganado"]);
   });
 
   it("un parámetro repetido es una lista, sin duplicados", () => {
     const f = parse({ setter: [A, B, A], email: ["bounced", "complained"], canal: ["instagram", "whatsapp"] });
-    expect(f.setterIds).toEqual([A, B]);
-    expect(f.emailStatuses).toEqual(["bounced", "complained"]);
-    expect(f.platforms).toEqual(["instagram", "whatsapp"]);
+    expect(filterValues(f, "setter")).toEqual([A, B]);
+    expect(filterValues(f, "email")).toEqual(["bounced", "complained"]);
+    expect(filterValues(f, "canal")).toEqual(["instagram", "whatsapp"]);
   });
 
   it("lo inventado se ignora en vez de romper la consulta", () => {
@@ -52,24 +54,26 @@ describe("leer los filtros de la URL", () => {
       canal: "myspace",
       anon: "todos",
     });
-    expect(f.tagIds).toEqual([A]);
-    expect(f.setterIds).toEqual([]);
-    expect(f.temperatures).toEqual([]);
-    expect(f.sources).toEqual([]);
-    expect(f.mediums).toEqual(["dm"]);
-    expect(f.lastStatuses).toEqual([{ role: "setter", key: "calificado" }]);
-    expect(f.closerStatuses).toEqual([]);
-    expect(f.productIds).toEqual([]);
-    expect(f.emailStatuses).toEqual([]);
-    expect(f.platforms).toEqual([]);
+    expect(filterValues(f, "tag")).toEqual([A]);
+    expect(filterValues(f, "setter")).toEqual([]);
+    expect(filterValues(f, "temp")).toEqual([]);
+    expect(filterValues(f, "fuente")).toEqual([]);
+    expect(filterValues(f, "medio")).toEqual(["dm"]);
+    expect(filterValues(f, "estado")).toEqual(["setter:calificado"]);
+    expect(filterValues(f, "estado_vendedor")).toEqual([]);
+    expect(filterValues(f, "producto")).toEqual([]);
+    expect(filterValues(f, "email")).toEqual([]);
+    expect(filterValues(f, "canal")).toEqual([]);
     expect(f.anon).toBe("");
+    // Un filtro sin nada válido ni siquiera queda en la lista.
+    expect(Object.keys(f.values).sort()).toEqual(["estado", "medio", "tag"]);
   });
 
   it("acepta «ninguno» donde tiene sentido", () => {
     const f = parse({ setter: "ninguno", estado_setter: ["ninguno", "nuevo"], producto: "ninguno" });
-    expect(f.setterIds).toEqual(["ninguno"]);
-    expect(f.setterStatuses).toEqual(["ninguno", "nuevo"]);
-    expect(f.productIds).toEqual(["ninguno"]);
+    expect(filterValues(f, "setter")).toEqual(["ninguno"]);
+    expect(filterValues(f, "estado_setter")).toEqual(["ninguno", "nuevo"]);
+    expect(filterValues(f, "producto")).toEqual(["ninguno"]);
   });
 
   it("cuenta un filtro por parámetro, tenga una o varias opciones", () => {
@@ -168,7 +172,7 @@ describe("aplicar las condiciones", () => {
   it("llama al método de PostgREST que corresponde, en orden", () => {
     const calls: string[] = [];
     const builder: Record<string, (...args: unknown[]) => unknown> = {};
-    for (const m of ["eq", "in", "is", "not", "ilike", "gt", "lt", "or"]) {
+    for (const m of ["eq", "neq", "in", "is", "not", "ilike", "gt", "lt", "gte", "lte", "or"]) {
       builder[m] = (...args: unknown[]) => {
         calls.push(`${m}(${args.map((a) => JSON.stringify(a)).join(",")})`);
         return builder;
@@ -183,6 +187,9 @@ describe("aplicar las condiciones", () => {
       { op: "gt", column: "f", value: 2 },
       { op: "lt", column: "g", value: 3 },
       { op: "or", filter: "h.eq.1" },
+      { op: "neq", column: "i", value: "x" },
+      { op: "gte", column: "j", value: "2026-01-01" },
+      { op: "lte", column: "k", value: "2026-02-01" },
     ];
     expect(applyListClauses(builder, clauses)).toBe(builder);
     expect(calls).toEqual([
@@ -194,6 +201,34 @@ describe("aplicar las condiciones", () => {
       'gt("f",2)',
       'lt("g",3)',
       'or("h.eq.1")',
+      'neq("i","x")',
+      'gte("j","2026-01-01")',
+      'lte("k","2026-02-01")',
+    ]);
+  });
+});
+
+describe("registros relacionados", () => {
+  it("las «tiene» de una misma tabla van en UN join: una fila que cumple todo", () => {
+    const plan = relatedPlan([
+      { relation: "bookings", mode: "has", columns: ["id"], clauses: [] },
+      { relation: "bookings", mode: "has", columns: ["status"], clauses: [{ op: "in", column: "status", values: ["confirmed"] }] },
+    ]);
+    expect(plan.embeds).toEqual(["con_bookings:bookings!inner(id,status)"]);
+    expect(plan.clauses).toEqual([{ op: "in", column: "con_bookings.status", values: ["confirmed"] }]);
+  });
+
+  it("cada «no tiene» es un anti-join propio con `is null`", () => {
+    const plan = relatedPlan([
+      { relation: "tasks", mode: "none", columns: ["id", "status"], clauses: [{ op: "neq", column: "status", value: "completed" }] },
+      { relation: "form_submissions", mode: "none", columns: ["form_id"], clauses: [{ op: "in", column: "form_id", values: [A] }] },
+    ]);
+    expect(plan.embeds).toEqual(["sin_tasks_1:tasks(id,status)", "sin_form_submissions_2:form_submissions(form_id)"]);
+    expect(plan.clauses).toEqual([
+      { op: "neq", column: "sin_tasks_1.status", value: "completed" },
+      { op: "is_null", column: "sin_tasks_1" },
+      { op: "in", column: "sin_form_submissions_2.form_id", values: [A] },
+      { op: "is_null", column: "sin_form_submissions_2" },
     ]);
   });
 });

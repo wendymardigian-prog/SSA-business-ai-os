@@ -7,6 +7,7 @@ import { KANBAN_PAGE_SIZE, groupingRole, parseKanbanGrouping, type KanbanCard } 
 import { parseContactSort } from "@/lib/contacts/sort";
 import { STATUS_KEY_RE } from "@/lib/contacts/statuses";
 import { firstParam, sanitizeSearch, searchParamsToRecord } from "@/lib/url-params";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * "Cargar más" de una columna del Kanban de contactos.
@@ -30,8 +31,11 @@ export async function loadContactsKanbanColumn(
   const params = searchParamsToRecord(new URLSearchParams(query));
   const search = sanitizeSearch(firstParam(params.q));
   const role = groupingRole(parseKanbanGrouping(params.agrupar));
-  const customFields = await loadCustomFieldRefs(ctx.supabase, ctx.workspace.id);
-  const { plan } = await prepareContactList(ctx.supabase, ctx.workspace.id, params, customFields, search);
+  const [customFields, timeZone] = await Promise.all([
+    loadCustomFieldRefs(ctx.supabase, ctx.workspace.id),
+    resolveViewerTimezone(ctx.workspace.timezone),
+  ]);
+  const { plan } = await prepareContactList(ctx.supabase, ctx.workspace.id, params, customFields, search, { now: new Date(), timeZone });
   const column = await loadKanbanColumn(ctx.supabase, ctx.workspace.id, plan, role, columnKey, parseContactSort(params.orden), offset, KANBAN_PAGE_SIZE);
   if (column.failed) return { ok: false, error: "No pude cargar más contactos. Probá de nuevo." };
   return { ok: true, cards: column.cards };

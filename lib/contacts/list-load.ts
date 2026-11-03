@@ -11,7 +11,9 @@ import type { Database } from "@/lib/types/database";
 import type { SearchParams } from "@/lib/url-params";
 import { contactSearchFilter } from "./search";
 import { contactIdsByWhatsappLid } from "./search-lid";
-import { applyListClauses, contactListPlan, contactListSelect, parseContactListFilters, type ContactListFilters, type ContactListPlan, type ListClause } from "./list-query";
+import { applyListClauses, contactListPlan, contactListSelect, parseContactListFilters, type ContactListFilters, type ContactListPlan, type ListClause, type PlanContext } from "./list-query";
+import { CONTACT_LIST_MODULES } from "./list-modules";
+import type { MultiFilterOption } from "@/lib/ui/multi-filter";
 import type { CustomFieldRef } from "./list-filters";
 import { contactOrderClauses, type ContactSort } from "./sort";
 import { KANBAN_CARD_SELECT, kanbanColumnClause, toKanbanCard, type KanbanCard } from "./kanban";
@@ -26,6 +28,7 @@ export async function prepareContactList(
   params: SearchParams,
   customFields: readonly CustomFieldRef[],
   search: string,
+  ctx: PlanContext,
 ): Promise<{ filters: ContactListFilters; plan: ContactListPlan }> {
   const filters = parseContactListFilters(params, customFields, search);
   let searchFilter: string | null = null;
@@ -36,7 +39,7 @@ export async function prepareContactList(
     const lidContactIds = await contactIdsByWhatsappLid(supabase, workspaceId, search);
     searchFilter = contactSearchFilter(search, lidContactIds);
   }
-  return { filters, plan: contactListPlan(filters, searchFilter) };
+  return { filters, plan: contactListPlan(filters, searchFilter, ctx) };
 }
 
 /** La consulta de contactos vivos del workspace con el plan (y alguna condición más) aplicado. */
@@ -84,4 +87,24 @@ export async function loadKanbanColumn(
   }
   const rows = (data ?? []) as unknown as Record<string, unknown>[];
   return { cards: rows.map(toKanbanCard), total: count ?? 0, failed: false };
+}
+
+/**
+ * Las opciones de los filtros de cada área (formularios, tipos de evento,
+ * campañas…). Con el cliente del usuario. Un área que falla deja sus filtros
+ * sin opciones, nunca la pantalla sin lista.
+ */
+export async function loadModuleFilterOptions(supabase: Client, workspaceId: string): Promise<Record<string, MultiFilterOption[]>> {
+  const parts = await Promise.all(
+    CONTACT_LIST_MODULES.map(async (m) => {
+      if (!m.loadOptions) return {};
+      try {
+        return await m.loadOptions(supabase, workspaceId);
+      } catch (e) {
+        console.error(`[contacts] opciones de filtros de ${m.key} fallidas:`, e instanceof Error ? e.message : "error");
+        return {};
+      }
+    }),
+  );
+  return Object.assign({}, ...parts);
 }

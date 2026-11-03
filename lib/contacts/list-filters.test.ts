@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customFilterPlan, parseCustomFilter, parseVisibleColumns } from "./list-filters";
+import { customFilterPlan, parseCustomFilter } from "./list-filters";
 
 const fields = [
   { id: "f-viajeros", slug: "cantidad_de_viajeros", name: "Cantidad de viajeros", type: "number" },
@@ -39,18 +39,5 @@ describe("filtro por campo personalizado", () => {
     expect(parseCustomFilter({ campo: "cantidad_de_viajeros", op: "contains", valor: "3" }, fields)).toBeNull();
     expect(parseCustomFilter({ campo: "cantidad_de_viajeros", op: "gt", valor: "muchos" }, fields)).toBeNull();
     expect(parseCustomFilter({ campo: "destino", op: "eq", valor: "  " }, fields)).toBeNull();
-  });
-});
-
-describe("las columnas elegidas", () => {
-  it("sin nada guardado, Estado y Producto", () => {
-    expect(parseVisibleColumns(null, [])).toEqual(["status", "product"]);
-    expect(parseVisibleColumns("{roto", [])).toEqual(["status", "product"]);
-  });
-  it("descarta un campo que ya no existe", () => {
-    expect(parseVisibleColumns(JSON.stringify(["status", "cf:f-viajeros", "cf:borrado"]), ["f-viajeros"])).toEqual(["status", "cf:f-viajeros"]);
-  });
-  it("una lista vacía a propósito se respeta", () => {
-    expect(parseVisibleColumns("[]", [])).toEqual([]);
   });
 });

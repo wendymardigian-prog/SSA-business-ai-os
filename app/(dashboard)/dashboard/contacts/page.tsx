@@ -6,8 +6,11 @@ import type { LeadTemperature } from "@/lib/types/database";
 import { platformLabel } from "@/lib/platforms";
 import { contactOrderClauses, parseContactSort, type ContactSort } from "@/lib/contacts/sort";
 import { firstParam, pickPage, sanitizeSearch } from "@/lib/url-params";
-import { customFilterRawValue, type ContactListFilters, type ContactListPlan } from "@/lib/contacts/list-query";
-import { contactListQuery, loadCustomFieldRefs, loadKanbanColumn, prepareContactList } from "@/lib/contacts/list-load";
+import { customFilterRawValue, filterValues, type ContactListFilters, type ContactListPlan } from "@/lib/contacts/list-query";
+import { contactListQuery, loadCustomFieldRefs, loadKanbanColumn, loadModuleFilterOptions, prepareContactList } from "@/lib/contacts/list-load";
+import { coreFilterOptions } from "@/lib/contacts/filters/options";
+import { contactCells } from "@/lib/contacts/columns";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import {
   KANBAN_PAGE_SIZE,
   groupingRole,
@@ -68,15 +71,17 @@ export default async function ContactsPage({
   // Los campos personalizados (para el filtro y las columnas), las listas de
   // estados y el catalogo de productos: se piden antes porque el filtro por
   // campo necesita saber su tipo.
-  const [customFields, statusSettings, interestCatalog] = await Promise.all([
+  const [customFields, statusSettings, interestCatalog, timeZone] = await Promise.all([
     loadCustomFieldRefs(supabase, workspace.id),
     loadContactStatusSettings(workspace.id),
     loadInterestCatalog(supabase, workspace.id),
+    // "Hoy" y "los últimos 7 días" de los filtros de fecha son los de quien mira.
+    resolveViewerTimezone(workspace.timezone),
   ]);
 
   // Todos los filtros salen de la URL y se validan en UN lugar
   // (lib/contacts/list-query.ts): lo mismo que filtra la tabla filtra el Kanban.
-  const { filters, plan } = await prepareContactList(supabase, workspace.id, params, customFields, search);
+  const { filters, plan } = await prepareContactList(supabase, workspace.id, params, customFields, search, { now: new Date(), timeZone });
 
   // Cuantos quedaron afuera por ser anonimos. Sin este numero, la lista pasa de
   // 171 a 72 sin explicacion y parece que se perdieron contactos.
@@ -87,7 +92,7 @@ export default async function ContactsPage({
     .is("deleted_at", null)
     .eq("is_anonymous", true);
 
-  const [listing, tagsRes, channelsRes, members, anonymousRes] = await Promise.all([
+  const [listing, tagsRes, channelsRes, members, anonymousRes, moduleOptions] = await Promise.all([
     view === "kanban"
       ? loadKanban(supabase, workspace.id, plan, statusSettings, grouping, filters, sort)
       : loadTablePage(supabase, workspace.id, plan, sort, page, customFields.length > 0),
@@ -95,9 +100,28 @@ export default async function ContactsPage({
     supabase.from("channels").select("platform").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
     anonymousQuery,
+    loadModuleFilterOptions(supabase, workspace.id),
   ]);
 
   const platforms = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort();
+  const tags = (tagsRes.data ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    color: t.color,
+    disablesAgent: t.disables_agent,
+    assignsTo: t.assigns_to,
+  }));
+  const memberRefs = members.map((m) => ({ userId: m.userId, label: m.name }));
+  const filterOptions = {
+    ...coreFilterOptions({
+      members: memberRefs,
+      tags,
+      platforms: platforms.map((p) => ({ value: p, label: platformLabel(p) })),
+      statusSettings,
+      interestCatalog,
+    }),
+    ...moduleOptions,
+  };
 
   return (
     <ContactsView
@@ -109,15 +133,9 @@ export default async function ContactsPage({
       grouping={grouping}
       kanban={listing.kanban}
       canEdit={permission.can("contacts.edit")}
-      tags={(tagsRes.data ?? []).map((t) => ({
-        id: t.id,
-        name: t.name,
-        color: t.color,
-        disablesAgent: t.disables_agent,
-        assignsTo: t.assigns_to,
-      }))}
-      platforms={platforms.map((p) => ({ value: p, label: platformLabel(p) }))}
-      members={members.map((m) => ({ userId: m.userId, label: m.name }))}
+      tags={tags}
+      filterOptions={filterOptions}
+      members={memberRefs}
       filters={filters}
       customFilter={filters.custom ? { slug: filters.custom.field.slug, op: filters.custom.op, value: customFilterRawValue(params) } : null}
       customFields={customFields}
@@ -150,7 +168,7 @@ async function loadKanban(
   sort: ContactSort,
 ): Promise<Listing> {
   const role = groupingRole(grouping);
-  const defs = kanbanColumnDefs(statusSettings[role], role === "setter" ? filters.setterStatuses : filters.closerStatuses);
+  const defs = kanbanColumnDefs(statusSettings[role], filterValues(filters, role === "setter" ? "estado_setter" : "estado_vendedor"));
   const loaded = await Promise.all(
     defs.map(async (def) => {
       const column = await loadKanbanColumn(supabase, workspaceId, plan, role, def.key, sort, 0, KANBAN_PAGE_SIZE);
@@ -219,6 +237,7 @@ async function loadTablePage(
     interestProductId: (c.interest_product_id as string | null) ?? null,
     interestVariantId: (c.interest_variant_id as string | null) ?? null,
     custom: customValues[c.id as string] ?? {},
+    cells: contactCells(c),
   }));
 
   return { contacts, total: contactsRes.count ?? 0, kanban: null };

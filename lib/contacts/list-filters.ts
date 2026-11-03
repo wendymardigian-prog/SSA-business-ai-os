@@ -1,6 +1,7 @@
 /**
- * El filtro por campo personalizado (00244) y las columnas elegidas de la lista
- * de contactos. El resto de los filtros vive en `list-query.ts`.
+ * El filtro por campo personalizado (00244) de la lista de contactos. El resto
+ * de los filtros vive en el catálogo (`filters/catalog.ts`) y las columnas en
+ * `columns.ts`.
  *
  * Puro: lo usan la página (para armar la consulta) y la vista (para los
  * controles). Todo viene de la URL, así que se valida contra lo que existe:
@@ -9,7 +10,7 @@
 import { normalizeCustomValue } from "@/lib/custom-fields";
 
 /** "ninguno" en un filtro: sin estado, sin producto, sin asignar. */
-export const NONE = "ninguno";
+export { NONE } from "./filters/types";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
@@ -102,34 +103,4 @@ export function customFilterPlan(f: CustomFilter): CustomFilterPlan {
     return { join: "inner", fieldId, column: "value_date", op: f.op === "after" ? "gt" : f.op === "before" ? "lt" : "eq", value: f.value };
   }
   return { join: "inner", fieldId, column: "value", op: "eq", value: f.value };
-}
-
-// ---------------------------------------------------------------------------
-// Las columnas elegidas (localStorage, por persona)
-// ---------------------------------------------------------------------------
-
-export const COLUMNS_STORAGE_KEY = "contacts-columns";
-
-/** Las columnas opcionales fijas; las de campos personalizados son `cf:<id>`. */
-export const OPTIONAL_COLUMNS = ["status", "product", "email_status"] as const;
-export type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number] | `cf:${string}`;
-
-/** Por defecto se ven Estado y Producto; el estado de email y los campos personalizados se suman a mano. */
-export const DEFAULT_VISIBLE_COLUMNS: OptionalColumn[] = ["status", "product"];
-
-/** Lee lo guardado. Nunca lanza: algo roto o vacío vuelve a las de por defecto. */
-export function parseVisibleColumns(raw: string | null | undefined, fieldIds: readonly string[]): OptionalColumn[] {
-  if (!raw) return [...DEFAULT_VISIBLE_COLUMNS];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [...DEFAULT_VISIBLE_COLUMNS];
-    const ids = new Set(fieldIds);
-    const out = parsed.filter(
-      (c): c is OptionalColumn =>
-        typeof c === "string" && ((OPTIONAL_COLUMNS as readonly string[]).includes(c) || (c.startsWith("cf:") && ids.has(c.slice(3)))),
-    );
-    return [...new Set(out)];
-  } catch {
-    return [...DEFAULT_VISIBLE_COLUMNS];
-  }
 }
