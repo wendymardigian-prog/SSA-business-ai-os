@@ -689,3 +689,12 @@ Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla.
 - **Enviar email**: `attachments: [{ assetId }]`, recursos de la banca con archivo, hasta 10 y 25 MB
   (`lib/email/attachment-limits.ts`, `lib/email/flow-attachments.ts`).
 - **WhatsApp**: Evolution manda botones y respuestas rápidas como lista numerada; tope de 200 envíos automáticos por hora.
+
+## Grupos de WhatsApp (00282, noviembre 2026)
+
+Tres disparadores de evento, de contacto, en `registry/whatsapp-group-triggers.ts`: `whatsapp_group_joined`,
+`whatsapp_group_reaction` y `whatsapp_group_poll_vote`. Filtros y claves de idempotencia en
+`lib/whatsapp-groups/automation/trigger-config.ts` (puro). Declaran `conversationFor` (hook nuevo del registro): el
+flujo responde por el chat privado en el número del grupo, creándolo si no existe, recién después de reclamar el
+disparo. Su `eventMatches` saltea un contacto «no contactar». Nodo nuevo: `send_poll` («Enviar encuesta», sin
+contacto, `requires: whatsapp_channel`). Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).

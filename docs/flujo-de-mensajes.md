@@ -341,3 +341,13 @@ Ahora el sistema escucha `account.connected` y `account.disconnected` (`SUBSCRIB
 - **Qué hace.** En el `after()` vuelve a leer la lista **completa** de Zernio y pasa por el mismo camino que el botón (`syncZernioChannels`, `lib/channels/zernio-channels.ts`): crea el canal nuevo (con el aviso a Owner y Admin si un rol no lo ve), trae sus conversaciones anteriores y sincroniza las cuentas de Social. Si Zernio no responde, **no se desactiva ningún canal**. Nunca lanza.
 - **Instalaciones que ya existían:** el webhook registrado en Zernio suma los dos eventos la próxima vez que se guarda la clave o se aprieta «Sincronizar canales» (`ensureWebhookRegistered` corrige los eventos que faltan). Hay que hacerlo **una vez** después del deploy.
 
+
+## Grupos y votos (noviembre 2026)
+
+- Un mensaje de un grupo (`remoteJid` `@g.us`) se guarda en `whatsapp_group_messages` solo si el grupo está activado;
+  si no, se ignora como antes. Nunca entra a `messages`.
+- `group-participants.update` (quién entra o sale) se procesa para los grupos activados.
+- Un voto de encuesta (`pollUpdateMessage`) NO es un mensaje: en un chat privado se ignora; en un grupo activado se
+  guarda en `whatsapp_poll_votes`.
+
+Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).

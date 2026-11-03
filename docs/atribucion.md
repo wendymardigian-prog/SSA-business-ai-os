@@ -303,3 +303,10 @@ node scripts/verify-organic-attribution.mjs --despues-de-00234
   historial ("lo encontró en la importación «archivo.csv»") con los datos que se completaron.
 - No hay un canal "Importación": el canal es una clasificación de cuatro valores con gemela SQL/TS y reglas de comisiones; el origen ya
   distingue a un importado.
+
+## Grupos de WhatsApp (00281, noviembre 2026)
+
+Origen nuevo `whatsapp_group`: quien se une a un grupo que guarda contactos (o se importa) queda con un toque
+`source: whatsapp`, `medium: whatsapp_group`, `content_label` = nombre del grupo, una vez por persona y grupo. Cuenta
+como **orgánico** (`touch_channel` y `ORGANIC_MEDIUMS`, con su caso en `channel.cases.json`). No hay UTMs: WhatsApp no
+informa el link de invitación. Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).
