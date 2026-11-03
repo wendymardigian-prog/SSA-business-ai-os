@@ -28,8 +28,12 @@ export const SECRET_NAMES = {
 
   // ── Email ────────────────────────────────────────────────────────────────
   resendApiKey: "resend_api_key",
-  /** Firma Svix del webhook de email entrante (B8). */
-  resendInboundWebhookSecret: "resend_inbound_webhook_secret",
+  /**
+   * Firma Svix del webhook de Resend del negocio: rebotes, quejas y emails entrantes. Lo guarda SSA al conectar el
+   * webhook (o se pega a mano). El texto en Vault conserva el nombre de cuando era solo de la recepcion (B8): cambiarlo
+   * obligaria a mover los secretos de cada instalacion sin ganar nada.
+   */
+  resendWebhookSecret: "resend_inbound_webhook_secret",
 
   // ── Proveedores de IA (BYOK) ─────────────────────────────────────────────
   openaiApiKey: "openai_api_key",

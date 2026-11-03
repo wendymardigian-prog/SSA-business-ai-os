@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { SENDER_CONFIG_KEYS } from "@/lib/email/senders";
+import { RESEND_CONNECTION_CONFIG_KEYS } from "@/lib/email/resend-config";
 import { SOCIAL_PROVIDER_IDS, syncAccountsAfterChange } from "@/lib/social/sync-hook";
 import { createServiceClient } from "@/lib/supabase/server";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
@@ -82,6 +83,8 @@ const DISCOVERED_CONFIG_KEYS = [
   "models_checked_at",
   // Los remitentes de Resend (E8) se guardan en su propio formulario: volver a guardar la key no los pisa.
   ...SENDER_CONFIG_KEYS,
+  // La tarjeta Resend (conexion de Resend): el acceso de la key, el webhook y la recepcion. Mismo motivo.
+  ...RESEND_CONNECTION_CONFIG_KEYS,
 ] as const;
 
 function discoveredConfigOf(previous: unknown): Record<string, Json> {
@@ -243,15 +246,33 @@ export async function saveIntegration(
     }
   }
 
+  // Una key de Resend de acceso completo conecta (o adopta) el webhook de SSA sola, como la de Zernio. Nunca hace
+  // fallar el guardado: si no se pudo, la tarjeta lo muestra y tiene su boton.
+  const resendWarnings: string[] = [];
+  if (provider.id === "resend" && toStore.length > 0 && tested.config?.access === "full") {
+    try {
+      const { connectWebhookForWorkspace } = await import("@/lib/email/resend-connection");
+      const connected = await connectWebhookForWorkspace({ service: await createServiceClient(), workspaceId: workspace.id });
+      if (!connected.ok) resendWarnings.push(`La key quedó guardada, pero no pude conectar el webhook: ${connected.error}`);
+      else if (connected.needsSecret) resendWarnings.push("La key quedó guardada. Ya había un webhook de SSA creado a mano: pegá su Signing secret en la sección Webhook.");
+    } catch (err) {
+      console.error("[integrations] no pude conectar el webhook de Resend:", err instanceof Error ? err.message : "error");
+      resendWarnings.push("La key quedó guardada, pero no pude conectar el webhook. Tocá «Conectar webhook automáticamente».");
+    }
+  }
+
   // Conectar una integracion es de las cosas que despues nadie se acuerda quien
   // hizo. La entidad es el workspace porque integration_configs se hace upsert
   // y no tiene una fila estable a la que apuntar. Nunca un valor de secreto:
   // solo QUE campos se rotaron.
   // Zernio y Postproxy cambian qué cuentas existen (F74). Si la sincronización
   // falla, el guardado sigue: el aviso viaja en la respuesta.
-  const warnings = SOCIAL_PROVIDER_IDS.includes(provider.id)
-    ? await syncAccountsAfterChange(supabase, workspace.id, `guardar ${provider.id}`)
-    : [];
+  const warnings = [
+    ...(SOCIAL_PROVIDER_IDS.includes(provider.id)
+      ? await syncAccountsAfterChange(supabase, workspace.id, `guardar ${provider.id}`)
+      : []),
+    ...resendWarnings,
+  ];
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,

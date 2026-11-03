@@ -491,14 +491,14 @@ export const PROVIDERS: ProviderDefinition[] = [
     visible: true,
     label: "Resend (email entrante)",
     description: "Recibe los emails de una direccion tuya como conversaciones de la bandeja.",
-    secretName: SECRET_NAMES.resendInboundWebhookSecret,
+    secretName: SECRET_NAMES.resendWebhookSecret,
     minKeyLength: 16,
     secretFields: [
       {
         key: "webhook_secret",
         label: "Secreto del webhook (Svix)",
         hint: "Lo da Resend al crear el webhook. Con el se verifica que el email entrante es suyo.",
-        secretName: SECRET_NAMES.resendInboundWebhookSecret,
+        secretName: SECRET_NAMES.resendWebhookSecret,
         required: true,
         minLength: 16,
       },

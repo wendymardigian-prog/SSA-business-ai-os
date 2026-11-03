@@ -102,7 +102,7 @@ async function handle(request: NextRequest) {
   const secret = await readSecret(
     supabase,
     channelRef.workspaceId,
-    SECRET_NAMES.resendInboundWebhookSecret,
+    SECRET_NAMES.resendWebhookSecret,
   );
   if (!secret) {
     console.error("[resend-inbound] no hay secreto guardado; rechazo el correo");
@@ -215,7 +215,7 @@ async function handleDeliveryEvent(request: NextRequest, body: string, event: De
   let workspaceId: string | null = null;
   let lastReason: string | null = null;
   for (const candidate of await candidateWorkspaces(supabase, event)) {
-    const secret = await readSecret(supabase, candidate, SECRET_NAMES.resendInboundWebhookSecret).catch(() => null);
+    const secret = await readSecret(supabase, candidate, SECRET_NAMES.resendWebhookSecret).catch(() => null);
     if (!secret) continue;
     const verification = verifySvixSignature({ secret, headers, body });
     if (verification.ok) {

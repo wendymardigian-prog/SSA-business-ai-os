@@ -3075,6 +3075,8 @@ export interface Database {
           is_active: boolean;
           connected_at: string | null;
           last_error: string | null;
+          /** 00279: ultimo aviso valido del proveedor (Resend). */
+          last_event_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -3090,6 +3092,7 @@ export interface Database {
           is_active?: boolean;
           connected_at?: string | null;
           last_error?: string | null;
+          last_event_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -3101,6 +3104,7 @@ export interface Database {
           is_active?: boolean;
           connected_at?: string | null;
           last_error?: string | null;
+          last_event_at?: string | null;
           updated_at?: string;
         };
         Relationships: [

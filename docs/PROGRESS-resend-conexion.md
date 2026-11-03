@@ -9,12 +9,12 @@ Rama `feat/resend-conexion`, desde `origin/main` en `a1a8503` (2/11/2026). Pendi
 - `npm run build`: salida 0.
 - `npm run lint`: 0 errores, 37 avisos.
 - Con el candado `/private/tmp/ssa-verify.lock`: `verify-email-subscription.mjs`, `verify-workspace-isolation.mjs --despues-de-00143` y `verify-rls.mjs --despues-de-00143` en verde.
-- Base de producción (`knrxjnmx…`): última migración `00276`, igual que el repo. Hay una sola fila `integration_configs` `email_provider/resend` (con `from_email` y `from_name`), ninguna `resend_inbound` y ningún canal de email.
+- Base de producción (`knrxjnmx…`): última migración `00276`, igual que el repo. Entre la Fase A y la creación de la rama se mergeó el PR #111 (web externa y «Sin suscribir»), con la `00277` y la `00278` ya aplicadas: la rama sale de ahí (`c1dfa1b`), y el punto de partida medido lo incluye. Hay una sola fila `integration_configs` `email_provider/resend` (con `from_email` y `from_name`), ninguna `resend_inbound` y ningún canal de email.
 
 ## Checklist
 
-- [ ] Caracterización: el receptor (`email.received` con dirección exacta, firma inválida, duplicado, dirección desconocida), el "desde" de la respuesta y la elección del secreto. En verde antes de tocar nada.
-- [ ] **R2 · Webhook automático**: URL en `lib/webhook-url.ts`, `lib/email/resend-webhook.ts` (crear, adoptar, nunca tocar uno ajeno), las acciones y la conexión sola al guardar una key de acceso completo.
+- [x] Caracterización (`route.received.test.ts`, 8 casos, en verde contra el código de antes): el receptor (`email.received` con dirección exacta, firma inválida, duplicado, dirección desconocida), el "desde" de la respuesta y la elección del secreto. En verde antes de tocar nada.
+- [x] **R2 · Webhook automático**: URL en `lib/webhook-url.ts`, `lib/email/resend-webhook.ts` (crear, adoptar, nunca tocar uno ajeno), las acciones y la conexión sola al guardar una key de acceso completo.
 - [ ] **R3 · El secreto deja de depender de la recepción**: `?w=` en el receptor, rebotes y quejas sin recepción activa, `last_event_at`.
 - [ ] **R4 · Recepción por dominio**: canal por dominio, la respuesta sale desde la dirección a la que escribieron, el estado del dominio y "Responder a" sugerido.
 - [ ] **R1 · Una sola tarjeta**: `resend_inbound` oculta y redirigida; Conexión, Remitentes, Webhook y Recepción en la tarjeta Resend.
@@ -28,7 +28,8 @@ Rama `feat/resend-conexion`, desde `origin/main` en `a1a8503` (2/11/2026). Pendi
 - `testConnection` no probaba Resend (`default: ok`). Se suma un caso: `GET /domains`.
 - El webhook de Zernio se registra en `app/api/v1/channels/test-key` y `.../sync`, no en `saveIntegration`. El de Resend sí va en `saveIntegration`, porque Resend usa el formulario genérico.
 - `resend_inbound` se editaba con `channels.manage` (era un proveedor de Canales, y la RLS de la 00213 lo deja pasar). La recepción pasa a la tarjeta Resend y pide `integrations.manage`. Es más estricto para quien solo tenía `channels.manage`; Owner y Admin no cambian. La política de la 00213 no se toca.
-- `webhook_events` no tiene workspace y se purga a las 48 h: no sirve para "último aviso". La 00277 suma `integration_configs.last_event_at`.
+- `webhook_events` no tiene workspace y se purga a las 48 h: no sirve para "último aviso". La 00279 suma `integration_configs.last_event_at`.
+- La lista de eventos vive en `lib/email/resend-events.ts` (pura, la muestra la pantalla); `lib/email/resend-webhook.ts` la re-exporta como `RESEND_WEBHOOK_EVENTS`.
 - `IntegrationCardData.config` es `Record<string, string>`: el estado nuevo se guarda en claves planas de texto (`access`, `webhook_id`, `webhook_events`, `webhook_connected_at`, `webhook_secret_saved_at`, `webhook_needs_secret`, `receiving_enabled`, `receiving_domain`, `receiving_local`), no en un objeto anidado.
 - Lo que dice la documentación de la API de Resend:
   - `POST /webhooks` y `GET /webhooks/{id}` devuelven `signing_secret`. La lista no es confiable para eso.
@@ -38,13 +39,18 @@ Rama `feat/resend-conexion`, desde `origin/main` en `a1a8503` (2/11/2026). Pendi
   - `email.received` trae `to`, `cc` y `received_for`.
   - El MX de recepción no se puede confirmar registro por registro, así que "Recepción activa" = `receiving === "enabled"` + `status === "verified"`, con esa aclaración en pantalla.
 
+## Hecho por requisito
+
+- **R2**: `lib/webhook-url.ts` (`"resend"`, `resendWebhookUrl`); `lib/email/resend-api.ts` (llamada clasificada y `probeResendKey`); `lib/email/resend-webhook.ts` (dueño del webhook, crear, adoptar, actualizar, inspeccionar; sin borrar); `lib/email/resend-config.ts` (claves planas); `lib/email/resend-connection.ts` (núcleo: Vault y config); `lib/actions/resend-connection.ts` (conectar, pegar y quitar el secreto); `testConnection` prueba Resend; `saveIntegration` conecta sola con acceso completo. Tests: `resend-webhook.test.ts` (18, incluido «nunca toca uno ajeno»), `resend-connection.test.ts` (12), `integrations-resend.test.ts` (6), `resend-connection.test.ts` de acciones (4) y `test-connection.test.ts` (+5).
+
 ## Migraciones
 
-- **`00277_resend_unified`**, aditiva e idempotente:
+- **`00279_resend_unified`** (la `00277` y la `00278` las tomó el PR #111), aditiva e idempotente:
   - `integration_configs.last_event_at timestamptz`.
   - Copia los datos de cada `resend_inbound` al `config` de la fila `resend` del mismo negocio, sin pisar nada; si no hay fila `resend`, la crea inactiva.
   - No borra ni desactiva `resend_inbound`. En producción no copia nada (0 filas).
-  - Puede ir antes del deploy. **La próxima libre queda en la `00278`.**
+  - Puede ir antes del deploy. **La próxima libre queda en la `00280`.**
+  - Ensayada en producción dentro de una transacción que se deshizo sola: con dos filas `resend_inbound` de prueba y corrida dos veces, copia los datos, conserva el remitente y crea la fila inactiva donde no había. **Aplicada y registrada** el 3/11/2026 (versión `20261103010606`). Comprobado después: la columna existe, la copia no hizo nada (0 filas) y la fila `resend` no cambió.
 
 ## Cambios de comportamiento visibles
 

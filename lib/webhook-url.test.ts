@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { channelWebhookUrl, isLocalUrl } from "./webhook-url";
+import { channelWebhookUrl, isLocalUrl, resendWebhookUrl } from "./webhook-url";
 
 const original = process.env.NEXT_PUBLIC_APP_URL;
 afterEach(() => {
@@ -36,6 +36,21 @@ describe("channelWebhookUrl", () => {
       process.env.NEXT_PUBLIC_APP_URL = local;
       expect(() => channelWebhookUrl("zernio")).toThrow(/dominio publico/);
     }
+  });
+});
+
+describe("resendWebhookUrl", () => {
+  it("la ruta del receptor de Resend, con el negocio en ?w=", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://mi-app.up.railway.app/";
+    expect(channelWebhookUrl("resend")).toBe("https://mi-app.up.railway.app/api/webhooks/resend-inbound");
+    expect(resendWebhookUrl("11111111-2222-3333-4444-555555555555")).toBe(
+      "https://mi-app.up.railway.app/api/webhooks/resend-inbound?w=11111111-2222-3333-4444-555555555555",
+    );
+  });
+
+  it("se niega a una direccion local, como los otros", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+    expect(() => resendWebhookUrl("ws")).toThrow(/local/);
   });
 });
 

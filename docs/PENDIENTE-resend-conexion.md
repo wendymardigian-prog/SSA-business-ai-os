@@ -21,7 +21,7 @@
 
 ## Para después del deploy (Wendy)
 
-- [ ] Aplicada la 00277 (ver PROGRESS).
+- [x] Aplicada la 00279 (ver PROGRESS).
 - [ ] Abrir Ajustes → Integraciones → Resend y tocar «Conectar webhook automáticamente». Si ya creaste uno a mano con la URL de SSA, lo adopta en vez de duplicarlo. Si Resend no devuelve su secreto, la pantalla pide pegarlo.
 - [ ] Para recibir emails: activar Receiving en el dominio desde resend.com, cargar el MX, y después prender «Recibir emails en la bandeja» y elegir el dominio.
 

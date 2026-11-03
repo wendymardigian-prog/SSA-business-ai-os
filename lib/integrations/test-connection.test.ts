@@ -89,3 +89,36 @@ describe("testConnection — las que no se prueban", () => {
     expect(doFetch).not.toHaveBeenCalled();
   });
 });
+
+describe("testConnection — Resend (conexion de Resend)", () => {
+  const run = (doFetch: ReturnType<typeof fakeFetch>, apiKey = "re_abcdefghijklmnopqrstuv") =>
+    testConnection({ providerId: "resend", secrets: apiKey ? { api_key: apiKey } : {}, config: {}, fetchImpl: doFetch as never });
+
+  it("key de acceso completo: se guarda marcada `full`, con una lectura (GET /domains)", async () => {
+    const doFetch = fakeFetch(200, { data: [] });
+    expect(await run(doFetch)).toEqual({ ok: true, detail: "Conectada · acceso completo.", config: { access: "full" } });
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = doFetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.resend.com/domains");
+    expect(init.method).toBe("GET");
+  });
+
+  it("key de solo envio (401 restricted_api_key): se guarda igual, marcada `sending`", async () => {
+    expect(await run(fakeFetch(401, { name: "restricted_api_key" }))).toEqual({ ok: true, detail: "Conectada · solo envío.", config: { access: "sending" } });
+  });
+
+  it("key revocada o mal copiada: NO se guarda", async () => {
+    const result = await run(fakeFetch(401, { name: "validation_error" }));
+    expect(result.ok).toBe(false);
+  });
+
+  it("Resend caido: se guarda (la caida no dice nada de la key)", async () => {
+    expect((await run(fakeFetch(503, {}))).ok).toBe(true);
+  });
+
+  it("sin key nueva no llama a nadie (se esta editando otra cosa)", async () => {
+    const doFetch = fakeFetch(200, {});
+    expect(await run(doFetch, "")).toEqual({ ok: true });
+    expect(doFetch).not.toHaveBeenCalled();
+  });
+});
