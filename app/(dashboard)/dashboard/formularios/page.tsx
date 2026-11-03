@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/auth/guards";
+import { publicBaseUrl } from "@/lib/public-url";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { FormsList } from "@/components/forms/list/forms-list";
 import { formListRow, parseListQuery, type FormStats } from "@/lib/forms/list";
@@ -116,7 +117,7 @@ export default async function FormulariosPage({ searchParams }: { searchParams: 
       canManage={ctx.can("forms.manage")}
       loadError={!!error}
       initialQuery={initialQuery}
-      appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
+      publicBase={publicBaseUrl(workspace)}
       timeZone={timeZone}
       nowIso={new Date().toISOString()}
     />

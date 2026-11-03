@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { appUrl } from "@/lib/app-url";
 import { clientIp } from "@/lib/scheduling/antispam";
 import { createServiceClient } from "@/lib/supabase/server";
 import { applyUnsubscribeAction, isUnsubscribeToken } from "@/lib/email/unsubscribe-public";
@@ -34,5 +33,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
 
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  return NextResponse.redirect(`${appUrl()}/baja/${encodeURIComponent(token)}`, { status: 303, headers: NO_STORE });
+  // Location relativa: la página de baja se abre en el MISMO dominio del link (el del negocio o el principal).
+  return new NextResponse(null, { status: 303, headers: { ...NO_STORE, Location: `/baja/${encodeURIComponent(token)}` } });
 }

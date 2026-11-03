@@ -14,6 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { registerTrigger } from "./registry";
 import { appUrl } from "@/lib/app-url";
+import { loadPublicBaseUrl } from "@/lib/public-url";
 import {
   FORM_TRIGGER_LABELS,
   FORM_TRIGGER_TYPES,
@@ -134,7 +135,8 @@ for (const type of FORM_TRIGGER_TYPES) {
       const payload = args.event.payload as Record<string, unknown>;
       const loaded = await loadSubmission(args.supabase, String(payload.submission_id ?? ""));
       if (!loaded) return {};
-      return { ...formVariables({ form: loaded.form, submission: loaded.row, baseUrl: appUrl() }) };
+      const publicBase = await loadPublicBaseUrl(args.supabase, args.event.workspace_id);
+      return { ...formVariables({ form: loaded.form, submission: loaded.row, baseUrl: appUrl(), publicBaseUrl: publicBase }) };
     },
   });
 }

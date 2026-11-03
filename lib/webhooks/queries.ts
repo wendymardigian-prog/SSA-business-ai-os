@@ -9,7 +9,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { appUrl } from "@/lib/app-url";
+import { loadPublicBaseUrl } from "@/lib/public-url";
 import { isLocalUrl } from "@/lib/webhook-url";
 import { isListening } from "./listen";
 import { hookUrl } from "./endpoints";
@@ -110,7 +110,8 @@ export async function loadEndpointDetail(db: Db, workspaceId: string, endpointId
   const { data: recent } = await db.from("inbound_webhooks").select("status").eq("endpoint_id", endpointId).gte("received_at", since).limit(20000);
   const list = (recent ?? []) as { status: string }[];
   const flows = (await flowsUsingEndpoints(db, workspaceId, [endpointId])).get(endpointId) ?? [];
-  const base = appUrl();
+  // La dirección que se pega en otro sistema: la del dominio del negocio (o la principal).
+  const base = await loadPublicBaseUrl(db, workspaceId);
 
   return {
     ...toListItem(row, { total: list.length, errors: list.filter((r) => r.status === "error").length }, flows, now),

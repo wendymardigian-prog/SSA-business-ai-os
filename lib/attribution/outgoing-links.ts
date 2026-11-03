@@ -10,7 +10,7 @@
  * la caracterización de `send-message`. NUNCA lanza: ante cualquier falla el link sale como estaba (o solo con UTM).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { appUrl } from "@/lib/app-url";
+import { loadPublicBaseUrl } from "@/lib/public-url";
 import type { Database } from "@/lib/types/database";
 import { buildAttributedUrl, isChatLink, mapUrlsInText, type LinkAttributionContext } from "./link-params";
 import { getOrCreateAttributionLinkSecret } from "./link-secret";
@@ -91,6 +91,7 @@ export async function attributeOutgoing(
 
     const canTrack = attribution.trackClicks && !!context.contactId && UUID.test(context.contactId) && !!context.flowId && UUID.test(context.flowId) && UUID.test(context.workspaceId);
     let secret: string | null = null;
+    let base: string | null = null;
     const resolved = new Map<string, string>();
     for (const url of urls) {
       const withUtm = buildAttributedUrl(url, ctx);
@@ -102,7 +103,9 @@ export async function attributeOutgoing(
             { w: context.workspaceId, c: context.contactId!, u: withUtm.trim(), f: context.flowId!, p: uuidOrNull(content?.content_post_id), s: uuidOrNull(content?.social_post_id) },
             secret,
           );
-          final = `${appUrl().replace(/\/$/, "")}/l/${token}`;
+          // El lead toca el link: con el dominio del negocio (o el principal).
+          base ??= await loadPublicBaseUrl(supabase, context.workspaceId);
+          final = `${base.replace(/\/$/, "")}/l/${token}`;
         } catch (e) {
           // Sin seguimiento: el link sale con sus UTM.
           console.error("[atribucion] no pude firmar el link con seguimiento:", e instanceof Error ? e.message : String(e));

@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { aiLanguageStyle } from "@/lib/ai/language-style";
+import { appUrl } from "@/lib/app-url";
+import { businessDomain } from "@/lib/public-url";
 import { getPermissionContext, requireAnyPermission } from "@/lib/auth/guards";
 import { canOpenGeneral } from "@/lib/settings/general-sections";
 import { visibleSettingsTabs } from "@/lib/settings/tabs";
@@ -101,6 +103,7 @@ export default async function SettingsPage() {
           footerAddress: (workspace as { email_footer_address?: string | null }).email_footer_address ?? null,
           installationStyle: aiLanguageStyle(),
         },
+        domain: { current: businessDomain(workspace), mainUrl: appUrl() },
       }}
       canViewAiCosts={canViewAiCosts}
       canViewAudit={can("audit.view")}

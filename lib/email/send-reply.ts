@@ -21,7 +21,7 @@ import { canSendEmailTo, type EmailCategory, type EmailSkipReason } from "./subs
 import { footerBrand, logEmail, recordSkippedEmail } from "./send";
 import { protectUnsubscribeVariable, withUnsubscribe } from "./unsubscribe";
 import type { ResendSenderConfig } from "./senders";
-import { appUrl } from "@/lib/app-url";
+import { loadPublicBaseUrl } from "@/lib/public-url";
 
 type Db = SupabaseClient<Database>;
 
@@ -182,7 +182,8 @@ export async function sendEmailReply(
   // El link de baja (E3): un texto con {{unsubscribe_url}} lo recibe resuelto; marketing suma el pie y las cabeceras.
   // La variable se protege con el marcador (no se resuelve aca): asi `withUnsubscribe` sabe que el texto ya trae el link
   // y no duplica el pie.
-  const base = appUrl();
+  // El link de baja lo abre el lead: con el dominio del negocio (o el principal).
+  const base = await loadPublicBaseUrl(service, params.workspaceId);
   const body = textToHtml(protectUnsubscribeVariable(params.text));
   const extras = withUnsubscribe({
     html: body,

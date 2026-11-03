@@ -34,6 +34,7 @@ import { withUnsubscribe } from "@/lib/email/unsubscribe";
 import { senderFor, type ResendSenderConfig } from "@/lib/email/senders";
 import { resolveBrand } from "@/lib/brand";
 import { appUrl } from "@/lib/app-url";
+import { loadPublicBaseUrl } from "@/lib/public-url";
 
 export type EmailKind = "team_invite" | "channel_disconnected" | (string & {});
 
@@ -219,7 +220,8 @@ export async function sendTransactionalEmail(
         html: params.html,
         category: params.category,
         token: unsubscribeToken,
-        appUrl: appUrl(),
+        // El link de baja lo abre el lead: con el dominio del negocio (o el principal).
+        appUrl: unsubscribeToken ? await loadPublicBaseUrl(supabase, params.workspaceId) : appUrl(),
         ...(params.category === "marketing" && unsubscribeToken ? await footerBrand(supabase, params.workspaceId) : { brandName: "" }),
       })
     : { html: params.html, headers: {} };

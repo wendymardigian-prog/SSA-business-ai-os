@@ -42,7 +42,7 @@ export function FormsList({
   canManage,
   loadError,
   initialQuery,
-  appUrl,
+  publicBase,
   timeZone,
   nowIso,
 }: {
@@ -51,7 +51,8 @@ export function FormsList({
   loadError: boolean;
   /** Lo que dice la URL al cargar (`?q=&estado=&tipo=`), ya validado en el servidor. */
   initialQuery: ListQuery;
-  appUrl: string;
+  /** La base de los links públicos del negocio (`publicBaseUrl`): su dominio o el principal. */
+  publicBase: string;
   /** La zona de quien mira: "hoy 09:41", "ayer 18:20". */
   timeZone: string;
   /** El "ahora" del servidor: el mismo en el servidor y el navegador, asi "hace 2 h" no se desfasa al hidratar. */
@@ -100,7 +101,7 @@ export function FormsList({
   }
 
   function copyLink(row: FormListRow) {
-    const url = `${appUrl || window.location.origin}/f/${row.slug}`;
+    const url = `${publicBase}/f/${row.slug}`;
     void navigator.clipboard?.writeText(url).then(
       () => setMessage({ tone: "success", text: "Link copiado" }),
       () => setMessage({ tone: "error", text: "No pude copiar el link. Copialo desde la pestaña Publicar." }),

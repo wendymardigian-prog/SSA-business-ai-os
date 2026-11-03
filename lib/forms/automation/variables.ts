@@ -26,8 +26,10 @@ export interface FormVariablesInput {
     /** Clave → `{ value }` (la forma que guarda la base). */
     answers: Record<string, { value?: unknown } | undefined>;
   };
-  /** URL pública base de la app, sin barra final. */
+  /** El dominio principal de la instalación (`appUrl()`): el link a la respuesta en el panel, para el equipo. */
   baseUrl: string;
+  /** La base de los links públicos del negocio (`publicBaseUrl`): el link al formulario, para un lead. */
+  publicBaseUrl: string;
 }
 
 export interface FormVariables {
@@ -68,7 +70,7 @@ export function formVariables(input: FormVariablesInput): FormVariables {
       name: input.form.name,
       type: input.form.type,
       slug: input.form.slug,
-      url: formPublicUrl(input.baseUrl, input.form.slug),
+      url: formPublicUrl(input.publicBaseUrl, input.form.slug),
       category: input.form.category ?? "",
     },
     answer,

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
-import { appUrl } from "@/lib/app-url";
+import { publicBaseUrl } from "@/lib/public-url";
 import { validateSurveyConfig } from "@/lib/forms/survey";
 import { parseStoredContactConfig } from "@/lib/forms/contact-config";
 import { isBusinessSignaturePath, validateContractConfig } from "@/lib/forms/contract/config";
@@ -231,7 +231,7 @@ export async function createSignedFormLink(input: { formId: string; contactId: s
   if (!contact) return { ok: false, error: "No encontré ese contacto" };
 
   try {
-    const url = await signFormLink(service, { workspaceId: ctx.workspace.id, formId: form.id, slug: form.slug, contactId: contact.id, baseUrl: appUrl() });
+    const url = await signFormLink(service, { workspaceId: ctx.workspace.id, formId: form.id, slug: form.slug, contactId: contact.id, baseUrl: publicBaseUrl(ctx.workspace) });
     return { ok: true, url };
   } catch (error) {
     console.error("[forms] createSignedFormLink fallo:", error instanceof Error ? error.message : "error");

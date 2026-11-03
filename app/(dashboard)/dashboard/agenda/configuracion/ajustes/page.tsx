@@ -1,4 +1,5 @@
 import { getPermissionContext } from "@/lib/auth/guards";
+import { publicBaseUrl } from "@/lib/public-url";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getProfileForUser, takenUsernames } from "@/lib/scheduling/data/profiles";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -43,7 +44,7 @@ export default async function AgendaAjustesPage({ searchParams }: { searchParams
           : { username: suggestUsername(isSelf ? ownName : "", isSelf ? ctx.user.email : null, taken), displayName: isSelf ? ownName : "", timezone: workspaceTimezone, timeFormat: "24h", welcomeMessage: "", avatarUrl: null }
       }
       exists={Boolean(profile)}
-      publicBase={`${process.env.NEXT_PUBLIC_APP_URL ?? ""}/calendario/`}
+      publicBase={`${publicBaseUrl(ctx.workspace)}/calendario/`}
     />
   );
 }

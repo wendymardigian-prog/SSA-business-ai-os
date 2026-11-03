@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
+import { publicBaseUrl } from "@/lib/public-url";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -112,7 +113,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
       form={editorForm}
       versions={versions}
       canManage={ctx.can("forms.manage")}
-      appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
+      publicBase={publicBaseUrl(workspace)}
       timeZone={timeZone}
       extras={extras}
     />
