@@ -6,7 +6,7 @@ const EVENTS = "https://www.googleapis.com/auth/calendar.events";
 function ctx(over: Partial<MeetContext> = {}): MeetContext {
   return {
     calendars: [
-      { id: "cal-1", user_id: "u1", connection_id: "con-1", name: "Wendy", access_role: "owner", check_conflicts: true, is_active: true },
+      { id: "cal-1", user_id: "u1", connection_id: "con-1", name: "Principal", access_role: "owner", check_conflicts: true, is_active: true },
       { id: "cal-ro", user_id: "u1", connection_id: "con-1", name: "Feriados", access_role: "reader", check_conflicts: false, is_active: true },
     ],
     connections: [{ id: "con-1", user_id: "u1", status: "active", granted_scopes: [EVENTS] }],
