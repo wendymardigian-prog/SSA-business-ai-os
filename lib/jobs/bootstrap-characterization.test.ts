@@ -68,6 +68,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       // Tareas (Extra A, F18): el barrido de vencimientos. // @plantilla-quitar(tareas)
       "tasks_due_sweep", // @plantilla-quitar(tareas)
       "transcribe_audio",
+      // Grupos de WhatsApp (00280): «Importar miembros».
+      "whatsapp_group_import",
       // Atribucion (Extra L, Tiron 2, A1): el anuncio de origen de una conversacion de Instagram, desde Zernio.
       "zernio_ad_origin",
     ]);

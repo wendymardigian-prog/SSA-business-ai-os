@@ -730,9 +730,111 @@ describe("webhook de Evolution: reacciones (A3)", () => {
     expect(insertMessage).not.toHaveBeenCalled();
   });
 
+  it("un voto de encuesta en un chat privado NO es un mensaje: nada de no leidos, flows, agente ni toques", async () => {
+    db();
+    const res = await callRoute(
+      post({
+        event: "messages.upsert",
+        instance: INSTANCE,
+        data: {
+          key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: false, id: "vote-evt-1" },
+          pushName: "Lead de prueba",
+          message: { pollUpdateMessage: { pollCreationMessageKey: { id: "poll-1" }, vote: { selectedOptions: ["Lunes"] } } },
+          messageType: "pollUpdateMessage",
+          messageTimestamp: 1_760_000_000,
+        },
+      }),
+    );
+    await runAfter();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, skipped: "voto de encuesta" });
+    expect(claimWebhookEvent).not.toHaveBeenCalled();
+    expect(insertMessage).not.toHaveBeenCalled();
+    expect(upsertConversation).not.toHaveBeenCalled();
+    expect(runInboundAutomation).not.toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
+    expect(recordInboundTouch).not.toHaveBeenCalled();
+  });
+
   it("un mensaje comun sigue el camino de siempre", async () => {
     db();
     const res = await callRoute(post(message()));
     expect(await res.json()).toEqual({ ok: true, queued: true });
+  });
+});
+
+describe("webhook de Evolution: grupos de WhatsApp (00280)", () => {
+  const GROUP_JID = "120363001122334455@g.us";
+  const activeGroup = { id: "g-1", workspace_id: WS, channel_id: CHANNEL_ID, group_jid: GROUP_JID, subject: "Comunidad", in_inbox: true, save_contacts: false, unread_count: 0, left_at: null };
+
+  function withGroup(groups: Array<Record<string, unknown>> = [activeGroup]) {
+    const memory = memoryDb({
+      channels: [channelRow()],
+      whatsapp_groups: groups,
+      whatsapp_group_messages: [],
+      whatsapp_group_members: [],
+      whatsapp_group_reactions: [],
+      whatsapp_poll_votes: [],
+      contact_channels: [],
+      automation_events: [],
+    });
+    createServiceClient.mockResolvedValue(memory.client);
+    return memory;
+  }
+
+  const groupMessage = () =>
+    message({ key: { remoteJid: GROUP_JID, fromMe: false, id: "gmsg-1", participant: "5491122223333@s.whatsapp.net" }, pushName: "Ana", message: { conversation: "hola grupo" } });
+
+  it("un mensaje de un grupo ACTIVADO se guarda en el hilo del grupo, sin pasar por el camino de los chats", async () => {
+    const memory = withGroup();
+    const res = await callRoute(post(groupMessage()));
+    await runAfter();
+
+    expect(await res.json()).toEqual({ ok: true, queued: "group-message" });
+    expect(claimWebhookEvent).toHaveBeenCalledWith(expect.anything(), `evolution:${CHANNEL_ID}:${GROUP_JID}:gmsg-1`);
+    expect(memory.rows("whatsapp_group_messages")).toHaveLength(1);
+    expect(memory.rows("whatsapp_group_messages")[0]).toMatchObject({ text: "hola grupo", sender_name: "Ana" });
+    expect(insertMessage).not.toHaveBeenCalled();
+    expect(upsertConversation).not.toHaveBeenCalled();
+    expect(upsertContactForSender).not.toHaveBeenCalled();
+    expect(runInboundAutomation).not.toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it("un grupo NO activado se sigue ignorando", async () => {
+    const memory = withGroup([]);
+    const res = await callRoute(post(groupMessage()));
+    expect(await res.json()).toEqual({ ok: true, skipped: "grupo no activado" });
+    expect(claimWebhookEvent).not.toHaveBeenCalled();
+    expect(memory.rows("whatsapp_group_messages")).toHaveLength(0);
+  });
+
+  it("el aviso de quien entra se encola y anota al miembro", async () => {
+    const memory = withGroup();
+    const res = await callRoute(
+      post({
+        event: "group-participants.update",
+        instance: INSTANCE,
+        data: { id: GROUP_JID, action: "add", participants: [{ id: "98765432101234@lid", phoneNumber: "5491122223333@s.whatsapp.net" }] },
+      }),
+    );
+    await runAfter();
+    expect(await res.json()).toEqual({ ok: true, queued: "group-participants" });
+    expect(memory.rows("whatsapp_group_members")[0]).toMatchObject({ group_id: "g-1", participant_id: "+5491122223333", source: "join" });
+    expect(insertMessage).not.toHaveBeenCalled();
+  });
+
+  it("el mismo aviso con el nombre en mayusculas tambien se entiende", async () => {
+    withGroup();
+    const res = await callRoute(post({ event: "GROUP_PARTICIPANTS_UPDATE", instance: INSTANCE, data: { id: GROUP_JID, action: "add", participants: [] } }));
+    expect(await res.json()).toEqual({ ok: true, queued: "group-participants" });
+  });
+
+  it("un aviso de grupo ilegible se ignora con 200", async () => {
+    withGroup();
+    const res = await callRoute(post({ event: "group-participants.update", instance: INSTANCE, data: { action: "add" } }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, skipped: "aviso de grupo ilegible" });
   });
 });

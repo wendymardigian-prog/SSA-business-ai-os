@@ -1,7 +1,7 @@
 "use client";
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import {
+import { BarChart3,
   Tag,
   FileText,
   Globe,
@@ -163,6 +163,7 @@ const actionConfig: Record<
     label: "Enviar WhatsApp a un número",
     color: "bg-gray-500",
   },
+  send_poll: { icon: BarChart3, label: "Enviar encuesta", color: "bg-gray-500" },
   enrollSequence: { icon: ListOrdered, label: "Inscribir en secuencia", color: "bg-gray-500" },
   notify_team: { icon: Bell, label: "Avisar en la campana", color: "bg-gray-500" },
   cancel_booking: { icon: CalendarX, label: "Cancelar la reunión", color: "bg-gray-500" },
@@ -242,6 +243,8 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;
       return nodeData.fixedPhone?.trim() ? `A ${nodeData.fixedPhone.trim()}` : null;
     }
+    case "send_poll" as NodeType:
+      return (nodeData as { question?: string }).question?.trim() || null;
     case "send_email" as NodeType: {
       if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;
       if (nodeData.to === "fixed") return nodeData.fixedEmail?.trim() ? `A ${nodeData.fixedEmail.trim()}` : null;

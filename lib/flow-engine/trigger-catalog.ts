@@ -22,6 +22,7 @@ export type TriggerGroupKey =
   | "tareas" // @plantilla-quitar(tareas)
   | "llamadas" // @plantilla-quitar(llamadas)
   | "webhooks" // @plantilla-quitar(webhooks)
+  | "grupos_whatsapp"
   | "equipo"; // @plantilla-quitar(formularios)
 
 export const TRIGGER_GROUPS: ReadonlyArray<{ key: TriggerGroupKey; label: string }> = [
@@ -34,6 +35,7 @@ export const TRIGGER_GROUPS: ReadonlyArray<{ key: TriggerGroupKey; label: string
   { key: "tareas", label: "Tareas" }, // @plantilla-quitar(tareas)
   { key: "llamadas", label: "Llamadas" }, // @plantilla-quitar(llamadas)
   { key: "webhooks", label: "Webhooks" }, // @plantilla-quitar(webhooks)
+  { key: "grupos_whatsapp", label: "Grupos de WhatsApp" },
   { key: "equipo", label: "Equipo" }, // @plantilla-quitar(formularios)
 ];
 
@@ -80,6 +82,9 @@ export const TRIGGER_CATALOG: readonly TriggerCatalogEntry[] = [
   { type: "call_analyzed", label: "Se analizó una llamada", description: "Cuando una llamada con contacto queda analizada (nueva o regenerada)", group: "llamadas", synonyms: ["fathom"] }, // @plantilla-quitar(llamadas)
   { type: "call_linked", label: "Se vinculó una llamada", description: "Cuando una llamada se vincula a un contacto, sola o a mano", group: "llamadas", synonyms: ["fathom"] }, // @plantilla-quitar(llamadas)
   { type: "webhook_received", label: "Webhook recibido", description: "Cuando un formulario externo (Typeform, Tally, Framer…) manda datos a tu URL. Arranca sin contacto", group: "webhooks", synonyms: ["api", "zapier", "make", "typeform", "tally"] }, // @plantilla-quitar(webhooks)
+  { type: "whatsapp_group_joined", label: "Se unió a un grupo de WhatsApp", description: "Cuando alguien entra a un grupo activado (por link o porque lo sumaron). Corre sobre el contacto", group: "grupos_whatsapp", synonyms: ["grupo", "comunidad", "whatsapp", "miembro", "entro"] },
+  { type: "whatsapp_group_reaction", label: "Reaccionó a un mensaje de un grupo", description: "Cuando alguien reacciona con un emoji a un mensaje de un grupo activado", group: "grupos_whatsapp", synonyms: ["grupo", "reaccion", "emoji", "whatsapp"] },
+  { type: "whatsapp_group_poll_vote", label: "Votó en una encuesta de un grupo", description: "Cuando alguien elige una opción (o cualquiera) en una encuesta de un grupo activado", group: "grupos_whatsapp", synonyms: ["grupo", "encuesta", "voto", "opcion", "whatsapp"] },
   { type: "eod_submitted", label: "Se envió un reporte de fin de día", description: "Cuando alguien del equipo envía su reporte del día. Es sobre la persona, sin contacto", group: "equipo", synonyms: ["eod", "reporte"] }, // @plantilla-quitar(formularios)
 ];
 

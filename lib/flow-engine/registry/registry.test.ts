@@ -53,8 +53,9 @@ describe("registro de nodos", () => {
     // + `create_task` ("Crear tarea", Tareas, F22).  @plantilla-quitar(tareas)
     // + `complete_task` ("Completar tarea", Tareas × CRM, R4).  @plantilla-quitar(tareas)
     // + `send_whatsapp_number` ("Enviar WhatsApp a un número", Extra L Tirón 2, D3).
-    expect(listNodes()).toHaveLength(32); // @plantilla-quitar(ventas,webhooks,tareas)
-    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(26);
+    // + `send_poll` ("Enviar encuesta", Grupos de WhatsApp).
+    expect(listNodes()).toHaveLength(33); // @plantilla-quitar(ventas,webhooks,tareas)
+    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(27);
   });
 
   it.each(NODOS_DE_ACCION)(
