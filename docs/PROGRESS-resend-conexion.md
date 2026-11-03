@@ -20,7 +20,7 @@ Rama `feat/resend-conexion`, desde `origin/main` en `a1a8503` (2/11/2026). Pendi
 - [x] **R1 · Una sola tarjeta**: `resend_inbound` oculta y redirigida; Conexión, Remitentes, Webhook y Recepción en la tarjeta Resend.
 - [x] **R5 · Checklist y "Probar"**: estado con ✓/✗ y una prueba de solo lectura.
 - [x] **R6 · Textos**.
-- [ ] Cierre: `CLAUDE.md`, `docs/integraciones.md`, verificación final y PR.
+- [x] Cierre: `CLAUDE.md` (sección «Resend: una sola tarjeta…» y el receptor en «Webhooks entrantes»), `docs/integraciones.md`, verificación final y PR.
 
 ## Diferencias entre el pedido y el código real
 
@@ -65,6 +65,14 @@ Rama `feat/resend-conexion`, desde `origin/main` en `a1a8503` (2/11/2026). Pendi
 - Un email a cualquier dirección del dominio de recepción entra a la bandeja, y la respuesta sale desde la dirección a la que escribió la persona.
 - La bandeja muestra "para: …" en los emails entrantes.
 - El aviso de cuota ("emails hoy") pasa a la tarjeta Resend.
+
+## Verificación final (3/11/2026, de a uno)
+
+- `npx vitest run`: 1160 archivos, 14943 tests, salida 0 (eran 1150 y 14826 en el punto de partida).
+- `npm run build`: salida 0 (el único aviso, el de `turbopack.root`, ya estaba).
+- `npm run lint`: 0 errores y los mismos 37 avisos que en el punto de partida (ninguno nuevo).
+- Con el candado: `verify-email-subscription.mjs`, `verify-workspace-isolation.mjs --despues-de-00143` y `verify-rls.mjs --despues-de-00143`, «Todo verde», salida 0.
+- Ninguna tabla nueva, ninguna dependencia ni variable de entorno nueva. `package.json` y `package-lock.json` sin cambios.
 
 ## Riesgos y cómo volver atrás
 

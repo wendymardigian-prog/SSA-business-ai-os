@@ -1656,6 +1656,28 @@ node scripts/verify-forms.mjs                 # incluye «La web de un cliente»
 node scripts/verify-email-subscription.mjs    # incluye el bloque 10 (Sin suscribir y el modo consent)
 ```
 
+# Resend: una sola tarjeta, webhook en un clic y recepción por dominio (construido, 2/11/2026)
+
+Toda la configuración de Resend vive en **Ajustes → Integraciones → Resend**, en este orden: Estado (✓/✗ y «Probar», que solo lee), Conexión (API key), Remitentes (E8), Webhook y Recepción de emails. «Resend (email entrante)» (`resend_inbound`) quedó **oculta** y su URL redirige. Guía en [docs/integraciones.md](docs/integraciones.md) («Email: la tarjeta Resend»); avance y decisiones en `docs/PROGRESS-resend-conexion.md` y `docs/PENDIENTE-resend-conexion.md`.
+
+## Lo que no se puede romper
+
+- **La configuración está en `integration_configs.config` de la fila `email_provider/resend`**, en claves planas de texto (`RESEND_CONNECTION_CONFIG_KEYS`, `lib/email/resend-config.ts`: `access`, `webhook_*`, `receiving_*`, `daily_quota`). Están en `DISCOVERED_CONFIG_KEYS`: volver a guardar la key no las pisa. Sin tabla nueva.
+- **SSA solo administra SU webhook** (`lib/email/resend-webhook.ts`, `ownershipOf`): el que apunta exactamente al receptor, sin query o con `?w=` de ESTE negocio. Uno sin `?w=` (creado a mano) se adopta: se le pone el `?w=` y se le suman los eventos sin sacarle ninguno. Uno con `?w=` de otro negocio, otra ruta u otro dominio no se toca nunca. El módulo no sabe borrar. Un test lo fija con espías.
+- **Los eventos están en UN lugar** (`lib/email/resend-events.ts`): `email.received`, `email.bounced`, `email.complained`. Sumar uno es agregarlo ahí («Actualizar webhook» lo sincroniza) y enseñarle al receptor qué hacer.
+- **Un webhook por negocio con `?w=<workspace>`** (`resendWebhookUrl`, `lib/webhook-url.ts`, que rechaza una URL local). En el receptor, el parámetro solo elige con qué secreto verificar: la firma sigue siendo obligatoria, y un `w` que no es UUID da 401 sin leer ningún secreto. **Sin `?w=` funciona como antes** (compatibilidad).
+- **El secreto del webhook no depende de la recepción**: rebotes y quejas se validan con él aunque la recepción esté apagada. En Vault sigue llamándose `resend_inbound_webhook_secret` (en TypeScript `SECRET_NAMES.resendWebhookSecret`). Se guarda al conectar (Resend lo devuelve al crear y en `GET /webhooks/{id}`) o se pega a mano (plan B, `whsec_…`). Desconectar Resend borra solo la API key.
+- **«Probar y guardar» prueba la key** (`GET /domains`): 200 = `access: full`; 401 `restricted_api_key` = `access: sending` (se guarda; webhook y dominios a mano); otro 400/401/403 no se guarda; red o 5xx se guarda. Con acceso completo, `saveIntegration` conecta el webhook solo, best-effort (un fallo vuelve como aviso, nunca tumba el guardado).
+- **Recepción por dominio**: el canal de email sigue siendo UNO por negocio y su `email_address` es la **principal** (`<usuario>@<dominio>`, default `hola`). El receptor ubica el canal por dirección EXACTA primero y después por DOMINIO (`resolveInboundChannel`, `lib/email/inbound-address.ts`, mira `to`, `cc` y `received_for`). Dos negocios con el mismo dominio y sin `?w=`: 401 y una línea en el log, no se adivina. Apagar la recepción desactiva el canal.
+- **La respuesta sale desde la dirección a la que escribió la persona** (`replyFromAddress` en `sendEmailReply`), solo si es del dominio del canal; si no, desde la principal. Nunca desde un dominio ajeno. La bandeja muestra «para: …» en los entrantes.
+- **Configurar Resend (también la recepción) pide `integrations.manage`.** Antes la tarjeta entrante pedía `channels.manage`: es más estricto, no más laxo. La política de la 00213 no se tocó.
+- **«Último aviso recibido»** = `integration_configs.last_event_at` (00279). Lo escribe el receptor después de una firma válida, solo esa columna, a lo sumo una vez por minuto, en `after()` y en `try/catch`.
+- **La API de Resend se simula en todos los tests** (`fetchImpl` inyectado). SSA nunca crea, edita ni borra un webhook real fuera de la acción que dispara una persona desde la tarjeta.
+
+## Migraciones
+
+`00279_resend_unified` (aditiva: `integration_configs.last_event_at` y la copia de cada `resend_inbound` a la fila `resend` del mismo negocio, sin pisar nada; en producción no copió nada). **Aplicada y registrada** el 3/11/2026 (versión `20261103010606`); puede ir antes del deploy. **La próxima libre es la `00280`** (confirmar con `list_migrations` y las ramas locales).
+
 # Mi cuenta: perfil y notificaciones (construido, 30/10/2026)
 
 Cada persona del equipo tiene su página (`/dashboard/cuenta`, pestañas Perfil y Notificaciones), abierta desde el menú de usuario del pie («Mi perfil» y «Notificaciones»). Resumen en [docs/cuenta-y-notificaciones.md](docs/cuenta-y-notificaciones.md); pendientes en `docs/PENDIENTE-cuenta.md`.
@@ -1706,6 +1728,7 @@ node scripts/verify-account.mjs --despues-de-00275 # además, que cada aviso enc
 - Un solo receptor por canal, y los dos viven en la app (`app/api/webhooks/`), nunca en una Edge Function: el motor de flows, las secuencias y el agente de IA corren en Node y desde Deno no se pueden llamar.
   - `app/api/webhooks/late` -> Zernio (Instagram): valida firma HMAC. Sin secreto configurado, rechaza.
   - `app/api/webhooks/evolution` -> Evolution API (WhatsApp): valida el header `x-webhook-token` en tiempo constante. La URL es publica, asi que el token no es opcional.
+  - `app/api/webhooks/resend-inbound` -> Resend (emails entrantes, rebotes y quejas): valida la firma Svix con el secreto del webhook del negocio (`?w=` elige cual). Sin secreto o con firma invalida, 401. Ver "Resend: una sola tarjeta".
 - Lo que hacen los dos igual despues de entender el payload vive en `lib/inbound.ts`. Lo que tiene que valer para todos los canales vive en la base: `find_or_link_contact` (dedup) y `apply_opt_out_check` (no contactar).
 - Ack inmediato (responder 200 antes de procesar, con `after()`). Procesamiento async. Idempotencia con `webhook_events`.
 - **Los mensajes entrantes de todos los canales se guardan en `messages`** (Fase 3). Para Instagram es dual-write: se guarda en paralelo y la bandeja sigue leyendo el hilo de Zernio. Guardar nunca puede hacer fallar un webhook: si el insert falla, se loguea y la recepcion sigue. **Se guardan siempre**: ya no hay interruptor en Ajustes (`workspaces.persist_zernio_inbound` quedó sin leerse). Todo el detalle —los dos ids del mensaje, la retencion de 12 meses, el backfill y sus limites— en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).

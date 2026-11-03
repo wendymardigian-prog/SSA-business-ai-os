@@ -27,4 +27,7 @@
 
 ## Abierto
 
-- (se completa durante la corrida)
+- **Revisión visual con sesión.** La tarjeta se probó dibujándola en los tests (`resend-card.test.ts`), no en el navegador: levantar la app local contra la base de producción y entrar con una cuenta real no corresponde en una corrida autónoma. Falta mirarla con sesión después del deploy (en los dos temas y en el celular).
+- **Si quedan dos webhooks de SSA en la misma cuenta** (uno viejo sin `?w=` y el nuevo con `?w=`), SSA conecta el suyo y no toca el viejo. Resend mandaría cada aviso dos veces: el receptor verifica los dos, la recepción guarda el email una sola vez (deduplica por el id del email) y un rebote aplicado dos veces no cambia nada (`set_email_status` es idempotente). Si pasa, alcanza con borrar el viejo a mano en resend.com/webhooks.
+- **Un webhook de SSA desactivado en Resend** se informa en la tarjeta, pero no se reactiva solo: lo decide la persona en Resend.
+- **«Responder a» sugerido**: es solo el placeholder y un botón «Usar …». No se guarda solo, como se pidió.
