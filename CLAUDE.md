@@ -1559,6 +1559,15 @@ Responsable de cada conversación (a mano y con reglas por cuenta), la marca «C
 
 `00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. La `00259` a la `00261` son de «Esperando respuesta» (ver esa sección): **la próxima libre es la `00262`** (confirmar con `list_migrations`).
 
+# Contactos: Kanban, columnas y filtros (3/11/2026)
+
+Tabla y Kanban (`?vista=kanban`) con los MISMOS filtros: un solo planificador (`lib/contacts/list-query.ts`) y un catálogo de filtros (`lib/contacts/filters/catalog.ts` + las áreas de `lib/contacts/related/*`, registradas en `lib/contacts/list-modules.ts`). Panel de filtros y menú de columnas con buscador, chips de filtros puestos. Resumen en [docs/contactos.md](docs/contactos.md) («Lista: vistas, columnas y filtros»).
+
+- **Todo filtro pasa por `parseContactListFilters` / `contactListPlan`**: así aplica igual a la tabla, al Kanban y a "Cargar más". Cada valor de la URL pasa por el `accepts` de su filtro; un texto libre solo por `.in()` (`isSafeText`), nunca adentro de un `or` armado a mano.
+- **Registros relacionados**: las "tiene" de una tabla van en UN join `!inner`; cada "no tiene" es su anti-join. Respetan la RLS de cada tabla. Las columnas relacionadas se cargan solo para la página visible y solo si están visibles (`loadContactColumnCells`).
+- **Las áreas de Ventas, Formularios, Tareas y Llamadas** son archivos propios (en el perfil de estudiantes) y su línea en `list-modules.ts` lleva la marca.
+- **`00283_contacts_list_filters`** (aditiva: `contact_attribution_options` SECURITY INVOKER + índices): **escrita y SIN aplicar**. Puede ir antes o después del deploy; sin ella, los filtros de campaña, contenido y término no tienen opciones. **La próxima libre es la `00284`** (confirmar con `list_migrations` y las ramas locales).
+
 # Historial de WhatsApp: la revision (30/10/2026)
 
 Antes de importar el historial de WhatsApp se REVISA que hay: la tarjeta de cada numero en Canales tiene "Historial" → "Revisar historial" (`WhatsappHistoryReview`, accion `reviewWhatsappHistory`, `channels.manage`). La importacion todavia NO existe; el plan esta en `docs/flujo-de-mensajes.md` ("El historial de WhatsApp").
