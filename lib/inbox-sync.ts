@@ -13,11 +13,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Zernio } from "./zernio-client";
 import { messagePreview } from "@/lib/message-preview";
+import { fallbackContactName, isPlaceholderName } from "@/lib/contacts/anonymous";
 
 export interface BackfillChannel {
   id: string;
   late_account_id: string;
   platform: string;
+}
+
+/** Una conversacion que ya esta en la base, con el nombre que tiene hoy su contacto. */
+interface KnownConversation {
+  contactId: string | null;
+  displayName: string | null;
 }
 
 /** Conversation item shape returned by Zernio's listInboxConversations. */
@@ -178,16 +185,24 @@ export async function importInboxPage({
   // Solo los ids de ESTA pagina: con miles de conversaciones, cargar todos los
   // conocidos al empezar seria pesado y quedaria viejo entre vuelta y vuelta.
   const ids = conversations.map((c) => c.id!);
-  const known = new Set<string>();
+  const known = new Map<string, KnownConversation>();
   if (ids.length > 0) {
     const { data: rows, error } = await service
       .from("conversations")
-      .select("late_conversation_id")
+      .select("late_conversation_id, contact_id, contacts(display_name)")
       .eq("channel_id", channel.id)
       .in("late_conversation_id", ids);
     if (error) throw new Error(`no pude leer las conversaciones conocidas: ${error.message}`);
-    for (const row of (rows ?? []) as Array<{ late_conversation_id: string | null }>) {
-      if (row.late_conversation_id) known.add(row.late_conversation_id);
+    for (const row of (rows ?? []) as unknown as Array<{
+      late_conversation_id: string | null;
+      contact_id?: string | null;
+      contacts?: { display_name: string | null } | null;
+    }>) {
+      if (!row.late_conversation_id) continue;
+      known.set(row.late_conversation_id, {
+        contactId: row.contact_id ?? null,
+        displayName: row.contacts?.display_name ?? null,
+      });
     }
   }
 
@@ -201,7 +216,10 @@ export async function importInboxPage({
   for (const conv of conversations) {
     if (seenParticipants.has(conv.participantId!)) continue;
     seenParticipants.add(conv.participantId!);
-    if (known.has(conv.id!)) continue;
+    if (known.has(conv.id!)) {
+      await completeKnownContactName({ service, workspaceId, channel, conv, current: known.get(conv.id!)! });
+      continue;
+    }
     if (await importConversation({ service, workspaceId, channel, conv })) imported++;
   }
 
@@ -213,6 +231,62 @@ export async function importInboxPage({
     nextCursor: pagination?.nextCursor ?? null,
     accountFailure: null,
   };
+}
+
+/**
+ * Una conversacion que ya esta cuyo contacto quedo con un relleno como nombre
+ * (el id de Instagram, "@usuario") recibe lo que Zernio trae ahora: Zernio
+ * completa el perfil cuando la persona interactua, y la importacion vuelve a
+ * pasar a las 24 horas y a los 7 dias.
+ *
+ * - Con un nombre de verdad: por la regla de siempre (`find_or_link_contact`),
+ *   que solo pisa un relleno y completa usuario y foto. No sella la fecha.
+ * - Con solo el @usuario y un id como nombre: "@usuario", condicionado a que el
+ *   nombre siga siendo ese id (la base no cambia un relleno por otro).
+ *
+ * Nunca toca la conversacion, y un fallo no frena la importacion.
+ */
+async function completeKnownContactName({
+  service,
+  workspaceId,
+  channel,
+  conv,
+  current,
+}: {
+  service: SupabaseClient;
+  workspaceId: string;
+  channel: BackfillChannel;
+  conv: ZernioInboxConversation;
+  current: KnownConversation;
+}): Promise<void> {
+  if (!isPlaceholderName(current.displayName)) return;
+  const name = (conv.participantName ?? "").trim();
+  try {
+    if (name && !isPlaceholderName(name)) {
+      await upsertContactForSender({
+        supabase: service,
+        channel: { id: channel.id, workspace_id: workspaceId },
+        senderId: conv.participantId!,
+        senderName: name,
+        senderPicture: conv.participantPicture || null,
+        senderUsername: conv.participantUsername || null,
+        interactionAt: conv.updatedTime ?? new Date().toISOString(),
+        stampExisting: false,
+      });
+      return;
+    }
+    const handle = fallbackContactName(null, conv.participantUsername, "");
+    const currentName = (current.displayName ?? "").trim();
+    if (!handle || !current.contactId || currentName !== conv.participantId) return;
+    const { error } = await service
+      .from("contacts")
+      .update({ display_name: handle })
+      .eq("id", current.contactId)
+      .eq("display_name", current.displayName!);
+    if (error) throw new Error(error.message);
+  } catch (err) {
+    console.error(`[inbox-sync] no pude completar el nombre de la conversacion ${conv.id}:`, err);
+  }
 }
 
 async function importConversation({
@@ -231,7 +305,7 @@ async function importConversation({
     supabase: service,
     channel: { id: channel.id, workspace_id: workspaceId },
     senderId: conv.participantId!,
-    senderName: conv.participantName || conv.participantId!,
+    senderName: fallbackContactName(conv.participantName, conv.participantUsername, conv.participantId!),
     senderPicture: conv.participantPicture || null,
     senderUsername: conv.participantUsername || null,
     interactionAt,

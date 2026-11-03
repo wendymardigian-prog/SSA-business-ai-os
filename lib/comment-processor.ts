@@ -8,6 +8,7 @@ import { upsertContactForSender } from "@/lib/inbox-sync";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { resolveContentForPost } from "@/lib/attribution/content-variables";
 import { applyConversationRules } from "@/lib/conversations/assignment";
+import { fallbackContactName } from "@/lib/contacts/anonymous";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type Trigger = Database["public"]["Tables"]["triggers"]["Row"];
@@ -142,8 +143,7 @@ export async function processComment({
 
   try {
     const senderId = comment.author.id || `comment_${comment.id}`;
-    const senderName =
-      comment.author.name || comment.author.username || "Unknown commenter";
+    const senderName = fallbackContactName(comment.author.name, comment.author.username, "Unknown commenter");
 
     // Misma resolucion de contacto que el webhook de mensajes: un lead que
     // comenta y despues manda un DM tiene que ser un solo contacto.
@@ -242,7 +242,9 @@ export async function processComment({
           variables: {
             comment_id: comment.id,
             comment_text: comment.text,
-            commenter_name: senderName,
+            // La variable de los flujos queda como siempre (sin "@"): el "@usuario"
+            // es solo el nombre con el que nace el contacto.
+            commenter_name: comment.author.name || comment.author.username || "Unknown commenter",
             post_id: comment.postId,
             // La pieza comentada (Extra I, F34): `{{content.title}}`. Null si la publicación no es de este sistema.
             content: await resolveContentForPost(supabase, { workspaceId: channel.workspace_id, platform: channel.platform, externalPostId: comment.postId }),

@@ -63,6 +63,7 @@ import {
   parseAccountEvent,
   refreshZernioAccounts,
 } from "@/lib/channels/zernio-account-events";
+import { fallbackContactName } from "@/lib/contacts/anonymous";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -325,7 +326,7 @@ async function processMessageEvent(
   // ── Upsert contact ───────────────────────────────────────────────────────
 
   const senderId = msg.sender.id;
-  const senderName = msg.sender.name || msg.sender.username || senderId;
+  const senderName = fallbackContactName(msg.sender.name, msg.sender.username, senderId);
 
   const contact = await upsertContactForSender({
     supabase,
