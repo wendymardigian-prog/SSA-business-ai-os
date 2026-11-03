@@ -1,7 +1,7 @@
 "use client";
 
 import { MarkBadge } from "@/components/contacts/mark-badge";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, ArrowUpDown, Table2, KanbanSquare, Columns3 } from "lucide-react";
@@ -15,6 +15,7 @@ import {
   ActionError,
 } from "@/components/contacts/ui";
 import { bulkAddTag, createContact } from "@/lib/actions/contacts";
+import { loadContactColumnCells } from "@/lib/actions/contacts-columns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BULK_TAG_LIMIT, describeEffect, hasEffect, sortEffectFirst } from "@/lib/tags/effects";
 import type { LeadTemperature } from "@/lib/types/database";
@@ -30,7 +31,7 @@ import { type CustomFieldRef, type CustomFilterOp } from "@/lib/contacts/list-fi
 import { CUSTOM_FILTER_PARAMS, MENU_FILTER_PARAMS, countActiveFilters, countMenuFilters, type ContactListFilters } from "@/lib/contacts/list-query";
 import { CONTACT_FILTERS } from "@/lib/contacts/list-modules";
 import { allColumns } from "@/lib/contacts/columns";
-import type { CellValue, ContactColumnDef } from "@/lib/contacts/filters/types";
+import type { CellMap, CellValue, ContactColumnDef } from "@/lib/contacts/filters/types";
 import type { MultiFilterOption } from "@/lib/ui/multi-filter";
 import { ContactsKanban } from "@/components/contacts/contacts-kanban";
 import {
@@ -158,6 +159,10 @@ export function ContactsView({
     return columnDefs.filter((c) => visible.has(c.key));
   }, [columnDefs, columnPrefs.visible]);
   const customById = new Map(customFields.map((f) => [f.id, f]));
+  const related = useRelatedCells(
+    view === "tabla" ? contacts.map((c) => c.id) : [],
+    shownColumns.filter((c) => c.source === "related").map((c) => c.key),
+  );
 
   // Seleccion para la accion masiva (Bloque 2d-A). Vale para la pagina que se
   // esta mirando: lo que ya no esta en pantalla no cuenta.
@@ -472,6 +477,7 @@ export function ContactsView({
                       statusSettings={statusSettings}
                       interestCatalog={interestCatalog}
                       customField={col.key.startsWith("cf:") ? customById.get(col.key.slice(3)) : undefined}
+                      related={related[contact.id]}
                     />
                   ))}
                 </tr>
@@ -525,6 +531,50 @@ export function ContactsView({
   );
 }
 
+/**
+ * Las columnas de registros relacionados (agendas, ventas, tareas…) de la
+ * página que se ve, solo las visibles. Se piden al servidor después de dibujar
+ * la tabla (qué columnas se ven vive en el navegador) y se guardan mientras se
+ * mira la misma página: prender otra columna pide solo lo que falta.
+ */
+function useRelatedCells(contactIds: readonly string[], keys: readonly string[]): CellMap {
+  const pageKey = contactIds.join(",");
+  const [cache, setCache] = useState<{ pageKey: string; cells: CellMap }>({ pageKey: "", cells: {} });
+  const inflight = useRef(new Set<string>());
+  const cells = cache.pageKey === pageKey ? cache.cells : {};
+  const missing = keys.filter((k) => contactIds.some((id) => !(k in (cells[id] ?? {}))));
+  const request = missing.length > 0 && contactIds.length > 0 ? `${pageKey}|${missing.join(",")}` : "";
+
+  useEffect(() => {
+    if (!request || inflight.current.has(request)) return;
+    inflight.current.add(request);
+    const [page, wanted] = request.split("|");
+    loadContactColumnCells(page.split(","), wanted.split(","))
+      .then((result) => {
+        if (!result.ok) return;
+        setCache((prev) => {
+          const base = prev.pageKey === page ? prev.cells : {};
+          const next: CellMap = { ...base };
+          for (const [id, row] of Object.entries(result.cells)) next[id] = { ...(next[id] ?? {}), ...row };
+          // Lo que no volvió (un contacto que ya no se ve) queda vacío, no cargando para siempre.
+          for (const id of page.split(",")) for (const k of wanted.split(",")) if (!(k in (next[id] ?? {}))) next[id] = { ...(next[id] ?? {}), [k]: null };
+          return { pageKey: page, cells: next };
+        });
+      })
+      .catch(() => {
+        // Sin conexión: las celdas quedan vacías en vez de girar para siempre.
+        setCache((prev) => {
+          const next: CellMap = prev.pageKey === page ? { ...prev.cells } : {};
+          for (const id of page.split(",")) for (const k of wanted.split(",")) next[id] = { ...(next[id] ?? {}), [k]: next[id]?.[k] ?? null };
+          return { pageKey: page, cells: next };
+        });
+      })
+      .finally(() => inflight.current.delete(request));
+  }, [request]);
+
+  return cells;
+}
+
 /** Una celda de la tabla. Las "special" se dibujan acá; el resto sale de `contact.cells` (`ContactCell`). */
 function TableCell({
   col,
@@ -533,9 +583,12 @@ function TableCell({
   statusSettings,
   interestCatalog,
   customField,
+  related,
 }: {
   col: ContactColumnDef;
   contact: ContactRow;
+  /** Las columnas de registros relacionados que ya llegaron (`useRelatedCells`). */
+  related?: Record<string, CellValue>;
   memberLabel: Map<string, string>;
   statusSettings: ContactStatusSettings;
   interestCatalog: InterestCatalog;
@@ -616,7 +669,11 @@ function TableCell({
   }
   return (
     <td className="px-4 py-3 text-sm">
-      <ContactCell value={contact.cells[col.key]} loading={col.source === "related" && !(col.key in contact.cells)} memberLabel={memberLabel} />
+      {col.source === "related" ? (
+        <ContactCell value={related?.[col.key]} loading={!related || !(col.key in related)} memberLabel={memberLabel} />
+      ) : (
+        <ContactCell value={contact.cells[col.key]} memberLabel={memberLabel} />
+      )}
     </td>
   );
 }

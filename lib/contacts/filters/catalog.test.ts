@@ -46,7 +46,9 @@ describe("el buscador del panel", () => {
 
   it("encuentra por nombre, por grupo y por palabra extra, sin tildes", () => {
     expect(filterPanelGroups(CONTACT_FILTERS, "temperatura").flatMap((g) => g.filters.map((f) => f.param))).toEqual(["temp"]);
-    expect(filterPanelGroups(CONTACT_FILTERS, "asignacion").flatMap((g) => g.filters.map((f) => f.param))).toEqual(["setter", "vendedor", "referido"]);
+    expect(filterPanelGroups(CONTACT_FILTERS, "asignacion").flatMap((g) => g.filters.map((f) => f.param))).toEqual(
+      expect.arrayContaining(["setter", "vendedor", "referido", "responsable"]),
+    );
     expect(filterPanelGroups(CONTACT_FILTERS, "closer").flatMap((g) => g.filters.map((f) => f.param))).toContain("vendedor");
     expect(filterPanelGroups(CONTACT_FILTERS, "nada-que-ver")).toEqual([]);
   });

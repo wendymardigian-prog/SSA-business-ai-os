@@ -10,11 +10,26 @@ import { CORE_FILTERS } from "./filters/catalog";
 import type { ContactColumnDef, ContactFilterDef, ContactListModule } from "./filters/types";
 import { CORE_COLUMNS } from "./columns-core";
 import { attributionModule } from "./related/attribution";
+import { touchesModule } from "./related/touches";
+import { bookingsModule } from "./related/bookings";
+import { conversationsModule } from "./related/conversations";
+import { sequencesModule } from "./related/sequences";
+import { formsModule } from "./related/forms"; // @plantilla-quitar(formularios)
 import { salesModule } from "./related/sales"; // @plantilla-quitar(ventas)
+import { tasksModule } from "./related/tasks"; // @plantilla-quitar(tareas)
+import { callsModule } from "./related/calls"; // @plantilla-quitar(llamadas)
 
+/** El orden de esta lista es el de las columnas en la tabla (los filtros se ordenan por grupo). */
 export const CONTACT_LIST_MODULES: readonly ContactListModule[] = [
   attributionModule,
+  touchesModule,
+  bookingsModule,
+  formsModule, // @plantilla-quitar(formularios)
   salesModule, // @plantilla-quitar(ventas)
+  tasksModule, // @plantilla-quitar(tareas)
+  conversationsModule,
+  callsModule, // @plantilla-quitar(llamadas)
+  sequencesModule,
 ];
 
 /** Todos los filtros, en el orden en que aparecen (el panel los agrupa). */

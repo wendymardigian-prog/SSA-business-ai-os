@@ -14,6 +14,7 @@ import { contactIdsByWhatsappLid } from "./search-lid";
 import { applyListClauses, contactListPlan, contactListSelect, parseContactListFilters, type ContactListFilters, type ContactListPlan, type ListClause, type PlanContext } from "./list-query";
 import { CONTACT_LIST_MODULES } from "./list-modules";
 import type { MultiFilterOption } from "@/lib/ui/multi-filter";
+import { UUID_RE, type CellMap } from "./filters/types";
 import type { CustomFieldRef } from "./list-filters";
 import { contactOrderClauses, type ContactSort } from "./sort";
 import { KANBAN_CARD_SELECT, kanbanColumnClause, toKanbanCard, type KanbanCard } from "./kanban";
@@ -107,4 +108,45 @@ export async function loadModuleFilterOptions(supabase: Client, workspaceId: str
     }),
   );
   return Object.assign({}, ...parts);
+}
+
+/** Cuántos contactos por pedido de columnas (una página de la tabla son 25). */
+export const RELATED_CELLS_MAX_CONTACTS = 100;
+
+/**
+ * Las columnas de registros relacionados para estos contactos. Valida todo lo
+ * que llega del navegador: ids con forma de uuid y del workspace (los que la
+ * persona ve), y claves de columnas que existen y son "related". Cada área
+ * carga lo suyo en paralelo; un área que falla deja sus columnas vacías.
+ */
+export async function loadRelatedCells(supabase: Client, workspaceId: string, contactIds: readonly unknown[], keys: readonly unknown[]): Promise<CellMap> {
+  const ids = [...new Set(contactIds.filter((id): id is string => typeof id === "string" && UUID_RE.test(id)))].slice(0, RELATED_CELLS_MAX_CONTACTS);
+  const wanted = new Set(keys.filter((k): k is string => typeof k === "string"));
+  if (ids.length === 0 || wanted.size === 0) return {};
+
+  const { data: visible, error } = await supabase.from("contacts").select("id").eq("workspace_id", workspaceId).in("id", ids);
+  if (error) {
+    console.error("[contacts] columnas: no pude validar los contactos:", error.message);
+    return {};
+  }
+  const allowed = (visible ?? []).map((c) => c.id);
+  if (allowed.length === 0) return {};
+
+  const parts = await Promise.all(
+    CONTACT_LIST_MODULES.map(async (m) => {
+      const own = m.columns.filter((c) => c.source === "related" && wanted.has(c.key)).map((c) => c.key);
+      if (own.length === 0 || !m.loadCells) return {};
+      try {
+        return await m.loadCells(supabase, workspaceId, allowed, own);
+      } catch (e) {
+        console.error(`[contacts] columnas de ${m.key} fallidas:`, e instanceof Error ? e.message : "error");
+        const empty: CellMap = {};
+        for (const id of allowed) empty[id] = Object.fromEntries(own.map((k) => [k, null]));
+        return empty;
+      }
+    }),
+  );
+  const out: CellMap = {};
+  for (const part of parts) for (const [id, cells] of Object.entries(part)) out[id] = { ...(out[id] ?? {}), ...cells };
+  return out;
 }

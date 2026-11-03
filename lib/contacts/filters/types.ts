@@ -26,8 +26,12 @@ export type ListClause =
   | { op: "not_null"; column: string }
   | { op: "ilike"; column: string; value: string }
   | { op: "gt" | "lt" | "gte" | "lte"; column: string; value: string | number }
-  /** Un `or` de PostgREST, ya armado. Solo con valores validados (uuid, claves, listas cerradas). */
-  | { op: "or"; filter: string };
+  /**
+   * Un `or` de PostgREST, ya armado. Solo con valores validados (uuid, claves,
+   * listas cerradas). `table`: el alias del join cuando el `or` es sobre una
+   * tabla relacionada (lo pone `relatedPlan`).
+   */
+  | { op: "or"; filter: string; table?: string };
 
 /**
  * Una condición sobre una tabla relacionada (agendas, ventas…). Las de "tiene"
@@ -218,3 +222,29 @@ export function boundsClauses(column: string, b: { gte?: string; lte?: string; l
   if (b.lt) out.push({ op: "lt", column, value: b.lt });
   return out;
 }
+
+/** Agrupa filas por contacto (para cargar columnas por página). */
+export function byContact<T extends { contact_id: string | null }>(rows: readonly T[] | null | undefined): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const r of rows ?? []) {
+    if (!r.contact_id) continue;
+    const list = out.get(r.contact_id) ?? [];
+    list.push(r);
+    out.set(r.contact_id, list);
+  }
+  return out;
+}
+
+/** Las celdas de un área para estos contactos, con todas las columnas pedidas (vacías si no hay nada). */
+export function fillCells(contactIds: readonly string[], keys: readonly string[], build: (id: string) => Record<string, CellValue>): CellMap {
+  const out: CellMap = {};
+  for (const id of contactIds) {
+    const built = build(id);
+    const row: Record<string, CellValue> = {};
+    for (const k of keys) row[k] = built[k] ?? null;
+    out[id] = row;
+  }
+  return out;
+}
+
+export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

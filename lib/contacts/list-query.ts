@@ -101,7 +101,7 @@ export interface ContactListPlan {
   clauses: ListClause[];
 }
 
-const prefixed = (alias: string, c: ListClause): ListClause => ("column" in c ? { ...c, column: `${alias}.${c.column}` } : c);
+const prefixed = (alias: string, c: ListClause): ListClause => ("column" in c ? { ...c, column: `${alias}.${c.column}` } : { ...c, table: alias });
 
 /**
  * Los joins de las condiciones sobre tablas relacionadas. Las "tiene" de una
@@ -205,7 +205,7 @@ interface Filterable {
   lt(column: string, value: unknown): Filterable;
   gte(column: string, value: unknown): Filterable;
   lte(column: string, value: unknown): Filterable;
-  or(filter: string): Filterable;
+  or(filter: string, options?: { referencedTable?: string }): Filterable;
 }
 
 /** Aplica las condiciones a una consulta de Supabase y la devuelve con su mismo tipo. */
@@ -244,7 +244,7 @@ export function applyListClauses<Q>(query: Q, clauses: readonly ListClause[]): Q
         q = q.lte(c.column, c.value);
         break;
       case "or":
-        q = q.or(c.filter);
+        q = c.table ? q.or(c.filter, { referencedTable: c.table }) : q.or(c.filter);
         break;
     }
   }

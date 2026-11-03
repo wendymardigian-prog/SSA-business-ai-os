@@ -150,6 +150,87 @@ export function hasRelatedFilter(o: {
   };
 }
 
+/** Varias opciones sobre una columna de otra tabla: "tiene alguna fila con alguno de estos valores". */
+export function relatedMultiFilter(o: {
+  param: string;
+  label: string;
+  group: ListGroupDef;
+  relation: string;
+  column: string;
+  accepts: (v: string) => boolean;
+  options: FilterOptions;
+  /** Condiciones que siempre van (sin borrados, sin spam…). */
+  base?: readonly ListClause[];
+  baseColumns?: readonly string[];
+  keywords?: string;
+  hint?: string;
+  chipLabel?: string;
+  /** "no tiene ninguna fila con estos valores" en vez de "tiene alguna". */
+  negate?: boolean;
+}): ContactFilterDef {
+  return {
+    param: o.param,
+    label: o.label,
+    chipLabel: o.chipLabel,
+    group: o.group,
+    kind: "multi",
+    related: true,
+    accepts: o.accepts,
+    options: o.options,
+    keywords: o.keywords,
+    hint: o.hint,
+    plan: (values) => ({
+      related: [
+        {
+          relation: o.relation,
+          mode: o.negate ? "none" : "has",
+          columns: [o.column, ...(o.baseColumns ?? [])],
+          clauses: [...(o.base ?? []), { op: "in", column: o.column, values: [...values] }],
+        },
+      ],
+    }),
+  };
+}
+
+/** Una fecha de otra tabla: "tiene alguna fila en este rango". */
+export function relatedDateFilter(o: {
+  param: string;
+  label: string;
+  group: ListGroupDef;
+  relation: string;
+  column: string;
+  presets: readonly DatePreset[];
+  base?: readonly ListClause[];
+  baseColumns?: readonly string[];
+  keywords?: string;
+}): ContactFilterDef {
+  return {
+    param: o.param,
+    label: o.label,
+    group: o.group,
+    kind: "date",
+    related: true,
+    datePresets: o.presets,
+    dateRange: true,
+    keywords: o.keywords,
+    accepts: (v) => parseDateValue(v, o.presets) !== null,
+    plan: (values, ctx) => {
+      const parsed = parseDateValue(values[0], o.presets);
+      if (!parsed) return {};
+      return {
+        related: [
+          {
+            relation: o.relation,
+            mode: "has",
+            columns: [o.column, ...(o.baseColumns ?? [])],
+            clauses: [...(o.base ?? []), ...boundsClauses(o.column, dateBounds(parsed, ctx.now, ctx.timeZone))],
+          },
+        ],
+      };
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Las rutas de la atribución (las mismas de los índices de la 00114)
 // ---------------------------------------------------------------------------
