@@ -51,15 +51,24 @@ const accountLabel = (ch) => {
 
 const chunks = (list, n) => Array.from({ length: Math.ceil(list.length / n) }, (_, i) => list.slice(i * n, i * n + n));
 
-async function must(promise, what) {
-  const { data, error } = await promise;
-  if (error) throw new Error(`${what}: ${error.message}`);
-  return data ?? [];
+/** Una consulta, con hasta 3 reintentos (1, 2 y 4 s) ante un corte de red. Recibe una funcion: el builder no se reusa. */
+async function must(query, what) {
+  for (let attempt = 0; ; attempt++) {
+    let result;
+    try {
+      result = await query();
+    } catch (err) {
+      result = { error: { message: err instanceof Error ? err.message : String(err) } };
+    }
+    if (!result.error) return result.data ?? [];
+    if (attempt >= 3) throw new Error(`${what}: ${result.error.message}`);
+    await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+  }
 }
 
 /** Los canales de Instagram, con lo que hace falta para nombrar la cuenta en el toque. */
 const channels = await must(
-  svc.from("channels").select("id, workspace_id, platform, late_account_id, username, display_name").eq("platform", "instagram"),
+  () => svc.from("channels").select("id, workspace_id, platform, late_account_id, username, display_name").eq("platform", "instagram"),
   "no pude leer los canales",
 );
 const channelById = new Map(channels.map((c) => [c.id, c]));
@@ -69,7 +78,7 @@ const conversations = [];
 for (const ids of chunks([...channelById.keys()], 50)) {
   for (let from = 0; ; from += 1000) {
     const page = await must(
-      svc
+      () => svc
         .from("conversations")
         .select("id, workspace_id, channel_id, contact_id, late_conversation_id, created_at")
         .in("channel_id", ids)
@@ -86,8 +95,8 @@ for (const ids of chunks([...channelById.keys()], 50)) {
 const contactIds = [...new Set(conversations.map((c) => c.contact_id))];
 const withoutTouch = new Set();
 for (const ids of chunks(contactIds, CHUNK)) {
-  const alive = await must(svc.from("contacts").select("id").in("id", ids).is("deleted_at", null), "no pude leer los contactos");
-  const touched = await must(svc.from("contact_touches").select("contact_id").in("contact_id", ids), "no pude leer los toques");
+  const alive = await must(() => svc.from("contacts").select("id").in("id", ids).is("deleted_at", null), "no pude leer los contactos");
+  const touched = await must(() => svc.from("contact_touches").select("contact_id").in("contact_id", ids), "no pude leer los toques");
   const hasTouch = new Set(touched.map((t) => t.contact_id));
   for (const { id } of alive) if (!hasTouch.has(id)) withoutTouch.add(id);
 }
@@ -103,7 +112,17 @@ console.log(`${APPLY ? "ESCRIBIENDO" : "SIMULACION (--apply para escribir)"}: ${
 
 async function touch(workspaceId, contactId, payload) {
   if (!APPLY) return true;
-  const { data, error } = await svc.rpc("record_contact_touch", { p_workspace_id: workspaceId, p_contact_id: contactId, p_touch: payload });
+  let data, error;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      ({ data, error } = await svc.rpc("record_contact_touch", { p_workspace_id: workspaceId, p_contact_id: contactId, p_touch: payload }));
+    } catch (err) {
+      error = { message: err instanceof Error ? err.message : String(err) };
+    }
+    // Reintenta solo un corte de red: un error de la base no cambia por insistir.
+    if (!error || !/fetch failed|network|ECONN|ETIMEDOUT/i.test(error.message)) break;
+    await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+  }
   if (error) {
     stats.errores += 1;
     console.error(`  error en ${contactId}: ${error.message}`);
@@ -119,11 +138,11 @@ for (const conv of targets) {
   const account = { account_id: channel.late_account_id, account_label: accountLabel(channel) };
 
   const [first] = await must(
-    svc.from("messages").select("id, direction, platform_message_id, created_at").eq("conversation_id", conv.id).order("created_at").limit(1),
+    () => svc.from("messages").select("id, direction, platform_message_id, created_at").eq("conversation_id", conv.id).order("created_at").limit(1),
     "no pude leer los mensajes",
   );
   const [firstIn] = await must(
-    svc
+    () => svc
       .from("messages")
       .select("id, platform_message_id, created_at")
       .eq("conversation_id", conv.id)

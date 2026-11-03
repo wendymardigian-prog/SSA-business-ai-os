@@ -196,7 +196,7 @@ describe("el origen de un contacto que nace por un chat que empezo el negocio", 
       channel,
       message: echo,
       conversation: participant,
-      account: { id: "acc-1", label: "@wendy" },
+      account: { id: "acc-1", label: "@negocio" },
     });
 
     expect(touches).toHaveLength(1);
@@ -207,7 +207,7 @@ describe("el origen de un contacto que nace por un chat que empezo el negocio", 
       origin: "dm",
       dedupe_key: "external-start:zc-1",
       occurred_at: "2026-10-28T10:00:00.000Z",
-      raw: { via: "external_outbound", message_id: "z-msg-1", account_id: "acc-1", account_label: "@wendy" },
+      raw: { via: "external_outbound", message_id: "z-msg-1", account_id: "acc-1", account_label: "@negocio" },
     });
     expect(db.rows("scheduled_jobs")).toEqual([
       expect.objectContaining({ type: "comment_backfill", payload: { workspace_id: "ws-1", contact_id: "contact-1" } }),
