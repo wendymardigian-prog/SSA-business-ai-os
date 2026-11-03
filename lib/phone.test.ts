@@ -7,6 +7,7 @@ import {
   isLidJid,
   normalizeLidJid,
   toEvolutionNumber,
+  normalizeGroupJid,
 } from "./phone";
 
 describe("normalizePhone", () => {
@@ -85,5 +86,19 @@ describe("normalizeLidJid", () => {
     expect(normalizeLidJid("5491122334455@s.whatsapp.net")).toBeNull();
     expect(normalizeLidJid("12@lid")).toBeNull();
     expect(normalizeLidJid(null)).toBeNull();
+  });
+});
+
+describe("normalizeGroupJid", () => {
+  it("deja el JID de un grupo como esta", () => {
+    expect(normalizeGroupJid("120363001122334455@g.us")).toBe("120363001122334455@g.us");
+    expect(normalizeGroupJid(" 5491122334455-1600000000@g.us ")).toBe("5491122334455-1600000000@g.us");
+  });
+
+  it("null para todo lo que no es un grupo", () => {
+    expect(normalizeGroupJid("5491122334455@s.whatsapp.net")).toBeNull();
+    expect(normalizeGroupJid("98765432101234@lid")).toBeNull();
+    expect(normalizeGroupJid("abc@g.us")).toBeNull();
+    expect(normalizeGroupJid(null)).toBeNull();
   });
 });

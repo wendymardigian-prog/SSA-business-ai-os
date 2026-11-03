@@ -14,7 +14,15 @@
  * - Nunca se toca configuracion a nivel servidor ni instancias ajenas.
  */
 
-import { toEvolutionNumber } from "@/lib/phone";
+import { normalizeGroupJid, toEvolutionNumber } from "@/lib/phone";
+
+/**
+ * A quien se le manda: un grupo (su JID entero) o una persona (telefono o @lid,
+ * con `toEvolutionNumber`). Evolution acepta los dos en `number`.
+ */
+function evolutionTarget(to: string): string | null {
+  return normalizeGroupJid(to) ?? toEvolutionNumber(to);
+}
 
 const MAX_ATTEMPTS = 3;
 const RETRY_BASE_MS = 400;
@@ -295,9 +303,10 @@ export async function setWebhook(
   token: string,
 ): Promise<void> {
   const major = await getMajorVersion(config);
-  // CALL (00258): Evolution avisa cada llamada (no puede atenderlas). Una
-  // instancia vieja lo recibe recien despues de volver a registrar el webhook.
-  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CALL"];
+  // CALL (00258): Evolution avisa cada llamada (no puede atenderlas).
+  // GROUP_PARTICIPANTS_UPDATE: quien entra o sale de un grupo (Grupos de WhatsApp).
+  // Una instancia vieja los recibe recien despues de volver a registrar el webhook.
+  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CALL", "GROUP_PARTICIPANTS_UPDATE"];
 
   // El token va como header porque el webhook queda expuesto en internet: es lo
   // unico que separa un evento real de cualquiera que descubra la URL.
@@ -498,7 +507,7 @@ export interface SentMessage {
 }
 
 /**
- * Manda un texto. `to` puede ser un telefono o un JID entero.
+ * Manda un texto. `to` puede ser un telefono, un JID entero o el JID de un grupo.
  */
 export async function sendText(
   config: EvolutionConfig,
@@ -506,7 +515,7 @@ export async function sendText(
   to: string,
   text: string,
 ): Promise<SentMessage> {
-  const number = toEvolutionNumber(to);
+  const number = evolutionTarget(to);
   if (!number) {
     throw new EvolutionError(`Numero de WhatsApp invalido: "${to}"`);
   }
@@ -683,7 +692,7 @@ export async function sendMedia(
   to: string,
   args: SendMediaArgs,
 ): Promise<SentMessage> {
-  const number = toEvolutionNumber(to);
+  const number = evolutionTarget(to);
   if (!number) {
     throw new EvolutionError(`Numero de WhatsApp invalido: "${to}"`);
   }
@@ -782,6 +791,128 @@ export async function setCallSettings(
   const next: InstanceSettings = { ...current, rejectCall: patch.rejectCall, msgCall: patch.msgCall };
   await request(config, "POST", `/settings/set/${encodeURIComponent(instanceName)}`, next);
   return next;
+}
+
+/**
+ * Que la instancia NO ignore los grupos. Con `groupsIgnore` prendido, Evolution
+ * no avisa ni los mensajes ni quien entra a un grupo, y los grupos activados
+ * quedarian mudos. Solo se toca ese ajuste (el resto se manda como estaba).
+ * Devuelve true si hubo que cambiarlo.
+ */
+export async function ensureGroupsNotIgnored(config: EvolutionConfig, instanceName: string): Promise<boolean> {
+  const current = await findInstanceSettings(config, instanceName);
+  if (!current.groupsIgnore) return false;
+  await request(config, "POST", `/settings/set/${encodeURIComponent(instanceName)}`, { ...current, groupsIgnore: false });
+  return true;
+}
+
+// ── Grupos ───────────────────────────────────────────────────────────────────
+
+/** Un grupo del numero, como lo devuelve `GET /group/fetchAllGroups` (v2). Solo lo que se usa. */
+export interface EvolutionGroup {
+  jid: string;
+  subject: string;
+  size: number | null;
+  pictureUrl: string | null;
+  isCommunity: boolean;
+  /** true = solo los admins pueden escribir. */
+  announce: boolean;
+}
+
+/** Un miembro de un grupo (`GET /group/participants`). `id` puede ser un telefono o un @lid. */
+export interface EvolutionGroupParticipant {
+  id: string;
+  phoneNumber: string | null;
+  lid: string | null;
+  admin: boolean;
+  name: string | null;
+}
+
+function groupFrom(raw: Record<string, unknown>): EvolutionGroup | null {
+  const jid = normalizeGroupJid(typeof raw.id === "string" ? raw.id : null);
+  if (!jid) return null;
+  return {
+    jid,
+    subject: typeof raw.subject === "string" && raw.subject.trim() ? raw.subject.trim() : jid,
+    size: typeof raw.size === "number" ? raw.size : null,
+    pictureUrl: typeof raw.pictureUrl === "string" && raw.pictureUrl ? raw.pictureUrl : null,
+    isCommunity: raw.isCommunity === true,
+    announce: raw.announce === true,
+  };
+}
+
+/**
+ * Los grupos en los que esta el numero. Lo pide a WhatsApp (no a la base de
+ * Evolution), asi que es una consulta "cara": se llama al abrir la seccion
+ * Grupos, no en cada mensaje.
+ */
+export async function fetchAllGroups(config: EvolutionConfig, instanceName: string): Promise<EvolutionGroup[]> {
+  const raw = await request<unknown>(config, "GET", `/group/fetchAllGroups/${encodeURIComponent(instanceName)}?getParticipants=false`);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((row) => (row && typeof row === "object" ? groupFrom(row as Record<string, unknown>) : null))
+    .filter((group): group is EvolutionGroup => group !== null && !group.isCommunity);
+}
+
+/** Los miembros de un grupo, con su telefono y su @lid cuando WhatsApp los da. */
+export async function fetchGroupParticipants(
+  config: EvolutionConfig,
+  instanceName: string,
+  groupJid: string,
+): Promise<EvolutionGroupParticipant[]> {
+  const jid = normalizeGroupJid(groupJid);
+  if (!jid) throw new EvolutionError(`Grupo de WhatsApp invalido: "${groupJid}"`);
+  const raw = await request<{ participants?: unknown }>(
+    config,
+    "GET",
+    `/group/participants/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(jid)}`,
+  );
+  const list = Array.isArray(raw?.participants) ? raw.participants : [];
+  const out: EvolutionGroupParticipant[] = [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    if (typeof r.id !== "string" || !r.id) continue;
+    out.push({
+      id: r.id,
+      phoneNumber: typeof r.phoneNumber === "string" && r.phoneNumber ? r.phoneNumber : null,
+      lid: typeof r.lid === "string" && r.lid ? r.lid : null,
+      admin: r.admin === "admin" || r.admin === "superadmin",
+      name: typeof r.name === "string" && r.name.trim() ? r.name.trim() : null,
+    });
+  }
+  return out;
+}
+
+/** Lo que pide una encuesta. WhatsApp acepta de 2 a 12 opciones; `selectableCount` 0 = todas las que quiera. */
+export interface PollArgs {
+  name: string;
+  values: string[];
+  selectableCount: number;
+}
+
+/**
+ * Manda una encuesta (`POST /message/sendPoll/{instancia}`, v2). `to` puede ser
+ * una persona o un grupo. Evolution guarda la encuesta en su base, y eso es lo
+ * que le permite descifrar los votos despues.
+ */
+export async function sendPoll(
+  config: EvolutionConfig,
+  instanceName: string,
+  to: string,
+  poll: PollArgs,
+): Promise<SentMessage> {
+  const number = evolutionTarget(to);
+  if (!number) {
+    throw new EvolutionError(`Numero de WhatsApp invalido: "${to}"`);
+  }
+  const raw = await request<{ key?: { id?: string }; messageId?: string }>(
+    config,
+    "POST",
+    `/message/sendPoll/${encodeURIComponent(instanceName)}`,
+    { number, name: poll.name, selectableCount: poll.selectableCount, values: poll.values },
+  );
+  return { id: raw?.key?.id ?? raw?.messageId ?? null };
 }
 
 // ── Avatares ─────────────────────────────────────────────────────────────────
