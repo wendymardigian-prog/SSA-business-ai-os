@@ -8,7 +8,7 @@ Hasta noviembre de 2026 el sistema descartaba todo lo que pasaba en un grupo de 
 - **disparar automatizaciones** cuando alguien se une, reacciona a un mensaje o vota en una encuesta.
 
 Migraciones: `00280` (tablas y permisos), `00281` (el toque) y `00282` (los disparadores). Las tres son aditivas y
-van **antes** de desplegar el código.
+van **antes** de desplegar el código. En producción están aplicadas y registradas desde el 3/11/2026.
 
 ## Cómo se activa
 

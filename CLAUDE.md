@@ -1596,7 +1596,7 @@ Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (vista «Gru
 
 ## Migraciones
 
-`00280` (tablas, permisos, realtime), `00281` (origen `whatsapp_group` + `touch_channel`; la definicion vieja en la cabecera) y `00282` (CHECK de `triggers.type`). Aditivas, van ANTES de desplegar el codigo. **Escritas, SIN aplicar todavia.** **La proxima libre es la `00283`** (confirmar con `list_migrations` y las ramas locales).
+`00280` (tablas, permisos, realtime), `00281` (origen `whatsapp_group` + `touch_channel`; la definicion vieja en la cabecera) y `00282` (CHECK de `triggers.type`). Aditivas, van ANTES de desplegar el codigo. **Aplicadas y registradas** el 3/11/2026 (versiones `20261103093659`, `...093703` y `...093707`), despues de ensayarlas en una transaccion que se deshizo sola, con `verify-whatsapp-groups`, `verify-contact-merge` y `verify-organic-attribution --despues-de-00234` en verde. **La proxima libre es la `00283`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-whatsapp-groups.mjs   # permisos SQL<->TS, RLS, unicos, toque organico, disparadores, cascada
