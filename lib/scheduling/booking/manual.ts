@@ -10,6 +10,10 @@
  *    del anfitrion (00269, `ensureInternalEvent`) y guarda su propio titulo.
  *  - No hay formulario del evento: el invitado es un contacto que ya existe, o
  *    un nombre y un email.
+ *  - La ubicacion la elige quien agenda (un Google Meet o un texto); sin
+ *    elegir, la del evento. Un Meet se pide solo si quien atiende puede
+ *    crearlo (`canHostCreateMeet`): si no, la reunion quedaria esperando un
+ *    link que nunca llega.
  *
  * Igual que `createBooking`: todo pasa por `create_booking` (contacto,
  * asignacion, historial, automatizaciones, sincronizacion con Google), y los
@@ -25,6 +29,7 @@ import { categorySnapshot, type CategoryRow } from "@/lib/scheduling/categories"
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { newBookingUid } from "@/lib/scheduling/antispam";
 import { syncRelativeJobs } from "@/lib/scheduling/automation/relative";
+import { canHostCreateMeet } from "@/lib/scheduling/data/meet-availability";
 import type { ManualBookingPlan } from "./manual-input";
 
 type Db = SupabaseClient<Database>;
@@ -97,7 +102,15 @@ async function hostTimezone(service: Db, workspaceId: string, hostUserId: string
 
 export async function createManualBooking(
   service: Db,
-  input: { workspaceId: string; workspaceTimezone: string; actorUserId: string; plan: ManualBookingPlan; hostName?: string | null },
+  input: {
+    workspaceId: string;
+    workspaceTimezone: string;
+    actorUserId: string;
+    plan: ManualBookingPlan;
+    hostName?: string | null;
+    /** El nombre de quien atiende, para los avisos (con un evento, recien se sabe quien es aca). */
+    hostNameOf?: (userId: string) => string | null;
+  },
   now: Date = new Date(),
 ): Promise<ManualBookingResult> {
   const { workspaceId, plan } = input;
@@ -136,6 +149,8 @@ export async function createManualBooking(
     if (!event) return { ok: false, error: "No pude preparar la agenda. Probá de nuevo." };
   }
 
+  const hostName = input.hostName ?? (hostUserId !== input.actorUserId ? (input.hostNameOf?.(hostUserId) ?? null) : null);
+
   // 2. El invitado: un contacto del workspace, o nombre + email.
   let name = plan.name;
   let email = plan.email;
@@ -154,13 +169,29 @@ export async function createManualBooking(
     phone = contact.phone;
   }
 
+  // 3. Donde es. Lo que eligio quien agenda, o la ubicacion del evento.
+  const wanted = plan.location ?? (event.location_type === "google_meet" ? { kind: "google_meet" as const } : { kind: "text" as const, text: event.location_text });
+  let locationType: "google_meet" | "manual" = "manual";
+  let locationText: string | null = wanted.kind === "text" ? wanted.text : null;
+  if (wanted.kind === "google_meet") {
+    if (await canHostCreateMeet(service, workspaceId, hostUserId, event.destination_calendar_id)) {
+      locationType = "google_meet";
+    } else if (plan.location) {
+      // Se pidio un Meet a proposito: se avisa en vez de agendar sin link.
+      const who =
+        hostUserId === input.actorUserId ? "No tenés" : hostName ? `${hostName} no tiene` : "Quien atiende no tiene";
+      return { ok: false, error: `${who} Google Calendar conectado, así que no se puede crear un Meet. Escribí la ubicación o elegí otra persona.` };
+    }
+    // Sin elegir (la del evento) y sin calendario: queda "A confirmar".
+  }
+
   const title = plan.title || event.title;
   const responses: Record<string, string> = {};
   if (name) responses.name = name;
   if (email) responses.email = email;
   if (phone) responses.phone = phone;
 
-  // 3. La transaccion.
+  // 4. La transaccion.
   const { data, error } = await service.rpc("create_booking", {
     p_workspace_id: workspaceId,
     p_event_type_id: event.id,
@@ -173,8 +204,8 @@ export async function createManualBooking(
     p_phone: phone ?? null,
     p_timezone: plan.timezone,
     p_host_timezone: await hostTimezone(service, workspaceId, hostUserId, input.workspaceTimezone || "UTC"),
-    p_location_type: event.location_type,
-    p_location_text: event.location_text,
+    p_location_type: locationType,
+    p_location_text: locationText,
     p_responses: responses as unknown as Json,
     p_origin: "manual",
     p_utm: {} as Json,
@@ -191,7 +222,7 @@ export async function createManualBooking(
 
   if (error) {
     if (error.code === "23P01") {
-      const who = input.hostName ? `${input.hostName} ya tiene` : "El anfitrión ya tiene";
+      const who = hostName ? `${hostName} ya tiene` : "El anfitrión ya tiene";
       return { ok: false, error: `${who} otra reunión en ese horario. Elegí otra hora.` };
     }
     if (error.code === "CB001") return { ok: false, error: IDENTITY_MESSAGE };
@@ -201,13 +232,13 @@ export async function createManualBooking(
 
   const result = data as unknown as { booking_id: string; contact_id: string };
 
-  // 4. Las notas: van a las notas internas de la reunion. Un fallo no la tumba.
+  // 5. Las notas: van a las notas internas de la reunion. Un fallo no la tumba.
   if (plan.notes) {
     const { error: notesError } = await service.from("bookings").update({ internal_notes: plan.notes }).eq("id", result.booking_id);
     if (notesError) console.error("[agenda] no pude guardar las notas de la reunion:", notesError.message);
   }
 
-  // 5. Los avisos relativos (mismo criterio que createBooking).
+  // 6. Los avisos relativos (mismo criterio que createBooking).
   try {
     await syncRelativeJobs(
       service,

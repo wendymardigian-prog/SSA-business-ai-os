@@ -10,6 +10,9 @@
  *    nuevo con nombre y email.
  *  - El horario es libre: no se limita a los turnos del evento. Si el
  *    anfitrion ya tiene otra reunion a esa hora, el servidor avisa y no la crea.
+ *  - La ubicacion es un texto libre o un Google Meet. El boton de Meet aparece
+ *    solo si quien atiende puede crearlo (`meetAvailableFor`, calculado en el
+ *    servidor); el servidor lo vuelve a comprobar al agendar.
  *
  * Las reglas (que falta, que es valido) son las de `planManualBooking`, las
  * mismas que repite el servidor.
@@ -17,10 +20,10 @@
 
 import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, Loader2, UserPlus, X } from "lucide-react";
+import { CalendarClock, Check, Loader2, UserPlus, Video, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bookManuallyQuick } from "@/lib/actions/scheduling/bookings";
-import { MANUAL_DURATIONS, planManualBooking, type ManualBookingField } from "@/lib/scheduling/booking/manual-input";
+import { MANUAL_DURATIONS, MANUAL_LOCATION_MAX, planManualBooking, type ManualBookingField } from "@/lib/scheduling/booking/manual-input";
 import { dateInTz, minutesOfDayInTz, minutesToWallTime } from "@/lib/scheduling/time/tz";
 
 export interface ManualEventOption {
@@ -31,6 +34,11 @@ export interface ManualEventOption {
   hostName: string;
   status: "active" | "hidden" | "inactive";
   color: string | null;
+  /** La ubicacion del evento: el valor inicial del campo (se puede cambiar). */
+  locationType: "google_meet" | "manual";
+  locationText: string | null;
+  /** Si quien atiende el evento puede crear un Google Meet. */
+  meetAvailable: boolean;
 }
 
 export interface ManualContactOption {
@@ -60,6 +68,7 @@ export function BookManualDialog({
   events,
   timezone,
   onClose,
+  onCreated,
   searchContacts,
   hosts,
   currentUserId,
@@ -70,9 +79,11 @@ export function BookManualDialog({
   /** Se conserva por compatibilidad con quien lo monta (el modal usa la hora de 24 h del navegador). */
   timeFormat?: "12h" | "24h";
   onClose: () => void;
+  /** Despues de agendar: abre la reunion nueva (ahi se ve el link de Meet cuando llega). */
+  onCreated?: (bookingId: string) => void;
   searchContacts: (term: string) => Promise<ManualContactOption[]>;
   /** Quienes pueden atender una reunion sin evento. */
-  hosts: Array<{ userId: string; label: string }>;
+  hosts: Array<{ userId: string; label: string; meetAvailable: boolean }>;
   currentUserId: string;
   /** Las areas de la agenda (sin evento, la reunion va a una; por defecto "Otros"). */
   areas: Array<{ id: string; name: string; isDefault: boolean }>;
@@ -99,12 +110,23 @@ export function BookManualDialog({
   const [hostUserId, setHostUserId] = useState(currentUserId);
   const [categoryId, setCategoryId] = useState(areas.find((a) => a.isDefault)?.id ?? areas[0]?.id ?? "");
   const [notes, setNotes] = useState("");
+  // Sin evento, Meet arranca prendido si quien atiende puede crearlo (lo que pasaba siempre).
+  const [meetOn, setMeetOn] = useState(() => hosts.find((h) => h.userId === currentUserId)?.meetAvailable ?? false);
+  const [locationText, setLocationText] = useState("");
 
   const [error, setError] = useState<{ field: ManualBookingField | null; message: string } | null>(null);
   const [pending, start] = useTransition();
   const titleRef = useRef<HTMLInputElement>(null);
 
   const event = events.find((e) => e.id === eventId) ?? null;
+  const host = hosts.find((h) => h.userId === hostUserId) ?? null;
+  const meetAvailable = event ? event.meetAvailable : (host?.meetAvailable ?? false);
+  const meet = meetOn && meetAvailable;
+  const noMeetText = event
+    ? `${event.hostName} no tiene Google Calendar conectado: no se puede crear un Meet.`
+    : hostUserId === currentUserId
+      ? "No tenés Google Calendar conectado: no se puede crear un Meet."
+      : `${host?.label ?? "Esa persona"} no tiene Google Calendar conectado: no se puede crear un Meet.`;
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -137,6 +159,8 @@ export function BookManualDialog({
     setEventId(e.id);
     setTitle(e.title);
     setDuration(e.durationMinutes);
+    setMeetOn(e.locationType === "google_meet" && e.meetAvailable);
+    setLocationText(e.locationType === "manual" ? (e.locationText ?? "") : "");
     setEventListOpen(false);
     setError(null);
   }
@@ -164,6 +188,7 @@ export function BookManualDialog({
       email: contact ? "" : email,
       phone: contact ? "" : phone,
       notes,
+      location: meet ? ({ kind: "google_meet" } as const) : ({ kind: "text", text: locationText } as const),
     };
     if (!contact && !newGuest) {
       setError({ field: "contact", message: "Elegí un contacto o agregá un invitado nuevo." });
@@ -181,7 +206,8 @@ export function BookManualDialog({
         setError({ field: null, message: result.error });
         return;
       }
-      router.refresh();
+      if (onCreated) onCreated(result.data.bookingId);
+      else router.refresh();
       onClose();
     });
   }
@@ -285,7 +311,11 @@ export function BookManualDialog({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setEventId(null)}
+                  onClick={() => {
+                    setEventId(null);
+                    setMeetOn(host?.meetAvailable ?? false);
+                    setLocationText("");
+                  }}
                   className="font-medium text-primary-ink hover:underline"
                 >
                   Quitar el evento
@@ -459,7 +489,17 @@ export function BookManualDialog({
                 <label htmlFor={`${titleId}-host`} className={labelClass}>
                   Atiende
                 </label>
-                <select id={`${titleId}-host`} value={hostUserId} onChange={(e) => setHostUserId(e.target.value)} className={inputClass}>
+                <select
+                  id={`${titleId}-host`}
+                  value={hostUserId}
+                  onChange={(e) => {
+                    const next = hosts.find((h) => h.userId === e.target.value);
+                    setHostUserId(e.target.value);
+                    // Si la persona nueva puede crear un Meet y no hay nada escrito, Meet; si no puede, se apaga.
+                    setMeetOn(next?.meetAvailable ? meetOn || !locationText.trim() : false);
+                  }}
+                  className={inputClass}
+                >
                   {hosts.map((h) => (
                     <option key={h.userId} value={h.userId}>
                       {h.userId === currentUserId ? `${h.label} (vos)` : h.label}
@@ -483,6 +523,53 @@ export function BookManualDialog({
               )}
             </div>
           )}
+
+          {/* Ubicacion: texto libre o Google Meet */}
+          <div>
+            <label htmlFor={`${titleId}-location`} className={labelClass}>
+              Ubicación
+            </label>
+            <div className="flex gap-2">
+              {meet ? (
+                <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 text-sm">
+                  <Video className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="truncate">Se crea un link de Google Meet al agendar</span>
+                </div>
+              ) : (
+                <input
+                  id={`${titleId}-location`}
+                  value={locationText}
+                  onChange={(e) => setLocationText(e.target.value)}
+                  maxLength={MANUAL_LOCATION_MAX}
+                  placeholder="Oficina, dirección o un link (opcional)"
+                  autoComplete="off"
+                  aria-invalid={invalid("location")}
+                  className={cn(inputClass, "min-w-0 flex-1")}
+                />
+              )}
+              {meetAvailable && (
+                <button
+                  type="button"
+                  aria-pressed={meet}
+                  onClick={() => setMeetOn(!meet)}
+                  className={cn(
+                    "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium",
+                    meet ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  <Video className="h-4 w-4" aria-hidden />
+                  Google Meet
+                </button>
+              )}
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {meet
+                ? "Google lo agrega a la invitación y el link queda en la reunión."
+                : meetAvailable
+                  ? "Escribí dónde es, o usá Google Meet. Si lo dejás vacío, queda «A confirmar»."
+                  : noMeetText}
+            </p>
+          </div>
 
           {/* Notas */}
           <div>

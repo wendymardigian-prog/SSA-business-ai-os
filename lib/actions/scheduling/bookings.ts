@@ -308,6 +308,19 @@ export async function fixBookingCategory(input: { bookingId: string; categoryId:
   return { ok: true };
 }
 
+/**
+ * El link de Meet de una agenda recien creada. El evento de Google (y su link)
+ * lo crea un job unos segundos despues, asi que el panel pregunta por aca hasta
+ * que llega. Solo lectura, con la sesion: la RLS decide si la ve.
+ */
+export async function getBookingMeetState(input: { bookingId: string }): Promise<BookingActionResult<{ meetUrl: string | null; syncStatus: string }>> {
+  const ctx = await getPermissionAction("bookings.view");
+  if (!ctx) return { ok: false, error: "No tenés permiso para ver agendas." };
+  const { data } = await ctx.supabase.from("bookings").select("meet_url, google_sync_status").eq("id", input.bookingId).maybeSingle();
+  if (!data) return { ok: false, error: "No encontré esa agenda." };
+  return { ok: true, data: { meetUrl: data.meet_url, syncStatus: data.google_sync_status } };
+}
+
 /** Volver a mandar la agenda a Google después de un fallo (F36). */
 export async function retryBookingSync(input: { bookingId: string }): Promise<BookingActionResult> {
   const found = await visibleBooking(input.bookingId);
@@ -401,6 +414,7 @@ export async function bookManuallyQuick(input: ManualBookingInput): Promise<Book
     actorUserId: ctx.user.id,
     plan: checked.plan,
     hostName: hostId && hostId !== ctx.user.id ? (members.find((m) => m.userId === hostId)?.name ?? null) : null,
+    hostNameOf: (userId) => members.find((m) => m.userId === userId)?.name ?? null,
   });
   if (!result.ok) return { ok: false, error: result.error };
 

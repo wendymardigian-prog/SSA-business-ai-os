@@ -54,4 +54,19 @@ describe("planManualBooking", () => {
   it("las notas tienen tope", () => {
     expect(planManualBooking({ ...base, notes: "x".repeat(2001) })).toMatchObject({ ok: false, field: "notes" });
   });
+
+  it("la ubicacion: Meet, texto recortado, vacio = a confirmar, y sin elegir = la del evento", () => {
+    const meet = planManualBooking({ ...base, location: { kind: "google_meet" } });
+    expect(meet.ok && meet.plan.location).toEqual({ kind: "google_meet" });
+    const text = planManualBooking({ ...base, location: { kind: "text", text: "  Oficina central  " } });
+    expect(text.ok && text.plan.location).toEqual({ kind: "text", text: "Oficina central" });
+    const empty = planManualBooking({ ...base, location: { kind: "text", text: "   " } });
+    expect(empty.ok && empty.plan.location).toEqual({ kind: "text", text: null });
+    const none = planManualBooking(base);
+    expect(none.ok && none.plan.location).toBeNull();
+  });
+
+  it("la ubicacion tiene tope", () => {
+    expect(planManualBooking({ ...base, location: { kind: "text", text: "x".repeat(501) } })).toMatchObject({ ok: false, field: "location" });
+  });
 });

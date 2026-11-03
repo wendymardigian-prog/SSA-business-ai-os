@@ -11,6 +11,7 @@ import { needsOutcome } from "@/lib/scheduling/bookings-view";
 import { ORIGIN_LABELS } from "@/lib/scheduling/agenda-filters";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { NeedsOutcomeChip, SlotReleasedChip, StatusChip } from "./status-chip";
+import { MeetJoinLink } from "./meet-join-link";
 
 function categoryText(item: BookingListItem): string {
   const snap = item.categorySnapshot as { area_name?: string | null; type_name?: string | null } | null;
@@ -73,6 +74,7 @@ export function BookingsList({
                 <span className="inline-flex items-center gap-2">
                   <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.eventColor ?? "var(--muted-foreground)" }} />
                   {item.title}
+                  <MeetJoinLink meetUrl={item.meetUrl} status={item.status} />
                 </span>
               </td>
               <td className="px-4 py-2.5 text-muted-foreground">{categoryText(item)}</td>
@@ -93,7 +95,8 @@ export function BookingsList({
       {/* Celular */}
       <ul className="divide-y divide-border md:hidden">
         {items.map((item) => (
-          <li key={item.id}>
+          <li key={item.id} className="relative">
+            <MeetJoinLink meetUrl={item.meetUrl} status={item.status} className="absolute right-4 top-4 z-10 h-8 w-8" />
             <button type="button" onClick={() => onOpen(item.id)} className="flex w-full flex-col gap-1.5 p-4 text-left hover:bg-muted/60">
               <span className="text-sm font-medium tabular-nums">{capitalize(formatDateTimeWithZone(item.startAt, timezone, timeFormat))}</span>
               <span className="text-sm">{item.contactName || item.bookerName || "Sin nombre"}</span>

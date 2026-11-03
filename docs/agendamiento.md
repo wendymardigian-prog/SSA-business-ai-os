@@ -95,6 +95,15 @@ El botón «Agendar» abre UN modal, como en Google Calendar: título (escrito, 
 - Todo pasa por `create_booking` (no se tocó). Las reglas del modal son `planManualBooking` (`lib/scheduling/booking/manual-input.ts`), las mismas que repite `bookManuallyQuick`; el núcleo es `createManualBooking` (`lib/scheduling/booking/manual.ts`). Las notas van a `bookings.internal_notes`.
 - `bookManually` (el asistente de cinco pasos con los turnos del evento) sigue existiendo, pero la pantalla ya no lo usa.
 
+### Ubicación y Google Meet (3/11/2026)
+
+El modal tiene un campo **Ubicación**: un texto libre (oficina, dirección, un link de Zoom) o el botón **Google Meet**.
+
+- **El botón de Meet aparece solo si quien atiende puede crearlo**: tiene un calendario destino de Google (el del evento, si no el por defecto de su perfil), activo, con permiso de escritura, y su cuenta conectada con permiso para crear eventos. La regla es UNA: `meetAvailableFor` (`lib/scheduling/meet-availability.ts`, pura y con test); `loadMeetContext` (`lib/scheduling/data/meet-availability.ts`) la alimenta con el cliente de servicio. Si no puede, el modal lo dice («X no tiene Google Calendar conectado…») y queda solo el texto.
+- **El servidor lo vuelve a comprobar** en `createManualBooking` (`canHostCreateMeet`): un Meet pedido a propósito para alguien que no puede se rechaza con un mensaje claro. Sin elegir ubicación se usa la del evento; si era Meet y quien atiende no puede, queda «A confirmar». Nunca más una reunión esperando un link que no llega (antes pasaba con el evento interno, fijo en `google_meet`).
+- La ubicación elegida va por `p_location_type` / `p_location_text` de `create_booking` (sin migración, sin tocar la función). El job `booking_google_sync` crea el evento en Google con el Meet o con la ubicación escrita, como siempre, y Google manda la invitación al invitado.
+- **Ver y entrar**: después de agendar se abre el panel de la reunión, que muestra «Creando el Meet…» y pregunta cada 2 s (hasta 1 minuto, `getBookingMeetState`, con la sesión) hasta que llega el link. El panel tiene «Unirse a Meet», y el calendario (semana y día), la lista y el tablero un iconito para entrar sin abrir el panel (`MeetJoinLink`). Solo se abre un link `https` (`meetJoinHref`) y solo en una reunión activa (`canJoinMeet`). Sin Meet, las tarjetas del calendario son exactamente las de antes (`calendar-grid.characterization.test.ts`).
+
 ## Eventos sin calendario ("solo en el sistema", 20/10/2026)
 
 Un evento se puede **activar sin calendario**. Funciona solo dentro del
