@@ -125,6 +125,8 @@ const RAW_KEYS = new Set([
   "account_id", "account_label",
   // Grupos de WhatsApp (00281): de que grupo vino y que paso (se unio, se importo o aparecio por actividad).
   "group_jid", "group_event",
+  // Por que camino llego un toque de chat (`external_outbound`: lo empezo el negocio fuera del sistema).
+  "via",
 ]);
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

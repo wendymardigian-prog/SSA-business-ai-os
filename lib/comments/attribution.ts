@@ -53,6 +53,13 @@ export interface CommentAttributionParams {
   /** El id del comentario EN LA RED. */
   externalCommentId: string;
   authorUsername: string | null;
+  /**
+   * El id del autor en la red y el canal de esa cuenta (solo Instagram). Es el mismo id con el que el autor escribe por
+   * DM (`contact_channels.platform_sender_id`): encuentra a un contacto que no tiene el @ guardado, como el que nace por
+   * el eco de un mensaje de ManyChat. Solo busca, nunca crea.
+   */
+  authorExternalId?: string | null;
+  channelId?: string | null;
   isOwn: boolean;
   commentedAt: string | null;
   /** La publicación comentada, si se conoce. Null = comentario huérfano. */
@@ -93,30 +100,41 @@ export async function attributeComment(
 
     const platform = params.platform as keyof typeof SUPPORTED;
     const username = params.authorUsername?.trim();
-    if (!SUPPORTED[platform] || !username) return NOTHING;
+    if (!SUPPORTED[platform]) return NOTHING;
 
-    const settings = params.settings ?? (await loadAttributionSettings(supabase, params.workspaceId));
-    const create = shouldCreateFromComment(settings, params.platform);
-
-    // La regla única (00200): el usuario se compara en minúsculas y sin "@", y dos comentarios
-    // simultáneos de la misma persona dan UN contacto.
-    const identity = platform === "tiktok" ? { tiktok: username } : { instagram: username };
-    let contactId: string | null;
+    let contactId: string | null = null;
     let createdContact = false;
-    if (create) {
-      const result = await findOrCreateContact(supabase, {
-        workspaceId: params.workspaceId,
-        identity,
-        defaults:
-          platform === "tiktok"
-            ? { display_name: ANONYMOUS_NAME, last_interaction_at: new Date().toISOString() }
-            : { display_name: `@${username.replace(/^@+/, "")}`, last_interaction_at: new Date().toISOString() },
-        mode: "create",
-      });
-      contactId = result.contactId;
-      createdContact = result.created;
-    } else {
-      contactId = (await findContact(supabase, { workspaceId: params.workspaceId, identity })).contactId;
+
+    // Instagram: primero por el id del autor en el canal de la cuenta. Así se encuentra a quien ya escribió (o a quien
+    // ManyChat le escribió) aunque su contacto no tenga el @, y no se crea un segundo contacto con el @.
+    const senderId = params.authorExternalId?.trim();
+    if (platform === "instagram" && params.channelId && senderId) {
+      contactId = (await findContact(supabase, { workspaceId: params.workspaceId, identity: { channel_id: params.channelId, sender_id: senderId } })).contactId;
+    }
+
+    if (!contactId) {
+      if (!username) return NOTHING;
+      const settings = params.settings ?? (await loadAttributionSettings(supabase, params.workspaceId));
+      const create = shouldCreateFromComment(settings, params.platform);
+
+      // La regla única (00200): el usuario se compara en minúsculas y sin "@", y dos comentarios
+      // simultáneos de la misma persona dan UN contacto.
+      const identity = platform === "tiktok" ? { tiktok: username } : { instagram: username };
+      if (create) {
+        const result = await findOrCreateContact(supabase, {
+          workspaceId: params.workspaceId,
+          identity,
+          defaults:
+            platform === "tiktok"
+              ? { display_name: ANONYMOUS_NAME, last_interaction_at: new Date().toISOString() }
+              : { display_name: `@${username.replace(/^@+/, "")}`, last_interaction_at: new Date().toISOString() },
+          mode: "create",
+        });
+        contactId = result.contactId;
+        createdContact = result.created;
+      } else {
+        contactId = (await findContact(supabase, { workspaceId: params.workspaceId, identity })).contactId;
+      }
     }
 
     if (!contactId) return NOTHING;

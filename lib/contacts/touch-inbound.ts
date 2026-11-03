@@ -10,7 +10,8 @@
  * "Instagram · mensaje directo" por cada uno no dice nada y hace que el "último
  * toque" cambie con cada "ok". Se registra solo lo que SUMA información:
  *
- *   - el primer mensaje del contacto,
+ *   - el primer mensaje del contacto en la conversación (aunque el contacto ya existiera: lo pudo crear un mensaje
+ *     nuestro mandado desde ManyChat),
  *   - una respuesta a una historia (de dónde vino la conversación),
  *   - un mensaje que trae datos de un anuncio (el anuncio es el origen),
  *   - el que vuelve después de una semana sin escribir (una vuelta real).
@@ -141,6 +142,11 @@ export interface InboundTouchContext {
   referral: AdReferral | null;
   /** Cuándo llegó el mensaje anterior de ESTE contacto en esta conversación. */
   previousInboundAt: Date | null;
+  /**
+   * Ya se buscó el mensaje anterior (`previousInboundAt` es la respuesta, no un "todavía no se sabe"). Sin esto, un
+   * contacto que ya existía y no tiene ningún entrante anterior no se puede distinguir de uno al que no se le preguntó.
+   */
+  previousInboundChecked?: boolean;
   messageAt: Date;
 }
 
@@ -155,6 +161,10 @@ export function inboundTouchReason(ctx: InboundTouchContext): InboundTouchReason
   if (ctx.isStoryReply) return "story_reply";
   if (ctx.isStoryMention) return "story_mention";
   if (!ctx.contactExisted) return "first_message";
+  // El contacto ya existía pero nunca había escrito en esta conversación: la creó un mensaje NUESTRO (el eco de
+  // ManyChat o de la app de Instagram, 00267) o entró por otro lado (un formulario, la agenda). Su primer mensaje
+  // sigue siendo el primero.
+  if (ctx.previousInboundChecked && !ctx.previousInboundAt) return "first_message";
 
   if (ctx.previousInboundAt) {
     const gapMs = ctx.messageAt.getTime() - ctx.previousInboundAt.getTime();
@@ -206,8 +216,9 @@ export interface InboundTouchParams {
  * índice `(conversation_id, created_at)`, y solo cuando las reglas baratas no
  * alcanzaron para decidir.
  */
-async function previousInboundAt(supabase: Db, params: InboundTouchParams): Promise<Date | null> {
-  if (!params.messageId) return null;
+async function previousInboundAt(supabase: Db, params: InboundTouchParams): Promise<{ checked: boolean; at: Date | null }> {
+  // Sin nuestra fila del mensaje no se lo puede excluir de "el anterior": no se sabe.
+  if (!params.messageId) return { checked: false, at: null };
 
   const { data, error } = await supabase
     .from("messages")
@@ -219,9 +230,11 @@ async function previousInboundAt(supabase: Db, params: InboundTouchParams): Prom
     .limit(1)
     .maybeSingle();
 
-  if (error || !data?.created_at) return null;
+  // Un error de la base no es "no había ninguno": eso inventaría un primer mensaje.
+  if (error) return { checked: false, at: null };
+  if (!data?.created_at) return { checked: true, at: null };
   const at = new Date(data.created_at);
-  return Number.isNaN(at.getTime()) ? null : at;
+  return Number.isNaN(at.getTime()) ? { checked: false, at: null } : { checked: true, at };
 }
 
 /**
@@ -273,13 +286,15 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
     });
 
     if (!reason) {
+      const previous = await previousInboundAt(supabase, params);
       reason = inboundTouchReason({
         platform: params.platform,
         contactExisted: params.contactExisted,
         isStoryReply,
         isStoryMention,
         referral,
-        previousInboundAt: await previousInboundAt(supabase, params),
+        previousInboundAt: previous.at,
+        previousInboundChecked: previous.checked,
         messageAt: params.messageAt,
       });
     }

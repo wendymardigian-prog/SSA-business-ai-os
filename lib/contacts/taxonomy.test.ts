@@ -34,6 +34,8 @@ describe("las listas cerradas (F81)", () => {
       "dm_link", "referral_person",
       // Grupos de WhatsApp (00281): se SUMA el medio del grupo.
       "whatsapp_group",
+      // Un chat que empezó el negocio fuera del sistema (ManyChat): se SUMA `dm_external`.
+      "dm_external",
     ]);
   });
 
