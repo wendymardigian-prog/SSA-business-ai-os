@@ -16,7 +16,8 @@ import { EMAIL_STATUSES, EMAIL_STATUS_LABELS } from "@/lib/email/subscription";
 import { isSupportedPlatform } from "@/lib/platforms";
 import { foldText } from "@/lib/ui/multi-filter";
 import type { MultiFilterOption } from "@/lib/ui/multi-filter";
-import { describeDateValue, dateBounds, parseDateValue, type DatePreset } from "./dates";
+import { COUNTRY_OPTIONS } from "./options";
+import { PAST_PRESETS, describeDateValue, dateBounds, parseDateValue, type DatePreset } from "./dates";
 import {
   NONE,
   UUID_RE,
@@ -56,6 +57,7 @@ const isId = (v: string) => UUID_RE.test(v);
 const idOrNone = (v: string) => v === NONE || UUID_RE.test(v);
 const statusOrNone = (v: string) => v === NONE || STATUS_KEY_RE.test(v);
 const inList = (list: readonly string[]) => (v: string) => list.includes(v);
+const isCountry = (v: string) => v === NONE || /^[A-Z]{2}$/.test(v);
 
 /** Un filtro de varias opciones sobre una columna de `contacts`. */
 export function multiColumnFilter(o: {
@@ -67,10 +69,12 @@ export function multiColumnFilter(o: {
   options: FilterOptions;
   keywords?: string;
   hint?: string;
+  chipLabel?: string;
 }): ContactFilterDef {
   return {
     param: o.param,
     label: o.label,
+    chipLabel: o.chipLabel,
     group: o.group,
     kind: "multi",
     accepts: o.accepts,
@@ -180,6 +184,15 @@ export const CORE_FILTERS: readonly ContactFilterDef[] = [
     options: { from: "members", none: "Sin asignar" },
     keywords: "closer",
   }),
+  multiColumnFilter({
+    param: "referido",
+    label: "Referido por",
+    group: GROUPS.assignment,
+    column: "referred_by_user_id",
+    accepts: idOrNone,
+    options: { from: "members", none: "Sin referido" },
+    keywords: "referencia",
+  }),
 
   // Pipeline (00245/00246)
   {
@@ -237,6 +250,31 @@ export const CORE_FILTERS: readonly ContactFilterDef[] = [
     accepts: inList(LEAD_TEMPERATURES),
     options: { static: LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] })) },
   }),
+  multiColumnFilter({
+    param: "pais",
+    label: "País",
+    group: GROUPS.data,
+    column: "country",
+    accepts: isCountry,
+    options: { static: COUNTRY_OPTIONS, none: "Sin país" },
+  }),
+  dateColumnFilter({ param: "creado", label: "Creado", group: GROUPS.data, column: "created_at", presets: PAST_PRESETS, keywords: "alta fecha nuevo" }),
+  dateColumnFilter({
+    param: "ultima",
+    label: "Última interacción",
+    group: GROUPS.data,
+    column: "last_interaction_at",
+    presets: [...PAST_PRESETS, "sin"],
+    keywords: "fecha mensaje actividad",
+  }),
+  dateColumnFilter({
+    param: "seguimiento",
+    label: "Próximo seguimiento",
+    group: GROUPS.data,
+    column: "next_followup_date",
+    presets: ["vencido", "hoy", "proximos7", "con", "sin"],
+    keywords: "fecha followup",
+  }),
   {
     param: "anon",
     label: "Contactos sin datos",
@@ -255,6 +293,11 @@ export const CORE_FILTERS: readonly ContactFilterDef[] = [
     // La condición la pone siempre `contactListPlan` (también sin el parámetro).
     plan: () => ({}),
   },
+
+  // Marcas
+  yesNoColumnFilter({ param: "cliente", label: "Cliente", group: GROUPS.marks, column: "is_customer", keywords: "compro" }),
+  yesNoColumnFilter({ param: "conocido", label: "Conocido", group: GROUPS.marks, column: "is_known" }),
+  yesNoColumnFilter({ param: "no_contactar", label: "No contactar", group: GROUPS.marks, column: "do_not_contact", keywords: "baja" }),
 
   // Email
   multiColumnFilter({
@@ -303,6 +346,7 @@ export const CORE_FILTERS: readonly ContactFilterDef[] = [
   multiColumnFilter({
     param: "fuente",
     label: "Fuente",
+    chipLabel: "Fuente (1.er toque)",
     group: GROUPS.firstTouch,
     column: FIRST_TOUCH_SOURCE_PATH,
     accepts: inList(SOURCES),
@@ -312,6 +356,7 @@ export const CORE_FILTERS: readonly ContactFilterDef[] = [
   multiColumnFilter({
     param: "medio",
     label: "Medio",
+    chipLabel: "Medio (1.er toque)",
     group: GROUPS.firstTouch,
     column: FIRST_TOUCH_MEDIUM_PATH,
     accepts: inList(MEDIUMS),
@@ -376,7 +421,7 @@ export function filterValueLabel(def: ContactFilterDef, value: string, dynamic: 
 export function filterChipText(def: ContactFilterDef, values: readonly string[], dynamic: Readonly<Record<string, readonly MultiFilterOption[]>>): string {
   const labels = values.map((v) => filterValueLabel(def, v, dynamic));
   const shown = labels.length <= 2 ? labels.join(", ") : `${labels.length} elegidos`;
-  return `${def.label}: ${shown}`;
+  return `${def.chipLabel ?? def.label}: ${shown}`;
 }
 
 export type { PlanContext, FilterPlanPart };

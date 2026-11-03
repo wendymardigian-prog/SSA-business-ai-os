@@ -6369,6 +6369,11 @@ export interface Database {
         Args: { p_workspace_id: string };
         Returns: Json;
       };
+      /** Opciones de los filtros de atribución de la lista de contactos (00283). SECURITY INVOKER. */
+      contact_attribution_options: {
+        Args: { p_workspace_id: string };
+        Returns: Json;
+      };
       purge_rate_limits: { Args: Record<string, never>; Returns: number };
       /** Marca un horario por defecto en una transaccion (00096). */
       set_default_schedule: {

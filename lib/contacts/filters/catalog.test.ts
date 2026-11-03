@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CONTACT_FILTERS } from "../list-modules";
+import { contactListPlan, parseContactListFilters } from "../list-query";
 import { filterChipText, filterOptionList, filterPanelGroups } from "./catalog";
 
 const byParam = (p: string) => {
@@ -45,7 +46,7 @@ describe("el buscador del panel", () => {
 
   it("encuentra por nombre, por grupo y por palabra extra, sin tildes", () => {
     expect(filterPanelGroups(CONTACT_FILTERS, "temperatura").flatMap((g) => g.filters.map((f) => f.param))).toEqual(["temp"]);
-    expect(filterPanelGroups(CONTACT_FILTERS, "asignacion").flatMap((g) => g.filters.map((f) => f.param))).toEqual(["setter", "vendedor"]);
+    expect(filterPanelGroups(CONTACT_FILTERS, "asignacion").flatMap((g) => g.filters.map((f) => f.param))).toEqual(["setter", "vendedor", "referido"]);
     expect(filterPanelGroups(CONTACT_FILTERS, "closer").flatMap((g) => g.filters.map((f) => f.param))).toContain("vendedor");
     expect(filterPanelGroups(CONTACT_FILTERS, "nada-que-ver")).toEqual([]);
   });
@@ -66,5 +67,30 @@ describe("opciones y chips", () => {
 
   it("un valor que ya no está entre las opciones se muestra tal cual (para poder quitarlo)", () => {
     expect(filterChipText(byParam("setter"), ["u9"], options)).toBe("Setter: u9");
+  });
+});
+
+describe("los filtros de datos propios (bloque 4)", () => {
+  const plan = (params: Record<string, string | string[]>) =>
+    contactListPlan(parseContactListFilters(params, []), null, { now: new Date("2026-11-03T15:00:00Z"), timeZone: "America/Costa_Rica" }).clauses.filter(
+      (c) => !("column" in c && c.column === "is_anonymous"),
+    );
+
+  it("fechas: atajos en la zona de quien mira, vencido y sin fecha", () => {
+    expect(plan({ creado: "7d" })).toEqual([{ op: "gte", column: "created_at", value: "2026-10-28T06:00:00.000Z" }]);
+    expect(plan({ seguimiento: "vencido" })).toEqual([{ op: "lt", column: "next_followup_date", value: "2026-11-03T06:00:00.000Z" }]);
+    expect(plan({ seguimiento: "sin" })).toEqual([{ op: "is_null", column: "next_followup_date" }]);
+    expect(plan({ ultima: "vencido" })).toEqual([]);
+  });
+
+  it("marcas: sí y no", () => {
+    expect(plan({ cliente: "si", conocido: "no" })).toEqual([
+      { op: "eq", column: "is_customer", value: true },
+      { op: "eq", column: "is_known", value: false },
+    ]);
+  });
+
+  it("país: códigos ISO y «sin país»", () => {
+    expect(plan({ pais: ["CR", "ninguno", "costa rica"] })).toEqual([{ op: "or", filter: "country.is.null,country.in.(CR)" }]);
   });
 });

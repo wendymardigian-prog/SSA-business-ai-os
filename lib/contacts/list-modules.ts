@@ -9,8 +9,13 @@
 import { CORE_FILTERS } from "./filters/catalog";
 import type { ContactColumnDef, ContactFilterDef, ContactListModule } from "./filters/types";
 import { CORE_COLUMNS } from "./columns-core";
+import { attributionModule } from "./related/attribution";
+import { salesModule } from "./related/sales"; // @plantilla-quitar(ventas)
 
-export const CONTACT_LIST_MODULES: readonly ContactListModule[] = [];
+export const CONTACT_LIST_MODULES: readonly ContactListModule[] = [
+  attributionModule,
+  salesModule, // @plantilla-quitar(ventas)
+];
 
 /** Todos los filtros, en el orden en que aparecen (el panel los agrupa). */
 export const CONTACT_FILTERS: readonly ContactFilterDef[] = [...CORE_FILTERS, ...CONTACT_LIST_MODULES.flatMap((m) => m.filters)];

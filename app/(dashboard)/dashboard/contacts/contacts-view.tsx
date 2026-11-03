@@ -567,6 +567,16 @@ function TableCell({
           )}
         </td>
       );
+    case "setter_status":
+    case "closer_status": {
+      const role = col.key === "setter_status" ? "setter" : "closer";
+      const status = role === "setter" ? contact.setterStatus : contact.closerStatus;
+      return (
+        <td className="px-4 py-3">
+          {status ? <LastStatusBadge settings={statusSettings} role={role} status={status} compact /> : <span className="text-sm text-muted-foreground">—</span>}
+        </td>
+      );
+    }
     case "contact":
       return (
         <td className="px-4 py-3">

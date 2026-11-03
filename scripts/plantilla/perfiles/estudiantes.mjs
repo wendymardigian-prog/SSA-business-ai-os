@@ -109,6 +109,8 @@ export const MODULES = {
       "lib/sales",
       "components/sales",
       "components/contacts/sales-section.tsx",
+      "lib/contacts/related/sales.ts",
+      "lib/contacts/related/sales.test.ts",
       "components/settings/sales-settings.tsx",
       "components/settings/payment-methods-card.tsx",
       "components/flow-builder/panels/SalesTriggerPanel.tsx",

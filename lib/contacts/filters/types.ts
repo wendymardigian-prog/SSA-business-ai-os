@@ -98,6 +98,8 @@ export interface ContactFilterDef {
   dateRange?: boolean;
   /** choice: cómo se llama el valor por defecto (sin parámetro). */
   defaultLabel?: string;
+  /** El nombre en el chip cuando el del panel no alcanza solo ("Fuente (último toque)"). */
+  chipLabel?: string;
   /** Palabras extra para el buscador del panel ("utm", "fecha"…). */
   keywords?: string;
   /** Una línea de ayuda debajo del nombre. */

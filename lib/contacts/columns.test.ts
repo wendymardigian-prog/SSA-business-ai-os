@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allColumns,
   columnMenuGroups,
+  contactCells,
   defaultVisibleKeys,
   parseColumnPrefs,
   serializeColumnPrefs,
@@ -81,9 +82,32 @@ describe("el menú de columnas", () => {
   });
 
   it("el buscador encuentra por nombre, grupo o palabra extra, sin tildes", () => {
-    expect(columnMenuGroups(defs, "interaccion").flatMap((g) => g.columns.map((c) => c.key))).toEqual(["last_interaction"]);
-    expect(columnMenuGroups(defs, "personalizados").flatMap((g) => g.columns.map((c) => c.key))).toEqual(["cf:f-viajeros", "cf:f-destino"]);
-    expect(columnMenuGroups(defs, "closer").flatMap((g) => g.columns.map((c) => c.key))).toEqual(["vendedor"]);
+    const found = (q: string) => columnMenuGroups(defs, q).flatMap((g) => g.columns.map((c) => c.key));
+    expect(found("interaccion")).toEqual(["last_interaction"]);
+    expect(found("personalizados")).toEqual(["cf:f-viajeros", "cf:f-destino"]);
+    expect(found("closer")).toEqual(expect.arrayContaining(["vendedor", "closer_status"]));
+    expect(found("ultimo toque campana")).toEqual(["last_campaign"]);
     expect(columnMenuGroups(defs, "zzz")).toEqual([]);
+  });
+});
+
+describe("las columnas de datos propios (bloque 4)", () => {
+  it("se arman en el servidor desde la fila y nunca lanzan", () => {
+    const cells = contactCells({
+      country: "CR",
+      instagram_username: "ana.viajes",
+      is_customer: true,
+      do_not_contact: true,
+      do_not_contact_reason: "Pidió la baja",
+      referred_by_user_id: "u1",
+      notes: "x".repeat(120),
+    });
+    expect(cells.country).toEqual({ t: "text", text: "Costa Rica" });
+    expect(cells.instagram).toEqual({ t: "text", text: "@ana.viajes" });
+    expect(cells.is_customer).toEqual({ t: "badge", text: "Cliente", tone: "green" });
+    expect(cells.is_known).toBeNull();
+    expect(cells.do_not_contact).toEqual({ t: "badge", text: "No contactar", tone: "red", sub: "Pidió la baja" });
+    expect(cells.referred_by).toEqual({ t: "member", userId: "u1" });
+    expect(cells.notes && cells.notes.t === "text" && cells.notes.text.length).toBe(81);
   });
 });

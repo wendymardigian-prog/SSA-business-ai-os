@@ -183,6 +183,7 @@ contactos que le corresponden (can_see_contact).`,
       "private.customer_assignee",
       "private.tag_effect_apply",
       "private.tag_effect_release",
+      "public.contact_attribution_options",
     ],
   },
   {
