@@ -317,7 +317,7 @@ async function saveZernio(secrets: Record<string, string>) {
   return { ok: true as const, warnings: (data.warnings ?? []) as string[] };
 }
 
-function CopyableUrl({ label, url }: { label: string; url: string }) {
+export function CopyableUrl({ label, url }: { label: string; url: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div>

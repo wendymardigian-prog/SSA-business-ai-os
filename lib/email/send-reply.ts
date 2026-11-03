@@ -287,9 +287,10 @@ export async function warnIfNearQuota(supabase: Db, workspaceId: string): Promis
     .select("config")
     .eq("workspace_id", workspaceId)
     .eq("type", "email_provider")
-    .eq("provider", "resend_inbound")
+    .eq("provider", "resend")
     .maybeSingle();
 
+  // El tope vive en la tarjeta Resend desde la conexion unificada (la 00279 lo copio de `resend_inbound`).
   const quota = (config?.config as { daily_quota?: number } | null)?.daily_quota ?? null;
   const used = await countEmailsToday(supabase, workspaceId);
   const usage = computeQuota({ sentToday: used, receivedToday: 0, quota });
@@ -299,8 +300,8 @@ export async function warnIfNearQuota(supabase: Db, workspaceId: string): Promis
   return notifyIntegrationAttention({
     supabase,
     workspaceId,
-    providerId: "resend_inbound",
-    providerLabel: "Resend (email entrante)",
+    providerId: "resend",
+    providerLabel: "Resend",
     cause: "quota",
     detail: usage.label,
   });

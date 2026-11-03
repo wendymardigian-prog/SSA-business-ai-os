@@ -36,8 +36,11 @@ describe("el conjunto de proveedores no cambia", () => {
   });
 
   it("la pantalla muestra exactamente esos, ninguno dos veces", () => {
+    // Cambio aprobado (conexion de Resend, 2/11/2026): "Resend (email entrante)" sigue en el catalogo pero oculta:
+    // la recepcion y el webhook viven en la tarjeta Resend.
+    const VISIBLE = IDS.filter((id) => id !== "resend_inbound");
     const shown = providersBySection().flatMap((group) => group.providers.map((p) => p.id));
-    expect(shown.length).toBe(IDS.length);
-    expect([...shown].sort()).toEqual(IDS);
+    expect(shown.length).toBe(VISIBLE.length);
+    expect([...shown].sort()).toEqual(VISIBLE);
   });
 });

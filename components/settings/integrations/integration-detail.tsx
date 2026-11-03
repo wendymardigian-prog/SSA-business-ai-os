@@ -2,6 +2,8 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ResendSendersForm } from "./resend-senders-form";
+import { ResendCard } from "./resend-card";
+import { primaryAddress, type ResendPanelData } from "@/lib/email/resend-config";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -41,6 +43,7 @@ export function IntegrationDetail({
   socialAccounts,
   activityEntries,
   readOnly = false,
+  resend = null,
 }: {
   provider: ProviderDefinition;
   data: IntegrationCardData;
@@ -53,6 +56,8 @@ export function IntegrationDetail({
   activityEntries: ActivityEntry[];
   /** Solo mira: sin formulario de credenciales ni cuentas (le falta `integrations.manage` / `channels.manage`). */
   readOnly?: boolean;
+  /** La tarjeta Resend (conexion de Resend): webhook, recepcion y estado. Solo para el proveedor `resend`. */
+  resend?: ResendPanelData | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -120,12 +125,30 @@ export function IntegrationDetail({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-        {activeTab === "credenciales" && (
-          <>
-            <CredentialsForm provider={provider} data={data} webhookUrl={webhookUrl} />
-            {/* Los remitentes de Resend (E8): usuario + dominio verificado, en su propio formulario. */}
-            {provider.id === "resend" && <ResendSendersForm config={data.config} connected={data.status !== "not_connected"} />}
-          </>
+        {activeTab === "credenciales" && provider.id === "resend" && resend ? (
+          // Resend en una sola tarjeta (conexion de Resend): estado, Conexion, Remitentes (E8), Webhook y Recepcion.
+          <ResendCard
+            panel={resend}
+            connected={data.status !== "not_connected"}
+            fromEmail={data.config.from_email ?? null}
+            readOnly={readOnly}
+            connection={<CredentialsForm provider={provider} data={data} webhookUrl={null} />}
+            senders={
+              <ResendSendersForm
+                config={data.config}
+                connected={data.status !== "not_connected"}
+                suggestedReplyTo={resend.state.receiving.enabled ? primaryAddress(resend.state.receiving) : null}
+              />
+            }
+          />
+        ) : (
+          activeTab === "credenciales" && (
+            <>
+              <CredentialsForm provider={provider} data={data} webhookUrl={webhookUrl} />
+              {/* Los remitentes de Resend (E8): usuario + dominio verificado, en su propio formulario. */}
+              {provider.id === "resend" && <ResendSendersForm config={data.config} connected={data.status !== "not_connected"} />}
+            </>
+          )
         )}
         {activeTab === "cuentas" && showAccounts && (
           <AccountsTab

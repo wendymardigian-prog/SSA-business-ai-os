@@ -221,30 +221,8 @@ export async function saveIntegration(
     };
   }
 
-  // El email entrante crea (o mueve) su canal: sin canal no hay bandeja
-  // donde poner los correos, y pedirle a alguien que lo cree aparte en
-  // Canales seria un paso mas para la misma decision.
-  if (provider.id === "resend_inbound") {
-    const address = config.inbound_address?.trim();
-    if (address) {
-      const { ensureEmailChannel } = await import("@/lib/email/channel");
-      const channel = await ensureEmailChannel(supabase, {
-        workspaceId: workspace.id,
-        address,
-      });
-      if (!channel.ok) {
-        return {
-          ok: false,
-          error: `Los datos se guardaron pero no pude crear el canal de email: ${channel.error}`,
-        };
-      }
-      // Una cuenta de email nueva: los roles que eligen cuenta por cuenta no la ven (00249). Nunca lanza.
-      if (channel.created) {
-        const { notifyNewChannelAccess } = await import("@/lib/channels/new-channel-access");
-        await notifyNewChannelAccess(await createServiceClient(), { workspaceId: workspace.id, channelId: channel.channelId, label: address });
-      }
-    }
-  }
+  // El canal de email ya no nace aca: desde la conexion de Resend lo crea (o lo mueve) la seccion "Recepcion de
+  // emails" de la tarjeta Resend (`saveResendReceivingAction`), y "Resend (email entrante)" quedo oculta.
 
   // Una key de Resend de acceso completo conecta (o adopta) el webhook de SSA sola, como la de Zernio. Nunca hace
   // fallar el guardado: si no se pudo, la tarjeta lo muestra y tiene su boton.

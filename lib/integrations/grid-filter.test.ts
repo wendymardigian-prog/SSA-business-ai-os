@@ -16,7 +16,8 @@ describe("filterSections", () => {
   it("sin filtros, se ven las dos secciones completas", () => {
     const result = filterSections(sections, statusOf({}), { chip: null, onlyAttention: false });
     expect(result.map((g) => g.section)).toEqual(["connections", "ai"]);
-    expect(result.flatMap((g) => g.providers).length).toBe(14);
+    // Cambio aprobado (conexion de Resend): "Resend (email entrante)" quedo oculta.
+    expect(result.flatMap((g) => g.providers).length).toBe(13);
   });
 
   it("un chip solo filtra Conexiones; Inteligencia artificial no se toca", () => {
@@ -83,6 +84,6 @@ describe("countByChip", () => {
     expect(counts.mensajeria).toBe(2); // zernio, evolution
     expect(counts.publicacion).toBe(5); // zernio, postproxy, linkedin, threads, google
     expect(counts.anuncios).toBe(1); // meta
-    expect(counts.email).toBe(2); // resend_inbound, resend
+    expect(counts.email).toBe(1); // resend (cambio aprobado: la entrante quedo oculta en la tarjeta Resend)
   });
 });

@@ -483,12 +483,15 @@ export const PROVIDERS: ProviderDefinition[] = [
   },
 
   // ── Email ────────────────────────────────────────────────────────────────
+  // Conexion de Resend (2/11/2026): la recepcion paso a la tarjeta "Resend" (seccion "Recepcion de emails") y el
+  // secreto a la seccion "Webhook". Esta definicion queda OCULTA para leer las filas viejas (`providerForConfigRow`,
+  // la copia de la 00279) y para que su URL redirija a la tarjeta Resend. No se guarda mas desde aca.
   {
     id: "resend_inbound",
     type: "email_provider",
     connection: "api_key",
     section: "connections",
-    visible: true,
+    visible: false,
     label: "Resend (email entrante)",
     description: "Recibe los emails de una direccion tuya como conversaciones de la bandeja.",
     secretName: SECRET_NAMES.resendWebhookSecret,
@@ -529,10 +532,18 @@ export const PROVIDERS: ProviderDefinition[] = [
     section: "connections",
     visible: true,
     label: "Resend",
-    description: "Envio de emails salientes: los importantes (agenda, contratos, invitaciones, avisos) y los de marketing.",
+    description:
+      "Emails: los importantes (agenda, contratos, invitaciones, avisos) y los de marketing, los rebotes y las quejas, y si querés, recibir emails en la bandeja.",
     secretName: SECRET_NAMES.resendApiKey,
     keyPrefix: "re_",
     minKeyLength: 20,
+    // El aviso de cuota de emails (antes en "Resend (email entrante)"): la cuota de Resend es de la cuenta.
+    usage: {
+      label: "emails hoy",
+      limit: 100,
+      atLimitHint:
+        "Es el tope del plan gratis de Resend. Pasado eso, los emails no salen hasta mañana.",
+    },
     // Los remitentes se eligen en su propio formulario (usuario + dominio verificado de Resend, E8:
     // components/settings/integrations/resend-senders-form.tsx). Siguen declarados aca porque `from_email` es lo que
     // leen el envio, el aviso de readiness y la tarjeta. Guardar la key no los valida (`skipHidden`): el remitente
