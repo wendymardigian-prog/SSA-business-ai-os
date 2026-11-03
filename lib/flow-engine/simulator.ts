@@ -570,6 +570,18 @@ export function simulateFlow(
         break;
       }
 
+      // Grupos de WhatsApp: la encuesta a un grupo. En la simulación no se manda nada.
+      case "send_poll": {
+        const question = interpolate((data.question as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "send_poll",
+          nodeLabel: label,
+          result: { type: "action", actionType: "send_poll", detail: question ? `encuesta: ${question}` : "(sin pregunta)" },
+        });
+        break;
+      }
+
       // E15: el aviso al equipo. En la simulación no se crea ninguna notificación.
       case "notify_team": {
         const title = interpolate((data.title as string) || "", variables);

@@ -30,6 +30,7 @@ import { upsertContactNode } from "../nodes/upsert-contact"; // @plantilla-quita
 import { createTaskNode } from "../nodes/create-task"; // @plantilla-quitar(tareas)
 import { completeTaskNode } from "../nodes/complete-task"; // @plantilla-quitar(tareas)
 import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
+import { sendPollNode } from "../nodes/send-poll";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -80,3 +81,5 @@ registerNode(completeTaskNode);
 // @plantilla-hasta(tareas)
 // Tiron 2, D3: un aviso por WhatsApp a un numero que puede no ser de ningun contacto (sirve con y sin contacto).
 registerNode(sendWhatsAppNumberNode);
+// Grupos de WhatsApp: una encuesta a un grupo activado (sus votos pueden disparar otro flujo).
+registerNode(sendPollNode);

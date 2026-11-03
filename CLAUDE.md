@@ -1588,6 +1588,29 @@ WhatsApp a veces identifica a la persona con un `@lid` (un id interno) en vez de
 - **El id de WhatsApp se ve de solo lectura** en "Redes" de la ficha y en "Datos" del panel de la bandeja (`whatsappLidOf`, `channelIdentity` en `lib/contacts/links.ts`). Evolution no manda ningun @usuario de WhatsApp: solo el nombre del perfil (`pushName`).
 - **La bandeja y Contactos buscan con la MISMA regla** (`contactSearchFilter`, `lib/contacts/search.ts`): nombre, emails, telefonos (tambien escritos con espacios o guiones), los @ de Instagram, TikTok y X (con o sin la arroba) y el `@lid` (que vive en `contact_channels` y se busca aparte con `contactIdsByWhatsappLid`, con el cliente del usuario). En la bandeja el filtro va sobre la tabla embebida (`or(..., { referencedTable: "contacts" })`).
 
+# Grupos de WhatsApp (construido, 3/11/2026)
+
+Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (vista «Grupos», `?vista=grupos&g=`), guardar como contacto a quien se une (toque «Grupo de WhatsApp», organico) y disparar automatizaciones cuando alguien se une, reacciona o vota en una encuesta. Resumen en [docs/whatsapp-grupos.md](docs/whatsapp-grupos.md).
+
+## Lo que no se puede romper
+
+- **Un grupo NO es una conversacion**: vive en `whatsapp_groups`, `whatsapp_group_members`, `whatsapp_group_messages`, `whatsapp_group_reactions` y `whatsapp_poll_votes` (00280). No pasa por el agente, los flujos de mensajes, «Esperando respuesta» ni los no leidos de la bandeja privada. Un grupo NO activado se sigue ignorando en el receptor.
+- **Sin `contact_id` a proposito**: cada participante es su identidad de WhatsApp (`participant_id`, telefono o `@lid`, como `contact_channels.platform_sender_id`) y el contacto se busca por `contact_channels`. Por eso `merge_contacts` y `CONTACT_MERGE_TABLES` no cambiaron.
+- **Quien ve / escribe**: `can_see_whatsapp_group` / `can_write_whatsapp_group` (alcance `all` u `own_unassigned` en esa cuenta; escribir pide «responde»; Owner/Admin siempre), gemelas de `canSeeWhatsappGroup` / `canWriteWhatsappGroup` con `lib/auth/whatsapp-group-access.cases.json`. Escribe solo el servidor.
+- **Contactos solo si el grupo guarda contactos** (o «Importar miembros», job `whatsapp_group_import`, que NO dispara automatizaciones), por `find_or_link_contact`. Toque `origin = whatsapp_group` (00281, `touch_channel` lo cuenta organico), una vez por persona y grupo (`wa-group:<grupo>:<contacto>`).
+- **Un voto de encuesta NO es un mensaje** (`parseBaileysPollVote`): en privado se ignora (antes entraba vacio y despertaba al agente). Evolution solo descifra votos de encuestas que salieron de nuestro numero.
+- **Los disparadores** (`whatsapp_group_joined|reaction|poll_vote`, 00282) son de contacto, por la cola; declaran `conversationFor` (hook nuevo: el flujo escribe por privado en el numero del grupo) y saltean «no contactar». Filtros puros en `lib/whatsapp-groups/automation/trigger-config.ts`. Nodo `send_poll` («Enviar encuesta», sin contacto).
+- **Un solo envio a un grupo** (`lib/whatsapp-groups/send.ts`): bandeja y paso «Enviar encuesta». El eco se junta por `(group_id, platform_message_id)` (indice NO parcial, para el `on_conflict`).
+- **`participantsData` de Evolution 2.3.7 viene roto**: se lee `participants[]` (objetos `{id, phoneNumber, lid}`).
+
+## Migraciones
+
+`00280` (tablas, permisos, realtime), `00281` (origen `whatsapp_group` + `touch_channel`; la definicion vieja en la cabecera) y `00282` (CHECK de `triggers.type`). Aditivas, van ANTES de desplegar el codigo. **Aplicadas y registradas** el 3/11/2026 (versiones `20261103093659`, `...093703` y `...093707`), despues de ensayarlas en una transaccion que se deshizo sola, con `verify-whatsapp-groups`, `verify-contact-merge` y `verify-organic-attribution --despues-de-00234` en verde. **La proxima libre es la `00283`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-whatsapp-groups.mjs   # permisos SQL<->TS, RLS, unicos, toque organico, disparadores, cascada
+```
+
 # Importacion de conversaciones de Zernio (28/10/2026)
 
 Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el negocio. Diagnostico y plan en `docs/instagram-importacion/PLAN.md`; como entra cada conversacion, en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md).

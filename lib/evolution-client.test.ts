@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   EvolutionError,
+  ensureGroupsNotIgnored,
+  fetchAllGroups,
+  fetchGroupParticipants,
+  sendPoll,
   createInstance,
   deleteInstance,
   fetchInstanceOwner,
@@ -181,6 +185,7 @@ describe("creacion de instancia", () => {
     expect(webhookCall!.body.webhook.headers["x-webhook-token"]).toBe("token123");
     expect(webhookCall!.body.webhook.events).toContain("MESSAGES_UPSERT");
     expect(webhookCall!.body.webhook.events).toContain("CONNECTION_UPDATE");
+    expect(webhookCall!.body.webhook.events).toContain("GROUP_PARTICIPANTS_UPDATE");
   });
 
   it("tambien reconoce la forma vieja, con el mensaje arriba", async () => {
@@ -524,5 +529,83 @@ describe("historial guardado en Evolution (solo lectura)", () => {
 
     calls = mockFetch([{ body: {} }]);
     expect(await findStoredMessagesPage(config, "ssa-abc", 1, 1)).toEqual({ total: 0, pages: 0, records: [] });
+  });
+});
+
+describe("grupos de WhatsApp", () => {
+  it("fetchAllGroups devuelve los grupos limpios y deja afuera las comunidades", async () => {
+    const calls = mockFetch([
+      {
+        body: [
+          { id: "120363001122334455@g.us", subject: " Comunidad SSA ", size: 42, pictureUrl: "https://pic", announce: true },
+          { id: "120363009999999999@g.us", subject: "La comunidad madre", isCommunity: true },
+          { id: "no-es-un-grupo" },
+          { id: "120363008888888888@g.us", subject: "" },
+        ],
+      },
+    ]);
+    const groups = await fetchAllGroups(config, "ssa-abc");
+    expect(calls[0].url).toBe("https://evo.test/group/fetchAllGroups/ssa-abc?getParticipants=false");
+    expect(calls[0].method).toBe("GET");
+    expect(groups).toEqual([
+      { jid: "120363001122334455@g.us", subject: "Comunidad SSA", size: 42, pictureUrl: "https://pic", isCommunity: false, announce: true },
+      { jid: "120363008888888888@g.us", subject: "120363008888888888@g.us", size: null, pictureUrl: null, isCommunity: false, announce: false },
+    ]);
+  });
+
+  it("fetchGroupParticipants trae telefono, @lid y si es admin", async () => {
+    const calls = mockFetch([
+      {
+        body: {
+          participants: [
+            { id: "98765432101234@lid", phoneNumber: "5491122334455@s.whatsapp.net", admin: "admin", name: "Ana" },
+            { id: "5491166667777@s.whatsapp.net", lid: "11112222333344@lid", admin: null },
+            { nada: true },
+          ],
+        },
+      },
+    ]);
+    const list = await fetchGroupParticipants(config, "ssa-abc", "120363001122334455@g.us");
+    expect(calls[0].url).toBe("https://evo.test/group/participants/ssa-abc?groupJid=120363001122334455%40g.us");
+    expect(list).toEqual([
+      { id: "98765432101234@lid", phoneNumber: "5491122334455@s.whatsapp.net", lid: null, admin: true, name: "Ana" },
+      { id: "5491166667777@s.whatsapp.net", phoneNumber: null, lid: "11112222333344@lid", admin: false, name: null },
+    ]);
+  });
+
+  it("un grupo invalido no llama a Evolution", async () => {
+    const calls = mockFetch([]);
+    await expect(fetchGroupParticipants(config, "ssa-abc", "5491122334455")).rejects.toThrow(/invalido/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sendPoll manda la encuesta a un grupo y devuelve el id", async () => {
+    const calls = mockFetch([{ body: { key: { id: "POLL1" } } }]);
+    const sent = await sendPoll(config, "ssa-abc", "120363001122334455@g.us", { name: "¿Qué día?", values: ["Lunes", "Martes"], selectableCount: 1 });
+    expect(calls[0].url).toBe("https://evo.test/message/sendPoll/ssa-abc");
+    expect(calls[0].body).toEqual({ number: "120363001122334455@g.us", name: "¿Qué día?", selectableCount: 1, values: ["Lunes", "Martes"] });
+    expect(sent).toEqual({ id: "POLL1" });
+  });
+
+  it("sendText acepta el JID de un grupo", async () => {
+    const calls = mockFetch([v2, { body: { key: { id: "T1" } } }]);
+    await sendText(config, "ssa-abc", "120363001122334455@g.us", "hola grupo");
+    expect(calls[1].body).toEqual({ number: "120363001122334455@g.us", text: "hola grupo" });
+  });
+
+  it("ensureGroupsNotIgnored apaga groupsIgnore conservando el resto", async () => {
+    const calls = mockFetch([
+      { body: { rejectCall: true, msgCall: "No atiendo", groupsIgnore: true, alwaysOnline: false, readMessages: false, readStatus: false, syncFullHistory: false } },
+      { body: {} },
+    ]);
+    expect(await ensureGroupsNotIgnored(config, "ssa-abc")).toBe(true);
+    expect(calls[1].url).toBe("https://evo.test/settings/set/ssa-abc");
+    expect(calls[1].body).toMatchObject({ rejectCall: true, msgCall: "No atiendo", groupsIgnore: false });
+  });
+
+  it("si ya estaba bien no escribe nada", async () => {
+    const calls = mockFetch([{ body: { groupsIgnore: false } }]);
+    expect(await ensureGroupsNotIgnored(config, "ssa-abc")).toBe(false);
+    expect(calls).toHaveLength(1);
   });
 });
