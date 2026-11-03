@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPermissionAction } from "@/lib/auth/guards";
+import { appUrl } from "@/lib/app-url";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { PLATFORMS, isSupportedPlatform } from "@/lib/platforms";
@@ -55,8 +56,8 @@ export async function POST(request: NextRequest) {
     }
 
     const profileId = profiles[0]._id!;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const callbackUrl = `${appUrl}/dashboard/channels/callback`;
+    // Vuelve al dominio principal: es una pantalla del panel.
+    const callbackUrl = `${appUrl()}/dashboard/channels/callback`;
 
     // Zernio handles everything: OAuth, page selection, Bluesky credentials, Telegram code
     const res = await zernio.connect.getConnectUrl({

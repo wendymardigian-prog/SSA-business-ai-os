@@ -41,14 +41,15 @@ export function FormEditor({
   form,
   versions,
   canManage,
-  appUrl,
+  publicBase,
   timeZone,
   extras,
 }: {
   form: EditorForm;
   versions: EditorVersion[];
   canManage: boolean;
-  appUrl: string;
+  /** La base de los links públicos del negocio (`publicBaseUrl`). */
+  publicBase: string;
   timeZone: string;
   extras: EditorExtras;
 }) {
@@ -366,7 +367,7 @@ export function FormEditor({
                 form={{ ...form, slug, status, contactConfig }}
                 versions={versions}
                 canManage={canManage}
-                appUrl={appUrl}
+                publicBase={publicBase}
                 published={status === "published"}
                 onSlugChanged={setSlug}
                 timeZone={timeZone}

@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { appUrl } from "@/lib/app-url";
+import { publicBaseUrl } from "@/lib/public-url";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { sendTransactionalEmail } from "@/lib/email/send";
@@ -142,7 +142,7 @@ async function buildLink(ctx: Ctx, saleId: string, formId: string): Promise<Cont
       slug: form.form.slug,
       contactId: loaded.contact.id,
       saleId: loaded.sale.id,
-      baseUrl: appUrl(),
+      baseUrl: publicBaseUrl(ctx.workspace),
     });
     const url = buildPrefillLink(signed, prefill.params);
     const { data: conversations } = await ctx.supabase

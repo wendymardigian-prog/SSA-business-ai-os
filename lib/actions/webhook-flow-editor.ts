@@ -2,7 +2,7 @@
 
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
-import { appUrl } from "@/lib/app-url";
+import { publicBaseUrl } from "@/lib/public-url";
 import { isLocalUrl } from "@/lib/webhook-url";
 import { hookUrl } from "@/lib/webhooks/endpoints";
 import { applyContactMapping, hasIdentifier } from "@/lib/webhooks/mapping";
@@ -40,7 +40,7 @@ export async function listWebhookEndpointsForPicker(): Promise<WebhookActionResu
     .eq("workspace_id", g.ctx.workspace.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
-  const base = appUrl();
+  const base = publicBaseUrl(g.ctx.workspace);
   const endpoints = ((data ?? []) as unknown as Array<{ id: string; name: string; status: "active" | "paused"; token: string; last_received_at: string | null; listen_until: string | null; sample_payload: PickerEndpoint["sample"] }>).map((e) => ({
     id: e.id,
     name: e.name,

@@ -11,7 +11,8 @@ sistema (`docs/plantilla-clientes.md` y `/setup`).
 
 | De cada negocio | De la instalación (compartido) |
 |---|---|
-| Claves de Zernio, IA, Resend, Meta, Google, Fathom (Vault con prefijo `ws:<id>:`) | El dominio (`NEXT_PUBLIC_APP_URL`): los links de agenda y formularios salen del mismo |
+| Claves de Zernio, IA, Resend, Meta, Google, Fathom (Vault con prefijo `ws:<id>:`) | El dominio principal (`NEXT_PUBLIC_APP_URL`): login, invitaciones, avisos y webhooks de proveedores |
+| El dominio de sus links públicos (agenda, formularios, bajas, links medidos; Ajustes → General, `docs/dominios.md`) | |
 | Canales, contactos, conversaciones, automatizaciones, contenido, ventas | El login, el ícono de la pestaña y el sitio público (`app/(sitio)/`) |
 | El equipo y sus roles | El servidor de Evolution si el negocio no cargó el suyo (cada número es una instancia aparte igual) |
 | La marca: nombre, logo, color y tono de la IA (Ajustes → General → Marca, 00266) | La marca de respaldo (`NEXT_PUBLIC_BRAND_*`, `AI_LANGUAGE_STYLE`) |
@@ -66,7 +67,6 @@ para el segundo.
 
 ## Pendiente
 
-- Dominio propio por negocio (los links públicos dicen el dominio de la instalación).
 - La vista previa del formulario en el editor muestra el nombre de la instalación en
   el contrato (la página pública y el PDF ya usan el del negocio).
 - El `PRODID` del `.ics` de la agenda sigue con el nombre de la instalación (no se ve).

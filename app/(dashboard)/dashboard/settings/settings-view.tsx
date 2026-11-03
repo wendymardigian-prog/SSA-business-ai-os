@@ -10,6 +10,7 @@ import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
 import { TeamAlertsSettings } from "@/components/settings/team-alerts-settings";
 import { BrandSettings, type BrandSettingsInitial } from "@/components/settings/brand-settings";
+import { DomainSettings } from "@/components/settings/domain-settings";
 import { SalesSettings } from "@/components/settings/sales-settings"; // @plantilla-quitar(ventas)
 import { FinanceSettings } from "@/components/settings/finance-settings"; // @plantilla-quitar(finanzas)
 import { AttributionSettingsCard } from "@/components/settings/attribution-settings";
@@ -42,6 +43,8 @@ interface WorkspaceSettings {
   salesAutoCreateFlows: boolean; // @plantilla-quitar(ventas)
   /** La marca de este negocio (00266). */
   brand: BrandSettingsInitial;
+  /** El dominio de los links públicos del negocio (null = el principal) y el principal de la instalación. */
+  domain: { current: string | null; mainUrl: string };
 }
 
 /**
@@ -213,6 +216,10 @@ export function SettingsView({
               <hr className="border-border" />
 
               <BrandSettings initial={workspace.brand} />
+
+              <hr className="border-border" />
+
+              <DomainSettings initial={workspace.domain.current} mainUrl={workspace.domain.mainUrl} />
 
               <hr className="border-border" />
 

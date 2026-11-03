@@ -1,6 +1,6 @@
 import { requireAnyPermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
-import { appUrl } from "@/lib/app-url";
+import { publicBaseUrl } from "@/lib/public-url";
 import { parseWebsiteSettings } from "@/lib/settings/website";
 import { guideFields, type GuideForm } from "@/lib/settings/website-guide";
 import { fieldsOf } from "@/lib/forms/server-ports";
@@ -17,7 +17,7 @@ import { WebsiteScreen } from "@/components/settings/integrations/website-screen
  */
 export default async function WebsitePage() {
   const ctx = await requireAnyPermission(["integrations.view", "integrations.manage"]);
-  const workspace = ctx.workspace as { id: string; slug?: string | null; website_settings?: unknown };
+  const workspace = ctx.workspace as { id: string; slug?: string | null; website_settings?: unknown; scheduling_public_base_url?: string | null };
   const db = await createServiceClient();
 
   const { data: forms } = await db
@@ -44,7 +44,7 @@ export default async function WebsitePage() {
     <WebsiteScreen
       initialOrigins={parseWebsiteSettings(workspace.website_settings).allowedOrigins}
       canEdit={ctx.can("integrations.manage")}
-      appUrl={appUrl()}
+      appUrl={publicBaseUrl(workspace)}
       workspaceSlug={workspace.slug ?? ""}
       forms={guide}
     />

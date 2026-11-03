@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { checkLimit } from "@/lib/antispam/rate-limit";
 import { hashIp } from "@/lib/scheduling/antispam";
-import { appUrl } from "@/lib/app-url";
+import { publicBaseUrl, type WorkspaceDomainSource } from "@/lib/public-url";
 import { resolveBrand } from "@/lib/brand";
 import { findContact } from "@/lib/contacts/find-or-create";
 import { workspaceBySlug } from "@/lib/http/workspace-origins";
@@ -41,11 +41,11 @@ export function createUnsubscribeLinkPorts(service: Db): UnsubscribeLinkPorts {
     async sendLink({ workspaceId, contactId, to, token }) {
       const { data: workspace } = await service
         .from("workspaces")
-        .select("brand_name, brand_logo_path, brand_color")
+        .select("brand_name, brand_logo_path, brand_color, scheduling_public_base_url")
         .eq("id", workspaceId)
         .maybeSingle();
       const content = unsubscribeLinkEmail({
-        unsubscribeUrl: unsubscribePageUrl(appUrl(), token),
+        unsubscribeUrl: unsubscribePageUrl(publicBaseUrl(workspace as WorkspaceDomainSource), token),
         brand: resolveBrand(workspace as Parameters<typeof resolveBrand>[0]),
       });
       // Transaccional: lo pidió la persona. La puerta de envío igual frena una dirección que rebota.

@@ -49,7 +49,7 @@ export function PublishTab({
   form,
   versions,
   canManage,
-  appUrl,
+  publicBase,
   published,
   onSlugChanged,
   timeZone,
@@ -59,7 +59,8 @@ export function PublishTab({
   form: EditorForm;
   versions: EditorVersion[];
   canManage: boolean;
-  appUrl: string;
+  /** La base de los links públicos del negocio (`publicBaseUrl`): su dominio o el principal. */
+  publicBase: string;
   published: boolean;
   onSlugChanged: (slug: string) => void;
   timeZone: string;
@@ -74,7 +75,7 @@ export function PublishTab({
   const [saving, startSaving] = useTransition();
   const [codeTab, setCodeTab] = useState<CodeTab>("inline");
 
-  const base = appUrl || (typeof window !== "undefined" ? window.location.origin : "");
+  const base = publicBase;
   const publicUrl = `${base}/f/${form.slug}`;
   const code = useMemo(() => generateFormEmbedCode(codeTab === "site" ? "inline" : codeTab, { slug: form.slug }, base || "https://tu-dominio.com"), [codeTab, form.slug, base]);
   const siteSnippet = formPageSnippet(form.slug);

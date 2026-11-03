@@ -18,7 +18,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { interpolateTemplate } from "@/lib/templates/interpolate";
-import { appUrl } from "@/lib/app-url";
+import { loadPublicBaseUrl } from "@/lib/public-url";
 import { escapeHtml } from "@/lib/email/html";
 import { formLinkSlugs, hasFormLinkVariables, linkIdsFromVariables, replaceFormLinks } from "@/lib/forms/link-variables"; // @plantilla-quitar(formularios)
 
@@ -98,6 +98,7 @@ export async function resolveFormLinkVariables(
   try {
     // Import dinamico: firmar pide el Vault, y solo hace falta cuando hay un token.
     const { signFormLink } = await import("@/lib/forms/signed-link");
+    const publicBase = await loadPublicBaseUrl(supabase, context.workspaceId);
     for (const form of forms) {
       links[form.slug.toLowerCase()] = await signFormLink(supabase, {
         workspaceId: context.workspaceId,
@@ -106,7 +107,7 @@ export async function resolveFormLinkVariables(
         contactId: context.contactId,
         serviceId,
         saleId,
-        baseUrl: appUrl(),
+        baseUrl: publicBase,
       });
     }
   } catch (error) {

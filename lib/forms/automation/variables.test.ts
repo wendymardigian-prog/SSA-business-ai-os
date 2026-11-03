@@ -17,6 +17,7 @@ const input = () => ({
     },
   },
   baseUrl: "https://app.ejemplo.com/",
+  publicBaseUrl: "https://links.ejemplo.com",
 });
 
 describe("formVariables", () => {
@@ -33,9 +34,9 @@ describe("formVariables", () => {
     expect(out.answer.archivo).toBe("cv.pdf");
     expect(JSON.stringify(out)).not.toContain("ws/f/k");
   });
-  it("arma las URLs sin doble barra", () => {
+  it("arma las URLs sin doble barra: el formulario con el dominio del negocio, la respuesta con el del panel", () => {
     const out = formVariables(input());
-    expect(out.form.url).toBe("https://app.ejemplo.com/f/aplicacion");
+    expect(out.form.url).toBe("https://links.ejemplo.com/f/aplicacion");
     expect(out.submission.url).toBe("https://app.ejemplo.com/dashboard/formularios/f1/respuestas/s1");
   });
   it("lo que falta queda vacío, no 'null'", () => {

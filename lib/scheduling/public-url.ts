@@ -1,17 +1,11 @@
 /**
  * La direccion base de las paginas publicas de agenda.
  *
- * `workspaces.scheduling_public_base_url` (dominio propio, F42) gana sobre
- * `NEXT_PUBLIC_APP_URL`. Sin barra final, para concatenar sin dudar.
+ * Es la de todos los links publicos del negocio (`lib/public-url.ts`): su dominio propio
+ * (`workspaces.scheduling_public_base_url`) o el principal de la instalacion. Sin barra final.
  */
 
-import { appUrl } from "@/lib/app-url";
-
-export function publicBaseUrl(workspace: { scheduling_public_base_url?: string | null } | null | undefined): string {
-  const custom = workspace?.scheduling_public_base_url?.trim();
-  if (custom && /^https?:\/\//i.test(custom)) return custom.replace(/\/$/, "");
-  return appUrl();
-}
+export { publicBaseUrl } from "@/lib/public-url";
 
 /** El link publico de un evento: <base>/calendario/<usuario>/<slug>. */
 export function eventPublicUrl(base: string, username: string, slug: string): string {
