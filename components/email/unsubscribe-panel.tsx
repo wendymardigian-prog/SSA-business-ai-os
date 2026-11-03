@@ -30,6 +30,8 @@ export function UnsubscribePanel({ token, initial }: { token: string; initial: U
 
   const blocked = view.status === "bounced" || view.status === "complained";
   const out = view.status !== "subscribed";
+  // Nunca aceptó marketing (00278): no "se dio de baja", y el botón es para empezar a recibirlos.
+  const never = view.status === "not_subscribed";
   const button = "w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-60";
 
   return (
@@ -51,7 +53,7 @@ export function UnsubscribePanel({ token, initial }: { token: string; initial: U
 
       {out && (
         <>
-          <h1 className="mt-2 text-lg font-semibold">{justChanged ? "Listo" : "Ya no recibís estos emails"}</h1>
+          <h1 className="mt-2 text-lg font-semibold">{justChanged ? "Listo" : never ? "No recibís estos emails" : "Ya no recibís estos emails"}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {blocked
               ? `No le vamos a mandar más emails de novedades a ${view.maskedAddress}.`
@@ -59,7 +61,7 @@ export function UnsubscribePanel({ token, initial }: { token: string; initial: U
           </p>
           {view.canResubscribe && (
             <button type="button" disabled={pending} onClick={() => act(resubscribe)} className={`${button} mt-5 border border-border bg-background hover:bg-accent`}>
-              {pending ? "Guardando…" : "Me equivoqué, volver a suscribirme"}
+              {pending ? "Guardando…" : never ? "Quiero recibir estos emails" : "Me equivoqué, volver a suscribirme"}
             </button>
           )}
         </>

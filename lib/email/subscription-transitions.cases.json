@@ -1,5 +1,5 @@
 {
-  "_comment": "Tabla de transiciones del estado de email. La usan lib/email/subscription.ts (decideEmailStatus, vitest) y private.email_status_decide (SQL, scripts/verify-email-subscription.mjs). Si se cambia una regla, se cambia en las dos y se suma el caso. Resultados: apply | noop | kept | reason_required | invalid.",
+  "_comment": "Tabla de transiciones del estado de email (00271; not_subscribed y el modo consent desde la 00278). La usan lib/email/subscription.ts (decideEmailStatus, vitest) y private.email_status_decide (SQL, scripts/verify-email-subscription.mjs). Si se cambia una regla, se cambia en las dos y se suma el caso. Resultados: apply | noop | kept | reason_required | invalid.",
   "cases": [
     { "from": "subscribed", "to": "subscribed", "mode": "system", "expect": "noop" },
     { "from": "subscribed", "to": "unsubscribed", "mode": "system", "expect": "apply" },
@@ -35,6 +35,28 @@
     { "from": "complained", "to": "subscribed", "mode": "admin", "expect": "reason_required" },
     { "from": "complained", "to": "subscribed", "mode": "admin", "reason": "Pidió volver a recibirlos", "expect": "apply" },
     { "from": "complained", "to": "complained", "mode": "admin", "expect": "noop" },
+
+    { "from": "subscribed", "to": "not_subscribed", "mode": "system", "expect": "apply" },
+    { "from": "not_subscribed", "to": "subscribed", "mode": "system", "expect": "kept" },
+    { "from": "not_subscribed", "to": "unsubscribed", "mode": "system", "expect": "apply" },
+    { "from": "not_subscribed", "to": "bounced", "mode": "system", "expect": "apply" },
+    { "from": "unsubscribed", "to": "not_subscribed", "mode": "system", "expect": "kept" },
+    { "from": "bounced", "to": "not_subscribed", "mode": "system", "expect": "kept" },
+    { "from": "not_subscribed", "to": "not_subscribed", "mode": "system", "expect": "noop" },
+    { "from": "not_subscribed", "to": "subscribed", "mode": "person", "expect": "apply" },
+    { "from": "not_subscribed", "to": "unsubscribed", "mode": "person", "expect": "apply" },
+    { "from": "subscribed", "to": "not_subscribed", "mode": "person", "expect": "kept" },
+    { "from": "not_subscribed", "to": "subscribed", "mode": "admin", "expect": "apply" },
+    { "from": "subscribed", "to": "not_subscribed", "mode": "admin", "expect": "apply" },
+
+    { "from": "not_subscribed", "to": "subscribed", "mode": "consent", "expect": "apply" },
+    { "from": "subscribed", "to": "subscribed", "mode": "consent", "expect": "noop" },
+    { "from": "unsubscribed", "to": "subscribed", "mode": "consent", "expect": "kept" },
+    { "from": "bounced", "to": "subscribed", "mode": "consent", "expect": "kept" },
+    { "from": "complained", "to": "subscribed", "mode": "consent", "expect": "kept" },
+    { "from": "subscribed", "to": "unsubscribed", "mode": "consent", "expect": "kept" },
+    { "from": "subscribed", "to": "not_subscribed", "mode": "consent", "expect": "kept" },
+    { "from": "not_subscribed", "to": "unsubscribed", "mode": "consent", "expect": "kept" },
 
     { "from": "subscribed", "to": "unsubscribed", "mode": "robot", "expect": "invalid" },
     { "from": "subscribed", "to": "maybe", "mode": "system", "expect": "invalid" },

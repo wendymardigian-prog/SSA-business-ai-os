@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { submitForm, safeFileName, buildAttribution, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
+import { submitForm, safeFileName, buildAttribution, bodyLimitBytes, metaEventIdOf, marketingConsentAction, type LoadedForm, type SubmitPorts, type SubmitInput, type SaveInput } from "./submit";
 import { newField, type FormField } from "./fields";
 import { NO_BUSINESS_SIGNER } from "./defaults";
 
@@ -716,5 +716,133 @@ describe("submitForm: contratos (FO3)", () => {
     await submitForm(ports, baseInput({ answers: { nombre: "Ana" }, signature: goodSignature, signature_strokes: 3, accepted: true }));
     expect(saves[0].contract).toBeNull();
     expect(ports.uploadContractFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitForm: la web de un cliente (origin site)", () => {
+  it("sin version_id y con origin site usa la versión publicada", async () => {
+    const form = makeForm([field("email", "email", { required: true })]);
+    const { ports, saves } = makePorts(form);
+    const out = await submitForm(ports, baseInput({ version_id: undefined, origin: "site", answers: { email: "a@x.com" } }));
+    expect(out.status).toBe(200);
+    expect(saves).toHaveLength(1);
+    expect(saves[0].meta).toMatchObject({ origin: "site" });
+  });
+
+  it("sin version_id y sin origin site sigue siendo 400 (los formularios propios no cambian)", async () => {
+    const { ports, saves } = makePorts(makeForm([field("email", "email")]));
+    const out = await submitForm(ports, baseInput({ version_id: undefined, answers: { email: "a@x.com" } }));
+    expect(out.status).toBe(400);
+    expect(out.body).toMatchObject({ ok: false, error: "invalid_request" });
+    expect(saves).toEqual([]);
+  });
+
+  it("sin version_id un error de validación es 400 con los campos, nunca 409", async () => {
+    const { ports } = makePorts(makeForm([field("email", "email", { required: true })]));
+    const out = await submitForm(ports, baseInput({ version_id: undefined, origin: "site", answers: {} }));
+    expect(out.status).toBe(400);
+    expect(out.body).toMatchObject({ error: "invalid", fields: { email: expect.any(String) } });
+  });
+
+  it("guarda el meta_event_id en meta (no en la atribución) y conserva fbp y fbc", async () => {
+    const { ports, saves } = makePorts(makeForm([field("email", "email")]));
+    await submitForm(
+      ports,
+      baseInput({
+        origin: "site",
+        answers: { email: "a@x.com" },
+        attribution: { utm_source: "ig", fbp: "fb.1.123.456", fbc: "fb.1.123.AbC", meta_event_id: "lead-7f3a.1" },
+      }),
+    );
+    expect(saves[0].meta).toMatchObject({ meta_event_id: "lead-7f3a.1" });
+    expect(saves[0].attribution).toMatchObject({ utm_source: "ig", fbp: "fb.1.123.456", fbc: "fb.1.123.AbC" });
+    expect(saves[0].attribution).not.toHaveProperty("meta_event_id");
+  });
+
+  it("un meta_event_id con forma rara no se guarda", () => {
+    expect(metaEventIdOf({ meta_event_id: "<script>" })).toBeNull();
+    expect(metaEventIdOf({ meta_event_id: "x".repeat(101) })).toBeNull();
+    expect(metaEventIdOf({ meta_event_id: 42 })).toBeNull();
+    expect(metaEventIdOf(null)).toBeNull();
+    expect(metaEventIdOf({ meta_event_id: " abc_123:9 " })).toBe("abc_123:9");
+  });
+
+  it("el honeypot lleno con origin site tampoco guarda nada", async () => {
+    const { ports, saves, rejected } = makePorts(makeForm([field("email", "email")]));
+    const out = await submitForm(ports, baseInput({ version_id: undefined, origin: "site", honeypot: "bot", answers: { email: "a@x.com" } }));
+    expect(out.status).toBe(200);
+    expect(saves).toEqual([]);
+    expect(rejected).toEqual(["honeypot"]);
+  });
+});
+
+describe("bodyLimitBytes: el tope del cuerpo según el formulario", () => {
+  it("solo texto: 64 KB; con archivos o contrato: 35 MB", () => {
+    expect(bodyLimitBytes(makeForm([field("email", "email")]))).toBe(64 * 1024);
+    expect(bodyLimitBytes(makeForm([field("file", "cv")]))).toBe(35 * 1024 * 1024);
+    expect(bodyLimitBytes(makeForm([], { type: "contract" }))).toBe(35 * 1024 * 1024);
+  });
+});
+
+describe("la casilla de emails de marketing (00278)", () => {
+  const consentForm = (required = false) =>
+    makeForm([field("email", "email", { required: true }), field("consent", "email_consent", { required, consentText: "Acepto emails" })], {
+      contactConfig: {
+        mode: "create_or_link",
+        update: "fill_empty",
+        map: [
+          { fieldKey: "email", target: "contact.email" },
+          { fieldKey: "email_consent", target: "contact.email_marketing_consent" },
+        ],
+      },
+    });
+  const created = { contactId: "c-1", contactCreated: true };
+  const existing = { contactId: "c-1", contactCreated: false };
+
+  it("marcada: sale de Sin suscribir (modo consent), con contacto nuevo o existente", () => {
+    expect(marketingConsentAction(consentForm(), { email_consent: true }, created)).toEqual({ status: "subscribed", mode: "consent" });
+    expect(marketingConsentAction(consentForm(), { email_consent: true }, existing)).toEqual({ status: "subscribed", mode: "consent" });
+  });
+
+  it("sin marcar y contacto NUEVO: Sin suscribir", () => {
+    expect(marketingConsentAction(consentForm(), { email_consent: false }, created)).toEqual({ status: "not_subscribed", mode: "system" });
+    expect(marketingConsentAction(consentForm(), {}, created)).toEqual({ status: "not_subscribed", mode: "system" });
+  });
+
+  it("sin marcar y contacto que YA existía: no se toca", () => {
+    expect(marketingConsentAction(consentForm(), { email_consent: false }, existing)).toBeNull();
+  });
+
+  it("sin la casilla mapeada, sin contacto o con el vínculo apagado: nada", () => {
+    const unmapped = { ...consentForm(), contactConfig: { mode: "create_or_link" as const, update: "fill_empty" as const, map: [] } };
+    expect(marketingConsentAction(unmapped, { email_consent: false }, created)).toBeNull();
+    expect(marketingConsentAction(consentForm(), { email_consent: false }, { contactId: null, contactCreated: false })).toBeNull();
+    const off = { ...consentForm(), contactConfig: { ...consentForm().contactConfig, mode: "none" as const } };
+    expect(marketingConsentAction(off, { email_consent: false }, created)).toBeNull();
+  });
+
+  it("el envío la aplica DESPUÉS de guardar, y si falla el envío sigue siendo un éxito", async () => {
+    const applied: unknown[] = [];
+    const { ports } = makePorts(consentForm(), {
+      save: vi.fn(async () => ({ ok: true as const, duplicate: false, submissionId: "sub-1", status: "received", contactId: "c-1", contactCreated: true, matchedBy: null, conflictContactId: null })),
+      applyEmailConsent: vi.fn(async (input) => {
+        applied.push(input.action);
+        throw new Error("la base no contestó");
+      }),
+    });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const out = await submitForm(ports, baseInput({ answers: { email: "a@x.com", email_consent: false } }));
+    expect(out.status).toBe(200);
+    expect(applied).toEqual([{ status: "not_subscribed", mode: "system" }]);
+  });
+
+  it("un envío repetido (idempotencia) no la vuelve a aplicar", async () => {
+    const apply = vi.fn(async () => undefined);
+    const { ports } = makePorts(consentForm(), {
+      save: vi.fn(async () => ({ ok: true as const, duplicate: true, submissionId: "sub-1", status: "received", contactId: "c-1", contactCreated: true, matchedBy: null, conflictContactId: null })),
+      applyEmailConsent: apply,
+    });
+    await submitForm(ports, baseInput({ answers: { email: "a@x.com", email_consent: false } }));
+    expect(apply).not.toHaveBeenCalled();
   });
 });

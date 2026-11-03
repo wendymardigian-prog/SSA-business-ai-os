@@ -83,6 +83,12 @@ export const MODULES = {
       "components/contacts/forms-section.tsx",
       "components/contacts/form-pdf-button.tsx",
       "components/flow-builder/panels/FormTriggerPanel.tsx",
+      // Tu sitio web (CORS por workspace): la pantalla y su guía son de los formularios.
+      `${D}/settings/integrations/sitio-web`,
+      "components/settings/integrations/website-screen.tsx",
+      "components/settings/integrations/website-card.tsx",
+      "lib/settings/website-guide.ts",
+      "lib/settings/website-guide.test.ts",
       "lib/jobs/handlers/contract-email.ts",
       "lib/jobs/handlers/contract-email.test.ts",
       "lib/jobs/handlers/contract-pdf.ts",

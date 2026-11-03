@@ -241,3 +241,29 @@ export function teamNotificationEmail(params: {
     }),
   };
 }
+
+/**
+ * El link de baja que la persona pidió desde la web del negocio ("mandame un link nuevo",
+ * `POST /api/public/email/unsubscribe-link`). Transaccional: lo pidió ella. El link es
+ * `/baja/<token>`, donde elige darse de baja (abrirlo no da de baja).
+ */
+export function unsubscribeLinkEmail(params: { unsubscribeUrl: string; brand?: Brand | null }): EmailContent {
+  const brand = params.brand ?? resolveBrand(null);
+  const theme = emailTheme(brand);
+  const name = escapeHtml(brand.name);
+  return {
+    subject: `Tu link para dejar de recibir emails de ${brand.name}`,
+    html: brandedEmailHtml({
+      brand,
+      preheader: `Desde este link elegís dejar de recibir los emails de ${brand.name}.`,
+      body: `
+                ${eyebrow("Tus emails", theme)}
+                ${heading("Tu link para darte de baja")}
+                <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;">Pediste un link para dejar de recibir los emails de <strong>${name}</strong>. Desde ahí lo confirmás con un clic.</p>
+                ${button(params.unsubscribeUrl, "Elegir qué emails recibo", theme)}
+                <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+                  Si no lo pediste vos, podés ignorar este email: no cambia nada.
+                </p>`,
+    }),
+  };
+}

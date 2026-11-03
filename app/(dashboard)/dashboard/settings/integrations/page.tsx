@@ -12,6 +12,8 @@ import { IntegrationsGrid } from "@/components/settings/integrations/integration
 import { loadIntegrations } from "@/lib/integrations/load";
 import { FathomAppCard } from "@/components/settings/integrations/fathom-app-card"; // @plantilla-quitar(llamadas)
 import { WebhooksCard } from "@/components/settings/integrations/webhooks-card"; // @plantilla-quitar(webhooks)
+import { WebsiteCard } from "@/components/settings/integrations/website-card"; // @plantilla-quitar(formularios)
+import { parseWebsiteSettings } from "@/lib/settings/website"; // @plantilla-quitar(formularios)
 import { listSecretNames, SECRET_NAMES } from "@/lib/vault"; // @plantilla-quitar(llamadas)
 import { appUrl } from "@/lib/app-url"; // @plantilla-quitar(llamadas)
 
@@ -115,7 +117,18 @@ export default async function IntegrationsPage() {
       // Fathom va con las demas conexiones (Integraciones del negocio > Conexiones), con el mismo diseno. // @plantilla-quitar(llamadas)
       fathom={sections.business === "edit" ? <FathomAppCard hasApp={hasFathomApp} returnUrl={`${appUrl()}/api/oauth/fathom/callback`} connected={connected} withError={withError} /> : undefined} // @plantilla-quitar(llamadas)
       fathomNeedsAttention={withError > 0 || !hasFathomApp} // @plantilla-quitar(llamadas)
-      extra={sections.business ? <WebhooksCard active={activeEndpoints} paused={pausedEndpoints} /> : undefined} // @plantilla-quitar(webhooks)
+      extra={
+        sections.business ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {/* @plantilla-desde(formularios) */}
+            <WebsiteCard origins={parseWebsiteSettings((workspace as { website_settings?: unknown }).website_settings).allowedOrigins.length} />
+            {/* @plantilla-hasta(formularios) */}
+            {/* @plantilla-desde(webhooks) */}
+            <WebhooksCard active={activeEndpoints} paused={pausedEndpoints} />
+            {/* @plantilla-hasta(webhooks) */}
+          </div>
+        ) : undefined
+      }
     />
   );
 }

@@ -686,6 +686,7 @@ function Summary({ result, future = false }: { result: Resultado; future?: boole
           <h3 className="text-xs font-medium text-muted-foreground">Suscripción a emails (por persona)</h3>
           <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Counter label="Suscriptos" value={s.subscribed} />
+            {s.not_subscribed > 0 && <Counter label="Sin suscribir" value={s.not_subscribed} />}
             <Counter label="Dados de baja" value={s.unsubscribed} />
             <Counter label="Rebotan" value={s.bounced} />
             <Counter label="Marcaron spam" value={s.complained} />

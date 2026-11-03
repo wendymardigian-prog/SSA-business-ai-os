@@ -18,6 +18,7 @@ import { notifyRecipients, contactOutcome, notificationContent } from "./notify"
 import { parseStoredContractConfig } from "./contract/config";
 import { CONTRACTS_BUCKET } from "./contract/storage";
 import { recordFormTouch } from "@/lib/contacts/touch-entry";
+import { setEmailStatus } from "@/lib/email/subscription";
 import { createNotification } from "@/lib/notifications/create";
 import { SLUG_PATTERN } from "./list";
 import { isPublicFormType, type FormField } from "./fields";
@@ -77,6 +78,25 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
     contract: form.type === "contract" ? parseStoredContractConfig(form.contract_config, form.name) : null,
     contractText: form.type === "contract" ? version.contract_text ?? null : null,
   };
+}
+
+/**
+ * ¿La dirección de este contacto ya estaba en OTRO contacto del workspace (vivo o borrado)? Para la casilla de
+ * marketing: "Sin suscribir" es solo para una persona nueva. Si la base no contesta, `true` (no se toca nada).
+ * `ilike` puede dar de más (el `_` de un email es un comodín): de más es "ya existía", el lado seguro.
+ */
+export async function addressSeenBefore(service: Db, workspaceId: string, contactId: string): Promise<boolean> {
+  const { data: me, error } = await service.from("contacts").select("email, secondary_email").eq("id", contactId).maybeSingle();
+  if (error || !me) return true;
+  const addresses = [me.email, me.secondary_email].map((a) => (a ?? "").trim().toLowerCase()).filter(Boolean);
+  for (const address of addresses) {
+    for (const column of ["email", "secondary_email"] as const) {
+      const { data, error: e } = await service.from("contacts").select("id").eq("workspace_id", workspaceId).neq("id", contactId).ilike(column, address).limit(1);
+      if (e) return true;
+      if ((data ?? []).length > 0) return true;
+    }
+  }
+  return false;
 }
 
 /** Los campos personalizados que el mapeo nombra (si no nombra ninguno, ni se consulta). */
@@ -196,6 +216,19 @@ export function createSubmitPorts(service: Db): SubmitPorts {
         formId: form.id,
         formName: form.name,
         attribution,
+      });
+    },
+
+    async applyEmailConsent({ form, submissionId, contactId, action }) {
+      // "Sin suscribir" es SOLO para una persona nueva: si esa dirección ya estaba en otro contacto (vivo o
+      // borrado), la persona ya existía y no marcar la casilla no es pedir la baja. Ante la duda, no se toca.
+      if (action.status === "not_subscribed" && (await addressSeenBefore(service, form.workspaceId, contactId))) return;
+      // La puerta única del estado de email (00271/00278): aplica a todos los contactos con esa dirección.
+      await setEmailStatus(service, contactId, {
+        status: action.status,
+        mode: action.mode,
+        source: "form_consent",
+        extra: { form_id: form.id, submission_id: submissionId },
       });
     },
 

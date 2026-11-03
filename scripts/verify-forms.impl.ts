@@ -42,6 +42,11 @@ import { loadContractCopy } from "../lib/forms/contract/copy-download";
 import { createCopyToken } from "../lib/forms/contract/copy-link";
 import { contractStorage } from "../lib/forms/contract/storage";
 import { dbTargetArgs } from "./lib/db-target.mjs";
+import { originsForWorkspace } from "../lib/http/workspace-origins";
+import { workspaceOfPublishedForm } from "../lib/forms/site-origins";
+import { decideOrigin } from "../lib/http/cors";
+import { createUnsubscribeLinkPorts } from "../lib/email/unsubscribe-link-ports";
+import { applyUnsubscribeAction } from "../lib/email/unsubscribe-public";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -1442,6 +1447,146 @@ try {
   const { data: siteView } = await svc.from("analytics_events").select("metadata").eq("workspace_id", ws.id).eq("event_type", "form_view").filter("metadata->>form_id", "eq", fo2!.id).filter("metadata->>origin", "eq", "site");
   check((siteView ?? []).length === 1, "un form_view desde el sitio lleva origin: 'site' en su metadata");
   check(!JSON.stringify(siteView).includes(siteSid) && !JSON.stringify(siteView).includes(siteBeaconIp), "...sin el sid ni la IP");
+
+  // ── La web de un cliente (00277 y 00278) ─────────────────────────────────────
+  console.log("\n— La web de un cliente: origenes por negocio, registro en dos pasos y Sin suscribir (00277/00278) —");
+  {
+    const ORIGIN_A = "https://web-del-negocio-a.example";
+    const ORIGIN_B = "https://web-del-negocio-b.example";
+    await svc.from("workspaces").update({ website_settings: { allowed_origins: [{ origin: ORIGIN_A, dev: false }] } }).eq("id", ws.id);
+    await svc.from("workspaces").update({ website_settings: { allowed_origins: [{ origin: ORIGIN_B, dev: false }] } }).eq("id", ws2!.id);
+
+    const stamp = Date.now();
+    const step1Slug = `zz-test-web-paso1-${stamp}`;
+    const step2Slug = `zz-test-web-paso2-${stamp}`;
+    const otherSlug = `zz-test-web-otro-${stamp}`;
+    const mkForm = async (workspaceId: string, slug: string, fields: FormField[], config: Record<string, unknown>) => {
+      const { data } = await svc
+        .from("forms")
+        .insert({ workspace_id: workspaceId, name: slug, type: "custom", slug, draft_definition: { fields } as unknown as Json, contact_config: config as unknown as Json })
+        .select("id")
+        .single();
+      await svc.rpc("publish_form_version", { p_form_id: data!.id, p_actor: owner.id });
+      await svc.from("forms").update({ status: "published" }).eq("id", data!.id);
+      return data!.id;
+    };
+    await mkForm(ws.id, step1Slug, [
+      field("short_text", "name", { required: true, label: "Nombre" }),
+      field("email", "email", { required: true, label: "Email" }),
+      field("consent", "email_consent", { required: false, consentText: "Acepto recibir emails" }),
+      field("hidden", "clase_slug", { hidden: { source: "url_param", param: "clase_slug" } }),
+    ], {
+      mode: "create_or_link",
+      update: "fill_empty",
+      map: [
+        { fieldKey: "name", target: "contact.display_name" },
+        { fieldKey: "email", target: "contact.email" },
+        { fieldKey: "email_consent", target: "contact.email_marketing_consent" },
+      ],
+    });
+    await mkForm(ws.id, step2Slug, [
+      field("email", "email", { required: true, label: "Email" }),
+      field("phone", "phone", { required: true, label: "WhatsApp" }),
+      field("phone", "whatsapp", { required: false, label: "WhatsApp (copia)" }),
+    ], {
+      mode: "link_only",
+      update: "fill_empty",
+      map: [
+        { fieldKey: "email", target: "contact.email" },
+        { fieldKey: "phone", target: "contact.phone" },
+        { fieldKey: "whatsapp", target: "contact.whatsapp_phone" },
+      ],
+    });
+    await mkForm(ws2!.id, otherSlug, [field("email", "email", { required: true })], { mode: "create_or_link", update: "fill_empty", map: [{ fieldKey: "email", target: "contact.email" }] });
+
+    // CORS: cada formulario lleva al negocio dueño, y sus orígenes son SOLO los suyos.
+    const wsOf1 = await workspaceOfPublishedForm(svc as never, step1Slug);
+    const wsOfOther = await workspaceOfPublishedForm(svc as never, otherSlug);
+    const settings1 = await originsForWorkspace(svc as never, wsOf1!);
+    const settingsOther = await originsForWorkspace(svc as never, wsOfOther!);
+    check(wsOf1 === ws.id && wsOfOther === ws2!.id, "el slug del formulario identifica al negocio dueño");
+    check(decideOrigin(ORIGIN_A, [], settings1) === "allowed" && decideOrigin(ORIGIN_B, [], settings1) === "denied", "la web B NO puede mandar al formulario del negocio A");
+    check(decideOrigin(ORIGIN_B, [], settingsOther) === "allowed" && decideOrigin(ORIGIN_A, [], settingsOther) === "denied", "y la web A NO puede mandar al formulario del negocio B");
+
+    // Paso 1, como lo manda la web: sin version_id, origin site, con atribución y meta_event_id.
+    const email = `zz-web-${stamp}@example.test`;
+    const p1 = await submitForm(
+      ports(ws.id),
+      input(step1Slug, {
+        idempotency_key: randomUUID(),
+        origin: "site",
+        site_path: "/clase",
+        answers: { name: "Persona Web", email, email_consent: false, clase_slug: "clase-1" },
+        honeypot: "",
+        attribution: { utm_source: "instagram", utm_campaign: "clase", fbp: "fb.1.111.222", fbc: "fb.1.111.AbCd", meta_event_id: "lead-zz-1" },
+      }),
+    );
+    check(p1.status === 200, "paso 1 sin version_id (origin site) se guarda con la versión publicada", JSON.stringify(p1.body));
+    const p1Row = (await svc.from("form_submissions").select("contact_id, contact_created, meta, attribution").eq("id", String(p1.body.submission_id)).single()).data!;
+    check(p1Row.contact_created === true && !!p1Row.contact_id, "paso 1 crea el contacto");
+    check((p1Row.meta as Record<string, unknown>).meta_event_id === "lead-zz-1", "el meta_event_id queda en meta");
+    check(!("meta_event_id" in (p1Row.attribution as object)), "y NO en la atribución");
+    const { data: p1Touch } = await svc.from("contact_touches").select("source, campaign, raw").eq("contact_id", p1Row.contact_id!).single();
+    const p1Raw = (p1Touch?.raw ?? {}) as Record<string, unknown>;
+    check(p1Touch?.source === "instagram" && p1Touch?.campaign === "clase" && p1Raw.fbp === "fb.1.111.222" && p1Raw.fbc === "fb.1.111.AbCd", "el toque lleva las UTM, fbp y fbc", JSON.stringify(p1Touch));
+    const { data: p1Contact } = await svc.from("contacts").select("email_status").eq("id", p1Row.contact_id!).single();
+    check(p1Contact?.email_status === "not_subscribed", "sin marcar la casilla, el contacto nuevo queda Sin suscribir", p1Contact?.email_status);
+
+    // La casilla marcada en un contacto nuevo: Suscripto.
+    const email2 = `zz-web-si-${stamp}@example.test`;
+    const p1b = await submitForm(ports(ws.id), input(step1Slug, { idempotency_key: randomUUID(), origin: "site", answers: { name: "Acepta", email: email2, email_consent: true }, honeypot: "" }));
+    const p1bRow = (await svc.from("form_submissions").select("contact_id").eq("id", String(p1b.body.submission_id)).single()).data!;
+    const { data: p1bContact } = await svc.from("contacts").select("email_status").eq("id", p1bRow.contact_id!).single();
+    check(p1bContact?.email_status === "subscribed", "con la casilla marcada queda Suscripto");
+
+    // Un contacto que YA está Suscripto y manda la casilla sin marcar: sigue Suscripto (no marcar no es pedir la baja).
+    await submitForm(ports(ws.id), input(step1Slug, { idempotency_key: randomUUID(), origin: "site", answers: { name: "Acepta", email: email2, email_consent: false }, honeypot: "" }));
+    const { data: stillSub } = await svc.from("contacts").select("email_status").eq("id", p1bRow.contact_id!).single();
+    check(stillSub?.email_status === "subscribed", "un contacto Suscripto que manda la casilla sin marcar sigue Suscripto");
+
+    // Una persona que ya existía (contacto borrado, suscripto) vuelve sin marcar la casilla: nace un contacto
+    // nuevo, pero la persona no es nueva, así que no pasa a Sin suscribir.
+    const emailBorrado = `zz-web-borrado-${stamp}@example.test`;
+    const { data: borrado } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test borrado", email: emailBorrado }).select("id").single();
+    await svc.from("contacts").update({ deleted_at: new Date().toISOString() }).eq("id", borrado!.id);
+    const vuelve = await submitForm(ports(ws.id), input(step1Slug, { idempotency_key: randomUUID(), origin: "site", answers: { name: "Vuelve", email: emailBorrado, email_consent: false }, honeypot: "" }));
+    const vuelveRow = (await svc.from("form_submissions").select("contact_id, contact_created").eq("id", String(vuelve.body.submission_id)).single()).data!;
+    const { data: vuelveContact } = await svc.from("contacts").select("email_status").eq("id", vuelveRow.contact_id!).single();
+    check(vuelveRow.contact_created === true && vuelveContact?.email_status === "subscribed", "si el email ya estaba en un contacto borrado, el contacto nuevo NO queda Sin suscribir", JSON.stringify({ vuelveRow, vuelveContact }));
+
+    // Paso 2: el mismo contacto suma el teléfono y el WhatsApp.
+    const p2 = await submitForm(ports(ws.id), input(step2Slug, { idempotency_key: randomUUID(), origin: "site", answers: { email, phone: "+5491122334455", whatsapp: "+5491122334455" }, honeypot: "" }));
+    const p2Row = (await svc.from("form_submissions").select("contact_id, contact_created").eq("id", String(p2.body.submission_id)).single()).data!;
+    check(p2.status === 200 && p2Row.contact_id === p1Row.contact_id && p2Row.contact_created === false, "paso 2 se vincula al MISMO contacto (no crea otro)");
+    const { data: p2Contact } = await svc.from("contacts").select("phone, whatsapp_phone, email_status").eq("id", p1Row.contact_id!).single();
+    check(p2Contact?.phone === "+5491122334455" && p2Contact?.whatsapp_phone === "+5491122334455", "y le suma el teléfono y el WhatsApp", JSON.stringify(p2Contact));
+    check(p2Contact?.email_status === "not_subscribed", "el paso 2 (sin casilla) no cambia la suscripción");
+
+    // La casilla marcada después, en un contacto que ya existía y estaba Sin suscribir: lo suscribe.
+    await submitForm(ports(ws.id), input(step1Slug, { idempotency_key: randomUUID(), origin: "site", answers: { name: "Persona Web", email, email_consent: true }, honeypot: "" }));
+    const { data: later } = await svc.from("contacts").select("email_status").eq("id", p1Row.contact_id!).single();
+    check(later?.email_status === "subscribed", "marcar la casilla en otro envío saca de Sin suscribir");
+
+    // Honeypot: no se guarda nada.
+    const before = (await svc.from("form_submissions").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+    const trap = await submitForm(ports(ws.id), input(step1Slug, { idempotency_key: randomUUID(), origin: "site", answers: { name: "Bot", email: `zz-bot-${stamp}@example.test` }, honeypot: "http://spam" }));
+    const after = (await svc.from("form_submissions").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+    check(trap.status === 200 && after === before, "con el campo trampa lleno responde éxito y no guarda nada");
+
+    // "Mandame un link nuevo": el token del contacto, y la baja con ese token funciona.
+    const linkPorts = createUnsubscribeLinkPorts(svc);
+    const found = await linkPorts.findToken(ws.id, email);
+    const missing = await linkPorts.findToken(ws.id, `zz-nadie-${stamp}@example.test`);
+    const otherWs = await linkPorts.findToken(ws2!.id, email);
+    check(!!found?.token && found.contactId === p1Row.contact_id, "encuentra el token del contacto por su email");
+    check(missing === null && otherWs === null, "un email que no está, o el de otro negocio, no da nada");
+    const { data: wsRow } = await svc.from("workspaces").select("slug").eq("id", ws.id).single();
+    const byslug = await linkPorts.findWorkspace(wsRow!.slug);
+    check(byslug?.id === ws.id && byslug.settings.allowedOrigins[0]?.origin === ORIGIN_A, "el slug del negocio lo identifica, con sus orígenes");
+    const baja = await applyUnsubscribeAction(svc, { token: found!.token, ip: nextIp(), action: "unsubscribe", source: "unsubscribe_page" });
+    const { data: gone } = await svc.from("contacts").select("email_status").eq("id", p1Row.contact_id!).single();
+    check(baja.ok && gone?.email_status === "unsubscribed", "la baja desde ese link funciona");
+  }
 
   // ── Buckets ────────────────────────────────────────────────────────────────
   console.log("\n— 00153: buckets privados —");

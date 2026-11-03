@@ -145,6 +145,7 @@ function pathLabelOf(metadata: Json | null): string | null {
 const EMAIL_LOG_STATUSES: readonly EmailLogStatus[] = [
   "sent", "failed", "skipped_not_configured",
   "skipped_unsubscribed", "skipped_bounced", "skipped_complained", "skipped_do_not_contact", "skipped_unverifiable",
+  "skipped_not_subscribed",
 ];
 
 function isEmailStatus(value: string): value is EmailHistoryItem["status"] {
@@ -154,6 +155,7 @@ function isEmailStatus(value: string): value is EmailHistoryItem["status"] {
 /** Por que la puerta de envio salteo un email (00272), en palabras. */
 const EMAIL_SKIP_REASON_TEXT: Partial<Record<EmailLogStatus, string>> = {
   skipped_unsubscribed: "se dio de baja de los emails",
+  skipped_not_subscribed: "no aceptó emails de marketing",
   skipped_bounced: "su email rebota",
   skipped_complained: "marcó un email como spam",
   skipped_do_not_contact: "está marcado «no contactar»",

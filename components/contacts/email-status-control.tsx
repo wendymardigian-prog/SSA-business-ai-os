@@ -63,7 +63,7 @@ export function EmailStatusControl({
       <div className="flex flex-wrap items-center gap-2">
         <EmailStatusBadge status={current} at={at} source={source} timeZone={timeZone} prefix={secondary ? "Email principal: " : "Email: "} />
         {secondary && <EmailStatusBadge status={secondary.status} prefix="Email secundario: " />}
-        {canEdit && current === "subscribed" && (
+        {canEdit && (current === "subscribed" || current === "not_subscribed") && (
           <button type="button" disabled={pending} onClick={() => save("unsubscribed")} className={button}>
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MailX className="h-3.5 w-3.5" />}
             Dar de baja de emails
@@ -77,7 +77,7 @@ export function EmailStatusControl({
             className={button}
           >
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MailCheck className="h-3.5 w-3.5" />}
-            Volver a suscribir
+            {current === "not_subscribed" ? "Suscribir a emails" : "Volver a suscribir"}
           </button>
         )}
       </div>

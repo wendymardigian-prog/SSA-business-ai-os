@@ -93,6 +93,7 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     valueKind: "text", valueType: "single_select", group: "contact",
     options: [
       { value: "subscribed", label: "Suscripto" },
+      { value: "not_subscribed", label: "Sin suscribir" },
       { value: "unsubscribed", label: "Dado de baja" },
       { value: "bounced", label: "Rebota" },
       { value: "complained", label: "Marcó spam" },

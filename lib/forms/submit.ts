@@ -51,7 +51,7 @@ import { answerToText } from "./responses";
 import { normalizeSitePath } from "./site-submit";
 import { applyContactMappingDetailed } from "./contact-mapping";
 import type { ContactNote } from "./contact-outcome";
-import type { ContactConfig, CustomFieldDef } from "./contact-config";
+import { MARKETING_CONSENT_TARGET, type ContactConfig, type CustomFieldDef } from "./contact-config";
 import type { ContractConfig } from "./defaults";
 import { validateSignature } from "./contract/signature";
 import { buildLegal } from "./contract/legal";
@@ -155,6 +155,16 @@ export interface SubmitPorts {
     contactId: string;
     attribution: Record<string, unknown>;
   }): Promise<void>;
+  /**
+   * La casilla de emails de marketing (00278): cambia la suscripción del contacto con la regla de
+   * `marketingConsentAction`. Opcional para los puertos de prueba que no la necesitan.
+   */
+  applyEmailConsent?(input: {
+    form: LoadedForm;
+    submissionId: string;
+    contactId: string;
+    action: MarketingConsentAction;
+  }): Promise<void>;
   /** Avisa de la respuesta nueva a quien corresponda. */
   notify(input: {
     form: LoadedForm;
@@ -201,7 +211,9 @@ export interface SubmitOutcome {
 
 const payloadSchema = z.object({
   idempotency_key: z.string().uuid(),
-  version_id: z.string().uuid(),
+  // Obligatorio salvo en la web de un cliente (`origin: "site"`): una web externa no puede leer la versión
+  // y se usa la publicada. Los formularios propios lo siguen mandando (con él, el 409 `form_changed`).
+  version_id: z.string().uuid().optional(),
   answers: z.record(z.string(), z.unknown()),
   honeypot: z.string().max(500).optional(),
   attribution: z.unknown().optional(),
@@ -317,6 +329,9 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   const parsed = payloadSchema.safeParse(input.payload);
   if (!parsed.success) return fail(400, "invalid_request", { message: "El envío no es válido. Recargá la página e intentá de nuevo." });
   const payload = parsed.data;
+  if (!payload.version_id && payload.origin !== "site") {
+    return fail(400, "invalid_request", { message: "El envío no es válido. Recargá la página e intentá de nuevo." });
+  }
 
   // 4. Idempotencia.
   const already = await ports.findSubmission(form.id, payload.idempotency_key);
@@ -336,7 +351,8 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   }
 
   // 6 y 7. Validación total contra la versión VIGENTE.
-  const versionChanged = payload.version_id !== form.versionId;
+  // Sin `version_id` (la web de un cliente) se valida contra la publicada y no hay 409.
+  const versionChanged = payload.version_id !== undefined && payload.version_id !== form.versionId;
   const attribution = buildAttribution(payload, input.cookieHeader);
 
   const answersIn: Record<string, unknown> = { ...payload.answers };
@@ -507,7 +523,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   }
 
   // 11. Lo que va DESPUÉS del commit: el toque y el aviso. Una falla acá se registra y nada más.
-  if (!saved.duplicate) await afterSave(ports, form, saved, attribution);
+  if (!saved.duplicate) await afterSave(ports, form, saved, attribution, values);
 
   // 12. Responder.
   logResult(form.id, saved.duplicate ? "duplicate" : "saved", saved.submissionId);
@@ -564,6 +580,7 @@ async function afterSave(
   form: LoadedForm,
   saved: Extract<SaveResult, { ok: true }>,
   attribution: Record<string, unknown>,
+  values: Record<string, unknown>,
 ): Promise<void> {
   if (saved.contactId) {
     try {
@@ -571,6 +588,16 @@ async function afterSave(
     } catch {
       // Sin detalles: el error podría traer datos de la persona.
       console.error(`[forms] no pude anotar el toque (form=${form.id}, submission=${saved.submissionId})`);
+    }
+    // La casilla de marketing: también en una respuesta marcada como spam (un contacto creado sin la
+    // casilla no tiene que quedar "Suscripto").
+    const action = marketingConsentAction(form, values, saved);
+    if (action && ports.applyEmailConsent) {
+      try {
+        await ports.applyEmailConsent({ form, submissionId: saved.submissionId, contactId: saved.contactId, action });
+      } catch {
+        console.error(`[forms] no pude aplicar la casilla de emails (form=${form.id}, submission=${saved.submissionId})`);
+      }
     }
   }
   // Una respuesta marcada como spam no avisa a nadie.
@@ -607,7 +634,59 @@ function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayloa
     ...(origin === "site" && normalizeSitePath(payload.site_path) ? { site_path: normalizeSitePath(payload.site_path) } : {}),
     timezone: payload.client_meta?.timezone ?? null,
     locale: payload.client_meta?.locale ?? null,
+    // El id del evento del Pixel de Meta que mandó la web (para no contar dos veces el mismo lead cuando se sume
+    // la API de Conversiones). Es de ESTE envío, no del toque: no va en la atribución.
+    ...(metaEventIdOf(payload.attribution) ? { meta_event_id: metaEventIdOf(payload.attribution) } : {}),
     // Datos que no se pudieron guardar en el contacto (país no reconocido…): el detalle de la respuesta los muestra.
     ...(contactNotes.length > 0 ? { contact_notes: contactNotes.map((n) => ({ ...n, text: n.text.slice(0, 100) })) } : {}),
   };
+}
+
+/** Lo que se acepta como id de evento del Pixel: letras, números y `._:-`, hasta 100. */
+export const META_EVENT_ID_PATTERN = /^[A-Za-z0-9._:-]{1,100}$/;
+
+/** El `meta_event_id` que la web manda dentro de `attribution`, si tiene forma válida. */
+export function metaEventIdOf(attribution: unknown): string | null {
+  if (!attribution || typeof attribution !== "object" || Array.isArray(attribution)) return null;
+  const raw = (attribution as Record<string, unknown>).meta_event_id;
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return META_EVENT_ID_PATTERN.test(value) ? value : null;
+}
+
+/**
+ * El tope del cuerpo de un envío a este formulario: con archivos o firma (contrato), el grande;
+ * solo texto, 64 KB. La ruta lo aplica antes de leer (413).
+ */
+export function bodyLimitBytes(form: Pick<LoadedForm, "type" | "fields">): number {
+  const big = form.type === "contract" || form.fields.some((f) => f.type === "file");
+  return big ? FORM_LIMITS.maxBodyMb * 1024 * 1024 : FORM_LIMITS.maxBodyKbNoFiles * 1024;
+}
+
+/** Lo que hace la casilla de emails de marketing con la suscripción del contacto (00278). */
+export type MarketingConsentAction =
+  | { status: "subscribed"; mode: "consent" }
+  | { status: "not_subscribed"; mode: "system" };
+
+/**
+ * La regla de la casilla "Suscripción a emails de marketing" de un formulario:
+ *   - marcada → `subscribed` en modo `consent`: solo saca de "Sin suscribir" (la base nunca
+ *     levanta una baja, un rebote ni una queja con este modo);
+ *   - sin marcar (o sin responder) y la respuesta CREÓ el contacto → `not_subscribed`;
+ *   - sin marcar y el contacto ya existía → nada: un "no" en un formulario no le saca la
+ *     suscripción a quien ya la tenía.
+ * Sin la casilla mapeada, sin contacto o con el vínculo apagado, nada.
+ */
+export function marketingConsentAction(
+  form: Pick<LoadedForm, "fields" | "contactConfig">,
+  values: Record<string, unknown>,
+  saved: Pick<SavedContact, "contactId" | "contactCreated">,
+): MarketingConsentAction | null {
+  if (!saved.contactId || form.contactConfig.mode === "none") return null;
+  const entry = form.contactConfig.map.find((m) => m.target === MARKETING_CONSENT_TARGET);
+  if (!entry) return null;
+  const field = form.fields.find((f) => f.key === entry.fieldKey);
+  if (!field || field.type !== "consent") return null;
+  if (values[entry.fieldKey] === true) return { status: "subscribed", mode: "consent" };
+  return saved.contactCreated ? { status: "not_subscribed", mode: "system" } : null;
 }
