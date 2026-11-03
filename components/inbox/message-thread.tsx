@@ -1,5 +1,6 @@
 "use client";
 
+import { inboundToLabel } from "@/lib/email/inbound-address";
 import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Send, Bot, User, MessageSquare, CheckCircle, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, X, FileText, Copy } from "lucide-react";
@@ -192,6 +193,11 @@ function MessageBubble({
               correo: sin el, una respuesta larga empieza sin contexto. */}
           {message.email_subject && (
             <p className="mb-1 text-xs font-semibold opacity-80">{message.email_subject}</p>
+          )}
+          {/* Recepcion por dominio (conexion de Resend, R4): a cual de nuestras direcciones escribio la persona.
+              La respuesta sale desde esa misma. */}
+          {isInbound && inboundToLabel(message.email_to, null) && (
+            <p className="mb-1 text-[11px] opacity-70">para: {inboundToLabel(message.email_to, null)}</p>
           )}
           {/* El adjunto va ARRIBA del texto, como en WhatsApp: el texto suele
               ser el pie de la foto, no lo principal. */}

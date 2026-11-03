@@ -181,3 +181,26 @@ describe("sendEmailReply y el remitente de marketing", () => {
     expect(reply).not.toHaveProperty("reply_to");
   });
 });
+
+describe("la recepcion de un dominio (conexion de Resend, R4)", () => {
+  it("receivingState", async () => {
+    const { receivingState } = await import("./senders");
+    expect(receivingState({ name: "d.test", status: "verified", receiving: "enabled" })).toBe("active");
+    expect(receivingState({ name: "d.test", status: "partially_verified", receiving: "enabled" })).toBe("needs_mx");
+    expect(receivingState({ name: "d.test", status: "verified", receiving: "disabled" })).toBe("needs_receiving");
+    expect(receivingState({ name: "d.test", status: "verified" })).toBe("unknown");
+  });
+
+  it("listResendDomains lee capabilities.receiving cuando viene", async () => {
+    const { listResendDomains } = await import("./resend-domains");
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ data: [{ name: "B.test", status: "verified", capabilities: { sending: "enabled", receiving: "enabled" } }, { name: "a.test", status: "pending" }] }), { status: 200 })) as unknown as typeof fetch;
+    expect(await listResendDomains("re_x", fetchImpl)).toEqual({
+      ok: true,
+      domains: [
+        { name: "a.test", status: "pending" },
+        { name: "b.test", status: "verified", receiving: "enabled" },
+      ],
+    });
+  });
+});

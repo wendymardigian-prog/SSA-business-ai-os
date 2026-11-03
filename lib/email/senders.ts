@@ -102,7 +102,35 @@ export function senderFor(config: ResendSenderConfig, category: EmailCategory | 
 export interface ResendDomain {
   name: string;
   status: string;
+  /**
+   * `capabilities.receiving` de Resend (conexion de Resend, R4): si la recepcion esta prendida en ese dominio. Sin el
+   * dato (la API no lo mando), no se sabe.
+   */
+  receiving?: "enabled" | "disabled";
 }
+
+/**
+ * Si un dominio puede recibir (R4). Resend no dice si el MX de recepcion esta verificado registro por registro: se
+ * toma "recepcion prendida + dominio verificado" como activo, y la pantalla lo aclara.
+ * - `active`: Receiving prendido y el dominio verificado.
+ * - `needs_mx`: Receiving prendido, pero el dominio no esta verificado del todo (falta el MX u otro registro).
+ * - `needs_receiving`: Receiving apagado en ese dominio.
+ * - `unknown`: Resend no informo la recepcion.
+ */
+export type ReceivingState = "active" | "needs_mx" | "needs_receiving" | "unknown";
+
+export function receivingState(domain: ResendDomain): ReceivingState {
+  if (!domain.receiving) return "unknown";
+  if (domain.receiving !== "enabled") return "needs_receiving";
+  return domain.status === "verified" ? "active" : "needs_mx";
+}
+
+export const RECEIVING_STATE_LABELS: Record<ReceivingState, string> = {
+  active: "Recepción activa ✓",
+  needs_mx: "Falta verificar el MX de recepción en Resend",
+  needs_receiving: "Falta activar Receiving en Resend y cargar el MX",
+  unknown: "Resend no informa si la recepción está activa: revisalo en resend.com/domains",
+};
 
 export function isVerifiedDomain(domain: ResendDomain): boolean {
   return domain.status === "verified";

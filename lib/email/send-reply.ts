@@ -16,6 +16,7 @@ import type { Database } from "@/lib/types/database";
 import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { sendViaResend } from "./resend-client";
 import { bareAddress, canReply, replyHeaders, textToHtml } from "./reply";
+import { replyFromAddress } from "./inbound-address";
 import { canSendEmailTo, type EmailCategory, type EmailSkipReason } from "./subscription";
 import { footerBrand, logEmail, recordSkippedEmail } from "./send";
 import { protectUnsubscribeVariable, withUnsubscribe } from "./unsubscribe";
@@ -41,10 +42,18 @@ export interface EmailSendResult {
 export async function lastInboundEmail(
   supabase: Db,
   conversationId: string,
-): Promise<{ subject: string | null; messageId: string | null; references: string | null; from: string | null } | null> {
+): Promise<{
+  subject: string | null;
+  messageId: string | null;
+  references: string | null;
+  from: string | null;
+  /** A quien fue (para elegir desde que direccion responder, R4). */
+  to: string[];
+  cc: string[];
+} | null> {
   const { data } = await supabase
     .from("messages")
-    .select("email_subject, email_message_id, email_references, email_from")
+    .select("email_subject, email_message_id, email_references, email_from, email_to, email_cc")
     .eq("conversation_id", conversationId)
     .eq("direction", "inbound")
     .not("email_message_id", "is", null)
@@ -58,7 +67,13 @@ export async function lastInboundEmail(
     messageId: data.email_message_id,
     references: data.email_references,
     from: data.email_from,
+    to: stringList(data.email_to),
+    cc: stringList(data.email_cc),
   };
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
 /**
@@ -179,14 +194,18 @@ export async function sendEmailReply(
 
   // El remitente (E8): un email de marketing sale del remitente de marketing si hay uno, con "Responder a" la direccion
   // del canal (asi la respuesta de la persona vuelve a este hilo). Si no, de la direccion del canal, como siempre.
+  //
+  // Recepcion por dominio (R4): "la direccion del canal" es la misma a la que escribio la persona (soporte@, ventas@…)
+  // si es del dominio del canal; si no (escribir primero, o un hilo viejo), la principal. Nunca de otro dominio.
+  const ownAddress = replyFromAddress(last, params.channel.email_address);
   const sender = params.category === "marketing" ? await marketingSender(service, params.workspaceId) : null;
-  const fromAddress = sender && sender.email !== params.channel.email_address.toLowerCase() ? sender : null;
+  const fromAddress = sender && sender.email !== ownAddress.toLowerCase() ? sender : null;
 
   const result = await sendViaResend(
     apiKey,
     {
-      from: fromAddress ? (fromAddress.name ? `${fromAddress.name} <${fromAddress.email}>` : fromAddress.email) : params.channel.email_address,
-      ...(fromAddress ? { reply_to: params.channel.email_address } : {}),
+      from: fromAddress ? (fromAddress.name ? `${fromAddress.name} <${fromAddress.email}>` : fromAddress.email) : ownAddress,
+      ...(fromAddress ? { reply_to: ownAddress } : {}),
       to: to as string,
       subject: params.subject?.trim() || headers.subject,
       html: extras.html,

@@ -21,7 +21,19 @@ import {
  * key no deja listar (las keys "solo envio"), el dominio se escribe a mano. La key
  * nunca llega aca: el servidor la lee y devuelve solo nombres y estados.
  */
-export function ResendSendersForm({ config, connected }: { config: Record<string, string>; connected: boolean }) {
+export function ResendSendersForm({
+  config,
+  connected,
+  suggestedReplyTo = null,
+}: {
+  config: Record<string, string>;
+  connected: boolean;
+  /**
+   * Conexion de Resend (R4): con la recepcion prendida, la direccion principal se SUGIERE como "Responder a" si esta
+   * vacio. Es una sugerencia: no se guarda sola.
+   */
+  suggestedReplyTo?: string | null;
+}) {
   const router = useRouter();
   const current = config as ResendSenderConfig;
   const important = senderParts(current, "important");
@@ -136,8 +148,18 @@ export function ResendSendersForm({ config, connected }: { config: Record<string
           <label htmlFor="sender-reply-to" className="text-xs font-medium">
             Responder a <span className="text-muted-foreground">(opcional)</span>
           </label>
-          <input id="sender-reply-to" type="email" value={replyTo} onChange={(e) => setReplyTo(e.target.value)} placeholder="hola@tudominio.com" className={`${input} mt-1`} disabled={!connected} />
+          <input id="sender-reply-to" type="email" value={replyTo} onChange={(e) => setReplyTo(e.target.value)} placeholder={suggestedReplyTo ?? "hola@tudominio.com"} className={`${input} mt-1`} disabled={!connected} />
           <p className="mt-1 text-[11px] text-muted-foreground">Una dirección que reciba las respuestas.</p>
+          {suggestedReplyTo && !replyTo.trim() && (
+            <button
+              type="button"
+              onClick={() => setReplyTo(suggestedReplyTo)}
+              disabled={!connected}
+              className="mt-1 text-[11px] font-medium text-primary-ink hover:underline disabled:opacity-50"
+            >
+              Usar {suggestedReplyTo} (la de la recepción: las respuestas entran a la bandeja)
+            </button>
+          )}
         </div>
       </div>
 

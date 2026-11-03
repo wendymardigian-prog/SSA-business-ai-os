@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fakeDb, type FakeDb } from "@/lib/testing/fake-db";
-import { checkResendLive, clearWebhookSecret, connectWebhookForWorkspace, saveWebhookSecret } from "./resend-connection";
+import { checkResendLive, clearWebhookSecret, connectWebhookForWorkspace, saveReceiving, saveWebhookSecret } from "./resend-connection";
 import { SECRET_NAMES } from "@/lib/secret-names";
 
 const WS = "11111111-1111-1111-1111-111111111111";
@@ -186,5 +186,93 @@ describe("checkResendLive (Probar): solo lectura", () => {
     expect(res.key).toEqual({ ok: true, access: "sending" });
     expect(res.webhook).toMatchObject({ checked: false });
     expect(api.calls).toHaveLength(1);
+  });
+});
+
+describe("saveReceiving (R4): recepcion por dominio", () => {
+  // Las cuentas de Resend y los canales de mentira de este bloque.
+  async function setup(opts: {
+    domains?: Array<Record<string, unknown>> | { status: number; name?: string };
+    existingChannel?: boolean;
+    others?: Array<{ workspace_id: string; email_address: string }>;
+  } = {}) {
+    const { clearResendDomainsCache } = await import("./resend-domains");
+    clearResendDomainsCache();
+    let config: Record<string, unknown> = { from_email: "hola@negocio.test" };
+    const db = fakeDb(
+      {
+        "integration_configs:select": () => ({ data: { config, is_active: true, last_event_at: null } }),
+        "integration_configs:update": (call) => {
+          config = (call.values as { config: typeof config }).config;
+          return { data: null };
+        },
+        "channels:select": (call) =>
+          call.filters.some((f) => f.method === "neq")
+            ? { data: opts.others ?? [] }
+            : { data: opts.existingChannel ? { id: "ch-existente" } : null },
+        "channels:insert": { data: { id: "ch-nuevo" } },
+      },
+      { read_secret: { data: KEY } },
+    );
+    const domains = opts.domains ?? [{ name: "negocio.test", status: "verified", capabilities: { receiving: "enabled" } }];
+    const fetchImpl = (async () =>
+      Array.isArray(domains)
+        ? new Response(JSON.stringify({ data: domains }), { status: 200 })
+        : new Response(JSON.stringify({ name: domains.name ?? "x" }), { status: domains.status })) as unknown as typeof fetch;
+    return { db, fetchImpl, config: () => config };
+  }
+
+  it("prendida con un dominio de la cuenta: crea el canal con la direccion principal y guarda dominio y usuario", async () => {
+    const s = await setup();
+    const res = await saveReceiving({ service: s.db.client, workspaceId: WS, enabled: true, domain: "Negocio.test", local: "Hola", fetchImpl: s.fetchImpl });
+    expect(res).toEqual({ ok: true, enabled: true, address: "hola@negocio.test", channelCreated: { channelId: "ch-nuevo", label: "hola@negocio.test" }, warnings: [] });
+    expect(s.db.writesTo("channels")[0]).toMatchObject({ op: "insert", values: expect.objectContaining({ platform: "email", email_address: "hola@negocio.test", is_active: true }) });
+    expect(s.config()).toMatchObject({ from_email: "hola@negocio.test", receiving_enabled: "true", receiving_domain: "negocio.test", receiving_local: "hola" });
+  });
+
+  it("si ya habia canal (de la tarjeta vieja), lo mueve: no crea otro", async () => {
+    const s = await setup({ existingChannel: true });
+    const res = await saveReceiving({ service: s.db.client, workspaceId: WS, enabled: true, domain: "negocio.test", local: "soporte", fetchImpl: s.fetchImpl });
+    expect(res).toMatchObject({ ok: true, address: "soporte@negocio.test", channelCreated: null });
+    expect(s.db.writesTo("channels")).toEqual([expect.objectContaining({ op: "update", values: expect.objectContaining({ email_address: "soporte@negocio.test", is_active: true }) })]);
+  });
+
+  it("un dominio que no esta en la cuenta no se guarda", async () => {
+    const s = await setup();
+    const res = await saveReceiving({ service: s.db.client, workspaceId: WS, enabled: true, domain: "otro.test", local: "hola", fetchImpl: s.fetchImpl });
+    expect(res.ok).toBe(false);
+    expect(s.db.writes()).toEqual([]);
+  });
+
+  it("con Receiving apagado en Resend: se guarda con el aviso de que falta activarlo", async () => {
+    const s = await setup({ domains: [{ name: "negocio.test", status: "verified", capabilities: { receiving: "disabled" } }] });
+    const res = await saveReceiving({ service: s.db.client, workspaceId: WS, enabled: true, domain: "negocio.test", local: "hola", fetchImpl: s.fetchImpl });
+    expect(res).toMatchObject({ ok: true, warnings: [expect.stringContaining("Falta activar Receiving")] });
+  });
+
+  it("plan B: con una key de solo envio (no lista dominios) se acepta el dominio escrito a mano", async () => {
+    const s = await setup({ domains: { status: 401, name: "restricted_api_key" } });
+    const res = await saveReceiving({ service: s.db.client, workspaceId: WS, enabled: true, domain: "negocio.test", local: "hola", fetchImpl: s.fetchImpl });
+    expect(res).toMatchObject({ ok: true, address: "hola@negocio.test" });
+  });
+
+  it("otro negocio recibiendo en el mismo dominio: se guarda con un aviso", async () => {
+    const s = await setup({ others: [{ workspace_id: "otro", email_address: "info@negocio.test" }] });
+    const res = await saveReceiving({ service: s.db.client, workspaceId: WS, enabled: true, domain: "negocio.test", local: "hola", fetchImpl: s.fetchImpl });
+    expect(res).toMatchObject({ ok: true, warnings: [expect.stringContaining("Otro negocio")] });
+  });
+
+  it("un usuario invalido no se guarda", async () => {
+    const s = await setup();
+    expect((await saveReceiving({ service: s.db.client, workspaceId: WS, enabled: true, domain: "negocio.test", local: "con espacio", fetchImpl: s.fetchImpl })).ok).toBe(false);
+  });
+
+  it("apagada: desactiva el canal y conserva dominio y usuario para volver a prender", async () => {
+    const s = await setup();
+    const res = await saveReceiving({ service: s.db.client, workspaceId: WS, enabled: false, domain: "negocio.test", local: "hola", fetchImpl: s.fetchImpl });
+    expect(res).toMatchObject({ ok: true, enabled: false });
+    expect(s.db.writesTo("channels")).toEqual([expect.objectContaining({ op: "update", values: { is_active: false } })]);
+    expect(s.config()).not.toHaveProperty("receiving_enabled");
+    expect(s.config()).toMatchObject({ receiving_domain: "negocio.test", receiving_local: "hola" });
   });
 });

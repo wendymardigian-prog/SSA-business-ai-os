@@ -15,7 +15,18 @@ import { readSecret, storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } 
 import { channelWebhookUrl, resendWebhookUrl } from "@/lib/webhook-url";
 import { connectResendWebhook, inspectResendWebhook, isValidSigningSecret } from "./resend-webhook";
 import { probeResendKey, type ResendApiFailure } from "./resend-api";
-import { readResendConnection, type ResendConnectionKey, type ResendConnectionState } from "./resend-config";
+import {
+  normalizeDomain,
+  primaryAddress,
+  readResendConnection,
+  validateReceivingLocal,
+  type ResendConnectionKey,
+  type ResendConnectionState,
+} from "./resend-config";
+import { workspaceResendDomains } from "./resend-domains";
+import { receivingState, RECEIVING_STATE_LABELS } from "./senders";
+import { domainOf } from "./inbound-address";
+import { ensureEmailChannel } from "./channel";
 
 type Db = SupabaseClient<Database>;
 
@@ -220,6 +231,91 @@ export async function checkResendLive(params: { service: Db; workspaceId: string
   if (!inspected.ok) return { key: probe, webhook: { checked: false, reason: RESEND_FAILURE_MESSAGES[inspected.reason] } };
   if (!inspected.found) return { key: probe, webhook: { checked: true, found: false } };
   return { key: probe, webhook: { checked: true, found: true, missing: inspected.missing, disabled: inspected.disabled } };
+}
+
+export type ReceivingOutcome =
+  | { ok: true; enabled: boolean; address: string | null; channelCreated: { channelId: string; label: string } | null; warnings: string[] }
+  | { ok: false; error: string };
+
+/**
+ * La recepcion por dominio (R4): prende o apaga "Recibir emails en la bandeja". Prendida, el canal de email del negocio
+ * (uno por negocio) queda con la direccion principal `<usuario>@<dominio>` y entra todo lo del dominio; apagada, el
+ * canal se desactiva (las conversaciones quedan). El dominio y el usuario se guardan igual, para volver a prender.
+ *
+ * Si se pueden listar los dominios, el elegido tiene que estar en la cuenta. Si no (key de solo envio, Resend caido),
+ * se acepta el que se escribio a mano: nunca bloquea.
+ */
+export async function saveReceiving(params: {
+  service: Db;
+  workspaceId: string;
+  enabled: boolean;
+  domain: string;
+  local: string;
+  fetchImpl?: typeof fetch;
+}): Promise<ReceivingOutcome> {
+  const { service, workspaceId } = params;
+  const row = await loadResendRow(service, workspaceId).catch(() => null);
+  if (!row) return { ok: false, error: RESEND_FAILURE_MESSAGES.no_key };
+
+  const local = validateReceivingLocal(params.local);
+  if (!local.ok) return local;
+
+  if (!params.enabled) {
+    const { error } = await service
+      .from("channels")
+      .update({ is_active: false })
+      .eq("workspace_id", workspaceId)
+      .eq("platform", "email");
+    if (error) return { ok: false, error: "No pude apagar la recepción. Probá de nuevo." };
+    const domain = normalizeDomain(params.domain);
+    const patched = await patchResendConfig(service, workspaceId, {
+      receiving_enabled: null,
+      receiving_local: local.local,
+      ...(domain ? { receiving_domain: domain } : {}),
+    });
+    if (!patched.ok) return patched;
+    return { ok: true, enabled: false, address: null, channelCreated: null, warnings: [] };
+  }
+
+  const domain = normalizeDomain(params.domain);
+  if (!domain) return { ok: false, error: "Elegí el dominio en el que vas a recibir los emails." };
+
+  const warnings: string[] = [];
+  const listed = await workspaceResendDomains(service as never, workspaceId, { fetchImpl: params.fetchImpl });
+  if (listed.ok) {
+    const match = listed.domains.find((d) => d.name === domain);
+    if (!match) return { ok: false, error: `El dominio ${domain} no está en tu cuenta de Resend. Elegí uno de la lista.` };
+    const state = receivingState(match);
+    if (state !== "active") warnings.push(`${domain}: ${RECEIVING_STATE_LABELS[state]}. Hasta entonces no van a llegar emails.`);
+  }
+
+  // Otro negocio de la instalacion recibiendo en el mismo dominio: funciona, pero solo con el webhook de cada uno
+  // conectado (con `?w=`); por la URL vieja se rechaza para no adivinar.
+  const { data: others } = await service
+    .from("channels")
+    .select("workspace_id, email_address")
+    .eq("platform", "email")
+    .eq("is_active", true)
+    .neq("workspace_id", workspaceId);
+  if ((others ?? []).some((c) => domainOf((c as { email_address: string | null }).email_address) === domain)) {
+    warnings.push("Otro negocio de esta instalación recibe en el mismo dominio: conectá el webhook de los dos (el automático) para que cada email llegue al suyo.");
+  }
+
+  const address = primaryAddress({ enabled: true, domain, local: local.local });
+  if (!address) return { ok: false, error: "Elegí el dominio en el que vas a recibir los emails." };
+  const channel = await ensureEmailChannel(service, { workspaceId, address });
+  if (!channel.ok) return { ok: false, error: channel.error };
+
+  const patched = await patchResendConfig(service, workspaceId, { receiving_enabled: "true", receiving_domain: domain, receiving_local: local.local });
+  if (!patched.ok) return patched;
+
+  return {
+    ok: true,
+    enabled: true,
+    address,
+    channelCreated: channel.created ? { channelId: channel.channelId, label: address } : null,
+    warnings,
+  };
 }
 
 export type { ResendConnectionState };

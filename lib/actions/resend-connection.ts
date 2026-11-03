@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
-import { clearWebhookSecret, connectWebhookForWorkspace, saveWebhookSecret } from "@/lib/email/resend-connection";
+import { clearWebhookSecret, connectWebhookForWorkspace, saveReceiving, saveWebhookSecret } from "@/lib/email/resend-connection";
 
 /**
  * La tarjeta Resend (conexion de Resend): el webhook. Todo pide `integrations.manage` (el mismo permiso que configurar
@@ -90,4 +90,53 @@ export async function clearResendWebhookSecretAction(): Promise<Result> {
   });
   revalidatePath(PATH, "layout");
   return { ok: true, message: "Secreto quitado. Los avisos de Resend se van a rechazar hasta que vuelvas a conectar el webhook." };
+}
+
+/**
+ * "Recibir emails en la bandeja" (R4): prende o apaga la recepcion por dominio. Pide `integrations.manage` (antes, con
+ * la tarjeta "Resend (email entrante)", alcanzaba `channels.manage`: ver docs/PROGRESS-resend-conexion.md).
+ */
+export async function saveResendReceivingAction(input: {
+  enabled: boolean;
+  domain: string;
+  local: string;
+}): Promise<{ ok: true; message: string; warnings: string[] } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("integrations.manage");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+
+  const service = await createServiceClient();
+  const outcome = await saveReceiving({
+    service,
+    workspaceId: ctx.workspace.id,
+    enabled: input?.enabled === true,
+    domain: String(input?.domain ?? ""),
+    local: String(input?.local ?? ""),
+  });
+  if (!outcome.ok) return outcome;
+
+  // Una cuenta de email nueva: los roles que eligen cuenta por cuenta no la ven (00249). Nunca lanza.
+  if (outcome.channelCreated) {
+    const { notifyNewChannelAccess } = await import("@/lib/channels/new-channel-access");
+    await notifyNewChannelAccess(service, { workspaceId: ctx.workspace.id, ...outcome.channelCreated });
+  }
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "channel",
+    entityId: ctx.workspace.id,
+    action: "update",
+    metadata: { provider: "resend", kind: "resend_receiving", enabled: outcome.enabled },
+    performedBy: ctx.user.id,
+  });
+  revalidatePath(PATH, "layout");
+  revalidatePath("/dashboard/inbox", "layout");
+
+  return {
+    ok: true,
+    message: outcome.enabled
+      ? `Listo: los emails a cualquier dirección de ese dominio entran a la bandeja. Para escribir primero se usa ${outcome.address}.`
+      : "Recepción apagada. Las conversaciones que ya entraron quedan en la bandeja.",
+    warnings: outcome.warnings,
+  };
 }
