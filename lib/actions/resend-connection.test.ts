@@ -10,6 +10,10 @@ const h = vi.hoisted(() => ({
   connect: vi.fn(),
   save: vi.fn(),
   clear: vi.fn(),
+  receiving: vi.fn(),
+  live: vi.fn(),
+  domains: vi.fn(),
+  notify: vi.fn(),
   logAudit: vi.fn(),
   keys: [] as string[],
 }));
@@ -27,9 +31,19 @@ vi.mock("@/lib/email/resend-connection", () => ({
   connectWebhookForWorkspace: h.connect,
   saveWebhookSecret: h.save,
   clearWebhookSecret: h.clear,
+  saveReceiving: h.receiving,
+  checkResendLive: h.live,
 }));
+vi.mock("@/lib/email/resend-domains", () => ({ workspaceResendDomains: h.domains }));
+vi.mock("@/lib/channels/new-channel-access", () => ({ notifyNewChannelAccess: h.notify }));
 
-import { clearResendWebhookSecretAction, connectResendWebhookAction, saveResendWebhookSecretAction } from "./resend-connection";
+import {
+  checkResendConnectionAction,
+  clearResendWebhookSecretAction,
+  connectResendWebhookAction,
+  saveResendReceivingAction,
+  saveResendWebhookSecretAction,
+} from "./resend-connection";
 
 const SECRET = `whsec_${Buffer.from("secreto-pegado-a-mano-por-alguien").toString("base64")}`;
 
@@ -72,6 +86,34 @@ describe("acciones del webhook de Resend", () => {
   it("un error del nucleo vuelve como mensaje, sin historial", async () => {
     h.connect.mockResolvedValue({ ok: false, reason: "restricted", error: "solo envio" });
     expect(await connectResendWebhookAction()).toEqual({ ok: false, error: "solo envio" });
+    expect(h.logAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("recepcion y Probar", () => {
+  it("sin integrations.manage: ni recepcion ni Probar", async () => {
+    h.ctx = null;
+    expect((await saveResendReceivingAction({ enabled: true, domain: "d.test", local: "hola" })).ok).toBe(false);
+    expect((await checkResendConnectionAction()).ok).toBe(false);
+    expect(h.receiving).not.toHaveBeenCalled();
+    expect(h.live).not.toHaveBeenCalled();
+  });
+
+  it("prender la recepcion con canal nuevo avisa a los roles por cuenta y deja historial", async () => {
+    h.receiving.mockResolvedValue({ ok: true, enabled: true, address: "hola@d.test", channelCreated: { channelId: "ch-1", label: "hola@d.test" }, warnings: ["aviso"] });
+    const res = await saveResendReceivingAction({ enabled: true, domain: "d.test", local: "hola" });
+    expect(res).toMatchObject({ ok: true, warnings: ["aviso"] });
+    expect(h.receiving).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "ws-sesion", enabled: true, domain: "d.test", local: "hola" }));
+    expect(h.notify).toHaveBeenCalledWith({ service: true }, { workspaceId: "ws-sesion", channelId: "ch-1", label: "hola@d.test" });
+    expect(h.logAudit).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ kind: "resend_receiving", enabled: true }) }));
+  });
+
+  it("Probar: solo lectura y devuelve los dominios", async () => {
+    h.live.mockResolvedValue({ key: { ok: true, access: "full" }, webhook: { checked: true, found: false } });
+    h.domains.mockResolvedValue({ ok: true, domains: [{ name: "d.test", status: "verified" }] });
+    const res = await checkResendConnectionAction();
+    expect(res).toEqual({ ok: true, live: { key: { ok: true, access: "full" }, webhook: { checked: true, found: false } }, domains: [{ name: "d.test", status: "verified" }] });
+    expect(h.connect).not.toHaveBeenCalled();
     expect(h.logAudit).not.toHaveBeenCalled();
   });
 });

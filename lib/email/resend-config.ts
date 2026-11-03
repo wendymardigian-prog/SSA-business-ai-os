@@ -111,3 +111,13 @@ export function normalizeDomain(value: string): string | null {
   const d = value.trim().toLowerCase().replace(/^@/, "");
   return /^(?=.{3,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(d) ? d : null;
 }
+
+/** Lo que la tarjeta Resend necesita al abrir (lo arma el servidor sin llamar a Resend). Nunca un secreto. */
+export interface ResendPanelData {
+  /** La URL del webhook de este negocio (con `?w=`), o null si la app no tiene dominio publico. */
+  webhookUrl: string | null;
+  state: ResendConnectionState;
+  /** El secreto del webhook esta en Vault (null: no se sabe). */
+  secretSaved: boolean | null;
+  lastEventAt: string | null;
+}

@@ -22,6 +22,7 @@ import {
   validateReceivingLocal,
   type ResendConnectionKey,
   type ResendConnectionState,
+  type ResendPanelData,
 } from "./resend-config";
 import { workspaceResendDomains } from "./resend-domains";
 import { receivingState, RECEIVING_STATE_LABELS } from "./senders";
@@ -318,4 +319,20 @@ export async function saveReceiving(params: {
   };
 }
 
-export type { ResendConnectionState };
+export async function loadResendPanelData(service: Db, workspaceId: string): Promise<ResendPanelData> {
+  let webhookUrl: string | null = null;
+  try {
+    webhookUrl = resendWebhookUrl(workspaceId);
+  } catch {
+    // Sin dominio publico (desarrollo) no hay URL util que mostrar.
+  }
+  const [row, secretSaved] = await Promise.all([loadResendRow(service, workspaceId).catch(() => null), hasWebhookSecret(service, workspaceId)]);
+  return {
+    webhookUrl,
+    state: readResendConnection(row?.config ?? {}),
+    secretSaved,
+    lastEventAt: row?.lastEventAt ?? null,
+  };
+}
+
+export type { ResendConnectionState, ResendPanelData };

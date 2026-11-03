@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
-import { clearWebhookSecret, connectWebhookForWorkspace, saveReceiving, saveWebhookSecret } from "@/lib/email/resend-connection";
+import { checkResendLive, clearWebhookSecret, connectWebhookForWorkspace, saveReceiving, saveWebhookSecret } from "@/lib/email/resend-connection";
+import { workspaceResendDomains } from "@/lib/email/resend-domains";
+import type { LiveResult } from "@/lib/email/resend-status";
+import type { ResendDomain } from "@/lib/email/senders";
 
 /**
  * La tarjeta Resend (conexion de Resend): el webhook. Todo pide `integrations.manage` (el mismo permiso que configurar
@@ -139,4 +142,20 @@ export async function saveResendReceivingAction(input: {
       : "Recepción apagada. Las conversaciones que ya entraron quedan en la bandeja.",
     warnings: outcome.warnings,
   };
+}
+
+/**
+ * "Probar" (R5): la key, el webhook y los dominios contra Resend, SOLO lectura. No crea, no cambia y no manda nada.
+ */
+export async function checkResendConnectionAction(): Promise<
+  { ok: true; live: LiveResult; domains: ResendDomain[] | null } | { ok: false; error: string }
+> {
+  const ctx = await getPermissionAction("integrations.manage");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const service = await createServiceClient();
+  const [live, listed] = await Promise.all([
+    checkResendLive({ service, workspaceId: ctx.workspace.id }),
+    workspaceResendDomains(service as never, ctx.workspace.id, { refresh: true }),
+  ]);
+  return { ok: true, live, domains: listed.ok ? listed.domains : null };
 }
