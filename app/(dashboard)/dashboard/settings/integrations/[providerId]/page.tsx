@@ -12,6 +12,7 @@ import { IntegrationDetail } from "@/components/settings/integrations/integratio
 import type { Channel } from "@/components/channels/channels-panel";
 import type { SocialAccountRow } from "@/components/settings/integrations/publisher-defaults";
 import type { AuditAction } from "@/lib/types/database";
+import type { ResendPanelData } from "@/lib/email/resend-config";
 
 /**
  * El detalle de una integracion (G5): credenciales, cuentas y actividad, en
@@ -27,6 +28,8 @@ export default async function IntegrationDetailPage({
   params: Promise<{ providerId: string }>;
 }) {
   const { providerId } = await params;
+  // Conexion de Resend: "Resend (email entrante)" vive ahora dentro de la tarjeta Resend. El link viejo lleva ahi.
+  if (providerId === "resend_inbound") redirect("/dashboard/settings/integrations/resend");
   const provider = getVisibleProvider(providerId);
   if (!provider) notFound();
 
@@ -98,6 +101,15 @@ export default async function IntegrationDetailPage({
       .filter((account) => account.publishers.some((p) => p.publisher === publisherId));
   }
 
+  // La tarjeta Resend (conexion de Resend): el webhook, la recepcion y su estado. Se leen con el cliente de servicio
+  // DESPUES del permiso (Vault y la fila de Resend), y nunca viaja un secreto: solo si existe.
+  let resend: ResendPanelData | null = null;
+  if (provider.id === "resend") {
+    const { createServiceClient } = await import("@/lib/supabase/server");
+    const { loadResendPanelData } = await import("@/lib/email/resend-connection");
+    resend = await loadResendPanelData(await createServiceClient(), workspace.id).catch(() => null);
+  }
+
   return (
     <IntegrationDetail
       provider={serializableProvider(provider)}
@@ -110,6 +122,7 @@ export default async function IntegrationDetailPage({
       socialAccounts={socialAccounts}
       activityEntries={activityEntries}
       readOnly={access === "view"}
+      resend={resend}
     />
   );
 }

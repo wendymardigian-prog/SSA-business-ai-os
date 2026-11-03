@@ -128,14 +128,45 @@ sincronizar. Pedirle a alguien que copie un `act_1234567` del Business
 Manager es pedirle que se equivoque en un dígito y después no entienda por
 qué no hay datos.
 
-### Email
+### Email: la tarjeta Resend (desde el 2/11/2026)
 
-**Resend (saliente)** manda las invitaciones al equipo y los avisos.
+Una sola tarjeta, **Ajustes → Integraciones → Resend**, con la lista de **Estado** arriba (✓ / ✗ y qué hacer, y el botón
+**Probar**, que solo mira) y cuatro secciones. "Resend (email entrante)" ya no aparece en el listado: su link lleva a esta
+tarjeta y sus datos pasaron acá (la migración `00279`).
 
-**Resend (entrante)** convierte una dirección tuya en un canal más de la
-bandeja. Los correos entran como conversaciones, se responden desde el mismo
-lugar que un DM, y el hilo se arma bien del otro lado. Son dos tarjetas
-separadas porque son dos conexiones con dos secretos distintos.
+1. **Conexión.** La API key (`re_…`). Al guardarla se prueba contra Resend (`GET /domains`). Una key **de acceso
+   completo** queda marcada así. Una **de solo envío** se guarda igual, pero no deja ver dominios ni crear el webhook, así
+   que esos dos pasos se hacen a mano. Una key revocada no se guarda.
+2. **Remitentes.** Desde qué dirección salen los emails importantes y los de marketing (dominio verificado en Resend).
+3. **Webhook (rebotes, quejas y emails entrantes).** Por acá Resend le avisa a SSA cuando un email rebota, alguien lo
+   marca como spam o te escriben. Al guardar una key de acceso completo, SSA **crea el webhook solo** (o tocá «Conectar
+   webhook automáticamente») y guarda su secreto en Vault. Lo que conviene saber:
+   - La URL es `https://<tu app>/api/webhooks/resend-inbound?w=<id del negocio>`. El `?w=` dice de qué negocio es: dos
+     negocios de la misma instalación pueden compartir la cuenta de Resend, cada uno con su webhook.
+   - Los eventos son `email.received`, `email.bounced` y `email.complained`. La lista vive en `lib/email/resend-events.ts`
+     y «Actualizar webhook» la sincroniza.
+   - **SSA solo administra su propio webhook**: el que apunta exactamente a su URL. Uno creado a mano con esa URL (sin
+     `?w=`) se adopta: le pone el `?w=` y le suma los eventos que falten, sin sacarle ninguno. Los webhooks de otros
+     sistemas (o de otro negocio) no se tocan nunca, y SSA no borra ninguno.
+   - Si Resend no devuelve el secreto de uno creado a mano, la pantalla pide pegarlo.
+   - **Plan B (key de solo envío):** en resend.com/webhooks, «Add Webhook», la URL de la tarjeta, los tres eventos, y
+     pegar el «Signing secret» (`whsec_…`) en la tarjeta.
+   - Los rebotes y las quejas funcionan **aunque la recepción esté apagada**.
+4. **Recepción de emails (opcional).** «Recibir emails en la bandeja» + el dominio + la dirección principal. Cómo
+   funciona:
+   - Los emails a **cualquier dirección** de ese dominio entran a la bandeja como conversaciones, en el canal de email
+     del negocio (uno por negocio).
+   - Se responde **desde la misma dirección** a la que escribió la persona. La **principal** (por defecto `hola@`) es
+     la que se usa para escribir primero.
+   - En Resend hay que activar **Receiving** en el dominio y cargar el **MX**
+     ([cómo](https://resend.com/docs/dashboard/receiving/custom-domains)). La tarjeta muestra el estado que informa
+     Resend. Como Resend no confirma el MX registro por registro, «activa» quiere decir Receiving prendido y el dominio
+     verificado.
+   - Si dos negocios reciben en el mismo dominio, el `?w=` de cada webhook decide. Sin él, el email se rechaza (no se
+     adivina).
+
+El receptor (`app/api/webhooks/resend-inbound`) valida siempre la firma con el secreto del negocio y anota el **último
+aviso recibido** (`integration_configs.last_event_at`). Configurar Resend pide `integrations.manage`.
 
 ### Inteligencia artificial
 

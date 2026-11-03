@@ -33,10 +33,20 @@ export async function listResendDomains(apiKey: string, fetchImpl: typeof fetch 
     });
     if (res.status === 401 || res.status === 403) return { ok: false, reason: "forbidden" };
     if (!res.ok) return { ok: false, reason: "failed" };
-    const body = (await res.json().catch(() => null)) as { data?: Array<{ name?: unknown; status?: unknown }> } | null;
+    const body = (await res.json().catch(() => null)) as {
+      data?: Array<{ name?: unknown; status?: unknown; capabilities?: { receiving?: unknown } | null }>;
+    } | null;
     const domains = (body?.data ?? [])
       .filter((d) => typeof d?.name === "string" && d.name)
-      .map((d) => ({ name: String(d.name).toLowerCase(), status: typeof d.status === "string" ? d.status : "not_started" }))
+      .map((d): ResendDomain => {
+        const receiving = d.capabilities?.receiving;
+        return {
+          name: String(d.name).toLowerCase(),
+          status: typeof d.status === "string" ? d.status : "not_started",
+          // La recepcion (R4): solo si Resend la informa.
+          ...(receiving === "enabled" || receiving === "disabled" ? { receiving } : {}),
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
     return { ok: true, domains };
   } catch {

@@ -9,7 +9,7 @@
 
 import { appUrl } from "@/lib/app-url";
 
-export type WebhookChannel = "evolution" | "zernio";
+export type WebhookChannel = "evolution" | "zernio" | "resend";
 
 /** La ruta que atiende cada proveedor. */
 const WEBHOOK_PATHS: Record<WebhookChannel, string> = {
@@ -17,6 +17,8 @@ const WEBHOOK_PATHS: Record<WebhookChannel, string> = {
   // obligaria a reconfigurar el webhook en Zernio sin ganar nada.
   zernio: "/api/webhooks/late",
   evolution: "/api/webhooks/evolution",
+  // Rebotes, quejas y emails entrantes de Resend. Se llama "resend-inbound" por historia (nacio para la recepcion).
+  resend: "/api/webhooks/resend-inbound",
 };
 
 /**
@@ -44,6 +46,20 @@ export function channelWebhookUrl(channel: WebhookChannel): string {
   }
 
   return `${base}${WEBHOOK_PATHS[channel]}`;
+}
+
+/** El parametro que elige el negocio en la URL del webhook de Resend. */
+export const RESEND_WORKSPACE_PARAM = "w";
+
+/**
+ * La URL del webhook de Resend de UN negocio: la del receptor con `?w=<workspace>`.
+ *
+ * Dos negocios de la misma instalacion pueden compartir la cuenta de Resend: cada uno tiene su webhook (y su secreto),
+ * y el parametro le dice al receptor con que secreto verificar. La firma sigue siendo obligatoria: el parametro no
+ * autoriza nada. Misma regla que las otras: nunca una URL local.
+ */
+export function resendWebhookUrl(workspaceId: string): string {
+  return `${channelWebhookUrl("resend")}?${RESEND_WORKSPACE_PARAM}=${encodeURIComponent(workspaceId)}`;
 }
 
 /** True para localhost, 127.0.0.1, ::1 y el resto de las direcciones caseras. */

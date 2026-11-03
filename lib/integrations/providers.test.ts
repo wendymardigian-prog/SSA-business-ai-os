@@ -31,13 +31,9 @@ describe("catalogo de proveedores", () => {
   // Agrupa solo lo visible: desde la etapa 2 el catalogo tiene tambien Resend
   // entrante (email) y Meta, que se prenden en los bloques 8 y 5.
   it("agrupa por tipo: un email provider y cuatro de IA", () => {
-    // Dos entradas de email: Resend saliente (avisos, invitaciones) y
-    // Resend entrante (el canal de la bandeja). Son dos conexiones
-    // distintas con dos secretos distintos, aunque el proveedor sea el mismo.
-    expect(providersByType("email_provider").map((p) => p.id)).toEqual([
-      "resend_inbound",
-      "resend",
-    ]);
+    // Cambio aprobado (conexion de Resend, 2/11/2026): una sola tarjeta de email. Resend entrante quedo oculta (la
+    // recepcion y el webhook viven en la tarjeta Resend).
+    expect(providersByType("email_provider").map((p) => p.id)).toEqual(["resend"]);
     expect(providersByType("ai_provider").map((p) => p.id)).toEqual([
       "openai",
       "anthropic",
@@ -182,7 +178,7 @@ describe("catalogo extendido (F1)", () => {
     }
   });
 
-  it("Conexiones trae las nueve de afuera; IA, las cinco propias (Bloque G)", () => {
+  it("Conexiones trae las ocho de afuera (Resend en una sola tarjeta); IA, las cinco propias (Bloque G)", () => {
     const bySection = Object.fromEntries(
       providersBySection().map((g) => [g.section, g.providers.map((p) => p.id)]),
     );
@@ -195,7 +191,7 @@ describe("catalogo extendido (F1)", () => {
       "threads",
       "google",
       "meta",
-      "resend_inbound",
+      // Cambio aprobado (conexion de Resend): "resend_inbound" oculta.
       "resend",
     ]);
     expect(bySection.ai).toEqual(["openai", "anthropic", "google_ai", "voyage", "groq"]);

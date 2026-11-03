@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { SENDER_CONFIG_KEYS } from "@/lib/email/senders";
+import { RESEND_CONNECTION_CONFIG_KEYS } from "@/lib/email/resend-config";
 import { SOCIAL_PROVIDER_IDS, syncAccountsAfterChange } from "@/lib/social/sync-hook";
 import { createServiceClient } from "@/lib/supabase/server";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
@@ -82,6 +83,8 @@ const DISCOVERED_CONFIG_KEYS = [
   "models_checked_at",
   // Los remitentes de Resend (E8) se guardan en su propio formulario: volver a guardar la key no los pisa.
   ...SENDER_CONFIG_KEYS,
+  // La tarjeta Resend (conexion de Resend): el acceso de la key, el webhook y la recepcion. Mismo motivo.
+  ...RESEND_CONNECTION_CONFIG_KEYS,
 ] as const;
 
 function discoveredConfigOf(previous: unknown): Record<string, Json> {
@@ -218,28 +221,21 @@ export async function saveIntegration(
     };
   }
 
-  // El email entrante crea (o mueve) su canal: sin canal no hay bandeja
-  // donde poner los correos, y pedirle a alguien que lo cree aparte en
-  // Canales seria un paso mas para la misma decision.
-  if (provider.id === "resend_inbound") {
-    const address = config.inbound_address?.trim();
-    if (address) {
-      const { ensureEmailChannel } = await import("@/lib/email/channel");
-      const channel = await ensureEmailChannel(supabase, {
-        workspaceId: workspace.id,
-        address,
-      });
-      if (!channel.ok) {
-        return {
-          ok: false,
-          error: `Los datos se guardaron pero no pude crear el canal de email: ${channel.error}`,
-        };
-      }
-      // Una cuenta de email nueva: los roles que eligen cuenta por cuenta no la ven (00249). Nunca lanza.
-      if (channel.created) {
-        const { notifyNewChannelAccess } = await import("@/lib/channels/new-channel-access");
-        await notifyNewChannelAccess(await createServiceClient(), { workspaceId: workspace.id, channelId: channel.channelId, label: address });
-      }
+  // El canal de email ya no nace aca: desde la conexion de Resend lo crea (o lo mueve) la seccion "Recepcion de
+  // emails" de la tarjeta Resend (`saveResendReceivingAction`), y "Resend (email entrante)" quedo oculta.
+
+  // Una key de Resend de acceso completo conecta (o adopta) el webhook de SSA sola, como la de Zernio. Nunca hace
+  // fallar el guardado: si no se pudo, la tarjeta lo muestra y tiene su boton.
+  const resendWarnings: string[] = [];
+  if (provider.id === "resend" && toStore.length > 0 && tested.config?.access === "full") {
+    try {
+      const { connectWebhookForWorkspace } = await import("@/lib/email/resend-connection");
+      const connected = await connectWebhookForWorkspace({ service: await createServiceClient(), workspaceId: workspace.id });
+      if (!connected.ok) resendWarnings.push(`La key quedó guardada, pero no pude conectar el webhook: ${connected.error}`);
+      else if (connected.needsSecret) resendWarnings.push("La key quedó guardada. Ya había un webhook de SSA creado a mano: pegá su Signing secret en la sección Webhook.");
+    } catch (err) {
+      console.error("[integrations] no pude conectar el webhook de Resend:", err instanceof Error ? err.message : "error");
+      resendWarnings.push("La key quedó guardada, pero no pude conectar el webhook. Tocá «Conectar webhook automáticamente».");
     }
   }
 
@@ -249,9 +245,12 @@ export async function saveIntegration(
   // solo QUE campos se rotaron.
   // Zernio y Postproxy cambian qué cuentas existen (F74). Si la sincronización
   // falla, el guardado sigue: el aviso viaja en la respuesta.
-  const warnings = SOCIAL_PROVIDER_IDS.includes(provider.id)
-    ? await syncAccountsAfterChange(supabase, workspace.id, `guardar ${provider.id}`)
-    : [];
+  const warnings = [
+    ...(SOCIAL_PROVIDER_IDS.includes(provider.id)
+      ? await syncAccountsAfterChange(supabase, workspace.id, `guardar ${provider.id}`)
+      : []),
+    ...resendWarnings,
+  ];
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,

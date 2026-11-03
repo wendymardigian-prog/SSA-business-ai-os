@@ -20,6 +20,7 @@ import { testApiKey as testPostproxyKey } from "@/lib/social/postproxy";
 import { validateMetaToken } from "@/lib/meta/token";
 import { fetchAdAccounts } from "@/lib/meta/accounts";
 import { checkAiProviderKey } from "./ai-key-check";
+import { probeResendKey } from "@/lib/email/resend-api";
 
 export type ConnectionTest =
   | {
@@ -112,6 +113,27 @@ export async function testConnection(input: TestInput): Promise<ConnectionTest> 
           ? { config: { models: result.models, models_checked_at: new Date().toISOString() } }
           : {}),
       };
+    }
+
+    case "resend": {
+      const apiKey = (input.secrets.api_key ?? "").trim();
+      if (!apiKey) return { ok: true };
+
+      // GET /domains es una lectura: responde a una key de acceso completo y da 401 `restricted_api_key` a una de
+      // solo envio (que sirve para mandar: se guarda igual, marcada). Una key revocada o mal copiada no se guarda. Si
+      // Resend no contesta, se guarda: la caida no dice nada de la key (mismo criterio que las de IA).
+      const probe = await probeResendKey(apiKey, input.fetchImpl);
+      if (probe.ok) {
+        return {
+          ok: true,
+          detail: probe.access === "full" ? "Conectada · acceso completo." : "Conectada · solo envío.",
+          config: { access: probe.access },
+        };
+      }
+      if (probe.reason === "invalid_key") {
+        return { ok: false, error: "Resend rechazó la API key: revisá que esté completa y activa en resend.com/api-keys." };
+      }
+      return { ok: true, detail: "No pude comprobar la key con Resend ahora; se guardó igual." };
     }
 
     default:
