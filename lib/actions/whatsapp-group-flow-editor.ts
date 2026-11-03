@@ -10,8 +10,9 @@ import type { EditorGroup, EditorGroupMessage, EditorPollStep, EditorResult } fr
  * encuestas recientes (para «A qué mensaje: los elegidos») y los pasos «Enviar encuesta» de las automatizaciones
  * (para «las que manda un paso»).
  *
- * Piden `flows.edit`. Leen con el cliente de servicio filtrando por el workspace de la sesion, despues del permiso:
- * quien arma una automatizacion elige entre los grupos del negocio aunque su bandeja no los muestre.
+ * Piden `flows.edit`. Los grupos y los pasos se leen con el cliente de servicio filtrando por el workspace de la
+ * sesion, despues del permiso: quien arma una automatizacion elige entre los grupos del negocio aunque su bandeja no
+ * los muestre. Los MENSAJES (su texto) se leen con la sesion: solo los de grupos que la persona ve.
  */
 
 const NO_PERMISSION = "No tenés permiso para editar automatizaciones.";
@@ -58,7 +59,9 @@ export async function listGroupMessagesForFlowEditor(
   const groups = (groupIds ?? []).filter((id) => UUID.test(id)).slice(0, 50);
   const selected = (selectedIds ?? []).filter((id) => UUID.test(id)).slice(0, 50);
 
-  let query = g.db
+  // Los TEXTOS se leen con la sesion: la RLS (`can_see_whatsapp_group`) decide de que grupos los ve. Quien arma
+  // automatizaciones sin ver esa cuenta en la bandeja elige el grupo, pero no lee sus mensajes.
+  let query = g.ctx.supabase
     .from("whatsapp_group_messages")
     .select("id, group_id, direction, text, poll, created_at")
     .eq("workspace_id", g.ctx.workspace.id)
@@ -72,7 +75,7 @@ export async function listGroupMessagesForFlowEditor(
   const rows = [...(recent ?? [])];
   const missing = selected.filter((id) => !rows.some((r) => r.id === id));
   if (missing.length > 0) {
-    const { data: extra } = await g.db
+    const { data: extra } = await g.ctx.supabase
       .from("whatsapp_group_messages")
       .select("id, group_id, direction, text, poll, created_at")
       .eq("workspace_id", g.ctx.workspace.id)

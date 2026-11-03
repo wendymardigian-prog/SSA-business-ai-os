@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { BarChart3, Loader2, Paperclip, Plus, Send, X } from "lucide-react";
 import { EmojiButton, useEmojiInsert } from "@/components/ui/emoji-picker";
-import { CenterDialog } from "@/components/tasks/overlay";
+import { ContentDialog } from "@/components/content/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { headBase64Of } from "@/lib/content/media";
@@ -140,57 +140,61 @@ function PollDialog({ groupId, onClose, onSent }: { groupId: string; onClose: ()
 
   const input = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm";
   return (
-    <CenterDialog label="Mandar una encuesta" onClose={onClose}>
-      <div className="space-y-3 overflow-y-auto p-5">
-        <h2 className="text-base font-semibold">Encuesta</h2>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold">Pregunta</span>
-          <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="¿Qué día te queda mejor?" className={input} />
-        </label>
-        <fieldset className="space-y-1.5">
-          <legend className="mb-1 text-xs font-semibold">Opciones</legend>
-          {options.map((option, index) => (
-            <div key={index} className="flex items-center gap-1.5">
-              <input
-                value={option}
-                aria-label={`Opción ${index + 1}`}
-                onChange={(e) => setOptions(options.map((o, i) => (i === index ? e.target.value : o)))}
-                placeholder={`Opción ${index + 1}`}
-                className={input}
-              />
-              {options.length > 2 && (
-                <button type="button" aria-label={`Quitar la opción ${index + 1}`} onClick={() => setOptions(options.filter((_, i) => i !== index))} className="rounded p-1 hover:bg-muted">
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              )}
-            </div>
-          ))}
-          {options.length < POLL_MAX_OPTIONS && (
-            <button type="button" onClick={() => setOptions([...options, ""])} className="inline-flex items-center gap-1 text-xs font-medium text-primary-ink hover:underline">
-              <Plus className="h-3 w-3" aria-hidden />
-              Agregar opción
-            </button>
-          )}
-        </fieldset>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={multiple} onChange={(e) => setMultiple(e.target.checked)} />
-          Se puede elegir más de una opción
-        </label>
-        {error && (
-          <p role="alert" className="rounded-md bg-red-50 px-2 py-1 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
-            {error}
-          </p>
+    <ContentDialog
+      title="Encuesta"
+      label="Mandar una encuesta"
+      onClose={onClose}
+      footer={
+        <div className="ml-auto flex gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+            Cancelar
+          </button>
+          <button type="button" onClick={send} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50">
+            {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+            Mandar encuesta
+          </button>
+        </div>
+      }
+    >
+      <label className="block space-y-1">
+        <span className="text-xs font-semibold">Pregunta</span>
+        <input value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="¿Qué día te queda mejor?" className={input} />
+      </label>
+      <fieldset className="space-y-1.5">
+        <legend className="mb-1 text-xs font-semibold">Opciones</legend>
+        {options.map((option, index) => (
+          <div key={index} className="flex items-center gap-1.5">
+            <input
+              value={option}
+              aria-label={`Opción ${index + 1}`}
+              onChange={(e) => setOptions(options.map((o, i) => (i === index ? e.target.value : o)))}
+              placeholder={`Opción ${index + 1}`}
+              className={input}
+            />
+            {options.length > 2 && (
+              <button type="button" aria-label={`Quitar la opción ${index + 1}`} onClick={() => setOptions(options.filter((_, i) => i !== index))} className="rounded p-1 hover:bg-muted">
+                <X className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            )}
+          </div>
+        ))}
+        {options.length < POLL_MAX_OPTIONS && (
+          <button type="button" onClick={() => setOptions([...options, ""])} className="inline-flex items-center gap-1 text-xs font-medium text-primary-ink hover:underline">
+            <Plus className="h-3 w-3" aria-hidden />
+            Agregar opción
+          </button>
         )}
-      </div>
-      <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-        <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
-          Cancelar
-        </button>
-        <button type="button" onClick={send} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50">
-          {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
-          Mandar encuesta
-        </button>
-      </div>
-    </CenterDialog>
+      </fieldset>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={multiple} onChange={(e) => setMultiple(e.target.checked)} />
+        Se puede elegir más de una opción
+      </label>
+      {error && (
+        <p role="alert" className="rounded-md bg-red-50 px-2 py-1 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
+          {error}
+        </p>
+      )}
+    
+    </ContentDialog>
   );
 }
