@@ -121,7 +121,7 @@ export function BookingsScreen({
   /** Todos los eventos (activos e inactivos), para elegir uno al agendar a mano. */
   events: ManualEventOption[];
   /** Agendar a mano sin evento: quien puede atender y en que area. */
-  manualHosts: Array<{ userId: string; label: string }>;
+  manualHosts: Array<{ userId: string; label: string; meetAvailable: boolean }>;
   manualAreas: Array<{ id: string; name: string; isDefault: boolean }>;
   viewerId: string;
   /** Los eventos para el filtro ("Evento"): id y título nomás. */
@@ -430,6 +430,7 @@ export function BookingsScreen({
           timezone={timezone}
           timeFormat={timeFormat}
           onClose={() => setManualOpen(false)}
+          onCreated={(bookingId) => openDetail(bookingId)}
           searchContacts={(term) => searchContactsForBooking(term)}
           hosts={manualHosts}
           currentUserId={viewerId}

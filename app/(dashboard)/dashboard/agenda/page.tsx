@@ -5,6 +5,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { canOpenConfig } from "@/lib/scheduling/config-sections";
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { eventDefaults } from "@/lib/scheduling/data/event-context";
+import { loadMeetContext } from "@/lib/scheduling/data/meet-availability";
+import { meetAvailableFor } from "@/lib/scheduling/meet-availability";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
 import { bookingUtmOptions, getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
 import { loadBookingCalls } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
@@ -282,6 +284,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     (await createServiceClient()).from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active"),
   ]);
   const usernameByUser = new Map((profileRows ?? []).map((p) => [p.user_id, p.username]));
+  // Quien puede crear un Google Meet al agendar a mano (lo vuelve a comprobar el servidor al agendar).
+  const meetContext = await loadMeetContext(await createServiceClient(), ctx.workspace.id, [...names.keys(), ...events.map((e) => e.owner_user_id)]);
   const hasGoogleByUser = new Set((googleRows ?? []).map((c) => c.user_id));
   const shareableEvents: ShareableEvent[] = events
     .filter((e) => e.status === "active")
@@ -317,8 +321,13 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         hostName: names.get(e.owner_user_id) ?? "Sin nombre",
         status: e.status as "active" | "hidden" | "inactive",
         color: e.color,
+        locationType: e.location_type === "google_meet" ? "google_meet" : "manual",
+        locationText: e.location_text,
+        meetAvailable: meetAvailableFor(meetContext, e.owner_user_id, e.destination_calendar_id),
       }))}
-      manualHosts={[...names.entries()].map(([userId, label]) => ({ userId, label })).sort((a, b) => a.label.localeCompare(b.label))}
+      manualHosts={[...names.entries()]
+        .map(([userId, label]) => ({ userId, label, meetAvailable: meetAvailableFor(meetContext, userId) }))
+        .sort((a, b) => a.label.localeCompare(b.label))}
       manualAreas={(() => {
         const defaultId = defaultManualCategory(categoryRows);
         return categoryRows

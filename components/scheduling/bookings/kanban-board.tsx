@@ -23,6 +23,7 @@ import { evaluateDrop, needsCancelModal, isDraggable, DEFAULT_COLLAPSED_COLUMNS 
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { NeedsOutcomeChip } from "./status-chip";
 import { statusDotClass } from "./status-chip";
+import { MeetJoinLink } from "./meet-join-link";
 
 export function BookingsKanban({
   items,
@@ -128,25 +129,27 @@ export function BookingsKanban({
                 const item = b as unknown as BookingListItem;
                 const draggable = canManage && isDraggable({ status: item.status });
                 return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    draggable={draggable}
-                    onDragStart={() => setDragging(item)}
-                    onDragEnd={() => setDragging(null)}
-                    onClick={() => onOpen(item.id)}
-                    className="flex w-full flex-col gap-1.5 rounded-lg border border-border bg-card p-2.5 text-left text-sm hover:border-ring"
-                  >
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.eventColor ?? "currentColor" }} />
-                      {item.title}
-                    </span>
-                    <span className="font-medium">{item.contactName || item.bookerName || "Sin nombre"}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {capitalize(formatDateTimeWithZone(item.startAt, timezone, timeFormat))}
-                    </span>
-                    {needsOutcome({ status: item.status, end_at: item.endAt }, now) && <NeedsOutcomeChip />}
-                  </button>
+                  <div key={item.id} className="relative">
+                    <MeetJoinLink meetUrl={item.meetUrl} status={item.status} className="absolute right-2 top-2 z-10" />
+                    <button
+                      type="button"
+                      draggable={draggable}
+                      onDragStart={() => setDragging(item)}
+                      onDragEnd={() => setDragging(null)}
+                      onClick={() => onOpen(item.id)}
+                      className="flex w-full flex-col gap-1.5 rounded-lg border border-border bg-card p-2.5 text-left text-sm hover:border-ring"
+                    >
+                      <span className={`flex items-center gap-1.5 text-xs text-muted-foreground${item.meetUrl ? " pr-7" : ""}`}>
+                        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.eventColor ?? "currentColor" }} />
+                        {item.title}
+                      </span>
+                      <span className="font-medium">{item.contactName || item.bookerName || "Sin nombre"}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {capitalize(formatDateTimeWithZone(item.startAt, timezone, timeFormat))}
+                      </span>
+                      {needsOutcome({ status: item.status, end_at: item.endAt }, now) && <NeedsOutcomeChip />}
+                    </button>
+                  </div>
                 );
               })}
             </div>

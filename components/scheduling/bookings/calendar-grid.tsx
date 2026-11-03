@@ -28,6 +28,8 @@ import { isDraggableTask, tasksModeParam, type TasksMode } from "@/lib/tasks/cal
 import { layoutOverlaps, type Span } from "@/lib/calendar/layoutOverlaps";
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import { TaskCard, TaskMonthChip, TasksToggle, UndatedPanel } from "./calendar-tasks"; // @plantilla-quitar(tareas)
+import { MeetJoinLink } from "./meet-join-link";
+import { canJoinMeet } from "@/lib/scheduling/meet-link";
 import { useIsDesktop } from "./use-desktop";
 
 const VIEWS: Array<{ key: CalendarView; label: string }> = [
@@ -319,7 +321,12 @@ export function BookingsCalendar({
                   const canDrag = bookingDraggable(item);
                   // Con tareas, lo que se superpone va lado a lado; sin ellas, ancho completo como siempre.
                   const lane = columnsByDate.get(date)?.get(`b:${item.id}`);
-                  return (
+                  // Con Meet, el iconito para entrar va al lado de la tarjeta (nunca adentro de su boton) y los dos van en
+                  // una caja con la posicion. Sin Meet, la tarjeta es exactamente la de siempre.
+                  const join = canJoinMeet(item);
+                  const box = { top, height, ...(lane ? laneStyle(lane) : null) };
+                  const cardClass = "overflow-hidden rounded-md border border-border border-l-2 bg-card px-1.5 py-1 text-left text-[11px] hover:border-ring";
+                  const card = (
                     <button
                       key={item.id}
                       type="button"
@@ -327,14 +334,21 @@ export function BookingsCalendar({
                       draggable={canDrag || undefined}
                       onDragStart={canDrag ? (e) => startBooking(item, e) : undefined}
                       onDragEnd={canDrag ? endDrag : undefined}
-                      style={{ top, height, borderLeftColor: it.eventColor ?? "var(--primary)", ...(lane ? laneStyle(lane) : null) }}
-                      className={lane ? "absolute overflow-hidden rounded-md border border-border border-l-2 bg-card px-1.5 py-1 text-left text-[11px] hover:border-ring" : "absolute inset-x-1 overflow-hidden rounded-md border border-border border-l-2 bg-card px-1.5 py-1 text-left text-[11px] hover:border-ring"}
+                      style={join ? { borderLeftColor: it.eventColor ?? "var(--primary)" } : { top, height, borderLeftColor: it.eventColor ?? "var(--primary)", ...(lane ? laneStyle(lane) : null) }}
+                      className={join ? `h-full w-full ${cardClass}` : lane ? `absolute ${cardClass}` : `absolute inset-x-1 ${cardClass}`}
                     >
-                      <span className="block truncate font-medium tabular-nums">
+                      <span className={join ? "block truncate pr-6 font-medium tabular-nums" : "block truncate font-medium tabular-nums"}>
                         {formatSlotLabel(item.startAt, timezone, timeFormat)} {item.contactName || item.bookerName || ""}
                       </span>
                       <span className="block truncate text-muted-foreground">{it.statusLabel}</span>
                     </button>
+                  );
+                  if (!join) return card;
+                  return (
+                    <div key={item.id} style={box} className={lane ? "absolute" : "absolute inset-x-1"}>
+                      {card}
+                      <MeetJoinLink meetUrl={item.meetUrl} status={item.status} className="absolute right-0.5 top-0.5 h-5 w-5" />
+                    </div>
                   );
                 })}
                 {/* @plantilla-desde(tareas) */}
@@ -387,7 +401,7 @@ export function BookingsCalendar({
               <div className="flex flex-col gap-1.5">
                 {(placement.byDate[date] ?? []).map((it) => {
                   const item = it.booking as unknown as BookingListItem;
-                  return (
+                  const card = (
                     <button
                       key={item.id}
                       type="button"
@@ -400,6 +414,13 @@ export function BookingsCalendar({
                         {item.contactName || item.bookerName || "Sin nombre"} · {it.statusLabel}
                       </span>
                     </button>
+                  );
+                  if (!canJoinMeet(item)) return card;
+                  return (
+                    <div key={item.id} className="relative flex flex-col">
+                      {card}
+                      <MeetJoinLink meetUrl={item.meetUrl} status={item.status} className="absolute right-2 top-2 h-7 w-7" />
+                    </div>
                   );
                 })}
                 {/* @plantilla-desde(tareas) */}

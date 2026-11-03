@@ -13,13 +13,14 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { Video, X } from "lucide-react";
 import type { BookingStatus } from "@/lib/scheduling/types";
 import { BOOKING_STATUSES, evaluateTransition, groupOf, isActive, statusDef, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
 import { needsOutcome } from "@/lib/scheduling/bookings-view";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
-import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, occupyBookingSlotAsHost, reassignBookingHostAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
+import { meetJoinHref, waitingForMeet } from "@/lib/scheduling/meet-link";
+import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, getBookingMeetState, occupyBookingSlotAsHost, reassignBookingHostAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
 import { StatusChip, SlotReleasedChip, statusDotClass } from "./status-chip";
 import { CallSectionList } from "@/components/calls/call-section-list"; // @plantilla-quitar(llamadas)
 import type { CallSectionRow } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
@@ -111,6 +112,30 @@ export function BookingDetailPanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Una reunion recien agendada con Meet: el link lo crea un job unos segundos
+  // despues. Se pregunta cada 2 s (hasta 1 minuto) y, cuando cambia, se
+  // vuelve a pedir la pagina para ver el link y el estado de Google.
+  const waiting = waitingForMeet(booking);
+  useEffect(() => {
+    if (!waiting) return;
+    let alive = true;
+    let tries = 0;
+    const id = setInterval(async () => {
+      tries += 1;
+      const result = await getBookingMeetState({ bookingId: booking.id });
+      if (!alive) return;
+      if (!result.ok || result.data.meetUrl || result.data.syncStatus !== "pending" || tries >= 30) {
+        clearInterval(id);
+        router.refresh();
+      }
+    }, 2000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [waiting, booking.id, router]);
+  const joinHref = meetJoinHref(booking.meetUrl);
 
   const now = new Date();
   const group = groupOf(booking.status);
@@ -332,10 +357,12 @@ export function BookingDetailPanel({
             <dt className="text-muted-foreground">Dónde</dt>
             <dd>
               {booking.locationType === "google_meet" ? (
-                booking.meetUrl ? (
-                  <a href={booking.meetUrl} target="_blank" rel="noopener noreferrer" className="text-primary-ink underline">
-                    Google Meet
+                joinHref ? (
+                  <a href={joinHref} target="_blank" rel="noopener noreferrer" className="break-all text-primary-ink underline">
+                    {joinHref.replace(/^https:\/\//, "")}
                   </a>
+                ) : waiting ? (
+                  "Creando el Meet…"
                 ) : (
                   "Google Meet (todavía sin link)"
                 )
@@ -369,6 +396,17 @@ export function BookingDetailPanel({
           </dl>
 
           <div className="flex flex-wrap gap-2">
+            {joinHref && isActive(booking.status) && (
+              <a
+                href={joinHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+              >
+                <Video className="h-3.5 w-3.5" aria-hidden />
+                Unirse a Meet
+              </a>
+            )}
             <Link href={`/dashboard/contacts/${booking.contactId}`} className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted">
               Ver contacto
             </Link>
@@ -382,11 +420,11 @@ export function BookingDetailPanel({
             >
               Copiar link de reagendar
             </button>
-            {booking.meetUrl && (
+            {joinHref && (
               <button
                 type="button"
                 onClick={() => {
-                  void navigator.clipboard?.writeText(booking.meetUrl!);
+                  void navigator.clipboard?.writeText(joinHref);
                   setToast("Link de Meet copiado");
                 }}
                 className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted"

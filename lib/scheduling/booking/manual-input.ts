@@ -14,12 +14,20 @@ import { isValidDateString, isValidWallTime, wallClockToUtc } from "@/lib/schedu
 
 export const MANUAL_TITLE_MAX = 120;
 export const MANUAL_NOTES_MAX = 2000;
+export const MANUAL_LOCATION_MAX = 500;
 export const MANUAL_DURATION_MIN = 5;
 export const MANUAL_DURATION_MAX = 12 * 60;
 /** Las duraciones que ofrece el desplegable (se puede escribir otra). */
 export const MANUAL_DURATIONS = [15, 30, 45, 60, 90, 120] as const;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Donde es la reunion: un Google Meet (lo crea Google en el calendario de quien
+ * atiende) o un texto libre (una direccion, un link de Zoom). `text` vacio =
+ * "A confirmar". Sin `location`, la reunion usa la del evento.
+ */
+export type ManualLocation = { kind: "google_meet" } | { kind: "text"; text: string | null };
 
 export interface ManualBookingInput {
   /** El evento elegido, o null para un titulo libre. */
@@ -39,6 +47,7 @@ export interface ManualBookingInput {
   email?: string;
   phone?: string;
   notes?: string;
+  location?: ManualLocation | null;
 }
 
 export interface ManualBookingPlan {
@@ -56,9 +65,11 @@ export interface ManualBookingPlan {
   email: string | null;
   phone: string | null;
   notes: string | null;
+  /** null = la del evento. */
+  location: ManualLocation | null;
 }
 
-export type ManualBookingField = "title" | "contact" | "name" | "email" | "date" | "time" | "duration" | "notes";
+export type ManualBookingField = "title" | "contact" | "name" | "email" | "date" | "time" | "duration" | "notes" | "location";
 
 export type ManualBookingCheck =
   | { ok: true; plan: ManualBookingPlan }
@@ -97,6 +108,16 @@ export function planManualBooking(input: ManualBookingInput): ManualBookingCheck
   const notes = clean(input.notes) || null;
   if (notes && notes.length > MANUAL_NOTES_MAX) return { ok: false, field: "notes", error: `Las notas pueden tener hasta ${MANUAL_NOTES_MAX} caracteres.` };
 
+  let location: ManualLocation | null = null;
+  if (input.location?.kind === "google_meet") location = { kind: "google_meet" };
+  else if (input.location?.kind === "text") {
+    const text = clean(input.location.text) || null;
+    if (text && text.length > MANUAL_LOCATION_MAX) {
+      return { ok: false, field: "location", error: `La ubicación puede tener hasta ${MANUAL_LOCATION_MAX} caracteres.` };
+    }
+    location = { kind: "text", text };
+  }
+
   const timezone = clean(input.timezone) || "UTC";
   let start: Date;
   try {
@@ -122,6 +143,7 @@ export function planManualBooking(input: ManualBookingInput): ManualBookingCheck
       email,
       phone,
       notes,
+      location,
     },
   };
 }
