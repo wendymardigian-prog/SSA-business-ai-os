@@ -63,6 +63,11 @@ describe("qué mensaje es un toque (F85)", () => {
     expect(inboundTouchReason(ctx({ previousInboundAt: null }))).toBeNull();
   });
 
+  it("un contacto existente que nunca escribió en la conversación (se buscó y no hay): primer mensaje", () => {
+    expect(inboundTouchReason(ctx({ previousInboundAt: null, previousInboundChecked: true }))).toBe("first_message");
+    expect(inboundTouchReason(ctx({ previousInboundAt: daysAgo(1), previousInboundChecked: true }))).toBeNull();
+  });
+
   it("si coinciden varios motivos manda el anuncio, que explica mejor el origen", () => {
     const referral = { adId: "ad-1", ctwaClid: null, sourceType: null, sourceUrl: null, title: null, ref: null };
 
@@ -233,6 +238,7 @@ describe("recordInboundTouch (F85)", () => {
 
   it("el mensaje anterior solo cuenta si es ENTRANTE y no es el mismo mensaje", async () => {
     const messages = [
+      { id: "in-1", conversation_id: "conv-1", direction: "inbound", created_at: daysAgo(2).toISOString() },
       { id: "out-1", conversation_id: "conv-1", direction: "outbound", created_at: daysAgo(30).toISOString() },
       { id: "msg-row-100", conversation_id: "conv-1", direction: "inbound", created_at: AT.toISOString() },
       { id: "otra-conv", conversation_id: "conv-2", direction: "inbound", created_at: daysAgo(30).toISOString() },
@@ -240,11 +246,48 @@ describe("recordInboundTouch (F85)", () => {
 
     await recordInboundTouch(world(messages), params({ contactExisted: true }));
 
+    // El anterior es el entrante de hace 2 días (no el saliente ni el de otra conversación): no es un toque.
     expect(calls).toHaveLength(0);
   });
 
-  it("un contacto existente sin historial guardado: no inventa una vuelta", async () => {
+  it("el contacto lo creó un mensaje NUESTRO (ManyChat) y ahora responde por primera vez: es su primer mensaje", async () => {
+    // Antes no se anotaba nada (el contacto "ya existía"): 59 contactos quedaron sin origen.
+    const messages = [
+      { id: "out-1", conversation_id: "conv-1", direction: "outbound", created_at: daysAgo(1).toISOString() },
+      { id: "msg-row-100", conversation_id: "conv-1", direction: "inbound", created_at: AT.toISOString() },
+    ];
+
+    await recordInboundTouch(world(messages), params({ contactExisted: true }));
+
+    expect(touchSent()).toMatchObject({ source: "instagram", medium: "dm", origin: "dm", dedupe_key: "msg:m-100" });
+  });
+
+  it("un contacto existente sin ningún entrante guardado en la conversación: su mensaje cuenta como el primero", async () => {
     await recordInboundTouch(world([]), params({ contactExisted: true }));
+
+    expect(touchSent()).toMatchObject({ medium: "dm", dedupe_key: "msg:m-100" });
+  });
+
+  it("si no se puede leer el mensaje anterior, no se inventa un primer mensaje", async () => {
+    const db = memoryDb({ messages: [] }, { rpc: { record_contact_touch: (args) => (calls.push(args), { inserted: true }) } });
+    calls.length = 0;
+    const broken = {
+      ...db.client,
+      from: () => {
+        const b: Record<string, unknown> = {};
+        for (const k of ["select", "eq", "neq", "order", "limit"]) b[k] = () => b;
+        b.maybeSingle = async () => ({ data: null, error: { message: "timeout" } });
+        return b;
+      },
+    };
+
+    await recordInboundTouch(broken as never, params({ contactExisted: true }));
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sin nuestra fila del mensaje no se sabe cuál es el anterior: no se inventa un primer mensaje", async () => {
+    await recordInboundTouch(world([]), params({ contactExisted: true, messageId: null }));
 
     expect(calls).toHaveLength(0);
   });

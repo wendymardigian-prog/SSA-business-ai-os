@@ -92,3 +92,34 @@ describe("TikTok", () => {
     expect(db.rows("contacts")).toHaveLength(0);
   });
 });
+
+describe("Instagram: el contacto se encuentra por el id del autor, aunque no tenga el @", () => {
+  // El caso de ManyChat: el eco de su mensaje crea el contacto con el canal y sin @, y la persona había comentado.
+  const withSender = () => {
+    const db = world(defaultAttributionSettings());
+    db.rows("contacts").push({ id: "c-eco", workspace_id: WS, display_name: "1784...", instagram_username: null, deleted_at: null });
+    (db.tables.contact_channels ??= []).push({ contact_id: "c-eco", channel_id: "ch-ig", platform_sender_id: "igsid-7" });
+    return db;
+  };
+
+  it("vincula el comentario y anota el toque, sin crear otro contacto", async () => {
+    const db = withSender();
+    const result = await attributeComment(db.client, params({ authorUsername: "ana", authorExternalId: "igsid-7", channelId: "ch-ig" }));
+    expect(result).toMatchObject({ contactId: "c-eco", createdContact: false, touched: true });
+    expect(db.rows("contacts")).toHaveLength(1);
+    expect(db.rows("social_post_comments")[0].contact_id).toBe("c-eco");
+  });
+
+  it("también sin @ en el comentario", async () => {
+    const db = withSender();
+    const result = await attributeComment(db.client, params({ authorUsername: null, authorExternalId: "igsid-7", channelId: "ch-ig" }));
+    expect(result.contactId).toBe("c-eco");
+  });
+
+  it("sin canal no busca por id, y sin @ no hace nada", async () => {
+    const db = withSender();
+    const result = await attributeComment(db.client, params({ authorUsername: null, authorExternalId: "igsid-7", channelId: null }));
+    expect(result.contactId).toBeNull();
+    expect(touches).toHaveLength(0);
+  });
+});

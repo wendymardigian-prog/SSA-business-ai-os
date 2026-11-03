@@ -635,7 +635,7 @@ async function handleConversationStartedWebhook(
 
   const { data: channel } = await supabase
     .from("channels")
-    .select("id, workspace_id, platform")
+    .select("id, workspace_id, platform, late_account_id, username, display_name")
     .eq("late_account_id", payload.account?.id)
     .eq("is_active", true)
     .single();
@@ -681,6 +681,7 @@ async function handleConversationStartedWebhook(
         participant: conversation,
         at: payload.startedAt || new Date().toISOString(),
         preview: "",
+        account: touchAccountOf(channel),
       });
       if (!created) console.error("[webhook] conversation.started: no pude crear la conversacion");
     } catch (err) {
@@ -706,7 +707,7 @@ async function handleMessageSentWebhook(
 
   const { data: channel } = await supabase
     .from("channels")
-    .select("id, workspace_id, platform")
+    .select("id, workspace_id, platform, late_account_id, username, display_name")
     .eq("late_account_id", payload.account.id)
     .eq("is_active", true)
     .single();
@@ -739,6 +740,7 @@ async function handleMessageSentWebhook(
         channel: { id: channel.id, workspace_id: channel.workspace_id, platform: channel.platform },
         message: payload.message,
         conversation: payload.conversation ?? null,
+        account: touchAccountOf(channel),
       });
 
       // El mismo helper que los entrantes (F3): un audio que la operadora mando
@@ -915,6 +917,9 @@ async function handleCommentWebhook(
     platform: platform ?? "instagram",
     externalCommentId: payload.comment.id,
     authorUsername: payload.comment.author?.username ?? null,
+    // El id del autor en el canal de la cuenta: encuentra al contacto aunque no tenga el @ guardado.
+    authorExternalId: payload.comment.author?.id ?? null,
+    channelId: channel?.platform === "instagram" ? channel.id : null,
     isOwn: own,
     commentedAt: payload.comment.createdAt ?? null,
     socialPostId: commentedPostId,

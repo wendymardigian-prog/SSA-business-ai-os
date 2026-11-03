@@ -24,6 +24,8 @@ import { applyConversationRules } from "@/lib/conversations/assignment";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { previewForMessage } from "@/lib/message-preview";
 import { fallbackContactName } from "@/lib/contacts/anonymous";
+import { recordExternalStartTouch } from "@/lib/contacts/touch-external-start";
+import type { TouchAccount } from "@/lib/inbox/accounts";
 
 type Db = SupabaseClient<Database>;
 
@@ -733,6 +735,7 @@ export async function handleMessageSentEcho({
   channel,
   message,
   conversation: zernioConversation = null,
+  account = null,
 }: {
   supabase: Db;
   channel: Pick<ChannelRow, "id" | "workspace_id" | "platform">;
@@ -747,6 +750,8 @@ export async function handleMessageSentEcho({
   };
   /** La persona del otro lado, como la manda Zernio en todos los webhooks de la bandeja. */
   conversation?: ZernioWebhookConversation | null;
+  /** La cuenta nuestra (para el toque de un contacto que nace con este eco). */
+  account?: TouchAccount | null;
 }): Promise<{
   stored: boolean;
   reason?: string;
@@ -785,6 +790,8 @@ export async function handleMessageSentEcho({
       participant: zernioConversation,
       at: message.sentAt || new Date().toISOString(),
       preview: previewForMessage({ text: message.text ?? null, attachments: toAttachmentsColumn(items) }),
+      messageId: message.id ?? null,
+      account,
     });
     if (!conversation) return { stored: false, reason: "no pude crear la conversación" };
   }
@@ -831,6 +838,10 @@ export interface ZernioWebhookConversation {
  *   es uno para leer. Pasa por las reglas de asignacion como cualquier
  *   conversacion nueva.
  *
+ * - Si el contacto NACE aca, queda con su origen: un toque "chat iniciado fuera del
+ *   sistema" (`recordExternalStartTouch`), y se encola el vinculo con sus comentarios.
+ *   Sin eso quedaba sin ningun toque, y su primer DM real tampoco lo dejaba.
+ *
  * No dispara automatizaciones ni el agente. Devuelve null si no se pudo.
  */
 export async function ensureZernioConversation({
@@ -840,6 +851,8 @@ export async function ensureZernioConversation({
   participant,
   at,
   preview,
+  messageId = null,
+  account = null,
 }: {
   supabase: Db;
   channel: Pick<ChannelRow, "id" | "workspace_id" | "platform">;
@@ -847,6 +860,10 @@ export async function ensureZernioConversation({
   participant: ZernioWebhookConversation;
   at: string;
   preview: string;
+  /** El id de Zernio del mensaje del negocio que la empezo, si lo hay (queda en el toque). */
+  messageId?: string | null;
+  /** La cuenta nuestra (queda en el toque). */
+  account?: TouchAccount | null;
 }): Promise<{ id: string } | null> {
   const participantId = participant.participantId;
   if (!participantId) return null;
@@ -862,6 +879,18 @@ export async function ensureZernioConversation({
     stampExisting: false,
   });
   if (!contact) return null;
+
+  if (!contact.existed) {
+    await recordExternalStartTouch(supabase, {
+      workspaceId: channel.workspace_id,
+      contactId: contact.contactId,
+      platform: channel.platform,
+      lateConversationId,
+      occurredAt: at,
+      messageId,
+      account,
+    });
+  }
 
   const { data: existing } = await supabase
     .from("conversations")

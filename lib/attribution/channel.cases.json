@@ -1214,6 +1214,48 @@
         "content_post_id": null
       },
       "expected": "direct"
+    },
+    {
+      "name": "organic: chat de Instagram iniciado fuera del sistema (medium dm_external)",
+      "input": {
+        "origin": "dm",
+        "medium": "dm_external",
+        "source": "instagram",
+        "ad_id": null,
+        "adset_id": null,
+        "campaign_id": null,
+        "meta_ad_id": null,
+        "meta_campaign_id": null,
+        "gclid": null,
+        "ttclid": null,
+        "li_fat_id": null,
+        "ctwa_clid": null,
+        "fbclid": null,
+        "social_post_id": null,
+        "content_post_id": null
+      },
+      "expected": "organic"
+    },
+    {
+      "name": "direct: chat iniciado fuera del sistema en WhatsApp (no se sabe de que contenido vino)",
+      "input": {
+        "origin": "dm",
+        "medium": "dm_external",
+        "source": "whatsapp",
+        "ad_id": null,
+        "adset_id": null,
+        "campaign_id": null,
+        "meta_ad_id": null,
+        "meta_campaign_id": null,
+        "gclid": null,
+        "ttclid": null,
+        "li_fat_id": null,
+        "ctwa_clid": null,
+        "fbclid": null,
+        "social_post_id": null,
+        "content_post_id": null
+      },
+      "expected": "direct"
     }
   ]
 }

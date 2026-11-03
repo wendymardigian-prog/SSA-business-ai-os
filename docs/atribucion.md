@@ -77,7 +77,8 @@ Un contacto activo manda cientos de mensajes y una fila "Instagram · mensaje
 directo" por cada uno no dice nada: haría que el "último toque" cambie con cada
 "ok". Se registra solo:
 
-1. el **primer** mensaje del contacto,
+1. el **primer** mensaje del contacto en la conversación (aunque el contacto ya
+   existiera: lo pudo crear un mensaje nuestro mandado desde ManyChat),
 2. una **respuesta a una historia** (de dónde vino la conversación),
 3. un mensaje que trae **datos de un anuncio** (el anuncio es el origen),
 4. el que **vuelve después de 7 días** sin escribir.
@@ -85,6 +86,23 @@ directo" por cada uno no dice nada: haría que el "último toque" cambie con cad
 Lo decide una función pura (`lib/contacts/touch-inbound.ts`). **Anotar el toque
 va siempre después de guardar el mensaje y dentro de un `try/catch`:** que no se
 pueda anotar de dónde vino no puede ser un error del webhook.
+
+### Un chat que empezó el negocio fuera del sistema (3/11/2026)
+
+Desde la importación de conversaciones (00267), el eco de un mensaje que manda
+ManyChat o la app de Instagram crea el contacto (`ensureZernioConversation`). Ese
+contacto nace con un toque **«chat iniciado fuera del sistema»**
+(`medium = 'dm_external'`, `origin = 'dm'`, orgánico en Instagram; clave
+`external-start:<conversación de Zernio>`, `lib/contacts/touch-external-start.ts`)
+y se encola el vínculo con sus comentarios. Solo cuando el contacto es nuevo.
+Antes quedaba sin ningún toque, y cuando la persona respondía tampoco se anotaba
+su primer mensaje. Los que ya estaban se arreglan con
+`scripts/backfill-missing-first-touch.mjs` (simulación por defecto, `--apply`).
+
+Instagram no informa quién sigue a la cuenta ni desde cuándo: «chat iniciado
+fuera del sistema» no distingue si ManyChat escribió por un follow, un comentario
+o una historia. Para eso, ManyChat tendría que avisarnos (por un webhook) qué
+disparador usó.
 
 ### De los comentarios (F86)
 
@@ -98,6 +116,10 @@ pueda anotar de dónde vino no puede ser un error del webhook.
   única señal que va a haber. Nace anónimo, que el sistema ya sabe ocultar de las
   listas y no cuenta como "contacto nuevo". Si después escribe por otro canal,
   `find_or_link_contact` los unifica.
+- **En Instagram, el comentario se une al contacto también por el id del autor**
+  (el mismo `platform_sender_id` del canal), no solo por el @: el contacto que
+  nace por el eco de ManyChat no tiene el @ guardado. Lo hacen `attributeComment`
+  al llegar el comentario y el job `comment_backfill` hacia atrás.
 - Los comentarios propios no crean contacto ni toque.
 - El toque lleva `social_post_id` y `content_post_id` cuando la publicación se
   conoce, y por eso después se puede contar por publicación y por pieza.
