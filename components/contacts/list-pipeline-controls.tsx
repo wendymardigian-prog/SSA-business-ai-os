@@ -1,23 +1,13 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
-import { Columns3 } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
-import {
-  COLUMNS_STORAGE_KEY,
-  CUSTOM_FILTER_OP_LABELS,
-  opsForType,
-  parseVisibleColumns,
-  type CustomFieldRef,
-  type CustomFilterOp,
-  type OptionalColumn,
-} from "@/lib/contacts/list-filters";
+import { CUSTOM_FILTER_OP_LABELS, opsForType, type CustomFieldRef, type CustomFilterOp } from "@/lib/contacts/list-filters";
 
 /**
- * Los controles nuevos de la lista de contactos (pipeline): el filtro por un
- * campo personalizado y el selector de columnas. La lógica vive en
- * `lib/contacts/list-filters.ts`; esto solo la compone.
+ * El filtro por un campo personalizado de la lista de contactos. La lógica
+ * vive en `lib/contacts/list-filters.ts`; esto solo la compone. Las columnas
+ * están en `columns-menu.tsx`.
  */
 
 /**
@@ -109,85 +99,5 @@ export function CustomFieldFilter({
         </button>
       )}
     </div>
-  );
-}
-
-/**
- * Qué columnas opcionales se ven: Estado, Producto y cada campo personalizado.
- * Es una preferencia de cada persona: vive en `localStorage` (siempre en
- * try/catch; sin poder leerlo, las de por defecto). Con
- * `useSyncExternalStore`, así el servidor dibuja
- * las de por defecto y el navegador las de la persona sin un render de más.
- */
-const COLUMNS_EVENT = "contacts:columns-changed";
-function subscribeColumns(onChange: () => void): () => void {
-  window.addEventListener("storage", onChange);
-  window.addEventListener(COLUMNS_EVENT, onChange);
-  return () => {
-    window.removeEventListener("storage", onChange);
-    window.removeEventListener(COLUMNS_EVENT, onChange);
-  };
-}
-function readColumns(): string | null {
-  try {
-    return window.localStorage.getItem(COLUMNS_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function useVisibleColumns(fieldIds: string[]) {
-  const raw = useSyncExternalStore(subscribeColumns, readColumns, () => null);
-  const key = fieldIds.join(",");
-  const columns = useMemo(() => parseVisibleColumns(raw, key ? key.split(",") : []), [raw, key]);
-
-  function toggle(column: OptionalColumn) {
-    const next = columns.includes(column) ? columns.filter((c) => c !== column) : [...columns, column];
-    try {
-      window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // Sin almacenamiento: no se guarda.
-    }
-    window.dispatchEvent(new Event(COLUMNS_EVENT));
-  }
-  return { columns, toggle };
-}
-
-export function ColumnsMenu({
-  fields,
-  columns,
-  onToggle,
-}: {
-  fields: CustomFieldRef[];
-  columns: OptionalColumn[];
-  onToggle: (column: OptionalColumn) => void;
-}) {
-  const options: Array<{ value: OptionalColumn; label: string }> = [
-    { value: "status", label: "Estado" },
-    { value: "product", label: "Producto de interés" },
-    { value: "email_status", label: "Estado de email" },
-    ...fields.map((f) => ({ value: `cf:${f.id}` as OptionalColumn, label: f.name })),
-  ];
-  return (
-    <FilterMenu
-      label="Columnas"
-      compact
-      active={false}
-      icon={<Columns3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
-      menuClassName="topbar:w-[260px]"
-    >
-      <div className="max-h-80 space-y-1 overflow-y-auto px-2.5 pb-2">
-        <MenuGroupLabel>Columnas</MenuGroupLabel>
-        {options.map((o, i) => (
-          <div key={o.value}>
-            {i === 2 && <MenuGroupLabel>Campos personalizados</MenuGroupLabel>}
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1 text-sm hover:bg-accent">
-              <input type="checkbox" checked={columns.includes(o.value)} onChange={() => onToggle(o.value)} className="h-4 w-4 accent-primary" />
-              {o.label}
-            </label>
-          </div>
-        ))}
-      </div>
-    </FilterMenu>
   );
 }

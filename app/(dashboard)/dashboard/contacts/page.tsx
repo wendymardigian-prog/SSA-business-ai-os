@@ -1,16 +1,27 @@
-import { attributionClauses, parseAttributionFilters } from "@/lib/contacts/attribution-filter";
 import { getWorkspace } from "@/lib/workspace";
 import { requirePermission } from "@/lib/auth/guards";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { ContactsView, type ContactRow } from "./contacts-view";
 import type { LeadTemperature } from "@/lib/types/database";
-import { isSupportedPlatform, platformLabel } from "@/lib/platforms";
-import { LEAD_TEMPERATURES } from "@/lib/contacts/fields";
-import { contactOrderClauses, parseContactSort } from "@/lib/contacts/sort";
-import { firstParam, pickEnum, pickPage, sanitizeSearch } from "@/lib/url-params";
-import { contactSearchFilter } from "@/lib/contacts/search";
-import { contactIdsByWhatsappLid } from "@/lib/contacts/search-lid";
-import { customFilterPlan, parseCustomFilter, parsePipelineFilters, pipelineClauses } from "@/lib/contacts/list-filters";
+import { platformLabel } from "@/lib/platforms";
+import { contactOrderClauses, parseContactSort, type ContactSort } from "@/lib/contacts/sort";
+import { firstParam, pickPage, sanitizeSearch } from "@/lib/url-params";
+import { customFilterRawValue, filterValues, type ContactListFilters, type ContactListPlan } from "@/lib/contacts/list-query";
+import { contactListQuery, loadCustomFieldRefs, loadKanbanColumn, loadModuleFilterOptions, prepareContactList } from "@/lib/contacts/list-load";
+import { coreFilterOptions } from "@/lib/contacts/filters/options";
+import { contactCells } from "@/lib/contacts/columns";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
+import {
+  KANBAN_PAGE_SIZE,
+  groupingRole,
+  kanbanColumnDefs,
+  parseContactView,
+  parseKanbanGrouping,
+  visibleKanbanColumns,
+  type KanbanColumn,
+  type KanbanGrouping,
+} from "@/lib/contacts/kanban";
+import type { ContactStatusSettings } from "@/lib/contacts/statuses";
 import { loadContactStatusSettings } from "@/lib/contacts/status-settings-load";
 import { loadInterestCatalog } from "@/lib/contacts/interest-load";
 import { isEmailStatus } from "@/lib/email/subscription";
@@ -30,12 +41,15 @@ import { isEmailStatus } from "@/lib/email/subscription";
  *
  * El estado de los filtros vive en la URL, asi que una vista filtrada se puede
  * compartir o guardar en favoritos.
+ *
+ * Dos vistas con los MISMOS filtros (`lib/contacts/list-query.ts`): la tabla
+ * paginada y el Kanban (`?vista=kanban`), una columna por estado de setter o de
+ * vendedor (`?agrupar=`), cada una con su total y sus primeras tarjetas.
  */
 
 const PAGE_SIZE = 25;
 
-/** "" oculta los anonimos (default), "1" los suma, "solo" muestra solo esos. */
-const ANON_FILTER_VALUES = ["", "1", "solo"] as const;
+type Client = Awaited<ReturnType<typeof getWorkspace>>["supabase"];
 
 export default async function ContactsPage({
   searchParams,
@@ -44,98 +58,30 @@ export default async function ContactsPage({
 }) {
   const params = await searchParams;
   // Equipo y roles (F21): la pagina pide su permiso; el alcance de los contactos lo sigue aplicando la RLS.
-  await requirePermission("contacts.view");
+  const permission = await requirePermission("contacts.view");
   const { workspace, supabase } = await getWorkspace();
 
   const search = sanitizeSearch(firstParam(params.q));
-  const tagId = firstParam(params.tag);
-  const setterId = firstParam(params.setter);
-  const vendedorId = firstParam(params.vendedor);
-  // Los dos vienen de la URL, asi que se validan contra su lista antes de
-  // llegar a la consulta: un valor inventado se ignora en vez de romper.
-  const temperature = pickEnum<LeadTemperature>(params.temp, LEAD_TEMPERATURES);
-  const platformParam = firstParam(params.canal);
-  const platform = isSupportedPlatform(platformParam) ? platformParam : "";
-  // Los contactos sin datos (los "Instagram User") se ocultan por defecto: son
-  // mas de la mitad de la tabla y no se puede trabajar con ellos hasta que la
-  // persona responda. "1" los muestra, "solo" deja unicamente esos.
-  const anon = pickEnum(params.anon, ANON_FILTER_VALUES);
   const page = pickPage(params.page);
   // El orden de la lista (`?orden=`): una lista cerrada, con el de siempre por defecto.
   const sort = parseContactSort(params.orden);
-  // Por PRIMER toque (F88): quien lo trajo, no lo ultimo que hizo. Los valores
-  // se validan contra la taxonomia; uno inventado se ignora.
-  const attribution = parseAttributionFilters(params);
-  // Pipeline (00245/00246): estado (el ultimo o el de cada rol) y producto de interes.
-  const pipeline = parsePipelineFilters(params);
-  // Suscripcion a emails (00270): el estado de email del contacto. Un valor inventado se ignora.
-  const emailParam = firstParam(params.email);
-  const emailStatus = isEmailStatus(emailParam) ? emailParam : "";
+  const view = parseContactView(params.vista);
+  const grouping = parseKanbanGrouping(params.agrupar);
 
   // Los campos personalizados (para el filtro y las columnas), las listas de
   // estados y el catalogo de productos: se piden antes porque el filtro por
   // campo necesita saber su tipo.
-  const [fieldDefsRes, statusSettings, interestCatalog] = await Promise.all([
-    supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).is("deleted_at", null).order("name"),
+  const [customFields, statusSettings, interestCatalog, timeZone] = await Promise.all([
+    loadCustomFieldRefs(supabase, workspace.id),
     loadContactStatusSettings(workspace.id),
     loadInterestCatalog(supabase, workspace.id),
+    // "Hoy" y "los últimos 7 días" de los filtros de fecha son los de quien mira.
+    resolveViewerTimezone(workspace.timezone),
   ]);
-  const customFields = fieldDefsRes.data ?? [];
-  const customFilter = parseCustomFilter(params, customFields);
-  const customPlan = customFilter ? customFilterPlan(customFilter) : null;
 
-  // Los embeds con alias permiten filtrar por tag o por canal sin perder la
-  // lista completa de tags de cada contacto: `tag_match` e `channel_match` son
-  // inner joins que recortan QUE contactos vuelven, y `contact_tags` sigue
-  // trayendo todos los tags de los que vuelven.
-  let select = "*, contact_tags(tag_id, tags(id, name, color))";
-  if (tagId) select += ", tag_match:contact_tags!inner(tag_id)";
-  if (platform) select += ", channel_match:contact_channels!inner(channels!inner(platform))";
-  // Por campo personalizado (00244): un join interno con la condicion, o un
-  // anti-join para "esta vacio" (el contacto no tiene fila para ese campo).
-  if (customPlan) select += customPlan.join === "anti" ? ", cf_match:contact_custom_fields(field_id)" : ", cf_match:contact_custom_fields!inner(field_id)";
-
-  let query = supabase
-    .from("contacts")
-    .select(select, { count: "exact" })
-    .eq("workspace_id", workspace.id)
-    .is("deleted_at", null);
-
-  if (search) {
-    // La misma regla que la bandeja (lib/contacts/search.ts): ademas de nombre,
-    // emails, telefonos y los @, el telefono escrito con espacios y el id de
-    // WhatsApp de quien escribio sin numero.
-    const lidContactIds = await contactIdsByWhatsappLid(supabase, workspace.id, search);
-    const filter = contactSearchFilter(search, lidContactIds);
-    if (filter) query = query.or(filter);
-  }
-
-  if (tagId) query = query.eq("tag_match.tag_id", tagId);
-  if (platform) query = query.eq("channel_match.channels.platform", platform);
-  if (setterId) query = query.eq("setter_id", setterId);
-  if (vendedorId) query = query.eq("vendedor_id", vendedorId);
-  if (temperature) query = query.eq("lead_temperature", temperature);
-  for (const { path, value } of attributionClauses(attribution)) query = query.eq(path, value);
-  for (const clause of pipelineClauses(pipeline)) {
-    query = clause.op === "is_null" ? query.is(clause.column, null) : query.eq(clause.column, clause.value as string);
-  }
-  if (customPlan) {
-    query = query.eq("cf_match.field_id", customPlan.fieldId);
-    if (customPlan.join === "anti") query = query.is("cf_match", null);
-    else {
-      const col = `cf_match.${customPlan.column}`;
-      if (customPlan.op === "not_null") query = query.not(col, "is", null);
-      else if (customPlan.op === "ilike") query = query.ilike(col, String(customPlan.value));
-      else if (customPlan.op === "gt") query = query.gt(col, customPlan.value as string | number);
-      else if (customPlan.op === "lt") query = query.lt(col, customPlan.value as string | number);
-      else query = query.eq(col, customPlan.value as string | number);
-    }
-  }
-  if (emailStatus) query = query.eq("email_status", emailStatus);
-  if (anon === "solo") query = query.eq("is_anonymous", true);
-  else if (anon !== "1") query = query.eq("is_anonymous", false);
-
-  const from = (page - 1) * PAGE_SIZE;
+  // Todos los filtros salen de la URL y se validan en UN lugar
+  // (lib/contacts/list-query.ts): lo mismo que filtra la tabla filtra el Kanban.
+  const { filters, plan } = await prepareContactList(supabase, workspace.id, params, customFields, search, { now: new Date(), timeZone });
 
   // Cuantos quedaron afuera por ser anonimos. Sin este numero, la lista pasa de
   // 171 a 72 sin explicacion y parece que se perdieron contactos.
@@ -146,22 +92,107 @@ export default async function ContactsPage({
     .is("deleted_at", null)
     .eq("is_anonymous", true);
 
-  const [contactsRes, tagsRes, channelsRes, members, anonymousRes] = await Promise.all([
-    contactOrderClauses(sort)
-      .reduce(
-        (q, clause) => q.order(clause.column, { ascending: clause.ascending, nullsFirst: clause.nullsFirst }),
-        query,
-      )
-      .range(from, from + PAGE_SIZE - 1),
+  const [listing, tagsRes, channelsRes, members, anonymousRes, moduleOptions] = await Promise.all([
+    view === "kanban"
+      ? loadKanban(supabase, workspace.id, plan, statusSettings, grouping, filters, sort)
+      : loadTablePage(supabase, workspace.id, plan, sort, page, customFields.length > 0),
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
-    supabase
-      .from("channels")
-      .select("platform")
-      .eq("workspace_id", workspace.id)
-      .eq("is_active", true),
+    supabase.from("channels").select("platform").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
     anonymousQuery,
+    loadModuleFilterOptions(supabase, workspace.id),
   ]);
+
+  const platforms = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort();
+  const tags = (tagsRes.data ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    color: t.color,
+    disablesAgent: t.disables_agent,
+    assignsTo: t.assigns_to,
+  }));
+  const memberRefs = members.map((m) => ({ userId: m.userId, label: m.name }));
+  const filterOptions = {
+    ...coreFilterOptions({
+      members: memberRefs,
+      tags,
+      platforms: platforms.map((p) => ({ value: p, label: platformLabel(p) })),
+      statusSettings,
+      interestCatalog,
+    }),
+    ...moduleOptions,
+  };
+
+  return (
+    <ContactsView
+      contacts={listing.contacts}
+      total={listing.total}
+      page={page}
+      pageSize={PAGE_SIZE}
+      view={view}
+      grouping={grouping}
+      kanban={listing.kanban}
+      canEdit={permission.can("contacts.edit")}
+      tags={tags}
+      filterOptions={filterOptions}
+      members={memberRefs}
+      filters={filters}
+      customFilter={filters.custom ? { slug: filters.custom.field.slug, op: filters.custom.op, value: customFilterRawValue(params) } : null}
+      customFields={customFields}
+      statusSettings={statusSettings}
+      interestCatalog={interestCatalog}
+      anonymousCount={anonymousRes.count ?? 0}
+      sort={sort}
+    />
+  );
+}
+
+interface Listing {
+  contacts: ContactRow[];
+  total: number;
+  kanban: KanbanColumn[] | null;
+}
+
+/**
+ * El Kanban: una consulta por columna, en paralelo. Cada una trae su total con
+ * los filtros puestos y sus primeras tarjetas. Si se filtra por estados del
+ * mismo rol que se agrupa, solo esas columnas.
+ */
+async function loadKanban(
+  supabase: Client,
+  workspaceId: string,
+  plan: ContactListPlan,
+  statusSettings: ContactStatusSettings,
+  grouping: KanbanGrouping,
+  filters: ContactListFilters,
+  sort: ContactSort,
+): Promise<Listing> {
+  const role = groupingRole(grouping);
+  const defs = kanbanColumnDefs(statusSettings[role], filterValues(filters, role === "setter" ? "estado_setter" : "estado_vendedor"));
+  const loaded = await Promise.all(
+    defs.map(async (def) => {
+      const column = await loadKanbanColumn(supabase, workspaceId, plan, role, def.key, sort, 0, KANBAN_PAGE_SIZE);
+      return { ...def, cards: column.cards, total: column.total };
+    }),
+  );
+  const kanban = visibleKanbanColumns(loaded);
+  return { contacts: [], total: kanban.reduce((sum, c) => sum + c.total, 0), kanban };
+}
+
+/** La tabla: una pagina de contactos con sus etiquetas y los valores de los campos personalizados. */
+async function loadTablePage(
+  supabase: Client,
+  workspaceId: string,
+  plan: ContactListPlan,
+  sort: ContactSort,
+  page: number,
+  withCustomFields: boolean,
+): Promise<Listing> {
+  const from = (page - 1) * PAGE_SIZE;
+  const query = contactListQuery(supabase, workspaceId, "*, contact_tags(tag_id, tags(id, name, color))", plan);
+  const contactsRes = await contactOrderClauses(sort)
+    .reduce((q, clause) => q.order(clause.column, { ascending: clause.ascending, nullsFirst: clause.nullsFirst }), query)
+    .range(from, from + PAGE_SIZE - 1);
 
   if (contactsRes.error) {
     console.error("[contacts] listado fallido:", contactsRes.error.message);
@@ -178,7 +209,7 @@ export default async function ContactsPage({
   // Los valores de los campos personalizados de ESTA pagina (para las columnas que la persona elija).
   const pageIds = rows.map((c) => c.id as string);
   const customValues: Record<string, Record<string, string>> = {};
-  if (pageIds.length > 0 && customFields.length > 0) {
+  if (pageIds.length > 0 && withCustomFields) {
     const { data: values } = await supabase.from("contact_custom_fields").select("contact_id, field_id, value").in("contact_id", pageIds);
     for (const v of values ?? []) (customValues[v.contact_id] ??= {})[v.field_id] = v.value;
   }
@@ -201,43 +232,13 @@ export default async function ContactsPage({
       .filter((t): t is { id: string; name: string; color: string | null } => Boolean(t)),
     lastStatusRole: c.last_status_role === "setter" || c.last_status_role === "closer" ? c.last_status_role : null,
     lastStatus: (c.last_status as string | null) ?? null,
+    setterStatus: (c.setter_status as string | null) ?? null,
+    closerStatus: (c.closer_status as string | null) ?? null,
     interestProductId: (c.interest_product_id as string | null) ?? null,
     interestVariantId: (c.interest_variant_id as string | null) ?? null,
     custom: customValues[c.id as string] ?? {},
+    cells: contactCells(c),
   }));
 
-  const platforms = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort();
-
-  return (
-    <ContactsView
-      contacts={contacts}
-      total={contactsRes.count ?? 0}
-      page={page}
-      pageSize={PAGE_SIZE}
-      tags={(tagsRes.data ?? []).map((t) => ({
-        id: t.id,
-        name: t.name,
-        color: t.color,
-        disablesAgent: t.disables_agent,
-        assignsTo: t.assigns_to,
-      }))}
-      platforms={platforms.map((p) => ({ value: p, label: platformLabel(p) }))}
-      members={members.map((m) => ({ userId: m.userId, label: m.name }))}
-      filters={{
-        search, tagId, setterId, vendedorId, temperature, platform, anon, source: attribution.source, medium: attribution.medium,
-        lastStatus: firstParam(params.estado) && pipeline.lastStatus ? `${pipeline.lastStatus.role}:${pipeline.lastStatus.key}` : "",
-        setterStatus: pipeline.setterStatus,
-        closerStatus: pipeline.closerStatus,
-        productId: pipeline.productId,
-        emailStatus,
-        customField: customFilter ? customFilter.field.slug : "",
-      }}
-      customFilter={customFilter ? { slug: customFilter.field.slug, op: customFilter.op, value: firstParam(params.valor) } : null}
-      customFields={customFields}
-      statusSettings={statusSettings}
-      interestCatalog={interestCatalog}
-      anonymousCount={anonymousRes.count ?? 0}
-      sort={sort}
-    />
-  );
+  return { contacts, total: contactsRes.count ?? 0, kanban: null };
 }

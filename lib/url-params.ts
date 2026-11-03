@@ -115,3 +115,17 @@ export function toggleListParam(
   for (const v of kept) next.append(key, v);
   return next;
 }
+
+/**
+ * Un `URLSearchParams` (lo que manda el navegador a una Server Action) con la
+ * misma forma que los `searchParams` de una página: un valor suelto o la lista
+ * si se repite. Así el mismo parser sirve para los dos.
+ */
+export function searchParamsToRecord(params: URLSearchParams): SearchParams {
+  const out: SearchParams = {};
+  for (const key of new Set(params.keys())) {
+    const values = params.getAll(key);
+    out[key] = values.length > 1 ? values : values[0];
+  }
+  return out;
+}

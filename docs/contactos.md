@@ -42,3 +42,15 @@ Cómo se reconoce a una persona y cómo nace un contacto. Plan y decisiones en `
 ## Índices únicos (00205)
 
 Un teléfono o un email principal solo puede ser de un contacto **vivo** por workspace (`uq_contacts_workspace_phone`, `uq_contacts_workspace_email`). Están escritos y ensayados, pero **se aplican después de desplegar el PR** (ver `docs/PENDIENTE-contactos.md`).
+
+## Lista: vistas, columnas y filtros (3/11/2026)
+
+La lista de contactos tiene dos vistas con los MISMOS filtros: la tabla y el Kanban (`?vista=kanban`, agrupado por estado de setter o de vendedor).
+
+- **Un solo planificador**: `lib/contacts/list-query.ts` lee la URL (`parseContactListFilters`) y arma la consulta (`contactListPlan`). Lo usan la tabla, cada columna del Kanban y "Cargar más". Qué filtros existen lo dice el catálogo: `lib/contacts/filters/catalog.ts` (los de la tabla `contacts`) más las áreas de `lib/contacts/related/*`, registradas en `lib/contacts/list-modules.ts`.
+- **Cada filtro valida lo suyo** (`accepts`): un uuid, una clave de estado, un valor de lista cerrada o un texto seguro (`isSafeText`, sin comillas ni barras). Lo inventado se ignora. Varias opciones = "cualquiera de" (`?setter=a&setter=b`); un link viejo de un valor sigue andando.
+- **Fechas** (`lib/contacts/filters/dates.ts`): un atajo (`hoy`, `7d`, `vencido`, `sin`, `proximas`…) o un rango `AAAA-MM-DD..AAAA-MM-DD`, contados en la zona de quien mira.
+- **Registros relacionados**: "tiene" es un join `!inner`, y todas las condiciones de "tiene" sobre una misma tabla van en el mismo join (una agenda que cumple todo); cada "no tiene" es un anti-join propio (`is null`). Respetan la RLS de cada tabla (`relatedPlan`).
+- **Columnas** (`lib/contacts/columns.ts`): Nombre fija; las de siempre visibles y las nuevas ocultas. Lo que ve cada persona vive en `localStorage` (`contacts-columns`, formato `{ v: 2, visible }`; el formato viejo se migra). Las de la fila del contacto se arman en el servidor (`contactCells`); las de registros relacionados se piden después de dibujar, solo para la página visible y solo las visibles (`loadContactColumnCells` → `loadRelatedCells`).
+- **Sumar un filtro o una columna** es una entrada en el catálogo o en el área que corresponda; la pantalla no cambia. Un área de un módulo que la plantilla de estudiantes no lleva (Ventas, Formularios, Tareas, Llamadas) va en su archivo, listado en `scripts/plantilla/perfiles/estudiantes.mjs`, y su línea de `list-modules.ts` lleva la marca.
+- **Migración `00283_contacts_list_filters`** (aditiva): `contact_attribution_options` (SECURITY INVOKER, las opciones de campaña, contenido y término) e índices para los filtros nuevos. Sin ella, esos tres filtros quedan sin opciones y no se muestran; el resto anda igual.

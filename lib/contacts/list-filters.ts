@@ -1,60 +1,18 @@
 /**
- * Los filtros y columnas nuevos de la lista de contactos (pipeline, 00244-00246):
- * estado, producto de interés y campos personalizados.
+ * El filtro por campo personalizado (00244) de la lista de contactos. El resto
+ * de los filtros vive en el catálogo (`filters/catalog.ts`) y las columnas en
+ * `columns.ts`.
  *
  * Puro: lo usan la página (para armar la consulta) y la vista (para los
  * controles). Todo viene de la URL, así que se valida contra lo que existe:
  * un valor inventado se ignora en vez de romper la consulta.
  */
 import { normalizeCustomValue } from "@/lib/custom-fields";
-import { STATUS_KEY_RE, parseLastStatusParam, type StatusRole } from "./statuses";
 
-// ---------------------------------------------------------------------------
-// Estado y producto
-// ---------------------------------------------------------------------------
-
-export interface PipelineFilters {
-  /** `?estado=setter:calificado`: el ÚLTIMO estado. */
-  lastStatus: { role: StatusRole; key: string } | null;
-  /** `?estado_setter=` y `?estado_vendedor=`: el estado de cada rol. "ninguno" = sin estado. */
-  setterStatus: string;
-  closerStatus: string;
-  /** `?producto=<id>` o "ninguno". */
-  productId: string;
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const NONE = "ninguno";
+/** "ninguno" en un filtro: sin estado, sin producto, sin asignar. */
+export { NONE } from "./filters/types";
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
-const statusParam = (raw: string) => (raw === NONE || STATUS_KEY_RE.test(raw) ? raw : "");
-
-export function parsePipelineFilters(params: Record<string, string | string[] | undefined>): PipelineFilters {
-  const product = first(params.producto);
-  return {
-    lastStatus: parseLastStatusParam(first(params.estado)),
-    setterStatus: statusParam(first(params.estado_setter)),
-    closerStatus: statusParam(first(params.estado_vendedor)),
-    productId: product === NONE || UUID.test(product) ? product : "",
-  };
-}
-
-/** Las condiciones para la consulta de contactos: `eq` o `is null` sobre una columna. */
-export function pipelineClauses(f: PipelineFilters): Array<{ column: string; op: "eq" | "is_null"; value?: string }> {
-  const out: Array<{ column: string; op: "eq" | "is_null"; value?: string }> = [];
-  if (f.lastStatus) {
-    out.push({ column: "last_status_role", op: "eq", value: f.lastStatus.role });
-    out.push({ column: "last_status", op: "eq", value: f.lastStatus.key });
-  }
-  const byRole = (column: string, value: string) => {
-    if (!value) return;
-    out.push(value === NONE ? { column, op: "is_null" } : { column, op: "eq", value });
-  };
-  byRole("setter_status", f.setterStatus);
-  byRole("closer_status", f.closerStatus);
-  byRole("interest_product_id", f.productId);
-  return out;
-}
 
 // ---------------------------------------------------------------------------
 // Campos personalizados
@@ -145,34 +103,4 @@ export function customFilterPlan(f: CustomFilter): CustomFilterPlan {
     return { join: "inner", fieldId, column: "value_date", op: f.op === "after" ? "gt" : f.op === "before" ? "lt" : "eq", value: f.value };
   }
   return { join: "inner", fieldId, column: "value", op: "eq", value: f.value };
-}
-
-// ---------------------------------------------------------------------------
-// Las columnas elegidas (localStorage, por persona)
-// ---------------------------------------------------------------------------
-
-export const COLUMNS_STORAGE_KEY = "contacts-columns";
-
-/** Las columnas opcionales fijas; las de campos personalizados son `cf:<id>`. */
-export const OPTIONAL_COLUMNS = ["status", "product", "email_status"] as const;
-export type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number] | `cf:${string}`;
-
-/** Por defecto se ven Estado y Producto; el estado de email y los campos personalizados se suman a mano. */
-export const DEFAULT_VISIBLE_COLUMNS: OptionalColumn[] = ["status", "product"];
-
-/** Lee lo guardado. Nunca lanza: algo roto o vacío vuelve a las de por defecto. */
-export function parseVisibleColumns(raw: string | null | undefined, fieldIds: readonly string[]): OptionalColumn[] {
-  if (!raw) return [...DEFAULT_VISIBLE_COLUMNS];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [...DEFAULT_VISIBLE_COLUMNS];
-    const ids = new Set(fieldIds);
-    const out = parsed.filter(
-      (c): c is OptionalColumn =>
-        typeof c === "string" && ((OPTIONAL_COLUMNS as readonly string[]).includes(c) || (c.startsWith("cf:") && ids.has(c.slice(3)))),
-    );
-    return [...new Set(out)];
-  } catch {
-    return [...DEFAULT_VISIBLE_COLUMNS];
-  }
 }
