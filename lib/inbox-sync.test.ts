@@ -23,6 +23,8 @@ function makeFakeSupabase(seed: {
   contactChannelBySender?: Record<string, string>;
   /** Contactos que ya tienen fila en el canal: el upsert con ignoreDuplicates choca y no devuelve filas. */
   conversationContactIds?: string[];
+  /** El nombre que tiene hoy el contacto de cada conversacion conocida (por defecto, uno de verdad). */
+  knownNames?: Record<string, string | null>;
 }) {
   const upserts: CapturedRow[] = [];
   const updates: CapturedRow[] = [];
@@ -54,17 +56,27 @@ function makeFakeSupabase(seed: {
             table === "conversations"
               ? (seed.existingConversationIds ?? [])
                   .filter((id) => inValues.includes(id))
-                  .map((id) => ({ late_conversation_id: id }))
+                  .map((id) => ({
+                    late_conversation_id: id,
+                    contact_id: `contact-of-${id}`,
+                    contacts: { display_name: seed.knownNames && id in seed.knownNames ? seed.knownNames[id] : "Nombre Real" },
+                  }))
               : [];
           return Promise.resolve({ data, error: null }).then(resolve);
         },
         update(patch: Record<string, unknown>) {
-          return {
-            eq() {
-              updates.push({ table, row: patch });
-              return Promise.resolve({ data: null, error: null });
+          const captured: CapturedRow = { table, row: patch, options: {} };
+          updates.push(captured);
+          const chain = {
+            eq(col: string, value: unknown) {
+              captured.options![col] = value;
+              return chain;
+            },
+            then(resolve: (value: { data: null; error: null }) => unknown) {
+              return Promise.resolve({ data: null, error: null }).then(resolve);
             },
           };
+          return chain;
         },
         upsert(row: Record<string, unknown>, options?: Record<string, unknown>) {
           upserts.push({ table, row, options });
@@ -212,7 +224,9 @@ describe("importInboxPage", () => {
     const res = await run(fake, z.zernio);
 
     expect(res.imported).toBe(1);
-    expect(fake.updates).toEqual([{ table: "contacts", row: { last_interaction_at: "2026-08-01T00:00:00Z" } }]);
+    expect(fake.updates).toEqual([
+      { table: "contacts", row: { last_interaction_at: "2026-08-01T00:00:00Z" }, options: { id: "contact-existente" } },
+    ]);
   });
 
   it("saltea lo que no tiene id o persona, pero lo cuenta como mirado", async () => {
@@ -280,5 +294,85 @@ describe("importInboxPage", () => {
     const res = await run(fake, z.zernio);
 
     expect(res.hasMore).toBe(false);
+  });
+
+  describe("una conversacion que ya esta con un relleno como nombre (00284)", () => {
+    it("con el nombre que ahora trae Zernio, pasa por la regla de siempre sin sellar la fecha", async () => {
+      const fake = makeFakeSupabase({ existingConversationIds: ["c1"], knownNames: { c1: "1860383452043344" } });
+      const z = makeZernio([
+        { data: [{ id: "c1", participantId: "1860383452043344", participantName: "Ana Gomez", participantUsername: "ana" }] },
+      ]);
+
+      const res = await run(fake, z.zernio);
+
+      expect(res.imported).toBe(0);
+      expect(fake.upserts).toHaveLength(0);
+      expect(fake.rpcCalls).toHaveLength(1);
+      expect(fake.rpcCalls[0].args).toMatchObject({
+        p_sender_id: "1860383452043344",
+        p_display_name: "Ana Gomez",
+        p_username: "ana",
+        p_stamp_existing: false,
+      });
+    });
+
+    it("con solo el @usuario y el id como nombre, lo cambia a @usuario si el nombre no cambio", async () => {
+      const fake = makeFakeSupabase({ existingConversationIds: ["c1"], knownNames: { c1: "1860383452043344" } });
+      const z = makeZernio([
+        { data: [{ id: "c1", participantId: "1860383452043344", participantUsername: "ana" }] },
+      ]);
+
+      await run(fake, z.zernio);
+
+      expect(fake.rpcCalls).toHaveLength(0);
+      expect(fake.updates).toEqual([
+        {
+          table: "contacts",
+          row: { display_name: "@ana" },
+          options: { id: "contact-of-c1", display_name: "1860383452043344" },
+        },
+      ]);
+    });
+
+    it("un nombre de verdad no se toca", async () => {
+      const fake = makeFakeSupabase({ existingConversationIds: ["c1"], knownNames: { c1: "Ana (la del gym)" } });
+      const z = makeZernio([
+        { data: [{ id: "c1", participantId: "s1", participantName: "Ana Gomez", participantUsername: "ana" }] },
+      ]);
+
+      await run(fake, z.zernio);
+
+      expect(fake.rpcCalls).toHaveLength(0);
+      expect(fake.updates).toHaveLength(0);
+    });
+
+    it("si Zernio tampoco sabe quien es, no escribe nada", async () => {
+      const fake = makeFakeSupabase({ existingConversationIds: ["c1"], knownNames: { c1: "1860383452043344" } });
+      const z = makeZernio([{ data: [{ id: "c1", participantId: "1860383452043344" }] }]);
+
+      await run(fake, z.zernio);
+
+      expect(fake.rpcCalls).toHaveLength(0);
+      expect(fake.updates).toHaveLength(0);
+    });
+
+    it("un @usuario no se cambia por otro relleno: espera el nombre de verdad", async () => {
+      const fake = makeFakeSupabase({ existingConversationIds: ["c1"], knownNames: { c1: "@ana" } });
+      const z = makeZernio([{ data: [{ id: "c1", participantId: "s1", participantUsername: "ana" }] }]);
+
+      await run(fake, z.zernio);
+
+      expect(fake.rpcCalls).toHaveLength(0);
+      expect(fake.updates).toHaveLength(0);
+    });
+  });
+
+  it("una conversacion nueva sin nombre nace con el @usuario, no con el id", async () => {
+    const fake = makeFakeSupabase({});
+    const z = makeZernio([{ data: [{ id: "c1", participantId: "1860383452043344", participantUsername: "ana" }] }]);
+
+    await run(fake, z.zernio);
+
+    expect(fake.rpcCalls[0].args.p_display_name).toBe("@ana");
   });
 });

@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { lastFunctionDefinition } from "@/lib/test-utils/migrations";
 import {
   PLACEHOLDER_NAMES,
+  ID_NAME_PATTERN,
+  HANDLE_NAME_PATTERN,
+  fallbackContactName,
   isPlaceholderName,
   isAnonymousContact,
   profileUpdateFor,
@@ -28,6 +31,46 @@ describe("isPlaceholderName", () => {
     expect(isPlaceholderName("Ana Gomez")).toBe(false);
     expect(isPlaceholderName("Instagram Users SA")).toBe(false);
   });
+
+  it("el id de la plataforma o un telefono como nombre es un relleno (00284)", () => {
+    expect(isPlaceholderName("1860383452043344")).toBe(true);
+    expect(isPlaceholderName(" 1860383452043344 ")).toBe(true);
+    expect(isPlaceholderName("+5491112345678")).toBe(true);
+    expect(isPlaceholderName("5491112345678")).toBe(true);
+  });
+
+  it("un solo @usuario como nombre es un relleno (00284)", () => {
+    expect(isPlaceholderName("@ana.gomez")).toBe(true);
+    expect(isPlaceholderName("@ana_gomez_23")).toBe(true);
+  });
+
+  it("un nombre con numeros, un numero corto o un @ con mas texto NO son relleno", () => {
+    expect(isPlaceholderName("Ana 2")).toBe(false);
+    expect(isPlaceholderName("1234567")).toBe(false);
+    expect(isPlaceholderName("Ana +54 9 11 1234 5678")).toBe(false);
+    expect(isPlaceholderName("@ana (la del gimnasio)")).toBe(false);
+    expect(isPlaceholderName("Ana @ Gym")).toBe(false);
+  });
+});
+
+describe("fallbackContactName", () => {
+  it("el nombre gana", () => {
+    expect(fallbackContactName("Ana Gomez", "ana", "123456789012")).toBe("Ana Gomez");
+  });
+
+  it("sin nombre, el @usuario (una sola arroba)", () => {
+    expect(fallbackContactName(null, "ana.gomez", "123456789012")).toBe("@ana.gomez");
+    expect(fallbackContactName("  ", "@ana", "123456789012")).toBe("@ana");
+  });
+
+  it("sin nombre ni usuario, el respaldo", () => {
+    expect(fallbackContactName(undefined, null, "123456789012")).toBe("123456789012");
+  });
+
+  it("todo respaldo es un relleno: el nombre real lo puede reemplazar despues", () => {
+    expect(isPlaceholderName(fallbackContactName(null, "ana.gomez", "x"))).toBe(true);
+    expect(isPlaceholderName(fallbackContactName(null, null, "1860383452043344"))).toBe(true);
+  });
 });
 
 describe("isAnonymousContact", () => {
@@ -46,6 +89,10 @@ describe("isAnonymousContact", () => {
     expect(isAnonymousContact({ ...base, whatsapp_phone: "+549" })).toBe(false);
     expect(isAnonymousContact({ ...base, instagram_username: "ana" })).toBe(false);
     expect(isAnonymousContact({ ...base, secondary_email: "a@x.com" })).toBe(false);
+  });
+
+  it("un id como nombre no lo vuelve anonimo: lo mismo que la columna is_anonymous (00032)", () => {
+    expect(isAnonymousContact({ display_name: "1860383452043344" })).toBe(false);
   });
 
   it("es sobre la identidad, no sobre el trabajo hecho: con tags y vendedor sigue siendo anonimo", () => {
@@ -113,5 +160,11 @@ describe("la lista de placeholders no se puede desincronizar del SQL", () => {
     for (const nombre of PLACEHOLDER_NAMES) {
       expect(lista, `falta "${nombre}" en la migracion`).toContain(`'${nombre}'`);
     }
+  });
+
+  it("las expresiones del id y del @usuario son las mismas en el TS y en el SQL", () => {
+    const sql = lastFunctionDefinition("public.is_placeholder_name")!.sql;
+    expect(sql).toContain(`~ '${ID_NAME_PATTERN}'`);
+    expect(sql).toContain(`~ '${HANDLE_NAME_PATTERN}'`);
   });
 });

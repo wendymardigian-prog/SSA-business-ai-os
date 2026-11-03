@@ -137,7 +137,8 @@ describe("ensureZernioConversation", () => {
       at: "2026-10-28T10:00:00Z",
       preview: "",
     });
-    expect(db.rpcCalls[0].args.p_display_name).toBe("solo_usuario");
+    // Con la "@": asi se ve que es un usuario y el nombre real lo reemplaza (00284).
+    expect(db.rpcCalls[0].args.p_display_name).toBe("@solo_usuario");
   });
 });
 

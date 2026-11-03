@@ -23,6 +23,7 @@ import { isNewerThanLastInbound, outboundCountsAsAnswered } from "@/lib/inbox/un
 import { applyConversationRules } from "@/lib/conversations/assignment";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { previewForMessage } from "@/lib/message-preview";
+import { fallbackContactName } from "@/lib/contacts/anonymous";
 
 type Db = SupabaseClient<Database>;
 
@@ -854,7 +855,7 @@ export async function ensureZernioConversation({
     supabase: supabase as unknown as SupabaseClient,
     channel,
     senderId: participantId,
-    senderName: participant.participantName || participant.participantUsername || participantId,
+    senderName: fallbackContactName(participant.participantName, participant.participantUsername, participantId),
     senderPicture: participant.participantPicture || null,
     senderUsername: participant.participantUsername || null,
     interactionAt: at,

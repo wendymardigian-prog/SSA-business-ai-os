@@ -30,10 +30,53 @@ function normalize(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
-/** true si el nombre es un placeholder de la plataforma y no algo que alguien escribio. */
-export function isPlaceholderName(name: string | null | undefined): boolean {
+/**
+ * Un nombre que es un id de la plataforma o un telefono: solo digitos (con un
+ * "+" opcional), 8 o mas. Es lo que guardaban los receptores cuando el canal no
+ * mandaba el nombre (el id de Instagram, "1860383452043344"), y como no estaba
+ * en la lista de arriba, el nombre real que llegaba despues nunca lo pisaba.
+ * Misma expresion, letra por letra, en `public.is_placeholder_name` (00284).
+ */
+export const ID_NAME_PATTERN = "^\\+?[0-9]{8,}$";
+
+/**
+ * Un nombre que es el @usuario: lo que se guarda cuando el canal manda el
+ * usuario pero no el nombre (`fallbackContactName`). Se ve mejor que un id y
+ * deja que el nombre real lo reemplace cuando llegue.
+ */
+export const HANDLE_NAME_PATTERN = "^@[A-Za-z0-9._]+$";
+
+const ID_NAME = new RegExp(ID_NAME_PATTERN);
+const HANDLE_NAME = new RegExp(HANDLE_NAME_PATTERN);
+
+/** Vacio o uno de la lista: lo mismo que mira la columna generada `is_anonymous` (00032). */
+function isListedPlaceholder(name: string | null | undefined): boolean {
   const clean = normalize(name);
   return clean === "" || (PLACEHOLDER_NAMES as readonly string[]).includes(clean);
+}
+
+/** true si el nombre es un placeholder de la plataforma y no algo que alguien escribio. */
+export function isPlaceholderName(name: string | null | undefined): boolean {
+  const trimmed = (name ?? "").trim();
+  return isListedPlaceholder(name) || ID_NAME.test(trimmed) || HANDLE_NAME.test(trimmed);
+}
+
+/**
+ * El nombre con el que nace un contacto cuando el canal no manda uno: el
+ * nombre si viene, si no "@usuario", si no el respaldo (el id de la
+ * plataforma o un relleno). Los dos ultimos son placeholders: el nombre real
+ * los reemplaza cuando la persona escribe.
+ */
+export function fallbackContactName(
+  name: string | null | undefined,
+  username: string | null | undefined,
+  fallback: string,
+): string {
+  const nombre = (name ?? "").trim();
+  if (nombre) return nombre;
+  const usuario = (username ?? "").trim().replace(/^@+/, "");
+  if (usuario) return `@${usuario}`;
+  return fallback;
 }
 
 export interface ContactIdentity {
@@ -54,8 +97,11 @@ export interface ContactIdentity {
  * saberse quien es.
  */
 export function isAnonymousContact(contact: ContactIdentity): boolean {
+  // La lista sola, sin el id ni el @usuario: es lo que calcula la columna
+  // generada `is_anonymous`, y las dos tienen que decir lo mismo. Un contacto
+  // con un @usuario como nombre ademas tiene `instagram_username`.
   return (
-    isPlaceholderName(contact.display_name) &&
+    isListedPlaceholder(contact.display_name) &&
     !contact.email &&
     !contact.secondary_email &&
     !contact.phone &&
