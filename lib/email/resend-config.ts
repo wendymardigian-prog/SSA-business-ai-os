@@ -8,7 +8,7 @@
  * Puro: lo usan el servidor y la pantalla. Nunca hay un secreto aca (el del webhook vive en Vault).
  */
 
-import { RESEND_WEBHOOK_EVENTS_LIST } from "./resend-events";
+import { RESEND_REQUIRED_EVENTS, RESEND_WEBHOOK_EVENTS_LIST } from "./resend-events";
 
 export const RESEND_CONNECTION_CONFIG_KEYS = [
   /** `full` (acceso completo) o `sending` (solo envio). Lo escribe la prueba de la key. */
@@ -91,7 +91,13 @@ export function primaryAddress(state: ResendConnectionState["receiving"]): strin
 /** Los eventos de SSA que le faltan al webhook guardado. */
 export function storedMissingEvents(state: ResendConnectionState): string[] {
   const have = new Set(state.webhook.events);
-  return RESEND_WEBHOOK_EVENTS_LIST.filter((e) => !have.has(e));
+  return RESEND_REQUIRED_EVENTS.filter((e) => !have.has(e));
+}
+
+/** Los eventos de resultados (entregas, aperturas, clics) que le faltan al webhook guardado. No son un error. */
+export function storedMissingOptionalEvents(state: ResendConnectionState): string[] {
+  const have = new Set(state.webhook.events);
+  return RESEND_WEBHOOK_EVENTS_LIST.filter((e) => !have.has(e) && !(RESEND_REQUIRED_EVENTS as readonly string[]).includes(e));
 }
 
 /**

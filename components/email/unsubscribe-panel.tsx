@@ -9,7 +9,7 @@ import type { UnsubscribeView } from "@/lib/email/unsubscribe-public";
  * direccion enmascarada, el estado y la marca): ningun otro dato del contacto llega
  * al navegador.
  */
-export function UnsubscribePanel({ token, initial }: { token: string; initial: UnsubscribeView }) {
+export function UnsubscribePanel({ token, initial, emailLogId = null }: { token: string; initial: UnsubscribeView; emailLogId?: string | null }) {
   const [view, setView] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [justChanged, setJustChanged] = useState(false);
@@ -18,7 +18,8 @@ export function UnsubscribePanel({ token, initial }: { token: string; initial: U
   function act(fn: typeof confirmUnsubscribe) {
     setError(null);
     start(async () => {
-      const result = await fn(token);
+      // `emailLogId`: el email desde el que se abrió la baja (`?e=`, 00287). Solo informativo.
+      const result = await fn(token, emailLogId);
       if (!result.ok) {
         setError(result.error);
         return;

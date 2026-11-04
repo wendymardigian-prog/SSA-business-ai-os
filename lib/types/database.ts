@@ -501,6 +501,10 @@ export type AuditEntityType =
 export type AuditAction =
   | "create"
   | "update"
+  /** La guardia de entrega (00287): el freno automatico pauso el marketing; una persona lo reanudo; cambio el tope. */
+  | "email_marketing.paused"
+  | "email_marketing.resumed"
+  | "email_marketing.settings"
   /** Suscripcion a emails (00271): cambio del estado de email (lo escribe set_email_status). */
   | "email_status"
   /** Suscripcion a emails (00271): no se pudo heredar el estado al poner una direccion (nunca en silencio). */

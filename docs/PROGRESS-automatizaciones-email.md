@@ -33,7 +33,7 @@ Rama de la Fase 1a: `feat/automatizaciones-email-envios`. Plan aprobado el 4/11/
 
 | Número | Nombre | Fase | Orden | Estado |
 |---|---|---|---|---|
-| 00287 | `email_delivery_guard` (columnas de `email_log` incluidos los eventos de entrega, estados `reserved` / `skipped_no_email`, `reserve_email_send`, `settle_email_send`, `contact_last_activity`) | 1a | antes del deploy | sin escribir |
+| 00287 | `email_delivery_guard` (columnas de `email_log` con los eventos de entrega, estados `reserved` / `skipped_no_email`, `email_guard_decide`, `reserve_email_send`, `email_send_capacity`, `patch_resend_config`, `record_email_delivery_event`, `contact_last_activity`) | 1a | antes del deploy | **aplicada y registrada** (`20261104191636`) |
 | 00288 | `broadcast_activity_order` (`broadcast_recipients.sort_key`, `claim_broadcast_recipient` ordenado por actividad) | 1a | antes del deploy | **aplicada y registrada** (`20261104191646`) |
 | 00289 | `automation_runs` (tabla, CHECK de `triggers.type` + `scheduled_audience`, índice único de `flow_sessions`, índice de `scheduled_jobs`) | 1b | antes del deploy | sin escribir |
 | 00290 | `email_default_design` (`workspaces.email_default_design`) | 2 | antes del deploy | sin escribir |
@@ -51,29 +51,29 @@ Confirmar cada número con `list_migrations` y las ramas locales antes de escrib
   - [x] `resumeSession`;
   - [x] el procesador de flujos con disparadores por evento.
 - [x] 00287 y 00288: ensayo en una transacción que se deshace, aplicación, registro (`20261104191636`, `20261104191646`), `build-all-migrations` y tipos.
-- [ ] A6 · La guardia (`lib/email/delivery-guard.ts` + la gemela SQL `reserve_email_send` + `delivery-guard.cases.json`):
-  - [ ] tope por día del negocio;
-  - [ ] cuota del plan solo si está cargada;
-  - [ ] calentamiento;
-  - [ ] pausa;
-  - [ ] reserva atómica en `email_log`.
-- [ ] A6 · `sendTransactionalEmail` y `sendEmailReply` reservan antes de mandar y actualizan la fila después.
-- [ ] A6 · Broadcasts:
-  - [ ] el carril de email espera a `retryAt` y no gasta intento;
-  - [ ] consulta el cupo antes de reclamar;
-  - [ ] orden por actividad (`sort_key`).
-- [ ] A6 · Flujos:
-  - [ ] se borra el tope viejo de 100;
-  - [ ] `deferred` vuelve a correr el mismo paso (`rerunNode`).
-- [ ] A6 · Secuencias: `deferred` deja el paso para `retryAt`.
-- [ ] A6 · Freno:
-  - [ ] el receptor marca `bounced_at` / `complained_at` en `email_log`;
-  - [ ] evalúa 2 % / 0,05 % con un mínimo de 50 en 24 h;
-  - [ ] pausa el marketing y avisa (`email_marketing_paused`).
-- [ ] A6 · Bajas atribuidas: `?e=<email_log_id>` en el link y el header de baja, y `unsubscribed_at`.
+- [x] A6 · La guardia (`lib/email/delivery-guard.ts` + la gemela SQL `private.email_guard_decide` / `reserve_email_send` + `delivery-guard.cases.json`, 19 casos):
+  - [x] tope por día del negocio;
+  - [x] cuota del plan solo si está cargada;
+  - [x] calentamiento;
+  - [x] pausa;
+  - [x] reserva atómica en `email_log`.
+- [x] A6 · `sendTransactionalEmail` y `sendEmailReply` reservan antes de mandar y actualizan la fila después (`delivery-guard-boundary.test.ts`).
+- [x] A6 · Broadcasts (`dispatch-guard.test.ts`):
+  - [x] el carril de email espera a `retryAt` y no gasta intento;
+  - [x] consulta el cupo antes de reclamar;
+  - [x] orden por actividad (`sort_key`, `lib/contacts/activity.ts`).
+- [x] A6 · Flujos (`email-deferred.test.ts`; también «Enviar mensaje», «Enviar recurso» y «Respuesta con IA» por email):
+  - [x] se borra el tope viejo de 100;
+  - [x] `deferred` vuelve a correr el mismo paso (`rerunNode`, `lib/flow-engine/defer-node.ts`), sin repetir a quien ya le mandó.
+- [x] A6 · Secuencias: `deferred` deja el paso para `retryAt` (`processor-email.test.ts`).
+- [x] A6 · Freno (`lib/email/marketing-brake.ts` + test):
+  - [x] el receptor marca `bounced_at` / `complained_at` en `email_log`;
+  - [x] evalúa 2 % / 0,05 % con un mínimo de 50 en 24 h;
+  - [x] pausa el marketing y avisa (`email_marketing_paused`), y queda en `audit_log`.
+- [x] A6 · Bajas atribuidas: `?e=<email_log_id>` en el link y el header de baja, y `unsubscribed_at`.
 - [ ] A6 · Pantalla «Entrega de marketing» en la tarjeta de Resend: máximo por día, calentamiento y su día, freno con «Reanudar».
 - [ ] A6 · Aviso rojo del webhook (desactivado o sin `bounced` / `complained`) en el editor de broadcast, el nodo «Enviar email» y la tarjeta de Resend.
-- [ ] A6 · Eventos de entrega (sumado el 4/11): en la 00287, `email_log` suma `delivered_at`, `opened_at`, `open_count`, `clicked_at`, `click_count` y `last_clicked_url`; el receptor procesa `email.delivered`, `email.opened` y `email.clicked` por `provider_message_id`; se muestran en A9 de broadcasts (entregados, abiertos «aproximado», clics) y en la ficha del contacto.
+- [~] A6 · Eventos de entrega (sumado el 4/11; hecho el receptor y la columna, falta mostrarlos): en la 00287, `email_log` suma `delivered_at`, `opened_at`, `open_count`, `clicked_at`, `click_count` y `last_clicked_url`; el receptor procesa `email.delivered`, `email.opened` y `email.clicked` por `provider_message_id`; se muestran en A9 de broadcasts (entregados, abiertos «aproximado», clics) y en la ficha del contacto.
 - [ ] A9 · Progreso del broadcast:
   - [ ] pendientes por tope o pausa;
   - [ ] rebotes, quejas y bajas de ese email;

@@ -4,6 +4,7 @@ exports[`caracterizacion: el HTML del nodo «Enviar email» > con formato (edito
 {
   "category": "marketing",
   "contactId": "c-1",
+  "flowNodeId": "n-1",
   "html": "<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#111827;"><p style="margin:0 0 16px;">Hola <strong>Ana</strong></p><ul style="margin:0 0 16px;padding-left:24px;"><li style="margin:0 0 6px;">Uno</li></ul><p style="margin:0 0 16px;"><a href="https://x.com" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">link</a></p></div>",
   "kind": "flow",
   "relatedEntityId": "f-1",
@@ -18,6 +19,7 @@ exports[`caracterizacion: el HTML del nodo «Enviar email» > texto plano 1`] = 
 {
   "category": "marketing",
   "contactId": "c-1",
+  "flowNodeId": "n-1",
   "html": "<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#111827;"><p style="margin:0 0 16px;">Hola Ana</p><p style="margin:0 0 16px;">Nos vemos el lunes.<br>Gracias.</p></div>",
   "kind": "flow",
   "relatedEntityId": "f-1",
@@ -32,10 +34,10 @@ exports[`caracterizacion: lo que recibe Resend de sendTransactionalEmail > marke
 {
   "from": "Negocio <novedades@negocio.test>",
   "headers": {
-    "List-Unsubscribe": "<http://localhost:3000/api/email/baja/tok-1>",
+    "List-Unsubscribe": "<http://localhost:3000/api/email/baja/tok-1?e=33333333-3333-3333-3333-333333333333>",
     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
   },
-  "html": "<p>Hola</p><div style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#6b7280;"><p style="margin:0;">Recibís este email porque te registraste en Negocio. <a href="http://localhost:3000/baja/tok-1" style="color:#6b7280;text-decoration:underline;">Darme de baja</a></p><p style="margin:6px 0 0;">Calle 1</p></div>",
+  "html": "<p>Hola</p><div style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#6b7280;"><p style="margin:0;">Recibís este email porque te registraste en Negocio. <a href="http://localhost:3000/baja/tok-1?e=33333333-3333-3333-3333-333333333333" style="color:#6b7280;text-decoration:underline;">Darme de baja</a></p><p style="margin:6px 0 0;">Calle 1</p></div>",
   "subject": "Hola",
   "to": "ana@x.com",
 }

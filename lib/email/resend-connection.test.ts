@@ -3,6 +3,7 @@
  * `resend`; el plan B guarda un secreto pegado; "Probar" solo lee. Resend y Vault simulados.
  */
 
+import { RESEND_WEBHOOK_EVENTS_LIST } from "./resend-events";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fakeDb, type FakeDb } from "@/lib/testing/fake-db";
 import { checkResendLive, clearWebhookSecret, connectWebhookForWorkspace, saveReceiving, saveWebhookSecret } from "./resend-connection";
@@ -75,7 +76,8 @@ describe("connectWebhookForWorkspace", () => {
       from_email: "hola@negocio.test",
       access: "full",
       webhook_id: "wh_1",
-      webhook_events: "email.received,email.bounced,email.complained",
+      // Cambio aprobado (00287): tambien entregas, aperturas y clics.
+      webhook_events: "email.received,email.bounced,email.complained,email.delivered,email.opened,email.clicked",
       webhook_connected_at: "2026-11-02T12:00:00.000Z",
       webhook_secret_saved_at: "2026-11-02T12:00:00.000Z",
     });
@@ -102,7 +104,8 @@ describe("connectWebhookForWorkspace", () => {
   it("sin secreto devuelto pero con uno ya pegado antes: no pide pegarlo de nuevo", async () => {
     const w = world({ storedNames: [SECRET_NAMES.resendWebhookSecret] });
     const api = resendApi((method, path) => {
-      if (method === "GET" && path === "/webhooks") return [200, { data: [{ id: "wh_1", endpoint: `${RECEIVER}?w=${WS}`, events: ["email.received", "email.bounced", "email.complained"] }] }];
+      // Un webhook nuestro ya completo (todos los eventos de SSA: no hay nada que actualizar).
+      if (method === "GET" && path === "/webhooks") return [200, { data: [{ id: "wh_1", endpoint: `${RECEIVER}?w=${WS}`, events: [...RESEND_WEBHOOK_EVENTS_LIST] }] }];
       if (method === "GET") return [200, { id: "wh_1" }];
       return [500, {}];
     });

@@ -41,6 +41,10 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "content_link.unlinked": "desvinculó el anuncio de su pieza de contenido",
   // Pipeline (00245): el cambio de estado se ve con su propia entrada (contact_status_changes);
   // la del agente queda en el audit para poder revertirla.
+  // La guardia de entrega (00287): se audita sobre el workspace; no se ve en la ficha de un contacto.
+  "email_marketing.paused": "se pausaron los emails de marketing",
+  "email_marketing.resumed": "reanudó los emails de marketing",
+  "email_marketing.settings": "cambió el tope de emails de marketing",
   setter_status: "cambió el estado de setter",
   "contact_statuses.updated": "cambió las listas de estados",
   create: "creó el contacto",

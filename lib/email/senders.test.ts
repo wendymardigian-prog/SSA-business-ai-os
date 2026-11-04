@@ -91,7 +91,7 @@ describe("el remitente segun la categoria", () => {
   it("sendTransactionalEmail usa el de marketing y manda el Responder a", async () => {
     const db = fakeDb(
       { "integration_configs:select": { data: { config, is_active: true, vault_secret_name: null } }, "email_log:insert": { data: null }, "workspaces:select": { data: { brand_name: "N" } } },
-      { read_secret: { data: KEY }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "t", matched: true } } },
+      { read_secret: { data: KEY }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "t", matched: true } }, reserve_email_send: { data: { status: "ok", log_id: null } } },
     );
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "re_1" }), { status: 200 }));
     await sendTransactionalEmail({ workspaceId: "ws", to: "a@x.test", subject: "s", html: "<p>h</p>", kind: "flow", category: "marketing", deps: { supabase: db.client, fetchImpl: fetchImpl as unknown as typeof fetch } });
@@ -164,7 +164,7 @@ describe("sendEmailReply y el remitente de marketing", () => {
         "integration_configs:select": { data: { config: { from_email: "hola@mail.x.com", marketing_from_email: "novedades@news.x.com", from_name: "Negocio" } } },
         "workspaces:select": { data: { brand_name: "N" } },
       },
-      { read_secret: { data: KEY }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "t", matched: true } } },
+      { read_secret: { data: KEY }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "t", matched: true } }, reserve_email_send: { data: { status: "ok", log_id: null } } },
     );
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "re_1" }), { status: 200 }));
     const channel = { platform: "email", is_active: true, email_address: "bandeja@mail.x.com" };

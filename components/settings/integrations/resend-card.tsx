@@ -13,7 +13,7 @@ import {
   saveResendWebhookSecretAction,
 } from "@/lib/actions/resend-connection";
 import { DEFAULT_RECEIVING_LOCAL, primaryAddress, type ResendPanelData } from "@/lib/email/resend-config";
-import { RESEND_EVENT_LABELS, RESEND_WEBHOOK_EVENTS_LIST } from "@/lib/email/resend-events";
+import { RESEND_EVENT_LABELS, RESEND_REQUIRED_EVENTS, RESEND_WEBHOOK_EVENTS_LIST } from "@/lib/email/resend-events";
 import { resendChecklist, timeAgo, type CheckItem, type LiveResult } from "@/lib/email/resend-status";
 import { receivingState, RECEIVING_STATE_LABELS, type ResendDomain } from "@/lib/email/senders";
 
@@ -202,14 +202,21 @@ function WebhookSection({
   const [showManual, setShowManual] = useState(false);
   const { webhook } = panel.state;
 
-  const missing = RESEND_WEBHOOK_EVENTS_LIST.filter((e) => !webhook.events.includes(e));
+  // En rojo solo lo imprescindible (recepcion, rebotes, quejas); los de resultados se sugieren aparte.
+  const missing = RESEND_REQUIRED_EVENTS.filter((e) => !webhook.events.includes(e));
+  const optionalMissing = RESEND_WEBHOOK_EVENTS_LIST.filter((e) => !webhook.events.includes(e) && !(RESEND_REQUIRED_EVENTS as readonly string[]).includes(e));
+  const present = webhook.events.length > 0 ? RESEND_WEBHOOK_EVENTS_LIST.filter((e) => webhook.events.includes(e)).length : RESEND_WEBHOOK_EVENTS_LIST.length;
   const status = webhook.needsSecret
     ? "Falta pegar el Signing secret"
     : panel.secretSaved && webhook.id && missing.length > 0
       ? `Le faltan eventos: ${missing.join(", ")}`
       : panel.secretSaved
-        ? `Webhook conectado · ${RESEND_WEBHOOK_EVENTS_LIST.length} eventos${panel.lastEventAt ? ` · último aviso recibido ${timeAgo(panel.lastEventAt)}` : ""}`
+        ? `Webhook conectado · ${present} eventos${panel.lastEventAt ? ` · último aviso recibido ${timeAgo(panel.lastEventAt)}` : ""}`
         : "Falta conectar";
+  const optionalHint =
+    panel.secretSaved && webhook.id && missing.length === 0 && optionalMissing.length > 0 && webhook.events.length > 0
+      ? "Sumá las entregas, aperturas y clics para ver los resultados de cada envío: tocá «Actualizar webhook»."
+      : null;
   const manualOpen = showManual || access === "sending" || webhook.needsSecret;
   const canAct = connected && !readOnly;
 
@@ -235,6 +242,7 @@ function WebhookSection({
         subtitle="Por acá Resend le avisa a SSA cuando un email rebota, alguien lo marca como spam o te escriben. SSA solo crea y administra su propio webhook: nunca toca otros de tu cuenta."
       />
       <p className="mb-3 text-xs font-medium">{status}</p>
+      {optionalHint ? <p className="-mt-2 mb-3 text-xs text-muted-foreground">{optionalHint}</p> : null}
 
       {panel.webhookUrl ? (
         <CopyableUrl label="URL del webhook" url={panel.webhookUrl} />

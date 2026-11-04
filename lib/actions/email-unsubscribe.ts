@@ -17,20 +17,21 @@ const MESSAGES = {
   error: "No pudimos guardar el cambio. Probá de nuevo en un rato.",
 } as const;
 
-async function run(token: string, action: "unsubscribe" | "resubscribe"): Promise<UnsubscribePageResult> {
+async function run(token: string, action: "unsubscribe" | "resubscribe", emailLogId?: string | null): Promise<UnsubscribePageResult> {
   const service = await createServiceClient();
   const outcome = await applyUnsubscribeAction(service, {
     token: typeof token === "string" ? token : "",
     ip: clientIp(await headers()),
     action,
     source: "unsubscribe_page",
+    emailLogId: typeof emailLogId === "string" ? emailLogId : null,
   });
   return outcome.ok ? { ok: true, view: outcome.view } : { ok: false, error: MESSAGES[outcome.reason] };
 }
 
 /** "Darme de baja". */
-export async function confirmUnsubscribe(token: string): Promise<UnsubscribePageResult> {
-  return run(token, "unsubscribe");
+export async function confirmUnsubscribe(token: string, emailLogId?: string | null): Promise<UnsubscribePageResult> {
+  return run(token, "unsubscribe", emailLogId);
 }
 
 /** "Me equivoqué, volver a suscribirme". No se puede desde un rebote o una queja (lo decide la base). */

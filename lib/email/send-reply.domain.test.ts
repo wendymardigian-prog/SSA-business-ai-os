@@ -17,7 +17,7 @@ function db(lastInbound: Record<string, unknown> | null, config: Record<string, 
       "messages:select": { data: lastInbound },
       "integration_configs:select": { data: config ? { config } : null },
     },
-    { read_secret: { data: "re_key" }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "tok", matched: true } } },
+    { read_secret: { data: "re_key" }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "tok", matched: true } }, reserve_email_send: { data: { status: "ok", log_id: null } } },
   );
 }
 

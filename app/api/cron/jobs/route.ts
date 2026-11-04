@@ -592,6 +592,8 @@ async function processJob(
         lateConversationId?: string | null;
         lateAccountId?: string | null;
         variables?: Record<string, string> | null;
+        /** Un paso que la guardia de entrega dejo para despues (00287): se vuelve a correr ESE paso. */
+        rerunNode?: boolean;
       };
 
       // Check if session is still active
@@ -667,7 +669,7 @@ async function processJob(
           incomingMessage: {},
           // Los pasos que se saltea por falta de contacto, para anotarlos en el historial del envio (webhooks). // @plantilla-quitar(webhooks)
           ...(session.inbound_webhook_id ? { onStepSkipped: (step: { label: string }) => skippedSteps.push(step.label) } : {}), // @plantilla-quitar(webhooks)
-        });
+        }, "reply", { rerunNode: payload.rerunNode === true });
       } catch (err) {
         // A FlowLoadError is thrown before resumeSession advances
         // current_node_id, so the retry cannot hit the stale-node guard

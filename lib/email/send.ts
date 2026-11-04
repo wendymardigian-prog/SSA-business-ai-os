@@ -35,6 +35,7 @@ import { senderFor, type ResendSenderConfig } from "@/lib/email/senders";
 import { resolveBrand } from "@/lib/brand";
 import { appUrl } from "@/lib/app-url";
 import { loadPublicBaseUrl } from "@/lib/public-url";
+import { reserveEmailSend, settleReservedEmail, type DeferReason } from "@/lib/email/delivery-guard";
 
 export type EmailKind = "team_invite" | "channel_disconnected" | (string & {});
 
@@ -66,6 +67,10 @@ export interface SendEmailParams {
   category?: EmailCategory;
   /** Ademas, frena si algun contacto vivo con esa direccion esta en "no contactar". */
   honorDoNotContact?: boolean;
+  /** El paso de la automatizacion que lo manda (00287): agrupa los resultados por paso. */
+  flowNodeId?: string | null;
+  /** El disparo programado del que sale (00287, Fase 1b): agrupa los resultados por disparo. */
+  automationRunId?: string | null;
   /** Inyeccion para tests. En produccion no se pasa. */
   deps?: {
     supabase?: SupabaseClient;
@@ -78,7 +83,12 @@ export type SendEmailResult =
   | { ok: false; reason: "not_configured"; error: string }
   | { ok: false; reason: "failed"; error: string }
   /** La puerta de suscripcion lo salteo: queda en email_log con el motivo. No es un fallo. */
-  | { ok: false; reason: "skipped"; skip: EmailSkipReason; error: string };
+  | { ok: false; reason: "skipped"; skip: EmailSkipReason; error: string }
+  /**
+   * La guardia de entrega (00287): un email de MARKETING que hoy no sale (el tope del dia, la cuota del plan o el
+   * freno). No es un fallo ni se pierde: quien llama lo vuelve a intentar a `retryAt`. No deja fila en email_log.
+   */
+  | { ok: false; reason: "deferred"; defer: DeferReason; retryAt: Date; error: string };
 
 
 async function serviceClient(): Promise<SupabaseClient> {
@@ -115,6 +125,9 @@ export async function logEmail(
     related_entity_id: params.relatedEntityId ?? null,
     contact_id: params.contactId ?? null,
     created_by: params.createdBy ?? null,
+    category: params.category ?? null,
+    flow_node_id: params.flowNodeId ?? null,
+    automation_run_id: params.automationRunId ?? null,
   });
 
   if (error) {
@@ -210,7 +223,29 @@ export async function sendTransactionalEmail(
     return notConfigured("Resend figura conectado pero no hay API key guardada");
   }
 
-  // 3. Enviar.
+  // 3. La guardia de entrega (00287): un email de marketing reserva su lugar del dia. Lo que no entra hoy NO falla:
+  //    vuelve `deferred` y quien llama lo reagenda. Lo transaccional no espera ni cuenta para el tope.
+  let reservedLogId: string | null = null;
+  if (params.category === "marketing") {
+    const reserved = await reserveEmailSend(supabase, {
+      workspaceId: params.workspaceId,
+      to: params.to,
+      subject: params.subject,
+      kind: params.kind,
+      contactId: params.contactId ?? null,
+      relatedEntityType: params.relatedEntityType ?? null,
+      relatedEntityId: params.relatedEntityId ?? null,
+      createdBy: params.createdBy ?? null,
+      flowNodeId: params.flowNodeId ?? null,
+      automationRunId: params.automationRunId ?? null,
+    });
+    if (!reserved.ok) {
+      return { ok: false, reason: "deferred", defer: reserved.reason, retryAt: reserved.retryAt, error: reserved.message };
+    }
+    reservedLogId = reserved.logId;
+  }
+
+  // 4. Enviar.
   const from = sender.name ? `${sender.name} <${fromEmail}>` : fromEmail;
 
   // El link de baja (E3): marketing lleva el pie y las cabeceras; un transaccional, nada (solo se resuelve el link si
@@ -223,6 +258,8 @@ export async function sendTransactionalEmail(
         // El link de baja lo abre el lead: con el dominio del negocio (o el principal).
         appUrl: unsubscribeToken ? await loadPublicBaseUrl(supabase, params.workspaceId) : appUrl(),
         ...(params.category === "marketing" && unsubscribeToken ? await footerBrand(supabase, params.workspaceId) : { brandName: "" }),
+        // La baja queda atribuida a este email (`?e=`): el id es el de la reserva.
+        emailLogId: reservedLogId,
       })
     : { html: params.html, headers: {} };
 
@@ -240,8 +277,12 @@ export async function sendTransactionalEmail(
     params.deps?.fetchImpl,
   );
 
+  // La fila: la reserva se cierra (no se inserta otra); sin reserva, se anota como siempre.
+  const record = (row: { status: "sent" | "failed"; provider_message_id?: string | null; attempts?: number; last_error?: string | null }) =>
+    reservedLogId ? settleReservedEmail(supabase, reservedLogId, row) : logEmail(supabase, params, row);
+
   if (result.ok) {
-    await logEmail(supabase, params, {
+    await record({
       status: "sent",
       provider_message_id: result.id,
       attempts: result.attempts,
@@ -250,7 +291,7 @@ export async function sendTransactionalEmail(
   }
 
   console.error(`[email] envio "${params.kind}" fallido:`, result.error);
-  await logEmail(supabase, params, {
+  await record({
     status: "failed",
     attempts: result.attempts,
     last_error: result.error,

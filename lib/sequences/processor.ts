@@ -205,6 +205,12 @@ async function processEnrollment(supabase: Db, enrollment: Enrollment): Promise<
 
   const delivery = await deliverStep(supabase, enrollment, sequence.workspace_id, step);
 
+  // Hoy no entra en el tope de marketing (o el freno esta puesto): el mismo paso, a esa hora. No es un fallo.
+  if (typeof delivery === "object") {
+    await reschedule(supabase, enrollment.id, delivery.deferred.toISOString());
+    return "retry";
+  }
+
   if (delivery === "email_unsubscribed" || delivery === "email_bounced" || delivery === "email_complained") {
     await pause(supabase, enrollment.id, delivery);
     return "paused";
@@ -273,7 +279,16 @@ async function processEnrollment(supabase: Db, enrollment: Enrollment): Promise<
  * existe o que el canal no acepta). Se saltea y queda el motivo anotado, como
  * `unreadable`: reintentar no lo arregla.
  */
-type DeliveryOutcome = "sent" | "failed" | "retry" | "no_conversation" | "unreadable" | "skipped" | EmailPauseReason;
+type DeliveryOutcome =
+  | "sent"
+  | "failed"
+  | "retry"
+  | "no_conversation"
+  | "unreadable"
+  | "skipped"
+  | EmailPauseReason
+  /** La guardia de entrega (00287): un email de marketing que hoy no entra. El paso queda para `at`, sin gastar intento. */
+  | { deferred: Date };
 
 type EmailStepGate =
   | { action: "send" }
@@ -331,6 +346,7 @@ async function deliverStep(
   if (step.type === "asset") {
     const result = await deliverAsset(supabase, { assetId: step.assetId ?? "", caption: step.caption ?? null, context });
     if (result.ok) return "sent";
+    if (result.status === "deferred") return { deferred: result.retryAt };
 
     await supabase.from("sequence_enrollments").update({ last_error: result.reason }).eq("id", enrollment.id);
     if (result.status === "skipped") return "skipped";
@@ -389,6 +405,8 @@ async function deliverStep(
   }
 
   const outcome = await sendChannelMessage(supabase, context, { text });
+  // La guardia de entrega lo dejo para despues: no queda un mensaje fallido en el hilo.
+  if (!outcome.ok && outcome.deferred) return { deferred: outcome.deferred.retryAt };
   await recordSend(supabase, context, outcome.ok ? text : outcome.failure?.message ?? text, outcome);
 
   if (outcome.ok) return "sent";

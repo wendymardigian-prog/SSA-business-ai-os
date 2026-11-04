@@ -290,7 +290,12 @@ export async function resumeSession(
   supabase: SupabaseClient<Database>,
   session: Database["public"]["Tables"]["flow_sessions"]["Row"],
   context: FlowExecutionContext,
-  exit: ResumeExit = "reply"
+  exit: ResumeExit = "reply",
+  /**
+   * `rerunNode`: vuelve a correr el paso en el que quedo la sesion en vez de seguir con el siguiente. Lo usa un email de
+   * marketing que la guardia de entrega dejo para despues (`defer-node.ts`, 00287). Sin esto, todo igual que siempre.
+   */
+  options: { rerunNode?: boolean } = {}
 ) {
   const { data: flow, error: flowError } = await supabase
     .from("flows")
@@ -399,6 +404,12 @@ export async function resumeSession(
       session.id,
       `node ${session.current_node_id} no longer exists in flow ${session.flow_id}`
     );
+    return;
+  }
+
+  // Un paso que quedo para despues (la guardia de entrega): se corre el MISMO paso otra vez.
+  if (options.rerunNode) {
+    await runTraversal(supabase, session.id, currentNode, nodes, edges, context);
     return;
   }
 

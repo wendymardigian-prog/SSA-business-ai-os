@@ -10,8 +10,10 @@
  *    agenda: la confirmación de una reunión que la persona pidió no es una
  *    comunicación comercial, y no mandarla la deja sin el link.
  *  - Sin dirección de destino no falla: se saltea y queda anotado.
- *  - Con la cuota diaria de Resend agotada NO manda y avisa: mandar igual
- *    haría que el proveedor rechace y el email se pierda sin rastro.
+ *  - El tope diario lo decide la guardia de entrega (`lib/email/delivery-guard.ts`, 00287), no este nodo: un email de
+ *    marketing que hoy no entra queda para despues (el paso se vuelve a correr a esa hora) y no se pierde. Lo
+ *    transaccional no espera. Antes este nodo tenia su propio tope de 100 por dia, contado mal (dia UTC, con los
+ *    transaccionales) y sin leer la configuracion: se reemplazo por la guardia (no conviven dos).
  */
 
 import type { FlowExecutionContext } from "../types";
@@ -22,8 +24,7 @@ import { recordSkippedEmail, sendTransactionalEmail } from "@/lib/email/send";
 import { EMAIL_SKIP_MESSAGES, type EmailCategory } from "@/lib/email/subscription";
 import { stepEmailCategory } from "@/lib/email/categories";
 import { protectUnsubscribeVariable } from "@/lib/email/unsubscribe";
-import { computeQuota } from "@/lib/email/quota";
-import { createNotification } from "@/lib/notifications/create";
+import { deferFlowNode, takeAlreadySent } from "../defer-node";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { BOOKING_TRIGGER_SCOPE } from "@/lib/scheduling/automation/context";
 import { createNotificationOnce } from "@/lib/notifications/create";
@@ -67,7 +68,7 @@ export function bodyToHtml(body: string): string {
   return finalizeEmailHtml(body, isHtmlTemplate(body));
 }
 
-async function execute({ supabase, data, context, node }: NodeExecutionArgs<SendEmailNodeData, FlowExecutionContext>) {
+async function execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<SendEmailNodeData, FlowExecutionContext>) {
   // Si el cuerpo es HTML se decide mirando la PLANTILLA, antes de pegar valores:
   // así un nombre con "<b>" en un texto plano nunca se vuelve una etiqueta.
   const bodyIsHtml = isHtmlTemplate(data.body ?? "");
@@ -145,31 +146,9 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
     return;
   }
 
-  // La cuota del día. `computeQuota` cuenta entrada y salida, como el plan.
-  const since = new Date();
-  since.setUTCHours(0, 0, 0, 0);
-  const { count: sentToday } = await supabase
-    .from("email_log")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", context.workspaceId)
-    .eq("status", "sent")
-    .gte("created_at", since.toISOString());
-
-  const quota = computeQuota({ sentToday: sentToday ?? 0, receivedToday: 0 });
-  if (quota.exhausted) {
-    console.error(`[flow-engine] cuota de email agotada: no sale el email del nodo ${node.id}`);
-    await createNotification({
-      supabase,
-      workspaceId: context.workspaceId,
-      type: "email_quota_reached",
-      title: "Se agotó la cuota de emails de hoy",
-      body: `${quota.label} Un flujo intentó mandar un email y no salió.`,
-      entityType: "flow",
-      entityId: context.flowId,
-      metadata: { flow_id: context.flowId, node_id: node.id },
-    });
-    return;
-  }
+  // Un paso que vuelve despues de quedar para mas tarde: a quienes ya les mando no les manda de nuevo.
+  const alreadySent = takeAlreadySent(context, node.id);
+  const sentNow: string[] = [];
 
   // Los adjuntos se bajan UNA vez para todas las personas. Si alguno ya no esta (se borro el recurso), el email sale
   // igual sin ese archivo —lo importante es el mensaje— y se avisa en la campana, una vez por automatizacion.
@@ -178,6 +157,7 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
   if (loaded.missing.length > 0) await warnMissingAttachments(supabase, context, node.id, loaded.missing);
 
   for (const to of recipients) {
+    if (alreadySent.has(to.toLowerCase())) continue;
     const result = await sendTransactionalEmail({
       workspaceId: context.workspaceId,
       to,
@@ -196,8 +176,27 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
       ...(loaded.files.length > 0 ? { attachments: loaded.files } : {}),
       // La suscripcion: marketing no sale a quien se dio de baja; nada sale a una direccion que rebota.
       category,
+      flowNodeId: node.id,
       deps: { supabase },
     });
+    // La guardia de entrega: hoy no entra (tope, cuota o freno). No falla ni se pierde: el paso se vuelve a correr a
+    // esa hora. Sin sesion (una prueba suelta del nodo) no hay a quien despertar: queda anotado como salteado.
+    if (!result.ok && result.reason === "deferred") {
+      if (sessionId) {
+        return deferFlowNode(supabase, {
+          nodeId: node.id,
+          nodeType: "send_email",
+          sessionId,
+          context,
+          retryAt: result.retryAt,
+          reason: result.defer,
+          alreadySent: sentNow,
+        });
+      }
+      await markSkipped(supabase, context, node.id, result.error);
+      continue;
+    }
+    if (result.ok) sentNow.push(to);
     // Un salto de la suscripcion no es un fallo: queda anotado como paso salteado y el flujo sigue.
     if (!result.ok && result.reason === "skipped") {
       await markSkipped(supabase, context, node.id, result.error);

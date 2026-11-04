@@ -21,6 +21,7 @@ import { resolveBrand } from "@/lib/brand";
 import { checkLimit } from "@/lib/antispam/rate-limit";
 import { hashIp } from "@/lib/scheduling/antispam";
 import { isEmailStatus, maskEmailAddress, setEmailStatus, type EmailStatus } from "./subscription";
+import { EMAIL_LOG_ID_RE } from "./unsubscribe";
 
 /** Pedidos por minuto y por IP a la pagina, sus botones y el endpoint de un clic. */
 export const UNSUBSCRIBE_REQUESTS_PER_MINUTE = 30;
@@ -105,22 +106,53 @@ export type UnsubscribeOutcome =
  */
 export async function applyUnsubscribeAction(
   service: Service,
-  input: { token: string; ip: string; action: UnsubscribeAction; source: "unsubscribe_page" | "one_click" },
+  input: {
+    token: string;
+    ip: string;
+    action: UnsubscribeAction;
+    source: "unsubscribe_page" | "one_click";
+    /**
+     * El `?e=` del link (00287): el registro de `email_log` del email desde el que se dio de baja. Solo informativo:
+     * se usa si es de ESTE contacto y negocio; un valor invalido o ajeno se ignora y la baja sale igual.
+     */
+    emailLogId?: string | null;
+  },
 ): Promise<UnsubscribeOutcome> {
   if (!(await allowUnsubscribeRequest(service, input.ip))) return { ok: false, reason: "rate_limited" };
   const target = await loadUnsubscribeTarget(service, input.token);
   if (!target) return { ok: false, reason: "not_found" };
   try {
+    const emailLogId = input.action === "unsubscribe" && input.emailLogId && EMAIL_LOG_ID_RE.test(input.emailLogId) ? input.emailLogId : null;
     const result = await setEmailStatus(service, target.contactId, {
       status: input.action === "unsubscribe" ? "unsubscribed" : "subscribed",
       source: input.source,
       mode: "person",
       address: target.address,
+      ...(emailLogId ? { extra: { email_log_id: emailLogId } } : {}),
     });
+    if (emailLogId) await markLogUnsubscribed(service, target, emailLogId);
     const status = result.status ?? target.status;
     return { ok: true, view: publicView({ ...target, status }) };
   } catch (error) {
     console.error("[email] no pude aplicar la baja publica:", error instanceof Error ? error.message : "error");
     return { ok: false, reason: "error" };
+  }
+}
+
+/**
+ * La baja vino de ESTE email (00287): marca `unsubscribed_at` en su registro, solo si el registro es del mismo
+ * contacto y negocio que el token. Nunca lanza ni frena la baja.
+ */
+async function markLogUnsubscribed(service: Service, target: UnsubscribeTarget, emailLogId: string): Promise<void> {
+  try {
+    await service
+      .from("email_log")
+      .update({ unsubscribed_at: new Date().toISOString() })
+      .eq("id", emailLogId)
+      .eq("workspace_id", target.workspaceId)
+      .eq("contact_id", target.contactId)
+      .is("unsubscribed_at", null);
+  } catch (error) {
+    console.error("[email] no pude atribuir la baja al email:", error instanceof Error ? error.message : "error");
   }
 }

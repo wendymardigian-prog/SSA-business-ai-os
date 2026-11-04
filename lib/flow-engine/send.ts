@@ -12,6 +12,7 @@ import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
 import { foldOptionsIntoText } from "./platform-adapter";
 import type { EmailCategory, EmailSkipReason } from "@/lib/email/subscription";
+import type { DeferReason } from "@/lib/email/delivery-guard";
 /**
  * La unica puerta de salida del motor de flows.
  *
@@ -123,6 +124,11 @@ export interface SendOutcome {
   failure?: FriendlyError;
   /** Solo email: la puerta de suscripcion lo salteo (la persona se dio de baja, rebota o marco spam). */
   skipped?: EmailSkipReason;
+  /**
+   * Solo email de marketing: la guardia de entrega (00287) lo dejo para despues (tope del dia, cuota o freno). No es un
+   * fallo: quien manda lo reagenda a `retryAt` y NO deja un mensaje fallido en el hilo.
+   */
+  deferred?: { reason: DeferReason; retryAt: Date };
 }
 
 interface ChannelRow {
@@ -284,6 +290,7 @@ async function sendViaResendChannel(
     return {
       ok: false,
       ...(result.skipped ? { skipped: result.skipped } : {}),
+      ...(result.deferred ? { deferred: result.deferred } : {}),
       failure: {
         // `rate_limited` es lo mas cercano que hay en la union para "el
         // proveedor no contesto, proba de nuevo": lo que importa para el

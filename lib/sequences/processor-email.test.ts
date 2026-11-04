@@ -141,3 +141,36 @@ describe("procesador de secuencias: suscripcion a emails", () => {
     expect(w.last()).toMatchObject({ status: "paused", paused_reason: "email_unsubscribed" });
   });
 });
+
+describe("procesador de secuencias: la guardia de entrega (00287)", () => {
+  const TOMORROW = new Date("2026-11-06T06:00:00Z");
+
+  it("un email de marketing que excede el tope queda para manana: sin gastar intento, sin mensaje fallido, sin avanzar", async () => {
+    const { recordSend } = await import("@/lib/flow-engine/send");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-05T15:00:00Z"));
+    try {
+      const w = world({ status: "subscribed" });
+      vi.mocked(sendChannelMessage).mockResolvedValueOnce({
+        ok: false,
+        deferred: { reason: "daily_cap", retryAt: TOMORROW },
+        failure: { kind: "rate_limited", message: "tope", retryable: true },
+      } as never);
+      await processSequenceSteps();
+      expect(sendChannelMessage).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(recordSend)).not.toHaveBeenCalled();
+      expect(w.last()).toEqual({ next_step_at: TOMORROW.toISOString(), locked_at: null });
+      expect(w.updates.some((u) => "attempt_count" in u || "current_step_index" in u || u.status === "paused")).toBe(false);
+
+      // Manana: el mismo paso sale y la secuencia avanza (era el ultimo: queda completa).
+      vi.setSystemTime(new Date("2026-11-06T06:01:00Z"));
+      const tomorrow = world({ status: "subscribed" });
+      vi.mocked(sendChannelMessage).mockResolvedValueOnce({ ok: true, platformMessageId: "m2" });
+      await processSequenceSteps();
+      expect(sendChannelMessage).toHaveBeenCalledTimes(2);
+      expect(tomorrow.last()).toMatchObject({ status: "completed", current_step_index: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
