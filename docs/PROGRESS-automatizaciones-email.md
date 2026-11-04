@@ -79,12 +79,14 @@ Confirmar cada número con `list_migrations` y las ramas locales antes de escrib
   - [x] entregados, abiertos (aproximado), clics, rebotes, quejas y bajas de ese email;
   - [x] la lista filtrable (por estado y por resultado del email, `?email=`) con link a la ficha.
 - [x] Conversaciones (verificado, sin construir; resultado en PENDIENTE): cada email de broadcast queda como mensaje saliente en la conversación de email del contacto, y una respuesta a wendy@ o a hola@mail.wendymardigian.com entra en esa conversación. Lo que no pase va a PENDIENTE con lo que haría falta.
-- [ ] Cierre 1a:
-  - [ ] la sección en `CLAUDE.md`;
-  - [ ] `docs/envios-programados-email.md` (el webinar por broadcast; máximo diario en 1.000 para que el calentamiento suba solo; hasta mergear la 1a, broadcasts a listas chicas, ~100, porque el carril no tiene tope diario);
-  - [ ] `verify-email-subscription` con la reserva concurrente;
-  - [ ] `verify-broadcasts` con el orden;
-  - [ ] el PR.
+- [x] Cierre 1a (4/11/2026):
+  - [x] la sección en `CLAUDE.md`;
+  - [x] `docs/envios-programados-email.md` (el webinar por broadcast; máximo diario en 1.000 para que el calentamiento suba solo; hasta mergear la 1a, broadcasts a listas chicas, ~100, porque el carril no tiene tope diario);
+  - [x] `verify-email-subscription` con la reserva concurrente (65 ok: 10 en paralelo con tope 5, salen 5);
+  - [x] `verify-broadcasts` con el orden (26 ok);
+  - [x] `verify-rls --despues-de-00143 --despues-de-00208` (293 ok);
+  - [x] la pantalla dibujada de verdad en un test (`marketing-delivery-section.test.ts`); en el navegador falta (ver PENDIENTE);
+  - [x] el PR (sale de la rama `claude/gallant-einstein-6691a7`, con los mismos commits de `feat/automatizaciones-email-envios` más el cierre).
 
 ## Fase 1b — A1 + A2 + A9 de flujos
 

@@ -7,12 +7,17 @@
   2. En SSA, ir a Ajustes → Integraciones → Resend y tocar «Actualizar webhook».
 
   Sin esto no llegan los rebotes ni las quejas, y el freno automático de la Fase 1a no tiene con qué decidir.
+- **Después de desplegar la 1a, tocar «Actualizar webhook» una vez**: suma `email.delivered`, `email.opened` y `email.clicked` al webhook de cada instalación que no los tenga. Sin ellos, los resultados de un broadcast no muestran entregados, aperturas ni clics.
+- **Revisión visual pendiente.** La sección «Entrega de marketing», el aviso rojo y los resultados del broadcast están probados dibujándolos en un test, no mirándolos en el navegador: eso necesita una sesión iniciada. Abrí Ajustes → Integraciones → Resend y un broadcast de email ya enviado.
 - **Elegir el «Máximo de emails de marketing por día»** antes del webinar. El default es 100. Con 1.000 y el calentamiento prendido, desde el jueves 5/11 salen 100 + 200 + 400 + 94, y los 794 terminan el domingo 8/11.
 
 ## Abiertos
 
 - **Clic y apertura en condiciones (A3, Fase 2).** La 1a empieza a guardar `opened_at` / `clicked_at` en `email_log`; la condición «abrió / hizo clic en el email del paso X» queda para A3.
 - ~~**`lib/vault-boundary.test.ts` se queda sin tiempo con la suite entera.**~~ Resuelto el 4/11: con la máquina cargada (carga 46 por otras sesiones) el `it` que recorre los imports pasaba los 5 s incluso solo; se le dio un tiempo propio de 30 s. No cambia nada de lo que comprueba.
+- **Tests que se cortan con la máquina muy cargada.** Con carga 100+ por otras sesiones, a veces pasan los 5 s `lib/publishing/disconnect-networks.test.ts`, `lib/email/triggers.test.ts` y `lib/flow-engine/condition-eval.test.ts` (importan mucho dentro del test). No es un error del código: la suite entera pasó con carga 14. No se les cambió el tiempo; si molesta seguido, darles un tiempo propio como a `vault-boundary`.
+- **«Respuesta con IA» por email, cuando queda para después, genera la respuesta otra vez** al volver a correr el paso (gasta IA de nuevo). Es a propósito: responde con la conversación de ese momento.
+- **`warnIfNearQuota` (`send-reply.ts`) sigue contando aparte** (`messages` con `email_message_id`, default 100). Solo manda un aviso, no frena nada, y no ve los broadcasts ni el paso «Enviar email». Conviene pasarlo a la guardia en la Fase 2.
 - **La fecha fija del nodo «Esperar» se convierte con la zona del navegador** (`DelayPanel.tsx`), no con la del negocio. Se arregla en A4.
 
 ## Conversaciones (verificado el 4/11/2026, sin construir)
