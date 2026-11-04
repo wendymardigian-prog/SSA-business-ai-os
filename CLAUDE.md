@@ -1800,6 +1800,24 @@ Lo que hizo falta para los recordatorios de una clase con fecha fija. Detalle en
 - **«Esperar hasta» se guarda en la hora del negocio** (`waitUntilLocal`, sin zona; la pone `workspaces.timezone`, nunca el navegador). **Con la fecha ya pasada se saltea el paso siguiente** y el flujo sigue con el que viene (`SKIP_NEXT_STEP`, `node_skipped` con `date_passed`). Las esperas por duración no cambian (`clase-flow-characterization.test.ts`).
 - **`oncePerContact` en un disparador de contacto** (apagado por defecto): quien ya tuvo una sesión de ese flujo, salvo cancelada, no vuelve a entrar. Se mira `flow_sessions` porque publicar borra `trigger_fires`.
 
+# Zonas horarias y confirmaciones de agenda (4/11/2026)
+
+Cada persona ve TODAS las fechas y horas en su zona. Detalle en [docs/agendamiento.md](docs/agendamiento.md) («Zonas horarias», «Reuniones sin evento») y [docs/tareas.md](docs/tareas.md).
+
+## Lo que no se puede romper
+
+- **Se guarda en UTC y se muestra en la zona de quien mira.** En cliente, `useViewerTimezone()`; en servidor, `resolveViewerTimezone()`. `formatDateTime`, `formatRelative` y las fechas de la bandeja piden la zona como parametro obligatorio. **`lib/timezone-boundary.test.ts` falla si aparece una fecha sin `timeZone`.** Lo que se pasa explicito por ser otra cosa: fechas civiles (`date`, con `"UTC"`) y reglas del negocio (`workspaces.timezone`: horario del agente, topes de gasto, crons, ritmo de envios, tope diario por red, «Esperar hasta» de los flujos).
+- **Un solo selector de zona** (`components/ui/timezone-select.tsx`): incluye siempre el valor actual y arma el catalogo recien en el navegador. `listTimeZones` une el catalogo con la lista de respaldo: `Intl.supportedValuesOf` no trae UTC ni el nombre que detecta el navegador para Buenos Aires.
+- **Agendar a mano separa dos zonas**: `timezone` (en la que se escribio la hora) e `inviteeTimezone` (va a `p_timezone`, con ella salen sus emails). `create_booking` no se toco; elegir otra zona a proposito la guarda en el contacto despues de crear la reunion.
+- **`scheduling_profiles.timezone` es la del horario de atencion**, nunca para ver.
+- **Tareas con hora**: lo guardado sigue en la zona del negocio y se convierte al leer y al escribir (`lib/tasks/due-view.ts`). Una tarea sin hora es una fecha civil y no se convierte. Reglas de fechas, SQL y barrido siguen sobre lo guardado.
+- **Mover una reunion conserva SU duracion**, no la del evento.
+- **Reuniones sin evento**: flujos con `event_type_id` null y `template_key` `no_event_*`, filtro `no_event` contra `bookings.metadata.without_event`, permiso `settings.general`. Prendidos, un flujo de evento y uno sin evento nunca corren para la misma reunion.
+
+## Migracion
+
+`00289_flows_no_event_templates` (aditiva, va ANTES del deploy). **La proxima libre es la `00290`** (confirmar con `list_migrations` y las ramas locales).
+
 # Seguridad
 
 ## Autenticacion y sesiones
