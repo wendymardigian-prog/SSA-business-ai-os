@@ -21,6 +21,7 @@ import { WhatsAppConnectModal } from "@/components/channels/whatsapp-connect-mod
 import { WhatsappCallSettings } from "@/components/channels/whatsapp-call-settings";
 import { WhatsappHistoryReview } from "@/components/channels/whatsapp-history-review";
 import { WhatsappGroupSettings } from "@/components/channels/whatsapp-group-settings";
+import { WhatsappSendPace } from "@/components/channels/whatsapp-send-pace";
 import { PlatformIcon } from "@/components/platform-icon";
 import type { Database } from "@/lib/types/database";
 import { CHANNELS_RETURN_KEY, returnTargetOrDefault } from "@/lib/channels/return-to";
@@ -571,6 +572,7 @@ export function ChannelsPanel({
                       {channel.connection_status === "connected" && <WhatsappCallSettings channelId={channel.id} />}
                       {channel.connection_status === "connected" && <WhatsappHistoryReview channelId={channel.id} />}
                       {channel.connection_status === "connected" && <WhatsappGroupSettings channelId={channel.id} />}
+                      <WhatsappSendPace channelId={channel.id} />
                       {channel.connection_status !== "connected" && channel.last_error && (
                         <p className="flex items-start gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
                           <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />

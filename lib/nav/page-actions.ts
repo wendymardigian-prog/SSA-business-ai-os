@@ -96,7 +96,11 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/broadcasts": {
     title: "Broadcasts",
-    tooltip: "Un mensaje a muchos contactos a la vez.",
+    tooltip: "Un mensaje a muchos contactos: por WhatsApp sale de a poco (para no arriesgar el número) y por email, enseguida.",
+  },
+  "/dashboard/broadcasts/[broadcastId]": {
+    title: "Broadcast",
+    tooltip: "A quiénes, por qué canal, el mensaje y el ritmo. Una vez en cola, el avance de cada envío.",
   },
   "/dashboard/sequences": {
     title: "Sequences",

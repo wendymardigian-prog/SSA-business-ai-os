@@ -48,7 +48,7 @@ NO reescribir (ya existe en ZernFlow, solo verificar/extender):
 - Inbox / bandeja con lista de conversaciones y panel de mensajes.
 - CRM con tags, custom fields (6 tipos reales: text, number, boolean, date, url, email — NO existe 'list'), segmentos.
 - Secuencias (drip) con auto-pausa cuando el contacto responde.
-- Broadcasts (tablas y UI — se conservan, no se usan en Etapa 1).
+- Broadcasts (tablas y UI del fork; desde el 3/11/2026 rehechos con canal, filtros de Contactos y cola de envíos: ver "Broadcasts y la cola de envíos").
 - Webhook event ledger para idempotencia (tabla `webhook_events`).
 - Flow versions (historial al publicar).
 - Realtime en `conversations` y `messages`.
@@ -1739,6 +1739,27 @@ node scripts/verify-account.mjs --despues-de-00275 # además, que cada aviso enc
 ```
 
 **SECURITY DEFINER cerradas para anon (2/11/2026).** `00276_security_definer_not_callable_by_anon`: a `can_give_role`, `can_grant_permissions` e `is_own_role` se les saca PUBLIC y anon (authenticated se queda: lo necesitan las policies de equipo), y a diez trigger functions de Agenda, Ventas, mensajes y roles se les saca PUBLIC, anon y authenticated (como la 00048). **Aplicada y registrada** el 2/11/2026 (versión `20261102230245`), con `verify-roles --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212 --despues-de-00249` en verde antes y después. En el linter, «Public Can Execute SECURITY DEFINER Function» queda solo con `get_public_form` (pública a propósito: `/f/[slug]`). Toda SECURITY DEFINER nueva lleva su `REVOKE ALL ... FROM PUBLIC, anon` (y `GRANT` explícito): la `00000` le da EXECUTE a anon por defecto. **La próxima libre es la `00277`** (confirmar con `list_migrations` y las ramas locales).
+
+# Broadcasts y la cola de envíos (3/11/2026)
+
+Un mensaje a muchos contactos por WhatsApp (Evolution) o email (Resend), con los MISMOS filtros de Contactos, variables con respaldo, hasta 5 variantes y una **cola de envíos** con ritmo por número. Resumen en [docs/broadcasts.md](docs/broadcasts.md).
+
+## Lo que no se puede romper
+
+- **La audiencia son los parámetros de URL de Contactos** (`broadcasts.audience_params`) y se re-planifica con `prepareContactList` + `applyListClauses`, con el cliente de la PERSONA (la RLS decide a quién ve). Se congela al confirmar (`queueBroadcast`); antes de cada envío se vuelve a mirar borrado, no contactar y baja.
+- **A quién se le manda lo decide UNA función** (`classifyRecipient`, `lib/broadcasts/audience.ts`), la misma para contar y para poner en cola. WhatsApp: solo quien ya escribió a ESE número, salvo la casilla «solo tienen teléfono». Email: marketing (`decideSend`). Instagram queda afuera.
+- **El mensaje se arma en UN lugar** (`lib/broadcasts/render.ts`, puro): `{{contact.*}}`, `{{workspace.name}}`, `{{custom.<slug>}}`, respaldo `{{x|y}}`, un nombre de relleno cuenta como vacío, la variante es estable por destinatario. En email el HTML lo decide la plantilla y se limpia (`finalizeEmailHtml`).
+- **El ritmo es del CARRIL (el canal)** y es puro (`lib/send-queue/pace.ts`): espera al azar entre mínimo y máximo, topes por minuto/hora/día, horario en la zona del negocio, pausa tras fallos seguidos. El techo es `channels.send_policy` (Canales, `channels.manage`); un broadcast solo puede ir más lento (`combinePolicies`).
+- **El despachador** (`lib/send-queue/dispatch.ts`, `/api/cron/send-queue` cada 15 s) toma el carril con `claim_lane_slot` (gana uno solo) y el destinatario con `claim_broadcast_recipient` (SKIP LOCKED), y manda SOLO por `sendChannelMessage` (WhatsApp, con el tope de 200/h) o `sendTransactionalEmail` con `category: "marketing"`. Nunca lanza por un proveedor: reintenta a 1, 5 y 15 min. Un `sending` colgado pasa a `failed` sin reintento. Los contadores salen de los destinatarios (`refresh_broadcast_counts`).
+- **Escribe solo el servidor** (00285): `broadcasts` y `broadcast_recipients` se leen con `broadcasts.manage` y no tienen políticas de escritura. El envío viejo (`send_broadcast` en `/api/cron/jobs`, siempre por Zernio) y el `SegmentBuilder` ya no existen.
+
+## Migraciones
+
+`00285_broadcast_send_queue` (aditiva) va **ANTES** de desplegar: **aplicada y registrada** el 3/11/2026 (versión `20261103235025`), después de ensayarla en una transacción que se deshizo sola, con `verify-broadcasts` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. `00286_send_queue_cron` (reescribe `call_app_cron` + el cron cada 15 s) va **DESPUÉS** del deploy: **escrita y SIN aplicar**. **La próxima libre es la `00287`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot y claim_broadcast_recipient a la vez, contadores
+```
 
 # Seguridad
 

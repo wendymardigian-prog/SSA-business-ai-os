@@ -1,151 +1,51 @@
 "use client";
 
-import { useState } from "react";
-import { useSearchParams } from "next/navigation";
-import {
-  Radio,
-  Plus,
-  Clock,
-  CheckCircle2,
-  Send,
-  Loader2,
-  XCircle,
-  FileEdit,
-  Calendar,
-  Filter,
-  ChevronDown,
-  ArrowLeft,
-  AlertCircle,
-} from "lucide-react";
+import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Plus, Radio } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
-import {
-  SegmentBuilder,
-  createEmptyFilter,
-  type SegmentFilter,
-} from "@/components/segment-builder";
-import type { Database, BroadcastStatus, Json } from "@/lib/types/database";
+import type { BroadcastStatus } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
 import { SectionSearch } from "@/components/comunicacion/section-search";
 import { NoSearchResults } from "@/components/comunicacion/no-search-results";
 import { matchesSearch } from "@/lib/comunicacion/search";
+import { BROADCAST_STATUS, TONE_CLASS } from "@/lib/broadcasts/status";
+import { createBroadcast } from "@/lib/actions/broadcasts";
 
-type Broadcast = Database["public"]["Tables"]["broadcasts"]["Row"];
-
-const statusConfig: Record<
-  BroadcastStatus,
-  { label: string; icon: React.ElementType; className: string }
-> = {
-  draft: {
-    label: "Draft",
-    icon: FileEdit,
-    className: "bg-muted text-muted-foreground",
-  },
-  scheduled: {
-    label: "Scheduled",
-    icon: Clock,
-    className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  },
-  sending: {
-    label: "Sending",
-    icon: Loader2,
-    className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  },
-  completed: {
-    label: "Completed",
-    icon: CheckCircle2,
-    className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  },
-  cancelled: {
-    label: "Cancelled",
-    icon: XCircle,
-    className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  },
-};
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "Not scheduled";
-  return new Date(dateStr).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+export interface BroadcastListItem {
+  id: string;
+  name: string;
+  status: BroadcastStatus;
+  channelLabel: string | null;
+  total: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  scheduledFor: string | null;
+  createdAt: string;
 }
 
-export function BroadcastsView({
-  broadcasts,
-  workspaceId,
-}: {
-  broadcasts: Broadcast[];
-  workspaceId: string;
-}) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [items, setItems] = useState(broadcasts);
-  const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>(
-    createEmptyFilter()
-  );
-  const [showSegmentFilter, setShowSegmentFilter] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+function formatDate(iso: string, timeZone: string): string {
+  return new Date(iso).toLocaleString("es", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+export function BroadcastsView({ items, hasChannels, timeZone }: { items: BroadcastListItem[]; hasChannels: boolean; timeZone: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   // Bloque I (I4): el buscador de la barra filtra la lista que ya llego.
   const query = useSearchParams().get("q") ?? "";
-  const visibleItems = items.filter((b) => matchesSearch(query, b.name));
+  const visible = items.filter((b) => matchesSearch(query, b.name));
 
-  async function handleCreate() {
-    if (!newName.trim() || creating) return;
-    setCreating(true);
-
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("broadcasts")
-        .insert({
-          workspace_id: workspaceId,
-          name: newName.trim(),
-          status: "draft",
-          message_content: {},
-          segment_filter: showSegmentFilter
-            ? (segmentFilter as unknown as Json)
-            : null,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (data) {
-        setItems((prev) => [data, ...prev]);
-        setNewName("");
-        setShowCreate(false);
-        setSelectedId(data.id);
-      }
-    } catch (err) {
-      console.error("Failed to create broadcast:", err);
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  const selectedBroadcast = selectedId
-    ? items.find((b) => b.id === selectedId) ?? null
-    : null;
-
-  if (selectedBroadcast) {
-    return (
-      <BroadcastDetail
-        broadcast={selectedBroadcast}
-        workspaceId={workspaceId}
-        onBack={() => setSelectedId(null)}
-        onUpdate={(updated) => {
-          setItems((prev) =>
-            prev.map((b) => (b.id === updated.id ? updated : b))
-          );
-        }}
-      />
-    );
+  function create() {
+    setError(null);
+    start(async () => {
+      const res = await createBroadcast({});
+      if (res.ok) router.push(`/dashboard/broadcasts/${res.id}`);
+      else setError(res.error);
+    });
   }
 
   return (
@@ -156,410 +56,88 @@ export function BroadcastsView({
         filters={<SectionSearch value={query} placeholder="Buscar un broadcast" label="Buscar broadcasts" />}
         right={
           <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90"
+            type="button"
+            onClick={create}
+            disabled={pending}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4" aria-hidden />
             <span className="hidden sm:inline">Nuevo broadcast</span>
+            <span className="sr-only sm:hidden">Nuevo broadcast</span>
           </button>
         }
       />
 
-      <div className="px-4 md:px-8">
-        {/* Create form */}
-        {showCreate && (
-          <div className="mt-4 rounded-lg border border-border bg-card p-4 space-y-4">
-            <div className="flex items-center gap-3">
-              <input
-                type="text"
-                placeholder="Broadcast name..."
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !showSegmentFilter) handleCreate();
-                  if (e.key === "Escape") setShowCreate(false);
-                }}
-                autoFocus
-                className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button
-                onClick={handleCreate}
-                disabled={!newName.trim() || creating}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                {creating ? "Creating..." : "Create"}
-              </button>
-              <button
-                onClick={() => {
-                  setShowCreate(false);
-                  setNewName("");
-                  setShowSegmentFilter(false);
-                  setSegmentFilter(createEmptyFilter());
-                }}
-                className="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent"
-              >
-                Cancel
-              </button>
-            </div>
+      {error && (
+        <p role="alert" className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 md:mx-8 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          {error}
+        </p>
+      )}
 
-            {/* Targeting section */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowSegmentFilter(!showSegmentFilter)}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                  showSegmentFilter
-                    ? "border-primary-edge bg-primary/10 text-primary-ink"
-                    : "border-input text-muted-foreground hover:bg-accent hover:text-foreground"
-                )}
-              >
-                <Filter className="h-3.5 w-3.5" />
-                Target specific contacts
-                <ChevronDown
-                  className={cn(
-                    "h-3 w-3 transition-transform",
-                    showSegmentFilter && "rotate-180"
-                  )}
-                />
-              </button>
+      {!hasChannels && (
+        <p className="mx-4 mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground md:mx-8">
+          Para mandar un broadcast hace falta un número de WhatsApp conectado o el email configurado.{" "}
+          <Link href="/dashboard/channels" className="font-medium text-primary-ink underline-offset-2 hover:underline">
+            Ir a Canales
+          </Link>
+        </p>
+      )}
 
-              {showSegmentFilter && (
-                <div className="mt-3">
-                  <SegmentBuilder
-                    value={segmentFilter}
-                    onChange={setSegmentFilter}
-                    workspaceId={workspaceId}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Broadcast list */}
       <div className="flex-1 overflow-auto">
         {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Radio className="h-10 w-10 text-muted-foreground/40" />
-            <p className="mt-3 text-sm font-medium text-muted-foreground">
-              No broadcasts yet
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
-              Create your first broadcast to send messages to your contacts
+          <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+            <Radio className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+            <p className="mt-3 text-sm font-medium">Todavía no hay broadcasts</p>
+            <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+              Elegí a quiénes con los mismos filtros de Contactos, el canal (WhatsApp o email) y el mensaje. Por WhatsApp salen de a poco, para no
+              arriesgar el número.
             </p>
           </div>
-        ) : visibleItems.length === 0 ? (
+        ) : visible.length === 0 ? (
           <NoSearchResults query={query} none="Ningún broadcast" />
         ) : (
-          <div className="divide-y divide-border">
-            {visibleItems.map((broadcast) => {
-              const status = statusConfig[broadcast.status];
-              const StatusIcon = status.icon;
-              const total = broadcast.total_recipients;
-
+          <ul className="divide-y divide-border">
+            {visible.map((b) => {
+              const status = BROADCAST_STATUS[b.status];
+              const done = b.sent + b.failed;
               return (
-                <button
-                  key={broadcast.id}
-                  onClick={() => setSelectedId(broadcast.id)}
-                  className="flex w-full items-center gap-6 px-8 py-4 text-left transition-colors hover:bg-accent/50"
-                >
-                  {/* Status + Name */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-3">
-                      <h3 className="truncate text-sm font-medium">
-                        {broadcast.name}
-                      </h3>
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
-                          status.className
-                        )}
-                      >
-                        <StatusIcon
-                          className={cn(
-                            "h-3 w-3",
-                            broadcast.status === "sending" && "animate-spin"
-                          )}
-                        />
-                        {status.label}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {broadcast.scheduled_for
-                          ? formatDate(broadcast.scheduled_for)
-                          : "Not scheduled"}
-                      </span>
-                      <span>
-                        Created {formatDate(broadcast.created_at)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Stats */}
-                  <div className="flex items-center gap-6">
-                    <div className="text-center">
-                      <p className="text-lg font-semibold">{total}</p>
-                      <p className="text-[10px] uppercase text-muted-foreground">
-                        Recipients
+                <li key={b.id}>
+                  <Link href={`/dashboard/broadcasts/${b.id}`} className="flex flex-col gap-2 px-4 py-4 hover:bg-accent/50 sm:flex-row sm:items-center sm:gap-6 md:px-8">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate text-sm font-medium">{b.name}</h3>
+                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", TONE_CLASS[status.tone])}>{status.label}</span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {b.channelLabel ?? "Sin canal"} ·{" "}
+                        {b.status === "scheduled" && b.scheduledFor ? `sale el ${formatDate(b.scheduledFor, timeZone)}` : `creado el ${formatDate(b.createdAt, timeZone)}`}
                       </p>
                     </div>
-                    <div className="text-center">
-                      <p className="text-lg font-semibold text-green-600">
-                        {broadcast.sent}
-                      </p>
-                      <p className="text-[10px] uppercase text-muted-foreground">
-                        Sent
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-semibold text-blue-600">
-                        {broadcast.delivered}
-                      </p>
-                      <p className="text-[10px] uppercase text-muted-foreground">
-                        Delivered
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-semibold text-red-600">
-                        {broadcast.failed}
-                      </p>
-                      <p className="text-[10px] uppercase text-muted-foreground">
-                        Failed
-                      </p>
-                    </div>
-                  </div>
-                </button>
+                    {b.status !== "draft" && (
+                      <div className="flex shrink-0 items-center gap-5 text-center text-xs">
+                        <Stat label="Destinatarios" value={b.total} />
+                        <Stat label="Enviados" value={b.sent} className="text-green-700 dark:text-green-400" />
+                        <Stat label="Fallidos" value={b.failed} className={b.failed ? "text-red-700 dark:text-red-400" : undefined} />
+                        <Stat label="Salteados" value={b.skipped} />
+                        {b.status === "sending" && b.total > 0 && <Stat label="Avance" value={`${Math.round((done / b.total) * 100)} %`} />}
+                      </div>
+                    )}
+                  </Link>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
       </div>
     </div>
   );
 }
 
-function BroadcastDetail({
-  broadcast,
-  workspaceId,
-  onBack,
-  onUpdate,
-}: {
-  broadcast: Broadcast;
-  workspaceId: string;
-  onBack: () => void;
-  onUpdate: (updated: Broadcast) => void;
-}) {
-  const messageContent = broadcast.message_content as { text?: string } | null;
-  const [messageText, setMessageText] = useState(messageContent?.text || "");
-  const [sending, setSending] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  const isDraft = broadcast.status === "draft" || broadcast.status === "scheduled";
-  const status = statusConfig[broadcast.status];
-  const StatusIcon = status.icon;
-
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    try {
-      const supabase = createClient();
-      const newContent = { text: messageText.trim() };
-      const { data, error: err } = await supabase
-        .from("broadcasts")
-        .update({ message_content: newContent as unknown as Json })
-        .eq("id", broadcast.id)
-        .select()
-        .single();
-
-      if (err) throw err;
-      if (data) onUpdate(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleSend() {
-    if (!messageText.trim()) {
-      setError("Message cannot be empty");
-      return;
-    }
-
-    setSending(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const res = await fetch(`/api/v1/broadcasts/${broadcast.id}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messageContent: { text: messageText.trim() },
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to send broadcast");
-      }
-
-      setSuccess(`Sending to ${data.totalRecipients} recipients`);
-
-      // Update the broadcast locally
-      onUpdate({
-        ...broadcast,
-        status: "sending",
-        total_recipients: data.totalRecipients,
-        message_content: { text: messageText.trim() } as unknown as Json,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send");
-    } finally {
-      setSending(false);
-    }
-  }
-
+function Stat({ label, value, className }: { label: string; value: number | string; className?: string }) {
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b border-border px-8 py-6">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{broadcast.name}</h1>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                  status.className
-                )}
-              >
-                <StatusIcon
-                  className={cn(
-                    "h-3.5 w-3.5",
-                    broadcast.status === "sending" && "animate-spin"
-                  )}
-                />
-                {status.label}
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Created {formatDate(broadcast.created_at)}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto px-8 py-6">
-        <div className="mx-auto max-w-2xl space-y-6">
-          {/* Stats row for non-draft broadcasts */}
-          {broadcast.total_recipients > 0 && (
-            <div className="grid grid-cols-4 gap-4">
-              <div className="rounded-lg border border-border bg-card p-4 text-center">
-                <p className="text-2xl font-bold">{broadcast.total_recipients}</p>
-                <p className="text-xs text-muted-foreground">Recipients</p>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-4 text-center">
-                <p className="text-2xl font-bold text-green-600">{broadcast.sent}</p>
-                <p className="text-xs text-muted-foreground">Sent</p>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-4 text-center">
-                <p className="text-2xl font-bold text-blue-600">{broadcast.delivered}</p>
-                <p className="text-xs text-muted-foreground">Delivered</p>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-4 text-center">
-                <p className="text-2xl font-bold text-red-600">{broadcast.failed}</p>
-                <p className="text-xs text-muted-foreground">Failed</p>
-              </div>
-            </div>
-          )}
-
-          {/* Message composer */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium">Message</label>
-            <textarea
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              disabled={!isDraft}
-              placeholder="Type your broadcast message here..."
-              rows={6}
-              className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            {isDraft && (
-              <p className="text-xs text-muted-foreground">
-                This message will be sent to all contacts matching your segment
-                filter{broadcast.segment_filter ? "" : " (all subscribed contacts)"}.
-              </p>
-            )}
-          </div>
-
-          {/* Segment info */}
-          {broadcast.segment_filter && (
-            <div className="rounded-lg border border-border bg-card p-4">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                Segment filter applied
-              </div>
-              <pre className="mt-2 overflow-auto rounded bg-muted p-3 text-xs text-muted-foreground">
-                {JSON.stringify(broadcast.segment_filter, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {/* Error/Success messages */}
-          {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-900/20 dark:text-green-400">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              {success}
-            </div>
-          )}
-
-          {/* Actions */}
-          {isDraft && (
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                onClick={handleSend}
-                disabled={sending || !messageText.trim()}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                {sending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-                {sending ? "Sending..." : "Send Now"}
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || !messageText.trim()}
-                className="inline-flex items-center gap-2 rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Save Draft"}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+    <div>
+      <p className={cn("text-base font-semibold tabular-nums", className)}>{value}</p>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
     </div>
   );
 }
