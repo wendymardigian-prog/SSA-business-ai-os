@@ -83,7 +83,7 @@ describe("caracterizacion: los emails del sistema (templates.ts)", () => {
     const t = await import("./templates");
     const brand = { name: "Mi Negocio", logoUrl: null, colorHex: "#7c3aed", initial: "M" };
     expect(
-      t.teamInviteEmail({ brand, inviterName: "Wendy", workspaceName: "Mi Negocio", roleLabel: "Admin", inviteUrl: "https://app.test/invite/abc" } as never),
+      t.teamInviteEmail({ brand, inviterName: "Ana Paz", workspaceName: "Mi Negocio", roleLabel: "Admin", inviteUrl: "https://app.test/invite/abc" } as never),
     ).toMatchSnapshot("invitacion");
     expect(
       t.teamNotificationEmail({ brand, title: "Te asignaron un chat", body: "Ana te escribió", url: "https://app.test/x", settingsUrl: "https://app.test/cuenta", businessName: "Mi Negocio" }),
