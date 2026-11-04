@@ -1,5 +1,6 @@
 "use client";
 
+import { EmailDeliveryNotice } from "@/components/email/email-delivery-notice";
 import type { SendEmailNodeData } from "@/lib/flow-engine/nodes/send-email";
 import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import { RichTextEditor } from "@/components/editor/rich-text-editor";
@@ -33,6 +34,8 @@ export function SendEmailPanel({
 
   return (
     <div className="space-y-4">
+      {/* La guardia de entrega (00287): si los rebotes y quejas no llegan, el freno no puede funcionar. Avisa, no bloquea. */}
+      <EmailDeliveryNotice />
       <div>
         <label htmlFor="em-to" className={labelClass}>A quién</label>
         <select id="em-to" value={mode} onChange={(e) => set({ to: e.target.value as SendEmailNodeData["to"] })} className={inputClass}>

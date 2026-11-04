@@ -9,6 +9,7 @@ import type { BroadcastRecipientStatus, BroadcastStatus } from "@/lib/types/data
 import { BROADCAST_STATUS, RECIPIENT_STATUS, TONE_CLASS, formatEta } from "@/lib/broadcasts/status";
 import { describePolicy, estimateFinish, type SendPolicy } from "@/lib/send-queue/pace";
 import { cancelBroadcastAction, pauseBroadcastAction, resumeBroadcastAction, resumeLaneAction } from "@/lib/actions/broadcasts";
+import { EMAIL_RESULT_FILTERS, emailResultTiles, type EmailResultCounts, type EmailResultFilter } from "@/lib/broadcasts/email-results-view";
 
 /**
  * Un broadcast que ya salió de borrador: cuánto falta, cuándo termina, y cada
@@ -25,6 +26,8 @@ export interface ProgressRecipient {
   reason: string | null;
   sentAt: string | null;
   conversationId: string | null;
+  /** Lo que paso con SU email (A9): entregado, abrio, clic, rebote, spam, baja. Vacio en WhatsApp. */
+  emailBadges?: string[];
 }
 
 export function BroadcastProgress({
@@ -33,6 +36,9 @@ export function BroadcastProgress({
   policy,
   lane,
   counts,
+  emailResults = null,
+  deferredCount = null,
+  emailFilter = "",
   recipients,
   filter,
   page,
@@ -44,6 +50,11 @@ export function BroadcastProgress({
   policy: SendPolicy | null;
   lane: { pausedReason: string | null; paused: boolean } | null;
   counts: Record<BroadcastRecipientStatus, number>;
+  /** Los resultados por email (A9, 00287). Null en WhatsApp o si no se pudieron leer. */
+  emailResults?: EmailResultCounts | null;
+  /** Cuantos esperan el tope del dia o la pausa del marketing. */
+  deferredCount?: number | null;
+  emailFilter?: EmailResultFilter | "";
   recipients: ProgressRecipient[];
   filter: BroadcastRecipientStatus | "";
   page: number;
@@ -76,10 +87,12 @@ export function BroadcastProgress({
 
   const eta = policy && open > 0 && broadcast.status !== "paused" && broadcast.status !== "cancelled" ? estimateFinish(open, policy, new Date(), timeZone) : null;
   const pct = (n: number) => (total > 0 ? `${(n / total) * 100}%` : "0%");
-  const href = (next: { estado?: string; pag?: number }) => {
+  const href = (next: { estado?: string; pag?: number; email?: string }) => {
     const qs = new URLSearchParams();
     const estado = next.estado ?? filter;
     if (estado) qs.set("estado", estado);
+    const email = next.email ?? emailFilter;
+    if (email) qs.set("email", email);
     const pag = next.pag ?? 1;
     if (pag > 1) qs.set("pag", String(pag));
     const s = qs.toString();
@@ -153,6 +166,12 @@ export function BroadcastProgress({
           <Count label="Salteados" value={counts.skipped} />
           <Count label="Cancelados" value={counts.cancelled} />
         </dl>
+        {deferredCount !== null && deferredCount > 0 && (
+          <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs">
+            <strong>{deferredCount.toLocaleString("es")}</strong> esperan el máximo de emails de marketing del día (o la pausa del freno): salen
+            solos, en orden, cuando haya lugar. No es un error.
+          </p>
+        )}
         {policy && <p className="text-xs text-muted-foreground">Ritmo: {describePolicy(policy)}</p>}
         {eta && (
           <p className="text-sm">
@@ -167,7 +186,48 @@ export function BroadcastProgress({
         )}
       </section>
 
+      {emailResults && (
+        <section aria-labelledby="bc-email-results" className="space-y-3 rounded-xl border border-border bg-card p-4 md:p-5">
+          <h2 id="bc-email-results" className="text-sm font-semibold">
+            Resultados del email
+          </h2>
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+            {emailResultTiles(emailResults).map((t) => (
+              <div key={t.key}>
+                <dt className="text-xs text-muted-foreground" title={t.hint}>
+                  {t.label}
+                  {t.hint ? " *" : ""}
+                </dt>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {t.value.toLocaleString("es")} <span className="text-xs font-normal text-muted-foreground">{t.rate}</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="text-[11px] text-muted-foreground">
+            Sobre {emailResults.sent.toLocaleString("es")} enviados. * Las aperturas son aproximadas: dependen de que el correo de la persona cargue las
+            imágenes. Los resultados llegan por el webhook de Resend.
+          </p>
+        </section>
+      )}
+
       <section className="space-y-2">
+        {emailResults && (
+          <nav aria-label="Filtrar por lo que pasó con el email" className="flex flex-wrap gap-1.5">
+            {([["", "Cualquier resultado"], ...(Object.entries(EMAIL_RESULT_FILTERS).map(([k, v]) => [k, v.label]))] as Array<[string, string]>).map(([value, label]) => (
+              <Link
+                key={value || "any"}
+                href={href({ email: value, pag: 1 })}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-xs",
+                  emailFilter === value ? "border-primary-edge bg-primary/10 font-medium" : "border-border text-muted-foreground hover:bg-accent",
+                )}
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
+        )}
         <nav aria-label="Filtrar destinatarios" className="flex flex-wrap gap-1.5">
           {([["", "Todos", total], ...(["sent", "pending", "failed", "skipped", "cancelled"] as const).map((s) => [s, RECIPIENT_STATUS[s], s === "pending" ? open : counts[s]] as const)] as const).map(
             ([value, label, n]) => (
@@ -198,6 +258,7 @@ export function BroadcastProgress({
                   {RECIPIENT_STATUS[r.status]}
                   {r.reason && <span className="text-muted-foreground"> · {r.reason}</span>}
                   {r.status === "sent" && r.sentAt && <span className="text-muted-foreground"> · {formatEta(new Date(r.sentAt), timeZone)}</span>}
+                  {r.emailBadges && r.emailBadges.length > 0 && <span className="block text-muted-foreground">{r.emailBadges.join(" · ")}</span>}
                 </span>
                 {r.conversationId ? (
                   <Link href={`/dashboard/inbox?c=${r.conversationId}`} className="text-xs font-medium text-primary-ink hover:underline">

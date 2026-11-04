@@ -183,6 +183,9 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                     <span className="font-medium">{describeHistoryItem(item).actor}</span> {describeHistoryItem(item).text}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at)}</p>
+                  {item.source === "email" && item.delivery.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">{item.delivery.join(" · ")}</p>
+                  )}
                   {item.source === "status" && item.reason && (
                     <p className="mt-1 text-xs text-muted-foreground">Motivo: {item.reason}</p>
                   )}
