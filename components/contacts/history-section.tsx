@@ -41,6 +41,10 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "content_link.unlinked": "desvinculó el anuncio de su pieza de contenido",
   // Pipeline (00245): el cambio de estado se ve con su propia entrada (contact_status_changes);
   // la del agente queda en el audit para poder revertirla.
+  // La guardia de entrega (00287): se audita sobre el workspace; no se ve en la ficha de un contacto.
+  "email_marketing.paused": "se pausaron los emails de marketing",
+  "email_marketing.resumed": "reanudó los emails de marketing",
+  "email_marketing.settings": "cambió el tope de emails de marketing",
   setter_status: "cambió el estado de setter",
   "contact_statuses.updated": "cambió las listas de estados",
   create: "creó el contacto",
@@ -179,6 +183,9 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                     <span className="font-medium">{describeHistoryItem(item).actor}</span> {describeHistoryItem(item).text}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at)}</p>
+                  {item.source === "email" && item.delivery.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">{item.delivery.join(" · ")}</p>
+                  )}
                   {item.source === "status" && item.reason && (
                     <p className="mt-1 text-xs text-muted-foreground">Motivo: {item.reason}</p>
                   )}

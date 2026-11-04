@@ -37,6 +37,7 @@ import { emptyAttachment, toAttachmentsColumn } from "@/lib/messages/attachments
 import { copyAssetToChat } from "@/lib/response-assets/send-copy";
 import { touchAssetUsage } from "@/lib/response-assets/usage";
 import { hasFile, type AssetKind } from "@/lib/response-assets/kind";
+import type { DeferReason } from "@/lib/email/delivery-guard";
 
 type Db = SupabaseClient<Database>;
 
@@ -45,7 +46,12 @@ export type DeliverAssetOutcome =
   /** No se intento: el recurso no existe o esta apagado, el canal no lo acepta, falta la conversacion. */
   | { ok: false; status: "skipped"; reason: string }
   /** Se intento y no salio. `retryable` = vale la pena volver a probar (el canal esta frenado). */
-  | { ok: false; status: "failed"; reason: string; retryable: boolean };
+  | { ok: false; status: "failed"; reason: string; retryable: boolean }
+  /**
+   * Por email, un recurso de marketing que la guardia de entrega dejo para despues (00287: tope del dia, cuota o
+   * freno). No es un fallo ni deja un mensaje fallido en el hilo: quien llama lo vuelve a intentar a `retryAt`.
+   */
+  | { ok: false; status: "deferred"; reason: string; retryAt: Date; deferReason: DeferReason };
 
 interface AssetRow {
   id: string;
@@ -136,6 +142,9 @@ export async function deliverAsset(
       if (!text) return skipped("El recurso no tiene texto para mandar.");
 
       const outcome = await sendChannelMessage(supabase, send, { text });
+      if (!outcome.ok && outcome.deferred) {
+        return { ok: false, status: "deferred", reason: outcome.failure?.message ?? "Sale más tarde", retryAt: outcome.deferred.retryAt, deferReason: outcome.deferred.reason };
+      }
       await recordSend(supabase, send, outcome.ok ? text : (outcome.failure?.message ?? text), outcome);
       if (!outcome.ok) {
         return { ok: false, status: "failed", reason: outcome.failure?.message ?? "No se pudo enviar", retryable: outcome.failure?.kind === "rate_limited" };

@@ -39,8 +39,10 @@ export const NOTIFICATION_TYPES = [
   "booking_rescheduled",
   "booking_cancelled",
   "booking_sync_failed",
-  /** La cuota diaria de emails se agotó y un flujo no pudo mandar (F46). */
+  /** Se llegó al tope diario de emails de marketing (o a la cuota de Resend): lo que falta sale mañana (00287). */
   "email_quota_reached",
+  /** El freno automático pausó el marketing por rebotes o quejas (00287). Se reanuda a mano en Resend. */
+  "email_marketing_paused",
   /** El asistente no pudo interpretar un mensaje y derivó la conversación (F10). */
   "needs_human",
   /** Te asignaron una conversación (a mano, por una regla o al marcar un conocido). Va SOLO a esa persona, nunca a quien la asignó. */
@@ -248,16 +250,26 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     entity: "integration",
   },
   /**
-   * Se agoto la cuota diaria de emails y un flujo no pudo mandar (F46).
+   * Se lleno el tope diario de emails de marketing o la cuota del plan de Resend (00287, la guardia de entrega).
    *
-   * Es un aviso y no un error silencioso a proposito: el email que no salio no
-   * se recupera solo, y quien lo configuro tiene que enterarse el mismo dia.
+   * Desde la guardia nada se pierde (lo que falta sale manana), pero quien manda tiene que saber por que su envio
+   * va mas lento. Lleva a la tarjeta de Resend, donde se ve el tope y el calentamiento.
    */
   email_quota_reached: {
     type: "email_quota_reached",
-    label: "Se agoto la cuota de emails",
+    label: "Se lleno el tope de emails del dia",
     tone: "warning",
-    entity: "flow",
+    entity: "integration",
+  },
+  /**
+   * El freno automatico pauso todo el marketing del negocio: rebotes o quejas por encima del limite (00287). Los
+   * transaccionales siguen. Se reanuda a mano desde la tarjeta de Resend.
+   */
+  email_marketing_paused: {
+    type: "email_marketing_paused",
+    label: "Se pausaron los emails de marketing",
+    tone: "warning",
+    entity: "integration",
   },
   /**
    * El asistente no pudo interpretar un mensaje y derivo la conversacion (F10).

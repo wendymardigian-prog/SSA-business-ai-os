@@ -110,7 +110,8 @@ describe("connectResendWebhook", () => {
     expect(patch).toHaveLength(1);
     expect(patch[0]).toMatchObject({ method: "PATCH", path: "/webhooks/wh_mano" });
     expect((patch[0].body as { endpoint: string }).endpoint).toBe(URL_MINE);
-    expect(new Set((patch[0].body as { events: string[] }).events)).toEqual(new Set(["email.bounced", "email.delivered", "email.received", "email.complained"]));
+    // Cambio aprobado (00287): SSA suma tambien aperturas y clics (los resultados de cada envio).
+    expect(new Set((patch[0].body as { events: string[] }).events)).toEqual(new Set(["email.bounced", "email.delivered", "email.received", "email.complained", "email.opened", "email.clicked"]));
   });
 
   it("el nuestro con eventos que faltan: lo actualiza", async () => {
@@ -185,7 +186,16 @@ describe("inspectResendWebhook (Probar: solo lectura)", () => {
   it("dice que eventos faltan sin escribir nada", async () => {
     const r = fakeResend({ webhooks: [{ id: "wh_1", endpoint: URL_MINE, events: ["email.received"], status: "enabled" }] });
     const res = await inspectResendWebhook({ apiKey: "re_x", workspaceId: WS, receiverUrl: RECEIVER, fetchImpl: r.fetchImpl });
-    expect(res).toEqual({ ok: true, found: true, webhookId: "wh_1", ownership: "mine", missing: ["email.bounced", "email.complained"], disabled: false });
+    // `missing`: lo imprescindible (lo que lo pone en rojo). `missingOptional` (00287): los de resultados, que se sugieren.
+    expect(res).toEqual({
+      ok: true,
+      found: true,
+      webhookId: "wh_1",
+      ownership: "mine",
+      missing: ["email.bounced", "email.complained"],
+      missingOptional: ["email.delivered", "email.opened", "email.clicked"],
+      disabled: false,
+    });
     expect(writes(r.calls)).toEqual([]);
   });
 

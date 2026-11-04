@@ -101,7 +101,7 @@ describe("buildContactHistory", () => {
 
 describe("describeHistoryItem", () => {
   const email = (status: EmailHistoryItem["status"], flowName: string | null = "Confirmación"): EmailHistoryItem => ({
-    source: "email", id: "e", at: "x", to: "ana@x.com", subject: "Tu reunión", status, flowName,
+    source: "email", id: "e", at: "x", to: "ana@x.com", subject: "Tu reunión", status, flowName, delivery: [],
   });
 
   it("un email que salio dice a quien, el asunto y que automatizacion lo mando", () => {
@@ -231,5 +231,27 @@ describe("los cambios de estado (00245)", () => {
     );
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ source: "status", reason: "Dijo que tiene presupuesto" });
+  });
+});
+
+describe("los eventos de entrega en el historial (00287)", () => {
+  it("un email que salio muestra lo que paso despues; uno salteado, nada", () => {
+    const items = buildContactHistory({
+      audit: [],
+      flowEvents: [],
+      enrollments: [],
+      flowNames: new Map(),
+      emails: [
+        {
+          id: "1", toEmail: "ana@x.com", subject: "Webinar", status: "sent", relatedEntityType: "broadcast", relatedEntityId: "b-1", createdAt: "2026-11-05T10:00:00Z",
+          delivery: { delivered_at: "x", opened_at: "x", clicked_at: null, bounced_at: null, complained_at: null, unsubscribed_at: "x", open_count: 2, click_count: 0 },
+        },
+        { id: "2", toEmail: "", subject: "Webinar", status: "skipped_no_email", relatedEntityType: "flow", relatedEntityId: null, createdAt: "2026-11-05T09:00:00Z" },
+      ],
+    });
+    const [sent, skipped] = items as EmailHistoryItem[];
+    expect(sent.delivery).toEqual(["Entregado", "Abrió (2)", "Se dio de baja"]);
+    expect(skipped.delivery).toEqual([]);
+    expect(describeHistoryItem(skipped).text).toContain("no tiene email");
   });
 });

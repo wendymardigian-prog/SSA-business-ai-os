@@ -12,6 +12,7 @@ import { attributeOutgoing, type OutgoingMessage } from "@/lib/attribution/outgo
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
+import { deferFlowNode, takeAlreadySent } from "../defer-node";
 
 /** Los kinds que un flow puede declarar en mediaType; cualquier otra cosa cae en "image", como siempre. */
 const VALID_MEDIA_KINDS = new Set<AttachmentKind>(["image", "video", "audio", "voice", "document"]);
@@ -27,7 +28,7 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
   requires: ["channel"],
   type: "sendMessage",
   label: "Enviar mensaje",
-  async execute({ supabase, data, context, node }: NodeExecutionArgs<SendMessageNodeData>) {
+  async execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<SendMessageNodeData>) {
     // Un flow puede correr sin canal (agenda, o un evento del CRM sobre un
     // contacto sin conversacion). Enviar por canal no tiene a donde ir: se
     // saltea con motivo y el flow sigue, en vez de romperse a la mitad.
@@ -57,7 +58,13 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
       return;
     }
 
-    for (const original of data.messages) {
+    // Por email, un mensaje de marketing que la guardia de entrega deja para despues (00287): el paso se vuelve a
+    // correr a esa hora sin repetir los mensajes que ya salieron (se recuerdan por su posicion).
+    const alreadySent = takeAlreadySent(context, node.id);
+    const sentNow: string[] = [];
+
+    for (const [index, original] of data.messages.entries()) {
+      if (alreadySent.has(`#${index}`)) continue;
       // Las variables se reemplazan en TODO el mensaje (texto, botones, respuestas rapidas, links, carrusel y media)
       // y una sola vez, antes de adaptarlo a la plataforma. Antes solo el texto: un boton con {{...}} llegaba literal.
       const msg = interpolateDeep(original, context.variables || {});
@@ -92,6 +99,20 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
         template: outgoing.template as typeof adapted.template,
         replyMarkup: outgoing.replyMarkup as typeof adapted.replyMarkup,
       });
+
+      // Hoy no entra (tope de marketing, cuota o freno): no es un fallo ni deja una burbuja roja en el hilo.
+      if (!outcome.ok && outcome.deferred && sessionId) {
+        return deferFlowNode(supabase, {
+          nodeId: node.id,
+          nodeType: "sendMessage",
+          sessionId,
+          context,
+          retryAt: outcome.deferred.retryAt,
+          reason: outcome.deferred.reason,
+          alreadySent: sentNow,
+        });
+      }
+      if (outcome.ok) sentNow.push(`#${index}`);
 
       // El adjunto se guarda en formato v2 (F19), no el array legado
       // `[{type,url}]`: asi la burbuja lo pinta con el mismo renderer que

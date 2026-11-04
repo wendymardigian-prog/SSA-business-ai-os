@@ -16,6 +16,7 @@
 
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { deliverAsset } from "@/lib/response-assets/deliver";
+import { deferFlowNode } from "../defer-node";
 
 export interface SendAssetNodeData {
   /** El recurso de la banca. */
@@ -24,7 +25,7 @@ export interface SendAssetNodeData {
   caption?: string;
 }
 
-async function execute({ supabase, data, context, node }: NodeExecutionArgs<SendAssetNodeData>) {
+async function execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<SendAssetNodeData>) {
   if (!data.assetId) {
     console.warn(`[flow-engine] el nodo ${node.id} (Enviar recurso) no tiene un recurso elegido`);
     return;
@@ -42,6 +43,17 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
     },
   });
 
+  // Por email, la guardia de entrega lo dejo para despues (00287): el paso se vuelve a correr a esa hora.
+  if (!result.ok && result.status === "deferred" && sessionId) {
+    return deferFlowNode(supabase, {
+      nodeId: node.id,
+      nodeType: "sendAsset",
+      sessionId,
+      context,
+      retryAt: result.retryAt,
+      reason: result.deferReason,
+    });
+  }
   if (!result.ok) {
     console.warn(`[flow-engine] el nodo ${node.id} (Enviar recurso) no mandó el recurso: ${result.reason}`);
   }

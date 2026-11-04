@@ -4,6 +4,7 @@
  * chequeó `broadcasts.manage` y saca el workspace de la sesión. Escribe con el
  * cliente de SERVICIO (desde la 00285 la tabla no tiene políticas de escritura).
  */
+import { loadContactActivity } from "@/lib/contacts/activity";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { parseBroadcastPace } from "@/lib/send-queue/pace";
@@ -167,6 +168,8 @@ export async function queueBroadcast(
   if (claimError || !claimed || claimed.length === 0) return fail("Este broadcast ya se puso en cola.");
 
   const variants = cleanVariants(b.message_variants);
+  // Primero los más activos (00288): con el tope diario de marketing, el día lo usan quienes más probablemente abren.
+  const activity = await loadContactActivity(service, input.workspaceId, audience.recipients.filter((r) => r.classification.ok).map((r) => r.contactId));
   const rows = audience.recipients.map((r) => ({
     broadcast_id: b.id,
     workspace_id: input.workspaceId,
@@ -176,6 +179,7 @@ export async function queueBroadcast(
     target: r.classification.ok ? r.classification.target : null,
     skip_reason: r.classification.ok ? null : r.classification.reason,
     variant_index: pickVariant(`${b.id}:${r.contactId}`, variants.length),
+    sort_key: activity.get(r.contactId) ?? null,
   }));
 
   for (let i = 0; i < rows.length; i += INSERT_BATCH) {

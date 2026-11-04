@@ -6,7 +6,7 @@
  */
 
 import { RESEND_WEBHOOK_EVENTS_LIST } from "./resend-events";
-import { primaryAddress, storedMissingEvents, type ResendConnectionState } from "./resend-config";
+import { primaryAddress, storedMissingEvents, storedMissingOptionalEvents, type ResendConnectionState } from "./resend-config";
 import { isVerifiedDomain, receivingState, RECEIVING_STATE_LABELS, type ResendDomain } from "./senders";
 
 export type CheckStatus = "ok" | "fail" | "na";
@@ -94,7 +94,9 @@ export function resendChecklist(input: ChecklistInput): CheckItem[] {
   }
 
   // 3. El webhook.
-  const total = RESEND_WEBHOOK_EVENTS_LIST.length;
+  // Cuantos de los eventos de SSA tiene (sin dato guardado, todos). Los de resultados que falten se sugieren, sin rojo.
+  const optionalMissing = storedMissingOptionalEvents(state);
+  const total = state.webhook.events.length > 0 ? RESEND_WEBHOOK_EVENTS_LIST.filter((e) => state.webhook.events.includes(e)).length : RESEND_WEBHOOK_EVENTS_LIST.length;
   const liveWebhook = live?.webhook;
   const missing = liveWebhook?.checked && liveWebhook.found ? liveWebhook.missing : storedMissingEvents(state);
   const webhookFail = (detail: string): CheckItem => ({ id: "webhook", status: "fail", title: "Webhook", detail });
@@ -115,7 +117,12 @@ export function resendChecklist(input: ChecklistInput): CheckItem[] {
       id: "webhook",
       status: "ok",
       title: state.webhook.id || liveWebhook?.checked ? `Webhook conectado · ${total} eventos` : "Webhook con secreto guardado",
-      detail: state.webhook.id || liveWebhook?.checked ? null : "Creado a mano: tocá «Probar» para ver que tenga los 3 eventos.",
+      detail:
+        state.webhook.id || liveWebhook?.checked
+          ? optionalMissing.length > 0 && state.webhook.events.length > 0
+            ? "Sumá las entregas, aperturas y clics para ver los resultados de cada envío: tocá «Actualizar webhook»."
+            : null
+          : "Creado a mano: tocá «Probar» para ver que tenga los eventos de rebotes, quejas y emails entrantes.",
     });
   }
 

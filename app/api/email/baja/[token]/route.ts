@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { clientIp } from "@/lib/scheduling/antispam";
 import { createServiceClient } from "@/lib/supabase/server";
 import { applyUnsubscribeAction, isUnsubscribeToken } from "@/lib/email/unsubscribe-public";
+import { EMAIL_LOG_ID_RE } from "@/lib/email/unsubscribe";
 
 /**
  * `POST /api/email/baja/<token>`: la baja en un clic (RFC 8058). La pide el cliente de correo de la persona (Gmail,
@@ -21,7 +22,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   if (!isUnsubscribeToken(token)) return NextResponse.json({ ok: false }, { status: 404, headers: NO_STORE });
   try {
     const service = await createServiceClient();
-    const outcome = await applyUnsubscribeAction(service, { token, ip: clientIp(request.headers), action: "unsubscribe", source: "one_click" });
+    // `?e=`: el email desde el que se dio de baja (00287). Solo informativo.
+    const emailLogId = new URL(request.url).searchParams.get("e");
+    const outcome = await applyUnsubscribeAction(service, { token, ip: clientIp(request.headers), action: "unsubscribe", source: "one_click", emailLogId });
     if (outcome.ok) return NextResponse.json({ ok: true }, { status: 200, headers: NO_STORE });
     if (outcome.reason === "not_found") return NextResponse.json({ ok: false }, { status: 404, headers: NO_STORE });
     if (outcome.reason === "rate_limited") return NextResponse.json({ ok: false }, { status: 429, headers: { ...NO_STORE, "Retry-After": "60" } });
@@ -31,8 +34,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   }
 }
 
-export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const e = new URL(request.url).searchParams.get("e");
+  const ref = e && EMAIL_LOG_ID_RE.test(e) ? `?e=${e}` : "";
   // Location relativa: la página de baja se abre en el MISMO dominio del link (el del negocio o el principal).
-  return new NextResponse(null, { status: 303, headers: { ...NO_STORE, Location: `/baja/${encodeURIComponent(token)}` } });
+  return new NextResponse(null, { status: 303, headers: { ...NO_STORE, Location: `/baja/${encodeURIComponent(token)}${ref}` } });
 }

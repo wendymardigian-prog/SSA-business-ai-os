@@ -1,0 +1,97 @@
+[
+  {
+    "name": "sin decision guardada y pocos envios en su vida: el calentamiento arranca prendido en 100",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 1000, "warmup_enabled": null, "lifetime_marketing_sent": 7, "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 100, "remaining": 100, "warmup_enabled": true, "warmup_level": 0, "warmup_level_date": "2026-11-05", "warmup_changed": true, "warmup_completed": false }
+  },
+  {
+    "name": "sin decision guardada y 500 o mas en su vida: sin calentamiento, rige el maximo",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 1000, "warmup_enabled": null, "lifetime_marketing_sent": 500, "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 1000, "remaining": 1000, "warmup_enabled": false, "warmup_changed": true }
+  },
+  {
+    "name": "sin maximo cargado: 100 por dia",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": null, "warmup_enabled": false, "marketing_today": 99 },
+    "expected": { "status": "ok", "cap": 100, "remaining": 1, "warmup_changed": false }
+  },
+  {
+    "name": "llego al tope del dia: queda para manana",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 100, "warmup_enabled": false, "marketing_today": 100 },
+    "expected": { "status": "deferred_cap", "cap": 100, "remaining": 0 }
+  },
+  {
+    "name": "el mas bajo de los dos: maximo 50 con el calentamiento en 100",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 50, "warmup_enabled": true, "warmup_level": 0, "warmup_level_date": "2026-11-05", "marketing_today": 50 },
+    "expected": { "status": "deferred_cap", "cap": 50, "warmup_changed": false }
+  },
+  {
+    "name": "dia nuevo, el anterior salio algo y el freno no salto: sube a 200",
+    "input": { "category": "marketing", "today": "2026-11-06", "manual_cap": 1000, "warmup_enabled": true, "warmup_level": 0, "warmup_level_date": "2026-11-05", "sent_since_level": true, "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 200, "warmup_level": 1, "warmup_level_date": "2026-11-06", "warmup_changed": true }
+  },
+  {
+    "name": "dia nuevo sin envios desde el escalon: no sube",
+    "input": { "category": "marketing", "today": "2026-11-07", "manual_cap": 1000, "warmup_enabled": true, "warmup_level": 1, "warmup_level_date": "2026-11-05", "sent_since_level": false, "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 200, "warmup_level": 1, "warmup_level_date": "2026-11-05", "warmup_changed": false }
+  },
+  {
+    "name": "el freno salto desde el escalon: no sube y vuelve a contar desde hoy",
+    "input": { "category": "marketing", "today": "2026-11-07", "manual_cap": 1000, "warmup_enabled": true, "warmup_level": 2, "warmup_level_date": "2026-11-06", "sent_since_level": true, "brake_since_level": true, "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 400, "warmup_level": 2, "warmup_level_date": "2026-11-07", "warmup_changed": true }
+  },
+  {
+    "name": "el escalon de 400 a 800",
+    "input": { "category": "marketing", "today": "2026-11-08", "manual_cap": 1000, "warmup_enabled": true, "warmup_level": 2, "warmup_level_date": "2026-11-07", "sent_since_level": true, "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 800, "warmup_level": 3, "warmup_changed": true, "warmup_completed": false }
+  },
+  {
+    "name": "despues de 800 el calentamiento termina y rige el maximo",
+    "input": { "category": "marketing", "today": "2026-11-09", "manual_cap": 1000, "warmup_enabled": true, "warmup_level": 3, "warmup_level_date": "2026-11-08", "sent_since_level": true, "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 1000, "warmup_enabled": false, "warmup_level": 4, "warmup_completed": true, "warmup_changed": true }
+  },
+  {
+    "name": "el maximo en 100 con calentamiento: el calentamiento no cambia nada",
+    "input": { "category": "marketing", "today": "2026-11-06", "manual_cap": 100, "warmup_enabled": true, "warmup_level": 0, "warmup_level_date": "2026-11-05", "sent_since_level": true, "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 100, "warmup_level": 1 }
+  },
+  {
+    "name": "el freno pausado: el marketing espera, sin cupo",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 1000, "warmup_enabled": false, "paused": true, "marketing_today": 0 },
+    "expected": { "status": "paused", "remaining": 0 }
+  },
+  {
+    "name": "el freno pausado no frena un transaccional",
+    "input": { "category": "transactional", "today": "2026-11-05", "manual_cap": 1000, "warmup_enabled": false, "paused": true, "marketing_today": 0 },
+    "expected": { "status": "ok" }
+  },
+  {
+    "name": "un transaccional no cuenta ni espera aunque el marketing este lleno",
+    "input": { "category": "transactional", "today": "2026-11-05", "manual_cap": 10, "warmup_enabled": false, "marketing_today": 50 },
+    "expected": { "status": "ok", "cap": 10, "remaining": 0 }
+  },
+  {
+    "name": "la cuota del plan de Resend cargada y llena: el marketing espera",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 1000, "warmup_enabled": false, "quota": 100, "all_today": 100, "marketing_today": 40 },
+    "expected": { "status": "deferred_quota", "remaining": 0 }
+  },
+  {
+    "name": "la cuota del plan achica lo que queda",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 1000, "warmup_enabled": false, "quota": 100, "all_today": 90, "marketing_today": 40 },
+    "expected": { "status": "ok", "remaining": 10 }
+  },
+  {
+    "name": "sin cuota cargada, los transaccionales del dia no cuentan",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 100, "warmup_enabled": false, "quota": null, "all_today": 5000, "marketing_today": 10 },
+    "expected": { "status": "ok", "remaining": 90 }
+  },
+  {
+    "name": "un maximo en 0 frena todo el marketing",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 0, "warmup_enabled": false, "marketing_today": 0 },
+    "expected": { "status": "deferred_cap", "cap": 0 }
+  },
+  {
+    "name": "el escalon guardado fuera de rango se acota",
+    "input": { "category": "marketing", "today": "2026-11-05", "manual_cap": 1000, "warmup_enabled": true, "warmup_level": 9, "warmup_level_date": "2026-11-05", "marketing_today": 0 },
+    "expected": { "status": "ok", "cap": 800, "warmup_level": 3 }
+  }
+]

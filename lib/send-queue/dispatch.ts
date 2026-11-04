@@ -26,6 +26,7 @@ import { startOfZonedDay } from "@/lib/dates";
 import { isValidTimeZone } from "@/lib/timezone";
 import { recordSend, sendChannelMessage } from "@/lib/flow-engine/send";
 import { sendTransactionalEmail } from "@/lib/email/send";
+import { emailSendCapacity, DEFER_MESSAGES, type DeferReason } from "@/lib/email/delivery-guard";
 import { upsertConversation } from "@/lib/inbound";
 import { notifyWorkspaceAdmins } from "@/lib/notifications";
 import { loadBroadcastChannel, type BroadcastChannel } from "@/lib/broadcasts/channels";
@@ -60,6 +61,8 @@ export type RecipientOutcome =
   | { kind: "sent"; conversationId: string | null }
   | { kind: "skipped"; reason: SendSkipReason; message?: string }
   | { kind: "rate_limited" }
+  /** La guardia de entrega (00287): un email de marketing que hoy no entra. Vuelve a pendiente para `retryAt`. */
+  | { kind: "deferred"; reason: DeferReason; retryAt: Date }
   | { kind: "failed"; message: string; retryable: boolean; laneFatal?: boolean };
 
 /** Cómo queda un destinatario después de un intento. Puro. */
@@ -75,6 +78,9 @@ export function settleOutcome(
       return { status: "skipped", skip_reason: outcome.reason, error_message: outcome.message ?? null };
     case "rate_limited":
       return { status: "pending", claimed_at: null, next_attempt_at: new Date(now.getTime() + RATE_LIMIT_WAIT_MS).toISOString() };
+    case "deferred":
+      // No gasta intento ni es un fallo: sale cuando haya lugar (manana, o cuando alguien reanude el marketing).
+      return { status: "pending", claimed_at: null, error_message: DEFER_MESSAGES[outcome.reason], next_attempt_at: outcome.retryAt.toISOString() };
     case "failed": {
       const next = attempts + 1;
       if (outcome.retryable && next <= RETRY_DELAYS_MS.length) {
@@ -179,7 +185,23 @@ async function runLane(service: Client, channelId: string, broadcasts: Broadcast
   const touched = new Set<string>();
   let failures = lane.consecutive_failures;
   // WhatsApp: uno por tic (la espera mínima es más larga que el tic). Email: hasta su tope por minuto.
-  const maxSends = channel.kind === "whatsapp" ? 1 : (channel.policy.perMinute ?? 200);
+  let maxSends = channel.kind === "whatsapp" ? 1 : (channel.policy.perMinute ?? 200);
+
+  // Email: la guardia de entrega (00287) decide cuánto marketing entra hoy. Se mira ANTES de reclamar destinatarios,
+  // para no reservar cien y devolverlos. Si la base no contesta, el carril espera unos minutos.
+  if (channel.kind === "email") {
+    const capacity = await emailSendCapacity(service, workspaceId);
+    if (!capacity) {
+      await deferLane(service, channelId, new Date(Date.now() + 5 * 60_000));
+      return;
+    }
+    if (capacity.status !== "ok" || capacity.remaining <= 0) {
+      const retryAt = capacity.retry_at ? new Date(capacity.retry_at) : new Date(capacity.next_day_start);
+      await deferLane(service, channelId, retryAt);
+      return;
+    }
+    maxSends = Math.min(maxSends, capacity.remaining);
+  }
   let counts: LaneCounts | null = null;
 
   for (let i = 0; i < maxSends; i++) {
@@ -242,6 +264,10 @@ async function runLane(service: Client, channelId: string, broadcasts: Broadcast
         );
         break;
       }
+    } else if (outcome.kind === "deferred") {
+      // La guardia de entrega: hoy no entra nada más (otro envío llenó el cupo, o saltó el freno).
+      await deferLane(service, channelId, outcome.retryAt);
+      break;
     } else {
       // rate_limited: el tope del canal (200/h) se llenó con otros envíos.
       await deferLane(service, channelId, new Date(Date.now() + RATE_LIMIT_WAIT_MS));
@@ -465,6 +491,7 @@ async function deliverEmail(
     honorDoNotContact: true,
   });
   if (result.ok) return { kind: "sent", conversationId: null };
+  if (result.reason === "deferred") return { kind: "deferred", reason: result.defer, retryAt: result.retryAt };
   if (result.reason === "skipped") return { kind: "skipped", reason: EMAIL_SKIP_TO_REASON[result.skip] ?? "email_unsubscribed", message: result.error };
   if (result.reason === "not_configured") return { kind: "failed", message: result.error, retryable: false, laneFatal: true };
   return { kind: "failed", message: result.error, retryable: true };

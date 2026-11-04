@@ -77,6 +77,13 @@ async function executeAiResponse(
 
   if (data.sendDirectly !== false) {
     const outcome = await sendChannelMessage(supabase, context, { text: reply.text });
+    // Por email, un mensaje de marketing que la guardia de entrega deja para despues (00287): el paso se vuelve a correr
+    // a esa hora (y genera la respuesta de nuevo, con la conversacion de ese momento). Sin burbuja roja en el hilo.
+    if (!outcome.ok && outcome.deferred && sessionId) {
+      const { deferFlowNode } = await import("../defer-node");
+      await deferFlowNode(supabase, { nodeId, nodeType: "aiResponse", sessionId, context, retryAt: outcome.deferred.retryAt, reason: outcome.deferred.reason });
+      return "pause";
+    }
     await recordSend(
       supabase,
       { ...context, nodeId },

@@ -1,0 +1,330 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`caracterizacion: el HTML del nodo «Enviar email» > con formato (editor) 1`] = `
+{
+  "category": "marketing",
+  "contactId": "c-1",
+  "flowNodeId": "n-1",
+  "html": "<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#111827;"><p style="margin:0 0 16px;">Hola <strong>Ana</strong></p><ul style="margin:0 0 16px;padding-left:24px;"><li style="margin:0 0 6px;">Uno</li></ul><p style="margin:0 0 16px;"><a href="https://x.com" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">link</a></p></div>",
+  "kind": "flow",
+  "relatedEntityId": "f-1",
+  "relatedEntityType": "flow",
+  "subject": "Hola Ana",
+  "to": "ana@x.com",
+  "workspaceId": "ws-1",
+}
+`;
+
+exports[`caracterizacion: el HTML del nodo «Enviar email» > texto plano 1`] = `
+{
+  "category": "marketing",
+  "contactId": "c-1",
+  "flowNodeId": "n-1",
+  "html": "<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#111827;"><p style="margin:0 0 16px;">Hola Ana</p><p style="margin:0 0 16px;">Nos vemos el lunes.<br>Gracias.</p></div>",
+  "kind": "flow",
+  "relatedEntityId": "f-1",
+  "relatedEntityType": "flow",
+  "subject": "Hola Ana",
+  "to": "ana@x.com",
+  "workspaceId": "ws-1",
+}
+`;
+
+exports[`caracterizacion: lo que recibe Resend de sendTransactionalEmail > marketing: con pie y cabeceras de baja, del remitente de marketing 1`] = `
+{
+  "from": "Negocio <novedades@negocio.test>",
+  "headers": {
+    "List-Unsubscribe": "<http://localhost:3000/api/email/baja/tok-1?e=33333333-3333-3333-3333-333333333333>",
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  },
+  "html": "<p>Hola</p><div style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#6b7280;"><p style="margin:0;">Recibís este email porque te registraste en Negocio. <a href="http://localhost:3000/baja/tok-1?e=33333333-3333-3333-3333-333333333333" style="color:#6b7280;text-decoration:underline;">Darme de baja</a></p><p style="margin:6px 0 0;">Calle 1</p></div>",
+  "subject": "Hola",
+  "to": "ana@x.com",
+}
+`;
+
+exports[`caracterizacion: lo que recibe Resend de sendTransactionalEmail > transaccional: sin pie ni cabeceras de baja, del remitente de importantes 1`] = `
+{
+  "from": "Negocio <hola@negocio.test>",
+  "html": "<p>Hola</p>",
+  "subject": "Hola",
+  "to": "ana@x.com",
+}
+`;
+
+exports[`caracterizacion: los emails del sistema (templates.ts) > invitacion, aviso al equipo, link de baja y el marco > aviso 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+  </head>
+  <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;-webkit-font-smoothing:antialiased;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">Ana te escribió</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f3f4f6" style="background:#f3f4f6;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;border-collapse:separate;overflow:hidden;">
+            <tr>
+              <td height="6" bgcolor="#7c3aed" style="height:6px;line-height:6px;font-size:0;background:#7c3aed;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:32px 40px 8px;text-align:center;">
+                <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-collapse:separate;">
+          <tr>
+            <td width="56" height="56" align="center" valign="middle" bgcolor="#7c3aed" style="width:56px;height:56px;border-radius:14px;background:#7c3aed;color:#ffffff;font-size:26px;font-weight:700;line-height:56px;text-align:center;">M</td>
+          </tr>
+        </table>
+        <p style="margin:12px 0 0;font-size:14px;font-weight:600;color:#374151;letter-spacing:0.01em;">Mi Negocio</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 40px;">
+                <div style="height:1px;line-height:1px;font-size:0;background:#f0f1f3;margin:16px 0 0;">&nbsp;</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 40px 36px;font-size:15px;line-height:1.6;color:#111827;">
+                
+                <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#7c3aed;">Aviso</p>
+                <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;font-weight:700;color:#111827;">Te asignaron un chat</h1>
+                <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;">Ana te escribió</p>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 0;border-collapse:separate;">
+      <tr>
+        <td align="center" bgcolor="#7c3aed" style="border-radius:10px;background:#7c3aed;">
+          <a href="https://app.test/x" target="_blank" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none;border-radius:10px;">Ver en el sistema</a>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:28px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+      ¿El botón no funciona? Copiá y pegá este link en tu navegador:<br />
+      <a href="https://app.test/x" target="_blank" style="color:#7c3aed;word-break:break-all;">https://app.test/x</a>
+    </p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+            <tr>
+              <td align="center" style="padding:20px 24px 0;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center;">
+                Te llega porque lo elegiste en Mi cuenta. <a href="https://app.test/cuenta" target="_blank" style="color:#6b7280;text-decoration:underline;">Cambiar qué avisos recibo</a><br />Enviado por Mi Negocio
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Mi Negocio: Te asignaron un chat",
+}
+`;
+
+exports[`caracterizacion: los emails del sistema (templates.ts) > invitacion, aviso al equipo, link de baja y el marco > invitacion 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+  </head>
+  <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;-webkit-font-smoothing:antialiased;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">Wendy te invitó a sumarte a Mi Negocio. El link vence en 7 días.</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f3f4f6" style="background:#f3f4f6;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;border-collapse:separate;overflow:hidden;">
+            <tr>
+              <td height="6" bgcolor="#7c3aed" style="height:6px;line-height:6px;font-size:0;background:#7c3aed;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:32px 40px 8px;text-align:center;">
+                <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-collapse:separate;">
+          <tr>
+            <td width="56" height="56" align="center" valign="middle" bgcolor="#7c3aed" style="width:56px;height:56px;border-radius:14px;background:#7c3aed;color:#ffffff;font-size:26px;font-weight:700;line-height:56px;text-align:center;">M</td>
+          </tr>
+        </table>
+        <p style="margin:12px 0 0;font-size:14px;font-weight:600;color:#374151;letter-spacing:0.01em;">Mi Negocio</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 40px;">
+                <div style="height:1px;line-height:1px;font-size:0;background:#f0f1f3;margin:16px 0 0;">&nbsp;</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 40px 36px;font-size:15px;line-height:1.6;color:#111827;">
+                
+                <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#7c3aed;">Invitación</p>
+                <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;font-weight:700;color:#111827;">Te invitaron a sumarte a Mi Negocio</h1>
+                <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;"><strong>Wendy</strong> te invitó a sumarte al equipo de <strong>Mi Negocio</strong>.</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0;border-collapse:separate;">
+                  <tr>
+                    <td bgcolor="#f2ebfd" style="background:#f2ebfd;border:1px solid #d8c4fa;border-radius:12px;padding:14px 18px;">
+                      <p style="margin:0;font-size:12px;color:#6b7280;">Vas a entrar con el rol</p>
+                      <p style="margin:2px 0 0;font-size:16px;font-weight:700;color:#111827;">Admin</p>
+                    </td>
+                  </tr>
+                </table>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 0;border-collapse:separate;">
+      <tr>
+        <td align="center" bgcolor="#7c3aed" style="border-radius:10px;background:#7c3aed;">
+          <a href="https://app.test/invite/abc" target="_blank" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none;border-radius:10px;">Aceptar la invitación</a>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:28px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+      ¿El botón no funciona? Copiá y pegá este link en tu navegador:<br />
+      <a href="https://app.test/invite/abc" target="_blank" style="color:#7c3aed;word-break:break-all;">https://app.test/invite/abc</a>
+    </p>
+                <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+                  El link vence en 7 días. Si no esperabas esta invitación, podés ignorar este email.
+                </p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+            <tr>
+              <td align="center" style="padding:20px 24px 0;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center;">
+                Enviado por Mi Negocio
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Te invitaron a Mi Negocio",
+}
+`;
+
+exports[`caracterizacion: los emails del sistema (templates.ts) > invitacion, aviso al equipo, link de baja y el marco > link de baja 1`] = `
+{
+  "html": "<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+  </head>
+  <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;-webkit-font-smoothing:antialiased;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">Desde este link elegís dejar de recibir los emails de Mi Negocio.</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f3f4f6" style="background:#f3f4f6;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;border-collapse:separate;overflow:hidden;">
+            <tr>
+              <td height="6" bgcolor="#7c3aed" style="height:6px;line-height:6px;font-size:0;background:#7c3aed;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:32px 40px 8px;text-align:center;">
+                <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-collapse:separate;">
+          <tr>
+            <td width="56" height="56" align="center" valign="middle" bgcolor="#7c3aed" style="width:56px;height:56px;border-radius:14px;background:#7c3aed;color:#ffffff;font-size:26px;font-weight:700;line-height:56px;text-align:center;">M</td>
+          </tr>
+        </table>
+        <p style="margin:12px 0 0;font-size:14px;font-weight:600;color:#374151;letter-spacing:0.01em;">Mi Negocio</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 40px;">
+                <div style="height:1px;line-height:1px;font-size:0;background:#f0f1f3;margin:16px 0 0;">&nbsp;</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 40px 36px;font-size:15px;line-height:1.6;color:#111827;">
+                
+                <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#7c3aed;">Tus emails</p>
+                <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;font-weight:700;color:#111827;">Tu link para darte de baja</h1>
+                <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;">Pediste un link para dejar de recibir los emails de <strong>Mi Negocio</strong>. Desde ahí lo confirmás con un clic.</p>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 0;border-collapse:separate;">
+      <tr>
+        <td align="center" bgcolor="#7c3aed" style="border-radius:10px;background:#7c3aed;">
+          <a href="https://app.test/baja/tok" target="_blank" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none;border-radius:10px;">Elegir qué emails recibo</a>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:28px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+      ¿El botón no funciona? Copiá y pegá este link en tu navegador:<br />
+      <a href="https://app.test/baja/tok" target="_blank" style="color:#7c3aed;word-break:break-all;">https://app.test/baja/tok</a>
+    </p>
+                <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#6b7280;">
+                  Si no lo pediste vos, podés ignorar este email: no cambia nada.
+                </p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+            <tr>
+              <td align="center" style="padding:20px 24px 0;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center;">
+                Enviado por Mi Negocio
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>",
+  "subject": "Tu link para dejar de recibir emails de Mi Negocio",
+}
+`;
+
+exports[`caracterizacion: los emails del sistema (templates.ts) > invitacion, aviso al equipo, link de baja y el marco > marco 1`] = `
+"<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+  </head>
+  <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;-webkit-font-smoothing:antialiased;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">Algo</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f3f4f6" style="background:#f3f4f6;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;border-collapse:separate;overflow:hidden;">
+            <tr>
+              <td height="6" bgcolor="#7c3aed" style="height:6px;line-height:6px;font-size:0;background:#7c3aed;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:32px 40px 8px;text-align:center;">
+                <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-collapse:separate;">
+          <tr>
+            <td width="56" height="56" align="center" valign="middle" bgcolor="#7c3aed" style="width:56px;height:56px;border-radius:14px;background:#7c3aed;color:#ffffff;font-size:26px;font-weight:700;line-height:56px;text-align:center;">M</td>
+          </tr>
+        </table>
+        <p style="margin:12px 0 0;font-size:14px;font-weight:600;color:#374151;letter-spacing:0.01em;">Mi Negocio</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 40px;">
+                <div style="height:1px;line-height:1px;font-size:0;background:#f0f1f3;margin:16px 0 0;">&nbsp;</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 40px 36px;font-size:15px;line-height:1.6;color:#111827;">
+                <p>Hola</p>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+            <tr>
+              <td align="center" style="padding:20px 24px 0;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center;">
+                Nota<br />Enviado por Mi Negocio
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"
+`;

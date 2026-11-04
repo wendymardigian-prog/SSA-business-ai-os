@@ -25,14 +25,25 @@ export const UNSUBSCRIBE_PLACEHOLDER = "https://baja.invalid/__unsubscribe__";
 
 const VARIABLE = /\{\{\s*unsubscribe_url\s*\}\}/g;
 
+/** Un id de registro de `email_log` valido para el `?e=` (un uuid). Lo que no lo es se ignora. */
+export const EMAIL_LOG_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * El `?e=<id>` de un email de marketing (00287): la baja queda atribuida a ESTE email (los resultados de un broadcast
+ * o de un paso muestran cuantas bajas trajo). Solo informativo: un `e` invalido o ajeno se ignora y la baja sale igual.
+ */
+function withEmailRef(url: string, emailLogId?: string | null): string {
+  return emailLogId && EMAIL_LOG_ID_RE.test(emailLogId) ? `${url}?e=${emailLogId}` : url;
+}
+
 /** La pagina publica de baja (la que ve la persona). */
-export function unsubscribePageUrl(appUrl: string, token: string): string {
-  return `${appUrl.replace(/\/$/, "")}/baja/${encodeURIComponent(token)}`;
+export function unsubscribePageUrl(appUrl: string, token: string, emailLogId?: string | null): string {
+  return withEmailRef(`${appUrl.replace(/\/$/, "")}/baja/${encodeURIComponent(token)}`, emailLogId);
 }
 
 /** El endpoint de la baja en un clic (al que le hace POST el cliente de correo). */
-export function oneClickUrl(appUrl: string, token: string): string {
-  return `${appUrl.replace(/\/$/, "")}/api/email/baja/${encodeURIComponent(token)}`;
+export function oneClickUrl(appUrl: string, token: string, emailLogId?: string | null): string {
+  return withEmailRef(`${appUrl.replace(/\/$/, "")}/api/email/baja/${encodeURIComponent(token)}`, emailLogId);
 }
 
 /** Cambia `{{unsubscribe_url}}` por el marcador. Va antes de limpiar el HTML. */
@@ -105,13 +116,16 @@ export function withUnsubscribe(input: {
   appUrl: string;
   brandName: string;
   postalAddress?: string | null;
+  /** El registro de `email_log` de este envio (la reserva de la guardia, 00287): suma `?e=` al link y al header. */
+  emailLogId?: string | null;
 }): MarketingExtras {
-  const page = input.token ? unsubscribePageUrl(input.appUrl, input.token) : null;
+  const ref = input.category === "marketing" ? input.emailLogId : null;
+  const page = input.token ? unsubscribePageUrl(input.appUrl, input.token, ref) : null;
   if (input.category !== "marketing" || !input.token || !page) {
     return { html: resolveUnsubscribeLink(input.html, page), headers: {} };
   }
   const alreadyLinked = usesUnsubscribeLink(input.html);
   const body = resolveUnsubscribeLink(input.html, page);
   const html = alreadyLinked ? body : body + marketingFooterHtml({ brandName: input.brandName, url: page, postalAddress: input.postalAddress });
-  return { html, headers: unsubscribeHeaders(oneClickUrl(input.appUrl, input.token)) };
+  return { html, headers: unsubscribeHeaders(oneClickUrl(input.appUrl, input.token, ref)) };
 }

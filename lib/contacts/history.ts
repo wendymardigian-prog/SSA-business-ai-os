@@ -30,6 +30,7 @@
  */
 
 import type { AuditAction, EmailLogStatus, Json } from "@/lib/types/database";
+import { emailDeliveryBadges, type EmailDeliveryRow } from "@/lib/email/delivery-badges";
 import { STATUS_ROLE_LABELS, statusName, type ContactStatusSettings, type StatusRole } from "./statuses";
 
 export interface AuditHistoryItem {
@@ -71,6 +72,8 @@ export interface EmailHistoryItem {
   status: EmailLogStatus;
   /** El flow que lo mando, si se sabe. */
   flowName: string | null;
+  /** Lo que paso despues de salir (00287): entregado, abrio, clic, rebote, spam, baja. Vacio si no se sabe. */
+  delivery: string[];
 }
 
 export interface StatusHistoryItem {
@@ -111,6 +114,8 @@ export interface BuildHistoryInput {
     relatedEntityType: string | null;
     relatedEntityId: string | null;
     createdAt: string;
+    /** Los eventos de entrega de Resend (00287). */
+    delivery?: EmailDeliveryRow | null;
   }>;
   /** id del flow -> nombre. */
   flowNames: Map<string, string>;
@@ -146,6 +151,8 @@ const EMAIL_LOG_STATUSES: readonly EmailLogStatus[] = [
   "sent", "failed", "skipped_not_configured",
   "skipped_unsubscribed", "skipped_bounced", "skipped_complained", "skipped_do_not_contact", "skipped_unverifiable",
   "skipped_not_subscribed",
+  // 00287: la guardia aparto el lugar (esta saliendo) y el contacto sin email.
+  "reserved", "skipped_no_email",
 ];
 
 function isEmailStatus(value: string): value is EmailHistoryItem["status"] {
@@ -160,6 +167,7 @@ const EMAIL_SKIP_REASON_TEXT: Partial<Record<EmailLogStatus, string>> = {
   skipped_complained: "marcó un email como spam",
   skipped_do_not_contact: "está marcado «no contactar»",
   skipped_unverifiable: "no se pudo comprobar si se dio de baja",
+  skipped_no_email: "no tiene email",
 };
 
 export function buildContactHistory(input: BuildHistoryInput): HistoryItem[] {
@@ -239,6 +247,7 @@ export function buildContactHistory(input: BuildHistoryInput): HistoryItem[] {
       subject: email.subject,
       status: isEmailStatus(email.status) ? email.status : "failed",
       flowName: email.relatedEntityType === "flow" ? nameOf(email.relatedEntityId) : null,
+      delivery: email.status === "sent" ? emailDeliveryBadges(email.delivery) : [],
     });
   }
 
@@ -285,6 +294,7 @@ export function describeHistoryItem(item: Exclude<HistoryItem, AuditHistoryItem>
     case "email": {
       const via = item.flowName ? ` (automatización ${quoted(item.flowName, "")})` : "";
       if (item.status === "sent") return { actor: "El sistema", text: `mandó el email «${item.subject}» a ${item.to}${via}` };
+      if (item.status === "reserved") return { actor: "El sistema", text: `está mandando el email «${item.subject}» a ${item.to}${via}` };
       if (item.status === "skipped_not_configured") {
         return { actor: "El sistema", text: `no mandó el email «${item.subject}» a ${item.to}: el correo no está conectado${via}` };
       }

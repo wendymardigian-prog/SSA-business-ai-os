@@ -37,6 +37,8 @@ function world(status: EmailStatus, opts: { doNotContact?: boolean; token?: stri
     {
       read_secret: { data: KEY },
       email_address_send_state: { data: { status, do_not_contact: opts.doNotContact ?? false, token: opts.token ?? "tok-1", matched: true } },
+      // La guardia de entrega (00287): hay lugar hoy (sin id de reserva: el envio se anota como siempre).
+      reserve_email_send: { data: { status: "ok", log_id: null } },
     },
   );
 }
@@ -288,7 +290,7 @@ describe("el link de baja en lo que sale (E3): pie y cabeceras solo en marketing
         "email_log:insert": { data: null },
         "workspaces:select": { data: { brand_name: "Mi Negocio", email_footer_address: "Calle 1" } },
       },
-      { read_secret: { data: KEY }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "tok-7", matched: true } } },
+      { read_secret: { data: KEY }, email_address_send_state: { data: { status: "subscribed", do_not_contact: false, token: "tok-7", matched: true } }, reserve_email_send: { data: { status: "ok", log_id: null } } },
     );
     await sendEmailReply(db.client, {
       workspaceId: WS, conversationId: "cv-1", channel: { platform: "email", is_active: true, email_address: "hola@negocio.test" },

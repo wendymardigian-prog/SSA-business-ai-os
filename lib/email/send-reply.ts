@@ -22,6 +22,7 @@ import { footerBrand, logEmail, recordSkippedEmail } from "./send";
 import { protectUnsubscribeVariable, withUnsubscribe } from "./unsubscribe";
 import type { ResendSenderConfig } from "./senders";
 import { loadPublicBaseUrl } from "@/lib/public-url";
+import { reserveEmailSend, settleReservedEmail, type DeferReason } from "./delivery-guard";
 
 type Db = SupabaseClient<Database>;
 
@@ -36,6 +37,11 @@ export interface EmailSendResult {
   retryable?: boolean;
   /** La puerta de suscripcion lo salteo (no es un fallo del proveedor). */
   skipped?: EmailSkipReason;
+  /**
+   * La guardia de entrega (00287): un email de marketing que hoy no sale (tope del dia, cuota o freno). No es un fallo:
+   * quien llama lo vuelve a intentar a `retryAt`.
+   */
+  deferred?: { reason: DeferReason; retryAt: Date };
 }
 
 /** El ultimo correo entrante del hilo: de ahi salen las cabeceras. */
@@ -147,6 +153,7 @@ export async function sendEmailReply(
         relatedEntityType: params.log.relatedEntityType,
         relatedEntityId: params.log.relatedEntityId ?? undefined,
         contactId: params.contactId ?? null,
+        category: params.category,
       }
     : null;
   if (!gate.ok) {
@@ -179,6 +186,31 @@ export async function sendEmailReply(
     ? replyHeaders(last)
     : { subject: params.subject?.trim() || "(sin asunto)", inReplyTo: null, references: null };
 
+  // La guardia de entrega (00287): el marketing reserva su lugar del dia; lo que no entra hoy vuelve `deferred`.
+  let reservedLogId: string | null = null;
+  if (params.category === "marketing") {
+    const reserved = await reserveEmailSend(service as never, {
+      workspaceId: params.workspaceId,
+      to: to as string,
+      subject: params.subject?.trim() || headers.subject,
+      kind: params.log?.kind ?? "email_reply",
+      contactId: params.contactId ?? null,
+      relatedEntityType: params.log?.relatedEntityType ?? null,
+      relatedEntityId: params.log?.relatedEntityId ?? null,
+    });
+    if (!reserved.ok) {
+      return {
+        ok: false,
+        messageId: null,
+        providerId: null,
+        error: reserved.message,
+        retryable: true,
+        deferred: { reason: reserved.reason, retryAt: reserved.retryAt },
+      };
+    }
+    reservedLogId = reserved.logId;
+  }
+
   // El link de baja (E3): un texto con {{unsubscribe_url}} lo recibe resuelto; marketing suma el pie y las cabeceras.
   // La variable se protege con el marcador (no se resuelve aca): asi `withUnsubscribe` sabe que el texto ya trae el link
   // y no duplica el pie.
@@ -191,6 +223,7 @@ export async function sendEmailReply(
     token: gate.token,
     appUrl: base,
     ...(params.category === "marketing" && gate.token ? await footerBrand(service as never, params.workspaceId) : { brandName: "" }),
+    emailLogId: reservedLogId,
   });
 
   // El remitente (E8): un email de marketing sale del remitente de marketing si hay uno, con "Responder a" la direccion
@@ -219,11 +252,12 @@ export async function sendEmailReply(
     params.fetchImpl,
   );
 
-  if (logBase) {
-    await logEmail(service as never, { ...logBase, html: "" }, result.ok
-      ? { status: "sent", provider_message_id: result.id, attempts: result.attempts }
-      : { status: "failed", attempts: result.attempts, last_error: result.error });
-  }
+  const row = result.ok
+    ? { status: "sent" as const, provider_message_id: result.id, attempts: result.attempts }
+    : { status: "failed" as const, attempts: result.attempts, last_error: result.error };
+  // La reserva se cierra (no se inserta otra fila); sin reserva, se anota como siempre (si quien llama lo pidio).
+  if (reservedLogId) await settleReservedEmail(service as never, reservedLogId, row);
+  else if (logBase) await logEmail(service as never, { ...logBase, html: "" }, row);
 
   if (!result.ok) {
     return {

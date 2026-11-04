@@ -151,10 +151,17 @@ describe("rebotes y quejas de Resend", () => {
     expect(res.status).toBe(200);
   });
 
-  it("los demas eventos (delivered, opened) se siguen ignorando sin firmar nada", async () => {
+  it("cambio aprobado (automatizaciones de email, 00287): delivered/opened/clicked pasan por la firma y NO cambian el estado de nadie", async () => {
     const db = world();
     const res = await send(event("email.delivered"));
-    expect(await res.json()).toMatchObject({ skipped: "email.delivered" });
+    expect(await res.json()).toMatchObject({ ok: true, queued: true });
+    expect(statusCalls(db)).toEqual([]);
+  });
+
+  it("otro evento que no usa SSA se sigue ignorando sin firmar nada", async () => {
+    const db = world();
+    const res = await send(event("email.sent"));
+    expect(await res.json()).toMatchObject({ skipped: "email.sent" });
     expect(statusCalls(db)).toEqual([]);
   });
 });

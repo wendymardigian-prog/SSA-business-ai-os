@@ -19,24 +19,67 @@
  * Si ninguna firma coincide, se rechaza. Si coincide pero la direccion no es de
  * ningun contacto, se anota y se ignora.
  *
+ * Desde la 00287 tambien llegan `email.delivered`, `email.opened` y `email.clicked`: se anotan en la fila de
+ * `email_log` del envio (por `provider_message_id`) y alimentan los resultados de cada broadcast. Un rebote duro o una
+ * queja ademas marcan la fila (`bounced_at` / `complained_at`) y, si el email era de marketing, se evalua el freno
+ * (`marketing-brake.ts`).
+ *
  * Solo servidor. El token, el secreto y el cuerpo del evento nunca se loguean.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { bareAddress } from "./reply";
 import { setEmailStatusByAddress, type EmailStatus } from "./subscription";
+import { evaluateMarketingBrake } from "./marketing-brake";
 
 export interface DeliveryEvent {
   type?: string;
+  created_at?: string;
   data?: {
     email_id?: string;
     from?: string;
     to?: string[];
+    created_at?: string;
     bounce?: { type?: string; subType?: string; message?: string };
+    click?: { link?: string; timestamp?: string };
   };
 }
 
-export const DELIVERY_EVENT_TYPES = ["email.bounced", "email.complained"] as const;
+export const DELIVERY_EVENT_TYPES = ["email.bounced", "email.complained", "email.delivered", "email.opened", "email.clicked"] as const;
+
+/**
+ * Que se anota en la fila de `email_log` del envio. Puro. Un rebote temporal no se anota como rebote (no cuenta para
+ * el freno ni para los resultados): solo el duro.
+ */
+export function logEventOf(event: DeliveryEvent): "delivered" | "opened" | "clicked" | "bounced" | "complained" | null {
+  switch (event.type) {
+    case "email.delivered":
+      return "delivered";
+    case "email.opened":
+      return "opened";
+    case "email.clicked":
+      return "clicked";
+    case "email.complained":
+      return "complained";
+    case "email.bounced":
+      return (event.data?.bounce?.type ?? "").trim().toLowerCase() === "permanent" ? "bounced" : null;
+    default:
+      return null;
+  }
+}
+
+/** Cuando paso, segun Resend (o ahora, si no lo trae o no se entiende). */
+export function eventTime(event: DeliveryEvent, now: Date = new Date()): string {
+  const raw = event.data?.click?.timestamp ?? event.created_at ?? event.data?.created_at;
+  const at = raw ? new Date(raw) : null;
+  return at && !Number.isNaN(at.getTime()) ? at.toISOString() : now.toISOString();
+}
+
+/** El link de un clic: solo http(s), sin nada raro. */
+export function clickedUrlOf(event: DeliveryEvent): string | null {
+  const link = event.data?.click?.link?.trim();
+  return link && /^https?:\/\//i.test(link) ? link.slice(0, 2000) : null;
+}
 
 export function isDeliveryEvent(type: string | undefined): boolean {
   return (DELIVERY_EVENT_TYPES as readonly string[]).includes(type ?? "");
@@ -116,8 +159,47 @@ export interface DeliveryResult {
   changed: number;
 }
 
+/**
+ * Anota el evento en la fila de `email_log` del envio. Solo filas de ESTE negocio (el de la firma). Devuelve si la fila
+ * era de marketing (para evaluar el freno). Nunca lanza.
+ */
+export async function recordLogEvent(service: Pick<SupabaseClient, "rpc">, workspaceId: string, event: DeliveryEvent): Promise<{ touched: number; marketing: boolean }> {
+  const kind = logEventOf(event);
+  const emailId = event.data?.email_id?.trim();
+  if (!kind || !emailId) return { touched: 0, marketing: false };
+  try {
+    const { data, error } = await service.rpc("record_email_delivery_event", {
+      p_provider_message_id: emailId,
+      p_event: kind,
+      p_at: eventTime(event),
+      p_url: kind === "clicked" ? clickedUrlOf(event) : null,
+    });
+    if (error) {
+      console.error("[resend-eventos] no pude anotar el evento en el registro:", error.message);
+      return { touched: 0, marketing: false };
+    }
+    const rows = ((data ?? []) as Array<{ workspace_id: string; category: string | null }>).filter((r) => r.workspace_id === workspaceId);
+    return { touched: rows.length, marketing: rows.some((r) => r.category === "marketing") };
+  } catch (err) {
+    console.error("[resend-eventos] no pude anotar el evento en el registro:", err instanceof Error ? err.message : "error");
+    return { touched: 0, marketing: false };
+  }
+}
+
 /** Aplica el evento (ya con la firma verificada) en el workspace. Nunca lanza. */
-export async function applyDeliveryEvent(service: Pick<SupabaseClient, "rpc">, workspaceId: string, event: DeliveryEvent): Promise<DeliveryResult> {
+export async function applyDeliveryEvent(service: SupabaseClient, workspaceId: string, event: DeliveryEvent): Promise<DeliveryResult> {
+  // 1. La fila del envio (entregado, abierto, clic, rebote duro, queja).
+  const logged = await recordLogEvent(service, workspaceId, event);
+  const kind = logEventOf(event);
+  // 2. El freno: solo un rebote duro o una queja de un email de MARKETING cambian el cociente.
+  if (logged.marketing && (kind === "bounced" || kind === "complained")) {
+    await evaluateMarketingBrake(service, workspaceId);
+  }
+  if (kind === "delivered" || kind === "opened" || kind === "clicked") {
+    return { note: `${kind}: ${logged.touched} registro(s)`, changed: 0 };
+  }
+
+  // 3. El estado de la direccion (rebote duro o queja), como siempre.
   const decision = classifyDeliveryEvent(event);
   if (decision.action === "note") return { note: decision.reason, changed: 0 };
   const recipients = recipientsOf(event);

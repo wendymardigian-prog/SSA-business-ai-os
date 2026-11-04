@@ -179,7 +179,9 @@ describe("limite del servidor: lib/vault.ts", () => {
     );
 
     expect(offenders).toEqual([]);
-  });
+    // Recorre los imports de cada Client Component contra cada modulo prohibido: con la maquina cargada pasa los 5 s
+    // por defecto (corrido solo tarda ~4 s). El tiempo propio no cambia nada de lo que comprueba.
+  }, 30_000);
 
   it("la lista de modulos prohibidos existe y apunta a archivos reales", () => {
     for (const entry of SERVER_ONLY) {

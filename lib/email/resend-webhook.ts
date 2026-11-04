@@ -18,7 +18,7 @@
  */
 
 import { resendRequest, type ResendApiFailure } from "./resend-api";
-import { RESEND_WEBHOOK_EVENTS_LIST } from "./resend-events";
+import { RESEND_REQUIRED_EVENTS, RESEND_WEBHOOK_EVENTS_LIST } from "./resend-events";
 import { RESEND_WORKSPACE_PARAM } from "@/lib/webhook-url";
 
 /** Los eventos que usa SSA: la lista unica vive en `resend-events.ts`. */
@@ -61,10 +61,16 @@ export function ownershipOf(endpoint: string, receiverUrl: string, workspaceId: 
   return target.searchParams.get(RESEND_WORKSPACE_PARAM) === workspaceId ? "mine" : "other_workspace";
 }
 
-/** Los eventos nuestros que le faltan a un webhook. Puro. */
+/** Los eventos nuestros que le faltan a un webhook (todos: «Actualizar webhook» los suma). Puro. */
 export function missingEvents(events: readonly string[]): string[] {
   const have = new Set(events);
   return RESEND_WEBHOOK_EVENTS.filter((e) => !have.has(e));
+}
+
+/** Los IMPRESCINDIBLES que le faltan (recepcion, rebotes, quejas): lo que marca el webhook en rojo. Puro. */
+export function missingRequiredEvents(events: readonly string[]): string[] {
+  const have = new Set(events);
+  return RESEND_REQUIRED_EVENTS.filter((e) => !have.has(e));
 }
 
 interface RawWebhook {
@@ -193,7 +199,7 @@ export async function inspectResendWebhook(params: {
   fetchImpl?: typeof fetch;
 }): Promise<
   | { ok: true; found: false }
-  | { ok: true; found: true; webhookId: string; ownership: "mine" | "legacy"; missing: string[]; disabled: boolean }
+  | { ok: true; found: true; webhookId: string; ownership: "mine" | "legacy"; missing: string[]; missingOptional: string[]; disabled: boolean }
   | { ok: false; reason: ResendApiFailure }
 > {
   const listed = await listResendWebhooks(params.apiKey, params.fetchImpl);
@@ -205,7 +211,9 @@ export async function inspectResendWebhook(params: {
     found: true,
     webhookId: found.webhook.id,
     ownership: found.ownership,
-    missing: missingEvents(found.webhook.events),
+    // Lo que lo pone en rojo: solo lo imprescindible (los eventos de resultados se sugieren aparte).
+    missing: missingRequiredEvents(found.webhook.events),
+    missingOptional: missingEvents(found.webhook.events).filter((e) => !(RESEND_REQUIRED_EVENTS as readonly string[]).includes(e)),
     disabled: found.webhook.status === "disabled",
   };
 }

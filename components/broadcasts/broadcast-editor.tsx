@@ -1,5 +1,6 @@
 "use client";
 
+import { EmailDeliveryNotice } from "@/components/email/email-delivery-notice";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, Loader2, Mail, MessageCircle, Plus, Search, Trash2, X } from "lucide-react";
@@ -450,6 +451,8 @@ export function BroadcastEditor({
       >
         {kind === "email" ? (
           <div className="space-y-3">
+            {/* La guardia de entrega (00287): si los rebotes y quejas no llegan, el freno no puede funcionar. */}
+            <EmailDeliveryNotice />
             <label className="block">
               <span className="mb-1 block text-xs font-medium">Asunto</span>
               <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} maxLength={200} className={input} placeholder="Ej.: {{contact.first_name|Hola}}, tenemos novedades" />

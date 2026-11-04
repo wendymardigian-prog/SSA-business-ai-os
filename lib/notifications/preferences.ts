@@ -290,6 +290,7 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     types: [
       "integration_attention",
       "email_quota_reached",
+      "email_marketing_paused",
       "fathom_connection_error", // @plantilla-quitar(llamadas)
       "webhook_errors", // @plantilla-quitar(webhooks)
     ],

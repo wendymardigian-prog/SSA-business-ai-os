@@ -201,7 +201,7 @@ export default async function ContactDetailPage({
       // (por contacto) hace que cada persona vea solo los de los leads que puede ver.
       supabase
         .from("email_log")
-        .select("id, to_email, subject, status, related_entity_type, related_entity_id, created_at")
+        .select("id, to_email, subject, status, related_entity_type, related_entity_id, created_at, delivered_at, opened_at, clicked_at, bounced_at, complained_at, unsubscribed_at, open_count, click_count")
         .eq("contact_id", contactId)
         .eq("workspace_id", workspace.id)
         .order("created_at", { ascending: false })
@@ -390,6 +390,7 @@ export default async function ContactDetailPage({
       relatedEntityType: m.related_entity_type,
       relatedEntityId: m.related_entity_id,
       createdAt: m.created_at,
+      delivery: m,
     })),
     flowNames: new Map((flowRows ?? []).map((f) => [f.id, f.name])),
     statusSettings,

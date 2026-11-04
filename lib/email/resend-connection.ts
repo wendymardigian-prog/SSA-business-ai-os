@@ -9,6 +9,7 @@
  * Solo servidor.
  */
 
+import { loadMarketingDelivery } from "./marketing-delivery";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { readSecret, storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
@@ -327,11 +328,17 @@ export async function loadResendPanelData(service: Db, workspaceId: string): Pro
     // Sin dominio publico (desarrollo) no hay URL util que mostrar.
   }
   const [row, secretSaved] = await Promise.all([loadResendRow(service, workspaceId).catch(() => null), hasWebhookSecret(service, workspaceId)]);
+  const state = readResendConnection(row?.config ?? {});
+  // La guardia de entrega (00287): solo con Resend conectado (sin fila no hay nada que mostrar).
+  const marketing = row
+    ? await loadMarketingDelivery(service as never, workspaceId, { state, config: (row.config ?? {}) as Record<string, unknown>, secretSaved }).catch(() => null)
+    : null;
   return {
     webhookUrl,
-    state: readResendConnection(row?.config ?? {}),
+    state,
     secretSaved,
     lastEventAt: row?.lastEventAt ?? null,
+    marketing,
   };
 }
 
