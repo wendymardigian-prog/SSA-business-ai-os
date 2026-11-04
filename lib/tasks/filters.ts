@@ -3,6 +3,7 @@
  * El estado viene de `view-state.ts`; "hoy" y "yo" los pasa quien llama.
  */
 
+import type { DueZones } from "./due-view";
 import { foldText } from "./text";
 import { isBlocked, isOverdue } from "./table-model";
 import { ME, NONE, type TasksViewState } from "./view-state";
@@ -10,9 +11,11 @@ import type { TaskRow } from "./types";
 
 export interface FilterContext {
   meId: string;
-  /** AAAA-MM-DD en la zona del workspace. */
+  /** AAAA-MM-DD en la zona de quien mira. */
   today: string;
   byId: ReadonlyMap<string, TaskRow>;
+  /** Para decidir «vencida» con el dia que ve quien mira. */
+  zones?: DueZones;
 }
 
 export function matchesFilters(task: TaskRow, state: TasksViewState, ctx: FilterContext): boolean {
@@ -37,7 +40,7 @@ export function matchesFilters(task: TaskRow, state: TasksViewState, ctx: Filter
 
   if (state.priority.length > 0 && !state.priority.includes(task.priority)) return false;
   if (state.source.length > 0 && !state.source.includes(task.source)) return false;
-  if (state.overdue && !isOverdue(task, ctx.today)) return false;
+  if (state.overdue && !isOverdue(task, ctx.today, ctx.zones)) return false;
   if (state.blocked && !isBlocked(task, ctx.byId)) return false;
 
   if (state.q) {

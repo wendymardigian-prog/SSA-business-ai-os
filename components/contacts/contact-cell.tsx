@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,7 +11,7 @@ import type { CellTone, CellValue } from "@/lib/contacts/filters/types";
  * Una celda de la lista de contactos armada con datos (`CellValue`): la
  * calcula el servidor (`lib/contacts/columns-core.ts` y cada área de
  * `lib/contacts/related/*`) y acá solo se dibuja. Las fechas se muestran en la
- * zona y el idioma del navegador.
+ * zona de quien mira.
  */
 
 const TONES: Record<CellTone, string> = {
@@ -23,10 +24,12 @@ const TONES: Record<CellTone, string> = {
 
 const usd = new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
-function formatDay(iso: string): string {
+function formatDay(iso: string, timeZone: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" });
+  // "AAAA-MM-DD" es una fecha civil (una venta, un seguimiento): no cambia de dia segun quien mira.
+  const civil = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  return d.toLocaleDateString("es-AR", { timeZone: civil ? "UTC" : timeZone, day: "2-digit", month: "short", year: "numeric" });
 }
 
 function Sub({ children }: { children?: string }) {
@@ -35,6 +38,7 @@ function Sub({ children }: { children?: string }) {
 }
 
 export function ContactCell({ value, loading, memberLabel }: { value: CellValue | undefined; loading?: boolean; memberLabel: Map<string, string> }) {
+  const timeZone = useViewerTimezone();
   if (loading) return <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/60" aria-label="Cargando" />;
   if (!value) return <span className="text-muted-foreground">—</span>;
   switch (value.t) {
@@ -58,7 +62,7 @@ export function ContactCell({ value, loading, memberLabel }: { value: CellValue 
     case "date":
       return (
         <span className="block whitespace-nowrap text-muted-foreground">
-          {value.mode === "relative" ? formatRelative(value.at) : value.mode === "datetime" ? formatDateTime(value.at) : formatDay(value.at)}
+          {value.mode === "relative" ? formatRelative(value.at, timeZone) : value.mode === "datetime" ? formatDateTime(value.at, timeZone) : formatDay(value.at, timeZone)}
           <Sub>{value.sub}</Sub>
         </span>
       );

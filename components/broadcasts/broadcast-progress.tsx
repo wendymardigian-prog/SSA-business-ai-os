@@ -44,6 +44,7 @@ export function BroadcastProgress({
   page,
   pageCount,
   timeZone,
+  businessTimeZone,
 }: {
   broadcast: { id: string; name: string; status: BroadcastStatus; scheduledFor: string | null; startedAt: string | null; completedAt: string | null; previewText: string };
   channel: { id: string; label: string } | null;
@@ -60,6 +61,8 @@ export function BroadcastProgress({
   page: number;
   pageCount: number;
   timeZone: string;
+  /** La de la cola (horario permitido y tope por dia): solo para estimar cuando termina. */
+  businessTimeZone: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -85,7 +88,7 @@ export function BroadcastProgress({
     });
   }
 
-  const eta = policy && open > 0 && broadcast.status !== "paused" && broadcast.status !== "cancelled" ? estimateFinish(open, policy, new Date(), timeZone) : null;
+  const eta = policy && open > 0 && broadcast.status !== "paused" && broadcast.status !== "cancelled" ? estimateFinish(open, policy, new Date(), businessTimeZone) : null;
   const pct = (n: number) => (total > 0 ? `${(n / total) * 100}%` : "0%");
   const href = (next: { estado?: string; pag?: number; email?: string }) => {
     const qs = new URLSearchParams();

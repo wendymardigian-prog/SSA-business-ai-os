@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -34,9 +35,9 @@ const TEXT: Record<ContactMark, { title: string; off: string; on: string; markBu
   },
 };
 
-function formatDate(dateStr: string | null): string {
+function formatDate(dateStr: string | null, timeZone: string): string {
   if (!dateStr) return "";
-  return new Date(dateStr).toLocaleDateString("es-AR", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(dateStr).toLocaleDateString("es-AR", { timeZone, day: "numeric", month: "short", year: "numeric" });
 }
 
 export function MarkSection({
@@ -68,6 +69,7 @@ export function MarkSection({
   onSaved?: () => void;
   className?: string;
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -95,7 +97,7 @@ export function MarkSection({
         <>
           <p className="text-xs text-muted-foreground">
             {markLabel(mark, markedByName, source)}
-            {markedAt ? `, desde el ${formatDate(markedAt)}` : ""}. {copy.on}
+            {markedAt ? `, desde el ${formatDate(markedAt, timeZone)}` : ""}. {copy.on}
           </p>
           {canUnmark ? (
             <button

@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { MemberCircle } from "@/components/account/user-avatar";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -81,8 +82,8 @@ const roleStyles: Record<string, string> = {
 
 const chipTone = { ok: "bg-green-100 text-green-700", warn: "bg-amber-100 text-amber-700", neutral: "bg-gray-100 text-gray-600" } as const;
 
-const fmtDate = (iso: string | null, withYear = false) =>
-  iso ? new Date(iso).toLocaleDateString("es-AR", { month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) }) : "—";
+const fmtDate = (iso: string | null, timeZone: string, withYear = false) =>
+  iso ? new Date(iso).toLocaleDateString("es-AR", { timeZone, month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) }) : "—";
 
 export function TeamView({
   workspaceId,
@@ -108,6 +109,7 @@ export function TeamView({
   /** user_id -> nombre, para "Invitó X" y "Aceptada por X". */
   personNames: Record<string, string>;
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const viewer = useMemo(() => ({ userId: currentUserId, can: (key: string) => viewerKeys.includes(key) }), [currentUserId, viewerKeys]);
   const sections = teamSections(viewer);
@@ -319,7 +321,7 @@ export function TeamView({
                             </span>
                           )}
 
-                          <span className="whitespace-nowrap text-[10px] text-muted-foreground">Desde el {fmtDate(member.joinedAt, true)}</span>
+                          <span className="whitespace-nowrap text-[10px] text-muted-foreground">Desde el {fmtDate(member.joinedAt, timeZone, true)}</span>
 
                           {controls.remove && (
                             <button
@@ -522,7 +524,7 @@ export function TeamView({
                                 </span>
                                 <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", chipTone[chip.tone])}>{chip.label}</span>
                                 <span className="text-[10px] text-muted-foreground">Invitó {personNames[invite.invited_by] ?? "alguien del equipo"}</span>
-                                {expired ? <span className="text-[10px] text-destructive">Vencida</span> : <span className="text-[10px] text-muted-foreground">Vence el {fmtDate(invite.expires_at)}</span>}
+                                {expired ? <span className="text-[10px] text-destructive">Vencida</span> : <span className="text-[10px] text-muted-foreground">Vence el {fmtDate(invite.expires_at, timeZone)}</span>}
                               </div>
                             </div>
                           </div>
@@ -598,10 +600,10 @@ export function TeamView({
                             <p className="text-muted-foreground">
                               {roleName(invite as TeamInvite)} ·{" "}
                               {state === "accepted"
-                                ? `Aceptada por ${personNames[invite.accepted_by ?? ""] ?? "una cuenta"} el ${fmtDate(at, true)}`
+                                ? `Aceptada por ${personNames[invite.accepted_by ?? ""] ?? "una cuenta"} el ${fmtDate(at, timeZone, true)}`
                                 : state === "revoked"
-                                  ? `Anulada${invite.revoked_by ? ` por ${personNames[invite.revoked_by] ?? "alguien del equipo"}` : ""} el ${fmtDate(at, true)}`
-                                  : `Venció el ${fmtDate(at, true)} sin usarse`}
+                                  ? `Anulada${invite.revoked_by ? ` por ${personNames[invite.revoked_by] ?? "alguien del equipo"}` : ""} el ${fmtDate(at, timeZone, true)}`
+                                  : `Venció el ${fmtDate(at, timeZone, true)} sin usarse`}
                             </p>
                           </div>
                         </li>

@@ -265,7 +265,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       rows,
       members,
       currentUserId: ctx.user.id,
-      today: todayInputValue(new Date(), workspaceTz),
+      today: todayInputValue(new Date(), timezone),
       workspaceTimeZone: workspaceTz,
       canEdit: ctx.can("tasks.edit"),
       canDelete: ctx.can("tasks.delete"),

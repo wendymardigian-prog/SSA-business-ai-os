@@ -26,6 +26,7 @@ let db: MemoryDb;
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => undefined), diffFields: vi.fn(() => ({})) }));
+vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "UTC" }));
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({ user: { id: "user-1" }, workspace: { id: WS }, role: "owner", roleId: null, supabase: db.client }),
 }));

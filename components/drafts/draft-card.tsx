@@ -15,6 +15,7 @@ import { routingSentence } from "@/lib/agent/routing-sentence";
 import type { Platform } from "@/lib/platforms";
 import { getDmLink } from "@/lib/contacts/links";
 import { WindowBadge } from "./window-badge";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { MediaAttachment } from "@/components/inbox/media-attachment";
 import { AssetKindIcon } from "@/components/response-assets/asset-kind-icon";
 import { assetAttachment } from "@/lib/response-assets/preview";
@@ -216,6 +217,7 @@ function GuardrailBanner({ draft }: { draft: DraftQueueRow }) {
 }
 
 function BurstQuote({ draft }: { draft: DraftQueueRow }) {
+  const timeZone = useViewerTimezone();
   if (draft.burst.length === 0) return <p className="text-xs text-muted-foreground">Los mensajes ya no están disponibles.</p>;
   return (
     <ul className="space-y-1">
@@ -223,7 +225,7 @@ function BurstQuote({ draft }: { draft: DraftQueueRow }) {
         <li key={m.id} className="border-l-2 border-border pl-2 text-sm">
           <span className="whitespace-pre-wrap break-words">{m.text || "(adjunto)"}</span>
           <span className="ml-1.5 text-[11px] text-muted-foreground">
-            {new Date(m.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
+            {new Date(m.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone })}
           </span>
         </li>
       ))}

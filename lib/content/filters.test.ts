@@ -248,3 +248,19 @@ describe("filtro de Responsable (F43)", () => {
     expect(toggleResponsible(["u1", "u2"], "u1")).toEqual(["u2"]);
   });
 });
+
+describe("el filtro de mes (zona de quien mira)", () => {
+  const base2 = parseContentFilters(new URLSearchParams("mes=2026-11"));
+  // 1/12 02:00 UTC: en America todavia es 30 de noviembre.
+  const pieza = { id: "z", title: "x", status: "draft" as const, createdBy: null, platforms: [], firstAt: "2026-12-01T02:00:00.000Z" };
+
+  it("usa el mes en la zona cuando viene calculado", () => {
+    expect(applyContentFilters([{ ...pieza, firstMonth: "2026-11" }], base2)).toHaveLength(1);
+    expect(applyContentFilters([{ ...pieza, firstMonth: "2026-12" }], base2)).toHaveLength(0);
+  });
+
+  it("sin calcular, cae al mes del ISO, como antes", () => {
+    expect(applyContentFilters([pieza], base2)).toHaveLength(0);
+    expect(applyContentFilters([pieza], parseContentFilters(new URLSearchParams("mes=2026-12")))).toHaveLength(1);
+  });
+});

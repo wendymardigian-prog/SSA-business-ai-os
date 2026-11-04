@@ -3,9 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ToastProvider } from "@/components/content/drawer/toast";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { loadTaskContext } from "@/lib/actions/tasks";
 import type { CompletionPlan } from "@/lib/tasks/core";
 import type { DraftDefaults } from "@/lib/tasks/draft";
+import type { DueZones } from "@/lib/tasks/due-view";
 import { parseTaskParam, withoutTaskParam, withTaskParam } from "@/lib/tasks/drawer-url";
 import { listProjects } from "@/lib/tasks/project";
 import type { MemberLite } from "@/lib/tasks/table-model";
@@ -34,10 +36,12 @@ export interface TaskWorkbenchApi {
   actions: TaskActions;
   members: MemberLite[];
   currentUserId: string;
-  /** AAAA-MM-DD en la zona del workspace. */
+  /** AAAA-MM-DD en la zona de quien mira. */
   today: string;
   /** La zona del workspace: las fechas de las tareas son de esa zona. */
   timeZone: string;
+  /** Las dos zonas, para mostrar y escribir el vencimiento en la de quien mira. */
+  zones: DueZones;
   canEdit: boolean;
   openTask: (id: string, origin?: HTMLElement | null) => void;
   startCreate: (defaults?: CreateDefaults) => void;
@@ -62,8 +66,9 @@ export interface TaskWorkbenchProps {
   initialTasks: TaskRow[];
   members: MemberLite[];
   currentUserId: string;
-  /** AAAA-MM-DD en la zona del workspace, calculado en el servidor. */
+  /** AAAA-MM-DD en la zona de quien mira, calculado en el servidor. */
   today: string;
+  /** La zona del workspace. */
   timeZone: string;
   /** 12 h / 24 h de quien mira (R6). Sin esto, 24 h. */
   timeFormat?: TimeFormat;
@@ -87,6 +92,8 @@ export function TaskWorkbench(props: TaskWorkbenchProps) {
 function WorkbenchInner({ initialTasks, members, currentUserId, today, timeZone, timeFormat = "24h", canEdit, canDelete, contactNames, flowNames, syncUrl = false, children }: TaskWorkbenchProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const viewerTz = useViewerTimezone();
+  const zones = useMemo<DueZones>(() => ({ workspaceTz: timeZone, viewerTz }), [timeZone, viewerTz]);
 
   // Las tareas viven en pantalla (para cambiarlas al instante) y se vuelven a tomar del servidor cuando este las manda de nuevo.
   const [tasks, setTasks] = useState<TaskRow[]>(initialTasks);
@@ -165,8 +172,8 @@ function WorkbenchInner({ initialTasks, members, currentUserId, today, timeZone,
 
   const addTask = useCallback((task: TaskRow) => setTasks((prev) => upsertRow(prev, task)), []);
   const api = useMemo<TaskWorkbenchApi>(
-    () => ({ tasks, actions, members, currentUserId, today, timeZone, canEdit, openTask, startCreate, addTask }),
-    [tasks, actions, members, currentUserId, today, timeZone, canEdit, openTask, startCreate, addTask],
+    () => ({ tasks, actions, members, currentUserId, today, timeZone, zones, canEdit, openTask, startCreate, addTask }),
+    [tasks, actions, members, currentUserId, today, timeZone, zones, canEdit, openTask, startCreate, addTask],
   );
 
   return (

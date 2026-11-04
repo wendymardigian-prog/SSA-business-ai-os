@@ -50,8 +50,9 @@ export async function loadContactTasks(db: Db, input: { workspaceId: string; con
 export interface ContactTasksPayload {
   tasks: TaskRow[];
   members: Array<{ id: string; name: string }>;
-  /** AAAA-MM-DD en la zona del workspace. */
+  /** AAAA-MM-DD en la zona de quien mira. */
   today: string;
+  /** La zona del workspace: la de la fecha y la hora guardadas. */
   timeZone: string;
   /** 12 h / 24 h de quien mira (R6). */
   timeFormat: TimeFormat;

@@ -78,7 +78,15 @@ describe("placeTasksInCalendar (R7)", () => {
     expect(place([task]).byDate["2026-10-14"][0].durationMinutes).toBe(30);
   });
 
-  it("dueDateWindow pide un dia de margen a cada lado por la zona", () => {
-    expect(dueDateWindow({ from: "2026-10-12", to: "2026-10-18" })).toEqual({ from: "2026-10-11", to: "2026-10-19" });
+  it("dueDateWindow pide dos dias de margen a cada lado por la zona", () => {
+    expect(dueDateWindow({ from: "2026-10-12", to: "2026-10-18" })).toEqual({ from: "2026-10-10", to: "2026-10-20" });
+  });
+
+  it("los dos dias de margen hacen falta: de UTC-12 a UTC+14 una tarea cae dos dias civiles despues", () => {
+    // 23:00 del 12 en UTC-12 = 11:00 UTC del 13 = 01:00 del 14 en UTC+14.
+    const task = makeTask({ id: taskId(1), due_date: "2026-10-12", due_time: "23:00" });
+    const view = { from: "2026-10-14", to: "2026-10-14" };
+    expect(dueDateWindow(view).from <= "2026-10-12").toBe(true);
+    expect(placeTasksInCalendar({ tasks: [task], workspaceTz: "Etc/GMT+12", viewerTz: "Pacific/Kiritimati", view: "day", range: view }).byDate["2026-10-14"]).toHaveLength(1);
   });
 });

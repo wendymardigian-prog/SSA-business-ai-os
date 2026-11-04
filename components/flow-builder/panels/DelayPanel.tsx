@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { loadBusinessTimeZone } from "@/lib/actions/flow-capabilities";
-import { formatLocalDateTime } from "@/lib/flow-engine/wait-until";
+import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
+import { formatLocalDateTime, waitUntilInputValue } from "@/lib/flow-engine/wait-until";
+import { isValidTimeZone } from "@/lib/timezone";
 
 type DelayUnit = "seconds" | "minutes" | "hours" | "days";
 type DelayMode = "duration" | "until";
@@ -46,21 +49,29 @@ const presets: Array<{ label: string; duration: number; unit: DelayUnit }> = [
   { label: "7 días", duration: 7, unit: "days" },
 ];
 
-/** ISO de un nodo viejo -> valor de un `datetime-local` en la hora de quien mira. */
-function toLocalInput(iso: string | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** Un instante en la zona de quien mira, con la zona dicha: "7 nov 2026, 8:00 (GMT-3)". */
+function formatInstant(iso: string, timeZone: string): string | null {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const text = date.toLocaleString("es", {
+    timeZone,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${text} (${timeZoneLabel(timeZone, date)})`;
 }
 
 /**
  * El panel de «Esperar». Los cambios conservan el resto de los datos del paso (antes los atajos y el cambio de modo
  * reemplazaban todo y se perdía el nombre). "Esperar hasta" se guarda como hora del negocio, sin zona: el motor la lee
- * con `workspaces.timezone`, no con la del navegador de quien armó el flujo.
+ * con `workspaces.timezone`, no con la del navegador de quien armó el flujo. Es una regla del flujo, por eso el campo
+ * habla en la hora del negocio y dice cuál es; quien mira desde otra zona ve además a qué hora le cae a él.
  */
 export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
+  const viewerZone = useViewerTimezone();
   const data = rawData as DelayPanelData;
   const duration = data.duration || 0;
   const unit = data.unit || "minutes";
@@ -72,7 +83,7 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
     let cancelled = false;
     loadBusinessTimeZone()
       .then((zone) => {
-        if (!cancelled) setBusinessZone(zone);
+        if (!cancelled) setBusinessZone(zone && isValidTimeZone(zone) ? zone : null);
       })
       .catch(() => {
         // Sin la zona el texto dice "hora del negocio" a secas: no cambia lo que se guarda.
@@ -93,8 +104,12 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
     onChange({ ...data, duration: preset.duration, unit: preset.unit, waitUntil: undefined, waitUntilLocal: undefined });
   };
 
-  const localValue = data.waitUntilLocal || toLocalInput(data.waitUntil);
+  const localValue = waitUntilInputValue(data, businessZone);
   const untilText = localValue ? formatLocalDateTime(localValue) : null;
+  // El mismo momento en la zona de quien mira: un nodo viejo ya es un instante; el otro hace falta saber la del negocio.
+  const instant = data.waitUntilLocal ? (businessZone ? datetimeInputToIso(data.waitUntilLocal, businessZone) : null) : (data.waitUntil ?? null);
+  const viewerText = instant ? formatInstant(instant, viewerZone) : null;
+  const viewerDiffers = Boolean(instant && localValue && isoToDatetimeInput(instant, viewerZone) !== localValue);
   const [one, many] = UNIT_WORDS[unit];
 
   return (
@@ -181,7 +196,7 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
             className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            En la hora del negocio{businessZone ? ` (${businessZone})` : ""}. Si la fecha ya pasó cuando un contacto llega a este paso, se saltea el paso siguiente y el flujo sigue con el que viene después.
+            En la hora del negocio{businessZone ? ` (${businessZone}, ${timeZoneLabel(businessZone)})` : ""}. Si la fecha ya pasó cuando un contacto llega a este paso, se saltea el paso siguiente y el flujo sigue con el que viene después.
           </p>
         </div>
       )}
@@ -195,8 +210,11 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
               : "Sin espera: sigue de largo"
             : untilText
               ? `Espera hasta el ${untilText} (hora del negocio)`
-              : "Elegí una fecha"}
+              : viewerText
+                ? `Espera hasta el ${viewerText}`
+                : "Elegí una fecha"}
         </p>
+        {mode === "until" && viewerDiffers && viewerText && <p className="mt-1 text-xs text-muted-foreground">Para vos: {viewerText}</p>}
       </div>
     </div>
   );

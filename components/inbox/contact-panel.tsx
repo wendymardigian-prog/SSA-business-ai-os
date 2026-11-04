@@ -34,6 +34,7 @@ import { buildAttributionView } from "@/lib/contacts/attribution-view";
 import { channelIdentity, platformHandles, whatsappLidOf } from "@/lib/contacts/links";
 import { platformLabel } from "@/lib/platforms";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import type { Database, LeadTemperature, Platform } from "@/lib/types/database";
 
 /**
@@ -68,9 +69,9 @@ interface ContactDetails {
   channels: { platform: Platform; username: string | null; senderId: string | null; channelId: string | null }[];
 }
 
-function formatDate(dateStr: string | null): string {
+function formatDate(dateStr: string | null, timeZone: string): string {
   if (!dateStr) return "Nunca";
-  return new Date(dateStr).toLocaleString("es-AR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(dateStr).toLocaleString("es-AR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone });
 }
 
 function PanelSection({ title, children, icon }: { title: string; children: ReactNode; icon?: ReactNode }) {
@@ -487,6 +488,7 @@ function BasicData({
 }
 
 function AgentMemory({ contact }: { contact: Contact }) {
+  const timeZone = useViewerTimezone();
   const summary = contact.ai_conversation_summary?.trim();
   return (
     <PanelSection title="Memoria del agente" icon={<Brain className="h-3 w-3" />}>
@@ -495,7 +497,7 @@ function AgentMemory({ contact }: { contact: Contact }) {
           <p className="whitespace-pre-wrap text-sm leading-relaxed">{summary}</p>
           <p className="text-[11px] text-muted-foreground">
             {contact.ai_summary_updated_at
-              ? `Actualizada el ${formatDate(contact.ai_summary_updated_at)}`
+              ? `Actualizada el ${formatDate(contact.ai_summary_updated_at, timeZone)}`
               : "Fecha de actualización no registrada (es anterior al modo borrador)."}{" "}
             La escribe el agente; se revierte desde Agentes → Acciones.
           </p>
@@ -555,6 +557,7 @@ function Channels({ details, accounts }: { details: ContactDetails; accounts?: I
 }
 
 function Activity({ contact }: { contact: Contact }) {
+  const timeZone = useViewerTimezone();
   // Sin la lista de toques: el panel es chico y no hace una consulta mas. El
   // camino completo esta en la ficha del contacto (F88).
   const attribution = buildAttributionView({ attribution: contact.attribution });
@@ -562,9 +565,9 @@ function Activity({ contact }: { contact: Contact }) {
     <PanelSection title="Actividad">
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
         <dt className="text-muted-foreground">Última interacción</dt>
-        <dd>{formatDate(contact.last_interaction_at)}</dd>
+        <dd>{formatDate(contact.last_interaction_at, timeZone)}</dd>
         <dt className="text-muted-foreground">Creado</dt>
-        <dd>{formatDate(contact.created_at)}</dd>
+        <dd>{formatDate(contact.created_at, timeZone)}</dd>
         {attribution.first && (
           <>
             <dt className="text-muted-foreground">{attribution.last ? "Origen" : "Origen (único toque)"}</dt>
@@ -583,6 +586,7 @@ function Activity({ contact }: { contact: Contact }) {
 }
 
 function DoNotContact({ contact, isAdmin, onSaved }: { contact: Contact; isAdmin: boolean; onSaved: () => void }) {
+  const timeZone = useViewerTimezone();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -608,7 +612,7 @@ function DoNotContact({ contact, isAdmin, onSaved }: { contact: Contact; isAdmin
         <>
           <p className="text-xs text-muted-foreground">
             Marcado{contact.do_not_contact_reason ? ` (${contact.do_not_contact_reason})` : ""}
-            {contact.do_not_contact_at ? ` el ${formatDate(contact.do_not_contact_at)}` : ""}. Sus secuencias están pausadas.
+            {contact.do_not_contact_at ? ` el ${formatDate(contact.do_not_contact_at, timeZone)}` : ""}. Sus secuencias están pausadas.
           </p>
           {isAdmin ? (
             <button

@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { KanbanSquare, ListChecks, Plus, Table2 } from "lucide-react";
 import { ToastProvider } from "@/components/content/drawer/toast";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { PageHeader } from "@/components/page-header";
 import type { CellPatch } from "@/lib/tasks/cell-edit";
 import type { CompletionPlan } from "@/lib/tasks/core";
 import type { DraftDefaults } from "@/lib/tasks/draft";
 import { withoutTaskParam, withTaskParam } from "@/lib/tasks/drawer-url";
+import { dueDayPatch, type DueZones } from "@/lib/tasks/due-view";
 import { applyFilters } from "@/lib/tasks/filters";
 import { planMoveToEdits } from "@/lib/tasks/board-actions";
 import type { MovePlan } from "@/lib/tasks/kanban-model";
@@ -34,8 +36,9 @@ export interface TasksScreenProps {
   initialTasks: TaskRow[];
   members: MemberLite[];
   currentUserId: string;
-  /** AAAA-MM-DD en la zona del workspace, calculado en el servidor. */
+  /** AAAA-MM-DD en la zona de quien mira, calculado en el servidor. */
   today: string;
+  /** La zona del workspace: la de la fecha y la hora guardadas. */
   timeZone: string;
   canEdit: boolean;
   canDelete: boolean;
@@ -61,6 +64,8 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const state = useMemo(() => parseViewState(searchParams), [searchParams]);
+  const viewerTz = useViewerTimezone();
+  const zones = useMemo<DueZones>(() => ({ workspaceTz: timeZone, viewerTz }), [timeZone, viewerTz]);
 
   // Las tareas viven en pantalla (para cambiarlas al instante) y se vuelven a tomar del servidor cuando este las manda de nuevo.
   const [tasks, setTasks] = useState<TaskRow[]>(initialTasks);
@@ -98,15 +103,15 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
   const memberNames = useMemo(() => new Map(members.map((m) => [m.id, m.name])), [members]);
   const projects = useMemo(() => listProjects(tasks), [tasks]);
-  const filtered = useMemo(() => applyFilters(tasks, state, { meId: currentUserId, today, byId }), [tasks, state, currentUserId, today, byId]);
-  const sorted = useMemo(() => sortRows(buildRows(filtered, members, { today, byId }), state.sort), [filtered, members, today, byId, state.sort]);
+  const filtered = useMemo(() => applyFilters(tasks, state, { meId: currentUserId, today, byId, zones }), [tasks, state, currentUserId, today, byId, zones]);
+  const sorted = useMemo(() => sortRows(buildRows(filtered, members, { today, byId, zones }), state.sort), [filtered, members, today, byId, zones, state.sort]);
   const layout = useTasksLayout();
-  const mine = useMemo(() => summarizeMine(tasks, today, currentUserId), [tasks, today, currentUserId]);
+  const mine = useMemo(() => summarizeMine(tasks, today, currentUserId, zones), [tasks, today, currentUserId, zones]);
   const limit = visibleLimit(sorted.length, loadedMore);
   const groups = useMemo(() => groupRows(sorted.slice(0, limit), state.group), [sorted, limit, state.group]);
 
   const source = useMemo(() => ({ flowNames: new Map(Object.entries(flowNames)) }), [flowNames]);
-  const env: CellEnv = useMemo(() => ({ members, memberNames, projects, today, canEdit, source }), [members, memberNames, projects, today, canEdit, source]);
+  const env: CellEnv = useMemo(() => ({ members, memberNames, projects, today, zones, canEdit, source }), [members, memberNames, projects, today, zones, canEdit, source]);
 
   // ── El drawer ─────────────────────────────────────────────────────────────
   const openTask = state.task ? (byId.get(state.task) ?? null) : null;
@@ -160,7 +165,14 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
     [actions],
   );
   const onStatus = useCallback((taskId: string, status: TaskStatus) => void actions.edit(taskId, { status }), [actions]);
-  const onDue = useCallback((taskId: string, due: string | null) => void actions.edit(taskId, { due_date: due }), [actions]);
+  // La tarjeta da el dia que VE quien mira: con hora, cambia el dia y la hora guardados juntos.
+  const onDue = useCallback(
+    (taskId: string, due: string | null) => {
+      const task = byId.get(taskId);
+      if (task) void actions.edit(taskId, dueDayPatch(task, due, zones));
+    },
+    [actions, byId, zones],
+  );
   const onSort = useCallback((column: SortColumn) => change({ ...state, sort: nextSort(state.sort, column) }), [change, state]);
 
   const hasAny = tasks.length > 0;

@@ -33,6 +33,7 @@ import { Avatar } from "@/components/ui/filter-menu";
 import { Tip } from "@/components/ui/tooltip";
 import { conversationListPreview } from "@/lib/inbox/last-message";
 import { listTimeLabel } from "@/lib/inbox/day-label";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import { InboxViewSwitch } from "@/components/inbox/inbox-view-switch";
 
@@ -41,11 +42,11 @@ type Conversation = ConversationRow;
 /** Cuanto se espera antes de volver a preguntarle al servidor (ver abajo). */
 const REFRESH_DEBOUNCE_MS = 800;
 
-function formatTime(dateStr: string | null): string {
+function formatTime(dateStr: string | null, timeZone: string): string {
   if (!dateStr) return "";
   // Por dia de calendario (lib/inbox/day-label.ts): un mensaje de ayer a la
   // noche dice "Ayer" aunque no hayan pasado 24 horas.
-  return listTimeLabel(new Date(dateStr));
+  return listTimeLabel(new Date(dateStr), timeZone);
 }
 
 export function ConversationList({
@@ -124,10 +125,10 @@ export function ConversationList({
       setRowPending(null);
     }
   }
-  // Relative timestamps depend on the client's clock/locale, which differ from the
-  // server's during SSR and trigger a hydration mismatch (React #418, which crashes
-  // the inbox in production). Defer time rendering until after mount so the server
-  // and the first client render agree.
+  // "Hoy" y "Ayer" dependen del reloj, que puede cambiar de dia entre el render del
+  // servidor y el del navegador (React #418, que tumba la bandeja en produccion).
+  // La zona ya no es parte del problema: es la de quien mira en los dos lados.
+  const timeZone = useViewerTimezone();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -369,8 +370,8 @@ export function ConversationList({
                         />
                       </span>
                     )}
-                    <span suppressHydrationWarning className="text-[11px] text-muted-foreground">
-                      {mounted ? formatTime(conversation.last_message_at) : ""}
+                    <span className="text-[11px] text-muted-foreground">
+                      {mounted ? formatTime(conversation.last_message_at, timeZone) : ""}
                     </span>
                   </span>
                 </div>

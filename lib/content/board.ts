@@ -222,12 +222,12 @@ export function reorder(
 }
 
 /** El chip de redistribucion de una tarjeta publicada, si corresponde. */
-export function redistributionChip(networks: BoardNetwork[]): string | null {
+export function redistributionChip(networks: BoardNetwork[], timeZone: string): string | null {
   const pending = networks.filter((n) => n.redistribution && n.status === "scheduled" && n.at);
   if (pending.length === 0) return null;
 
   const first = pending[0];
-  const fecha = new Date(first.at!).toLocaleDateString("es-AR", { day: "numeric", month: "short" });
+  const fecha = new Date(first.at!).toLocaleDateString("es-AR", { day: "numeric", month: "short", timeZone });
   return pending.length === 1
     ? `↻ ${first.platform} programado ${fecha}`
     : `↻ ${pending.length} redes programadas`;

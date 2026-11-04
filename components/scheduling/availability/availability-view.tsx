@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { ConfigShell } from "../config-shell";
@@ -12,7 +12,7 @@ import { ContentDialog, DialogField } from "@/components/content/dialog";
 import { Notice } from "@/components/agents/fields";
 import { Switch } from "@/components/ui/switch";
 import { useUnsavedChanges } from "@/lib/hooks/use-unsaved-changes";
-import { listTimeZones } from "@/lib/timezone";
+import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { summarizeSchedule, shortTime } from "@/lib/scheduling/schedules";
 import { upcomingOverrides } from "@/lib/scheduling/availability-schema";
 import { dateInTz } from "@/lib/scheduling/time/tz";
@@ -74,7 +74,6 @@ export function AvailabilityView({
   const [newName, setNewName] = useState("");
   const [newTz, setNewTz] = useState(viewerTimezone);
 
-  const zones = useMemo(() => listTimeZones(), []);
   const query = (id: string) => `/dashboard/agenda/configuracion/disponibilidad?horario=${id}${isSelf ? "" : `&persona=${targetUserId}`}`;
 
   const flash = useCallback((message: string) => {
@@ -160,7 +159,6 @@ export function AvailabilityView({
           selected={selected}
           schedules={schedules}
           events={events}
-          zones={zones}
           pending={pending}
           onGuard={setGuardRef}
           onError={setError}
@@ -231,11 +229,7 @@ export function AvailabilityView({
               <input value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={60} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm" />
             </DialogField>
             <DialogField label="Zona horaria">
-              <select value={newTz} onChange={(e) => setNewTz(e.target.value)} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm">
-                {zones.map((z) => (
-                  <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
-                ))}
-              </select>
+              <TimezoneSelect value={newTz} onChange={setNewTz} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm" />
             </DialogField>
           </div>
         </ContentDialog>
@@ -319,7 +313,6 @@ function ScheduleEditorCard({
   selected,
   schedules,
   events,
-  zones,
   pending,
   onGuard,
   onError,
@@ -330,7 +323,6 @@ function ScheduleEditorCard({
   selected: AvailabilitySchedule;
   schedules: AvailabilitySchedule[];
   events: EventUsingSchedule[];
-  zones: string[];
   pending: boolean;
   onGuard: (g: { dirty: boolean; guard: (n: () => void) => void }) => void;
   onError: (e: string | null) => void;
@@ -401,11 +393,7 @@ function ScheduleEditorCard({
                 </label>
                 <label className="block text-xs font-medium">
                   Zona horaria del horario
-                  <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal">
-                    {(zones.includes(timezone) ? zones : [timezone, ...zones]).map((z) => (
-                      <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
-                    ))}
-                  </select>
+                  <TimezoneSelect value={timezone} onChange={setTimezone} ariaLabel="Zona horaria del horario" className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm font-normal" />
                 </label>
               </div>
               <WeeklyEditor value={weekly} onChange={setWeekly} errorDay={errorDay} />

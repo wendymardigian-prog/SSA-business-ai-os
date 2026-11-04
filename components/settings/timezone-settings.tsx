@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Clock } from "lucide-react";
 import { updateWorkspaceTimezone } from "@/lib/actions/workspace";
-import { listTimeZones } from "@/lib/timezone";
+import { TimezoneSelect } from "@/components/ui/timezone-select";
 
 /**
  * Zona horaria del negocio (F3). Los dashboards cortan los días ("Hoy", "Esta
@@ -17,7 +17,6 @@ export function TimezoneSettings({ timezone }: { timezone: string }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
-  const zones = listTimeZones();
 
   function change(next: string) {
     setValue(next);
@@ -49,19 +48,13 @@ export function TimezoneSettings({ timezone }: { timezone: string }) {
         <label htmlFor="timezone-select" className="sr-only">
           Zona horaria del workspace
         </label>
-        <select
+        <TimezoneSelect
           id="timezone-select"
           value={value}
           disabled={pending}
-          onChange={(e) => change(e.target.value)}
+          onChange={change}
           className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
-        >
-          {zones.map((z) => (
-            <option key={z} value={z}>
-              {z.replace(/_/g, " ")}
-            </option>
-          ))}
-        </select>
+        />
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
         {saved && <p className="mt-2 text-xs text-emerald-600">Guardado.</p>}
       </div>

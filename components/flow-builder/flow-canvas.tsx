@@ -54,6 +54,7 @@ import { AiResponseNode } from "./nodes/AiResponseNode";
 import { NodeConfigSidebar } from "./panels/NodeConfigSidebar";
 import { VersionHistoryPanel } from "./panels/VersionHistoryPanel";
 import { TestPanel } from "./panels/TestPanel";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { isNoContactTriggerType } from "@/lib/flow-engine/contact-free";
 import { newNodeAttribution, type AttributionDefaults } from "@/lib/attribution/panel-view";
 
@@ -140,6 +141,7 @@ function initialGraph(flow: Flow): { nodes: Node[]; edges: Edge[] } {
 
 function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }: FlowCanvasProps) {
   const router = useRouter();
+  const timeZone = useViewerTimezone();
   const capabilities = useFlowCapabilities();
   // Los pasos bloqueados que YA tenia lo guardado: un flujo publicado se puede seguir editando aunque a un paso se le
   // haya desconectado algo; lo que no se deja es guardar un paso NUEVO sin su conexion (saldria en vivo sin ejecutarse).
@@ -516,7 +518,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
           )}
           {!saveError && !unsaved.dirty && lastSaved && (
             <span className="text-xs text-muted-foreground">
-              Guardado {lastSaved.toLocaleTimeString()}
+              Guardado {lastSaved.toLocaleTimeString("es-AR", { timeZone })}
             </span>
           )}
           <button

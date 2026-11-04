@@ -21,7 +21,7 @@ const rows = [
 
 const render = (props: { showPaid?: boolean; query?: string }) =>
   renderToStaticMarkup(
-    createElement(ContentList, { rows, filters: parseContentFilters(new URLSearchParams(props.query ?? "")), authors: [], months: [], showPaid: props.showPaid }),
+    createElement(ContentList, { rows, filters: parseContentFilters(new URLSearchParams(props.query ?? "")), authors: [], months: [], timeZone: "UTC", showPaid: props.showPaid }),
   );
 
 describe("lista de Contenido · piezas pautadas", () => {

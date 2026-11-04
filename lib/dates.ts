@@ -230,6 +230,17 @@ export function formatDateOnly(iso: string | null | undefined, timeZone: string)
   }).format(date);
 }
 
+/**
+ * Cuantos dias de calendario pasaron en la zona entre la fecha y `now` (0 = hoy, 1 = ayer).
+ * Se cuenta sobre el calendario y no en horas: "ayer a la noche" visto hoy temprano es ayer,
+ * aunque hayan pasado menos de 24 horas.
+ */
+export function calendarDaysAgo(date: Date, now: Date, timeZone: string): number {
+  const a = civilDate(date, timeZone);
+  const b = civilDate(now, timeZone);
+  return Math.round((Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day)) / 86_400_000);
+}
+
 /** El instante UTC en que empezo el dia de `now` en la zona. */
 export function startOfZonedDay(now: Date | undefined, timeZone: string): Date {
   const { year, month, day } = civilDate(now ?? new Date(), timeZone);
@@ -263,13 +274,16 @@ export function zonedClock(
   return { weekday, minutes: hour * 60 + Number(get("minute")) };
 }
 
-// ── Fecha y hora en la zona del workspace (A19) ────────────────────────────
+// ── Fecha y hora en la zona de quien mira ──────────────────────────────────
 //
-// Un `<input type="datetime-local">` habla en la zona del NAVEGADOR. El
-// editor de contenido lo convertia con `new Date(value)`, asi que alguien que
-// viaja, o que tiene el sistema en otra zona, programaba a una hora distinta
-// de la que veia. La hora de una publicacion es la del negocio, no la de la
-// computadora desde la que se carga.
+// Un `<input type="datetime-local">` no tiene zona: el valor es una hora de
+// pared y hay que decir de donde. Convertirlo con `new Date(value)` la lee en
+// la zona del NAVEGADOR, que puede no ser la que la persona eligio. Por eso la
+// zona se pasa siempre: en Contenido (y el resto del panel) la hora se ve y se
+// escribe en la zona del USUARIO (`useViewerTimezone` / `resolveViewerTimezone`,
+// mostrada al lado del campo), y lo que se guarda es el instante, el mismo para
+// todos. Antes (decision A19) era la del negocio; lo que sigue en la del negocio
+// son las reglas, como el tope diario de publicaciones por red.
 
 const DATETIME_LOCAL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
 

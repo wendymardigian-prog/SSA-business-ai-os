@@ -13,6 +13,7 @@
  * `<select>`, que anda con el teclado y en el celular, donde no se arrastra).
  */
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -243,6 +244,7 @@ function ContactKanbanCard({
   onDragEnd: () => void;
   onMove: (to: string) => void;
 }) {
+  const timeZone = useViewerTimezone();
   const name = card.displayName ?? "Sin nombre";
   const setter = card.setterId ? memberLabel.get(card.setterId) : null;
   const vendedor = card.vendedorId ? memberLabel.get(card.vendedorId) : null;
@@ -278,7 +280,7 @@ function ContactKanbanCard({
         </span>
       )}
       <span className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground/80">{formatRelative(card.lastInteractionAt)}</span>
+        <span className="text-[11px] text-muted-foreground/80">{formatRelative(card.lastInteractionAt, timeZone)}</span>
         {canEdit && targets.length > 1 && (
           <label className="opacity-100 transition-opacity focus-within:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
             <span className="sr-only">Mover a {name} a otro estado de {STATUS_ROLE_LABELS[role].toLowerCase()}</span>

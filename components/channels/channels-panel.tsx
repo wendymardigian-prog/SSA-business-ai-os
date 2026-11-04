@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useRef, useEffect } from "react";
 import {
   Check,
@@ -64,6 +65,7 @@ export function ChannelsPanel({
   provider?: "zernio" | "evolution";
   returnTo?: string;
 }) {
+  const timeZone = useViewerTimezone();
   const [channels, setChannels] = useState(initialChannels);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -604,6 +606,7 @@ export function ChannelsPanel({
                     <span className="text-[10px] text-muted-foreground">
                       Conectado el{" "}
                       {new Date(channel.created_at).toLocaleDateString("es-AR", {
+                        timeZone,
                         month: "short",
                         day: "numeric",
                       })}
@@ -613,7 +616,7 @@ export function ChannelsPanel({
                   {(() => {
                     if (channel.provider !== "zernio") return null;
                     const status = importStatusView(channel.inbox_import, (iso) =>
-                      new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "numeric" }),
+                      new Date(iso).toLocaleDateString("es-AR", { timeZone, day: "numeric", month: "numeric" }),
                     );
                     if (!status) return null;
                     return (

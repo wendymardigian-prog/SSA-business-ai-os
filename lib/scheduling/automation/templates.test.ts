@@ -68,7 +68,8 @@ describe("las plantillas usan tipos que el motor conoce", () => {
         expect(resolveNodeType(node as never), `${template.key}: el nodo ${node.id} no existe en el registro`).toBeTruthy();
       }
     }
-  });
+    // Cargar el registro entero tarda: con la maquina ocupada pasaba los 5 s por defecto.
+  }, 30_000);
 
   it("cada plantilla usa un trigger registrado", async () => {
     const { getTrigger } = await import("@/lib/flow-engine/registry");

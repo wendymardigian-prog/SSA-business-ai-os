@@ -504,7 +504,7 @@ export function contentTooltip(perms: { approve: boolean; publish: boolean; ai: 
   if (cannot.length > 0) {
     parts.push(`${cannot.join(", ")} ${cannot.length === 1 ? "es" : "son"} de quien tiene ese permiso (Owner y Admin, o un rol que lo incluya).`);
   }
-  if (timeZoneLabel) parts.push(`Zona horaria del negocio: ${timeZoneLabel}.`);
+  if (timeZoneLabel) parts.push(`Las horas se ven y se cargan en tu zona horaria: ${timeZoneLabel}.`);
   return parts.join(" ");
 }
 

@@ -30,6 +30,7 @@ import { loadContentTaxonomy, type ContentTaxonomy } from "./load-taxonomy";
 import type { MediaEntry } from "./media";
 import { canWritePost } from "./piece-drawer";
 import { schedulesOnProvider } from "@/lib/publishing/provider-scheduling";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { canReassign, isAuthorOrAssignee } from "./assignee";
 import type { NetworkEntry } from "./redistribution";
 import type { StoredVersion } from "./versions";
@@ -123,9 +124,9 @@ export interface PieceData {
 export async function loadPiece(ctx: PermissionContext, postId: string): Promise<PieceData | null> {
   const { workspace, user, supabase, can, role } = ctx;
   const canUseAi = can("content.ai");
-  // La zona del NEGOCIO: la misma que usa el editor para agendar (A19,
-  // lib/dates.ts) y el tope diario server-side (lib/publishing/schedule-core.ts).
-  const timeZone = workspace.timezone || "UTC";
+  // La zona de QUIEN MIRA: con esta el drawer muestra la hora y convierte lo que
+  // se escribe en un instante (lib/dates.ts). El tope diario no la usa.
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
 
   const { data: post } = await supabase
     .from("content_posts")

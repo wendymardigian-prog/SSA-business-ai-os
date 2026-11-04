@@ -67,7 +67,7 @@ export interface AgendaTasksProps {
   rows: TaskRow[];
   members: MemberLite[];
   currentUserId: string;
-  /** AAAA-MM-DD en la zona del workspace. */
+  /** AAAA-MM-DD en la zona de quien mira. */
   today: string;
   /** La zona de las fechas de las tareas (la del workspace). */
   workspaceTimeZone: string;

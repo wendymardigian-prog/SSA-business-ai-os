@@ -10,6 +10,8 @@ import { describe, expect, it, vi } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 import type { PermissionContext } from "@/lib/auth/guards";
 
+// La zona de quien mira, distinta de la del negocio a proposito: el drawer tiene que usar esta.
+vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "America/Argentina/Buenos_Aires" }));
 vi.mock("@/lib/ai/provider", () => ({
   listConnectedAiProviders: async (_ws: string) => [{ provider: "anthropic", label: "Anthropic", defaultModel: "x", models: [] }],
 }));
@@ -82,6 +84,11 @@ function ctx(over: { keys?: string[]; db?: ReturnType<typeof memoryDb> } = {}) {
 }
 
 describe("loadPiece (F96)", () => {
+  it("la hora se ve y se escribe en la zona de quien mira, no en la del negocio", async () => {
+    const data = await loadPiece(ctx(), "post-1");
+    expect(data?.timeZone).toBe("America/Argentina/Buenos_Aires");
+  });
+
   it("arma la pieza con el guion unico, la idea de origen y el motivo de la devolucion", async () => {
     const data = await loadPiece(ctx(), "post-1");
 

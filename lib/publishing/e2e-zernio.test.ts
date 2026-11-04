@@ -36,6 +36,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
 
 const WS = "ws-e2e";
 const USER = "user-e2e";
@@ -249,7 +250,7 @@ const OPTIONS: Record<string, Record<string, unknown>> = {
 };
 
 /** Crea una pieza lista para programar en esa red, como la deja el editor. */
-async function aprobadaConVideo(platform: string): Promise<string> {
+async function aprobadaConVideo(platform: string, plannedAt: string = PLANNED): Promise<string> {
   const created = await createPost({ title: `Pieza de ${platform}`, platforms: [platform] });
   if (!created.ok) throw new Error(`createPost: ${created.error}`);
   const postId = created.data.id;
@@ -269,7 +270,7 @@ async function aprobadaConVideo(platform: string): Promise<string> {
     networks: [
       {
         platform,
-        planned_at: PLANNED,
+        planned_at: plannedAt,
         caption: null,
         media: null,
         cta: { type: "none", keyword: null },
@@ -455,6 +456,41 @@ describe("cada disparador crea las cuentas, y programar deja de estar bloqueado 
 // ═════════════════════════════════════════════════════════════════════════════
 // 2. El recorrido completo, por red
 // ═════════════════════════════════════════════════════════════════════════════
+
+// La hora de una pieza se escribe en la zona de QUIEN LA CARGA. Si en algun punto de la cadena se la leyera en otra, la
+// publicacion saldria corrida, y programar dos veces no se deshace. El negocio esta en Costa Rica (UTC-6).
+describe("programar desde otra zona: se guarda y se manda el instante", () => {
+  it.each([
+    ["Buenos Aires (UTC-3)", "America/Argentina/Buenos_Aires", "2026-10-03T16:00"],
+    ["Madrid (UTC+2)", "Europe/Madrid", "2026-10-03T21:00"],
+    ["Costa Rica (la del negocio)", "America/Costa_Rica", "2026-10-03T13:00"],
+  ])("escrito en %s", async (_name, viewerZone, escrito) => {
+    await trigger.saveZernio();
+
+    // Lo que hace el editor con el valor del campo y la zona de quien mira.
+    const plannedAt = datetimeInputToIso(escrito, viewerZone);
+    expect(plannedAt).toBe("2026-10-03T19:00:00.000Z");
+
+    const postId = await aprobadaConVideo("instagram", plannedAt!);
+    const scheduled = await scheduleNetworks({ postId, platform: "instagram" });
+    expect(scheduled.ok).toBe(true);
+
+    const row = db.rows("social_posts").find((p) => p.platform === "instagram")!;
+    expect(new Date(String(row.scheduled_at)).toISOString()).toBe("2026-10-03T19:00:00.000Z");
+
+    await cron();
+
+    // A Zernio le llega el instante con su "Z" (para su API, absoluto) y la zona del negocio, sin importar quien cargo.
+    expect(zernio.created).toHaveLength(1);
+    expect(zernio.created[0].body.scheduledFor).toMatch(/Z$|\+00:00$/);
+    expect(new Date(zernio.created[0].body.scheduledFor).toISOString()).toBe("2026-10-03T19:00:00.000Z");
+    expect(zernio.created[0].body.timezone).toBe("America/Costa_Rica");
+
+    // Y otra persona ve el mismo momento en la suya.
+    expect(isoToDatetimeInput(plannedAt, "America/Costa_Rica")).toBe("2026-10-03T13:00");
+    expect(isoToDatetimeInput(plannedAt, "Europe/Madrid")).toBe("2026-10-03T21:00");
+  });
+});
 
 describe.each([
   ["instagram", "zr-ig"],

@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -31,6 +32,7 @@ export function EnrollmentList({
   /** Botón de inscribir, que arma la página (necesita datos del servidor). */
   action?: React.ReactNode;
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -131,7 +133,7 @@ export function EnrollmentList({
                     <p className="text-xs text-muted-foreground">
                       Paso {enrollment.currentStepIndex + 1}
                       <span className="mx-1.5">·</span>
-                      Inscripto el {formatDateTime(enrollment.enrolledAt)}
+                      Inscripto el {formatDateTime(enrollment.enrolledAt, timeZone)}
                       {reason && (
                         <>
                           <span className="mx-1.5">·</span>

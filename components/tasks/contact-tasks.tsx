@@ -25,8 +25,9 @@ export interface ContactTasksData {
   tasks: TaskRow[];
   members: MemberLite[];
   currentUserId: string;
-  /** AAAA-MM-DD en la zona del workspace. */
+  /** AAAA-MM-DD en la zona de quien mira. */
   today: string;
+  /** La zona del workspace: la de la fecha y la hora guardadas. */
   timeZone: string;
   /** 12 h / 24 h de quien mira (R6). */
   timeFormat?: TimeFormat;
@@ -117,7 +118,7 @@ function Body({ ct, onRetry }: { ct: ContactTasksCtx; onRetry: () => void }) {
     );
   }
 
-  const { open, done } = tasksForContact(wb.tasks, contactId);
+  const { open, done } = tasksForContact(wb.tasks, contactId, wb.zones);
   const names = new Map(wb.members.map((m) => [m.id, m.name]));
   const empty = open.length === 0 && done.length === 0;
   const line = (t: TaskRow) => <TaskLine key={t.id} task={t} wb={wb} ownerName={t.owner_id ? (names.get(t.owner_id) ?? null) : null} />;

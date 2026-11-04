@@ -27,11 +27,14 @@ export function ContactSequencesSection({
   canEnroll,
   contact,
   sequences,
+  timeZone,
 }: {
   enrollments: ContactEnrollment[];
   canEnroll: boolean;
   contact: { id: string; name: string; channels: Array<{ id: string; label: string }> };
   sequences: SequenceOption[];
+  /** La zona de quien mira: este componente corre en el servidor. */
+  timeZone: string;
 }) {
   return (
     <Section
@@ -76,10 +79,10 @@ export function ContactSequencesSection({
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {enrollment.status === "completed" && enrollment.completedAt
-                      ? `Terminó el ${formatDateTime(enrollment.completedAt)}`
+                      ? `Terminó el ${formatDateTime(enrollment.completedAt, timeZone)}`
                       : `Paso ${enrollment.currentStepIndex + 1}`}
                     <span className="mx-1.5">·</span>
-                    Inscripto el {formatDateTime(enrollment.enrolledAt)}
+                    Inscripto el {formatDateTime(enrollment.enrolledAt, timeZone)}
                     {reason && (
                       <>
                         <span className="mx-1.5">·</span>

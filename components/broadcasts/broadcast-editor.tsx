@@ -14,7 +14,7 @@ import { CUSTOM_FILTER_PARAMS, countMenuFilters, customFilterRawValue, parseCont
 import type { CustomFieldRef } from "@/lib/contacts/list-filters";
 import type { MultiFilterOption } from "@/lib/ui/multi-filter";
 import { firstParam } from "@/lib/url-params";
-import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
+import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
 import { broadcastVariableList, MAX_VARIANTS, templateVariables } from "@/lib/broadcasts/render";
 import { draftProblems } from "@/lib/broadcasts/draft";
 import { combinePolicies, describePolicy, estimateFinish, paceExceedsCeiling, parseBroadcastPace, type SendPolicy } from "@/lib/send-queue/pace";
@@ -69,13 +69,17 @@ export function BroadcastEditor({
   customFields,
   hasAnonymous,
   timeZone,
+  businessTimeZone,
 }: {
   draft: EditorDraft;
   channels: EditorChannel[];
   filterOptions: Record<string, MultiFilterOption[]>;
   customFields: CustomFieldRef[];
   hasAnonymous: boolean;
+  /** La zona de quien mira: la fecha programada se elige y se muestra en esta. */
   timeZone: string;
+  /** La del negocio: la usa la cola para el horario permitido, asi que tambien la estimacion. */
+  businessTimeZone: string;
 }) {
   const router = useRouter();
   const [name, setName] = useState(draft.name);
@@ -235,7 +239,7 @@ export function BroadcastEditor({
   const effectivePolicy = channel ? combinePolicies(channel.policy, ownPace) : null;
   const sendable = reach?.reach.sendable ?? 0;
   const etaFrom = scheduledIso ? new Date(scheduledIso) : nowMs !== null ? new Date(nowMs) : null;
-  const eta = effectivePolicy && sendable > 0 && etaFrom ? estimateFinish(sendable, effectivePolicy, etaFrom, timeZone) : null;
+  const eta = effectivePolicy && sendable > 0 && etaFrom ? estimateFinish(sendable, effectivePolicy, etaFrom, businessTimeZone) : null;
   const problems = [
     ...draftProblems({ channel_id: channelId, message_variants: variants, email_subject: emailSubject }, kind, customFields),
     ...(scheduleMode === "later" && !scheduledIso ? ["Elegí el día y la hora del envío."] : []),
@@ -583,7 +587,7 @@ export function BroadcastEditor({
             <label className="flex items-center gap-2 text-sm">
               <span className="sr-only">Día y hora</span>
               <input type="datetime-local" value={scheduledLocal} onChange={(e) => setScheduledLocal(e.target.value)} className={cn(input, "w-auto")} />
-              <span className="text-xs text-muted-foreground">hora del negocio</span>
+              <span className="text-xs text-muted-foreground">tu zona horaria ({timeZoneLabel(timeZone)})</span>
             </label>
           )}
         </div>

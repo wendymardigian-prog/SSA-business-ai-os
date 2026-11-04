@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -192,6 +193,7 @@ function LimitsSection({ limits, agentId }: { limits: NonNullable<AgentScreenDat
 }
 
 function PricingSection({ pricing, canEdit }: { pricing: NonNullable<AgentScreenData["costs"]>["pricing"]; canEdit: boolean }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const [form, setForm] = useState({ provider: "anthropic", model: "", input: 0, output: 0, cached: 0, note: "" });
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
@@ -225,7 +227,7 @@ function PricingSection({ pricing, canEdit }: { pricing: NonNullable<AgentScreen
                 <td className="py-1.5 text-right tabular-nums">{p.inputPerMtok}</td>
                 <td className="py-1.5 text-right tabular-nums">{p.outputPerMtok}</td>
                 <td className="py-1.5 text-right tabular-nums">{p.cachedInputPerMtok}</td>
-                <td className="py-1.5 text-right text-xs text-muted-foreground">{formatDateTime(p.validFrom)}</td>
+                <td className="py-1.5 text-right text-xs text-muted-foreground">{formatDateTime(p.validFrom, timeZone)}</td>
               </tr>
             ))}
           </tbody>

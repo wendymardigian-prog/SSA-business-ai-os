@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dueLabel, flowIdOf, formatDay, formatDayLong, formatDayShort, formatSource, formatTaskWhen } from "./format";
+import { dueLabel, dueLabelForViewer, flowIdOf, formatDay, formatDayLong, formatDayShort, formatSource, formatTaskWhen } from "./format";
 
 const TODAY = "2026-10-13";
 
@@ -74,5 +74,28 @@ describe("formatDayLong (selector de fecha del drawer)", () => {
     expect(formatDayLong("2026-10-14", "2026-10-14")).toBe("mié 14 oct");
     expect(formatDayLong("2026-01-01", "2026-10-14")).toBe("jue 1 ene");
     expect(formatDayLong("2027-03-05", "2026-10-14")).toBe("vie 5 mar 2027");
+  });
+});
+
+describe("dueLabelForViewer: quien mira esta en otra zona", () => {
+  const zones = { workspaceTz: "America/Costa_Rica", viewerTz: "Asia/Tokyo" };
+  // 23:00 del 14 en Costa Rica = 14:00 del 15 en Tokio.
+  const late = { due_date: "2026-10-14", due_time: "23:00", status: "pending" as const };
+
+  it("«Hoy» es el dia de quien mira sobre lo que ve, con su hora", () => {
+    expect(dueLabelForViewer(late, "2026-10-15", zones, "24h")).toEqual({ text: "Hoy · 14:00", tone: "today" });
+    expect(dueLabelForViewer(late, "2026-10-14", zones, "24h")).toEqual({ text: "Mañana · 14:00", tone: "soon" });
+    expect(dueLabelForViewer(late, "2026-10-16", zones, "24h")).toEqual({ text: "Ayer · 14:00", tone: "overdue" });
+  });
+  it("sin hora es una fecha civil: «vence el martes» es martes para todos", () => {
+    const civil = { due_date: "2026-10-14", due_time: null, status: "pending" as const };
+    expect(dueLabelForViewer(civil, "2026-10-14", zones, "24h")).toEqual({ text: "Hoy", tone: "today" });
+    expect(dueLabelForViewer(civil, "2026-10-15", zones, "24h")).toEqual({ text: "Ayer", tone: "overdue" });
+  });
+  it("el tono sigue siendo por dia: una hora ya pasada del dia de hoy no vence", () => {
+    expect(dueLabelForViewer({ due_date: "2026-10-14", due_time: "09:00", status: "pending" }, "2026-10-15", zones, "24h")).toEqual({ text: "Hoy · 00:00", tone: "today" });
+  });
+  it("una completada muestra el dia y la hora que ve quien mira", () => {
+    expect(dueLabelForViewer({ ...late, status: "completed" }, "2026-10-20", zones, "24h")).toEqual({ text: "15/10 · 14:00", tone: "done" });
   });
 });

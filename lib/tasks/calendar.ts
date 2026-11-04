@@ -70,7 +70,10 @@ export function placeTasksInCalendar(args: {
   return { view, items: items.filter((i) => byDate[i.date]), byDate };
 }
 
-/** El rango de fechas de la base que hay que pedir para cubrir un rango del calendario, con un dia de margen por la zona. */
+/**
+ * El rango de fechas de la base que hay que pedir para cubrir un rango del calendario, con dos dias de margen por la zona:
+ * de UTC-12 a UTC+14 hay 26 horas, y una tarea de las 23:00 puede caer dos dias civiles mas alla.
+ */
 export function dueDateWindow(range: { from: string; to: string }): { from: string; to: string } {
-  return { from: addDays(range.from, -1), to: addDays(range.to, 1) };
+  return { from: addDays(range.from, -2), to: addDays(range.to, 2) };
 }
