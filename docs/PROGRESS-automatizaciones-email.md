@@ -12,6 +12,7 @@ Rama de la Fase 1a: `feat/automatizaciones-email-envios`. Plan aprobado el 4/11/
 - **Tope del día = el más bajo** entre «Máximo de emails de marketing por día» (default 100) y el escalón del calentamiento (100 → 200 → 400 → 800 → terminado).
 - **Tabla nueva aprobada: `automation_runs`** (1b). Es la única: `trigger_fires` no sirve de ancla porque su FK a `triggers` borra en cascada y publicar recrea las filas de `triggers`.
 - **No hay un segundo motor de envío masivo.** Los broadcasts de email ya existen (cola de envíos, carril del canal de email). A1 solo arranca sesiones de flujo; lo que regula el envío es una sola guardia para todo el marketing.
+- **Umbrales del freno**: 2 % de rebotes, 0,05 % de quejas, mínimo 50 enviados en 24 h (los del pedido; el documento de investigación está fuera del repo).
 - **A1 pide además `broadcasts.manage` y alcance de leads `all`** (un Member tiene `flows.publish`). No se crea ningún permiso.
 
 ## Punto de partida (4/11/2026)
@@ -32,7 +33,7 @@ Rama de la Fase 1a: `feat/automatizaciones-email-envios`. Plan aprobado el 4/11/
 
 | Número | Nombre | Fase | Orden | Estado |
 |---|---|---|---|---|
-| 00287 | `email_delivery_guard` (columnas de `email_log`, estados `reserved` / `skipped_no_email`, `reserve_email_send`, `settle_email_send`, `contact_last_activity`) | 1a | antes del deploy | sin escribir |
+| 00287 | `email_delivery_guard` (columnas de `email_log` incluidos los eventos de entrega, estados `reserved` / `skipped_no_email`, `reserve_email_send`, `settle_email_send`, `contact_last_activity`) | 1a | antes del deploy | sin escribir |
 | 00288 | `broadcast_activity_order` (`broadcast_recipients.sort_key`, `claim_broadcast_recipient` ordenado por actividad) | 1a | antes del deploy | sin escribir |
 | 00289 | `automation_runs` (tabla, CHECK de `triggers.type` + `scheduled_audience`, índice único de `flow_sessions`, índice de `scheduled_jobs`) | 1b | antes del deploy | sin escribir |
 | 00290 | `email_default_design` (`workspaces.email_default_design`) | 2 | antes del deploy | sin escribir |
@@ -72,13 +73,15 @@ Confirmar cada número con `list_migrations` y las ramas locales antes de escrib
 - [ ] A6 · Bajas atribuidas: `?e=<email_log_id>` en el link y el header de baja, y `unsubscribed_at`.
 - [ ] A6 · Pantalla «Entrega de marketing» en la tarjeta de Resend: máximo por día, calentamiento y su día, freno con «Reanudar».
 - [ ] A6 · Aviso rojo del webhook (desactivado o sin `bounced` / `complained`) en el editor de broadcast, el nodo «Enviar email» y la tarjeta de Resend.
+- [ ] A6 · Eventos de entrega (sumado el 4/11): en la 00287, `email_log` suma `delivered_at`, `opened_at`, `open_count`, `clicked_at`, `click_count` y `last_clicked_url`; el receptor procesa `email.delivered`, `email.opened` y `email.clicked` por `provider_message_id`; se muestran en A9 de broadcasts (entregados, abiertos «aproximado», clics) y en la ficha del contacto.
 - [ ] A9 · Progreso del broadcast:
   - [ ] pendientes por tope o pausa;
   - [ ] rebotes, quejas y bajas de ese email;
   - [ ] la lista filtrable con link a la ficha.
+- [ ] Conversaciones (verificar, sin construir): cada email de broadcast queda como mensaje saliente en la conversación de email del contacto, y una respuesta a wendy@ o a hola@mail.wendymardigian.com entra en esa conversación. Lo que no pase va a PENDIENTE con lo que haría falta.
 - [ ] Cierre 1a:
   - [ ] la sección en `CLAUDE.md`;
-  - [ ] `docs/envios-programados-email.md` (el webinar por broadcast);
+  - [ ] `docs/envios-programados-email.md` (el webinar por broadcast; máximo diario en 1.000 para que el calentamiento suba solo; hasta mergear la 1a, broadcasts a listas chicas, ~100, porque el carril no tiene tope diario);
   - [ ] `verify-email-subscription` con la reserva concurrente;
   - [ ] `verify-broadcasts` con el orden;
   - [ ] el PR.
