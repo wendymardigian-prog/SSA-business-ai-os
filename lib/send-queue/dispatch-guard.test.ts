@@ -38,11 +38,12 @@ const broadcast = {
 };
 const recipient = { id: "r-1", broadcast_id: "b-1", contact_id: "c-1", channel_id: "ch-email", status: "sending", attempts: 0, variant_index: 0, target: "ana@x.test" };
 
-function world(capacity: Record<string, unknown>, recipients: unknown[] = [recipient]) {
+function world(capacity: Record<string, unknown>, recipients: unknown[] = [recipient], over: { audience_params?: unknown; tagged?: { data?: unknown; error?: { message: string } } } = {}) {
   const queue = [...recipients];
   return fakeDb(
     {
-      "broadcasts:select": { data: [broadcast] },
+      "broadcasts:select": { data: [{ ...broadcast, audience_params: over.audience_params ?? {} }] },
+      "contact_tags:select": over.tagged ?? { data: [] },
       "channel_send_lanes:select": { data: { channel_id: "ch-email", workspace_id: WS, next_send_at: "2026-11-01T00:00:00Z", paused_at: null, consecutive_failures: 0 } },
       "workspaces:select": { data: { name: "Negocio", timezone: "America/Costa_Rica" } },
       "contacts:select": { data: { id: "c-1", deleted_at: null, do_not_contact: false, is_subscribed: true, email: "ana@x.test" } },
@@ -139,5 +140,63 @@ describe("la cola de email con la guardia", () => {
     expect(sendTransactionalEmail).not.toHaveBeenCalled();
     expect(broken.rpcCalls.some((c) => c.name === "claim_broadcast_recipient")).toBe(false);
     expect(laneUpdates(broken)).toContainEqual({ next_send_at: new Date(Date.now() + 5 * 60_000).toISOString() });
+  });
+});
+
+describe("caracterizacion: un broadcast SIN filtro de etiqueta", () => {
+  it("no mira las etiquetas y manda como siempre", async () => {
+    sendTransactionalEmail.mockResolvedValue({ ok: true, id: "re_1" });
+    const db = world({ status: "ok", remaining: 1 });
+    const summary = await runSendQueue(db.client);
+    expect(summary.sent).toBe(1);
+    expect(db.calls.some((c) => c.table === "contact_tags")).toBe(false);
+  });
+});
+
+describe("la audiencia filtrada por etiqueta se vuelve a mirar antes de mandar", () => {
+  const TAG = "6f1d2c3b-1111-4222-8333-444455556666";
+  const OTHER = "6f1d2c3b-1111-4222-8333-444455557777";
+  const open = { status: "ok", remaining: 1 };
+
+  it("sigue teniendo la etiqueta: se manda", async () => {
+    sendTransactionalEmail.mockResolvedValue({ ok: true, id: "re_1" });
+    const db = world(open, [recipient], { audience_params: { tag: TAG, email: "subscribed" }, tagged: { data: [{ tag_id: TAG }] } });
+    const summary = await runSendQueue(db.client);
+    expect(summary.sent).toBe(1);
+    const lookup = db.calls.find((c) => c.table === "contact_tags");
+    expect(lookup?.filters).toEqual(expect.arrayContaining([expect.objectContaining({ column: "contact_id", value: "c-1" })]));
+  });
+
+  it("ya no la tiene: queda salteado con left_audience y no sale nada", async () => {
+    const db = world(open, [recipient], { audience_params: { tag: TAG }, tagged: { data: [] } });
+    const summary = await runSendQueue(db.client);
+    expect(summary.skipped).toBe(1);
+    expect(sendTransactionalEmail).not.toHaveBeenCalled();
+    expect(recipientUpdates(db)[0]).toMatchObject({ status: "skipped", skip_reason: "left_audience" });
+  });
+
+  it("con varias etiquetas alcanza con tener una, como en Contactos", async () => {
+    sendTransactionalEmail.mockResolvedValue({ ok: true, id: "re_1" });
+    const db = world(open, [recipient], { audience_params: { tag: [TAG, OTHER] }, tagged: { data: [{ tag_id: OTHER }] } });
+    expect((await runSendQueue(db.client)).sent).toBe(1);
+    const lookup = db.calls.find((c) => c.table === "contact_tags");
+    expect(lookup?.filters).toEqual(expect.arrayContaining([expect.objectContaining({ column: "tag_id", value: [TAG, OTHER] })]));
+  });
+
+  it("si no se puede comprobar, no manda: es un fallo que se reintenta, no una baja de la audiencia", async () => {
+    const db = world(open, [recipient], { audience_params: { tag: TAG }, tagged: { error: { message: "base caida" } } });
+    await runSendQueue(db.client);
+    expect(sendTransactionalEmail).not.toHaveBeenCalled();
+    const update = recipientUpdates(db)[0];
+    expect(update.status).toBe("pending");
+    expect(update.skip_reason ?? null).toBeNull();
+    expect(String(update.error_message)).toContain("base caida");
+  });
+
+  it("filtrada por otra cosa: no mira las etiquetas", async () => {
+    sendTransactionalEmail.mockResolvedValue({ ok: true, id: "re_1" });
+    const db = world(open, [recipient], { audience_params: { email: "subscribed" } });
+    expect((await runSendQueue(db.client)).sent).toBe(1);
+    expect(db.calls.some((c) => c.table === "contact_tags")).toBe(false);
   });
 });

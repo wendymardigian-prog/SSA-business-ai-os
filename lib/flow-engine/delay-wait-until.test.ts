@@ -187,7 +187,7 @@ describe("«Esperar hasta» en el motor", () => {
 
 describe("el editor de pasos no pisa una espera por fecha", () => {
   it("solo reconoce como suya la espera por duración", () => {
-    const of = (data: Record<string, unknown>) => kindOfStep({ nodeType: "delay", data } as never, "forms")?.key;
+    const of = (data: Record<string, unknown>) => kindOfStep({ nodeType: "delay", data } as never, "agenda")?.key;
     expect(of({ duration: 1, unit: "hours" })).toBe("delay");
     expect(of({ waitUntilLocal: "2026-11-07T10:00" })).toBeUndefined();
     expect(of({ waitUntil: "2026-11-07T16:00:00Z" })).toBeUndefined();

@@ -36,7 +36,8 @@ export type SendSkipReason =
   | "missing_variables"
   | "phone_in_use"
   | "deleted"
-  | "email_unverifiable";
+  | "email_unverifiable"
+  | "left_audience";
 
 export const SKIP_REASON_LABELS: Record<SendSkipReason, string> = {
   do_not_contact: "Marcados como «no contactar»",
@@ -52,6 +53,7 @@ export const SKIP_REASON_LABELS: Record<SendSkipReason, string> = {
   phone_in_use: "Su teléfono ya es de otro contacto en este número",
   deleted: "Contacto borrado",
   email_unverifiable: "No se pudo comprobar su email",
+  left_audience: "Ya no tienen la etiqueta de la audiencia",
 };
 
 export interface AudienceContact {

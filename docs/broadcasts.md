@@ -48,6 +48,13 @@ se guarda cada destinatario con su destino y su variante. Los que quedan afuera
 también se guardan, como `skipped` con su motivo. Antes de cada envío se vuelve
 a mirar lo que pudo cambiar (borrado, no contactar, baja).
 
+Si el filtro lleva etiquetas, también se vuelve a mirar que la persona siga teniendo
+alguna: quien ya no tiene ninguna queda salteado (`left_audience`, «Ya no tienen la
+etiqueta de la audiencia»). Así no le llega una difusión a quien un flujo sacó de la
+lista después de programarla. Si no se puede comprobar, es un fallo que se reintenta.
+Sin etiqueta en el filtro no hay ninguna consulta de más. Los demás filtros siguen
+congelados.
+
 ## La cola de envíos
 
 Un **carril** por canal (`channel_send_lanes`): todo lo que sale por un número
@@ -146,4 +153,4 @@ node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot (10 
 - **Calentamiento de un número nuevo** (empezar con pocos por día e ir subiendo):
   hoy se hace bajando el máximo por día a mano.
 - **La audiencia se congela al confirmar**: un programado no suma a quien entre
-  a los filtros después.
+  a los filtros después (solo saca a quien perdió la etiqueta del filtro).

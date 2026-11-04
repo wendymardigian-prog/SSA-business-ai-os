@@ -31,8 +31,10 @@ import { upsertConversation } from "@/lib/inbound";
 import { notifyWorkspaceAdmins } from "@/lib/notifications";
 import { loadBroadcastChannel, type BroadcastChannel } from "@/lib/broadcasts/channels";
 import { loadRenderData } from "@/lib/broadcasts/audience-load";
+import { filterValues, parseContactListFilters } from "@/lib/contacts/list-query";
 import { broadcastVariables, cleanVariants, renderChatMessage, renderEmail } from "@/lib/broadcasts/render";
 import type { SendSkipReason } from "@/lib/broadcasts/audience";
+import type { SearchParams } from "@/lib/url-params";
 import { combinePolicies, paceDecision, parseBroadcastPace, pickGapSeconds, type LaneCounts, type SendPolicy } from "./pace";
 
 type Client = SupabaseClient<Database>;
@@ -359,6 +361,12 @@ async function pauseLane(service: Client, channelId: string, workspaceId: string
 }
 
 /** Un destinatario: vuelve a mirar al contacto, arma el mensaje y lo manda. Nunca lanza. */
+/** Las etiquetas por las que filtra la audiencia guardada, leídas igual que en Contactos: basta con tener una. */
+function audienceTagIds(audience: Broadcast["audience_params"]): readonly string[] {
+  if (!audience || typeof audience !== "object" || Array.isArray(audience)) return [];
+  return filterValues(parseContactListFilters(audience as SearchParams, []), "tag");
+}
+
 async function deliver(service: Client, ctx: LaneContext, b: Broadcast, r: Recipient): Promise<RecipientOutcome> {
   try {
     const { data: contact } = await service
@@ -370,6 +378,16 @@ async function deliver(service: Client, ctx: LaneContext, b: Broadcast, r: Recip
     if (!contact || contact.deleted_at) return { kind: "skipped", reason: "deleted" };
     if (contact.do_not_contact) return { kind: "skipped", reason: "do_not_contact" };
     if (ctx.channel.kind === "whatsapp" && contact.is_subscribed === false) return { kind: "skipped", reason: "chat_unsubscribed" };
+
+    // La audiencia se congela al poner en cola. Si filtraba por etiqueta, se vuelve a mirar justo antes de mandar: a quien
+    // se la sacaron entre medio (por ejemplo, porque se registró y un flujo le quitó la de la lista) ya no le corresponde.
+    // Solo las etiquetas: los demás filtros siguen congelados.
+    const tagIds = audienceTagIds(b.audience_params);
+    if (tagIds.length > 0) {
+      const { data: tagged, error: tagError } = await service.from("contact_tags").select("tag_id").eq("contact_id", r.contact_id).in("tag_id", [...tagIds]).limit(1);
+      if (tagError) throw new Error(`No pude comprobar las etiquetas del contacto: ${tagError.message}`);
+      if (!tagged || tagged.length === 0) return { kind: "skipped", reason: "left_audience" };
+    }
 
     const { data: fields } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", ctx.workspaceId).is("deleted_at", null);
     const data = (await loadRenderData(service, ctx.workspaceId, [r.contact_id], fields ?? [])).get(r.contact_id);

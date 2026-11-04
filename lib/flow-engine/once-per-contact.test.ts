@@ -27,7 +27,7 @@ import { processEvent, type AutomationEvent } from "./automation-events";
 import { supportsOncePerContact } from "./once-per-contact";
 import { TRIGGER_CATALOG } from "./trigger-catalog";
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
-import { parseFormTriggerConfig } from "@/lib/forms/automation/trigger-config";
+import { parseFormTriggerConfig } from "@/lib/forms/automation/trigger-config"; // @plantilla-quitar(formularios)
 
 const WS = "ws-1";
 const ran: string[] = [];
@@ -156,10 +156,11 @@ describe("qué disparadores la ofrecen", () => {
     for (const type of ["keyword", "welcome", "inactivity", "email_received", "webhook_received", "eod_submitted", "nada", null]) {
       expect(supportsOncePerContact(type)).toBe(false);
     }
-    expect(supportsOncePerContact("form_submitted")).toBe(true);
+    expect(supportsOncePerContact("form_submitted")).toBe(true); // @plantilla-quitar(formularios)
   });
 });
 
+// @plantilla-desde(formularios)
 describe("la opción viaja del disparador a la fila que lee el cron", () => {
   it("publicar la copia a triggers.config", () => {
     const [row] = buildDesiredTriggers([{ id: "t", type: "trigger", data: { triggerType: "form_submitted", form_ids: ["f-1"], oncePerContact: true } }], "flow-1");
@@ -167,6 +168,7 @@ describe("la opción viaja del disparador a la fila que lee el cron", () => {
   });
 
   it("no le molesta al validador de los disparadores de formulario", () => {
-    expect(parseFormTriggerConfig("form_submitted", { form_ids: ["f-1"], oncePerContact: true })).toMatchObject({ ok: true });
+    expect(parseFormTriggerConfig("form_submitted", { form_ids: ["4d5d903e-6ed4-459a-b614-4fa7a203226d"], oncePerContact: true })).toMatchObject({ ok: true });
   });
 });
+// @plantilla-hasta(formularios)

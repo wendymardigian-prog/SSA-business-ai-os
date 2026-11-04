@@ -1746,7 +1746,7 @@ Un mensaje a muchos contactos por WhatsApp (Evolution) o email (Resend), con los
 
 ## Lo que no se puede romper
 
-- **La audiencia son los parámetros de URL de Contactos** (`broadcasts.audience_params`) y se re-planifica con `prepareContactList` + `applyListClauses`, con el cliente de la PERSONA (la RLS decide a quién ve). Se congela al confirmar (`queueBroadcast`); antes de cada envío se vuelve a mirar borrado, no contactar y baja.
+- **La audiencia son los parámetros de URL de Contactos** (`broadcasts.audience_params`) y se re-planifica con `prepareContactList` + `applyListClauses`, con el cliente de la PERSONA (la RLS decide a quién ve). Se congela al confirmar (`queueBroadcast`); antes de cada envío se vuelve a mirar borrado, no contactar, baja y, si el filtro lleva etiquetas, que siga teniendo alguna (`left_audience`).
 - **A quién se le manda lo decide UNA función** (`classifyRecipient`, `lib/broadcasts/audience.ts`), la misma para contar y para poner en cola. WhatsApp: solo quien ya escribió a ESE número, salvo la casilla «solo tienen teléfono». Email: marketing (`decideSend`). Instagram queda afuera.
 - **El mensaje se arma en UN lugar** (`lib/broadcasts/render.ts`, puro): `{{contact.*}}`, `{{workspace.name}}`, `{{custom.<slug>}}`, respaldo `{{x|y}}`, un nombre de relleno cuenta como vacío, la variante es estable por destinatario. En email el HTML lo decide la plantilla y se limpia (`finalizeEmailHtml`).
 - **El ritmo es del CARRIL (el canal)** y es puro (`lib/send-queue/pace.ts`): espera al azar entre mínimo y máximo, topes por minuto/hora/día, horario en la zona del negocio, pausa tras fallos seguidos. El techo es `channels.send_policy` (Canales, `channels.manage`); un broadcast solo puede ir más lento (`combinePolicies`).
@@ -1792,6 +1792,13 @@ Una **guardia única de entrega** para todo el email de marketing (broadcasts, a
 node scripts/verify-email-subscription.mjs   # bloque 11: la guardia (SQL = TS, 10 en paralelo con tope 5, freno, calentamiento, eventos)
 node scripts/verify-broadcasts.mjs           # bloque 4b: primero los más activos
 ```
+
+# Esperar hasta y una sola vez por contacto (4/11/2026, sin migración)
+
+Lo que hizo falta para los recordatorios de una clase con fecha fija. Detalle en [docs/flow-registry.md](docs/flow-registry.md).
+
+- **«Esperar hasta» se guarda en la hora del negocio** (`waitUntilLocal`, sin zona; la pone `workspaces.timezone`, nunca el navegador). **Con la fecha ya pasada se saltea el paso siguiente** y el flujo sigue con el que viene (`SKIP_NEXT_STEP`, `node_skipped` con `date_passed`). Las esperas por duración no cambian (`clase-flow-characterization.test.ts`).
+- **`oncePerContact` en un disparador de contacto** (apagado por defecto): quien ya tuvo una sesión de ese flujo, salvo cancelada, no vuelve a entrar. Se mira `flow_sessions` porque publicar borra `trigger_fires`.
 
 # Seguridad
 
