@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import type { ContactFlowContext, FlowNode, FlowEdge, FlowExecutionContext } from "./types";
 import { getNode } from "./registry";
+import { SKIP_NEXT_STEP } from "./wait-until";
 import { messageOriginVariables } from "@/lib/messages/origin-context";
 import { seedContactVariables } from "./variable-catalog";
 import type { AutomationSource, FlowRuntime } from "./registry/types";
@@ -525,6 +526,11 @@ async function traverseNodes(
   // If the node pauses execution (delay, wait for input, human takeover), stop
   if (result === "pause") return;
 
+  if (result === SKIP_NEXT_STEP) {
+    await skipNextStep(supabase, sessionId, node, nodes, edges, context, depth);
+    return;
+  }
+
   // Find next node(s)
   let nextEdge: FlowEdge | undefined;
 
@@ -551,6 +557,55 @@ async function traverseNodes(
 
   // Continue to next node
   await traverseNodes(supabase, sessionId, nextNode, nodes, edges, context, depth + 1);
+}
+
+/**
+ * Un «Esperar hasta» cuya fecha ya paso: el paso siguiente (el recordatorio de esa fecha) no corre y el flujo sigue con
+ * el que viene despues. Si ese paso reparte en varios caminos, es una decision y no un envio: como no se puede saber por
+ * cual seguir, corre normal, igual que antes. Sin paso despues, el flujo termina.
+ */
+async function skipNextStep(
+  supabase: SupabaseClient<Database>,
+  sessionId: string,
+  waitNode: FlowNode,
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  context: FlowExecutionContext,
+  depth: number
+) {
+  const nextEdge = edges.find((e) => e.source === waitNode.id);
+  const skipped = nextEdge ? nodes.find((n) => n.id === nextEdge.target) : undefined;
+  if (!skipped) {
+    await completeSession(supabase, sessionId);
+    return;
+  }
+  const exits = edges.filter((e) => e.source === skipped.id && e.sourceHandle !== WAIT_TIMEOUT_HANDLE);
+  if (exits.length > 1) {
+    await traverseNodes(supabase, sessionId, skipped, nodes, edges, context, depth + 1);
+    return;
+  }
+
+  const definition = getNode(skipped);
+  await supabase.from("analytics_events").insert({
+    workspace_id: context.workspaceId,
+    flow_id: context.flowId,
+    contact_id: context.contactId,
+    event_type: "node_skipped",
+    metadata: { nodeId: skipped.id, nodeType: definition?.type ?? skipped.type, reason: "date_passed", waitNodeId: waitNode.id },
+  });
+  try {
+    const label = (skipped.data as { label?: unknown } | undefined)?.label;
+    context.onStepSkipped?.({ nodeId: skipped.id, nodeType: definition?.type ?? skipped.type, label: typeof label === "string" && label.trim() ? label.trim() : (definition?.label ?? skipped.type) });
+  } catch {
+    // Un aviso que falla no frena el flujo.
+  }
+
+  const after = exits[0] ? nodes.find((n) => n.id === exits[0].target) : undefined;
+  if (!after) {
+    await completeSession(supabase, sessionId);
+    return;
+  }
+  await traverseNodes(supabase, sessionId, after, nodes, edges, context, depth + 1);
 }
 
 /**

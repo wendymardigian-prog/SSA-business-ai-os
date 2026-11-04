@@ -655,6 +655,7 @@ Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla.
   salida `timeout` («No respondió») o, si no está conectada, por la de siempre. Sin tiempo máximo vence a los 7 días y
   la sesión se cierra. Lo despierta el job `flow_wait_timeout` (`lib/jobs/handlers/flow-wait-timeout.ts`).
 - **«Esperar»** respeta `waitUntil` (ISO con zona) y no pausa con una duración vacía o cero.
+- **«Esperar hasta» va en la hora del negocio** (`waitUntilLocal`, `AAAA-MM-DDTHH:mm` sin zona, lo lee `delayPlan` con `workspaces.timezone`). Gana sobre el `waitUntil` de los nodos viejos, que sigue valiendo. **Si la fecha ya pasó cuando el contacto llega, se saltea el paso siguiente** (el nodo devuelve `SKIP_NEXT_STEP`; queda `node_skipped` con `reason: "date_passed"`) y el flujo sigue con el que viene: un recordatorio «del sábado» no sale el domingo. Si ese paso reparte en varios caminos corre normal (no se puede saber por cuál seguir). Una fecha inválida sigue de largo sin saltear. El editor de pasos no reconoce una espera por fecha como suya: se edita en el canvas.
 - **A/B split**: el nodo devuelve `handle:split-N`, que es lo que dibuja el lienzo.
 - **«Ir a otra automatización»**: solo del mismo workspace; la cadena de saltos viaja en `variables.__flow_chain` y un
   ciclo (o más de 10 saltos) se corta con `flow_loop_blocked`.
@@ -689,6 +690,15 @@ Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla.
 - **Enviar email**: `attachments: [{ assetId }]`, recursos de la banca con archivo, hasta 10 y 25 MB
   (`lib/email/attachment-limits.ts`, `lib/email/flow-attachments.ts`).
 - **WhatsApp**: Evolution manda botones y respuestas rápidas como lista numerada; tope de 200 envíos automáticos por hora.
+
+### «Una sola vez por contacto» (noviembre 2026)
+
+`oncePerContact` en la configuración de un disparador de contacto (apagado por defecto; lo ofrece `supportsOncePerContact`, comparado con el registro en un test): quien ya tuvo una sesión de ese flujo, activa, terminada o vencida, no vuelve a entrar. Lo aplica `processContactEvent`: el envío del formulario se guarda igual, nadie ve un error y queda `flow_once_skipped` en `analytics_events`.
+
+- Se mira `flow_sessions` y no solo `trigger_fires`, porque publicar borra los triggers y sus marcas. Una sesión cancelada no cuenta.
+- La marca `once-contact:<contacto>` en `trigger_fires` cubre dos eventos a la vez; si el flujo falla, se libera.
+- Sin poder leer las sesiones no corre: el evento queda con el motivo.
+- No vale para los disparadores de mensaje, comentario, inactividad y email (entran por otro camino) ni para «Contacto nuevo» (ya dispara una vez). «Webhook recibido» tiene la suya.
 
 ## Grupos de WhatsApp (00282, noviembre 2026)
 

@@ -18,7 +18,7 @@
 - **Tests que se cortan con la máquina muy cargada.** Con carga 100+ por otras sesiones, a veces pasan los 5 s `lib/publishing/disconnect-networks.test.ts`, `lib/email/triggers.test.ts` y `lib/flow-engine/condition-eval.test.ts` (importan mucho dentro del test). No es un error del código: la suite entera pasó con carga 14. No se les cambió el tiempo; si molesta seguido, darles un tiempo propio como a `vault-boundary`.
 - **«Respuesta con IA» por email, cuando queda para después, genera la respuesta otra vez** al volver a correr el paso (gasta IA de nuevo). Es a propósito: responde con la conversación de ese momento.
 - **`warnIfNearQuota` (`send-reply.ts`) sigue contando aparte** (`messages` con `email_message_id`, default 100). Solo manda un aviso, no frena nada, y no ve los broadcasts ni el paso «Enviar email». Conviene pasarlo a la guardia en la Fase 2.
-- **La fecha fija del nodo «Esperar» se convierte con la zona del navegador** (`DelayPanel.tsx`), no con la del negocio. Se arregla en A4.
+- ~~**La fecha fija del nodo «Esperar» se convierte con la zona del navegador.**~~ Resuelto el 4/11 (`waitUntilLocal`, en la hora del negocio). De A4 (Fase 2) quedan las opciones de qué hacer con una fecha pasada (hoy siempre saltea el paso siguiente) y «X antes/después de una fecha».
 
 ## Conversaciones (verificado el 4/11/2026, sin construir)
 

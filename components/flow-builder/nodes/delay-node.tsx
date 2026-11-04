@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatLocalDateTime } from "@/lib/flow-engine/wait-until";
 
 export interface DelayNodeProps {
   label?: string;
@@ -10,6 +11,8 @@ export interface DelayNodeProps {
   unit?: "seconds" | "minutes" | "hours" | "days";
   /** Fecha ISO: si esta, el paso espera hasta ese momento en vez de una duracion. */
   waitUntil?: string;
+  /** Lo mismo en la hora del negocio (`AAAA-MM-DDTHH:mm`). Gana sobre `waitUntil`. */
+  waitUntilLocal?: string;
 }
 
 /** Las unidades en castellano, en singular y en plural. */
@@ -40,7 +43,11 @@ export function DelayNode({ data, selected }: NodeProps) {
 
   const unitLabels = UNIT_LABELS[unit];
   const unitText = unitLabels ? (duration === 1 ? unitLabels[0] : unitLabels[1]) : unit;
-  const waitUntilText = nodeData.waitUntil ? formatWaitUntil(nodeData.waitUntil) : null;
+  const waitUntilText = nodeData.waitUntilLocal
+    ? formatLocalDateTime(nodeData.waitUntilLocal)
+    : nodeData.waitUntil
+      ? formatWaitUntil(nodeData.waitUntil)
+      : null;
   const configured = waitUntilText !== null || duration > 0;
 
   const displayDuration = waitUntilText

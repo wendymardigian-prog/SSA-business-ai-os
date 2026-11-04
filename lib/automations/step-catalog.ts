@@ -68,7 +68,8 @@ export const ACTION_KINDS: ActionKind[] = [
     nodeType: "delay",
     screens: ["forms", "agenda", "eod"], // @plantilla-quitar(formularios)
     // @plantilla-sin(formularios): screens: ["agenda"],
-    matches: (s) => s.nodeType === "delay",
+    // Una espera hasta una fecha se edita en el canvas: este editor solo sabe de duraciones y la mostraria como "Esperar 1 hora".
+    matches: (s) => s.nodeType === "delay" && !s.data.waitUntil && !s.data.waitUntilLocal,
     blank: () => ({ duration: 1, unit: "hours" }),
   },
   {
