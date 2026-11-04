@@ -14,7 +14,9 @@
  *     reintento todavia no llego;
  *   - `refresh_broadcast_counts`: cuenta desde los destinatarios y cierra el
  *     broadcast cuando no queda nada;
- *   - las tres funciones no las puede llamar un usuario con sesion.
+ *   - las tres funciones no las puede llamar un usuario con sesion;
+ *   - (00288) `claim_broadcast_recipient` da primero al contacto con actividad mas
+ *     reciente (`sort_key`) y deja al final a los que no tienen dato.
  *
  * Crea y borra todo lo suyo (prefijo zz-test-). No se corre a la vez que otro
  * verify-*: comparten prefijo. Tomar el candado /private/tmp/ssa-verify.lock.
@@ -140,6 +142,32 @@ try {
     check(claimed.every((r) => r.status === "sending" && r.claimed_at), "quedan en 'sending' con su hora");
     const asUser = await owner.client.rpc("claim_broadcast_recipient", { p_broadcast_id: b.id });
     check(Boolean(asUser.error), "un usuario con sesion no puede llamarla");
+  }
+
+  // -------------------------------------------------------------------------
+  console.log("\n4b. (00288) primero los mas activos");
+  {
+    const { data: b2, error: b2Err } = await svc.from("broadcasts").insert({
+      workspace_id: ws.id, name: "zz-test-orden", status: "sending", channel_id: ch.id, message_variants: ["Hola"],
+    }).select("id").single();
+    check(!b2Err, "un segundo broadcast para el orden", b2Err?.message);
+    const keys = [new Date(Date.now() - 30 * 86400_000).toISOString(), new Date().toISOString(), null];
+    const ins = await svc.from("broadcast_recipients").insert(contacts.map((c, i) => ({
+      broadcast_id: b2.id, workspace_id: ws.id, contact_id: c, channel_id: ch.id, status: "pending", target: "+1", sort_key: keys[i],
+    })));
+    check(!ins.error, "tres destinatarios con distinta actividad", ins.error?.message);
+    const order = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await svc.rpc("claim_broadcast_recipient", { p_broadcast_id: b2.id });
+      order.push((r.data ?? [])[0]?.contact_id);
+    }
+    check(order[0] === contacts[1] && order[1] === contacts[0] && order[2] === contacts[2], "sale primero el mas activo, despues el viejo y al final el que no tiene dato", JSON.stringify(order));
+    const { data: act, error: actErr } = await svc.rpc("contact_last_activity", { p_workspace_id: ws.id, p_contact_ids: contacts });
+    check(!actErr && (act ?? []).length === contacts.length && (act ?? []).every((a) => a.activity_at), "contact_last_activity da una fecha por contacto (sin actividad: el alta)", actErr?.message);
+    const actAsUser = await owner.client.rpc("contact_last_activity", { p_workspace_id: ws.id, p_contact_ids: contacts });
+    check(Boolean(actAsUser.error), "un usuario con sesion no puede llamar contact_last_activity");
+    await svc.from("broadcast_recipients").delete().eq("broadcast_id", b2.id);
+    await svc.from("broadcasts").delete().eq("id", b2.id);
   }
 
   // -------------------------------------------------------------------------

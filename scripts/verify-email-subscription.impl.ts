@@ -19,6 +19,10 @@
  *  9. Ninguna funcion de la base salvo las centrales escribe esas columnas.
  * 10. Sin suscribir (00278): la casilla sin marcar, la puerta de envio (marketing no,
  *     transaccional si), el modo consent que nunca levanta una baja y la herencia.
+ * 11. La guardia de entrega (00287): la decision de la base da lo mismo que la de TypeScript
+ *     (`delivery-guard.cases.json`); 10 reservas en paralelo con tope 5 dejan pasar 5; lo que
+ *     no entra espera al dia siguiente; con el freno, el marketing espera y lo transaccional no;
+ *     el calentamiento sube un escalon; los eventos del webhook se anotan en su fila.
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -29,6 +33,7 @@ import { join } from "node:path";
 import { runCleanup } from "./test-cleanup.mjs";
 import { dbTargetArgs } from "./lib/db-target.mjs";
 import cases from "../lib/email/subscription-transitions.cases.json";
+import guardCases from "../lib/email/delivery-guard.cases.json";
 import { canSendEmailTo } from "../lib/email/subscription";
 import { applyUnsubscribeAction, loadUnsubscribeTarget, publicView } from "../lib/email/unsubscribe-public";
 
@@ -310,6 +315,77 @@ END $do$;`);
     await svc.from("contacts").update({ deleted_at: new Date().toISOString() }).eq("id", nuevo);
     const otro = await contact(ws, { display_name: "zz-test misma direccion", email: `ZZ-NOSUB2-${stamp}@example.com` });
     check((await statusOf(otro)) === "not_subscribed", "un contacto nuevo con la dirección de uno borrado hereda Sin suscribir");
+  }
+
+  console.log("\n— 11. La guardia de entrega (00287) —");
+  {
+    // La decision: base y TypeScript, caso por caso.
+    const list = guardCases as Array<{ name: string; input: Record<string, unknown>; expected: Record<string, unknown> }>;
+    const values = list.map((c, i) => `(${i}, ${lit(JSON.stringify(c.input))}::jsonb)`).join(",\n");
+    const rows = sql(`select i, private.email_guard_decide(p) as d from (values ${values}) as v(i, p) order by i;`);
+    const mismatches = list
+      .map((c, i) => {
+        const got = (typeof rows[i]?.d === "string" ? JSON.parse(rows[i].d as string) : rows[i]?.d) as Record<string, unknown> | undefined;
+        const bad = Object.entries(c.expected).filter(([k, v]) => JSON.stringify(got?.[k]) !== JSON.stringify(v));
+        return bad.length ? `${c.name}: ${bad.map(([k, v]) => `${k} base=${JSON.stringify(got?.[k])} esperado=${JSON.stringify(v)}`).join(", ")}` : null;
+      })
+      .filter(Boolean);
+    check(rows.length === list.length && mismatches.length === 0, `los ${list.length} casos de la guardia coinciden (SQL = TypeScript)`, mismatches.join("; "));
+
+    // Un negocio con Resend, maximo 5 por dia y sin calentamiento.
+    const { error: cfgError } = await svc.from("integration_configs").insert({
+      workspace_id: ws,
+      type: "email_provider",
+      provider: "resend",
+      is_active: true,
+      config: { from_email: "zz@example.com", marketing_daily_cap: "5", warmup_enabled: "false" },
+    });
+    check(!cfgError, "config de Resend de prueba", cfgError?.message);
+
+    const reserve = (n: number) =>
+      svc.rpc("reserve_email_send", { p_workspace_id: ws, p_to: `zz-guard-${n}-${stamp}@example.com`, p_subject: "zz", p_kind: "broadcast" });
+    const results = await Promise.all(Array.from({ length: 10 }, (_, n) => reserve(n)));
+    const statuses = results.map((r) => (r.data as { status?: string } | null)?.status ?? `error:${r.error?.message}`);
+    const okCount = statuses.filter((st) => st === "ok").length;
+    check(okCount === 5, "10 reservas en paralelo con tope 5: salen 5", statuses.join(","));
+    check(statuses.filter((st) => st === "deferred_cap").length === 5, "las otras 5 quedan para mañana (deferred_cap)", statuses.join(","));
+    const { count: reserved } = await svc.from("email_log").select("id", { count: "exact", head: true }).eq("workspace_id", ws).eq("status", "reserved").eq("category", "marketing");
+    check(reserved === 5, "quedan exactamente 5 filas reservadas en email_log", String(reserved));
+
+    const deferred = results.find((r) => (r.data as { status?: string } | null)?.status === "deferred_cap")?.data as { retry_at?: string; next_day_start?: string } | undefined;
+    check(Boolean(deferred?.retry_at) && deferred?.retry_at === deferred?.next_day_start && new Date(deferred!.retry_at!).getTime() > Date.now(), "lo que no entra espera al inicio del día siguiente del negocio", JSON.stringify(deferred));
+
+    const { data: cap } = await svc.rpc("email_send_capacity", { p_workspace_id: ws });
+    check((cap as { remaining?: number; used_today?: number }).remaining === 0 && (cap as { used_today?: number }).used_today === 5, "la capacidad dice 5 de 5, sin lugar (y no reserva nada)");
+
+    // Los eventos del webhook en su fila.
+    const { data: one } = await svc.from("email_log").select("id").eq("workspace_id", ws).eq("status", "reserved").limit(1).single();
+    const mid = `zz-msg-${stamp}`;
+    await svc.from("email_log").update({ status: "sent", provider_message_id: mid }).eq("id", (one as { id: string }).id);
+    await svc.rpc("record_email_delivery_event", { p_provider_message_id: mid, p_event: "delivered", p_at: new Date().toISOString() });
+    await svc.rpc("record_email_delivery_event", { p_provider_message_id: mid, p_event: "opened", p_at: new Date().toISOString() });
+    await svc.rpc("record_email_delivery_event", { p_provider_message_id: mid, p_event: "opened", p_at: new Date().toISOString() });
+    await svc.rpc("record_email_delivery_event", { p_provider_message_id: mid, p_event: "clicked", p_at: new Date().toISOString(), p_url: "https://example.com/x" });
+    const { data: ev } = await svc.from("email_log").select("delivered_at, opened_at, open_count, click_count, last_clicked_url").eq("id", (one as { id: string }).id).single();
+    const e = ev as { delivered_at: string | null; opened_at: string | null; open_count: number; click_count: number; last_clicked_url: string | null };
+    check(Boolean(e.delivered_at && e.opened_at) && e.open_count === 2 && e.click_count === 1 && e.last_clicked_url === "https://example.com/x", "entregado, dos aperturas y un clic quedan en la fila del envío", JSON.stringify(e));
+
+    // El freno: el marketing espera; lo transaccional no.
+    await svc.rpc("patch_resend_config", { p_workspace_id: ws, p_patch: { marketing_paused_at: new Date().toISOString(), marketing_daily_cap: "1000" } });
+    const paused = await reserve(99);
+    check((paused.data as { status?: string }).status === "paused", "con el freno puesto, el marketing espera (paused)");
+    const trx = sql(`select private.email_guard_state(${lit(ws)}::uuid, now(), 'transactional')->>'status' as st;`);
+    check(trx[0]?.st === "ok", "con el freno puesto, un transaccional sale igual");
+    await svc.rpc("patch_resend_config", { p_workspace_id: ws, p_patch: { marketing_paused_at: null } });
+
+    // El calentamiento: ayer salio marketing y el freno no salto -> hoy sube un escalon (y lo guarda la base).
+    const yesterday = new Date(Date.now() - 24 * 3600_000);
+    await svc.from("email_log").insert({ workspace_id: ws, to_email: `zz-ayer-${stamp}@example.com`, subject: "zz", kind: "broadcast", status: "sent", category: "marketing", created_at: yesterday.toISOString() });
+    await svc.rpc("patch_resend_config", { p_workspace_id: ws, p_patch: { warmup_enabled: "true", warmup_level: "0", warmup_level_date: yesterday.toISOString().slice(0, 10) } });
+    const warmed = await reserve(100);
+    const { data: cfg } = await svc.from("integration_configs").select("config").eq("workspace_id", ws).eq("provider", "resend").single();
+    const c = (cfg as { config: Record<string, string> }).config;
+    check(c.warmup_level === "1" && (warmed.data as { cap?: number }).cap === 200, "el calentamiento sube a 200 y la base lo guarda", JSON.stringify({ level: c.warmup_level, cap: (warmed.data as { cap?: number }).cap }));
   }
 
   console.log("\n— 9. Ninguna otra funcion escribe esas columnas —");

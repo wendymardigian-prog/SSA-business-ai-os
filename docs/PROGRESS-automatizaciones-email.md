@@ -78,7 +78,7 @@ Confirmar cada número con `list_migrations` y las ramas locales antes de escrib
   - [x] pendientes por tope o pausa;
   - [x] entregados, abiertos (aproximado), clics, rebotes, quejas y bajas de ese email;
   - [x] la lista filtrable (por estado y por resultado del email, `?email=`) con link a la ficha.
-- [ ] Conversaciones (verificar, sin construir): cada email de broadcast queda como mensaje saliente en la conversación de email del contacto, y una respuesta a wendy@ o a hola@mail.wendymardigian.com entra en esa conversación. Lo que no pase va a PENDIENTE con lo que haría falta.
+- [x] Conversaciones (verificado, sin construir; resultado en PENDIENTE): cada email de broadcast queda como mensaje saliente en la conversación de email del contacto, y una respuesta a wendy@ o a hola@mail.wendymardigian.com entra en esa conversación. Lo que no pase va a PENDIENTE con lo que haría falta.
 - [ ] Cierre 1a:
   - [ ] la sección en `CLAUDE.md`;
   - [ ] `docs/envios-programados-email.md` (el webinar por broadcast; máximo diario en 1.000 para que el calentamiento suba solo; hasta mergear la 1a, broadcasts a listas chicas, ~100, porque el carril no tiene tope diario);

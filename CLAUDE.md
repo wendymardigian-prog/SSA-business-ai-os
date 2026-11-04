@@ -1755,10 +1755,42 @@ Un mensaje a muchos contactos por WhatsApp (Evolution) o email (Resend), con los
 
 ## Migraciones
 
-`00285_broadcast_send_queue` (aditiva) va **ANTES** de desplegar: **aplicada y registrada** el 3/11/2026 (versión `20261103235025`), después de ensayarla en una transacción que se deshizo sola, con `verify-broadcasts` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. `00286_send_queue_cron` (reescribe `call_app_cron` + el cron cada 15 s) va **DESPUÉS** del deploy: **escrita y SIN aplicar**. **La próxima libre es la `00287`** (confirmar con `list_migrations` y las ramas locales).
+`00285_broadcast_send_queue` (aditiva) va **ANTES** de desplegar: **aplicada y registrada** el 3/11/2026 (versión `20261103235025`), después de ensayarla en una transacción que se deshizo sola, con `verify-broadcasts` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. `00286_send_queue_cron` (reescribe `call_app_cron` + el cron cada 15 s) va **DESPUÉS** del deploy: **aplicada y registrada** (versión `20261104044906`). La `00287` y la `00288` son de la guardia de entrega (ver «Automatizaciones de email y envíos programados»): **la próxima libre es la `00289`**.
 
 ```
 node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot y claim_broadcast_recipient a la vez, contadores
+```
+
+# Automatizaciones de email y envíos programados (Fase 1a, 4/11/2026)
+
+Una **guardia única de entrega** para todo el email de marketing (broadcasts, automatizaciones y secuencias): un máximo por día, calentamiento del dominio, freno automático por rebotes o quejas, primero los contactos más activos, y los resultados de cada envío (entregados, abiertos, clics, rebotes, quejas, bajas). Guía para mandar en [docs/envios-programados-email.md](docs/envios-programados-email.md); avance y decisiones en `docs/PROGRESS-automatizaciones-email.md`, pendientes en `docs/PENDIENTE-automatizaciones-email.md`. La Fase 1b (el disparador «En una fecha y hora» con audiencia, en una tabla `automation_runs`) y la Fase 2 (diseños, vista previa, prueba) van en otras ramas.
+
+## Lo que no se puede romper
+
+- **Una sola guardia**: `reserve_email_send` (00287, solo `service_role`) y su gemela `decideEmailSend` (`lib/email/delivery-guard.ts`), con los casos de `delivery-guard.cases.json` corriendo contra las dos (`verify-email-subscription` bloque 11). Si se cambia una regla, se cambia en las dos y se suma el caso. **El tope viejo de 100 del nodo «Enviar email» ya no existe** (`delivery-guard-boundary.test.ts` falla si vuelve): no conviven dos.
+- **El tope del día = el más bajo** entre «Máximo de emails de marketing por día» (`marketing_daily_cap`, default 100) y el escalón del calentamiento (100 → 200 → 400 → 800 → terminado). Se cuenta en el **día del negocio** (`workspaces.timezone`), solo marketing que salió o está saliendo. La cuota del plan de Resend (`daily_quota`) aplica solo si está cargada, y cuenta todos los emails. El calentamiento sube un escalón el primer envío de un día nuevo si el día anterior salió algo y el freno no saltó. Arranca prendido si el negocio mandó menos de 500 de marketing, y la base guarda la decisión la primera vez.
+- **Lo transaccional nunca espera ni cuenta** para el tope de marketing, y el freno no lo frena.
+- **La reserva es atómica**: candado por negocio (`pg_advisory_xact_lock`) e inserta la fila de `email_log` en `reserved`. El envío la CIERRA en `sent`/`failed` (`settleReservedEmail`) y no inserta otra. Así, 10 envíos a la vez con tope 5 dejan pasar 5. Una reserva colgada cuenta como usada ese día. Si la base no contesta, el marketing espera 15 minutos (nunca sale a ciegas).
+- **Lo que excede el tope no falla ni se pierde**: `sendTransactionalEmail` devuelve `{ reason: "deferred", retryAt }` (el inicio del día siguiente del negocio, o una hora más si está pausado), `sendEmailReply` devuelve `deferred`, y cada llamador lo reagenda sin gastar intento ni dejar un mensaje fallido:
+  - **broadcasts**: el destinatario vuelve a `pending` con `next_attempt_at`, y el carril de email consulta el cupo (`email_send_capacity`) ANTES de reclamar;
+  - **flujos**: `deferFlowNode` (`lib/flow-engine/defer-node.ts`) agenda un `resume_flow` con `rerunNode: true` y `resumeSession(..., { rerunNode })` vuelve a correr ESE paso, sin repetir a quien ya le mandó. Lo usan «Enviar email», «Enviar mensaje», «Enviar recurso» y «Respuesta con IA» por email;
+  - **secuencias**: el paso queda para `retryAt`.
+- **Primero los más activos**: `broadcast_recipients.sort_key` (00288) = `contact_last_activity` al poner en cola (último mensaje o último toque; si no hay, el alta), y `claim_broadcast_recipient` ordena por ahí después de los reintentos.
+- **El freno** (`lib/email/marketing-brake.ts`): con al menos 50 de marketing en 24 h, más del 2 % de rebotes (duros) o más del 0,05 % de quejas pausa TODO el marketing del negocio (`marketing_paused_at` en la config de Resend), avisa (`email_marketing_paused`) y queda en `audit_log`. Se evalúa al llegar un rebote o una queja de un email de marketing. Se reanuda solo a mano (`resumeMarketingAction`, `integrations.manage`, con confirmación).
+- **Los eventos de Resend van a SU fila de `email_log`** por `provider_message_id` (`record_email_delivery_event`): `delivered_at`, `opened_at` + `open_count` (aproximado), `clicked_at` + `click_count` + `last_clicked_url`, `bounced_at` (solo duro), `complained_at`. `email.delivered`, `email.opened` y `email.clicked` están en `RESEND_WEBHOOK_EVENTS_LIST`, pero solo `received`, `bounced` y `complained` son imprescindibles (`RESEND_REQUIRED_EVENTS`): faltar uno de resultados no pone el webhook en rojo.
+- **Bajas atribuidas a un email**: el link y el header de baja de marketing llevan `?e=<id de la reserva>`. La baja (página y un clic) marca `unsubscribed_at` en esa fila solo si es del mismo contacto y negocio. Un `e` inválido se ignora y la baja sale igual.
+- **La config de la guardia vive en la fila `resend` de `integration_configs`** (claves planas en `RESEND_CONNECTION_CONFIG_KEYS`: guardar la key no las pisa). Se escribe SOLO con `patch_resend_config` (mezcla en la base: un valor null borra la clave), nunca leyendo y pisando el jsonb.
+- **El aviso rojo del webhook** (`brakeWebhookProblem`, `EmailDeliveryNotice`): webhook desactivado o sin rebotes/quejas → «el freno automático no puede funcionar», en la tarjeta de Resend, el editor de broadcasts (canal email) y el paso «Enviar email». Avisa, no bloquea.
+- **Resultados de un broadcast** (`lib/broadcasts/email-results*.ts`): se leen con el cliente de servicio DESPUÉS de `broadcasts.manage` (la RLS de `email_log` es de Owner/Admin), filtrando por el workspace de la sesión y el broadcast. Un porcentaje sin base es «—».
+- **Hoy el email de un broadcast no queda como mensaje en la conversación** (solo en `email_log` y en el historial de la ficha); ver `docs/PENDIENTE-automatizaciones-email.md`.
+
+## Migraciones
+
+`00287_email_delivery_guard` (columnas de `email_log`, estados `reserved` / `skipped_no_email`, la guardia, la capacidad, `patch_resend_config`, los eventos y `contact_last_activity`) y `00288_broadcast_activity_order` (`sort_key` y `claim_broadcast_recipient`): aditivas, van **ANTES** del deploy, **aplicadas y registradas** el 4/11/2026 (versiones `20261104191636` y `20261104191646`). **La próxima libre es la `00289`** (reservada para `automation_runs`, Fase 1b; confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-email-subscription.mjs   # bloque 11: la guardia (SQL = TS, 10 en paralelo con tope 5, freno, calentamiento, eventos)
+node scripts/verify-broadcasts.mjs           # bloque 4b: primero los más activos
 ```
 
 # Seguridad
