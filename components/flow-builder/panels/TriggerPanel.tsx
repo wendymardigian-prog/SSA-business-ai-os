@@ -15,6 +15,7 @@ import { TaskTriggerPanel } from "./TaskTriggerPanel"; // @plantilla-quitar(tare
 import { WhatsappGroupTriggerPanel } from "./WhatsappGroupTriggerPanel";
 import { SalesTriggerPanel } from "./SalesTriggerPanel"; // @plantilla-quitar(ventas)
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
+import { ONCE_PER_CONTACT_DETAIL, ONCE_PER_CONTACT_TITLE, supportsOncePerContact } from "@/lib/flow-engine/once-per-contact";
 
 interface Keyword {
   value: string;
@@ -40,6 +41,8 @@ interface TriggerPanelData {
   unit?: "hours" | "days";
   /** Fase 3: el flow no arranca en conversaciones que atiende el agente de IA. */
   onlyIfAgentOff?: boolean;
+  /** Quien ya tuvo una sesion de este flujo no vuelve a entrar (lo aplica `processContactEvent`). */
+  oncePerContact?: boolean;
   [key: string]: unknown;
 }
 
@@ -603,6 +606,21 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
       {/* Grupos de WhatsApp: en qué grupos, a qué mensaje o encuesta, con qué emoji u opción */}
       {(triggerType === "whatsapp_group_joined" || triggerType === "whatsapp_group_reaction" || triggerType === "whatsapp_group_poll_vote") && (
         <WhatsappGroupTriggerPanel triggerType={triggerType} data={data as Record<string, unknown>} onChange={onChange as (d: Record<string, unknown>) => void} />
+      )}
+
+      {supportsOncePerContact(triggerType) && (
+        <div className="space-y-1">
+          <label className="flex items-start gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={data.oncePerContact === true}
+              onChange={(e) => onChange({ ...data, oncePerContact: e.target.checked ? true : undefined })}
+              className="mt-0.5 size-4 shrink-0"
+            />
+            <span>{ONCE_PER_CONTACT_TITLE}</span>
+          </label>
+          <p className="text-xs text-muted-foreground">{ONCE_PER_CONTACT_DETAIL}</p>
+        </div>
       )}
 
       {/* F5: ventana de inactividad */}

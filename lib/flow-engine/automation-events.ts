@@ -117,6 +117,35 @@ async function processContactEvent(
 
     if (definition.eventMatches && !(await definition.eventMatches(args))) continue;
 
+    // «Una sola vez por contacto»: quien ya tuvo una sesion de este flujo no vuelve a entrar. Lo que origino el evento
+    // (un envio de formulario, por ejemplo) ya se guardo: esto solo decide si el flujo corre. Una sesion cancelada no
+    // cuenta. Se mira la sesion y no solo `trigger_fires`, porque publicar borra los triggers y sus marcas.
+    const oncePerContact = config.oncePerContact === true;
+    if (oncePerContact) {
+      const { data: earlier, error: earlierError } = await supabase
+        .from("flow_sessions")
+        .select("id")
+        .eq("flow_id", trigger.flow_id)
+        .eq("contact_id", event.contact_id)
+        .neq("status", "cancelled")
+        .limit(1);
+      if (earlierError) {
+        // Sin saber si ya paso, no corre: repetirle los mensajes a alguien es peor que dejar el evento con el motivo.
+        failures.push(`${trigger.flow_id}: no pude ver si el contacto ya paso por el flujo: ${earlierError.message}`);
+        continue;
+      }
+      if (earlier && earlier.length > 0) {
+        await supabase.from("analytics_events").insert({
+          workspace_id: event.workspace_id,
+          flow_id: trigger.flow_id,
+          contact_id: event.contact_id,
+          event_type: "flow_once_skipped",
+          metadata: { trigger_id: trigger.id, event_type: event.event_type },
+        });
+        continue;
+      }
+    }
+
     // Idempotencia: el indice unico de trigger_fires es lo que decide. Si otra
     // corrida del cron ya lo disparo, el insert choca y no se ejecuta nada.
     const dedupeKey = definition.dedupeKeyFor ? definition.dedupeKeyFor(args) : `event:${event.id}`;
@@ -134,6 +163,21 @@ async function processContactEvent(
         console.error("[cron/automation-events] no pude reclamar el disparo:", claimError.message);
       }
       continue;
+    }
+
+    // Dos eventos del mismo contacto a la vez: los dos ven que no hay sesion. El indice unico deja pasar a uno.
+    const onceKey = `once-contact:${event.contact_id}`;
+    if (oncePerContact) {
+      const { error: onceError } = await supabase.from("trigger_fires").insert({
+        trigger_id: trigger.id,
+        workspace_id: event.workspace_id,
+        dedupe_key: onceKey,
+        contact_id: event.contact_id,
+      });
+      if (onceError) {
+        if (onceError.code !== "23505") failures.push(`${trigger.flow_id}: no pude reclamar el disparo unico: ${onceError.message}`);
+        continue;
+      }
     }
 
     // Un disparador puede elegir por donde responde (los grupos de WhatsApp: el chat privado en el numero del
@@ -176,6 +220,10 @@ async function processContactEvent(
       });
     } catch (err) {
       failures.push(`${trigger.flow_id}: ${err instanceof Error ? err.message : "error desconocido"}`);
+      // El flujo no corrio: la marca de "una sola vez" no le puede cerrar la puerta a la persona para siempre.
+      if (oncePerContact) {
+        await supabase.from("trigger_fires").delete().eq("trigger_id", trigger.id).eq("dedupe_key", onceKey);
+      }
       continue;
     }
 
