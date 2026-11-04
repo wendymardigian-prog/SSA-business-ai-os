@@ -21,6 +21,7 @@ import type { Requirement } from "../node-requirements";
  * Lo que un nodo le devuelve al motor:
  *   - "pause"          -> cortar el recorrido aca (delay, espera, derivacion)
  *   - "handle:<nombre>" -> seguir por esa salida (condiciones, A/B split)
+ *   - "skip_next"      -> saltear el paso siguiente (`SKIP_NEXT_STEP`, un «Esperar hasta» con la fecha ya pasada)
  *   - void             -> seguir por la unica salida
  */
 export type NodeResult = string | void;

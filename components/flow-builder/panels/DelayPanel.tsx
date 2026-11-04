@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { loadBusinessTimeZone } from "@/lib/actions/flow-capabilities";
+import { formatLocalDateTime } from "@/lib/flow-engine/wait-until";
 
 type DelayUnit = "seconds" | "minutes" | "hours" | "days";
 type DelayMode = "duration" | "until";
@@ -9,7 +11,9 @@ type DelayMode = "duration" | "until";
 interface DelayPanelData {
   duration?: number;
   unit?: DelayUnit;
-  /** "Esperar hasta": ISO con zona (se guarda desde la hora local de quien edita). */
+  /** "Esperar hasta" en la hora del negocio: `AAAA-MM-DDTHH:mm`, sin zona. */
+  waitUntilLocal?: string;
+  /** Como lo guardaban los nodos viejos: ISO con zona. Al editar la fecha pasa a `waitUntilLocal`. */
   waitUntil?: string;
   [key: string]: unknown;
 }
@@ -42,7 +46,7 @@ const presets: Array<{ label: string; duration: number; unit: DelayUnit }> = [
   { label: "7 días", duration: 7, unit: "days" },
 ];
 
-/** ISO -> valor de un `datetime-local` en la hora de quien mira. */
+/** ISO de un nodo viejo -> valor de un `datetime-local` en la hora de quien mira. */
 function toLocalInput(iso: string | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -53,28 +57,44 @@ function toLocalInput(iso: string | undefined): string {
 
 /**
  * El panel de «Esperar». Los cambios conservan el resto de los datos del paso (antes los atajos y el cambio de modo
- * reemplazaban todo y se perdía el nombre). "Esperar hasta" se guarda como ISO con zona: antes quedaba la hora local
- * sin zona y el servidor no sabía de qué hora se trataba (y además el motor lo ignoraba).
+ * reemplazaban todo y se perdía el nombre). "Esperar hasta" se guarda como hora del negocio, sin zona: el motor la lee
+ * con `workspaces.timezone`, no con la del navegador de quien armó el flujo.
  */
 export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
   const data = rawData as DelayPanelData;
   const duration = data.duration || 0;
   const unit = data.unit || "minutes";
-  const [mode, setMode] = useState<DelayMode>(data.waitUntil ? "until" : "duration");
+  const [mode, setMode] = useState<DelayMode>(data.waitUntil || data.waitUntilLocal ? "until" : "duration");
+  const [businessZone, setBusinessZone] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (mode !== "until") return;
+    let cancelled = false;
+    loadBusinessTimeZone()
+      .then((zone) => {
+        if (!cancelled) setBusinessZone(zone);
+      })
+      .catch(() => {
+        // Sin la zona el texto dice "hora del negocio" a secas: no cambia lo que se guarda.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
 
   const handleModeChange = (newMode: DelayMode) => {
     setMode(newMode);
-    if (newMode === "duration") onChange({ ...data, duration: data.duration || 5, unit: data.unit || "minutes", waitUntil: undefined });
-    else onChange({ ...data, waitUntil: data.waitUntil || "" });
+    if (newMode === "duration") onChange({ ...data, duration: data.duration || 5, unit: data.unit || "minutes", waitUntil: undefined, waitUntilLocal: undefined });
+    else onChange({ ...data, waitUntilLocal: data.waitUntilLocal || "" });
   };
 
   const applyPreset = (preset: { duration: number; unit: DelayUnit }) => {
     setMode("duration");
-    onChange({ ...data, duration: preset.duration, unit: preset.unit, waitUntil: undefined });
+    onChange({ ...data, duration: preset.duration, unit: preset.unit, waitUntil: undefined, waitUntilLocal: undefined });
   };
 
-  const until = data.waitUntil ? new Date(data.waitUntil) : null;
-  const untilValid = until && !Number.isNaN(until.getTime());
+  const localValue = data.waitUntilLocal || toLocalInput(data.waitUntil);
+  const untilText = localValue ? formatLocalDateTime(localValue) : null;
   const [one, many] = UNIT_WORDS[unit];
 
   return (
@@ -108,13 +128,13 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
                 min={0}
                 aria-label="Cantidad"
                 value={duration}
-                onChange={(e) => onChange({ ...data, duration: Math.max(0, parseInt(e.target.value) || 0), waitUntil: undefined })}
+                onChange={(e) => onChange({ ...data, duration: Math.max(0, parseInt(e.target.value) || 0), waitUntil: undefined, waitUntilLocal: undefined })}
                 className="w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
               />
               <select
                 aria-label="Unidad"
                 value={unit}
-                onChange={(e) => onChange({ ...data, unit: e.target.value as DelayUnit, waitUntil: undefined })}
+                onChange={(e) => onChange({ ...data, unit: e.target.value as DelayUnit, waitUntil: undefined, waitUntilLocal: undefined })}
                 className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
               >
                 {unitOptions.map((u) => (
@@ -156,16 +176,12 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
           <input
             id="delay-until"
             type="datetime-local"
-            value={toLocalInput(data.waitUntil)}
-            onChange={(e) => {
-              const local = e.target.value;
-              const iso = local ? new Date(local).toISOString() : "";
-              onChange({ ...data, waitUntil: iso });
-            }}
+            value={localValue}
+            onChange={(e) => onChange({ ...data, waitUntilLocal: e.target.value, waitUntil: undefined })}
             className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            En tu hora local. Si la fecha ya pasó cuando un contacto llega a este paso, sigue sin esperar.
+            En la hora del negocio{businessZone ? ` (${businessZone})` : ""}. Si la fecha ya pasó cuando un contacto llega a este paso, se saltea el paso siguiente y el flujo sigue con el que viene después.
           </p>
         </div>
       )}
@@ -177,8 +193,8 @@ export function DelayPanel({ data: rawData, onChange }: DelayPanelProps) {
             ? duration > 0
               ? `Espera ${duration} ${duration === 1 ? one : many} y sigue`
               : "Sin espera: sigue de largo"
-            : untilValid
-              ? `Espera hasta el ${until!.toLocaleString("es", { dateStyle: "medium", timeStyle: "short" })}`
+            : untilText
+              ? `Espera hasta el ${untilText} (hora del negocio)`
               : "Elegí una fecha"}
         </p>
       </div>

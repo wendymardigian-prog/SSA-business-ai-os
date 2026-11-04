@@ -91,8 +91,10 @@ export interface ConditionNodeData {
 export interface DelayNodeData {
   duration: number;
   unit: "seconds" | "minutes" | "hours" | "days";
-  /** "Esperar hasta": una fecha y hora en ISO (con zona). Si esta, gana sobre la duracion. */
+  /** "Esperar hasta": una fecha y hora en ISO (con zona). Si esta, gana sobre la duracion. Es como guardaban los nodos viejos. */
   waitUntil?: string;
+  /** "Esperar hasta" en la hora del negocio: `AAAA-MM-DDTHH:mm`, sin zona (la pone `workspaces.timezone`). Gana sobre `waitUntil`. */
+  waitUntilLocal?: string;
 }
 
 export interface TagNodeData {

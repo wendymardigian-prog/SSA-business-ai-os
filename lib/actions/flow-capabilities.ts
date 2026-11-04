@@ -19,3 +19,10 @@ export async function loadFlowCapabilities(): Promise<Capabilities | null> {
   if (!ctx) return null;
   return loadAutomationCapabilities(await createServiceClient(), ctx.workspace.id);
 }
+
+/** La zona horaria del negocio, para que el panel de «Esperar hasta» diga en qué hora se escribe la fecha. */
+export async function loadBusinessTimeZone(): Promise<string | null> {
+  const ctx = await getMemberAction();
+  if (!ctx) return null;
+  return ctx.workspace.timezone ?? null;
+}
