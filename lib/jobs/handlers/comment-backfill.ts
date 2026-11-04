@@ -7,7 +7,9 @@
  * tabla, un comentario anterior pasa a ser su primer toque: es el primer contacto real.
  *
  * Dos tipos de job:
- *   - `comment_backfill`            un contacto. Lo encola el trigger de `contacts` (00234) 5 s después de que gane un usuario.
+ *   - `comment_backfill`            un contacto. Lo encola el trigger de `contacts` (00234) 5 s después de que gane un usuario,
+ *                                   y el eco de un chat que empezó el negocio fuera del sistema (`touch-external-start.ts`).
+ *                                   En Instagram busca por el @ y también por el id del autor (`platform_sender_id`).
  *   - `comment_backfill_workspace`  el barrido inicial: recorre los contactos con usuario de a 200 y encola uno por contacto.
  *
  * NUNCA lanza por un comentario: anota y sigue. Lanza SOLO si no pudo leer lo que necesita (la cola reintenta).
@@ -72,6 +74,55 @@ async function backfillPlatform(db: Db, workspaceId: string, contactId: string, 
   return { linked, more: (data ?? []).length >= BACKFILL_BATCH && linked > 0 };
 }
 
+/**
+ * Los ids de Instagram del contacto: el `platform_sender_id` de sus canales de Instagram. Es el mismo id que Zernio manda
+ * como autor de un comentario (`author_external_id`), y el único dato que tiene un contacto que nació por el eco de un
+ * mensaje de ManyChat (el eco no trae el @).
+ */
+export async function instagramSenderIds(db: Db, contactId: string): Promise<string[]> {
+  const { data: links, error } = await db.from("contact_channels").select("channel_id, platform_sender_id").eq("contact_id", contactId);
+  if (error) throw new Error(`comment_backfill: no pude leer los canales del contacto: ${error.message}`);
+  const rows = (links ?? []) as Array<{ channel_id: string; platform_sender_id: string | null }>;
+  if (rows.length === 0) return [];
+
+  const { data: channels, error: chErr } = await db
+    .from("channels")
+    .select("id")
+    .in("id", [...new Set(rows.map((r) => r.channel_id))])
+    .eq("platform", "instagram");
+  if (chErr) throw new Error(`comment_backfill: no pude leer los canales: ${chErr.message}`);
+  const instagram = new Set(((channels ?? []) as Array<{ id: string }>).map((c) => c.id));
+  return [...new Set(rows.filter((r) => instagram.has(r.channel_id) && r.platform_sender_id).map((r) => r.platform_sender_id as string))];
+}
+
+/** Como `backfillPlatform`, pero por el id del autor en Instagram en vez del @. */
+async function backfillInstagramByIds(db: Db, workspaceId: string, contactId: string, senderIds: string[]): Promise<{ linked: number; more: boolean }> {
+  if (senderIds.length === 0) return { linked: 0, more: false };
+  const { data, error } = await db
+    .from("social_post_comments")
+    .select("external_comment_id, author_username, commented_at, social_post_id, platform")
+    .eq("workspace_id", workspaceId)
+    .eq("platform", "instagram")
+    .in("author_external_id", senderIds)
+    .is("contact_id", null)
+    .eq("is_own", false)
+    .is("deleted_at", null)
+    .order("commented_at", { ascending: true })
+    .limit(BACKFILL_BATCH);
+  if (error) throw new Error(`comment_backfill: no pude leer los comentarios: ${error.message}`);
+
+  let linked = 0;
+  for (const row of (data ?? []) as unknown as CommentRow[]) {
+    const result = await linkCommentToContact(db, {
+      workspaceId,
+      contactId,
+      comment: { platform: "instagram", externalCommentId: row.external_comment_id, commentedAt: row.commented_at, socialPostId: row.social_post_id, onlyIfUnlinked: true },
+    });
+    if (result.linked) linked += 1;
+  }
+  return { linked, more: (data ?? []).length >= BACKFILL_BATCH && linked > 0 };
+}
+
 export async function handleCommentBackfill(ctx: JobContext): Promise<void> {
   const payload = ctx.job.payload as { workspace_id?: unknown; contact_id?: unknown; platform?: unknown } | null;
   if (!payload || !isUuid(payload.workspace_id) || !isUuid(payload.contact_id)) return;
@@ -91,9 +142,16 @@ export async function handleCommentBackfill(ctx: JobContext): Promise<void> {
   let again = false;
   for (const platform of wanted) {
     const username = platform === "instagram" ? row.instagram_username : row.tiktok_username;
-    if (!username) continue;
-    const result = await backfillPlatform(db, payload.workspace_id, payload.contact_id, platform, username);
-    if (result.more) again = true;
+    if (username) {
+      const result = await backfillPlatform(db, payload.workspace_id, payload.contact_id, platform, username);
+      if (result.more) again = true;
+    }
+    // En Instagram, tambien por el id: un contacto sin @ (nacio por el eco de ManyChat) o un comentario guardado sin @.
+    if (platform === "instagram") {
+      const ids = await instagramSenderIds(db, payload.contact_id);
+      const result = await backfillInstagramByIds(db, payload.workspace_id, payload.contact_id, ids);
+      if (result.more) again = true;
+    }
   }
   if (again) {
     // Había más de 200 comentarios: otra pasada en un minuto (solo si esta vinculó alguno, así no se encicla).

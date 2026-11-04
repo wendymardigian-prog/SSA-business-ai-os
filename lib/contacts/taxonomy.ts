@@ -59,6 +59,9 @@ export const MEDIUMS = [
   "referral_person",
   // Grupos de WhatsApp (00281): alguien que se unio a un grupo activado. Cuenta como organico.
   "whatsapp_group",
+  // Un chat que empezo el negocio fuera del sistema (ManyChat o la app de Instagram): el eco de ese primer mensaje crea
+  // el contacto. Con `origin = 'dm'` en Instagram cuenta como organico.
+  "dm_external",
 ] as const;
 export type KnownMedium = (typeof MEDIUMS)[number];
 
@@ -178,6 +181,7 @@ export const MEDIUM_LABELS: Record<KnownMedium, string> = {
   dm_link: "link de un mensaje",
   referral_person: "referido",
   whatsapp_group: "grupo de WhatsApp",
+  dm_external: "chat iniciado fuera del sistema",
 };
 
 /**

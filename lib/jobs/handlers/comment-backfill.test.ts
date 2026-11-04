@@ -18,7 +18,7 @@ const world = (comments: Array<Record<string, unknown>>, contact: Record<string,
     {
       contacts: [{ id: C1, workspace_id: WS, instagram_username: "ana_perez", tiktok_username: null, deleted_at: null, ...contact }],
       social_post_comments: comments,
-      social_posts: [], content_posts: [], scheduled_jobs: [],
+      social_posts: [], content_posts: [], scheduled_jobs: [], channels: [], contact_channels: [],
     },
     { rpc: { record_contact_touch: (args) => (touches.push(args), { inserted: true }) } },
   );
@@ -76,6 +76,32 @@ describe("comment_backfill", () => {
     );
     await run({ workspace_id: WS, contact_id: C1 });
     expect(db.rows("social_post_comments").every((c) => c.contact_id === C1)).toBe(true);
+  });
+});
+
+describe("comment_backfill por el id de Instagram (contactos sin @)", () => {
+  // El contacto nació por el eco de un mensaje de ManyChat: tiene el canal, pero no el @.
+  const byId = (comments: Array<Record<string, unknown>>) => {
+    world(comments, { instagram_username: null });
+    db.rows("channels").push({ id: "ch-ig", platform: "instagram" }, { id: "ch-wa", platform: "whatsapp" });
+    db.rows("contact_channels").push(
+      { contact_id: C1, channel_id: "ch-ig", platform_sender_id: "igsid-7" },
+      { contact_id: C1, channel_id: "ch-wa", platform_sender_id: "5491100000000" },
+    );
+  };
+
+  it("vincula los comentarios cuyo autor es su id de Instagram", async () => {
+    byId([comment("c-1", { author_username: "otro_nombre", author_external_id: "igsid-7" }), comment("c-2", { author_username: null, author_external_id: "igsid-7" })]);
+    await run({ workspace_id: WS, contact_id: C1 });
+    expect(db.rows("social_post_comments").every((c) => c.contact_id === C1)).toBe(true);
+    expect(touches).toHaveLength(2);
+  });
+
+  it("no usa el id de otra red ni toca comentarios de otra persona", async () => {
+    byId([comment("wa", { author_external_id: "5491100000000" }), comment("ajeno", { author_external_id: "igsid-8" })]);
+    await run({ workspace_id: WS, contact_id: C1 });
+    expect(db.rows("social_post_comments").map((c) => c.contact_id)).toEqual([null, null]);
+    expect(touches).toHaveLength(0);
   });
 });
 

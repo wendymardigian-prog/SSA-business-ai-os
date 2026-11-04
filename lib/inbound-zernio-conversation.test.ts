@@ -12,8 +12,11 @@ import { ensureZernioConversation, handleMessageSentEcho, upsertConversation } f
 
 const channel = { id: "ch-1", workspace_id: "ws-1", platform: "instagram" as const };
 
+const touches: Array<Record<string, unknown>> = [];
+
 function setup(seed: Record<string, Array<Record<string, unknown>>> = {}) {
   let n = 0;
+  touches.length = 0;
   return memoryDb(
     { conversations: [], messages: [], ...seed },
     {
@@ -23,9 +26,10 @@ function setup(seed: Record<string, Array<Record<string, unknown>>> = {}) {
           contact_id: (seed.known as Array<{ sender: string; contact: string }> | undefined)?.find(
             (k) => k.sender === args.p_sender_id,
           )?.contact ?? `contact-${++n}`,
-          existed: false,
+          existed: Boolean((seed.known as Array<{ sender: string }> | undefined)?.some((k) => k.sender === args.p_sender_id)),
         }),
         assign_new_conversation: () => null,
+        record_contact_touch: (args) => (touches.push(args), { inserted: true }),
       },
       unique: {
         conversations: (a, b) => a.channel_id === b.channel_id && a.contact_id === b.contact_id,
@@ -180,5 +184,65 @@ describe("upsertConversation con dos llegadas a la vez", () => {
 
     expect(res).toEqual({ id: "conv-ganadora", isAutomationPaused: false });
     expect(updates).toEqual([{ late_conversation_id: "zc-1" }]);
+  });
+});
+
+describe("el origen de un contacto que nace por un chat que empezo el negocio", () => {
+  it("el contacto nuevo queda con un toque «chat iniciado fuera del sistema» y se encola el vinculo con sus comentarios", async () => {
+    const db = setup({ scheduled_jobs: [] });
+
+    await handleMessageSentEcho({
+      supabase: db.client,
+      channel,
+      message: echo,
+      conversation: participant,
+      account: { id: "acc-1", label: "@negocio" },
+    });
+
+    expect(touches).toHaveLength(1);
+    expect(touches[0]).toMatchObject({ p_workspace_id: "ws-1", p_contact_id: "contact-1" });
+    expect(touches[0].p_touch).toMatchObject({
+      source: "instagram",
+      medium: "dm_external",
+      origin: "dm",
+      dedupe_key: "external-start:zc-1",
+      occurred_at: "2026-10-28T10:00:00.000Z",
+      raw: { via: "external_outbound", message_id: "z-msg-1", account_id: "acc-1", account_label: "@negocio" },
+    });
+    expect(db.rows("scheduled_jobs")).toEqual([
+      expect.objectContaining({ type: "comment_backfill", payload: { workspace_id: "ws-1", contact_id: "contact-1" } }),
+    ]);
+  });
+
+  it("un contacto que ya existia conserva su historia: no se le agrega el toque", async () => {
+    const db = setup({ known: [{ sender: "igsid-1", contact: "contact-viejo" }] as never, scheduled_jobs: [] });
+
+    await handleMessageSentEcho({ supabase: db.client, channel, message: echo, conversation: participant });
+
+    expect(touches).toHaveLength(0);
+    expect(db.rows("scheduled_jobs")).toHaveLength(0);
+  });
+
+  it("si el toque falla, la conversacion se crea igual", async () => {
+    const db = setup();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const broken = db.client as unknown as { rpc: (name: string, args: Record<string, unknown>) => unknown };
+    const rpc = broken.rpc.bind(broken);
+    broken.rpc = (name, args) => {
+      if (name === "record_contact_touch") throw new Error("boom");
+      return rpc(name, args);
+    };
+
+    const res = await ensureZernioConversation({
+      supabase: db.client,
+      channel,
+      lateConversationId: "zc-1",
+      participant,
+      at: "2026-10-28T10:00:00Z",
+      preview: "",
+    });
+
+    expect(res).not.toBeNull();
+    expect(db.rows("conversations")).toHaveLength(1);
   });
 });
