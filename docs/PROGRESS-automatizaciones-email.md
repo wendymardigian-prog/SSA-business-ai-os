@@ -34,7 +34,7 @@ Rama de la Fase 1a: `feat/automatizaciones-email-envios`. Plan aprobado el 4/11/
 | Número | Nombre | Fase | Orden | Estado |
 |---|---|---|---|---|
 | 00287 | `email_delivery_guard` (columnas de `email_log` incluidos los eventos de entrega, estados `reserved` / `skipped_no_email`, `reserve_email_send`, `settle_email_send`, `contact_last_activity`) | 1a | antes del deploy | sin escribir |
-| 00288 | `broadcast_activity_order` (`broadcast_recipients.sort_key`, `claim_broadcast_recipient` ordenado por actividad) | 1a | antes del deploy | sin escribir |
+| 00288 | `broadcast_activity_order` (`broadcast_recipients.sort_key`, `claim_broadcast_recipient` ordenado por actividad) | 1a | antes del deploy | **aplicada y registrada** (`20261104191646`) |
 | 00289 | `automation_runs` (tabla, CHECK de `triggers.type` + `scheduled_audience`, índice único de `flow_sessions`, índice de `scheduled_jobs`) | 1b | antes del deploy | sin escribir |
 | 00290 | `email_default_design` (`workspaces.email_default_design`) | 2 | antes del deploy | sin escribir |
 
@@ -42,15 +42,15 @@ Confirmar cada número con `list_migrations` y las ramas locales antes de escrib
 
 ## Fase 1a — guardia única de entrega + A9 de broadcasts
 
-- [ ] Caracterización antes de tocar:
-  - [ ] el HTML que sale hoy del nodo «Enviar email»;
-  - [ ] `templates.ts`;
-  - [ ] `deliverEmail` de broadcasts;
-  - [ ] el paso de email de secuencias;
-  - [ ] `canSendEmailTo`;
-  - [ ] `resumeSession`;
-  - [ ] el procesador de flujos con disparadores por evento.
-- [ ] 00287 y 00288: ensayo en una transacción que se deshace, aplicación, registro, `build-all-migrations` y tipos.
+- [x] Caracterización antes de tocar (`lib/email/delivery-characterization.test.ts`: el HTML del nodo, los emails del sistema y el pedido a Resend; lo demás ya estaba fijado en `resume-characterization`, `engine-characterization`, `processor-email`, `dispatch.test` y `subscription-gate`):
+  - [x] el HTML que sale hoy del nodo «Enviar email»;
+  - [x] `templates.ts`;
+  - [x] `deliverEmail` de broadcasts;
+  - [x] el paso de email de secuencias;
+  - [x] `canSendEmailTo`;
+  - [x] `resumeSession`;
+  - [x] el procesador de flujos con disparadores por evento.
+- [x] 00287 y 00288: ensayo en una transacción que se deshace, aplicación, registro (`20261104191636`, `20261104191646`), `build-all-migrations` y tipos.
 - [ ] A6 · La guardia (`lib/email/delivery-guard.ts` + la gemela SQL `reserve_email_send` + `delivery-guard.cases.json`):
   - [ ] tope por día del negocio;
   - [ ] cuota del plan solo si está cargada;

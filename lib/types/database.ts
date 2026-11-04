@@ -782,7 +782,13 @@ export type EmailLogStatus =
   | "skipped_do_not_contact"
   | "skipped_unverifiable"
   // 00278: marketing a quien nunca acepto (la casilla de un formulario sin marcar).
-  | "skipped_not_subscribed";
+  | "skipped_not_subscribed"
+  // 00287: la guardia aparto el lugar antes de mandar (el envio la cierra en sent/failed).
+  | "reserved"
+  // 00287: el contacto no tiene email.
+  | "skipped_no_email";
+/** La categoria de un email (00287): lo que cuenta el tope diario de marketing. */
+export type EmailLogCategory = "marketing" | "transactional";
 export type BroadcastStatus =
   | "draft"
   | "scheduled"
@@ -2612,6 +2618,8 @@ export interface Database {
           target: string | null;
           variant_index: number;
           skip_reason: string | null;
+          /** 00288: la actividad mas reciente del contacto al ponerlo en cola. */
+          sort_key: string | null;
           conversation_id: string | null;
           attempts: number;
           next_attempt_at: string | null;
@@ -2630,6 +2638,7 @@ export interface Database {
           target?: string | null;
           variant_index?: number;
           skip_reason?: string | null;
+          sort_key?: string | null;
           conversation_id?: string | null;
           attempts?: number;
           next_attempt_at?: string | null;
@@ -2642,6 +2651,7 @@ export interface Database {
           error_message?: string | null;
           target?: string | null;
           skip_reason?: string | null;
+          sort_key?: string | null;
           conversation_id?: string | null;
           attempts?: number;
           next_attempt_at?: string | null;
@@ -3253,6 +3263,21 @@ export interface Database {
           contact_id: string | null;
           created_by: string | null;
           created_at: string;
+          /** 00287: marketing | transactional (null: al equipo, o anterior). */
+          category: EmailLogCategory | null;
+          /** 00287: eventos de entrega del webhook de Resend. */
+          delivered_at: string | null;
+          opened_at: string | null;
+          open_count: number;
+          clicked_at: string | null;
+          click_count: number;
+          last_clicked_url: string | null;
+          bounced_at: string | null;
+          complained_at: string | null;
+          /** 00287: la baja vino del link de este email. */
+          unsubscribed_at: string | null;
+          flow_node_id: string | null;
+          automation_run_id: string | null;
         };
         Insert: {
           id?: string;
@@ -3269,12 +3294,17 @@ export interface Database {
           contact_id?: string | null;
           created_by?: string | null;
           created_at?: string;
+          category?: EmailLogCategory | null;
+          flow_node_id?: string | null;
+          automation_run_id?: string | null;
         };
         Update: {
           status?: EmailLogStatus;
           provider_message_id?: string | null;
           attempts?: number;
           last_error?: string | null;
+          category?: EmailLogCategory | null;
+          unsubscribed_at?: string | null;
         };
         Relationships: [
           {
@@ -7151,6 +7181,36 @@ export interface Database {
       claim_broadcast_recipient: {
         Args: { p_broadcast_id: string };
         Returns: Database["public"]["Tables"]["broadcast_recipients"]["Row"][];
+      };
+      /** La guardia de entrega (00287): reserva un lugar para un email de marketing. Solo service_role. */
+      reserve_email_send: {
+        Args: {
+          p_workspace_id: string;
+          p_to: string;
+          p_subject: string;
+          p_kind: string;
+          p_contact_id?: string | null;
+          p_related_type?: string | null;
+          p_related_id?: string | null;
+          p_created_by?: string | null;
+          p_flow_node_id?: string | null;
+          p_automation_run_id?: string | null;
+        };
+        Returns: Json;
+      };
+      /** La guardia de entrega (00287): cuanto queda hoy, sin reservar. Solo service_role. */
+      email_send_capacity: { Args: { p_workspace_id: string }; Returns: Json };
+      /** Mezcla claves en la config de Resend (00287); un valor null borra la clave. Solo service_role. */
+      patch_resend_config: { Args: { p_workspace_id: string; p_patch: Json }; Returns: boolean };
+      /** Un evento de entrega de Resend sobre su fila de email_log (00287). Solo service_role. */
+      record_email_delivery_event: {
+        Args: { p_provider_message_id: string; p_event: string; p_at: string; p_url?: string | null };
+        Returns: { email_log_id: string; workspace_id: string; category: string | null; contact_id: string | null }[];
+      };
+      /** La actividad mas reciente de cada contacto (00287). Solo service_role. */
+      contact_last_activity: {
+        Args: { p_workspace_id: string; p_contact_ids: string[] };
+        Returns: { contact_id: string; activity_at: string }[];
       };
       /** Recalcula los contadores desde los destinatarios y cierra el broadcast si no queda nada. Solo service_role. */
       refresh_broadcast_counts: {
