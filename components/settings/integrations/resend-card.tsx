@@ -1,5 +1,6 @@
 "use client";
 
+import { MarketingDeliverySection } from "./marketing-delivery-section";
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, CircleDashed, ExternalLink, Loader2, RefreshCw, X } from "lucide-react";
@@ -107,6 +108,8 @@ export function ResendCard({
       </section>
 
       {senders}
+
+      {connected && panel.marketing ? <MarketingDeliverySection data={panel.marketing} readOnly={readOnly} /> : null}
 
       <WebhookSection panel={panel} connected={connected} readOnly={readOnly} access={access} />
 

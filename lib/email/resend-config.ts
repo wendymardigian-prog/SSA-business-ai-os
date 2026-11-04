@@ -8,6 +8,7 @@
  * Puro: lo usan el servidor y la pantalla. Nunca hay un secreto aca (el del webhook vive en Vault).
  */
 
+import type { MarketingDeliveryData } from "./marketing-delivery-view";
 import { RESEND_REQUIRED_EVENTS, RESEND_WEBHOOK_EVENTS_LIST } from "./resend-events";
 
 export const RESEND_CONNECTION_CONFIG_KEYS = [
@@ -31,6 +32,21 @@ export const RESEND_CONNECTION_CONFIG_KEYS = [
   "receiving_local",
   /** Tope de emails por dia para el aviso de cuota (antes vivia en `resend_inbound`). */
   "daily_quota",
+  // La guardia de entrega (00287). Las escribe la base (`reserve_email_send`, `patch_resend_config`) y la pantalla
+  // «Entrega de marketing»; volver a guardar la key no las pisa.
+  /** «Máximo de emails de marketing por día» (default 100). */
+  "marketing_daily_cap",
+  /** "true" / "false": el calentamiento (sin guardar, lo decide la base la primera vez). */
+  "warmup_enabled",
+  /** El escalon del calentamiento (0..3: 100, 200, 400, 800) y el dia en que empezo. */
+  "warmup_level",
+  "warmup_level_date",
+  "warmup_completed_at",
+  /** El freno: cuando y por que se pauso el marketing, y la ultima vez que salto (frena el calentamiento). */
+  "marketing_paused_at",
+  "marketing_paused_reason",
+  "marketing_paused_stats",
+  "marketing_last_brake_at",
 ] as const;
 
 export type ResendConnectionKey = (typeof RESEND_CONNECTION_CONFIG_KEYS)[number];
@@ -126,4 +142,6 @@ export interface ResendPanelData {
   /** El secreto del webhook esta en Vault (null: no se sabe). */
   secretSaved: boolean | null;
   lastEventAt: string | null;
+  /** La guardia de entrega (00287): el cupo de hoy, el calentamiento y el freno. Null si no se pudo leer. */
+  marketing?: MarketingDeliveryData | null;
 }

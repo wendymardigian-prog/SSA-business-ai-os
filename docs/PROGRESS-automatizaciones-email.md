@@ -71,7 +71,7 @@ Confirmar cada número con `list_migrations` y las ramas locales antes de escrib
   - [x] evalúa 2 % / 0,05 % con un mínimo de 50 en 24 h;
   - [x] pausa el marketing y avisa (`email_marketing_paused`), y queda en `audit_log`.
 - [x] A6 · Bajas atribuidas: `?e=<email_log_id>` en el link y el header de baja, y `unsubscribed_at`.
-- [ ] A6 · Pantalla «Entrega de marketing» en la tarjeta de Resend: máximo por día, calentamiento y su día, freno con «Reanudar».
+- [x] A6 · Pantalla «Entrega de marketing» en la tarjeta de Resend: máximo por día, calentamiento y su día, freno con «Reanudar» (`marketing-delivery-section.tsx`, textos en `marketing-delivery-view.ts`, acciones con `integrations.manage` y `audit_log`).
 - [ ] A6 · Aviso rojo del webhook (desactivado o sin `bounced` / `complained`) en el editor de broadcast, el nodo «Enviar email» y la tarjeta de Resend.
 - [~] A6 · Eventos de entrega (sumado el 4/11; hecho el receptor y la columna, falta mostrarlos): en la 00287, `email_log` suma `delivered_at`, `opened_at`, `open_count`, `clicked_at`, `click_count` y `last_clicked_url`; el receptor procesa `email.delivered`, `email.opened` y `email.clicked` por `provider_message_id`; se muestran en A9 de broadcasts (entregados, abiertos «aproximado», clics) y en la ficha del contacto.
 - [ ] A9 · Progreso del broadcast:

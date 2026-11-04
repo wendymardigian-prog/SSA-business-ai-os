@@ -8,6 +8,8 @@ import { checkResendLive, clearWebhookSecret, connectWebhookForWorkspace, saveRe
 import { workspaceResendDomains } from "@/lib/email/resend-domains";
 import type { LiveResult } from "@/lib/email/resend-status";
 import type { ResendDomain } from "@/lib/email/senders";
+import { parseDailyCap } from "@/lib/email/marketing-delivery-view";
+import { resumeMarketing } from "@/lib/email/marketing-brake";
 
 /**
  * La tarjeta Resend (conexion de Resend): el webhook. Todo pide `integrations.manage` (el mismo permiso que configurar
@@ -158,4 +160,70 @@ export async function checkResendConnectionAction(): Promise<
     workspaceResendDomains(service as never, ctx.workspace.id, { refresh: true }),
   ]);
   return { ok: true, live, domains: listed.ok ? listed.domains : null };
+}
+
+// ── La guardia de entrega (00287): «Entrega de marketing» ─────────────────────
+
+/**
+ * Guarda el «Máximo de emails de marketing por día» y el calentamiento. Pide `integrations.manage`; el negocio sale de
+ * la sesion. Se escribe con `patch_resend_config` (mezcla claves en la base: no pisa lo que escribe la guardia al
+ * mismo tiempo). Queda en `audit_log`.
+ */
+export async function saveMarketingDeliveryAction(input: { dailyCap: string | number; warmupEnabled: boolean }): Promise<Result> {
+  const ctx = await getPermissionAction("integrations.manage");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+
+  const cap = parseDailyCap(input?.dailyCap);
+  if (!cap.ok) return { ok: false, error: cap.error };
+  const warmup = input?.warmupEnabled === true;
+
+  const service = await createServiceClient();
+  const { data: before } = await service
+    .from("integration_configs")
+    .select("config")
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("type", "email_provider")
+    .eq("provider", "resend")
+    .maybeSingle();
+  if (!before) return { ok: false, error: "Primero conectá Resend." };
+  const config = ((before as { config?: Record<string, unknown> | null }).config ?? {}) as Record<string, unknown>;
+  const wasWarmup = config.warmup_enabled === "true";
+
+  const patch: Record<string, string | null> = {
+    marketing_daily_cap: String(cap.value),
+    warmup_enabled: warmup ? "true" : "false",
+  };
+  // Prenderlo de nuevo arranca desde el primer escalon (hoy).
+  if (warmup && !wasWarmup) {
+    patch.warmup_level = "0";
+    patch.warmup_level_date = null;
+    patch.warmup_completed_at = null;
+  }
+  const { error } = await service.rpc("patch_resend_config", { p_workspace_id: ctx.workspace.id, p_patch: patch });
+  if (error) return { ok: false, error: "No pude guardar el máximo. Probá de nuevo." };
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "workspace",
+    entityId: ctx.workspace.id,
+    action: "email_marketing.settings",
+    changes: {
+      marketing_daily_cap: { old: typeof config.marketing_daily_cap === "string" ? config.marketing_daily_cap : null, new: String(cap.value) },
+      warmup_enabled: { old: typeof config.warmup_enabled === "string" ? config.warmup_enabled : null, new: warmup ? "true" : "false" },
+    },
+    performedBy: ctx.user.id,
+  });
+  revalidatePath(PATH, "layout");
+  return { ok: true, message: "Guardado." };
+}
+
+/** «Reanudar el marketing» después del freno automático (con confirmación en la pantalla). Queda en `audit_log`. */
+export async function resumeMarketingAction(): Promise<Result> {
+  const ctx = await getPermissionAction("integrations.manage");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const result = await resumeMarketing(await createServiceClient(), ctx.workspace.id, ctx.user.id);
+  if (!result.ok) return result;
+  revalidatePath(PATH, "layout");
+  return { ok: true, message: "Listo: los emails de marketing vuelven a salir, dentro del máximo del día." };
 }
