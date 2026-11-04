@@ -1755,7 +1755,7 @@ Un mensaje a muchos contactos por WhatsApp (Evolution) o email (Resend), con los
 
 ## Migraciones
 
-`00285_broadcast_send_queue` (aditiva) va **ANTES** de desplegar; `00286_send_queue_cron` (reescribe `call_app_cron` + el cron cada 15 s) va **DESPUÉS**. Las dos **escritas y SIN aplicar todavía**. **La próxima libre es la `00287`** (confirmar con `list_migrations` y las ramas locales).
+`00285_broadcast_send_queue` (aditiva) va **ANTES** de desplegar: **aplicada y registrada** el 3/11/2026 (versión `20261103235025`), después de ensayarla en una transacción que se deshizo sola, con `verify-broadcasts` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. `00286_send_queue_cron` (reescribe `call_app_cron` + el cron cada 15 s) va **DESPUÉS** del deploy: **escrita y SIN aplicar**. **La próxima libre es la `00287`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot y claim_broadcast_recipient a la vez, contadores

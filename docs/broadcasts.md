@@ -126,7 +126,8 @@ queda `cancelled`, lo enviado no se deshace). Un destinatario: `pending`,
   `broadcast_recipients`, `channels.send_policy`, `channel_send_lanes`, la RLS por
   permiso, `claim_lane_slot`, `claim_broadcast_recipient` y
   `refresh_broadcast_counts`; cancela los jobs `send_broadcast` viejos. **Va ANTES
-  de desplegar el código** (la pantalla lee sus columnas).
+  de desplegar el código** (la pantalla lee sus columnas). Aplicada y registrada en
+  producción el 3/11/2026 (versión `20261103235025`).
 - `00286_send_queue_cron`: reescribe `private.call_app_cron` (suma
   `send-queue`) y agenda el cron cada 15 s. **Va DESPUÉS del deploy** (antes la
   ruta no existe).

@@ -319,7 +319,8 @@ export function BroadcastEditor({
             onClear={clearFilters}
           />
         </div>
-        <div className="-mx-4 md:-mx-8">
+        {/* Los chips traen el borde y el margen de la barra de Contactos: adentro de la tarjeta, sin eso. */}
+        <div className="[&>div]:border-b-0 [&>div]:px-0 [&>div]:py-0 md:[&>div]:px-0">
           <ActiveFilterChips
             defs={CONTACT_FILTERS}
             filters={filters}
@@ -539,8 +540,9 @@ export function BroadcastEditor({
                   <p className="mb-1 text-xs font-medium text-muted-foreground">Para {s.name}</p>
                   {s.subject !== null && <p className="mb-1 font-medium">{s.subject}</p>}
                   {kind === "email" ? (
-                    // El HTML ya viene limpio del servidor (sanitizeEmailHtml).
-                    <div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: s.text }} />
+                    // El HTML ya viene limpio del servidor (sanitizeEmailHtml) y trae sus colores en línea (texto oscuro):
+                    // se muestra sobre blanco, como en una casilla de correo, también en modo oscuro.
+                    <div className="rounded-md bg-white p-3 text-neutral-900" dangerouslySetInnerHTML={{ __html: s.text }} />
                   ) : (
                     <p className="whitespace-pre-wrap">{s.text}</p>
                   )}
