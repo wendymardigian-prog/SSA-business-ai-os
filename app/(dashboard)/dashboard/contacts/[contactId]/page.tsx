@@ -556,6 +556,7 @@ export default async function ContactDetailPage({
                 youtube_channel_id: contact.youtube_channel_id ?? "",
                 linkedin_profile_url: contact.linkedin_profile_url ?? "",
                 ai_conversation_summary: contact.ai_conversation_summary ?? "",
+                timezone: contact.timezone ?? "",
               }}
             />
 

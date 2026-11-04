@@ -308,6 +308,14 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Flujo del evento",
     tooltip: "Un flujo lineal: cuando se dispara, condiciones y los mensajes que envia. Se guarda como un flow mas y se puede abrir en el canvas.",
   },
+  "/dashboard/agenda/configuracion/sin-evento": {
+    title: "Reuniones sin evento",
+    tooltip: "Los mensajes de las reuniones que se agendan a mano con un título libre: la confirmación, los recordatorios y los avisos.",
+  },
+  "/dashboard/agenda/configuracion/sin-evento/flujos/[flowId]": {
+    title: "Flujo de reuniones sin evento",
+    tooltip: "Cuándo se dispara y qué mensaje envía. Vale para todas las reuniones con título libre.",
+  },
   "/dashboard/agenda/configuracion/disponibilidad": {
     title: "Disponibilidad",
     tooltip: "Tus horarios, sus excepciones por fecha y tu tiempo fuera.",

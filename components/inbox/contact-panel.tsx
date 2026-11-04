@@ -422,12 +422,13 @@ function TemperatureSelect({ contactId, value, onSaved }: { contactId: string; v
  * campos (y la misma validacion) que "Datos de contacto" en la ficha. El resto
  * (email secundario, otras redes) se edita en la ficha completa.
  */
-const BASIC_FIELDS: { key: ContactFieldKey; label: string; prefix?: string; hint?: string }[] = [
+const BASIC_FIELDS: { key: ContactFieldKey; label: string; prefix?: string; hint?: string; timezonePicker?: boolean }[] = [
   { key: "email", label: "Email" },
   { key: "phone", label: "Teléfono", hint: "Con código de país, ej: +54 9 11 2233 4455" },
   { key: "whatsapp_phone", label: "WhatsApp", hint: "Solo si es distinto al teléfono" },
   { key: "instagram_username", label: "Instagram", prefix: "@", hint: "Sin la arroba" },
   { key: "country", label: "País" },
+  { key: "timezone", label: "Zona", hint: "Con esta le llegan los emails de sus reuniones.", timezonePicker: true },
 ];
 
 function BasicData({
@@ -459,6 +460,7 @@ function BasicData({
                   label={f.label}
                   prefix={f.prefix}
                   hint={f.hint}
+                  timezonePicker={f.timezonePicker}
                   href={contactFieldHref(f.key, value)}
                   canEdit={canEdit}
                   onSaved={onSaved}

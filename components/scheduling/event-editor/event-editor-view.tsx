@@ -513,7 +513,7 @@ export function EventEditorView({
         </section>
       )}
 
-      {section === "flows" && <FlowsSection eventId={event.id} flows={flows} />}
+      {section === "flows" && <FlowsSection flowsPath={`/dashboard/agenda/configuracion/eventos/${event.id}`} flows={flows} />}
 
       <ConfirmDialog
         open={confirmSlug !== null}

@@ -108,7 +108,7 @@ export async function syncRelativeJobs(supabase: Db, booking: BookingForSync, no
 export async function backfillRelativeJobs(supabase: Db, workspaceId: string, now: Date = new Date()): Promise<number> {
   const { data: bookings } = await supabase
     .from("bookings")
-    .select("id, workspace_id, event_type_id, host_user_id, origin, status, category_snapshot, start_at, end_at, created_at, reschedule_count")
+    .select("id, workspace_id, event_type_id, host_user_id, origin, status, category_snapshot, metadata, start_at, end_at, created_at, reschedule_count")
     .eq("workspace_id", workspaceId)
     .eq("status_group", "active")
     .gt("end_at", now.toISOString())

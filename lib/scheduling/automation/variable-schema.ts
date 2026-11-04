@@ -24,6 +24,7 @@ const LABELS: Record<(typeof BOOKING_VARIABLE_KEYS)[number], string> = {
   invitee_timezone: "Zona horaria del invitado",
   duration: "Duración",
   location: "Dónde es",
+  meeting_place: "Dónde es, con el link si es un Meet",
   meet_url: "Link de la videollamada",
   host_name: "Quién atiende",
   reschedule_url: "Link para reagendar",

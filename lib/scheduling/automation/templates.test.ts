@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FLOW_TEMPLATES, flowNameFor, templateByKey, templateGraph } from "./templates";
+import { FLOW_TEMPLATES, NO_EVENT_TEMPLATES, flowNameFor, isNoEventTemplateKey, templateByKey, templateGraph } from "./templates";
 
 describe("plantillas de flujo del evento (F49)", () => {
   it("son exactamente las 7 del plano, con su trigger", () => {
@@ -75,5 +75,42 @@ describe("las plantillas usan tipos que el motor conoce", () => {
     for (const template of FLOW_TEMPLATES) {
       expect(getTrigger(template.trigger.type), `${template.key}: el trigger ${template.trigger.type} no existe`).toBeDefined();
     }
+  });
+});
+
+describe("los flujos de reuniones sin evento", () => {
+  it("todos llevan el filtro no_event y ninguno filtra por evento", () => {
+    expect(NO_EVENT_TEMPLATES.map((t) => t.key)).toEqual([
+      "no_event_confirmation",
+      "no_event_reminder_24h",
+      "no_event_reminder_1h",
+      "no_event_rescheduled",
+      "no_event_cancelled",
+    ]);
+    for (const t of NO_EVENT_TEMPLATES) {
+      const data = templateGraph(t, null).nodes[0].data as Record<string, unknown>;
+      expect(data.no_event, t.key).toBe(true);
+      expect(data.event_type_ids, t.key).toBeUndefined();
+    }
+  });
+
+  it("ninguno ofrece reagendar: una reunion sin evento no tiene pagina de horarios", () => {
+    for (const t of NO_EVENT_TEMPLATES) {
+      expect(t.body, t.key).not.toContain("reschedule_url");
+      expect(t.body, t.key).not.toContain("scheduling.link");
+    }
+  });
+
+  it("las plantillas nuevas no dejan una linea de link vacia", () => {
+    for (const t of [...FLOW_TEMPLATES, ...NO_EVENT_TEMPLATES]) {
+      expect(t.body, t.key).not.toContain("booking.meet_url");
+    }
+  });
+
+  it("se reconocen por su clave", () => {
+    expect(isNoEventTemplateKey("no_event_confirmation")).toBe(true);
+    expect(isNoEventTemplateKey("confirmation")).toBe(false);
+    expect(isNoEventTemplateKey(null)).toBe(false);
+    expect(templateByKey("no_event_cancelled")?.name).toBe("Aviso de cancelación");
   });
 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { processEvent, type AutomationEvent } from "@/lib/flow-engine/automation-events";
+import { shouldWaitForMeet } from "@/lib/scheduling/automation/meet-wait";
 
 /**
  * GET /api/cron/automation-events
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
 
   const { data: events, error } = await supabase
     .from("automation_events")
-    .select("id, workspace_id, event_type, contact_id, member_user_id, source_type, source_id, payload")
+    .select("id, workspace_id, event_type, contact_id, member_user_id, source_type, source_id, payload, created_at")
     .is("processed_at", null)
     .order("created_at", { ascending: true })
     .limit(BATCH);
@@ -52,8 +53,17 @@ export async function GET(request: NextRequest) {
   }
 
   let fired = 0;
-  for (const event of events as AutomationEvent[]) {
+  for (const event of events as Array<AutomationEvent & { created_at?: string | null }>) {
     try {
+      // La confirmacion espera el link de Meet: el evento queda sin procesar y lo toma una corrida siguiente.
+      if (event.event_type === "booking_created" && typeof event.payload?.booking_id === "string") {
+        const { data: booking } = await supabase
+          .from("bookings")
+          .select("location_type, meet_url, google_sync_status")
+          .eq("id", event.payload.booking_id)
+          .maybeSingle();
+        if (shouldWaitForMeet({ eventType: event.event_type, createdAt: event.created_at, booking })) continue;
+      }
       fired += await processEvent(supabase, event);
       await supabase
         .from("automation_events")

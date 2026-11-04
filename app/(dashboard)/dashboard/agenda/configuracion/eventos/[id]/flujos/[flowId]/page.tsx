@@ -30,7 +30,7 @@ export default async function FlujoDelEventoPage({ params }: { params: Promise<{
   if (triggerType.startsWith("booking_")) {
     const { data: bookings } = await ctx.supabase
       .from("bookings")
-      .select("id, event_type_id, host_user_id, origin, status, category_snapshot, start_at, end_at, created_at, reschedule_count")
+      .select("id, event_type_id, host_user_id, origin, status, category_snapshot, metadata, start_at, end_at, created_at, reschedule_count")
       .eq("workspace_id", ctx.workspace.id)
       .eq("status_group", "active")
       .gt("end_at", new Date().toISOString())
@@ -47,7 +47,8 @@ export default async function FlujoDelEventoPage({ params }: { params: Promise<{
 
   return (
     <LinearFlowEditor
-      eventId={id}
+      backPath={`/dashboard/agenda/configuracion/eventos/${id}?seccion=flows`}
+      routeForHeader={`/dashboard/agenda/configuracion/eventos/${id}/flujos/${flowId}`}
       flowId={flowId}
       flowName={found.flow.name}
       tree={tree}

@@ -16,7 +16,16 @@ import { Switch } from "@/components/ui/switch";
 import type { EventFlowRow } from "@/lib/scheduling/data/event-flows";
 import { toggleEventFlow } from "@/lib/actions/scheduling/event-flows";
 
-export function FlowsSection({ eventId, flows }: { eventId: string; flows: EventFlowRow[] }) {
+export function FlowsSection({
+  flowsPath,
+  flows,
+  canEdit = true,
+}: {
+  /** La ruta de la seccion: cada flujo se edita en `<flowsPath>/flujos/<id>`. */
+  flowsPath: string;
+  flows: EventFlowRow[];
+  canEdit?: boolean;
+}) {
   const router = useRouter();
   const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [pending, start] = useTransition();
@@ -54,15 +63,16 @@ export function FlowsSection({ eventId, flows }: { eventId: string; flows: Event
           {flows.map((flow) => (
             <li key={flow.id} className="flex flex-wrap items-center gap-3 p-3">
               <span className="min-w-0 flex-1">
-                <Link
-                  href={`/dashboard/agenda/configuracion/eventos/${eventId}/flujos/${flow.id}`}
-                  className="block truncate text-sm font-medium hover:underline"
-                >
-                  {flow.name}
-                </Link>
+                {canEdit ? (
+                  <Link href={`${flowsPath}/flujos/${flow.id}`} className="block truncate text-sm font-medium hover:underline">
+                    {flow.name}
+                  </Link>
+                ) : (
+                  <span className="block truncate text-sm font-medium">{flow.name}</span>
+                )}
                 <span className="block text-xs text-muted-foreground">{flow.describe}</span>
               </span>
-              <Switch checked={flow.enabled} disabled={pending} onChange={(v: boolean) => toggle(flow, v)} label={`Encender ${flow.name}`} />
+              <Switch checked={flow.enabled} disabled={pending || !canEdit} onChange={(v: boolean) => toggle(flow, v)} label={`Encender ${flow.name}`} />
             </li>
           ))}
         </ul>

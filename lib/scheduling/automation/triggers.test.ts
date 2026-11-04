@@ -175,3 +175,23 @@ describe("describeTrigger", () => {
     expect(describeTrigger("booking_before_start", { offset_minutes: 47 })).toBe("47 minutos antes de la reunión");
   });
 });
+
+describe("el filtro de las reuniones sin evento", () => {
+  const booking = { event_type_id: "ev-interno", host_user_id: "u1", origin: "manual", status: "scheduled" as const };
+
+  it("un flujo sin evento solo corre para una reunion con titulo libre", () => {
+    expect(matchesCommonFilters({ no_event: true }, { ...booking, metadata: { without_event: true } })).toBe(true);
+    expect(matchesCommonFilters({ no_event: true }, { ...booking, metadata: {} })).toBe(false);
+    expect(matchesCommonFilters({ no_event: true }, booking)).toBe(false);
+  });
+
+  it("un flujo de un evento no corre para una reunion sin evento: nunca salen dos emails", () => {
+    const config = { event_type_ids: ["ev-real"] };
+    expect(matchesCommonFilters(config, { ...booking, metadata: { without_event: true } })).toBe(false);
+  });
+
+  it("un flujo general, sin filtros, sigue corriendo para todas", () => {
+    expect(matchesCommonFilters({}, { ...booking, metadata: { without_event: true } })).toBe(true);
+    expect(matchesCommonFilters({}, booking)).toBe(true);
+  });
+});

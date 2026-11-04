@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isValidTimeZone, listTimeZones, DEFAULT_TIMEZONE } from "./timezone";
+import { isValidTimeZone, listTimeZones, timezoneOptions, DEFAULT_TIMEZONE } from "./timezone";
 
 describe("zona horaria (F3)", () => {
   it("acepta zonas IANA válidas", () => {
@@ -25,5 +25,18 @@ describe("zona horaria (F3)", () => {
     const list = listTimeZones();
     expect(list.length).toBeGreaterThan(0);
     expect(list).toContain("America/Costa_Rica");
+  });
+
+  it("se puede elegir UTC y el nombre que detecta el navegador para Buenos Aires", () => {
+    const list = listTimeZones();
+    expect(list).toContain("UTC");
+    expect(list).toContain("America/Argentina/Buenos_Aires");
+    expect(new Set(list).size).toBe(list.length);
+  });
+
+  it("las opciones siempre incluyen el valor actual: un select sin su valor muestra otra zona", () => {
+    expect(timezoneOptions("Marte/Olympus", ["UTC"])).toEqual(["Marte/Olympus", "UTC"]);
+    expect(timezoneOptions("UTC", ["UTC"])).toEqual(["UTC"]);
+    expect(timezoneOptions("", ["UTC"])).toEqual(["UTC"]);
   });
 });

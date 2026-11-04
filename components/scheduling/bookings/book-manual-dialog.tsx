@@ -13,6 +13,9 @@
  *  - La ubicacion es un texto libre o un Google Meet. El boton de Meet aparece
  *    solo si quien atiende puede crearlo (`meetAvailableFor`, calculado en el
  *    servidor); el servidor lo vuelve a comprobar al agendar.
+ *  - El dia y la hora se escriben en la zona de quien agenda. La zona del invitado
+ *    es otra cosa: es en la que le llegan los emails, y por eso se ve y se elige
+ *    aca, con la hora que va a leer esa persona.
  *
  * Las reglas (que falta, que es valido) son las de `planManualBooking`, las
  * mismas que repite el servidor.
@@ -23,8 +26,12 @@ import { useRouter } from "next/navigation";
 import { CalendarClock, Check, Loader2, UserPlus, Video, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bookManuallyQuick } from "@/lib/actions/scheduling/bookings";
-import { MANUAL_DURATIONS, MANUAL_LOCATION_MAX, planManualBooking, type ManualBookingField } from "@/lib/scheduling/booking/manual-input";
-import { dateInTz, minutesOfDayInTz, minutesToWallTime } from "@/lib/scheduling/time/tz";
+import { initialInviteeTimezone, MANUAL_DURATIONS, MANUAL_LOCATION_MAX, planManualBooking, type ManualBookingField } from "@/lib/scheduling/booking/manual-input";
+import { confirmationSettingsPath, guestNotice, hasActiveConfirmation } from "@/lib/scheduling/booking/guest-notice";
+import type { BookingTriggerConfig } from "@/lib/scheduling/automation/triggers";
+import { formatDateTimeWithZone, gmtOffsetLabel, timezoneCityLabel } from "@/lib/scheduling/booker/format";
+import { dateInTz, minutesOfDayInTz, minutesToWallTime, wallClockToUtc } from "@/lib/scheduling/time/tz";
+import { TimezoneSelect } from "@/components/ui/timezone-select";
 
 export interface ManualEventOption {
   id: string;
@@ -32,6 +39,8 @@ export interface ManualEventOption {
   durationMinutes: number;
   categoryLabel: string;
   hostName: string;
+  hostUserId: string;
+  categoryId: string | null;
   status: "active" | "hidden" | "inactive";
   color: string | null;
   /** La ubicacion del evento: el valor inicial del campo (se puede cambiar). */
@@ -46,6 +55,8 @@ export interface ManualContactOption {
   name: string;
   detail: string;
   timezone: string | null;
+  email: string | null;
+  phone: string | null;
 }
 
 const inputClass =
@@ -73,6 +84,7 @@ export function BookManualDialog({
   hosts,
   currentUserId,
   areas,
+  confirmationConfigs = [],
 }: {
   events: ManualEventOption[];
   timezone: string;
@@ -87,6 +99,8 @@ export function BookManualDialog({
   currentUserId: string;
   /** Las areas de la agenda (sin evento, la reunion va a una; por defecto "Otros"). */
   areas: Array<{ id: string; name: string; isDefault: boolean }>;
+  /** Los flujos de "Se agendó una reunión" prendidos: dicen si sale el email de confirmación. */
+  confirmationConfigs?: BookingTriggerConfig[];
 }) {
   const router = useRouter();
   const titleId = useId();
@@ -110,6 +124,8 @@ export function BookManualDialog({
   const [hostUserId, setHostUserId] = useState(currentUserId);
   const [categoryId, setCategoryId] = useState(areas.find((a) => a.isDefault)?.id ?? areas[0]?.id ?? "");
   const [notes, setNotes] = useState("");
+  // null = sin tocar: la zona sale del contacto o de su telefono, y sigue a lo que se cargue.
+  const [chosenInviteeTz, setChosenInviteeTz] = useState<string | null>(null);
   // Sin evento, Meet arranca prendido si quien atiende puede crearlo (lo que pasaba siempre).
   const [meetOn, setMeetOn] = useState(() => hosts.find((h) => h.userId === currentUserId)?.meetAvailable ?? false);
   const [locationText, setLocationText] = useState("");
@@ -127,6 +143,39 @@ export function BookManualDialog({
     : hostUserId === currentUserId
       ? "No tenés Google Calendar conectado: no se puede crear un Meet."
       : `${host?.label ?? "Esa persona"} no tiene Google Calendar conectado: no se puede crear un Meet.`;
+
+  const inferredTz = initialInviteeTimezone({
+    contactTimezone: contact?.timezone,
+    phone: contact ? contact.phone : phone,
+    viewerTimezone: timezone,
+  });
+  const inviteeTimezone = chosenInviteeTz ?? inferredTz.timezone;
+  const inviteeHint = chosenInviteeTz
+    ? "La elegiste vos: queda guardada en el contacto."
+    : inferredTz.source === "contact"
+      ? "Es la que tiene guardada en su ficha."
+      : inferredTz.source === "phone"
+        ? "La deduje del código de país de su teléfono."
+        : "No tengo datos de su zona: usé la tuya. Cambiala si está en otro país.";
+  const inviteeSees = useMemo(() => {
+    try {
+      return formatDateTimeWithZone(wallClockToUtc(date, time, timezone), inviteeTimezone);
+    } catch {
+      return null;
+    }
+  }, [date, time, timezone, inviteeTimezone]);
+
+  const hasGuest = Boolean(contact) || newGuest;
+  const notice = guestNotice({
+    googleAvailable: meetAvailable,
+    confirmationOn: hasActiveConfirmation(confirmationConfigs, {
+      eventTypeId: eventId,
+      hostUserId: event ? event.hostUserId : hostUserId,
+      categoryId: event ? event.categoryId : categoryId || null,
+    }),
+    // Con un invitado nuevo el email es obligatorio: lo exige el formulario.
+    hasEmail: contact ? Boolean(contact.email) : true,
+  });
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -183,6 +232,8 @@ export function BookManualDialog({
       time,
       durationMinutes: duration,
       timezone,
+      inviteeTimezone,
+      inviteeTimezoneChosen: chosenInviteeTz !== null,
       contactId: contact?.id ?? null,
       name: contact ? "" : name,
       email: contact ? "" : email,
@@ -342,6 +393,7 @@ export function BookManualDialog({
                   onClick={() => {
                     setContact(null);
                     setGuestTerm("");
+                    setChosenInviteeTz(null);
                   }}
                   className="shrink-0 text-xs font-medium text-primary-ink hover:underline"
                 >
@@ -384,6 +436,7 @@ export function BookManualDialog({
                     setName("");
                     setEmail("");
                     setPhone("");
+                    setChosenInviteeTz(null);
                   }}
                   className="text-xs font-medium text-primary-ink hover:underline"
                 >
@@ -480,7 +533,29 @@ export function BookManualDialog({
               </select>
             </div>
           </div>
-          <p className="-mt-2 text-[11px] text-muted-foreground">Hora de {timezone.replace(/_/g, " ")}. Podés elegir cualquier horario.</p>
+          <p className="-mt-2 text-[11px] text-muted-foreground">
+            Tu hora: {timezoneCityLabel(timezone)} ({gmtOffsetLabel(new Date(), timezone)}). Podés elegir cualquier horario.
+          </p>
+
+          {/* La zona del invitado: en la que le llegan los emails */}
+          <div>
+            <label htmlFor={`${titleId}-invitee-tz`} className={labelClass}>
+              Zona del invitado
+            </label>
+            <TimezoneSelect
+              id={`${titleId}-invitee-tz`}
+              value={inviteeTimezone}
+              onChange={setChosenInviteeTz}
+              className={inputClass}
+              ariaLabel="Zona horaria del invitado"
+            />
+            {inviteeSees && (
+              <p className="mt-1.5 text-xs font-medium text-foreground">
+                Va a ver: {inviteeSees}
+              </p>
+            )}
+            <p className="mt-0.5 text-xs text-muted-foreground">{inviteeHint}</p>
+          </div>
 
           {/* Sin evento: quien atiende y el area */}
           {!event && (
@@ -585,6 +660,21 @@ export function BookManualDialog({
               className={cn(inputClass, "h-auto py-2")}
             />
           </div>
+
+          {/* Que le llega: la respuesta a "¿se entera?" antes de agendar */}
+          {hasGuest && (
+            <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              <p>{notice.summary}</p>
+              {notice.email === "off" && (
+                <p className="mt-1">
+                  El email de confirmación está apagado.{" "}
+                  <a href={confirmationSettingsPath(eventId)} target="_blank" rel="noreferrer" className="font-medium text-primary-ink hover:underline">
+                    Configurarlo
+                  </a>
+                </p>
+              )}
+            </div>
+          )}
 
           {error && (
             <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">

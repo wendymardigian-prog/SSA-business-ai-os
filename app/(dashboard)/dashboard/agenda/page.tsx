@@ -34,6 +34,8 @@ import { dueDateWindow } from "@/lib/tasks/calendar"; // @plantilla-quitar(tarea
 import { parseTasksMode } from "@/lib/tasks/calendar-ui"; // @plantilla-quitar(tareas)
 import type { TaskRow } from "@/lib/tasks/types"; // @plantilla-quitar(tareas)
 import { getWorkspaceMembers } from "@/lib/workspace-members";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
+import type { BookingTriggerConfig } from "@/lib/scheduling/automation/triggers";
 
 export const dynamic = "force-dynamic";
 
@@ -90,7 +92,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       : Promise.resolve(null),
   ]);
 
-  const timezone = profile?.timezone ?? (ctx.workspace as { timezone?: string }).timezone ?? "America/Costa_Rica";
+  // La zona de quien mira, la misma de todo el sistema. `scheduling_profiles.timezone` es otra cosa: la de su horario de atencion.
+  const timezone = await resolveViewerTimezone((ctx.workspace as { timezone?: string }).timezone);
   const categoryRows = categories.map(toCategoryRow);
   const anchor = /^\d{4}-\d{2}-\d{2}$/.test(one(query.dia) ?? "") ? (one(query.dia) as string) : dateInTz(new Date(), timezone);
 
@@ -287,6 +290,16 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   // Quien puede crear un Google Meet al agendar a mano (lo vuelve a comprobar el servidor al agendar).
   const meetContext = await loadMeetContext(await createServiceClient(), ctx.workspace.id, [...names.keys(), ...events.map((e) => e.owner_user_id)]);
   const hasGoogleByUser = new Set((googleRows ?? []).map((c) => c.user_id));
+  // Los flujos de confirmacion prendidos: el modal de agendar a mano dice si sale el email.
+  // Con el servidor: un rol sin permiso sobre automatizaciones tambien tiene que saberlo.
+  const { data: confirmationRows } = await (await createServiceClient())
+    .from("triggers")
+    .select("config, flows!inner(status)")
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("type", "booking_created")
+    .eq("is_active", true)
+    .eq("flows.status", "published");
+  const confirmationConfigs = (confirmationRows ?? []).map((t) => (t.config ?? {}) as BookingTriggerConfig);
   const shareableEvents: ShareableEvent[] = events
     .filter((e) => e.status === "active")
     .map((e) => {
@@ -319,6 +332,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         durationMinutes: e.duration_minutes,
         categoryLabel: categoryLabel(e.category_id, categoryRows),
         hostName: names.get(e.owner_user_id) ?? "Sin nombre",
+        hostUserId: e.owner_user_id,
+        categoryId: e.category_id,
         status: e.status as "active" | "hidden" | "inactive",
         color: e.color,
         locationType: e.location_type === "google_meet" ? "google_meet" : "manual",
@@ -334,6 +349,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
           .filter((c) => c.parent_id === null && !c.archived_at)
           .map((c) => ({ id: c.id, name: c.name, isDefault: c.id === defaultId }));
       })()}
+      confirmationConfigs={confirmationConfigs}
       viewerId={ctx.user.id}
       shareableEvents={shareableEvents}
       hasEverBooked={(everCount ?? 0) > 0}
