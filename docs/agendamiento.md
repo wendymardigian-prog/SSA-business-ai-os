@@ -168,6 +168,40 @@ revierte.
 - Botón en el panel de detalle, visible solo con `bookings.manage` sobre una
   agenda activa.
 
+## Cambiar el anfitrión de un evento (00290, 4/11/2026)
+
+En el editor del evento, sección **Detalles**, campo **Anfitrión**. Es distinto de
+reasignar una reunión (abajo): esto cambia con quién se agendan las reuniones
+**nuevas**. Las ya agendadas conservan su `host_user_id` y se reasignan una por una.
+
+- **Lo puede cambiar quien tiene `scheduling.manage_others`** (Owner y Admin siempre),
+  también si es el dueño del evento: dar un evento es tocar la agenda de otra persona.
+  Sin el permiso, el campo solo muestra quién es.
+- **El cambio es una transacción** (`change_event_type_host`, solo `service_role`; la
+  llama `changeEventHost` después de chequear el permiso): el dueño, el horario y los
+  calendarios en null (eran filas de la persona anterior; sin elegir, el evento usa los
+  por defecto de quien atiende) y el link anterior. Queda en `audit_log`
+  (`event_type.host_changed`). No se guarda ninguna copia de lo elegido: volver al
+  anfitrión anterior no recupera su horario ni sus calendarios del evento.
+- **El link anterior sigue funcionando sin redirigir** (`event_type_moved_links`, que
+  `findPublicEvent` mira cuando en ese link no hay un evento real). Guarda el evento,
+  no un destino: abre al anfitrión y el slug de hoy, sin cadenas. Por eso funcionan
+  igual los embeds, los parámetros de atribución y agendar con una pestaña ya abierta.
+  Un evento real en ese link le gana, aunque esté inactivo. Cambiar el slug de un evento
+  sigue sin dejar un link anterior: solo cambiar de anfitrión lo hace.
+- **Lo que frena el cambio** (`hostChangeBlocker`): en un evento activo u oculto, que la
+  persona tenga la agenda desactivada, su Google desconectado con calendarios en uso, no
+  tenga horario por defecto, o que el evento use Meet y ella no tenga un calendario donde
+  crearlo. Sin eso, el link público dejaría de ofrecer horarios sin que nadie se entere.
+  Un evento inactivo pasa siempre: lo que falte lo dice "Listo para activar".
+- **Si la persona ya tiene un evento con ese slug**, se avisa (`slug_taken`) y no cambia
+  nada: hay que cambiarle el link a uno de los dos.
+- **Reagendar sale de la reunión, no del link**: el invitado ve los horarios de quien
+  atiende SU reunión (`hostUserId` en `getPublicSlots`, `?reschedule=<uid>` en la ruta de
+  horarios). También corrige reagendar una reunión reasignada, que daba 404.
+- El editor se arma de nuevo al cambiar (`key={owner_user_id}`), porque lo elegido en
+  Disponibilidad ya no aplica; por eso pide guardar antes los cambios pendientes.
+
 ## Reasignar anfitrión (Agenda v2)
 
 Cambia quién atiende la llamada, sin avisarle al invitado y sin crear un

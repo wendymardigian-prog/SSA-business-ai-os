@@ -98,6 +98,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "category.archived": "archivó una categoría de agenda",
   "event_type.created": "creó un evento de agenda",
   "event_type.updated": "editó un evento de agenda",
+  "event_type.host_changed": "cambió el anfitrión de un evento de agenda",
   "event_type.deleted": "borró un evento de agenda",
   "booking.created": "agendó una llamada",
   "booking.rescheduled": "reagendó una llamada",

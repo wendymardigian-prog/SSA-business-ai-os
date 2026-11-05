@@ -115,6 +115,87 @@ describe("GET /api/public/scheduling/slots", () => {
   });
 });
 
+describe("un evento que cambió de anfitrión (00290)", () => {
+  /** El evento ya es de Beto; `ana/llamada-de-triaje` es su link anterior. */
+  function moved(eventOver: Record<string, unknown> = {}) {
+    db = schedulingWorld({
+      event: { owner_user_id: "user-2", schedule_id: null, ...eventOver },
+      bookings: [
+        {
+          id: "bk-1",
+          uid: "abcdefghijklmnopqrstuv",
+          workspace_id: "ws-1",
+          event_type_id: "ev-1",
+          host_user_id: "user-1",
+          status: "scheduled",
+          start_at: START,
+          end_at: "2026-10-01T16:30:00.000Z",
+        },
+      ],
+    });
+    db.rows("scheduling_profiles").push({ id: "prof-2", workspace_id: "ws-1", user_id: "user-2", username: "beto", display_name: "Beto", is_active: true, default_destination_calendar_id: null });
+    db.rows("availability_schedules").push({ ...db.rows("availability_schedules")[0], id: "sch-2", user_id: "user-2", name: "Horario de Beto" });
+    db.rows("event_type_moved_links").push({ username: "ana", slug: "llamada-de-triaje", workspace_id: "ws-1", event_type_id: "ev-1" });
+  }
+
+  it("el link anterior sigue abriendo el evento, con el anfitrión de hoy", async () => {
+    moved();
+    const res = await getEvent(eventRequest("user=ana&event=llamada-de-triaje"));
+    expect(res.status).toBe(200);
+    expect((await res.json()).event.hostName).toBe("Beto");
+  });
+
+  it("el link anterior no revive un evento inactivo ni borrado", async () => {
+    moved({ status: "inactive" });
+    expect((await getEvent(eventRequest("user=ana&event=llamada-de-triaje"))).status).toBe(404);
+    moved({ deleted_at: "2026-09-01T00:00:00.000Z" });
+    expect((await getEvent(eventRequest("user=ana&event=llamada-de-triaje"))).status).toBe(404);
+  });
+
+  it("un evento nuevo en ese mismo link le gana al link anterior, aunque esté inactivo", async () => {
+    moved();
+    db.rows("event_types").push({ ...db.rows("event_types")[0], id: "ev-2", owner_user_id: "user-1", title: "Otro de Ana", status: "active" });
+    const res = await getEvent(eventRequest("user=ana&event=llamada-de-triaje"));
+    expect((await res.json()).event.title).toBe("Otro de Ana");
+
+    db.rows("event_types").find((e) => e.id === "ev-2")!.status = "inactive";
+    expect((await getEvent(eventRequest("user=ana&event=llamada-de-triaje"))).status).toBe(404);
+  });
+
+  it("si la persona anterior desactivó su agenda, su link viejo sigue funcionando", async () => {
+    moved();
+    db.rows("scheduling_profiles").find((p) => p.user_id === "user-1")!.is_active = false;
+    expect((await getEvent(eventRequest("user=ana&event=llamada-de-triaje"))).status).toBe(200);
+  });
+
+  it("se puede agendar por el link anterior: la reunión queda con el anfitrión de hoy", async () => {
+    moved({ slot_interval_minutes: 30 });
+    const res = await postBooking(
+      bookingRequest({ user: "ana", event: "llamada-de-triaje", startUtc: "2026-10-02T16:00:00.000Z", timezone: "America/Costa_Rica", responses: { name: "Lead", email: "lead@ejemplo.com" } }),
+    );
+    expect(res.status).toBe(200);
+    const created = db.rows("bookings").find((b) => b.id !== "bk-1");
+    expect(created?.host_user_id).toBe("user-2");
+  });
+
+  it("reagendar mira la agenda de quien atiende esa reunión, no la del dueño de hoy", async () => {
+    moved();
+    // Beto no tiene horario: si se mirara su agenda no habria nada que ofrecer.
+    db.rows("availability_schedules").splice(1, 1);
+    const res = await getSlots(slotsRequest(`user=ana&event=llamada-de-triaje&from=${START}&to=2026-10-08T16:00:00.000Z&tz=UTC&reschedule=abcdefghijklmnopqrstuv`));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.unavailableReason).toBeUndefined();
+    expect(Object.keys(body.slots).length).toBeGreaterThan(0);
+  });
+
+  it("un código de reunión que no existe: 404", async () => {
+    moved();
+    const res = await getSlots(slotsRequest(`user=ana&event=llamada-de-triaje&from=${START}&to=2026-10-08T16:00:00.000Z&tz=UTC&reschedule=no-existe`));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("POST /api/public/scheduling/bookings", () => {
   const body = {
     user: "ana",

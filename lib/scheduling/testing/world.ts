@@ -130,6 +130,7 @@ export function schedulingWorld(over: WorldOverrides = {}): MemoryDb {
           redirect_with_params: false,
           booking_fields: defaultBookingFields(),
           unavailable_messages: null,
+          is_internal: false,
           deleted_at: null,
           ...over.event,
         },

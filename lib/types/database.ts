@@ -588,6 +588,7 @@ export type AuditAction =
   | "category.archived"
   | "event_type.created"
   | "event_type.updated"
+  | "event_type.host_changed"
   | "event_type.deleted"
   | "booking.created"
   | "booking.rescheduled"
@@ -6238,6 +6239,13 @@ export interface Database {
         Relationships: [];
       };
       /** Reserva de «un paso no manda dos veces al mismo numero en la misma sesion» (00222). Solo la escribe el servidor. */
+      /** Links anteriores de un evento que cambio de anfitrion (00290). Solo service_role. */
+      event_type_moved_links: {
+        Row: { username: string; slug: string; workspace_id: string; event_type_id: string; created_at: string };
+        Insert: { username: string; slug: string; workspace_id: string; event_type_id: string; created_at?: string };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
       flow_send_claims: {
         Row: { id: string; workspace_id: string; session_id: string; node_id: string; target: string; created_at: string };
         Insert: { id?: string; workspace_id: string; session_id: string; node_id: string; target: string };
@@ -7177,6 +7185,11 @@ export interface Database {
         Returns: boolean;
       };
       /** Cola de envios (00285): toma el lugar del carril si ya vencio y lo corre a `p_next`. Solo service_role. */
+      /** Cambia el anfitrion de un evento y guarda el link anterior, en una transaccion (00290). Solo service_role. */
+      change_event_type_host: {
+        Args: { p_workspace_id: string; p_event_type_id: string; p_expected_host_id: string; p_new_host_id: string };
+        Returns: Json;
+      };
       claim_lane_slot: {
         Args: { p_channel_id: string; p_next: string };
         Returns: boolean;

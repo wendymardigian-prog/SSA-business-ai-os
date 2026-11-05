@@ -477,6 +477,14 @@ sus automatizaciones y la habilidad del agente. El detalle en
   docs/agendamiento.md.
 - **Una reunion la ve tambien el setter de su contacto** (00241, `can_see_booking`).
   Los flujos de un evento los toca solo quien puede editar ese evento.
+- **Cambiar el anfitrion de un evento** (00290, editor → Detalles, pide
+  `scheduling.manage_others`) solo cambia las reuniones NUEVAS: las ya agendadas
+  conservan su `host_user_id`. Va por `change_event_type_host`, en una transaccion,
+  y el link anterior sigue funcionando (`event_type_moved_links`, lo mira
+  `findPublicEvent`; un evento real en ese link le gana). **Reagendar nunca busca el
+  evento por el link**: sale de la reunion, porque su anfitrion puede no ser el dueño
+  de hoy. La 00290 va ANTES de desplegar el codigo. **La proxima libre es la `00291`**
+  (la `00289` la usa otra rama; confirmar con `list_migrations` y las ramas locales).
 
 ## Google Calendar
 

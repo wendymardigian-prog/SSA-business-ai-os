@@ -13,7 +13,7 @@ import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createServiceClient } from "@/lib/supabase/server";
 import { findBookingByUid, toPublicBooking } from "@/lib/scheduling/data/public-booking";
-import { getPublicEvent, getPublicSlots } from "@/lib/scheduling/slots-service";
+import { getPublicSlots, publicEventPayload } from "@/lib/scheduling/slots-service";
 import { parseEmbedParams } from "@/lib/scheduling/booker/embed-params";
 import { monthOf } from "@/lib/scheduling/booker/month-view";
 import { dateInTz } from "@/lib/scheduling/time/tz";
@@ -38,18 +38,20 @@ export default async function ReagendarPage({
 
   const booking = toPublicBooking(found);
   if (!booking.actions.canReschedule) redirect(`/calendario/agenda/${encodeURIComponent(uid)}`);
-  if (!booking.username) notFound();
+  if (!booking.username || !found.profile) notFound();
 
-  const event = await getPublicEvent(service, booking.username, booking.eventSlug);
-  if (!event) notFound();
+  // El evento y el anfitrion salen de la reunion, no del link: si el evento cambio
+  // de anfitrion o la reunion se reasigno, se mira la agenda de quien la atiende.
+  if (found.event.deleted_at || found.event.status === "inactive" || !found.profile.is_active) notFound();
+  const event = await publicEventPayload(service, found.event, found.profile);
 
   const timezone = booking.inviteeTimezone;
   const today = dateInTz(new Date(), timezone);
   const from = new Date(`${today}T00:00:00.000Z`).toISOString();
   const to = new Date(new Date(from).getTime() + 35 * 24 * 60 * 60 * 1000).toISOString();
   const slots = await getPublicSlots(service, {
-    username: booking.username,
-    slug: booking.eventSlug,
+    eventTypeId: found.event.id,
+    hostUserId: found.booking.host_user_id,
     from,
     to,
     timezone,
