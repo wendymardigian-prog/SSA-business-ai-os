@@ -29,7 +29,8 @@ El carril de email de la cola no tiene tope diario: sin la guardia, un broadcast
 3. **Canal**: el email del negocio.
 4. **Mensaje**:
    - Asunto con un respaldo por si falta el nombre: `{{contact.first_name|Hola}}, te espero el lunes`.
-   - En el cuerpo, la misma idea: `{{contact.first_name|hola}}`.
+   - En el cuerpo, la misma idea: `{{contact.first_name|hola}}`. Con un respaldo vacío, `Hola, {{contact.first_name|}}.` da «Hola, Ana.» o «Hola.».
+   - Texto de vista previa (opcional): la línea que se lee al lado del asunto en la bandeja de entrada.
 5. **Cuándo**:
    - «Ahora» para que empiece enseguida, dentro del máximo del día.
    - O «Programar» con fecha y hora.
@@ -39,7 +40,9 @@ El carril de email de la cola no tiene tope diario: sin la guardia, un broadcast
 
 - **Primero los más activos.** Salen primero los contactos con actividad más reciente (último mensaje, formulario, agenda o compra; si no hay ninguna, el alta más nueva). Si el día no alcanza, lo usan los que más probablemente abren.
 - **Lo que pasa del máximo no se pierde.** Queda pendiente y sale al día siguiente, en orden. El broadcast lo muestra («N esperan el máximo de emails de marketing del día»). No es un error.
-- **El freno.** Si en 24 horas, con al menos 50 enviados, rebotan más del 2 % o se marcan como spam más del 0,05 %, se pausa todo el marketing y te llega un aviso.
+- **El freno.** Si en 24 horas, con al menos 50 enviados, los rebotes o las quejas de spam pasan su límite, se pausa todo el marketing y te llega un aviso.
+  - Los límites se cambian en Ajustes → Integraciones → Resend → «Entrega de marketing». Sin tocarlos: 2 % de rebotes y 0,05 % de quejas.
+  - Ojo con las quejas: con 0,05 %, hasta 2.000 envíos en 24 horas una sola queja ya pausa todo.
   - Los transaccionales (confirmaciones de agenda, contratos) siguen saliendo.
   - Se reanuda a mano desde la tarjeta de Resend, con confirmación.
 - **Los resultados.** En la página del broadcast, «Resultados del email» muestra entregados, abiertos (aproximado), clics, rebotes, quejas y bajas de ese email. La lista se filtra por estado y por resultado, con link a cada ficha. En la ficha del contacto, el historial muestra lo mismo para cada email.

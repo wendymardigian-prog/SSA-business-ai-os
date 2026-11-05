@@ -697,6 +697,7 @@ Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla.
 - **Etiquetas**: agregar o quitar sale del tipo del paso (antes «Agregar etiqueta» del lienzo QUITABA); el nombre acepta
   variables; quitar no crea etiquetas.
 - **Enviar mensaje**: las variables se reemplazan en todo el mensaje (`interpolateDeep`), una sola vez.
+- **Enviar email, vista previa y saludo**: `preheader` (opcional, con variables) es la línea que la bandeja muestra al lado del asunto; se pone después de limpiar el HTML (`withPreheader`). Un respaldo vacío saluda bien en los dos casos: `Hola, {{contact.first_name|}}.` da «Hola, Ana.» o «Hola.» (`dropDanglingComma`).
 - **Enviar email**: `attachments: [{ assetId }]`, recursos de la banca con archivo, hasta 10 y 25 MB
   (`lib/email/attachment-limits.ts`, `lib/email/flow-attachments.ts`).
 - **WhatsApp**: Evolution manda botones y respuestas rápidas como lista numerada; tope de 200 envíos automáticos por hora.
