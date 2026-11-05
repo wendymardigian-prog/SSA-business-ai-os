@@ -1810,6 +1810,13 @@ Lo que hizo falta para los recordatorios de una clase con fecha fija. Detalle en
 - **«Esperar hasta» se guarda en la hora del negocio** (`waitUntilLocal`, sin zona; la pone `workspaces.timezone`, nunca el navegador). **Con la fecha ya pasada se saltea el paso siguiente** y el flujo sigue con el que viene (`SKIP_NEXT_STEP`, `node_skipped` con `date_passed`). Las esperas por duración no cambian (`clase-flow-characterization.test.ts`).
 - **`oncePerContact` en un disparador de contacto** (apagado por defecto): quien ya tuvo una sesión de ese flujo, salvo cancelada, no vuelve a entrar. Se mira `flow_sessions` porque publicar borra `trigger_fires`.
 
+# Citas de un email, respaldo y fechas en los flujos (4/11/2026)
+
+- **`messages.text` de un email entrante guarda solo lo que escribió la persona; la cita va a `email_quoted_text`** (`splitQuotedReply`, `lib/email/quoted-reply.ts`, conservadora: corta solo si todo lo que sigue es cita). **La regla de baja nunca lee una cita** (`withoutQuotedLines`): una respuesta que citaba el pie «Darme de baja» marcaba «no contactar». La burbuja deja la cita cerrada y separa las filas viejas al dibujarlas.
+- **La bandeja no ofrece micrófono ni clip en email** (`canAttachFiles` en `planComposerActions`). «Enviar email» ofrece imagen y archivo (`EMAIL_PICKABLE_KINDS`).
+- **Un flujo entiende `{{x|respaldo}}` y `{{answer.x}}` muestra las fechas para leer** (`{{answer_raw.x}}` conserva lo guardado). Detalle en [docs/flow-registry.md](docs/flow-registry.md).
+- **`00293_messages_email_quoted`** (aditiva) va **ANTES** del deploy: **aplicada y registrada** el 4/11/2026. **La próxima libre es la `00294`** (la `00289` y la `00290` son de otras sesiones y la `00292` está en otra rama; confirmar con `list_migrations` y las ramas locales).
+
 # Zonas horarias y confirmaciones de agenda (4/11/2026)
 
 Cada persona ve TODAS las fechas y horas en su zona. Detalle en [docs/agendamiento.md](docs/agendamiento.md) («Zonas horarias», «Reuniones sin evento») y [docs/tareas.md](docs/tareas.md).

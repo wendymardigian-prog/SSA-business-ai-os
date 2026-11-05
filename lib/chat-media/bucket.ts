@@ -109,6 +109,8 @@ export function isSafeStoragePath(path: string | null | undefined): path is stri
 export function safeFilename(name: string | null | undefined, fallback = "adjunto"): string {
   const clean = (name ?? "")
     .normalize("NFKD")
+    // Sin los acentos sueltos que deja separar las letras: si no, «Cotización» salía «Cotizacio-n».
+    .replace(/\p{M}/gu, "")
     .replace(/[^\w.\-]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "")

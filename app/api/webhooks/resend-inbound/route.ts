@@ -34,7 +34,7 @@ import { claimWebhookEvent, type ChannelRow } from "@/lib/inbound";
 import { verifySvixSignature, REJECTION_REASONS } from "@/lib/email/svix";
 import { inboundRecipients, pickOurAddress, domainOf, resolveInboundChannel, type InboundChannelRef } from "@/lib/email/inbound-address";
 import { RESEND_WORKSPACE_PARAM } from "@/lib/webhook-url";
-import { processInboundEmail, type InboundEmail } from "@/lib/email/inbound";
+import { emailReplyText, processInboundEmail, type InboundEmail } from "@/lib/email/inbound";
 import { fetchReceivedEmail } from "@/lib/email/receiving";
 import { runEmailTriggers } from "@/lib/email/triggers";
 import { applyDeliveryEvent, candidateWorkspaces, isDeliveryEvent, type DeliveryEvent } from "@/lib/email/delivery-events";
@@ -194,7 +194,8 @@ async function handle(request: NextRequest) {
           contactId: result.contactId,
           conversationId: result.conversationId,
           subject: email.subject,
-          text: email.text ?? "",
+          // Sin lo citado: una palabra clave en el email de antes no es lo que la persona escribió ahora.
+          text: emailReplyText(email),
           emailId,
         });
       }
