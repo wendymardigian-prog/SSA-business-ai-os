@@ -88,9 +88,16 @@ export function pickerVariables(input: PickerVariablesInput): string[] {
   return out;
 }
 
-/** El nombre de pila: la primera palabra del nombre visible. */
+/** Solo letras (de cualquier idioma), con apóstrofes o guiones adentro: «María», «O'Brien», «Ana-Laura». */
+const GREETABLE_NAME = /^\p{L}[\p{L}\p{M}'’-]*$/u;
+
+/**
+ * El nombre de pila con el que saludar: la primera palabra del nombre visible, o vacío si esa palabra no sirve para
+ * saludar a nadie («F», «Prof.», un email, un id o un @usuario). Mejor «Hola.» que «Hola, F.».
+ */
 export function firstNameOf(displayName: string | null | undefined): string {
-  return (displayName ?? "").trim().split(/\s+/)[0] ?? "";
+  const first = (displayName ?? "").trim().split(/\s+/)[0] ?? "";
+  return first.length >= 2 && GREETABLE_NAME.test(first) ? first : "";
 }
 
 /**
