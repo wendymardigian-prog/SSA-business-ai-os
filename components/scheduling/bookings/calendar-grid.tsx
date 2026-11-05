@@ -175,7 +175,7 @@ export function BookingsCalendar({
       if (!saved) return; // la accion ya mostro el motivo y devolvio la tarea a su lugar
       toast.push({
         tone: "ok",
-        text: movedMessage(patch, timeFormat, wb.today),
+        text: movedMessage(patch, timeFormat, wb.today, { workspaceTz: wb.timeZone, viewerTz: timezone }),
         action: { label: "Deshacer", onClick: () => void wb.actions.edit(task.id, undoPatch(before)) },
       });
     });

@@ -67,14 +67,22 @@ describe("lastRunLabel", () => {
   const now = new Date("2026-09-28T20:00:00.000Z");
 
   it("hoy, ayer y una fecha", () => {
-    expect(lastRunLabel("2026-09-28T09:00:00.000Z", now)).toMatch(/^Hoy /);
-    expect(lastRunLabel("2026-09-27T09:00:00.000Z", now)).toMatch(/^Ayer /);
-    expect(lastRunLabel("2026-09-23T09:00:00.000Z", now)).toMatch(/sept/);
+    expect(lastRunLabel("2026-09-28T09:00:00.000Z", "UTC", now)).toBe("Hoy 09:00");
+    expect(lastRunLabel("2026-09-27T09:00:00.000Z", "UTC", now)).toBe("Ayer 09:00");
+    expect(lastRunLabel("2026-09-23T09:00:00.000Z", "UTC", now)).toMatch(/sept/);
   });
 
   it("sin corridas lo dice", () => {
-    expect(lastRunLabel(null, now)).toBe("Nunca corrió");
-    expect(lastRunLabel("no es una fecha", now)).toBe("Nunca corrió");
+    expect(lastRunLabel(null, "UTC", now)).toBe("Nunca corrió");
+    expect(lastRunLabel("no es una fecha", "UTC", now)).toBe("Nunca corrió");
+  });
+
+  it("la hora y el corte de hoy/ayer son los de la zona de quien mira", () => {
+    // Las 01:30 UTC del 29 son todavia las 22:30 del 28 en Buenos Aires.
+    const noche = new Date("2026-09-29T01:30:00.000Z");
+    expect(lastRunLabel("2026-09-29T00:30:00.000Z", "America/Argentina/Buenos_Aires", noche)).toBe("Hoy 21:30");
+    expect(lastRunLabel("2026-09-28T02:00:00.000Z", "America/Argentina/Buenos_Aires", noche)).toBe("Ayer 23:00");
+    expect(lastRunLabel("2026-09-29T00:30:00.000Z", "UTC", noche)).toBe("Hoy 00:30");
   });
 });
 

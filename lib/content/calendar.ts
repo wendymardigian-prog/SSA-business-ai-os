@@ -200,7 +200,7 @@ export function reschedule(params: {
   }
 
   // La hora del dia se conserva tal cual: se reemplaza solo la parte de fecha
-  // de su representacion en la zona del workspace.
+  // de su representacion en la zona de quien la mueve.
   const time = new Intl.DateTimeFormat("en-GB", {
     timeZone: params.timeZone,
     hour: "2-digit",

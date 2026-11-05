@@ -6,6 +6,7 @@ import { AlertTriangle, Bot, MoreHorizontal } from "lucide-react";
 import { MediaAttachment } from "@/components/inbox/media-attachment";
 import type { ThreadMessage } from "@/lib/whatsapp-groups/thread";
 import { cn } from "@/lib/utils";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { CreateGroupAutomationDialog } from "./create-group-automation-dialog";
 
 /**
@@ -15,7 +16,8 @@ import { CreateGroupAutomationDialog } from "./create-group-automation-dialog";
  */
 export function GroupMessageBubble({ message, canCreateAutomation }: { message: ThreadMessage; canCreateAutomation: boolean }) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const time = new Date(message.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  const timeZone = useViewerTimezone();
+  const time = new Date(message.createdAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", timeZone });
   const offerAutomation = canCreateAutomation && !message.failed && (message.outbound || message.poll !== null);
   const label = message.poll ? `📊 ${message.poll.name}` : message.text?.trim() || "Mensaje";
 

@@ -145,7 +145,7 @@ export function DatePill({
   value: string | null;
   onSave: (next: string | null) => void | Promise<unknown>;
   label: string;
-  /** AAAA-MM-DD de hoy en la zona del workspace: decide si el texto lleva el año. */
+  /** AAAA-MM-DD de hoy en la zona de quien mira: decide si el texto lleva el año. */
   today: string;
   disabled?: boolean;
   /** La fecha ya paso y la tarea sigue abierta: el texto va en rojo. */

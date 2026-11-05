@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, RotateCcw, Loader2, History } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 
 interface Version {
   id: string;
@@ -25,6 +26,7 @@ export function VersionHistoryPanel({
   onClose,
   onRestore,
 }: VersionHistoryPanelProps) {
+  const timeZone = useViewerTimezone();
   const [versions, setVersions] = useState<Version[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export function VersionHistoryPanel({
       day: "numeric",
       hour: "numeric",
       minute: "2-digit",
+      timeZone,
     });
   }
 

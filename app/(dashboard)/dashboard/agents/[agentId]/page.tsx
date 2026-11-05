@@ -150,7 +150,7 @@ export default async function AgentDetailPage({
   // pinta cuando llegan (ver `loadHeaderKpis`).
   // Un error aca no puede tumbar la pantalla: la fila queda en "—".
   const kpis = canEdit
-    ? loadHeaderKpis(service, { workspaceId: workspace.id, agentId: agent.id, timeZone: workspace.timezone }).catch((error: unknown) => {
+    ? loadHeaderKpis(service, { workspaceId: workspace.id, agentId: agent.id, timeZone: viewerTimezone }).catch((error: unknown) => {
         console.error("[agents] no pude leer los indicadores de la cabecera:", error instanceof Error ? error.message : error);
         return { runsToday: 0, monthCostUsd: null, escalationRatePct: null, missingPricing: 0 };
       })
@@ -205,7 +205,8 @@ export default async function AgentDetailPage({
               agentNames: new Map(agents.map((a) => [a.id, a.name])),
               workspaceSettings: readWorkspaceSpendSettings(workspace),
               canEditPricing: isOwnerRole(permissions.role),
-              timeZone: workspace.timezone,
+              // Solo el filtro de fechas de la pestana: los topes de gasto se miden aparte, en la zona del negocio (lib/ai/spend.ts).
+              timeZone: viewerTimezone,
             })
           : Promise.resolve(undefined),
         canEdit && on("tags") ? supabase.from("tags").select("id, contact_tags(count)").eq("workspace_id", workspace.id) : Promise.resolve(undefined),

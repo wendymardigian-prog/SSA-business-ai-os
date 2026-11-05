@@ -4,7 +4,9 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
 import type { ActivityEntry, ActivityTone, MessageActivity } from "@/lib/inbox/message-activity";
+import { calendarDaysAgo } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 
 /**
  * "Que hizo el agente con este mensaje": un indicador chico que abre un panel
@@ -33,10 +35,10 @@ const OUTCOME_TEXT: Record<ActivityEntry["outcome"], string> = {
   pending: "En curso",
 };
 
-function formatAt(iso: string): string {
+function formatAt(iso: string, timeZone: string): string {
   const date = new Date(iso);
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return date.toDateString() === new Date().toDateString() ? time : `${date.toLocaleDateString([], { day: "2-digit", month: "short" })} ${time}`;
+  const time = date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone });
+  return calendarDaysAgo(date, new Date(), timeZone) === 0 ? time : `${date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", timeZone })} ${time}`;
 }
 
 export function ActivityTrigger({
@@ -53,6 +55,7 @@ export function ActivityTrigger({
   /** Lo que se dibuja dentro del boton en la variante `bot`. */
   children?: ReactNode;
 }) {
+  const timeZone = useViewerTimezone();
   const panelId = useId();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
@@ -136,7 +139,7 @@ export function ActivityTrigger({
                     <p className="font-medium">{entry.title}</p>
                     {entry.detail && <p className="text-xs text-muted-foreground">{entry.detail}</p>}
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {formatAt(entry.at)}
+                      {formatAt(entry.at, timeZone)}
                       {entry.kind !== "action" && <> · {OUTCOME_TEXT[entry.outcome]}</>}
                     </p>
                   </div>

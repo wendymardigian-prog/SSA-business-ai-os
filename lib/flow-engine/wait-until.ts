@@ -3,6 +3,21 @@
  * motor con `workspaces.timezone`, nunca la del navegador de quien armo el flujo. PURO (lo usan el servidor y el panel).
  */
 
+import { isoToDatetimeInput } from "@/lib/dates";
+
+/**
+ * Lo que muestra el campo de «Esperar hasta». Un nodo viejo guarda un instante (`waitUntil`), y al editarlo lo que se
+ * escriba se lee en la hora del negocio: por eso se muestra en esa misma zona. En la del navegador, tocar solo los
+ * minutos corria la fecha tantas horas como separan las dos zonas. Sin saber la zona, vacio antes que una hora falsa.
+ */
+export function waitUntilInputValue(
+  data: { waitUntilLocal?: string; waitUntil?: string },
+  businessZone: string | null,
+): string {
+  if (data.waitUntilLocal) return data.waitUntilLocal;
+  return data.waitUntil && businessZone ? isoToDatetimeInput(data.waitUntil, businessZone) : "";
+}
+
 /** Lo que devuelve el «Esperar» cuando su fecha ya paso: el motor saltea el paso siguiente y sigue con el que viene. */
 export const SKIP_NEXT_STEP = "skip_next";
 

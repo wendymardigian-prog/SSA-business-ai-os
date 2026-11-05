@@ -24,6 +24,8 @@ const {
   handleBookingEnded,
   nextSyncRunAt,
   buildDescription,
+  googleEventTimezone,
+  inviteeTimeLine,
   SYNC_RETRY_MINUTES,
 } = await import("./booking-sync");
 
@@ -315,5 +317,26 @@ describe("handleBookingEnded", () => {
     db.tables.automation_events = [];
     await handleBookingEnded({ supabase: db.client, job: { id: "j", type: "booking_ended", payload: { booking_id: "bk-1" }, attempts: 0 } });
     expect(db.rows("automation_events")).toHaveLength(0);
+  });
+});
+
+describe("la zona del invitado en Google", () => {
+  it("el evento se marca con la zona del invitado, y si no hay, la del anfitrion", () => {
+    expect(googleEventTimezone({ booker_timezone: "America/Mexico_City", host_timezone: "America/Argentina/Buenos_Aires" })).toBe("America/Mexico_City");
+    expect(googleEventTimezone({ booker_timezone: null, host_timezone: "America/Argentina/Buenos_Aires" })).toBe("America/Argentina/Buenos_Aires");
+    expect(googleEventTimezone({ booker_timezone: "basura", host_timezone: "America/Lima" })).toBe("America/Lima");
+    expect(googleEventTimezone({})).toBe("UTC");
+  });
+
+  it("la hora se escribe en la descripcion solo si las zonas son distintas", () => {
+    const start_at = "2026-10-06T20:00:00.000Z";
+    const line = inviteeTimeLine({ start_at, booker_timezone: "America/Mexico_City", host_timezone: "America/Argentina/Buenos_Aires" });
+    expect(line).toContain("14:00");
+    expect(line).toContain("Ciudad de México");
+    expect(inviteeTimeLine({ start_at, booker_timezone: "America/Lima", host_timezone: "America/Lima" })).toBeNull();
+    expect(inviteeTimeLine({ start_at, booker_timezone: null, host_timezone: "America/Lima" })).toBeNull();
+
+    const text = buildDescription({ bookerName: "Ana", bookerEmail: null, bookerPhone: null, responses: {}, manageUrl: "https://x/y", inviteeTime: line });
+    expect(text.split("\n")[0]).toBe(`Hora del invitado: ${line}`);
   });
 });

@@ -20,7 +20,16 @@ export type TemplateKey =
   | "rescheduled"
   | "cancelled"
   | "no_show"
-  | "thank_you";
+  | "thank_you"
+  | NoEventTemplateKey;
+
+/** Los de "Reuniones sin evento": son del negocio, no de un evento (`flows.event_type_id` queda null). */
+export type NoEventTemplateKey =
+  | "no_event_confirmation"
+  | "no_event_reminder_24h"
+  | "no_event_reminder_1h"
+  | "no_event_rescheduled"
+  | "no_event_cancelled";
 
 export interface FlowTemplate {
   key: TemplateKey;
@@ -54,8 +63,7 @@ export const FLOW_TEMPLATES: FlowTemplate[] = [
     body:
       "Hola {{contact.first_name}},\n\n" +
       "Tu reunión quedó agendada para el {{booking.start_invitee}}.\n\n" +
-      "Dónde: {{booking.location}}\n" +
-      "Link de la videollamada: {{booking.meet_url}}\n\n" +
+      "Dónde: {{booking.meeting_place}}\n\n" +
       "¿Necesitás cambiarla?\n" +
       "Reagendar: {{booking.reschedule_url}}\n" +
       "Cancelar: {{booking.cancel_url}}\n\n" +
@@ -70,7 +78,7 @@ export const FLOW_TEMPLATES: FlowTemplate[] = [
     body:
       "Hola {{contact.first_name}},\n\n" +
       "Te recuerdo nuestra reunión: {{booking.start_invitee}}.\n\n" +
-      "Link: {{booking.meet_url}}\n\n" +
+      "Dónde: {{booking.meeting_place}}\n\n" +
       "Si no llegás a tiempo, podés reagendar acá: {{booking.reschedule_url}}\n\n" +
       "{{booking.host_name}}",
   },
@@ -82,7 +90,7 @@ export const FLOW_TEMPLATES: FlowTemplate[] = [
     subject: "En una hora: {{booking.event_title}}",
     body:
       "Hola {{contact.first_name}}, en una hora tenemos la reunión ({{booking.time_invitee}}).\n\n" +
-      "Link: {{booking.meet_url}}\n\n" +
+      "Dónde: {{booking.meeting_place}}\n\n" +
       "{{booking.host_name}}",
     alsoWhatsapp: true,
   },
@@ -95,7 +103,7 @@ export const FLOW_TEMPLATES: FlowTemplate[] = [
     body:
       "Hola {{contact.first_name}},\n\n" +
       "Tu reunión quedó para el {{booking.start_invitee}}.\n\n" +
-      "Link: {{booking.meet_url}}\n\n" +
+      "Dónde: {{booking.meeting_place}}\n\n" +
       "{{booking.host_name}}",
   },
   {
@@ -139,8 +147,85 @@ export const FLOW_TEMPLATES: FlowTemplate[] = [
   },
 ];
 
+/**
+ * Los flujos de las reuniones con titulo libre (Agenda → Reuniones sin evento).
+ *
+ * Son cinco y no siete: sin evento no hay una pagina publica con horarios, asi que
+ * no se ofrece "reagendar" ni "volver a agendar" (cambiarla es responder el email).
+ * Del no-show y el agradecimiento se encarga quien los quiera armar en el canvas.
+ */
+export const NO_EVENT_TEMPLATES: FlowTemplate[] = [
+  {
+    key: "no_event_confirmation",
+    name: "Confirmación",
+    trigger: { type: "booking_created", config: { no_event: true } },
+    describe: "Se agenda una reunión sin evento · Email al contacto",
+    subject: "Confirmamos tu reunión: {{booking.event_title}}",
+    body:
+      "Hola {{contact.first_name}},\n\n" +
+      "Tu reunión quedó agendada para el {{booking.start_invitee}}.\n\n" +
+      "Dónde: {{booking.meeting_place}}\n\n" +
+      "Si necesitás cambiarla, respondé este email.\n" +
+      "Si no vas a poder venir, podés cancelarla acá: {{booking.cancel_url}}\n\n" +
+      "Nos vemos,\n{{booking.host_name}}",
+  },
+  {
+    key: "no_event_reminder_24h",
+    name: "Recordatorio 24 h antes",
+    trigger: { type: "booking_before_start", config: { no_event: true, offset_minutes: 1440 } },
+    describe: "24 horas antes · Email al contacto",
+    subject: "Mañana: {{booking.event_title}}",
+    body:
+      "Hola {{contact.first_name}},\n\n" +
+      "Te recuerdo nuestra reunión: {{booking.start_invitee}}.\n\n" +
+      "Dónde: {{booking.meeting_place}}\n\n" +
+      "{{booking.host_name}}",
+  },
+  {
+    key: "no_event_reminder_1h",
+    name: "Recordatorio 1 h antes",
+    trigger: { type: "booking_before_start", config: { no_event: true, offset_minutes: 60 } },
+    describe: "1 hora antes · Email + WhatsApp al contacto",
+    subject: "En una hora: {{booking.event_title}}",
+    body:
+      "Hola {{contact.first_name}}, en una hora tenemos la reunión ({{booking.time_invitee}}).\n\n" +
+      "Dónde: {{booking.meeting_place}}\n\n" +
+      "{{booking.host_name}}",
+    alsoWhatsapp: true,
+  },
+  {
+    key: "no_event_rescheduled",
+    name: "Aviso de reagendamiento",
+    trigger: { type: "booking_rescheduled", config: { no_event: true } },
+    describe: "Se cambia la fecha · Email al contacto",
+    subject: "Nueva fecha: {{booking.event_title}}",
+    body:
+      "Hola {{contact.first_name}},\n\n" +
+      "Tu reunión quedó para el {{booking.start_invitee}}.\n\n" +
+      "Dónde: {{booking.meeting_place}}\n\n" +
+      "{{booking.host_name}}",
+  },
+  {
+    key: "no_event_cancelled",
+    name: "Aviso de cancelación",
+    trigger: { type: "booking_cancelled", config: { no_event: true, by_whom: "any" } },
+    describe: "Se cancela · Email al contacto",
+    subject: "Cancelamos: {{booking.event_title}}",
+    body:
+      "Hola {{contact.first_name}},\n\n" +
+      "Tu reunión del {{booking.start_invitee}} quedó cancelada.\n\n" +
+      "Cualquier cosa, respondé este email.\n\n" +
+      "{{booking.host_name}}",
+  },
+];
+
 export function templateByKey(key: string): FlowTemplate | undefined {
-  return FLOW_TEMPLATES.find((t) => t.key === key);
+  return FLOW_TEMPLATES.find((t) => t.key === key) ?? NO_EVENT_TEMPLATES.find((t) => t.key === key);
+}
+
+/** Si un flujo es de "Reuniones sin evento": es del negocio, no de un evento. */
+export function isNoEventTemplateKey(key: string | null | undefined): key is NoEventTemplateKey {
+  return typeof key === "string" && NO_EVENT_TEMPLATES.some((t) => t.key === key);
 }
 
 /** El nombre del flujo en la lista: "[Título del evento] · <plantilla>". */
@@ -165,7 +250,7 @@ interface CanvasEdge {
  * el WhatsApp opcional. Es el mismo formato que guarda el canvas, asi que el
  * flujo se puede abrir y editar en el flow builder.
  */
-export function templateGraph(template: FlowTemplate, eventTypeId: string): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
+export function templateGraph(template: FlowTemplate, eventTypeId: string | null): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
   const nodes: CanvasNode[] = [
     {
       id: "trigger",
@@ -173,10 +258,11 @@ export function templateGraph(template: FlowTemplate, eventTypeId: string): { no
       position: { x: 0, y: 0 },
       data: {
         triggerType: template.trigger.type,
-        // El filtro por evento: este flujo aplica solo a su evento (F49).
-        config: { ...template.trigger.config, event_type_ids: [eventTypeId] },
+        // El filtro por evento: este flujo aplica solo a su evento (F49). Uno de
+        // "Reuniones sin evento" ya trae `no_event` en su config.
+        config: { ...template.trigger.config, ...(eventTypeId ? { event_type_ids: [eventTypeId] } : {}) },
         ...template.trigger.config,
-        event_type_ids: [eventTypeId],
+        ...(eventTypeId ? { event_type_ids: [eventTypeId] } : {}),
       },
     },
   ];
@@ -267,4 +353,40 @@ export async function createEventFlows(
     return 0;
   }
   return count ?? rows.length;
+}
+
+/**
+ * Crea los flujos de "Reuniones sin evento" que falten, apagados. Devuelve cuantos creo.
+ *
+ * Se llama al abrir la seccion: un negocio que nunca la abrio no tiene filas de mas.
+ * Uno por uno: el indice unico (00289) es el que decide si dos pedidos llegan a la vez,
+ * y en una tanda un solo choque tiraria abajo a los demas. Nunca pisa uno que ya existe:
+ * una persona puede haberlo editado.
+ */
+export async function ensureNoEventFlows(service: SupabaseClient<Database>, workspaceId: string): Promise<number> {
+  const { data: existing } = await service
+    .from("flows")
+    .select("template_key")
+    .eq("workspace_id", workspaceId)
+    .in("template_key", NO_EVENT_TEMPLATES.map((t) => t.key));
+  const already = new Set((existing ?? []).map((f) => (f as { template_key?: string | null }).template_key));
+
+  let created = 0;
+  for (const template of NO_EVENT_TEMPLATES) {
+    if (already.has(template.key)) continue;
+    const graph = templateGraph(template, null);
+    const { error } = await service.from("flows").insert({
+      workspace_id: workspaceId,
+      name: `Reuniones sin evento · ${template.name}`,
+      description: template.describe,
+      status: "draft" as const,
+      nodes: graph.nodes as unknown as Json,
+      edges: graph.edges as unknown as Json,
+      event_type_id: null,
+      template_key: template.key,
+    });
+    if (!error) created += 1;
+    else if (error.code !== "23505") console.error("[agenda] no pude crear el flujo sin evento:", error.message);
+  }
+  return created;
 }

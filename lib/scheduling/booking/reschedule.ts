@@ -58,7 +58,10 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
   if (!profile) return { ok: false, status: 404, reason: "not_found" };
 
   const startUtc = new Date(input.startUtc).toISOString();
-  const endUtc = new Date(new Date(startUtc).getTime() + event.duration_minutes * 60_000).toISOString();
+  // La duracion de ESTA reunion, no la del evento: una reunion a mano de 90 minutos no pasa a 30 al moverla.
+  const currentMs = Date.parse(booking.end_at) - Date.parse(booking.start_at);
+  const durationMs = currentMs > 0 ? currentMs : event.duration_minutes * 60_000;
+  const endUtc = new Date(new Date(startUtc).getTime() + durationMs).toISOString();
 
   if (!input.ignoreAvailability) {
     const from = new Date(new Date(startUtc).getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -155,6 +158,7 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
         origin: booking.origin,
         status: "rescheduled",
         category_snapshot: booking.category_snapshot as never,
+        metadata: booking.metadata as never,
         start_at: startUtc,
         end_at: endUtc,
         created_at: booking.created_at,

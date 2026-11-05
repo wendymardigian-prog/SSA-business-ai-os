@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { ConfigShell } from "./config-shell";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Notice, inputClass } from "@/components/agents/fields";
-import { listTimeZones } from "@/lib/timezone";
+import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { saveSchedulingProfile, setAutoCreateFlows, uploadSchedulingAvatar } from "@/lib/actions/scheduling/profile";
 import { Switch } from "@/components/ui/switch";
 import { validateUsername, TIME_FORMATS, type TimeFormatOption } from "@/lib/scheduling/profile";
@@ -56,7 +56,6 @@ export function ProfileSettingsView({
   const [confirmLinks, setConfirmLinks] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
-  const zones = listTimeZones();
 
   const usernameCheck = validateUsername(form.username);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
@@ -209,13 +208,10 @@ export function ProfileSettingsView({
           <label htmlFor="sp-tz" className="text-sm text-muted-foreground">
             Zona horaria
           </label>
-          <select id="sp-tz" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} className={inputClass}>
-            {zones.map((z) => (
-              <option key={z} value={z}>
-                {z.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
+          <div>
+            <TimezoneSelect id="sp-tz" value={form.timezone} onChange={(timezone) => setForm({ ...form, timezone })} className={inputClass} />
+            <p className="mt-1 text-xs text-muted-foreground">Es la zona de tu horario de atención. Las fechas que ves en el sistema usan la de Mi cuenta.</p>
+          </div>
 
           <span className="text-sm text-muted-foreground">Formato de hora</span>
           <div role="radiogroup" aria-label="Formato de hora" className="flex gap-2">

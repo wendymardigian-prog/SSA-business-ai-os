@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { isValidTimeZone } from "@/lib/timezone";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import {
   suggestUsername,
   usernameChangeNeedsConfirmation,
@@ -56,7 +57,7 @@ export async function suggestProfileUsername(forUserId?: string | null): Promise
     ok: true,
     data: {
       username: suggestUsername(displayName, targetId === ctx.user.id ? ctx.user.email : null, taken),
-      timezone: (ctx.workspace as { timezone?: string }).timezone ?? "UTC",
+      timezone: await resolveViewerTimezone(ctx.workspace.timezone),
       displayName,
     },
   };

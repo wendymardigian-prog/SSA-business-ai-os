@@ -8,6 +8,7 @@
 
 import { dateInTz, minutesOfDayInTz, wallClockToUtc } from "@/lib/scheduling/time/tz";
 import type { WallTime } from "@/lib/scheduling/types";
+import { dueSeen, type DueZones } from "./due-view";
 import { formatTaskWhen } from "./format";
 import { minutesToTime, normalizeTime, type TimeFormat } from "@/lib/calendar/time";
 import type { TaskRow } from "./types";
@@ -68,7 +69,8 @@ export function undoPatch(before: Timed): TaskDropPatch {
   return { due_date: before.due_date as string, due_time: normalizeTime(before.due_time), duration_minutes: before.duration_minutes ?? null };
 }
 
-/** «Tarea movida al 20/10 · 14:30» (o solo la fecha si no tiene hora). */
-export function movedMessage(patch: TaskDropPatch, timeFormat: TimeFormat, today: string): string {
-  return `Tarea movida al ${formatTaskWhen(patch.due_date, patch.due_time, timeFormat, today)}`;
+/** «Tarea movida al 20/10 · 14:30» (o solo la fecha si no tiene hora): el dia y la hora donde la solto quien mira. */
+export function movedMessage(patch: TaskDropPatch, timeFormat: TimeFormat, today: string, zones?: DueZones): string {
+  const seen = dueSeen(patch, zones);
+  return `Tarea movida al ${formatTaskWhen(seen.date as string, seen.time, timeFormat, today)}`;
 }

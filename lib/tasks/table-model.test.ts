@@ -144,3 +144,43 @@ describe("orden por fecha y hora (R6)", () => {
     expect(buildRows([mk(2, "2026-10-20", null)], members, { today: TODAY })[0].dueTime).toBeNull();
   });
 });
+
+describe("la tabla con la zona de quien mira", () => {
+  const zones = { workspaceTz: "America/Costa_Rica", viewerTz: "Asia/Tokyo" };
+  // 23:00 del 12 en Costa Rica = 14:00 del 13 en Tokio; TODAY es el 13.
+  const late = makeTask({ id: taskId(1), title: "noche", due_date: "2026-10-12", due_time: "23:00:00" });
+
+  it("isOverdue mira el dia que se ve", () => {
+    expect(isOverdue(late, TODAY)).toBe(true);
+    expect(isOverdue(late, TODAY, zones)).toBe(false);
+    expect(isOverdue({ due_date: "2026-10-12", due_time: null, status: "pending" }, TODAY, zones)).toBe(true);
+  });
+  it("la fila trae lo que se ve; lo guardado sigue en `task`", () => {
+    const [row] = buildRows([late], members, { today: TODAY, zones });
+    expect(row).toMatchObject({ dueDate: "2026-10-13", dueTime: "14:00", overdue: false });
+    expect(row.task).toBe(late);
+    expect(row.task.due_date).toBe("2026-10-12");
+  });
+  it("sin hora, la fecha no se mueve", () => {
+    const [row] = buildRows([makeTask({ id: taskId(2), due_date: "2026-10-12" })], members, { today: TODAY, zones });
+    expect(row).toMatchObject({ dueDate: "2026-10-12", dueTime: null, overdue: true });
+  });
+
+  it("el orden es cronologico: a igual dia visto, por instante, aunque el texto guardado diga otra cosa", () => {
+    // Negocio en Tokio, quien mira en Buenos Aires: 23:00 del 14 = 11:00 del 14; 01:00 del 15 = 13:00 del 14.
+    const z = { workspaceTz: "Asia/Tokyo", viewerTz: "America/Argentina/Buenos_Aires" };
+    const rows = buildRows(
+      [
+        makeTask({ id: taskId(1), title: "madrugada", due_date: "2026-10-15", due_time: "01:00" }),
+        makeTask({ id: taskId(2), title: "sin hora", due_date: "2026-10-14" }),
+        makeTask({ id: taskId(3), title: "noche", due_date: "2026-10-14", due_time: "23:00" }),
+      ],
+      members,
+      { today: TODAY, zones: z },
+    );
+    expect(rows.map((r) => r.dueDate)).toEqual(["2026-10-14", "2026-10-14", "2026-10-14"]);
+    expect(sortRows(rows, { column: "due", dir: "asc" }).map((r) => r.title)).toEqual(["noche", "madrugada", "sin hora"]);
+    // Las sin hora van despues en los dos sentidos.
+    expect(sortRows(rows, { column: "due", dir: "desc" }).map((r) => r.title)).toEqual(["madrugada", "noche", "sin hora"]);
+  });
+});

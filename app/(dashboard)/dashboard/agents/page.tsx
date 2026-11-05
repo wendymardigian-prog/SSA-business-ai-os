@@ -176,7 +176,7 @@ export default async function AgentsPage({
             {/* En su propio Suspense: la ultima corrida y el gasto del mes de
                 cada tarea no frenan la lista de agentes. */}
             <Suspense fallback={<TaskListSkeleton />}>
-              <TaskList service={service} workspaceId={workspace.id} settings={settings} />
+              <TaskList service={service} workspaceId={workspace.id} settings={settings} timeZone={timeZone} />
             </Suspense>
           </section>
         )}
@@ -189,17 +189,19 @@ async function TaskList({
   service,
   workspaceId,
   settings,
+  timeZone,
 }: {
   service: Awaited<ReturnType<typeof createServiceClient>>;
   workspaceId: string;
   settings: ReturnType<typeof resolveBackgroundSettings>;
+  timeZone: string;
 }) {
   const taskRuns = await loadTaskRunSummaries(service, workspaceId, ALL_AI_TASKS);
   return (
     <ul className="space-y-2">
       {ALL_AI_TASKS.map((task, i) => (
         <li key={task.id}>
-          <TaskCard task={task} mode={task.backgroundTask ? settings[task.backgroundTask].mode : null} lastRun={taskRuns[i] ?? null} />
+          <TaskCard task={task} mode={task.backgroundTask ? settings[task.backgroundTask].mode : null} lastRun={taskRuns[i] ?? null} timeZone={timeZone} />
         </li>
       ))}
     </ul>

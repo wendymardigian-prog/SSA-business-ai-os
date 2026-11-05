@@ -9,6 +9,7 @@ import { markGroupRead } from "@/lib/actions/whatsapp-group-inbox";
 import type { GroupListRow, ThreadMessage } from "@/lib/whatsapp-groups/thread";
 import { InboxViewSwitch } from "@/components/inbox/inbox-view-switch";
 import { cn } from "@/lib/utils";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { GroupMessageBubble } from "./group-message-bubble";
 import { GroupComposer } from "./group-composer";
 
@@ -38,6 +39,7 @@ export function GroupsView({
   canManageGroups: boolean;
 }) {
   const router = useRouter();
+  const timeZone = useViewerTimezone();
   const [membersOpen, setMembersOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,7 +114,7 @@ export function GroupsView({
                       <span className={cn("min-w-0 flex-1 truncate text-sm", g.unread > 0 ? "font-semibold" : "font-medium")}>{g.subject}</span>
                       {g.lastMessageAt && (
                         <span className="shrink-0 text-[11px] text-muted-foreground">
-                          {new Date(g.lastMessageAt).toLocaleDateString("es", { day: "numeric", month: "short" })}
+                          {new Date(g.lastMessageAt).toLocaleDateString("es", { day: "numeric", month: "short", timeZone })}
                         </span>
                       )}
                     </span>

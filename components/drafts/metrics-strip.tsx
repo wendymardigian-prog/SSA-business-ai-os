@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { formatDuration, formatUnedited, loadDraftMetrics } from "@/lib/agent/drafts/metrics-query";
 import { MetricsScopeToggle } from "./metrics-scope-toggle";
 
@@ -25,7 +26,7 @@ export async function MetricsStrip({
 }) {
   const { user, workspace } = await getWorkspace();
   const supabase = await createClient();
-  const view = await loadDraftMetrics(supabase, { workspaceId, isAdmin, userId: user.id, onlyMine, timeZone: workspace.timezone });
+  const view = await loadDraftMetrics(supabase, { workspaceId, isAdmin, userId: user.id, onlyMine, timeZone: await resolveViewerTimezone(workspace.timezone) });
   const labels = new Map(members.map((m) => [m.userId, m.label]));
 
   const tiles: Array<{ label: string; value: string; hint: string; highlight?: boolean }> = [

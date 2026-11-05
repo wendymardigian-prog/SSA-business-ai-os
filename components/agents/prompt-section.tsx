@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { History, RotateCcw } from "lucide-react";
@@ -15,6 +16,7 @@ import { Field, Notice, Section, inputClass } from "./fields";
  * version que uso.
  */
 export function PromptSection({ data }: { data: AgentScreenData }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const { agent, versions } = data;
   const [prompt, setPrompt] = useState(agent.systemPrompt);
@@ -127,7 +129,7 @@ export function PromptSection({ data }: { data: AgentScreenData }) {
                     )}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {formatDateTime(v.createdAt)}
+                    {formatDateTime(v.createdAt, timeZone)}
                     {` · ${v.systemPrompt.length.toLocaleString("es")} caracteres`}
                     {v.authorLabel ? ` · ${v.authorLabel}` : ""}
                     {v.note ? ` · ${v.note}` : ""}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useMemo, useState } from "react";
 import { platformLabel } from "@/lib/platforms";
 import type { PostDailyRow, PublishedPost } from "@/lib/dashboards/content";
@@ -90,6 +91,7 @@ export function PostsTable({
   rows: PostRow[];
   onOpen: (socialPostId: string) => void;
 }) {
+  const timeZone = useViewerTimezone();
   const [sortKey, setSortKey] = useState<SortKey>("saves");
   const [descending, setDescending] = useState(true);
   const [page, setPage] = useState(0);
@@ -209,6 +211,7 @@ export function PostsTable({
                         ? "—"
                         : column.key === "publishedAt"
                           ? new Date(value as string).toLocaleDateString("es-AR", {
+                              timeZone,
                               day: "numeric",
                               month: "short",
                             })

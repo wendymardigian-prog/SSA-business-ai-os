@@ -3,6 +3,7 @@
  *
  * Una tarea es solo fecha; la hora se agrega a proposito. `due_time` es una hora de pared de la zona del workspace (sin
  * fecha ni zona), `duration_minutes` va de 5 a 1440. La base devuelve la hora como `HH:MM:SS`; aca se normaliza a `HH:MM`.
+ * Lo que ve cada persona, en su zona, sale de `lib/tasks/due-view.ts`.
  */
 
 export type TimeFormat = "12h" | "24h";

@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useHtmlClass } from "@/components/use-html-class";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { setViewerTimezone } from "@/lib/actions/user-preferences";
-import { listTimeZones } from "@/lib/timezone";
+import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { cn } from "@/lib/utils";
 import { UserAvatar } from "@/components/account/user-avatar";
 import { accountTabHref } from "@/lib/account/tabs";
@@ -72,12 +72,17 @@ export function ProfileMenu({
   const dark = useHtmlClass("dark");
   const viewerTimezone = useViewerTimezone();
   const [pendingTz, startTz] = useTransition();
-  const zones = listTimeZones();
+  const [tzError, setTzError] = useState<string | null>(null);
 
   function changeTimezone(next: string) {
     if (next === viewerTimezone) return;
+    setTzError(null);
     startTz(async () => {
-      await setViewerTimezone(next);
+      const result = await setViewerTimezone(next);
+      if (!result.ok) {
+        setTzError(result.error);
+        return;
+      }
       router.refresh();
     });
   }
@@ -187,20 +192,19 @@ export function ProfileMenu({
           <label className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground md:min-h-0">
             <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span className="sr-only">Zona horaria</span>
-            <select
+            <TimezoneSelect
               value={viewerTimezone}
               disabled={pendingTz}
-              onChange={(e) => changeTimezone(e.target.value)}
+              onChange={changeTimezone}
               className="min-w-0 flex-1 truncate bg-transparent outline-none disabled:opacity-60"
               title="Zona horaria"
-            >
-              {zones.map((z) => (
-                <option key={z} value={z}>
-                  {z.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
+            />
           </label>
+          {tzError && (
+            <p role="alert" className="px-2 pb-1 text-xs text-red-600 dark:text-red-400">
+              No pude cambiar la zona: {tzError}
+            </p>
+          )}
 
           <div className="my-1 border-t border-border" />
 

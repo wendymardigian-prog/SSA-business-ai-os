@@ -449,7 +449,7 @@ function messageFor(reason: string): string {
 }
 
 /** Buscar contactos para el paso 2 del agendar manual (F37). */
-export async function searchContactsForBooking(term: string): Promise<Array<{ id: string; name: string; detail: string; timezone: string | null }>> {
+export async function searchContactsForBooking(term: string): Promise<Array<{ id: string; name: string; detail: string; timezone: string | null; email: string | null; phone: string | null }>> {
   const ctx = await getPermissionAction("bookings.manage");
   if (!ctx) return [];
 
@@ -473,6 +473,8 @@ export async function searchContactsForBooking(term: string): Promise<Array<{ id
     name: c.display_name ?? "Sin nombre",
     detail: [c.email, c.phone].filter(Boolean).join(" · ") || "Sin datos de contacto",
     timezone: c.timezone,
+    email: c.email,
+    phone: c.phone,
   }));
 }
 

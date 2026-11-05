@@ -9,7 +9,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { describeTrigger, type BookingTriggerConfig } from "@/lib/scheduling/automation/triggers";
-import { templateByKey } from "@/lib/scheduling/automation/templates";
+import { NO_EVENT_TEMPLATES, templateByKey } from "@/lib/scheduling/automation/templates";
 import type { CanvasEdge, CanvasNode } from "@/lib/scheduling/automation/linear-flow";
 
 type Db = SupabaseClient<Database>;
@@ -35,7 +35,24 @@ export async function flowsForEventType(supabase: Db, eventTypeId: string): Prom
     // Flujos del evento aparecía siempre vacía, aunque los flujos existieran.
     .order("created_at", { ascending: true });
 
-  if (!flows || flows.length === 0) return [];
+  return flowRows(supabase, flows ?? []);
+}
+
+/** Los flujos de "Reuniones sin evento" del negocio, en el orden de las plantillas. Con el cliente de servicio. */
+export async function flowsWithoutEvent(service: Db, workspaceId: string): Promise<EventFlowRow[]> {
+  const keys = NO_EVENT_TEMPLATES.map((t) => t.key as string);
+  const { data: flows } = await service
+    .from("flows")
+    .select("id, name, status, template_key")
+    .eq("workspace_id", workspaceId)
+    .is("event_type_id", null)
+    .in("template_key", keys);
+  const rows = await flowRows(service, flows ?? []);
+  return rows.sort((a, b) => keys.indexOf(a.templateKey ?? "") - keys.indexOf(b.templateKey ?? ""));
+}
+
+async function flowRows(supabase: Db, flows: Array<{ id: string; name: string; status: string; template_key?: string | null }>): Promise<EventFlowRow[]> {
+  if (flows.length === 0) return [];
 
   const { data: triggers } = await supabase
     .from("triggers")

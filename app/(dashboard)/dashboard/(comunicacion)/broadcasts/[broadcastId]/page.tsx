@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { BroadcastEditor, type EditorDraft } from "@/components/broadcasts/broadcast-editor";
 import { BroadcastProgress, type ProgressRecipient } from "@/components/broadcasts/broadcast-progress";
 import { listBroadcastChannels } from "@/lib/broadcasts/channels";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { loadContactFilterOptions } from "@/lib/contacts/filter-options-load";
 import { sanitizeAudienceParams } from "@/lib/broadcasts/audience-load";
 import { cleanVariants } from "@/lib/broadcasts/render";
@@ -37,7 +38,9 @@ export default async function BroadcastPage({
   const { broadcastId } = await params;
   const query = await searchParams;
   const { workspace, supabase } = await getWorkspace();
-  const timeZone = workspace.timezone || "UTC";
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
+  // El horario permitido y el tope por dia de la cola corren en la zona del negocio: la estimacion de cuando termina tambien.
+  const businessTimeZone = workspace.timezone || "UTC";
 
   if (!/^[0-9a-f-]{36}$/i.test(broadcastId)) notFound();
   const { data: b } = await supabase.from("broadcasts").select("*").eq("id", broadcastId).eq("workspace_id", workspace.id).maybeSingle();
@@ -73,7 +76,7 @@ export default async function BroadcastPage({
       <div className="flex h-full flex-col">
         {header}
         <div className="flex-1 overflow-auto">
-          <BroadcastEditor draft={draft} channels={channels} filterOptions={options} customFields={customFields} hasAnonymous={hasAnonymous} timeZone={timeZone} />
+          <BroadcastEditor draft={draft} channels={channels} filterOptions={options} customFields={customFields} hasAnonymous={hasAnonymous} timeZone={timeZone} businessTimeZone={businessTimeZone} />
         </div>
       </div>
     );
@@ -162,6 +165,7 @@ export default async function BroadcastPage({
           page={page}
           pageCount={Math.max(1, Math.ceil((listRes.count ?? 0) / PAGE_SIZE))}
           timeZone={timeZone}
+          businessTimeZone={businessTimeZone}
         />
       </div>
     </div>

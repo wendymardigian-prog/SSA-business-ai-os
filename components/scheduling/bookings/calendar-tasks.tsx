@@ -110,7 +110,7 @@ export function TaskMonthChip({ item, timeFormat, draggable, onOpen, onDragStart
       className={cn("flex items-center gap-1 truncate rounded border border-dashed border-l-4 bg-card px-1.5 py-0.5 text-left text-[11px] hover:bg-muted", STATUS_BORDER[task.status], done && "line-through opacity-60", draggable && "cursor-grab")}
     >
       <CheckSquare className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="min-w-0 flex-1 truncate">{monthChipText(task, timeFormat)}</span>
+      <span className="min-w-0 flex-1 truncate">{monthChipText(item, timeFormat)}</span>
       <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", PRIORITY_DOT[task.priority])} />
     </button>
   );

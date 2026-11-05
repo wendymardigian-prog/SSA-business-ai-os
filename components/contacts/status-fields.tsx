@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Loader2 } from "lucide-react";
@@ -46,6 +47,7 @@ export function LastStatusBadge({
   /** En la lista: sin la fecha. */
   compact?: boolean;
 }) {
+  const timeZone = useViewerTimezone();
   if (!role || !status) return null;
   const list = settings[role];
   const color = statusColor(list, status);
@@ -57,7 +59,7 @@ export function LastStatusBadge({
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
       <span className="truncate">{statusName(list, status)}</span>
       <span className="shrink-0 text-muted-foreground">· {STATUS_ROLE_LABELS[role]}</span>
-      {!compact && at && <span className="shrink-0 text-muted-foreground">· {formatRelative(at)}</span>}
+      {!compact && at && <span className="shrink-0 text-muted-foreground">· {formatRelative(at, timeZone)}</span>}
     </span>
   );
 }
@@ -81,6 +83,7 @@ export function StatusFields({
   /** Después de guardar (el panel de la bandeja carga sus datos en el navegador). */
   onSaved?: () => void;
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [savingRole, setSavingRole] = useState<StatusRole | null>(null);
@@ -144,7 +147,7 @@ export function StatusFields({
                     Agente IA ·
                   </span>
                 )}
-                Desde: {formatRelative(at)}
+                Desde: {formatRelative(at, timeZone)}
                 {!findStatus(list, current) && " · ese estado ya no existe en la lista"}
               </p>
             )}

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { placeTasksInCalendar } from "./calendar";
 import { dropTarget, isSameDrop, movedMessage, snapMinutes, undoPatch } from "./calendar-drag";
+import { makeTask } from "./fixtures";
 
 const CR = "America/Costa_Rica";
 const TOKYO = "Asia/Tokyo";
@@ -78,5 +80,20 @@ describe("isSameDrop / undoPatch / movedMessage (R7)", () => {
     expect(movedMessage({ due_date: "2026-10-20", due_time: "14:30", duration_minutes: 30 }, "24h", "2026-10-13")).toBe("Tarea movida al 20/10 · 14:30");
     expect(movedMessage({ due_date: "2026-10-20", due_time: "14:30", duration_minutes: 30 }, "12h", "2026-10-13")).toBe("Tarea movida al 20/10 · 2:30 p. m.");
     expect(movedMessage({ due_date: "2026-10-20", due_time: null, duration_minutes: null }, "24h", "2026-10-13")).toBe("Tarea movida al 20/10");
+  });
+  it("con otra zona, el aviso dice donde la solto quien mira, no la hora guardada", () => {
+    const zones = { workspaceTz: CR, viewerTz: TOKYO };
+    const patch = dropTarget({ task: timedTask, target: { kind: "slot", date: "2026-10-16", minutes: 9 * 60 }, ...zones });
+    expect(patch.due_date).toBe("2026-10-15");
+    expect(movedMessage(patch, "24h", "2026-10-13", zones)).toBe("Tarea movida al 16/10 · 09:00");
+    // Sin hora es una fecha civil.
+    expect(movedMessage({ due_date: "2026-10-20", due_time: null, duration_minutes: null }, "24h", "2026-10-13", zones)).toBe("Tarea movida al 20/10");
+  });
+  it("lo que se solto en la zona de quien mira vuelve a caer en ese lugar del calendario", () => {
+    const zones = { workspaceTz: CR, viewerTz: TOKYO };
+    const patch = dropTarget({ task: timedTask, target: { kind: "slot", date: "2026-10-16", minutes: 9 * 60 }, ...zones });
+    const moved = makeTask({ ...patch });
+    const { byDate } = placeTasksInCalendar({ tasks: [moved], ...zones, view: "week", range: { from: "2026-10-12", to: "2026-10-18" } });
+    expect(byDate["2026-10-16"][0]).toMatchObject({ date: "2026-10-16", startMinutes: 9 * 60 });
   });
 });

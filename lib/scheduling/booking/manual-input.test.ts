@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planManualBooking } from "./manual-input";
+import { initialInviteeTimezone, planManualBooking } from "./manual-input";
 
 const base = {
   title: "Reunión con Ana",
@@ -68,5 +68,53 @@ describe("planManualBooking", () => {
 
   it("la ubicacion tiene tope", () => {
     expect(planManualBooking({ ...base, location: { kind: "text", text: "x".repeat(501) } })).toMatchObject({ ok: false, field: "location" });
+  });
+
+  it("la hora se lee en la zona de quien agenda y la del invitado viaja aparte", () => {
+    const r = planManualBooking({ ...base, inviteeTimezone: "America/Mexico_City", inviteeTimezoneChosen: true });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // 10:30 en Buenos Aires, aunque el invitado este en Mexico.
+    expect(r.plan.startUtc).toBe("2026-11-03T13:30:00.000Z");
+    expect(r.plan.timezone).toBe("America/Argentina/Buenos_Aires");
+    expect(r.plan.inviteeTimezone).toBe("America/Mexico_City");
+    expect(r.plan.inviteeTimezoneChosen).toBe(true);
+  });
+
+  it("sin zona del invitado usa la de quien agenda, y no cuenta como elegida", () => {
+    const r = planManualBooking(base);
+    expect(r.ok && r.plan.inviteeTimezone).toBe("America/Argentina/Buenos_Aires");
+    expect(r.ok && r.plan.inviteeTimezoneChosen).toBe(false);
+  });
+
+  it("rechaza una zona que no existe", () => {
+    expect(planManualBooking({ ...base, inviteeTimezone: "Marte/Olympus" })).toMatchObject({ ok: false, field: "timezone" });
+    expect(planManualBooking({ ...base, timezone: "Marte/Olympus" })).toMatchObject({ ok: false, field: "time" });
+  });
+});
+
+describe("initialInviteeTimezone", () => {
+  const viewerTimezone = "America/Argentina/Buenos_Aires";
+
+  it("gana la guardada en el contacto", () => {
+    expect(initialInviteeTimezone({ contactTimezone: "Europe/Madrid", phone: "+52 55 1234 5678", viewerTimezone })).toEqual({
+      timezone: "Europe/Madrid",
+      source: "contact",
+    });
+  });
+
+  it("sin zona guardada, la deduce del telefono", () => {
+    expect(initialInviteeTimezone({ contactTimezone: null, phone: "+52 55 1234 5678", viewerTimezone })).toEqual({
+      timezone: "America/Mexico_City",
+      source: "phone",
+    });
+  });
+
+  it("sin ningun dato, la de quien agenda", () => {
+    expect(initialInviteeTimezone({ viewerTimezone })).toEqual({ timezone: viewerTimezone, source: "viewer" });
+  });
+
+  it("ignora una zona guardada invalida", () => {
+    expect(initialInviteeTimezone({ contactTimezone: "basura", viewerTimezone }).source).toBe("viewer");
   });
 });

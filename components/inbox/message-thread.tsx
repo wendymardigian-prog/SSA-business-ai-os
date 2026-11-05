@@ -43,6 +43,8 @@ import { formatReplyTime, replyTimesByMessage, type MessageReplyTime } from "@/l
 import { NoReplyBanner } from "@/components/inbox/no-reply-banner";
 import { canRetrySend } from "@/lib/inbox/send-failure";
 import { threadDayLabel } from "@/lib/inbox/day-label";
+import { isoToDateInput } from "@/lib/dates";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { setConversationNoReply } from "@/lib/actions/conversation-status";
 import { planComposerActions, type ComposerMenuAction } from "@/lib/inbox/composer-actions";
 import { ComposerMoreMenu } from "@/components/inbox/composer-more-menu";
@@ -88,23 +90,23 @@ const STATUS_LABELS: Record<ConversationStatus, string> = {
   closed: "Cerrada",
 };
 
-function formatMessageTime(dateStr: string): string {
+function formatMessageTime(dateStr: string, timeZone: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone });
 }
 
-function formatDateSeparator(dateStr: string): string {
-  return threadDayLabel(new Date(dateStr));
+function formatDateSeparator(dateStr: string, timeZone: string): string {
+  return threadDayLabel(new Date(dateStr), timeZone);
 }
 
+/** El separador va cuando cambia el dia EN LA ZONA de quien mira, no en la del navegador. */
 function shouldShowDateSeparator(
   current: Message,
-  previous: Message | undefined
+  previous: Message | undefined,
+  timeZone: string,
 ): boolean {
   if (!previous) return true;
-  const currentDate = new Date(current.created_at).toDateString();
-  const previousDate = new Date(previous.created_at).toDateString();
-  return currentDate !== previousDate;
+  return isoToDateInput(current.created_at, timeZone) !== isoToDateInput(previous.created_at, timeZone);
 }
 
 function MessageBubble({
@@ -148,6 +150,7 @@ function MessageBubble({
   showMarker?: boolean;
   runsHref?: string | null;
 }) {
+  const timeZone = useViewerTimezone();
   const isInbound = message.direction === "inbound";
   const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
@@ -224,7 +227,7 @@ function MessageBubble({
           {isBot && (
             <Bot className="h-3 w-3" />
           )}
-          <span>{formatMessageTime(message.created_at)}</span>
+          <span>{formatMessageTime(message.created_at, timeZone)}</span>
           {replyTime && (
             <span
               title={
@@ -434,6 +437,7 @@ export function MessageThread({
   /** Telefono (Bloque 2d): abre los datos del contacto como hoja. */
   onOpenContact?: () => void;
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1470,11 +1474,11 @@ export function MessageThread({
                   <CallLine call={call} />
                 </div>
               ))}
-              {shouldShowDateSeparator(message, messages[i - 1]) && (
+              {shouldShowDateSeparator(message, messages[i - 1], timeZone) && (
                 <div className="my-4 flex items-center gap-3">
                   <div className="h-px flex-1 bg-border" />
                   <span className="text-[11px] text-muted-foreground">
-                    {formatDateSeparator(message.created_at)}
+                    {formatDateSeparator(message.created_at, timeZone)}
                   </span>
                   <div className="h-px flex-1 bg-border" />
                 </div>

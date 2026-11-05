@@ -34,6 +34,7 @@ function bookingForFilter(args: TriggerEventArgs): BookingForFilter | null {
     origin: String(b.origin ?? ""),
     status: b.status as BookingForFilter["status"],
     category_snapshot: (b.category_snapshot ?? null) as BookingForFilter["category_snapshot"],
+    metadata: (b.metadata ?? null) as BookingForFilter["metadata"],
   };
 }
 

@@ -6,6 +6,7 @@
  * borde y el mismo encabezado, no para inventar un design system nuevo.
  */
 
+import { calendarDaysAgo } from "@/lib/dates";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { LeadTemperature } from "@/lib/types/database";
@@ -107,10 +108,15 @@ export function ActionError({ message }: { message: string | null }) {
   );
 }
 
-/** Fechas siempre en la zona del navegador: la base guarda todo en UTC. */
-export function formatDateTime(value: string | null | undefined): string {
+/**
+ * Fecha y hora en la zona de quien mira. La zona es obligatoria: sin ella, un
+ * Server Component mostraba la hora del servidor (UTC) y un Client Component la
+ * del navegador, que puede no ser la que la persona eligio.
+ */
+export function formatDateTime(value: string | null | undefined, timeZone: string): string {
   if (!value) return "—";
   return new Date(value).toLocaleString("es-AR", {
+    timeZone,
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -119,12 +125,12 @@ export function formatDateTime(value: string | null | undefined): string {
   });
 }
 
-export function formatRelative(value: string | null | undefined): string {
+export function formatRelative(value: string | null | undefined, timeZone: string): string {
   if (!value) return "Nunca";
   const date = new Date(value);
-  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  const days = calendarDaysAgo(date, new Date(), timeZone);
   if (days <= 0) return "Hoy";
   if (days === 1) return "Ayer";
   if (days < 7) return `Hace ${days} dias`;
-  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" });
+  return date.toLocaleDateString("es-AR", { timeZone, day: "2-digit", month: "short", year: "numeric" });
 }

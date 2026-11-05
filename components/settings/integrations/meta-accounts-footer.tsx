@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { refreshMetaAccounts, setMetaAccountSync } from "@/lib/actions/meta-accounts";
@@ -22,6 +23,7 @@ export function MetaAccountsFooter({
   accounts: AdAccount[];
   igUsername: string | null;
 }) {
+  const timeZone = useViewerTimezone();
   const [accounts, setAccounts] = useState(initial);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export function MetaAccountsFooter({
                     {account.ad_account_id}
                     {account.currency ? ` · ${account.currency}` : ""}
                     {account.last_synced_at
-                      ? ` · ultima vez ${new Date(account.last_synced_at).toLocaleDateString("es-AR")}`
+                      ? ` · ultima vez ${new Date(account.last_synced_at).toLocaleDateString("es-AR", { timeZone })}`
                       : ""}
                   </span>
                   {account.last_error && (

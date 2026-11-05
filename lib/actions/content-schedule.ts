@@ -52,6 +52,8 @@ async function scheduleContext() {
     supabase,
     service,
     canPublish: can("content.publish"),
+    // La del NEGOCIO a proposito, no la de quien mira: lo unico que la usa es el
+    // tope diario por red, que es una regla y no puede cambiar segun quien programa.
     timeZone: workspace.timezone ?? undefined,
     credentialsFor: ({ publisherId }: { publisherId: string }) =>
       credentialsForPublisher(service, { publisherId, workspaceId: workspace.id }),

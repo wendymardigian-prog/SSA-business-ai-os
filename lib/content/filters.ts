@@ -134,6 +134,8 @@ export interface FilterablePost {
   platforms: string[];
   /** La fecha más temprana de sus redes, para el filtro de mes (C15). */
   firstAt?: string | null;
+  /** El mes (`AAAA-MM`) de esa fecha en la zona de quien mira. Sin el, se lee del ISO: el mes en UTC. */
+  firstMonth?: string | null;
   /** Si tiene al menos un anuncio vinculado (A2). Una idea nunca la tiene. */
   paid?: boolean;
 }
@@ -163,7 +165,7 @@ export function applyContentFilters<T extends FilterablePost>(
     // sale todavía, y eso ya lo dice el estado.
     if (filters.month) {
       if (!post.firstAt) return false;
-      if (!post.firstAt.startsWith(filters.month)) return false;
+      if ((post.firstMonth ?? post.firstAt.slice(0, 7)) !== filters.month) return false;
     }
 
     return true;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { FlaskConical, Loader2 } from "lucide-react";
 import { testCallDraft } from "@/lib/actions/calls-test";
@@ -28,6 +29,7 @@ export function PromptTestPanel({
   disabled?: boolean;
   disabledReason?: string;
 }) {
+  const timeZone = useViewerTimezone();
   const [selected, setSelected] = useState<string[]>(() => calls.slice(0, 3).map((c) => c.id));
   const [results, setResults] = useState<TestCallResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +76,7 @@ export function PromptTestPanel({
                       />
                       <span className="min-w-0 flex-1 truncate">{c.title}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {new Date(c.recordedAt).toLocaleDateString("es")}
+                        {new Date(c.recordedAt).toLocaleDateString("es", { timeZone })}
                         {c.closerScore !== null ? ` · closer ${c.closerScore}` : ""}
                       </span>
                     </label>

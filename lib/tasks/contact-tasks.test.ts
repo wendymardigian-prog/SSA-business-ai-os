@@ -40,3 +40,18 @@ describe("tareas de un contacto (R1)", () => {
     expect(tasksForContact([], "c-1")).toEqual({ open: [], done: [] });
   });
 });
+
+describe("tareas de un contacto con la zona de quien mira", () => {
+  it("el orden sigue el dia que se ve y el instante", () => {
+    const z = { workspaceTz: "Asia/Tokyo", viewerTz: "America/Argentina/Buenos_Aires" };
+    const rows = [
+      makeTask({ id: taskId(1), title: "madrugada", due_date: "2026-10-15", due_time: "01:00" }),
+      makeTask({ id: taskId(2), title: "sin hora", due_date: "2026-10-14" }),
+      makeTask({ id: taskId(3), title: "noche", due_date: "2026-10-14", due_time: "23:00" }),
+      makeTask({ id: taskId(4), title: "sin fecha", due_date: null }),
+    ];
+    expect(splitOpenDone(rows, z).open.map((t) => t.title)).toEqual(["noche", "madrugada", "sin hora", "sin fecha"]);
+    // Sobre lo guardado, el 15 viene despues del 14.
+    expect(splitOpenDone(rows).open.map((t) => t.title)).toEqual(["noche", "sin hora", "madrugada", "sin fecha"]);
+  });
+});

@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,6 +20,7 @@ import { DateFilter, EmptyState, FilterBar, FilterSelect, Pagination, useUrlFilt
  * revertir. Se arma sobre audit_log, sin tabla nueva.
  */
 export function ActionsTab({ data }: { data: AgentScreenData }) {
+  const timeZone = useViewerTimezone();
   const actions = data.actions;
   const router = useRouter();
   const { pending, setParam, setPage, clearAll } = useUrlFilters();
@@ -112,11 +114,11 @@ export function ActionsTab({ data }: { data: AgentScreenData }) {
               <tbody className="divide-y divide-border">
                 {rows.map((row) => (
                   <tr key={row.id} className={cn("align-top", row.revertedAt && "opacity-60")}>
-                    <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">{formatDateTime(row.performedAt)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">{formatDateTime(row.performedAt, timeZone)}</td>
                     <td className="px-3 py-2">
                       <p className="font-medium">{row.actionLabel}</p>
                       {row.reason && <p className="mt-0.5 max-w-xs text-xs text-muted-foreground">{row.reason}</p>}
-                      {row.revertedAt && <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">Revertida el {formatDateTime(row.revertedAt)}</p>}
+                      {row.revertedAt && <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">Revertida el {formatDateTime(row.revertedAt, timeZone)}</p>}
                     </td>
                     <td className="px-3 py-2">
                       {row.contactId ? (

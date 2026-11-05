@@ -197,8 +197,37 @@ Migraciones: **00206** (hora, duración, seguimiento único) y **00207** (fusió
   24 h por defecto).
 - **Las reglas de fechas siguen siendo por DÍA**: `computeDateShifts`, la validación de «la bloqueada no vence antes que su bloqueante»,
   el barrido de vencimientos y el filtro «vencidas» no miran la hora. Un corrimiento solo toca fechas: la hora y la duración se conservan.
-- El orden es por fecha y, en el mismo día, por hora (las sin hora después). Las tareas de seguimiento y de cobranza son solo fecha; los
-  nodos de flujo y la herramienta del agente no reciben hora.
+- El orden es por el día que se ve y, en el mismo día, por instante (las sin hora después). Las tareas de seguimiento y de cobranza son
+  solo fecha; los nodos de flujo y la herramienta del agente no reciben hora.
+
+## Cada persona ve las tareas con hora en su zona (4/11/2026)
+
+**Lo guardado no cambió ni de formato ni de significado**: `due_date` + `due_time` son hora de pared de la zona del **workspace**. Lo que
+cambió es lo que se muestra y lo que se escribe desde la pantalla, que van en la zona de quien mira. Todo pasa por `lib/tasks/due-view.ts`
+(puro, sin migración): `dueForViewer` (de lo guardado a lo que se ve), `dueToStored` (la inversa) y `dueEditPatch` / `dueDayPatch` (lo que
+hay que guardar cuando quien mira elige otro día u hora).
+
+- **Una tarea SIN hora es una fecha civil y no se convierte**: «vence el martes» es martes para todos.
+- **Una tarea CON hora es un instante**: una tarea de las 23:00 del negocio puede caer en otro día para quien mira.
+- **«Hoy», «Mañana», «Ayer» y «vencida» usan el día de quien mira sobre lo que se ve**, y siguen siendo por día: la hora no cambia el tono.
+- **Escribir**: como el editor muestra el día que ve quien mira, cambiar «solo el día» de una tarea con hora guarda día y hora convertidos
+  juntos (conserva la hora que veía). Nunca se manda el día visto como si fuera el guardado. La conversión pasa en el cliente; el servidor
+  recibe y guarda lo de siempre.
+- **Siguen sobre lo guardado, en la zona del negocio**: `computeDateShifts`, `completedOn`, los corrimientos, `start_date` (civil), las
+  funciones SQL, `tasks_dates_order`, `set_task_blockers`, el barrido de vencimientos, las variables `{{task.due_date}}`, los avisos y las
+  validaciones que comparan fechas (inicio y bloqueantes). «Quien mira» nunca decide una regla.
+- Una zona o un valor inválido no rompe la pantalla: se muestra lo guardado sin convertir.
+
+**Límites conocidos**
+
+- **Cerca de medianoche, la campana y la pantalla pueden no coincidir**: el barrido de vencimientos corre en la zona del negocio, así que
+  el aviso puede decir «vence hoy» cuando la pantalla de quien está en otra zona dice «mañana» (o al revés).
+- **La vista previa de «Mover fechas» muestra días guardados**: los corrimientos son del sistema, así que para una tarea con hora el día
+  del diálogo puede ser distinto del que esa persona ve en la tabla. Su «Hoy es…» también es el día del negocio (`completedOn`).
+- **Las dos horas raras del cambio de horario**: una hora que no existe (02:30 del 8/3 en Nueva York) o que se repite (01:30 del 1/11) no
+  tiene una respuesta correcta. `lib/dates` (la tabla, el drawer y la ficha) toma 01:30 para la que no existe y la primera vez para la
+  repetida; dayjs (`wallClockToUtc`: el calendario de Agenda) toma 03:30 y la segunda vez. Para esas horas, y solo para esas, el calendario
+  y la tabla pueden diferir en una hora. Los casos de `lib/dates` están fijados en `due-view.test.ts`.
 
 ## La regla de fechas es del sistema (R10)
 
@@ -240,7 +269,9 @@ sin poder leer ni editar las ajenas.
 - Distintas de las agendas: borde punteado, icono de casilla, punto por prioridad y color de estado; completadas atenuadas y tachadas.
   Con hora, bloque de alto = duración (30 min si no tiene); sin hora, franja «Sin hora» arriba de cada día y etiqueta en el mes. Lo que se
   superpone va lado a lado (`layoutOverlaps`, solo con tareas). Panel plegable «Sin fecha» (máx. 50, con buscador).
-- La hora de una tarea es del workspace; el calendario usa la zona del perfil de quien mira (`placeTasksInCalendar`).
+- La hora de una tarea es del workspace; el calendario se dibuja en la zona de quien mira (`placeTasksInCalendar`), y el chip del mes y el
+  aviso de «Tarea movida» dicen esa hora. Se piden dos días de margen a cada lado (`dueDateWindow`): de UTC-12 a UTC+14 una tarea puede caer
+  dos días civiles más allá.
 - Clic abre el mismo drawer (`?task=`). **Las tareas se arrastran SIN confirmar** (HTML5 nativo, solo escritorio ≥ 768 px y con
   `tasks.edit`): hora de la rejilla (pasos de 15 min), franja «Sin hora» (quita hora y duración) o celda del mes (conserva la hora). Se
   aplica al instante, con las mismas validaciones que la edición en celda, y el aviso trae «Deshacer».

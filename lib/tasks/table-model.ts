@@ -2,8 +2,8 @@
  * El modelo de la tabla de Tareas (Extra A, F10). PURO: los componentes solo lo dibujan.
  */
 
+import { dueInstantMs, dueSeen, type DueZones } from "./due-view";
 import { foldText } from "./text";
-import { normalizeTime } from "@/lib/calendar/time";
 import { PRIORITY_RANK, STATUS_LABELS, TASK_STATUSES, type TaskRow, type TaskSource, type TaskStatus } from "./types";
 import type { GroupBy, SortColumn, SortSpec } from "./view-state";
 
@@ -23,9 +23,12 @@ export interface TaskRowView {
   /** El nombre del proyecto como se escribio la primera vez. */
   project: string | null;
   projectKey: string | null;
+  /** El dia de vencimiento QUE VE quien mira, en su zona. Lo guardado sigue en `task`. */
   dueDate: string | null;
-  /** Hora de vencimiento (`HH:MM`), si tiene. */
+  /** La hora de vencimiento (`HH:MM`) que ve quien mira, si tiene. */
   dueTime: string | null;
+  /** El instante del vencimiento (ms), si tiene hora: el orden entre tareas con hora. */
+  dueInstant: number | null;
   priority: TaskRow["priority"];
   overdue: boolean;
   blocked: boolean;
@@ -35,9 +38,13 @@ export interface TaskRowView {
   contactId: string | null;
 }
 
-/** Vencida = vence antes de hoy y no esta completada. */
-export function isOverdue(task: Pick<TaskRow, "due_date" | "status">, today: string): boolean {
-  return task.due_date !== null && task.due_date < today && task.status !== "completed";
+/**
+ * Vencida = el dia que ve quien mira es anterior a su hoy y no esta completada. Sin `zones`, la fecha que recibe ya es la
+ * que se ve. Es por dia: la hora no cuenta.
+ */
+export function isOverdue(task: Pick<TaskRow, "due_date" | "status"> & { due_time?: string | null }, today: string, zones?: DueZones): boolean {
+  const date = zones ? dueSeen(task, zones).date : task.due_date;
+  return date !== null && date < today && task.status !== "completed";
 }
 
 /** Cuantos de sus bloqueantes siguen abiertos. Un bloqueante que no se conoce (no se ve) no cuenta. */
@@ -57,12 +64,14 @@ export function isBlocked(task: Pick<TaskRow, "blocked_by">, byId: ReadonlyMap<s
 export function buildRows(
   tasks: readonly TaskRow[],
   members: readonly MemberLite[],
-  opts: { today: string; byId?: ReadonlyMap<string, TaskRow> },
+  /** `today` es el dia de quien mira; `zones`, para mostrar el vencimiento en su zona (sin `zones`, lo guardado). */
+  opts: { today: string; byId?: ReadonlyMap<string, TaskRow>; zones?: DueZones },
 ): TaskRowView[] {
   const names = new Map(members.map((m) => [m.id, m.name]));
   const byId = opts.byId ?? new Map(tasks.map((t) => [t.id, t]));
   return tasks.map((task) => {
     const blockedCount = openBlockers(task, byId);
+    const seen = dueSeen(task, opts.zones);
     return {
       id: task.id,
       task,
@@ -73,10 +82,11 @@ export function buildRows(
       followerCount: task.follower_ids.length,
       project: task.project,
       projectKey: task.project_key,
-      dueDate: task.due_date,
-      dueTime: normalizeTime(task.due_time),
+      dueDate: seen.date,
+      dueTime: seen.time,
+      dueInstant: dueInstantMs(task, opts.zones?.workspaceTz),
       priority: task.priority,
-      overdue: isOverdue(task, opts.today),
+      overdue: isOverdue({ due_date: seen.date, status: task.status }, opts.today),
       blocked: blockedCount > 0,
       blockedCount,
       source: task.source,
@@ -108,10 +118,10 @@ function byColumn(column: SortColumn, dir: 1 | -1): (a: TaskRowView, b: TaskRowV
     case "owner":
       return (a, b) => cmpNullable(a.ownerName, b.ownerName, text, dir);
     case "due":
-      // Por dia y, a igual dia, por hora: las que no tienen hora van despues de las que si, en los dos sentidos.
+      // Por el dia que se ve y, a igual dia, por el instante: las que no tienen hora van despues de las que si, en los dos sentidos.
       return (a, b) =>
         cmpNullable(a.dueDate, b.dueDate, (x, y) => (x < y ? -1 : x > y ? 1 : 0), dir) ||
-        (a.dueDate !== null && a.dueDate === b.dueDate ? cmpNullable(a.dueTime, b.dueTime, (x, y) => (x < y ? -1 : x > y ? 1 : 0), dir) : 0);
+        (a.dueDate !== null && a.dueDate === b.dueDate ? cmpNullable(a.dueInstant, b.dueInstant, (x, y) => x - y, dir) : 0);
     case "priority":
       return (a, b) => (PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]) * dir;
     case "project":

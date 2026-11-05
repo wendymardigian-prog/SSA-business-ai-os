@@ -3,7 +3,7 @@
  */
 
 import { foldText } from "./text";
-import { formatTime, type TimeFormat } from "@/lib/calendar/time";
+import { formatTime, minutesToTime, type TimeFormat } from "@/lib/calendar/time";
 import type { TaskPriority, TaskRow } from "./types";
 
 /** El punto de color de la prioridad (clase de Tailwind). */
@@ -26,9 +26,13 @@ export function isDraggableTask(task: Pick<TaskRow, "status">, canEdit: boolean)
   return canEdit && task.status !== "completed";
 }
 
-/** El texto de una tarea en una celda del mes: «09:30 Titulo» o «Sin hora · Titulo». */
-export function monthChipText(task: Pick<TaskRow, "title" | "due_time">, timeFormat: TimeFormat): string {
-  const time = formatTime(task.due_time, timeFormat);
+/**
+ * El texto de una tarea en una celda del mes: «09:30 Titulo» o «Sin hora · Titulo». La hora es la de la zona del calendario
+ * (`startMinutes`), la misma con la que la tarea ya cayo en ese dia; no la guardada, que es del workspace.
+ */
+export function monthChipText(item: { task: Pick<TaskRow, "title">; startMinutes: number | null }, timeFormat: TimeFormat): string {
+  const { task, startMinutes } = item;
+  const time = startMinutes === null ? "" : formatTime(minutesToTime(startMinutes), timeFormat);
   return time ? `${time} ${task.title}` : `Sin hora · ${task.title}`;
 }
 
