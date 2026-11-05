@@ -17,6 +17,7 @@ import type { Database } from "@/lib/types/database";
 import type { Booking } from "../types";
 import { bookingVariables, emptyBookingVariables } from "./variables";
 import { eventPublicUrl, publicBaseUrl } from "../public-url";
+import { eventOwnerUsername } from "../data/public-booking";
 
 type Db = SupabaseClient<Database>;
 
@@ -35,8 +36,8 @@ export async function bookingContextVariables(supabase: Db, booking: Record<stri
   if (!workspaceId || !eventTypeId) return {};
 
   const [{ data: event }, { data: profile }, { data: workspace }] = await Promise.all([
-    supabase.from("event_types").select("title, duration_minutes, slug, is_internal").eq("id", eventTypeId).maybeSingle(),
-    supabase.from("scheduling_profiles").select("display_name, timezone, username").eq("workspace_id", workspaceId).eq("user_id", hostUserId).maybeSingle(),
+    supabase.from("event_types").select("title, duration_minutes, slug, is_internal, owner_user_id").eq("id", eventTypeId).maybeSingle(),
+    supabase.from("scheduling_profiles").select("display_name, timezone").eq("workspace_id", workspaceId).eq("user_id", hostUserId).maybeSingle(),
     supabase.from("workspaces").select("scheduling_public_base_url, timezone").eq("id", workspaceId).maybeSingle(),
   ]);
   if (!event) return {};
@@ -53,8 +54,10 @@ export async function bookingContextVariables(supabase: Db, booking: Record<stri
   );
 
   // `{{scheduling.link}}`, el link para volver a agendar que usa la plantilla de cancelacion. Sin esto, el
-  // texto llegaba tal cual al invitado. Una reunion sin evento no tiene pagina publica.
-  const link = !event.is_internal && profile?.username ? eventPublicUrl(baseUrl, profile.username, event.slug) : "";
+  // texto llegaba tal cual al invitado. Una reunion sin evento no tiene pagina publica. El usuario es el del dueño
+  // del evento, no el del anfitrion: en una reunion reasignada no son la misma persona.
+  const ownerUsername = event.is_internal ? null : await eventOwnerUsername(supabase, workspaceId, event.owner_user_id);
+  const link = ownerUsername ? eventPublicUrl(baseUrl, ownerUsername, event.slug) : "";
 
   return { booking: vars, scheduling: { link }, trigger_scope: BOOKING_TRIGGER_SCOPE };
 }

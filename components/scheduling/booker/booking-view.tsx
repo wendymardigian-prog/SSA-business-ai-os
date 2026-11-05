@@ -241,9 +241,9 @@ export function BookingView({
                 Cancelar
               </button>
             )}
-            {cancelled && booking.username && (
+            {cancelled && booking.rebookPath && (
               <Link
-                href={`/calendario/${booking.username}/${booking.eventSlug}`}
+                href={booking.rebookPath}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
               >
                 Agendar de nuevo
