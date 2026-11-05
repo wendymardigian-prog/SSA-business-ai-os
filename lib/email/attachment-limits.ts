@@ -11,6 +11,12 @@
 export const MAX_EMAIL_ATTACHMENTS = 10;
 export const MAX_EMAIL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
+/**
+ * Lo que el panel ofrece adjuntar. Un audio o un video saldrían como un archivo para descargar: no se reproducen adentro
+ * del email y lo hacen pesado. Si un paso ya tiene uno elegido, se sigue viendo y mandando.
+ */
+export const EMAIL_PICKABLE_KINDS: readonly string[] = ["image", "file"];
+
 export interface EmailAttachmentRef {
   /** El recurso de la banca. */
   assetId: string;
@@ -41,6 +47,18 @@ export function attachmentBudget(sizes: Array<number | null | undefined>): { ok:
   if (sizes.length > MAX_EMAIL_ATTACHMENTS) return { ok: false, totalBytes, problem: `Hasta ${MAX_EMAIL_ATTACHMENTS} adjuntos por email.` };
   if (totalBytes > MAX_EMAIL_ATTACHMENT_BYTES) return { ok: false, totalBytes, problem: "Los adjuntos pasan de 25 MB en total: sacá alguno o usá un recurso más liviano." };
   return { ok: true, totalBytes, problem: null };
+}
+
+/** Por qué no se puede publicar un paso «Enviar email»: un adjunto de más nunca se descubre recién al enviar. */
+export function emailAttachmentProblems(nodes: unknown): string[] {
+  const problems = new Set<string>();
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    const data = (node as { data?: { attachments?: unknown } } | null)?.data;
+    if (!data?.attachments) continue;
+    const { problem } = attachmentBudget(parseEmailAttachments(data.attachments).map((a) => a.sizeBytes));
+    if (problem) problems.add(problem);
+  }
+  return [...problems];
 }
 
 export function formatMegabytes(bytes: number): string {

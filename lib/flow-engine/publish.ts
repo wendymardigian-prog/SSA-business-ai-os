@@ -14,6 +14,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { emailAttachmentProblems } from "@/lib/email/attachment-limits";
 import { buildDesiredTriggers, persistableTriggerTypes } from "@/lib/flow-triggers";
 import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative"; // @plantilla-quitar(ventas)
 import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers"; // @plantilla-quitar(ventas)
@@ -65,6 +66,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     ...(args.extraProblems?.(nodes, edges) ?? []),
     // Un solo disparador, elegido, con lo minimo de su tipo y con un paso conectado (auditoria de automatizaciones).
     ...triggerProblems(nodes, edges),
+    ...emailAttachmentProblems(nodes),
     ...(await checkMemberFlow(db, workspaceId, nodes, edges, { publishing: true })),
     ...(await connectionProblemsForGraph(args.getServiceClient, workspaceId, nodes, edges)),
   ];
