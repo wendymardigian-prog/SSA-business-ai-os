@@ -1796,7 +1796,7 @@ Una **guardia única de entrega** para todo el email de marketing (broadcasts, a
 
 ## Migraciones
 
-`00287_email_delivery_guard` (columnas de `email_log`, estados `reserved` / `skipped_no_email`, la guardia, la capacidad, `patch_resend_config`, los eventos y `contact_last_activity`) y `00288_broadcast_activity_order` (`sort_key` y `claim_broadcast_recipient`): aditivas, van **ANTES** del deploy, **aplicadas y registradas** el 4/11/2026 (versiones `20261104191636` y `20261104191646`). La `00289` la ocupó «Reuniones sin evento», así que `automation_runs` (Fase 1b) pasa a la **`00290`** (confirmar con `list_migrations` y las ramas locales).
+`00287_email_delivery_guard` (columnas de `email_log`, estados `reserved` / `skipped_no_email`, la guardia, la capacidad, `patch_resend_config`, los eventos y `contact_last_activity`) y `00288_broadcast_activity_order` (`sort_key` y `claim_broadcast_recipient`): aditivas, van **ANTES** del deploy, **aplicadas y registradas** el 4/11/2026 (versiones `20261104191636` y `20261104191646`). La `00289` la ocupó «Reuniones sin evento», así que `automation_runs` (Fase 1b) pasa a la **`00291`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-email-subscription.mjs   # bloque 11: la guardia (SQL = TS, 10 en paralelo con tope 5, freno, calentamiento, eventos)
@@ -1826,7 +1826,7 @@ Cada persona ve TODAS las fechas y horas en su zona. Detalle en [docs/agendamien
 
 ## Migracion
 
-`00289_flows_no_event_templates` (aditiva, va ANTES del deploy): **aplicada y registrada** el 4/11/2026 (versión `20261105001801`), después de ensayarla en una transacción que se deshizo sola. **La proxima libre es la `00290`** (confirmar con `list_migrations` y las ramas locales).
+`00289_flows_no_event_templates` (aditiva, va ANTES del deploy): **aplicada y registrada** el 4/11/2026 (versión `20261105001801`), después de ensayarla en una transacción que se deshizo sola. **La `00290` es de Cambiar el anfitrion de un evento: la proxima libre es la `00291`** (confirmar con `list_migrations` y las ramas locales).
 
 # Seguridad
 
