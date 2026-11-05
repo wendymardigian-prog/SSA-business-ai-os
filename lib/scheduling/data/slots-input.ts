@@ -56,18 +56,49 @@ export async function findPublicEvent(
     .select("*")
     .ilike("username", username)
     .maybeSingle();
-  if (!profile || !profile.is_active) return null;
 
-  const { data: event } = await service
-    .from("event_types")
-    .select("*")
-    .eq("workspace_id", profile.workspace_id)
-    .eq("owner_user_id", profile.user_id)
+  if (profile) {
+    const { data: event } = await service
+      .from("event_types")
+      .select("*")
+      .eq("workspace_id", profile.workspace_id)
+      .eq("owner_user_id", profile.user_id)
+      .eq("slug", slug.toLowerCase())
+      .is("deleted_at", null)
+      .maybeSingle();
+    // Un evento real en este link le gana a un link anterior (aunque este inactivo).
+    if (event) {
+      // Activo u oculto: el oculto se llega con el link directo. Inactivo = 404.
+      return profile.is_active && event.status !== "inactive" ? { event, profile } : null;
+    }
+  }
+  return findMovedEvent(service, username, slug);
+}
+
+/**
+ * El link que tenia un evento antes de cambiar de anfitrion (00290). Abre el evento
+ * con su anfitrion y su slug de HOY: quien tenia el link guardado no se entera, y
+ * las rutas publicas funcionan sin saber del cambio.
+ */
+async function findMovedEvent(service: Db, username: string, slug: string) {
+  const { data: moved } = await service
+    .from("event_type_moved_links")
+    .select("event_type_id")
+    .eq("username", username.toLowerCase())
     .eq("slug", slug.toLowerCase())
-    .is("deleted_at", null)
     .maybeSingle();
-  // Activo u oculto: el oculto se llega con el link directo. Inactivo = 404.
+  if (!moved) return null;
+
+  const { data: event } = await service.from("event_types").select("*").eq("id", moved.event_type_id).is("deleted_at", null).maybeSingle();
   if (!event || event.status === "inactive") return null;
+
+  const { data: profile } = await service
+    .from("scheduling_profiles")
+    .select("*")
+    .eq("workspace_id", event.workspace_id)
+    .eq("user_id", event.owner_user_id)
+    .maybeSingle();
+  if (!profile || !profile.is_active) return null;
   return { event, profile };
 }
 

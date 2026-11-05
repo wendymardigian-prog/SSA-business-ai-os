@@ -1,7 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getEventType, listCategories, toCategoryRow, toEventType } from "@/lib/scheduling/data/event-types";
+import { futureBookingsCount, getEventType, listCategories, toCategoryRow, toEventType } from "@/lib/scheduling/data/event-types";
+import { loadHostCandidates } from "@/lib/scheduling/data/host-candidates";
+import type { HostCandidate } from "@/lib/scheduling/host-change";
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { listSchedules, toSchedule } from "@/lib/scheduling/data/schedules";
 import { calendarsForResolve } from "@/lib/scheduling/data/event-context";
@@ -78,8 +80,19 @@ export default async function AgendaEventoPage({
 
   const section: EditorSection = isEditorSection(query.seccion) ? query.seccion : "details";
 
+  // Cambiar el anfitrion pide manage_others: sin el permiso, solo se ve quien es.
+  let hostChange: { candidates: HostCandidate[]; futureBookings: number } | null = null;
+  if (ctx.can("scheduling.manage_others")) {
+    const service = await createServiceClient();
+    const [candidates, futureBookings] = await Promise.all([loadHostCandidates(service, ctx.workspace.id), futureBookingsCount(service, row.id)]);
+    hostChange = { candidates, futureBookings };
+  }
+
   return (
     <EventEditorView
+      // Con otro anfitrion, lo elegido en Disponibilidad ya no aplica: se arma de nuevo.
+      key={row.owner_user_id}
+      hostChange={hostChange}
       event={{ ...event, workspace_id: row.workspace_id }}
       section={section}
       categories={categories.map(toCategoryRow)}
