@@ -159,7 +159,7 @@ export default async function TaskDetailPage({
       // (lib/agent/page-mode.ts). Va aca y no antes de responder: asi no demora el encabezado.
       redirectIfAgentsEmpty(service, workspace.id),
       tab === "config" || tab === "costos" ? lastRun : Promise.resolve(null),
-      isClassification && tab === "config" ? loadBackgroundScreen(workspace.id, workspace.timezone) : Promise.resolve(null),
+      isClassification && tab === "config" ? loadBackgroundScreen(workspace.id, viewerTimezone) : Promise.resolve(null),
       taskIsVersioned(task.id) && tab === "instrucciones" ? loadInstructions() : Promise.resolve(undefined),
       task.hasModelPicker && tab === "config" ? loadModel() : Promise.resolve(undefined),
       tab === "runs" ? loadRunsTab(viewerTimezone) : Promise.resolve(undefined),

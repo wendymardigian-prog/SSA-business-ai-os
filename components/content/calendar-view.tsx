@@ -8,6 +8,7 @@ import { buildCalendar, summarize, type CalendarCard, type CalendarPiece } from 
 import { NetworkBadges } from "./network-badge";
 import { movePieceToDay } from "@/lib/actions/content-calendar";
 import { drawerHref } from "@/lib/content/drawer-url";
+import { timeZoneLabel } from "@/lib/dates";
 
 /**
  * El calendario de contenido (F21).
@@ -75,8 +76,8 @@ export function ContentCalendar({
 
   const days = useMemo(() => monthGrid(month), [month]);
 
-  // Hoy, en la zona del NEGOCIO y no en la del navegador: alguien que viaja
-  // no tiene por qué ver resaltado el día equivocado.
+  // Hoy, en la zona de QUIEN MIRA (la que eligio, no necesariamente la del
+  // navegador): la misma con la que se arman los dias del calendario.
   const today = useMemo(
     () =>
       new Intl.DateTimeFormat("en-CA", {
@@ -129,6 +130,7 @@ export function ContentCalendar({
           <span className="ml-1 opacity-70">
             (contando {countMode === "pieces" ? "piezas" : "publicaciones"})
           </span>
+          <span className="ml-1 opacity-70">· tu hora ({timeZoneLabel(timeZone)})</span>
         </p>
       </div>
 

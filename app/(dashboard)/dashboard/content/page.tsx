@@ -11,7 +11,8 @@ import { parseDrawer } from "@/lib/content/drawer-url";
 import { assigneeOf } from "@/lib/content/assignee";
 import { loadPiece, type PieceData } from "@/lib/content/load-piece";
 import { contentTooltip } from "@/lib/nav/page-actions";
-import { timeZoneLabel } from "@/lib/dates";
+import { isoToDateInput, timeZoneLabel } from "@/lib/dates";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { attributedContactsFor, countByPiece, type BoardIdea, type BoardPost } from "@/lib/content/board";
@@ -83,10 +84,10 @@ export default async function ContentPage({
   const canUseAi = can("content.ai");
   const canSeePaid = can("dashboards.ads.view");
 
-  // La zona del NEGOCIO, no la de quien mira: es la misma que usa el editor
-  // para agendar (A19, lib/dates.ts) y el tope diario server-side
-  // (lib/publishing/schedule-core.ts) — las tres tienen que coincidir.
-  const timeZone = workspace.timezone || "UTC";
+  // La zona de QUIEN MIRA: en esta se ve y se escribe la hora de una pieza
+  // (lib/dates.ts). Tiene que ser la misma que usan loadPiece y movePieceToDay.
+  // El tope diario NO: ese es una regla y cuenta en la del negocio.
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
 
   const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed, paidPieceIds] = await Promise.all([
     supabase
@@ -283,6 +284,9 @@ export default async function ContentPage({
 
   // La lista muestra TODO lo que hay, ideas incluidas (C15): si una idea no
   // aparece, buscarla obliga a volver al tablero.
+  /** El mes de una fecha en la zona de quien mira: "1 dic 02:00 UTC" todavia es noviembre en America. */
+  const monthInZone = (iso: string | null) => (iso ? isoToDateInput(iso, timeZone).slice(0, 7) : null);
+
   const listRows: ListRow[] = [
     ...ideas.map<ListRow>((idea) => ({
       id: idea.id,
@@ -295,10 +299,13 @@ export default async function ContentPage({
       authorship: idea.authorship,
       pillar: idea.pillar,
       firstAt: null,
+      firstMonth: null,
       hasCopy: false,
       isIdea: true,
     })),
-    ...posts.map<ListRow>((post) => ({
+    ...posts.map<ListRow>((post) => {
+      const firstAt = post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null;
+      return {
       id: post.id,
       title: post.title,
       status: post.status,
@@ -309,15 +316,17 @@ export default async function ContentPage({
       authorName: post.authorName,
       authorship: post.authorship,
       pillar: post.pillar,
-      firstAt: post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null,
+      firstAt,
+      firstMonth: monthInZone(firstAt),
       hasCopy: post.hasCopy,
       attributedContacts: post.attributedContacts,
       paid: paidPieceIds.has(post.id),
-    })),
+      };
+    }),
   ];
 
   const listMonths = [
-    ...new Set(listRows.map((r) => r.firstAt?.slice(0, 7)).filter(Boolean) as string[]),
+    ...new Set(listRows.map((r) => r.firstMonth).filter(Boolean) as string[]),
   ].sort();
 
   const month =
@@ -404,6 +413,7 @@ export default async function ContentPage({
           filters={filters}
           authors={[...authorNames.entries()].map(([id, name]) => ({ id, name }))}
           months={listMonths}
+          timeZone={timeZone}
           showPaid={canSeePaid}
         />
       )}

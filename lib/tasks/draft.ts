@@ -7,6 +7,7 @@
  */
 
 import type { CellPatch } from "./cell-edit";
+import { dueSeen, dueToStored, type DueZones } from "./due-view";
 import { cleanProjectName } from "./project";
 import { normalizeTime } from "@/lib/calendar/time";
 import type { TaskPriority, TaskRow, TaskStatus } from "./types";
@@ -121,4 +122,15 @@ export function draftProblem(values: TaskValues): string | null {
 export function dueDatePatch(values: Pick<TaskValues, "start_date">, due: string | null): CellPatch {
   if (due && values.start_date && values.start_date > due) return { due_date: due, start_date: null };
   return { due_date: due };
+}
+
+/**
+ * Lo mismo, cuando el dia lo elige quien mira en su zona: el drawer muestra el dia que VE. Con hora, el dia y la hora guardados
+ * se calculan juntos, conservando la hora que ve; la comparacion con el inicio sigue sobre lo guardado, como en la base.
+ */
+export function viewerDueDatePatch(values: Pick<TaskValues, "start_date" | "due_date" | "due_time">, viewerDate: string | null, zones: DueZones): CellPatch {
+  const stored = dueToStored({ date: viewerDate, time: viewerDate ? dueSeen(values, zones).time : null }, zones.workspaceTz, zones.viewerTz);
+  const patch = dueDatePatch(values, stored.due_date);
+  if (stored.due_time !== normalizeTime(values.due_time)) patch.due_time = stored.due_time;
+  return patch;
 }

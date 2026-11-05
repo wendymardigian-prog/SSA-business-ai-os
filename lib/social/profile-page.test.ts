@@ -69,14 +69,14 @@ describe("las cifras de cada red (F54)", () => {
 
 describe("el perfil completo (F54)", () => {
   it("dice de donde salen los datos y cuando", () => {
-    const profile = buildProfile(source());
+    const profile = buildProfile(source(), "UTC");
 
     expect(profile.sourceLabel).toContain("Zernio y la Graph de Meta");
     expect(profile.sourceLabel).toContain("1 oct");
   });
 
   it("si nunca se leyo, lo dice en vez de mostrar una fecha vacia", () => {
-    expect(buildProfile(source({ syncedAt: null })).sourceLabel).toContain("Todavia no se leyeron");
+    expect(buildProfile(source({ syncedAt: null }), "UTC").sourceLabel).toContain("Todavia no se leyeron");
   });
 });
 
@@ -180,14 +180,14 @@ describe("las cifras reales del perfil (F100)", () => {
   });
 
   it("si la ultima lectura fallo, el perfil lo avisa y sigue mostrando lo ultimo que se leyo", () => {
-    const profile = buildProfile(source({ syncError: "Zernio: cuenta sin permisos" }));
+    const profile = buildProfile(source({ syncError: "Zernio: cuenta sin permisos" }), "UTC");
 
     expect(profile.warning).toContain("Zernio: cuenta sin permisos");
     expect(profile.stats.find((s) => s.key === "followers")?.value).toBe(4200);
   });
 
   it("sin error no hay aviso", () => {
-    expect(buildProfile(source()).warning).toBeNull();
+    expect(buildProfile(source(), "UTC").warning).toBeNull();
   });
 });
 
@@ -444,7 +444,7 @@ describe("el link al perfil en la red", () => {
   });
 
   it("llega al resumen del perfil", () => {
-    expect(buildProfile(source({ profileUrl: "https://instagram.com/minegocio" })).profileLink).toBe(
+    expect(buildProfile(source({ profileUrl: "https://instagram.com/minegocio" }), "UTC").profileLink).toBe(
       "https://instagram.com/minegocio",
     );
   });

@@ -79,12 +79,12 @@ export default async function FormulariosPage({ searchParams }: { searchParams: 
   }
 
   // La conversion: vistas de cada formulario con respuestas (personalizados y contratos), con la misma RPC que Metricas.
-  const today = dayInZone(new Date(), workspace.timezone || "UTC");
+  const today = dayInZone(new Date(), timeZone);
   const needViews = (forms ?? []).filter((f) => (f.type === "custom" || f.type === "contract") && (stats.get(f.id)?.submissions ?? 0) > 0).slice(0, MAX_FORMS_WITH_VIEWS);
   await Promise.all(
     needViews.map(async (f) => {
       const earliest = addDays(today, -(METRICS_DAYS - 1));
-      const created = dayInZone(f.created_at, workspace.timezone || "UTC");
+      const created = dayInZone(f.created_at, timeZone);
       const from = created > earliest ? created : earliest;
       const { data, error: rpcError } = await supabase.rpc("form_metrics_daily", { p_form_id: f.id, p_from: from, p_to: today });
       if (rpcError) return; // sin vistas medidas, la conversion queda en blanco

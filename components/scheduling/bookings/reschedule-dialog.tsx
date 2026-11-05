@@ -130,6 +130,9 @@ function RescheduleDialog({
             <dd className="font-medium">{formatDateTimeWithZone(state.startUtc, timezone, timeFormat)}</dd>
           </div>
         </dl>
+        {booking.timezone && booking.timezone !== timezone && (
+          <p className="mt-2 text-xs text-muted-foreground">Para el invitado: {formatDateTimeWithZone(state.startUtc, booking.timezone, timeFormat)}</p>
+        )}
 
         <label htmlFor="reschedule-reason" className="mt-3 block text-xs text-muted-foreground">
           Motivo (opcional)

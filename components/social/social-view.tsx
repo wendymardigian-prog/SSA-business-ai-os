@@ -97,7 +97,7 @@ export function SocialView({
   canRefresh: boolean;
   /** Integraciones es de Owner y Admin: los demas no reciben un link que rebota. */
   canConnect: boolean;
-  /** La zona del negocio: las fechas se cuentan ahi y no en la del navegador. */
+  /** La zona de quien mira: las fechas se cuentan ahi. */
   timeZone: string;
 }) {
   const [selection, setSelection] = useState<{ platform: string; accountId: string | null }>({
@@ -115,8 +115,8 @@ export function SocialView({
   const [notice, setNotice] = useState<string | null>(null);
 
   const profile = useMemo(
-    () => (activeAccount && profiles[activeAccount.id] ? buildProfile(profiles[activeAccount.id]) : null),
-    [profiles, activeAccount],
+    () => (activeAccount && profiles[activeAccount.id] ? buildProfile(profiles[activeAccount.id], timeZone) : null),
+    [profiles, activeAccount, timeZone],
   );
 
   const trend = useMemo(

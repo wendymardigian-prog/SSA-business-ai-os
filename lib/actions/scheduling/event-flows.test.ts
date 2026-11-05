@@ -3,7 +3,7 @@ import { fakeDb, type FakeDb } from "@/lib/testing/fake-db";
 
 const mocks = vi.hoisted(() => ({ permission: vi.fn(), service: vi.fn(), audit: vi.fn(), revalidate: vi.fn(), emailConfigured: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
-vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: mocks.permission }));
+vi.mock("@/lib/auth/guards", () => ({ getAnyPermissionAction: mocks.permission }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: mocks.service }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
 vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: vi.fn(), isEmailConfigured: mocks.emailConfigured }));
@@ -136,5 +136,47 @@ describe("toggleEventFlow: prender un flujo con una accion sin su conexion (G1)"
     const db = setup({ status: "published" });
     expect((await toggleEventFlow({ flowId: FLOW, enabled: false })).ok).toBe(true);
     expect(db.writesTo("flows")[0].values).toEqual({ status: "draft" });
+  });
+});
+
+describe("los flujos de reuniones sin evento", () => {
+  const noEvent = { event_type_id: null, template_key: "no_event_confirmation" };
+
+  function setupNoEvent(can: (key: string) => boolean) {
+    const session = fakeDb({});
+    const service = fakeDb({
+      "flows:select": { data: { id: FLOW, name: "A", status: "draft", workspace_id: "ws1", nodes: [], edges: [], ...noEvent } },
+      "flows:update": { data: null },
+      "triggers:delete": { data: null },
+      "triggers:insert": { data: null },
+      "integration_configs:select": { data: [] },
+      "channels:select": { data: [] },
+      "agents:select": { data: [] },
+    });
+    mocks.permission.mockResolvedValue({ workspace: { id: "ws1" }, user: { id: "u1", email: "yo@ejemplo.com" }, supabase: session.client, can });
+    mocks.service.mockResolvedValue(service.client);
+    return { session, service };
+  }
+
+  it("los toca quien tiene settings.general, aunque no tenga agenda, y escribe el servidor", async () => {
+    const { session, service } = setupNoEvent((key) => key === "settings.general");
+    expect((await toggleEventFlow({ flowId: FLOW, enabled: true })).ok).toBe(true);
+    expect(service.writesTo("flows")).toHaveLength(1);
+    expect(session.writes()).toHaveLength(0);
+    expect(mocks.revalidate).toHaveBeenCalledWith("/dashboard/agenda/configuracion/sin-evento");
+  });
+
+  it("tener agenda propia no alcanza: son del negocio", async () => {
+    const { service } = setupNoEvent((key) => key === "scheduling.use");
+    const out = await toggleEventFlow({ flowId: FLOW, enabled: true });
+    expect(out.ok).toBe(false);
+    expect(service.writes()).toHaveLength(0);
+  });
+
+  it("uno de otro negocio no se toca", async () => {
+    const { service } = setupNoEvent(() => true);
+    mocks.permission.mockResolvedValue({ workspace: { id: "otro" }, user: { id: "u1" }, supabase: fakeDb({ "flows:select": { data: null } }).client, can: () => true });
+    expect((await toggleEventFlow({ flowId: FLOW, enabled: true })).ok).toBe(false);
+    expect(service.writes()).toHaveLength(0);
   });
 });

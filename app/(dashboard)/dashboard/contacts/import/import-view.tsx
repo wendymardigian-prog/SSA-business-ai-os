@@ -1,9 +1,11 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Upload, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { todayInputValue } from "@/lib/dates";
 import { parseCsv } from "@/lib/csv/parse";
 import {
   ATTRIBUTION_TARGETS,
@@ -87,6 +89,7 @@ export function ImportView({
   /** Los campos personalizados vivos del workspace: cada uno es un destino posible. */
   customFields?: ImportCustomField[];
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const [step, setStep] = useState<Step>("upload");
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +160,8 @@ export function ImportView({
    * baja en alguna fila, queda dada de baja. Se valida igual que en el servidor.
    */
   function consolidate(): { byEmail: Record<string, RowSubscription>; consolidatedRows: number } {
-    const today = new Date().toISOString().slice(0, 10);
+    // El hoy de quien importa, igual que en el servidor: una fecha de hoy no es "futura" aunque en UTC todavia sea ayer.
+    const today = todayInputValue(new Date(), timeZone);
     const refs = rows.flatMap((values, i) => {
       const r = mapRow(values, mapping, i, customFields, today);
       return r.ok ? [{ line: r.row.line, email: r.row.patch.email ?? r.row.patch.secondary_email ?? null, subscription: r.row.subscription }] : [];

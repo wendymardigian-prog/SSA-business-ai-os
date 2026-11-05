@@ -299,7 +299,7 @@ function PostCard({
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
-  const chip = redistributionChip(post.networks);
+  const chip = redistributionChip(post.networks, timeZone);
   const editable = post.status === "draft" || post.status === "in_production";
   const dates = cardDates(post.networks);
   const singleDate = dates.kind === "single" ? formatCardDate(dates.at, timeZone) : null;

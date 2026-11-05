@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { moveToDay } from "@/lib/content/move-day";
 import { plannedDateChanges } from "@/lib/content/reschedule";
 import { reschedulePublication } from "@/lib/publishing/reschedule";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * Arrastrar una pieza a otro día en el calendario (C14).
@@ -34,12 +35,6 @@ export async function movePieceToDay(input: {
 
   if (!post) return { ok: false, error: "No encontre esa pieza" };
 
-  const { data: ws } = await supabase
-    .from("workspaces")
-    .select("timezone")
-    .eq("id", workspace.id)
-    .maybeSingle();
-
   const networks = (Array.isArray(post.networks) ? post.networks : []) as Array<{
     platform: string;
     planned_at?: string | null;
@@ -49,7 +44,9 @@ export async function movePieceToDay(input: {
     networks,
     fromDay: input.fromDay,
     toDay: input.toDay,
-    timeZone: ws?.timezone || "UTC",
+    // `fromDay` y `toDay` salen del calendario, que dibuja los dias en la zona de
+    // quien mira: se leen en la misma, o la pieza cae en otro dia.
+    timeZone: await resolveViewerTimezone(workspace.timezone),
   });
 
   if (!decision.ok) return decision;

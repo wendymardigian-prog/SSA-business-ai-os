@@ -5,6 +5,7 @@ import { getProfileForUser, takenUsernames } from "@/lib/scheduling/data/profile
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { suggestUsername } from "@/lib/scheduling/profile";
 import { ProfileSettingsView } from "@/components/scheduling/profile-settings-view";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,8 @@ export default async function AgendaAjustesPage({ searchParams }: { searchParams
 
   const meta = (ctx.user.user_metadata ?? {}) as { full_name?: string; name?: string };
   const ownName = meta.full_name ?? meta.name ?? ctx.user.email?.split("@")[0] ?? "";
-  const workspaceTimezone = (ctx.workspace as { timezone?: string }).timezone ?? "America/Costa_Rica";
+  // Un perfil nuevo arranca en la zona de quien lo crea; despues es la de su horario de atencion.
+  const initialTimezone = await resolveViewerTimezone(ctx.workspace.timezone);
   const isSelf = targetUserId === ctx.user.id;
 
   return (
@@ -41,7 +43,7 @@ export default async function AgendaAjustesPage({ searchParams }: { searchParams
       initial={
         profile
           ? { username: profile.username, displayName: profile.display_name, timezone: profile.timezone, timeFormat: profile.time_format, welcomeMessage: profile.welcome_message ?? "", avatarUrl: profile.avatar_url }
-          : { username: suggestUsername(isSelf ? ownName : "", isSelf ? ctx.user.email : null, taken), displayName: isSelf ? ownName : "", timezone: workspaceTimezone, timeFormat: "24h", welcomeMessage: "", avatarUrl: null }
+          : { username: suggestUsername(isSelf ? ownName : "", isSelf ? ctx.user.email : null, taken), displayName: isSelf ? ownName : "", timezone: initialTimezone, timeFormat: "24h", welcomeMessage: "", avatarUrl: null }
       }
       exists={Boolean(profile)}
       publicBase={`${publicBaseUrl(ctx.workspace)}/calendario/`}

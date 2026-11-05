@@ -224,15 +224,21 @@ describe("el chip de redistribucion", () => {
     const chip = redistributionChip([
       { platform: "instagram", at: "2026-09-20T15:00:00Z", status: "published" },
       { platform: "youtube", at: "2026-10-03T15:00:00Z", status: "scheduled", redistribution: true },
-    ]);
+    ], "UTC");
 
     expect(chip).toContain("youtube");
     expect(chip).toContain("↻");
   });
 
+  it("la fecha es la del dia en la zona de quien mira", () => {
+    const networks = [{ platform: "youtube", at: "2026-10-03T01:00:00Z", status: "scheduled" as const, redistribution: true }];
+    expect(redistributionChip(networks, "UTC")).toContain("3 oct");
+    expect(redistributionChip(networks, "America/Argentina/Buenos_Aires")).toContain("2 oct");
+  });
+
   it("sin redistribucion pendiente no hay chip", () => {
     expect(
-      redistributionChip([{ platform: "instagram", at: "2026-09-20T15:00:00Z", status: "published" }]),
+      redistributionChip([{ platform: "instagram", at: "2026-09-20T15:00:00Z", status: "published" }], "UTC"),
     ).toBeNull();
   });
 
@@ -240,7 +246,7 @@ describe("el chip de redistribucion", () => {
     const chip = redistributionChip([
       { platform: "youtube", at: "2026-10-03T15:00:00Z", status: "scheduled", redistribution: true },
       { platform: "linkedin", at: "2026-10-04T15:00:00Z", status: "scheduled", redistribution: true },
-    ]);
+    ], "UTC");
 
     expect(chip).toContain("2 redes");
   });

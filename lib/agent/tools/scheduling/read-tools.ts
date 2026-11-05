@@ -105,7 +105,7 @@ export const schedulingGetSlotsTool: AgentToolDefinition<z.infer<typeof slotsInp
     const inferred = inferTimezone({
       contactTimezone: input.timezone ?? contact?.timezone,
       phone: contact?.phone,
-      workspaceTimezone: (workspace as { timezone?: string } | null)?.timezone ?? "America/Costa_Rica",
+      workspaceTimezone: (workspace as { timezone?: string } | null)?.timezone ?? "UTC",
     });
 
     // "desde" es una fecha de pared (YYYY-MM-DD): se interpreta como medianoche

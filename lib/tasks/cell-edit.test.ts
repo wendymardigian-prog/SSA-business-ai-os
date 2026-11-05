@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { applyOptimistic, cellKeyAction, neighborCell, rollback, upsertRow, validateCellChange } from "./cell-edit";
+import { dueDayPatch, dueSeen } from "./due-view";
 import { makeTask, taskId } from "./fixtures";
 
 const A = makeTask({ id: taskId(1), title: "A", owner_id: "u1", follower_ids: ["u2"], due_date: "2026-10-20" });
@@ -131,5 +132,26 @@ describe("hora y duracion en la celda (R6)", () => {
     expect(validateCellChange(A, { duration_minutes: 3 }, new Map())).toBe("La duración tiene que ser de 5 a 1440 minutos.");
     expect(validateCellChange(A, { due_time: "10:00", duration_minutes: 30 }, new Map())).toBeNull();
     expect(validateCellChange(A, { due_time: null }, new Map())).toBeNull();
+  });
+});
+
+describe("editar el dia desde otra zona", () => {
+  const zones = { workspaceTz: "America/Costa_Rica", viewerTz: "Asia/Tokyo" };
+
+  it("editar solo el dia de una tarea de las 23:00 conserva la hora que ve quien mira", () => {
+    // 23:00 del 14 en Costa Rica = 14:00 del 15 en Tokio.
+    const task = makeTask({ id: taskId(1), due_date: "2026-10-14", due_time: "23:00:00" });
+    const { next } = applyOptimistic([task], task.id, dueDayPatch(task, "2026-10-20", zones));
+    expect(next[0]).toMatchObject({ due_date: "2026-10-19", due_time: "23:00:00" });
+    expect(dueSeen(next[0], zones)).toEqual({ date: "2026-10-20", time: "14:00" });
+  });
+  it("la validacion contra el bloqueante mira lo guardado, no lo que se ve", () => {
+    const blocker = makeTask({ id: taskId(2), due_date: "2026-10-15" });
+    const task = makeTask({ id: taskId(1), due_date: "2026-10-20", due_time: "23:00", blocked_by: [{ task_id: blocker.id, gap_days: 1 }] });
+    const byId = new Map([[blocker.id, blocker], [task.id, task]]);
+    // Quien mira elige el 15 (14:00 en Tokio), que se guarda como el 14: queda antes del bloqueante, que vence el 15.
+    expect(validateCellChange(task, dueDayPatch(task, "2026-10-15", zones), byId)).toMatch(/bloque/i);
+    // Quien mira elige el 16: se guarda como el 15, igual que el bloqueante, y pasa.
+    expect(validateCellChange(task, dueDayPatch(task, "2026-10-16", zones), byId)).toBeNull();
   });
 });

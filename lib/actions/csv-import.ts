@@ -1,6 +1,8 @@
 "use server";
 
 import { getPermissionAction } from "@/lib/auth/guards";
+import { todayInputValue } from "@/lib/dates";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -235,7 +237,8 @@ async function runBatch(
   // Las filas se validan primero para poder resolver TODOS los tags de la
   // tanda de una vez. Resolverlos fila por fila haria una consulta por cada
   // "vip" de una planilla de 500 contactos etiquetados igual.
-  const validadas = rows.map((row, i) => mapRow(row, mapping, offset + i, customFields));
+  const today = todayInputValue(new Date(), await resolveViewerTimezone(workspace.timezone));
+  const validadas = rows.map((row, i) => mapRow(row, mapping, offset + i, customFields, today));
 
   const nombresDeTags = new Set(extraTags);
   for (const r of validadas) {

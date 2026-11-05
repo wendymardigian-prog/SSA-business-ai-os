@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { probeYouTubeUpload } from "@/lib/actions/youtube-probe";
@@ -14,6 +15,7 @@ import { probeYouTubeUpload } from "@/lib/actions/youtube-probe";
  * del cliente.
  */
 export function YouTubeProbeFooter({ verifiedAt }: { verifiedAt: string | null }) {
+  const timeZone = useViewerTimezone();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -27,7 +29,7 @@ export function YouTubeProbeFooter({ verifiedAt }: { verifiedAt: string | null }
 
       {verifiedAt && !result && (
         <p className="mt-1 text-xs text-muted-foreground">
-          Ultima prueba: {new Date(verifiedAt).toLocaleDateString("es-AR")}.
+          Ultima prueba: {new Date(verifiedAt).toLocaleDateString("es-AR", { timeZone })}.
         </p>
       )}
 

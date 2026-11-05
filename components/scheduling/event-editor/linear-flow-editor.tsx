@@ -18,7 +18,8 @@ import { saveEventFlowTree, sendFlowTestEmail } from "@/lib/actions/scheduling/e
 const VARIABLE_KEYS = [...BOOKING_VARIABLE_KEYS.map((key) => `booking.${key}`), "contact.first_name"];
 
 export function LinearFlowEditor({
-  eventId,
+  backPath,
+  routeForHeader,
   flowId,
   flowName,
   tree,
@@ -26,7 +27,9 @@ export function LinearFlowEditor({
   enabled,
   reach,
 }: {
-  eventId: string;
+  /** A donde vuelve: los flujos del evento, o los de "Reuniones sin evento". */
+  backPath: string;
+  routeForHeader: string;
   flowId: string;
   flowName: string;
   /** null = el flujo no es un árbol (caminos que se juntan, un A/B...) y solo se puede abrir en el canvas. */
@@ -39,11 +42,11 @@ export function LinearFlowEditor({
   return (
     <StepTreeEditor
       screen="agenda"
-      routeForHeader={`/dashboard/agenda/configuracion/eventos/${eventId}/flujos/${flowId}`}
+      routeForHeader={routeForHeader}
       backHref={
         <Link
-          href={`/dashboard/agenda/configuracion/eventos/${eventId}?seccion=flows`}
-          aria-label="Volver a los flujos del evento"
+          href={backPath}
+          aria-label="Volver a los flujos"
           className="-ml-1 flex items-center gap-1 rounded-lg p-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />

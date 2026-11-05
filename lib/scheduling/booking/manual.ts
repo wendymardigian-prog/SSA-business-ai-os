@@ -91,13 +91,13 @@ export async function ensureInternalEvent(service: Db, workspaceId: string, owne
   return null;
 }
 
-/** La zona del anfitrion: la de su agenda, si no la de su perfil, si no la del negocio. */
+/** La zona del anfitrion: la de su perfil (la que ve en todo el sistema), si no la de su agenda, si no la del negocio. */
 async function hostTimezone(service: Db, workspaceId: string, hostUserId: string, fallback: string): Promise<string> {
   const [{ data: profile }, { data: prefs }] = await Promise.all([
     service.from("scheduling_profiles").select("timezone").eq("workspace_id", workspaceId).eq("user_id", hostUserId).maybeSingle(),
     service.from("user_preferences").select("timezone").eq("user_id", hostUserId).maybeSingle(),
   ]);
-  return profile?.timezone || prefs?.timezone || fallback;
+  return prefs?.timezone || profile?.timezone || fallback;
 }
 
 export async function createManualBooking(
@@ -202,7 +202,8 @@ export async function createManualBooking(
     p_name: name ?? null,
     p_email: email ?? null,
     p_phone: phone ?? null,
-    p_timezone: plan.timezone,
+    // La del invitado, NO la de quien agenda: con esta salen sus emails.
+    p_timezone: plan.inviteeTimezone,
     p_host_timezone: await hostTimezone(service, workspaceId, hostUserId, input.workspaceTimezone || "UTC"),
     p_location_type: locationType,
     p_location_text: locationText,
@@ -217,7 +218,8 @@ export async function createManualBooking(
     p_contact_assignment: event.is_internal ? "none" : event.contact_assignment,
     p_created_by: input.actorUserId,
     p_contact_id: plan.contactId,
-    p_metadata: { quick: true } as unknown as Json,
+    // `without_event`: lo que mira el filtro de los flujos de "Reuniones sin evento".
+    p_metadata: (event.is_internal ? { quick: true, without_event: true } : { quick: true }) as unknown as Json,
   });
 
   if (error) {
@@ -238,7 +240,18 @@ export async function createManualBooking(
     if (notesError) console.error("[agenda] no pude guardar las notas de la reunion:", notesError.message);
   }
 
-  // 6. Los avisos relativos (mismo criterio que createBooking).
+  // 6. La zona del invitado que eligio quien agenda. `create_booking` solo la completa
+  // si el contacto no tenia ninguna: elegir otra a proposito es corregirla. Un fallo no tumba la reunion.
+  if (plan.inviteeTimezoneChosen) {
+    const { error: zoneError } = await service
+      .from("contacts")
+      .update({ timezone: plan.inviteeTimezone })
+      .eq("id", result.contact_id)
+      .eq("workspace_id", workspaceId);
+    if (zoneError) console.error("[agenda] no pude guardar la zona del contacto:", zoneError.message);
+  }
+
+  // 7. Los avisos relativos (mismo criterio que createBooking).
   try {
     await syncRelativeJobs(
       service,
@@ -254,6 +267,7 @@ export async function createManualBooking(
         end_at: plan.endUtc,
         created_at: now.toISOString(),
         reschedule_count: 0,
+        metadata: event.is_internal ? { without_event: true } : {},
       },
       now,
     );

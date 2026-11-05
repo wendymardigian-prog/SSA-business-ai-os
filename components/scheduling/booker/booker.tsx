@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation";
 import type { Slot, SlotsByDate, UnavailableKey } from "@/lib/scheduling/types";
 import type { EmbedParams } from "@/lib/scheduling/booker/embed-params";
 import { addMonths, buildMonthView, daysInMonth, monthOf } from "@/lib/scheduling/booker/month-view";
+import { dateInTz } from "@/lib/scheduling/time/tz";
 import { getViewerTimezone } from "@/lib/scheduling/viewer-timezone";
 import { capitalize, formatSlotSummary } from "@/lib/scheduling/booker/format";
 import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
@@ -352,7 +353,7 @@ export function Booker({
                 onMonthChange={(month) => dispatch({ type: "month", month })}
                 loading={state.loading}
               />
-              <MonthNav month={state.month} onChange={(m) => dispatch({ type: "month", month: m })} loading={state.loading} />
+              <MonthNav month={state.month} timezone={state.timezone} onChange={(m) => dispatch({ type: "month", month: m })} loading={state.loading} />
             </div>
             <AvailableTimeSlots
               date={state.selectedDate}
@@ -376,8 +377,9 @@ export function Booker({
  * Las flechas del calendario saltan al mes siguiente CON horarios; esto
  * permite igualmente mirar el mes de al lado, aunque esté vacío.
  */
-function MonthNav({ month, onChange, loading }: { month: string; onChange: (month: string) => void; loading: boolean }) {
-  const thisMonth = monthOf(new Date().toISOString().slice(0, 10));
+function MonthNav({ month, timezone, onChange, loading }: { month: string; timezone: string; onChange: (month: string) => void; loading: boolean }) {
+  // El mes actual es el de la zona que eligio el invitado, no el de UTC.
+  const thisMonth = monthOf(dateInTz(new Date(), timezone));
   return (
     <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
       <button

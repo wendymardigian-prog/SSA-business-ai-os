@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { createContext, useContext, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MessageSquareWarning, Pencil, Sparkles } from "lucide-react";
@@ -45,6 +46,7 @@ export const CallEditProvider = Ctx.Provider;
  * y sin objeciones, no pinta nada.
  */
 export function SectionTools({ section }: { section: AnalysisSection }) {
+  const timeZone = useViewerTimezone();
   const state = useContext(Ctx);
   const router = useRouter();
   const [modal, setModal] = useState<"edit" | "ai" | "object" | null>(null);
@@ -104,7 +106,7 @@ export function SectionTools({ section }: { section: AnalysisSection }) {
             <span className="font-medium">{state.names[o.by] ?? "El closer"} no está de acuerdo:</span> {o.note}
           </p>
           {o.resolved_at ? (
-            <p className="mt-0.5">Resuelta por {o.resolved_by ? (state.names[o.resolved_by] ?? "alguien del equipo") : "alguien del equipo"} el {new Date(o.resolved_at).toLocaleDateString("es")}.</p>
+            <p className="mt-0.5">Resuelta por {o.resolved_by ? (state.names[o.resolved_by] ?? "alguien del equipo") : "alguien del equipo"} el {new Date(o.resolved_at).toLocaleDateString("es", { timeZone })}.</p>
           ) : (
             state.canEdit && (
               <button type="button" disabled={pending} onClick={() => resolve(o.id)} className="mt-1 rounded-md border border-border px-2 py-0.5 font-medium hover:bg-accent disabled:opacity-50">Marcar resuelta</button>

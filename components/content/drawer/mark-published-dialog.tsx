@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
+import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
 import type { MarkPublishedChoice } from "@/lib/content/mark-published";
 import { platformLabel } from "@/lib/platforms";
 import { ContentDialog, DialogField, fieldInput } from "../dialog";
@@ -108,7 +108,7 @@ export function MarkPublishedDialog({
         ))}
       </fieldset>
 
-      <DialogField label="Cuándo se publicó" hint="La misma fecha para todas las redes que marques.">
+      <DialogField label={`Cuándo se publicó · tu hora (${timeZoneLabel(timeZone)})`} hint="La misma fecha para todas las redes que marques.">
         <input
           type="datetime-local"
           value={publishedAt}

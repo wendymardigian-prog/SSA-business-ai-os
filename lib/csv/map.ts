@@ -173,6 +173,9 @@ const FIELD_LABEL = new Map(CONTACT_FIELDS.map((f) => [f.key, f.label]));
  *
  * `index` es la posicion en el array de filas (base 0); el numero que se
  * reporta suma dos: uno por el encabezado y otro porque la gente cuenta desde 1.
+ *
+ * `today` es el dia de quien importa (`todayInputValue` con su zona): la pantalla y
+ * el servidor pasan el mismo. El de UTC es solo el respaldo de cuando no se pasa.
  */
 export function mapRow(
   values: string[],

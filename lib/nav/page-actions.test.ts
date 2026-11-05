@@ -225,8 +225,8 @@ describe("el ⓘ de Contenido dice lo que puede hacer cada rol (F98)", () => {
   });
 
   it("suma la zona horaria cuando se la dan", () => {
-    expect(contentTooltip(admin, "GMT-6")).toContain("Zona horaria del negocio: GMT-6.");
-    expect(contentTooltip(admin)).not.toContain("Zona horaria");
+    expect(contentTooltip(admin, "GMT-6")).toContain("tu zona horaria: GMT-6.");
+    expect(contentTooltip(admin)).not.toContain("zona horaria");
   });
 
   it("las rutas viejas de la pieza no dibujan nada: estan entre las excepciones, con motivo", () => {

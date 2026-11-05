@@ -22,6 +22,7 @@ import { PLATFORM_LABELS } from "@/lib/platforms";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
 import { SectionSearch } from "@/components/comunicacion/section-search";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { NoSearchResults } from "@/components/comunicacion/no-search-results";
 import { matchesSearch } from "@/lib/comunicacion/search";
 
@@ -68,6 +69,7 @@ export function GrowthView({
   };
   recentLogs: CommentLog[];
 }) {
+  const timeZone = useViewerTimezone();
   const [triggers, setTriggers] = useState(initialTriggers);
   // Bloque I (I4): el buscador de la barra filtra las reglas por el nombre del
   // flow que disparan y por sus palabras clave.
@@ -784,7 +786,7 @@ export function GrowthView({
                         )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground/60">
-                        {formatRelativeTime(log.created_at)}
+                        {formatRelativeTime(log.created_at, timeZone)}
                       </td>
                     </tr>
                   ))}
@@ -825,7 +827,7 @@ function StatCard({
   );
 }
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string, timeZone: string): string {
   const now = Date.now();
   const date = new Date(dateStr).getTime();
   const diffMs = now - date;
@@ -840,8 +842,9 @@ function formatRelativeTime(dateStr: string): string {
   const diffDay = Math.floor(diffHour / 24);
   if (diffDay < 7) return `${diffDay}d ago`;
 
-  return new Date(dateStr).toLocaleDateString([], {
+  return new Date(dateStr).toLocaleDateString("es-AR", {
     month: "short",
     day: "numeric",
+    timeZone,
   });
 }

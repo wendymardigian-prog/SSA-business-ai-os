@@ -17,6 +17,8 @@ import { calendarsForResolve } from "@/lib/scheduling/data/event-context";
 import { logAudit } from "@/lib/audit";
 import { notifyBooking } from "@/lib/scheduling/notifications";
 import { bookingPublicUrl, publicBaseUrl } from "@/lib/scheduling/public-url";
+import { formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
+import { isValidTimeZone } from "@/lib/timezone";
 
 type Db = SupabaseClient<Database>;
 
@@ -54,8 +56,11 @@ export function buildDescription(input: {
   bookerPhone: string | null;
   responses: Record<string, unknown>;
   manageUrl: string;
+  /** "martes 6 de octubre, 14:00 (hora de Ciudad de México)", si el invitado esta en otra zona. */
+  inviteeTime?: string | null;
 }): string {
   const lines = [
+    input.inviteeTime ? `Hora del invitado: ${input.inviteeTime}` : null,
     input.bookerName ? `Contacto: ${input.bookerName}` : null,
     input.bookerEmail ? `Email: ${input.bookerEmail}` : null,
     input.bookerPhone ? `Teléfono: ${input.bookerPhone}` : null,
@@ -70,6 +75,24 @@ export function buildDescription(input: {
   }
   lines.push("", `Reagendar: ${input.manageUrl}/reagendar`, `Cancelar: ${input.manageUrl}`);
   return lines.join("\n");
+}
+
+/**
+ * Con que zona se marca el evento en Google: la del invitado, que es quien recibe
+ * la invitacion. El instante no cambia, y cada calendario lo muestra en la zona de
+ * su dueño: lo unico que cambia es en que zona lo cuenta Google a quien no tiene
+ * una cuenta de Google.
+ */
+export function googleEventTimezone(booking: { booker_timezone?: string | null; host_timezone?: string | null }): string {
+  if (booking.booker_timezone && isValidTimeZone(booking.booker_timezone)) return booking.booker_timezone;
+  return booking.host_timezone ?? "UTC";
+}
+
+/** La hora escrita para el invitado, solo si esta en otra zona que quien atiende. */
+export function inviteeTimeLine(booking: { start_at: string; booker_timezone?: string | null; host_timezone?: string | null }): string | null {
+  const invitee = booking.booker_timezone;
+  if (!invitee || invitee === booking.host_timezone || !isValidTimeZone(invitee)) return null;
+  return formatDateTimeWithZone(booking.start_at, invitee);
 }
 
 /** El calendario destino efectivo de la agenda, con su conexion. */
@@ -131,13 +154,14 @@ export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
       const updated = await updateEvent({ supabase: service }, booking.google_connection_id, cal.external_calendar_id, booking.google_event_id, {
         startUtc: booking.start_at,
         endUtc: booking.end_at,
-        timeZone: booking.host_timezone ?? "UTC",
+        timeZone: googleEventTimezone(booking),
         description: buildDescription({
           bookerName: booking.booker_name,
           bookerEmail: booking.booker_email,
           bookerPhone: booking.booker_phone,
           responses: (booking.responses as Record<string, unknown>) ?? {},
           manageUrl,
+          inviteeTime: inviteeTimeLine(booking),
         }),
         locationText: booking.location_type === "manual" ? booking.location_text : undefined,
       });
@@ -194,10 +218,11 @@ export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
           bookerPhone: booking.booker_phone,
           responses: (booking.responses as Record<string, unknown>) ?? {},
           manageUrl,
+          inviteeTime: inviteeTimeLine(booking),
         }),
         startUtc: booking.start_at,
         endUtc: booking.end_at,
-        timeZone: booking.host_timezone ?? "UTC",
+        timeZone: googleEventTimezone(booking),
         attendeeEmail: booking.booker_email,
         attendeeName: booking.booker_name,
         location: booking.location_type === "google_meet" ? { kind: "google_meet" } : { kind: "manual", text: booking.location_text },

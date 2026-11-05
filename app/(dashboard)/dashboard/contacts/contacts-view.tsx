@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { MarkBadge } from "@/components/contacts/mark-badge";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
@@ -619,6 +620,7 @@ function TableCell({
   interestCatalog: InterestCatalog;
   customField?: CustomFieldRef;
 }) {
+  const timeZone = useViewerTimezone();
   const muted = "px-4 py-3 text-sm text-muted-foreground";
   switch (col.key) {
     case "name":
@@ -687,7 +689,7 @@ function TableCell({
         </td>
       );
     case "last_interaction":
-      return <td className={muted}>{formatRelative(contact.lastInteractionAt)}</td>;
+      return <td className={muted}>{formatRelative(contact.lastInteractionAt, timeZone)}</td>;
   }
   if (customField) {
     return <td className={cn(muted, "max-w-48 truncate")}>{displayCustomValue(customField.type, contact.custom[customField.id]) || "—"}</td>;

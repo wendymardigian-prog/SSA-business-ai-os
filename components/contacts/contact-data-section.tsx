@@ -55,6 +55,7 @@ export function ContactDataSection({
                         label={field.label}
                         hint={field.hint}
                         multiline={field.multiline}
+                        timezonePicker={field.timezonePicker}
                         prefix={field.prefix}
                         href={contactFieldHref(field.key, value)}
                         canEdit={canEdit}

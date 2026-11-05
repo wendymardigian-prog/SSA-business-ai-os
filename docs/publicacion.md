@@ -132,7 +132,10 @@ ahora". Eso ataba la publicación a que nuestro cron corriera en el momento
 justo, y de ahí salían el job huérfano al reprogramar, las filas trabadas y
 los reintentos que podían duplicar.
 
-Ahora se le pasa la fecha y la zona y publica Zernio:
+Ahora se le pasa la fecha y la zona y publica Zernio. La fecha es un instante con
+su `Z` (para la API de Zernio, absoluto), así que no importa desde qué zona la cargó
+cada persona; la zona que se le pasa es siempre la del negocio
+(`lib/publishing/e2e-zernio.test.ts` fija la cadena completa):
 
 | Acción | Qué hace |
 |---|---|

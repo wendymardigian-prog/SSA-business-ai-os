@@ -274,7 +274,13 @@ async function writePrefs(
     if (error) console.error("[avisos] no pude guardar las preferencias:", error.message);
     return !error;
   }
-  const timezone = browserTimezone && isValidTimeZone(browserTimezone) ? browserTimezone : "UTC";
+  // Sin una zona de verdad no se crea la fila: guardar UTC como "detectada" dejaria a
+  // la persona en UTC para siempre, porque la deteccion no pisa una zona ya guardada.
+  if (!browserTimezone || !isValidTimeZone(browserTimezone)) {
+    console.error("[avisos] no llego la zona del navegador: no creo las preferencias");
+    return false;
+  }
+  const timezone = browserTimezone;
   const { error } = await ctx.supabase
     .from("user_preferences")
     .insert({ user_id: ctx.user.id, timezone, timezone_source: "browser", notification_prefs: value });

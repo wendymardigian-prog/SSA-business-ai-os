@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import type { RunRow, RunStepRow } from "@/lib/agent/screen";
@@ -61,6 +62,7 @@ export function RunDetail({
   run: RunRow;
   showCost: boolean;
 }) {
+  const timeZone = useViewerTimezone();
   const details = describeRunDetail(run.statusDetail);
   const tools = run.steps.filter((s) => s.kind === "tool_call" && s.name && !s.error).map((s) => s.name as string);
 
@@ -71,7 +73,7 @@ export function RunDetail({
         <RunStatusBadge status={run.status} />
         <span className="font-medium">{RUN_SOURCE_LABELS[run.source] ?? run.source}</span>
         {run.agentName && <span className="text-xs text-muted-foreground">· {run.agentName}</span>}
-        <span className="text-xs text-muted-foreground">· {formatDateTime(run.createdAt)}</span>
+        <span className="text-xs text-muted-foreground">· {formatDateTime(run.createdAt, timeZone)}</span>
       </div>
       <p className="text-xs text-muted-foreground">
         {run.model ? `${run.provider}/${run.model}` : "Sin modelo"}
@@ -146,6 +148,7 @@ export function RunDetail({
 }
 
 function StepItem({ step, agentId }: { step: RunStepRow; agentId: string | null }) {
+  const timeZone = useViewerTimezone();
   const label = STEP_KIND_LABELS[step.kind] ?? step.kind;
   const purged = isPurged(step);
   return (
@@ -165,7 +168,7 @@ function StepItem({ step, agentId }: { step: RunStepRow; agentId: string | null 
       )}
       {purged ? (
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Contenido purgado por retención ({formatDateTime(step.createdAt)}, más de 12 meses).
+          Contenido purgado por retención ({formatDateTime(step.createdAt, timeZone)}, más de 12 meses).
         </p>
       ) : (
         <>

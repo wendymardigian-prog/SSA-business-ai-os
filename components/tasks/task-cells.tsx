@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { X } from "lucide-react";
 import { Avatar } from "@/components/ui/filter-menu";
 import { cellKeyAction, type CellPatch, type EditableColumn } from "@/lib/tasks/cell-edit";
+import { dueEditPatch, type DueZones } from "@/lib/tasks/due-view";
 import { dueLabel, formatSource, type SourceContext } from "@/lib/tasks/format";
 import { colorOf, initialsOf, summarizeNames } from "@/lib/shared/people";
 import type { ProjectSummary } from "@/lib/tasks/project";
@@ -20,7 +21,10 @@ export interface CellEnv {
   members: MemberLite[];
   memberNames: ReadonlyMap<string, string>;
   projects: ProjectSummary[];
+  /** El dia de quien mira. */
   today: string;
+  /** Las dos zonas: la fila trae lo que ve quien mira, y lo que se escribe se convierte a lo guardado. */
+  zones: DueZones;
   canEdit: boolean;
   source: SourceContext;
 }
@@ -130,11 +134,8 @@ export function TaskCell(props: CellProps) {
           initial={view.dueDate}
           initialTime={view.dueTime}
           onCommit={(next, dir) => {
-            // Solo lo que cambio: cambiar el dia no toca la hora, y quitar la fecha quita la hora (el nucleo tambien lo hace).
-            const patch: CellPatch = {};
-            if (next.date !== view.dueDate) patch.due_date = next.date;
-            if (next.time !== view.dueTime) patch.due_time = next.time;
-            commit(patch, dir);
+            // El editor habla en la zona de quien mira; se manda lo que cambia de lo guardado. Quitar la fecha quita la hora.
+            commit(dueEditPatch(view.task, next, env.zones), dir);
           }}
           onCancel={(dir) => end(dir)}
         />

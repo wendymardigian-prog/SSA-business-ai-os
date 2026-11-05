@@ -43,7 +43,7 @@ import { visibleValidation } from "@/lib/content/network-files";
 import { applyGeneralDate, generalDateOf, inheritGeneralDate } from "@/lib/content/general-date";
 import { AUTOSAVE_IDLE_MS } from "@/lib/content/save-status";
 import { isPlaceholderTitle } from "@/lib/content/new-post";
-import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
+import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
 import { defaultOptionsFor } from "@/lib/content/network-options";
 import {
   copyJustFinished,
@@ -594,6 +594,7 @@ export function PieceDrawer({
             }}
             authorNames={authorNames}
             canEdit={editable}
+            timeZone={timeZone}
             onRestored={(snapshot) => {
               // Restaurar pisa lo que hubiera sin guardar, y se vuelve al post.
               markDirty(false);
@@ -936,6 +937,8 @@ export function PieceDrawer({
           className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border px-3 py-2"
         >
           <span className="text-xs font-medium">Fecha de publicación</span>
+          {/* La hora se escribe en la zona de quien edita: se dice cual, porque otra persona la ve en la suya. */}
+          <span className="text-[11px] text-muted-foreground">Tu hora ({timeZoneLabel(timeZone)})</span>
 
           {generalDate.mode === "general" && (
             <>

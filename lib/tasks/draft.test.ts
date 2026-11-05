@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyDraftPatch, draftFromDefaults, draftProblem, dueDatePatch, valuesFromTask } from "./draft";
+import { applyDraftPatch, draftFromDefaults, draftProblem, dueDatePatch, valuesFromTask, viewerDueDatePatch } from "./draft";
 import { makeTask } from "./fixtures";
 
 describe("borrador de una tarea nueva (F12, F15)", () => {
@@ -60,5 +60,31 @@ describe("elegir la fecha en el drawer (una sola fecha)", () => {
   });
   it("quitar la fecha no toca el inicio (la base ya lo valida solo)", () => {
     expect(dueDatePatch({ start_date: "2026-10-10" }, null)).toEqual({ due_date: null });
+  });
+});
+
+describe("elegir la fecha en el drawer desde otra zona", () => {
+  const zones = { workspaceTz: "America/Costa_Rica", viewerTz: "Asia/Tokyo" };
+  // 23:00 del 14 en Costa Rica = 14:00 del 15 en Tokio.
+  const timed = { start_date: null, due_date: "2026-10-14", due_time: "23:00" };
+
+  it("con hora: el dia que elige quien mira se guarda convertido y la hora que ve se conserva", () => {
+    // 14:00 del 20 en Tokio = 23:00 del 19 en Costa Rica.
+    expect(viewerDueDatePatch(timed, "2026-10-20", zones)).toEqual({ due_date: "2026-10-19" });
+  });
+  it("sin hora: el dia tal cual", () => {
+    expect(viewerDueDatePatch({ start_date: null, due_date: "2026-10-14", due_time: null }, "2026-10-20", zones)).toEqual({ due_date: "2026-10-20" });
+  });
+  it("quitar la fecha quita la hora", () => {
+    expect(viewerDueDatePatch(timed, null, zones)).toEqual({ due_date: null, due_time: null });
+  });
+  it("el inicio se compara con lo guardado, como en la base", () => {
+    // Quien mira elige el 20 (se guarda 19): un inicio del 20 queda despues del vencimiento guardado y se quita.
+    expect(viewerDueDatePatch({ ...timed, start_date: "2026-10-20" }, "2026-10-20", zones)).toEqual({ due_date: "2026-10-19", start_date: null });
+    expect(viewerDueDatePatch({ ...timed, start_date: "2026-10-19" }, "2026-10-20", zones)).toEqual({ due_date: "2026-10-19" });
+  });
+  it("con la misma zona, igual que siempre", () => {
+    const same = { workspaceTz: zones.workspaceTz, viewerTz: zones.workspaceTz };
+    expect(viewerDueDatePatch(timed, "2026-10-20", same)).toEqual({ due_date: "2026-10-20" });
   });
 });

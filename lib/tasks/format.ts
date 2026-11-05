@@ -3,6 +3,7 @@
  */
 
 import { addDays, diffDays } from "./dates";
+import { dueSeen, type DueZones } from "./due-view";
 import { formatTime, type TimeFormat } from "@/lib/calendar/time";
 import type { TaskRow, TaskSource } from "./types";
 
@@ -39,6 +40,8 @@ export interface DueLabel {
 /**
  * Como se muestra un vencimiento: «Hoy», «Mañana», «Ayer», «Hace 3 días» (vencida) o la fecha.
  * Una tarea completada nunca se muestra como vencida.
+ *
+ * Recibe lo que VE la persona (dia y hora ya en su zona) y su `today`. Para una fila tal como esta guardada, `dueLabelForViewer`.
  */
 export function dueLabel(task: Pick<TaskRow, "due_date" | "status"> & { due_time?: string | null }, today: string, timeFormat?: TimeFormat): DueLabel {
   if (!task.due_date) return { text: "Sin fecha", tone: "none" };
@@ -54,6 +57,12 @@ export function dueLabel(task: Pick<TaskRow, "due_date" | "status"> & { due_time
   if (days < -1) return { text: `Hace ${-days} días${at}`, tone: "overdue" };
   if (days <= 6) return { text: `${date}${at}`, tone: "soon" };
   return { text: `${date}${at}`, tone: "normal" };
+}
+
+/** `dueLabel` de una tarea tal como esta guardada: convierte el dia y la hora a la zona de quien mira. */
+export function dueLabelForViewer(task: Pick<TaskRow, "due_date" | "status"> & { due_time?: string | null }, today: string, zones: DueZones, timeFormat?: TimeFormat): DueLabel {
+  const seen = dueSeen(task, zones);
+  return dueLabel({ due_date: seen.date, due_time: seen.time, status: task.status }, today, timeFormat);
 }
 
 /**

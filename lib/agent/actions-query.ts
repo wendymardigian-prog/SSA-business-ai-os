@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditAction, Database, Json } from "@/lib/types/database";
-import { DATE_PRESETS, resolveDateRange, type DatePreset } from "@/lib/dates";
+import { DATE_PRESETS, formatDateOnly, resolveDateRange, type DatePreset } from "@/lib/dates";
 import { firstParam, pickEnum, pickPage, type SearchParams } from "@/lib/url-params";
 import { REVERTIBLE_ACTIONS } from "./revert";
 import { AGENT_ACTION_LABELS } from "./action-labels";
@@ -133,7 +133,7 @@ export async function loadActions(
       channelLabel: channelId ? args.channelLabels.get(channelId) ?? null : null,
       runId: meta(e, "run_id"),
       origin: meta(e, "origin"),
-      changes: describeChanges(e, args.tagNames, args.memberNames),
+      changes: describeChanges(e, args.tagNames, args.memberNames, args.timeZone),
       reason: meta(e, "reason"),
       revertedAt: e.reverted_at,
       revertible: !e.reverted_at && REVERTIBLE_ACTIONS.includes(e.action as AuditAction),
@@ -159,8 +159,15 @@ const FIELD_LABELS: Record<string, string> = {
 
 const TEMPERATURES: Record<string, string> = { cold: "frío", warm: "tibio", hot: "caliente" };
 
+/** Un instante guardado en UTC, en la zona de quien mira. Si no es una fecha, tal cual vino. */
+function instantInZone(value: unknown, timeZone: string): string {
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("es-AR", { timeZone, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
 /** El antes y el despues en palabras: ids de tags y de miembros a nombres. */
-export function describeChanges(entry: RawEntry, tagNames: Map<string, string>, memberNames: Map<string, string>): Array<{ field: string; before: string; after: string }> {
+export function describeChanges(entry: RawEntry, tagNames: Map<string, string>, memberNames: Map<string, string>, timeZone: string): Array<{ field: string; before: string; after: string }> {
   const changes = entry.changes;
   if (!changes || typeof changes !== "object" || Array.isArray(changes)) return [];
   const render = (field: string, value: unknown): string => {
@@ -170,8 +177,8 @@ export function describeChanges(entry: RawEntry, tagNames: Map<string, string>, 
     if (field === "tags") return String(value).split(",").filter(Boolean).map((id) => tagNames.get(id) ?? "etiqueta borrada").join(", ") || "vacío";
     if (field === "assigned_to") return memberNames.get(String(value)) ?? "una persona";
     if (field === "lead_temperature") return TEMPERATURES[String(value)] ?? String(value);
-    if (field === "agent_paused_until") return value === "infinity" ? "hasta que lo reanuden" : String(value).slice(0, 16).replace("T", " ");
-    if (field === "next_followup_date") return String(value).slice(0, 10);
+    if (field === "agent_paused_until") return value === "infinity" ? "hasta que lo reanuden" : instantInZone(value, timeZone);
+    if (field === "next_followup_date") return formatDateOnly(String(value), timeZone) || String(value);
     if (field === "ai_conversation_summary") return `${String(value).slice(0, 160)}${String(value).length > 160 ? "…" : ""}`;
     if (typeof value === "boolean") return value ? "sí" : "no";
     return String(value);

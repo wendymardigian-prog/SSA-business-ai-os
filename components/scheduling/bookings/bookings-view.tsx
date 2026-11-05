@@ -37,6 +37,7 @@ import type { BookingListItem } from "@/lib/scheduling/data/bookings";
 import type { BookingStatus, SlotsByDate } from "@/lib/scheduling/types";
 import type { CalendarView } from "@/lib/scheduling/calendar-view";
 import type { CategoryRow } from "@/lib/scheduling/categories";
+import type { BookingTriggerConfig } from "@/lib/scheduling/automation/triggers";
 import { QUICK_FILTER_LABELS, type QuickFilter } from "@/lib/scheduling/bookings-view";
 import type { AgendaFilters } from "@/lib/scheduling/agenda-filters";
 import { AGENDA_PERIODS, AGENDA_PERIOD_LABELS, type AgendaPeriod } from "@/lib/scheduling/agenda-period";
@@ -66,7 +67,7 @@ export interface AgendaTasksProps {
   rows: TaskRow[];
   members: MemberLite[];
   currentUserId: string;
-  /** AAAA-MM-DD en la zona del workspace. */
+  /** AAAA-MM-DD en la zona de quien mira. */
   today: string;
   /** La zona de las fechas de las tareas (la del workspace). */
   workspaceTimeZone: string;
@@ -86,6 +87,7 @@ export function BookingsScreen({
   events,
   manualHosts,
   manualAreas,
+  confirmationConfigs,
   viewerId,
   eventOptions,
   shareableEvents,
@@ -123,6 +125,7 @@ export function BookingsScreen({
   /** Agendar a mano sin evento: quien puede atender y en que area. */
   manualHosts: Array<{ userId: string; label: string; meetAvailable: boolean }>;
   manualAreas: Array<{ id: string; name: string; isDefault: boolean }>;
+  confirmationConfigs: BookingTriggerConfig[];
   viewerId: string;
   /** Los eventos para el filtro ("Evento"): id y título nomás. */
   eventOptions: Array<{ id: string; title: string }>;
@@ -435,6 +438,7 @@ export function BookingsScreen({
           hosts={manualHosts}
           currentUserId={viewerId}
           areas={manualAreas}
+          confirmationConfigs={confirmationConfigs}
         />
       )}
     </div>

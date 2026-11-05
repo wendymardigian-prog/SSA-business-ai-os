@@ -73,6 +73,19 @@ El booker toma la del navegador. El agente la deduce del teléfono
 pregunta antes de proponer: una hora en la zona equivocada es una reunión
 perdida.
 
+**Quien mira la Agenda la ve en SU zona** (`resolveViewerTimezone`, la de Mi cuenta), como el
+resto del sistema. `scheduling_profiles.timezone` no se usa para ver: es la zona del horario de
+atención, y cambiar la de Mi cuenta (por ejemplo, de viaje) no mueve la disponibilidad.
+
+**Al agendar a mano son dos zonas distintas.** El día y la hora se escriben en la de quien agenda;
+la «Zona del invitado» es en la que le llegan los emails (`bookings.booker_timezone`,
+`{{booking.start_invitee}}`). Arranca con la guardada en el contacto, si no la que se deduce de su
+teléfono, si no la de quien agenda (`initialInviteeTimezone`, con el mismo orden que el agente), y
+el modal muestra la hora que va a ver esa persona. Elegir otra a propósito la guarda en el contacto.
+La zona de un contacto también se corrige en la ficha y en el panel de la bandeja.
+
+**Límite:** corregir la zona de un contacto no cambia las reuniones que ya tiene: cada una guarda la suya.
+
 ## Google Calendar
 
 - La conexión es **por persona**, no por negocio: cada quien conecta su cuenta.
@@ -81,10 +94,40 @@ perdida.
 - El token se renueva **a demanda**, no con el cron semanal de la Etapa 2.
 - Un `invalid_grant` marca la conexión revocada y avisa **a la persona**, no a
   los admins: es su cuenta la que hay que reconectar.
-- La invitación la manda Google (`sendUpdates=all`). Los emails de marca son
-  flujos, apagados, que se prenden si se quieren.
+- La invitación la manda Google (`sendUpdates=all`), si quien atiende tiene un
+  calendario conectado. Los emails de marca son flujos, apagados, que se prenden
+  si se quieren. **Dónde se configuran:** Agenda → Configuración → Eventos →
+  [evento] → Flujos, o «Reuniones sin evento» para las de título libre.
+- El evento de Google se marca con la **zona del invitado** (`googleEventTimezone`):
+  el instante no cambia y cada calendario lo muestra en la zona de su dueño. Como
+  en qué zona cuenta Google la hora en su email depende de Google, si las zonas son
+  distintas la hora del invitado también va escrita en la descripción.
 - Un 403 por cuota es temporal y se reintenta; un 403 por permisos es
   permanente y no. Eso sale de la documentación, no del plano.
+
+## Reuniones sin evento (00289, 4/11/2026)
+
+Una reunión con título libre se cuelga del evento interno, que no se edita ni tiene pestaña Flujos.
+Sus mensajes viven en **Agenda → Configuración → Reuniones sin evento**: cinco flujos (confirmación,
+recordatorios de 24 h y 1 h, reagenda, cancelación), apagados hasta que alguien los prende.
+
+- Son del negocio, no de una persona: `flows.event_type_id` es null, `template_key` empieza con
+  `no_event_`, y los toca quien tiene `settings.general` (escribe el servidor después del chequeo).
+  Se crean al abrir la sección (`ensureNoEventFlows`); el índice único de la 00289 impide duplicarlos.
+- Su disparador lleva `no_event: true`, y la reunión se reconoce por `bookings.metadata.without_event`,
+  que escribe `createManualBooking`. Un flujo de un evento y uno sin evento nunca corren para la misma reunión.
+- No ofrecen reagendar: sin evento no hay página pública con horarios. Cambiarla es responder el email.
+- El modal de agendar avisa qué le va a llegar al invitado (`lib/scheduling/booking/guest-notice.ts`), con
+  los mismos filtros que deciden si el flujo corre.
+
+## La confirmación espera el link de Meet
+
+El email (cron de `automation_events`) y el evento de Google (cola de jobs) son dos procesos sin orden
+entre ellos. Un `booking_created` con Meet pendiente queda sin procesar hasta que Google responde, con
+un tope de 3 minutos: después sale igual, porque es peor que no salga (`shouldWaitForMeet`).
+
+`{{booking.meeting_place}}` dice dónde es en una línea que nunca queda vacía («Google Meet: link», el texto
+escrito o «A confirmar»). Las plantillas nuevas la usan; los flujos ya creados conservan su texto.
 
 ## Agendar a mano en un solo paso (00269, 28/10/2026)
 

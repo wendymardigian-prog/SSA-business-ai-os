@@ -22,6 +22,8 @@ export interface BookingVariables {
   invitee_timezone: string;
   duration: string;
   location: string;
+  /** Donde es, con el link si es un Meet: nunca queda vacia. */
+  meeting_place: string;
   meet_url: string;
   host_name: string;
   reschedule_url: string;
@@ -42,6 +44,7 @@ export const BOOKING_VARIABLE_KEYS: (keyof Omit<BookingVariables, "answers">)[] 
   "invitee_timezone",
   "duration",
   "location",
+  "meeting_place",
   "meet_url",
   "host_name",
   "reschedule_url",
@@ -81,6 +84,12 @@ export function bookingRescheduleUrl(baseUrl: string, uid: string): string {
   return `${bookingManageUrl(baseUrl, uid)}/reagendar`;
 }
 
+/** Donde es, en una linea que siempre dice algo: el Meet con su link, el texto escrito, o "A confirmar". */
+export function meetingPlace(booking: Pick<Booking, "location_type" | "location_text" | "meet_url">): string {
+  if (booking.location_type === "google_meet") return booking.meet_url ? `Google Meet: ${booking.meet_url}` : "Google Meet";
+  return booking.location_text?.trim() || "A confirmar";
+}
+
 export function bookingVariables(
   booking: Booking,
   eventType: Pick<EventType, "title" | "duration_minutes">,
@@ -105,6 +114,7 @@ export function bookingVariables(
     invitee_timezone: inviteeTz,
     duration: `${durationMinutes} minutos`,
     location: bookingLocationText(booking) ?? "",
+    meeting_place: meetingPlace(booking),
     meet_url: booking.meet_url ?? "",
     host_name: host.name,
     reschedule_url: bookingRescheduleUrl(options.baseUrl, booking.uid),

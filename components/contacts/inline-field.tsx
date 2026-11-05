@@ -7,6 +7,7 @@ import { updateContact } from "@/lib/actions/contacts";
 import { planInlineCommit } from "@/lib/contacts/inline-edit";
 import type { ContactFieldKey } from "@/lib/contacts/fields";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
+import { TimezoneSelect } from "@/components/ui/timezone-select";
 
 /**
  * Un dato de la ficha que se edita DONDE SE LEE.
@@ -36,6 +37,7 @@ export function InlineField({
   placeholder = "Agregar",
   hint,
   multiline = false,
+  timezonePicker = false,
   prefix,
   href,
   variant = "field",
@@ -51,6 +53,8 @@ export function InlineField({
   placeholder?: string;
   hint?: string;
   multiline?: boolean;
+  /** Se elige de la lista de zonas en vez de escribirse. */
+  timezonePicker?: boolean;
   /** Se muestra antes del valor, solo al leerlo ("@" en un usuario). */
   prefix?: string;
   /** Si el valor es un link (un perfil, un correo): se dibuja como link, y se edita con el lapiz. */
@@ -147,7 +151,18 @@ export function InlineField({
     return (
       <div className={cn("min-w-0", title && "max-w-xl")}>
         <div className="flex items-start gap-1.5">
-          {multiline ? (
+          {timezonePicker ? (
+            <TimezoneSelect
+              value={draft}
+              onChange={(next) => {
+                setDraft(next);
+                if (error) setError(null);
+              }}
+              disabled={pending}
+              ariaLabel={label}
+              className={inputClass}
+            />
+          ) : multiline ? (
             <textarea
               {...common}
               rows={4}

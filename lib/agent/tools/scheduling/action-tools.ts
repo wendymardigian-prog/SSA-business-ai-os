@@ -99,7 +99,7 @@ export const schedulingBookTool: AgentToolDefinition<z.infer<typeof bookInput>, 
     const inferred = inferTimezone({
       contactTimezone: input.timezone ?? contact?.timezone,
       phone: contact?.phone,
-      workspaceTimezone: (workspace as { timezone?: string } | null)?.timezone ?? "America/Costa_Rica",
+      workspaceTimezone: (workspace as { timezone?: string } | null)?.timezone ?? "UTC",
     });
 
     // Idempotencia del turno: si el modelo llama dos veces con lo mismo, se
