@@ -167,3 +167,30 @@ export function plainTextToHtml(body: string): string {
 export function finalizeEmailHtml(body: string, wasHtml: boolean): string {
   return wasHtml ? inlineEmailStyles(sanitizeEmailHtml(body)) : plainTextToHtml(body);
 }
+
+/** La linea que la bandeja de entrada muestra al lado del asunto: oculta adentro del email. Escapa el texto. */
+export function preheaderHtml(text: string): string {
+  return `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">${escapeHtml(text)}</div>`;
+}
+
+/**
+ * Le pone el preheader a un email YA limpio. Va despues de `finalizeEmailHtml`, nunca antes: la lista blanca descarta
+ * el `div` oculto y dejaria el texto a la vista. Sin preheader devuelve lo mismo que recibio, byte por byte.
+ */
+export function withPreheader(html: string, preheader: string | null | undefined): string {
+  const text = (preheader ?? "").replace(/\s+/g, " ").trim();
+  return text ? preheaderHtml(text) + html : html;
+}
+
+/** `{{contact.first_name|}}`: una variable con el respaldo vacio. */
+const EMPTY_FALLBACK = /\{\{[^{}|]*\|\s*(?:""|''|“”)?\s*\}\}/;
+
+/**
+ * «Hola, {{contact.first_name|}}.» sin nombre daria «Hola, .»: saca la coma que quedo colgando, y queda «Hola.». Solo
+ * mira una plantilla que usa un respaldo vacio: cualquier otro texto queda exactamente como se escribio. Corre sobre lo
+ * ya limpio porque el editor envuelve la variable en un `<span>` que recien ahi desaparece.
+ */
+export function dropDanglingComma(template: string, rendered: string): string {
+  if (!EMPTY_FALLBACK.test(template)) return rendered;
+  return rendered.replace(/,(?:\s|&nbsp;)+(?=[.,!?…])/g, "");
+}

@@ -19,7 +19,7 @@ import { resolveVariablePath } from "@/lib/flow-engine/interpolate";
 import { firstNameOf } from "@/lib/flow-engine/variable-catalog";
 import { isPlaceholderName } from "@/lib/contacts/anonymous";
 import { displayCustomValue } from "@/lib/custom-fields";
-import { escapeHtml, finalizeEmailHtml, isHtmlTemplate } from "@/lib/email/html";
+import { dropDanglingComma, escapeHtml, finalizeEmailHtml, isHtmlTemplate, withPreheader } from "@/lib/email/html";
 
 export const MAX_VARIANTS = 5;
 export const MAX_VARIANT_LENGTH = 4000;
@@ -149,19 +149,24 @@ export function renderChatMessage(variants: readonly string[], variantIndex: num
 /**
  * Un email: el asunto en texto y el cuerpo listo para el proveedor. Si el cuerpo
  * es HTML lo decide la PLANTILLA (nunca el texto ya pegado), los valores se
- * escapan y el resultado se limpia (`finalizeEmailHtml`).
+ * escapan y el resultado se limpia (`finalizeEmailHtml`). El preheader se pega
+ * sin escapar y lo escapa `withPreheader`, que lo pone sobre lo ya limpio.
  */
 export function renderEmail(
   subject: string,
   body: string,
   variables: Record<string, unknown>,
-): { subject: string; html: string; missing: string[] } {
+  preheader?: string | null,
+): { subject: string; preheader: string; html: string; missing: string[] } {
   const s = renderTemplate(subject, variables, false);
   const wasHtml = isHtmlTemplate(body);
   const b = renderTemplate(body, variables, wasHtml);
+  const p = renderTemplate(preheader ?? "", variables, false);
+  const previewLine = dropDanglingComma(preheader ?? "", p.text).replace(/\s+/g, " ").trim();
   return {
-    subject: s.text.replace(/\s+/g, " ").trim(),
-    html: finalizeEmailHtml(b.text, wasHtml),
-    missing: [...new Set([...s.missing, ...b.missing])],
+    subject: dropDanglingComma(subject, s.text).replace(/\s+/g, " ").trim(),
+    preheader: previewLine,
+    html: withPreheader(dropDanglingComma(body, finalizeEmailHtml(b.text, wasHtml)), previewLine),
+    missing: [...new Set([...s.missing, ...b.missing, ...p.missing])],
   };
 }

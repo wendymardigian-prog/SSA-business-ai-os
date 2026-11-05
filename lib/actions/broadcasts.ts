@@ -124,6 +124,7 @@ export async function previewBroadcastMessage(input: {
   includePhoneOnly: boolean;
   variants: unknown;
   emailSubject: string | null;
+  emailPreheader?: string | null;
 }): Promise<Result<{ preview: MessagePreview }>> {
   const ctx = await getPermissionAction("broadcasts.manage");
   if (!ctx) return NO_PERMISSION;
@@ -156,12 +157,12 @@ export async function previewBroadcastMessage(input: {
       const r =
         channel.kind === "email"
           ? (() => {
-              const e = renderEmail(input.emailSubject ?? "", variants[0], vars);
-              return { subject: e.subject, text: e.html, missing: e.missing };
+              const e = renderEmail(input.emailSubject ?? "", variants[0], vars, input.emailPreheader);
+              return { subject: e.subject, preheader: e.preheader || null, text: e.html, missing: e.missing };
             })()
-          : { subject: null, ...renderChatMessage(variants, variant, vars) };
+          : { subject: null, preheader: null, ...renderChatMessage(variants, variant, vars) };
       if (r.missing.length > 0) missingCount += 1;
-      if (samples.length < 3) samples.push({ name: s.displayName || "Sin nombre", subject: r.subject, text: r.text, missing: r.missing });
+      if (samples.length < 3) samples.push({ name: s.displayName || "Sin nombre", subject: r.subject, preheader: r.preheader, text: r.text, missing: r.missing });
     }
     return { ok: true, preview: { samples, missingCount, checked: sendable.length } };
   } catch (e) {

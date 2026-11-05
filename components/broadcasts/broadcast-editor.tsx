@@ -54,6 +54,7 @@ export interface EditorDraft {
   includePhoneOnly: boolean;
   variants: string[];
   emailSubject: string;
+  emailPreheader: string;
   skipMissingVariables: boolean;
   pace: { minGapSeconds?: number; maxGapSeconds?: number; perHour?: number | null; perDay?: number | null };
   scheduledFor: string | null;
@@ -88,6 +89,7 @@ export function BroadcastEditor({
   const [includePhoneOnly, setIncludePhoneOnly] = useState(draft.includePhoneOnly);
   const [variants, setVariants] = useState<string[]>(draft.variants.length > 0 ? draft.variants : [""]);
   const [emailSubject, setEmailSubject] = useState(draft.emailSubject);
+  const [emailPreheader, setEmailPreheader] = useState(draft.emailPreheader);
   const [skipMissing, setSkipMissing] = useState(draft.skipMissingVariables);
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">(draft.scheduledFor ? "later" : "now");
   const [scheduledLocal, setScheduledLocal] = useState(isoToDatetimeInput(draft.scheduledFor, timeZone));
@@ -132,11 +134,12 @@ export function BroadcastEditor({
       includePhoneOnly,
       variants,
       emailSubject: emailSubject || null,
+      emailPreheader: emailPreheader || null,
       skipMissingVariables: skipMissing,
       pace,
       scheduledFor: scheduledIso,
     }),
-    [name, channelId, params, includePhoneOnly, variants, emailSubject, skipMissing, pace, scheduledIso],
+    [name, channelId, params, includePhoneOnly, variants, emailSubject, emailPreheader, skipMissing, pace, scheduledIso],
   );
   const firstRender = useRef(true);
   const latestPatch = useRef(patch);
@@ -219,13 +222,13 @@ export function BroadcastEditor({
     });
   }
   const noFallback = [
-    ...new Set([...variants, kind === "email" ? emailSubject : ""].flatMap((t) => templateVariables(t).filter((v) => !v.hasFallback).map((v) => v.path))),
+    ...new Set([...variants, kind === "email" ? emailSubject : "", kind === "email" ? emailPreheader : ""].flatMap((t) => templateVariables(t).filter((v) => !v.hasFallback).map((v) => v.path))),
   ];
 
   function runMessagePreview() {
     setPreviewError(null);
     startPreview(async () => {
-      const res = await previewBroadcastMessage({ broadcastId: draft.id, audienceParams: params, channelId, includePhoneOnly, variants, emailSubject });
+      const res = await previewBroadcastMessage({ broadcastId: draft.id, audienceParams: params, channelId, includePhoneOnly, variants, emailSubject, emailPreheader });
       if (res.ok) setMessagePreview(res.preview);
       else {
         setMessagePreview(null);
@@ -241,7 +244,7 @@ export function BroadcastEditor({
   const etaFrom = scheduledIso ? new Date(scheduledIso) : nowMs !== null ? new Date(nowMs) : null;
   const eta = effectivePolicy && sendable > 0 && etaFrom ? estimateFinish(sendable, effectivePolicy, etaFrom, businessTimeZone) : null;
   const problems = [
-    ...draftProblems({ channel_id: channelId, message_variants: variants, email_subject: emailSubject }, kind, customFields),
+    ...draftProblems({ channel_id: channelId, message_variants: variants, email_subject: emailSubject, email_preheader: emailPreheader }, kind, customFields),
     ...(scheduleMode === "later" && !scheduledIso ? ["Elegí el día y la hora del envío."] : []),
     ...(scheduleMode === "later" && scheduledIso && nowMs !== null && new Date(scheduledIso).getTime() < nowMs ? ["La fecha programada ya pasó."] : []),
     ...(reach && sendable === 0 ? ["Con estos filtros y este canal no queda nadie a quien mandarle."] : []),
@@ -461,6 +464,10 @@ export function BroadcastEditor({
               <span className="mb-1 block text-xs font-medium">Asunto</span>
               <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} maxLength={200} className={input} placeholder="Ej.: {{contact.first_name|Hola}}, tenemos novedades" />
             </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium">Texto de vista previa (opcional)</span>
+              <input value={emailPreheader} onChange={(e) => setEmailPreheader(e.target.value)} maxLength={200} className={input} placeholder="Lo que se lee al lado del asunto en la bandeja de entrada" />
+            </label>
             <RichTextEditor
               id={`bc-email-${draft.id}`}
               label="Cuerpo del email"
@@ -546,6 +553,7 @@ export function BroadcastEditor({
                 <div key={i} className="rounded-lg border border-border bg-background p-3 text-sm">
                   <p className="mb-1 text-xs font-medium text-muted-foreground">Para {s.name}</p>
                   {s.subject !== null && <p className="mb-1 font-medium">{s.subject}</p>}
+                  {s.preheader && <p className="mb-1 text-xs text-muted-foreground">{s.preheader}</p>}
                   {kind === "email" ? (
                     // El HTML ya viene limpio del servidor (sanitizeEmailHtml) y trae sus colores en línea (texto oscuro):
                     // se muestra sobre blanco, como en una casilla de correo, también en modo oscuro.

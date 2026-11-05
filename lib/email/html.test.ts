@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dropDanglingComma,
   escapeHtml,
   finalizeEmailHtml,
   inlineEmailStyles,
@@ -7,7 +8,9 @@ import {
   isHtmlTemplate,
   plainTextToHtml,
   sanitizeEmailHtml,
+  withPreheader,
 } from "@/lib/email/html";
+import { brandedEmailHtml } from "@/lib/email/templates";
 
 describe("isHtmlTemplate", () => {
   it("reconoce el HTML del editor y no confunde texto plano", () => {
@@ -118,5 +121,50 @@ describe("texto plano y finalizeEmailHtml", () => {
 
   it("escapeHtml", () => {
     expect(escapeHtml(`<a href="x">&</a>`)).toBe("&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;");
+  });
+});
+
+describe("withPreheader", () => {
+  it("sin preheader devuelve lo mismo, byte por byte", () => {
+    const html = finalizeEmailHtml("<p>Hola</p>", true);
+    for (const empty of [null, undefined, "", "   ", "\n"]) expect(withPreheader(html, empty)).toBe(html);
+  });
+
+  it("lo pone oculto delante del cuerpo, escapado y en una sola linea", () => {
+    const html = withPreheader("<div>cuerpo</div>", " Lunes 9,\n7 PM <b>ya</b> ");
+    expect(html.startsWith('<div style="display:none;')).toBe(true);
+    expect(html).toContain("Lunes 9, 7 PM &lt;b&gt;ya&lt;/b&gt;</div><div>cuerpo</div>");
+  });
+
+  it("es el mismo oculto que usan los emails del sistema", () => {
+    const line = withPreheader("", "Falta entrar al grupo");
+    expect(brandedEmailHtml({ body: "<p>x</p>", preheader: "Falta entrar al grupo" })).toContain(line);
+  });
+});
+
+describe("dropDanglingComma", () => {
+  const template = "Hola, {{contact.first_name|}}.";
+
+  it("sin nombre queda «Hola.»; con nombre, igual", () => {
+    expect(dropDanglingComma(template, "Hola, .")).toBe("Hola.");
+    expect(dropDanglingComma(template, "Hola, Ana.")).toBe("Hola, Ana.");
+  });
+
+  it("en HTML ya limpio, incluso si el editor envolvio la variable", () => {
+    const wrapped = '<p>Hola, <span data-variable="contact.first_name">{{contact.first_name|}}</span>.</p>';
+    const rendered = finalizeEmailHtml('<p>Hola, <span data-variable="contact.first_name"></span>.</p>', true);
+    expect(dropDanglingComma(wrapped, rendered)).toContain(">Hola.</p>");
+    expect(dropDanglingComma("<p>Hola, {{contact.first_name|}}.</p>", finalizeEmailHtml("<p>Hola,&nbsp;.</p>", true))).toContain(">Hola.</p>");
+  });
+
+  it("no toca los estilos en linea ni los links del email", () => {
+    const html = finalizeEmailHtml('<p>Hola, Ana.</p><p><a href="https://x.com/a,b">x</a></p>', true);
+    expect(dropDanglingComma(template, html)).toBe(html);
+  });
+
+  it("una plantilla sin respaldo vacio queda exactamente como se escribio", () => {
+    for (const other of ["Hola, {{contact.first_name}}.", "Hola, {{contact.first_name|amiga}}.", "Hola, ."]) {
+      expect(dropDanglingComma(other, "Hola, .")).toBe("Hola, .");
+    }
   });
 });

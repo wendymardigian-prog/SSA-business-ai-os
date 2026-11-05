@@ -13,6 +13,7 @@ vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail, recordSkippedEmail 
 vi.mock("@/lib/notifications/create", () => ({ createNotification: vi.fn(async () => true) }));
 
 import { sendEmailNode } from "./send-email";
+import { finalizeEmailHtml } from "@/lib/email/html";
 
 function args(overrides: { to?: "contact" | "host" | "fixed"; fixedEmail?: string; doNotContact?: boolean; subject?: string; body?: string } = {}) {
   const supabase = {
@@ -98,6 +99,46 @@ describe("send_email: cuerpo con formato (editor de texto enriquecido)", () => {
     return base as never;
   }
   const lastHtml = () => (sendTransactionalEmail.mock.calls.at(-1) as unknown as [{ html: string }])[0].html;
+
+  // Caracterización, antes del preheader y del saludo: sin ellos el email sale byte por byte igual.
+  it("sin preheader ni respaldo vacío, el HTML es exactamente el de siempre", async () => {
+    await sendEmailNode.execute(withVariables("<p>Hola, {{lead.name}}.</p>", { lead: { name: "Ana" } }));
+    expect(lastHtml()).toBe(finalizeEmailHtml("<p>Hola, Ana.</p>", true));
+    await sendEmailNode.execute(withVariables("Hola, {{lead.name}}.\nchau", { lead: { name: "Ana" } }));
+    expect(lastHtml()).toBe(finalizeEmailHtml("Hola, Ana.\nchau", false));
+  });
+
+  const lastCall = () => (sendTransactionalEmail.mock.calls.at(-1) as unknown as [{ html: string; subject: string }])[0];
+  const withPreheaderData = (body: string, preheader: string, variables: Record<string, unknown>) => {
+    const base = withVariables(body, variables) as unknown as { data: Record<string, unknown> };
+    base.data.preheader = preheader;
+    return base as never;
+  };
+
+  it("saludo con respaldo vacío: «Hola, Ana.» o «Hola.», en texto y en HTML", async () => {
+    const ana = { contact: { first_name: "Ana" } };
+    const nadie = { contact: { first_name: "" } };
+    await sendEmailNode.execute(withVariables("<p>Hola, {{contact.first_name|}}.</p>", ana));
+    expect(lastHtml()).toContain("Hola, Ana.");
+    await sendEmailNode.execute(withVariables("<p>Hola, {{contact.first_name|}}.</p>", nadie));
+    expect(lastHtml()).toContain(">Hola.</p>");
+    await sendEmailNode.execute(withVariables('<p>Hola, <span data-variable="contact.first_name">{{contact.first_name|}}</span>.</p>', nadie));
+    expect(lastHtml()).toContain(">Hola.</p>");
+    await sendEmailNode.execute(withVariables("Hola, {{contact.first_name|}}.\nchau", nadie));
+    expect(lastHtml()).toContain("Hola.<br>chau");
+  });
+
+  it("preheader: oculto delante del cuerpo, con variables y escapado; el limpiador no lo borra", async () => {
+    await sendEmailNode.execute(withPreheaderData("<p>Cuerpo</p>", "Para {{contact.first_name|vos}}: <lunes>", { contact: { first_name: "Ana" } }));
+    expect(lastHtml().startsWith('<div style="display:none;')).toBe(true);
+    expect(lastHtml()).toContain("Para Ana: &lt;lunes&gt;</div>");
+    expect(lastHtml()).toContain("Cuerpo");
+  });
+
+  it("sin preheader no hay nada oculto", async () => {
+    await sendEmailNode.execute(withVariables("<p>Cuerpo</p>", {}));
+    expect(lastCall().html).not.toContain("display:none");
+  });
 
   it("un cuerpo HTML conserva el formato y suma estilos en linea", async () => {
     await sendEmailNode.execute(withVariables("<h2>Hola</h2><p>Esto es <strong>importante</strong> 😀</p>", {}));

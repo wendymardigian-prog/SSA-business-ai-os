@@ -68,6 +68,7 @@ export default async function BroadcastPage({
       includePhoneOnly: b.include_phone_only,
       variants: Array.isArray(b.message_variants) ? (b.message_variants as unknown[]).filter((v): v is string => typeof v === "string") : [],
       emailSubject: b.email_subject ?? "",
+      emailPreheader: b.email_preheader ?? "",
       skipMissingVariables: b.skip_missing_variables,
       pace: parseBroadcastPace(b.pace),
       scheduledFor: b.scheduled_for,

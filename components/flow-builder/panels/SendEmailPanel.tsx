@@ -74,6 +74,11 @@ export function SendEmailPanel({
       </div>
 
       <div>
+        <label htmlFor="em-preheader" className={labelClass}>Texto de vista previa (opcional)</label>
+        <input id="em-preheader" type="text" maxLength={200} value={data.preheader ?? ""} onChange={(e) => set({ preheader: e.target.value })} placeholder="Lo que se lee al lado del asunto en la bandeja de entrada" className={inputClass} />
+      </div>
+
+      <div>
         <label htmlFor="em-body" className={labelClass}>Mensaje</label>
         <RichTextEditor
           id="em-body"

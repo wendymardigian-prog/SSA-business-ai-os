@@ -25,7 +25,7 @@ export async function GET() {
 }
 
 /**
- * Crea un borrador. Cuerpo: `{ name, channelId?, audienceParams?, variants?, emailSubject?,
+ * Crea un borrador. Cuerpo: `{ name, channelId?, audienceParams?, variants?, emailSubject?, emailPreheader?,
  * includePhoneOnly?, pace?, scheduledFor? }`. Se manda con POST /:id/send.
  */
 export async function POST(request: NextRequest) {
@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
   const saved = await saveBroadcastDraft(service, ctx.workspace.id, created.value.id, {
     ...(body.variants !== undefined ? { variants: body.variants } : {}),
     ...(typeof body.emailSubject === "string" ? { emailSubject: body.emailSubject } : {}),
+    ...(typeof body.emailPreheader === "string" ? { emailPreheader: body.emailPreheader } : {}),
     ...(typeof body.includePhoneOnly === "boolean" ? { includePhoneOnly: body.includePhoneOnly } : {}),
     ...(body.pace !== undefined ? { pace: body.pace } : {}),
     ...(typeof body.scheduledFor === "string" ? { scheduledFor: body.scheduledFor } : {}),
