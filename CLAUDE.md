@@ -483,8 +483,10 @@ sus automatizaciones y la habilidad del agente. El detalle en
   y el link anterior sigue funcionando (`event_type_moved_links`, lo mira
   `findPublicEvent`; un evento real en ese link le gana). **Reagendar nunca busca el
   evento por el link**: sale de la reunion, porque su anfitrion puede no ser el dueño
-  de hoy. La 00290 va ANTES de desplegar el codigo. **La proxima libre es la `00291`**
-  (la `00289` la usa otra rama; confirmar con `list_migrations` y las ramas locales).
+  de hoy. La 00290 va ANTES de desplegar el codigo: **aplicada y registrada** el
+  5/11/2026 UTC (version `20261105002339`), con `verify-scheduling --despues-de-00290`
+  en verde. **La proxima libre es la `00291`** (la `00289` es de otra rama, tambien
+  aplicada; confirmar con `list_migrations` y las ramas locales).
 
 ## Google Calendar
 
