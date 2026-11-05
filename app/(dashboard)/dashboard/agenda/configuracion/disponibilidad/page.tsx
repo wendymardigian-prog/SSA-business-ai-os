@@ -3,6 +3,7 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { listOutOfOffice, listSchedules, listUserEventTypes, toSchedule } from "@/lib/scheduling/data/schedules";
 import { AvailabilityView } from "@/components/scheduling/availability/availability-view";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,8 @@ export default async function AgendaDisponibilidadPage({ searchParams }: { searc
     canManageOthers ? getWorkspaceMembers(ctx.workspace.id) : Promise.resolve([]),
   ]);
 
-  const viewerTimezone = profile?.timezone ?? ((ctx.workspace as { timezone?: string }).timezone ?? "America/Costa_Rica");
+  // Las fechas se VEN en la zona de quien mira (Mi cuenta), no en la de su perfil de agenda.
+  const viewerTimezone = await resolveViewerTimezone(ctx.workspace.timezone);
 
   return (
     <AvailabilityView

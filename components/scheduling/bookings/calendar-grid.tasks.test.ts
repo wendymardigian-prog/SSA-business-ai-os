@@ -30,9 +30,9 @@ const booking = (over: Partial<BookingListItem> & { id: string; startAt: string;
 // Miercoles 14/10 a las 09:00 en Costa Rica (15:00 UTC).
 const ITEMS = [booking({ id: "b1", startAt: "2026-10-14T15:00:00Z", endAt: "2026-10-14T15:30:00Z" })];
 
-function render(tasks: TaskRow[], opts: { mode?: "off" | "mine" | "all"; view?: "day" | "week" | "month"; withProvider?: boolean; canEdit?: boolean } = {}) {
+function render(tasks: TaskRow[], opts: { mode?: "off" | "mine" | "all"; view?: "day" | "week" | "month"; withProvider?: boolean; canEdit?: boolean; viewerTz?: string } = {}) {
   const calendar = createElement(BookingsCalendar, {
-    items: ITEMS, timezone: "America/Costa_Rica", timeFormat: "24h", view: opts.view ?? "week", anchor: "2026-10-14",
+    items: ITEMS, timezone: opts.viewerTz ?? "America/Costa_Rica", timeFormat: "24h", view: opts.view ?? "week", anchor: "2026-10-14",
     onView: () => undefined, onAnchor: () => undefined, onOpen: () => undefined,
     taskControls: { mode: opts.mode ?? "mine", onMode: () => undefined },
   });
@@ -107,6 +107,8 @@ describe("el calendario con el interruptor de tareas (R7)", () => {
   it("el mes muestra las tareas como chips: con la hora o «Sin hora»", () => {
     const out = render([timed, untimed], { view: "month" });
     expect(out).toContain("09:00 Llamar a Ana");
+    // Con otra zona, el chip dice la hora de quien mira, no la guardada (la del negocio).
+    expect(render([timed], { view: "month", viewerTz: "America/Argentina/Buenos_Aires" })).toContain("12:00 Llamar a Ana");
     expect(out).toContain("Sin hora · Preparar contrato");
   });
 

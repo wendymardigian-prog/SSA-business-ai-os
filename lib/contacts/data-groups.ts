@@ -26,6 +26,8 @@ export interface ContactDataField {
   multiline?: boolean;
   /** Se muestra antes del valor ("@" en un usuario). */
   prefix?: string;
+  /** Se elige de la lista de zonas horarias en vez de escribirse. */
+  timezonePicker?: boolean;
 }
 
 export interface ContactDataGroup {
@@ -44,6 +46,7 @@ export const CONTACT_DATA_GROUPS: ContactDataGroup[] = [
       { key: "phone", label: "Teléfono", hint: "Con código de país, ej: +54 9 11 2233 4455" },
       { key: "whatsapp_phone", label: "WhatsApp", hint: "Solo si es distinto al teléfono principal" },
       { key: "country", label: "País" },
+      { key: "timezone", label: "Zona horaria", hint: "Con esta le llegan los emails de sus reuniones.", timezonePicker: true },
     ],
   },
   {

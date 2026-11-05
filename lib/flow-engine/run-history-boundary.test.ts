@@ -1,5 +1,5 @@
 /**
- * La frontera del historial de ejecuciones (00290): un paso que falla sin lanzar solo se ve si avisa. Un nodo nuevo que
+ * La frontera del historial de ejecuciones (00292): un paso que falla sin lanzar solo se ve si avisa. Un nodo nuevo que
  * anote un fallo o un salto en `analytics_events` y no le cuente al historial quedaria como «salió bien».
  */
 import { readdirSync, readFileSync } from "node:fs";

@@ -1,5 +1,5 @@
 /**
- * El historial de ejecuciones de una automatizacion: las reglas de la pantalla (00290).
+ * El historial de ejecuciones de una automatizacion: las reglas de la pantalla (00292).
  *
  * Puro y sin consultas: que estado mostrar, como se lee cada motivo y que filtros valen. Los componentes solo lo componen.
  */

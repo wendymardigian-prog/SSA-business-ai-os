@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { Fragment, useState } from "react";
 import Link from "next/link";
 import { Activity, ArrowDown, ArrowUp, ChevronDown, Download, X } from "lucide-react";
@@ -46,6 +47,7 @@ export function RunsScreen({
   /** El origen de la pestaña de una tarea: idem, para "todos" no contar. */
   currentOrigen?: string | null;
 }) {
+  const timeZone = useViewerTimezone();
   const { pending, setParam, setPage, clearAll, search } = useUrlFilters();
   const activeCount = countActiveRunFilters(filters, currentAgentId, currentOrigen);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -216,7 +218,7 @@ export function RunsScreen({
                         <td className="whitespace-nowrap px-3 py-2">
                           <span className="inline-flex items-center gap-1.5">
                             <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden />
-                            {formatDateTime(run.createdAt)}
+                            {formatDateTime(run.createdAt, timeZone)}
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2">

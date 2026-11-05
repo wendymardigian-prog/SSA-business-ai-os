@@ -11,7 +11,7 @@ import { controlLabel, type AiTaskDef } from "@/lib/ai-tasks/catalog";
  * sale en el modo), con otro ícono por tarea. Clic lleva a sus cinco pestañas
  * (Cómo funciona, Configuración, Instrucciones, Corridas y Costos).
  */
-export function TaskCard({ task, mode, lastRun }: { task: AiTaskDef; mode: TaskMode | null; lastRun: TaskRunInfo | null }) {
+export function TaskCard({ task, mode, lastRun, timeZone }: { task: AiTaskDef; mode: TaskMode | null; lastRun: TaskRunInfo | null; timeZone: string }) {
   return (
     <Link
       href={`/dashboard/agents/tareas/${task.id}`}
@@ -25,7 +25,7 @@ export function TaskCard({ task, mode, lastRun }: { task: AiTaskDef; mode: TaskM
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {mode ? MODE_LABELS[mode] : controlLabel(task)}
           {" · "}
-          {mode === "off" ? "Apagada" : lastRun ? lastRunLabel(lastRun.at) : "Sin corridas propias todavía"}
+          {mode === "off" ? "Apagada" : lastRun ? lastRunLabel(lastRun.at, timeZone) : "Sin corridas propias todavía"}
           {" · "}
           Gasto del mes: {formatSpend(lastRun?.monthSpendUsd ?? null)}
         </p>

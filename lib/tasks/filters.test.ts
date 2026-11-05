@@ -42,3 +42,14 @@ describe("filtros (F14)", () => {
   it("«Mis tareas»: mias y sin completar", () => expect(ids({ mine: true })).toEqual([taskId(1)]));
   it("los filtros se combinan con Y", () => expect(ids({ owner: ["me"], status: ["completed"] })).toEqual([taskId(3)]));
 });
+
+describe("«vencidas» con la zona de quien mira", () => {
+  const zones = { workspaceTz: "America/Costa_Rica", viewerTz: "Asia/Tokyo" };
+  // 23:00 del 12 en Costa Rica = 14:00 del 13 en Tokio; TODAY es el 13.
+  const late = makeTask({ id: taskId(11), due_date: "2026-10-12", due_time: "23:00", status: "pending" });
+  const civil = makeTask({ id: taskId(12), due_date: "2026-10-12", status: "pending" });
+  const run = (z?: typeof zones) => applyFilters([late, civil], { ...DEFAULT_VIEW_STATE, overdue: true }, { meId: ME, today: TODAY, byId: new Map(), zones: z }).map((t) => t.id);
+
+  it("la de hoy para quien mira no es vencida; la fecha sin hora, si", () => expect(run(zones)).toEqual([taskId(12)]));
+  it("sin zonas, sobre lo guardado", () => expect(run()).toEqual([taskId(11), taskId(12)]));
+});

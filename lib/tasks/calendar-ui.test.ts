@@ -11,9 +11,11 @@ describe("calendar-ui (R7)", () => {
   });
 
   it("monthChipText: con hora o «Sin hora»", () => {
-    expect(monthChipText({ title: "Llamar", due_time: "09:30:00" }, "24h")).toBe("09:30 Llamar");
-    expect(monthChipText({ title: "Llamar", due_time: "14:30" }, "12h")).toBe("2:30 p. m. Llamar");
-    expect(monthChipText({ title: "Llamar", due_time: null }, "24h")).toBe("Sin hora · Llamar");
+    const item = (startMinutes: number | null) => ({ task: { title: "Llamar" }, startMinutes });
+    expect(monthChipText(item(9 * 60 + 30), "24h")).toBe("09:30 Llamar");
+    expect(monthChipText(item(14 * 60 + 30), "12h")).toBe("2:30 p. m. Llamar");
+    expect(monthChipText(item(0), "24h")).toBe("00:00 Llamar");
+    expect(monthChipText(item(null), "24h")).toBe("Sin hora · Llamar");
   });
 
   describe("undatedTasks", () => {

@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
   // archivo): nunca deberia tener trabajo, porque el borrado ya es inmediato.
   const assets = await cleanupOrphanedAssetFiles(supabase, now);
 
-  // El detalle de pasos de las automatizaciones (00290): 12 meses. La fila de la ejecucion queda.
+  // El detalle de pasos de las automatizaciones (00292): 12 meses. La fila de la ejecucion queda.
   const flowStepsDeleted = await sweepFlowStepHistory(supabase, now);
 
   // @plantilla-desde(webhooks)

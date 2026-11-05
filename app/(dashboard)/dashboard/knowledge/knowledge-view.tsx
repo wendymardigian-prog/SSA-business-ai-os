@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useEffect, useState, useTransition, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -370,6 +371,7 @@ function DocumentRow({
   onDelete: () => void;
   onReprocess: () => void;
 }) {
+  const timeZone = useViewerTimezone();
   const label = document.mime
     ? (MIME_LABELS[document.mime as SupportedMime] ?? "Documento")
     : "Documento";
@@ -396,7 +398,7 @@ function DocumentRow({
             {label}
             {document.sizeBytes ? ` · ${formatBytes(document.sizeBytes)}` : ""}
             {document.status === "ready" ? ` · ${fragmentLabel(document.chunkCount)}` : ""}
-            {` · Subido el ${formatDateTime(document.createdAt)}`}
+            {` · Subido el ${formatDateTime(document.createdAt, timeZone)}`}
           </p>
 
           {(document.tags.length > 0 || document.internalOnly) && (

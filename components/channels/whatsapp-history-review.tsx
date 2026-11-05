@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { History, Loader2 } from "lucide-react";
 import { reviewWhatsappHistory } from "@/lib/actions/whatsapp-history";
@@ -12,6 +13,7 @@ import { reviewText, type ReviewText } from "@/lib/whatsapp-history/review-text"
  * botón, nunca al abrir la pantalla.
  */
 export function WhatsappHistoryReview({ channelId }: { channelId: string }) {
+  const timeZone = useViewerTimezone();
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<ReviewText | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export function WhatsappHistoryReview({ channelId }: { channelId: string }) {
       }
       setResult(
         reviewText(res.review, (iso) =>
-          new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "numeric", year: "numeric" }),
+          new Date(iso).toLocaleDateString("es-AR", { timeZone, day: "numeric", month: "numeric", year: "numeric" }),
         ),
       );
     });

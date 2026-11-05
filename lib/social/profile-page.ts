@@ -63,11 +63,12 @@ const SOURCE_LABELS: Record<string, string> = {
   threads: "la API de Threads",
 };
 
-export function buildProfile(source: ProfileSource): ProfileSummary {
+export function buildProfile(source: ProfileSource, timeZone: string): ProfileSummary {
   const stats = statsFor(source);
 
   const when = source.syncedAt
     ? new Intl.DateTimeFormat("es-AR", {
+        timeZone,
         day: "numeric",
         month: "short",
         hour: "2-digit",

@@ -34,3 +34,14 @@ describe("summarizeMine (F19)", () => {
     expect(summarizeMine([row({ due_date: "2026-11-03" })], "2026-10-26", ME).next7).toBe(0);
   });
 });
+
+describe("summarizeMine con la zona de quien mira", () => {
+  const zones = { workspaceTz: "America/Costa_Rica", viewerTz: "Asia/Tokyo" };
+  it("una tarea de las 23:00 del negocio cuenta en el dia de quien mira", () => {
+    // 23:00 del 12 en Costa Rica = 14:00 del 13 en Tokio: para quien mira, vence hoy, no ayer.
+    expect(summarizeMine([row({ due_date: "2026-10-12", due_time: "23:00" })], T, ME, zones)).toEqual({ overdue: 0, today: 1, next7: 0, open: 1 });
+  });
+  it("sin hora, la fecha civil no se mueve", () => {
+    expect(summarizeMine([row({ due_date: "2026-10-12" })], T, ME, zones)).toEqual({ overdue: 1, today: 0, next7: 0, open: 1 });
+  });
+});

@@ -114,6 +114,7 @@ export async function reassignBookingHost(service: Db, input: ReassignInput): Pr
         origin: updated.origin,
         status: updated.status,
         category_snapshot: updated.category_snapshot as { area_id?: string | null; type_id?: string | null } | null,
+        metadata: updated.metadata as { without_event?: boolean } | null,
         start_at: updated.start_at,
         end_at: updated.end_at,
         created_at: updated.created_at,

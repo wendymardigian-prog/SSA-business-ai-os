@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verificacion del historial de ejecuciones de las automatizaciones (00290) contra la base real.
+ * Verificacion del historial de ejecuciones de las automatizaciones (00292) contra la base real.
  *
  * Lanza la version TypeScript con vite-node: lo que se prueba es el codigo de verdad (el motor y la consulta de la
  * pantalla), no una copia en JavaScript.

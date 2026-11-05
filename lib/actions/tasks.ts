@@ -22,6 +22,7 @@ import { loadContactTasksChecked, type ContactTasksPayload, type TaskContextPayl
 import { flowIdOf } from "@/lib/tasks/format";
 import { loadTimeFormat } from "@/lib/tasks/time-format";
 import { todayInputValue } from "@/lib/dates";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { createFollowupTaskCore, type FollowupOutput } from "@/lib/tasks/followup-core";
 import { fail, success, type TaskActionResult } from "@/lib/tasks/result";
 import type { TaskBlocker, TaskRow } from "@/lib/tasks/types";
@@ -137,7 +138,8 @@ export async function listContactTasks(contactId: string): Promise<TaskActionRes
     return success({
       tasks,
       members: members.map((m) => ({ id: m.userId, name: m.name })),
-      today: todayInputValue(new Date(), timeZone),
+      // «Hoy» es el de quien mira; la fecha y la hora guardadas siguen siendo del workspace.
+      today: todayInputValue(new Date(), await resolveViewerTimezone(ctx.workspace.timezone)),
       timeZone,
       timeFormat: await loadTimeFormat(ctx.supabase, ctx.workspace.id, ctx.user.id),
       currentUserId: ctx.user.id,

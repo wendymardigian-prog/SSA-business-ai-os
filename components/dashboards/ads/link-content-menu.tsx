@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, Search } from "lucide-react";
@@ -87,10 +88,9 @@ export function LinkContentMenu({ adId, adName, link }: { adId: string; adName: 
   );
 }
 
-const DATE = new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", year: "numeric" });
-
 /** El buscador de piezas: por título (a los 250 ms de dejar de escribir); sin texto, las más recientes. */
 function PiecePicker({ adId, adName, onLinked }: { adId: string; adName: string; onLinked: (pieceTitle: string) => void }) {
+  const timeZone = useViewerTimezone();
   const [text, setText] = useState("");
   const [result, setResult] = useState<{ query: string; options: PieceOption[]; failed: boolean } | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -160,7 +160,7 @@ function PiecePicker({ adId, adName, onLinked }: { adId: string; adName: string;
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{option.title}</span>
                 <span className="block text-[11px] text-muted-foreground">
-                  {DATE.format(new Date(option.date))}
+                  {new Date(option.date).toLocaleDateString("es-AR", { timeZone, day: "numeric", month: "short", year: "numeric" })}
                   {option.platforms.length > 0 ? ` · ${option.platforms.join(", ")}` : ""}
                   {option.paid ? " · ya pautada" : ""}
                 </span>

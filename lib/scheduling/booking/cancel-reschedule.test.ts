@@ -200,6 +200,21 @@ describe("rescheduleBooking", () => {
     expect(db.rows("bookings")[0].start_at).toBe("2026-10-04T16:00:00.000Z");
   });
 
+  it("mover una reunion conserva SU duracion, no la del evento", async () => {
+    // Agendada a mano con 90 minutos en un evento de 30.
+    const db = withBooking({ end_at: "2026-10-01T17:30:00.000Z" });
+    const result = await rescheduleBooking(db.client, {
+      bookingId: "bk-1",
+      startUtc: "2026-10-04T16:00:00.000Z",
+      by: "host",
+      actorUserId: HOST,
+      ignoreAvailability: true,
+      now: NOW,
+    });
+    expect(result.ok && result.endUtc).toBe("2026-10-04T17:30:00.000Z");
+    expect(db.rows("bookings")[0].end_at).toBe("2026-10-04T17:30:00.000Z");
+  });
+
   it("una agenda cancelada no se reagenda", async () => {
     const db = withBooking({ status: "cancelled_other" });
     const result = await rescheduleBooking(db.client, { uid: "abcdefghijklmnopqrstuv", startUtc: "2026-10-02T16:00:00.000Z", by: "invitee", now: NOW });

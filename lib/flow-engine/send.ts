@@ -62,7 +62,7 @@ export interface SendContext {
    * `sequence` y la cola de envios masivos `broadcast`. Determina `messages.origin`.
    */
   origin?: "flow" | "sequence" | "broadcast";
-  /** El historial de ejecuciones (00290): un envío rechazado no lanza, así que el paso se entera por acá. Solo en flujos. */
+  /** El historial de ejecuciones (00292): un envío rechazado no lanza, así que el paso se entera por acá. Solo en flujos. */
   noteStep?: (note: StepNote) => void;
   /** Las variables del flujo (si el envío nace de uno): de ahí sale la pieza (`content`) que guarda el saliente (F35). */
   variables?: Record<string, unknown>;

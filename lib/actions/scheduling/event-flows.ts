@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
+import { getAnyPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import type { Json } from "@/lib/types/database";
@@ -17,6 +17,8 @@ import { bodyToHtml } from "@/lib/flow-engine/nodes/send-email";
 import { connectionProblemsForGraph } from "@/lib/flow-engine/connection-problems";
 import { interpolateVariables } from "@/lib/flow-engine/interpolate";
 import { emptyBookingVariables } from "@/lib/scheduling/automation/variables";
+import { isNoEventTemplateKey } from "@/lib/scheduling/automation/templates";
+import { NO_EVENT_FLOWS_PATH } from "@/lib/scheduling/booking/guest-notice";
 
 /**
  * Los flujos de un evento (F48, F49, F57).
@@ -34,12 +36,31 @@ export type FlowActionResult<T = undefined> =
   | { ok: false; error: string };
 
 type OwnedFlow =
-  | { error: string; ctx?: undefined; found?: undefined }
-  | { error?: undefined; ctx: PermissionContext; found: NonNullable<Awaited<ReturnType<typeof flowGraph>>> };
+  | { error: string; ctx?: undefined; found?: undefined; db?: undefined; path?: undefined }
+  | {
+      error?: undefined;
+      ctx: PermissionContext;
+      found: NonNullable<Awaited<ReturnType<typeof flowGraph>>>;
+      /** Con que cliente se escribe: el de la persona, o el de servicio en un flujo del negocio. */
+      db: PermissionContext["supabase"];
+      /** La pantalla que hay que refrescar. */
+      path: string;
+    };
 
 async function ownedFlow(flowId: string): Promise<OwnedFlow> {
-  const ctx = await getPermissionAction("scheduling.use");
+  const ctx = await getAnyPermissionAction(["scheduling.use", "settings.general"]);
   if (!ctx) return { error: "No tenés permiso para tocar los flujos." };
+
+  // "Reuniones sin evento" es del negocio, no de una persona: pide `settings.general` y escribe el servidor
+  // despues de chequearlo, igual que las demas opciones del workspace. La RLS de `flows` pide otras claves.
+  const service = await createServiceClient();
+  const peek = await flowGraph(service, flowId);
+  if (peek && peek.flow.workspace_id === ctx.workspace.id && !peek.flow.event_type_id && isNoEventTemplateKey(peek.flow.template_key)) {
+    if (!ctx.can("settings.general")) return { error: "No tenés permiso para cambiar los flujos de las reuniones sin evento." };
+    return { ctx, found: peek, db: service as unknown as PermissionContext["supabase"], path: NO_EVENT_FLOWS_PATH };
+  }
+
+  if (!ctx.can("scheduling.use")) return { error: "No tenés permiso para tocar los flujos." };
   const found = await flowGraph(ctx.supabase, flowId);
   if (!found || found.flow.workspace_id !== ctx.workspace.id || !found.flow.event_type_id) return { error: "No encontré ese flujo." };
   // El flujo es del evento: lo toca quien puede editar ese evento (su dueño, o
@@ -55,14 +76,14 @@ async function ownedFlow(flowId: string): Promise<OwnedFlow> {
   if (event.owner_user_id !== ctx.user.id && !ctx.can("scheduling.manage_others")) {
     return { error: "No tenés permiso para tocar los flujos de un evento de otra persona." };
   }
-  return { ctx, found };
+  return { ctx, found, db: ctx.supabase, path: `${PATH}/${found.flow.event_type_id}` };
 }
 
 /** Prender o apagar un flujo del evento (F48). */
 export async function toggleEventFlow(input: { flowId: string; enabled: boolean }): Promise<FlowActionResult<{ backfilled: number }>> {
   const owned = await ownedFlow(input.flowId);
   if (owned.error !== undefined) return { ok: false, error: owned.error };
-  const { ctx, found } = owned;
+  const { ctx, found, db, path } = owned;
 
   // Prender un flujo con un paso que necesita una conexion que falta seria prometer algo que no se va a ejecutar (G1.4).
   // Apagarlo siempre se puede. El borrador se guarda igual; esto solo se mira al prender.
@@ -71,7 +92,7 @@ export async function toggleEventFlow(input: { flowId: string; enabled: boolean 
     if (problems.length > 0) return { ok: false, error: problems.join(" ") };
   }
 
-  const { error } = await ctx.supabase
+  const { error } = await db
     .from("flows")
     .update({ status: input.enabled ? "published" : "draft" })
     .eq("id", input.flowId);
@@ -80,9 +101,9 @@ export async function toggleEventFlow(input: { flowId: string; enabled: boolean 
   // El trigger se escribe desde el grafo, igual que al publicar desde el
   // canvas: así el flujo del evento y el del canvas guardan lo mismo.
   const desired = buildDesiredTriggers(found.nodes as unknown as Array<Record<string, unknown>>, input.flowId);
-  await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
+  await db.from("triggers").delete().eq("flow_id", input.flowId);
   if (desired.length > 0) {
-    await ctx.supabase.from("triggers").insert(
+    await db.from("triggers").insert(
       desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: input.enabled })),
     );
   }
@@ -91,7 +112,7 @@ export async function toggleEventFlow(input: { flowId: string; enabled: boolean 
   // el historial del evento es donde alguien lo va a buscar. Sumar una entidad
   // "flow" al audit log pediría revisar quién puede ver esas filas.
   await logAudit({
-    supabase: ctx.supabase,
+    supabase: db,
     workspaceId: ctx.workspace.id,
     entityType: "event_type",
     entityId: found.flow.event_type_id ?? input.flowId,
@@ -106,7 +127,7 @@ export async function toggleEventFlow(input: { flowId: string; enabled: boolean 
     backfilled = await backfillRelativeJobs(await createServiceClient(), ctx.workspace.id);
   }
 
-  revalidatePath(`${PATH}/${found.flow.event_type_id}`);
+  revalidatePath(path);
   return { ok: true, data: { backfilled } };
 }
 
@@ -114,7 +135,7 @@ export async function toggleEventFlow(input: { flowId: string; enabled: boolean 
 export async function saveLinearFlow(input: { flowId: string; linear: LinearFlow }): Promise<FlowActionResult> {
   const owned = await ownedFlow(input.flowId);
   if (owned.error !== undefined) return { ok: false, error: owned.error };
-  const { ctx, found } = owned;
+  const { ctx, found, db, path } = owned;
 
   // Si el flujo tiene ramas, el editor lineal es de solo lectura: guardar
   // desde acá borraría la rama que no se veía.
@@ -123,7 +144,7 @@ export async function saveLinearFlow(input: { flowId: string; linear: LinearFlow
   }
 
   const graph = linearToFlow(input.linear);
-  const { error } = await ctx.supabase
+  const { error } = await db
     .from("flows")
     .update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json })
     .eq("id", input.flowId);
@@ -132,13 +153,13 @@ export async function saveLinearFlow(input: { flowId: string; linear: LinearFlow
   // Si estaba publicado, el trigger se rehace con lo que quedó.
   if (found.flow.status === "published") {
     const desired = buildDesiredTriggers(graph.nodes as unknown as Array<Record<string, unknown>>, input.flowId);
-    await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
+    await db.from("triggers").delete().eq("flow_id", input.flowId);
     if (desired.length > 0) {
-      await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
+      await db.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
     }
   }
 
-  revalidatePath(`${PATH}/${found.flow.event_type_id}`);
+  revalidatePath(path);
   return { ok: true };
 }
 
@@ -154,13 +175,13 @@ export async function saveLinearFlow(input: { flowId: string; linear: LinearFlow
 export async function saveEventFlowTree(input: { flowId: string; tree: Pick<StepTree, "steps"> }): Promise<FlowActionResult> {
   const owned = await ownedFlow(input.flowId);
   if (owned.error !== undefined) return { ok: false, error: owned.error };
-  const { ctx, found } = owned;
+  const { ctx, found, db, path } = owned;
 
   const prepared = prepareTreeSave({ screen: "agenda", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree });
   if (!prepared.ok) return { ok: false, error: prepared.error };
   const graph = prepared.graph;
 
-  const { error } = await ctx.supabase
+  const { error } = await db
     .from("flows")
     .update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json })
     .eq("id", input.flowId);
@@ -169,13 +190,13 @@ export async function saveEventFlowTree(input: { flowId: string; tree: Pick<Step
   // Si estaba publicado, el trigger se rehace con lo que quedó.
   if (found.flow.status === "published") {
     const desired = buildDesiredTriggers(graph.nodes as unknown as Array<Record<string, unknown>>, input.flowId);
-    await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
+    await db.from("triggers").delete().eq("flow_id", input.flowId);
     if (desired.length > 0) {
-      await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
+      await db.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
     }
   }
 
-  revalidatePath(`${PATH}/${found.flow.event_type_id}`);
+  revalidatePath(path);
   return { ok: true };
 }
 
@@ -190,7 +211,7 @@ export async function saveEventFlowTree(input: { flowId: string; tree: Pick<Step
  * corrió, así que no hay una reunión de verdad de donde sacarlos.
  */
 export async function sendFlowTestEmail(input: { flowId: string; subject: string; body: string }): Promise<FlowActionResult> {
-  const ctx = await getPermissionAction("scheduling.use");
+  const ctx = await getAnyPermissionAction(["scheduling.use", "settings.general"]);
   if (!ctx) return { ok: false, error: "No tenés permiso." };
   const to = ctx.user.email ?? "";
   if (!to) return { ok: false, error: "Tu usuario no tiene email." };
@@ -206,6 +227,7 @@ export async function sendFlowTestEmail(input: { flowId: string; subject: string
       time_invitee: "14:00",
       host_name: hostName,
       location: "Google Meet",
+      meeting_place: "Google Meet: https://meet.google.com/ejemplo",
       meet_url: "https://meet.google.com/ejemplo",
       reschedule_url: "https://ejemplo/calendario/agenda/abc/reagendar",
       cancel_url: "https://ejemplo/calendario/agenda/abc",

@@ -303,11 +303,10 @@ export default async function ContactDetailPage({
   }));
   const { data: schedulingProfile } = await supabase
     .from("scheduling_profiles")
-    .select("timezone, time_format")
+    .select("time_format")
     .eq("workspace_id", workspace.id)
     .eq("user_id", user.id)
     .maybeSingle();
-  const bookingTimezone = schedulingProfile?.timezone ?? (workspace as { timezone?: string }).timezone ?? "UTC";
   const bookingTimeFormat = schedulingProfile?.time_format ?? "24h";
 
   const assignedTagIds = (contact.contact_tags ?? []).map(
@@ -485,7 +484,7 @@ export default async function ContactDetailPage({
               <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
-                  Última interacción: {formatRelative(contact.last_interaction_at)}
+                  Última interacción: {formatRelative(contact.last_interaction_at, viewerTimezone)}
                 </span>
               </div>
             </div>
@@ -556,6 +555,7 @@ export default async function ContactDetailPage({
                 youtube_channel_id: contact.youtube_channel_id ?? "",
                 linkedin_profile_url: contact.linkedin_profile_url ?? "",
                 ai_conversation_summary: contact.ai_conversation_summary ?? "",
+                timezone: contact.timezone ?? "",
               }}
             />
 
@@ -581,7 +581,7 @@ export default async function ContactDetailPage({
                               {conv.assigned_to && ` · ${labels.get(conv.assigned_to) ?? "asignada"}`}
                             </p>
                             <p className="text-[10px] text-muted-foreground/60">
-                              {formatRelative(conv.last_message_at)}
+                              {formatRelative(conv.last_message_at, viewerTimezone)}
                             </p>
                           </div>
                           <p className="mt-0.5 truncate text-sm">
@@ -609,9 +609,10 @@ export default async function ContactDetailPage({
                 channels: enrollableChannels,
               }}
               sequences={activeSequencesRes.data ?? []}
+              timeZone={viewerTimezone}
             />
 
-            <ContactBookingsSection bookings={contactBookings} timezone={bookingTimezone} timeFormat={bookingTimeFormat} />
+            <ContactBookingsSection bookings={contactBookings} timezone={viewerTimezone} timeFormat={bookingTimeFormat} />
 
             {/* @plantilla-desde(llamadas) */}
             <ContactCallsSection calls={contactCalls.rows} total={contactCalls.total} contactId={contact.id} timeZone={viewerTimezone} />
@@ -713,7 +714,7 @@ export default async function ContactDetailPage({
                 tasks: contactTasks,
                 members: members.map((m) => ({ id: m.userId, name: m.name })),
                 currentUserId: user.id,
-                today: todayInputValue(new Date(), workspace.timezone || "UTC"),
+                today: todayInputValue(new Date(), viewerTimezone),
                 timeZone: workspace.timezone || "UTC",
                 timeFormat: bookingTimeFormat === "12h" ? "12h" : "24h",
                 canEdit: permissionCtx.can("tasks.edit"),

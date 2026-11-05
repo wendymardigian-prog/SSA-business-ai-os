@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { createNotification } from "@/lib/notifications/create";
 import { formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
+import { isValidTimeZone } from "@/lib/timezone";
 
 type Db = SupabaseClient<Database>;
 
@@ -36,7 +37,10 @@ export async function notifyBooking(
   // El anfitrión no se avisa a sí mismo.
   if (options.actorUserId && options.actorUserId === booking.host_user_id) return;
 
-  const when = formatDateTimeWithZone(booking.start_at, booking.host_timezone ?? "UTC");
+  // La fecha va en la zona de la persona que recibe el aviso (Mi cuenta), no en la de su perfil de agenda.
+  const { data: prefs } = await service.from("user_preferences").select("timezone").eq("user_id", booking.host_user_id).maybeSingle();
+  const saved = prefs?.timezone && isValidTimeZone(prefs.timezone) ? prefs.timezone : null;
+  const when = formatDateTimeWithZone(booking.start_at, saved ?? booking.host_timezone ?? "UTC");
   const who = booking.booker_name ?? "Alguien";
 
   await createNotification({

@@ -23,7 +23,7 @@ export const FLOW_STATUS_LABELS: Record<FlowStatus, string> = { draft: "Borrador
 
 export function flowOrigin(row: { form_id?: string | null; event_type_id?: string | null; template_key?: string | null }): FlowOrigin {
   if (row.form_id) return "formularios"; // @plantilla-quitar(formularios)
-  if (row.event_type_id) return "agenda";
+  if (row.event_type_id || row.template_key?.startsWith("no_event_")) return "agenda";
   if (row.template_key) return "sistema";
   return "manual";
 }

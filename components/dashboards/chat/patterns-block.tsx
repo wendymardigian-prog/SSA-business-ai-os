@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Loader2, MessageSquare, MoreHorizontal } from "lucide-react";
@@ -438,13 +439,14 @@ export function QualityLineRow({
   reviewedCount: number;
   correctedPct: number | null;
 }) {
+  const timeZone = useViewerTimezone();
   return (
     <div className="flex flex-wrap items-center gap-2.5 px-1 py-0.5 text-xs text-muted-foreground">
       <MessageSquare className="h-3.5 w-3.5 shrink-0" aria-hidden />
       <span>
         Última clasificación:{" "}
         <b className="font-semibold text-foreground">
-          {lastRunAt ? new Date(lastRunAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "todavía ninguna"}
+          {lastRunAt ? new Date(lastRunAt).toLocaleString("es-AR", { timeZone, dateStyle: "short", timeStyle: "short" }) : "todavía ninguna"}
         </b>
       </span>
       <Dot />

@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/auth/guards";
 import { loadProductDetail } from "@/lib/catalog/load";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { ProductDetail } from "@/components/catalog/product-detail";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * Ajustes -> Productos -> un producto: sus variantes y, en cada una, el precio
@@ -17,5 +18,5 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   const members = await getWorkspaceMembers(workspace.id);
 
-  return <ProductDetail product={product} userNames={Object.fromEntries(memberLabels(members))} timeZone={(workspace as { timezone?: string }).timezone ?? "UTC"} />;
+  return <ProductDetail product={product} userNames={Object.fromEntries(memberLabels(members))} timeZone={await resolveViewerTimezone((workspace as { timezone?: string }).timezone)} />;
 }

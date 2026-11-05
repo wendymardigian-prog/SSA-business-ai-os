@@ -21,7 +21,7 @@ const THREADS_REPLY_CONTROL_LABELS: Record<(typeof THREADS_REPLY_CONTROL)[number
   mentioned_only: "Solo a quien mencione",
 };
 import { createAutomationHref, checkCta, type AutomationRule, type CtaType } from "@/lib/content/keywords";
-import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
+import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
 import { getFormat } from "@/lib/content/network-format";
 import {
   collaboratorsToText,
@@ -240,7 +240,7 @@ export function NetworkRow(props: NetworkRowProps) {
       {open && (
         <div className="space-y-3 border-t border-border p-3">
           <Field
-            label={`Fecha y hora en ${network.platform}`}
+            label={`Fecha y hora en ${network.platform} · tu hora (${timeZoneLabel(props.timeZone)})`}
             hint={
               props.usesGeneralDate
                 ? "Es la fecha general de la pieza. Si la cambiás acá, esta red pasa a tener la suya."
@@ -552,7 +552,7 @@ function PublishModeBlock({
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-emerald-700 dark:text-emerald-400">
             ✓ Publicado{state.manual ? " a mano" : ""}
-            {state.at ? ` · ${new Intl.DateTimeFormat("es-AR", { dateStyle: "medium" }).format(new Date(state.at))}` : ""}
+            {state.at ? ` · ${new Intl.DateTimeFormat("es-AR", { dateStyle: "medium", timeZone }).format(new Date(state.at))}` : ""}
           </span>
           {card.canUndoManual && (
             <button
@@ -568,7 +568,7 @@ function PublishModeBlock({
       ) : marking ? (
         <div className="space-y-2 rounded-lg bg-muted/40 p-2">
           <div className="grid gap-2 sm:grid-cols-2">
-            <Field label="Cuándo se publicó">
+            <Field label={`Cuándo se publicó · tu hora (${timeZoneLabel(timeZone)})`}>
               <input
                 type="datetime-local"
                 value={publishedAt}

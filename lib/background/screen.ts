@@ -7,6 +7,7 @@
  */
 
 import { AI_TASKS } from "@/lib/ai-tasks/catalog";
+import { calendarDaysAgo } from "@/lib/dates";
 import { BACKGROUND_TASKS, type BackgroundSettings, type BackgroundTask, type TaskFrequency, type TaskMode } from "./settings";
 
 /**
@@ -122,21 +123,18 @@ export function estimatedSavings(
 }
 
 /** "Hoy 03:00", "Ayer 17:40", "23 sept 03:00", o que no corrio nunca. */
-export function lastRunLabel(at: string | null, now: Date = new Date(), locale = "es-AR"): string {
+export function lastRunLabel(at: string | null, timeZone: string, now: Date = new Date(), locale = "es-AR"): string {
   if (!at) return "Nunca corrió";
   const date = new Date(at);
   if (Number.isNaN(date.getTime())) return "Nunca corrió";
 
-  const time = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
-  const sameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const time = date.toLocaleTimeString(locale, { timeZone, hour: "2-digit", minute: "2-digit", hour12: false });
+  // El corte de "hoy" y "ayer" tambien es en la zona de quien mira, no en la del servidor.
+  const days = calendarDaysAgo(date, now, timeZone);
+  if (days === 0) return `Hoy ${time}`;
+  if (days === 1) return `Ayer ${time}`;
 
-  if (sameDay(date, now)) return `Hoy ${time}`;
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (sameDay(date, yesterday)) return `Ayer ${time}`;
-
-  return `${date.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${time}`;
+  return `${date.toLocaleDateString(locale, { timeZone, day: "numeric", month: "short" })} ${time}`;
 }
 
 /** Un monto en dolares, o una raya cuando no se sabe (nunca "USD 0"). */

@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { MarketingDeliverySection } from "./marketing-delivery-section";
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -196,6 +197,7 @@ function WebhookSection({
   readOnly: boolean;
   access: "full" | "sending" | null;
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const [busy, startBusy] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -289,7 +291,7 @@ function WebhookSection({
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
             <span className="inline-flex items-center gap-1">
               <Check className="h-3 w-3" aria-hidden />
-              Guardado{webhook.secretSavedAt ? ` el ${new Date(webhook.secretSavedAt).toLocaleDateString("es")}` : ""}
+              Guardado{webhook.secretSavedAt ? ` el ${new Date(webhook.secretSavedAt).toLocaleDateString("es", { timeZone })}` : ""}
             </span>
             {!readOnly && (
               <>

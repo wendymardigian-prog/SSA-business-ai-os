@@ -41,6 +41,7 @@ export function ContentList({
   filters,
   authors,
   months,
+  timeZone,
   showPaid = false,
 }: {
   rows: ListRow[];
@@ -48,6 +49,8 @@ export function ContentList({
   authors: Array<{ id: string; name: string }>;
   /** Los meses que tienen algo, para el filtro de fecha (C15). */
   months: string[];
+  /** La zona de quien mira. */
+  timeZone: string;
   /** Mostrar el indicador «Pautada» y su filtro: solo para quien puede ver anuncios (A2). */
   showPaid?: boolean;
 }) {
@@ -207,6 +210,7 @@ export function ContentList({
                       ? new Date(row.firstAt).toLocaleDateString("es-AR", {
                           day: "numeric",
                           month: "short",
+                          timeZone,
                         })
                       : "Sin fecha"}
                   </td>

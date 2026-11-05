@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -34,6 +35,7 @@ export function TaskModeEditor({
   batchWarning: string | null;
   lastRun: TaskRunInfo | null;
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const original = settings[task];
   const [mode, setMode] = useState<TaskMode>(original.mode);
@@ -119,7 +121,7 @@ export function TaskModeEditor({
       )}
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Última corrida: {mode === "off" ? "Apagada" : lastRun ? lastRunLabel(lastRun.at) : "Sin corridas propias todavía"}
+        Última corrida: {mode === "off" ? "Apagada" : lastRun ? lastRunLabel(lastRun.at, timeZone) : "Sin corridas propias todavía"}
         {" · "}
         Gasto del mes: {formatSpend(lastRun?.monthSpendUsd ?? null)}
       </p>

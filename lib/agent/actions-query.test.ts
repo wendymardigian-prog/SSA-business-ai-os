@@ -34,13 +34,24 @@ describe("describeChanges", () => {
   const members = new Map([["u-1", "Ana"]]);
 
   it("traduce ids de tags y de miembros a nombres, y los valores a palabras", () => {
-    expect(describeChanges(entry("tag", { tags: { old: null, new: "t-1,t-x" } }), tags, members)).toEqual([
+    expect(describeChanges(entry("tag", { tags: { old: null, new: "t-1,t-x" } }), tags, members, "UTC")).toEqual([
       { field: "Etiquetas", before: "vacío", after: "Interesado, etiqueta borrada" },
     ]);
-    expect(describeChanges(entry("assign", { assigned_to: { old: null, new: "u-1" } }), tags, members)).toEqual([{ field: "Asignada a", before: "vacío", after: "Ana" }]);
-    expect(describeChanges(entry("temperature", { lead_temperature: { old: "cold", new: "hot" } }), tags, members)).toEqual([{ field: "Temperatura", before: "frío", after: "caliente" }]);
-    expect(describeChanges(entry("human_takeover", { agent_enabled: { old: null, new: false } }), tags, members)).toEqual([
+    expect(describeChanges(entry("assign", { assigned_to: { old: null, new: "u-1" } }), tags, members, "UTC")).toEqual([{ field: "Asignada a", before: "vacío", after: "Ana" }]);
+    expect(describeChanges(entry("temperature", { lead_temperature: { old: "cold", new: "hot" } }), tags, members, "UTC")).toEqual([{ field: "Temperatura", before: "frío", after: "caliente" }]);
+    expect(describeChanges(entry("human_takeover", { agent_enabled: { old: null, new: false } }), tags, members, "UTC")).toEqual([
       { field: "Agente en la conversación", before: "hereda del canal", after: "apagado" },
+    ]);
+  });
+
+  it("las fechas salen en la zona de quien mira, no el texto crudo en UTC", () => {
+    const tz = "America/Argentina/Buenos_Aires";
+    expect(describeChanges(entry("pause", { agent_paused_until: { old: "infinity", new: "2026-09-25T01:30:00Z" } }), tags, members, tz)).toEqual([
+      { field: "Agente pausado hasta", before: "hasta que lo reanuden", after: "24/09/2026, 22:30" },
+    ]);
+    // Las 01:30 UTC del 25 todavia son el 24 en Buenos Aires.
+    expect(describeChanges(entry("followup", { next_followup_date: { old: null, new: "2026-09-25T01:30:00Z" } }), tags, members, tz)).toEqual([
+      { field: "Próximo seguimiento", before: "vacío", after: "24/09/2026" },
     ]);
   });
 });

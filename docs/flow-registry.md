@@ -709,7 +709,7 @@ flujo responde por el chat privado en el número del grupo, creándolo si no exi
 disparo. Su `eventMatches` saltea un contacto «no contactar». Nodo nuevo: `send_poll` («Enviar encuesta», sin
 contacto, `requires: whatsapp_channel`). Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).
 
-## Historial de ejecuciones (00290, noviembre 2026)
+## Historial de ejecuciones (00292, noviembre 2026)
 
 Cada automatización tiene su pantalla: `/dashboard/flows/[flowId]/ejecuciones`, con el botón «Ejecuciones» en el editor y un link en la tarjeta de la lista. Muestra quién pasó, cuándo, cómo terminó y qué pasó en cada paso. «Exportar» ya no está en el editor: sigue en la tarjeta, junto a «Importar», para copiar una automatización a otro negocio.
 
@@ -722,7 +722,7 @@ Cada automatización tiene su pantalla: `/dashboard/flows/[flowId]/ejecuciones`,
 - **`finished_at` lo pone un trigger** cuando la sesión deja de estar activa. `end_reason` lo escribe el primero que lo anota (la causa original gana).
 - **El estado que se muestra y el filtro dicen lo mismo:** `deriveRunState` (`lib/flows/runs.ts`) y `applyState` (`lib/flows/runs-query.ts`). Si se cambia uno, se cambian los dos; `verify-flow-runs` los compara contra la base.
 - **Retención:** los pasos se borran a los 12 meses (`sweepFlowStepHistory`). La fila de `flow_sessions` queda, porque «Una sola vez por contacto» la mira.
-- **Lo que corrió antes de la 00290 no tiene pasos ni hora de fin.** No se reconstruye: sería adivinar.
+- **Lo que corrió antes de la 00292 no tiene pasos ni hora de fin.** No se reconstruye: sería adivinar.
 - **Un disparo que no arrancó** (ya pasó una vez, un ciclo bloqueado, la automatización sin publicar) no crea ejecución, así que no aparece.
 
 ```

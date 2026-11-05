@@ -24,6 +24,8 @@ export interface SlotsQuery {
   username?: string;
   slug?: string;
   eventTypeId?: string;
+  /** Con `eventTypeId`: mira la agenda de esta persona en vez de la del dueño del evento (reagendar). */
+  hostUserId?: string;
   from: string;
   to: string;
   timezone: string;
@@ -48,7 +50,7 @@ export async function getPublicSlots(service: Db, query: SlotsQuery): Promise<Sl
     const { data: row } = await service.from("event_types").select("*").eq("id", query.eventTypeId).is("deleted_at", null).maybeSingle();
     if (!row) return { ok: false, status: 404, reason: "not_found" };
     event = row;
-    const { data: p } = await service.from("scheduling_profiles").select("*").eq("workspace_id", row.workspace_id).eq("user_id", row.owner_user_id).maybeSingle();
+    const { data: p } = await service.from("scheduling_profiles").select("*").eq("workspace_id", row.workspace_id).eq("user_id", query.hostUserId ?? row.owner_user_id).maybeSingle();
     if (!p) return { ok: false, status: 404, reason: "not_found" };
     profile = p;
   } else if (query.username && query.slug) {
@@ -103,7 +105,18 @@ export interface PublicEventPayload {
 export async function getPublicEvent(service: Db, username: string, slug: string): Promise<PublicEventPayload | null> {
   const found = await findPublicEvent(service, username, slug);
   if (!found) return null;
-  const { event, profile } = found;
+  return publicEventPayload(service, found.event, found.profile);
+}
+
+/**
+ * Lo mismo para un evento y un anfitrion ya conocidos. Al reagendar el anfitrion
+ * sale de la reunion, que puede no ser el dueño de hoy del evento.
+ */
+export async function publicEventPayload(
+  service: Db,
+  event: Database["public"]["Tables"]["event_types"]["Row"],
+  profile: Database["public"]["Tables"]["scheduling_profiles"]["Row"],
+): Promise<PublicEventPayload> {
   return {
     title: event.title,
     description: event.description_md,

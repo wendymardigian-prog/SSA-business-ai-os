@@ -1,6 +1,7 @@
 import { getWorkspace } from "@/lib/workspace";
 import { requirePermission } from "@/lib/auth/guards";
 import { listBroadcastChannels } from "@/lib/broadcasts/channels";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { BroadcastsView, type BroadcastListItem } from "./broadcasts-view";
 
 /**
@@ -36,5 +37,5 @@ export default async function BroadcastsPage() {
     createdAt: b.created_at,
   }));
 
-  return <BroadcastsView items={items} hasChannels={channels.length > 0} timeZone={workspace.timezone ?? "UTC"} />;
+  return <BroadcastsView items={items} hasChannels={channels.length > 0} timeZone={await resolveViewerTimezone(workspace.timezone)} />;
 }

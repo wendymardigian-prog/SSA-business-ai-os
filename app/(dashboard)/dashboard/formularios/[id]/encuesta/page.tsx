@@ -45,8 +45,8 @@ export default async function EncuestaPage({
   if (!form) notFound();
   if (form.type !== "survey") redirect(`/dashboard/formularios/${id}`);
 
-  const timeZone = workspace.timezone || "UTC";
-  const [viewerZone, barData] = await Promise.all([resolveViewerTimezone(workspace.timezone), loadEditorBar(supabase, workspace.id, id)]);
+  // El periodo y la evolucion se cortan en el dia de quien mira.
+  const [timeZone, barData] = await Promise.all([resolveViewerTimezone(workspace.timezone), loadEditorBar(supabase, workspace.id, id)]);
   const period = resolvePeriod({ dias: one("dias"), desde: one("desde"), hasta: one("hasta") }, dayInZone(new Date(), timeZone));
 
   let definition = form.draft_definition;
@@ -119,7 +119,7 @@ export default async function EncuestaPage({
       truncated={(rows ?? []).length >= MAX_ROWS}
       loadError={!!error}
       activePreset={one("desde") && one("hasta") ? "custom" : one("dias") ?? "30"}
-      timeZone={viewerZone}
+      timeZone={timeZone}
     />
   );
 }

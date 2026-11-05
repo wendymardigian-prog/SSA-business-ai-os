@@ -30,7 +30,10 @@ import { RESOLVE_WARNING_TEXT } from "@/lib/scheduling/resolve-calendars";
 import type { BookingField, EventType, WeeklyHours } from "@/lib/scheduling/types";
 import type { ChecklistItem, EditorSection } from "@/lib/scheduling/event-validation";
 import { isEditorSection } from "@/lib/scheduling/editor-sections";
+import { canPickHost, hostChangeMessage, hostOptionLabel, type HostCandidate } from "@/lib/scheduling/host-change";
+import { eventPublicUrl } from "@/lib/scheduling/public-url";
 import {
+  changeEventHost,
   saveEventAvailability,
   saveEventDetails,
   saveEventForm,
@@ -69,7 +72,10 @@ export function EventEditorView({
   publicBase,
   embedFallback,
   flows,
+  hostChange,
 }: {
+  /** A quien se le puede pasar el evento. Null: la persona no tiene permiso, solo lo ve. */
+  hostChange: { candidates: HostCandidate[]; futureBookings: number } | null;
   event: EventType & { workspace_id: string };
   section: EditorSection;
   categories: CategoryRow[];
@@ -93,13 +99,21 @@ export function EventEditorView({
 }) {
   // La seccion sale de la URL del NAVEGADOR: cambiar de seccion ya no va al
   // servidor (ver `EditorShell.go`), porque todos los datos estan aca.
-  const seccion = useSearchParams().get("seccion");
+  const searchParams = useSearchParams();
+  const seccion = searchParams.get("seccion");
   const section: EditorSection = isEditorSection(seccion) ? seccion : initialSection;
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(flowsCreated !== null ? `Evento creado (inactivo)${flowsCreated > 0 ? ` · se crearon ${flowsCreated} flujos sugeridos, apagados` : ""}` : null);
+  const [toast, setToast] = useState<string | null>(
+    searchParams.get("anfitrion") === "cambiado"
+      ? `Listo: ${hostName} es el anfitrión. Las reuniones nuevas se agendan con esa persona.`
+      : flowsCreated !== null
+        ? `Evento creado (inactivo)${flowsCreated > 0 ? ` · se crearon ${flowsCreated} flujos sugeridos, apagados` : ""}`
+        : null,
+  );
   const [confirmSlug, setConfirmSlug] = useState<string | null>(null);
+  const [pendingHost, setPendingHost] = useState<HostCandidate | null>(null);
 
   // Detalles
   const [title, setTitle] = useState(event.title);
@@ -161,6 +175,31 @@ export function EventEditorView({
       periodDays !== (event.period_days ?? null) || periodStart !== (event.period_start_date ?? "") || periodEnd !== (event.period_end_date ?? ""),
   };
   const dirty = Boolean(dirtyBySection[section]);
+
+  function pickHost(userId: string) {
+    const candidate = hostChange?.candidates.find((c) => c.userId === userId);
+    if (!candidate || userId === event.owner_user_id) return;
+    // Cambiar de anfitrion arma el editor de nuevo: lo que no se guardo se perderia.
+    if (Object.values(dirtyBySection).some(Boolean)) {
+      setError("Guardá los cambios de este evento antes de cambiar el anfitrión.");
+      return;
+    }
+    setError(null);
+    setPendingHost(candidate);
+  }
+
+  function changeHost(candidate: HostCandidate) {
+    setPendingHost(null);
+    setError(null);
+    start(async () => {
+      const result = await changeEventHost({ eventId: event.id, newHostUserId: candidate.userId });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.replace(`/dashboard/agenda/configuracion/eventos/${event.id}?seccion=details&anfitrion=cambiado`);
+    });
+  }
 
   function flash(message: string) {
     setToast(message);
@@ -261,6 +300,27 @@ export function EventEditorView({
         <section className="space-y-4 rounded-xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold">Detalles</h2>
           <div className="grid gap-4 md:grid-cols-[180px_1fr] md:items-center">
+            {hostChange ? (
+              <>
+                <label htmlFor="ev-host" className="text-sm text-muted-foreground">Anfitrión</label>
+                <div className="space-y-1">
+                  <select id="ev-host" value={event.owner_user_id} disabled={pending} onChange={(e) => pickHost(e.target.value)} className={inputClass}>
+                    {/* Quien ya no esta en el equipo sigue siendo el anfitrion hasta que se cambie. */}
+                    {!hostChange.candidates.some((c) => c.userId === event.owner_user_id) && <option value={event.owner_user_id}>{hostName}</option>}
+                    {hostChange.candidates.map((c) => (
+                      <option key={c.userId} value={c.userId} disabled={!canPickHost(c) && c.userId !== event.owner_user_id}>{hostOptionLabel(c)}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">Las reuniones nuevas de este evento se agendan con esta persona.</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-muted-foreground">Anfitrión</span>
+                <p className="text-sm">{hostName}</p>
+              </>
+            )}
+
             <label htmlFor="ev-title" className="text-sm text-muted-foreground">Título</label>
             <input id="ev-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} className={inputClass} />
 
@@ -513,7 +573,7 @@ export function EventEditorView({
         </section>
       )}
 
-      {section === "flows" && <FlowsSection eventId={event.id} flows={flows} />}
+      {section === "flows" && <FlowsSection flowsPath={`/dashboard/agenda/configuracion/eventos/${event.id}`} flows={flows} />}
 
       <ConfirmDialog
         open={confirmSlug !== null}
@@ -524,6 +584,26 @@ export function EventEditorView({
         destructive
         onConfirm={() => { setConfirmSlug(null); saveDetails(true); }}
         onCancel={() => setConfirmSlug(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingHost !== null}
+        title={`Cambiar el anfitrión a ${pendingHost?.label ?? ""}`}
+        message={
+          pendingHost
+            ? hostChangeMessage({
+                eventTitle: event.title,
+                hostName: pendingHost.label,
+                hasGoogle: pendingHost.hasGoogle,
+                futureBookings: hostChange?.futureBookings ?? 0,
+                newLink: eventPublicUrl(publicBase, pendingHost.username ?? "", event.slug),
+              })
+            : ""
+        }
+        confirmLabel="Cambiar anfitrión"
+        cancelLabel="Dejarlo como está"
+        onConfirm={() => { if (pendingHost) changeHost(pendingHost); }}
+        onCancel={() => setPendingHost(null)}
       />
     </EditorShell>
   );

@@ -11,7 +11,7 @@ import { parseFlowRunFilters } from "@/lib/flows/runs";
 import { loadFlowRunDetail, loadFlowRuns } from "@/lib/flows/runs-query";
 import type { SearchParams } from "@/lib/url-params";
 
-/** El historial de ejecuciones de una automatizacion (00290). Lee con el cliente del usuario: la RLS decide que ve. */
+/** El historial de ejecuciones de una automatizacion (00292). Lee con el cliente del usuario: la RLS decide que ve. */
 export default async function FlowRunsPage({
   params,
   searchParams,

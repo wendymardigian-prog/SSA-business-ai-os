@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState } from "react";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { describeHistoryItem, type AuditHistoryItem, type HistoryItem } from "@/lib/contacts/history";
@@ -98,6 +99,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "category.archived": "archivó una categoría de agenda",
   "event_type.created": "creó un evento de agenda",
   "event_type.updated": "editó un evento de agenda",
+  "event_type.host_changed": "cambió el anfitrión de un evento de agenda",
   "event_type.deleted": "borró un evento de agenda",
   "booking.created": "agendó una llamada",
   "booking.rescheduled": "reagendó una llamada",
@@ -151,6 +153,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 export function HistorySection({ items }: { items: HistoryItem[] }) {
+  const timeZone = useViewerTimezone();
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? items : items.slice(0, INITIAL_VISIBLE);
   const hidden = items.length - shown.length;
@@ -170,7 +173,7 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                   <p className="text-sm">
                     <span className="font-medium">{item.actorLabel}</span> {auditText(item)}
                   </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at)}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at, timeZone)}</p>
                   {renderChanges(item.changes)}
                   {renderLinkNote(item)}
                   {renderImportNote(item)}
@@ -182,7 +185,7 @@ export function HistorySection({ items }: { items: HistoryItem[] }) {
                   <p className="text-sm">
                     <span className="font-medium">{describeHistoryItem(item).actor}</span> {describeHistoryItem(item).text}
                   </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at)}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at, timeZone)}</p>
                   {item.source === "email" && item.delivery.length > 0 && (
                     <p className="mt-1 text-xs text-muted-foreground">{item.delivery.join(" · ")}</p>
                   )}

@@ -3,15 +3,17 @@
 import { PhoneIncoming, PhoneMissed, Video } from "lucide-react";
 import { callLabel, isUnansweredCall, type CallRow } from "@/lib/whatsapp-calls/event";
 import { cn } from "@/lib/utils";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 
 /**
  * Una llamada de WhatsApp en el hilo (00258): una linea centrada, no una
  * burbuja. No es un mensaje: no la ve el agente ni dispara flujos.
  */
 export function CallLine({ call }: { call: CallRow }) {
+  const timeZone = useViewerTimezone();
   const unanswered = isUnansweredCall(call.status);
   const Icon = call.isVideo ? Video : unanswered ? PhoneMissed : PhoneIncoming;
-  const time = new Date(call.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = new Date(call.startedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone });
   return (
     <div className="flex justify-center" role="note">
       <span
@@ -21,7 +23,7 @@ export function CallLine({ call }: { call: CallRow }) {
         )}
       >
         <Icon className="h-3.5 w-3.5" aria-hidden />
-        {callLabel(call)} · <span suppressHydrationWarning>{time}</span>
+        {callLabel(call)} · <span>{time}</span>
       </span>
     </div>
   );

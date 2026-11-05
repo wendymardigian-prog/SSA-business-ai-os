@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ArchiveRestore, History, Plus } from "lucide-react";
@@ -143,6 +144,7 @@ export function AnalysisConfig({ data }: { data: Data }) {
 }
 
 function RubricHistory({ history, onLoad }: { history: Data["rubricHistory"]; onLoad: (rubric: Data["settings"]["rubric"]) => void }) {
+  const timeZone = useViewerTimezone();
   return (
     <details className="rounded-lg border border-border">
       <summary className="flex cursor-pointer items-center gap-1.5 px-3 py-2 text-xs font-semibold">
@@ -151,7 +153,7 @@ function RubricHistory({ history, onLoad }: { history: Data["rubricHistory"]; on
       <ul className="divide-y divide-border border-t border-border">
         {history.map((h) => (
           <li key={h.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-            <span>Versión {h.version} · {new Date(h.at).toLocaleString("es")}</span>
+            <span>Versión {h.version} · {new Date(h.at).toLocaleString("es", { timeZone })}</span>
             <button type="button" onClick={() => onLoad(h.rubric)} className="rounded-md border border-border px-2 py-1 font-medium hover:bg-accent">Cargar en el editor</button>
           </li>
         ))}

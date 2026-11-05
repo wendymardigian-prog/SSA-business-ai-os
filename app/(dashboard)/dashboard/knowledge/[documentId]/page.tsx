@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { requirePermission } from "@/lib/auth/guards";
 import { formatDateTime } from "@/components/contacts/ui";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { StatusBadge } from "../knowledge-view";
 import { DownloadOriginalButton } from "./download-button";
 import { formatBytes, MIME_LABELS, type SupportedMime } from "@/lib/knowledge/validate";
@@ -26,6 +27,7 @@ export default async function KnowledgeDocumentPage({
 }) {
   const { documentId } = await params;
   const { workspace, supabase } = await requirePermission("knowledge.view");
+  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
 
   const { data: document, error } = await supabase
     .from("knowledge_base")
@@ -73,12 +75,12 @@ export default async function KnowledgeDocumentPage({
               {document.status === "ready"
                 ? ` · ${document.chunk_count} ${document.chunk_count === 1 ? "fragmento" : "fragmentos"}`
                 : ""}
-              {` · Subido el ${formatDateTime(document.created_at)}`}
+              {` · Subido el ${formatDateTime(document.created_at, viewerTimezone)}`}
             </p>
 
             {document.indexed_at && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Indexado el {formatDateTime(document.indexed_at)}
+                Indexado el {formatDateTime(document.indexed_at, viewerTimezone)}
                 {document.embedding_model ? ` con ${document.embedding_model}` : ""}
               </p>
             )}

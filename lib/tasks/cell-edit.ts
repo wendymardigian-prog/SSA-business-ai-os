@@ -20,8 +20,9 @@ export interface CellPatch {
   status?: TaskStatus;
   owner_id?: string | null;
   follower_ids?: string[];
+  /** Lo guardado: el dia en la zona del workspace. */
   due_date?: string | null;
-  /** Hora local del workspace (`HH:MM`); null la quita. Solo con fecha. */
+  /** Lo guardado: la hora en la zona del workspace (`HH:MM`); null la quita. Solo con fecha. Los editores la convierten con `due-view`. */
   due_time?: string | null;
   /** 5 a 1440 minutos; null la quita. */
   duration_minutes?: number | null;

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 
 /**
- * El historial de ejecuciones de una automatizacion (00290).
+ * El historial de ejecuciones de una automatizacion (00292).
  *
  * Una regla por encima de todo: **anotar nunca frena un flujo**. Todo lo que escribe a la base esta en try/catch y no
  * lanza, y va en una escritura aparte de los cambios de `status`: una instalacion que despliegue sin la migracion sigue

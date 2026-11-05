@@ -19,6 +19,7 @@ export function VersionHistory({
   current,
   authorNames,
   canEdit,
+  timeZone,
   onRestored,
 }: {
   postId: string;
@@ -27,6 +28,8 @@ export function VersionHistory({
   current: StoredVersion["snapshot"];
   authorNames: Record<string, string>;
   canEdit: boolean;
+  /** La zona de quien mira. */
+  timeZone: string;
   /** Despues de restaurar (F97): el drawer vuelve al post y relee lo escrito. */
   onRestored?: (snapshot: PostSnapshot) => void;
 }) {
@@ -76,6 +79,7 @@ export function VersionHistory({
                       month: "short",
                       hour: "2-digit",
                       minute: "2-digit",
+                      timeZone,
                     })}
                   </p>
                 </div>

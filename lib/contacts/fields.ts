@@ -14,6 +14,7 @@
 
 import { normalizePhone } from "@/lib/phone";
 import { datetimeInputToIso } from "@/lib/dates";
+import { isValidTimeZone } from "@/lib/timezone";
 import type { LeadTemperature } from "@/lib/types/database";
 
 export type FieldResult =
@@ -27,6 +28,7 @@ export type ContactFieldKey =
   | "phone"
   | "whatsapp_phone"
   | "country"
+  | "timezone"
   | "instagram_username"
   | "tiktok_username"
   | "twitter_username"
@@ -37,7 +39,7 @@ export type ContactFieldKey =
   | "next_followup_date"
   | "ai_conversation_summary";
 
-type FieldKind = "text" | "email" | "phone" | "handle" | "url" | "temperature" | "date";
+type FieldKind = "text" | "email" | "phone" | "handle" | "url" | "temperature" | "date" | "timezone";
 
 export interface ContactFieldDef {
   key: ContactFieldKey;
@@ -55,6 +57,7 @@ export const CONTACT_FIELDS: ContactFieldDef[] = [
   { key: "phone", label: "Telefono", kind: "phone", hint: "Con codigo de pais, ej: +54 9 11 2233 4455" },
   { key: "whatsapp_phone", label: "WhatsApp", kind: "phone", hint: "Solo si es distinto al telefono principal" },
   { key: "country", label: "Pais", kind: "text" },
+  { key: "timezone", label: "Zona horaria", kind: "timezone", hint: "Formato IANA, ej: America/Mexico_City" },
   { key: "instagram_username", label: "Instagram", kind: "handle", hint: "Sin la arroba" },
   { key: "tiktok_username", label: "TikTok", kind: "handle", hint: "Sin la arroba" },
   { key: "twitter_username", label: "Twitter / X", kind: "handle", hint: "Sin la arroba" },
@@ -148,6 +151,13 @@ export function validateContactField(key: ContactFieldKey, raw: unknown, timeZon
     case "temperature": {
       if (!(LEAD_TEMPERATURES as string[]).includes(value)) {
         return { ok: false, error: `Temperatura invalida: ${value}` };
+      }
+      return { ok: true, value };
+    }
+
+    case "timezone": {
+      if (!isValidTimeZone(value)) {
+        return { ok: false, error: `${def.label}: "${value}" no es una zona horaria valida. Ej: America/Mexico_City` };
       }
       return { ok: true, value };
     }

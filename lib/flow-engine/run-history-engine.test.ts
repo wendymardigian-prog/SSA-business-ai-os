@@ -1,5 +1,5 @@
 /**
- * El historial de ejecuciones (00290) contra el motor de verdad: que queda anotado en cada caso, y que anotar no cambia
+ * El historial de ejecuciones (00292) contra el motor de verdad: que queda anotado en cada caso, y que anotar no cambia
  * lo que hace el flujo.
  */
 import { describe, expect, it, vi } from "vitest";

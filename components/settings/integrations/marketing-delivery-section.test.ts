@@ -127,6 +127,7 @@ describe("BroadcastProgress: los resultados del email (A9)", () => {
     page: 1,
     pageCount: 1,
     timeZone: "America/Costa_Rica",
+    businessTimeZone: "America/Costa_Rica",
   };
 
   it("cifras, «aproximado», pendientes por el tope, filtros y marcas del destinatario", () => {

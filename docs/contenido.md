@@ -249,11 +249,19 @@ en la columna Ideas. Descartar vive ahí, con su motivo, y no en la tarjeta.
 - **Palabras clave detectadas** bajo el CTA, marcando cuáles disparan una
   automatización de verdad.
 
-### Las fechas son de la zona del negocio
+### Las fechas se ven y se escriben en tu zona
 
 El editor convertía con la zona del navegador: alguien que viaja programaba a
-una hora distinta de la que veía. Ahora usa `workspaces.timezone` y la muestra
-al lado del campo.
+una hora distinta de la que veía. La primera corrección (decisión A19) usó la
+zona del negocio; desde el 4/11/2026 es la **zona de cada persona** (la que
+eligió en su perfil, `resolveViewerTimezone`), y se muestra al lado del campo.
+Vale para el drawer, el calendario (también al arrastrar una pieza), la lista y
+el tablero: en todos es la misma zona, si no una pieza cae en otro día.
+
+Lo que se guarda es el instante, el mismo para todos: una pieza programada a las
+10:00 en Buenos Aires la ve a las 07:00 alguien en Costa Rica. Lo que sigue en la
+zona del negocio es lo que es una regla, como el tope diario de publicaciones por
+red (ver [publicacion.md](publicacion.md)).
 
 ### El copy lo escribe un agente
 

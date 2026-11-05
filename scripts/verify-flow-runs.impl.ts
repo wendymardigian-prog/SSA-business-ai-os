@@ -1,5 +1,5 @@
 /**
- * El historial de ejecuciones contra la base real (00290).
+ * El historial de ejecuciones contra la base real (00292).
  *
  * Lo que un test con Vitest no puede probar: que la BASE haga cumplir quien ve que, que `variables` no se pueda leer con
  * la sesion, el trigger de la hora de fin, la cascada, y que el motor y la consulta de la pantalla anden de punta a punta.

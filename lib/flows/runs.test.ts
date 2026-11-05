@@ -95,7 +95,7 @@ describe("la pantalla nunca lee variables", () => {
 
   it("cada columna que lee la pantalla tiene su permiso en la migracion", () => {
     const query = readFileSync(path.join(process.cwd(), "lib/flows/runs-query.ts"), "utf8");
-    const migration = readFileSync(path.join(process.cwd(), "supabase/migrations/00290_flow_run_history.sql"), "utf8");
+    const migration = readFileSync(path.join(process.cwd(), "supabase/migrations/00292_flow_run_history.sql"), "utf8");
     const columns = /const RUN_COLUMNS =\s*"([^"]+)"/.exec(query)?.[1].split(",").map((c) => c.trim()) ?? [];
     const granted = /GRANT SELECT \(([\s\S]*?)\) ON public\.flow_sessions TO authenticated/.exec(migration)?.[1] ?? "";
     expect(columns.length).toBeGreaterThan(5);

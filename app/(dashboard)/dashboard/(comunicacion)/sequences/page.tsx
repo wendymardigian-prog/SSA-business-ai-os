@@ -13,11 +13,13 @@ import { SectionSearch } from "@/components/comunicacion/section-search";
 import { NoSearchResults } from "@/components/comunicacion/no-search-results";
 import { matchesSearch } from "@/lib/comunicacion/search";
 import { firstParam, sanitizeSearch, type SearchParams } from "@/lib/url-params";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 export default async function SequencesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   // Equipo y roles (F22): la pagina pide su permiso.
   await requirePermission("sequences.view");
   const { workspace, supabase } = await getWorkspace();
+  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
   // Bloque I (I4): el buscador de la barra filtra por nombre la lista, que se
   // carga entera (no pagina).
   const query = sanitizeSearch(firstParam((await searchParams).q));
@@ -134,7 +136,7 @@ export default async function SequencesPage({ searchParams }: { searchParams: Pr
                   )}
 
                   <p className="mt-4 text-xs text-muted-foreground">
-                    Editada el {formatDateTime(sequence.updated_at)}
+                    Editada el {formatDateTime(sequence.updated_at, viewerTimezone)}
                   </p>
                 </Link>
               );

@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { changeMyPassword, removeMyAvatar, updateMyContact, updateMyName, uploadMyAvatar } from "@/lib/actions/account";
 import { setViewerTimezone } from "@/lib/actions/user-preferences";
 import { parseContactInput, parseDisplayName, parsePasswordChange, PASSWORD_MIN } from "@/lib/account/validation";
-import { listTimeZones } from "@/lib/timezone";
+import { TimezoneSelect } from "@/components/ui/timezone-select";
 import { initialsOf } from "@/lib/shared/people";
 import { useHtmlClass } from "@/components/use-html-class";
 import { AccountCard, SaveStatus, inputClass, primaryButtonClass, secondaryButtonClass } from "./account-card";
@@ -339,7 +339,6 @@ function ContactCard({
 function PreferencesCard({ timezone }: { timezone: string }) {
   const router = useRouter();
   const dark = useHtmlClass("dark");
-  const zones = listTimeZones();
   const [tz, setTz] = useState(timezone);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -377,13 +376,7 @@ function PreferencesCard({ timezone }: { timezone: string }) {
           <label htmlFor="account-timezone" className="mb-1 block text-xs font-medium">
             Zona horaria
           </label>
-          <select id="account-timezone" value={tz} disabled={pending} onChange={(e) => changeTimezone(e.target.value)} className={inputClass}>
-            {zones.map((z) => (
-              <option key={z} value={z}>
-                {z.replace(/_/g, " ")}
-              </option>
-            ))}
-          </select>
+          <TimezoneSelect id="account-timezone" value={tz} disabled={pending} onChange={changeTimezone} className={inputClass} />
           <p className="mt-1 text-xs text-muted-foreground">Las fechas y horas de todo el sistema se te muestran en esta zona.</p>
           <div className="mt-1">
             <SaveStatus error={error} saved={saved} />

@@ -4,6 +4,7 @@
  */
 
 import { addDays } from "./dates";
+import { dueSeen, type DueZones } from "./due-view";
 import type { TaskRow } from "./types";
 
 export interface MineSummary {
@@ -18,19 +19,23 @@ export interface MineSummary {
 }
 
 export function summarizeMine(
-  tasks: readonly Pick<TaskRow, "owner_id" | "status" | "due_date">[],
+  tasks: readonly (Pick<TaskRow, "owner_id" | "status" | "due_date"> & { due_time?: string | null })[],
+  /** El dia de quien mira. */
   todayLocal: string,
   meId: string,
+  /** Para contar con el dia que ve quien mira. */
+  zones?: DueZones,
 ): MineSummary {
   const limit = addDays(todayLocal, 7);
   const summary: MineSummary = { overdue: 0, today: 0, next7: 0, open: 0 };
   for (const t of tasks) {
     if (t.owner_id !== meId || t.status === "completed") continue;
     summary.open += 1;
-    if (!t.due_date) continue;
-    if (t.due_date < todayLocal) summary.overdue += 1;
-    else if (t.due_date === todayLocal) summary.today += 1;
-    else if (t.due_date <= limit) summary.next7 += 1;
+    const due = dueSeen(t, zones).date;
+    if (!due) continue;
+    if (due < todayLocal) summary.overdue += 1;
+    else if (due === todayLocal) summary.today += 1;
+    else if (due <= limit) summary.next7 += 1;
   }
   return summary;
 }

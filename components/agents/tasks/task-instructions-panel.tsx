@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { History, RotateCcw } from "lucide-react";
@@ -46,6 +47,7 @@ export function TaskInstructionsPanel({
   /** "Probar antes de guardar": recibe el texto que hay en el editor, guardado o no. */
   testPanel?: (draftText: string) => ReactNode;
 }) {
+  const timeZone = useViewerTimezone();
   const router = useRouter();
   const [text, setText] = useState(activeText);
   const [note, setNote] = useState("");
@@ -172,7 +174,7 @@ export function TaskInstructionsPanel({
                     )}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {formatDateTime(v.createdAt)}
+                    {formatDateTime(v.createdAt, timeZone)}
                     {` · ${v.instructions.length.toLocaleString("es")} caracteres`}
                     {v.authorLabel ? ` · ${v.authorLabel}` : ""}
                     {v.note ? ` · ${v.note}` : ""}

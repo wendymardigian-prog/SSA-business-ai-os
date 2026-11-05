@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { Bell, CheckCircle2, Flag, FolderKanban, History as HistoryIcon, Loader2, Lock, Plus, RotateCcw, Search, Trash2, X } from "lucide-react";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { Historial } from "@/components/historial/historial";
 import type { CellPatch } from "@/lib/tasks/cell-edit";
-import { applyDraftPatch, draftFromDefaults, draftProblem, dueDatePatch, valuesFromTask, type DraftDefaults, type TaskValues } from "@/lib/tasks/draft";
+import { applyDraftPatch, draftFromDefaults, draftProblem, valuesFromTask, viewerDueDatePatch, type DraftDefaults, type TaskValues } from "@/lib/tasks/draft";
+import { dueSeen, type DueZones } from "@/lib/tasks/due-view";
 import { wouldCreateCycle } from "@/lib/tasks/dependencies";
-import { dueLabel, formatSource, type SourceContext } from "@/lib/tasks/format";
+import { dueLabelForViewer, formatSource, type SourceContext } from "@/lib/tasks/format";
 import type { ProjectSummary } from "@/lib/tasks/project";
 import { openBlockers, type MemberLite } from "@/lib/tasks/table-model";
 import { PRIORITY_LABELS, TASK_LIMITS, type TaskRow } from "@/lib/tasks/types";
@@ -30,7 +32,9 @@ export interface TaskDrawerProps {
   members: MemberLite[];
   memberNames: ReadonlyMap<string, string>;
   projects: ProjectSummary[];
+  /** El dia de quien mira. */
   today: string;
+  /** La zona del workspace: la de la fecha y la hora guardadas. */
   timeZone: string;
   canEdit: boolean;
   canDelete: boolean;
@@ -100,6 +104,8 @@ function DrawerBody(props: TaskDrawerProps) {
   const blockerAnchor = useRef<HTMLButtonElement>(null);
 
   const byId = useMemo(() => new Map(allTasks.map((t) => [t.id, t])), [allTasks]);
+  const viewerTz = useViewerTimezone();
+  const zones = useMemo<DueZones>(() => ({ workspaceTz: props.timeZone, viewerTz }), [props.timeZone, viewerTz]);
 
   /** Aplica un cambio: al crear, al borrador; al editar, se guarda en el servidor. */
   async function patch(change: CellPatch) {
@@ -220,12 +226,12 @@ function DrawerBody(props: TaskDrawerProps) {
         {/* Lo mas usado, junto y arriba: fecha, duracion, prioridad, responsable y proyecto. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3" role="group" aria-label="Datos de la tarea">
           <DatePill
-            value={values.due_date}
-            onSave={(due_date) => patch(dueDatePatch(values, due_date))}
+            value={dueSeen(values, zones).date}
+            onSave={(day) => patch(viewerDueDatePatch(values, day, zones))}
             label="Fecha de la tarea"
             today={today}
             disabled={!editable}
-            overdue={!creating && !!task && dueLabel(task, today).tone === "overdue"}
+            overdue={!creating && !!task && dueLabelForViewer(task, today, zones).tone === "overdue"}
           />
           <DurationSelect
             value={values.duration_minutes}
@@ -259,6 +265,7 @@ function DrawerBody(props: TaskDrawerProps) {
               byId={byId}
               allTasks={allTasks}
               today={today}
+              zones={zones}
               canEdit={canEdit}
               busy={busy}
               onOpenTask={onOpenTask}
@@ -284,7 +291,7 @@ function DrawerBody(props: TaskDrawerProps) {
 
             {showHistory && (
               <Section title="Historial" innerRef={historyRef}>
-                <Historial key={`${task.id}:${task.updated_at}`} entityType="task" entityId={task.id} names={{ users: props.historyNames }} timeZone={props.timeZone} pageSize={10} />
+                <Historial key={`${task.id}:${task.updated_at}`} entityType="task" entityId={task.id} names={{ users: props.historyNames }} timeZone={viewerTz} pageSize={10} />
               </Section>
             )}
           </>
@@ -312,6 +319,7 @@ function DrawerBody(props: TaskDrawerProps) {
           task={task}
           allTasks={allTasks}
           today={today}
+          zones={zones}
           onPick={(id) => { setBlockerPicker(false); void actions.saveBlockers(task.id, [...task.blocked_by.map((b) => b.task_id), id]); }}
           onClose={() => setBlockerPicker(false)}
         />
@@ -395,12 +403,13 @@ function Meta({ label, children }: { label: string; children: ReactNode }) {
 // ── Dependencias ────────────────────────────────────────────────────────────
 
 function DependenciesSection({
-  task, byId, allTasks, today, canEdit, busy, onOpenTask, onChange, onAdd, addRef,
+  task, byId, allTasks, today, zones, canEdit, busy, onOpenTask, onChange, onAdd, addRef,
 }: {
   task: TaskRow;
   byId: ReadonlyMap<string, TaskRow>;
   allTasks: TaskRow[];
   today: string;
+  zones: DueZones;
   canEdit: boolean;
   busy: boolean;
   onOpenTask: (id: string) => void;
@@ -429,7 +438,7 @@ function DependenciesSection({
                     <>
                       <button type="button" onClick={() => onOpenTask(blocker.id)} className={cn("min-w-0 flex-1 truncate text-left hover:underline", blocker.status === "completed" && "text-muted-foreground line-through")}>{blocker.title}</button>
                       <StatusChip status={blocker.status} />
-                      <span className="shrink-0 text-xs text-muted-foreground">{dueLabel(blocker, today).text}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{dueLabelForViewer(blocker, today, zones).text}</span>
                     </>
                   ) : (
                     <span className="min-w-0 flex-1 truncate text-muted-foreground">Una tarea que no podés ver</span>
@@ -475,12 +484,13 @@ function DependenciesSection({
 
 /** Buscar una tarea para agregarla como bloqueante. Se ofrecen solo las que se pueden: sin ciclos ni repetidas. */
 function BlockerPicker({
-  anchor, task, allTasks, today, onPick, onClose,
+  anchor, task, allTasks, today, zones, onPick, onClose,
 }: {
   anchor: RefObject<HTMLElement | null>;
   task: TaskRow;
   allTasks: TaskRow[];
   today: string;
+  zones: DueZones;
   onPick: (id: string) => void;
   onClose: () => void;
 }) {
@@ -503,12 +513,13 @@ function BlockerPicker({
       </div>
       <ul role="listbox" aria-label="Tareas">
         {options.map((t) => {
+          // Una validacion entre tareas: sigue sobre lo guardado, como en la base.
           const later = !!(t.due_date && task.due_date && t.due_date > task.due_date);
           return (
             <li key={t.id}>
               <button type="button" disabled={later} onClick={() => onPick(t.id)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50">
                 <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{later ? "Vence después" : dueLabel(t, today).text}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{later ? "Vence después" : dueLabelForViewer(t, today, zones).text}</span>
               </button>
             </li>
           );

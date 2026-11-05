@@ -35,10 +35,10 @@ Rama de la Fase 1a: `feat/automatizaciones-email-envios`. Plan aprobado el 4/11/
 |---|---|---|---|---|
 | 00287 | `email_delivery_guard` (columnas de `email_log` con los eventos de entrega, estados `reserved` / `skipped_no_email`, `email_guard_decide`, `reserve_email_send`, `email_send_capacity`, `patch_resend_config`, `record_email_delivery_event`, `contact_last_activity`) | 1a | antes del deploy | **aplicada y registrada** (`20261104191636`) |
 | 00288 | `broadcast_activity_order` (`broadcast_recipients.sort_key`, `claim_broadcast_recipient` ordenado por actividad) | 1a | antes del deploy | **aplicada y registrada** (`20261104191646`) |
-| 00289 | `automation_runs` (tabla, CHECK de `triggers.type` + `scheduled_audience`, índice único de `flow_sessions`, índice de `scheduled_jobs`) | 1b | antes del deploy | sin escribir |
-| 00290 | `email_default_design` (`workspaces.email_default_design`) | 2 | antes del deploy | sin escribir |
+| 00291 | `automation_runs` (tabla, CHECK de `triggers.type` + `scheduled_audience`, índice único de `flow_sessions`, índice de `scheduled_jobs`) | 1b | antes del deploy | sin escribir |
+| 00292 | `email_default_design` (`workspaces.email_default_design`) | 2 | antes del deploy | sin escribir |
 
-Confirmar cada número con `list_migrations` y las ramas locales antes de escribirla.
+La `00289` y la `00290` las usaron otras sesiones (plantillas de flujos sin evento y cambiar el anfitrión de un evento). Confirmar cada número con `list_migrations` y las ramas locales antes de escribirla.
 
 ## Fase 1a — guardia única de entrega + A9 de broadcasts
 

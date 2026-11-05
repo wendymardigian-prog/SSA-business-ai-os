@@ -4,6 +4,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatLocalDateTime } from "@/lib/flow-engine/wait-until";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 
 export interface DelayNodeProps {
   label?: string;
@@ -23,7 +24,8 @@ const UNIT_LABELS: Record<string, [string, string]> = {
   days: ["día", "días"],
 };
 
-function formatWaitUntil(iso: string): string | null {
+/** Un nodo viejo guarda un instante: se muestra en la zona de quien mira. */
+function formatWaitUntil(iso: string, timeZone: string): string | null {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
   return date.toLocaleString("es", {
@@ -32,10 +34,12 @@ function formatWaitUntil(iso: string): string | null {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone,
   });
 }
 
 export function DelayNode({ data, selected }: NodeProps) {
+  const timeZone = useViewerTimezone();
   const nodeData = data as DelayNodeProps;
   const label = nodeData.label || "Esperar";
   const duration = nodeData.duration || 0;
@@ -46,7 +50,7 @@ export function DelayNode({ data, selected }: NodeProps) {
   const waitUntilText = nodeData.waitUntilLocal
     ? formatLocalDateTime(nodeData.waitUntilLocal)
     : nodeData.waitUntil
-      ? formatWaitUntil(nodeData.waitUntil)
+      ? formatWaitUntil(nodeData.waitUntil, timeZone)
       : null;
   const configured = waitUntilText !== null || duration > 0;
 

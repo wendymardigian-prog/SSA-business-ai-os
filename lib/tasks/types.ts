@@ -29,7 +29,10 @@ export type TaskRow = {
   start_date: string | null;
   /** AAAA-MM-DD */
   due_date: string | null;
-  /** Hora local del workspace (`HH:MM` o `HH:MM:SS`); solo con `due_date`. Opcional: una tarea es solo fecha por defecto. */
+  /**
+   * Hora local del workspace (`HH:MM` o `HH:MM:SS`); solo con `due_date`. Opcional: una tarea es solo fecha por defecto.
+   * Con hora, `due_date` + `due_time` son un instante y cada persona los ve en su zona (`due-view.ts`); sin hora, la fecha es civil.
+   */
   due_time: string | null;
   /** 5 a 1440 minutos. */
   duration_minutes: number | null;

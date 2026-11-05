@@ -73,6 +73,19 @@ El booker toma la del navegador. El agente la deduce del teléfono
 pregunta antes de proponer: una hora en la zona equivocada es una reunión
 perdida.
 
+**Quien mira la Agenda la ve en SU zona** (`resolveViewerTimezone`, la de Mi cuenta), como el
+resto del sistema. `scheduling_profiles.timezone` no se usa para ver: es la zona del horario de
+atención, y cambiar la de Mi cuenta (por ejemplo, de viaje) no mueve la disponibilidad.
+
+**Al agendar a mano son dos zonas distintas.** El día y la hora se escriben en la de quien agenda;
+la «Zona del invitado» es en la que le llegan los emails (`bookings.booker_timezone`,
+`{{booking.start_invitee}}`). Arranca con la guardada en el contacto, si no la que se deduce de su
+teléfono, si no la de quien agenda (`initialInviteeTimezone`, con el mismo orden que el agente), y
+el modal muestra la hora que va a ver esa persona. Elegir otra a propósito la guarda en el contacto.
+La zona de un contacto también se corrige en la ficha y en el panel de la bandeja.
+
+**Límite:** corregir la zona de un contacto no cambia las reuniones que ya tiene: cada una guarda la suya.
+
 ## Google Calendar
 
 - La conexión es **por persona**, no por negocio: cada quien conecta su cuenta.
@@ -81,10 +94,40 @@ perdida.
 - El token se renueva **a demanda**, no con el cron semanal de la Etapa 2.
 - Un `invalid_grant` marca la conexión revocada y avisa **a la persona**, no a
   los admins: es su cuenta la que hay que reconectar.
-- La invitación la manda Google (`sendUpdates=all`). Los emails de marca son
-  flujos, apagados, que se prenden si se quieren.
+- La invitación la manda Google (`sendUpdates=all`), si quien atiende tiene un
+  calendario conectado. Los emails de marca son flujos, apagados, que se prenden
+  si se quieren. **Dónde se configuran:** Agenda → Configuración → Eventos →
+  [evento] → Flujos, o «Reuniones sin evento» para las de título libre.
+- El evento de Google se marca con la **zona del invitado** (`googleEventTimezone`):
+  el instante no cambia y cada calendario lo muestra en la zona de su dueño. Como
+  en qué zona cuenta Google la hora en su email depende de Google, si las zonas son
+  distintas la hora del invitado también va escrita en la descripción.
 - Un 403 por cuota es temporal y se reintenta; un 403 por permisos es
   permanente y no. Eso sale de la documentación, no del plano.
+
+## Reuniones sin evento (00289, 4/11/2026)
+
+Una reunión con título libre se cuelga del evento interno, que no se edita ni tiene pestaña Flujos.
+Sus mensajes viven en **Agenda → Configuración → Reuniones sin evento**: cinco flujos (confirmación,
+recordatorios de 24 h y 1 h, reagenda, cancelación), apagados hasta que alguien los prende.
+
+- Son del negocio, no de una persona: `flows.event_type_id` es null, `template_key` empieza con
+  `no_event_`, y los toca quien tiene `settings.general` (escribe el servidor después del chequeo).
+  Se crean al abrir la sección (`ensureNoEventFlows`); el índice único de la 00289 impide duplicarlos.
+- Su disparador lleva `no_event: true`, y la reunión se reconoce por `bookings.metadata.without_event`,
+  que escribe `createManualBooking`. Un flujo de un evento y uno sin evento nunca corren para la misma reunión.
+- No ofrecen reagendar: sin evento no hay página pública con horarios. Cambiarla es responder el email.
+- El modal de agendar avisa qué le va a llegar al invitado (`lib/scheduling/booking/guest-notice.ts`), con
+  los mismos filtros que deciden si el flujo corre.
+
+## La confirmación espera el link de Meet
+
+El email (cron de `automation_events`) y el evento de Google (cola de jobs) son dos procesos sin orden
+entre ellos. Un `booking_created` con Meet pendiente queda sin procesar hasta que Google responde, con
+un tope de 3 minutos: después sale igual, porque es peor que no salga (`shouldWaitForMeet`).
+
+`{{booking.meeting_place}}` dice dónde es en una línea que nunca queda vacía («Google Meet: link», el texto
+escrito o «A confirmar»). Las plantillas nuevas la usan; los flujos ya creados conservan su texto.
 
 ## Agendar a mano en un solo paso (00269, 28/10/2026)
 
@@ -167,6 +210,40 @@ revierte.
   la base.
 - Botón en el panel de detalle, visible solo con `bookings.manage` sobre una
   agenda activa.
+
+## Cambiar el anfitrión de un evento (00290, 4/11/2026)
+
+En el editor del evento, sección **Detalles**, campo **Anfitrión**. Es distinto de
+reasignar una reunión (abajo): esto cambia con quién se agendan las reuniones
+**nuevas**. Las ya agendadas conservan su `host_user_id` y se reasignan una por una.
+
+- **Lo puede cambiar quien tiene `scheduling.manage_others`** (Owner y Admin siempre),
+  también si es el dueño del evento: dar un evento es tocar la agenda de otra persona.
+  Sin el permiso, el campo solo muestra quién es.
+- **El cambio es una transacción** (`change_event_type_host`, solo `service_role`; la
+  llama `changeEventHost` después de chequear el permiso): el dueño, el horario y los
+  calendarios en null (eran filas de la persona anterior; sin elegir, el evento usa los
+  por defecto de quien atiende) y el link anterior. Queda en `audit_log`
+  (`event_type.host_changed`). No se guarda ninguna copia de lo elegido: volver al
+  anfitrión anterior no recupera su horario ni sus calendarios del evento.
+- **El link anterior sigue funcionando sin redirigir** (`event_type_moved_links`, que
+  `findPublicEvent` mira cuando en ese link no hay un evento real). Guarda el evento,
+  no un destino: abre al anfitrión y el slug de hoy, sin cadenas. Por eso funcionan
+  igual los embeds, los parámetros de atribución y agendar con una pestaña ya abierta.
+  Un evento real en ese link le gana, aunque esté inactivo. Cambiar el slug de un evento
+  sigue sin dejar un link anterior: solo cambiar de anfitrión lo hace.
+- **Lo que frena el cambio** (`hostChangeBlocker`): en un evento activo u oculto, que la
+  persona tenga la agenda desactivada, su Google desconectado con calendarios en uso, no
+  tenga horario por defecto, o que el evento use Meet y ella no tenga un calendario donde
+  crearlo. Sin eso, el link público dejaría de ofrecer horarios sin que nadie se entere.
+  Un evento inactivo pasa siempre: lo que falte lo dice "Listo para activar".
+- **Si la persona ya tiene un evento con ese slug**, se avisa (`slug_taken`) y no cambia
+  nada: hay que cambiarle el link a uno de los dos.
+- **Reagendar sale de la reunión, no del link**: el invitado ve los horarios de quien
+  atiende SU reunión (`hostUserId` en `getPublicSlots`, `?reschedule=<uid>` en la ruta de
+  horarios). También corrige reagendar una reunión reasignada, que daba 404.
+- El editor se arma de nuevo al cambiar (`key={owner_user_id}`), porque lo elegido en
+  Disponibilidad ya no aplica; por eso pide guardar antes los cambios pendientes.
 
 ## Reasignar anfitrión (Agenda v2)
 

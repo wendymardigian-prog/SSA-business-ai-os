@@ -225,7 +225,7 @@ export interface FlowExecutionContext {
    */
   onStepSkipped?: (step: { nodeId: string; nodeType: string; label: string }) => void;
   /**
-   * Lo que el paso que está corriendo le cuenta al historial de ejecuciones (00290): un fallo que NO lanza (un mensaje
+   * Lo que el paso que está corriendo le cuenta al historial de ejecuciones (00292): un fallo que NO lanza (un mensaje
    * rechazado), un salto con su motivo, la hora a la que se retoma. Lo pone el motor antes de cada paso. Nunca lanza.
    */
   noteStep?: (note: StepNote) => void;

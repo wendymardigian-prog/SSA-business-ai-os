@@ -1,5 +1,6 @@
 "use client";
 
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { Suspense, use, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -108,10 +109,11 @@ export function TaskDetailView({
 
 /** "Última corrida · Gasto del mes": sale del reporte de costos del mes, lo más lento de la pantalla, así que llega solo. */
 function LastRunLine({ mode, lastRun }: { mode: TaskMode | null; lastRun: Promise<TaskRunInfo | null> }) {
+  const timeZone = useViewerTimezone();
   const run = use(lastRun);
   return (
     <>
-      Última corrida: {mode === "off" ? "Apagada" : run?.at ? lastRunLabel(run.at) : "Sin corridas todavía"}
+      Última corrida: {mode === "off" ? "Apagada" : run?.at ? lastRunLabel(run.at, timeZone) : "Sin corridas todavía"}
       {" · "}
       Gasto del mes: {formatSpend(run?.monthSpendUsd ?? null)}
     </>

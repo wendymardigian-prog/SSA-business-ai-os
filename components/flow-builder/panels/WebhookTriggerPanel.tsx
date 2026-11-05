@@ -6,6 +6,7 @@ import { Check, Copy } from "lucide-react";
 import { PathConditions } from "@/components/automations/path-conditions";
 import { useConditionCatalog, useConditionGroups } from "@/components/automations/use-condition-catalog";
 import { ListenSection } from "@/components/webhooks/listen-section";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { createWebhookEndpoint } from "@/lib/actions/webhook-endpoints";
 import { listWebhookEndpointsForPicker } from "@/lib/actions/webhook-flow-editor";
 import type { PickerEndpoint } from "@/lib/webhooks/action-types";
@@ -20,6 +21,7 @@ const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 tex
  * editor que Condiciones. Solo lo ve quien tiene `flows.edit` (la URL es una credencial).
  */
 export function WebhookTriggerPanel({ flowId, data, onChange, sendsMessages = false }: { flowId?: string; data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void; sendsMessages?: boolean }) {
+  const timeZone = useViewerTimezone();
   const config = parseWebhookTriggerConfig(data);
   const oncePerContact = config.oncePerContact;
   const hint = oncePerContactHint({ enabled: oncePerContact, sendsMessages });
@@ -116,12 +118,12 @@ export function WebhookTriggerPanel({ flowId, data, onChange, sendsMessages = fa
             </div>
             {selected.urlIsLocal && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Dirección local: un formulario externo no la alcanza. Falta configurar NEXT_PUBLIC_APP_URL.</p>}
             <p className="mt-1 text-xs text-muted-foreground">
-              {selected.lastReceivedAt ? `Último envío: ${new Date(selected.lastReceivedAt).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })}.` : "Todavía no llegó ningún envío."}{" "}
+              {selected.lastReceivedAt ? `Último envío: ${new Date(selected.lastReceivedAt).toLocaleString("es", { dateStyle: "short", timeStyle: "short", timeZone })}.` : "Todavía no llegó ningún envío."}{" "}
               <Link href={`/dashboard/settings/integrations/webhooks/${selected.id}`} className="font-medium text-emerald-700 hover:underline dark:text-emerald-300">Ver historial</Link>
             </p>
           </div>
 
-          <ListenSection compact endpoint={{ id: selected.id, status: selected.status, listenUntil: selected.listenUntil, sample: selected.sample }} timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"} onChanged={reload} />
+          <ListenSection compact endpoint={{ id: selected.id, status: selected.status, listenUntil: selected.listenUntil, sample: selected.sample }} timeZone={timeZone} onChanged={reload} />
 
           <fieldset className="space-y-2 rounded-lg border border-border p-3">
             <legend className="px-1 text-xs font-semibold text-foreground">Solo si…</legend>

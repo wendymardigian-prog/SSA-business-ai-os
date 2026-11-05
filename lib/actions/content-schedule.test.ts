@@ -19,6 +19,8 @@ let role = "owner";
 let roleId: string | null = null;
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// Quien mira esta en Tokio y el negocio en Buenos Aires: el tope diario es una regla y cuenta en la del negocio.
+vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "Asia/Tokyo" }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => undefined) }));
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
@@ -354,6 +356,25 @@ describe("F77 · el servidor valida y cuenta el tope diario", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/15 videos de tiktok ese dia y el limite es 15/);
     expect(db.rows("social_posts").filter((r) => r.content_post_id === POST)).toHaveLength(0);
+  });
+
+  it("TikTok: el dia del tope es el del negocio, aunque quien programa mire desde otra zona", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-03T12:00:00Z"));
+    try {
+      seedTiktok([{ ...photo, kind: "video", mime_type: "video/mp4", storage_path: `${WS}/${POST}/v.mp4`, duration_ms: 20_000 }]);
+      // 3/10 11:00 en Buenos Aires (3/10 23:00 en Tokio).
+      (db.rows("content_posts")[0].networks as Array<{ planned_at: string }>)[0].planned_at = "2026-10-03T14:00:00.000Z";
+      // 3/10 17:00 en Buenos Aires: el mismo dia del negocio, pero en Tokio ya es el 4/10.
+      db.rows("social_posts").push(...alreadyScheduled(15, "video", "2026-10-03T20:00:00.000Z"));
+
+      const result = await scheduleNetworks({ postId: POST });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(/15 videos de tiktok ese dia/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("TikTok: los 15 videos NO bloquean una publicacion de fotos", async () => {

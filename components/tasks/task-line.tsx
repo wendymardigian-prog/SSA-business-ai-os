@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { dueLabel } from "@/lib/tasks/format";
+import { dueDayPatch, dueSeen } from "@/lib/tasks/due-view";
+import { dueLabelForViewer } from "@/lib/tasks/format";
 import type { TaskRow, TaskStatus } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
 import { PersonBadge, StatusIcon, STATUS_TONE } from "./chips";
@@ -15,16 +16,18 @@ import type { TaskWorkbenchApi } from "./task-workbench";
  * el titulo abre el drawer sin salir de la pagina. Sin `tasks.edit`, los controles son de solo lectura.
  */
 export function TaskLine({ task, wb, ownerName }: { task: TaskRow; wb: TaskWorkbenchApi; ownerName: string | null }) {
-  const { today, canEdit } = wb;
+  const { today, canEdit, zones } = wb;
   const timeFormat = useTimeFormat();
   const busy = wb.actions.busy.has(task.id);
   const [picker, setPicker] = useState(false);
   const [editingDue, setEditingDue] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
-  const label = dueLabel(task, today, timeFormat);
+  const label = dueLabelForViewer(task, today, zones, timeFormat);
+  // El dia que ve quien mira: con hora, cambiarlo mueve el dia y la hora guardados juntos.
+  const seenDate = dueSeen(task, zones).date;
   const tone = label.tone === "overdue" ? "font-medium text-red-600 dark:text-red-400" : label.tone === "today" ? "font-medium text-amber-700 dark:text-amber-300" : "text-muted-foreground";
   const setStatus = (s: TaskStatus) => void wb.actions.edit(task.id, { status: s });
-  const setDue = (d: string | null) => void wb.actions.edit(task.id, { due_date: d });
+  const setDue = (d: string | null) => void wb.actions.edit(task.id, dueDayPatch(task, d, zones));
 
   return (
     <li className={cn("flex items-center gap-2 px-2.5 py-2 text-sm", busy && "opacity-60")} aria-busy={busy || undefined}>
@@ -36,12 +39,12 @@ export function TaskLine({ task, wb, ownerName }: { task: TaskRow; wb: TaskWorkb
         <input
           type="date"
           autoFocus
-          defaultValue={task.due_date ?? ""}
+          defaultValue={seenDate ?? ""}
           aria-label="Fecha de vencimiento"
           onBlur={(e) => {
             setEditingDue(false);
             const next = e.target.value || null;
-            if (next !== task.due_date) setDue(next);
+            if (next !== seenDate) setDue(next);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();

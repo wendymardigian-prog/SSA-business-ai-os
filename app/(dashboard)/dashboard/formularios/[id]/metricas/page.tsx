@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
+import { resolveDateRange } from "@/lib/dates";
 import { EditorBar } from "@/components/forms/editor/editor-bar";
 import { loadEditorBar } from "@/lib/forms/editor-bar-load";
 import { MetricsView } from "@/components/forms/responses/metrics-view";
@@ -35,8 +36,8 @@ export default async function MetricasPage({
   const { data: form } = await supabase.from("forms").select("id, name, type, current_version_id, draft_definition").eq("id", id).eq("workspace_id", workspace.id).maybeSingle();
   if (!form) notFound();
 
-  const timeZone = workspace.timezone || "UTC";
-  const [viewerZone, barData] = await Promise.all([resolveViewerTimezone(workspace.timezone), loadEditorBar(supabase, workspace.id, id)]);
+  // El periodo se corta en el dia de quien mira.
+  const [timeZone, barData] = await Promise.all([resolveViewerTimezone(workspace.timezone), loadEditorBar(supabase, workspace.id, id)]);
   const period = resolvePeriod({ dias: one("dias"), desde: one("desde"), hasta: one("hasta") }, dayInZone(new Date(), timeZone));
 
   const { data: daily, error } = await supabase.rpc("form_metrics_daily", { p_form_id: id, p_from: period.from, p_to: period.to });
@@ -48,14 +49,15 @@ export default async function MetricasPage({
     const { data: version } = await supabase.from("form_versions").select("definition").eq("id", form.current_version_id).maybeSingle();
     if (version) definition = version.definition;
   }
+  const answersRange = resolveDateRange("custom", period.from, period.to, undefined, timeZone);
   const { data: answerRows } = await supabase
     .from("form_submissions")
     .select("answers")
     .eq("form_id", id)
     .eq("workspace_id", workspace.id)
     .neq("status", "spam")
-    .gte("created_at", new Date(`${period.from}T00:00:00Z`).toISOString())
-    .lte("created_at", new Date(`${period.to}T23:59:59Z`).toISOString())
+    .gte("created_at", answersRange.from ?? "")
+    .lte("created_at", answersRange.to ?? "")
     .order("created_at", { ascending: true })
     .limit(3000);
 
@@ -79,7 +81,7 @@ export default async function MetricasPage({
       fieldMetrics={fieldMetrics}
       hasAnyAnswers={values.length > 0}
       loadError={!!error}
-      timeZone={viewerZone}
+      timeZone={timeZone}
       activePreset={one("desde") && one("hasta") ? "custom" : one("dias") ?? "30"}
     />
   );

@@ -71,6 +71,8 @@ export interface BookingForFilter {
   origin: string;
   status: BookingStatus;
   category_snapshot?: { area_id?: string | null; type_id?: string | null } | null;
+  /** La columna `metadata`: una reunion con titulo libre lleva `without_event`. */
+  metadata?: { without_event?: boolean } | null;
 }
 
 /** La configuración del trigger, tal como la guarda el editor. */
@@ -78,6 +80,8 @@ export interface BookingTriggerConfig {
   /** Ids de área o de tipo. Un área incluye sus tipos. */
   category_ids?: string[] | null;
   event_type_ids?: string[] | null;
+  /** Solo reuniones con titulo libre, las que no tienen un evento elegido (Agenda → Reuniones sin evento). */
+  no_event?: boolean | null;
   host_user_ids?: string[] | null;
   /** `public_page`, `embed`, `manual`, `agent`, `api`. */
   origins?: string[] | null;
@@ -102,6 +106,7 @@ function listMatches(allowed: string[] | null | undefined, actual: string | null
  */
 export function matchesCommonFilters(config: BookingTriggerConfig, booking: BookingForFilter): boolean {
   if (!listMatches(config.event_type_ids, booking.event_type_id)) return false;
+  if (config.no_event && booking.metadata?.without_event !== true) return false;
   if (!listMatches(config.host_user_ids, booking.host_user_id)) return false;
   if (!listMatches(config.origins, booking.origin)) return false;
 

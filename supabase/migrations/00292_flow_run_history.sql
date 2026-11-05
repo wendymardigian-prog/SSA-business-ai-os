@@ -1,5 +1,5 @@
 -- ============================================================
--- 00290_flow_run_history
+-- 00292_flow_run_history
 -- ============================================================
 -- El historial de ejecuciones de una automatizacion (noviembre 2026).
 --
@@ -68,7 +68,7 @@ ALTER TABLE public.flow_sessions ADD COLUMN IF NOT EXISTS has_failed_step boolea
 ALTER TABLE public.flow_sessions ADD COLUMN IF NOT EXISTS flow_version integer;
 
 COMMENT ON COLUMN public.flow_sessions.finished_at IS
-  'Cuando dejo de estar activa (lo pone un trigger, 00290). Null en lo que sigue corriendo y en lo que termino antes de esta migracion.';
+  'Cuando dejo de estar activa (lo pone un trigger, 00292). Null en lo que sigue corriendo y en lo que termino antes de esta migracion.';
 COMMENT ON COLUMN public.flow_sessions.end_reason IS
   'Por que termino, como codigo (lib/flows/runs.ts lo traduce). Lo escribe noteSessionEnd; gana el primero.';
 COMMENT ON COLUMN public.flow_sessions.error_message IS
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS public.flow_session_steps (
 );
 
 COMMENT ON TABLE public.flow_session_steps IS
-  'Una fila por paso corrido en una ejecucion de una automatizacion (00290). Escribe solo el servidor; se lee con la RLS. Se borra a los 12 meses; la fila de flow_sessions queda.';
+  'Una fila por paso corrido en una ejecucion de una automatizacion (00292). Escribe solo el servidor; se lee con la RLS. Se borra a los 12 meses; la fila de flow_sessions queda.';
 
 DO $$
 BEGIN
@@ -196,7 +196,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.can_see_flow_session(uuid, uuid) IS
-  'Quien ve una ejecucion (00290): flows.view y, si tiene contacto, poder ver ese contacto. Owner y Admin, todo.';
+  'Quien ve una ejecucion (00292): flows.view y, si tiene contacto, poder ver ese contacto. Owner y Admin, todo.';
 
 REVOKE ALL ON FUNCTION public.can_see_flow_session(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.can_see_flow_session(uuid, uuid) TO authenticated, service_role;

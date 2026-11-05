@@ -477,6 +477,16 @@ sus automatizaciones y la habilidad del agente. El detalle en
   docs/agendamiento.md.
 - **Una reunion la ve tambien el setter de su contacto** (00241, `can_see_booking`).
   Los flujos de un evento los toca solo quien puede editar ese evento.
+- **Cambiar el anfitrion de un evento** (00290, editor → Detalles, pide
+  `scheduling.manage_others`) solo cambia las reuniones NUEVAS: las ya agendadas
+  conservan su `host_user_id`. Va por `change_event_type_host`, en una transaccion,
+  y el link anterior sigue funcionando (`event_type_moved_links`, lo mira
+  `findPublicEvent`; un evento real en ese link le gana). **Reagendar nunca busca el
+  evento por el link**: sale de la reunion, porque su anfitrion puede no ser el dueño
+  de hoy. La 00290 va ANTES de desplegar el codigo: **aplicada y registrada** el
+  5/11/2026 UTC (version `20261105002339`), con `verify-scheduling --despues-de-00290`
+  en verde. **La proxima libre es la `00291`** (la `00289` es de otra rama, tambien
+  aplicada; confirmar con `list_migrations` y las ramas locales).
 
 ## Google Calendar
 
@@ -1786,7 +1796,7 @@ Una **guardia única de entrega** para todo el email de marketing (broadcasts, a
 
 ## Migraciones
 
-`00287_email_delivery_guard` (columnas de `email_log`, estados `reserved` / `skipped_no_email`, la guardia, la capacidad, `patch_resend_config`, los eventos y `contact_last_activity`) y `00288_broadcast_activity_order` (`sort_key` y `claim_broadcast_recipient`): aditivas, van **ANTES** del deploy, **aplicadas y registradas** el 4/11/2026 (versiones `20261104191636` y `20261104191646`). **La próxima libre es la `00289`** (reservada para `automation_runs`, Fase 1b; confirmar con `list_migrations` y las ramas locales).
+`00287_email_delivery_guard` (columnas de `email_log`, estados `reserved` / `skipped_no_email`, la guardia, la capacidad, `patch_resend_config`, los eventos y `contact_last_activity`) y `00288_broadcast_activity_order` (`sort_key` y `claim_broadcast_recipient`): aditivas, van **ANTES** del deploy, **aplicadas y registradas** el 4/11/2026 (versiones `20261104191636` y `20261104191646`). La `00289` la ocupó «Reuniones sin evento», así que `automation_runs` (Fase 1b) pasa a la **`00291`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-email-subscription.mjs   # bloque 11: la guardia (SQL = TS, 10 en paralelo con tope 5, freno, calentamiento, eventos)
@@ -1808,10 +1818,10 @@ Cada automatización tiene su pantalla de ejecuciones (`/dashboard/flows/[flowId
 
 ## Migración
 
-`00290_flow_run_history` (aditiva): va **ANTES** de desplegar el código. Ensayada contra la base real en una transacción que se deshizo sola; **todavía sin aplicar** en producción. Reemplaza la política de lectura de `flow_sessions`, con la vieja en su cabecera. Un Member pasa a ver solo las ejecuciones de sus contactos. La `00289` la usa otra rama. **La próxima libre es la `00291`** (confirmar con `list_migrations` y las ramas locales).
+`00292_flow_run_history` (aditiva): va **ANTES** de desplegar el código. Ensayada contra la base real en una transacción que se deshizo sola; **todavía sin aplicar** en producción. Reemplaza la política de lectura de `flow_sessions`, con la vieja en su cabecera. Un Member pasa a ver solo las ejecuciones de sus contactos. La `00291` queda para `automation_runs`. **La próxima libre es la `00293`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
-node scripts/verify-flow-runs.mjs   # después de aplicar la 00290
+node scripts/verify-flow-runs.mjs   # después de aplicar la 00292
 ```
 
 # Esperar hasta y una sola vez por contacto (4/11/2026, sin migración)
@@ -1820,6 +1830,24 @@ Lo que hizo falta para los recordatorios de una clase con fecha fija. Detalle en
 
 - **«Esperar hasta» se guarda en la hora del negocio** (`waitUntilLocal`, sin zona; la pone `workspaces.timezone`, nunca el navegador). **Con la fecha ya pasada se saltea el paso siguiente** y el flujo sigue con el que viene (`SKIP_NEXT_STEP`, `node_skipped` con `date_passed`). Las esperas por duración no cambian (`clase-flow-characterization.test.ts`).
 - **`oncePerContact` en un disparador de contacto** (apagado por defecto): quien ya tuvo una sesión de ese flujo, salvo cancelada, no vuelve a entrar. Se mira `flow_sessions` porque publicar borra `trigger_fires`.
+
+# Zonas horarias y confirmaciones de agenda (4/11/2026)
+
+Cada persona ve TODAS las fechas y horas en su zona. Detalle en [docs/agendamiento.md](docs/agendamiento.md) («Zonas horarias», «Reuniones sin evento») y [docs/tareas.md](docs/tareas.md).
+
+## Lo que no se puede romper
+
+- **Se guarda en UTC y se muestra en la zona de quien mira.** En cliente, `useViewerTimezone()`; en servidor, `resolveViewerTimezone()`. `formatDateTime`, `formatRelative` y las fechas de la bandeja piden la zona como parametro obligatorio. **`lib/timezone-boundary.test.ts` falla si aparece una fecha sin `timeZone`.** Lo que se pasa explicito por ser otra cosa: fechas civiles (`date`, con `"UTC"`) y reglas del negocio (`workspaces.timezone`: horario del agente, topes de gasto, crons, ritmo de envios, tope diario por red, «Esperar hasta» de los flujos).
+- **Un solo selector de zona** (`components/ui/timezone-select.tsx`): incluye siempre el valor actual y arma el catalogo recien en el navegador. `listTimeZones` une el catalogo con la lista de respaldo: `Intl.supportedValuesOf` no trae UTC ni el nombre que detecta el navegador para Buenos Aires.
+- **Agendar a mano separa dos zonas**: `timezone` (en la que se escribio la hora) e `inviteeTimezone` (va a `p_timezone`, con ella salen sus emails). `create_booking` no se toco; elegir otra zona a proposito la guarda en el contacto despues de crear la reunion.
+- **`scheduling_profiles.timezone` es la del horario de atencion**, nunca para ver.
+- **Tareas con hora**: lo guardado sigue en la zona del negocio y se convierte al leer y al escribir (`lib/tasks/due-view.ts`). Una tarea sin hora es una fecha civil y no se convierte. Reglas de fechas, SQL y barrido siguen sobre lo guardado.
+- **Mover una reunion conserva SU duracion**, no la del evento.
+- **Reuniones sin evento**: flujos con `event_type_id` null y `template_key` `no_event_*`, filtro `no_event` contra `bookings.metadata.without_event`, permiso `settings.general`. Prendidos, un flujo de evento y uno sin evento nunca corren para la misma reunion.
+
+## Migracion
+
+`00289_flows_no_event_templates` (aditiva, va ANTES del deploy): **aplicada y registrada** el 4/11/2026 (versión `20261105001801`), después de ensayarla en una transacción que se deshizo sola. **La `00290` es de Cambiar el anfitrion de un evento: la proxima libre es la `00291`** (confirmar con `list_migrations` y las ramas locales).
 
 # Seguridad
 

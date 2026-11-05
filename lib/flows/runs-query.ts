@@ -5,7 +5,7 @@ import { RUNS_PAGE_SIZE, type FlowRunFilters, type RunState, type RunStepStatus 
 
 /**
  * Las ejecuciones de una automatizacion. Se lee SIEMPRE con el cliente del usuario: la RLS (`can_see_flow_session`,
- * 00290) decide que ve cada quien. Columnas explicitas y nunca `select("*")`: `variables` no se puede leer con la sesion
+ * 00292) decide que ve cada quien. Columnas explicitas y nunca `select("*")`: `variables` no se puede leer con la sesion
  * y un `*` falla.
  */
 

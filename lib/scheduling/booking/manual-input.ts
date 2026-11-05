@@ -11,6 +11,8 @@
  */
 
 import { isValidDateString, isValidWallTime, wallClockToUtc } from "@/lib/scheduling/time/tz";
+import { inferTimezone } from "@/lib/agent/tools/scheduling/timezone";
+import { isValidTimeZone } from "@/lib/timezone";
 
 export const MANUAL_TITLE_MAX = 120;
 export const MANUAL_NOTES_MAX = 2000;
@@ -41,7 +43,12 @@ export interface ManualBookingInput {
   date?: string;
   time?: string;
   durationMinutes?: number;
+  /** La zona en la que se escribieron el dia y la hora: la de quien agenda. */
   timezone?: string;
+  /** La zona del invitado: en la que le llegan los emails. Sin elegir, `timezone`. */
+  inviteeTimezone?: string;
+  /** Quien agenda la eligio a mano (se guarda en el contacto, aunque ya tuviera otra). */
+  inviteeTimezoneChosen?: boolean;
   contactId?: string | null;
   name?: string;
   email?: string;
@@ -60,6 +67,8 @@ export interface ManualBookingPlan {
   endUtc: string;
   durationMinutes: number;
   timezone: string;
+  inviteeTimezone: string;
+  inviteeTimezoneChosen: boolean;
   contactId: string | null;
   name: string | null;
   email: string | null;
@@ -69,7 +78,7 @@ export interface ManualBookingPlan {
   location: ManualLocation | null;
 }
 
-export type ManualBookingField = "title" | "contact" | "name" | "email" | "date" | "time" | "duration" | "notes" | "location";
+export type ManualBookingField = "title" | "contact" | "name" | "email" | "date" | "time" | "duration" | "notes" | "location" | "timezone";
 
 export type ManualBookingCheck =
   | { ok: true; plan: ManualBookingPlan }
@@ -119,6 +128,10 @@ export function planManualBooking(input: ManualBookingInput): ManualBookingCheck
   }
 
   const timezone = clean(input.timezone) || "UTC";
+  if (!isValidTimeZone(timezone)) return { ok: false, field: "time", error: "No pude entender esa fecha y hora." };
+  const inviteeTimezone = clean(input.inviteeTimezone) || timezone;
+  if (!isValidTimeZone(inviteeTimezone)) return { ok: false, field: "timezone", error: "Elegí una zona horaria válida para el invitado." };
+
   let start: Date;
   try {
     start = wallClockToUtc(date, time, timezone);
@@ -138,6 +151,8 @@ export function planManualBooking(input: ManualBookingInput): ManualBookingCheck
       endUtc: new Date(start.getTime() + duration * 60_000).toISOString(),
       durationMinutes: duration,
       timezone,
+      inviteeTimezone,
+      inviteeTimezoneChosen: input.inviteeTimezoneChosen === true,
       contactId,
       name,
       email,
@@ -146,4 +161,25 @@ export function planManualBooking(input: ManualBookingInput): ManualBookingCheck
       location,
     },
   };
+}
+
+export interface InitialInviteeTimezone {
+  timezone: string;
+  /** De donde salio, para decirselo a quien agenda: `viewer` es una suposicion. */
+  source: "contact" | "phone" | "viewer";
+}
+
+/**
+ * La zona con la que arranca el campo del invitado: la guardada en el contacto,
+ * la que se deduce de su telefono o, sin ningun dato, la de quien agenda.
+ * El orden es el mismo con el que el agente deduce la zona de un lead.
+ */
+export function initialInviteeTimezone(input: {
+  contactTimezone?: string | null;
+  phone?: string | null;
+  viewerTimezone: string;
+}): InitialInviteeTimezone {
+  const contactTimezone = input.contactTimezone && isValidTimeZone(input.contactTimezone) ? input.contactTimezone : null;
+  const inferred = inferTimezone({ contactTimezone, phone: input.phone, workspaceTimezone: input.viewerTimezone });
+  return { timezone: inferred.timezone, source: inferred.source === "workspace" ? "viewer" : inferred.source };
 }
