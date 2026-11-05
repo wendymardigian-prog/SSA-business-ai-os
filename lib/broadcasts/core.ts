@@ -22,6 +22,7 @@ const fail = (error: string) => ({ ok: false as const, error });
 
 export const MAX_NAME = 120;
 export const MAX_SUBJECT = 200;
+export const MAX_PREHEADER = 200;
 const INSERT_BATCH = 500;
 
 export async function loadBroadcast(service: Client, workspaceId: string, id: string): Promise<BroadcastRow | null> {
@@ -64,6 +65,7 @@ export interface DraftPatch {
   includePhoneOnly?: boolean;
   variants?: unknown;
   emailSubject?: string | null;
+  emailPreheader?: string | null;
   skipMissingVariables?: boolean;
   pace?: unknown;
   scheduledFor?: string | null;
@@ -93,6 +95,7 @@ export async function saveBroadcastDraft(service: Client, workspaceId: string, i
     update.message_variants = raw.map((v) => v.slice(0, 4000)) as Json;
   }
   if (patch.emailSubject !== undefined) update.email_subject = patch.emailSubject ? String(patch.emailSubject).slice(0, MAX_SUBJECT) : null;
+  if (patch.emailPreheader !== undefined) update.email_preheader = String(patch.emailPreheader ?? "").trim().slice(0, MAX_PREHEADER) || null;
   if (patch.skipMissingVariables !== undefined) update.skip_missing_variables = patch.skipMissingVariables === true;
   if (patch.pace !== undefined) update.pace = parseBroadcastPace(patch.pace) as Json;
   if (patch.scheduledFor !== undefined) {

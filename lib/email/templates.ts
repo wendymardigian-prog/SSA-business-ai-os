@@ -23,6 +23,7 @@
  * del negocio), y el nombre va escrito abajo igual.
  */
 
+import { preheaderHtml } from "./html";
 import { mixHex, readableInkOnWhite, readableTextOn, resolveBrand, safeBrandColor, contrastRatio, type Brand } from "@/lib/brand";
 
 interface EmailContent {
@@ -91,9 +92,7 @@ function brandHeader(brand: Brand, theme: EmailTheme): string {
 export function brandedEmailHtml(params: { brand?: Brand | null; body: string; preheader?: string; footerNote?: string }): string {
   const brand = params.brand ?? resolveBrand(null);
   const theme = emailTheme(brand);
-  const preheader = params.preheader
-    ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">${escapeHtml(params.preheader)}</div>`
-    : "";
+  const preheader = params.preheader ? preheaderHtml(params.preheader) : "";
   return `<!doctype html>
 <html lang="es">
   <head>

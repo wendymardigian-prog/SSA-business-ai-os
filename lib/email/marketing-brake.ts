@@ -1,8 +1,9 @@
 /**
  * El freno automatico del marketing (automatizaciones de email, Fase 1a, A6).
  *
- * Si en las ultimas 24 horas, con al menos 50 emails de marketing enviados, los rebotes superan el 2 % o las quejas el
- * 0,05 %, SSA pausa TODO el marketing del negocio y avisa a Owner/Admin. Los transaccionales siguen. Se reanuda a mano
+ * Si en las ultimas 24 horas, con al menos 50 emails de marketing enviados, los rebotes o las quejas superan su limite
+ * (por defecto 2 % y 0,05 %; cada negocio los cambia en «Entrega de marketing», `lib/email/brake-limits.ts`), SSA pausa
+ * TODO el marketing del negocio y avisa a Owner/Admin. Los transaccionales siguen. Se reanuda a mano
  * (Ajustes → Integraciones → Resend, con confirmacion), y queda en `audit_log` quien pauso (el sistema) y quien reanudo.
  *
  * Se evalua cuando llega un rebote o una queja de un email de marketing: es el unico momento en que el cociente sube.
@@ -12,13 +13,10 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { brakeLimitsFromConfig, DEFAULT_BRAKE_LIMITS, formatBrakePct, pctToRate, type BrakeLimits } from "./brake-limits";
 
 /** Con menos de esto enviado en 24 h no se calcula (un rebote sobre 3 envios no dice nada). */
 export const BRAKE_MIN_SENT = 50;
-/** Rebotes por encima de esto pausan el marketing. */
-export const BRAKE_BOUNCE_RATE = 0.02;
-/** Quejas por encima de esto pausan el marketing. */
-export const BRAKE_COMPLAINT_RATE = 0.0005;
 export const BRAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface BrakeStats {
@@ -32,12 +30,12 @@ export type BrakeDecision =
   | { trip: true; reason: "bounces" | "complaints"; bounceRate: number; complaintRate: number };
 
 /** PURA. Supera = estrictamente mayor que el limite. */
-export function brakeDecision(stats: BrakeStats): BrakeDecision {
+export function brakeDecision(stats: BrakeStats, limits: BrakeLimits = DEFAULT_BRAKE_LIMITS): BrakeDecision {
   if (stats.sent < BRAKE_MIN_SENT) return { trip: false, bounceRate: null, complaintRate: null };
   const bounceRate = stats.bounced / stats.sent;
   const complaintRate = stats.complained / stats.sent;
-  if (bounceRate > BRAKE_BOUNCE_RATE) return { trip: true, reason: "bounces", bounceRate, complaintRate };
-  if (complaintRate > BRAKE_COMPLAINT_RATE) return { trip: true, reason: "complaints", bounceRate, complaintRate };
+  if (bounceRate > pctToRate(limits.bouncePct)) return { trip: true, reason: "bounces", bounceRate, complaintRate };
+  if (complaintRate > pctToRate(limits.complaintPct)) return { trip: true, reason: "complaints", bounceRate, complaintRate };
   return { trip: false, bounceRate, complaintRate };
 }
 
@@ -46,10 +44,10 @@ function percent(rate: number): string {
 }
 
 /** El motivo, en una linea para una persona. */
-export function brakeReasonText(decision: Extract<BrakeDecision, { trip: true }>, stats: BrakeStats): string {
+export function brakeReasonText(decision: Extract<BrakeDecision, { trip: true }>, stats: BrakeStats, limits: BrakeLimits = DEFAULT_BRAKE_LIMITS): string {
   return decision.reason === "bounces"
-    ? `Rebotaron ${stats.bounced} de ${stats.sent} emails de marketing en 24 h (${percent(decision.bounceRate)}; el límite es 2 %).`
-    : `${stats.complained} de ${stats.sent} emails de marketing se marcaron como spam en 24 h (${percent(decision.complaintRate)}; el límite es 0,05 %).`;
+    ? `Rebotaron ${stats.bounced} de ${stats.sent} emails de marketing en 24 h (${percent(decision.bounceRate)}; el límite es ${formatBrakePct(limits.bouncePct)} %).`
+    : `${stats.complained} de ${stats.sent} emails de marketing se marcaron como spam en 24 h (${percent(decision.complaintRate)}; el límite es ${formatBrakePct(limits.complaintPct)} %).`;
 }
 
 type Service = SupabaseClient;
@@ -83,21 +81,24 @@ export async function brakeStats(service: Service, workspaceId: string, now: Dat
 export async function evaluateMarketingBrake(service: Service, workspaceId: string, now: Date = new Date()): Promise<boolean> {
   try {
     const stats = await brakeStats(service, workspaceId, now);
-    const decision = brakeDecision(stats);
-    if (!decision.trip) return false;
-
-    // Ya pausado: no se vuelve a pausar ni a avisar.
-    const { data: row } = await service
+    const { data: row, error: readError } = await service
       .from("integration_configs")
       .select("config")
       .eq("workspace_id", workspaceId)
       .eq("type", "email_provider")
       .eq("provider", "resend")
       .maybeSingle();
+    // Sin poder leer los limites del negocio rigen los de por defecto: mejor frenar de mas que dejar de cuidar el dominio.
+    if (readError) console.error("[freno] no pude leer los límites del negocio:", readError.message);
     const config = ((row as { config?: Record<string, unknown> | null } | null)?.config ?? {}) as Record<string, unknown>;
+    const limits = brakeLimitsFromConfig(config);
+    const decision = brakeDecision(stats, limits);
+    if (!decision.trip) return false;
+
+    // Ya pausado: no se vuelve a pausar ni a avisar.
     if (typeof config.marketing_paused_at === "string" && config.marketing_paused_at) return false;
 
-    const reason = brakeReasonText(decision, stats);
+    const reason = brakeReasonText(decision, stats, limits);
     const at = now.toISOString();
     const { error } = await service.rpc("patch_resend_config", {
       p_workspace_id: workspaceId,
@@ -114,7 +115,7 @@ export async function evaluateMarketingBrake(service: Service, workspaceId: stri
     }
 
     await notifyPaused(service, workspaceId, reason);
-    await auditBrake(service, workspaceId, "email_marketing.paused", { reason: decision.reason, ...stats }, null);
+    await auditBrake(service, workspaceId, "email_marketing.paused", { reason: decision.reason, ...stats, ...limits }, null);
     console.log(`[freno] marketing pausado en ${workspaceId}: ${decision.reason}`);
     return true;
   } catch (err) {

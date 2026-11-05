@@ -10,6 +10,7 @@ import {
   templateVariables,
   unknownVariables,
 } from "./render";
+import { finalizeEmailHtml } from "@/lib/email/html";
 
 const ana = broadcastVariables(
   { display_name: "Ana María López", email: "ana@x.com", phone: "+5491100000000" },
@@ -109,5 +110,52 @@ describe("renderEmail", () => {
   it("texto plano: se vuelve HTML con los saltos de línea", () => {
     const r = renderEmail("Asunto", "Hola {{contact.first_name}}\nchau", ana);
     expect(r.html).toContain("Hola Ana<br>chau");
+  });
+
+  // Caracterización, antes del preheader y del saludo: sin ellos el email sale byte por byte igual.
+  it("sin preheader ni respaldo vacío, el HTML es exactamente el de siempre", () => {
+    const plain = renderEmail("Asunto", "Hola, {{contact.first_name}}.\nchau", ana);
+    expect(plain.subject).toBe("Asunto");
+    expect(plain.html).toBe(finalizeEmailHtml("Hola, Ana.\nchau", false));
+    const html = renderEmail("Asunto", '<p>Hola, {{contact.first_name}}.</p><p><a href="https://x.com">x</a></p>', ana);
+    expect(html.html).toBe(finalizeEmailHtml('<p>Hola, Ana.</p><p><a href="https://x.com">x</a></p>', true));
+  });
+
+  it("saludo con respaldo vacío: «Hola, Ana.» o «Hola.», en texto y en HTML", () => {
+    const sinNombre = broadcastVariables({ display_name: null, email: null, phone: null }, { name: "N" });
+    expect(renderEmail("A", "Hola, {{contact.first_name|}}.", ana).html).toContain("Hola, Ana.");
+    expect(renderEmail("A", "Hola, {{contact.first_name|}}.", sinNombre).html).toContain("<p style=\"margin:0 0 16px;\">Hola.</p>");
+    expect(renderEmail("A", "<p>Hola, {{contact.first_name|}}.</p>", ana).html).toContain("Hola, Ana.");
+    expect(renderEmail("A", "<p>Hola, {{contact.first_name|}}.</p>", sinNombre).html).toContain(">Hola.</p>");
+    expect(renderEmail("A", "<p>Hola, {{contact.first_name|}}.</p>", sinNombre).missing).toEqual([]);
+  });
+
+  it("un nombre de relleno saluda igual que sin nombre", () => {
+    const relleno = broadcastVariables({ display_name: "@usuario", email: null, phone: null }, { name: "N" });
+    expect(renderEmail("A", "Hola, {{contact.first_name|}}.", relleno).html).toContain(">Hola.</p>");
+  });
+
+  it("preheader: con variables, oculto delante del cuerpo, escapado y fuera de los datos que faltan si tiene respaldo", () => {
+    const r = renderEmail("A", "<p>Cuerpo</p>", ana, "Para {{contact.first_name|vos}}: <lunes>");
+    expect(r.preheader).toBe("Para Ana: <lunes>");
+    expect(r.html.startsWith('<div style="display:none;')).toBe(true);
+    expect(r.html).toContain("Para Ana: &lt;lunes&gt;</div>");
+    expect(r.missing).toEqual([]);
+  });
+
+  it("preheader con una variable sin respaldo: cuenta como dato que falta", () => {
+    const sinNombre = broadcastVariables({ display_name: null, email: null, phone: null }, { name: "N" });
+    expect(renderEmail("A", "<p>Cuerpo</p>", sinNombre, "Para {{contact.first_name}}").missing).toEqual(["contact.first_name"]);
+  });
+
+  it("sin preheader no hay nada oculto", () => {
+    const r = renderEmail("A", "<p>Cuerpo</p>", ana);
+    expect(r.preheader).toBe("");
+    expect(r.html).not.toContain("display:none");
+  });
+
+  it("una coma antes de un punto en una plantilla sin respaldo vacío no se toca", () => {
+    const r = renderEmail("Asunto", "Texto raro, . sigue igual", ana);
+    expect(r.html).toContain("Texto raro, . sigue igual");
   });
 });

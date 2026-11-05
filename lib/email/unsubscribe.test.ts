@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { finalizeEmailHtml } from "./html";
+import { finalizeEmailHtml, withPreheader } from "./html";
 import {
   marketingFooterHtml,
   marketingFooterText,
@@ -69,6 +69,13 @@ describe("la variable {{unsubscribe_url}}", () => {
 
 describe("withUnsubscribe: pie y cabeceras solo en marketing", () => {
   const base = { appUrl: APP, brandName: "Mi Negocio" };
+
+  it("el preheader sigue primero y el pie de baja va después del cuerpo", () => {
+    const html = withPreheader("<p>Hola</p>", "Falta un paso");
+    const out = withUnsubscribe({ ...base, html, category: "marketing", token: TOKEN });
+    expect(out.html.startsWith(html)).toBe(true);
+    expect(out.html.length).toBeGreaterThan(html.length);
+  });
 
   it("marketing con token: link real, pie y cabeceras", () => {
     const out = withUnsubscribe({ ...base, html: "<p>Hola</p>", category: "marketing", token: TOKEN });

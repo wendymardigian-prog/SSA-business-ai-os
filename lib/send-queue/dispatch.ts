@@ -492,7 +492,7 @@ async function deliverEmail(
 ): Promise<RecipientOutcome> {
   const to = (currentEmail ?? "").trim();
   if (!to) return { kind: "skipped", reason: "no_email" };
-  const rendered = renderEmail(b.email_subject ?? "", variants[0] ?? "", variables);
+  const rendered = renderEmail(b.email_subject ?? "", variants[0] ?? "", variables, b.email_preheader);
   if (rendered.missing.length > 0 && b.skip_missing_variables) {
     return { kind: "skipped", reason: "missing_variables", message: `Faltaba: ${rendered.missing.join(", ")}` };
   }

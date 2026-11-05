@@ -19,7 +19,7 @@
 import type { FlowExecutionContext } from "../types";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
-import { finalizeEmailHtml, interpolateHtml, isHtmlTemplate } from "@/lib/email/html";
+import { dropDanglingComma, finalizeEmailHtml, interpolateHtml, isHtmlTemplate, withPreheader } from "@/lib/email/html";
 import { recordSkippedEmail, sendTransactionalEmail } from "@/lib/email/send";
 import { EMAIL_SKIP_MESSAGES, type EmailCategory } from "@/lib/email/subscription";
 import { stepEmailCategory } from "@/lib/email/categories";
@@ -49,6 +49,8 @@ export interface SendEmailNodeData {
   subject?: string;
   /** Cuerpo con variables (`{{booking.start_invitee}}`). Texto plano o HTML. */
   body?: string;
+  /** La linea que la bandeja de entrada muestra al lado del asunto, con variables. Opcional. */
+  preheader?: string;
   /** Adjuntos: recursos de la banca con archivo (auditoria de automatizaciones). Hasta 10 y 25 MB en total. */
   attachments?: EmailAttachmentRef[];
   /**
@@ -75,6 +77,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   const interpolated = {
     subject: interpolateVariables(data.subject ?? "", context.variables ?? {}).trim(),
     body: (bodyIsHtml ? interpolateHtml(data.body ?? "", context.variables ?? {}) : interpolateVariables(data.body ?? "", context.variables ?? {})).trim(),
+    preheader: interpolateVariables(data.preheader ?? "", context.variables ?? {}).trim(),
   };
   // Un texto de la banca insertado en el email trae sus variables
   // ({{contact.display_name}}...): las que quedaron sin resolver se completan
@@ -85,8 +88,9 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     contactId
       ? resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId, variables: context.variables, escapeHtmlValues }, texts)
       : Promise.resolve(texts);
-  const subject = ((await resolveTexts([interpolated.subject], false))[0] ?? "").trim();
+  const subject = dropDanglingComma(data.subject ?? "", (await resolveTexts([interpolated.subject], false))[0] ?? "").trim();
   const body = ((await resolveTexts([interpolated.body], bodyIsHtml))[0] ?? "").trim();
+  const preheader = dropDanglingComma(data.preheader ?? "", interpolated.preheader ? ((await resolveTexts([interpolated.preheader], false))[0] ?? "") : "");
   if (!subject && !body) return;
 
   // Un flujo de agenda manda igual: es una reunión que la persona pidió.
@@ -166,7 +170,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
       subject: subject || "(sin asunto)",
       // `{{unsubscribe_url}}` se protege ANTES de limpiar el HTML (un href que no es https se descarta); el link real lo
       // pone la puerta de envio, que es la que conoce el token de la persona (lib/email/unsubscribe.ts).
-      html: finalizeEmailHtml(protectUnsubscribeVariable(body), bodyIsHtml),
+      html: withPreheader(dropDanglingComma(data.body ?? "", finalizeEmailHtml(protectUnsubscribeVariable(body), bodyIsHtml)), preheader),
       // `flow` lo distingue de los transaccionales del sistema y de la prueba
       // que manda el editor (`flow_test`), que no cuenta como envío al contacto.
       kind: "flow",

@@ -10,7 +10,7 @@ export interface AudiencePreview {
 }
 
 export interface MessagePreview {
-  samples: { name: string; subject: string | null; text: string; missing: string[] }[];
+  samples: { name: string; subject: string | null; preheader: string | null; text: string; missing: string[] }[];
   /** De la muestra revisada, a cuántos les falta algún dato sin respaldo. */
   missingCount: number;
   checked: number;

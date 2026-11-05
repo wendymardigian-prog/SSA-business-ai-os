@@ -41,6 +41,25 @@ describe("brakeDecision (puro)", () => {
   });
 });
 
+describe("brakeDecision con los limites del negocio", () => {
+  const launch = { bouncePct: 3, complaintPct: 0.3 };
+
+  it("3 % de rebotes justo no frena; por encima, si", () => {
+    expect(brakeDecision({ sent: 200, bounced: 6, complained: 0 }, launch).trip).toBe(false);
+    expect(brakeDecision({ sent: 200, bounced: 7, complained: 0 }, launch)).toMatchObject({ trip: true, reason: "bounces" });
+  });
+
+  it("0,3 % de quejas justo no frena; una queja sobre 200 si; una sobre 800 no", () => {
+    expect(brakeDecision({ sent: 1000, bounced: 0, complained: 3 }, launch).trip).toBe(false);
+    expect(brakeDecision({ sent: 200, bounced: 0, complained: 1 }, launch)).toMatchObject({ trip: true, reason: "complaints" });
+    expect(brakeDecision({ sent: 800, bounced: 0, complained: 1 }, launch).trip).toBe(false);
+  });
+
+  it("los 50 enviados minimos siguen valiendo", () => {
+    expect(brakeDecision({ sent: BRAKE_MIN_SENT - 1, bounced: 49, complained: 10 }, launch).trip).toBe(false);
+  });
+});
+
 /** Un negocio con estas cuentas de 24 h. */
 function world(stats: { sent: number; bounced: number; complained: number }, config: Record<string, unknown> = {}) {
   const countOf = (call: DbCall) => {
@@ -75,6 +94,29 @@ describe("evaluateMarketingBrake", () => {
     expect(await evaluateMarketingBrake(db.client, WS)).toBe(false);
     expect(db.rpcCalls).toEqual([]);
     expect(createNotificationOnce).not.toHaveBeenCalled();
+  });
+
+  it("usa los limites guardados del negocio, y el motivo dice el limite real", async () => {
+    const config = { marketing_brake_bounce_pct: "3", marketing_brake_complaint_pct: "0.3" };
+    const inside = world({ sent: 100, bounced: 3, complained: 0 }, config);
+    expect(await evaluateMarketingBrake(inside.client, WS)).toBe(false);
+    expect(inside.rpcCalls).toEqual([]);
+
+    const over = world({ sent: 100, bounced: 4, complained: 0 }, config);
+    expect(await evaluateMarketingBrake(over.client, WS)).toBe(true);
+    const patch = over.rpcCalls.find((c) => c.name === "patch_resend_config")!.args as { p_patch: Record<string, unknown> };
+    expect(String(patch.p_patch.marketing_paused_reason)).toContain("el límite es 3 %");
+    expect(logAudit).toHaveBeenCalledWith(expect.objectContaining({ changes: expect.objectContaining({ bouncePct: 3, complaintPct: 0.3 }) }));
+  });
+
+  it("sin poder leer los limites, rigen los de por defecto (no deja de frenar)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const countOf = (call: DbCall) => (call.filters.some((f) => f.method === "not" && f.column === "bounced_at") ? 3 : call.filters.some((f) => f.method === "not") ? 0 : 100);
+    const db = fakeDb(
+      { "email_log:select": (call) => ({ data: null, count: countOf(call) }), "integration_configs:select": { data: null, error: { message: "boom" } } },
+      { patch_resend_config: { data: true } },
+    );
+    expect(await evaluateMarketingBrake(db.client, WS)).toBe(true);
   });
 
   it("ya pausado: no vuelve a pausar ni a avisar", async () => {

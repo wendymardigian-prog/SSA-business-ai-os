@@ -2586,6 +2586,8 @@ export interface Database {
           /** Hasta 5 textos; a cada destinatario le toca uno. En email, el cuerpo es el primero. */
           message_variants: Json;
           email_subject: string | null;
+          /** 00294: la linea que la bandeja de entrada muestra al lado del asunto. */
+          email_preheader: string | null;
           skip_missing_variables: boolean;
           /** Ritmo propio (solo puede ir mas lento que el numero). */
           pace: Json;
@@ -2615,6 +2617,7 @@ export interface Database {
           include_phone_only?: boolean;
           message_variants?: Json;
           email_subject?: string | null;
+          email_preheader?: string | null;
           skip_missing_variables?: boolean;
           pace?: Json;
           skipped?: number;
@@ -2640,6 +2643,7 @@ export interface Database {
           include_phone_only?: boolean;
           message_variants?: Json;
           email_subject?: string | null;
+          email_preheader?: string | null;
           skip_missing_variables?: boolean;
           pace?: Json;
           skipped?: number;

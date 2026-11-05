@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { emailSendCapacity } from "./delivery-guard";
+import { brakeLimitsFromConfig } from "./brake-limits";
 import { brakeStats } from "./marketing-brake";
 import { brakeWebhookProblem, type MarketingCapacity, type MarketingDeliveryData } from "./marketing-delivery-view";
 import type { ResendConnectionState } from "./resend-config";
@@ -27,5 +28,6 @@ export async function loadMarketingDelivery(
     stats,
     warmupSaved: saved === "true" ? true : saved === "false" ? false : null,
     webhookProblem: brakeWebhookProblem(input.state, { secretSaved: input.secretSaved }),
+    brakeLimits: brakeLimitsFromConfig(input.config),
   };
 }

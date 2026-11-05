@@ -33,6 +33,9 @@ Pantalla: Bandeja → **Broadcasts** (`/dashboard/broadcasts`). Permiso:
 3. **El mensaje.** Variables del contacto, del negocio y de los campos
    personalizados (`{{contact.first_name}}`, `{{workspace.name}}`,
    `{{custom.<slug>}}`), con **valor de respaldo** (`{{contact.first_name|amigo}}`).
+   En email, un respaldo vacío saluda bien en los dos casos: `Hola, {{contact.first_name|}}.`
+   da «Hola, Ana.» o «Hola.». Y un **texto de vista previa** opcional (el preheader, la línea
+   que la bandeja muestra al lado del asunto, `broadcasts.email_preheader`), también con variables.
    Un nombre de relleno (un id o un `@usuario`) cuenta como vacío. Por WhatsApp,
    **hasta 5 versiones**: a cada contacto le toca una (estable por destinatario,
    así un reintento manda la misma). Se puede saltear a quien le falta un dato

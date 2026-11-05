@@ -4,6 +4,7 @@
  * no lee la base; recibe lo que ya se leyo.
  */
 
+import type { BrakeLimits } from "./brake-limits";
 import type { ResendConnectionState } from "./resend-config";
 import { BRAKE_REQUIRED_EVENTS } from "./resend-events";
 
@@ -55,6 +56,8 @@ export interface MarketingDeliveryData {
   /** "true"/"false" guardado, o null si todavia no se decidio (lo decide la base el primer envio). */
   warmupSaved: boolean | null;
   webhookProblem: string | null;
+  /** Los limites del freno de este negocio. */
+  brakeLimits: BrakeLimits;
 }
 
 export interface MarketingDeliveryView {
