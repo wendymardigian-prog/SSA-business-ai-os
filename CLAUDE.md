@@ -1579,13 +1579,17 @@ Tabla y Kanban (`?vista=kanban`) con los MISMOS filtros: un solo planificador (`
 - **Las áreas de Ventas, Formularios, Tareas y Llamadas** son archivos propios (en el perfil de estudiantes) y su línea en `list-modules.ts` lleva la marca.
 - **`00283_contacts_list_filters`** (aditiva: `contact_attribution_options` SECURITY INVOKER + índices): **aplicada y registrada** el 3/11/2026 (versión `20261103154823`), antes del merge. En un clon nuevo puede ir antes o después del deploy; sin ella, los filtros de campaña, contenido y término no tienen opciones. **La próxima libre es la `00284`** (confirmar con `list_migrations` y las ramas locales).
 
-# Historial de WhatsApp: la revision (30/10/2026)
+# Historial de WhatsApp: revisar e importar (30/10 y 5/11/2026)
 
-Antes de importar el historial de WhatsApp se REVISA que hay: la tarjeta de cada numero en Canales tiene "Historial" → "Revisar historial" (`WhatsappHistoryReview`, accion `reviewWhatsappHistory`, `channels.manage`). La importacion todavia NO existe; el plan esta en `docs/flujo-de-mensajes.md` ("El historial de WhatsApp").
+La tarjeta de cada numero en Canales tiene "Historial": **Revisar historial** (`reviewWhatsappHistory`) dice que hay, e **Importar** (`startWhatsappHistoryImport`, con confirmacion) lo trae. Las dos piden `channels.manage`. Detalle en `docs/flujo-de-mensajes.md` ("Importar el historial de WhatsApp").
 
-- **Solo lectura, y sin hablar con WhatsApp**: lee la base del propio Evolution (`POST /chat/findChats` con `take`, y `POST /chat/findMessages` de a un mensaje para el total, el mas nuevo y el mas viejo) y cruza con `contact_channels`. No hay riesgo de bloqueo del numero y no escribe nada.
-- **Evolution guarda lo que WhatsApp le mando al escanear el QR** (si su `DATABASE_SAVE_DATA_HISTORIC` esta prendido) y lo que recibio despues. Con `syncFullHistory` apagado (como creamos las instancias), WhatsApp manda solo historial reciente. Pedir el completo obliga a volver a escanear el QR.
-- El resumen es puro (`summarizeHistory`, `lib/whatsapp-history/review.ts`) y su texto tambien (`reviewText`): personas (sin grupos, estados ni canales, con el mismo `resolveWhatsappSender` del receptor), cuantas sin numero, cuantas faltan en la bandeja y si hay mensajes de antes de conectar.
+- **Solo lee la base del propio Evolution, sin hablar con WhatsApp** (`POST /chat/findChats`, `POST /chat/findMessages`): no hay riesgo de bloqueo del numero. Evolution guarda lo que WhatsApp le mando al escanear el QR (si su `DATABASE_SAVE_DATA_HISTORIC` esta prendido) y lo que recibio despues.
+- **El historial completo se pide al crear el numero** (`syncFullHistory` en `createInstance`); un numero viejo lo pide al reconectar (`ensureFullHistory`). Despues de escanear ya es tarde, y cuanto manda lo decide WhatsApp.
+- **Lo importado es historia** (`lib/whatsapp-history/run-import.ts`, cola `whatsapp_history_import`, por partes): sin no leidos, automatizaciones, agente, asignacion ni toques. Crear un contacto emite `contact_created` y encola `sales_contact_eval`: se apagan contacto por contacto. Una conversacion que ya existe no se toca; las nuevas sin movimiento hace mas de 7 dias nacen cerradas.
+- **El avance vive en `channels.inbox_import`** con `kind: "whatsapp_history"`: la misma columna que Zernio, con otra forma, y cada parser descarta la del otro (`import-state.test.ts`).
+- **La identidad sale del chat entero, no de cada mensaje** (`planChatImport`), y los chats se recorren por su id, nunca por fecha, para no saltear ninguno. Volver a importar no duplica (indice unico por conversacion y `platform_message_id`, que es parcial: no sirve un `upsert`, por eso `insertHistoricMessages` reintenta de a uno ante un 23505).
+- **Los archivos no se traen**: el adjunto queda en `none`, nunca en `pending` (dejaria el spinner girando para siempre).
+- **Es un boton y no algo automatico a proposito**: cada chat pasa a ser un contacto, tambien los personales, y puede entrar en un broadcast por WhatsApp.
 
 # WhatsApp sin telefono (@lid) y el buscador (30/10/2026)
 

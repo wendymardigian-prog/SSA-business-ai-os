@@ -12,6 +12,7 @@ import {
   fetchProfilePictureUrl,
   getBase64FromMediaMessage,
   getConnectionState,
+  findStoredChatMessagesPage,
   findStoredChats,
   findStoredMessagesPage,
   getInstanceStatus,
@@ -441,6 +442,8 @@ describe("reconnectInstance (reconectar reusa la instancia)", () => {
   const noWait = async () => {};
   const qr = { body: { base64: "data:image/png;base64,QR", code: "2@abc" } };
   const noQr = { body: { count: 0 } };
+  /** `/settings/find`: el numero ya pide el historial completo, asi que no hay nada que cambiar. */
+  const fullHistory = { body: { syncFullHistory: true } };
   const run = () => reconnectInstance(config, "ssa-abc", "https://x.test/hook", "tok", noWait);
   type Call = { url: string; method: string; body: any };
   const creates = (calls: Call[]) => calls.filter((c) => c.url.endsWith("/instance/create"));
@@ -468,7 +471,7 @@ describe("reconnectInstance (reconectar reusa la instancia)", () => {
   });
 
   it("si existe y da QR, no crea, no reinicia ni cierra sesion", async () => {
-    const calls = mockFetch([{ body: { instance: { state: "close" } } }, v2, { body: {} }, qr]);
+    const calls = mockFetch([{ body: { instance: { state: "close" } } }, v2, { body: {} }, fullHistory, qr]);
     expect(await run()).toBe("connect");
     expect(creates(calls)).toHaveLength(0);
     expect(calls.some((c) => c.url.includes("/restart/") || c.url.includes("/logout/"))).toBe(false);
@@ -476,7 +479,7 @@ describe("reconnectInstance (reconectar reusa la instancia)", () => {
   });
 
   it("trabada sin QR: reinicia y vuelve a pedir", async () => {
-    const calls = mockFetch([{ body: { instance: { state: "connecting" } } }, v2, { body: {} }, noQr, { body: {} }, qr]);
+    const calls = mockFetch([{ body: { instance: { state: "connecting" } } }, v2, { body: {} }, fullHistory, noQr, { body: {} }, qr]);
     expect(await run()).toBe("restart");
     const restart = calls.find((c) => c.url.includes("/instance/restart/ssa-abc"));
     expect(restart?.method).toBe("POST");
@@ -485,7 +488,7 @@ describe("reconnectInstance (reconectar reusa la instancia)", () => {
 
   it("si reiniciar no alcanza (o falla), cierra la sesion y vuelve a pedir", async () => {
     const calls = mockFetch([
-      { body: { instance: { state: "connecting" } } }, v2, { body: {} },
+      { body: { instance: { state: "connecting" } } }, v2, { body: {} }, fullHistory,
       noQr,
       { status: 500, body: { message: "boom" } }, // restart: un solo intento, se sigue
       { body: {} }, // logout
@@ -499,7 +502,7 @@ describe("reconnectInstance (reconectar reusa la instancia)", () => {
 
   it("ultimo recurso: borra y crea la MISMA instancia, nunca otra", async () => {
     const calls = mockFetch([
-      { body: { instance: { state: "connecting" } } }, v2, { body: {} },
+      { body: { instance: { state: "connecting" } } }, v2, { body: {} }, fullHistory,
       noQr,
       { body: {} }, noQr, // restart sin QR
       { body: {} }, noQr, // logout sin QR
@@ -513,7 +516,54 @@ describe("reconnectInstance (reconectar reusa la instancia)", () => {
   });
 });
 
+describe("historial completo al conectar", () => {
+  const noWait = async () => {};
+  const reconnect = () => reconnectInstance(config, "ssa-abc", "https://x.test/hook", "tok", noWait);
+  const qr = { body: { base64: "data:image/png;base64,QR" } };
+
+  it("un numero nuevo lo pide desde que se crea: despues de escanear ya es tarde", async () => {
+    const calls = mockFetch([v2, { body: {} }, { body: {} }]);
+    await createInstance(config, "ssa-abc", "https://x.test/hook", "tok");
+    expect(calls.find((c) => c.url.endsWith("/instance/create"))?.body.syncFullHistory).toBe(true);
+  });
+
+  it("uno creado antes lo pide al reconectar, sin pisar sus otros ajustes", async () => {
+    const calls = mockFetch([
+      { body: { instance: { state: "close" } } }, v2, { body: {} },
+      { body: { rejectCall: true, msgCall: "No atiendo", syncFullHistory: false } },
+      { body: {} },
+      qr,
+    ]);
+    expect(await reconnect()).toBe("connect");
+    const set = calls.find((c) => c.url.endsWith("/settings/set/ssa-abc"));
+    expect(set?.body).toMatchObject({ rejectCall: true, msgCall: "No atiendo", syncFullHistory: true });
+  });
+
+  it("no poder cambiarlo no frena la reconexion", async () => {
+    mockFetch([
+      { body: { instance: { state: "close" } } }, v2, { body: {} },
+      { status: 400, body: { message: "no" } },
+      qr,
+    ]);
+    expect(await reconnect()).toBe("connect");
+  });
+
+  it("uno ya conectado no se toca", async () => {
+    const calls = mockFetch([{ body: { instance: { state: "open" } } }, v2, { body: {} }]);
+    expect(await reconnect()).toBe("open");
+    expect(calls.some((c) => c.url.includes("/settings/"))).toBe(false);
+  });
+});
+
 describe("historial guardado en Evolution (solo lectura)", () => {
+  it("findStoredChatMessagesPage pide los mensajes de UN chat", async () => {
+    const calls = mockFetch([{ body: { messages: { total: 3, pages: 1, records: [{ key: { id: "m1" } }] } } }]);
+    const page = await findStoredChatMessagesPage(config, "ssa-abc", "123456@lid", 2, 200);
+    expect(calls[0].url).toBe("https://evo.test/chat/findMessages/ssa-abc");
+    expect(calls[0].body).toEqual({ where: { key: { remoteJid: "123456@lid" } }, page: 2, offset: 200 });
+    expect(page).toEqual({ total: 3, pages: 1, records: [{ key: { id: "m1" } }] });
+  });
+
   it("findStoredChats pide los chats con su tope y devuelve la lista", async () => {
     const calls = mockFetch([{ body: [{ remoteJid: "5491122334455@s.whatsapp.net" }] }]);
     const chats = await findStoredChats(config, "ssa-abc", 5000);

@@ -14,6 +14,7 @@
  * - Nunca se toca configuracion a nivel servidor ni instancias ajenas.
  */
 
+import type { WhatsappMessageKey } from "@/lib/whatsapp-sender";
 import { normalizeGroupJid, toEvolutionNumber } from "@/lib/phone";
 
 /**
@@ -273,6 +274,9 @@ export async function createInstance(
           instanceName,
           qrcode: true,
           integration: "WHATSAPP-BAILEYS",
+          // WhatsApp solo manda el historial al escanear el QR: se pide completo
+          // desde el arranque, porque despues ya no se puede pedir sin reconectar.
+          syncFullHistory: true,
         }
       : {
           instanceName,
@@ -432,6 +436,14 @@ export async function reconnectInstance(
 
   await setWebhook(config, instanceName, webhookUrl, webhookToken);
   if (status.state === "open") return "open";
+
+  // Un numero creado antes de pedir el historial completo lo pide al volver a
+  // escanear. De mejor esfuerzo: no poder cambiarlo no frena la reconexion.
+  try {
+    await ensureFullHistory(config, instanceName);
+  } catch (err) {
+    console.error("[evolution] reconectar: no pude pedir el historial completo:", (err as Error).message);
+  }
 
   const hasQr = async () => {
     try {
@@ -841,6 +853,18 @@ export async function ensureGroupsNotIgnored(config: EvolutionConfig, instanceNa
   return true;
 }
 
+/**
+ * Que la instancia pida el historial completo la proxima vez que se escanee el QR.
+ * Solo se toca ese ajuste (el resto se manda como estaba). Devuelve true si hubo
+ * que cambiarlo.
+ */
+export async function ensureFullHistory(config: EvolutionConfig, instanceName: string): Promise<boolean> {
+  const current = await findInstanceSettings(config, instanceName);
+  if (current.syncFullHistory) return false;
+  await request(config, "POST", `/settings/set/${encodeURIComponent(instanceName)}`, { ...current, syncFullHistory: true });
+  return true;
+}
+
 // ── Grupos ───────────────────────────────────────────────────────────────────
 
 /** Un grupo del numero, como lo devuelve `GET /group/fetchAllGroups` (v2). Solo lo que se usa. */
@@ -1041,5 +1065,39 @@ export async function findStoredMessagesPage(
     total: typeof messages?.total === "number" ? messages.total : 0,
     pages: typeof messages?.pages === "number" ? messages.pages : 0,
     records: Array.isArray(messages?.records) ? (messages!.records as EvolutionStoredMessagesPage["records"]) : [],
+  };
+}
+
+/** Un mensaje guardado en Evolution, con lo que hace falta para importarlo. */
+export interface EvolutionStoredMessage {
+  key?: (WhatsappMessageKey & { id?: string | null; fromMe?: boolean | null }) | null;
+  pushName?: string | null;
+  messageType?: string | null;
+  message?: Record<string, unknown> | null;
+  messageTimestamp?: number | string | null;
+}
+
+/**
+ * Una pagina de los mensajes guardados de UN chat, los mas nuevos primero. Tampoco
+ * le pide nada a WhatsApp.
+ */
+export async function findStoredChatMessagesPage(
+  config: EvolutionConfig,
+  instanceName: string,
+  remoteJid: string,
+  page: number,
+  offset: number,
+): Promise<{ total: number; pages: number; records: EvolutionStoredMessage[] }> {
+  const raw = await request<{ messages?: { total?: number; pages?: number; records?: unknown[] } }>(
+    config,
+    "POST",
+    `/chat/findMessages/${encodeURIComponent(instanceName)}`,
+    { where: { key: { remoteJid } }, page, offset },
+  );
+  const messages = raw?.messages;
+  return {
+    total: typeof messages?.total === "number" ? messages.total : 0,
+    pages: typeof messages?.pages === "number" ? messages.pages : 0,
+    records: Array.isArray(messages?.records) ? (messages!.records as EvolutionStoredMessage[]) : [],
   };
 }

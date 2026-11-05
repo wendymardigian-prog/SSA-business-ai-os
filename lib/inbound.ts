@@ -336,6 +336,40 @@ export async function insertMessage({
   return { stored: false, id: null };
 }
 
+/** Un mensaje viejo que entra por una importacion (ver `insertHistoricMessages`). */
+export interface HistoricMessageRow {
+  conversation_id: string;
+  workspace_id: string;
+  direction: "inbound" | "outbound";
+  text: string | null;
+  platform_message_id: string;
+  attachments: unknown;
+  status: "delivered";
+  origin: "external" | null;
+  created_at: string;
+}
+
+/**
+ * Guarda una tanda de mensajes de historial y devuelve cuantos entraron. A
+ * diferencia de `insertMessage`, no toca los no leidos: es historia. Si otra
+ * llegada guardo uno de la tanda mientras tanto, el indice unico rechaza la tanda
+ * entera y se reintenta de a uno. Un error de la base lanza: quien importa decide.
+ */
+export async function insertHistoricMessages(supabase: Db, rows: HistoricMessageRow[]): Promise<number> {
+  if (rows.length === 0) return 0;
+  const { data, error } = await supabase.from("messages").insert(rows as never).select("id");
+  if (!error) return (data ?? []).length;
+  if (error.code !== "23505") throw new Error(`no pude guardar el historial: ${error.message}`);
+
+  let stored = 0;
+  for (const row of rows) {
+    const single = await supabase.from("messages").insert(row as never).select("id");
+    if (!single.error) stored += 1;
+    else if (single.error.code !== "23505") throw new Error(`no pude guardar el historial: ${single.error.message}`);
+  }
+  return stored;
+}
+
 /**
  * Pone el "no leido" en cero porque ya se respondio, salvo que el lead haya
  * escrito DESPUES de esa respuesta (un eco que llega tarde no tapa nada).
