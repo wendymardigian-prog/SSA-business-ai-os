@@ -15,7 +15,7 @@ describe("el cuerpo de un email entrante", () => {
   });
 
   it("un mensaje viejo, guardado con la cita adentro, se separa al dibujarlo", () => {
-    const out = html({ text: "Gracias!\n\nOn Wed Wendy wrote:\n> Hola", email_quoted_text: null });
+    const out = html({ text: "Gracias!\n\nOn Wed Ana wrote:\n> Hola", email_quoted_text: null });
     expect(out).toContain("Ver mensaje citado");
     expect(out).not.toContain("&gt; Hola");
   });

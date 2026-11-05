@@ -260,12 +260,12 @@ describe("el toque de atribución de un correo entrante (F87)", () => {
 describe("lo que un correo cita al responder (00293)", () => {
   const FOOTER_REPLY = `Gracias!
 
-El mié, 4 nov 2026 a la(s) 5:45 p.m., Wendy Mardigian (
-wendy@mail.wendymardigian.com) escribió:
+El mié, 4 nov 2026 a la(s) 5:45 p.m., Ana Pérez (
+hola@mail.negocio.test) escribió:
 
 > Hola Ana
 >
-> Recibís este email porque te registraste en Wendy. Darme de baja
+> Recibís este email porque te registraste en Negocio. Darme de baja
 > <https://x.test/baja/abc>
 >`;
   const optOutText = (memory: ReturnType<typeof db>) => memory.rpcCalls.find((c) => c.name === "apply_opt_out_check")?.args.p_text;
