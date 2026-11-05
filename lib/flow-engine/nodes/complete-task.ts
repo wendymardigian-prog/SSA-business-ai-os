@@ -25,6 +25,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     const key = resolveSourceKey(data.sourceKey, context.variables ?? {});
     if (!key) {
       console.warn(`[flow-engine] el nodo ${node.id} (Completar tarea) no tiene una clave de origen resuelta: no se completa nada`);
+      context.noteStep?.({ status: "skipped", reason: "No se pudo saber qué tarea completar." });
       return;
     }
     await completeTasksFromAutomation(supabase, {
@@ -34,6 +35,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     });
   } catch (error) {
     console.error("[tareas] el nodo «Completar tarea» fallo:", error instanceof Error ? error.message : String(error));
+    context.noteStep?.({ status: "failed", reason: error });
   }
 }
 

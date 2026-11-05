@@ -102,6 +102,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     const title = stripUnresolved(interpolateVariables(data.title ?? "", vars)).replace(/\s+/g, " ").trim();
     if (!title) {
       console.warn(`[flow-engine] el nodo ${node.id} (Crear tarea) no tiene título: no se crea la tarea`);
+      context.noteStep?.({ status: "skipped", reason: "La tarea no tiene título." });
       return;
     }
 
@@ -137,6 +138,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     });
   } catch (error) {
     console.error("[tareas] el nodo «Crear tarea» fallo:", error instanceof Error ? error.message : String(error));
+    context.noteStep?.({ status: "failed", reason: error });
   }
 }
 

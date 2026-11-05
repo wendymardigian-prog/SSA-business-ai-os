@@ -34,6 +34,7 @@ export const goToFlowNode: NodeDefinition<GoToFlowNodeData> = {
   async execute({ supabase, data, context, sessionId, runtime }: NodeExecutionArgs<GoToFlowNodeData, FlowExecutionContext>) {
     if (!data.flowId) {
       console.error("[goToFlow] el nodo no tiene flow destino configurado");
+      context.noteStep?.({ status: "skipped", reason: "El paso no tiene una automatización elegida." });
       return;
     }
 
@@ -46,6 +47,7 @@ export const goToFlowNode: NodeDefinition<GoToFlowNodeData> = {
       .eq("id", sessionId)
       .eq("status", "active");
 
+    context.noteStep?.({ status: "ok", reason: "Siguió en otra automatización." });
     await runtime.executeFlow(supabase, { ...context, flowId: data.flowId });
     return "pause";
   },

@@ -123,6 +123,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     const resolved = await variableRecipient(supabase, data, context);
     if (!resolved.ok) {
       console.warn(`[flow-engine] el nodo ${node.id} (send_email) se saltea: ${resolved.reason}`);
+      context.noteStep?.({ status: "skipped", reason: resolved.reason });
       try {
         await supabase.from("analytics_events").insert({
           workspace_id: context.workspaceId,
@@ -143,6 +144,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   }
   if (recipients.length === 0) {
     console.warn(`[flow-engine] el nodo ${node.id} no tiene a dónde mandar el email`);
+    context.noteStep?.({ status: "skipped", reason: "No hay a dónde mandar el email." });
     return;
   }
 
@@ -204,6 +206,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     }
     // Antes el resultado no se miraba: un envio rechazado no dejaba rastro en la automatizacion.
     if (!result.ok) {
+      context.noteStep?.({ status: "failed", reason: result.error ?? result.reason });
       try {
         await supabase.from("analytics_events").insert({
           workspace_id: context.workspaceId,
@@ -244,6 +247,7 @@ async function markSkipped(
   nodeId: string,
   reason: string,
 ): Promise<void> {
+  context.noteStep?.({ status: "skipped", reason });
   try {
     await supabase.from("analytics_events").insert({
       workspace_id: context.workspaceId,
@@ -265,6 +269,7 @@ async function warnMissingAttachments(
   nodeId: string,
   missing: string[],
 ): Promise<void> {
+  context.noteStep?.({ status: "ok", reason: missing.length === 1 ? "Salió sin un adjunto que ya no está en Recursos." : `Salió sin ${missing.length} adjuntos que ya no están en Recursos.` });
   try {
     await supabase.from("analytics_events").insert({
       workspace_id: context.workspaceId,

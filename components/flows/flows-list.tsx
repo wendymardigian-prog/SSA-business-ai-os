@@ -257,7 +257,12 @@ export function FlowsList({
                     {flow.blockedNote && (
                       <p className="mt-3 rounded-md border border-amber-300/60 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{flow.blockedNote}</p>
                     )}
-                    <p className="mt-auto pt-4 text-xs text-muted-foreground">Actualizada el {formatDate(flow.updatedAt, timeZone)}</p>
+                    <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-4 text-xs text-muted-foreground">
+                      <span>Actualizada el {formatDate(flow.updatedAt, timeZone)}</span>
+                      <Link href={`/dashboard/flows/${flow.id}/ejecuciones`} className="relative z-10 font-medium text-primary-ink hover:underline">
+                        Ejecuciones
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>

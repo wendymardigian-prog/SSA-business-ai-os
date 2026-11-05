@@ -724,3 +724,24 @@ Tres disparadores de evento, de contacto, en `registry/whatsapp-group-triggers.t
 flujo responde por el chat privado en el número del grupo, creándolo si no existe, recién después de reclamar el
 disparo. Su `eventMatches` saltea un contacto «no contactar». Nodo nuevo: `send_poll` («Enviar encuesta», sin
 contacto, `requires: whatsapp_channel`). Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).
+
+## Historial de ejecuciones (00292, noviembre 2026)
+
+Cada automatización tiene su pantalla: `/dashboard/flows/[flowId]/ejecuciones`, con el botón «Ejecuciones» en el editor y un link en la tarjeta de la lista. Muestra quién pasó, cuándo, cómo terminó y qué pasó en cada paso. «Exportar» ya no está en el editor: sigue en la tarjeta, junto a «Importar», para copiar una automatización a otro negocio.
+
+- **Un paso que corre deja una fila en `flow_session_steps`.** Lo anota el motor (`traverseNodes`) al terminar el paso, también si lanza. El nombre queda congelado: sobrevive a que después editen el flujo.
+- **Un paso que falla sin lanzar tiene que avisar** con `context.noteStep?.({ status, reason, resumesAt })`: si no, queda como «Salió bien». Gana lo más grave (`mergeStepNote`). `recordSend` ya avisa por los envíos rechazados. `run-history-boundary.test.ts` falla si un nodo anota `node_failed`, `node_skipped` o `message_failed` sin avisar. **Un nodo nuevo con una salida silenciosa (`console.warn` + `return`) también avisa.**
+- **Anotar nunca frena un flujo.** `recordStep`, `noteSessionEnd` y `noteSessionVersion` (`lib/flow-engine/run-log.ts`) están en try/catch y van en una escritura aparte de los cambios de `status`: sin la migración, los flujos corren igual.
+- **Motivos sin datos personales.** Todo pasa por `sanitizeRunText`: sin emails, sin teléfonos, sin el camino ni los parámetros de una URL, hasta 300 caracteres. De un camino se guarda la etiqueta, nunca los valores comparados.
+- **Quién ve qué lo decide la base** (`can_see_flow_session`): `flows.view` y, si hay contacto, poder ver ese contacto. Owner y Admin, todo. La pantalla lee con el cliente del usuario.
+- **`flow_sessions.variables` no se lee con la sesión** (permiso por columna): nunca `select("*")` sobre `flow_sessions` con la sesión. Una columna nueva que tenga que leer la pantalla se suma al `GRANT` (`lib/flows/runs.test.ts` lo compara).
+- **`finished_at` lo pone un trigger** cuando la sesión deja de estar activa. `end_reason` lo escribe el primero que lo anota (la causa original gana).
+- **El estado que se muestra y el filtro dicen lo mismo:** `deriveRunState` (`lib/flows/runs.ts`) y `applyState` (`lib/flows/runs-query.ts`). Si se cambia uno, se cambian los dos; `verify-flow-runs` los compara contra la base.
+- **Retención:** los pasos se borran a los 12 meses (`sweepFlowStepHistory`). La fila de `flow_sessions` queda, porque «Una sola vez por contacto» la mira.
+- **Lo que corrió antes de la 00292 no tiene pasos ni hora de fin.** No se reconstruye: sería adivinar.
+- **Un disparo que no arrancó** (ya pasó una vez, un ciclo bloqueado, la automatización sin publicar) no crea ejecución, así que no aparece.
+
+```
+node scripts/verify-flow-runs.mjs   # quién ve qué, variables, el trigger, el motor, la consulta y la limpieza
+```
+
