@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   EvolutionError,
+  checkWhatsappNumber,
   ensureGroupsNotIgnored,
   fetchAllGroups,
   fetchGroupParticipants,
@@ -607,5 +608,52 @@ describe("grupos de WhatsApp", () => {
     const calls = mockFetch([{ body: { groupsIgnore: false } }]);
     expect(await ensureGroupsNotIgnored(config, "ssa-abc")).toBe(false);
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("checkWhatsappNumber", () => {
+  it("pregunta por el numero solo con digitos, sin mandarle nada", async () => {
+    const calls = mockFetch([{ body: [{ exists: true, jid: "5491122334455@s.whatsapp.net", number: "5491122334455" }] }]);
+    await expect(checkWhatsappNumber(config, "ssa-abc", "+54 9 11 2233-4455")).resolves.toEqual({
+      exists: true,
+      jid: "5491122334455@s.whatsapp.net",
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      url: "https://evo.test/chat/whatsappNumbers/ssa-abc",
+      method: "POST",
+      body: { numbers: ["5491122334455"] },
+    });
+  });
+
+  it("lee un numero sin WhatsApp", async () => {
+    mockFetch([{ body: [{ exists: false, jid: "50688887777@s.whatsapp.net", number: "50688887777" }] }]);
+    await expect(checkWhatsappNumber(config, "ssa-abc", "+50688887777")).resolves.toMatchObject({ exists: false });
+  });
+
+  it("sin jid, lo deja en null", async () => {
+    mockFetch([{ body: [{ exists: true }] }]);
+    await expect(checkWhatsappNumber(config, "ssa-abc", "+50688887777")).resolves.toEqual({ exists: true, jid: null });
+  });
+
+  it.each([
+    ["una lista vacia", []],
+    ["un objeto", { exists: false }],
+    ["una fila sin exists", [{ jid: "50688887777@s.whatsapp.net" }]],
+    ["un exists que no es booleano", [{ exists: "false" }]],
+  ])("lanza con %s: no entender no es lo mismo que no tener WhatsApp", async (_caso, body) => {
+    mockFetch([{ body }]);
+    await expect(checkWhatsappNumber(config, "ssa-abc", "+50688887777")).rejects.toBeInstanceOf(EvolutionError);
+  });
+
+  it("lanza si Evolution rechaza el pedido", async () => {
+    mockFetch([{ status: 401, body: { message: "no" } }]);
+    await expect(checkWhatsappNumber(config, "ssa-abc", "+50688887777")).rejects.toBeInstanceOf(EvolutionError);
+  });
+
+  it("lanza con un numero invalido, sin llamar a Evolution", async () => {
+    const calls = mockFetch([]);
+    await expect(checkWhatsappNumber(config, "ssa-abc", "123")).rejects.toBeInstanceOf(EvolutionError);
+    expect(calls).toHaveLength(0);
   });
 });

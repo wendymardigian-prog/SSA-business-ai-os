@@ -35,6 +35,7 @@ export type SendSkipReason =
   | AudienceSkipReason
   | "missing_variables"
   | "phone_in_use"
+  | "no_whatsapp"
   | "deleted"
   | "email_unverifiable"
   | "left_audience";
@@ -51,6 +52,7 @@ export const SKIP_REASON_LABELS: Record<SendSkipReason, string> = {
   email_complained: "Marcaron un email como spam",
   missing_variables: "Les falta un dato del mensaje",
   phone_in_use: "Su teléfono ya es de otro contacto en este número",
+  no_whatsapp: "El número no tiene WhatsApp",
   deleted: "Contacto borrado",
   email_unverifiable: "No se pudo comprobar su email",
   left_audience: "Ya no tienen la etiqueta de la audiencia",

@@ -536,6 +536,41 @@ export async function sendText(
   return { id: raw?.key?.id ?? raw?.messageId ?? null };
 }
 
+export interface WhatsappNumberCheck {
+  exists: boolean;
+  /** Como lo identifica WhatsApp ("5491122334455@s.whatsapp.net"), si lo informa. Puede diferir del numero cargado. */
+  jid: string | null;
+}
+
+/**
+ * Pregunta si un numero tiene WhatsApp, sin mandarle nada. Lanza si Evolution no
+ * contesta o si la respuesta no dice claramente si existe: quien llama no puede
+ * tomar "no se entendio" como "no tiene WhatsApp".
+ */
+export async function checkWhatsappNumber(
+  config: EvolutionConfig,
+  instanceName: string,
+  phone: string,
+): Promise<WhatsappNumberCheck> {
+  const number = toEvolutionNumber(phone);
+  if (!number) {
+    throw new EvolutionError(`Numero de WhatsApp invalido: "${phone}"`);
+  }
+
+  const raw = await request<unknown>(
+    config,
+    "POST",
+    `/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`,
+    { numbers: [number] },
+  );
+
+  const first = Array.isArray(raw) ? (raw[0] as { exists?: unknown; jid?: unknown } | undefined) : undefined;
+  if (typeof first?.exists !== "boolean") {
+    throw new EvolutionError("Evolution API no dijo si el numero tiene WhatsApp.");
+  }
+  return { exists: first.exists, jid: typeof first.jid === "string" ? first.jid : null };
+}
+
 /**
  * Reacciona a un mensaje de WhatsApp con un emoji (A3). Un `reaction` vacio
  * QUITA la reaccion que habia.
