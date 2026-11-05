@@ -544,6 +544,77 @@ try {
     if (!eJob) await svc.from("scheduled_jobs").delete().eq("type", "booking_relative_trigger");
   }
 
+  if (process.argv.includes("--despues-de-00290")) {
+    console.log("\n— Cambiar el anfitrion de un evento (00290) —");
+    const { data: cat } = await svc.from("booking_categories")
+      .insert({ workspace_id: ws.id, name: "zz-test-host", is_system: false }).select("id").single();
+    const nuevoEvento = async (ownerId, slug) => {
+      const { data, error } = await svc.from("event_types")
+        .insert({ workspace_id: ws.id, owner_user_id: ownerId, category_id: cat.id, title: "zz-test-host", slug, duration_minutes: 30, location_type: "manual", location_text: "Oficina" })
+        .select("id").single();
+      if (error) throw new Error(`no pude crear el evento: ${error.message}`);
+      return data;
+    };
+    const cambiar = (eventId, expected, nuevo, workspaceId = ws.id, client = svc) =>
+      client.rpc("change_event_type_host", { p_workspace_id: workspaceId, p_event_type_id: eventId, p_expected_host_id: expected, p_new_host_id: nuevo });
+    const links = async (eventId) => (await svc.from("event_type_moved_links").select("username, slug").eq("event_type_id", eventId)).data ?? [];
+
+    const ev = await nuevoEvento(member.id, "zz-host-uno");
+    await svc.from("event_types").update({ conflict_calendar_ids: [randomUUID()] }).eq("id", ev.id);
+
+    const { error: eMember } = await cambiar(ev.id, member.id, otro.id, ws.id, member.client);
+    check(!!eMember, "un usuario con sesion no puede llamar a la funcion (solo service role)");
+    const { error: eOwner } = await cambiar(ev.id, member.id, otro.id, ws.id, owner.client);
+    check(!!eOwner, "tampoco el Owner con su sesion: el permiso lo chequea la accion");
+
+    const { data: ajenoWs } = await cambiar(ev.id, member.id, otro.id, ws2.id);
+    check(ajenoWs?.status === "not_found", "con otro workspace no encuentra el evento", JSON.stringify(ajenoWs));
+    const { data: viejo } = await cambiar(ev.id, otro.id, owner.id);
+    check(viejo?.status === "stale", "si el anfitrion ya no es el que la pantalla mostraba, no cambia nada", JSON.stringify(viejo));
+    const { data: mismo } = await cambiar(ev.id, member.id, member.id);
+    check(mismo?.status === "same_host", "elegir al mismo anfitrion no cambia nada", JSON.stringify(mismo));
+    const { data: fuera } = await cambiar(ev.id, member.id, ajeno.id);
+    check(fuera?.status === "not_member", "alguien de otro workspace no se puede elegir", JSON.stringify(fuera));
+    const { data: sinPerfil } = await cambiar(ev.id, member.id, owner.id);
+    check(sinPerfil?.status === "no_profile" || sinPerfil?.status === "ok", "el Owner sin perfil se rechaza (o ya tenia uno)", JSON.stringify(sinPerfil));
+    if (sinPerfil?.status === "ok") await cambiar(ev.id, owner.id, member.id);
+
+    const { data: choque } = await svc.from("event_types").select("id").eq("id", ev.id).single();
+    const repetido = await nuevoEvento(otro.id, "zz-host-uno");
+    const { data: tomado } = await cambiar(choque.id, member.id, otro.id);
+    check(tomado?.status === "slug_taken", "si la persona ya tiene ese link, avisa en vez de fallar", JSON.stringify(tomado));
+    const { data: intacto } = await svc.from("event_types").select("owner_user_id").eq("id", ev.id).single();
+    check(intacto?.owner_user_id === member.id, "ese intento no cambio al anfitrion");
+    check((await links(ev.id)).length === 0, "ese intento no dejo ningun link anterior");
+    await svc.from("event_types").update({ slug: "zz-host-otro" }).eq("id", repetido.id);
+
+    const { data: hecho } = await cambiar(ev.id, member.id, otro.id);
+    check(hecho?.status === "ok" && hecho?.old_username === "member-uno" && hecho?.new_username === "otro-perfil", "cambia y devuelve los dos usuarios", JSON.stringify(hecho));
+    const { data: final } = await svc.from("event_types").select("owner_user_id, schedule_id, destination_calendar_id, conflict_calendar_ids").eq("id", ev.id).single();
+    check(final?.owner_user_id === otro.id, "el evento queda a nombre de la persona nueva");
+    check(final?.schedule_id === null && final?.destination_calendar_id === null && (final?.conflict_calendar_ids ?? []).length === 0, "lo que era de la persona anterior se limpia", JSON.stringify(final));
+    const guardados = await links(ev.id);
+    check(guardados.length === 1 && guardados[0].username === "member-uno" && guardados[0].slug === "zz-host-uno", "guarda el link anterior", JSON.stringify(guardados));
+
+    const { data: leidoMember } = await member.client.from("event_type_moved_links").select("slug");
+    const { data: leidoOwner } = await owner.client.from("event_type_moved_links").select("slug");
+    check((leidoMember ?? []).length === 0 && (leidoOwner ?? []).length === 0, "nadie lee los links anteriores con su sesion");
+
+    const { data: vuelta } = await cambiar(ev.id, otro.id, member.id);
+    const deVuelta = await links(ev.id);
+    check(vuelta?.status === "ok" && deVuelta.length === 1 && deVuelta[0].username === "otro-perfil", "al volver, el link propio deja de ser 'anterior'", JSON.stringify(deVuelta));
+
+    const borrable = await nuevoEvento(member.id, "zz-host-dos");
+    await cambiar(borrable.id, member.id, otro.id);
+    await svc.from("event_types").delete().eq("id", borrable.id);
+    check((await links(borrable.id)).length === 0, "borrar el evento se lleva sus links anteriores");
+    const { data: borrado } = await cambiar(repetido.id, otro.id, member.id, ws.id);
+    check(borrado?.status === "ok", "un evento cualquiera se puede volver a cambiar", JSON.stringify(borrado));
+    await svc.from("event_types").update({ deleted_at: "2020-01-01T00:00:00Z" }).eq("id", repetido.id);
+    const { data: yaBorrado } = await cambiar(repetido.id, member.id, otro.id);
+    check(yaBorrado?.status === "not_found", "un evento borrado no se puede cambiar", JSON.stringify(yaBorrado));
+  }
+
 } catch (err) {
   fail(`error inesperado: ${err.message}`);
 } finally {

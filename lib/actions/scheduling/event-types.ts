@@ -30,6 +30,9 @@ import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { listSchedules } from "@/lib/scheduling/data/schedules";
 import { listUserCalendars, listCalendarConnections } from "@/lib/scheduling/data/calendars";
 import { createEventFlows } from "@/lib/scheduling/automation/templates";
+import { isUserBookable } from "@/lib/scheduling/bookable";
+import { hostChangeBlocker, hostChangeError } from "@/lib/scheduling/host-change";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 /**
  * Eventos (F16 a F22). Crear pide lo minimo y completa el resto con lo que la
@@ -454,6 +457,70 @@ export async function deleteEventType(input: { eventId: string; confirm?: boolea
 
   await logAudit({ supabase: ctx.supabase, workspaceId: ctx.workspace.id, entityType: "event_type", entityId: row.id, action: "event_type.deleted", metadata: { future_bookings: futureBookings }, performedBy: ctx.user.id });
   revalidatePath(LIST_PATH);
+  return { ok: true };
+}
+
+/**
+ * Cambia quien atiende un evento: las reuniones nuevas se agendan con esa persona
+ * y el link anterior sigue funcionando. Las ya agendadas se quedan con quien las
+ * tiene. Pide `manage_others` tambien al dueño: dar un evento es tocar la agenda
+ * de otra persona.
+ */
+export async function changeEventHost(input: { eventId: string; newHostUserId: string }): Promise<EventActionResult> {
+  const owned = await ownerOf(input.eventId);
+  if ("error" in owned) return { ok: false, error: owned.error };
+  const { ctx, row } = owned;
+  if (!ctx.can("scheduling.manage_others")) return { ok: false, error: "No tenés permiso para cambiar el anfitrión de un evento" };
+
+  const newHost = (await getWorkspaceMembers(ctx.workspace.id)).find((m) => m.userId === input.newHostUserId);
+  if (!newHost) return { ok: false, error: "No encontré a esa persona en el equipo." };
+  const hostName = newHost.name || newHost.email;
+
+  // Se mira como va a quedar: sin lo que la persona anterior habia elegido.
+  const service = await createServiceClient();
+  const moved = { ...row, owner_user_id: input.newHostUserId, schedule_id: null, destination_calendar_id: null, conflict_calendar_ids: [] };
+  const [profile, calendars, connections, checklist] = await Promise.all([
+    getProfileForUser(service, ctx.workspace.id, input.newHostUserId),
+    listUserCalendars(service, ctx.workspace.id, input.newHostUserId),
+    listCalendarConnections(service, ctx.workspace.id, input.newHostUserId),
+    activationContext(ctx, moved),
+  ]);
+  const bookable = isUserBookable({
+    profile,
+    connections: connections.map((c) => ({ id: c.id, status: c.status, granted_scopes: c.granted_scopes })),
+    calendars: calendars.map((c) => ({ id: c.id, connection_id: c.connection_id, check_conflicts: c.check_conflicts, is_active: c.is_active })),
+    defaultDestinationCalendarId: profile?.default_destination_calendar_id,
+  });
+  const blocker = hostChangeBlocker({ hostName, eventStatus: row.status, notBookable: bookable.ok ? null : bookable.reason, checklist });
+  if (blocker) return { ok: false, error: blocker };
+
+  const { data, error } = await service.rpc("change_event_type_host", {
+    p_workspace_id: ctx.workspace.id,
+    p_event_type_id: row.id,
+    p_expected_host_id: row.owner_user_id,
+    p_new_host_id: input.newHostUserId,
+  });
+  if (error) {
+    console.error("[event-types] change host:", error.message);
+    return { ok: false, error: hostChangeError("error", hostName, row.slug) };
+  }
+  const result = data as { status: string; old_username?: string | null; new_username?: string };
+  if (result.status !== "ok") return { ok: false, error: hostChangeError(result.status, hostName, row.slug) };
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "event_type",
+    entityId: row.id,
+    action: "event_type.host_changed",
+    changes: {
+      owner_user_id: { old: row.owner_user_id, new: input.newHostUserId },
+      username: { old: result.old_username ?? null, new: result.new_username ?? null },
+    },
+    performedBy: ctx.user.id,
+  });
+  revalidatePath(LIST_PATH);
+  revalidatePath(`${LIST_PATH}/${row.id}`);
   return { ok: true };
 }
 

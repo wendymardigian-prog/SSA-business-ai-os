@@ -170,6 +170,7 @@ export function Booker({
     async (month: string, timezone: string) => {
       const { from, to } = monthRange(month);
       const params = new URLSearchParams({ user: username, event: slug, from, to, tz: timezone });
+      if (rescheduleUid) params.set("reschedule", rescheduleUid);
       try {
         const res = await fetch(`/api/public/scheduling/slots?${params}`, { cache: "no-store" });
         if (!res.ok) {
@@ -186,7 +187,7 @@ export function Booker({
         dispatch({ type: "unavailable", which: "load_error" });
       }
     },
-    [slug, username],
+    [slug, username, rescheduleUid],
   );
 
   // Pide el mes cuando hace falta: al cambiar de mes, de zona o al reintentar.
