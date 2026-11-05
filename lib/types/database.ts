@@ -2356,6 +2356,7 @@ export interface Database {
           email_references: string | null;
           email_from: string | null;
           email_to: Json | null;
+          email_quoted_text: string | null;
           email_cc: Json | null;
           // ── Media del chat (00102 y 00103) ──────────────────────────────
           /** Descripcion de la imagen hecha por el modelo de vision (F8). */
@@ -2406,6 +2407,7 @@ export interface Database {
           email_references?: string | null;
           email_from?: string | null;
           email_to?: Json | null;
+          email_quoted_text?: string | null;
           email_cc?: Json | null;
           media_description?: string | null;
           interpretability?: MessageInterpretability;

@@ -275,6 +275,8 @@ export async function insertMessage({
     from?: string | null;
     to?: string[] | null;
     cc?: string[] | null;
+    /** Lo que el correo citó al responder (00289). `text` guarda solo lo nuevo. */
+    quotedText?: string | null;
   } | null;
 }): Promise<InsertedMessage> {
   const row = {
@@ -301,6 +303,7 @@ export async function insertMessage({
           email_from: email.from ?? null,
           email_to: (email.to ?? null) as never,
           email_cc: (email.cc ?? null) as never,
+          ...(email.quotedText ? { email_quoted_text: email.quotedText } : {}),
         }
       : {}),
   };
