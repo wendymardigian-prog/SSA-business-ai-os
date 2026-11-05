@@ -148,6 +148,8 @@ export interface PrivateReplyNodeData {
   /** Text to send as a private DM to the commenter. Supports {{variable}} interpolation. */
   text: string;
   imageUrl?: string;
+  /** Hasta tres botones que abren un link. Instagram puede rechazarlos si la persona no sigue la cuenta. */
+  buttons?: Array<{ type: "url"; title: string; url: string }>;
 }
 
 export interface AiResponseNodeData {

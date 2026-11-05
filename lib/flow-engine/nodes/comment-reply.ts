@@ -3,9 +3,12 @@ import type { Database } from "@/lib/types/database";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import type { CommentReplyNodeData, FlowExecutionContext, PrivateReplyNodeData } from "../types";
-import { interpolateVariables } from "../interpolate";
+import { interpolateDeep, interpolateVariables } from "../interpolate";
+import { sendablePrivateReplyButtons } from "../private-reply";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
+import { describeSendError } from "@/lib/instagram-errors";
+import { sentContentContext } from "@/lib/attribution/content-variables";
 
 /**
  * Datos del comentario que disparo el flow.
@@ -64,11 +67,18 @@ export const commentReplyNode: NodeDefinition<CommentReplyNodeData> = {
   },
 };
 
-/** Le manda un DM privado a quien comento, que abre la conversacion. */
+/**
+ * Le manda un DM privado a quien comento, que abre la conversacion.
+ *
+ * Sale siempre como respuesta al comentario, aunque la persona ya tenga un chat: es lo unico que Instagram deja mandar
+ * sin que haya escrito en las ultimas 24 horas. Por eso «Enviar mensaje» no alcanza para un comentario de alguien
+ * conocido, y por eso los botones viven aca (su respaldo por respuesta privada manda solo el texto).
+ */
 export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
   needsContact: true,
   type: "privateReply",
   label: "Responder por privado",
+  aliases: [{ nodeType: "action", actionType: "privateReply" }],
   async execute({ supabase, data, context, node }: NodeExecutionArgs<PrivateReplyNodeData>) {
     const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
     if (!apiKey) return;
@@ -84,11 +94,12 @@ export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
     }
 
     const text = interpolateVariables(data.text, context.variables || {});
+    const buttons = sendablePrivateReplyButtons(interpolateDeep(data.buttons ?? [], context.variables || {}));
 
     try {
       await createZernioClient(apiKey).comments.sendPrivateReplyToComment({
         path: { postId, commentId },
-        body: { accountId: lateAccountId, message: text },
+        body: { accountId: lateAccountId, message: text, ...(buttons.length > 0 ? { buttons } : {}) },
       });
 
       await supabase.from("messages").insert(
@@ -100,12 +111,14 @@ export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
           sentByFlowId: context.flowId ?? null,
           sentByNodeId: node.id,
           status: "sent",
+          originContext: sentContentContext(context),
         }),
       );
     } catch (error) {
       console.error("Failed to send private reply:", error);
-      await supabase.from("messages").insert(
-        outboundMessageRow({
+      // El texto queda como se quiso mandar y el motivo aparte: asi la bandeja muestra por que no salio.
+      await supabase.from("messages").insert({
+        ...outboundMessageRow({
           conversationId: context.conversationId,
           origin: "flow",
           text,
@@ -113,7 +126,8 @@ export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
           sentByNodeId: node.id,
           status: "failed",
         }),
-      );
+        send_error: describeSendError(error).message ?? "No se pudo enviar la respuesta privada.",
+      });
     }
   },
 };
