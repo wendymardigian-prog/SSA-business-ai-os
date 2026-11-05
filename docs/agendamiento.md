@@ -271,6 +271,10 @@ alguien que ya tiene perfil de agenda en el workspace —
 - **Reagendar una reunión reasignada mira la agenda del anfitrión de HOY**, con
   sus valores por defecto (horario y calendarios de su perfil), no los que el
   dueño del evento eligió (`settingsForHost`, `lib/scheduling/host-settings.ts`).
+- **Agendar de nuevo una reunión reasignada lleva al dueño de HOY del evento**, no
+  al anfitrión: el link público es `/calendario/<dueño>/<evento>` y con otro usuario
+  da 404. Vale para el botón de la página de la reunión (`PublicBooking.rebookPath`)
+  y para `{{scheduling.link}}` (`eventOwnerUsername`, `lib/scheduling/data/public-booking.ts`).
 - **Choque con otra agenda activa de la nueva persona**: se revisa antes de
   intentar (mensaje claro) y la base lo vuelve a proteger con la misma
   exclusión de siempre (23P01) si alguien gana la carrera justo en el medio.
