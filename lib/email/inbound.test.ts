@@ -256,3 +256,52 @@ describe("el toque de atribución de un correo entrante (F87)", () => {
     expect(memory.rows("messages")).toHaveLength(1);
   });
 });
+
+describe("lo que un correo cita al responder (00293)", () => {
+  const FOOTER_REPLY = `Gracias!
+
+El mié, 4 nov 2026 a la(s) 5:45 p.m., Ana Pérez (
+hola@mail.negocio.test) escribió:
+
+> Hola Ana
+>
+> Recibís este email porque te registraste en Negocio. Darme de baja
+> <https://x.test/baja/abc>
+>`;
+  const optOutText = (memory: ReturnType<typeof db>) => memory.rpcCalls.find((c) => c.name === "apply_opt_out_check")?.args.p_text;
+
+  it("guarda solo lo nuevo y la cita aparte; la vista previa queda limpia", async () => {
+    const memory = db();
+    await processInboundEmail(memory.client as never, { channel, email: email({ text: FOOTER_REPLY }) });
+    const [message] = memory.rows("messages");
+    expect(message.text).toBe("Gracias!");
+    expect(message.email_quoted_text).toContain("Darme de baja");
+  });
+
+  it("responder «Gracias» a un email con el pie de baja NO se toma como un pedido de baja", async () => {
+    const memory = db();
+    await processInboundEmail(memory.client as never, { channel, email: email({ text: FOOTER_REPLY }) });
+    expect(optOutText(memory)).toBe("Gracias!");
+  });
+
+  it("una respuesta intercalada se muestra entera, pero la baja solo mira lo que escribió", async () => {
+    const memory = db();
+    await processInboundEmail(memory.client as never, { channel, email: email({ text: "> Darme de baja\nSí, voy el lunes\n> Darme de baja" }) });
+    expect(memory.rows("messages")[0].text).toContain("> Darme de baja");
+    expect(optOutText(memory)).toBe("Sí, voy el lunes");
+  });
+
+  it("si la persona escribe «darme de baja», sigue contando", async () => {
+    const memory = db();
+    await processInboundEmail(memory.client as never, { channel, email: email({ text: `Quiero darme de baja\n\n${FOOTER_REPLY.split("\n").slice(2).join("\n")}` }) });
+    expect(optOutText(memory)).toBe("Quiero darme de baja");
+  });
+
+  it("un correo sin cita se guarda como siempre, sin la columna nueva", async () => {
+    const memory = db();
+    await processInboundEmail(memory.client as never, { channel, email: email() });
+    const [message] = memory.rows("messages");
+    expect(message.text).toBe("Hola, queria saber el precio.");
+    expect(message.email_quoted_text).toBeUndefined();
+  });
+});

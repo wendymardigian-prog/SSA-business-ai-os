@@ -47,6 +47,8 @@ import { isoToDateInput } from "@/lib/dates";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { setConversationNoReply } from "@/lib/actions/conversation-status";
 import { planComposerActions, type ComposerMenuAction } from "@/lib/inbox/composer-actions";
+import { channelAcceptsAnyFile } from "@/lib/channels/media";
+import { EmailMessageBody } from "./email-message-body";
 import { ComposerMoreMenu } from "@/components/inbox/composer-more-menu";
 import { requestSuggestionAction } from "@/lib/actions/agent-drafts";
 import { loadConversationActivity, type ConversationActivityData } from "@/lib/actions/message-activity";
@@ -205,7 +207,7 @@ function MessageBubble({
           {/* El adjunto va ARRIBA del texto, como en WhatsApp: el texto suele
               ser el pie de la foto, no lo principal. */}
           <MessageAttachments message={message} />
-          {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+          {message.text && (isInbound && message.email_from ? <EmailMessageBody message={message} /> : <p className="whitespace-pre-wrap">{message.text}</p>)}
           {/* 00262: el motivo va aparte del texto, con que hacer y como
               reintentar. Una fila vieja no lo tiene: su texto ya es el motivo. */}
           {failed && message.send_error && (
@@ -834,6 +836,7 @@ export function MessageThread({
       email_from: null,
       email_to: null,
       email_cc: null,
+      email_quoted_text: null,
       // La media, la transcripcion y la interpretabilidad las completa el
       // servidor: un mensaje que se acaba de escribir es texto y nada mas.
       media_description: null,
@@ -1220,6 +1223,8 @@ export function MessageThread({
     // Solo si hay un agente prendido para este canal y no hay ya un borrador esperando.
     canSuggest: !!agentInfo?.available && !hasLiveDraft,
     canSticker,
+    // El email no manda adjuntos desde la bandeja: ni micrófono ni clip, en vez de fallar recién al enviar.
+    canAttachFiles: !channelProvider || channelAcceptsAnyFile(channelProvider),
   });
   function onComposerAction(action: ComposerMenuAction) {
     switch (action) {

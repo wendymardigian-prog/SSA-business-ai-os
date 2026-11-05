@@ -114,6 +114,7 @@ async function execute({ supabase, node, data, context, sessionId }: NodeExecuti
   if (!outcome.ok) {
     context.variables.contact_result = "";
     context.variables.contact_fail_reason = outcome.reason;
+    context.noteStep?.({ status: "failed", reason: outcome.reason });
     try {
       context.onContactStep?.({ contactId: null, contactName: null, result: null, failReason: outcome.reason, diff: null, conflict: null, touch: null, notes: outcome.notes });
     } catch {
@@ -139,6 +140,7 @@ async function execute({ supabase, node, data, context, sessionId }: NodeExecuti
   // «Correr una sola vez por contacto» (Tirón 2, C2): el contacto ya quedó creado o actualizado (un envío nuevo
   // puede traer datos nuevos), pero si esta persona ya pasó por ESTE flujo, el flujo no se ejecuta otra vez.
   if (await alreadyPassedThroughFlow(supabase, { webhook, workspaceId: context.workspaceId, flowId: context.flowId, contactId: outcome.contactId })) {
+    context.noteStep?.({ status: "ok", reason: "Esta persona ya había pasado por esta automatización." });
     await supabase.from("flow_sessions").update({ status: "completed" }).eq("id", sessionId).eq("status", "active");
     try {
       context.onContactStep?.({

@@ -38,6 +38,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   const label = "Enviar encuesta";
   const skip = async (reason: string, extra: Record<string, unknown> = {}): Promise<void> => {
     console.warn(`[flow-engine] el nodo ${node.id} (${SEND_POLL_TYPE}) se saltea: ${reason}`);
+    context.noteStep?.({ status: "skipped", reason });
     try {
       await supabase.from("analytics_events").insert({
         workspace_id: context.workspaceId,
@@ -101,8 +102,12 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
 
     // El mismo envio que la bandeja: queda en el hilo del grupo con el flujo y el paso que la mandaron.
     const result = await sendToGroup(supabase, group, { poll: validation.poll }, { userId: null, flowId: context.flowId, nodeId: node.id });
-    if (!result.ok) await skip(`No se mandó la encuesta: ${result.error}`);
+    if (!result.ok) {
+      context.noteStep?.({ status: "failed", reason: `No se mandó la encuesta: ${result.error}` });
+      await skip(`No se mandó la encuesta: ${result.error}`);
+    }
   } catch (err) {
+    context.noteStep?.({ status: "failed", reason: "Algo falló al mandar la encuesta." });
     await skip("Algo falló al mandar la encuesta.", { error: err instanceof Error ? err.message.slice(0, 200) : "error" });
   }
 }

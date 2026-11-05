@@ -12,7 +12,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import type { FlowExecutionContext } from "./types";
-import type { DeferReason } from "@/lib/email/delivery-guard";
+import { DEFER_MESSAGES, type DeferReason } from "@/lib/email/delivery-guard";
 
 /** La variable de la sesion donde un paso recuerda a quienes ya les mando antes de quedar para despues. */
 export const DEFERRED_SENT_VAR = "__deferred_sent";
@@ -75,6 +75,8 @@ export async function deferFlowNode(
     event_type: "node_deferred",
     metadata: { nodeId, nodeType: args.nodeType, reason: args.reason, retryAt: runAt },
   });
+
+  context.noteStep?.({ status: "deferred", reason: DEFER_MESSAGES[args.reason], resumesAt: runAt });
 
   return "pause";
 }

@@ -39,11 +39,15 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Noti
   const body = interpolateVariables(data.body ?? "", vars).trim().slice(0, NOTIFY_BODY_MAX);
   if (!title) {
     console.warn(`[flow-engine] el nodo ${node.id} no tiene título: no se avisa`);
+    context.noteStep?.({ status: "skipped", reason: "El aviso no tiene título." });
     return;
   }
 
   const wanted = notifyRecipients(data, context.memberUserId);
-  if (wanted.length === 0) return;
+  if (wanted.length === 0) {
+    context.noteStep?.({ status: "skipped", reason: "No hay a quién avisarle." });
+    return;
+  }
   const { data: members } = await supabase.from("workspace_members").select("user_id").eq("workspace_id", context.workspaceId).in("user_id", wanted);
   const allowed = (members ?? []).map((m) => m.user_id);
 

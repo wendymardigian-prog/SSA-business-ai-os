@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { FlowLoadError, resumeSession } from "@/lib/flow-engine/engine";
+import { noteSessionEnd } from "@/lib/flow-engine/run-log";
 import type { Json } from "@/lib/types/database";
 import { AGENT_BURST_JOB, CONVERSATION_CLOSE_JOB, type ConversationClosePayload } from "@/lib/scheduler";
 import { processConversationClose, sweepInactiveConversations } from "@/lib/agent/closing";
@@ -373,6 +374,7 @@ async function failJobAndSettleSession({
     .eq("id", sessionId)
     .eq("status", "active")
     .select("id");
+  if (!settleError && (cancelledRows ?? []).length > 0) await noteSessionEnd(supabase, sessionId, "job_failed", errorMessage);
   // @plantilla-desde(webhooks)
   // Una sesion de webhook que recien se cancela aca (no la habia cancelado ya el catch de processJob): el envio lo anota.
   if (!settleError && (cancelledRows ?? []).length > 0) {
@@ -698,6 +700,7 @@ async function processJob(
           `Failed to resume flow session ${payload.sessionId} (flow ${session.flow_id}), session cancelled:`,
           err
         );
+        await noteSessionEnd(supabase, payload.sessionId, "job_failed", err);
         // @plantilla-desde(webhooks)
         // Un flujo de webhook que falla DESPUES de una pausa: el historial del envio tiene que decirlo (C3).
         await settleResumedSession(supabase, {

@@ -598,6 +598,16 @@ Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CH
 `cancel_booking`, `set_booking_status` (reunión) y `mark_payment_paid`, `reschedule_payment`, `set_sale_status` (venta) leen `event_booking_id` / `event_sale_id` y los datos del evento. Siguen declarando `needsContact: true` (la reunión y la venta tienen contacto), pero **lo que se le dice a quien edita es otra cosa**: en un flujo que no arrancó por una reunión o una venta (un webhook, un reporte de fin de día, el sistema) el mensaje dice «actúa sobre la reunión (o la venta) que dispara el flujo… solo se puede usar en un flujo que empieza con un disparador de agenda (o de venta)», en lugar de mandar a poner «Crear o actualizar contacto», que no se las da (`TRIGGER_ENTITY_NODES`, `contact-requirement.ts`).
 
 
+## «Responder por privado» y los comentarios de Instagram
+
+- **Un solo mensaje por comentario.** Meta no deja mandar otro hasta que la persona responda, y después solo dentro de las 24 horas de esa respuesta.
+- **Sale siempre como respuesta al comentario** (`privateReply`), aunque la persona ya tenga un chat. «Enviar mensaje» usa la respuesta privada solo si no hay chat, y su respaldo manda únicamente el texto (lo fija `send-message-characterization.test.ts`): para un botón, este es el paso.
+- **Hasta tres botones con link** (`sendablePrivateReplyButtons`, `lib/flow-engine/private-reply.ts`). Lo que no se puede mandar se descarta antes de llamar a Zernio.
+- **Instagram puede rechazar los botones si la persona no sigue la cuenta**, y el intento gasta la respuesta del comentario. El rechazo no afecta a todas las cuentas por igual: hay que probarlo con una que no siga. El motivo queda en `messages.send_error`.
+- **Si otra app es la dueña de los chats** (ManyChat), puede responder al comentario antes y gastar esa única respuesta. Una palabra clave se atiende en una sola app.
+- **Solo se publica con el disparador `comment_keyword`** (`triggerProblems`): sin un comentario no tiene a qué responder.
+- **Limitar a ciertas publicaciones:** `config.postIds`, desde la pestaña Growth. Sin lista, vale para todas.
+
 ## Atribución en los flujos de mensajes (Extra I)
 
 - **Nodo «Enviar mensaje»:** `attribution?: { append, trackClicks }` a nivel nodo (ver [atribucion.md](atribucion.md)). Ausente o con `append` apagado, el mensaje es idéntico al de siempre. Se aplica sobre el mensaje YA adaptado a la plataforma, también en el respaldo por respuesta privada (solo el texto).
@@ -691,6 +701,12 @@ Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla.
   (`lib/email/attachment-limits.ts`, `lib/email/flow-attachments.ts`).
 - **WhatsApp**: Evolution manda botones y respuestas rápidas como lista numerada; tope de 200 envíos automáticos por hora.
 
+### Variables en los flujos: respaldo y fechas (noviembre 2026)
+
+- **Respaldo:** `{{contact.first_name|hola}}` o `{{contact.first_name | "hola"}}`, con el mismo sentido que en broadcasts (`lib/templates/fallback.ts`). Un valor vacío, o un nombre de relleno en `contact.first_name|name|display_name`, usa el respaldo. Sin `|`, un token que no resuelve sigue quedando literal. Motor, email y simulador comparten la regla, y `interpolate-parity.test.ts` lo cuida.
+- **Fechas de un formulario:** `{{answer.x}}` las muestra para leer («6 de octubre de 2026», «lunes 9 de noviembre de 2026, 19:00»), armadas con los números del propio valor. Una hora sin desfase no se toca. `{{answer_raw.x}}` conserva lo guardado, para una Llamada HTTP.
+- **Pregunta sin responder:** queda vacía; antes llegaba `{{answer.x}}` literal.
+
 ### «Una sola vez por contacto» (noviembre 2026)
 
 `oncePerContact` en la configuración de un disparador de contacto (apagado por defecto; lo ofrece `supportsOncePerContact`, comparado con el registro en un test): quien ya tuvo una sesión de ese flujo, activa, terminada o vencida, no vuelve a entrar. Lo aplica `processContactEvent`: el envío del formulario se guarda igual, nadie ve un error y queda `flow_once_skipped` en `analytics_events`.
@@ -708,3 +724,24 @@ Tres disparadores de evento, de contacto, en `registry/whatsapp-group-triggers.t
 flujo responde por el chat privado en el número del grupo, creándolo si no existe, recién después de reclamar el
 disparo. Su `eventMatches` saltea un contacto «no contactar». Nodo nuevo: `send_poll` («Enviar encuesta», sin
 contacto, `requires: whatsapp_channel`). Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).
+
+## Historial de ejecuciones (00292, noviembre 2026)
+
+Cada automatización tiene su pantalla: `/dashboard/flows/[flowId]/ejecuciones`, con el botón «Ejecuciones» en el editor y un link en la tarjeta de la lista. Muestra quién pasó, cuándo, cómo terminó y qué pasó en cada paso. «Exportar» ya no está en el editor: sigue en la tarjeta, junto a «Importar», para copiar una automatización a otro negocio.
+
+- **Un paso que corre deja una fila en `flow_session_steps`.** Lo anota el motor (`traverseNodes`) al terminar el paso, también si lanza. El nombre queda congelado: sobrevive a que después editen el flujo.
+- **Un paso que falla sin lanzar tiene que avisar** con `context.noteStep?.({ status, reason, resumesAt })`: si no, queda como «Salió bien». Gana lo más grave (`mergeStepNote`). `recordSend` ya avisa por los envíos rechazados. `run-history-boundary.test.ts` falla si un nodo anota `node_failed`, `node_skipped` o `message_failed` sin avisar. **Un nodo nuevo con una salida silenciosa (`console.warn` + `return`) también avisa.**
+- **Anotar nunca frena un flujo.** `recordStep`, `noteSessionEnd` y `noteSessionVersion` (`lib/flow-engine/run-log.ts`) están en try/catch y van en una escritura aparte de los cambios de `status`: sin la migración, los flujos corren igual.
+- **Motivos sin datos personales.** Todo pasa por `sanitizeRunText`: sin emails, sin teléfonos, sin el camino ni los parámetros de una URL, hasta 300 caracteres. De un camino se guarda la etiqueta, nunca los valores comparados.
+- **Quién ve qué lo decide la base** (`can_see_flow_session`): `flows.view` y, si hay contacto, poder ver ese contacto. Owner y Admin, todo. La pantalla lee con el cliente del usuario.
+- **`flow_sessions.variables` no se lee con la sesión** (permiso por columna): nunca `select("*")` sobre `flow_sessions` con la sesión. Una columna nueva que tenga que leer la pantalla se suma al `GRANT` (`lib/flows/runs.test.ts` lo compara).
+- **`finished_at` lo pone un trigger** cuando la sesión deja de estar activa. `end_reason` lo escribe el primero que lo anota (la causa original gana).
+- **El estado que se muestra y el filtro dicen lo mismo:** `deriveRunState` (`lib/flows/runs.ts`) y `applyState` (`lib/flows/runs-query.ts`). Si se cambia uno, se cambian los dos; `verify-flow-runs` los compara contra la base.
+- **Retención:** los pasos se borran a los 12 meses (`sweepFlowStepHistory`). La fila de `flow_sessions` queda, porque «Una sola vez por contacto» la mira.
+- **Lo que corrió antes de la 00292 no tiene pasos ni hora de fin.** No se reconstruye: sería adivinar.
+- **Un disparo que no arrancó** (ya pasó una vez, un ciclo bloqueado, la automatización sin publicar) no crea ejecución, así que no aparece.
+
+```
+node scripts/verify-flow-runs.mjs   # quién ve qué, variables, el trigger, el motor, la consulta y la limpieza
+```
+

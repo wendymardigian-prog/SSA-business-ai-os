@@ -22,6 +22,12 @@ export const MANY_TRIGGERS_PROBLEM = "La automatización tiene más de un dispar
 export const NO_KEYWORDS_PROBLEM = "Cargá al menos una palabra clave en el disparador.";
 export const NO_PAYLOAD_PROBLEM = "Completá el payload del botón o la respuesta rápida en el disparador.";
 export const NO_FIRST_STEP_PROBLEM = "El disparador no tiene ningún paso conectado.";
+export const PRIVATE_REPLY_NEEDS_COMMENT_PROBLEM = "«Responder por privado» solo funciona si la automatización arranca con «Palabra clave en un comentario».";
+
+function isPrivateReplyNode(node: RawNode | null): boolean {
+  if (!node || typeof node !== "object") return false;
+  return node.type === "privateReply" || (node.type === "action" && (node.data as { actionType?: unknown } | undefined)?.actionType === "privateReply");
+}
 
 export function triggerNodesOf(nodes: unknown[]): RawNode[] {
   return (Array.isArray(nodes) ? nodes : []).filter((n): n is RawNode => !!n && typeof n === "object" && (n as RawNode).type === "trigger");
@@ -64,5 +70,7 @@ export function triggerProblems(nodes: unknown[], edges: unknown[]): string[] {
   }
   const hasFirstStep = (Array.isArray(edges) ? edges : []).some((e) => (e as RawEdge)?.source === node.id);
   if (!hasFirstStep) problems.push(NO_FIRST_STEP_PROBLEM);
+  // Sin un comentario detras, el paso no tiene a que responder y no manda nada, sin avisar.
+  if (type !== "comment_keyword" && (nodes as RawNode[]).some(isPrivateReplyNode)) problems.push(PRIVATE_REPLY_NEEDS_COMMENT_PROBLEM);
   return problems;
 }

@@ -41,6 +41,7 @@ export const pauseAgentNode: NodeDefinition<PauseAgentNodeData> = {
       .eq("id", context.conversationId);
     if (error) {
       console.error("[flow:pauseAgent] no pude pausar el agente:", error.message);
+      context.noteStep?.({ status: "failed", reason: "No se pudo pausar el agente." });
       return;
     }
 
@@ -76,6 +77,7 @@ export const resumeAgentNode: NodeDefinition<unknown> = {
       .eq("id", context.conversationId);
     if (error) {
       console.error("[flow:resumeAgent] no pude reanudar el agente:", error.message);
+      context.noteStep?.({ status: "failed", reason: "No se pudo reanudar el agente." });
       return;
     }
 

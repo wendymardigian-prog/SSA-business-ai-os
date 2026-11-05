@@ -28,6 +28,8 @@ export interface ComposerInput {
   canSuggest: boolean;
   /** El canal admite stickers (hoy, WhatsApp). */
   canSticker?: boolean;
+  /** El canal manda archivos (`channelAcceptsAnyFile`). Sin el dato, sí: el email es el único que dice que no. */
+  canAttachFiles?: boolean;
 }
 
 export type ComposerMenuAction = "library" | "attach" | "emoji" | "sticker" | "suggest";
@@ -44,15 +46,16 @@ const MENU_ORDER: readonly ComposerMenuAction[] = ["library", "attach", "emoji",
 
 export function planComposerActions(input: ComposerInput): ComposerPlan {
   const free = !input.hasAttachment;
+  const files = input.canAttachFiles !== false;
   const available: Record<ComposerMenuAction, boolean> = {
     // Con un adjunto elegido solo queda el texto que lo acompana (y un emoji para ese texto).
     library: free,
-    attach: free,
+    attach: free && files,
     emoji: true,
     sticker: free && !!input.canSticker,
     suggest: free && input.canSuggest,
   };
   // El microfono solo con el cuadro vacio y sin adjunto: si hay algo para mandar, el principal es enviar.
-  const primary = free && !input.hasText ? "mic" : "send";
+  const primary = free && !input.hasText && files ? "mic" : "send";
   return { primary, menu: MENU_ORDER.filter((action) => available[action]) };
 }

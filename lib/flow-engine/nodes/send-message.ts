@@ -34,6 +34,7 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
     // saltea con motivo y el flow sigue, en vez de romperse a la mitad.
     if (!context.channelId) {
       console.warn(`[flow-engine] el flow ${context.flowId} no tiene canal: se saltea el envio del nodo ${node.id}`);
+      context.noteStep?.({ status: "skipped", reason: "Esta ejecución no tiene un canal por donde mandar el mensaje." });
       return;
     }
 
@@ -45,7 +46,10 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
         .select("platform")
         .eq("id", context.channelId)
         .single();
-      if (!channel) return;
+      if (!channel) {
+        context.noteStep?.({ status: "skipped", reason: "El canal ya no existe." });
+        return;
+      }
       context.platform = channel.platform as FlowExecutionContext["platform"];
     }
 
@@ -237,6 +241,7 @@ async function sendFirstMessageAsPrivateReply(
     });
   } catch (error) {
     console.error("Failed to send comment-context message as private reply:", error);
+    context.noteStep?.({ status: "failed", reason: "No se pudo mandar la respuesta por privado." });
     await supabase.from("messages").insert(
       outboundMessageRow({
         conversationId: context.conversationId,

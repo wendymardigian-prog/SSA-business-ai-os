@@ -35,3 +35,18 @@ describe("botones del composer", () => {
           expect(planComposerActions({ hasAttachment, hasText, canSuggest }).menu).toContain("emoji");
   });
 });
+
+describe("un canal que no manda archivos (email)", () => {
+  it("no ofrece micrófono ni adjuntar; el resto del menú sigue", () => {
+    expect(planComposerActions({ hasAttachment: false, hasText: false, canSuggest: true, canAttachFiles: false })).toEqual({
+      primary: "send",
+      menu: ["library", "emoji", "suggest"],
+    });
+  });
+
+  it("sin el dato, igual que siempre: WhatsApp e Instagram no cambian", () => {
+    const base = { hasAttachment: false, hasText: false, canSuggest: false };
+    expect(planComposerActions({ ...base, canAttachFiles: true })).toEqual(planComposerActions(base));
+    expect(planComposerActions(base).primary).toBe("mic");
+  });
+});

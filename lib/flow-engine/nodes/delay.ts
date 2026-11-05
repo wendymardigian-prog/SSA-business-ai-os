@@ -93,9 +93,13 @@ export const delayNode: NodeDefinition<DelayNodeData> = {
     // La zona se pregunta solo si hace falta: un "Esperar" por duracion no hace ninguna consulta de mas.
     const tz = data.waitUntilLocal ? await businessTimeZone(supabase, context.workspaceId) : "UTC";
     const plan = delayPlan(data, Date.now(), tz);
-    if (plan.kind === "date_passed") return SKIP_NEXT_STEP;
+    if (plan.kind === "date_passed") {
+      context.noteStep?.({ status: "ok", reason: "La fecha ya había pasado: se salteó el paso siguiente." });
+      return SKIP_NEXT_STEP;
+    }
     if (plan.kind === "none") {
       console.warn(`[flow-engine] el "Esperar" ${node.id} no tiene duracion ni una fecha valida: el flujo sigue sin esperar`);
+      context.noteStep?.({ status: "skipped", reason: "La espera no tiene duración ni una fecha válida." });
       return;
     }
     const runAt = plan.at.toISOString();
@@ -126,6 +130,7 @@ export const delayNode: NodeDefinition<DelayNodeData> = {
       .update({ waiting_until: runAt, current_node_id: node.id })
       .eq("id", sessionId);
 
+    context.noteStep?.({ status: "waiting", resumesAt: runAt });
     return "pause";
   },
 };
@@ -170,6 +175,7 @@ export const smartDelayNode: NodeDefinition<SmartDelayNodeData> = {
       .update({ waiting_for_input: true, current_node_id: node.id, variables: (context.variables ?? {}) as Json })
       .eq("id", sessionId);
 
+    context.noteStep?.({ status: "waiting", resumesAt: runAt });
     return "pause";
   },
 };

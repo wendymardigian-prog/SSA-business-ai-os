@@ -20,6 +20,7 @@
  */
 
 import { resolveVariablePath } from "@/lib/flow-engine/interpolate";
+import { fallbackText, needsFallback } from "@/lib/templates/fallback";
 
 export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -32,8 +33,10 @@ export function isHtmlTemplate(template: string): boolean {
 
 /** Como `interpolateVariables`, pero cada valor se escapa: el resultado es HTML seguro. */
 export function interpolateHtml(template: string, variables: Record<string, unknown>): string {
-  return template.replace(/\{\{([\w-]+(?:\.[\w-]+)*)\}\}/g, (token, path: string) => {
+  return template.replace(/\{\{([\w-]+(?:\.[\w-]+)*)(?:\s*\|([^{}]*))?\}\}/g, (token, path: string, fallback?: string) => {
     const value = resolveVariablePath(variables, path);
+    // El respaldo es parte de la plantilla, no un dato de la persona: lo limpia `sanitizeEmailHtml` como el resto.
+    if (fallback !== undefined && needsFallback(path, value)) return fallbackText(fallback);
     if (value === null || value === undefined) return token;
     return escapeHtml(typeof value === "object" ? JSON.stringify(value) : String(value));
   });

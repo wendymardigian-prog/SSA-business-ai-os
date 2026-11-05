@@ -6,7 +6,7 @@ import { listAssets } from "@/lib/actions/response-assets";
 import { getEmailAttachmentContext } from "@/lib/actions/flows";
 import { toBankAsset, type BankAsset, type BankAssetRow } from "@/lib/response-assets/list";
 import { ASSET_KIND_LABEL, FILE_KINDS } from "@/lib/response-assets/kind";
-import { attachmentBudget, formatMegabytes, MAX_EMAIL_ATTACHMENTS, parseEmailAttachments, type EmailAttachmentRef } from "@/lib/email/attachment-limits";
+import { attachmentBudget, EMAIL_PICKABLE_KINDS, formatMegabytes, MAX_EMAIL_ATTACHMENTS, parseEmailAttachments, type EmailAttachmentRef } from "@/lib/email/attachment-limits";
 import { matchesQuery } from "@/lib/flows/search";
 import { AssetFormDialog } from "@/components/response-assets/asset-form-dialog";
 
@@ -55,7 +55,7 @@ export function EmailAttachmentsField({ value, onChange }: { value: unknown; onC
     };
   }, []);
 
-  const files = useMemo(() => (assets ?? []).filter((a) => FILE_KINDS.includes(a.kind) && a.isActive), [assets]);
+  const files = useMemo(() => (assets ?? []).filter((a) => EMAIL_PICKABLE_KINDS.includes(a.kind) && a.isActive), [assets]);
   const byId = useMemo(() => new Map((assets ?? []).map((a) => [a.id, a])), [assets]);
   const sizes = chosen.map((c) => byId.get(c.assetId)?.sizeBytes ?? c.sizeBytes ?? 0);
   const budget = attachmentBudget(sizes);
@@ -121,7 +121,7 @@ export function EmailAttachmentsField({ value, onChange }: { value: unknown; onC
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar un archivo, imagen, audio o video…"
+              placeholder="Buscar un archivo o una imagen…"
               className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2 text-xs focus:border-primary-edge focus:outline-none"
             />
           </label>

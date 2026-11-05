@@ -86,6 +86,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, una reunión, un formulario, un pago…", // @plantilla-quitar(ventas,formularios)
     // @plantilla-sin(ventas,formularios): tooltip: "Lo que el sistema hace solo cuando pasa algo: un mensaje, un comentario, una reunión, una etiqueta…",
   },
+  "/dashboard/flows/[flowId]/ejecuciones": {
+    title: "Ejecuciones",
+    tooltip: "Quién pasó por esta automatización, cuándo, cómo terminó y qué pasó en cada paso.",
+  },
   "/dashboard/flows/templates": {
     title: "Plantillas de automatizaciones",
     tooltip: "Automatizaciones armadas para copiar y ajustar.",

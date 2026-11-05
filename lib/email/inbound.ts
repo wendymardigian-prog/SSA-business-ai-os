@@ -22,6 +22,7 @@ import { upsertContactForSender } from "@/lib/inbox-sync";
 import { touchAccountOf } from "@/lib/inbox/accounts";
 import { messagePreview } from "@/lib/message-preview";
 import { applyOptOut, insertMessage, upsertConversation, type ChannelRow } from "@/lib/inbound";
+import { splitQuotedReply, withoutQuotedLines } from "./quoted-reply";
 import { detectAutomatic } from "./auto-detect";
 import { bareAddress } from "./reply";
 import { ATTACHMENTS_BUCKET } from "./buckets";
@@ -130,8 +131,13 @@ export function safeName(filename: string): string {
     .slice(0, 120);
 }
 
+/** Lo que escribió la persona, sin ninguna cita: es lo que miran los disparadores de email. */
+export function emailReplyText(email: Pick<InboundEmail, "text" | "html">): string {
+  return withoutQuotedLines(splitQuotedReply(bodyText(email)).reply);
+}
+
 /**
- * El texto que se muestra en la bandeja.
+ * El texto entero del correo, con lo que haya citado.
  *
  * El texto plano primero; el HTML, desarmado, como ultimo recurso. Un
  * correo solo en HTML mostrado crudo es una pared de etiquetas.
@@ -196,7 +202,8 @@ export async function processInboundEmail(
     fetchImpl: params.fetchImpl,
   });
 
-  const text = bodyText(email);
+  // Lo que escribió la persona, sin lo que su correo citó: la cita se guarda aparte y se abre desde la burbuja.
+  const { reply: text, quoted } = splitQuotedReply(bodyText(email));
   const preview = messagePreview(email.subject ? `${email.subject}: ${text}` : text) || "";
 
   // Un correo automatico no crea contacto: seria una persona que no existe.
@@ -280,6 +287,7 @@ export async function processInboundEmail(
       from: email.from,
       to: email.to,
       cc: email.cc,
+      quotedText: quoted,
     },
   });
 
@@ -304,12 +312,13 @@ export async function processInboundEmail(
     console.error("[email] el toque de atribución falló:", err instanceof Error ? err.message : err);
   }
 
-  // Opt-out: alguien que responde "desuscribir" tiene que dejar de recibir.
+  // Opt-out: alguien que responde "desuscribir" tiene que dejar de recibir. Una cita no es un pedido: responder
+  // "gracias" a un email que trae el pie «Darme de baja» no da de baja a nadie.
   await applyOptOut({
     supabase,
     contactId: contact.contactId,
     conversationId: conversation.id,
-    text,
+    text: withoutQuotedLines(text),
   });
 
   return {

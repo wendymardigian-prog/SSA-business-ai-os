@@ -86,6 +86,11 @@ describe("isSafeStoragePath", () => {
 });
 
 describe("safeFilename", () => {
+  it("saca los acentos sin partir la palabra", () => {
+    expect(safeFilename("Cotización Año 2026")).toBe("Cotizacion-Ano-2026");
+    expect(safeFilename("Guía de niños.pdf")).toBe("Guia-de-ninos.pdf");
+  });
+
   it("saca lo que no sirve en un path", () => {
     expect(safeFilename("mi foto (1).jpg")).toBe("mi-foto-1-.jpg");
     expect(safeFilename("../../etc/passwd")).toBe("etc-passwd");

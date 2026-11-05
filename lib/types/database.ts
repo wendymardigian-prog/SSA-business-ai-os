@@ -2088,6 +2088,47 @@ export interface Database {
           },
         ];
       };
+      flow_session_steps: {
+        Row: {
+          id: string;
+          seq: number;
+          session_id: string;
+          flow_id: string;
+          node_id: string;
+          node_type: string;
+          node_label: string;
+          status: "ok" | "failed" | "skipped" | "waiting" | "deferred";
+          exit_label: string | null;
+          reason: string | null;
+          resumes_at: string | null;
+          started_at: string;
+          finished_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          flow_id: string;
+          node_id: string;
+          node_type: string;
+          node_label: string;
+          status: "ok" | "failed" | "skipped" | "waiting" | "deferred";
+          exit_label?: string | null;
+          reason?: string | null;
+          resumes_at?: string | null;
+          started_at: string;
+          finished_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "flow_session_steps_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "flow_sessions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       flow_sessions: {
         Row: {
           id: string;
@@ -2109,6 +2150,16 @@ export interface Database {
           waiting_until: string | null;
           waiting_for_input: boolean;
           human_takeover_at: string | null;
+          /** Cuando dejo de estar activa (trigger, 00292). Null en lo que termino antes de esa migracion. */
+          finished_at: string | null;
+          /** Por que termino, como codigo (SessionEndReason, lib/flow-engine/run-log.ts). */
+          end_reason: string | null;
+          /** El error que la corto, saneado. */
+          error_message: string | null;
+          /** Algun paso fallo sin cortar la ejecucion. */
+          has_failed_step: boolean;
+          /** La version publicada del flujo con la que arranco. */
+          flow_version: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -2141,6 +2192,10 @@ export interface Database {
           waiting_until?: string | null;
           waiting_for_input?: boolean;
           human_takeover_at?: string | null;
+          end_reason?: string | null;
+          error_message?: string | null;
+          has_failed_step?: boolean;
+          flow_version?: number | null;
           updated_at?: string;
         };
         Relationships: [
@@ -2356,6 +2411,7 @@ export interface Database {
           email_references: string | null;
           email_from: string | null;
           email_to: Json | null;
+          email_quoted_text: string | null;
           email_cc: Json | null;
           // ── Media del chat (00102 y 00103) ──────────────────────────────
           /** Descripcion de la imagen hecha por el modelo de vision (F8). */
@@ -2406,6 +2462,7 @@ export interface Database {
           email_references?: string | null;
           email_from?: string | null;
           email_to?: Json | null;
+          email_quoted_text?: string | null;
           email_cc?: Json | null;
           media_description?: string | null;
           interpretability?: MessageInterpretability;

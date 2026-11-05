@@ -23,6 +23,7 @@ import type { MediaEntry } from "@/lib/content/media";
 import { cleanupChatMedia } from "@/lib/chat-media/cleanup-run";
 import { cleanupContactAvatars } from "@/lib/contacts/avatar-cleanup";
 import { cleanupOrphanedAssetFiles } from "@/lib/response-assets/cleanup";
+import { sweepFlowStepHistory } from "@/lib/flows/runs-cleanup";
 import { sweepInboundRetention } from "@/lib/webhooks/sweep"; // @plantilla-quitar(webhooks)
 
 export async function GET(request: NextRequest) {
@@ -125,6 +126,9 @@ export async function GET(request: NextRequest) {
   // archivo): nunca deberia tener trabajo, porque el borrado ya es inmediato.
   const assets = await cleanupOrphanedAssetFiles(supabase, now);
 
+  // El detalle de pasos de las automatizaciones (00292): 12 meses. La fila de la ejecucion queda.
+  const flowStepsDeleted = await sweepFlowStepHistory(supabase, now);
+
   // @plantilla-desde(webhooks)
   // La retencion de los webhooks entrantes (Extra L, F7): el payload se vacia a los 90 dias y la
   // fila se borra a los 12 meses. Mismo criterio: es diaria y ya esta en la allowlist del cron.
@@ -134,6 +138,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     cleanedPosts,
+    flowStepsDeleted,
     // @plantilla-desde(webhooks)
     webhookPayloadsCleared: webhooks.cleared,
     webhooksDeleted: webhooks.deleted,

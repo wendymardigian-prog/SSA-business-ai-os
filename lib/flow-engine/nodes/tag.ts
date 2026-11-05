@@ -13,6 +13,7 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<TagN
   const name = interpolateVariables(String(data.tagName ?? ""), context.variables ?? {}).trim().slice(0, 100);
   if (!name || /\{\{[^}]*\}\}/.test(name)) {
     console.warn(`[flow-engine] el paso ${node.id} no tiene una etiqueta valida: se saltea`);
+    context.noteStep?.({ status: "skipped", reason: "El paso no tiene una etiqueta válida." });
     return;
   }
   // Agregar o quitar sale del TIPO del paso. El lienzo guarda `{ actionType: "addTag" }` sin `action`, y antes se miraba

@@ -9,6 +9,7 @@ import { pickPath, type BranchNodeData, type FieldValue } from "./condition-eval
 import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
 import { resolveWhatsAppTarget } from "./whatsapp-target";
 import { pickSplitIndex, splitHandle } from "./nodes/ab-split";
+import { fallbackText, needsFallback } from "@/lib/templates/fallback";
 
 /** Los mismos alias de salida que el motor (`engine.ts`): las condiciones viejas dibujaban `yes`/`no`. */
 const SIM_HANDLE_ALIASES: Record<string, string> = { yes: "true", no: "false" };
@@ -107,8 +108,9 @@ function interpolate(
   text: string,
   variables: Record<string, string>
 ): string {
-  return text.replace(/\{\{([\w-]+(?:\.[\w-]+)*)\}\}/g, (token, path: string) => {
+  return text.replace(/\{\{([\w-]+(?:\.[\w-]+)*)(?:\s*\|([^{}]*))?\}\}/g, (token, path: string, fallback?: string) => {
     const value = resolvePath(variables, path);
+    if (fallback !== undefined && needsFallback(path, value)) return fallbackText(fallback);
     if (value === null || value === undefined) return token;
     return typeof value === "object" ? JSON.stringify(value) : String(value);
   });

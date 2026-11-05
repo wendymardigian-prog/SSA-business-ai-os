@@ -1,6 +1,7 @@
 import type { AutomationSource } from "./registry/types";
 import type { NodeType, Platform } from "@/lib/types/database";
 import type { BranchNodeData } from "./condition-eval";
+import type { StepNote } from "./run-log";
 
 export type { BranchNodeData };
 
@@ -148,6 +149,8 @@ export interface PrivateReplyNodeData {
   /** Text to send as a private DM to the commenter. Supports {{variable}} interpolation. */
   text: string;
   imageUrl?: string;
+  /** Hasta tres botones que abren un link. Instagram puede rechazarlos si la persona no sigue la cuenta. */
+  buttons?: Array<{ type: "url"; title: string; url: string }>;
 }
 
 export interface AiResponseNodeData {
@@ -223,6 +226,11 @@ export interface FlowExecutionContext {
    * (los flujos de webhook lo anotan en el historial del envío). Nunca lanza.
    */
   onStepSkipped?: (step: { nodeId: string; nodeType: string; label: string }) => void;
+  /**
+   * Lo que el paso que está corriendo le cuenta al historial de ejecuciones (00292): un fallo que NO lanza (un mensaje
+   * rechazado), un salto con su motivo, la hora a la que se retoma. Lo pone el motor antes de cada paso. Nunca lanza.
+   */
+  noteStep?: (note: StepNote) => void;
   /**
    * Lo que pasó en el paso «Crear o actualizar contacto» (el contacto, el diff, el conflicto, el toque):
    * los flujos de webhook lo guardan en el historial del envío. Nunca lanza.
