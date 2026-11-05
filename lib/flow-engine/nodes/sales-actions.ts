@@ -93,21 +93,27 @@ export const markPaymentPaidNode: NodeDefinition<MarkPaymentPaidNodeData> = {
   async execute({ supabase, data, context, node }: NodeExecutionArgs<MarkPaymentPaidNodeData>) {
     if (data.confirmed !== true) {
       console.warn(`[flow-engine] el nodo ${node.id} no cobra: falta la confirmación en el editor`);
+      context.noteStep?.({ status: "skipped", reason: "Falta la confirmación en el paso." });
       return;
     }
     const core = await loadCore(supabase, context, true);
     if (!core) {
       console.warn(`[flow-engine] el nodo ${node.id} quiere cobrar un pago y el flujo no arrancó por uno`);
+      context.noteStep?.({ status: "skipped", reason: "Esta ejecución no arrancó por un pago." });
       return;
     }
     const method = data.method && core.enabledMethods.includes(data.method) ? data.method : core.enabledMethods[0];
     if (!method) {
       console.warn(`[flow-engine] el nodo ${node.id} no cobra: no hay ningún método de pago habilitado`);
+      context.noteStep?.({ status: "skipped", reason: "No hay ningún método de pago habilitado." });
       return;
     }
     const { flowName, ...rest } = core;
     const result = await markPaidCore({ ...rest, actor: { kind: "system", label: flowName } }, { method });
-    if (!result.ok) console.warn(`[flow-engine] no pude cobrar el pago ${core.payment.id}: ${result.error}`);
+    if (!result.ok) {
+      console.warn(`[flow-engine] no pude cobrar el pago ${core.payment.id}: ${result.error}`);
+      context.noteStep?.({ status: "failed", reason: result.error });
+    }
   },
 };
 
@@ -120,11 +126,13 @@ export const reschedulePaymentNode: NodeDefinition<ReschedulePaymentNodeData> = 
     const days = Math.floor(Number(data.days));
     if (!(days >= 1 && days <= 90)) {
       console.warn(`[flow-engine] el nodo ${node.id} no reprograma: los días a sumar tienen que ir de 1 a 90`);
+      context.noteStep?.({ status: "skipped", reason: "Los días a sumar tienen que ir de 1 a 90." });
       return;
     }
     const core = await loadCore(supabase, context, true);
     if (!core || !core.payment.due_date) {
       console.warn(`[flow-engine] el nodo ${node.id} quiere reprogramar un pago y el flujo no arrancó por uno`);
+      context.noteStep?.({ status: "skipped", reason: "Esta ejecución no arrancó por un pago." });
       return;
     }
     const { flowName, ...rest } = core;
@@ -132,7 +140,10 @@ export const reschedulePaymentNode: NodeDefinition<ReschedulePaymentNodeData> = 
       { ...rest, actor: { kind: "system", label: flowName } },
       { newDate: addDays(core.payment.due_date, days), reason: interpolateVariables(data.reason ?? "", context.variables ?? {}).trim() || DEFAULT_RESCHEDULE_REASON },
     );
-    if (!result.ok) console.warn(`[flow-engine] no pude reprogramar el pago ${core.payment.id}: ${result.error}`);
+    if (!result.ok) {
+      console.warn(`[flow-engine] no pude reprogramar el pago ${core.payment.id}: ${result.error}`);
+      context.noteStep?.({ status: "failed", reason: result.error });
+    }
   },
 };
 
@@ -145,16 +156,21 @@ export const setSaleStatusNode: NodeDefinition<SetSaleStatusNodeData> = {
     // Solo dos destinos: cancelar es definitivo y la baja de una suscripción también; el resto del estado se deriva de los pagos.
     if (data.status !== "cancelled" && data.status !== "subscription_cancelled") {
       console.warn(`[flow-engine] el nodo ${node.id} no cambia la venta: solo puede ir a cancelada o a suscripción dada de baja`);
+      context.noteStep?.({ status: "skipped", reason: "La venta solo puede pasar a cancelada o a suscripción dada de baja." });
       return;
     }
     const core = await loadCore(supabase, context, false);
     if (!core) {
       console.warn(`[flow-engine] el nodo ${node.id} quiere cambiar una venta y el flujo no arrancó por una`);
+      context.noteStep?.({ status: "skipped", reason: "Esta ejecución no arrancó por una venta." });
       return;
     }
     const { flowName, payment: _payment, ...rest } = core;
     void _payment;
     const result = await cancelSaleAsSystem({ ...rest, actor: { kind: "system", label: flowName } }, { to: data.status, reason: interpolateVariables(data.reason ?? "", context.variables ?? {}).trim() || "Cambiado por una automatización" });
-    if (!result.ok) console.warn(`[flow-engine] no pude cambiar la venta ${core.sale.id}: ${result.error}`);
+    if (!result.ok) {
+      console.warn(`[flow-engine] no pude cambiar la venta ${core.sale.id}: ${result.error}`);
+      context.noteStep?.({ status: "failed", reason: result.error });
+    }
   },
 };

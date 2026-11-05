@@ -39,15 +39,25 @@ export const commentReplyNode: NodeDefinition<CommentReplyNodeData> = {
   label: "Responder el comentario",
   async execute({ supabase, data, context }: NodeExecutionArgs<CommentReplyNodeData>) {
     const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
-    if (!apiKey) return;
+    if (!apiKey) {
+      context.noteStep?.({ status: "skipped", reason: "Zernio no está conectado." });
+      return;
+    }
 
     const lateAccountId = await resolveAccount(supabase, context);
-    if (!lateAccountId) return;
+    if (!lateAccountId) {
+      context.noteStep?.({ status: "skipped", reason: "No se encontró la cuenta del canal." });
+      return;
+    }
 
     const { commentId, postId } = resolveComment(context);
-    if (!commentId) return;
+    if (!commentId) {
+      context.noteStep?.({ status: "skipped", reason: "Esta ejecución no arrancó por un comentario." });
+      return;
+    }
     if (!postId) {
       console.error("No post_id in context variables for commentReply node");
+      context.noteStep?.({ status: "skipped", reason: "No se encontró la publicación del comentario." });
       return;
     }
 
@@ -60,6 +70,7 @@ export const commentReplyNode: NodeDefinition<CommentReplyNodeData> = {
       });
     } catch (error) {
       console.error("Failed to post comment reply:", error);
+      context.noteStep?.({ status: "failed", reason: "No se pudo responder el comentario." });
     }
   },
 };
@@ -71,15 +82,25 @@ export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
   label: "Responder por privado",
   async execute({ supabase, data, context, node }: NodeExecutionArgs<PrivateReplyNodeData>) {
     const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
-    if (!apiKey) return;
+    if (!apiKey) {
+      context.noteStep?.({ status: "skipped", reason: "Zernio no está conectado." });
+      return;
+    }
 
     const lateAccountId = await resolveAccount(supabase, context);
-    if (!lateAccountId) return;
+    if (!lateAccountId) {
+      context.noteStep?.({ status: "skipped", reason: "No se encontró la cuenta del canal." });
+      return;
+    }
 
     const { commentId, postId } = resolveComment(context);
-    if (!commentId) return;
+    if (!commentId) {
+      context.noteStep?.({ status: "skipped", reason: "Esta ejecución no arrancó por un comentario." });
+      return;
+    }
     if (!postId) {
       console.error("No post_id in context variables for privateReply node");
+      context.noteStep?.({ status: "skipped", reason: "No se encontró la publicación del comentario." });
       return;
     }
 
@@ -104,6 +125,7 @@ export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
       );
     } catch (error) {
       console.error("Failed to send private reply:", error);
+      context.noteStep?.({ status: "failed", reason: "No se pudo mandar la respuesta por privado." });
       await supabase.from("messages").insert(
         outboundMessageRow({
           conversationId: context.conversationId,

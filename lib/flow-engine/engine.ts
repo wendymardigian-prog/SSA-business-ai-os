@@ -6,6 +6,7 @@ import { SKIP_NEXT_STEP } from "./wait-until";
 import { messageOriginVariables } from "@/lib/messages/origin-context";
 import { seedContactVariables } from "./variable-catalog";
 import type { AutomationSource, FlowRuntime } from "./registry/types";
+import { finalStepStatus, mergeStepNote, noteSessionEnd, noteSessionVersion, recordStep, stepExitLabel, stepLabel, type SessionEndReason, type StepNote } from "./run-log";
 
 /**
  * Lo que el motor le presta a los nodos que necesitan arrancar otro flow.
@@ -161,7 +162,7 @@ export async function executeFlow(
   }
 
   // Create session
-  const { data: session } = await supabase
+  const { data: session, error: sessionError } = await supabase
     .from("flow_sessions")
     .insert({
       contact_id: context.contactId,
@@ -182,7 +183,13 @@ export async function executeFlow(
     .select("id")
     .single();
 
-  if (!session) return;
+  if (!session) {
+    // Sin sesion el flujo no corre: antes pasaba sin dejar ningun rastro.
+    console.error(`[flow-engine] no pude crear la sesion del flujo ${context.flowId} (code=${sessionError?.code ?? "?"})`);
+    return;
+  }
+
+  await noteSessionVersion(supabase, session.id, flow.version);
 
   // Track flow_started
   await supabase.from("analytics_events").insert({
@@ -268,6 +275,7 @@ async function runTraversal(
       event_type: "flow_failed",
       metadata: { sessionId },
     });
+    await noteSessionEnd(supabase, sessionId, "step_failed", err);
     throw err;
   }
 }
@@ -318,7 +326,8 @@ export async function resumeSession(
     await cancelUnresumableSession(
       supabase,
       session.id,
-      `flow ${session.flow_id} no longer exists`
+      `flow ${session.flow_id} no longer exists`,
+      "flow_deleted"
     );
     return;
   }
@@ -326,7 +335,7 @@ export async function resumeSession(
   // Un flujo despublicado (o archivado) no sigue: antes una sesion parada en un "Esperar" seguia corriendo despues de
   // apagar la automatizacion.
   if (flow.status !== "published") {
-    await cancelUnresumableSession(supabase, session.id, `flow ${session.flow_id} is not published`);
+    await cancelUnresumableSession(supabase, session.id, `flow ${session.flow_id} is not published`, "flow_unpublished");
     return;
   }
 
@@ -403,7 +412,8 @@ export async function resumeSession(
     await cancelUnresumableSession(
       supabase,
       session.id,
-      `node ${session.current_node_id} no longer exists in flow ${session.flow_id}`
+      `node ${session.current_node_id} no longer exists in flow ${session.flow_id}`,
+      "node_removed"
     );
     return;
   }
@@ -454,7 +464,8 @@ export function restoreOriginFromSession(
 async function cancelUnresumableSession(
   supabase: SupabaseClient<Database>,
   sessionId: string,
-  reason: string
+  reason: string,
+  endReason: SessionEndReason
 ) {
   console.error(`Cancelling flow session ${sessionId}: ${reason}`);
   const { error } = await supabase
@@ -470,6 +481,7 @@ async function cancelUnresumableSession(
       `session ${sessionId} could not be cancelled (${reason}): ${error.message}`
     );
   }
+  await noteSessionEnd(supabase, sessionId, endReason);
 }
 
 async function traverseNodes(
@@ -491,6 +503,7 @@ async function traverseNodes(
       event_type: "flow_depth_limit",
       metadata: { nodeId: node.id, limit: MAX_TRAVERSAL_DEPTH },
     });
+    await noteSessionEnd(supabase, sessionId, "depth_limit");
     await completeSession(supabase, sessionId);
     return;
   }
@@ -509,8 +522,35 @@ async function traverseNodes(
     metadata: { nodeId: node.id, nodeType: node.type },
   });
 
-  // Execute the node
-  const result = await executeNode(supabase, node, context, sessionId);
+  // Execute the node. Lo que el paso avise (un envio rechazado no lanza) se junta aca y queda en el historial, tanto si
+  // termina bien como si revienta.
+  const startedAt = new Date().toISOString();
+  let note: StepNote | null = null;
+  context.noteStep = (next) => {
+    note = mergeStepNote(note, next);
+  };
+  const logStep = (status: StepNote["status"], extra: { exit?: unknown; reason?: unknown } = {}) =>
+    recordStep(supabase, {
+      sessionId,
+      flowId: context.flowId,
+      nodeId: node.id,
+      nodeType: getNode(node)?.type ?? String(node.type),
+      label: stepLabel(node.data, getNode(node)?.label ?? String(node.type)),
+      status,
+      exitLabel: stepExitLabel(node.data, extra.exit),
+      reason: extra.reason ?? (note as StepNote | null)?.reason ?? null,
+      resumesAt: (note as StepNote | null)?.resumesAt ?? null,
+      startedAt,
+    });
+
+  let result: Awaited<ReturnType<typeof executeNode>>;
+  try {
+    result = await executeNode(supabase, node, context, sessionId);
+  } catch (err) {
+    await logStep("failed", { reason: err });
+    throw err;
+  }
+  await logStep(finalStepStatus(note as StepNote | null, result), { exit: result });
 
   // Los nodos que escriben variables las guardan en la sesion para que
   // sobrevivan a una pausa (resumeSession las vuelve a leer de ahi). Cual lo
@@ -586,6 +626,17 @@ async function skipNextStep(
   }
 
   const definition = getNode(skipped);
+  const skippedAt = new Date().toISOString();
+  await recordStep(supabase, {
+    sessionId,
+    flowId: context.flowId,
+    nodeId: skipped.id,
+    nodeType: definition?.type ?? String(skipped.type),
+    label: stepLabel(skipped.data, definition?.label ?? String(skipped.type)),
+    status: "skipped",
+    reason: "La fecha de la espera anterior ya había pasado.",
+    startedAt: skippedAt,
+  });
   await supabase.from("analytics_events").insert({
     workspace_id: context.workspaceId,
     flow_id: context.flowId,
@@ -633,6 +684,7 @@ async function executeNode(
         (node.data as { actionType?: string } | undefined)?.actionType ?? "-"
       }"). El flow sigue de largo.`
     );
+    context.noteStep?.({ status: "skipped", reason: "El sistema no reconoce este paso." });
     return;
   }
 
@@ -652,6 +704,7 @@ async function executeNode(
       event_type: "node_skipped",
       metadata: { nodeId: node.id, nodeType: definition.type, reason: "Este paso necesita un contacto y este flujo no tiene" },
     });
+    context.noteStep?.({ status: "skipped", reason: "Este paso necesita un contacto y este flujo no tiene." });
     try {
       const label = (node.data as { label?: unknown } | undefined)?.label;
       context.onStepSkipped?.({ nodeId: node.id, nodeType: definition.type, label: typeof label === "string" && label.trim() ? label.trim() : definition.label });
@@ -686,6 +739,7 @@ export async function expireWaitingSession(supabase: SupabaseClient<Database>, s
     .select("id");
   if (error) throw new FlowLoadError(`session ${sessionId} could not be expired: ${error.message}`);
   if (!data || data.length === 0) return false;
+  await noteSessionEnd(supabase, sessionId, "wait_expired");
   await completeSession(supabase, sessionId);
   return true;
 }

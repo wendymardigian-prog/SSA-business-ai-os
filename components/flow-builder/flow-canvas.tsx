@@ -19,7 +19,7 @@ import "@xyflow/react/dist/style.css";
 
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2, Info, Undo2 } from "lucide-react";
+import { Activity, ArrowLeft, Save, Rocket, Loader2, History, Play, Trash2, Info, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { flowFingerprint } from "@/lib/unsaved-changes";
 import { useUnsavedChanges } from "@/lib/hooks/use-unsaved-changes";
@@ -556,29 +556,11 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             Versiones
           </button>
           <button
-            onClick={() => {
-              const exportData = {
-                name: flowName,
-                description: details.description || null,
-                categories: details.categories,
-                nodes,
-                edges,
-                version: flow.version || 1,
-                exportedAt: new Date().toISOString(),
-                source: "business-os",
-              };
-              const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `${flowName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.flow.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
+            onClick={() => unsaved.guard(() => router.push(`/dashboard/flows/${flow.id}/ejecuciones`))}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
           >
-            <Download className="h-3.5 w-3.5" />
-            Exportar
+            <Activity className="h-3.5 w-3.5" />
+            Ejecuciones
           </button>
           <button
             onClick={handleSave}

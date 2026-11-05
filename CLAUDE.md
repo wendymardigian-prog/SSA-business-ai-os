@@ -1793,6 +1793,27 @@ node scripts/verify-email-subscription.mjs   # bloque 11: la guardia (SQL = TS, 
 node scripts/verify-broadcasts.mjs           # bloque 4b: primero los más activos
 ```
 
+# Historial de ejecuciones de las automatizaciones (4/11/2026)
+
+Cada automatización tiene su pantalla de ejecuciones (`/dashboard/flows/[flowId]/ejecuciones`): quién pasó, cuándo, cómo terminó y qué pasó en cada paso. «Exportar» salió del editor y queda en la tarjeta de la lista. Detalle en [docs/flow-registry.md](docs/flow-registry.md) («Historial de ejecuciones»).
+
+## Lo que no se puede romper
+
+- **Anotar nunca frena un flujo.** `lib/flow-engine/run-log.ts` no lanza y escribe aparte de los cambios de `status`: sin la migración, los flujos corren igual, solo que sin historial.
+- **Un paso que falla o se saltea sin lanzar avisa** con `context.noteStep`, o queda como «Salió bien». `run-history-boundary.test.ts` lo controla para los nodos que anotan en `analytics_events`; una salida silenciosa nueva también tiene que avisar.
+- **`reason` y `error_message` pasan por `sanitizeRunText`**: sin emails, teléfonos, ni el camino o los parámetros de una URL.
+- **Quién ve qué lo decide la base** (`can_see_flow_session`: `flows.view` y poder ver el contacto). **`flow_sessions.variables` no se lee con la sesión: nunca `select("*")` sobre `flow_sessions` con la sesión.** Una columna nueva para la pantalla se suma al `GRANT` de la migración.
+- **`flow_session_steps` no lleva `contact_id`**, a propósito: `merge_contacts` no la tiene que tocar.
+- **Los pasos se borran a los 12 meses; la fila de `flow_sessions` nunca por retención**: «Una sola vez por contacto» la mira.
+
+## Migración
+
+`00290_flow_run_history` (aditiva): va **ANTES** de desplegar el código. Ensayada contra la base real en una transacción que se deshizo sola; **todavía sin aplicar** en producción. Reemplaza la política de lectura de `flow_sessions`, con la vieja en su cabecera. Un Member pasa a ver solo las ejecuciones de sus contactos. La `00289` la usa otra rama. **La próxima libre es la `00291`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-flow-runs.mjs   # después de aplicar la 00290
+```
+
 # Esperar hasta y una sola vez por contacto (4/11/2026, sin migración)
 
 Lo que hizo falta para los recordatorios de una clase con fecha fija. Detalle en [docs/flow-registry.md](docs/flow-registry.md).
