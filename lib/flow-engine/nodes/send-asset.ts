@@ -28,6 +28,7 @@ export interface SendAssetNodeData {
 async function execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<SendAssetNodeData>) {
   if (!data.assetId) {
     console.warn(`[flow-engine] el nodo ${node.id} (Enviar recurso) no tiene un recurso elegido`);
+    context.noteStep?.({ status: "skipped", reason: "El paso no tiene un recurso elegido." });
     return;
   }
 
@@ -56,6 +57,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   }
   if (!result.ok) {
     console.warn(`[flow-engine] el nodo ${node.id} (Enviar recurso) no mandó el recurso: ${result.reason}`);
+    context.noteStep?.({ status: result.status === "skipped" ? "skipped" : "failed", reason: result.reason });
   }
 }
 

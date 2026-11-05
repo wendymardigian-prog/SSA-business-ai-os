@@ -42,6 +42,7 @@ export const cancelBookingNode: NodeDefinition<CancelBookingNodeData> = {
     const bookingId = bookingIdOf(context);
     if (!bookingId) {
       console.warn(`[flow-engine] el nodo ${node.id} quiere cancelar una reunión y el flow no arrancó por una`);
+      context.noteStep?.({ status: "skipped", reason: "Esta ejecución no arrancó por una reunión." });
       return;
     }
     const result = await cancelBooking(supabase, {
@@ -52,6 +53,7 @@ export const cancelBookingNode: NodeDefinition<CancelBookingNodeData> = {
     });
     if (!result.ok) {
       console.warn(`[flow-engine] no pude cancelar la reunión ${bookingId}: ${result.reason}`);
+      context.noteStep?.({ status: "failed", reason: result.reason });
     }
   },
 };
@@ -66,6 +68,7 @@ export const setBookingStatusNode: NodeDefinition<SetBookingStatusNodeData> = {
     const status = data.status;
     if (!bookingId || !isBookingStatus(status)) {
       console.warn(`[flow-engine] el nodo ${node.id} no puede cambiar el estado: falta la reunión o el estado no existe`);
+      context.noteStep?.({ status: "skipped", reason: "Falta la reunión o el estado no existe." });
       return;
     }
 
@@ -80,7 +83,10 @@ export const setBookingStatusNode: NodeDefinition<SetBookingStatusNodeData> = {
       .select("id, workspace_id, status, start_at, contact_id, event_type_id, host_user_id")
       .eq("id", bookingId)
       .maybeSingle();
-    if (!booking) return;
+    if (!booking) {
+      context.noteStep?.({ status: "skipped", reason: "La reunión ya no existe." });
+      return;
+    }
 
     const now = new Date();
     const verdict = evaluateTransition(booking.status, status, booking, now);
@@ -88,6 +94,7 @@ export const setBookingStatusNode: NodeDefinition<SetBookingStatusNodeData> = {
       console.warn(
         `[flow-engine] no se puede pasar de ${booking.status} a ${status}: ${verdict.reason ? TRANSITION_REASON_TEXT[verdict.reason] : "no permitido"}`,
       );
+      context.noteStep?.({ status: "skipped", reason: verdict.reason ? TRANSITION_REASON_TEXT[verdict.reason] : "Ese cambio de estado no está permitido." });
       return;
     }
 

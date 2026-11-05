@@ -199,6 +199,13 @@ async function releaseForRerun(db: Db, args: { inbound: InboundForFlows; previou
       .update({ status: "cancelled" })
       .eq("inbound_webhook_id" as never, inbound.id)
       .eq("status", "active");
+    // Aparte del cambio de estado: anotar el motivo nunca puede dejar una sesion viva. Si falla, se ignora.
+    await db
+      .from("flow_sessions")
+      .update({ end_reason: "reprocessed" })
+      .eq("inbound_webhook_id" as never, inbound.id)
+      .eq("status", "cancelled")
+      .is("end_reason", null);
   } catch (err) {
     console.error("[hooks] no pude soltar las claves del envío:", err instanceof Error ? err.message : String(err));
   }

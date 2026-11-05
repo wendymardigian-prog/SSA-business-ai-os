@@ -56,6 +56,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   /** Saltea el paso con el motivo: se anota en el historial del flujo y en el del envío del webhook. Nunca lanza. */
   const skip = async (reason: string, extra: Record<string, unknown> = {}): Promise<void> => {
     console.warn(`[flow-engine] el nodo ${node.id} (${SEND_WHATSAPP_NUMBER_TYPE}) se saltea: ${reason}`);
+    context.noteStep?.({ status: "skipped", reason });
     try {
       await supabase.from("analytics_events").insert({
         workspace_id: context.workspaceId,
@@ -154,6 +155,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     const sendContext = { workspaceId: context.workspaceId, channelId: channel.id, contactId, conversationId, flowId: context.flowId, nodeId: node.id, origin: "flow" as const };
     const outcome = await sendChannelMessage(supabase, sendContext, message);
     await recordSend(supabase, sendContext, outcome.ok ? text : outcome.failure?.message ?? text, outcome);
+    if (!outcome.ok) context.noteStep?.({ status: "failed", reason: outcome.failure?.message ?? "No se pudo mandar el mensaje." });
     await recordInHistory(outcome.ok, outcome.ok ? null : (outcome.failure?.message ?? null));
     return;
   }
@@ -165,6 +167,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     return skip("WhatsApp no está configurado en este entorno.");
   }
   const outcome = await sendEvolutionDirect(supabase, config, channel.evolution_instance, phone, message);
+  if (!outcome.ok) context.noteStep?.({ status: "failed", reason: outcome.failure?.message ?? "No se pudo mandar el mensaje." });
   await recordInHistory(outcome.ok, outcome.ok ? null : (outcome.failure?.message ?? null));
 }
 

@@ -42,13 +42,17 @@ export const setCustomFieldNode: NodeDefinition<SetFieldNodeData> = {
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (!fieldDef) return;
+    if (!fieldDef) {
+      context.noteStep?.({ status: "skipped", reason: "El campo ya no existe." });
+      return;
+    }
 
     const decision = decideSetField(fieldDef.type, interpolateVariables(data.value ?? "", context.variables || {}));
 
     if (decision.kind === "skip") {
       // Sin el valor: el campo queda como estaba (no se loguea el valor, puede ser un dato personal).
       console.warn(`[flow-engine] "Definir campo" (${data.fieldSlug}) no escribió nada: ${decision.reason}`);
+      context.noteStep?.({ status: "skipped", reason: decision.reason });
       return;
     }
     if (decision.kind === "clear") {

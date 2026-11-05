@@ -38,6 +38,7 @@ export const humanTakeoverNode: NodeDefinition<unknown> = {
     const note = interpolateVariables(String((data as { message?: unknown } | null)?.message ?? ""), context.variables ?? {}).trim().slice(0, 500);
     await notifyTakeover({ supabase, context, note });
 
+    context.noteStep?.({ status: "ok", reason: "Pasó a una persona." });
     return "pause";
   },
 };

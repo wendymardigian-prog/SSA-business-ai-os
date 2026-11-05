@@ -6,6 +6,7 @@ import type { ContactFlowContext, AiResponseNodeData } from "../types";
 import { generateAiReply } from "@/lib/ai/generate-reply";
 import { sendChannelMessage, recordSend } from "../send";
 import { aiResponseOutputs } from "../node-outputs";
+import { noteSessionEnd } from "../run-log";
 
 /**
  * Corta la corrida.
@@ -19,6 +20,7 @@ async function cancelRun(
   sessionId: string
 ): Promise<"pause"> {
   await supabase.from("flow_sessions").update({ status: "cancelled" }).eq("id", sessionId);
+  await noteSessionEnd(supabase, sessionId, "ai_failed");
   return "pause";
 }
 
@@ -54,11 +56,13 @@ async function executeAiResponse(
       // configuracion: no se manda ningun mensaje rojo de fallo a la
       // conversacion, porque no es un fallo, es lo mismo que haria el agente
       // de chat. generateAiReply ya dejo needs_human=true. Se corta igual.
+      context.noteStep?.({ status: "skipped", reason: "El mensaje no se pudo interpretar: pasó a una persona." });
       return cancelRun(supabase, sessionId);
     }
     // Falta la key, es invalida o el proveedor fallo: no es un error del flow,
     // es configuracion. Se avisa en la conversacion para que el operador lo vea
     // sin mirar logs, y se corta sin romper nada mas.
+    context.noteStep?.({ status: "failed", reason: reply.message });
     await supabase.from("messages").insert(
       outboundMessageRow({
         conversationId: context.conversationId,

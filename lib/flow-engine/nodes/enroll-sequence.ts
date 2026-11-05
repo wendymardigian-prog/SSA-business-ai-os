@@ -23,6 +23,7 @@ export const enrollSequenceNode: NodeDefinition<EnrollSequenceNodeData> = {
   async execute({ supabase, data, context }) {
     if (!data.sequenceId) {
       console.error("[enrollSequence] el nodo no tiene secuencia configurada");
+      context.noteStep?.({ status: "skipped", reason: "El paso no tiene una secuencia elegida." });
       return;
     }
 
@@ -37,6 +38,7 @@ export const enrollSequenceNode: NodeDefinition<EnrollSequenceNodeData> = {
 
     if (!sequence || sequence.status !== "active") {
       console.error("[enrollSequence] la secuencia no existe o no esta activa:", data.sequenceId);
+      context.noteStep?.({ status: "skipped", reason: "La secuencia no existe o no está activa." });
       return;
     }
 
@@ -78,6 +80,9 @@ export const enrollSequenceNode: NodeDefinition<EnrollSequenceNodeData> = {
       // error que valga la pena gritar, el flow sigue.
       if (error?.code !== "23505") {
         console.error("[enrollSequence] no pude inscribir:", error?.message);
+        context.noteStep?.({ status: "failed", reason: "No se pudo inscribir en la secuencia." });
+      } else {
+        context.noteStep?.({ status: "skipped", reason: "Ya estaba inscripto en esta secuencia." });
       }
       return;
     }

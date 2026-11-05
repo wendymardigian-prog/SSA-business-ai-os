@@ -33,6 +33,7 @@ export const httpRequestNode: NodeDefinition<HttpRequestNodeData> = {
       const url = interpolateVariables(data.url ?? "", variables).trim();
       if (!url) {
         console.warn(`[flow-engine] la Llamada HTTP ${node.id} no tiene direccion: se saltea`);
+        context.noteStep?.({ status: "skipped", reason: "La llamada no tiene dirección." });
         return;
       }
       const method = METHODS.has(String(data.method).toUpperCase()) ? String(data.method).toUpperCase() : "GET";
@@ -54,10 +55,15 @@ export const httpRequestNode: NodeDefinition<HttpRequestNodeData> = {
         context.variables[`${responseVariable}_status`] = String(response.status);
         context.variables[`${responseVariable}_ok`] = String(response.ok);
       }
-      if (!response.ok) console.warn(`[flow-engine] la Llamada HTTP ${node.id} respondio ${response.status}`);
+      if (!response.ok) {
+        console.warn(`[flow-engine] la Llamada HTTP ${node.id} respondio ${response.status}`);
+        context.noteStep?.({ status: "failed", reason: `El servidor respondió ${response.status}.` });
+      }
     } catch (error) {
       // Sin la URL ni el cuerpo en el log: pueden llevar datos del contacto o claves.
       console.error(`[flow-engine] la Llamada HTTP ${node.id} fallo:`, error instanceof Error ? error.message : "error");
+      // Sin el mensaje del error: puede traer la direccion, y la direccion puede llevar datos del contacto o claves.
+      context.noteStep?.({ status: "failed", reason: "No se pudo conectar con el servidor." });
       if (responseVariable && context.variables) {
         context.variables[`${responseVariable}_status`] = "0";
         context.variables[`${responseVariable}_ok`] = "false";
