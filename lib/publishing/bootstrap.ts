@@ -23,6 +23,7 @@ import { registerMetaAdThumbnailsHandler } from "@/lib/jobs/handlers/meta-ad-thu
 import { registerZernioAdOriginHandler } from "@/lib/jobs/handlers/zernio-ad-origin";
 import { registerWhatsappGroupImportHandler } from "@/lib/jobs/handlers/whatsapp-group-import";
 import { registerInboxImportHandlers } from "@/lib/jobs/handlers/inbox-import";
+import { registerWhatsappHistoryImportHandler } from "@/lib/jobs/handlers/whatsapp-history-import";
 import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
 import { registerFlowWaitTimeoutHandler } from "@/lib/jobs/handlers/flow-wait-timeout";
@@ -103,6 +104,8 @@ export function registerPublishing(): void {
   registerWhatsappGroupImportHandler();
   // La importacion de conversaciones de Zernio, por partes y sin tope (00267).
   registerInboxImportHandlers();
+  // La importacion del historial de WhatsApp guardado en Evolution, por partes.
+  registerWhatsappHistoryImportHandler();
   // Agenda (Etapa 4): crear/mover/borrar el evento en Google y el fin de agenda.
   registerBookingJobHandlers();
   // Los avisos relativos a la hora de la reunion (F44).

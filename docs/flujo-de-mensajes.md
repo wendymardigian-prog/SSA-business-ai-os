@@ -110,14 +110,35 @@ lee esa base, sin escribir nada y sin hablar con WhatsApp, y dice cuántas
 conversaciones con personas hay guardadas, cuántas no están en la bandeja, cuántos
 mensajes y desde cuándo, y si hay mensajes de antes de conectar el número.
 
-**La importación todavía no existe.** El plan, si la revisión muestra que vale la pena:
-un trabajo de la cola por partes (como el de Instagram, con `channels.inbox_import`),
-que crea contacto y conversación por `find_or_link_contact` con la misma identidad
-del receptor (teléfono o `@lid`), guarda los mensajes como historia (sin no leídos,
-automatizaciones, agente ni toques de atribución, deduplicados por
-`platform_message_id`), deja **cerradas** las conversaciones sin movimiento hace más
-de 7 días (para no llenar "Esperando respuesta") y saltea grupos. La media vieja puede
-no estar más disponible en WhatsApp: el texto entra igual.
+## Importar el historial de WhatsApp (5/11/2026)
+
+La tarjeta del número → "Historial" → **Importar**, con confirmación. Pide
+`channels.manage`. Corre en la cola por partes (`whatsapp_history_import`,
+`lib/whatsapp-history/run-import.ts`; las reglas, puras, en `import-state.ts` e
+`import-chat.ts`) y guarda el avance en `channels.inbox_import`, con su propia forma
+(`kind: "whatsapp_history"`). Lee solo la base de Evolution: no le pide nada a WhatsApp.
+
+- **Por chat, no por mensaje.** La identidad sale del chat entero: el teléfono puede
+  estar en cualquier mensaje de un chat con `@lid`, y mirarlos de a uno partiría a la
+  persona en dos contactos. Sin teléfono en ninguno, la identidad es el `@lid`.
+- **Los chats se recorren por su id, no por fecha**: uno que recibe un mensaje nuevo
+  no cambia de lugar, así que ninguno se saltea.
+- **Es historia.** No suma no leídos ni dispara automatizaciones, el agente, reglas de
+  asignación o toques. Los eventos que nacen de crear el contacto (`contact_created`)
+  se marcan procesados y su `sales_contact_eval` se cancela. Una conversación que ya
+  existe no cambia de estado, responsable ni no leídos; las nuevas sin movimiento hace
+  más de 7 días nacen cerradas, para no llenar "Esperando respuesta".
+- **Volver a importar no duplica**: índice único `(conversation_id, platform_message_id)`.
+- **Los archivos no se traen**: el adjunto queda en `none` (la burbuja dice qué tipo
+  era). Reacciones, votos y avisos de protocolo no entran, y un chat sin ningún mensaje
+  real no crea un contacto.
+- **El historial completo se pide al crear el número** (`syncFullHistory` en
+  `/instance/create`): WhatsApp solo lo manda al escanear el QR. Un número viejo lo pide
+  al reconectar (`ensureFullHistory`): se cierra la sesión en el teléfono, se toca
+  Reconectar y se escanea. Cuánto manda lo decide WhatsApp.
+- **Ojo:** cada chat pasa a ser un contacto, también los personales, y puede entrar en
+  un broadcast por WhatsApp (que va a quien ya le escribió al número). Por eso es un
+  botón con confirmación y no algo automático.
 
 ## WhatsApp sin teléfono (`@lid`, 30/10/2026)
 
