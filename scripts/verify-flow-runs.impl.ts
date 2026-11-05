@@ -64,7 +64,7 @@ try {
 
   const { data: ws, error: wsError } = await db
     .from("workspaces")
-    .insert({ name: "zz-test-runs", slug: `zz-test-runs-${Date.now()}`, created_by: owner.id, timezone: "UTC" })
+    .insert({ name: "zz-test-runs", slug: `zz-test-runs-${Date.now()}`, timezone: "UTC" })
     .select("id")
     .single();
   if (wsError) throw new Error(`no pude crear el workspace: ${wsError.message}`);
