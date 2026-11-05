@@ -54,11 +54,24 @@ const data = (over: Partial<MarketingDeliveryData> = {}): MarketingDeliveryData 
   stats: { sent: 120, bounced: 1, complained: 0 },
   warmupSaved: true,
   webhookProblem: null,
+  brakeLimits: { bouncePct: 2, complaintPct: 0.05 },
   ...over,
 });
 const section = (d: MarketingDeliveryData, readOnly = false) => renderToStaticMarkup(createElement(MarketingDeliverySection, { data: d, readOnly }));
 
 describe("MarketingDeliverySection", () => {
+  it("muestra los límites del freno guardados, y sin permiso no se pueden cambiar", () => {
+    const html = section(data({ brakeLimits: { bouncePct: 3, complaintPct: 0.3 } }));
+    expect(html).toContain("Freno automático");
+    expect(html).toContain('id="marketing-brake-bounce"');
+    expect(html).toContain('value="3"');
+    expect(html).toContain('value="0,3"');
+    const readOnly = section(data(), true);
+    expect(readOnly).toContain('value="2"');
+    expect(readOnly).toContain('value="0,05"');
+    expect(readOnly).not.toContain("Guardar");
+  });
+
   it("muestra el tope de hoy, el escalon, las cuentas y el maximo guardado", () => {
     const html = section(data());
     expect(html).toContain("Entrega de marketing");

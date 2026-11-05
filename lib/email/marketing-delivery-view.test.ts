@@ -48,7 +48,7 @@ const capacity = (over: Partial<MarketingCapacity> = {}): MarketingCapacity => (
 
 describe("marketingDeliveryView", () => {
   it("hoy, el escalon del calentamiento y las cuentas de 24 h", () => {
-    const view = marketingDeliveryView({ capacity: capacity(), stats: { sent: 120, bounced: 1, complained: 0 }, warmupSaved: true, webhookProblem: null });
+    const view = marketingDeliveryView({ capacity: capacity(), stats: { sent: 120, bounced: 1, complained: 0 }, warmupSaved: true, webhookProblem: null, brakeLimits: { bouncePct: 2, complaintPct: 0.05 } });
     expect(view.todayLine).toBe("Hoy salieron 50 de 200 emails de marketing.");
     expect(view.warmupLine).toContain("escalón 2 de 4 (200 por día), desde el 06/11/2026");
     expect(view.warmupLine).toContain("hasta tu máximo (1000)");
@@ -57,23 +57,23 @@ describe("marketingDeliveryView", () => {
   });
 
   it("pausado por el freno: el motivo", () => {
-    const view = marketingDeliveryView({ capacity: capacity({ status: "paused", paused_at: "2026-11-06T15:00:00Z", paused_reason: "Rebotaron 3 de 100." }), stats: null, warmupSaved: true, webhookProblem: null });
+    const view = marketingDeliveryView({ capacity: capacity({ status: "paused", paused_at: "2026-11-06T15:00:00Z", paused_reason: "Rebotaron 3 de 100." }), stats: null, warmupSaved: true, webhookProblem: null, brakeLimits: { bouncePct: 2, complaintPct: 0.05 } });
     expect(view.paused).toEqual({ at: "2026-11-06T15:00:00Z", reason: "Rebotaron 3 de 100." });
   });
 
   it("con la cuota del plan cargada la muestra; sin calentamiento dice que rige el maximo", () => {
-    const view = marketingDeliveryView({ capacity: capacity({ warmup_enabled: false, quota: 3000, all_today: 120, cap: 1000 }), stats: null, warmupSaved: false, webhookProblem: null });
+    const view = marketingDeliveryView({ capacity: capacity({ warmup_enabled: false, quota: 3000, all_today: 120, cap: 1000 }), stats: null, warmupSaved: false, webhookProblem: null, brakeLimits: { bouncePct: 2, complaintPct: 0.05 } });
     expect(view.todayLine).toContain("cuota del plan de Resend: 120 de 3000");
     expect(view.warmupLine).toBe("Sin calentamiento: rige tu máximo (1000 por día).");
   });
 
   it("menos de 50 enviados: avisa que el freno todavia no calcula", () => {
-    const view = marketingDeliveryView({ capacity: capacity(), stats: { sent: 10, bounced: 5, complained: 0 }, warmupSaved: true, webhookProblem: null });
+    const view = marketingDeliveryView({ capacity: capacity(), stats: { sent: 10, bounced: 5, complained: 0 }, warmupSaved: true, webhookProblem: null, brakeLimits: { bouncePct: 2, complaintPct: 0.05 } });
     expect(view.statsLine).toContain("el freno no calcula");
   });
 
   it("sin datos de la base: lo dice", () => {
-    expect(marketingDeliveryView({ capacity: null, stats: null, warmupSaved: null, webhookProblem: null }).todayLine).toBe("No pude leer cuánto salió hoy.");
+    expect(marketingDeliveryView({ capacity: null, stats: null, warmupSaved: null, webhookProblem: null, brakeLimits: { bouncePct: 2, complaintPct: 0.05 } }).todayLine).toBe("No pude leer cuánto salió hoy.");
   });
 });
 

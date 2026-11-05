@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   notify: vi.fn(),
   logAudit: vi.fn(),
   keys: [] as string[],
+  service: null as unknown,
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -26,7 +27,7 @@ vi.mock("@/lib/auth/guards", () => ({
     return key === "integrations.manage" ? h.ctx : null;
   }),
 }));
-vi.mock("@/lib/supabase/server", () => ({ createServiceClient: vi.fn(async () => ({ service: true })) }));
+vi.mock("@/lib/supabase/server", () => ({ createServiceClient: vi.fn(async () => h.service ?? { service: true }) }));
 vi.mock("@/lib/email/resend-connection", () => ({
   connectWebhookForWorkspace: h.connect,
   saveWebhookSecret: h.save,
@@ -42,6 +43,7 @@ import {
   clearResendWebhookSecretAction,
   connectResendWebhookAction,
   saveResendReceivingAction,
+  saveMarketingDeliveryAction,
   saveResendWebhookSecretAction,
 } from "./resend-connection";
 
@@ -50,6 +52,7 @@ const SECRET = `whsec_${Buffer.from("secreto-pegado-a-mano-por-alguien").toStrin
 beforeEach(() => {
   vi.clearAllMocks();
   h.keys = [];
+  h.service = null;
   h.ctx = { workspace: { id: "ws-sesion" }, supabase: {}, user: { id: "u-1" } };
   h.connect.mockResolvedValue({ ok: true, action: "created", needsSecret: false, disabled: false });
   h.save.mockResolvedValue({ ok: true });
@@ -115,5 +118,50 @@ describe("recepcion y Probar", () => {
     expect(res).toEqual({ ok: true, live: { key: { ok: true, access: "full" }, webhook: { checked: true, found: false } }, domains: [{ name: "d.test", status: "verified" }] });
     expect(h.connect).not.toHaveBeenCalled();
     expect(h.logAudit).not.toHaveBeenCalled();
+  });
+});
+
+describe("Entrega de marketing: el máximo, el calentamiento y los límites del freno", () => {
+  const input = { dailyCap: "1000", warmupEnabled: false, bounceLimitPct: "3", complaintLimitPct: "0,3" };
+  function serviceWith(config: Record<string, unknown>) {
+    const rpc = vi.fn(async () => ({ error: null }));
+    const chain = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: { config } }) };
+    h.service = { from: () => chain, rpc };
+    return rpc;
+  }
+
+  it("sin integrations.manage no se toca nada", async () => {
+    const rpc = serviceWith({});
+    h.ctx = null;
+    expect((await saveMarketingDeliveryAction(input)).ok).toBe(false);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(h.logAudit).not.toHaveBeenCalled();
+  });
+
+  it("guarda con patch_resend_config, en el negocio de la sesión, y deja viejo y nuevo en el historial", async () => {
+    const rpc = serviceWith({ marketing_brake_bounce_pct: "2" });
+    expect(await saveMarketingDeliveryAction(input)).toMatchObject({ ok: true });
+    expect(rpc).toHaveBeenCalledWith("patch_resend_config", {
+      p_workspace_id: "ws-sesion",
+      p_patch: { marketing_daily_cap: "1000", warmup_enabled: "false", marketing_brake_bounce_pct: "3", marketing_brake_complaint_pct: "0.3" },
+    });
+    expect(h.logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "email_marketing.settings",
+        changes: expect.objectContaining({
+          marketing_brake_bounce_pct: { old: "2", new: "3" },
+          marketing_brake_complaint_pct: { old: null, new: "0.3" },
+        }),
+      }),
+    );
+  });
+
+  it("un límite fuera de rango no guarda nada y dice cuál", async () => {
+    const rpc = serviceWith({});
+    const bounce = await saveMarketingDeliveryAction({ ...input, bounceLimitPct: "50" });
+    expect(bounce).toMatchObject({ ok: false, error: expect.stringContaining("rebotes") });
+    const complaint = await saveMarketingDeliveryAction({ ...input, complaintLimitPct: "abc" });
+    expect(complaint).toMatchObject({ ok: false, error: expect.stringContaining("quejas") });
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

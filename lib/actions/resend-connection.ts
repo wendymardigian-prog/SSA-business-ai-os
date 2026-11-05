@@ -1,5 +1,6 @@
 "use server";
 
+import { BRAKE_BOUNCE_PCT_RANGE, BRAKE_COMPLAINT_PCT_RANGE, parseBrakePct } from "@/lib/email/brake-limits";
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
@@ -165,17 +166,26 @@ export async function checkResendConnectionAction(): Promise<
 // ── La guardia de entrega (00287): «Entrega de marketing» ─────────────────────
 
 /**
- * Guarda el «Máximo de emails de marketing por día» y el calentamiento. Pide `integrations.manage`; el negocio sale de
+ * Guarda el «Máximo de emails de marketing por día», el calentamiento y los límites del freno. Pide `integrations.manage`; el negocio sale de
  * la sesion. Se escribe con `patch_resend_config` (mezcla claves en la base: no pisa lo que escribe la guardia al
  * mismo tiempo). Queda en `audit_log`.
  */
-export async function saveMarketingDeliveryAction(input: { dailyCap: string | number; warmupEnabled: boolean }): Promise<Result> {
+export async function saveMarketingDeliveryAction(input: {
+  dailyCap: string | number;
+  warmupEnabled: boolean;
+  bounceLimitPct: string | number;
+  complaintLimitPct: string | number;
+}): Promise<Result> {
   const ctx = await getPermissionAction("integrations.manage");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
 
   const cap = parseDailyCap(input?.dailyCap);
   if (!cap.ok) return { ok: false, error: cap.error };
   const warmup = input?.warmupEnabled === true;
+  const bounce = parseBrakePct(input?.bounceLimitPct, BRAKE_BOUNCE_PCT_RANGE, "Límite de rebotes");
+  if (!bounce.ok) return { ok: false, error: bounce.error };
+  const complaint = parseBrakePct(input?.complaintLimitPct, BRAKE_COMPLAINT_PCT_RANGE, "Límite de quejas");
+  if (!complaint.ok) return { ok: false, error: complaint.error };
 
   const service = await createServiceClient();
   const { data: before } = await service
@@ -192,6 +202,8 @@ export async function saveMarketingDeliveryAction(input: { dailyCap: string | nu
   const patch: Record<string, string | null> = {
     marketing_daily_cap: String(cap.value),
     warmup_enabled: warmup ? "true" : "false",
+    marketing_brake_bounce_pct: bounce.value,
+    marketing_brake_complaint_pct: complaint.value,
   };
   // Prenderlo de nuevo arranca desde el primer escalon (hoy).
   if (warmup && !wasWarmup) {
@@ -211,6 +223,8 @@ export async function saveMarketingDeliveryAction(input: { dailyCap: string | nu
     changes: {
       marketing_daily_cap: { old: typeof config.marketing_daily_cap === "string" ? config.marketing_daily_cap : null, new: String(cap.value) },
       warmup_enabled: { old: typeof config.warmup_enabled === "string" ? config.warmup_enabled : null, new: warmup ? "true" : "false" },
+      marketing_brake_bounce_pct: { old: typeof config.marketing_brake_bounce_pct === "string" ? config.marketing_brake_bounce_pct : null, new: bounce.value },
+      marketing_brake_complaint_pct: { old: typeof config.marketing_brake_complaint_pct === "string" ? config.marketing_brake_complaint_pct : null, new: complaint.value },
     },
     performedBy: ctx.user.id,
   });

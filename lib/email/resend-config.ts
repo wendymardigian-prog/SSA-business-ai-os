@@ -47,6 +47,9 @@ export const RESEND_CONNECTION_CONFIG_KEYS = [
   "marketing_paused_reason",
   "marketing_paused_stats",
   "marketing_last_brake_at",
+  /** Los limites del freno, en porcentaje (sin guardar: 2 y 0,05; `lib/email/brake-limits.ts`). */
+  "marketing_brake_bounce_pct",
+  "marketing_brake_complaint_pct",
 ] as const;
 
 export type ResendConnectionKey = (typeof RESEND_CONNECTION_CONFIG_KEYS)[number];
