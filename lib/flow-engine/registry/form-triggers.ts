@@ -32,6 +32,8 @@ type Db = SupabaseClient<Database>;
 
 interface LoadedSubmission {
   match: SubmissionForMatch;
+  /** La versión con la que se respondió. */
+  versionId: string | null;
   row: {
     id: string;
     created_at: string;
@@ -48,7 +50,7 @@ async function loadSubmission(db: Db, submissionId: string): Promise<LoadedSubmi
   if (!submissionId) return null;
   const { data: row } = await db
     .from("form_submissions")
-    .select("id, form_id, answers, score, nps_category, contact_created, created_at")
+    .select("id, form_id, form_version_id, answers, score, nps_category, contact_created, created_at")
     .eq("id", submissionId)
     .maybeSingle();
   if (!row) return null;
@@ -64,6 +66,7 @@ async function loadSubmission(db: Db, submissionId: string): Promise<LoadedSubmi
       surveyCategory: category,
       answers: answersForConditions(answers),
     },
+    versionId: row.form_version_id,
     row: { id: row.id, created_at: row.created_at, answers, score: row.score, nps_category: row.nps_category, contact_created: row.contact_created },
     form: { id: form.id, name: form.name, type: form.type, slug: form.slug, category },
   };
@@ -72,6 +75,13 @@ async function loadSubmission(db: Db, submissionId: string): Promise<LoadedSubmi
 function fieldsOfDefinition(definition: unknown): FormField[] {
   const fields = (definition as { fields?: unknown } | null)?.fields;
   return Array.isArray(fields) ? (fields as FormField[]) : [];
+}
+
+/** Las preguntas de la versión con la que se respondió. Sin poder leerlas, nada: las variables salen igual. */
+async function versionFieldKeys(db: Db, versionId: string | null | undefined): Promise<string[]> {
+  if (!versionId) return [];
+  const { data } = await db.from("form_versions").select("definition").eq("id", versionId).maybeSingle();
+  return fieldsOfDefinition(data?.definition).map((f) => f.key).filter((key): key is string => typeof key === "string" && !!key);
 }
 
 /**
@@ -136,7 +146,8 @@ for (const type of FORM_TRIGGER_TYPES) {
       const loaded = await loadSubmission(args.supabase, String(payload.submission_id ?? ""));
       if (!loaded) return {};
       const publicBase = await loadPublicBaseUrl(args.supabase, args.event.workspace_id);
-      return { ...formVariables({ form: loaded.form, submission: loaded.row, baseUrl: appUrl(), publicBaseUrl: publicBase }) };
+      const fieldKeys = await versionFieldKeys(args.supabase, loaded.versionId);
+      return { ...formVariables({ form: loaded.form, submission: loaded.row, fieldKeys, baseUrl: appUrl(), publicBaseUrl: publicBase }) };
     },
   });
 }

@@ -28,6 +28,11 @@ describe("interpolador del motor y del simulador", () => {
     expect(regexOf(SIMULADOR)).toBe(regexOf(MOTOR));
   });
 
+  it("los dos entienden el respaldo igual", () => {
+    expect(SIMULADOR).toContain("if (fallback !== undefined && needsFallback(path, value)) return fallbackText(fallback);");
+    expect(MOTOR).toContain("if (fallback !== undefined && needsFallback(path, value)) return fallbackText(fallback);");
+  });
+
   it("los dos siguen dot-paths y dejan el token cuando no resuelve", () => {
     // La copia del simulador se lee como texto; lo que se compara es la forma
     // del reemplazo, que es donde se separaron otras veces.
