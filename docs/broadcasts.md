@@ -106,10 +106,20 @@ comparte su ritmo, porque WhatsApp bloquea por número. El despachador
   pasa a `failed` a los 5 minutos y **no se reintenta**: mandar dos veces es peor
   que no mandar.
 - **Un contacto una sola vez por broadcast** (índice único).
-- **Un contacto que solo tenía teléfono** se vincula al número con ese teléfono
-  (`contact_channels`) y se le abre la conversación antes de mandar, así el eco y
-  su respuesta caen en el mismo chat. Si ese teléfono ya es de otro contacto en el
-  número, se saltea (`phone_in_use`).
+- **Un contacto que solo tenía teléfono** primero pasa por una pregunta a Evolution
+  (`checkWhatsappNumber`, `lib/send-queue/whatsapp-number.ts`, no le manda nada):
+  - **Sin WhatsApp**: se saltea (`no_whatsapp`, «El número no tiene WhatsApp»), sin
+    vínculo ni conversación, sin gastar intento y sin contar para la pausa.
+  - **Con WhatsApp**: se vincula (`contact_channels`) con el número en la forma que
+    usa WhatsApp, que puede diferir del cargado (Argentina, México, Brasil), y se le
+    abre la conversación antes de mandar, así el eco y su respuesta caen en el mismo
+    chat. Si ese número ya es de otro contacto, se saltea (`phone_in_use`).
+  - **Error o respuesta que no se entiende**: un fallo con reintento. Nunca se saltea
+    a alguien por una duda.
+
+  Quien ya está vinculado al número no pasa por la pregunta. La forma real de la
+  respuesta de Evolution todavía no se vio en vivo: confirmarla en la primera prueba
+  con un número inexistente.
 - **Los contadores salen de los destinatarios** (`refresh_broadcast_counts`), no
   se suman de a uno. Sin pendientes, el broadcast termina solo.
 - **Escribe solo el servidor**: desde la 00285 `broadcasts` y

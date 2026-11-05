@@ -13,6 +13,8 @@ export interface BroadcastChannel {
   id: string;
   kind: BroadcastChannelKind;
   label: string;
+  /** La instancia de Evolution del número. Null en email. */
+  evolutionInstance: string | null;
   policy: SendPolicy;
   /** Para avisar en la pantalla (el número está desconectado, por ejemplo). */
   connectionStatus: string | null;
@@ -53,6 +55,7 @@ function toChannel(row: ChannelRow): BroadcastChannel | null {
     id: row.id,
     kind,
     label: kind === "whatsapp" ? `WhatsApp · ${name}` : `Email · ${row.email_address ?? name}`,
+    evolutionInstance: row.evolution_instance,
     policy: parsePolicy(row.send_policy, defaultPolicyFor(kind)),
     connectionStatus: row.connection_status,
   };

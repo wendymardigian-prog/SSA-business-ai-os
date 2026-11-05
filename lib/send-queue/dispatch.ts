@@ -36,6 +36,7 @@ import { broadcastVariables, cleanVariants, renderChatMessage, renderEmail } fro
 import type { SendSkipReason } from "@/lib/broadcasts/audience";
 import type { SearchParams } from "@/lib/url-params";
 import { combinePolicies, paceDecision, parseBroadcastPace, pickGapSeconds, type LaneCounts, type SendPolicy } from "./pace";
+import { resolveWhatsappTarget } from "./whatsapp-number";
 
 type Client = SupabaseClient<Database>;
 type Broadcast = Database["public"]["Tables"]["broadcasts"]["Row"];
@@ -439,8 +440,10 @@ async function deliverWhatsapp(
 
 /**
  * La conversación del contacto en este número. Si nunca escribió (solo tiene
- * teléfono), se lo vincula al número con ese teléfono y se le abre la
- * conversación, así el eco y su respuesta caen en el mismo chat.
+ * teléfono), primero se pregunta si ese número tiene WhatsApp: si no tiene, se
+ * saltea sin dejar vínculo ni conversación y sin contar como fallo. Si tiene, se
+ * lo vincula al número y se le abre la conversación, así el eco y su respuesta
+ * caen en el mismo chat.
  */
 async function ensureWhatsappConversation(service: Client, ctx: LaneContext, r: Recipient, preview: string): Promise<string | RecipientOutcome> {
   const { data: link } = await service
@@ -453,7 +456,11 @@ async function ensureWhatsappConversation(service: Client, ctx: LaneContext, r: 
 
   if (!link) {
     if (!r.target) return { kind: "skipped", reason: "no_phone" };
-    const { error } = await service.from("contact_channels").insert({ contact_id: r.contact_id, channel_id: ctx.channel.id, platform_sender_id: r.target });
+    const resolved = await resolveWhatsappTarget(service, ctx.workspaceId, ctx.channel.evolutionInstance, r.target);
+    if (resolved.kind === "no_whatsapp") return { kind: "skipped", reason: "no_whatsapp" };
+    if (resolved.kind === "not_configured") return { kind: "failed", message: "WhatsApp no está configurado en este entorno.", retryable: false, laneFatal: true };
+    if (resolved.kind === "error") return { kind: "failed", message: "No pude comprobar si el número tiene WhatsApp.", retryable: true };
+    const { error } = await service.from("contact_channels").insert({ contact_id: r.contact_id, channel_id: ctx.channel.id, platform_sender_id: resolved.target });
     if (error) {
       if (error.code === "23505") return { kind: "skipped", reason: "phone_in_use" };
       return { kind: "failed", message: "No pude vincular el contacto al número.", retryable: true };
