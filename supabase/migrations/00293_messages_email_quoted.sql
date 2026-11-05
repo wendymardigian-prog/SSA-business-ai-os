@@ -1,4 +1,4 @@
--- 00289_messages_email_quoted: lo que un correo citó al responder, aparte de lo que la persona escribió.
+-- 00293_messages_email_quoted: lo que un correo citó al responder, aparte de lo que la persona escribió.
 --
 -- `messages.text` de un email entrante pasa a guardar solo lo nuevo (lib/email/quoted-reply.ts). Con eso quedan limpios
 -- la vista previa de la lista, los patrones, el contexto del agente y la regla de baja: una respuesta que citaba el pie

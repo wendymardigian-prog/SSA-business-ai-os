@@ -104,7 +104,7 @@ export function readableQuote(quoted: string): string {
 
 /**
  * Qué muestra la burbuja de un email entrante. Un mensaje nuevo ya viene separado (`email_quoted_text`); uno guardado
- * antes de la 00289 se separa al dibujarlo, sin tocar la base.
+ * antes de la 00293 se separa al dibujarlo, sin tocar la base.
  */
 export function emailBubbleParts(message: { text?: string | null; email_quoted_text?: string | null }): SplitReply {
   if (message.email_quoted_text) return { reply: (message.text ?? "").trim(), quoted: message.email_quoted_text };

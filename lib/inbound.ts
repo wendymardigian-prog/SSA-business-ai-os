@@ -275,7 +275,7 @@ export async function insertMessage({
     from?: string | null;
     to?: string[] | null;
     cc?: string[] | null;
-    /** Lo que el correo citó al responder (00289). `text` guarda solo lo nuevo. */
+    /** Lo que el correo citó al responder (00293). `text` guarda solo lo nuevo. */
     quotedText?: string | null;
   } | null;
 }): Promise<InsertedMessage> {

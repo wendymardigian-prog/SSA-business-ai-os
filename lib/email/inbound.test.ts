@@ -257,7 +257,7 @@ describe("el toque de atribución de un correo entrante (F87)", () => {
   });
 });
 
-describe("lo que un correo cita al responder (00289)", () => {
+describe("lo que un correo cita al responder (00293)", () => {
   const FOOTER_REPLY = `Gracias!
 
 El mié, 4 nov 2026 a la(s) 5:45 p.m., Wendy Mardigian (
