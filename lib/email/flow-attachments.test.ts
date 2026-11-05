@@ -1,15 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 import { loadEmailAttachments } from "./flow-attachments";
-import { attachmentBudget, parseEmailAttachments, MAX_EMAIL_ATTACHMENT_BYTES } from "./attachment-limits";
+import { attachmentBudget, emailAttachmentProblems, EMAIL_PICKABLE_KINDS, parseEmailAttachments, MAX_EMAIL_ATTACHMENT_BYTES } from "./attachment-limits";
 
 function world(downloads: Record<string, number>) {
   const db = memoryDb({
     response_assets: [
-      { id: "a1", workspace_id: "ws", kind: "file", name: "Propuesta.pdf", storage_path: "ws/library/a1.pdf", mime_type: "application/pdf", size_bytes: 10, deleted_at: null },
-      { id: "a2", workspace_id: "ws", kind: "image", name: "Foto", storage_path: "ws/library/a2.png", mime_type: "image/png", size_bytes: 10, deleted_at: null },
-      { id: "borrado", workspace_id: "ws", kind: "file", name: "Viejo", storage_path: "ws/library/x.pdf", mime_type: "application/pdf", size_bytes: 10, deleted_at: "2026-10-01" },
-      { id: "ajeno", workspace_id: "otro", kind: "file", name: "Ajeno", storage_path: "otro/library/y.pdf", mime_type: "application/pdf", size_bytes: 10, deleted_at: null },
+      { id: "a1", workspace_id: "ws", kind: "file", name: "Propuesta.pdf", storage_path: "ws/library/a1.pdf", mime_type: "application/pdf", size_bytes: 10, is_active: true, deleted_at: null },
+      { id: "a2", workspace_id: "ws", kind: "image", name: "Foto", storage_path: "ws/library/a2.png", mime_type: "image/png", size_bytes: 10, is_active: true, deleted_at: null },
+      { id: "borrado", workspace_id: "ws", kind: "file", name: "Viejo", storage_path: "ws/library/x.pdf", mime_type: "application/pdf", size_bytes: 10, is_active: true, deleted_at: "2026-10-01" },
+      { id: "apagado", workspace_id: "ws", kind: "file", name: "Desactivado", storage_path: "ws/library/z.pdf", mime_type: "application/pdf", size_bytes: 10, is_active: false, deleted_at: null },
+      { id: "ajeno", workspace_id: "otro", kind: "file", name: "Ajeno", storage_path: "otro/library/y.pdf", mime_type: "application/pdf", size_bytes: 10, is_active: true, deleted_at: null },
     ],
   });
   const download = vi.fn(async (path: string) => {
@@ -33,6 +34,14 @@ describe("loadEmailAttachments", () => {
     expect(download).toHaveBeenCalledTimes(2);
   });
 
+  it("un recurso desactivado no sale y avisa como uno borrado; un nombre con acentos queda legible", async () => {
+    const { db, download } = world({ "ws/library/z.pdf": 3 });
+    const out = await loadEmailAttachments(db.client, { workspaceId: "ws", refs: [{ assetId: "apagado", name: "Desactivado" }] });
+    expect(out.files).toEqual([]);
+    expect(out.missing).toEqual(["Desactivado"]);
+    expect(download).not.toHaveBeenCalled();
+  });
+
   it("lo que se pasa del tope total no se adjunta", async () => {
     const { db } = world({ "ws/library/a1.pdf": MAX_EMAIL_ATTACHMENT_BYTES, "ws/library/a2.png": 10 });
     const out = await loadEmailAttachments(db.client, { workspaceId: "ws", refs: [{ assetId: "a1" }, { assetId: "a2" }] });
@@ -49,5 +58,19 @@ describe("los topes", () => {
   });
   it("parseEmailAttachments saca basura y repetidos", () => {
     expect(parseEmailAttachments([{ assetId: "a" }, { assetId: "a" }, { nope: 1 }, null, "x"])).toEqual([{ assetId: "a" }]);
+  });
+});
+
+describe("lo que ofrece y deja publicar", () => {
+  it("el panel ofrece imagen y archivo, no audio ni video", () => {
+    expect([...EMAIL_PICKABLE_KINDS]).toEqual(["image", "file"]);
+  });
+
+  it("no se publica un paso que se pasa del tope", () => {
+    const paso = (sizes: number[]) => ({ type: "action", data: { actionType: "send_email", attachments: sizes.map((sizeBytes, i) => ({ assetId: `a${i}`, sizeBytes })) } });
+    expect(emailAttachmentProblems([paso([1000])])).toEqual([]);
+    expect(emailAttachmentProblems([paso([MAX_EMAIL_ATTACHMENT_BYTES, 1])])[0]).toMatch(/25 MB/);
+    expect(emailAttachmentProblems([paso(Array(11).fill(1))])[0]).toMatch(/Hasta 10/);
+    expect(emailAttachmentProblems([{ type: "delay", data: {} }, null])).toEqual([]);
   });
 });

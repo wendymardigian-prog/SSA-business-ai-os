@@ -31,6 +31,8 @@ export async function loadEmailAttachments(
     .eq("workspace_id", args.workspaceId)
     .in("id", refs.map((r) => r.assetId))
     .in("kind", [...FILE_KINDS])
+    // Uno desactivado no sale: el panel ya no lo ofrece y el resto de los envíos tampoco lo manda.
+    .eq("is_active", true)
     .is("deleted_at", null);
   if (error) {
     console.error("[email] no pude leer los recursos adjuntos:", error.message);

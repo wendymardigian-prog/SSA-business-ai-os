@@ -20,6 +20,13 @@
 - **`warnIfNearQuota` (`send-reply.ts`) sigue contando aparte** (`messages` con `email_message_id`, default 100). Solo manda un aviso, no frena nada, y no ve los broadcasts ni el paso «Enviar email». Conviene pasarlo a la guardia en la Fase 2.
 - ~~**La fecha fija del nodo «Esperar» se convierte con la zona del navegador.**~~ Resuelto el 4/11 (`waitUntilLocal`, en la hora del negocio). De A4 (Fase 2) quedan las opciones de qué hacer con una fecha pasada (hoy siempre saltea el paso siguiente) y «X antes/después de una fecha».
 
+## Encontrado al probar la clase (4/11/2026)
+
+- **Adjuntos al responder desde la bandeja:** el email no los manda (`channelAccepts` lo dice, y el composer ya no ofrece micrófono ni clip). Sumarlos cambia esa regla y toca secuencias y flujos: es un trabajo aparte.
+- **Paso 2 del registro y un teléfono de otro contacto:** el formulario de WhatsApp busca primero por teléfono. Si el número ya es de otro contacto, la respuesta se vincula a ese y el contacto del email queda sin teléfono (pasó con una prueba). Es la regla actual; revisarla si molesta.
+- **`{{unsubscribe_url}}` a mano en un broadcast:** `renderEmail` no lo protege antes de limpiar el HTML, así que ese link se pierde. El pie automático sale igual.
+- **«Enviarme una prueba» no manda los adjuntos** (`lib/actions/forms/flows.ts`), y el editor de pasos de Formularios y Agenda no ofrece adjuntos.
+
 ## Conversaciones (verificado el 4/11/2026, sin construir)
 
 **1. El email de un broadcast NO queda como mensaje saliente en la conversación de email del contacto.**

@@ -1818,10 +1818,10 @@ Cada automatización tiene su pantalla de ejecuciones (`/dashboard/flows/[flowId
 
 ## Migración
 
-`00292_flow_run_history` (aditiva): va **ANTES** de desplegar el código. Ensayada contra la base real en una transacción que se deshizo sola; **todavía sin aplicar** en producción. Reemplaza la política de lectura de `flow_sessions`, con la vieja en su cabecera. Un Member pasa a ver solo las ejecuciones de sus contactos. La `00291` queda para `automation_runs`. **La próxima libre es la `00293`** (confirmar con `list_migrations` y las ramas locales).
+`00292_flow_run_history` (aditiva): va **ANTES** de desplegar el código. **Aplicada y registrada** el 5/11/2026 UTC (versión `20261105010903`), después de ensayarla en una transacción que se deshizo sola, con `verify-flow-runs`, `verify-rls --despues-de-00143 --despues-de-00208`, `verify-contact-merge`, `verify-inbound-webhooks`, `verify-eod` y `verify-tasks` en verde. Reemplaza la política de lectura de `flow_sessions`, con la vieja en su cabecera. Un Member pasa a ver solo las ejecuciones de sus contactos. La `00291` queda para `automation_runs`. La `00293` es de las citas de un email. **La próxima libre es la `00294`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
-node scripts/verify-flow-runs.mjs   # después de aplicar la 00292
+node scripts/verify-flow-runs.mjs   # quién ve qué, variables, el trigger, el motor, la consulta y la limpieza
 ```
 
 # Esperar hasta y una sola vez por contacto (4/11/2026, sin migración)
@@ -1830,6 +1830,13 @@ Lo que hizo falta para los recordatorios de una clase con fecha fija. Detalle en
 
 - **«Esperar hasta» se guarda en la hora del negocio** (`waitUntilLocal`, sin zona; la pone `workspaces.timezone`, nunca el navegador). **Con la fecha ya pasada se saltea el paso siguiente** y el flujo sigue con el que viene (`SKIP_NEXT_STEP`, `node_skipped` con `date_passed`). Las esperas por duración no cambian (`clase-flow-characterization.test.ts`).
 - **`oncePerContact` en un disparador de contacto** (apagado por defecto): quien ya tuvo una sesión de ese flujo, salvo cancelada, no vuelve a entrar. Se mira `flow_sessions` porque publicar borra `trigger_fires`.
+
+# Citas de un email, respaldo y fechas en los flujos (4/11/2026)
+
+- **`messages.text` de un email entrante guarda solo lo que escribió la persona; la cita va a `email_quoted_text`** (`splitQuotedReply`, `lib/email/quoted-reply.ts`, conservadora: corta solo si todo lo que sigue es cita). **La regla de baja nunca lee una cita** (`withoutQuotedLines`): una respuesta que citaba el pie «Darme de baja» marcaba «no contactar». La burbuja deja la cita cerrada y separa las filas viejas al dibujarlas.
+- **La bandeja no ofrece micrófono ni clip en email** (`canAttachFiles` en `planComposerActions`). «Enviar email» ofrece imagen y archivo (`EMAIL_PICKABLE_KINDS`).
+- **Un flujo entiende `{{x|respaldo}}` y `{{answer.x}}` muestra las fechas para leer** (`{{answer_raw.x}}` conserva lo guardado). Detalle en [docs/flow-registry.md](docs/flow-registry.md).
+- **`00293_messages_email_quoted`** (aditiva) va **ANTES** del deploy: **aplicada y registrada** el 4/11/2026. **La próxima libre es la `00294`** (la `00289` y la `00290` son de otras sesiones y la `00292` está en otra rama; confirmar con `list_migrations` y las ramas locales).
 
 # Zonas horarias y confirmaciones de agenda (4/11/2026)
 

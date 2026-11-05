@@ -691,6 +691,12 @@ Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla.
   (`lib/email/attachment-limits.ts`, `lib/email/flow-attachments.ts`).
 - **WhatsApp**: Evolution manda botones y respuestas rápidas como lista numerada; tope de 200 envíos automáticos por hora.
 
+### Variables en los flujos: respaldo y fechas (noviembre 2026)
+
+- **Respaldo:** `{{contact.first_name|hola}}` o `{{contact.first_name | "hola"}}`, con el mismo sentido que en broadcasts (`lib/templates/fallback.ts`). Un valor vacío, o un nombre de relleno en `contact.first_name|name|display_name`, usa el respaldo. Sin `|`, un token que no resuelve sigue quedando literal. Motor, email y simulador comparten la regla, y `interpolate-parity.test.ts` lo cuida.
+- **Fechas de un formulario:** `{{answer.x}}` las muestra para leer («6 de octubre de 2026», «lunes 9 de noviembre de 2026, 19:00»), armadas con los números del propio valor. Una hora sin desfase no se toca. `{{answer_raw.x}}` conserva lo guardado, para una Llamada HTTP.
+- **Pregunta sin responder:** queda vacía; antes llegaba `{{answer.x}}` literal.
+
 ### «Una sola vez por contacto» (noviembre 2026)
 
 `oncePerContact` en la configuración de un disparador de contacto (apagado por defecto; lo ofrece `supportsOncePerContact`, comparado con el registro en un test): quien ya tuvo una sesión de ese flujo, activa, terminada o vencida, no vuelve a entrar. Lo aplica `processContactEvent`: el envío del formulario se guarda igual, nadie ve un error y queda `flow_once_skipped` en `analytics_events`.
