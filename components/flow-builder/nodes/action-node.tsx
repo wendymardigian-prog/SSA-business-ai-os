@@ -245,6 +245,8 @@ function getSummary(nodeData: ActionNodeProps): string | null {
     }
     case "send_poll" as NodeType:
       return (nodeData as { question?: string }).question?.trim() || null;
+    case "privateReply":
+      return (nodeData as { text?: string }).text?.trim() || null;
     case "send_email" as NodeType: {
       if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;
       if (nodeData.to === "fixed") return nodeData.fixedEmail?.trim() ? `A ${nodeData.fixedEmail.trim()}` : null;

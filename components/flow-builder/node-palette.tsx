@@ -75,6 +75,16 @@ const categories: PaletteCategory[] = [
         description: "La IA escribe la respuesta con tus instrucciones",
         synonyms: ["ia", "gpt", "claude", "inteligencia artificial", "agente"],
       },
+      // Solo sirve con el disparador de comentarios (lo exige publish-rules).
+      {
+        type: "action",
+        nodeType: "privateReply",
+        label: "Responder por privado",
+        icon: MessageSquare,
+        description: "Un mensaje privado a quien comentó, con botones que abren un link",
+        synonyms: ["comentario", "instagram", "dm", "boton", "link"],
+        actionType: "privateReply",
+      },
       // Un recurso de la banca (texto, audio, video, imagen, archivo o enlace).
       {
         type: "action",

@@ -598,6 +598,16 @@ Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CH
 `cancel_booking`, `set_booking_status` (reunión) y `mark_payment_paid`, `reschedule_payment`, `set_sale_status` (venta) leen `event_booking_id` / `event_sale_id` y los datos del evento. Siguen declarando `needsContact: true` (la reunión y la venta tienen contacto), pero **lo que se le dice a quien edita es otra cosa**: en un flujo que no arrancó por una reunión o una venta (un webhook, un reporte de fin de día, el sistema) el mensaje dice «actúa sobre la reunión (o la venta) que dispara el flujo… solo se puede usar en un flujo que empieza con un disparador de agenda (o de venta)», en lugar de mandar a poner «Crear o actualizar contacto», que no se las da (`TRIGGER_ENTITY_NODES`, `contact-requirement.ts`).
 
 
+## «Responder por privado» y los comentarios de Instagram
+
+- **Un solo mensaje por comentario.** Meta no deja mandar otro hasta que la persona responda, y después solo dentro de las 24 horas de esa respuesta.
+- **Sale siempre como respuesta al comentario** (`privateReply`), aunque la persona ya tenga un chat. «Enviar mensaje» usa la respuesta privada solo si no hay chat, y su respaldo manda únicamente el texto (lo fija `send-message-characterization.test.ts`): para un botón, este es el paso.
+- **Hasta tres botones con link** (`sendablePrivateReplyButtons`, `lib/flow-engine/private-reply.ts`). Lo que no se puede mandar se descarta antes de llamar a Zernio.
+- **Instagram puede rechazar los botones si la persona no sigue la cuenta**, y el intento gasta la respuesta del comentario. El rechazo no afecta a todas las cuentas por igual: hay que probarlo con una que no siga. El motivo queda en `messages.send_error`.
+- **Si otra app es la dueña de los chats** (ManyChat), puede responder al comentario antes y gastar esa única respuesta. Una palabra clave se atiende en una sola app.
+- **Solo se publica con el disparador `comment_keyword`** (`triggerProblems`): sin un comentario no tiene a qué responder.
+- **Limitar a ciertas publicaciones:** `config.postIds`, desde la pestaña Growth. Sin lista, vale para todas.
+
 ## Atribución en los flujos de mensajes (Extra I)
 
 - **Nodo «Enviar mensaje»:** `attribution?: { append, trackClicks }` a nivel nodo (ver [atribucion.md](atribucion.md)). Ausente o con `append` apagado, el mensaje es idéntico al de siempre. Se aplica sobre el mensaje YA adaptado a la plataforma, también en el respaldo por respuesta privada (solo el texto).
