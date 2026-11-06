@@ -1,4 +1,5 @@
 import { AdsDetailView } from "@/components/dashboards/ads-detail-view";
+import { AdsDetailEmpty } from "@/components/dashboards/ads/detail-empty";
 import { loadDetailPage } from "@/lib/dashboards/ads-detail-page";
 
 export const dynamic = "force-dynamic";
@@ -14,5 +15,6 @@ export default async function Page({
   const { id } = await params;
   const data = await loadDetailPage({ level: "campaign", objectId: id, searchParams: await searchParams });
 
+  if ("empty" in data) return <AdsDetailEmpty level="campaign" {...data} />;
   return <AdsDetailView level="campaign" {...data} />;
 }

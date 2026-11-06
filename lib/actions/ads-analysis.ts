@@ -9,7 +9,7 @@ import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
-import { isPeriodPreset, PERIOD_LABELS, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
+import { periodLabel, readDashboardPeriod, resolveDashboardPeriod } from "@/lib/dashboards/period-filter";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 
@@ -43,13 +43,15 @@ const TASK_SCREEN_HINT = "Se cambia en Agentes IA → Análisis de anuncios.";
 
 export async function analyzeAdsWithAi(input: {
   period?: string;
+  /** El rango a medida de la pantalla, si hay: se analiza lo mismo que se esta viendo. */
+  from?: string | null;
+  to?: string | null;
   adAccountId?: string;
   question?: string;
 }): Promise<AdsAnalysisResult> {
   const { workspace, supabase } = await requirePermission("dashboards.ads.view");
 
-  const period: PeriodPreset =
-    input.period && isPeriodPreset(input.period) ? input.period : "30d";
+  const period = readDashboardPeriod({ range: input.period, from: input.from ?? undefined, to: input.to ?? undefined });
 
   const { data: configRow } = await supabase
     .from("integration_configs")
@@ -70,7 +72,7 @@ export async function analyzeAdsWithAi(input: {
   );
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
-  const range = resolvePeriod(period, new Date(), timeZone);
+  const range = resolveDashboardPeriod(period, new Date(), timeZone);
   const rows = await loadAdsInsights(supabase, {
     workspaceId: workspace.id,
     adAccountId: resolved.adAccountId,
@@ -103,7 +105,7 @@ export async function analyzeAdsWithAi(input: {
   }
 
   const context = buildAnalysisContext({
-    periodLabel: PERIOD_LABELS[period],
+    periodLabel: periodLabel(period, timeZone),
     currency: account?.currency ?? null,
     rows,
   });

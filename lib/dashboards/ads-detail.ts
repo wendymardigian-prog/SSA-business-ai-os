@@ -11,6 +11,7 @@
  */
 
 import { computeTotals, groupByObject, type AdsRow, type AdsTotals, type GroupedRow } from "./ads";
+import { periodQuery, type PeriodFilter } from "./period-filter";
 
 export type DetailLevel = "campaign" | "adset" | "ad";
 
@@ -31,9 +32,9 @@ export function breadcrumbs(params: {
   adset?: { id: string; name: string | null } | null;
   ad?: { name: string | null } | null;
   adAccountId: string;
-  period: string;
+  period: PeriodFilter;
 }): Breadcrumb[] {
-  const query = `?cuenta=${encodeURIComponent(params.adAccountId)}&periodo=${encodeURIComponent(params.period)}`;
+  const query = `?${periodQuery(params.period, { cuenta: params.adAccountId })}`;
   const crumbs: Breadcrumb[] = [{ label: "Meta Ads", href: `/dashboard/dashboards/ads${query}` }];
 
   if (params.campaign) {

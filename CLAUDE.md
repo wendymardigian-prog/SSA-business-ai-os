@@ -1279,6 +1279,7 @@ cuentan los toques que pueden traer datos de anuncio)** y `00195` (`ads_crm_metr
   90 dias tarda ~0,9 s bajo RLS; la salida es una politica de lectura mas barata, con aprobacion). Una division por cero es «—» (null), nunca 0; la plata
   del CRM va en centavos y se pasa con `fromCents`; el Total calcula los cocientes sobre los totales.
 - **La pantalla Anuncios (`/dashboard/anuncios`, menú → Adquisición) es la misma tabla del dashboard**, con el mismo permiso y la misma consulta (`loadCrmForRows`): si se cambia una, cambian las dos.
+- **Un solo selector de fechas en los dashboards** (`PeriodPopover`). Meta Ads, sus detalles, Anuncios, Contenido y Unificado leen el período con `lib/dashboards/period-filter.ts` y lo dibujan con `DashboardPeriodControl`: `range`, `from` y `to`; `periodo` se sigue leyendo solo por links viejos. Un link entre pantallas de anuncios lleva `periodQuery`, o el rango a medida se pierde sin avisar. **`loadAdsInsights` lee de a páginas**: PostgREST corta en 1.000 filas sin avisar.
 - **El dashboard de Anuncios pide `dashboards.ads.view`, no el cargo.** Las cuentas publicitarias (`integration_configs`) se leen con el cliente de servicio
   filtrado por el workspace de la sesion. `meta_ads_insights_daily` tiene una politica ADICIONAL de lectura por permiso (00191); la de Owner/Admin no se toco.
 - **`localStorage` siempre en `try/catch`** (el selector de columnas): sin el, las columnas por defecto.

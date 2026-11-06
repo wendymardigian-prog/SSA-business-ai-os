@@ -18,7 +18,7 @@ import {
   type GroupedRow,
 } from "@/lib/dashboards/ads";
 import { latestRankings, rankingTone, type Rankings } from "@/lib/dashboards/ads-view";
-import type { PeriodPreset } from "@/lib/dashboards/period";
+import { periodQuery, type PeriodFilter } from "@/lib/dashboards/period-filter";
 import { COL_TIPS, COL_TIPS_ADS, type ColTip } from "./col-tips";
 import { CrmLevelTable } from "./crm-table";
 import { StatusDot } from "./status-dot";
@@ -51,8 +51,8 @@ const EMPTY_LABEL: Record<Level, string> = {
 
 const SEGMENT: Record<Level, string> = { campaign: "campaigns", adset: "adsets", ad: "ads" };
 
-export function detailHref(level: Level, objectId: string, adAccountId: string, period: PeriodPreset): string {
-  return `/dashboard/dashboards/ads/${SEGMENT[level]}/${objectId}?cuenta=${adAccountId}&periodo=${period}`;
+export function detailHref(level: Level, objectId: string, adAccountId: string, period: PeriodFilter): string {
+  return `/dashboard/dashboards/ads/${SEGMENT[level]}/${objectId}?${periodQuery(period, { cuenta: adAccountId })}`;
 }
 
 const CTR_CLASS = { good: "text-green-600", bad: "text-destructive", neutral: "text-foreground" } as const;
@@ -245,7 +245,7 @@ export function HierarchyCard({
   uniqueReach: UniqueReach;
   currency: string | null;
   adAccountId: string;
-  period: PeriodPreset;
+  period: PeriodFilter;
   heading?: ReactNode;
   /**
    * Los datos del CRM (AT4): con ellos, cada pestaña es la tabla «Meta vs CRM». Sin ellos (las pantallas de detalle)

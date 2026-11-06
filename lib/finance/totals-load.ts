@@ -5,7 +5,7 @@
  */
 import type { PermissionContext } from "@/lib/auth/guards";
 import { categoryUsage, type CategoryExpenseRow, type CategoryUsage } from "./category-totals";
-import { fetchAllPages } from "./paginate";
+import { fetchAllPages } from "@/lib/shared/paginate";
 import { vendorTotals, type PaidExpenseRow, type VendorTotals } from "./vendor-totals";
 
 type Client = PermissionContext["supabase"];

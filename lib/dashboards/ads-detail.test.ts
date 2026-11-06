@@ -125,11 +125,27 @@ describe("las migas de pan (F57)", () => {
       adset: { id: "as1", name: "Conjunto 1" },
       ad: { name: "Anuncio 1" },
       adAccountId: "act_9",
-      period: "30d",
+      period: { period: "7d", from: null, to: null },
     });
 
     expect(crumbs[0].href).toContain("cuenta=act_9");
-    expect(crumbs[0].href).toContain("periodo=30d");
+    expect(crumbs[0].href).toContain("range=7d");
+  });
+
+  it("un rango a mano no se pierde al volver: abrir el detalle mostraria otros numeros", () => {
+    const crumbs = breadcrumbs({
+      level: "adset",
+      campaign: { id: "c1", name: "Campaña 1" },
+      adset: { id: "as1", name: "Conjunto 1" },
+      adAccountId: "act_9",
+      period: { period: "30d", from: "2026-09-02T06:00:00.000Z", to: "2026-09-06T05:59:59.999Z" },
+    });
+
+    for (const crumb of crumbs.filter((c) => c.href)) {
+      const params = new URL(crumb.href as string, "https://x.test").searchParams;
+      expect(params.get("from")).toBe("2026-09-02T06:00:00.000Z");
+      expect(params.get("to")).toBe("2026-09-06T05:59:59.999Z");
+    }
   });
 
   it("el ultimo no es un link: ya estas ahi", () => {
@@ -137,7 +153,7 @@ describe("las migas de pan (F57)", () => {
       level: "campaign",
       campaign: { id: "c1", name: "Campaña 1" },
       adAccountId: "act_9",
-      period: "30d",
+      period: { period: "30d", from: null, to: null },
     });
 
     expect(crumbs.at(-1)?.href).toBeNull();

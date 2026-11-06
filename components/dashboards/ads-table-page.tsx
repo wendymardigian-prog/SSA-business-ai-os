@@ -14,7 +14,7 @@ const NO_OBJECT_REACH = { campaign: null, adset: null, ad: null };
 
 /** La pantalla Anuncios: la tabla de campañas, conjuntos y anuncios, con sus filtros de cuenta y periodo. */
 export function AdsTablePage(props: AdsTablePageData) {
-  const { pending, navigate, refresh } = useAdsNavigation();
+  const { pending, navigate, applyPeriod, refresh } = useAdsNavigation();
   const totals = useMemo(
     () => computeTotals(props.rows.filter((r) => r.level === "account"), props.uniqueReach),
     [props.rows, props.uniqueReach],
@@ -34,7 +34,7 @@ export function AdsTablePage(props: AdsTablePageData) {
       <PageHeader
         route="/dashboard/anuncios"
         left={<SyncedPill label={props.syncedLabel} />}
-        filters={<HeaderFilters accounts={props.accounts} adAccountId={props.adAccountId} period={props.period} onChange={navigate} />}
+        filters={<HeaderFilters accounts={props.accounts} adAccountId={props.adAccountId} period={props.period} onChange={navigate} onApplyPeriod={applyPeriod} />}
         right={<RefreshButton refreshing={pending} onRefresh={refresh} />}
       />
 

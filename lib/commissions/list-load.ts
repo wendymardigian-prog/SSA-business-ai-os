@@ -14,7 +14,7 @@ import type { PermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { financeContextOf } from "@/lib/finance/context";
-import { fetchAllPages } from "@/lib/finance/paginate";
+import { fetchAllPages } from "@/lib/shared/paginate";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { toCents } from "@/lib/shared/money";
 import { addDays } from "@/lib/shared/dates";

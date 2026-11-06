@@ -3,8 +3,8 @@ import { availableDashboards } from "@/lib/dashboards/available";
 import { AdsDashboard } from "@/components/dashboards/ads-dashboard";
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
 import { loadCrmForRows } from "@/lib/dashboards/ads-crm-load";
-import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
-import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
+import { previousPeriod } from "@/lib/dashboards/period";
+import { readDashboardPeriod, resolveDashboardPeriod } from "@/lib/dashboards/period-filter";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
 import { getMetaToken } from "@/lib/meta/token";
 import { fetchBreakdown, fetchReachByLevel, fetchUniqueReach, type BreakdownKind } from "@/lib/meta/live";
@@ -35,9 +35,7 @@ export default async function AdsDashboardPage({
   const canSync = permissions.can("settings.general");
   const sp = await searchParams;
 
-  const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
-  const period: PeriodPreset =
-    periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
+  const period = readDashboardPeriod(sp);
 
   // La lista de cuentas publicitarias esta en `integration_configs`, que solo lee un Admin: con el permiso de la
   // pantalla alcanza para VER las cuentas, asi que se lee con el cliente de servicio, filtrada por el workspace de la sesion.
@@ -83,7 +81,7 @@ export default async function AdsDashboardPage({
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const now = new Date();
-  const range = resolvePeriod(period, now, timeZone);
+  const range = resolveDashboardPeriod(period, now, timeZone);
   const before = previousPeriod(range, now);
 
   // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el

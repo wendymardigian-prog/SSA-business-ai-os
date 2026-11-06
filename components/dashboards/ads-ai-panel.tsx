@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Loader2, Sparkles } from "lucide-react";
 import { Sheet } from "@/components/ui/sheet";
 import { analyzeAdsWithAi } from "@/lib/actions/ads-analysis";
-import type { PeriodPreset } from "@/lib/dashboards/period";
+import type { PeriodFilter } from "@/lib/dashboards/period-filter";
 
 /**
  * "Analizar con IA" (F61).
@@ -23,7 +23,7 @@ export function AdsAiPanel({
   chosenModel,
   onClose,
 }: {
-  period: PeriodPreset;
+  period: PeriodFilter;
   adAccountId: string;
   /** "proveedor/modelo" elegido en la tarea, o null si usa el modelo del negocio. */
   chosenModel: string | null;
@@ -37,7 +37,7 @@ export function AdsAiPanel({
   function analyze() {
     setError(null);
     start(async () => {
-      const outcome = await analyzeAdsWithAi({ period, adAccountId, question: question || undefined });
+      const outcome = await analyzeAdsWithAi({ period: period.period, from: period.from, to: period.to, adAccountId, question: question || undefined });
       if (outcome.ok) setResult({ text: outcome.text, costUsd: outcome.costUsd, model: outcome.model });
       else setError(outcome.error);
     });

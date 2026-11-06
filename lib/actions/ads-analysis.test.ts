@@ -14,6 +14,7 @@ vi.mock("@/lib/ai-tasks/model", () => ({ resolveTaskModel: (...args: unknown[]) 
 const loadTaskInstructions = vi.fn();
 vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructionsForRun: (...args: unknown[]) => loadTaskInstructions(...args) }));
 
+const loadAdsInsights = vi.fn();
 const openAiRun = vi.fn();
 vi.mock("@/lib/ai/run", () => ({ openAiRun: (...args: unknown[]) => openAiRun(...args) }));
 
@@ -21,9 +22,7 @@ vi.mock("@/lib/ai/workspace-budget", () => ({ withinWorkspaceBudget: async () =>
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => ({}) }));
 vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "UTC" }));
 vi.mock("@/lib/dashboards/ads-load", () => ({
-  loadAdsInsights: async () => [
-    { level: "account", objectId: "act_1", date: "2026-10-01", spend: 50, impressions: 1000, clicks: 20, leads: 2, actions: {} },
-  ],
+  loadAdsInsights: (...args: unknown[]) => loadAdsInsights(...args),
 }));
 vi.mock("@/lib/auth/guards", () => ({
   requirePermission: async () => ({
@@ -58,6 +57,10 @@ function fakeRun() {
 }
 
 beforeEach(() => {
+  loadAdsInsights.mockReset();
+  loadAdsInsights.mockResolvedValue([
+    { level: "account", objectId: "act_1", date: "2026-10-01", spend: 50, impressions: 1000, clicks: 20, leads: 2, actions: {} },
+  ]);
   generateText.mockReset();
   resolveTaskModel.mockReset();
   loadTaskInstructions.mockReset();
@@ -79,6 +82,22 @@ describe("analyzeAdsWithAi", () => {
     expect(openAiRun).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ source: "ads_analysis", promptVersion: 3 }));
     expect(run.setModel).toHaveBeenCalledWith("openai", "gpt-5");
     expect(result).toEqual({ ok: true, text: "Analisis", costUsd: 0.01, model: "openai/gpt-5" });
+  });
+
+  it("con un rango a mano analiza ese rango y lo nombra, no los 30 dias", async () => {
+    openAiRun.mockResolvedValue(fakeRun());
+    loadTaskInstructions.mockResolvedValue({ version: null, text: "x" });
+    resolveTaskModel.mockResolvedValue({ ok: true, model: {}, provider: "openai", modelId: "gpt-5", chosen: false });
+    generateText.mockResolvedValue({ text: "ok", usage: {} });
+    const from = "2026-09-02T00:00:00.000Z";
+    const to = "2026-09-05T23:59:59.999Z";
+
+    await analyzeAdsWithAi({ period: "30d", from, to });
+
+    expect(loadAdsInsights.mock.calls[0][1]).toMatchObject({ period: { from, to } });
+    const sent = JSON.stringify(generateText.mock.calls[0][0]);
+    expect(sent).toContain("PERIODO: 02 sept 2026 – 05 sept 2026");
+    expect(sent).not.toContain("Últimos 30 días");
   });
 
   it("sin instrucciones editadas, usa el texto del sistema (version null)", async () => {

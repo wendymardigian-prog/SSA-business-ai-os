@@ -17,7 +17,7 @@ import type { BreakdownRow } from "@/lib/meta/live";
 import { KpiRow } from "./ads/kpi-row";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 import { AdsAiPanel } from "./ads-ai-panel";
-import type { PeriodPreset } from "@/lib/dashboards/period";
+import type { PeriodFilter } from "@/lib/dashboards/period-filter";
 import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 import { computeTotals, type AdsRow } from "@/lib/dashboards/ads";
 import { crmLeadsSummary } from "@/lib/dashboards/ads-crm";
@@ -39,7 +39,7 @@ export interface AdsDashboardProps {
   account: { id: string; name: string | null; currency: string | null; lastError: string | null } | null;
   adAccountId: string;
   currency: string | null;
-  period: PeriodPreset;
+  period: PeriodFilter;
   /** El alcance unico del periodo, de la consulta en vivo (F58). */
   uniqueReach: number | null;
   /** El del periodo anterior; solo viene si el de este llego tambien. */
@@ -64,7 +64,7 @@ export interface AdsDashboardProps {
 const SECTION_LABEL = "text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground";
 
 export function AdsDashboard(props: AdsDashboardProps) {
-  const { pending, navigate, refresh } = useAdsNavigation();
+  const { pending, navigate, applyPeriod, refresh } = useAdsNavigation();
 
   const [aiOpen, setAiOpen] = useState(false);
   const accountRows = useMemo(() => props.rows.filter((r) => r.level === "account"), [props.rows]);
@@ -115,6 +115,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
             adAccountId={props.adAccountId}
             period={props.period}
             onChange={navigate}
+            onApplyPeriod={applyPeriod}
           />
         }
         right={

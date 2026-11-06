@@ -3,8 +3,8 @@ import { availableDashboards } from "@/lib/dashboards/available";
 import { ContentDashboard } from "@/components/dashboards/content-dashboard";
 import { parseClassificationParams } from "@/lib/dashboards/content-params";
 import { loadContentDashboard } from "@/lib/dashboards/content-load";
-import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
-import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
+import { previousPeriod } from "@/lib/dashboards/period";
+import { readDashboardPeriod, resolveDashboardPeriod } from "@/lib/dashboards/period-filter";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
@@ -30,16 +30,14 @@ export default async function ContentDashboardPage({
   const dashboards = availableDashboards(ctx.can);
   const sp = await searchParams;
 
-  const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
-  const period: PeriodPreset =
-    periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
+  const period = readDashboardPeriod(sp);
   const platform = typeof sp.red === "string" ? sp.red : null;
   // Agrupar y filtrar por la clasificacion de la pieza (F105).
   const { group, filters } = parseClassificationParams(sp);
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const now = new Date();
-  const range = resolvePeriod(period, now, timeZone);
+  const range = resolveDashboardPeriod(period, now, timeZone);
   const before = previousPeriod(range, now);
 
   const [current, previous, accountsRes] = await Promise.all([
