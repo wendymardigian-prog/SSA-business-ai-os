@@ -1592,6 +1592,14 @@ Responsable de cada conversación (a mano y con reglas por cuenta), la marca «C
 
 `00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. La `00259` a la `00261` son de «Esperando respuesta» (ver esa sección): **la próxima libre es la `00262`** (confirmar con `list_migrations`).
 
+# Bandeja: la barra de la lista (6/11/2026)
+
+Todo lo que filtra la lista vive arriba de ella (`components/inbox/inbox-list-header.tsx`): la cantidad, el boton **Filtros** (`InboxFiltersMenu`), el icono de buscar y los borradores.
+
+- **Un solo menu de filtros, en este orden**: Canal, Asignacion, Estado, Chats y grupos (solo si hay grupos activados), Respuesta, Tags, Conocidos y clientes, Quien es, Agente de IA, Ultimo mensaje. El contador del boton cuenta todo menos la busqueda (`countMenuFilters`); "Abiertas" es el estado de siempre y no cuenta.
+- **El buscador se despliega desde el icono** y arranca abierto solo si la URL trae `?q=`. La `×` (o Esc) borra lo buscado y lo cierra. `SectionSearch` con `onClose` es ese modo; Broadcasts, Secuencias y Growth lo siguen usando en la barra de arriba.
+- **Limpiar filtros conserva lo abierto** (`?c=` y `?g=`).
+
 # Contactos: Kanban, columnas y filtros (3/11/2026)
 
 Tabla y Kanban (`?vista=kanban`) con los MISMOS filtros: un solo planificador (`lib/contacts/list-query.ts`) y un catálogo de filtros (`lib/contacts/filters/catalog.ts` + las áreas de `lib/contacts/related/*`, registradas en `lib/contacts/list-modules.ts`). Panel de filtros y menú de columnas con buscador, chips de filtros puestos. Resumen en [docs/contactos.md](docs/contactos.md) («Lista: vistas, columnas y filtros»).
@@ -1627,7 +1635,7 @@ WhatsApp a veces identifica a la persona con un `@lid` (un id interno) en vez de
 
 # Grupos de WhatsApp (construido, 3/11/2026)
 
-Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (vista «Grupos», `?vista=grupos&g=`), guardar como contacto a quien se une (toque «Grupo de WhatsApp», organico) y disparar automatizaciones cuando alguien se une, reacciona o vota en una encuesta. Resumen en [docs/whatsapp-grupos.md](docs/whatsapp-grupos.md).
+Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (en la misma lista que los chats, `?g=` abre uno y `?tipo=chats|grupos` filtra), guardar como contacto a quien se une (toque «Grupo de WhatsApp», organico) y disparar automatizaciones cuando alguien se une, reacciona o vota en una encuesta. Resumen en [docs/whatsapp-grupos.md](docs/whatsapp-grupos.md).
 
 ## Lo que no se puede romper
 
@@ -1638,6 +1646,7 @@ Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (vista «Gru
 - **Un voto de encuesta NO es un mensaje** (`parseBaileysPollVote`): en privado se ignora (antes entraba vacio y despertaba al agente). Evolution solo descifra votos de encuestas que salieron de nuestro numero.
 - **Los disparadores** (`whatsapp_group_joined|reaction|poll_vote`, 00282) son de contacto, por la cola; declaran `conversationFor` (hook nuevo: el flujo escribe por privado en el numero del grupo) y saltean «no contactar». Filtros puros en `lib/whatsapp-groups/automation/trigger-config.ts`. Nodo `send_poll` («Enviar encuesta», sin contacto).
 - **Un solo envio a un grupo** (`lib/whatsapp-groups/send.ts`): bandeja y paso «Enviar encuesta». El eco se junta por `(group_id, platform_message_id)` (indice NO parcial, para el `on_conflict`).
+- **Chats y grupos son una sola lista, sin tocar la base** (`lib/inbox/unified-list.ts`, puro): las conversaciones se paginan como siempre (se pide una fila de mas) y cada grupo cae en LA pagina que le toca por la fecha de su ultimo mensaje; no cuenta para el tamaño de la pagina. Un grupo no tiene estado, etiquetas, responsable ni agente: con esos filtros puestos no entra (`groupsCanMatch`). Se considera abierto. `?vista=grupos` (el link viejo) sigue queriendo decir `?tipo=grupos`.
 - **`participantsData` de Evolution 2.3.7 viene roto**: se lee `participants[]` (objetos `{id, phoneNumber, lid}`).
 
 ## Migraciones

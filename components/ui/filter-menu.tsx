@@ -43,6 +43,7 @@ export function FilterMenu({
   align = "right",
   menuClassName = "topbar:w-[300px]",
   compact = false,
+  plain = false,
   badge = 0,
 }: {
   /** El nombre del filtro, en gris ("Canal:"). Se esconde en pantallas chicas. */
@@ -59,6 +60,11 @@ export function FilterMenu({
    * solo menu.
    */
   compact?: boolean;
+  /**
+   * Solo el icono, el nombre y `value` (un contador, si hay algo puesto): sin "Nombre:" ni flecha. Lo usa la Bandeja,
+   * donde el boton es la unica entrada a los filtros.
+   */
+  plain?: boolean;
   /**
    * Cuantos filtros hay puestos, como globito sobre el icono (solo en
    * `compact`). 0 no dibuja nada.
@@ -162,6 +168,11 @@ export function FilterMenu({
               {badge}
             </span>
           )
+        ) : plain ? (
+          <>
+            <span>{label}</span>
+            {value}
+          </>
         ) : (
           <>
             <span className="hidden font-normal text-muted-foreground md:inline">{label}:</span>

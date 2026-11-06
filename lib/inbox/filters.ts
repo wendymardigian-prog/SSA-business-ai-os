@@ -42,9 +42,30 @@ export const ASSIGNMENT_AI = "agente-ia";
 /** Las que me tocan: el chat a mi cargo, o soy setter o vendedor del contacto. */
 export const ASSIGNMENT_MINE = "mias";
 
+/**
+ * Que muestra la lista: chats, grupos de WhatsApp o los dos (sin valor). `?tipo=` en la URL. Un grupo no es una
+ * conversacion con un lead (00280): vive en otras tablas y la lista los junta (`lib/inbox/unified-list.ts`).
+ */
+export const INBOX_LIST_TYPES = ["chats", "grupos"] as const;
+export type InboxListType = (typeof INBOX_LIST_TYPES)[number];
+export const INBOX_LIST_TYPE_LABELS: Record<InboxListType, string> = {
+  chats: "Solo chats",
+  grupos: "Solo grupos",
+};
+export const LIST_TYPE_PARAM = "tipo";
+/** El parametro viejo (`?vista=grupos`): un favorito sigue abriendo solo los grupos. */
+export const LEGACY_VIEW_PARAM = "vista";
+
+export function parseListType(tipo: string, vistaVieja = ""): InboxListType | "" {
+  if ((INBOX_LIST_TYPES as readonly string[]).includes(tipo)) return tipo as InboxListType;
+  return vistaVieja === "grupos" ? "grupos" : "";
+}
+
 export interface InboxFilters {
   search: string;
   status: InboxStatus;
+  /** Chats, grupos o los dos. Opcional: los links viejos no lo traen. */
+  listType?: InboxListType | "";
   /** Plataformas de los canales activos, ej ["instagram", "whatsapp"]. */
   platforms: string[];
   /**
@@ -86,6 +107,7 @@ export interface InboxFilters {
 export const EMPTY_INBOX_FILTERS: InboxFilters = {
   search: "",
   status: DEFAULT_INBOX_STATUS,
+  listType: "",
   platforms: [],
   channelIds: [],
   tagIds: [],
@@ -123,6 +145,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   let count = 0;
   if (filters.search) count++;
   if (filters.status !== DEFAULT_INBOX_STATUS) count++;
+  if (filters.listType) count++;
   if (filters.platforms.length > 0) count++;
   if (filters.channelIds.length > 0) count++;
   if (filters.tagIds.length > 0) count++;

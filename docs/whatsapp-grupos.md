@@ -3,7 +3,7 @@
 Hasta noviembre de 2026 el sistema descartaba todo lo que pasaba en un grupo de WhatsApp. Ahora un número puede
 **activar** algunos de sus grupos para:
 
-- **verlos y escribir en ellos desde la bandeja** (vista «Grupos», con encuestas);
+- **verlos y escribir en ellos desde la bandeja** (en la misma lista que los chats, con encuestas);
 - **guardar como contacto a quien se une**, con el origen «Grupo de WhatsApp»;
 - **disparar automatizaciones** cuando alguien se une, reacciona a un mensaje o vota en una encuesta.
 
@@ -15,7 +15,8 @@ van **antes** de desplegar el código. En producción están aplicadas y registr
 **Ajustes → Integraciones → WhatsApp → (el número) → Grupos.** Lista los grupos en los que está el número y, por
 grupo, dos interruptores:
 
-- **Ver en la bandeja**: el grupo aparece en la bandeja → «Grupos». Se leen los mensajes, se escribe, se mandan
+- **Ver en la bandeja**: el grupo aparece en la lista de la bandeja, mezclado con los chats por la fecha de su último
+  mensaje (Filtros → «Chats y grupos» deja ver solo unos u otros). Se leen los mensajes, se escribe, se mandan
   fotos, videos, archivos y encuestas, y se arma una automatización desde un mensaje.
 - **Guardar como contacto a quien se une**: quien entre desde ahora queda como contacto (o se vincula al que ya
   existía), con su toque de atribución.
@@ -116,8 +117,8 @@ número. El tope de 200 mensajes automáticos por hora del canal sigue valiendo.
   `whatsapp_group_import`).
 - Disparadores: `lib/flow-engine/registry/whatsapp-group-triggers.ts` y `lib/whatsapp-groups/automation/*`.
 - Ajustes: `components/channels/whatsapp-group-settings.tsx`, `lib/actions/whatsapp-groups.ts`.
-- Bandeja: `app/(dashboard)/dashboard/(comunicacion)/inbox/groups-inbox.tsx`, `components/inbox/groups/*`,
-  `lib/actions/whatsapp-group-inbox.ts`.
+- Bandeja: `lib/inbox/unified-list.ts` (en qué página cae cada grupo y qué filtros puede cumplir),
+  `lib/whatsapp-groups/inbox-data.ts` (lo que se lee), `components/inbox/groups/*`, `lib/actions/whatsapp-group-inbox.ts`.
 
 ## Pendiente
 
