@@ -17,6 +17,8 @@ import {
   HIDE_KNOWN_PARAM,
   HIDE_KNOWN_VALUE,
   HIDE_CUSTOMERS_PARAM,
+  UNIDENTIFIED_PARAM,
+  SILENT_OUTREACH_FIELD,
   statusForQuery,
   type InboxFilters,
   type InboxStatus,
@@ -143,6 +145,8 @@ export default async function InboxPage({
   const hideKnown = firstParam(params[HIDE_KNOWN_PARAM]) === HIDE_KNOWN_VALUE;
   // Clientes (00268), igual.
   const hideCustomers = firstParam(params[HIDE_CUSTOMERS_PARAM]) === HIDE_KNOWN_VALUE;
+  // 00296: las que le escribio el negocio y la persona nunca respondio. Se ocultan por defecto.
+  const onlyUnidentified = firstParam(params[UNIDENTIFIED_PARAM]) === "1";
   const page = pickPage(params.page);
   const selectedId = firstParam(params.c);
 
@@ -196,6 +200,7 @@ export default async function InboxPage({
   }
   if (hideKnown) query = query.eq("contacts.is_known", false);
   if (hideCustomers) query = query.eq("contacts.is_customer", false);
+  query = query.filter(SILENT_OUTREACH_FIELD, "eq", onlyUnidentified);
 
   if (search) {
     // Sobre el contacto (la tabla embebida): nombre, emails, telefonos, los @ y el
@@ -229,7 +234,23 @@ export default async function InboxPage({
 
   const from = (page - 1) * PAGE_SIZE;
 
-  const [conversationsRes, assetsRes, permissionCtx, draftCounts] = await Promise.all([
+  // Cuantas quedaron afuera: sin este numero, la lista baja de golpe y parece que se perdieron
+  // chats. Mismo estado y mismas cuentas que la lista. La columna va primero: usa el indice parcial.
+  let hiddenQuery = supabase
+    .from("conversations")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .is("contact_wrote_at", null)
+    .filter(SILENT_OUTREACH_FIELD, "eq", true);
+  if (statusValue) hiddenQuery = hiddenQuery.eq("status", statusValue);
+  if (channelRestriction) {
+    hiddenQuery = hiddenQuery.in("channel_id", channelRestriction.length > 0 ? channelRestriction : ["00000000-0000-0000-0000-000000000000"]);
+  }
+  if (platforms.length > 0) hiddenQuery = hiddenQuery.in("platform", platforms as Platform[]);
+  if (channelIds.length > 0) hiddenQuery = hiddenQuery.in("channel_id", channelIds);
+
+  const [conversationsRes, assetsRes, permissionCtx, draftCounts, hiddenRes] = await Promise.all([
     query
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -252,6 +273,7 @@ export default async function InboxPage({
     // Bloque 2d: el valor inicial de la pestana "Borradores (N)". Despues lo
     // mantiene al dia Realtime (useDraftCounts).
     countPendingDrafts(),
+    hiddenQuery,
   ]);
 
   if (conversationsRes.error) {
@@ -259,6 +281,9 @@ export default async function InboxPage({
   }
   if (assetsRes.error) {
     console.error("[inbox] banca de recursos fallida:", assetsRes.error.message);
+  }
+  if (hiddenRes.error) {
+    console.error("[inbox] no pude contar los chats sin identificar:", hiddenRes.error.message);
   }
 
   const assets: InboxAsset[] = (assetsRes.data ?? []).map(toBankAsset);
@@ -322,6 +347,7 @@ export default async function InboxPage({
     awaiting,
     hideKnown,
     hideCustomers,
+    onlyUnidentified,
   };
 
   const platformItems = platformOptions.map((p) => ({ value: p, label: platformLabel(p) }));
@@ -375,6 +401,7 @@ export default async function InboxPage({
       draftCounts={draftCounts}
       draftConversationIds={draftConversationIds}
       hasGroups={(groupsCount.count ?? 0) > 0}
+      unidentifiedCount={hiddenRes.count ?? 0}
         />
       </div>
     </div>

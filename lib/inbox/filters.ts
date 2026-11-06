@@ -76,6 +76,11 @@ export interface InboxFilters {
   hideKnown?: boolean;
   /** Esconde los chats de clientes (00268). */
   hideCustomers?: boolean;
+  /**
+   * Solo las conversaciones que la lista oculta por defecto (00296): le escribio el
+   * negocio o una automatizacion, la persona nunca respondio y no se sabe quien es.
+   */
+  onlyUnidentified?: boolean;
 }
 
 export const EMPTY_INBOX_FILTERS: InboxFilters = {
@@ -93,6 +98,7 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   awaiting: "",
   hideKnown: false,
   hideCustomers: false,
+  onlyUnidentified: false,
 };
 
 /** El parametro de la URL: `?conocidos=ocultar`. */
@@ -100,6 +106,10 @@ export const HIDE_KNOWN_PARAM = "conocidos";
 export const HIDE_KNOWN_VALUE = "ocultar";
 /** `?clientes=ocultar` (00268). */
 export const HIDE_CUSTOMERS_PARAM = "clientes";
+/** `?sin-identificar=1` (00296). */
+export const UNIDENTIFIED_PARAM = "sin-identificar";
+/** El campo calculado de PostgREST que decide que conversaciones se ocultan. */
+export const SILENT_OUTREACH_FIELD = "conversation_is_silent_outreach";
 
 /**
  * Cuantos filtros hay puestos, para el contador del boton.
@@ -123,6 +133,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.awaiting) count++;
   if (filters.hideKnown) count++;
   if (filters.hideCustomers) count++;
+  if (filters.onlyUnidentified) count++;
   return count;
 }
 
@@ -135,7 +146,7 @@ export function countActiveFilters(filters: InboxFilters): number {
  * el cliente y hay que volver a preguntarle al servidor.
  */
 export function needsServerToFilter(filters: InboxFilters): boolean {
-  return filters.tagIds.length > 0 || filters.assignment !== ASSIGNMENT_ANY || !!filters.hideKnown || !!filters.hideCustomers;
+  return filters.tagIds.length > 0 || filters.assignment !== ASSIGNMENT_ANY || !!filters.hideKnown || !!filters.hideCustomers || !!filters.onlyUnidentified;
 }
 
 export interface FilterableRow {

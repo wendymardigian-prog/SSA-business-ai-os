@@ -4,6 +4,7 @@ import type { Database } from "@/lib/types/database";
 import type { AgentToolContext, AgentToolDefinition } from "./types";
 import type { AgentConfig } from "../config";
 import { stripLinks } from "../output-guardrails";
+import { ID_NAME_PATTERN } from "@/lib/contacts/anonymous";
 
 /**
  * generar_link_whatsapp: arma el link de WhatsApp del negocio con un mensaje
@@ -87,11 +88,13 @@ export function cutForLink(text: string, max: number): string {
 
 const PLACEHOLDER_NAMES = new Set(["instagram user", "usuario de instagram", "usuario", "user"]);
 
-function usableName(nombre: string | undefined, isAnonymous: boolean): string | null {
+export function usableName(nombre: string | undefined, isAnonymous: boolean): string | null {
   if (isAnonymous) return null;
   const n = (nombre ?? "").trim();
   if (!n) return null;
   if (PLACEHOLDER_NAMES.has(n.toLowerCase())) return null;
+  // Un id como nombre no siempre es anonimo (quien escribio, 00298), y tampoco es un nombre.
+  if (new RegExp(ID_NAME_PATTERN).test(n)) return null;
   return n;
 }
 

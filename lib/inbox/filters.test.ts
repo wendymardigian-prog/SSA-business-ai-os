@@ -198,3 +198,16 @@ describe("filtro por cuenta (channelIds)", () => {
     expect(matchesInboxRow(fila({ channel_id: "c1", platform: "whatsapp" }), f, SIN_RANGO)).toBe(true);
   });
 });
+
+describe("Sin identificar (00296)", () => {
+  it("cuenta como un filtro y lo tiene que resolver el servidor", () => {
+    const filters = { ...EMPTY_INBOX_FILTERS, onlyUnidentified: true };
+    expect(countActiveFilters(filters)).toBe(1);
+    expect(needsServerToFilter(filters)).toBe(true);
+  });
+
+  it("sin el filtro no cuenta: ocultarlas es lo normal, no un filtro puesto", () => {
+    expect(countActiveFilters(EMPTY_INBOX_FILTERS)).toBe(0);
+    expect(needsServerToFilter(EMPTY_INBOX_FILTERS)).toBe(false);
+  });
+});

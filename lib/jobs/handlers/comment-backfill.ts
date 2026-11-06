@@ -16,6 +16,7 @@
  * Repetir el job es seguro: el vínculo es condicional (`contact_id IS NULL`) y el toque se deduplica por `comment:<id>`.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { completeProfileFromComment } from "@/lib/comments/complete-profile";
 import { linkCommentToContact } from "@/lib/comments/link-to-contact";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { scheduleJob } from "@/lib/scheduler";
@@ -37,6 +38,7 @@ const usernameKey = (u: string) => u.trim().replace(/^@+/, "").toLowerCase();
 interface CommentRow {
   external_comment_id: string;
   author_username: string | null;
+  author_name?: string | null;
   commented_at: string | null;
   social_post_id: string | null;
   platform: string;
@@ -100,7 +102,7 @@ async function backfillInstagramByIds(db: Db, workspaceId: string, contactId: st
   if (senderIds.length === 0) return { linked: 0, more: false };
   const { data, error } = await db
     .from("social_post_comments")
-    .select("external_comment_id, author_username, commented_at, social_post_id, platform")
+    .select("external_comment_id, author_username, author_name, commented_at, social_post_id, platform")
     .eq("workspace_id", workspaceId)
     .eq("platform", "instagram")
     .in("author_external_id", senderIds)
@@ -111,8 +113,13 @@ async function backfillInstagramByIds(db: Db, workspaceId: string, contactId: st
     .limit(BACKFILL_BATCH);
   if (error) throw new Error(`comment_backfill: no pude leer los comentarios: ${error.message}`);
 
+  const rows = (data ?? []) as unknown as CommentRow[];
+  // El más reciente con usuario: si el contacto no tiene @, deja de ser anónimo.
+  const newest = [...rows].reverse().find((r) => r.author_username);
+  if (newest) await completeProfileFromComment(db, { workspaceId, contactId, username: newest.author_username, name: newest.author_name });
+
   let linked = 0;
-  for (const row of (data ?? []) as unknown as CommentRow[]) {
+  for (const row of rows) {
     const result = await linkCommentToContact(db, {
       workspaceId,
       contactId,

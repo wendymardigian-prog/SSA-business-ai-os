@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
-import { InboxStatusControls } from "@/components/inbox/inbox-filters";
+import { InboxStatusControls, UnidentifiedNotice } from "@/components/inbox/inbox-filters";
 import {
   matchesInboxRow,
   needsServerToFilter,
@@ -68,6 +68,7 @@ export function ConversationList({
   canEditContacts = false,
   canDeleteContacts = false,
   hasGroups = false,
+  unidentifiedCount = 0,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -93,6 +94,8 @@ export function ConversationList({
   canDeleteContacts?: boolean;
   /** Hay grupos de WhatsApp activados que esta persona ve: se muestra «Chats | Grupos» (00280). */
   hasGroups?: boolean;
+  /** Chats que la lista oculta por defecto (00296). */
+  unidentifiedCount?: number;
 }) {
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
@@ -244,6 +247,8 @@ export function ConversationList({
           </button>
         </div>
       )}
+
+      {!filters.onlyUnidentified && <UnidentifiedNotice count={unidentifiedCount} />}
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">

@@ -917,6 +917,7 @@ async function handleCommentWebhook(
     platform: platform ?? "instagram",
     externalCommentId: payload.comment.id,
     authorUsername: payload.comment.author?.username ?? null,
+    authorName: payload.comment.author?.name ?? null,
     // El id del autor en el canal de la cuenta: encuentra al contacto aunque no tenga el @ guardado.
     authorExternalId: payload.comment.author?.id ?? null,
     channelId: channel?.platform === "instagram" ? channel.id : null,

@@ -51,6 +51,7 @@ export function InboxView({
   draftCounts,
   draftConversationIds = [],
   hasGroups = false,
+  unidentifiedCount = 0,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -98,6 +99,8 @@ export function InboxView({
   draftConversationIds?: string[];
   /** Hay grupos de WhatsApp activados para ver (00280). */
   hasGroups?: boolean;
+  /** Chats que la lista oculta por defecto (00296). */
+  unidentifiedCount?: number;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -258,6 +261,7 @@ export function InboxView({
           canEditContacts={canEditContacts}
           canDeleteContacts={canDeleteContacts}
           hasGroups={hasGroups}
+          unidentifiedCount={unidentifiedCount}
         />
       </div>
 
