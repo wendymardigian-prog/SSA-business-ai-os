@@ -1652,7 +1652,7 @@ ManyChat le escribe a cada seguidor nuevo; Instagram no da el nombre ni el usuar
 - **Un comentario completa al contacto** con su @ y su nombre (`completeProfileFromComment`): no pisa lo escrito por una persona ni escribe un @ que ya es de otro contacto. Va en `try/catch`.
 - **Un webhook de ManyChat con solo nombre y @ crearia una persona duplicada**: el contacto oculto solo tiene el id de Instagram. Antes de armarlo, comprobar que ManyChat manda ese mismo id y sumarlo a «Crear o actualizar contacto» (hoy no lo acepta).
 
-`00296_unidentified_contacts` va ANTES de desplegar el codigo (la bandeja lee el campo calculado). `node scripts/verify-unidentified-contacts.mjs`. **La proxima libre es la `00297`** (la `00295` es de la rama de Grabaciones, sin aplicar, y la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
+`00296_unidentified_contacts` va ANTES de desplegar el codigo (la bandeja lee el campo calculado). `node scripts/verify-unidentified-contacts.mjs`. **La proxima libre es la `00298`** (la `00297` es de Grabaciones, la `00295` quedo sin usar y la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
 
 # Conocido, Cliente y agenda en un paso (28/10/2026)
 
