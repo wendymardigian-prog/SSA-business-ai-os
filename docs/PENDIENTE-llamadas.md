@@ -62,3 +62,13 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 - **`/users/me` no aparece en la documentación de Fathom** (revisada el 6/11/2026). Si no contesta, la etiqueta queda "Cuenta de Fathom" y se usan el correo de la cuenta del sistema y los que cargue la persona.
 - **El primer ingreso de 14 días sigue disparando automatizaciones y análisis**, como siempre: no es la importación. Si molesta al conectar a alguien con mucho movimiento, se puede tratar igual que el historial.
 - **Sin aviso al terminar la importación.** Puede tardar horas; el avance se ve en Mi Fathom. Un aviso en la campana pide sumar un tipo y su evento en `lib/notifications/preferences.ts`.
+
+## Una sola clasificación: área y tipo (Etapa 1, 6/11/2026)
+
+- **Lo que sigue del plan:** Etapa 2 (qué importa cada conexión, necesita la prueba real con Fathom), Etapa 3 (un analizador por tipo: `call_analysis_profiles`, necesita las rúbricas de Wendy), Etapa 4 (alcance por área) y Etapa 5 (limpieza).
+- **El dashboard sigue con `call_type`** y promedia puntajes entre tipos. Se corrige en la Etapa 3, junto con el analizador por tipo.
+- **`analyze_types` sigue siendo la regla de qué se analiza**, sobre el `call_type` derivado. Un tipo nuevo de Ventas se analiza como un cierre hasta la Etapa 3.
+- **El paso "área de la conexión" está en la cascada pero nadie lo llena todavía** (`connection`): llega con la Etapa 2.
+- **Se borra en la Etapa 5:** `call_type`, `call_type_proposed`, `custom_types`, `allow_ai_types`, `discarded_types` y las claves viejas de las reglas (`LEGACY_TO_SYSTEM_KEY`).
+- **Sin revisar en pantalla con datos reales:** producción tiene 0 grabaciones. Falta ver una agendada de Servicio y una sin vínculo.
+

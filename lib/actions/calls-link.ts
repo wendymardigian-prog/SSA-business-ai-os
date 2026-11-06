@@ -5,6 +5,7 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { emitCallEvent } from "@/lib/calls/automation/emit";
+import { reclassifyCall } from "@/lib/calls/reclassify";
 import { meetingPeople, meetingDayRange, suggestBookings, sanitizeTerm, type BookingSuggestion } from "@/lib/calls/booking-suggestions";
 import type { CallAttendee, CallTranscriptLine } from "@/lib/types/database";
 import { sanitizeSearch } from "@/lib/url-params";
@@ -139,7 +140,11 @@ export async function linkCallBooking(input: { callId: string; bookingId: string
     performedBy: ctx.user.id,
   });
 
+  // La reunion decide el area y el tipo: vincularla o sacarla vuelve a clasificar (lo elegido a mano no se toca).
+  await reclassifyCall(service, call.id);
+
   revalidatePath(`/dashboard/llamadas/${call.id}`);
+  revalidatePath("/dashboard/llamadas");
   return { ok: true, ...(warning ? { warning } : {}) };
 }
 

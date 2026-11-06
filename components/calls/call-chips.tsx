@@ -11,10 +11,10 @@ import { statusLabel } from "@/lib/calls/status";
  * (`lib/calls/badges.ts`): aca solo se dibujan.
  */
 
-export function TypeChip({ type, needsReview, custom }: { type: string | null; needsReview?: boolean; custom?: Array<{ clave: string; nombre: string }> }) {
+export function TypeChip({ type, label, needsReview }: { type: string | null; label?: string; needsReview?: boolean }) {
   // Por revisar: el tipo se muestra en ambar (hay que confirmarlo); "Por revisar" lo dice el chip de estado.
   const tone = needsReview ? "review" : typeBadgeTone(type);
-  return <span className={callBadgeClass(tone)}>{callTypeLabel(type, custom)}{needsReview && type ? "?" : ""}</span>;
+  return <span className={callBadgeClass(tone)}>{label ?? callTypeLabel(type)}{needsReview && type ? "?" : ""}</span>;
 }
 
 export function StatusChip({ status }: { status: string }) {

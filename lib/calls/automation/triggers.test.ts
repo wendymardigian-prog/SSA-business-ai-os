@@ -4,6 +4,8 @@ import { callDedupeKey, callEventMatches, callEventPayload, isCallTriggerType, t
 const payload = (over: Partial<CallEventPayload> = {}): CallEventPayload => ({
   call_id: "c1",
   call_type: "cierre",
+  area_id: "area-ventas",
+  category_id: "tipo-cierre",
   outcome: "seguimiento_con_fecha",
   closer_score: 70,
   lead_score: 62,
@@ -70,10 +72,26 @@ describe("callDedupeKey", () => {
   });
 });
 
+describe("callEventMatches: area y tipo de reunion", () => {
+  it("filtra por area y por tipo", () => {
+    expect(callEventMatches("call_analyzed", { area_ids: ["area-ventas"] }, payload())).toBe(true);
+    expect(callEventMatches("call_analyzed", { area_ids: ["area-servicio"] }, payload())).toBe(false);
+    expect(callEventMatches("call_analyzed", { category_ids: ["tipo-cierre"] }, payload())).toBe(true);
+    expect(callEventMatches("call_analyzed", { category_ids: ["tipo-seguimiento"] }, payload())).toBe(false);
+  });
+  it("una llamada sin clasificar no pasa un filtro por area", () => {
+    expect(callEventMatches("call_analyzed", { area_ids: ["area-ventas"] }, payload({ area_id: null }))).toBe(false);
+  });
+  it("el filtro viejo por clave se sigue respetando", () => {
+    expect(callEventMatches("call_analyzed", { call_types: ["equipo"] }, payload())).toBe(false);
+    expect(callEventMatches("call_analyzed", { call_types: ["cierre"] }, payload())).toBe(true);
+  });
+});
+
 describe("callEventPayload", () => {
   const call = { id: "c1", contact_id: "ct1", call_type: "cierre", outcome: "venta", closer_score: 80, lead_score: 70, lead_qualification: "calificado", recorded_by_user_id: "u1", booking_id: "b1", analysis_run_id: "run-1" };
   it("arma el payload del plano", () => {
-    expect(callEventPayload(call)).toEqual({ call_id: "c1", call_type: "cierre", outcome: "venta", closer_score: 80, lead_score: 70, lead_qualification: "calificado", closer_id: "u1", booking_id: "b1", analysis_run_id: "run-1" });
+    expect(callEventPayload(call)).toEqual({ call_id: "c1", call_type: "cierre", area_id: null, category_id: null, outcome: "venta", closer_score: 80, lead_score: 70, lead_qualification: "calificado", closer_id: "u1", booking_id: "b1", analysis_run_id: "run-1" });
   });
   it("sin corrida no agrega la clave", () => {
     expect(callEventPayload({ ...call, analysis_run_id: null })).not.toHaveProperty("analysis_run_id");

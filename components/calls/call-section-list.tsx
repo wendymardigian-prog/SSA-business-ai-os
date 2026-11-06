@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { callBadgeClass, scoreBadgeTone } from "@/lib/calls/badges";
 import { formatCallDate, humanize } from "@/lib/calls/format";
-import { callTypeLabel } from "@/lib/calls/list";
 import type { CallSectionRow } from "@/lib/calls/contact-section";
 
 /**
@@ -18,7 +17,7 @@ export function CallSectionList({ rows, timeZone, compact = false }: { rows: Cal
           <Link href={`/dashboard/llamadas/${c.id}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5 text-sm hover:bg-muted/60">
             <span className="tabular-nums">{formatCallDate(c.recordedAt, timeZone, "short")}</span>
             <span className="text-muted-foreground">·</span>
-            <span>{callTypeLabel(c.callType)}</span>
+            <span>{c.categoryLabel}</span>
             {c.closerName && <span className="text-xs text-muted-foreground">con {c.closerName}</span>}
             <span className="ml-auto flex flex-wrap items-center gap-1.5">
               {c.status !== "analyzed" ? (

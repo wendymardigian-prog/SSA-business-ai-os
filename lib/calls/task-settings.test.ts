@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_ANALYSIS, DEFAULT_CLASSIFICATION, DEFAULT_RULES, isCallTaskKey, newCustomType, resolveCallTaskSettings, validateCallTaskSettings,
+  DEFAULT_ANALYSIS, DEFAULT_CLASSIFICATION, DEFAULT_RULES, isCallTaskKey, resolveCallTaskSettings, validateCallTaskSettings,
   validTypeKeys, type CallAnalysisSettings,
 } from "./task-settings";
 import { DEFAULT_RUBRIC } from "./rubric";
@@ -13,8 +13,8 @@ describe("resolveCallTaskSettings", () => {
     expect(s.call_analysis.mode).toBe("off"); // el primer gasto lo decide una persona
     expect(s.call_classification.confidence_threshold).toBe(0.7);
   });
-  it("las cinco reglas por defecto de F17, en orden", () => {
-    expect(DEFAULT_RULES.map((r) => `${r.cond}→${r.type}`)).toEqual(["duration_lt→no_show", "people_gte→equipo", "title_contains→equipo", "only_team→equipo", "has_appointment→cierre"]);
+  it("las cuatro reglas por defecto, en orden: la reunion vinculada ya no es una regla", () => {
+    expect(DEFAULT_RULES.map((r) => `${r.cond}→${r.type}`)).toEqual(["duration_lt→no_show", "people_gte→equipo", "title_contains→equipo", "only_team→equipo"]);
   });
   it("un valor guardado invalido cae a su default SIN afectar a las otras", () => {
     const s = resolveCallTaskSettings({
@@ -56,7 +56,7 @@ describe("validateCallTaskSettings: clasificacion", () => {
     expect(validateCallTaskSettings("call_classification", { ...DEFAULT_CLASSIFICATION, custom_types: [a, a] }).ok).toBe(false);
   });
   it("una regla no puede apuntar a un tipo que no existe", () => {
-    const rules = [...DEFAULT_RULES.slice(0, 4), { id: "x", on: true, cond: "has_appointment" as const, value: null, type: "fantasma" }];
+    const rules = [...DEFAULT_RULES.slice(0, 4), { id: "x", on: true, cond: "only_team" as const, value: null, type: "fantasma" }];
     const r = validateCallTaskSettings("call_classification", { ...DEFAULT_CLASSIFICATION, rules });
     expect(r).toMatchObject({ ok: false });
   });
@@ -65,10 +65,20 @@ describe("validateCallTaskSettings: clasificacion", () => {
     const rules = [{ id: "x", on: true, cond: "title_contains" as const, value: ["demo"], type: "demo" }];
     expect(validateCallTaskSettings("call_classification", { ...DEFAULT_CLASSIFICATION, custom_types: custom, rules }).ok).toBe(true);
   });
-  it("newCustomType arma una clave unica sin acentos", () => {
-    expect(newCustomType("Demo Técnica", "x", []).clave).toBe("demo_tecnica");
-    expect(newCustomType("Cierre", "x", []).clave).toBe("cierre_2");
+  it("un tipo propio archivado ya no es un destino valido", () => {
     expect(validTypeKeys([{ clave: "demo", nombre: "Demo", descripcion: "", archivado: true }])).not.toContain("demo");
+  });
+});
+
+describe("reglas que apuntan a la lista de la agenda", () => {
+  const ID = "11111111-1111-4111-8111-111111111111";
+  it("una regla puede apuntar a un area o tipo por su id", () => {
+    const rules = [{ id: "x", on: true, cond: "title_contains" as const, value: ["demo"], type: ID }];
+    expect(validateCallTaskSettings("call_classification", { ...DEFAULT_CLASSIFICATION, rules }).ok).toBe(true);
+  });
+  it("una regla guardada con la condicion de agenda se descarta al leer", () => {
+    const old = { ...DEFAULT_CLASSIFICATION, rules: [{ id: "r5", on: true, cond: "has_appointment", value: null, type: "cierre" }] };
+    expect(resolveCallTaskSettings({ call_classification: old }).call_classification.rules).toEqual([]);
   });
 });
 

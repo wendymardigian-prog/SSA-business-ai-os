@@ -65,9 +65,9 @@ Migraciones: **00144 a 00149**. Cada una tiene en su cabecera cómo volver atrá
 - **Ver**: la lista, la ficha, el dashboard y la sección del contacto, según el
   alcance. También conectar el propio Fathom, cargar sus correos e importar su
   historial. Desconectarse lo puede cualquier miembro, también si perdió el permiso.
-- **Editar**: cambiar el tipo, vincular, analizar, corregir, regenerar, resumir,
+- **Editar**: cambiar el área y el tipo, marcar "no se presentó", vincular, analizar, corregir, regenerar, resumir,
   mandar a Conocimiento, importar.
-- **Configurar**: reglas, tipos, rúbrica, categorías y contexto del negocio de
+- **Configurar**: reglas, rúbrica, categorías y contexto del negocio de
   las dos tareas con configuración propia.
 - Mandar a Conocimiento pide además `knowledge.edit`.
 - El closer de una llamada (quien la grabó) puede objetar su análisis sin
@@ -122,6 +122,49 @@ Importar historial**: todo, o desde una fecha. Un clic alcanza.
   si es mayor) y después queda incompleta con "Seguir desde donde quedó". Repetir no
   duplica: la llamada es única por `external_id`.
 
+## Área y tipo de una grabación (00300, 6/11/2026)
+
+Agenda y grabaciones usan **la misma lista** de áreas y tipos (`booking_categories`,
+se edita en Agenda → Configuración → Áreas y tipos, con `scheduling.manage_categories`).
+Cada fila puede tener una descripción ("cuándo se usa") que lee la IA.
+
+`calls` guarda `area_id`, `category_id` (el tipo o, si solo se sabe el área, el área),
+`category_snapshot` (misma forma que `bookings.category_snapshot`), `classification_source`
+(`human` | `booking` | `rule` | `connection` | `ai`) y `no_show`.
+
+**Decide el primer paso que da un área** (`lib/calls/classify-cascade.ts`, puro):
+
+1. Lo que eligió una persona. Nada lo pisa.
+2. La reunión vinculada: su área y su tipo.
+3. Una regla (nombre, correo, duración, personas, solo equipo). Apuntan a un id de la
+   lista; una regla vieja con una clave ("equipo") se sigue entendiendo.
+4. El área por defecto de la conexión (Etapa 2, todavía no existe).
+5. La IA, solo entre las opciones activas. Una opción que no está en la lista no se acepta.
+6. Si nada decide, **Sin clasificar**: la lista lo avisa arriba y tiene su filtro (`?area=sin`).
+
+Si un paso solo da el área, los siguientes pueden completar el tipo **dentro de esa
+área**, sin cambiarla: a la IA se le ofrecen solo los tipos de esa área. Un área sin
+tipos ya está completa y no se le pregunta a la IA.
+
+- **"No se presentó" es una marca (`no_show`), no un tipo**: una llamada de ventas sigue
+  siendo de ventas. Evita el análisis y el resumen.
+- **Cambia la reunión → se vuelve a clasificar** (`lib/calls/reclassify.ts`, nunca lanza):
+  al vincular, al desvincular y cuando la reunión cambia de área o tipo. Lo elegido a mano
+  no se toca. Una grabación ya analizada conserva su análisis y la ficha avisa que se puede
+  regenerar (`analyzed_category_id` distinto de `category_id`). Sin reunión ni regla, y sin
+  analizar, vuelve a la cola de clasificación.
+- **`call_type` sigue existiendo, pero es DERIVADO** (`legacyCallTypeFor`,
+  `lib/calls/catalog.ts`), hasta la Etapa 3: de él dependen el resumen, Conocimiento, la
+  rúbrica y los filtros viejos de los flujos. Sale de `system_key`, una clave que no cambia
+  al renombrar (`ventas`, `ventas.cierre`, `servicio`, `equipo`, `otros`...), nunca del
+  nombre. Un tipo creado por el negocio toma el comportamiento de su área: uno nuevo de
+  Ventas se trata como un cierre; Servicio, como `cliente`; Equipo, como `equipo`; el resto,
+  como `otra`.
+- **La IA ya no propone tipos nuevos**: los tipos se crean en una sola lista. Los tipos
+  propios que tenía cada negocio pasaron a la lista, bajo Otros (migración 00300).
+  `custom_types`, `allow_ai_types` y `discarded_types` quedan sin usar (solo se leen para
+  entender reglas viejas) y se borran en la Etapa 5.
+
 ## Clasificación y análisis (L2)
 
 Tres tareas de IA en **Agentes IA** (`call_classification`, `call_analysis`,
@@ -134,9 +177,9 @@ Configuración; todas tienen las mismas cinco pestañas que el resto de las tare
   `set_ai_background_task_settings` (cambia UNA clave) a través de
   `saveCallTaskSettings`. Guardar una tarea en segundo plano no borra estas
   claves (`mergeBackgroundSettings`).
-- **Clasificar**: primero las reglas (sin IA), después la IA si está prendida.
-  Un tipo elegido por una persona NUNCA lo pisa una regla ni la IA. Bajo el
-  umbral de confianza queda "Por revisar".
+- **Clasificar**: ver "Área y tipo de una grabación" más abajo. Lo elegido por una
+  persona NUNCA lo pisa una reunión, una regla ni la IA. Bajo el umbral de confianza
+  queda "Por revisar".
 - **Analizar**: una sola función (`runCallAnalysis`) para producción,
   "regenerar" y "probar el borrador". Salida estructurada (Zod), 32.000 tokens
   de salida. Los puntajes los calcula el código con la rúbrica; la IA no da

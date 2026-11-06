@@ -10,7 +10,8 @@ import { loadCategoryProposals } from "./category-inbox";
 import type { CategoryProposal } from "./categories";
 import { normalizeRubric, type Rubric } from "./rubric";
 import { resolveCallTaskSettings, validTypeKeys, type CallAnalysisSettings, type CallClassificationSettings, type CallTaskKey } from "./task-settings";
-import { loadTypeProposals, type TypeProposal } from "./type-proposals";
+import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
+import { categoryGroups, legacyRuleTargets, type CategoryGroup } from "./catalog";
 
 type Db = SupabaseClient<Database>;
 
@@ -30,7 +31,7 @@ export interface RubricVersion {
 }
 
 export type CallConfigData =
-  | { task: "call_classification"; canEdit: boolean; settings: CallClassificationSettings; typeProposals: TypeProposal[] }
+  | { task: "call_classification"; canEdit: boolean; settings: CallClassificationSettings; categoryGroups: CategoryGroup[]; legacyRuleTargets: Record<string, string> }
   | {
       task: "call_analysis";
       canEdit: boolean;
@@ -73,11 +74,13 @@ export async function loadCallConfig(args: {
 }): Promise<CallConfigData> {
   const settings = resolveCallTaskSettings(args.stored);
   if (args.task === "call_classification") {
+    const categories = (await listCategories(args.service, args.workspaceId)).map(toCategoryRow);
     return {
       task: "call_classification",
       canEdit: args.canEdit,
       settings: settings.call_classification,
-      typeProposals: args.canEdit ? await loadTypeProposals(args.service, args.workspaceId, settings.call_classification) : [],
+      categoryGroups: categoryGroups(categories),
+      legacyRuleTargets: legacyRuleTargets(categories, settings.call_classification.custom_types),
     };
   }
 

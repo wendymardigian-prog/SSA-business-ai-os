@@ -25,7 +25,8 @@ export function isCallTaskKey(value: unknown): value is CallTaskKey {
 
 // ── Clasificacion ─────────────────────────────────────────────────────────
 
-export const RULE_CONDITIONS = ["duration_lt", "people_gte", "title_contains", "email_contains", "only_team", "has_appointment"] as const;
+// La reunion vinculada no es una regla: decide antes que ellas (`classify-cascade.ts`).
+export const RULE_CONDITIONS = ["duration_lt", "people_gte", "title_contains", "email_contains", "only_team"] as const;
 export type RuleCondition = (typeof RULE_CONDITIONS)[number];
 
 export interface ClassificationRuleSetting {
@@ -60,7 +61,6 @@ export const DEFAULT_RULES: ClassificationRuleSetting[] = [
   { id: "r-muchos", on: true, cond: "people_gte", value: 4, type: "equipo" },
   { id: "r-titulo", on: true, cond: "title_contains", value: [], type: "equipo" },
   { id: "r-equipo", on: true, cond: "only_team", value: null, type: "equipo" },
-  { id: "r-agenda", on: true, cond: "has_appointment", value: null, type: "cierre" },
 ];
 
 export const DEFAULT_CLASSIFICATION: CallClassificationSettings = {
@@ -143,6 +143,8 @@ const analysisSchema = z.object({
 
 // ── Lectura tolerante ─────────────────────────────────────────────────────
 
+const UUID_TARGET = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Todos los tipos validos: los base mas los propios no archivados. */
@@ -152,7 +154,9 @@ export function validTypeKeys(custom: CustomCallType[]): string[] {
 
 function readClassification(raw: unknown): CallClassificationSettings {
   if (!isObj(raw)) return structuredClone(DEFAULT_CLASSIFICATION);
-  const parsed = classificationSchema.safeParse({ ...DEFAULT_CLASSIFICATION, ...raw });
+  // Una regla vieja "tiene una agenda vinculada" ya no existe: ahora decide la reunion.
+  const rules = Array.isArray(raw.rules) ? raw.rules.filter((r) => (r as { cond?: unknown } | null)?.cond !== "has_appointment") : raw.rules;
+  const parsed = classificationSchema.safeParse({ ...DEFAULT_CLASSIFICATION, ...raw, ...(rules ? { rules } : {}) });
   return parsed.success ? (parsed.data as CallClassificationSettings) : structuredClone(DEFAULT_CLASSIFICATION);
 }
 
@@ -212,8 +216,9 @@ export function validateCallTaskSettings(task: CallTaskKey, input: unknown, prev
       if (keys.has(t.clave)) return { ok: false, error: `El tipo "${t.clave}" está repetido` };
       keys.add(t.clave);
     }
+    // Una regla apunta a un area o tipo de la lista, o a una clave vieja que se sigue leyendo.
     const allowed = new Set(validTypeKeys(value.custom_types));
-    const bad = value.rules.find((r) => !allowed.has(r.type));
+    const bad = value.rules.find((r) => !allowed.has(r.type) && !UUID_TARGET.test(r.type));
     if (bad) return { ok: false, error: `La regla apunta a un tipo que no existe: ${bad.type}` };
     return { ok: true, task, value };
   }
@@ -243,11 +248,3 @@ export function validateCallTaskSettings(task: CallTaskKey, input: unknown, prev
 }
 
 /** Un tipo propio nuevo a partir de su nombre: clave unica y sin choque con los del sistema. */
-export function newCustomType(name: string, description: string, existing: CustomCallType[]): CustomCallType {
-  const taken = new Set<string>([...BASE_CALL_TYPES, ...existing.map((t) => t.clave)]);
-  let clave = slugKey(name) || "tipo";
-  let i = 2;
-  const base = clave;
-  while (taken.has(clave)) clave = `${base}_${i++}`;
-  return { clave, nombre: name.trim(), descripcion: description.trim(), archivado: false };
-}

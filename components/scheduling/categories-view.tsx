@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ConfigShell } from "./config-shell";
 import { ContentDialog, DialogField } from "@/components/content/dialog";
 import { Notice } from "@/components/agents/fields";
-import { AREA_COLORS, CATEGORY_NAME_MAX, canArchive, categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
+import { AREA_COLORS, CATEGORY_DESCRIPTION_MAX, CATEGORY_NAME_MAX, canArchive, categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
 import { archiveCategory, createCategory, renameCategory, reorderCategory } from "@/lib/actions/scheduling/categories";
 
 /**
@@ -32,6 +32,7 @@ export function CategoriesView({
     | null
   >(null);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [color, setColor] = useState<string>(AREA_COLORS[0]);
 
   const tree = categoryTree(categories);
@@ -52,6 +53,7 @@ export function CategoriesView({
 
   function openArea() {
     setName("");
+    setDescription("");
     setColor(AREA_COLORS[tree.length % AREA_COLORS.length]);
     setModal({ kind: "area" });
   }
@@ -83,10 +85,10 @@ export function CategoriesView({
             </span>
             {canEdit && (
               <span className="ml-auto flex gap-2 text-xs">
-                <button type="button" onClick={() => { setName(area.name); setColor(area.color ?? AREA_COLORS[0]); setModal({ kind: "rename", category: area }); }} className="rounded-lg border border-border px-2.5 py-1 hover:bg-muted">
+                <button type="button" onClick={() => { setName(area.name); setDescription(area.description ?? ""); setColor(area.color ?? AREA_COLORS[0]); setModal({ kind: "rename", category: area }); }} className="rounded-lg border border-border px-2.5 py-1 hover:bg-muted">
                   Renombrar
                 </button>
-                <button type="button" onClick={() => { setName(""); setModal({ kind: "type", areaId: area.id, areaName: area.name }); }} className="rounded-lg border border-border px-2.5 py-1 hover:bg-muted">
+                <button type="button" onClick={() => { setName(""); setDescription(""); setModal({ kind: "type", areaId: area.id, areaName: area.name }); }} className="rounded-lg border border-border px-2.5 py-1 hover:bg-muted">
                   + Tipo
                 </button>
                 {canArchive(area).ok && (
@@ -108,7 +110,7 @@ export function CategoriesView({
                   <span className="ml-auto flex items-center gap-2 text-xs">
                     <button type="button" disabled={pending || i === 0} aria-label={`Subir ${type.name}`} onClick={() => run(() => reorderCategory({ id: type.id, toIndex: i - 1 }))} className="rounded px-1.5 py-1 text-muted-foreground hover:bg-muted disabled:opacity-30">↑</button>
                     <button type="button" disabled={pending || i === types.length - 1} aria-label={`Bajar ${type.name}`} onClick={() => run(() => reorderCategory({ id: type.id, toIndex: i + 1 }))} className="rounded px-1.5 py-1 text-muted-foreground hover:bg-muted disabled:opacity-30">↓</button>
-                    <button type="button" onClick={() => { setName(type.name); setModal({ kind: "rename", category: type }); }} className="text-primary-ink">Renombrar</button>
+                    <button type="button" onClick={() => { setName(type.name); setDescription(type.description ?? ""); setModal({ kind: "rename", category: type }); }} className="text-primary-ink">Renombrar</button>
                     <button type="button" disabled={pending} onClick={() => run(() => archiveCategory({ id: type.id }))} className="text-red-600">Archivar</button>
                   </span>
                 )}
@@ -161,8 +163,8 @@ export function CategoriesView({
                   run(
                     () =>
                       modal.kind === "rename"
-                        ? renameCategory({ id: modal.category.id, name, color: modal.category.parent_id ? null : color })
-                        : createCategory({ name, parentId: modal.kind === "type" ? modal.areaId : null, color: modal.kind === "area" ? color : null }),
+                        ? renameCategory({ id: modal.category.id, name, description, color: modal.category.parent_id ? null : color })
+                        : createCategory({ name, description, parentId: modal.kind === "type" ? modal.areaId : null, color: modal.kind === "area" ? color : null }),
                     () => setModal(null),
                   )
                 }
@@ -176,6 +178,9 @@ export function CategoriesView({
           <div className="space-y-3">
             <DialogField label="Nombre" hint={`Hasta ${CATEGORY_NAME_MAX} caracteres`}>
               <input value={name} onChange={(e) => setName(e.target.value)} maxLength={CATEGORY_NAME_MAX} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+            </DialogField>
+            <DialogField label="Cuándo se usa (opcional)" hint="Ayuda a la IA a clasificar las grabaciones que no se vinculan con una reunión.">
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={CATEGORY_DESCRIPTION_MAX} rows={2} className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm" />
             </DialogField>
             {(modal.kind === "area" || (modal.kind === "rename" && !modal.category.parent_id)) && (
               <div>

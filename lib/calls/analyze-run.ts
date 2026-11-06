@@ -67,7 +67,7 @@ export interface AnalyzeDeps {
 const AUTO_CLAIMABLE = ["pending"] as const;
 const MANUAL_CLAIMABLE = ["pending", "error", "needs_review", "analyzed", "not_applicable"] as const;
 
-const CALL_COLUMNS = "id, workspace_id, title, call_type, transcript, contact_id, analysis_status, closer_score, lead_score";
+const CALL_COLUMNS = "id, workspace_id, title, call_type, category_id, transcript, contact_id, analysis_status, closer_score, lead_score";
 
 export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobPayload): Promise<{ outcome: AnalyzeOutcome }> {
   const { db } = deps;
@@ -200,6 +200,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
       // Tiene que cambiar en CADA analisis: es lo que el trigger de inmutabilidad exige.
       analysis_run_id: run.runId ?? randomUUID(),
       analyzed_at: now.toISOString(),
+      analyzed_category_id: call.category_id,
       analysis_status: "analyzed",
       analysis_status_reason: null,
       analysis_error: null,

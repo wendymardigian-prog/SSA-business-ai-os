@@ -6,7 +6,7 @@ vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: mocks.permission }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: mocks.service }));
 vi.mock("./call-task-settings", () => ({ saveCallTaskSettings: mocks.save }));
 
-import { decideCategoryProposal, decideTypeProposal } from "./call-proposals";
+import { decideCategoryProposal } from "./call-proposals";
 import { DEFAULT_ANALYSIS, DEFAULT_CLASSIFICATION } from "@/lib/calls/task-settings";
 
 const withAccepted = () => {
@@ -52,23 +52,6 @@ describe("decideCategoryProposal", () => {
     expect((await decideCategoryProposal({ group: "objeciones", key: "", decision: "discard" })).ok).toBe(false);
     expect((await decideCategoryProposal({ group: "objeciones", key: "x", decision: "borrar" as never })).ok).toBe(false);
     expect((await decideCategoryProposal({ group: "objeciones", key: "x", decision: "accept", name: "  " })).ok).toBe(false);
-    expect(mocks.save).not.toHaveBeenCalled();
-  });
-});
-
-describe("decideTypeProposal", () => {
-  it("aceptar crea un tipo propio; descartar lo manda a descartados", async () => {
-    await decideTypeProposal({ name: "Mesa redonda", decision: "accept", description: "Charla grupal" });
-    expect(mocks.save.mock.calls[0][0]).toBe("call_classification");
-    expect(mocks.save.mock.calls[0][1].custom_types[0]).toMatchObject({ clave: "mesa_redonda", nombre: "Mesa redonda", descripcion: "Charla grupal" });
-    await decideTypeProposal({ name: "Ruido", decision: "discard" });
-    expect(mocks.save.mock.calls[1][1].discarded_types).toEqual(["Ruido"]);
-  });
-  it("sin permiso o con nombre invalido no guarda", async () => {
-    expect((await decideTypeProposal({ name: "", decision: "accept" })).ok).toBe(false);
-    expect((await decideTypeProposal({ name: "x".repeat(61), decision: "accept" })).ok).toBe(false);
-    mocks.permission.mockResolvedValue(null);
-    expect((await decideTypeProposal({ name: "Algo", decision: "accept" })).ok).toBe(false);
     expect(mocks.save).not.toHaveBeenCalled();
   });
 });

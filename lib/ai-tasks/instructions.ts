@@ -115,24 +115,18 @@ export const CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS = [
 // ---------------------------------------------------------------------------
 
 /**
- * Los criterios para decidir de que tipo es una llamada (el `DEFAULT_CLASSIFIER_PROMPT`
- * de prevxcrm, con `cliente_cx` pasado a `cliente`). La lista de tipos validos,
- * la regla de `tipo_propuesto` y el formato de respuesta son la parte tecnica
- * fija (`lib/calls/classifier-prompt.ts`): no se editan. `{{tipos}}` se
- * reemplaza por las claves de los tipos validos.
+ * Los criterios para decidir de que tipo es una llamada. Las opciones validas salen de
+ * la lista de areas y tipos de la agenda y son la parte tecnica fija
+ * (`lib/calls/classifier-prompt.ts`): no se editan. `{{tipos}}` se reemplaza por sus nombres.
  */
-export const CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS = `Sos un clasificador de llamadas grabadas de una empresa de servicios y coaching de alto ticket.
-Clasificá la llamada en uno de los tipos válidos, leyendo el título, los invitados y la transcripción.
+export const CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS = `Sos un clasificador de grabaciones de reuniones de una empresa.
+Clasificá la reunión en una de las opciones válidas, leyendo el título, los invitados y la transcripción.
 
-Criterios:
-- cierre: llamada de venta donde se presenta la oferta y se busca cerrar.
-- seguimiento: una segunda llamada con un lead que ya tuvo una llamada de cierre.
-- triaje: una llamada corta para calificar al lead o agendar la llamada de cierre.
-- equipo: reunión interna del equipo.
-- cliente: alguien que ya es cliente (onboarding, soporte, implementación).
-- clase: una clase o sesión grupal de un programa.
-- no_show: el lead no se presentó o la llamada no ocurrió realmente.
-- otra: si ninguno encaja, usá otra y proponé un nombre corto para un tipo nuevo.
+Cómo decidir:
+- Ventas: conversaciones con alguien que todavía no compró (calificarlo, presentarle la oferta o hacer un seguimiento).
+- Servicio: conversaciones con alguien que ya es cliente (onboarding, soporte, implementación, sesiones).
+- Equipo: reuniones internas, sin nadie de afuera.
+- Si ninguna opción encaja con claridad, elegí la más cercana y dale una confianza baja.
 
 No inventes: decidí solo con lo que hay en los datos.`;
 

@@ -567,11 +567,6 @@
       true,
       false
     ],
-    "lib/actions/call-proposals.ts#decideTypeProposal": [
-      true,
-      true,
-      false
-    ],
     "lib/actions/call-task-settings.ts#saveCallTaskSettings": [
       true,
       true,

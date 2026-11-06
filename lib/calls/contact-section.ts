@@ -5,6 +5,7 @@
  * leen la transcripcion ni el analisis entero.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { callDisplayLabel } from "./catalog";
 import type { Database } from "@/lib/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -12,12 +13,13 @@ type Db = SupabaseClient<Database>;
 /** Cuantas llamadas se muestran en la ficha del contacto antes de "Ver todas". */
 export const CONTACT_CALLS_LIMIT = 10;
 
-const COLUMNS = "id, recorded_at, call_type, recorded_by_user_id, outcome, closer_score, lead_score, analysis_status";
+const COLUMNS = "id, recorded_at, call_type, category_snapshot, no_show, recorded_by_user_id, outcome, closer_score, lead_score, analysis_status";
 
 export interface CallSectionRow {
   id: string;
   recordedAt: string;
   callType: string | null;
+  categoryLabel: string;
   closerName: string | null;
   outcome: string | null;
   closerScore: number | null;
@@ -26,13 +28,14 @@ export interface CallSectionRow {
 }
 
 export function toCallSectionRows(
-  rows: Array<{ id: string; recorded_at: string; call_type: string | null; recorded_by_user_id: string | null; outcome: string | null; closer_score: number | null; lead_score: number | null; analysis_status: string }>,
+  rows: Array<{ id: string; recorded_at: string; call_type: string | null; category_snapshot?: unknown; no_show?: boolean; recorded_by_user_id: string | null; outcome: string | null; closer_score: number | null; lead_score: number | null; analysis_status: string }>,
   names: Map<string, string>,
 ): CallSectionRow[] {
   return rows.map((r) => ({
     id: r.id,
     recordedAt: r.recorded_at,
     callType: r.call_type,
+    categoryLabel: callDisplayLabel(r.category_snapshot, r.call_type, r.no_show === true),
     closerName: r.recorded_by_user_id ? (names.get(r.recorded_by_user_id) ?? null) : null,
     outcome: r.outcome,
     closerScore: r.closer_score,

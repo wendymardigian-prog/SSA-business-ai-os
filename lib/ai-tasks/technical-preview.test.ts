@@ -5,8 +5,7 @@ import { AI_TASK_IDS, AI_TASKS } from "./catalog";
 describe("la parte tecnica de las tareas de llamadas", () => {
   it("Clasificacion: los tipos validos y que lo que viene es dato", () => {
     const t = technicalPreviewFor("call_classification");
-    expect(t).toContain("TIPOS VÁLIDOS");
-    expect(t).toContain("- cierre");
+    expect(t).toContain("OPCIONES VÁLIDAS");
     expect(t).toContain("DATOS para clasificar");
   });
   it("Analisis: la rubrica, las categorias y la advertencia anti-inyeccion; sin bloque de formato", () => {

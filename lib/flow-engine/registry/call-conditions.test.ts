@@ -32,6 +32,21 @@ async function resolve(prefix: string, db: ReturnType<typeof memoryDb>) {
   return match!.definition.resolve({ supabase: db.client, argument: match!.argument, context, contact: {} });
 }
 
+describe("area y tipo de la ultima llamada", () => {
+  const snapshot = { area_id: "a1", area_name: "Servicio", type_id: "t1", type_name: "Onboarding" };
+  const dbWith = (category_snapshot: unknown) => memoryDb({ calls: [call({ category_snapshot })] });
+  it("salen de la clasificacion, por su nombre", async () => {
+    expect(await resolve("last_call_area:", dbWith(snapshot))).toBe("Servicio");
+    expect(await resolve("last_call_meeting_type:", dbWith(snapshot))).toBe("Onboarding");
+  });
+  it("sin clasificar o sin tipo devuelven vacio", async () => {
+    const soloArea = { ...snapshot, type_id: null, type_name: null };
+    expect(await resolve("last_call_area:", dbWith(soloArea))).toBe("Servicio");
+    expect(await resolve("last_call_meeting_type:", dbWith(soloArea))).toBe("");
+    expect(await resolve("last_call_area:", dbWith(null))).toBe("");
+  });
+});
+
 describe("las tres condiciones de la ultima llamada analizada", () => {
   const db = () =>
     memoryDb({

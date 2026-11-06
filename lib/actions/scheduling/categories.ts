@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getPermissionAction, getPermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
-import { AREA_COLORS, canArchive, reorderSiblings, validateCategoryName } from "@/lib/scheduling/categories";
+import { AREA_COLORS, CATEGORY_DESCRIPTION_MAX, canArchive, reorderSiblings, validateCategoryName } from "@/lib/scheduling/categories";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 
 /**
@@ -25,7 +25,9 @@ async function editor() {
   return null;
 }
 
-export async function createCategory(input: { name: string; parentId?: string | null; color?: string | null }): Promise<CategoryActionResult<{ id: string }>> {
+const cleanDescription = (raw: string | null | undefined) => raw?.trim().slice(0, CATEGORY_DESCRIPTION_MAX) || null;
+
+export async function createCategory(input: { name: string; description?: string | null; parentId?: string | null; color?: string | null }): Promise<CategoryActionResult<{ id: string }>> {
   const ctx = await editor();
   if (!ctx) return { ok: false, error: "No tenes permiso para administrar las categorías" };
 
@@ -48,6 +50,7 @@ export async function createCategory(input: { name: string; parentId?: string | 
       workspace_id: ctx.workspace.id,
       parent_id: parentId,
       name: checked.name,
+      description: cleanDescription(input.description),
       color,
       position: siblings.length,
     })
@@ -61,7 +64,7 @@ export async function createCategory(input: { name: string; parentId?: string | 
   return { ok: true, data: { id: data.id } };
 }
 
-export async function renameCategory(input: { id: string; name: string; color?: string | null }): Promise<CategoryActionResult> {
+export async function renameCategory(input: { id: string; name: string; description?: string | null; color?: string | null }): Promise<CategoryActionResult> {
   const ctx = await editor();
   if (!ctx) return { ok: false, error: "No tenes permiso para administrar las categorías" };
 
@@ -72,7 +75,8 @@ export async function renameCategory(input: { id: string; name: string; color?: 
   const checked = validateCategoryName(input.name, siblings, current.id);
   if (!checked.ok) return { ok: false, error: checked.message };
 
-  const patch: { name: string; color?: string | null } = { name: checked.name };
+  const patch: { name: string; description?: string | null; color?: string | null } = { name: checked.name };
+  if (input.description !== undefined) patch.description = cleanDescription(input.description);
   if (current.parent_id === null && input.color && (AREA_COLORS as readonly string[]).includes(input.color)) patch.color = input.color;
 
   const { error } = await ctx.supabase.from("booking_categories").update(patch).eq("id", input.id);

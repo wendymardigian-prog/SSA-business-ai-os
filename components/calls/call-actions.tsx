@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, Settings } from "lucide-react";
 import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
-import { analyzeCall, changeCallType, regenerateCall } from "@/lib/actions/calls-edit";
+import { analyzeCall, changeCallType, regenerateCall, setCallNoShow } from "@/lib/actions/calls-edit";
+import type { CategoryGroup } from "@/lib/calls/catalog";
 import { REGENERATE_CONTEXT_MAX, REGENERATE_CONTEXT_MIN, REGENERATE_REASONS, REGENERATE_REASON_LABELS, type RegenerateReason } from "@/lib/calls/edit-rules";
 import type { BannerAction } from "@/lib/calls/detail-view";
 
@@ -15,35 +16,66 @@ import type { BannerAction } from "@/lib/calls/detail-view";
  * Todo lo que escribe lo hace una Server Action que vuelve a chequear permisos.
  */
 
-export function TypeSelect({ callId, current, types, disabled, label = "Tipo de llamada" }: { callId: string; current: string | null; types: string[]; disabled?: boolean; label?: string }) {
+export function TypeSelect({ callId, current, groups, disabled, label = "Área y tipo de la grabación" }: { callId: string; current: string | null; groups: CategoryGroup[]; disabled?: boolean; label?: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const id = useId();
   return (
     <span className="inline-flex items-center gap-2">
-      <label className="sr-only" htmlFor={`type-${callId}`}>{label}</label>
+      <label className="sr-only" htmlFor={id}>{label}</label>
       <select
-        id={`type-${callId}`}
+        id={id}
         value={current ?? ""}
         disabled={disabled || pending}
         onChange={(e) => {
           setError(null);
           start(async () => {
-            const result = await changeCallType({ callId, type: e.target.value });
+            const result = await changeCallType({ callId, categoryId: e.target.value });
             if (!result.ok) return setError(result.error);
             router.refresh();
           });
         }}
         className="rounded-lg border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
       >
-        {!current && <option value="">Elegí el tipo…</option>}
-        {types.map((t) => (
-          <option key={t} value={t}>{t}</option>
+        {!current && <option value="">Elegí el área y el tipo…</option>}
+        {groups.map((g) => (
+          <optgroup key={g.areaId} label={g.areaName}>
+            <option value={g.areaId}>{g.areaName} (sin tipo)</option>
+            {g.types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </optgroup>
         ))}
       </select>
       {pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden />}
       {error && <span role="alert" className="text-xs text-red-700 dark:text-red-400">{error}</span>}
     </span>
+  );
+}
+
+/** Marcar o sacar "no se presentó": es una marca, no un tipo. */
+export function NoShowToggle({ callId, noShow }: { callId: string; noShow: boolean }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          setError(null);
+          start(async () => {
+            const result = await setCallNoShow({ callId, noShow: !noShow });
+            if (!result.ok) return setError(result.error);
+            router.refresh();
+          });
+        }}
+        className="rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+      >
+        {noShow ? "Sacar «no se presentó»" : "Marcar «no se presentó»"}
+      </button>
+      {error && <span role="alert" className="text-xs text-red-700 dark:text-red-400">{error}</span>}
+    </>
   );
 }
 
@@ -76,8 +108,8 @@ export function AnalyzeButton({ callId, label, disabledReason }: { callId: strin
 }
 
 /** El boton que acompaña al banner de la ficha, segun `detailView`. */
-export function BannerActionButton({ action, callId, callType, types, disabledReason }: { action: BannerAction; callId: string; callType: string | null; types: string[]; disabledReason?: string | null }) {
-  if (action === "choose_type") return <TypeSelect callId={callId} current={callType} types={types} label="Elegí el tipo de llamada" />;
+export function BannerActionButton({ action, callId, categoryId, groups, disabledReason }: { action: BannerAction; callId: string; categoryId: string | null; groups: CategoryGroup[]; disabledReason?: string | null }) {
+  if (action === "choose_type") return <TypeSelect callId={callId} current={categoryId} groups={groups} label="Elegí el área y el tipo" />;
   if (action === "analyze") return <AnalyzeButton callId={callId} label="Analizar" disabledReason={disabledReason} />;
   if (action === "retry") return <AnalyzeButton callId={callId} label="Reintentar" disabledReason={disabledReason} />;
   if (action === "config") {

@@ -7,7 +7,7 @@ import { STATUS_ROLES, STATUS_ROLE_LABELS, isStatusRole, parseStatusSettings, st
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TriggerType } from "@/lib/types/database";
-import { BASE_CALL_TYPES } from "@/lib/calls/classification"; // @plantilla-quitar(llamadas)
+import { CallCategoryFilter } from "@/components/calls/call-category-filter"; // @plantilla-quitar(llamadas)
 import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric"; // @plantilla-quitar(llamadas)
 import { FormTriggerPanel } from "./FormTriggerPanel"; // @plantilla-quitar(formularios)
 import { WebhookTriggerPanel } from "./WebhookTriggerPanel"; // @plantilla-quitar(webhooks)
@@ -523,8 +523,8 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
       {/* Llamadas (F32): filtros de call_analyzed y call_linked */}
       {CALL_TRIGGERS.includes(triggerType) && (
         <div className="space-y-3">
+          <CallCategoryFilter data={data} onChange={onChange} />
           {([
-            ["call_types", "Solo estos tipos de llamada", BASE_CALL_TYPES.map((t) => ({ value: t, label: t }))],
             ...(triggerType === "call_analyzed"
               ? ([
                   ["outcomes", "Solo estos resultados", OUTCOME_CATEGORIES.map((o) => ({ value: o, label: o.replace(/_/g, " ") }))],

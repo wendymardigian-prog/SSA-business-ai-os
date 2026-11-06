@@ -10,10 +10,12 @@
  * venta" no puede decir que si por no haber ninguna.
  */
 import { registerConditionField } from "./registry";
+import { readCategorySnapshot } from "@/lib/calls/catalog";
 import type { ConditionFieldArgs } from "./types";
 import { requireContactId } from "../types";
 
 interface LastCall {
+  category_snapshot?: unknown;
   outcome: string | null;
   lead_score: number | null;
   call_type: string | null;
@@ -22,7 +24,7 @@ interface LastCall {
 async function lastAnalyzedCall(args: ConditionFieldArgs): Promise<LastCall | null> {
   const { data } = await args.supabase
     .from("calls")
-    .select("outcome, lead_score, call_type")
+    .select("outcome, lead_score, call_type, category_snapshot")
     .eq("workspace_id", args.context.workspaceId)
     .eq("contact_id", requireContactId(args.context))
     .eq("analysis_status", "analyzed")
@@ -46,6 +48,18 @@ registerConditionField({
     const call = await lastAnalyzedCall(args);
     return call?.lead_score === null || call?.lead_score === undefined ? "" : String(call.lead_score);
   },
+});
+
+registerConditionField({
+  prefix: "last_call_area:",
+  label: "Área de la última llamada",
+  resolve: async (args) => readCategorySnapshot((await lastAnalyzedCall(args))?.category_snapshot)?.area_name ?? "",
+});
+
+registerConditionField({
+  prefix: "last_call_meeting_type:",
+  label: "Tipo de reunión de la última llamada",
+  resolve: async (args) => readCategorySnapshot((await lastAnalyzedCall(args))?.category_snapshot)?.type_name ?? "",
 });
 
 registerConditionField({
