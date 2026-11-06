@@ -26,9 +26,8 @@ export async function GET(
   }
 
   // Las conexiones del workspace (YouTube, LinkedIn, Threads) son de Owner y
-  // Admin. Una conexion por persona (Google Calendar, Etapa 4) la hace
-  // cualquiera con el permiso del adaptador (o cualquier miembro, si el
-  // adaptador es `anyMember`): siempre a su propio nombre. Ver `oauthRouteContext`.
+  // Admin. Una conexion por persona (Google Calendar, Fathom) la hace cualquiera
+  // con el permiso del adaptador: siempre a su propio nombre. Ver `oauthRouteContext`.
   const ctx = await oauthRouteContext(adapter);
   if (!ctx) {
     return NextResponse.json({ error: oauthForbiddenMessage(adapter) }, { status: 403 });

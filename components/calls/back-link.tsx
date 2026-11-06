@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 /** La flecha de volver a la lista de llamadas, para la barra de las pantallas de detalle. */
-export function BackToCalls({ label = "Volver a Llamadas" }: { label?: string }) {
+export function BackToCalls({ label = "Volver a Grabaciones" }: { label?: string }) {
   return (
     <Link
       href="/dashboard/llamadas"

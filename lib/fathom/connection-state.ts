@@ -1,16 +1,14 @@
 /**
  * Que muestra la tarjeta de "Mi Fathom" (F6). Puro: la pantalla solo compone.
  *
- * Cinco estados, en este orden de prioridad:
+ * Cuatro estados, en este orden de prioridad:
  *  1. `missing_app`   — el negocio todavia no cargo la app de Fathom (Client ID y Secret).
  *  2. `error`         — la conexion cayo: hay que reconectar.
- *  3. `not_closer`    — la persona no esta marcada como closer: puede conectar, pero sus
- *                       llamadas no entran hasta que un admin la marque en Equipo.
- *  4. `connected`     — todo andando.
- *  5. `not_connected` — nunca conecto (o desconecto).
+ *  3. `connected`     — todo andando.
+ *  4. `not_connected` — nunca conecto (o desconecto).
  */
 
-export type FathomCardState = "missing_app" | "error" | "not_closer" | "connected" | "not_connected";
+export type FathomCardState = "missing_app" | "error" | "connected" | "not_connected";
 
 export interface FathomConnectionInfo {
   status: string;
@@ -25,7 +23,6 @@ export interface FathomCardInput {
   hasApp: boolean;
   /** La conexion VIGENTE de la persona (la no revocada), o null. */
   connection: FathomConnectionInfo | null;
-  isCloser: boolean;
   /** Cuantas llamadas de Fathom trajo en los ultimos 7 dias. */
   callsLast7d: number;
 }
@@ -54,7 +51,7 @@ export function pickConnection<T extends FathomConnectionInfo>(connections: T[])
 }
 
 export function fathomCardView(input: FathomCardInput): FathomCardView {
-  const { hasApp, connection, isCloser, callsLast7d } = input;
+  const { hasApp, connection, callsLast7d } = input;
   const live = isLive(connection);
   const base = {
     connected: live,
@@ -78,17 +75,10 @@ export function fathomCardView(input: FathomCardInput): FathomCardView {
       actions: { connect: false, reconnect: true, syncNow: false, disconnect: true },
     };
   }
-  if (!isCloser) {
-    return {
-      ...base, state: "not_closer", title: live ? "Conectado, pero todavía no sos closer" : "Todavía no sos closer",
-      message: "Podés conectar, pero tus llamadas entran recién cuando un admin te marque como closer en Equipo.",
-      actions: { connect: !live, reconnect: false, syncNow: live, disconnect: live },
-    };
-  }
   if (live) {
     return {
       ...base, state: "connected", title: connection.account_label ? `Conectado como ${connection.account_label}` : "Conectado",
-      message: "Tus llamadas entran solas: se consulta Fathom cada 10 minutos.",
+      message: "Las llamadas que grabes entran solas: se consulta Fathom cada 10 minutos.",
       actions: { connect: false, reconnect: false, syncNow: true, disconnect: true },
     };
   }
@@ -99,7 +89,7 @@ export function fathomCardView(input: FathomCardInput): FathomCardView {
   };
 }
 
-/** El aviso de la lista de llamadas: un closer que todavia no conecto. */
-export function shouldNudgeToConnect(input: { isCloser: boolean; hasLiveConnection: boolean; hasApp: boolean }): boolean {
-  return input.isCloser && !input.hasLiveConnection && input.hasApp;
+/** El aviso de la lista de grabaciones: quien la ve y todavia no conecto. */
+export function shouldNudgeToConnect(input: { hasLiveConnection: boolean; hasApp: boolean }): boolean {
+  return !input.hasLiveConnection && input.hasApp;
 }

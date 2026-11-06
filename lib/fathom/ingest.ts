@@ -1,12 +1,15 @@
 /**
- * La ingesta de una conexion de Fathom (F8): trae las llamadas NUEVAS de los
- * closers, las vincula a su contacto y su agenda, las guarda y las manda a
- * clasificar.
+ * La ingesta de una conexion de Fathom (F8): trae las llamadas NUEVAS de quien
+ * conecto, las vincula a su contacto y su agenda, las guarda y las manda a
+ * clasificar. La importacion del historial (`history-import.ts`) usa las mismas
+ * piezas (`openFathomRun`, `ingestItems`).
  *
  * Reglas que no se rompen:
+ *  - Solo corre si la persona sigue en el equipo y tiene `calls.view`.
  *  - Pagina (`cursor`), pide solo lo nuevo (`created_after` con 2 h de
- *    solapamiento sobre la marca de agua) y solo lo de los closers
- *    (`recorded_by[]`), con un doble control en codigo.
+ *    solapamiento sobre la marca de agua) y solo lo que grabo esa persona
+ *    (`recorded_by[]`), con un doble control en codigo: lo que le comparten en
+ *    Fathom no entra.
  *  - Presupuesto de 9 pedidos por corrida; si queda trabajo, guarda el cursor y
  *    se REENCOLA a +70 s. La marca de agua solo avanza al terminar una pasada.
  *  - Un 429 o un 5xx NUNCA pasan la conexion a `error`.
@@ -25,6 +28,7 @@ import type { Database, Json } from "@/lib/types/database";
 import { auditAsWebhook } from "@/lib/audit";
 import { countPeople } from "@/lib/calls/classification";
 import { computeAutoLink, externalEmailsOf, type BookingCandidate, type ContactCandidate } from "@/lib/calls/linking";
+import { membersWithPermission } from "@/lib/calls/notify";
 import { enqueueClassify } from "@/lib/calls/queue";
 import { findContact } from "@/lib/contacts/find-or-create";
 import { BudgetExhausted, getTranscript, listMeetings, secondsBetween, toAttendees, type FathomMeeting } from "./api";
@@ -36,15 +40,16 @@ import {
   type FathomConnection,
   type FathomDeps,
 } from "./auth";
-import { buildCloserByEmail, closerEmails, normalizeFathomEmail, type CloserCandidate } from "./closers";
 import { FathomError } from "./errors";
-import { CONTINUATION_DELAY_MS, createRequestBudget } from "./rate-budget";
+import { INITIAL_WINDOW_MS } from "./history-state";
+import { CONTINUATION_DELAY_MS, createRequestBudget, type RequestBudget } from "./rate-budget";
 import { requeueFathomSync } from "./queue";
+import { normalizeFathomEmail, recorderEmailsFor, teamEmailsOf, type RecorderCandidate } from "./recorder-emails";
 
 type Db = SupabaseClient<Database>;
 
 /** Cuanto se mira hacia atras la primera vez, y cuanto se solapa la marca de agua. */
-export const INITIAL_WINDOW_MS = 14 * 24 * 3600_000;
+export { INITIAL_WINDOW_MS };
 export const WATERMARK_OVERLAP_MS = 2 * 3600_000;
 /** `sync_cursor` = esto significa "estoy a mitad de una pasada, en la primera pagina". */
 export const FIRST_PAGE = "start";
@@ -58,32 +63,31 @@ export interface IngestDeps extends FathomDeps {
   onLinked?: (info: { callId: string; contactId: string; workspaceId: string }) => Promise<void>;
 }
 
-export type SyncOutcome = "complete" | "continued" | "rate_limited" | "temporary_error" | "reconnect" | "inactive" | "no_closers";
+export type SyncOutcome = "complete" | "continued" | "rate_limited" | "temporary_error" | "reconnect" | "inactive" | "no_permission" | "no_emails";
 
 export interface SyncResult {
   outcome: SyncOutcome;
   ingested: number;
   skippedExisting: number;
-  skippedNotCloser: number;
+  skippedOtherRecorder: number;
   requests: number;
   error?: string;
 }
 
-const empty = (outcome: SyncOutcome): SyncResult => ({ outcome, ingested: 0, skippedExisting: 0, skippedNotCloser: 0, requests: 0 });
+const empty = (outcome: SyncOutcome): SyncResult => ({ outcome, ingested: 0, skippedExisting: 0, skippedOtherRecorder: 0, requests: 0 });
 
-// ── Los closers del workspace ─────────────────────────────────────────────
+// ── Quien graba ───────────────────────────────────────────────────────────
 
-export async function loadCloserCandidates(supabase: Db, workspaceId: string): Promise<CloserCandidate[]> {
+export async function loadRecorderCandidates(supabase: Db, workspaceId: string): Promise<RecorderCandidate[]> {
   const [{ data: profiles }, { data: rows }] = await Promise.all([
     supabase.rpc("workspace_member_profiles", { p_workspace_id: workspaceId }),
-    supabase.from("workspace_members").select("user_id, is_closer, closer_emails").eq("workspace_id", workspaceId),
+    supabase.from("workspace_members").select("user_id, closer_emails").eq("workspace_id", workspaceId),
   ]);
   const emailByUser = new Map((profiles ?? []).map((p) => [p.user_id, p.email ?? null]));
   return (rows ?? []).map((r) => ({
     userId: r.user_id,
     email: emailByUser.get(r.user_id) ?? null,
-    isCloser: r.is_closer === true,
-    closerEmails: r.closer_emails ?? [],
+    extraEmails: r.closer_emails ?? [],
   }));
 }
 
@@ -143,6 +147,143 @@ async function loadBookingCandidates(
   return (data ?? []) as BookingCandidate[];
 }
 
+// ── Abrir una corrida ─────────────────────────────────────────────────────
+
+type RunConnection = FathomConnection & { sync_watermark: string | null; sync_cursor: string | null };
+
+/** Lo que necesita una corrida contra Fathom, la de cada 10 minutos o la del historial. */
+export interface FathomRun {
+  connection: RunConnection;
+  /** Quien conecto: a su nombre queda cada llamada. */
+  recorderId: string;
+  /** Con que correos graba: solo se pide y solo entra lo de estos. */
+  emails: string[];
+  /** Los correos de todo el equipo: quien tenga uno de estos no es el lead. */
+  teamEmails: string[];
+  budget: RequestBudget;
+  /** Un pedido con UNA renovacion forzada si Fathom contesta 401. */
+  withAuth: <T>(fn: (token: string) => Promise<T>) => Promise<T>;
+  api: () => { accessToken: string; budget: RequestBudget; fetchImpl?: IngestDeps["fetchImpl"]; now: () => number };
+}
+
+export type OpenFathomRun =
+  | { ok: true; run: FathomRun }
+  | { ok: false; outcome: "inactive" | "no_permission" | "no_emails" }
+  | { ok: false; outcome: "token_error"; connectionId: string; error: unknown };
+
+export async function openFathomRun(deps: IngestDeps, connectionId: string): Promise<OpenFathomRun> {
+  const now = (deps.now ?? (() => new Date()))();
+  const db = deps.supabase;
+
+  let connection: RunConnection;
+  try {
+    const base = await loadFathomConnection(db, connectionId);
+    const { data } = await db.from("oauth_connections").select("sync_watermark, sync_cursor").eq("id", connectionId).maybeSingle();
+    connection = { ...base, sync_watermark: data?.sync_watermark ?? null, sync_cursor: data?.sync_cursor ?? null };
+  } catch {
+    return { ok: false, outcome: "inactive" };
+  }
+  if (connection.status !== "active" && connection.status !== "attention") return { ok: false, outcome: "inactive" };
+
+  // La persona ya no esta en el workspace: no se consulta nada.
+  const candidates = await loadRecorderCandidates(db, connection.workspace_id);
+  const recorder = candidates.find((c) => c.userId === connection.user_id);
+  if (!recorder) return { ok: false, outcome: "inactive" };
+
+  // Su rol ya no le deja usar Grabaciones: tampoco. La conexion sigue ahi y vuelve a andar si recupera el permiso.
+  const allowed = await membersWithPermission(db, connection.workspace_id, "calls.view");
+  if (!allowed.includes(recorder.userId)) return { ok: false, outcome: "no_permission" };
+
+  const emails = recorderEmailsFor(recorder, connection.account_label);
+  if (emails.length === 0) return { ok: false, outcome: "no_emails" };
+
+  const tokenFor = deps.tokenProvider ?? { get: (id: string) => getFathomAccessToken(deps, id), force: (id: string) => forceFathomRefresh(deps, id) };
+  let accessToken: string;
+  try {
+    accessToken = await tokenFor.get(connectionId);
+  } catch (error) {
+    return { ok: false, outcome: "token_error", connectionId, error };
+  }
+
+  let retried401 = false;
+  async function withAuth<T>(fn: (token: string) => Promise<T>): Promise<T> {
+    try {
+      return await fn(accessToken);
+    } catch (err) {
+      if (err instanceof FathomError && err.status === 401 && !retried401) {
+        retried401 = true;
+        accessToken = await tokenFor.force(connectionId);
+        return fn(accessToken);
+      }
+      throw err;
+    }
+  }
+
+  const budget = createRequestBudget();
+  return {
+    ok: true,
+    run: {
+      connection,
+      recorderId: recorder.userId,
+      emails,
+      teamEmails: cleanTeamEmails(candidates, emails),
+      budget,
+      withAuth,
+      api: () => ({ accessToken, budget, fetchImpl: deps.fetchImpl, now: () => now.getTime() }),
+    },
+  };
+}
+
+function cleanTeamEmails(candidates: RecorderCandidate[], emails: string[]): string[] {
+  return [...new Set([...teamEmailsOf(candidates), ...emails])];
+}
+
+/** Lo que va saliendo de una corrida. Se suma aca para no perderlo si la corrida se corta a mitad de una pagina. */
+export type IngestTally = Pick<SyncResult, "ingested" | "skippedExisting" | "skippedOtherRecorder">;
+
+/**
+ * Guarda las reuniones de una pagina que grabo esa persona y todavia no estan.
+ * Cada transcripcion es un pedido y cuesta del presupuesto: si se acaba, lanza
+ * `BudgetExhausted` y lo que ya entro queda en `tally`.
+ */
+export async function ingestItems(
+  deps: IngestDeps,
+  run: FathomRun,
+  items: FathomMeeting[],
+  tally: IngestTally,
+  opts: { history?: boolean } = {},
+): Promise<void> {
+  const db = deps.supabase;
+
+  // Doble control: solo las que grabo quien conecto.
+  const mine: Array<{ m: FathomMeeting; externalId: string }> = [];
+  for (const m of items) {
+    if (m.recording_id === null || m.recording_id === undefined || m.recording_id === "") continue; // sin id no se puede guardar
+    if (!run.emails.includes(normalizeFathomEmail(m.recorded_by?.email) ?? "")) { tally.skippedOtherRecorder++; continue; }
+    mine.push({ m, externalId: String(m.recording_id) });
+  }
+
+  // Cuales ya existen: una consulta por pagina, no una por reunion.
+  const known = new Set<string>();
+  if (mine.length > 0) {
+    const { data: existing } = await db
+      .from("calls")
+      .select("external_id")
+      .eq("workspace_id", run.connection.workspace_id)
+      .eq("source", "fathom")
+      .in("external_id", mine.map((x) => x.externalId));
+    for (const row of existing ?? []) if (row.external_id) known.add(row.external_id);
+  }
+
+  for (const item of mine) {
+    if (known.has(item.externalId)) { tally.skippedExisting++; continue; }
+    const transcript = await run.withAuth(() => getTranscript(run.api(), item.m.recording_id as number | string));
+    const created = await saveCall(deps, run, item.m, item.externalId, transcript, opts.history === true);
+    if (created === "created") tally.ingested++;
+    else tally.skippedExisting++;
+  }
+}
+
 // ── La corrida ────────────────────────────────────────────────────────────
 
 export async function syncFathomConnection(deps: IngestDeps, connectionId: string): Promise<SyncResult> {
@@ -150,26 +291,14 @@ export async function syncFathomConnection(deps: IngestDeps, connectionId: strin
   const now = clock();
   const db = deps.supabase;
 
-  let connection: FathomConnection & { sync_watermark: string | null; sync_cursor: string | null };
-  try {
-    const base = await loadFathomConnection(db, connectionId);
-    const { data } = await db.from("oauth_connections").select("sync_watermark, sync_cursor").eq("id", connectionId).maybeSingle();
-    connection = { ...base, sync_watermark: data?.sync_watermark ?? null, sync_cursor: data?.sync_cursor ?? null };
-  } catch {
-    return empty("inactive");
-  }
-  if (connection.status !== "active" && connection.status !== "attention") return empty("inactive");
-
-  // La persona ya no esta en el workspace: no se consulta nada.
-  const candidates = await loadCloserCandidates(db, connection.workspace_id);
-  if (connection.user_id && !candidates.some((c) => c.userId === connection.user_id)) return empty("inactive");
-
-  const byEmail = buildCloserByEmail(candidates);
-  if (byEmail.size === 0) return empty("no_closers"); // sin closers no se pide nada
-
-  const budget = createRequestBudget();
   const result = empty("complete");
-  const tokenFor = deps.tokenProvider ?? { get: (id: string) => getFathomAccessToken(deps, id), force: (id: string) => forceFathomRefresh(deps, id) };
+  const opened = await openFathomRun(deps, connectionId);
+  if (!opened.ok) {
+    if (opened.outcome === "token_error") return failWithoutToken(db, connectionId, opened.error, result);
+    return empty(opened.outcome);
+  }
+  const { run } = opened;
+  const { connection, budget } = run;
 
   // El estado de la pasada: la pagina que se esta leyendo (null = la primera).
   let pageCursor: string | null = connection.sync_cursor && connection.sync_cursor !== FIRST_PAGE ? connection.sync_cursor : null;
@@ -188,71 +317,21 @@ export async function syncFathomConnection(deps: IngestDeps, connectionId: strin
       .eq("id", connectionId);
   };
 
-  let accessToken: string;
-  try {
-    accessToken = await tokenFor.get(connectionId);
-  } catch (err) {
-    return failWithoutToken(db, connectionId, err, result);
-  }
-
-  /** Un pedido con UNA renovacion forzada si Fathom contesta 401. */
-  let retried401 = false;
-  async function withAuth<T>(fn: (token: string) => Promise<T>): Promise<T> {
-    try {
-      return await fn(accessToken);
-    } catch (err) {
-      if (err instanceof FathomError && err.status === 401 && !retried401) {
-        retried401 = true;
-        accessToken = await tokenFor.force(connectionId);
-        return fn(accessToken);
-      }
-      throw err;
-    }
-  }
-  const api = () => ({ accessToken, budget, fetchImpl: deps.fetchImpl, now: () => now.getTime() });
-
   try {
     for (;;) {
-      const page = await withAuth(() => listMeetings(api(), { createdAfter, recordedBy: closerEmails(byEmail), cursor: pageCursor }));
-      result.requests = budget.used;
+      const page = await run.withAuth(() => listMeetings(run.api(), { createdAfter, recordedBy: run.emails, cursor: pageCursor }));
       progressed = true;
 
       for (const m of page.items) if (m.created_at && (!maxCreated || m.created_at > maxCreated)) maxCreated = m.created_at;
 
-      // Doble control: solo las que grabo un closer.
-      const mine: Array<{ m: FathomMeeting; externalId: string; closerId: string }> = [];
-      for (const m of page.items) {
-        if (m.recording_id === null || m.recording_id === undefined || m.recording_id === "") continue; // sin id no se puede guardar
-        const closerId = byEmail.get(normalizeFathomEmail(m.recorded_by?.email) ?? "");
-        if (!closerId) { result.skippedNotCloser++; continue; }
-        mine.push({ m, externalId: String(m.recording_id), closerId });
-      }
-
-      // Cuales ya existen: una consulta por pagina, no una por reunion.
-      const known = new Set<string>();
-      if (mine.length > 0) {
-        const { data: existing } = await db
-          .from("calls")
-          .select("external_id")
-          .eq("workspace_id", connection.workspace_id)
-          .eq("source", "fathom")
-          .in("external_id", mine.map((x) => x.externalId));
-        for (const row of existing ?? []) if (row.external_id) known.add(row.external_id);
-      }
-
-      for (const item of mine) {
-        if (known.has(item.externalId)) { result.skippedExisting++; continue; }
-        const transcript = await withAuth(() => getTranscript(api(), item.m.recording_id as number | string));
-        result.requests = budget.used;
-        const created = await saveCall(deps, connection, item.m, item.externalId, item.closerId, transcript, byEmail, candidates);
-        if (created === "created") result.ingested++;
-        else result.skippedExisting++;
-      }
+      await ingestItems(deps, run, page.items, result);
+      result.requests = budget.used;
 
       if (!page.nextCursor) break;
       pageCursor = page.nextCursor;
     }
   } catch (err) {
+    result.requests = budget.used;
     return handleRunError(deps, connection, err, result, pageCursor, saveProgress);
   }
 
@@ -270,25 +349,23 @@ export async function syncFathomConnection(deps: IngestDeps, connectionId: strin
 
 async function saveCall(
   deps: IngestDeps,
-  connection: FathomConnection,
+  run: FathomRun,
   m: FathomMeeting,
   externalId: string,
-  closerId: string,
   transcript: Awaited<ReturnType<typeof getTranscript>>,
-  byEmail: Map<string, string>,
-  candidates: CloserCandidate[],
+  history: boolean,
 ): Promise<"created" | "exists"> {
   const db = deps.supabase;
   const now = (deps.now ?? (() => new Date()))();
+  const { connection, recorderId, teamEmails } = run;
   const attendees = toAttendees(m.calendar_invitees);
   const recordedAt = m.recording_start_time ?? m.created_at ?? now.toISOString();
   const recorderEmail = normalizeFathomEmail(m.recorded_by?.email);
 
-  const teamEmails = [...byEmail.keys(), ...candidates.map((c) => c.email ?? "")].filter(Boolean);
   const external = externalEmailsOf(attendees, { teamEmails, recorderEmail });
   const contacts = await loadContactCandidates(db, connection.workspace_id, external);
   const bookings = await loadBookingCandidates(db, connection.workspace_id, recordedAt, contacts.map((c) => c.id), external);
-  const link = computeAutoLink({ recordedAt, recorderUserId: closerId, attendees, teamEmails, recorderEmail }, contacts, bookings);
+  const link = computeAutoLink({ recordedAt, recorderUserId: recorderId, attendees, teamEmails, recorderEmail }, contacts, bookings);
 
   const counts = countPeople(attendees, transcript);
   const { data, error } = await db
@@ -306,7 +383,8 @@ async function saveCall(
       scheduled_end_at: m.scheduled_end_time ?? null,
       duration_seconds: secondsBetween(m.recording_start_time, m.recording_end_time),
       recorded_by_email: recorderEmail,
-      recorded_by_user_id: closerId,
+      recorded_by_user_id: recorderId,
+      imported_from_history: history,
       attendees,
       transcript,
       transcript_language: m.transcript_language ?? null,
@@ -337,11 +415,12 @@ async function saveCall(
       entityType: "call",
       entityId: callId,
       action: "call.ingested",
-      metadata: { source: "fathom", link_method: link.link_method, lines: transcript.length },
+      metadata: { source: "fathom", link_method: link.link_method, lines: transcript.length, ...(history ? { history: true } : {}) },
       label: "Fathom",
     });
     await (deps.enqueueClassify ?? ((id: string) => enqueueClassify(db, id, now)))(callId);
-    if (link.contact_id && deps.onLinked) await deps.onLinked({ callId, contactId: link.contact_id, workspaceId: connection.workspace_id });
+    // Lo importado del historial es historia: no dispara `call_linked`.
+    if (!history && link.contact_id && deps.onLinked) await deps.onLinked({ callId, contactId: link.contact_id, workspaceId: connection.workspace_id });
   } catch (err) {
     console.error("[fathom] la llamada se guardó pero falló un paso posterior:", err instanceof Error ? err.message : "error");
   }

@@ -18,7 +18,7 @@ beforeEach(() => { vi.clearAllMocks(); vi.spyOn(console, "log").mockImplementati
 
 describe("handleFathomSync", () => {
   it("sincroniza la conexion del payload", async () => {
-    sync.mockResolvedValue({ outcome: "complete", ingested: 2, skippedExisting: 0, skippedNotCloser: 1, requests: 3 });
+    sync.mockResolvedValue({ outcome: "complete", ingested: 2, skippedExisting: 0, skippedOtherRecorder: 1, requests: 3 });
     const { ctx: c } = ctx({ connectionId: CONN });
     await handleFathomSync(c);
     expect(sync).toHaveBeenCalledWith(expect.objectContaining({ supabase: expect.anything() }), CONN);
@@ -27,7 +27,7 @@ describe("handleFathomSync", () => {
   it("una llamada nueva vinculada a un contacto dispara los flujos de call_linked", async () => {
     sync.mockImplementation(async (deps: { onLinked: (i: { callId: string }) => Promise<void> }) => {
       await deps.onLinked({ callId: "call-1" });
-      return { outcome: "complete", ingested: 1, skippedExisting: 0, skippedNotCloser: 0, requests: 1 };
+      return { outcome: "complete", ingested: 1, skippedExisting: 0, skippedOtherRecorder: 0, requests: 1 };
     });
     const { ctx: c, db } = ctx({ connectionId: CONN });
     await handleFathomSync(c);
@@ -48,7 +48,7 @@ describe("handleFathomSync", () => {
   });
 
   it("el log solo lleva numeros, nunca datos de la llamada", async () => {
-    sync.mockResolvedValue({ outcome: "complete", ingested: 1, skippedExisting: 0, skippedNotCloser: 0, requests: 2 });
+    sync.mockResolvedValue({ outcome: "complete", ingested: 1, skippedExisting: 0, skippedOtherRecorder: 0, requests: 2 });
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
     await handleFathomSync(ctx({ connectionId: CONN }).ctx);
     expect(String(spy.mock.calls[0][0])).toMatch(/^\[fathom_sync\] complete · nuevas 1/);

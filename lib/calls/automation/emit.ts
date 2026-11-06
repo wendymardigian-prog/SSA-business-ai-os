@@ -9,6 +9,9 @@
  *  - Una llamada SIN contacto no emite nada (`automation_events.contact_id` es
  *    obligatorio y no hay a quien mandarle el flujo). Cuando despues se vincula,
  *    se emite `call_linked`.
+ *  - Una llamada importada del historial tampoco, ni aunque alguien la vincule o la
+ *    analice despues: un flujo no le puede escribir a un lead por una llamada de
+ *    hace meses.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
@@ -20,11 +23,11 @@ export async function emitCallEvent(db: Db, type: CallTriggerType, callId: strin
   try {
     const { data: call } = await db
       .from("calls")
-      .select("id, workspace_id, contact_id, call_type, outcome, closer_score, lead_score, lead_qualification, recorded_by_user_id, booking_id, analysis_run_id")
+      .select("id, workspace_id, contact_id, call_type, outcome, closer_score, lead_score, lead_qualification, recorded_by_user_id, booking_id, analysis_run_id, imported_from_history")
       .eq("id", callId)
       .is("archived_at", null)
       .maybeSingle();
-    if (!call || !call.contact_id) return false;
+    if (!call || !call.contact_id || call.imported_from_history) return false;
 
     const { error } = await db.from("automation_events").insert({
       workspace_id: call.workspace_id,

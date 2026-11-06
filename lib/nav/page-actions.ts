@@ -204,8 +204,8 @@ export const PAGE_META: Record<string, PageMeta> = {
   // ── Llamadas (Fathom + analizador) ──────────────────────────────────── // @plantilla-quitar(llamadas)
   // @plantilla-desde(llamadas)
   "/dashboard/llamadas": {
-    title: "Llamadas",
-    tooltip: "Las llamadas de venta que entran desde Fathom, con su tipo, su análisis y su puntaje. Se consulta Fathom cada 10 minutos.",
+    title: "Grabaciones de llamadas",
+    tooltip: "Las grabaciones de llamadas de venta que entran desde Fathom, con su tipo, su análisis y su puntaje. Se consulta Fathom cada 10 minutos.",
   },
   // @plantilla-hasta(llamadas)
   // @plantilla-desde(llamadas)

@@ -381,7 +381,7 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 - **Roles con guardado automatico** (`patchRole`): una cola serial (`lib/roles/save-queue.ts`) y la auditoria agrupada por sesion de edicion de 10 minutos. Un cambio que falla vuelve a su valor y ofrece "Reintentar". Nada de `window.location.reload()`.
 - **`workspaces` sigue siendo Admin en la base**: las acciones de Ajustes escriben con el cliente de servicio DESPUES de chequear su clave, filtrando por el workspace de la sesion. No se reescribe esa politica.
 - **`audit_log_select` NO se toca**: el permiso `audit.view` es la politica ADICIONAL `audit_log_select_audit` (00213).
-- **Las conexiones personales no cambian** (Google Calendar y Fathom, `lib/oauth/*`, `claim_oauth_refresh`): las ve y las conecta cada persona. `oauthRouteContext` tiene tres ramas y un test las fija; la del negocio pide `integrations.manage`.
+- **Las conexiones personales no cambian** (Google Calendar y Fathom, `lib/oauth/*`, `claim_oauth_refresh`): las ve y las conecta cada persona. `oauthRouteContext` tiene dos ramas: por persona, el permiso del adaptador (Google Calendar `scheduling.use`, Fathom `calls.view`); la del negocio pide `integrations.manage`.
 - **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
 - **La bandeja va por CUENTA conectada (00249)**: cada rol guarda en `permissions.channels` «todas las cuentas» (incluye las futuras) o una lista por cuenta, cada una con su alcance (solo asignadas / + sin asignar / todas) y «responde». Lo aplica la base (`can_see_conversation` decide por la cuenta; ver un chat deja ver la ficha del contacto) y la pantalla usa las mismas reglas (`lib/auth/channel-permissions.ts`, gemelas SQL con `channel-permissions.cases.json`): el menú de cuentas, el composer y los 403 de envío, borradores, reacciones, adjuntos y recursos. Las seis claves `inbox.<red>.*` y el alcance `conversations` se retiraron. Resumen en `docs/roles.md`, «La bandeja por cuenta».
@@ -485,8 +485,7 @@ sus automatizaciones y la habilidad del agente. El detalle en
   evento por el link**: sale de la reunion, porque su anfitrion puede no ser el dueño
   de hoy. La 00290 va ANTES de desplegar el codigo: **aplicada y registrada** el
   5/11/2026 UTC (version `20261105002339`), con `verify-scheduling --despues-de-00290`
-  en verde. **La proxima libre es la `00291`** (la `00289` es de otra rama, tambien
-  aplicada; confirmar con `list_migrations` y las ramas locales).
+  en verde. La `00289` es de otra rama, tambien aplicada. (Para la proxima libre, ver la ultima seccion que la nombra y confirmar con `list_migrations` y las ramas locales.)
 
 ## Google Calendar
 
@@ -526,7 +525,7 @@ Valen las mismas reglas que los de la Etapa 2: crean y limpian sus datos
 
 # Llamadas (Fathom + analizador de llamadas con IA)
 
-Cada closer conecta su Fathom y sus llamadas de venta entran solas: se vinculan
+Cada persona con `calls.view` conecta su Fathom y lo que grabo entra solo (en el menu, **Grabaciones**; ya no hay marca de closer): se vinculan
 al contacto y a la agenda, se clasifican, se analizan con el SPSP del negocio, se
 corrigen sin perder lo que dijo la IA, y lo aprendido vuelve al negocio. Plano en
 `docs/requerimientos-llamadas.md`; el resumen del modulo, en
@@ -535,6 +534,9 @@ corrigen sin perder lo que dijo la IA, y lo aprendido vuelve al negocio. Plano e
 
 ## Lo que no se puede romper
 
+- **Entra lo que grabo quien conecto**, con los correos de `recorderEmailsFor` (`lib/fathom/recorder-emails.ts`). Conectar, sincronizar e importar piden `calls.view`; desconectarse, solo ser miembro. `is_closer` quedo sin leerse desde la 00297 (se borra en otra migracion, despues del deploy) y `closer_emails` son los otros correos que la persona carga en Mi Fathom. **`/users/me` no esta documentado por Fathom**: no depender de el.
+- **Importar el historial** (`lib/fathom/history-import.ts`, job `fathom_history_import`, Mi Fathom): por partes, llega hasta la marca de agua (lo posterior es de la consulta de cada 10 minutos) y lo importado es historia (`calls.imported_from_history`): `emitCallEvent` no emite nada y no se analiza sola. Se clasifica igual. Detalle en docs/llamadas.md.
+- **`access-matrix.baseline.json` NO se regenera con `UPDATE_ACCESS_BASELINE`**: es la foto vieja a proposito y se reescribiria entera. Una entrada que se borra de verdad se saca a mano.
 - **Una sola tabla nueva: `calls`.** Escribe solo el servidor; la ven Owner y
   Admin, quien la grabo, quien ve su contacto (`can_see_contact`) y un rol con
   `calls.view` de alcance `all` (`can_see_call`).
@@ -1805,7 +1807,7 @@ Una **guardia única de entrega** para todo el email de marketing (broadcasts, a
 
 ## Migraciones
 
-`00287_email_delivery_guard` (columnas de `email_log`, estados `reserved` / `skipped_no_email`, la guardia, la capacidad, `patch_resend_config`, los eventos y `contact_last_activity`) y `00288_broadcast_activity_order` (`sort_key` y `claim_broadcast_recipient`): aditivas, van **ANTES** del deploy, **aplicadas y registradas** el 4/11/2026 (versiones `20261104191636` y `20261104191646`). `00294_broadcast_email_preheader` (aditiva) va **ANTES** del deploy, porque el editor de broadcasts guarda esa columna con cada borrador: **aplicada y registrada** el 5/11/2026 UTC (versión `20261105022740`). **La próxima libre es la `00295`** (la `00291` queda para `automation_runs`; confirmar con `list_migrations` y las ramas locales). La `00289` la ocupó «Reuniones sin evento», así que `automation_runs` (Fase 1b) pasa a la **`00291`** (confirmar con `list_migrations` y las ramas locales).
+`00287_email_delivery_guard` (columnas de `email_log`, estados `reserved` / `skipped_no_email`, la guardia, la capacidad, `patch_resend_config`, los eventos y `contact_last_activity`) y `00288_broadcast_activity_order` (`sort_key` y `claim_broadcast_recipient`): aditivas, van **ANTES** del deploy, **aplicadas y registradas** el 4/11/2026 (versiones `20261104191636` y `20261104191646`). `00294_broadcast_email_preheader` (aditiva) va **ANTES** del deploy, porque el editor de broadcasts guarda esa columna con cada borrador: **aplicada y registrada** el 5/11/2026 UTC (versión `20261105022740`). La `00296` es de Contactos sin identificar y la `00297` de Importar el historial de Fathom (aditiva, va **ANTES** del deploy). **La próxima libre es la `00298`** (la `00291` queda para `automation_runs`; confirmar con `list_migrations` y las ramas locales). La `00289` la ocupó «Reuniones sin evento», así que `automation_runs` (Fase 1b) pasa a la **`00291`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-email-subscription.mjs   # bloque 11: la guardia (SQL = TS, 10 en paralelo con tope 5, freno, calentamiento, eventos)

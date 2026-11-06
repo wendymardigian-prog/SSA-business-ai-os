@@ -49,7 +49,7 @@ export interface ClassifyDeps {
 }
 
 const CALL_COLUMNS =
-  "id, workspace_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, analysis_status";
+  "id, workspace_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, analysis_status, imported_from_history";
 
 async function loadTeam(db: Db, workspaceId: string): Promise<{ emails: string[]; names: string[] }> {
   const { data, error } = await db.rpc("workspace_member_profiles", { p_workspace_id: workspaceId });
@@ -72,11 +72,13 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
   const classification = settings.call_classification;
   const analysis = settings.call_analysis;
   const hasTranscript = Array.isArray(call.transcript) && call.transcript.length > 0;
+  // Lo importado del historial no se analiza solo: el gasto lo decide una persona, llamada por llamada.
+  const auto = analysis.mode === "now" && !call.imported_from_history;
 
   // Paso el estado a su lugar sin tocar el tipo que puso una persona.
   if (call.call_type_source === "human" && call.call_type) {
     if (call.analysis_status === "classifying") {
-      const next = nextStatusAfterClassify(call.call_type, { analyzeTypes: analysis.analyze_types, auto: analysis.mode === "now", hasTranscript });
+      const next = nextStatusAfterClassify(call.call_type, { analyzeTypes: analysis.analyze_types, auto, hasTranscript });
       await db.from("calls").update({ analysis_status: next.status, analysis_status_reason: next.reason }).eq("id", callId).eq("analysis_status", "classifying");
       if (next.enqueueAnalysis) await enqueueCallJob(db, "call_analyze", callId, now);
     }
@@ -151,7 +153,7 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
   }
 
   if (type && source) {
-    const next = nextStatusAfterClassify(type, { analyzeTypes: analysis.analyze_types, auto: analysis.mode === "now", lowConfidence, hasTranscript });
+    const next = nextStatusAfterClassify(type, { analyzeTypes: analysis.analyze_types, auto, lowConfidence, hasTranscript });
     const { data: updated } = await db
       .from("calls")
       .update({ call_type: type, call_type_source: source, ...rowExtra, analysis_status: next.status, analysis_status_reason: next.reason })

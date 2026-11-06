@@ -2,7 +2,7 @@
  * Qué controles ve cada persona en Equipo (Equipo y roles, F6). Puro: la pantalla lo compone.
  *
  * - `team.view`   la lista (sin controles).
- * - `team.manage` el selector de rol y la marca de Closer de cada persona.
+ * - `team.manage` el selector de rol de cada persona.
  * - `team.remove` quitar a alguien (solo el Owner la tiene).
  * - `team.invite` el formulario de invitar y las acciones de pendientes.
  */
@@ -20,8 +20,6 @@ export interface TeamMemberRef {
 export interface MemberRowControls {
   /** El selector para cambiarle el rol. */
   roleSelect: boolean;
-  /** La marca de Closer y sus correos. */
-  closer: boolean;
   /** El botón de quitar de la fila. */
   remove: boolean;
   /** La insignia de solo lectura con el nombre del rol (cuando no hay selector). */
@@ -34,7 +32,6 @@ export function memberRowControls(viewer: TeamViewer, member: TeamMemberRef): Me
   const roleSelect = viewer.can("team.manage") && !isOwner && !isSelf;
   return {
     roleSelect,
-    closer: viewer.can("team.manage"),
     remove: viewer.can("team.remove") && !isSelf,
     roleBadge: !roleSelect,
   };

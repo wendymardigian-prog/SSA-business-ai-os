@@ -46,6 +46,7 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "describe_media",
       // Reporte de fin de día (E13): el recordatorio. // @plantilla-quitar(formularios)
       "eod_reminder_sweep", // @plantilla-quitar(formularios)
+      "fathom_history_import", // @plantilla-quitar(llamadas)
       "fathom_sync", // @plantilla-quitar(llamadas)
       // Finanzas (Extra I, G1): el trabajo diario. // @plantilla-quitar(finanzas)
       "finance_daily", // @plantilla-quitar(finanzas)

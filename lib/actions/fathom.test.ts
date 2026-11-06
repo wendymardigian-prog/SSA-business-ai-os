@@ -19,8 +19,10 @@ vi.mock("@/lib/vault", async (orig) => {
 });
 const queue = vi.hoisted(() => ({ queueFathomSyncNow: vi.fn() }));
 vi.mock("@/lib/fathom/queue", () => queue);
+const history = vi.hoisted(() => ({ startHistoryImport: vi.fn(), resumeHistoryImport: vi.fn(), stopHistoryImport: vi.fn() }));
+vi.mock("@/lib/fathom/history-import", () => history);
 
-import { disconnectFathom, saveFathomApp, syncFathomNow } from "./fathom";
+import { disconnectFathom, resumeFathomHistoryImport, saveFathomApp, saveMyFathomEmails, startFathomHistoryImport, stopFathomHistoryImport, syncFathomNow } from "./fathom";
 import { validateFathomApp } from "@/lib/fathom/app-validation";
 
 const WS = "ws-1";
@@ -121,5 +123,118 @@ describe("syncFathomNow", () => {
     const r = await syncFathomNow();
     expect(r.ok).toBe(false);
     expect(queue.queueFathomSyncNow).not.toHaveBeenCalled();
+  });
+
+  it("pide calls.view: sin el permiso no hace nada", async () => {
+    guards.getPermissionAction.mockResolvedValue(null);
+    const r = await syncFathomNow();
+    expect(r.ok).toBe(false);
+    expect(guards.getPermissionAction).toHaveBeenCalledWith("calls.view");
+    expect(queue.queueFathomSyncNow).not.toHaveBeenCalled();
+  });
+});
+
+describe("saveMyFathomEmails", () => {
+  const team = () => fakeDb(
+    {
+      "workspace_members:select": { data: [{ user_id: "user-ana", closer_emails: ["ana.vieja@gmail.com"] }, { user_id: "user-beto", closer_emails: [] }] },
+      "oauth_connections:select": { data: { id: "c1", status: "active" } },
+    },
+    { workspace_member_profiles: { data: [{ user_id: "user-ana", email: "ana@negocio.io" }, { user_id: "user-beto", email: "beto@negocio.io" }] } },
+  );
+
+  it("guarda SOLO en la fila de quien tiene la sesion, normalizado", async () => {
+    const db = team();
+    server.service = db.client;
+    const r = await saveMyFathomEmails(["ana.vieja@gmail.com", " ANA.Nueva@Gmail.com "]);
+    expect(r).toEqual({ ok: true, emails: ["ana.vieja@gmail.com", "ana.nueva@gmail.com"] });
+    const write = db.writesTo("workspace_members")[0];
+    expect(write.values).toEqual({ closer_emails: ["ana.vieja@gmail.com", "ana.nueva@gmail.com"] });
+    expect(write.filters).toEqual(expect.arrayContaining([expect.objectContaining({ column: "user_id", value: "user-ana" }), expect.objectContaining({ column: "workspace_id", value: WS })]));
+  });
+
+  it("al sumar un correo vuelve a mirar los ultimos dias", async () => {
+    const db = team();
+    server.service = db.client;
+    queue.queueFathomSyncNow.mockResolvedValue({ queued: true });
+    await saveMyFathomEmails(["ana.vieja@gmail.com", "ana.nueva@gmail.com"]);
+    expect(db.writesTo("oauth_connections")[0].values).toEqual({ sync_watermark: null, sync_cursor: null });
+    expect(queue.queueFathomSyncNow).toHaveBeenCalledWith(expect.anything(), "c1");
+  });
+
+  it("al quitar un correo no vuelve a consultar", async () => {
+    const db = team();
+    server.service = db.client;
+    await saveMyFathomEmails([]);
+    expect(db.writesTo("oauth_connections")).toHaveLength(0);
+    expect(queue.queueFathomSyncNow).not.toHaveBeenCalled();
+  });
+
+  it("rechaza un correo de otra persona, sin escribir", async () => {
+    const db = team();
+    server.service = db.client;
+    const r = await saveMyFathomEmails(["beto@negocio.io"]);
+    expect(r.ok).toBe(false);
+    expect(db.writes()).toHaveLength(0);
+  });
+
+  it("sin calls.view no hace nada", async () => {
+    guards.getPermissionAction.mockResolvedValue(null);
+    expect((await saveMyFathomEmails(["a@b.com"])).ok).toBe(false);
+  });
+});
+
+describe("importar el historial", () => {
+  const conectada = () => { server.service = fakeDb({ "oauth_connections:select": { data: { id: "c1", status: "active" } } }).client; };
+
+  it("arranca sobre SU conexion y lo deja en el historial", async () => {
+    conectada();
+    history.startHistoryImport.mockResolvedValue({ ok: true });
+    const r = await startFathomHistoryImport({ from: "2026-01-01T15:00:00.000Z" });
+    expect(r).toEqual({ ok: true });
+    expect(history.startHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1", "2026-01-01T15:00:00.000Z");
+    expect(JSON.stringify(audit.logAudit.mock.calls)).toContain("history_import_started");
+  });
+
+  it("todo el historial es from null", async () => {
+    conectada();
+    history.startHistoryImport.mockResolvedValue({ ok: true });
+    await startFathomHistoryImport({ from: null });
+    expect(history.startHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1", null);
+  });
+
+  it("rechaza una fecha que no es una fecha", async () => {
+    conectada();
+    expect((await startFathomHistoryImport({ from: "ayer" })).ok).toBe(false);
+    expect(history.startHistoryImport).not.toHaveBeenCalled();
+  });
+
+  it("sin conexion viva no arranca, ni sigue", async () => {
+    server.service = fakeDb({ "oauth_connections:select": { data: null } }).client;
+    expect((await startFathomHistoryImport({ from: null })).ok).toBe(false);
+    expect((await resumeFathomHistoryImport()).ok).toBe(false);
+    expect(history.startHistoryImport).not.toHaveBeenCalled();
+    expect(history.resumeHistoryImport).not.toHaveBeenCalled();
+  });
+
+  it("las tres piden calls.view", async () => {
+    guards.getPermissionAction.mockResolvedValue(null);
+    expect((await startFathomHistoryImport({ from: null })).ok).toBe(false);
+    expect((await resumeFathomHistoryImport()).ok).toBe(false);
+    expect((await stopFathomHistoryImport()).ok).toBe(false);
+    expect(guards.getPermissionAction).toHaveBeenCalledWith("calls.view");
+    expect(history.startHistoryImport).not.toHaveBeenCalled();
+    expect(history.resumeHistoryImport).not.toHaveBeenCalled();
+    expect(history.stopHistoryImport).not.toHaveBeenCalled();
+  });
+
+  it("seguir y frenar actuan sobre SU conexion", async () => {
+    conectada();
+    history.resumeHistoryImport.mockResolvedValue({ ok: true });
+    history.stopHistoryImport.mockResolvedValue({ ok: true });
+    await resumeFathomHistoryImport();
+    await stopFathomHistoryImport();
+    expect(history.resumeHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1");
+    expect(history.stopHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1");
   });
 });

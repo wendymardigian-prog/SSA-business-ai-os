@@ -9,12 +9,12 @@ const member = viewerWith("member", SYSTEM_ROLE_PERMISSIONS.member.keys);
 const soloVer = viewerWith("ver", ["team.view"]);
 
 describe("memberRowControls", () => {
-  it("el Owner ve selector, closer y quitar en las demás personas", () => {
-    expect(memberRowControls(owner, { userId: "x", role: "member" })).toEqual({ roleSelect: true, closer: true, remove: true, roleBadge: false });
+  it("el Owner ve selector y quitar en las demás personas", () => {
+    expect(memberRowControls(owner, { userId: "x", role: "member" })).toEqual({ roleSelect: true, remove: true, roleBadge: false });
   });
 
-  it("el Admin cambia roles y closer, pero no quita (team.remove es solo del Owner)", () => {
-    expect(memberRowControls(admin, { userId: "x", role: "member" })).toEqual({ roleSelect: true, closer: true, remove: false, roleBadge: false });
+  it("el Admin cambia roles, pero no quita (team.remove es solo del Owner)", () => {
+    expect(memberRowControls(admin, { userId: "x", role: "member" })).toEqual({ roleSelect: true, remove: false, roleBadge: false });
   });
 
   it("nadie ve selector sobre el Owner ni sobre sí mismo", () => {
@@ -23,12 +23,12 @@ describe("memberRowControls", () => {
     expect(memberRowControls(owner, { userId: "owner", role: "owner" })).toMatchObject({ roleSelect: false, remove: false });
   });
 
-  it("quien solo tiene team.view ve la lista: sin selector, sin closer, sin quitar", () => {
-    expect(memberRowControls(soloVer, { userId: "x", role: "member" })).toEqual({ roleSelect: false, closer: false, remove: false, roleBadge: true });
+  it("quien solo tiene team.view ve la lista: sin selector, sin quitar", () => {
+    expect(memberRowControls(soloVer, { userId: "x", role: "member" })).toEqual({ roleSelect: false, remove: false, roleBadge: true });
   });
 
   it("el Member de sistema no ve ningún control", () => {
-    expect(memberRowControls(member, { userId: "x", role: "member" })).toEqual({ roleSelect: false, closer: false, remove: false, roleBadge: true });
+    expect(memberRowControls(member, { userId: "x", role: "member" })).toEqual({ roleSelect: false, remove: false, roleBadge: true });
   });
 });
 

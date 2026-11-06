@@ -31,6 +31,7 @@ import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
 import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync"; // @plantilla-quitar(llamadas)
+import { registerFathomHistoryImportHandler } from "@/lib/jobs/handlers/fathom-history-import"; // @plantilla-quitar(llamadas)
 import { registerCallClassifyHandler } from "@/lib/jobs/handlers/call-classify"; // @plantilla-quitar(llamadas)
 import { registerCallAnalyzeHandler } from "@/lib/jobs/handlers/call-analyze"; // @plantilla-quitar(llamadas)
 import { registerCallSummaryHandler } from "@/lib/jobs/handlers/call-summary"; // @plantilla-quitar(llamadas)
@@ -125,8 +126,9 @@ export function registerPublishing(): void {
   registerDescribeMediaHandler();
 
   // @plantilla-desde(llamadas)
-  // Llamadas: la consulta a Fathom de una conexion (F8).
+  // Llamadas: la consulta a Fathom de una conexion (F8) y la importacion de su historial.
   registerFathomSyncHandler();
+  registerFathomHistoryImportHandler();
   registerCallClassifyHandler();
   registerCallAnalyzeHandler();
   registerCallSummaryHandler();

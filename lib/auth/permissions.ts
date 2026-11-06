@@ -59,7 +59,7 @@ export const MODULE_LABELS: Record<PermissionModule, string> = {
   knowledge: "Base de conocimiento",
   content: "Contenido",
   scheduling: "Agenda",
-  calls: "Llamadas", // @plantilla-quitar(llamadas)
+  calls: "Grabaciones", // @plantilla-quitar(llamadas)
   forms: "Formularios", // @plantilla-quitar(formularios)
   sales: "Ventas", // @plantilla-quitar(ventas)
   // @plantilla-sin(ventas): catalogo: "Catálogo",
@@ -163,7 +163,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "bookings.manage", module: "scheduling", label: "Gestionar agendas", description: "Cancelar, reagendar, marcar, editar y agendar a mano. Mismo alcance que ver." },
 
   // ── Llamadas (Fathom + analizador de llamadas) ────────────────────────── // @plantilla-quitar(llamadas)
-  { key: "calls.view", module: "calls", label: "Ver las llamadas", description: "La lista, la ficha, el análisis y el dashboard de Llamadas, según el alcance." }, // @plantilla-quitar(llamadas)
+  { key: "calls.view", module: "calls", label: "Ver las llamadas", description: "La lista, la ficha, el análisis y el dashboard, según el alcance. También conectar su propio Fathom e importar su historial." }, // @plantilla-quitar(llamadas)
   { key: "calls.edit", module: "calls", label: "Editar las llamadas", description: "Cambiar el tipo, vincular contacto y agenda, analizar, corregir, regenerar, resumir, mandar a Conocimiento e importar." }, // @plantilla-quitar(llamadas)
   { key: "calls.configure", module: "calls", label: "Configurar el análisis de llamadas", description: "Reglas, tipos, rúbrica, categorías y contexto del negocio de las tareas Clasificación y Análisis de llamadas." }, // @plantilla-quitar(llamadas)
 
@@ -203,8 +203,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // ── Equipo ──────────────────────────────────────────────────────────────
   { key: "team.view", module: "team", label: "Ver el equipo", description: "Quiénes son, con qué rol y desde cuándo. Sin cambiar nada." },
   { key: "team.invite", module: "team", label: "Invitar personas", description: "Invitar por email o por link, reenviar, renovar y anular invitaciones. Solo con roles que uno mismo puede dar." },
-  { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Cambiarle el rol a una persona y marcar quién es closer." }, // @plantilla-quitar(llamadas)
-  // @plantilla-sin(llamadas): { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Cambiarle el rol a una persona." },
+  { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Cambiarle el rol a una persona." },
   { key: "team.remove", module: "team", label: "Quitar personas del equipo", description: "Solo el Owner. Saca a alguien del negocio.", ownerOnly: true },
   { key: "roles.view", module: "team", label: "Ver los roles", description: "La lista de roles y lo que puede cada uno, sin editar." },
   { key: "roles.manage", module: "team", label: "Administrar roles", description: "Crear roles y elegir qué puede cada uno. Solo puede dar permisos que uno mismo tiene." },

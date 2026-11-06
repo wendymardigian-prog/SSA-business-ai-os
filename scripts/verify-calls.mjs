@@ -364,11 +364,21 @@ try {
     check((verOtro.data ?? []).length === 0, "y un Member sin relacion no ve ninguna de ese contacto");
   }
 
-  console.log("\n— Equipo: closer —");
+  console.log("\n— Correos con los que graba una persona —");
   {
-    const { error: e } = await svc.from("workspace_members").update({ is_closer: true, closer_emails: ["ana.personal@gmail.com"] })
+    const { error: e } = await svc.from("workspace_members").update({ closer_emails: ["ana.personal@gmail.com"] })
       .eq("workspace_id", ws.id).eq("user_id", closer.id);
-    check(!e, "is_closer y closer_emails existen y se guardan", e?.message);
+    check(!e, "closer_emails existe y se guarda", e?.message);
+  }
+
+  console.log("\n— Importar historial (00297) —");
+  {
+    const { data: historica, error: e } = await svc.from("calls").insert(callRow(ws.id, { recorded_by_user_id: closer.id, imported_from_history: true })).select("id, imported_from_history").single();
+    check(!e && historica?.imported_from_history === true, "una llamada se puede marcar como importada del historial", e?.message);
+    const { data: nueva } = await svc.from("calls").insert(callRow(ws.id, { recorded_by_user_id: closer.id })).select("imported_from_history").single();
+    check(nueva?.imported_from_history === false, "por defecto una llamada NO es historia");
+    const { error: col } = await svc.from("oauth_connections").select("history_import").limit(1);
+    check(!col, "oauth_connections.history_import existe", col?.message);
   }
 } catch (e) {
   fail("el script fallo", e.message);

@@ -29,6 +29,13 @@ describe("emitCallEvent", () => {
     });
   });
 
+  it("una llamada importada del historial no emite nada, aunque tenga contacto", async () => {
+    const db = fakeDb({ "calls:select": { data: callRow({ imported_from_history: true }) } });
+    expect(await emitCallEvent(db.client, "call_analyzed", "c1")).toBe(false);
+    expect(await emitCallEvent(db.client, "call_linked", "c1")).toBe(false);
+    expect(db.writes()).toHaveLength(0);
+  });
+
   it("una llamada SIN contacto no emite nada", async () => {
     const db = fakeDb({ "calls:select": { data: callRow({ contact_id: null }) } });
     expect(await emitCallEvent(db.client, "call_analyzed", "c1")).toBe(false);
