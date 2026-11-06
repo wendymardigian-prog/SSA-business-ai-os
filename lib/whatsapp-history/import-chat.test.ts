@@ -10,7 +10,7 @@ function msg(over: Partial<EvolutionStoredMessage> & { id?: string; at?: number;
   const { id = "m1", at = 1_761_800_000, fromMe = false, text = "hola", ...rest } = over;
   return {
     key: { id, fromMe, remoteJid: LID },
-    pushName: fromMe ? "Wendy" : "Ana",
+    pushName: fromMe ? "Equipo" : "Ana",
     message: { conversation: text },
     messageTimestamp: at,
     ...rest,
@@ -88,9 +88,9 @@ describe("planChatImport", () => {
   });
 
   it("si solo escribimos nosotros, no usa el nombre del chat cuando el ultimo mensaje es nuestro", () => {
-    const chat = { remoteJid: LID, pushName: "Wendy", lastMessage: { key: { fromMe: true } } };
+    const chat = { remoteJid: LID, pushName: "Equipo", lastMessage: { key: { fromMe: true } } };
     expect(planChatImport(chat, [msg({ fromMe: true })])?.name).toBe("Contacto de WhatsApp");
-    const withPhone = { remoteJid: PHONE_JID, pushName: "Wendy", lastMessage: { key: { fromMe: true } } };
+    const withPhone = { remoteJid: PHONE_JID, pushName: "Equipo", lastMessage: { key: { fromMe: true } } };
     expect(planChatImport(withPhone, [msg({ fromMe: true })])?.name).toBe("+5491122334455");
   });
 });
