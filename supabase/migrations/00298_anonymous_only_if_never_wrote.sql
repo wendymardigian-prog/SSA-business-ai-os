@@ -2,10 +2,10 @@
 -- MIGRACION 00298 — UN NUMERO COMO NOMBRE OCULTA SOLO A QUIEN NUNCA ESCRIBIO
 -- ============================================================
 -- La 00296 oculto a todo contacto con un id como nombre y sin datos. Eso incluyo
--- a 105 personas del historial de WhatsApp que SI escribieron: WhatsApp solo da
--- su id (@lid), nunca lo va a completar solo, y entre ellas estan 46 de las 47
--- con las etiquetas de la clase SalesX. Lo que se queria ocultar es a quien
--- todavia no escribio: el seguidor al que le mando un mensaje ManyChat.
+-- a personas del historial de WhatsApp que SI escribieron: WhatsApp solo da su id
+-- (@lid), nunca lo va a completar solo, y pueden tener etiquetas y trabajo hecho.
+-- Lo que se queria ocultar es a quien todavia no escribio: el seguidor al que le
+-- mando un mensaje ManyChat.
 --
 -- Cambios:
 --   1. `contacts.first_inbound_at`: cuando escribio la persona por primera vez,

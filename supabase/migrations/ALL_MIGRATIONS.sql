@@ -52077,8 +52077,8 @@ COMMENT ON COLUMN public.broadcasts.email_preheader IS
 -- ============================================================
 -- ManyChat le escribe a cada seguidor nuevo y Zernio avisa ese mensaje (el eco).
 -- Instagram todavia no da el nombre ni el usuario de esa persona, asi que el
--- contacto nace con el id de la plataforma como nombre ("1127362606826154"). En
--- produccion son 667 de 2806, entran 40 a 70 por dia y nadie los trabajo.
+-- contacto nace con el id de la plataforma como nombre ("1127362606826154"), y
+-- esos contactos llenan la lista sin que nadie pueda trabajarlos.
 --
 -- El sistema ya sabe ocultar a quien no se puede reconocer: `is_anonymous` (00032)
 -- lo saca de la lista de Contactos y de la asignacion, y `contact_created` recien
@@ -52348,10 +52348,10 @@ COMMENT ON COLUMN public.workspace_members.closer_emails IS
 -- MIGRACION 00298 — UN NUMERO COMO NOMBRE OCULTA SOLO A QUIEN NUNCA ESCRIBIO
 -- ============================================================
 -- La 00296 oculto a todo contacto con un id como nombre y sin datos. Eso incluyo
--- a 105 personas del historial de WhatsApp que SI escribieron: WhatsApp solo da
--- su id (@lid), nunca lo va a completar solo, y entre ellas estan 46 de las 47
--- con las etiquetas de la clase SalesX. Lo que se queria ocultar es a quien
--- todavia no escribio: el seguidor al que le mando un mensaje ManyChat.
+-- a personas del historial de WhatsApp que SI escribieron: WhatsApp solo da su id
+-- (@lid), nunca lo va a completar solo, y pueden tener etiquetas y trabajo hecho.
+-- Lo que se queria ocultar es a quien todavia no escribio: el seguidor al que le
+-- mando un mensaje ManyChat.
 --
 -- Cambios:
 --   1. `contacts.first_inbound_at`: cuando escribio la persona por primera vez,
