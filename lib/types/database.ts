@@ -1639,6 +1639,8 @@ export interface Database {
            * en una columna generada, por eso no esta en Insert ni en Update.
            */
           is_anonymous: boolean;
+          /** Cuando escribio la persona por primera vez (00298). Lo mantienen triggers. */
+          first_inbound_at: string | null;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;

@@ -93,9 +93,16 @@ describe("isAnonymousContact", () => {
     expect(isAnonymousContact({ ...base, secondary_email: "a@x.com" })).toBe(false);
   });
 
-  it("un id como nombre, sin ningun dato, es anonimo: lo mismo que la columna is_anonymous (00296)", () => {
+  it("un id como nombre, sin ningun dato, es anonimo si nunca escribio: lo mismo que la columna is_anonymous (00298)", () => {
     expect(isAnonymousContact({ display_name: "1860383452043344" })).toBe(true);
     expect(isAnonymousContact({ display_name: " +5491112345678 " })).toBe(true);
+  });
+
+  it("quien escribio no se oculta por tener un id como nombre, pero un relleno de la plataforma si", () => {
+    const first_inbound_at = "2026-11-01T10:00:00.000Z";
+    expect(isAnonymousContact({ display_name: "1860383452043344", first_inbound_at })).toBe(false);
+    expect(isAnonymousContact({ display_name: "Instagram User", first_inbound_at })).toBe(true);
+    expect(isAnonymousContact({ display_name: null, first_inbound_at })).toBe(true);
   });
 
   it("un id como nombre con algun dato, o un numero corto, no es anonimo", () => {
@@ -177,14 +184,14 @@ describe("la lista de placeholders no se puede desincronizar del SQL", () => {
     expect(sql).toContain(`~ '${HANDLE_NAME_PATTERN}'`);
   });
 
-  it("la columna is_anonymous usa la misma lista y la misma expresion del id (00296)", () => {
-    const sql = readFileSync(resolve(__dirname, "../../supabase/migrations/00296_unidentified_contacts.sql"), "utf8");
+  it("la columna is_anonymous usa la misma lista y la misma expresion del id (00298)", () => {
+    const sql = readFileSync(resolve(__dirname, "../../supabase/migrations/00298_anonymous_only_if_never_wrote.sql"), "utf8");
     const columna = sql.slice(sql.indexOf("ADD COLUMN is_anonymous boolean\n  GENERATED"), sql.indexOf(") STORED;", sql.indexOf("ADD COLUMN is_anonymous boolean\n  GENERATED")));
     expect(columna).not.toBe("");
     for (const nombre of PLACEHOLDER_NAMES) {
       expect(columna, `falta "${nombre}" en la columna`).toContain(`'${nombre}'`);
     }
-    expect(columna).toContain(`~ '${ID_NAME_PATTERN}'`);
+    expect(columna).toContain(`~ '${ID_NAME_PATTERN}' AND first_inbound_at IS NULL`);
     expect(columna).not.toContain(HANDLE_NAME_PATTERN);
   });
 });

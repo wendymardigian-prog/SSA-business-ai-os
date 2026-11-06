@@ -4,6 +4,7 @@ import {
   sanitizeForLink,
   cutForLink,
   composePrewrittenText,
+  usableName,
   buildWhatsappLink,
   whatsappLinkTool,
   WHATSAPP_MARKER,
@@ -129,5 +130,13 @@ describe("isAvailable / toolsForAgent", () => {
       agentRow({ allowed_tools: ["generar_link_whatsapp"], tools_config: { generar_link_whatsapp: { numero: FAKE_PHONE } } }),
     );
     expect(toolsForAgent(con).map((t) => t.name)).toContain("generar_link_whatsapp");
+  });
+});
+
+describe("usableName", () => {
+  it("un id como nombre no se usa para saludar, aunque el contacto no sea anonimo (00298)", () => {
+    expect(usableName("1860383452043344", false)).toBeNull();
+    expect(usableName("Ana", false)).toBe("Ana");
+    expect(usableName("Ana", true)).toBeNull();
   });
 });

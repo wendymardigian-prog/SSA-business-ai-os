@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Verificacion de los contactos sin identificar (00296).
+ * Verificacion de los contactos sin identificar (00296, 00298).
  *
  * Corre contra la base real. Prueba lo que Vitest NO puede probar: que la BASE
  * haga lo que dice
- *   - un id como nombre, sin ningun dato, es anonimo; con un dato deja de serlo;
+ *   - un id como nombre, sin ningun dato, es anonimo si nunca escribio; con un dato
+ *     o al escribir deja de serlo;
  *   - el eco de ManyChat no dispara "contacto creado"; cuando la persona se
  *     identifica se dispara una sola vez, en el MISMO contacto y con sus toques;
  *   - `contact_wrote_at` lo llena un mensaje entrante, no uno saliente, y tambien
@@ -91,11 +92,14 @@ try {
   const inbound = await message(conv, "inbound");
   check(new Date(await wroteAt(conv)).getTime() === new Date(inbound.created_at).getTime(), "el mensaje entrante anota cuando escribio");
   check(!(await silent(conv)), "la conversacion deja de estar oculta, aunque todavia no se sepa quien es");
+  const wrote = await contact(ghost);
+  check(wrote.is_anonymous === false, "al escribir deja de estar oculto en Contactos, aunque todavia no tenga datos", JSON.stringify(wrote));
+  check((await createdEvents(ghost)) === 1, "y ahi se dispara «contacto creado»");
   const same = await link(sender, "Ana Prueba", `zz.test.${stamp}`);
   check(same === ghost, "sigue siendo el mismo contacto");
   const identified = await contact(ghost);
-  check(identified.is_anonymous === false && identified.display_name === "Ana Prueba", "con sus datos deja de ser anonimo", JSON.stringify(identified));
-  check((await createdEvents(ghost)) === 1, "«contacto creado» se dispara una sola vez");
+  check(identified.is_anonymous === false && identified.display_name === "Ana Prueba", "con sus datos se completa el mismo contacto", JSON.stringify(identified));
+  check((await createdEvents(ghost)) === 1, "cuando llegan sus datos no se vuelve a disparar");
   const touches = (await svc.from("contact_touches").select("medium").eq("contact_id", ghost)).data ?? [];
   check(touches.some((t) => t.medium === "dm_external"), "el toque de antes de identificarse se conserva");
 
@@ -110,6 +114,9 @@ try {
   const { data: shortName } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "1234567", email: null }).select("is_anonymous").single();
   check(shortName?.is_anonymous === false, "un numero corto no cuenta como id");
 
+  const { data: platformName } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "Instagram User", first_inbound_at: new Date().toISOString() }).select("is_anonymous").single();
+  check(platformName?.is_anonymous === true, "«Instagram User» sigue oculto aunque haya escrito: no dice quien es");
+
   // -------------------------------------------------------------------------
   console.log("\n4. Mover un mensaje de conversacion (la fusion)");
   const a = await link(`7${String(stamp).slice(-13)}`, `7${String(stamp).slice(-13)}`, null, false);
@@ -120,6 +127,13 @@ try {
   check((await wroteAt(convA)) === null, "antes de mover, la otra conversacion no tiene el dato");
   await svc.from("messages").update({ conversation_id: convA }).eq("id", moved.id);
   check((await wroteAt(convA)) !== null, "al mover un mensaje entrante, la conversacion que lo recibe se entera");
+  check((await contact(a)).is_anonymous === false, "y su contacto deja de estar oculto");
+  const c3 = await link(`4${String(stamp).slice(-13)}`, `4${String(stamp).slice(-13)}`, null, false);
+  const c4 = await link(`3${String(stamp).slice(-13)}`, `3${String(stamp).slice(-13)}`, null, false);
+  const convC4 = await conversation(c4);
+  await message(convC4, "inbound");
+  await svc.from("conversations").update({ contact_id: c3 }).eq("id", convC4);
+  check((await contact(c3)).is_anonymous === false, "una conversacion que cambia de contacto le lleva que la persona escribio");
 
   // -------------------------------------------------------------------------
   console.log("\n5. Con sesion, como la bandeja");

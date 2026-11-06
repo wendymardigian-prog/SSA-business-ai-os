@@ -86,6 +86,8 @@ export interface ContactIdentity {
   phone?: string | null;
   whatsapp_phone?: string | null;
   instagram_username?: string | null;
+  /** Cuando escribio por primera vez. Un id como nombre solo oculta a quien nunca escribio (00298). */
+  first_inbound_at?: string | null;
 }
 
 /**
@@ -97,11 +99,12 @@ export interface ContactIdentity {
  * saberse quien es.
  */
 export function isAnonymousContact(contact: ContactIdentity): boolean {
-  // La lista y el id, sin el @usuario: es lo que calcula la columna generada
-  // `is_anonymous` (00296), y las dos tienen que decir lo mismo. Un contacto con
-  // un @usuario como nombre ademas tiene `instagram_username`.
+  // La lista, y el id si nunca escribio; sin el @usuario: es lo que calcula la
+  // columna generada `is_anonymous` (00298), y las dos tienen que decir lo mismo.
+  // Un contacto con un @usuario como nombre ademas tiene `instagram_username`.
+  const idWithoutContact = ID_NAME.test((contact.display_name ?? "").trim()) && !contact.first_inbound_at;
   return (
-    (isListedPlaceholder(contact.display_name) || ID_NAME.test((contact.display_name ?? "").trim())) &&
+    (isListedPlaceholder(contact.display_name) || idWithoutContact) &&
     !contact.email &&
     !contact.secondary_email &&
     !contact.phone &&

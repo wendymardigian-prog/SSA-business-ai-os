@@ -204,7 +204,7 @@ La importación trae la conversación, no sus mensajes viejos: en Instagram la
 bandeja lee el hilo en vivo de Zernio, así que se ven igual. Copiarlos a
 `messages` es el backfill de abajo.
 
-## El contacto sin identificar (00296, 6/11/2026)
+## El contacto sin identificar (00296 y 00298, 6/11/2026)
 
 Cuando el negocio o ManyChat le escribe a alguien que nunca interactuó, Instagram
 no da su nombre ni su usuario: solo el id. El contacto se guarda igual, con el id
@@ -212,16 +212,17 @@ como nombre, pero **queda oculto hasta saber quién es**:
 
 | | Hasta identificarse | Después |
 |---|---|---|
-| Contactos | Oculto (`is_anonymous`), filtro «Sin datos» | Visible |
+| Contactos | Oculto (`is_anonymous`), filtro «Sin datos» | Visible, también si solo escribió |
 | Bandeja | Oculto si nunca escribió, filtro «Sin identificar» | Visible |
 | Asignación y «Contacto creado» | No corren | Corren una vez |
 | Toques y mensajes | Se guardan | Son los mismos, en el mismo contacto |
 
 Deja de estar oculto de tres maneras, sin mover ni fusionar nada:
 
-1. **Responde.** El chat aparece en la Bandeja en el momento (`contact_wrote_at`),
-   aunque todavía no se sepa quién es. Zernio trae su perfil y el contacto aparece
-   también en Contactos. Desde el 28/10 respondió el 22 % y, de esos, todos quedaron
+1. **Responde.** El chat aparece en la Bandeja y el contacto en Contactos en el
+   momento (`contact_wrote_at`, `first_inbound_at`), aunque todavía no se sepa quién
+   es: una persona de WhatsApp con solo su `@lid` nunca se completa sola. En Instagram
+   Zernio trae el perfil: desde el 28/10 respondió el 22 % y todos quedaron
    identificados.
 2. **Comenta.** El comentario trae el @ y el nombre (`completeProfileFromComment`).
 3. **Alguien carga un dato** en la ficha.
