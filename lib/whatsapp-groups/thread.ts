@@ -9,11 +9,22 @@ import { parseAttachments, type ChatAttachment } from "@/lib/messages/attachment
 
 export interface GroupListRow {
   id: string;
+  /** La cuenta de WhatsApp: la fila la nombra solo si hay mas de una. */
+  channelId: string;
   subject: string;
   channelLabel: string;
   lastMessageAt: string | null;
   preview: string | null;
   unread: number;
+}
+
+/** El grupo abierto: lo que necesita su panel, ademas del hilo. */
+export interface SelectedGroup {
+  id: string;
+  subject: string;
+  channelLabel: string;
+  canWrite: boolean;
+  members: Array<{ key: string; label: string; contactId: string | null }>;
 }
 
 export interface ThreadPollOption {

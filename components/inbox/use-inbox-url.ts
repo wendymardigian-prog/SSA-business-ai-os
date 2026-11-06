@@ -13,8 +13,8 @@ import { toggleListParam } from "@/lib/url-params";
  * que el filtro no mienta cuando hay mas conversaciones que las que entran en
  * una pagina.
  *
- * Lo comparten el popover, el buscador, la linea de resumen y las pastillas de
- * estado, asi las cuatro piezas cambian la URL exactamente igual.
+ * Lo comparten el popover, el buscador y la linea de resumen, asi las tres
+ * piezas cambian la URL exactamente igual.
  */
 export function useInboxUrl() {
   const router = useRouter();
@@ -53,11 +53,13 @@ export function useInboxUrl() {
   }
 
   function clearAll() {
-    // Se conserva la conversacion abierta: limpiar los filtros no deberia
-    // cerrar el hilo que se estaba leyendo.
+    // Se conserva la conversacion o el grupo abierto: limpiar los filtros no
+    // deberia cerrar el hilo que se estaba leyendo.
     const next = new URLSearchParams();
-    const current = searchParams.get("c");
-    if (current) next.set("c", current);
+    for (const key of ["c", "g"]) {
+      const current = searchParams.get(key);
+      if (current) next.set(key, current);
+    }
     start(() => router.replace(`${pathname}?${next.toString()}`, { scroll: false }));
   }
 

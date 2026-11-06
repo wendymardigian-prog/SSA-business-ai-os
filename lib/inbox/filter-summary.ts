@@ -12,7 +12,7 @@ import {
   ASSIGNMENT_ANY,
   ASSIGNMENT_MINE,
   ASSIGNMENT_UNASSIGNED,
-  DEFAULT_INBOX_STATUS,
+  INBOX_LIST_TYPE_LABELS,
   INBOX_STATUS_LABELS,
   countActiveFilters,
   type InboxFilters,
@@ -32,14 +32,12 @@ export interface FilterSummaryCatalog {
 /**
  * Cuantos filtros hay puestos ADENTRO del popover.
  *
- * `countActiveFilters` cuenta tambien la busqueda y el estado, que viven
- * afuera (la busqueda en la barra, el estado en las pastillas
- * arriba de la lista), y las cuentas, que tienen su propio menu de Canal. Si el
- * boton los contara, diria "4" con tres cosas marcadas adentro. Se neutralizan
- * esos tres y se cuenta el resto con la misma funcion de siempre.
+ * Canal, estado y chats o grupos viven adentro y cuentan. La busqueda no: tiene
+ * su propio icono al lado del boton, y si contara, el boton diria "4" con tres
+ * cosas marcadas adentro.
  */
 export function countMenuFilters(filters: InboxFilters): number {
-  return countActiveFilters({ ...filters, search: "", status: DEFAULT_INBOX_STATUS, channelIds: [] });
+  return countActiveFilters({ ...filters, search: "" });
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -73,14 +71,16 @@ function assignmentLabel(assignment: string, members: FilterSummaryCatalog["memb
 }
 
 /**
- * Las partes del resumen, en el orden en que se leen: estado, busqueda,
- * canales, tags, asignacion, fecha y las dos marcas del agente.
+ * Las partes del resumen, en el orden en que se leen: estado, chats o grupos,
+ * busqueda, canales, tags, asignacion, fecha y las dos marcas del agente.
  *
  * Con uno o dos canales se nombran; con mas, se cuentan. Un tag se nombra; mas
  * de uno, se cuenta. La linea tiene que entrar en una pantalla de telefono.
  */
 export function describeInboxFilters(filters: InboxFilters, catalog: FilterSummaryCatalog): string[] {
   const parts: string[] = [INBOX_STATUS_LABELS[filters.status]];
+
+  if (filters.listType) parts.push(INBOX_LIST_TYPE_LABELS[filters.listType]);
 
   if (filters.search) parts.push(`"${filters.search}"`);
 
@@ -122,6 +122,7 @@ export function describeInboxFilters(filters: InboxFilters, catalog: FilterSumma
   if (filters.needsHuman) parts.push("Necesita humano");
   if (filters.awaiting) parts.push(AWAITING_FILTER_LABELS[filters.awaiting]);
   if (filters.hideKnown) parts.push("Sin conocidos");
+  if (filters.hideCustomers) parts.push("Sin clientes");
   if (filters.onlyUnidentified) parts.push("Sin identificar");
 
   return parts;

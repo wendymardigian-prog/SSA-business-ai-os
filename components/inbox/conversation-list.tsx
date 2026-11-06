@@ -3,14 +3,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, UserRoundSearch, X } from "lucide-react";
+import { MessageSquare, Ban, CheckCheck, ChevronLeft, ChevronRight, FileText, UserRoundSearch, Users, UsersRound, X } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { noReplyBadge } from "@/lib/inbox/awaiting";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
-import { InboxStatusControls, UnidentifiedNotice } from "@/components/inbox/inbox-filters";
+import { UnidentifiedNotice } from "@/components/inbox/inbox-filters";
+import { InboxListHeader } from "@/components/inbox/inbox-list-header";
 import {
   matchesInboxRow,
   needsServerToFilter,
@@ -20,6 +21,9 @@ import {
 import type { DateRange } from "@/lib/dates";
 import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
+import type { FilterSummaryCatalog } from "@/lib/inbox/filter-summary";
+import { mergeInboxRows } from "@/lib/inbox/unified-list";
+import type { GroupListRow } from "@/lib/whatsapp-groups/thread";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
 import { assigneeName } from "@/lib/inbox/assignee";
 import { knownLabel } from "@/lib/inbox/known";
@@ -31,11 +35,10 @@ import { ConversationRowMenu } from "@/components/inbox/conversation-row-menu";
 import { colorOf, initialsOf } from "@/lib/shared/people";
 import { Avatar } from "@/components/ui/filter-menu";
 import { Tip } from "@/components/ui/tooltip";
-import { conversationListPreview } from "@/lib/inbox/last-message";
+import { conversationListPreview, EMPTY_PREVIEW } from "@/lib/inbox/last-message";
 import { listTimeLabel } from "@/lib/inbox/day-label";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
-import { InboxViewSwitch } from "@/components/inbox/inbox-view-switch";
 
 type Conversation = ConversationRow;
 
@@ -69,6 +72,13 @@ export function ConversationList({
   canDeleteContacts = false,
   hasGroups = false,
   unidentifiedCount = 0,
+  groups = [],
+  groupsTotal = 0,
+  selectedGroupId = null,
+  onSelectGroup,
+  canManageGroups = false,
+  filterCatalog,
+  tags = [],
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -92,10 +102,20 @@ export function ConversationList({
   currentUserId?: string;
   canEditContacts?: boolean;
   canDeleteContacts?: boolean;
-  /** Hay grupos de WhatsApp activados que esta persona ve: se muestra «Chats | Grupos» (00280). */
+  /** Hay grupos de WhatsApp activados que esta persona ve (00280): los filtros ofrecen elegir entre chats y grupos. */
   hasGroups?: boolean;
   /** Chats que la lista oculta por defecto (00296). */
   unidentifiedCount?: number;
+  /** Los grupos que van en esta pagina, intercalados con los chats por fecha. */
+  groups?: GroupListRow[];
+  /** Cuantos grupos cumplen los filtros, en todas las paginas. */
+  groupsTotal?: number;
+  selectedGroupId?: string | null;
+  onSelectGroup?: (groupId: string) => void;
+  /** `channels.manage`: el vacio de los grupos lleva a donde se activan. */
+  canManageGroups?: boolean;
+  filterCatalog?: FilterSummaryCatalog;
+  tags?: { id: string; name: string; color: string | null }[];
 }) {
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
@@ -159,6 +179,8 @@ export function ConversationList({
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Solo grupos: ninguna conversacion entra en la lista, y cada una que se mueve pediria la pagina entera.
+    if (filters.listType === "grupos") return;
     const supabase = createClient();
     const serverOnly = needsServerToFilter(filters);
 
@@ -221,23 +243,26 @@ export function ConversationList({
   const withDraft = new Set(draftConversationIds);
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
   const hasFilters = countActiveFilters(filters) > 0;
+  const items = mergeInboxRows(conversations, groups);
+  const shownTotal = total + groupsTotal;
+  const countLabel =
+    filters.listType === "grupos"
+      ? shownTotal === 1 ? "1 grupo" : `${shownTotal} grupos`
+      : shownTotal === 1 ? "1 chat" : `${shownTotal} chats`;
 
   return (
     <div className="flex h-full flex-col border-r border-border bg-background">
-      {/* Header: titulo, cantidad, estado y borradores en UNA linea. El
-          buscador y el popover de filtros estan en la barra superior. */}
-      {/* Los margenes estan medidos: en la computadora la lista mide 320 px y con
-          px-4 el "1037 chats" se cortaba. */}
-      <div className="flex h-12 items-center gap-1.5 border-b border-border px-3">
-        <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <h2 className="shrink-0 text-sm font-semibold">Bandeja</h2>
-          <span className="truncate text-xs tabular-nums text-muted-foreground">
-            {total === 1 ? "1 chat" : `${total} chats`}
-          </span>
-        </div>
-        {hasGroups && <InboxViewSwitch current="chats" />}
-        <InboxStatusControls filters={filters} workspaceId={workspaceId} draftCounts={draftCounts} />
-      </div>
+      <InboxListHeader
+        filters={filters}
+        countLabel={countLabel}
+        workspaceId={workspaceId}
+        draftCounts={draftCounts}
+        accounts={filterCatalog?.accounts ?? []}
+        tags={tags}
+        members={members}
+        hasGroups={hasGroups}
+        catalog={filterCatalog ?? { platforms: [], tags: [], members: [] }}
+      />
 
       {rowError && (
         <div role="alert" className="flex items-start gap-2 border-b border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
@@ -248,13 +273,16 @@ export function ConversationList({
         </div>
       )}
 
-      {!filters.onlyUnidentified && <UnidentifiedNotice count={unidentifiedCount} />}
+      {!filters.onlyUnidentified && filters.listType !== "grupos" && <UnidentifiedNotice count={unidentifiedCount} />}
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
-        {conversations.length === 0 ? (
+        {items.length === 0 ? (
           /* Dos vacios distintos: "todavia no pasó nada" y "tu filtro no
              encontró nada" piden cosas opuestas de quien mira la pantalla. */
+          filters.listType === "grupos" && !hasGroups ? (
+            <NoGroupsYet canManageGroups={canManageGroups} />
+          ) : (
           <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
             <MessageSquare className="h-8 w-8 text-muted-foreground/50" />
             {hasFilters ? (
@@ -275,8 +303,23 @@ export function ConversationList({
               </>
             )}
           </div>
+          )
         ) : (
-          conversations.map((conversation) => (
+          items.map((item) => {
+            if (item.kind === "group") {
+              return (
+                <GroupRow
+                  key={`g-${item.row.id}`}
+                  group={item.row}
+                  selected={selectedGroupId === item.row.id}
+                  account={accountToShow(accounts, { channel_id: item.row.channelId, platform: "whatsapp" })}
+                  time={mounted ? formatTime(item.row.lastMessageAt, timeZone) : ""}
+                  onSelect={() => onSelectGroup?.(item.row.id)}
+                />
+              );
+            }
+            const conversation = item.row;
+            return (
             <div key={conversation.id} className="relative">
             {/* Fase 3: el agente fallo en esta conversacion. Un punto discreto que
                 lleva al run; nunca nada visible para el lead. Va afuera del
@@ -444,7 +487,8 @@ export function ConversationList({
               </div>
             </button>
             </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -471,6 +515,86 @@ export function ConversationList({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Un grupo de WhatsApp en la lista (00280): se abre igual que un chat y no tiene "⋯" (no hay un contacto que marcar). */
+function GroupRow({
+  group,
+  selected,
+  account,
+  time,
+  onSelect,
+}: {
+  group: GroupListRow;
+  selected: boolean;
+  /** La cuenta, solo si hay mas de un WhatsApp. */
+  account: string | null;
+  time: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "flex w-full items-start gap-3 border-b border-border py-3 pl-3 pr-9 text-left transition-colors hover:bg-accent/50",
+        selected && "bg-accent",
+      )}
+    >
+      <div className="relative flex-shrink-0">
+        <span
+          role="img"
+          aria-label="Grupo"
+          className="grid h-10 w-10 place-items-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+        >
+          <Users className="h-4 w-4" aria-hidden />
+        </span>
+        <div className="absolute -bottom-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full border-2 border-background bg-background">
+          <PlatformIcon platform="whatsapp" className="h-3 w-3" size={12} />
+        </div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-sm font-medium">{group.subject}</p>
+          <span className="flex-shrink-0 text-[11px] text-muted-foreground">{time}</span>
+        </div>
+        {account && (
+          <p className="mt-0.5 truncate text-[11px] font-medium text-muted-foreground" title={`Cuenta: ${account}`}>
+            {account}
+          </p>
+        )}
+        <div className="flex items-center justify-between">
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{group.preview?.trim() || EMPTY_PREVIEW}</p>
+          {group.unread > 0 && (
+            <span className="ml-2 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+              {group.unread}
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/** Se pidio ver solo grupos y no hay ninguno activado: se dice donde se activan. */
+function NoGroupsYet({ canManageGroups }: { canManageGroups: boolean }) {
+  return (
+    <div className="space-y-2 p-6 text-center text-sm text-muted-foreground">
+      <UsersRound className="mx-auto h-8 w-8" aria-hidden />
+      <p>Todavía no hay grupos para ver acá.</p>
+      <p className="text-xs">
+        Se activan por número en{" "}
+        {canManageGroups ? (
+          <Link href="/dashboard/settings/integrations/evolution" className="text-primary-ink underline">
+            Ajustes → Integraciones → WhatsApp → Grupos
+          </Link>
+        ) : (
+          "Ajustes → Integraciones → WhatsApp → Grupos (lo hace un administrador)"
+        )}
+        .
+      </p>
     </div>
   );
 }
