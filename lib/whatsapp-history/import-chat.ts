@@ -12,6 +12,7 @@
 import type { EvolutionStoredChat, EvolutionStoredMessage } from "@/lib/evolution-client";
 import { fromBaileysMessage, toAttachmentsColumn, unwrapBaileysMessage } from "@/lib/messages/attachments";
 import { extractText } from "@/lib/evolution-message";
+import { isPlaceholderName } from "@/lib/contacts/anonymous";
 import { parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
 import { previewForMessage } from "@/lib/message-preview";
@@ -106,20 +107,25 @@ export function planChatImport(chat: EvolutionStoredChat, records: EvolutionStor
 }
 
 /**
- * El nombre del perfil, del mensaje mas nuevo que escribio la persona. En uno que
- * mandamos nosotros `pushName` es NUESTRO nombre, y por eso el del chat solo se usa
- * si el ultimo mensaje no fue nuestro.
+ * El nombre del perfil, del mensaje mas nuevo que escribio la persona. Dos trampas:
+ * en un mensaje que mandamos nosotros `pushName` es NUESTRO nombre (por eso el del
+ * chat solo se usa si el ultimo mensaje no fue nuestro), y cuando Evolution no conoce
+ * el nombre guarda los digitos del chat, que no son un nombre.
  */
 function chatName(chat: EvolutionStoredChat, records: EvolutionStoredMessage[], sender: WhatsappSender): string {
+  const realName = (value: string | null | undefined) => {
+    const name = value?.trim();
+    return name && !isPlaceholderName(name) ? name : null;
+  };
   const newestFirst = [...records].sort(
     (a, b) => (whatsappTimestampToIso(b.messageTimestamp) ?? "").localeCompare(whatsappTimestampToIso(a.messageTimestamp) ?? ""),
   );
   for (const record of newestFirst) {
-    const name = record.key?.fromMe === true ? null : record.pushName?.trim();
+    const name = record.key?.fromMe === true ? null : realName(record.pushName);
     if (name) return name;
   }
-  const chatPushName = chat.lastMessage?.key?.fromMe === true ? null : chat.pushName?.trim();
-  return sender.phone ?? (chatPushName || UNKNOWN_NAME);
+  const chatPushName = chat.lastMessage?.key?.fromMe === true ? null : realName(chat.pushName);
+  return chatPushName ?? sender.phone ?? UNKNOWN_NAME;
 }
 
 /** Abierta si tuvo movimiento en la ultima semana. */
