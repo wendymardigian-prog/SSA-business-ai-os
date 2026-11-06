@@ -77,9 +77,18 @@ describe("parseCallFilters", () => {
     const f = parseCallFilters({ closer: CLOSER, estado: "analyzed", vinculo: "sin_vincular", cmin: "60", lmax: "90", tipo: "cierre", resultado: "venta_deposito", desde: "2026-10-01", hasta: "2026-10-31", q: " Ana, (x) ", pagina: "3" }, ctx);
     expect(f).toMatchObject({ closer: CLOSER, estado: "analyzed", vinculo: "sin_vincular", closerMin: 60, leadMax: 90, tipo: "cierre", resultado: "venta_deposito", desde: "2026-10-01", hasta: "2026-10-31", q: "Ana x", pagina: 3 });
   });
-  it("acota los puntajes a 0..100 y valida el tipo contra la lista", () => {
+  it("el area acepta un id o \"sin\"; el tipo, un id o una clave vieja", () => {
+    const ID = "11111111-1111-4111-8111-111111111111";
+    expect(parseCallFilters({ area: ID, tipo: ID }, ctx)).toMatchObject({ area: ID, tipo: ID });
+    expect(parseCallFilters({ area: "sin" }, ctx).area).toBe("sin");
+    expect(parseCallFilters({ area: "ventas" }, ctx).area).toBe("");
+    expect(parseCallFilters({ tipo: "cierre" }, ctx).tipo).toBe("cierre");
+    expect(countActiveCallFilters({ ...EMPTY_FILTERS, area: "sin" })).toBe(1);
+    expect(callFiltersToParams({ ...EMPTY_FILTERS, area: "sin" }).toString()).toBe("area=sin");
+  });
+  it("acota los puntajes a 0..100 y valida el tipo", () => {
     expect(parseCallFilters({ cmin: "-5", cmax: "500" }, ctx)).toMatchObject({ closerMin: 0, closerMax: 100 });
-    expect(parseCallFilters({ tipo: "otro" }, { ...ctx, typeKeys: ["cierre"] }).tipo).toBe("");
+    expect(parseCallFilters({ tipo: "<script>" }, ctx).tipo).toBe("");
   });
   it("un parametro repetido toma el primero", () => {
     expect(parseCallFilters({ estado: ["error", "analyzed"] }, ctx).estado).toBe("error");

@@ -1,4 +1,6 @@
 import { CallsList, type CallListRow } from "@/components/calls/calls-list";
+import { callDisplayLabel, categoryGroups } from "@/lib/calls/catalog";
+import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { redirect } from "next/navigation";
 import { applyCallFilters, CALL_LIST_COLUMNS, PAGE_SIZE, parseCallFilters } from "@/lib/calls/list";
@@ -66,6 +68,7 @@ export default async function LlamadasPage({
     contactId: (r.contact_id as string | null) ?? null,
     contactName: r.contact_id ? contactName.get(r.contact_id as string) ?? null : null,
     callType: (r.call_type as string | null) ?? null,
+    categoryLabel: callDisplayLabel(r.category_snapshot, (r.call_type as string | null) ?? null, r.no_show === true),
     callTypeSource: (r.call_type_source as string | null) ?? null,
     callTypeRule: (r.call_type_rule as string | null) ?? null,
     callTypeConfidence: r.call_type_confidence === null || r.call_type_confidence === undefined ? null : Number(r.call_type_confidence),
@@ -81,7 +84,7 @@ export default async function LlamadasPage({
 
   // Para los estados vacios y el aviso de "conecta tu Fathom".
   const service = await createServiceClient();
-  const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }] = await Promise.all([
+  const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }, categoryRows, { count: unclassifiedCount }] = await Promise.all([
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null),
     service.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "fathom").neq("status", "revoked"),
     listSecretNames(service, workspace.id),
@@ -91,6 +94,8 @@ export default async function LlamadasPage({
     ctx.can("calls.edit")
       ? supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("analysis_status", "pending").is("archived_at", null)
       : Promise.resolve({ count: 0 }),
+    listCategories(supabase, workspace.id),
+    supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null).is("area_id", null).eq("no_show", false),
   ]);
 
   // Si la lista viene filtrada por un contacto, su nombre (solo si quien mira lo ve).
@@ -124,6 +129,8 @@ export default async function LlamadasPage({
       hasAnyCall={(anyCall ?? 0) > 0}
       workspaceHasConnections={(workspaceConnections ?? []).length > 0}
       hasApp={hasApp}
+      categoryGroups={categoryGroups(categoryRows.map(toCategoryRow))}
+      unclassifiedCount={unclassifiedCount ?? 0}
       hasLiveConnection={hasLiveConnection}
       nudgeConnect={shouldNudgeToConnect({ hasLiveConnection, hasApp })}
     />

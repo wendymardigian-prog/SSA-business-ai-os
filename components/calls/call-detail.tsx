@@ -10,7 +10,8 @@ import { CallTranscript } from "@/components/calls/call-transcript";
 import { BookingLink, ContactLink } from "@/components/calls/link-popovers";
 import { CloserTab, LeadTab, SummaryTab, TechTab, type TabsData } from "@/components/calls/call-analysis-tabs";
 import { OutcomeChip, SourceChip, StatusChip, TypeChip } from "@/components/calls/call-chips";
-import { BannerActionButton, RegenerateButton, TypeSelect } from "@/components/calls/call-actions";
+import { BannerActionButton, NoShowToggle, RegenerateButton, TypeSelect } from "@/components/calls/call-actions";
+import type { CategoryGroup } from "@/lib/calls/catalog";
 import { CallEditProvider, type CallEditState, type CallObjection } from "@/components/calls/section-tools";
 import type { CategorySuggestions } from "@/components/calls/section-editor";
 import { readAnalysis } from "@/lib/calls/detail";
@@ -45,7 +46,12 @@ export interface CallDetailData extends TabsData {
   /** Es el closer de esta llamada: puede objetar su analisis. */
   isCloser: boolean;
   /** Los tipos validos (los del sistema y los propios) para elegir. */
-  types: string[];
+  categoryGroups: CategoryGroup[];
+  categoryId: string | null;
+  categoryLabel: string;
+  noShow: boolean;
+  /** Se analizo con otra clasificacion: conviene regenerar. */
+  analyzedWithOtherCategory: boolean;
   suggestions: CategorySuggestions;
   /** Por que el boton Analizar no se puede usar (null = se puede). */
   analyzeDisabledReason: string | null;
@@ -132,11 +138,14 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
               <div className="flex flex-wrap items-center gap-1.5">
                 <span title={typeDeciderText({ call_type_source: data.callTypeSource, call_type_rule: data.callTypeRule, call_type_confidence: data.callTypeConfidence }) ?? undefined} className="inline-flex items-center gap-1">
                   <Tag className="h-3 w-3 text-muted-foreground" aria-hidden />
-                  <TypeChip type={data.callType} needsReview={data.needsReview} />
+                  <TypeChip type={data.callType} label={data.categoryLabel} needsReview={data.needsReview} />
                 </span>
                 <StatusChip status={data.status} />
-                {canEdit && data.status !== "classifying" && data.status !== "analyzing" && data.callType && (
-                  <TypeSelect callId={data.callId} current={data.callType} types={data.types} label="Cambiar el tipo de llamada" />
+                {canEdit && data.status !== "classifying" && data.status !== "analyzing" && (
+                  <>
+                    <TypeSelect callId={data.callId} current={data.categoryId} groups={data.categoryGroups} label="Cambiar el área y el tipo" />
+                    <NoShowToggle callId={data.callId} noShow={data.noShow} />
+                  </>
                 )}
                 {canRegenerate && <RegenerateButton callId={data.callId} hasEdits={data.status === "analyzed" && JSON.stringify(data.analysis) !== JSON.stringify(data.analysisAi)} />}
                 <ContactLink callId={data.callId} contact={data.contact} canEdit={canEdit} />
@@ -147,6 +156,11 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
                   </a>
                 )}
               </div>
+              {data.analyzedWithOtherCategory && (
+                <p role="status" className="text-xs text-amber-700 dark:text-amber-300">
+                  Esta grabación se analizó con otra área o tipo. El análisis sigue siendo el de antes: regeneralo si querés que use la clasificación nueva.
+                </p>
+              )}
             </header>
 
             {view.banner && (
@@ -157,7 +171,7 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
                   <p className="text-muted-foreground">{view.banner.message}</p>
                   {view.banner.action && (
                     <div className="mt-2">
-                      <BannerActionButton action={view.banner.action} callId={data.callId} callType={data.callType} types={data.types} disabledReason={view.banner.actionDisabledReason} />
+                      <BannerActionButton action={view.banner.action} callId={data.callId} categoryId={data.categoryId} groups={data.categoryGroups} disabledReason={view.banner.actionDisabledReason} />
                     </div>
                   )}
                 </div>

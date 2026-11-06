@@ -306,6 +306,17 @@ export type CallRow = {
   duration_seconds: number | null;
   recorded_by_email: string | null;
   recorded_by_user_id: string | null;
+  /** El area de la grabacion. null = Sin clasificar (00300). */
+  area_id: string | null;
+  /** El tipo de reunion o, si solo se sabe el area, el area (00300). */
+  category_id: string | null;
+  /** Area y tipo con sus nombres: la misma forma que bookings.category_snapshot. */
+  category_snapshot: Json | null;
+  classification_source: "human" | "booking" | "rule" | "connection" | "ai" | null;
+  /** Nadie se presento: es una marca, no un tipo. */
+  no_show: boolean;
+  /** Con que clasificacion se hizo el ultimo analisis. */
+  analyzed_category_id: string | null;
   /** Entro por una importacion del historial (00297): no dispara automatizaciones y no se analiza sola. */
   imported_from_history: boolean;
   attendees: CallAttendee[];
@@ -6047,12 +6058,18 @@ export interface Database {
           position: number;
           is_system: boolean;
           archived_at: string | null;
+          /** Clave estable de lo que el codigo reconoce (00300). */
+          system_key: string | null;
+          /** Cuando se usa este tipo: lo lee la IA (00300). */
+          description: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           workspace_id: string;
+          system_key?: string | null;
+          description?: string | null;
           parent_id?: string | null;
           name: string;
           color?: string | null;

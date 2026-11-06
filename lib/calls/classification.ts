@@ -15,7 +15,7 @@ export const BASE_CALL_TYPES = [
 export type BaseCallType = (typeof BASE_CALL_TYPES)[number];
 
 export type RuleCond =
-  | 'duration_lt' | 'people_gte' | 'title_contains' | 'email_contains' | 'only_team' | 'has_appointment';
+  | 'duration_lt' | 'people_gte' | 'title_contains' | 'email_contains' | 'only_team';
 
 export interface ClassificationRule {
   id?: string;
@@ -147,14 +147,6 @@ export function applyClassificationRules(
         });
         const allTeamVoices = voices.every((v) => teamNameSet.has(v));
         if (allInternal && allTeamVoices) return { call_type: r.type, rule_label: 'solo equipo' };
-        break;
-      }
-      case 'has_appointment': {
-        // `venta` fue una clave intermedia usada por la regla de cita. Una cita
-        // vinculada identifica una llamada de cierre; el resultado se guarda aparte.
-        if (meeting.booking_id) {
-          return { call_type: r.type === 'venta' ? 'cierre' : r.type, rule_label: 'cita de ventas' };
-        }
         break;
       }
       default:

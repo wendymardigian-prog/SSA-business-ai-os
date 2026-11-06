@@ -126,6 +126,20 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     hint: "Un número de 0 a 100. Se compara con mayor o menor que.",
   },
   {
+    prefix: "last_call_area:",
+    label: "Área de la última llamada",
+    argument: "none",
+    valueKind: "text", valueType: "text", group: "calls",
+    hint: "El nombre del área. Por ejemplo: Ventas, Servicio.",
+  },
+  {
+    prefix: "last_call_meeting_type:",
+    label: "Tipo de reunión de la última llamada",
+    argument: "none",
+    valueKind: "text", valueType: "text", group: "calls",
+    hint: "El nombre del tipo. Por ejemplo: Cierre, Onboarding.",
+  },
+  {
     prefix: "last_call_type:",
     label: "Tipo de la última llamada",
     argument: "none",

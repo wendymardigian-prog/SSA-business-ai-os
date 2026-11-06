@@ -12,6 +12,10 @@ export interface CategoryRow {
   position: number;
   is_system: boolean;
   archived_at: string | null;
+  /** Clave estable de lo que el codigo reconoce: no cambia al renombrar (00300). */
+  system_key?: string | null;
+  /** Cuando se usa: lo lee la IA al clasificar una grabacion (00300). */
+  description?: string | null;
 }
 
 export interface ResolvedCategory {
@@ -20,6 +24,7 @@ export interface ResolvedCategory {
 }
 
 export const CATEGORY_NAME_MAX = 40;
+export const CATEGORY_DESCRIPTION_MAX = 400;
 
 /** Colores de las áreas (la misma paleta que los eventos). */
 export const AREA_COLORS = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0d9488"] as const;

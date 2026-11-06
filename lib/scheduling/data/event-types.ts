@@ -57,6 +57,8 @@ export function toCategoryRow(row: BookingCategoryRow): CategoryRow {
     position: row.position,
     is_system: row.is_system,
     archived_at: row.archived_at,
+    system_key: row.system_key ?? null,
+    description: row.description ?? null,
   };
 }
 

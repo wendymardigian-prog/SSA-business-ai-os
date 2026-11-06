@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { reclassifyCallsOfBooking } from "@/lib/calls/reclassify"; // @plantilla-quitar(llamadas)
 import { getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -294,6 +295,9 @@ export async function fixBookingCategory(input: { bookingId: string; categoryId:
     .select("id");
   if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
   if (!updated?.length) return { ok: false, error: "No pude guardar la categoría." };
+
+  // Las grabaciones de esta reunion heredan su area y su tipo. Nunca tumba el cambio.
+  await reclassifyCallsOfBooking(service, booking.id); // @plantilla-quitar(llamadas)
 
   await logAudit({
     supabase: service,

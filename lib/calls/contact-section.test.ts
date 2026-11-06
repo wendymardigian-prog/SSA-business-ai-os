@@ -18,7 +18,7 @@ const names = new Map([["u1", "Ana"]]);
 describe("toCallSectionRows", () => {
   it("arma la fila con el nombre del closer, y un closer desconocido queda null", () => {
     expect(toCallSectionRows([row("c1"), row("c2", { recorded_by_user_id: "otro" }), row("c3", { recorded_by_user_id: null })], names).map((r) => r.closerName)).toEqual(["Ana", null, null]);
-    expect(toCallSectionRows([row("c1")], names)[0]).toEqual({ id: "c1", recordedAt: "2026-10-07T15:00:00Z", callType: "cierre", closerName: "Ana", outcome: "venta", closerScore: 80, leadScore: 70, status: "analyzed" });
+    expect(toCallSectionRows([row("c1")], names)[0]).toEqual({ id: "c1", recordedAt: "2026-10-07T15:00:00Z", callType: "cierre", categoryLabel: "Cierre", closerName: "Ana", outcome: "venta", closerScore: 80, leadScore: 70, status: "analyzed" });
   });
 });
 

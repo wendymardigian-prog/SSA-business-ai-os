@@ -4,7 +4,6 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { acceptProposal, discardProposal, mergeProposal } from "@/lib/calls/categories";
 import { CATEGORY_GROUPS, slugKey, type CategoryGroup } from "@/lib/calls/rubric";
-import { acceptTypeProposal, discardTypeProposal } from "@/lib/calls/type-proposals";
 import { resolveCallTaskSettings } from "@/lib/calls/task-settings";
 import { saveCallTaskSettings, type CallTaskSettingsResult } from "./call-task-settings";
 
@@ -57,19 +56,4 @@ export async function decideCategoryProposal(input: {
     return { ok: false, error: "Esa decisión no existe" };
   }
   return saveCallTaskSettings("call_analysis", { ...settings, categories });
-}
-
-export async function decideTypeProposal(input: { name: string; decision: "accept" | "discard"; description?: string }): Promise<CallTaskSettingsResult> {
-  const ctx = await getPermissionAction("calls.configure");
-  if (!ctx) return { ok: false, error: NOT_ALLOWED };
-  const name = input.name?.trim();
-  if (!name || name.length > 60) return { ok: false, error: "El nombre del tipo no es válido" };
-
-  const settings = (await currentSettings(ctx.workspace.id)).call_classification;
-  const next =
-    input.decision === "accept" ? acceptTypeProposal(settings, name, input.description?.trim().slice(0, 400) ?? "")
-    : input.decision === "discard" ? discardTypeProposal(settings, name)
-    : null;
-  if (!next) return { ok: false, error: "Esa decisión no existe" };
-  return saveCallTaskSettings("call_classification", next);
 }

@@ -9,7 +9,6 @@ const RULES: ClassificationRule[] = [
   { id: 'r2', on: true, cond: 'people_gte', value: 4, type: 'equipo' },
   { id: 'r3', on: true, cond: 'title_contains', value: ['WBR', 'Daily', 'Sesión semanal', 'coaching:', 'Vendedores Sales X'], type: 'equipo' },
   { id: 'r4', on: true, cond: 'only_team', type: 'equipo' },
-  { id: 'r5', on: true, cond: 'has_appointment', type: 'cierre' },
 ];
 
 const inv = (n: number) => Array.from({ length: n }, (_, i) => ({ email: `p${i}@x.com`, is_external: true }));
@@ -57,12 +56,10 @@ describe('applyClassificationRules', () => {
   it('5 minutos → no_show', () => {
     expect(applyClassificationRules({ title: 'x', duration_seconds: 300 }, RULES)).toEqual({ call_type: 'no_show', rule_label: 'menos de 10 min' });
   });
-  it('con cita → cierre', () => {
-    expect(applyClassificationRules({ title: 'Llamada', duration_seconds: LONG, attendees: inv(1), transcript: voices(2), booking_id: 'a1' }, RULES)).toEqual({ call_type: 'cierre', rule_label: 'cita de ventas' });
-  });
-  it('normaliza la antigua regla de cita «venta» a cierre', () => {
-    const legacy: ClassificationRule[] = [{ cond: 'has_appointment', type: 'venta' }];
-    expect(applyClassificationRules({ booking_id: 'a1' }, legacy)?.call_type).toBe('cierre');
+  it('tener una reunion vinculada no es una regla: lo decide su area y su tipo', () => {
+    expect(applyClassificationRules({ title: 'Llamada', duration_seconds: LONG, attendees: inv(1), transcript: voices(2), booking_id: 'a1' }, RULES)).toBeNull();
+    const old = [{ cond: 'has_appointment', type: 'cierre' }] as unknown as ClassificationRule[];
+    expect(applyClassificationRules({ booking_id: 'a1' }, old)).toBeNull();
   });
   it('email_contains', () => {
     const rules: ClassificationRule[] = [{ cond: 'email_contains', value: ['@cliente.com'], type: 'cliente' }];

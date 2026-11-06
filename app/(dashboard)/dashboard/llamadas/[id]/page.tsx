@@ -6,7 +6,9 @@ import { canAnalyze } from "@/lib/calls/status";
 import { detailView } from "@/lib/calls/detail-view";
 import { readAnalysis } from "@/lib/calls/detail";
 import { createServiceClient } from "@/lib/supabase/server";
-import { resolveCallTaskSettings, validTypeKeys } from "@/lib/calls/task-settings";
+import { resolveCallTaskSettings } from "@/lib/calls/task-settings";
+import { callDisplayLabel, categoryGroups } from "@/lib/calls/catalog";
+import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { knowledgeEligibility } from "@/lib/calls/knowledge-run";
 import { summaryEligibility } from "@/lib/calls/summary";
 import type { CallUsesData } from "@/components/calls/call-uses";
@@ -34,7 +36,7 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   const { data: call } = await supabase
     .from("calls")
     .select(
-      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections, summary, summary_status, memory_status, knowledge_document_id",
+      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, category_id, category_snapshot, no_show, analyzed_category_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections, summary, summary_status, memory_status, knowledge_document_id",
     )
     .eq("id", id)
     .eq("workspace_id", workspace.id)
@@ -73,6 +75,7 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   // Lo que se analiza lo decide la configuracion del negocio, no una lista fija.
   const { data: wsRow } = await service.from("workspaces").select("ai_background_settings").eq("id", workspace.id).maybeSingle();
   const taskSettings = resolveCallTaskSettings(wsRow?.ai_background_settings);
+  const categories = (await listCategories(supabase, workspace.id)).map(toCategoryRow);
   const analyzeTypes = taskSettings.call_analysis.analyze_types;
 
   const verdict = canAnalyze({ status, callType: call.call_type, analyzeTypes, hasTranscript: lines.length > 0, canEdit });
@@ -141,7 +144,11 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
     analysisAi: call.analysis_ai,
     objections: (Array.isArray(call.objections) ? call.objections : []) as unknown as CallObjection[],
     isCloser: call.recorded_by_user_id === ctx.user.id,
-    types: validTypeKeys(taskSettings.call_classification.custom_types),
+    categoryGroups: categoryGroups(categories),
+    categoryId: call.category_id,
+    categoryLabel: callDisplayLabel(call.category_snapshot, call.call_type, call.no_show),
+    noShow: call.no_show,
+    analyzedWithOtherCategory: status === "analyzed" && !!call.analyzed_category_id && call.analyzed_category_id !== call.category_id,
     suggestions: Object.fromEntries(Object.entries(taskSettings.call_analysis.categories.accepted).map(([group, list]) => [group, list.filter((c) => !c.archivado)])),
     analyzeDisabledReason: !verdict.ok ? (verdict.reason ?? null) : null,
     uses: view.analysisAvailable ? uses : undefined,

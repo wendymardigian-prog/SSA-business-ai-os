@@ -19,6 +19,7 @@
  * prueba que falla.
  *
  *   node scripts/verify-calls.mjs
+ *   node scripts/verify-calls.mjs --despues-de-00300
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -379,6 +380,38 @@ try {
     check(nueva?.imported_from_history === false, "por defecto una llamada NO es historia");
     const { error: col } = await svc.from("oauth_connections").select("history_import").limit(1);
     check(!col, "oauth_connections.history_import existe", col?.message);
+  }
+  if (process.argv.includes("--despues-de-00300")) {
+    console.log("\n— Clasificacion unica (00300) —");
+    const { data: cats } = await svc.from("booking_categories").select("id, name, parent_id, system_key").eq("workspace_id", ws.id);
+    const key = (k) => (cats ?? []).find((c) => c.system_key === k);
+    check(!!key("ventas") && !!key("ventas.cierre") && !!key("servicio") && !!key("equipo") && !!key("otros"), "un negocio nuevo nace con las claves de sus areas y tipos");
+
+    const ventas = key("ventas"), cierre = key("ventas.cierre");
+    const snapshot = { area_id: ventas.id, area_name: ventas.name, type_id: cierre.id, type_name: cierre.name };
+    const { data: clasificada, error: e1 } = await svc.from("calls")
+      .insert(callRow(ws.id, { recorded_by_user_id: closer.id, area_id: ventas.id, category_id: cierre.id, category_snapshot: snapshot, classification_source: "booking" }))
+      .select("id, no_show, area_id").single();
+    check(!e1 && clasificada?.area_id === ventas.id && clasificada?.no_show === false, "una grabacion guarda area, tipo y fuente; no_show es falso por defecto", e1?.message);
+
+    const { error: e2 } = await svc.from("calls").update({ classification_source: "inventado" }).eq("id", clasificada.id);
+    check(!!e2, "classification_source rechaza un valor que no existe");
+
+    const { error: e3 } = await svc.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-larga", description: "x".repeat(401) });
+    check(!!e3, "la descripcion de un tipo tiene un tope");
+
+    const { data: desc, error: e4 } = await svc.from("booking_categories").update({ description: "Cuando se cierra la venta" }).eq("id", cierre.id).select("description").single();
+    check(!e4 && desc?.description === "Cuando se cierra la venta", "un tipo guarda cuando se usa", e4?.message);
+
+    const { data: nueva, error: e5 } = await svc.from("booking_categories").insert({ workspace_id: ws.id, parent_id: ventas.id, name: "zz-mi tipo" }).select("system_key").single();
+    check(!e5 && nueva?.system_key === null, "un tipo propio no recibe clave de sistema", e5?.message);
+
+    const { data: renombrada } = await svc.from("booking_categories").update({ name: "Comercial" }).eq("id", ventas.id).select("system_key").single();
+    check(renombrada?.system_key === "ventas", "renombrar un area no le cambia la clave");
+    await svc.from("booking_categories").update({ name: ventas.name }).eq("id", ventas.id);
+
+    const memberView = await otro.client.from("booking_categories").select("id").eq("workspace_id", ws.id).limit(1);
+    check(!memberView.error, "un miembro puede leer la lista", memberView.error?.message);
   }
 } catch (e) {
   fail("el script fallo", e.message);

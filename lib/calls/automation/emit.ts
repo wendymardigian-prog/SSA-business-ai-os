@@ -23,7 +23,7 @@ export async function emitCallEvent(db: Db, type: CallTriggerType, callId: strin
   try {
     const { data: call } = await db
       .from("calls")
-      .select("id, workspace_id, contact_id, call_type, outcome, closer_score, lead_score, lead_qualification, recorded_by_user_id, booking_id, analysis_run_id, imported_from_history")
+      .select("id, workspace_id, contact_id, call_type, area_id, category_id, outcome, closer_score, lead_score, lead_qualification, recorded_by_user_id, booking_id, analysis_run_id, imported_from_history")
       .eq("id", callId)
       .is("archived_at", null)
       .maybeSingle();

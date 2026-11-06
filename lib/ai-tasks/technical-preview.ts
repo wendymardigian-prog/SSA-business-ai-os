@@ -30,7 +30,7 @@ export function technicalPreviewFor(task: AiTaskId): string {
     // Llamadas: la parte fija de cada tarea, con la rubrica generica y los tipos
     // de sistema de muestra (la real depende de la configuracion del negocio).
     case "call_classification":
-      return buildClassifierTechnical({ customTypes: [], allowAiTypes: true, discardedTypes: [] });
+      return buildClassifierTechnical([]);
     case "call_analysis":
       return buildAnalysisTechnical(DEFAULT_RUBRIC, "cierre", { categories: EMPTY_CATEGORIES, allowNewCategories: true, companyContext: null });
     case "call_summary":

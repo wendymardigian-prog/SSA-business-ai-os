@@ -22,12 +22,24 @@ describe("loadCallConfig", () => {
   const user = () => fakeDb({ "calls:select": { data: [{ id: "c1", title: "Llamada", recorded_at: "2026-10-02T00:00:00Z", closer_score: 70 }] } });
   const service = () => fakeDb({ "calls:select": { data: [] }, "audit_log:select": { data: [] } });
 
-  it("clasificacion: la configuracion y las propuestas de tipo, solo para quien puede editar", async () => {
-    const withProposals = fakeDb({ "calls:select": { data: [{ call_type_proposed: "Webinar" }] } });
-    const editor = await loadCallConfig({ service: withProposals.client, userClient: user().client, workspaceId: "ws1", task: "call_classification", canEdit: true, stored: {} });
-    expect(editor).toMatchObject({ task: "call_classification", canEdit: true, typeProposals: [{ key: "webinar", calls: 1 }] });
-    const reader = await loadCallConfig({ service: withProposals.client, userClient: user().client, workspaceId: "ws1", task: "call_classification", canEdit: false, stored: {} });
-    expect(reader).toMatchObject({ canEdit: false, typeProposals: [] });
+  it("clasificacion: la configuracion, las areas y los tipos de la agenda, y las claves viejas de las reglas", async () => {
+    const VENTAS = "11111111-1111-4111-8111-111111111111";
+    const CIERRE = "22222222-2222-4222-8222-222222222222";
+    const db = fakeDb({
+      "booking_categories:select": {
+        data: [
+          { id: VENTAS, parent_id: null, name: "Ventas", color: null, position: 0, is_system: true, archived_at: null, system_key: "ventas" },
+          { id: CIERRE, parent_id: VENTAS, name: "Cierre", color: null, position: 0, is_system: true, archived_at: null, system_key: "ventas.cierre" },
+        ],
+      },
+    });
+    const r = await loadCallConfig({ service: db.client, userClient: user().client, workspaceId: "ws1", task: "call_classification", canEdit: false, stored: {} });
+    expect(r).toMatchObject({
+      task: "call_classification",
+      canEdit: false,
+      categoryGroups: [{ areaId: VENTAS, areaName: "Ventas", types: [{ id: CIERRE, name: "Cierre" }] }],
+      legacyRuleTargets: { cierre: CIERRE },
+    });
   });
 
   it("analisis: dice que usa la rubrica generica mientras no haya una guardada", async () => {

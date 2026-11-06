@@ -29,6 +29,8 @@ export function isCallTriggerType(value: unknown): value is CallTriggerType {
 export interface CallEventPayload {
   call_id: string;
   call_type: string | null;
+  area_id: string | null;
+  category_id: string | null;
   outcome: string | null;
   closer_score: number | null;
   lead_score: number | null;
@@ -40,6 +42,11 @@ export interface CallEventPayload {
 
 /** La configuracion del trigger, tal como la guarda el editor. Vacio = cualquiera, nunca "ninguno". */
 export interface CallTriggerConfig {
+  /** Solo estas areas. */
+  area_ids?: string[] | null;
+  /** Solo estos tipos. */
+  category_ids?: string[] | null;
+  /** Filtro viejo por clave de tipo: se sigue respetando en los flujos que ya lo tienen. */
   call_types?: string[] | null;
   /** Solo `call_analyzed`. */
   outcomes?: string[] | null;
@@ -68,6 +75,8 @@ function inRange(min: number | null | undefined, max: number | null | undefined,
 }
 
 export function callEventMatches(type: string, config: CallTriggerConfig, payload: CallEventPayload): boolean {
+  if (!listMatches(config.area_ids, payload.area_id)) return false;
+  if (!listMatches(config.category_ids, payload.category_id)) return false;
   if (!listMatches(config.call_types, payload.call_type)) return false;
   if (!listMatches(config.closer_ids, payload.closer_id)) return false;
   if (type === "call_analyzed") {
@@ -92,6 +101,8 @@ export interface CallForEvent {
   id: string;
   contact_id: string | null;
   call_type: string | null;
+  area_id?: string | null;
+  category_id?: string | null;
   outcome: string | null;
   closer_score: number | null;
   lead_score: number | null;
@@ -105,6 +116,8 @@ export function callEventPayload(call: CallForEvent): CallEventPayload {
   return {
     call_id: call.id,
     call_type: call.call_type,
+    area_id: call.area_id ?? null,
+    category_id: call.category_id ?? null,
     outcome: call.outcome,
     closer_score: call.closer_score,
     lead_score: call.lead_score,

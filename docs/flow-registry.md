@@ -153,13 +153,16 @@ puras viven en `lib/calls/automation/triggers.ts`; el registro solo declara.
 
 | Trigger | Cuándo | Filtros (`triggers.config`) |
 |---|---|---|
-| `call_analyzed` | Una llamada **con contacto** queda analizada (análisis nuevo o regenerado; una corrección a mano NO lo dispara) | `call_types[]`, `outcomes[]`, `closer_ids[]`, `closer_score_min/max`, `lead_score_min/max`, `qualifications[]` |
-| `call_linked` | Se vincula un contacto a una llamada (automático, importada con contacto o a mano) | `call_types[]`, `closer_ids[]` |
+| `call_analyzed` | Una llamada **con contacto** queda analizada (análisis nuevo o regenerado; una corrección a mano NO lo dispara) | `area_ids[]`, `category_ids[]`, `call_types[]` (viejo), `outcomes[]`, `closer_ids[]`, `closer_score_min/max`, `lead_score_min/max`, `qualifications[]` |
+| `call_linked` | Se vincula un contacto a una llamada (automático, importada con contacto o a mano) | `area_ids[]`, `category_ids[]`, `call_types[]` (viejo), `closer_ids[]` |
 
+- **El panel filtra por área y tipo de la agenda** (`components/calls/call-category-filter.tsx`).
+  `call_types` ya no se ofrece, pero un flujo que lo tiene lo sigue respetando y el panel
+  deja sacarlo.
 - **Vacío significa "cualquiera"**, nunca "ninguno". Con un límite de puntaje, una
   llamada sin puntaje no entra (no se adivina).
 - **El evento** va a `automation_events` con `contact_id` y el payload
-  `{ call_id, call_type, outcome, closer_score, lead_score, lead_qualification,
+  `{ call_id, call_type, area_id, category_id, outcome, closer_score, lead_score, lead_qualification,
   closer_id, booking_id, analysis_run_id }` (`lib/calls/automation/emit.ts`).
   Emitir NUNCA lanza. **Una llamada sin contacto no emite nada**: cuando después
   se vincula, emite `call_linked`.
@@ -168,7 +171,8 @@ puras viven en `lib/calls/automation/triggers.ts`; el registro solo declara.
   mismo evento procesado dos veces dispara una vez.
 - **Condiciones** (todas sobre la última llamada ANALIZADA del contacto; sin
   ninguna devuelven vacío): `last_call_outcome:`, `last_call_lead_score:`,
-  `last_call_type:`. Están en el catálogo de la UI (`condition-fields.ts`).
+  `last_call_type:` (viejo), `last_call_area:` y `last_call_meeting_type:` (por el nombre
+  del área y del tipo). Están en el catálogo de la UI (`condition-fields.ts`).
 - **Variables** (`lib/calls/automation/context.ts`, todas texto; lo que falta
   queda vacío): `{{call.title}}`, `{{call.date}}`, `{{call.outcome}}`,
   `{{call.next_step}}`, `{{call.closer_name}}`, `{{call.closer_score}}`,

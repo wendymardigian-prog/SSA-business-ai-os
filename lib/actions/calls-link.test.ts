@@ -10,6 +10,8 @@ const audit = vi.hoisted(() => ({ logAudit: vi.fn(async () => "a1") }));
 vi.mock("@/lib/audit", () => audit);
 const emit = vi.hoisted(() => vi.fn(async () => true));
 vi.mock("@/lib/calls/automation/emit", () => ({ emitCallEvent: emit }));
+const reclassify = vi.hoisted(() => vi.fn(async () => "updated"));
+vi.mock("@/lib/calls/reclassify", () => ({ reclassifyCall: reclassify }));
 
 import { linkCallBooking, linkCallContact, searchContactsForCall, suggestBookingsForCall } from "./calls-link";
 
@@ -28,6 +30,22 @@ function setup(handlers: Record<string, DbHandler> = {}) {
 }
 
 beforeEach(() => vi.clearAllMocks());
+
+describe("vincular una reunion vuelve a clasificar", () => {
+  it("al vincular y al desvincular la reunion, y no al tocar solo el contacto", async () => {
+    const { service } = setup();
+    await linkCallBooking({ callId: CALL, bookingId: BOOKING });
+    expect(reclassify).toHaveBeenCalledWith(service.client, CALL);
+    reclassify.mockClear();
+    setup({ "calls:select": { data: { ...callRow, booking_id: BOOKING } } });
+    await linkCallBooking({ callId: CALL, bookingId: null });
+    expect(reclassify).toHaveBeenCalledTimes(1);
+    reclassify.mockClear();
+    setup();
+    await linkCallContact({ callId: CALL, contactId: CONTACT });
+    expect(reclassify).not.toHaveBeenCalled();
+  });
+});
 
 describe("linkCallContact", () => {
   it("vincula a mano: link_method manual, quien y cuando, y deja el antes y el despues en el historial", async () => {

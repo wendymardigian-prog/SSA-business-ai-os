@@ -25,7 +25,7 @@ describe("emitCallEvent", () => {
       workspace_id: "ws1",
       event_type: "call_analyzed",
       contact_id: "ct1",
-      payload: { call_id: "c1", call_type: "cierre", outcome: "venta", closer_score: 80, lead_score: 70, lead_qualification: "calificado", closer_id: "u1", booking_id: null, analysis_run_id: "run-1" },
+      payload: { call_id: "c1", call_type: "cierre", area_id: null, category_id: null, outcome: "venta", closer_score: 80, lead_score: 70, lead_qualification: "calificado", closer_id: "u1", booking_id: null, analysis_run_id: "run-1" },
     });
   });
 

@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { saveCallTaskSettings } from "@/lib/actions/call-task-settings";
-import { decideTypeProposal } from "@/lib/actions/call-proposals";
 import { Switch } from "@/components/ui/switch";
 import { Notice, Section, inputClass } from "@/components/agents/fields";
 import { cn } from "@/lib/utils";
 import type { CallConfigData } from "@/lib/calls/config-data";
-import { newCustomType, validTypeKeys, type CallClassificationSettings, type ClassificationRuleSetting, type RuleCondition } from "@/lib/calls/task-settings";
+import { NO_SHOW_TARGET } from "@/lib/calls/catalog";
+import { type CallClassificationSettings, type ClassificationRuleSetting, type RuleCondition } from "@/lib/calls/task-settings";
 
 type Data = Extract<CallConfigData, { task: "call_classification" }>;
 
@@ -19,7 +20,6 @@ const COND_LABELS: Record<RuleCondition, { label: string; kind: "minutes" | "num
   title_contains: { label: "El título contiene", kind: "terms", hint: "palabras separadas por coma" },
   email_contains: { label: "Algún correo contiene", kind: "terms", hint: "textos separados por coma (por ejemplo, un dominio)" },
   only_team: { label: "Solo hay gente del equipo", kind: "none" },
-  has_appointment: { label: "Tiene una agenda vinculada", kind: "none" },
 };
 
 const COND_ORDER = Object.keys(COND_LABELS) as RuleCondition[];
@@ -35,10 +35,8 @@ export function ClassificationConfig({ data }: { data: Data }) {
   const [settings, setSettings] = useState<CallClassificationSettings>(data.settings);
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
-  const [newType, setNewType] = useState({ name: "", description: "" });
 
   const dirty = JSON.stringify(settings) !== JSON.stringify(data.settings);
-  const types = validTypeKeys(settings.custom_types);
   const patch = (p: Partial<CallClassificationSettings>) => {
     setMessage(null);
     setSettings((s) => ({ ...s, ...p }));
@@ -58,15 +56,6 @@ export function ClassificationConfig({ data }: { data: Data }) {
       const result = await saveCallTaskSettings("call_classification", settings);
       if (!result.ok) return setMessage({ tone: "error", text: result.error });
       setMessage({ tone: "success", text: "Configuración guardada." });
-      router.refresh();
-    });
-  }
-
-  function decide(name: string, decision: "accept" | "discard") {
-    setMessage(null);
-    start(async () => {
-      const result = await decideTypeProposal({ name, decision });
-      if (!result.ok) return setMessage({ tone: "error", text: result.error });
       router.refresh();
     });
   }
@@ -118,9 +107,13 @@ export function ClassificationConfig({ data }: { data: Data }) {
                   ) : null}
                   {meta.hint && <span className="text-xs text-muted-foreground">{meta.hint}</span>}
                   <span className="text-xs text-muted-foreground">→ es</span>
-                  <select aria-label={`Tipo de la regla ${i + 1}`} value={r.type} disabled={readOnly} onChange={(e) => updateRule(r.id, { type: e.target.value })} className={cn(inputClass, "w-auto py-1.5")}>
-                    {types.map((t) => (
-                      <option key={t} value={t}>{t}</option>
+                  <select aria-label={`Área o tipo de la regla ${i + 1}`} value={data.legacyRuleTargets[r.type] ?? r.type} disabled={readOnly} onChange={(e) => updateRule(r.id, { type: e.target.value })} className={cn(inputClass, "w-auto py-1.5")}>
+                    <option value={NO_SHOW_TARGET}>No se presentó (marca)</option>
+                    {data.categoryGroups.map((g) => (
+                      <optgroup key={g.areaId} label={g.areaName}>
+                        <option value={g.areaId}>{g.areaName} (sin tipo)</option>
+                        {g.types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </optgroup>
                     ))}
                   </select>
                   {!readOnly && (
@@ -136,73 +129,14 @@ export function ClassificationConfig({ data }: { data: Data }) {
           })}
         </ol>
         {!readOnly && (
-          <button type="button" onClick={() => patch({ rules: [...settings.rules, { id: `r-${Date.now().toString(36)}`, on: true, cond: "title_contains", value: [], type: "otra" }] })} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline">
+          <button type="button" onClick={() => patch({ rules: [...settings.rules, { id: `r-${Date.now().toString(36)}`, on: true, cond: "title_contains", value: [], type: data.categoryGroups[0]?.areaId ?? "otra" }] })} className="inline-flex items-center gap-1.5 text-xs font-medium text-primary-ink hover:underline">
             <Plus className="h-3.5 w-3.5" aria-hidden /> Agregar regla
           </button>
         )}
       </Section>
 
-      <Section title="Tipos de llamada" description="Los del sistema no se borran. Podés sumar los tuyos y archivarlos cuando ya no hagan falta.">
-        <ul className="flex flex-wrap gap-1.5">
-          {types.map((t) => (
-            <li key={t} className="rounded-full bg-muted px-2.5 py-1 text-xs">{t}</li>
-          ))}
-        </ul>
-        {settings.custom_types.length > 0 && (
-          <ul className="divide-y divide-border rounded-lg border border-border">
-            {settings.custom_types.map((t) => (
-              <li key={t.clave} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                <div className={cn("min-w-0", t.archivado && "opacity-60")}>
-                  <p className="text-sm font-medium">{t.nombre} <span className="font-mono text-[11px] text-muted-foreground">{t.clave}</span></p>
-                  {t.descripcion && <p className="text-xs text-muted-foreground">{t.descripcion}</p>}
-                </div>
-                {!readOnly && (
-                  <button type="button" onClick={() => patch({ custom_types: settings.custom_types.map((x) => (x.clave === t.clave ? { ...x, archivado: !x.archivado } : x)) })} className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-accent">
-                    {t.archivado ? "Volver a activar" : "Archivar"}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {!readOnly && (
-          <div className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
-            <input aria-label="Nombre del tipo nuevo" placeholder="Nombre (ej: Mesa redonda)" value={newType.name} maxLength={60} onChange={(e) => setNewType({ ...newType, name: e.target.value })} className={inputClass} />
-            <input aria-label="Descripción del tipo nuevo" placeholder="Cuándo se usa" value={newType.description} maxLength={400} onChange={(e) => setNewType({ ...newType, description: e.target.value })} className={inputClass} />
-            <button
-              type="button"
-              disabled={!newType.name.trim()}
-              onClick={() => {
-                patch({ custom_types: [...settings.custom_types, newCustomType(newType.name, newType.description, settings.custom_types)] });
-                setNewType({ name: "", description: "" });
-              }}
-              className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
-            >
-              Agregar
-            </button>
-          </div>
-        )}
-        <div className="flex items-center gap-3">
-          <Switch checked={settings.allow_ai_types} onChange={(v) => patch({ allow_ai_types: v })} disabled={readOnly} label="La IA puede proponer tipos nuevos" />
-          <span className="text-sm">La IA puede proponer tipos nuevos</span>
-        </div>
-        {data.typeProposals.length > 0 && (
-          <div>
-            <h4 className="text-xs font-semibold">Tipos propuestos por la IA</h4>
-            <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
-              {data.typeProposals.map((p) => (
-                <li key={p.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                  <span className="text-sm">{p.name} <span className="text-xs text-muted-foreground">· {p.calls} {p.calls === 1 ? "llamada" : "llamadas"}</span></span>
-                  <span className="flex gap-2">
-                    <button type="button" disabled={pending || dirty} onClick={() => decide(p.name, "accept")} className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50">Aceptar</button>
-                    <button type="button" disabled={pending || dirty} onClick={() => decide(p.name, "discard")} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent disabled:opacity-50">Descartar</button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {dirty && <p className="mt-1 text-[11px] text-muted-foreground">Guardá los cambios de arriba antes de aceptar o descartar una propuesta.</p>}
-          </div>
-        )}
+      <Section title="Áreas y tipos" description="Las grabaciones usan la misma lista que la agenda. Una grabación vinculada a una reunión toma su área y su tipo, sin pasar por las reglas ni por la IA.">
+        <Link href="/dashboard/agenda/configuracion/categorias" className="text-sm font-medium text-primary-ink underline-offset-2 hover:underline">Editar las áreas y los tipos</Link>
       </Section>
 
       {!readOnly && (

@@ -21,7 +21,10 @@ import {
 import { applySectionEdits, type SectionEdit } from "@/lib/calls/section-edit";
 import { isAnalysisSection } from "@/lib/calls/scoring";
 import { canAnalyze, nextStatusAfterClassify } from "@/lib/calls/status";
-import { resolveCallTaskSettings, validTypeKeys } from "@/lib/calls/task-settings";
+import { resolveCallTaskSettings } from "@/lib/calls/task-settings";
+import { callCategoryLabel, legacyCallTypeFor, readCategorySnapshot } from "@/lib/calls/catalog";
+import { categorySnapshot } from "@/lib/scheduling/categories";
+import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { transcriptText } from "@/lib/calls/transcript-text";
 import type { Json } from "@/lib/types/database";
 
@@ -56,14 +59,14 @@ async function loadSettings(workspaceId: string) {
 
 // ── F18: cambiar el tipo ──────────────────────────────────────────────────
 
-export async function changeCallType(input: { callId: string; type: string }): Promise<CallEditResult> {
+export async function changeCallType(input: { callId: string; categoryId: string }): Promise<CallEditResult> {
   const ctx = await getPermissionAction("calls.edit");
   if (!ctx) return { ok: false, error: NOT_ALLOWED };
-  if (!UUID.test(input.callId)) return { ok: false, error: "Los datos no son válidos" };
+  if (!UUID.test(input.callId) || !UUID.test(input.categoryId)) return { ok: false, error: "Los datos no son válidos" };
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, analysis_status, transcript, imported_from_history")
+    .select("id, call_type, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -71,13 +74,18 @@ export async function changeCallType(input: { callId: string; type: string }): P
   if (!call) return { ok: false, error: NOT_FOUND };
 
   const { service, settings } = await loadSettings(ctx.workspace.id);
-  if (!validTypeKeys(settings.call_classification.custom_types).includes(input.type)) return { ok: false, error: "Ese tipo de llamada no existe" };
-  if (call.call_type === input.type) return { ok: true };
+  const categories = (await listCategories(service, ctx.workspace.id)).map(toCategoryRow);
+  const chosen = categories.find((c) => c.id === input.categoryId && !c.archived_at);
+  if (!chosen) return { ok: false, error: "Esa área o tipo ya no existe" };
+  if (call.category_id === input.categoryId) return { ok: true };
+
+  const snapshot = categorySnapshot(input.categoryId, categories);
+  const legacy = legacyCallTypeFor(snapshot, categories, call.no_show);
 
   // El estado solo se mueve mientras la llamada espera: una analizada o en curso no se toca.
   const movable = ["classifying", "needs_review", "pending", "not_applicable", "error"].includes(call.analysis_status);
   const analysis = settings.call_analysis;
-  const next = nextStatusAfterClassify(input.type, {
+  const next = nextStatusAfterClassify(legacy ?? "otra", {
     analyzeTypes: analysis.analyze_types,
     // Lo importado del historial no se analiza solo: se analiza con el boton.
     auto: analysis.mode === "now" && !call.imported_from_history,
@@ -87,7 +95,11 @@ export async function changeCallType(input: { callId: string; type: string }): P
   const { error } = await service
     .from("calls")
     .update({
-      call_type: input.type,
+      area_id: snapshot.area_id,
+      category_id: input.categoryId,
+      category_snapshot: snapshot as unknown as Json,
+      classification_source: "human",
+      call_type: legacy,
       call_type_source: "human",
       call_type_rule: null,
       call_type_confidence: null,
@@ -108,7 +120,65 @@ export async function changeCallType(input: { callId: string; type: string }): P
     entityType: "call",
     entityId: call.id,
     action: "call.type_changed",
-    changes: { call_type: { old: call.call_type, new: input.type } },
+    changes: { call_type: { old: call.call_type, new: legacy } },
+    metadata: { source: "human", category: callCategoryLabel(snapshot) },
+    performedBy: ctx.user.id,
+  });
+  refresh(call.id);
+  return { ok: true };
+}
+
+/** Marcar o sacar "no se presento". Es una marca: no cambia el area ni el tipo. */
+export async function setCallNoShow(input: { callId: string; noShow: boolean }): Promise<CallEditResult> {
+  const ctx = await getPermissionAction("calls.edit");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED };
+  if (!UUID.test(input.callId)) return { ok: false, error: "Los datos no son válidos" };
+
+  const { data: call } = await ctx.supabase
+    .from("calls")
+    .select("id, call_type, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
+    .eq("id", input.callId)
+    .eq("workspace_id", ctx.workspace.id)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (!call) return { ok: false, error: NOT_FOUND };
+  if (call.no_show === input.noShow) return { ok: true };
+
+  const { service, settings } = await loadSettings(ctx.workspace.id);
+  const categories = (await listCategories(service, ctx.workspace.id)).map(toCategoryRow);
+  const legacy = legacyCallTypeFor(readCategorySnapshot(call.category_snapshot), categories, input.noShow);
+  const movable = ["needs_review", "pending", "not_applicable", "error"].includes(call.analysis_status);
+  const analysis = settings.call_analysis;
+  const next = legacy
+    ? nextStatusAfterClassify(legacy, {
+        analyzeTypes: analysis.analyze_types,
+        auto: analysis.mode === "now" && !call.imported_from_history,
+        hasTranscript: Array.isArray(call.transcript) && call.transcript.length > 0,
+      })
+    : null;
+
+  const { error } = await service
+    .from("calls")
+    .update({
+      no_show: input.noShow,
+      call_type: legacy,
+      ...(movable && next ? { analysis_status: next.status, analysis_status_reason: next.reason, analysis_error: null } : {}),
+      ...(movable && !next ? { analysis_status: "needs_review" as const, analysis_status_reason: "ai_off" } : {}),
+    })
+    .eq("id", call.id);
+  if (error) {
+    console.error("[llamadas] no pude cambiar la marca:", error.message);
+    return { ok: false, error: "No pude guardar el cambio" };
+  }
+  if (movable && next?.enqueueAnalysis) await enqueueCallJob(service, "call_analyze", call.id);
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "call",
+    entityId: call.id,
+    action: "call.type_changed",
+    changes: { no_show: { old: call.no_show, new: input.noShow } },
     metadata: { source: "human" },
     performedBy: ctx.user.id,
   });

@@ -9,52 +9,35 @@ import {
 } from "./classifier-prompt";
 import { CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS } from "@/lib/ai-tasks/instructions";
 
-const custom = [
-  { clave: "demo", nombre: "Demo", descripcion: "una demostración", archivado: false },
-  { clave: "viejo", nombre: "Viejo", descripcion: "", archivado: true },
+const options = [
+  { label: "Ventas · Cierre", categoryId: "t1", description: "se cierra la venta" },
+  { label: "Servicio · Onboarding", categoryId: "t2", description: null },
 ];
 
 describe("prompt del clasificador de llamadas", () => {
-  it("lista los tipos base y los propios no archivados, con su descripcion", () => {
-    const t = buildClassifierTechnical({ customTypes: custom, allowAiTypes: false, discardedTypes: [] });
-    expect(t).toContain("- cierre");
-    expect(t).toContain("- cliente");
-    expect(t).not.toContain("cliente_cx");
-    expect(t).toContain("- demo (Demo): una demostración");
-    expect(t).not.toContain("viejo");
-  });
-
-  it("sin permiso para proponer tipos, tipo_propuesto debe ser null", () => {
-    const t = buildClassifierTechnical({ customTypes: [], allowAiTypes: false, discardedTypes: ["x"] });
-    expect(t).toContain('"tipo_propuesto" debe ser null');
-    expect(t).not.toContain("No propongas estos");
-  });
-
-  it("con permiso, pide el nombre y excluye los descartados", () => {
-    const t = buildClassifierTechnical({ customTypes: [], allowAiTypes: true, discardedTypes: ["webinar", "otro"] });
-    expect(t).toContain('proponé en "tipo_propuesto"');
-    expect(t).toContain("No propongas estos: webinar, otro.");
+  it("lista las opciones de la agenda, con su descripcion", () => {
+    const t = buildClassifierTechnical(options);
+    expect(t).toContain("- Ventas · Cierre: se cierra la venta");
+    expect(t).toContain("- Servicio · Onboarding");
+    expect(t).not.toContain("tipo_propuesto");
   });
 
   it("dice que la transcripcion es dato y no una orden", () => {
-    expect(buildClassifierTechnical({ customTypes: [], allowAiTypes: false, discardedTypes: [] })).toContain("DATOS para clasificar");
+    expect(buildClassifierTechnical([])).toContain("DATOS para clasificar");
   });
 
   it("el sistema junta el texto editable (con {{tipos}}) y la parte fija", () => {
-    const s = buildClassifierSystem("Tipos: {{tipos}}. Decidí bien.", { customTypes: custom, allowAiTypes: false, discardedTypes: [] });
-    expect(s.startsWith("Tipos: cierre, seguimiento")).toBe(true);
-    expect(s).toContain("demo");
-    expect(s).toContain("TIPOS VÁLIDOS");
+    const s = buildClassifierSystem("Tipos: {{tipos}}. Decidí bien.", options);
+    expect(s.startsWith("Tipos: Ventas · Cierre, Servicio · Onboarding")).toBe(true);
+    expect(s).toContain("OPCIONES VÁLIDAS");
   });
 
   it("el texto por defecto no inventa variables que no se resuelvan", () => {
-    const s = buildClassifierSystem(CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS, { customTypes: [], allowAiTypes: false, discardedTypes: [] });
-    expect(s).not.toMatch(/\{\{\w+\}\}/);
+    expect(buildClassifierSystem(CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS, [])).not.toMatch(/\{\{\w+\}\}/);
   });
 
-  it("validTypeList no incluye los archivados", () => {
-    expect(validTypeList(custom).split(", ")).toContain("demo");
-    expect(validTypeList(custom).split(", ")).not.toContain("viejo");
+  it("validTypeList da los nombres de las opciones", () => {
+    expect(validTypeList(options)).toBe("Ventas · Cierre, Servicio · Onboarding");
   });
 
   it("recorta una transcripcion larga a principio y final", () => {
@@ -78,7 +61,7 @@ describe("prompt del clasificador de llamadas", () => {
   });
 
   it("el esquema pide confianza entre 0 y 1", () => {
-    expect(classifierSchema.safeParse({ tipo: "cierre", confianza: 0.9, motivo: "x" }).success).toBe(true);
-    expect(classifierSchema.safeParse({ tipo: "cierre", confianza: 1.5, motivo: "x" }).success).toBe(false);
+    expect(classifierSchema.safeParse({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" }).success).toBe(true);
+    expect(classifierSchema.safeParse({ tipo: "Ventas · Cierre", confianza: 1.5, motivo: "x" }).success).toBe(false);
   });
 });

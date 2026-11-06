@@ -3,16 +3,19 @@
  * `call_classify`; el handler es fino y todo lo que decide vive aca, con la base
  * y el modelo por parametro.
  *
- * Orden:
- *   1. Un tipo puesto por una persona (`call_type_source = 'human'`) NO se pisa.
- *   2. Las reglas del negocio deciden primero, sin gastar IA.
- *   3. Si ninguna decide y la clasificacion con IA esta prendida: se respeta el
- *      tope de gasto, se abre el run y se pregunta al modelo.
- *   4. El estado de la llamada sale de `nextStatusAfterClassify`; con el modo
+ * Orden (`classify-cascade.ts`):
+ *   1. Lo que eligio una persona NO se pisa.
+ *   2. La reunion vinculada: su area y su tipo.
+ *   3. Las reglas del negocio, sin gastar IA.
+ *   4. El area por defecto de la conexion (Etapa 2).
+ *   5. La IA, solo si lo anterior no dio el tipo: se respeta el tope de gasto, se abre
+ *      el run y se pregunta al modelo. Con un area ya decidida, solo completa el tipo.
+ *   6. El estado de la llamada sale de `nextStatusAfterClassify`; con el modo
  *      automatico prendido, se encola el analisis.
  *
  * Un fallo del modelo NO lanza: se reintenta a los 1, 5 y 15 minutos (propio) y,
- * agotado, la llamada queda "Por revisar" para que una persona elija el tipo.
+ * agotado, la llamada queda "Por revisar" para que una persona elija. Lo que ya se
+ * sabia (el area) queda guardado antes de preguntar.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
@@ -21,20 +24,24 @@ import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
 import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
+import { categorySnapshot } from "@/lib/scheduling/categories";
 import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
+import { classifierOptions, callCategoryLabel } from "./catalog";
 import { classifyCallWithAi } from "./classify-ai";
-import { applyClassificationRules, teamNamesFrom } from "./classification";
+import { needsAi, resolveCascade } from "./classify-cascade";
+import { classificationPatch, loadClassificationContext } from "./classify-core";
 import { enqueueCallJob } from "./queue";
 import { nextStatusAfterClassify } from "./status";
-import { resolveCallTaskSettings } from "./task-settings";
 
 type Db = SupabaseClient<Database>;
 
 export type ClassifyOutcome =
   | "gone" // la llamada no existe o esta archivada
-  | "kept_human" // un humano ya eligio el tipo
+  | "kept_human" // una persona ya eligio
+  | "booking" // decidio la reunion vinculada
   | "rule" // decidio una regla
+  | "connection" // decidio el area de la conexion
   | "ai" // decidio la IA
   | "no_decision" // nada decidio y la IA esta apagada
   | "budget" // frenada por el tope de gasto
@@ -49,16 +56,7 @@ export interface ClassifyDeps {
 }
 
 const CALL_COLUMNS =
-  "id, workspace_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, analysis_status, imported_from_history";
-
-async function loadTeam(db: Db, workspaceId: string): Promise<{ emails: string[]; names: string[] }> {
-  const { data, error } = await db.rpc("workspace_member_profiles", { p_workspace_id: workspaceId });
-  if (error || !data) return { emails: [], names: [] };
-  return {
-    emails: data.map((m) => m.email ?? "").filter(Boolean),
-    names: teamNamesFrom(data.map((m) => ({ full_name: m.full_name ?? m.meta_name ?? null }))),
-  };
-}
+  "id, workspace_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, classification_source, no_show, analysis_status, imported_from_history";
 
 export async function runCallClassification(deps: ClassifyDeps, callId: string, retry = 0): Promise<{ outcome: ClassifyOutcome }> {
   const { db } = deps;
@@ -67,16 +65,15 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
   const { data: call } = await db.from("calls").select(CALL_COLUMNS).eq("id", callId).is("archived_at", null).maybeSingle();
   if (!call) return { outcome: "gone" };
 
-  const { data: ws } = await db.from("workspaces").select("ai_background_settings").eq("id", call.workspace_id).maybeSingle();
-  const settings = resolveCallTaskSettings(ws?.ai_background_settings);
-  const classification = settings.call_classification;
-  const analysis = settings.call_analysis;
+  const ctx = await loadClassificationContext(db, call);
+  const classification = ctx.settings.call_classification;
+  const analysis = ctx.settings.call_analysis;
   const hasTranscript = Array.isArray(call.transcript) && call.transcript.length > 0;
   // Lo importado del historial no se analiza solo: el gasto lo decide una persona, llamada por llamada.
   const auto = analysis.mode === "now" && !call.imported_from_history;
 
-  // Paso el estado a su lugar sin tocar el tipo que puso una persona.
-  if (call.call_type_source === "human" && call.call_type) {
+  // Paso el estado a su lugar sin tocar lo que eligio una persona.
+  if ((call.classification_source === "human" || call.call_type_source === "human") && call.call_type) {
     if (call.analysis_status === "classifying") {
       const next = nextStatusAfterClassify(call.call_type, { analyzeTypes: analysis.analyze_types, auto, hasTranscript });
       await db.from("calls").update({ analysis_status: next.status, analysis_status_reason: next.reason }).eq("id", callId).eq("analysis_status", "classifying");
@@ -85,78 +82,76 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
     return { outcome: "kept_human" };
   }
 
-  const team = await loadTeam(db, call.workspace_id);
-  const rule = applyClassificationRules(call, classification.rules, team.emails, team.names);
-
-  let type: string | null = null;
-  let source: "rule" | "ai" | null = null;
-  let rowExtra: Record<string, unknown> = {};
+  const noShow = call.no_show || ctx.noShowRule;
+  const base = resolveCascade({ booking: ctx.booking, rule: ctx.rule });
+  let final = base;
+  let ai: { confidence: number; alternative: string | null } | null = null;
   let lowConfidence = false;
   let reasonOverride: string | null = null;
-  let outcome: ClassifyOutcome = "no_decision";
 
-  if (rule) {
-    type = rule.call_type;
-    source = "rule";
-    rowExtra = { call_type_rule: rule.rule_label, call_type_confidence: null, call_type_alternative: null, call_type_proposed: null };
-    outcome = "rule";
-  } else if (classification.mode === "off" || !hasTranscript) {
-    reasonOverride = hasTranscript ? "ai_off" : "no_transcript";
-  } else {
-    const budget = await withinWorkspaceBudget(db, call.workspace_id, now);
-    if (!budget.allowed) {
-      await db.from("calls").update({ analysis_status: "needs_review", analysis_status_reason: "budget" }).eq("id", callId).eq("analysis_status", "classifying");
-      return { outcome: "budget" };
-    }
-
-    const [model, instructions] = await Promise.all([
-      resolveTaskModel(db, call.workspace_id, "call_classification"),
-      loadTaskInstructionsForRun(db, call.workspace_id, "call_classification"),
-    ]);
-    if (!deps.generate && (!model.ok || !model.model)) {
-      return markFailed(deps, call.id, model.message ?? "No hay un proveedor de IA conectado", true);
-    }
-
-    const run = await openAiRun(db, {
-      workspaceId: call.workspace_id,
-      source: "call_classification",
-      trigger: "job",
-      promptVersion: instructions.version,
-      contactId: call.contact_id,
-      threadId: call.id,
-    });
-    if (model.provider && model.modelId) run.setModel(model.provider, model.modelId);
-    const generate = deps.generate ?? aiSdkGenerate(model.model!);
-    const startedAt = Date.now();
-
-    const result = await classifyCallWithAi({ call, settings: classification, instructions: instructions.text, generate });
-    if (!result.ok) {
-      await run.close({ status: "error", statusDetail: "generation_failed", error: result.error.slice(0, 300) });
-      // Una respuesta que no cumple el esquema no se arregla reintentando: la decide una persona.
-      if (isSchemaError(result.cause)) {
-        await db.from("calls").update({ analysis_status: "needs_review", analysis_status_reason: "schema", analysis_error: result.error.slice(0, 300) }).eq("id", callId).eq("analysis_status", "classifying");
-        return { outcome: "failed" };
+  // Una llamada a la que nadie vino no vale una consulta a la IA.
+  if (needsAi(base, ctx.categories) && !noShow) {
+    if (classification.mode === "off" || !hasTranscript) {
+      reasonOverride = hasTranscript ? "ai_off" : "no_transcript";
+    } else {
+      const budget = await withinWorkspaceBudget(db, call.workspace_id, now);
+      if (!budget.allowed) {
+        await db.from("calls").update({ ...classificationPatch(base, ctx, noShow), analysis_status: "needs_review", analysis_status_reason: "budget" }).eq("id", callId).eq("analysis_status", "classifying");
+        return { outcome: "budget" };
       }
-      const decision = decideAiFailure(result.cause, retry);
-      return handleFailure(deps, call.id, result.error, retry, decision);
-    }
-    run.setFinalUsage(result.usage);
-    await run.step({ kind: "model_call", name: `${model.provider ?? "ia"}/${model.modelId ?? "modelo"}`, output: { tipo: result.decision.type, confianza: result.decision.confidence }, durationMs: Date.now() - startedAt });
-    await run.close({ status: "responded" });
 
-    const d = result.decision;
-    type = d.type;
-    source = "ai";
-    lowConfidence = d.lowConfidence;
-    rowExtra = { call_type_rule: null, call_type_confidence: d.confidence, call_type_alternative: d.alternative, call_type_proposed: d.proposed };
-    outcome = "ai";
+      const [model, instructions] = await Promise.all([
+        resolveTaskModel(db, call.workspace_id, "call_classification"),
+        loadTaskInstructionsForRun(db, call.workspace_id, "call_classification"),
+      ]);
+      // Lo que ya se sabe queda guardado: si la IA falla, no se pierde el area.
+      if (base.snapshot) await db.from("calls").update(classificationPatch(base, ctx, noShow)).eq("id", callId).eq("analysis_status", "classifying");
+      if (!deps.generate && (!model.ok || !model.model)) {
+        return markFailed(deps, call.id, model.message ?? "No hay un proveedor de IA conectado", true);
+      }
+
+      const run = await openAiRun(db, {
+        workspaceId: call.workspace_id,
+        source: "call_classification",
+        trigger: "job",
+        promptVersion: instructions.version,
+        contactId: call.contact_id,
+        threadId: call.id,
+      });
+      if (model.provider && model.modelId) run.setModel(model.provider, model.modelId);
+      const generate = deps.generate ?? aiSdkGenerate(model.model!);
+      const startedAt = Date.now();
+
+      const options = classifierOptions(ctx.categories, base.snapshot?.area_id);
+      const result = await classifyCallWithAi({ call, options, confidenceThreshold: classification.confidence_threshold, instructions: instructions.text, generate });
+      if (!result.ok) {
+        await run.close({ status: "error", statusDetail: "generation_failed", error: result.error.slice(0, 300) });
+        // Una respuesta que no cumple el esquema no se arregla reintentando: la decide una persona.
+        if (isSchemaError(result.cause)) {
+          await db.from("calls").update({ analysis_status: "needs_review", analysis_status_reason: "schema", analysis_error: result.error.slice(0, 300) }).eq("id", callId).eq("analysis_status", "classifying");
+          return { outcome: "failed" };
+        }
+        const decision = decideAiFailure(result.cause, retry);
+        return handleFailure(deps, call.id, result.error, retry, decision);
+      }
+      run.setFinalUsage(result.usage);
+      const d = result.decision;
+      await run.step({ kind: "model_call", name: `${model.provider ?? "ia"}/${model.modelId ?? "modelo"}`, output: { categoria: d.categoryId, confianza: d.confidence, valido: !d.invalidType }, durationMs: Date.now() - startedAt });
+      await run.close({ status: "responded" });
+
+      final = resolveCascade({ booking: ctx.booking, rule: ctx.rule, ai: d.categoryId ? categorySnapshot(d.categoryId, ctx.categories) : null });
+      ai = { confidence: d.confidence, alternative: d.alternative };
+      lowConfidence = d.lowConfidence;
+    }
   }
 
-  if (type && source) {
-    const next = nextStatusAfterClassify(type, { analyzeTypes: analysis.analyze_types, auto, lowConfidence, hasTranscript });
+  const patch = classificationPatch(final, ctx, noShow, ai);
+
+  if (patch.call_type) {
+    const next = nextStatusAfterClassify(patch.call_type, { analyzeTypes: analysis.analyze_types, auto, lowConfidence, hasTranscript });
     const { data: updated } = await db
       .from("calls")
-      .update({ call_type: type, call_type_source: source, ...rowExtra, analysis_status: next.status, analysis_status_reason: next.reason })
+      .update({ ...patch, analysis_status: next.status, analysis_status_reason: next.reason })
       .eq("id", callId)
       .or("call_type_source.is.null,call_type_source.neq.human")
       .select("id");
@@ -168,18 +163,18 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
         entityType: "call",
         entityId: callId,
         action: "call.type_changed",
-        changes: { call_type: { old: call.call_type, new: type } },
-        metadata: { source, ...(rule ? { rule: rule.rule_label } : {}) },
+        changes: { call_type: { old: call.call_type, new: patch.call_type } },
+        metadata: { source: final.source ?? "rule", category: callCategoryLabel(final.snapshot), ...(patch.call_type_rule ? { rule: patch.call_type_rule } : {}) },
         label: "Clasificación automática",
       });
     }
-    return { outcome };
+    return { outcome: final.source ?? "rule" };
   }
 
-  // Nada decidio: queda para que alguien elija el tipo.
+  // Nada decidio: queda para que alguien elija.
   await db
     .from("calls")
-    .update({ analysis_status: "needs_review", analysis_status_reason: reasonOverride ?? "ai_off" })
+    .update({ analysis_status: "needs_review", analysis_status_reason: lowConfidence ? "low_confidence" : reasonOverride ?? "ai_off" })
     .eq("id", callId)
     .eq("analysis_status", "classifying");
   return { outcome: "no_decision" };

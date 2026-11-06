@@ -48,6 +48,7 @@ export function typeDeciderText(r: {
   call_type_source: string | null; call_type_rule: string | null; call_type_confidence: number | null;
 }): string | null {
   if (r.call_type_source === "human") return "persona";
+  if (r.call_type_rule === "reunión vinculada") return "reunión vinculada";
   if (r.call_type_source === "rule") return `regla: ${r.call_type_rule || "sin nombre"}`;
   if (r.call_type_source === "ai") return `IA ${Math.round((Number(r.call_type_confidence) || 0) * 100)}%`;
   return null;
@@ -140,10 +141,16 @@ export const ANALYSIS_STATUSES: readonly CallAnalysisStatus[] = [
   "classifying", "needs_review", "pending", "analyzing", "analyzed", "not_applicable", "error",
 ];
 
+/** El valor del filtro de area que trae lo que todavia no se clasifico. */
+export const UNCLASSIFIED_AREA = "sin";
+
 export interface CallFilters {
   closer: string;
   /** Solo las llamadas de este contacto (el "Ver todas" de la ficha del contacto). */
   contacto: string;
+  /** Un area, o "sin" para las que todavia no tienen. */
+  area: string;
+  /** Un tipo de la lista (o una clave vieja, si el link es de antes). */
   tipo: string;
   resultado: string;
   estado: CallAnalysisStatus | "";
@@ -161,7 +168,7 @@ export interface CallFilters {
 }
 
 export const EMPTY_FILTERS: CallFilters = {
-  closer: "", contacto: "", tipo: "", resultado: "", estado: "", vinculo: "",
+  closer: "", contacto: "", area: "", tipo: "", resultado: "", estado: "", vinculo: "",
   closerMin: null, closerMax: null, leadMin: null, leadMax: null,
   desde: "", hasta: "", q: "", pagina: 1,
 };
@@ -169,8 +176,6 @@ export const EMPTY_FILTERS: CallFilters = {
 export interface FilterContext {
   /** Los closers que existen: un id inventado en la URL se ignora. */
   closerIds: Iterable<string>;
-  /** Los tipos validos (base + propios). Vacio = no se valida. */
-  typeKeys?: readonly string[];
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -197,11 +202,13 @@ export function parseCallFilters(sp: SearchParams, ctx: FilterContext): CallFilt
   const closers = new Set(ctx.closerIds);
   const closer = firstParam(sp.closer);
   const tipo = firstParam(sp.tipo);
+  const area = firstParam(sp.area);
   const resultado = firstParam(sp.resultado);
   return {
     closer: closers.has(closer) ? closer : "",
     contacto: UUID_PARAM.test(firstParam(sp.contacto)) ? firstParam(sp.contacto) : "",
-    tipo: tipo && (!ctx.typeKeys?.length || ctx.typeKeys.includes(tipo)) && /^[a-z0-9_]{1,40}$/.test(tipo) ? tipo : "",
+    area: area === UNCLASSIFIED_AREA || UUID_PARAM.test(area) ? area : "",
+    tipo: UUID_PARAM.test(tipo) || /^[a-z0-9_]{1,40}$/.test(tipo) ? tipo : "",
     resultado: /^[a-z0-9_]{1,60}$/.test(resultado) ? resultado : "",
     estado: pickEnum<CallAnalysisStatus, "">(sp.estado, ANALYSIS_STATUSES, ""),
     vinculo: pickEnum<(typeof LINK_FILTERS)[number], "">(sp.vinculo, LINK_FILTERS, ""),
@@ -219,7 +226,7 @@ export function parseCallFilters(sp: SearchParams, ctx: FilterContext): CallFilt
 /** Los filtros activos (sin contar la pagina), para el contador del boton. */
 export function countActiveCallFilters(f: CallFilters): number {
   return [
-    f.closer, f.contacto, f.tipo, f.resultado, f.estado, f.vinculo, f.desde, f.hasta, f.q,
+    f.closer, f.contacto, f.area, f.tipo, f.resultado, f.estado, f.vinculo, f.desde, f.hasta, f.q,
     f.closerMin, f.closerMax, f.leadMin, f.leadMax,
   ].filter((v) => v !== "" && v !== null).length;
 }
@@ -228,7 +235,7 @@ export function countActiveCallFilters(f: CallFilters): number {
 export function callFiltersToParams(f: CallFilters): URLSearchParams {
   const p = new URLSearchParams();
   const put = (k: string, v: string | number | null) => { if (v !== "" && v !== null) p.set(k, String(v)); };
-  put("closer", f.closer); put("contacto", f.contacto); put("tipo", f.tipo); put("resultado", f.resultado); put("estado", f.estado);
+  put("closer", f.closer); put("contacto", f.contacto); put("area", f.area); put("tipo", f.tipo); put("resultado", f.resultado); put("estado", f.estado);
   put("vinculo", f.vinculo); put("cmin", f.closerMin); put("cmax", f.closerMax);
   put("lmin", f.leadMin); put("lmax", f.leadMax); put("desde", f.desde); put("hasta", f.hasta); put("q", f.q);
   if (f.pagina > 1) p.set("pagina", String(f.pagina));
@@ -259,7 +266,9 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
   let q = query.is("archived_at", null);
   if (f.closer) q = q.eq("recorded_by_user_id", f.closer);
   if (f.contacto) q = q.eq("contact_id", f.contacto);
-  if (f.tipo) q = q.eq("call_type", f.tipo);
+  if (f.area === UNCLASSIFIED_AREA) q = q.is("area_id", null).eq("no_show", false);
+  else if (f.area) q = q.eq("area_id", f.area);
+  if (f.tipo) q = UUID_PARAM.test(f.tipo) ? q.eq("category_id", f.tipo) : q.eq("call_type", f.tipo);
   if (f.resultado) q = q.eq("outcome", f.resultado);
   if (f.estado) q = q.eq("analysis_status", f.estado);
   if (f.vinculo === "sin_vincular") q = q.is("contact_id", null);
@@ -287,7 +296,7 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
 
 /** Las columnas que lee la lista (nunca la transcripcion ni el analisis entero). */
 export const CALL_LIST_COLUMNS =
-  "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, contact_id, booking_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
+  "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
 
 // ── Columnas visibles (vistas guardadas por persona) ──────────────────────
 

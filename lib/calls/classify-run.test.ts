@@ -25,6 +25,20 @@ import { runCallClassification } from "./classify-run";
 import { DEFAULT_CLASSIFICATION, DEFAULT_ANALYSIS } from "./task-settings";
 
 const NOW = new Date("2026-10-10T12:00:00Z");
+const VENTAS = "11111111-1111-4111-8111-111111111111";
+const CIERRE = "22222222-2222-4222-8222-222222222222";
+const SERVICIO = "33333333-3333-4333-8333-333333333333";
+const ONBOARDING = "44444444-4444-4444-8444-444444444444";
+const EQUIPO = "55555555-5555-4555-8555-555555555555";
+const cat = (id: string, parent_id: string | null, name: string, system_key: string | null) => ({ id, parent_id, name, color: null, position: 0, is_system: !!system_key, archived_at: null, system_key, description: null });
+const CATEGORIES = [
+  cat(VENTAS, null, "Ventas", "ventas"),
+  cat(CIERRE, VENTAS, "Cierre", "ventas.cierre"),
+  cat(SERVICIO, null, "Servicio", "servicio"),
+  cat(ONBOARDING, SERVICIO, "Onboarding", null),
+  cat(EQUIPO, null, "Equipo", "equipo"),
+];
+const SERVICIO_ONBOARDING = { area_id: SERVICIO, area_name: "Servicio", type_id: ONBOARDING, type_name: "Onboarding" };
 const transcript = [{ timestamp: "0", speaker: { display_name: "Ana" }, text: "hola" }];
 const baseCall = {
   id: "c1",
@@ -40,13 +54,15 @@ const baseCall = {
   analysis_status: "classifying",
 };
 
-function setup(over: { call?: Record<string, unknown>; settings?: Record<string, unknown> } = {}) {
+function setup(over: { call?: Record<string, unknown>; settings?: Record<string, unknown>; bookingSnapshot?: unknown } = {}) {
   const db = fakeDb(
     {
       "calls:select": { data: { ...baseCall, ...over.call } },
       "calls:update": { data: [{ id: "c1" }] },
       "workspaces:select": { data: { ai_background_settings: over.settings ?? {} } },
       "scheduled_jobs:insert": { data: { id: "j1" } },
+      "booking_categories:select": { data: CATEGORIES },
+      "bookings:select": { data: { category_snapshot: over.bookingSnapshot ?? null } },
     },
     { workspace_member_profiles: { data: [{ user_id: "u1", email: "yo@agencia.com", full_name: "Carla", meta_name: null }] } },
   );
@@ -87,14 +103,14 @@ describe("runCallClassification", () => {
 
   it("con el analisis automatico prendido, una llamada nueva se manda a analizar", async () => {
     const db = setup({ settings: settingsWith({ rules: [] }, { mode: "now" }) });
-    const generate = generateOk({ tipo: "cierre", confianza: 0.95, motivo: "x" });
+    const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 0.95, motivo: "x" });
     await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(db.writesTo("scheduled_jobs").some((w) => (w.values as { type: string }).type === "call_analyze")).toBe(true);
   });
 
   it("una llamada importada del historial se clasifica, pero NO se analiza sola", async () => {
     const db = setup({ call: { imported_from_history: true }, settings: settingsWith({ rules: [] }, { mode: "now" }) });
-    const generate = generateOk({ tipo: "cierre", confianza: 0.95, motivo: "x" });
+    const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 0.95, motivo: "x" });
     await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(db.writesTo("calls")[0].values).toMatchObject({ call_type: "cierre", analysis_status: "pending", analysis_status_reason: "manual" });
     expect(db.writesTo("scheduled_jobs").some((w) => (w.values as { type: string }).type === "call_analyze")).toBe(false);
@@ -106,24 +122,84 @@ describe("runCallClassification", () => {
     expect(db.writesTo("scheduled_jobs").some((w) => (w.values as { type: string }).type === "call_analyze")).toBe(false);
   });
 
+  it("una llamada agendada de Servicio hereda su area y su tipo, y ya no queda como cierre", async () => {
+    const db = setup({ call: { booking_id: "b1" }, bookingSnapshot: SERVICIO_ONBOARDING, settings: settingsWith({ rules: [] }) });
+    const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 1, motivo: "x" });
+    const r = await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
+    expect(r.outcome).toBe("booking");
+    expect(generate).not.toHaveBeenCalled();
+    expect(db.writesTo("calls")[0].values).toMatchObject({
+      area_id: SERVICIO,
+      category_id: ONBOARDING,
+      category_snapshot: SERVICIO_ONBOARDING,
+      classification_source: "booking",
+      call_type: "cliente",
+      call_type_rule: "reunión vinculada",
+    });
+  });
+
+  it("una regla no le cambia el area a la reunion: solo completa el tipo dentro de ella", async () => {
+    const soloArea = { area_id: SERVICIO, area_name: "Servicio", type_id: null, type_name: null };
+    const rule = { id: "x", on: true, cond: "title_contains", value: ["llamada"], type: CIERRE };
+    const db = setup({ call: { booking_id: "b1" }, bookingSnapshot: soloArea, settings: settingsWith({ rules: [rule], mode: "off" }) });
+    const r = await runCallClassification({ db: db.client, now: NOW }, "c1");
+    expect(r.outcome).toBe("booking");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ area_id: SERVICIO, category_id: SERVICIO, classification_source: "booking" });
+  });
+
+  it("con el area de la reunion, la IA solo elige entre los tipos de esa area", async () => {
+    const soloArea = { area_id: SERVICIO, area_name: "Servicio", type_id: null, type_name: null };
+    const db = setup({ call: { booking_id: "b1" }, bookingSnapshot: soloArea, settings: settingsWith({ rules: [] }) });
+    const generate = generateOk({ tipo: "Servicio · Onboarding", confianza: 0.9, motivo: "x" });
+    await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
+    expect(generate.mock.calls[0][0].system).not.toContain("Ventas · Cierre");
+    const last = db.writesTo("calls").at(-1)!.values;
+    expect(last).toMatchObject({ area_id: SERVICIO, category_id: ONBOARDING, classification_source: "booking" });
+  });
+
+  it("si la IA falla, el area que ya se sabia queda guardada", async () => {
+    const soloArea = { area_id: SERVICIO, area_name: "Servicio", type_id: null, type_name: null };
+    const db = setup({ call: { booking_id: "b1" }, bookingSnapshot: soloArea, settings: settingsWith({ rules: [] }) });
+    const generate = vi.fn().mockRejectedValue(Object.assign(new Error("rate limited"), { statusCode: 429 }));
+    const r = await runCallClassification({ db: db.client, now: NOW, generate }, "c1", 0);
+    expect(r.outcome).toBe("retry");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ area_id: SERVICIO, classification_source: "booking" });
+  });
+
+  it("una opcion que la IA inventa no se guarda: queda sin clasificar", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }) });
+    const r = await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Venta magica", confianza: 0.9, motivo: "x" }) }, "c1");
+    expect(r.outcome).toBe("no_decision");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ analysis_status: "needs_review", analysis_status_reason: "low_confidence" });
+    expect(db.writesTo("calls")[0].values).not.toHaveProperty("area_id");
+  });
+
+  it("una regla vieja con la clave de un tipo sigue decidiendo", async () => {
+    const rule = { id: "x", on: true, cond: "title_contains", value: ["llamada"], type: "equipo" };
+    const db = setup({ settings: settingsWith({ rules: [rule] }) });
+    const r = await runCallClassification({ db: db.client, now: NOW, generate: generateOk({}) }, "c1");
+    expect(r.outcome).toBe("rule");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ area_id: EQUIPO, call_type: "equipo", classification_source: "rule" });
+  });
+
   it("una regla decide sin gastar IA", async () => {
     const db = setup({ call: { duration_seconds: 120 } }); // regla por defecto: menos de 10 min => no_show
-    const generate = generateOk({ tipo: "cierre", confianza: 1, motivo: "x" });
+    const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 1, motivo: "x" });
     const r = await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(r.outcome).toBe("rule");
     expect(generate).not.toHaveBeenCalled();
     expect(mocks.openAiRun).not.toHaveBeenCalled();
     const update = db.writesTo("calls")[0].values as Record<string, unknown>;
-    expect(update).toMatchObject({ call_type: "no_show", call_type_source: "rule", analysis_status: "not_applicable" });
+    expect(update).toMatchObject({ call_type: "no_show", no_show: true, call_type_source: "rule", analysis_status: "not_applicable" });
   });
 
   it("sin regla y con la IA prendida, clasifica con el modelo y registra el run", async () => {
     const db = setup({ settings: settingsWith({ rules: [] }) });
-    const generate = generateOk({ tipo: "cierre", confianza: 0.92, motivo: "Hablan de precio" });
+    const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 0.92, motivo: "Hablan de precio" });
     const r = await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(r.outcome).toBe("ai");
     const update = db.writesTo("calls")[0].values as Record<string, unknown>;
-    expect(update).toMatchObject({ call_type: "cierre", call_type_source: "ai", call_type_confidence: 0.92, analysis_status: "pending", analysis_status_reason: "manual" });
+    expect(update).toMatchObject({ area_id: VENTAS, category_id: CIERRE, classification_source: "ai", call_type: "cierre", call_type_source: "ai", call_type_confidence: 0.92, analysis_status: "pending", analysis_status_reason: "manual" });
     expect(mocks.openAiRun.mock.calls[0][1]).toMatchObject({ source: "call_classification", trigger: "job", workspaceId: "ws1" });
     expect(run.close).toHaveBeenCalledWith({ status: "responded" });
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.type_changed", entityId: "c1", label: "Clasificación automática" }));
@@ -131,7 +207,7 @@ describe("runCallClassification", () => {
 
   it("con el analisis automatico prendido, encola el analisis de un cierre", async () => {
     const db = setup({ settings: settingsWith({ rules: [] }, { mode: "now" }) });
-    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "cierre", confianza: 0.9, motivo: "x" }) }, "c1");
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" }) }, "c1");
     const job = db.writesTo("scheduled_jobs")[0];
     expect(job.values).toMatchObject({ type: "call_analyze", dedupe_key: "call_analyze:c1" });
     expect((db.writesTo("calls")[0].values as Record<string, unknown>).analysis_status_reason).toBeNull();
@@ -139,14 +215,14 @@ describe("runCallClassification", () => {
 
   it("confianza bajo el umbral: queda por revisar y no se encola nada", async () => {
     const db = setup({ settings: settingsWith({ rules: [], confidence_threshold: 0.8 }, { mode: "now" }) });
-    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "cierre", confianza: 0.4, motivo: "dudoso" }) }, "c1");
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.4, motivo: "dudoso" }) }, "c1");
     expect(db.writesTo("calls")[0].values).toMatchObject({ analysis_status: "needs_review", analysis_status_reason: "low_confidence" });
     expect(db.writesTo("scheduled_jobs")).toHaveLength(0);
   });
 
   it("con la clasificacion con IA apagada y sin regla, queda por revisar sin llamar al modelo", async () => {
     const db = setup({ settings: settingsWith({ rules: [], mode: "off" }) });
-    const generate = generateOk({ tipo: "cierre", confianza: 1, motivo: "x" });
+    const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 1, motivo: "x" });
     const r = await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(r.outcome).toBe("no_decision");
     expect(generate).not.toHaveBeenCalled();
@@ -155,7 +231,7 @@ describe("runCallClassification", () => {
 
   it("sin transcripcion no se gasta IA: por revisar con ese motivo", async () => {
     const db = setup({ call: { transcript: [] }, settings: settingsWith({ rules: [] }) });
-    const generate = generateOk({ tipo: "cierre", confianza: 1, motivo: "x" });
+    const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 1, motivo: "x" });
     await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(generate).not.toHaveBeenCalled();
     expect(db.writesTo("calls")[0].values).toMatchObject({ analysis_status: "needs_review", analysis_status_reason: "no_transcript" });
@@ -209,7 +285,7 @@ describe("runCallClassification", () => {
 
   it("el run queda atado a la llamada (threadId)", async () => {
     const db = setup({ settings: settingsWith({ rules: [] }) });
-    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "cierre", confianza: 0.9, motivo: "x" }) }, "c1");
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" }) }, "c1");
     expect(mocks.openAiRun.mock.calls[0][1]).toMatchObject({ threadId: "c1" });
   });
 

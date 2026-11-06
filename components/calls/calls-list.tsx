@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { CategoryGroup } from "@/lib/calls/catalog";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { ChevronLeft, ChevronRight, Filter, Link2, Loader2, Phone, Plus, RefreshCw, Search, Settings, Sparkles, Star, X } from "lucide-react";
@@ -14,8 +15,7 @@ import { Popover } from "@/components/ui/popover";
 import { formatCallDate, formatDuration, humanize } from "@/lib/calls/format";
 import {
   ANALYSIS_STATUSES,
-  CALL_TYPE_LABELS,
-  callFiltersToParams,
+  UNCLASSIFIED_AREA, callFiltersToParams,
   countActiveCallFilters,
   isNonSaleRow,
   parseSavedViews,
@@ -41,6 +41,7 @@ export interface CallListRow {
   contactId: string | null;
   contactName: string | null;
   callType: string | null;
+  categoryLabel: string;
   callTypeSource: string | null;
   callTypeRule: string | null;
   callTypeConfidence: number | null;
@@ -73,6 +74,9 @@ interface Props {
   /** Cuantas llamadas que ve estan pendientes de analisis (para "Analizar pendientes"). */
   pendingCount: number;
   scopeAll: boolean;
+  categoryGroups: CategoryGroup[];
+  /** Las que todavia no tienen area, para el aviso de arriba. */
+  unclassifiedCount: number;
   hasAnyCall: boolean;
   workspaceHasConnections: boolean;
   hasApp: boolean;
@@ -211,6 +215,12 @@ export function CallsList(props: Props) {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+        {props.unclassifiedCount > 0 && filters.area !== UNCLASSIFIED_AREA && (
+          <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+            <span>{props.unclassifiedCount === 1 ? "1 grabación sin clasificar" : `${props.unclassifiedCount} grabaciones sin clasificar`}: no se vincularon con una reunión y ninguna regla las clasificó.</span>
+            <button type="button" onClick={() => go({ area: UNCLASSIFIED_AREA, tipo: "" })} className="font-medium text-primary-ink underline-offset-2 hover:underline">Ver y clasificar</button>
+          </div>
+        )}
         {props.nudgeConnect && (
           <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm">
             <span>Si grabás tus llamadas con Fathom, conectalo y entran solas.</span>
@@ -302,10 +312,21 @@ export function CallsList(props: Props) {
                     {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </Field>
+                <Field label="Área">
+                  <select className={selectClass} value={filters.area} onChange={(e) => go({ area: e.target.value, tipo: "" })}>
+                    <option value="">Todas</option>
+                    <option value={UNCLASSIFIED_AREA}>Sin clasificar</option>
+                    {props.categoryGroups.map((g) => <option key={g.areaId} value={g.areaId}>{g.areaName}</option>)}
+                  </select>
+                </Field>
                 <Field label="Tipo">
                   <select className={selectClass} value={filters.tipo} onChange={(e) => go({ tipo: e.target.value })}>
                     <option value="">Todos</option>
-                    {Object.entries(CALL_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    {props.categoryGroups.filter((g) => !filters.area || g.areaId === filters.area).map((g) => (
+                      <optgroup key={g.areaId} label={g.areaName}>
+                        {g.types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </optgroup>
+                    ))}
                   </select>
                 </Field>
                 <Field label="Resultado">
@@ -378,7 +399,7 @@ export function CallsList(props: Props) {
                             <td className="whitespace-nowrap px-3 py-2">{formatDuration(r.durationSeconds)}</td>
                             <td className="whitespace-nowrap px-3 py-2">{r.closerName ?? "—"}</td>
                             <td className="px-3 py-2" title={typeDeciderText({ call_type_source: r.callTypeSource, call_type_rule: r.callTypeRule, call_type_confidence: r.callTypeConfidence }) ?? undefined}>
-                              <TypeChip type={r.callType} needsReview={r.status === "needs_review"} />
+                              <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
                             </td>
                             <td className="px-3 py-2"><OutcomeChip outcome={r.outcome} /></td>
                             <td className="px-3 py-2"><ScoreCell score={r.closerScore} label="Puntaje del closer" /></td>
@@ -410,7 +431,7 @@ export function CallsList(props: Props) {
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">{formatCallDate(r.recordedAt, timeZone)} · {formatDuration(r.durationSeconds)}{r.closerName ? ` · ${r.closerName}` : ""}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <TypeChip type={r.callType} needsReview={r.status === "needs_review"} />
+                          <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
                           <StatusChip status={r.status} />
                           <OutcomeChip outcome={r.outcome} />
                           {r.closerScore !== null && <span className="inline-flex items-center gap-1 text-xs">Closer <ScoreCell score={r.closerScore} /></span>}
