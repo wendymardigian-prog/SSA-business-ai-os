@@ -6,6 +6,8 @@ vi.mock("@/lib/notifications/create", () => ({ createNotificationOnce: once }));
 
 import { membersWithPermission, notifyBudgetBlocked, notifyObjection } from "./notify";
 
+const AREA = "11111111-1111-4111-8111-111111111111";
+
 const members = [
   { user_id: "owner", role: "owner", role_id: null },
   { user_id: "admin", role: "admin", role_id: null },
@@ -66,17 +68,23 @@ describe("alcance y objeciones", () => {
   const scoped = [
     { id: "r-all", system_role: null, permissions: { keys: ["calls.edit"], scopes: { calls: "all" } } },
     { id: "r-own", system_role: null, permissions: { keys: ["calls.edit"], scopes: { calls: "own" } } },
+    { id: "r-area", system_role: null, permissions: { keys: ["calls.edit"], scopes: { calls: "areas" }, call_areas: [AREA] } },
   ];
   const people = [
     { user_id: "owner", role: "owner", role_id: null },
     { user_id: "ed-all", role: "member", role_id: "r-all" },
     { user_id: "ed-own", role: "member", role_id: "r-own" },
+    { user_id: "ed-area", role: "member", role_id: "r-area" },
   ];
 
   it("con scope all solo quedan quienes ven todas las llamadas", async () => {
     const db = fakeDb({ "workspace_members:select": { data: people }, "workspace_roles:select": { data: scoped } });
     expect((await membersWithPermission(db.client, "ws1", "calls.edit", { scope: "all" })).sort()).toEqual(["ed-all", "owner"]);
-    expect((await membersWithPermission(db.client, "ws1", "calls.edit")).sort()).toEqual(["ed-all", "ed-own", "owner"]);
+    expect((await membersWithPermission(db.client, "ws1", "calls.edit")).sort()).toEqual(["ed-all", "ed-area", "ed-own", "owner"]);
+    // Con el area de la grabacion, tambien quien ve esa area; sin clasificar, solo quien ve todas.
+    expect((await membersWithPermission(db.client, "ws1", "calls.edit", { scope: "all", areaId: AREA })).sort()).toEqual(["ed-all", "ed-area", "owner"]);
+    expect((await membersWithPermission(db.client, "ws1", "calls.edit", { scope: "all", areaId: null })).sort()).toEqual(["ed-all", "owner"]);
+    expect((await membersWithPermission(db.client, "ws1", "calls.edit", { scope: "all", areaId: "22222222-2222-4222-8222-222222222222" })).sort()).toEqual(["ed-all", "owner"]);
   });
 
   it("la objecion avisa a los editores con alcance all y NUNCA al closer", async () => {

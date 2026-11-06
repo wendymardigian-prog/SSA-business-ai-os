@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyCallFilters, callFiltersToParams, callTypeLabel, countActiveCallFilters, EMPTY_FILTERS, estimateBatch, groupRows,
   isNonSaleRow, isSaleCallType, mergeColumns, parseCallFilters, parseSavedViews, sortRows, typeDeciderText, weekStartKey, type CallFilters,
+  callScopeLabel,
 } from "./list";
 
 const CLOSER = "11111111-1111-4111-8111-111111111111";
@@ -160,5 +161,14 @@ describe("vistas guardadas", () => {
     expect(parseSavedViews('[{"id":"1","name":"Sin vincular","params":"vinculo=sin_vincular"},{"x":1}]')).toHaveLength(1);
     expect(parseSavedViews("no es json")).toEqual([]);
     expect(parseSavedViews(null)).toEqual([]);
+  });
+});
+
+describe("callScopeLabel", () => {
+  it("dice que grabaciones ve cada quien", () => {
+    expect(callScopeLabel("all", "member")).toBe("Todas las del equipo");
+    expect(callScopeLabel("own", "owner")).toBe("Todas las del equipo");
+    expect(callScopeLabel("areas", "member")).toContain("tus áreas");
+    expect(callScopeLabel("own", "member")).toBe("Las tuyas y las de tus contactos");
   });
 });

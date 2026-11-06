@@ -12,6 +12,7 @@ import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
+import type { RoleCallArea } from "./call-area-access";
 import { RoleEditor } from "./role-editor";
 import type { RoleChannelAccount } from "./channel-access-section";
 import { NewRoleDialog } from "./new-role-dialog";
@@ -36,6 +37,7 @@ export function RolesView({
   canManage,
   viewer,
   accounts = [],
+  callAreas = [],
 }: {
   roles: RoleRow[];
   /** Si puede ver también Equipo: oculta «Miembros» del segmented si esa pantalla lo rebotaría. */
@@ -46,6 +48,8 @@ export function RolesView({
   viewer: GrantActor;
   /** Las cuentas conectadas, para dar la bandeja cuenta por cuenta (00249). */
   accounts?: RoleChannelAccount[];
+  /** Las áreas de la agenda, para el alcance de grabaciones por área (00301). */
+  callAreas?: RoleCallArea[];
 }) {
   const [roles, setRoles] = useState(sortRoles(initial));
   const [open, setOpen] = useState<string | null>(null);
@@ -164,7 +168,7 @@ export function RolesView({
                     </div>
                   </div>
 
-                  {expanded && <RoleEditor role={role} viewer={viewer} accounts={accounts} readOnly={!editable} onRoleChange={replaceRole} />}
+                  {expanded && <RoleEditor role={role} viewer={viewer} accounts={accounts} callAreas={callAreas} readOnly={!editable} onRoleChange={replaceRole} />}
                 </li>
               );
             })}

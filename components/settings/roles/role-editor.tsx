@@ -18,6 +18,7 @@ import { applyKeyToggle, eodSelectorValue, moduleState, scopeFieldState, SCOPE_G
 import { createSaveQueue } from "@/lib/roles/save-queue";
 import { assertCanGrant, type GrantActor } from "@/lib/team/grant";
 import type { ChannelsConfig } from "@/lib/auth/channel-permissions";
+import { CallAreaAccess, type RoleCallArea } from "./call-area-access";
 import { ChannelAccessSection, type RoleChannelAccount } from "./channel-access-section";
 
 const NAME_DEBOUNCE_MS = 700;
@@ -38,6 +39,7 @@ export function RoleEditor({
   role,
   viewer,
   accounts,
+  callAreas = [],
   readOnly,
   onRoleChange,
 }: {
@@ -45,6 +47,8 @@ export function RoleEditor({
   viewer: GrantActor;
   /** Las cuentas conectadas del workspace, para la bandeja por cuenta (00249). */
   accounts: RoleChannelAccount[];
+  /** Las áreas de la agenda, para el alcance de grabaciones por área (00301). */
+  callAreas?: RoleCallArea[];
   readOnly: boolean;
   /** El servidor devolvió el rol resultante: la tarjeta se actualiza en el lugar. */
   onRoleChange: (role: RoleRow) => void;
@@ -54,6 +58,8 @@ export function RoleEditor({
   const [channels, setChannels] = useState<ChannelsConfig>(role.permissions.channels);
   // Lo ultimo que el servidor confirmo: solo hay que poder dar lo que se agrega sobre eso.
   const [savedChannels, setSavedChannels] = useState<ChannelsConfig>(role.permissions.channels);
+  const [areas, setAreas] = useState<string[]>(role.permissions.call_areas ?? []);
+  const [savedPermissions, setSavedPermissions] = useState(role.permissions);
   const [name, setName] = useState(role.name);
   const [description, setDescription] = useState(role.description ?? "");
   const [state, setState] = useState<SaveState>("idle");
@@ -62,11 +68,11 @@ export function RoleEditor({
   const queue = useRef(createSaveQueue((pending) => setState((s) => (pending > 0 ? "saving" : s === "saving" ? "saved" : s)))).current;
   const lastFailed = useRef<(() => void) | null>(null);
   const timers = useRef<{ name?: ReturnType<typeof setTimeout>; description?: ReturnType<typeof setTimeout> }>({});
-  const latest = useRef({ keys, scopes, channels });
+  const latest = useRef({ keys, scopes, channels, areas });
   // Lo ultimo que se ve en pantalla, para que los handlers lean el valor vigente (no el de su cierre).
   useEffect(() => {
-    latest.current = { keys, scopes, channels };
-  }, [keys, scopes, channels]);
+    latest.current = { keys, scopes, channels, areas };
+  }, [keys, scopes, channels, areas]);
 
   useEffect(() => {
     const t = timers.current;
@@ -89,7 +95,9 @@ export function RoleEditor({
             setKeys(result.data.role.permissions.keys);
             setScopes(result.data.role.permissions.scopes);
             setChannels(result.data.role.permissions.channels);
+            setAreas(result.data.role.permissions.call_areas ?? []);
           }
+          setSavedPermissions(result.data.role.permissions);
           setSavedChannels(result.data.role.permissions.channels);
           onRoleChange(result.data.role);
           lastFailed.current = null;
@@ -143,6 +151,13 @@ export function RoleEditor({
     const before = latest.current.channels;
     setChannels(next);
     save({ channels: next }, () => setChannels(before), () => changeChannels(next));
+  }
+
+  function changeAreas(next: string[]) {
+    if (readOnly) return;
+    const before = latest.current.areas;
+    setAreas(next);
+    save({ callAreas: next }, () => setAreas(before), () => changeAreas(next));
   }
 
   function saveText(field: "name" | "description", value: string) {
@@ -312,6 +327,12 @@ export function RoleEditor({
                   </label>
                 );
               })}
+
+              {/* @plantilla-desde(llamadas) */}
+              {group === "calls" && scopes.calls === "areas" && (
+                <CallAreaAccess selected={areas} areas={callAreas} viewer={viewer} before={savedPermissions} readOnly={readOnly} onChange={changeAreas} />
+              )}
+              {/* @plantilla-hasta(llamadas) */}
 
               {/* @plantilla-desde(formularios) */}
               {group === "forms" && (
