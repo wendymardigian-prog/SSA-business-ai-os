@@ -46,8 +46,8 @@ Una sola tabla nueva: **`calls`**. Todo lo demás son columnas y funciones.
   refresh token de Fathom es de UN SOLO USO).
 - `workspace_members` suma `closer_emails` (los otros correos con los que la
   persona graba en Fathom, los carga ella) e `is_closer` (**sin usar desde la
-  00296**: se borra en otra migración, después del deploy).
-- `oauth_connections.history_import` y `calls.imported_from_history` (00296): ver
+  00297**: se borra en otra migración, después del deploy).
+- `oauth_connections.history_import` y `calls.imported_from_history` (00297): ver
   "Importar el historial".
 - `audit_log` suma `actor_type` y `actor_label` (00144): quién hizo cada cosa,
   incluidos los procesos del sistema ("Análisis automático", "Fathom").

@@ -1,5 +1,5 @@
 /**
- * El estado de la importacion del historial de Fathom (00296). Puro: decide que
+ * El estado de la importacion del historial de Fathom (00297). Puro: decide que
  * hacer despues de cada vuelta o de cada fallo, sin tocar la base ni Fathom.
  *
  * Trae lo ANTERIOR a lo que ya cubre la consulta de cada 10 minutos, por partes y

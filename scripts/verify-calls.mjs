@@ -371,7 +371,7 @@ try {
     check(!e, "closer_emails existe y se guarda", e?.message);
   }
 
-  console.log("\n— Importar historial (00296) —");
+  console.log("\n— Importar historial (00297) —");
   {
     const { data: historica, error: e } = await svc.from("calls").insert(callRow(ws.id, { recorded_by_user_id: closer.id, imported_from_history: true })).select("id, imported_from_history").single();
     check(!e && historica?.imported_from_history === true, "una llamada se puede marcar como importada del historial", e?.message);

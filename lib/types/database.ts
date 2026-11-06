@@ -306,7 +306,7 @@ export type CallRow = {
   duration_seconds: number | null;
   recorded_by_email: string | null;
   recorded_by_user_id: string | null;
-  /** Entro por una importacion del historial (00296): no dispara automatizaciones y no se analiza sola. */
+  /** Entro por una importacion del historial (00297): no dispara automatizaciones y no se analiza sola. */
   imported_from_history: boolean;
   attendees: CallAttendee[];
   transcript: CallTranscriptLine[];
@@ -4298,7 +4298,7 @@ export interface Database {
           sync_last_error: string | null;
           /** Candado de renovacion del refresh token (claim_oauth_refresh). */
           refresh_locked_until: string | null;
-          /** El avance de la importacion del historial (00296, lib/fathom/history-state.ts). */
+          /** El avance de la importacion del historial (00297, lib/fathom/history-state.ts). */
           history_import: Json | null;
           // @plantilla-hasta(llamadas)
         };
