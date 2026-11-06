@@ -8,7 +8,10 @@ import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { loadMeetContext } from "@/lib/scheduling/data/meet-availability";
 import { meetAvailableFor } from "@/lib/scheduling/meet-availability";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
-import { bookingUtmOptions, getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
+import { bookingAttributionOf, bookingUtmOptions, getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
+import { metaLinkFromTouch, touchMetaIds, type MetaLink } from "@/lib/attribution/meta-link";
+import { EMPTY_META_NAMES, loadMetaNamesByIds } from "@/lib/attribution/meta-names";
+import { loadBookingMatches } from "@/lib/attribution/source-touches";
 import { loadBookingCalls } from "@/lib/calls/contact-section"; // @plantilla-quitar(llamadas)
 import { canLoadSaleFromBooking, prefillFromBooking } from "@/lib/sales/booking-link"; // @plantilla-quitar(ventas)
 import { snapshotText } from "@/lib/sales/sale-text"; // @plantilla-quitar(ventas)
@@ -206,6 +209,21 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
   const detail = query.agenda ? await getBookingDetail(ctx.supabase, one(query.agenda) ?? "") : null;
   const publicBase = publicBaseUrl(ctx.workspace as { scheduling_public_base_url?: string | null });
+
+  // El vinculo con Meta de lo que se muestra: la lista (solo en esa vista) y la reunion abierta. Las reuniones ya las
+  // leyo la sesion, asi que la RLS decidio cuales ve; el toque va con el cliente de servicio porque quien atiende una
+  // reunion puede no ver su contacto. Los nombres, con la sesion: sin `dashboards.ads.view` se ven los ids.
+  const linkTargets = [
+    ...(view === "list" ? items.map((i) => ({ id: i.id, contactId: i.contactId, createdAt: i.createdAt })) : []),
+    ...(detail ? [{ id: detail.booking.id, contactId: detail.booking.contact_id, createdAt: detail.booking.created_at }] : []),
+  ];
+  const bookingMatches = linkTargets.length ? await loadBookingMatches(await createServiceClient(), ctx.workspace.id, linkTargets) : new Map();
+  const matchedTouches = [...bookingMatches.values()].flatMap((m) => (m.touch ? [m.touch] : []));
+  const metaNames = ctx.can("dashboards.ads.view") && matchedTouches.length ? await loadMetaNamesByIds(ctx.supabase, ctx.workspace.id, matchedTouches.map(touchMetaIds)) : EMPTY_META_NAMES;
+  const metaLinks: Record<string, MetaLink> = {};
+  for (const [id, match] of bookingMatches) {
+    if (match.touch) metaLinks[id] = metaLinkFromTouch(match.touch, metaNames, { ownTouchId: match.ownTouchId, inherited: match.inherited });
+  }
   // @plantilla-desde(llamadas)
   // Las llamadas vinculadas a esta agenda (F34): solo con `calls.view`, y solo las que la RLS deja ver.
   const bookingCalls =
@@ -388,7 +406,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               syncError: detail.booking.google_sync_error,
               rescheduleUrl: `${bookingPublicUrl(publicBase, detail.booking.uid)}/reagendar`,
               history: detail.history.map((h) => ({ id: h.id, at: h.performed_at, text: historyText(h, names) })),
-              attribution: attributionOf((detail.booking as unknown as { utm?: unknown; referrer_url?: string | null }).utm, detail.booking.referrer_url),
+              attribution: bookingAttributionOf(detail.booking.utm, detail.booking.referrer_url),
+              metaLink: metaLinks[detail.booking.id] ?? null,
               slotReleasedAt: detail.booking.slot_released_at,
               calls: bookingCalls, // @plantilla-quitar(llamadas)
               sales: bookingSales.map((x) => ({ id: x.id, status: x.status, finalAmount: Number(x.final_amount) || 0, product: snapshotText(x.product_snapshot) })), // @plantilla-quitar(ventas)
@@ -396,6 +415,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             }
           : null
       }
+      metaLinks={metaLinks}
+      canLinkMeta={ctx.can("settings.general")}
       view={view}
       quick={quick}
       calendarView={calendarView}
@@ -420,22 +441,6 @@ function snapshotLabel(snapshot: unknown): string {
   const snap = snapshot as { area_name?: string | null; type_name?: string | null } | null;
   if (!snap?.area_name) return "";
   return snap.type_name ? `${snap.area_name} · ${snap.type_name}` : snap.area_name;
-}
-
-/** Fuente, medio, campaña y de dónde vino, para la sección "Atribución" del detalle (Agenda v2). */
-function attributionOf(utm: unknown, referrerUrl: string | null): { source: string; medium: string; campaign: string; content: string; term: string; referrerUrl: string | null } | null {
-  const u = (utm ?? {}) as Record<string, unknown>;
-  const has = Object.keys(u).length > 0 || Boolean(referrerUrl);
-  if (!has) return null;
-  const str = (v: unknown) => (typeof v === "string" && v ? v : "");
-  return {
-    source: str(u.utm_source),
-    medium: str(u.utm_medium),
-    campaign: str(u.utm_campaign),
-    content: str(u.utm_content),
-    term: str(u.utm_term),
-    referrerUrl,
-  };
 }
 
 /**

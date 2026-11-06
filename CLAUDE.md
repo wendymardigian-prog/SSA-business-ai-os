@@ -1027,7 +1027,7 @@ Menu con la seccion **Herramientas** colapsable, Formularios rediseñado (lista 
 - **La pestaña del editor vive en `?tab=`** y se cambia con `window.history.pushState(null, ...)` (sin pedirle la pagina al servidor).
 - **El formulario publico ya no muestra el logo** (`design.showLogo` queda guardado, nadie lo usa).
 - **`entry_url`**: la direccion completa por la que entro la persona, con todos sus parametros menos los sensibles (`lib/attribution/sensitive-params.ts`), los internos y el `#`; tope de 2000. Se arma y se vuelve a sanear en UN solo lugar (`lib/attribution/entry-url.ts`), viaja en `form_submissions.attribution.entry_url` y en `contact_touches.entry_url`, y se ve en el detalle de una respuesta y en las visitas del contacto. **Nunca se loguea.** `landing_page` y `page_url` siguen filtradas, la lista de claves de `lib/attribution/keys.ts` no cambio y `contacts.attribution` (copia derivada) no la incluye.
-- **Las columnas de la tabla de respuestas salen de `lib/forms/response-columns.ts`** (preguntas + atribucion, con menu «Columnas»; lo elegido se guarda por formulario en `localStorage`, como diferencia con lo normal). La URL que se muestra es `bestEntryUrl`: `entry_url` o, si la web externa no la mando, `landing_page` saneada. Los nombres de Meta salen de `lib/forms/meta-names.ts`: solo con `dashboards.ads.view`, y un error nunca tumba la tabla ni el CSV.
+- **Las columnas de la tabla de respuestas salen de `lib/forms/response-columns.ts`**, encima del catálogo común de `lib/attribution/columns.ts` (preguntas + atribución, con menú «Columnas»; lo elegido se guarda por tabla en `localStorage`, como diferencia con lo normal). La URL que se muestra es `bestEntryUrl`: `entry_url` o, si la web externa no la mandó, `landing_page` saneada.
 - **`record_contact_touch` cambio A PROPOSITO en la 00215** y solo para escribir `entry_url` (misma firma, mismo comportamiento): su huella ahora es `2f51ddbf060e31528b89ce7481b38e3d` (la vieja era `f364db1862cc0f90291ca14ef855a214`; la definicion completa esta en la cabecera de la migracion y `lib/contacts/record-touch-00215-diff.test.ts` fija el diff). `create_booking` NO se toco: la Agenda manda la URL dentro de `p_utm` y llega por `raw.utm`.
 - **El `embed.js` se regenera** cuando se toca `lib/attribution/` o `lib/embed/` (`npm run build:embed`, se commitea, tope 60 KB). El `attr` del embed admite hasta 4096 bytes.
 
@@ -1294,6 +1294,24 @@ node scripts/verify-ads-attribution.mjs    # catalogo, RLS, paridad SQL↔TS (29
 
 `verify-rls.mjs --despues-de-00143` y `verify-roles.mjs --despues-de-00136` son los que corresponden hoy. Mismas reglas que los demas: crean y limpian sus datos
 (prefijo `zz-test-`) y no se corren dos en simultaneo.
+
+# Vínculo con Meta: siempre por id (6/11/2026)
+
+Reuniones y respuestas muestran su atribución y su vínculo con campaña, conjunto y anuncio, y se pueden vincular a mano desde donde se las mira. Detalle en [docs/atribucion.md](docs/atribucion.md) («Vínculo con Meta: siempre por id»).
+
+## Lo que no se puede romper
+
+- **Nunca se vincula por un nombre suelto.** Dos campañas o anuncios pueden llamarse igual. Campaña y conjunto, solo por id. Un anuncio por nombre, solo si es único dentro del conjunto (o, sin conjunto, de la campaña) ya conocidos por id. Si el conjunto tiene un solo anuncio, ese (`adset_single_ad`), salvo que haya llegado un id de anuncio que no está en el catálogo. Gemelas `resolve_meta_match` y `resolveMetaMatch`, con `meta-match.cases.json`.
+- **Un toque sin ids cuya fuente no es de Meta y con UTMs de texto queda `none`**: no ensucia «Sin vincular». `utm_id` numérico cuenta como id de campaña (`raw.utm_id` en un formulario, `raw.utm.utm_id` en una reunión).
+- **El toque es la ÚNICA fuente del vínculo.** Ni `form_submissions` ni `bookings` tienen columnas de Meta; se unen por `dedupe_key` (`form:<id>`, `booking:<id>`, `lib/attribution/source-touches.ts`), con el cliente de servicio y solo para filas que la persona ya leyó con su sesión: quien atiende una reunión puede no ver el contacto.
+- **Una reunión sin vínculo propio muestra el último toque con vínculo del contacto anterior a ella**, aclarándolo, igual que `ads_crm_items`. Vincularla no cambia ese toque viejo: le crea el suyo (`linkBookingToMeta`).
+- **`rematch_meta_touches` nunca empeora un `matched`**, y sigue sin tocar `manual` ni `ignored`.
+- **Lo común vive en `lib/attribution` y `components/attribution`**, no en `lib/forms`: la plantilla de estudiantes no tiene Formularios y sí Agenda.
+- **Todo lo que la Agenda guarda de más va dentro de `bookings.utm`** (`bookingUtmPayload`): `create_booking` no cambió.
+
+## Migración
+
+`00299_meta_match_ids_only`: cambia a propósito la huella de `resolve_meta_match`. Se puede aplicar antes o después del código. Lo existente se vincula con el próximo sync o con `select public.rematch_meta_touches(<workspace>, '-infinity')`. **La próxima libre es la `00300`** (confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 

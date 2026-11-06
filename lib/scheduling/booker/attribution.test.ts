@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookingAttribution, fillFromRequestCookies, type BookingAttributionInput } from "./attribution";
+import { bookingUtmPayload, bookingAttribution, fillFromRequestCookies, type BookingAttributionInput } from "./attribution";
 import { encodeAttr } from "@/lib/attribution/embed-attr";
 import { encodeCookieValue } from "@/lib/attribution/browser";
 
@@ -82,5 +82,37 @@ describe("fillFromRequestCookies", () => {
   it("sin cookies, no cambia nada", () => {
     expect(fillFromRequestCookies({ a: "1" }, null)).toEqual({ a: "1" });
     expect(fillFromRequestCookies({ a: "1" }, "")).toEqual({ a: "1" });
+  });
+});
+
+describe("el embed de la Agenda con un anuncio (00299)", () => {
+  const attr = encodeAttr({ referrer_url: "https://l.facebook.com/", utm_source: "meta", ad_id: "123" });
+
+  it("guarda el referrer real, no la página que contiene la agenda", () => {
+    const out = bookingAttribution({
+      params: { utm_source: "meta", ad_id: "123" },
+      isEmbed: true,
+      referrer: "",
+      href: "https://app.test/calendario/ana/llamada?embed=1",
+      cookieHeader: "",
+      storedCookie: null,
+      hostPageUrl: "https://web.test/landing",
+      attrParam: attr,
+    });
+    expect(out.referrer_url).toBe("https://l.facebook.com/");
+    expect(out.ad_id).toBe("123");
+    expect(out.page_url).toBe("https://web.test/landing");
+  });
+});
+
+describe("bookingUtmPayload", () => {
+  it("suma la página de llegada y la del envío, saneadas, a lo que ya dejó pickUtm", () => {
+    const out = bookingUtmPayload({ utm_source: "meta" }, { page_url: "https://web.test/a?token=x" }, "https://web.test/a?utm_source=meta&token=x");
+    expect(out).toEqual({ utm_source: "meta", landing_page: "https://web.test/a?utm_source=meta", page_url: "https://web.test/a" });
+  });
+
+  it("sin páginas, lo mismo que entró", () => {
+    expect(bookingUtmPayload({ utm_source: "meta" }, {}, undefined)).toEqual({ utm_source: "meta" });
+    expect(bookingUtmPayload({}, { page_url: "javascript:alert(1)" }, "no es una url")).toEqual({});
   });
 });

@@ -105,7 +105,7 @@ export default async function ContactTouchesPage({
           {/* @plantilla-sin(formularios): Todavía no hay toques de este contacto. Se registran solos cuando escribe, comenta, hace clic en un link o agenda. */}
         </p>
       ) : (
-        <TouchTimelineList items={timeline.items} timeZone={timeZone} adHrefs={adHrefs} />
+        <TouchTimelineList items={timeline.items} timeZone={timeZone} adHrefs={adHrefs} canLinkMeta={ctx.can("settings.general")} />
       )}
       {timeline.pageCount > 1 && (
         <nav aria-label="Páginas" className="mt-4 flex items-center gap-3 text-sm">

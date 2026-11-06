@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { ChannelChip } from "@/components/shared/channel-chip";
 import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
+import { MetaMatchControl } from "@/components/attribution/meta-match-control";
 import type { TimelineItem } from "@/lib/contacts/touch-timeline";
 import { cn } from "@/lib/utils";
 
@@ -21,16 +22,19 @@ export function TouchTimelineList({
   items,
   timeZone,
   adHrefs,
+  canLinkMeta = false,
 }: {
   items: TimelineItem[];
   timeZone: string;
   /** `ad_id` -> link al detalle del anuncio. Solo trae los que quien mira puede ver (`dashboards.ads.view`). */
   adHrefs: Record<string, string>;
+  /** `settings.general`: vincular, ignorar o quitar el vinculo con Meta. */
+  canLinkMeta?: boolean;
 }) {
   return (
     <ol className="space-y-3">
       {items.map((item) => (
-        <TouchRow key={item.id} item={item} timeZone={timeZone} adHref={item.adId ? (adHrefs[item.adId] ?? null) : null} />
+        <TouchRow key={item.id} item={item} timeZone={timeZone} adHref={item.adId ? (adHrefs[item.adId] ?? null) : null} canLinkMeta={canLinkMeta} />
       ))}
     </ol>
   );
@@ -46,11 +50,11 @@ function formatWhen(iso: string, timeZone: string): string {
   }
 }
 
-function TouchRow({ item, timeZone, adHref }: { item: TimelineItem; timeZone: string; adHref: string | null }) {
+function TouchRow({ item, timeZone, adHref, canLinkMeta }: { item: TimelineItem; timeZone: string; adHref: string | null; canLinkMeta: boolean }) {
   const [open, setOpen] = useState(false);
   const { view } = item;
   const detailId = `touch-detail-${item.id}`;
-  const hasDetail = view.details.length > 0 || Boolean(view.entryUrl) || Boolean(view.matchNote);
+  const hasDetail = view.details.length > 0 || Boolean(view.entryUrl) || Boolean(view.matchNote) || canLinkMeta;
 
   return (
     <li className="rounded-lg border border-border p-3">
@@ -117,6 +121,7 @@ function TouchRow({ item, timeZone, adHref }: { item: TimelineItem; timeZone: st
           {open && (
             <div id={detailId} className="mt-1.5 space-y-2">
               {view.matchNote && <p className="text-[11px] text-muted-foreground/80">{view.matchNote}</p>}
+              <MetaMatchControl link={item.link} target={{ touchId: item.id }} canManage={canLinkMeta} actionsOnly />
               {view.details.length > 0 && (
                 <dl className="space-y-1 text-xs">
                   {view.details.map((d) => (

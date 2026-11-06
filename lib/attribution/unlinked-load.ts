@@ -7,6 +7,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { touchMetaIds } from "./meta-link";
+import { loadMetaNamesByIds } from "./meta-names";
 import {
   ambiguousKeys,
   buildUnlinkedRows,
@@ -20,17 +22,15 @@ import {
 
 type Db = SupabaseClient<Database>;
 
-type MatchStatus = "manual" | "ignored" | "unmatched";
-
 const COLUMNS =
-  "id, contact_id, occurred_at, source, medium, origin, campaign, content_label, term, ad_id, adset_id, campaign_id, fbclid, meta_match_status, meta_match_method, meta_match_reason, meta_ad_id, meta_adset_id, meta_campaign_id";
+  "id, contact_id, occurred_at, source, medium, origin, campaign, content_label, term, ad_id, adset_id, campaign_id, fbclid, meta_match_status, meta_match_method, meta_match_reason, meta_ad_id, meta_adset_id, meta_campaign_id, dedupe_key, raw";
 
 export interface UnlinkedPage {
   rows: UnlinkedRow[];
   /** Cuantos hay en esta vista (para paginar). */
   total: number;
-  /** Los contadores de las dos vistas. */
-  counts: { unmatched: number; manual: number };
+  /** Los contadores de las tres vistas. */
+  counts: { unmatched: number; noAd: number; manual: number };
   page: number;
   pageSize: number;
 }
@@ -41,31 +41,26 @@ export async function loadUnlinked(
 ): Promise<UnlinkedPage> {
   const now = params.now ?? new Date();
   const since = sinceFor(params.days, now);
-  const statuses: MatchStatus[] = params.view === "manuales" ? ["manual", "ignored"] : ["unmatched"];
   const from = (params.page - 1) * UNLINKED_PAGE_SIZE;
 
-  const countOf = async (list: MatchStatus[]) => {
-    const { count } = await supabase
-      .from("contact_touches")
-      .select("id", { count: "exact", head: true })
-      .eq("workspace_id", params.workspaceId)
-      .in("meta_match_status", list)
-      .gte("occurred_at", since);
-    return count ?? 0;
-  };
+  // «Hechos a mano» lleva `meta_match_by`: un `ignored` automatico (contenido organico) no lo hizo una persona.
+  const head = () =>
+    supabase.from("contact_touches").select("id", { count: "exact", head: true }).eq("workspace_id", params.workspaceId).gte("occurred_at", since);
 
-  const [unmatched, manual, pageResult] = await Promise.all([
-    countOf(["unmatched"]),
-    countOf(["manual", "ignored"]),
-    supabase
-      .from("contact_touches")
-      .select(COLUMNS)
-      .eq("workspace_id", params.workspaceId)
-      .in("meta_match_status", statuses)
-      .gte("occurred_at", since)
-      .order("occurred_at", { ascending: false })
-      .range(from, from + UNLINKED_PAGE_SIZE - 1),
+  let pageQuery = supabase.from("contact_touches").select(COLUMNS).eq("workspace_id", params.workspaceId).gte("occurred_at", since);
+  if (params.view === "manuales") pageQuery = pageQuery.in("meta_match_status", ["manual", "ignored"]).not("meta_match_by", "is", null);
+  else if (params.view === "sin-anuncio") pageQuery = pageQuery.eq("meta_match_status", "matched").is("meta_ad_id", null);
+  else pageQuery = pageQuery.eq("meta_match_status", "unmatched");
+
+  const [unmatchedRes, noAdRes, manualRes, pageResult] = await Promise.all([
+    head().eq("meta_match_status", "unmatched"),
+    head().eq("meta_match_status", "matched").is("meta_ad_id", null),
+    head().in("meta_match_status", ["manual", "ignored"]).not("meta_match_by", "is", null),
+    pageQuery.order("occurred_at", { ascending: false }).range(from, from + UNLINKED_PAGE_SIZE - 1),
   ]);
+  const unmatched = unmatchedRes.count ?? 0;
+  const noAd = noAdRes.count ?? 0;
+  const manual = manualRes.count ?? 0;
 
   const touches = (pageResult.data ?? []) as unknown as UnlinkedTouch[];
 
@@ -91,10 +86,13 @@ export async function loadUnlinked(
     for (const r of (data ?? []) as Array<{ name_key: string | null }>) if (r.name_key) counts.campaigns[r.name_key] = (counts.campaigns[r.name_key] ?? 0) + 1;
   }
 
+  // Con la sesion: sin permiso sobre el catalogo, la RLS no devuelve nada y se ven los ids.
+  const names = await loadMetaNamesByIds(supabase as unknown as SupabaseClient, params.workspaceId, touches.map(touchMetaIds));
+
   return {
-    rows: buildUnlinkedRows({ touches, contactNames, counts, timeZone: params.timeZone }),
-    total: params.view === "manuales" ? manual : unmatched,
-    counts: { unmatched, manual },
+    rows: buildUnlinkedRows({ touches, contactNames, counts, timeZone: params.timeZone, names }),
+    total: params.view === "manuales" ? manual : params.view === "sin-anuncio" ? noAd : unmatched,
+    counts: { unmatched, noAd, manual },
     page: params.page,
     pageSize: UNLINKED_PAGE_SIZE,
   };

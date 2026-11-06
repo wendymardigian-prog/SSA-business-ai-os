@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ambiguousKeys, buildUnlinkedRows, parseDays, parsePage, parseView, sinceFor, type UnlinkedTouch } from "./unlinked-view";
+import { touchSourceLink, ambiguousKeys, buildUnlinkedRows, parseDays, parsePage, parseView, sinceFor, type UnlinkedTouch } from "./unlinked-view";
 
 const touch = (over: Partial<UnlinkedTouch> = {}): UnlinkedTouch => ({
   id: "t-1", contact_id: "c-1", occurred_at: "2026-09-12T15:00:00Z", source: "facebook", medium: "paid_social", origin: "booking",
@@ -18,6 +18,7 @@ describe("parametros", () => {
   });
   it("vista y pagina", () => {
     expect(parseView("manuales")).toBe("manuales");
+    expect(parseView("sin-anuncio")).toBe("sin-anuncio");
     expect(parseView("x")).toBe("sin-vincular");
     expect(parsePage("3")).toBe(3);
     expect(parsePage("0")).toBe(1);
@@ -67,8 +68,24 @@ describe("buildUnlinkedRows", () => {
       ],
       contactNames: {},
     });
-    expect(manual).toMatchObject({ status: "manual", method: "a mano", chosen: { adId: "3002", adsetId: "2002", campaignId: "1002" }, reasons: [] });
-    expect(ignored).toMatchObject({ status: "ignored", chosen: null, reasons: [] });
+    expect(manual).toMatchObject({ status: "manual", method: "a mano", linked: "Campaña 1002 › Conjunto 2002 › Anuncio 3002", reasons: [] });
+    expect(ignored).toMatchObject({ status: "ignored", linked: null, reasons: [] });
+  });
+
+  it("con el catalogo dice los nombres, y uno sin anuncio queda para elegirlo", () => {
+    const [row] = buildUnlinkedRows({
+      touches: [touch({ id: "p", meta_match_status: "matched", meta_match_reason: null, meta_adset_id: "2002", meta_campaign_id: "1002", meta_ad_id: null })],
+      contactNames: {},
+      names: { campaigns: { "1002": "Noviembre" }, adsets: { "2002": "Caliente" }, ads: {} },
+    });
+    expect(row).toMatchObject({ status: "matched", linked: "Noviembre › Caliente" });
+  });
+
+  it("enlaza la respuesta o la reunion de origen", () => {
+    expect(touchSourceLink({ dedupe_key: "booking:abc", raw: null })).toEqual({ href: "/dashboard/agenda?agenda=abc", label: "Ver la reunión" });
+    expect(touchSourceLink({ dedupe_key: "form:abc", raw: { source_id: "f1" } })).toEqual({ href: "/dashboard/formularios/f1/respuestas/abc", label: "Ver la respuesta" });
+    expect(touchSourceLink({ dedupe_key: "form:abc", raw: {} })).toBeNull();
+    expect(touchSourceLink({ dedupe_key: "msg:1", raw: null })).toBeNull();
   });
 });
 

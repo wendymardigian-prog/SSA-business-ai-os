@@ -1,3 +1,7 @@
+import { createServiceClient } from "@/lib/supabase/server";
+import { metaLinkFromAttribution, metaLinkFromTouch, touchMetaIds, type MetaLink } from "@/lib/attribution/meta-link";
+import { EMPTY_META_NAMES, loadMetaNamesByIds, metaIdsFrom } from "@/lib/attribution/meta-names";
+import { formTouchKey, loadTouchesByKey } from "@/lib/attribution/source-touches";
 import { notFound } from "next/navigation";
 import { requirePermission, isAdminRole } from "@/lib/auth/guards";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -18,6 +22,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * RLS no la deja ver, es como si no existiera (404), y un Member nunca obtiene el
  * link de un archivo de una respuesta que no ve.
  */
+async function loadSubmissionLink(ctx: Awaited<ReturnType<typeof requirePermission>>, submissionId: string, attribution: Record<string, unknown>): Promise<MetaLink> {
+  const key = formTouchKey(submissionId);
+  const touch = (await loadTouchesByKey(await createServiceClient(), ctx.workspace.id, [key])).get(key);
+  const ids = touch ? touchMetaIds(touch) : metaIdsFrom(attribution);
+  const names = ctx.can("dashboards.ads.view") ? await loadMetaNamesByIds(ctx.supabase, ctx.workspace.id, [ids]) : EMPTY_META_NAMES;
+  return touch ? metaLinkFromTouch(touch, names) : metaLinkFromAttribution(attribution, names);
+}
+
 export default async function RespuestaPage({ params }: { params: Promise<{ id: string; submissionId: string }> }) {
   const ctx = await requirePermission("forms.view");
   const { id, submissionId } = await params;
@@ -101,6 +113,8 @@ export default async function RespuestaPage({ params }: { params: Promise<{ id: 
       fieldOrder={fieldsOf(version?.definition).map((f) => f.key)}
       contact={contactRes.data ? { id: contactRes.data.id, name: contactRes.data.display_name || contactRes.data.email || "Sin nombre" } : null}
       canManage={ctx.can("forms.manage")}
+      metaLink={await loadSubmissionLink(ctx, submission.id, (submission.attribution ?? {}) as Record<string, unknown>)}
+      canLinkMeta={ctx.can("settings.general")}
       showHistory={isAdminRole(ctx.role)}
       names={Object.fromEntries(members.map((m) => [m.userId, m.name]))}
       timeZone={timeZone}

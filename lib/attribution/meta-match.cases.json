@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo es el mismo para todos.",
+  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo es el mismo para todos. Regla de la 00299: siempre por id; por nombre solo un anuncio unico dentro del conjunto o la campaña conocidos por id.",
   "catalog": {
     "campaigns": [
       {
@@ -17,6 +17,10 @@
       {
         "campaignId": "1004",
         "name": "Retargeting"
+      },
+      {
+        "campaignId": "1005",
+        "name": "Duplicados"
       }
     ],
     "adsets": [
@@ -29,6 +33,16 @@
         "adsetId": "2002",
         "campaignId": "1002",
         "name": "Conjunto Caliente"
+      },
+      {
+        "adsetId": "2003",
+        "campaignId": "1005",
+        "name": "Conjunto A"
+      },
+      {
+        "adsetId": "2004",
+        "campaignId": "1005",
+        "name": "Conjunto B"
       }
     ],
     "ads": [
@@ -49,6 +63,24 @@
         "adsetId": "2001",
         "campaignId": "1001",
         "name": "Oferta Única"
+      },
+      {
+        "adId": "3004",
+        "adsetId": "2003",
+        "campaignId": "1005",
+        "name": "Banner"
+      },
+      {
+        "adId": "3005",
+        "adsetId": "2004",
+        "campaignId": "1005",
+        "name": "Banner"
+      },
+      {
+        "adId": "3006",
+        "adsetId": "2004",
+        "campaignId": "1005",
+        "name": "Banner"
       }
     ]
   },
@@ -154,7 +186,7 @@
       }
     },
     {
-      "name": "con utm_term igual a un id de conjunto: el conjunto (y su campaña)",
+      "name": "utm_term igual a un id de conjunto que tiene un solo anuncio: ese anuncio, su conjunto y su campaña",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -166,10 +198,10 @@
       },
       "expected": {
         "status": "matched",
-        "adId": null,
+        "adId": "3002",
         "adsetId": "2002",
         "campaignId": "1002",
-        "method": "utm_term_id",
+        "method": "adset_single_ad",
         "reason": null
       }
     },
@@ -194,11 +226,11 @@
       }
     },
     {
-      "name": "utm_content por nombre, codificado (%XX): Oferta Única",
+      "name": "utm_content por nombre dentro de la campaña, codificado (%XX): Oferta Única",
       "input": {
         "adId": null,
         "adsetId": null,
-        "campaignId": null,
+        "campaignId": "1001",
         "utmCampaign": null,
         "utmContent": "Oferta%20%C3%9Anica",
         "utmTerm": null,
@@ -209,16 +241,16 @@
         "adId": "3003",
         "adsetId": "2001",
         "campaignId": "1001",
-        "method": "utm_content_name",
+        "method": "utm_content_name_campaign",
         "reason": null
       }
     },
     {
-      "name": "utm_content por nombre con + y sin tildes",
+      "name": "utm_content por nombre dentro de la campaña, con + y sin tildes",
       "input": {
         "adId": null,
         "adsetId": null,
-        "campaignId": null,
+        "campaignId": "1001",
         "utmCampaign": null,
         "utmContent": "oferta+unica",
         "utmTerm": null,
@@ -229,7 +261,7 @@
         "adId": "3003",
         "adsetId": "2001",
         "campaignId": "1001",
-        "method": "utm_content_name",
+        "method": "utm_content_name_campaign",
         "reason": null
       }
     },
@@ -254,7 +286,7 @@
       }
     },
     {
-      "name": "dos anuncios homonimos y utm_campaign como nombre: el de esa campaña",
+      "name": "una campaña por nombre no sirve para buscar el anuncio: no se vincula",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -265,12 +297,12 @@
         "fbclid": null
       },
       "expected": {
-        "status": "matched",
-        "adId": "3002",
-        "adsetId": "2002",
-        "campaignId": "1002",
-        "method": "utm_content_name_campaign",
-        "reason": null
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "name_without_id"
       }
     },
     {
@@ -294,7 +326,7 @@
       }
     },
     {
-      "name": "dos anuncios homonimos y sin campaña: no se vincula el anuncio",
+      "name": "solo el nombre del anuncio, sin campaña ni conjunto por id: no se vincula",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -310,11 +342,11 @@
         "adsetId": null,
         "campaignId": null,
         "method": null,
-        "reason": "ambiguous_ad_name"
+        "reason": "name_without_id"
       }
     },
     {
-      "name": "homonimos con una campaña que no desempata: campaña vinculada, anuncio no, con aviso",
+      "name": "el nombre no esta en esa campaña: campaña vinculada, anuncio no",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -330,7 +362,7 @@
         "adsetId": null,
         "campaignId": "1003",
         "method": "utm_campaign_id",
-        "reason": "ambiguous_ad_name"
+        "reason": null
       }
     },
     {
@@ -434,7 +466,7 @@
       }
     },
     {
-      "name": "un nombre de campaña que no existe",
+      "name": "un nombre de campaña: nunca se busca",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -450,7 +482,7 @@
         "adsetId": null,
         "campaignId": null,
         "method": null,
-        "reason": "name_not_found"
+        "reason": "name_without_id"
       }
     },
     {
@@ -470,7 +502,7 @@
         "adsetId": null,
         "campaignId": null,
         "method": null,
-        "reason": "name_not_found"
+        "reason": "name_without_id"
       }
     },
     {
@@ -490,7 +522,7 @@
         "adsetId": null,
         "campaignId": null,
         "method": null,
-        "reason": "ambiguous_campaign_name"
+        "reason": "name_without_id"
       }
     },
     {
@@ -554,7 +586,7 @@
       }
     },
     {
-      "name": "nombre de campaña de una sola coincidencia",
+      "name": "un nombre de campaña unico tampoco alcanza: no se vincula",
       "input": {
         "adId": null,
         "adsetId": null,
@@ -565,16 +597,16 @@
         "fbclid": null
       },
       "expected": {
-        "status": "matched",
+        "status": "unmatched",
         "adId": null,
         "adsetId": null,
-        "campaignId": "1001",
-        "method": "utm_campaign_name",
-        "reason": null
+        "campaignId": null,
+        "method": null,
+        "reason": "name_without_id"
       }
     },
     {
-      "name": "campaña por nombre y un ad_id que no esta: se vincula la campaña y se avisa",
+      "name": "campaña por nombre y un ad_id que no esta: no se vincula",
       "input": {
         "adId": "999",
         "adsetId": null,
@@ -585,11 +617,11 @@
         "fbclid": null
       },
       "expected": {
-        "status": "matched",
+        "status": "unmatched",
         "adId": null,
         "adsetId": null,
-        "campaignId": "1001",
-        "method": "utm_campaign_name",
+        "campaignId": null,
+        "method": null,
         "reason": "id_not_in_catalog"
       }
     },
@@ -630,7 +662,167 @@
         "adsetId": null,
         "campaignId": null,
         "method": null,
-        "reason": "name_not_found"
+        "reason": "name_without_id"
+      }
+    },
+    {
+      "name": "nombre del anuncio repetido dentro de la campaña: campaña vinculada, anuncio no, con aviso",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1005",
+        "utmCampaign": null,
+        "utmContent": "Banner",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1005",
+        "method": "campaign_id",
+        "reason": "ambiguous_ad_name"
+      }
+    },
+    {
+      "name": "nombre unico dentro del conjunto, aunque se repita en la campaña",
+      "input": {
+        "adId": null,
+        "adsetId": "2003",
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "Banner",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3004",
+        "adsetId": "2003",
+        "campaignId": "1005",
+        "method": "utm_content_name_adset",
+        "reason": null
+      }
+    },
+    {
+      "name": "nombre repetido dentro del conjunto: conjunto vinculado, anuncio no, con aviso",
+      "input": {
+        "adId": null,
+        "adsetId": "2004",
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "Banner",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": "2004",
+        "campaignId": "1005",
+        "method": "adset_id",
+        "reason": "ambiguous_ad_name"
+      }
+    },
+    {
+      "name": "conjunto con un solo anuncio y utm_content con una etiqueta propia: ese anuncio",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "ad-n6-12veces",
+        "utmTerm": "2003",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3004",
+        "adsetId": "2003",
+        "campaignId": "1005",
+        "method": "adset_single_ad",
+        "reason": null
+      }
+    },
+    {
+      "name": "conjunto con varios anuncios y una etiqueta propia: solo el conjunto",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "ad-n6-12veces",
+        "utmTerm": "2001",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "utm_term_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "un ad_id que no esta en el catalogo no se reemplaza por el unico anuncio del conjunto",
+      "input": {
+        "adId": "999",
+        "adsetId": "2002",
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "method": "adset_id",
+        "reason": "id_not_in_catalog"
+      }
+    },
+    {
+      "name": "un utm_content que es un id desconocido no se reemplaza por el unico anuncio del conjunto",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "999999",
+        "utmTerm": "2002",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "method": "utm_term_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "el conjunto por id gana aunque el nombre de la campaña sea de otra",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "Retargeting",
+        "utmContent": "Video Testimonio",
+        "utmTerm": "2002",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3002",
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "method": "utm_content_name_adset",
+        "reason": null
       }
     }
   ]

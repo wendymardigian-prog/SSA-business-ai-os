@@ -7,16 +7,16 @@ import {
   EMPTY_COLUMN_PREFS,
   columnMenuGroups,
   parseColumnPrefs,
-  responseColumnsStorageKey,
   serializeColumnPrefs,
   showAllColumns,
   toggleColumn,
   visibleColumns,
-  type ResponseColumnDef,
+  type ColumnDef,
+  type ColumnGroup,
   type ResponseColumnPrefs,
-} from "@/lib/forms/response-columns";
+} from "@/lib/attribution/columns";
 
-const COLUMNS_EVENT = "form-responses:columns-changed";
+const COLUMNS_EVENT = "attribution:columns-changed";
 
 function subscribeColumns(onChange: () => void): () => void {
   window.addEventListener("storage", onChange);
@@ -28,11 +28,10 @@ function subscribeColumns(onChange: () => void): () => void {
 }
 
 /**
- * Qué columnas ve cada persona en cada formulario. Vive en `localStorage` (siempre en try/catch; sin poder leerlo, las
+ * Qué columnas ve cada persona en cada tabla. Vive en `localStorage` (siempre en try/catch; sin poder leerlo, las
  * normales). Con `useSyncExternalStore`, el servidor dibuja las normales y el navegador las de la persona.
  */
-export function useResponseColumnPrefs(formId: string, defs: readonly ResponseColumnDef[]) {
-  const storageKey = responseColumnsStorageKey(formId);
+export function useColumnPrefs<Row>(storageKey: string, defs: readonly ColumnDef<Row>[]) {
   const read = useCallback(() => {
     try {
       return window.localStorage.getItem(storageKey);
@@ -55,29 +54,31 @@ export function useResponseColumnPrefs(formId: string, defs: readonly ResponseCo
 
   return {
     visible,
-    toggle: (def: ResponseColumnDef) => save(toggleColumn(prefs, def)),
+    toggle: (def: ColumnDef<Row>) => save(toggleColumn(prefs, def)),
     showAll: () => save(showAllColumns(defs)),
     reset: () => save(EMPTY_COLUMN_PREFS),
   };
 }
 
 /** El selector de columnas: un buscador arriba (son muchas), agrupadas, con un checkbox por columna. */
-export function ResponseColumnsMenu({
+export function ColumnsMenu<Row>({
   defs,
+  groups: columnGroups,
   visible,
   onToggle,
   onShowAll,
   onReset,
 }: {
-  defs: readonly ResponseColumnDef[];
-  visible: readonly ResponseColumnDef[];
-  onToggle: (def: ResponseColumnDef) => void;
+  defs: readonly ColumnDef<Row>[];
+  groups: readonly ColumnGroup[];
+  visible: readonly ColumnDef<Row>[];
+  onToggle: (def: ColumnDef<Row>) => void;
   onShowAll: () => void;
   onReset: () => void;
 }) {
   const [query, setQuery] = useState("");
   const shown = new Set(visible.map((def) => def.key));
-  const groups = columnMenuGroups(defs, query);
+  const groups = columnMenuGroups(defs, query, columnGroups);
 
   return (
     <FilterMenu

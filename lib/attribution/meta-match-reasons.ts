@@ -53,8 +53,12 @@ export function describeMatchReason(code: string, ctx: ReasonContext = {}): stri
         ? `El nombre ${quote(name)} no coincide con ningún anuncio ni campaña del catálogo.`
         : "Lo que trae no coincide con ningún anuncio ni campaña del catálogo.";
     }
+    case "name_without_id":
+      return "Solo trae nombres o etiquetas, sin ningún id. Dos campañas o anuncios pueden llamarse igual, así que no se vincula por nombre: elegilo a mano.";
     case "fbclid_only":
       return "Solo trae el id de clic de Facebook: no alcanza para saber el anuncio.";
+    case "organic_content":
+      return "Es tráfico orgánico: no viene de un anuncio.";
     case "inconsistent_campaign":
       return "El anuncio es de otra campaña que la indicada: se usó la campaña del anuncio.";
     default:
@@ -82,7 +86,11 @@ export function describeMatchMethod(method: string | null | undefined): string |
     case "utm_content_name":
       return "por el nombre del anuncio";
     case "utm_content_name_campaign":
-      return "por el nombre del anuncio y su campaña";
+      return "por el nombre del anuncio, único dentro de su campaña";
+    case "utm_content_name_adset":
+      return "por el nombre del anuncio, único dentro de su conjunto";
+    case "adset_single_ad":
+      return "por el conjunto, que tiene un solo anuncio";
     case "adset_id":
       return "por el id del conjunto";
     case "utm_term_id":

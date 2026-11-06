@@ -261,18 +261,35 @@ El vínculo automático (`lib/meta/content-link.ts`) no cambió y **nunca pisa u
 
 ### Guia: parametros de URL para los anuncios
 
-Para que un anuncio quede vinculado, la URL de destino tiene que llevar (en el Ads Manager, «Parametros de URL»):
+Para que todo quede vinculado, la URL de destino tiene que llevar los ids (en el Ads Manager, «Parametros de URL»):
 
 ```
-utm_source=facebook&utm_medium=paid_social&utm_campaign={{campaign.id}}&utm_content={{ad.id}}&utm_term={{adset.id}}
+utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_id={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.name}}&ad_id={{ad.id}}
 ```
 
-`{{campaign.id}}`, `{{ad.id}}` y `{{adset.id}}` los reemplaza Meta por los ids; con ids el vinculo es exacto. Con nombres (`{{campaign.name}}`,
-`{{ad.name}}`) tambien funciona, pero un nombre repetido queda ambiguo y va a «Sin vincular».
-
-Si `utm_content` se usa para una etiqueta propia (`ad-n6-12veces`), el anuncio no queda identificado: sumar `&ad_id={{ad.id}}`. Es lo que llena «Anuncio de Meta» e «Id del anuncio» en la tabla de respuestas de un formulario.
+`{{campaign.id}}`, `{{adset.id}}` y `{{ad.id}}` los reemplaza Meta por los ids. **Sin ids no se vincula**: los nombres solos no alcanzan (ver la seccion siguiente).
 
 **El referrer** (`referrer_url`, «De dónde vino») es casi siempre solo un dominio (`instagram.com`, `m.facebook.com`): los navegadores y las apps no dejan ver la dirección completa de la página anterior, y eso no se puede mejorar desde el sistema.
+
+## Vínculo con Meta: siempre por id (6/11/2026)
+
+Dos campañas o dos anuncios pueden llamarse igual, así que un nombre solo no identifica a ninguno. La regla (`resolve_meta_match`, gemela `lib/attribution/meta-match.ts`, migración 00299):
+
+| Nivel | Cómo se encuentra |
+|---|---|
+| Campaña | `campaign_id`, `utm_id`, `utm_campaign` igual a un id, o la del conjunto o del anuncio. Nunca por nombre. |
+| Conjunto | `adset_id`, `utm_term` igual a un id, o el del anuncio. Nunca por nombre. |
+| Anuncio por id | `ad_id` o `utm_content` igual a un id. |
+| Anuncio por nombre | Solo si es único dentro del conjunto (o, sin conjunto, de la campaña) ya conocidos por id. |
+| Anuncio único | Si el conjunto, conocido por id, tiene un solo anuncio en el catálogo, ese. No aplica si llegó un id de anuncio que no está en el catálogo. Si se suma un anuncio a ese conjunto, los leads que entren antes de la próxima sincronización se atribuyen al anterior. |
+
+Sin ningún id queda «Sin vincular» con el motivo `name_without_id`. Un vínculo hecho por nombre con la regla vieja se conserva.
+
+**Qué no se revisa:** un toque sin ids cuya fuente no es de Meta (`meta`, `facebook`, `fb`, `instagram`, `ig`, `msg`, `an`, o la genérica `web`) y con UTMs de texto, como `utm_source=whatsapp&utm_campaign=grupo`, queda `none`. Un UTM numérico cuenta igual: puede ser el id de un contacto importado.
+
+**Dónde se ve y se corrige:** la tabla de respuestas, la lista de agendas (columnas de campaña, conjunto, anuncio y «Vínculo con Meta»), el detalle de una respuesta, el panel de una reunión y la ficha del contacto (primer toque, último toque y `/toques`). Desde ahí, con `settings.general`, se puede vincular, ignorar o quitar. La revisión en lote sigue en «Sin vincular» (Dashboards → Anuncios), con la vista nueva «Sin anuncio» y el link a la respuesta o reunión de origen. Los nombres piden `dashboards.ads.view`; sin ese permiso se ven los ids.
+
+**La Agenda guarda lo mismo que un formulario:** todas las claves de atribución, la URL de entrada, la página de llegada y la del envío, en `bookings.utm`. Un embed reenvía todas las claves y guarda el referrer real, no la página que lo contiene. Una reunión sin vínculo propio (a mano, por el agente o sin datos de Meta) muestra el último toque con vínculo del contacto anterior a ella, igual que la tabla Meta vs CRM. Vincularla le crea su propio toque (`booking:<id>`), con la fecha de la reunión, que puede pasar a ser el último toque del contacto.
 
 ## La URL de entrada completa (`entry_url`, octubre 2026)
 

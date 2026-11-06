@@ -6,7 +6,10 @@ import { loadEditorBar } from "@/lib/forms/editor-bar-load";
 import { ResponsesTable, type ResponseTableRow } from "@/components/forms/responses/responses-table";
 import { fieldsOf } from "@/lib/forms/server-ports";
 import { FORM_LIMITS } from "@/lib/forms/limits";
-import { EMPTY_META_NAMES, loadMetaNames, metaNamesFor } from "@/lib/forms/meta-names";
+import { createServiceClient } from "@/lib/supabase/server";
+import { metaLinkFromAttribution, metaLinkFromTouch, touchMetaIds } from "@/lib/attribution/meta-link";
+import { EMPTY_META_NAMES, loadMetaNamesByIds, metaIdsFrom } from "@/lib/attribution/meta-names";
+import { formTouchKey, loadTouchesByKey } from "@/lib/attribution/source-touches";
 import { flatAttribution } from "@/lib/forms/response-columns";
 import { parseResponseFilters, responseColumns, type ResponseRow } from "@/lib/forms/responses";
 import { applyResponseFilters } from "@/lib/forms/responses-query";
@@ -64,7 +67,17 @@ export default async function RespuestasPage({
   const byId = new Map((contacts ?? []).map((c) => [c.id, c]));
 
   const attributions = new Map(submissions.map((s) => [s.id, flatAttribution(s.attribution)]));
-  const metaNames = ctx.can("dashboards.ads.view") ? await loadMetaNames(supabase, workspace.id, [...attributions.values()]) : EMPTY_META_NAMES;
+  // El vinculo con Meta es el del toque de cada respuesta; sin toque (sin contacto), los ids que trajo su URL.
+  const touches = await loadTouchesByKey(await createServiceClient(), workspace.id, submissions.map((s) => formTouchKey(s.id)));
+  const metaIds = submissions.map((s) => {
+    const touch = touches.get(formTouchKey(s.id));
+    return touch ? touchMetaIds(touch) : metaIdsFrom(attributions.get(s.id));
+  });
+  const metaNames = ctx.can("dashboards.ads.view") ? await loadMetaNamesByIds(supabase, workspace.id, metaIds) : EMPTY_META_NAMES;
+  const metaLinkOf = (id: string) => {
+    const touch = touches.get(formTouchKey(id));
+    return touch ? metaLinkFromTouch(touch, metaNames) : metaLinkFromAttribution(attributions.get(id), metaNames);
+  };
 
   const rows: ResponseRow[] = submissions.map((s) => ({
     id: s.id,
@@ -89,7 +102,8 @@ export default async function RespuestasPage({
     score: r.score ?? null,
     npsCategory: r.nps_category ?? null,
     attribution: attributions.get(r.id) ?? {},
-    metaNames: metaNamesFor(attributions.get(r.id), metaNames),
+    metaNames: metaLinkOf(r.id).names,
+    metaStatus: metaLinkOf(r.id).statusLabel,
   }));
 
   return (
