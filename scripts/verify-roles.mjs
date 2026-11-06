@@ -382,7 +382,7 @@ try {
 
   if (TEAM_RLS) {
     console.log("\n— RLS de equipo: no podes dar lo que no tenes —");
-    const casos = JSON.parse(readFileSync(new URL("../lib/team/grant.cases.json", import.meta.url), "utf8")).cases;
+    const casos = JSON.parse(readFileSync(new globalThis.URL("../lib/team/grant.cases.json", import.meta.url), "utf8")).cases;
     const dueno2 = await makeUser("roles-owner-212");
     await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: dueno2.id, role: "owner" });
 
@@ -668,7 +668,7 @@ try {
   }
   if (CALL_AREAS) {
     console.log("\n— Grabaciones por área: no podés dar un área que no tenés (00301) —");
-    const casos = JSON.parse(readFileSync(new URL("../lib/auth/call-areas.cases.json", import.meta.url), "utf8"));
+    const casos = JSON.parse(readFileSync(new globalThis.URL("../lib/auth/call-areas.cases.json", import.meta.url), "utf8"));
     const res = (p) => (p && p.call_areas ? { ...p, call_areas: p.call_areas.map((k) => casos.ids[k]) } : p);
     const lit = (v) => (v === null ? "NULL::jsonb" : `'${JSON.stringify(v).replace(/'/g, "''")}'::jsonb`);
 
