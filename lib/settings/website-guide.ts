@@ -65,7 +65,13 @@ export function submitSnippet(appUrl: string, form: GuideForm): string {
 ${answers}
     },
     honeypot: "", // un campo invisible: si un bot lo llena, no se guarda nada
-    attribution: { utm_source, utm_medium, utm_campaign, fbp, fbc, meta_event_id },
+    // Guardalos cuando la persona LLEGA a la web: entry_url y landing_page = location.href, referrer_url = document.referrer.
+    attribution: {
+      entry_url, landing_page, referrer_url, page_url,
+      utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id,
+      campaign_id, adset_id, ad_id, placement,
+      fbclid, fbp, fbc, meta_event_id,
+    },
   }),
 });`;
 }
