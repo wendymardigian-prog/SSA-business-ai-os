@@ -25,7 +25,9 @@ export function ContactAvatar({
   className?: string;
 }) {
   const [broken, setBroken] = useState(false);
-  const initial = displayName?.[0]?.toUpperCase() ?? "?";
+  // Por caracter y no por posicion: `[0]` corta un emoji a la mitad, se ve "�" y el
+  // servidor y el navegador dibujan distinto (error de hidratacion).
+  const initial = Array.from(displayName ?? "")[0]?.toUpperCase() ?? "?";
   const sizeClass = size === "sm" ? "h-8 w-8 text-xs" : size === "lg" ? "h-16 w-16 text-xl" : "h-10 w-10 text-sm";
 
   if (!avatarUrl || broken) {
