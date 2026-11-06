@@ -39,14 +39,15 @@ export default async function CallsDashboardPage({
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const range = filter.from && filter.to ? { from: filter.from, to: filter.to } : resolvePeriod(filter.period, new Date(), timeZone);
 
-  // Los closers que se pueden elegir: quienes estan marcados como closer. Un id inventado en la URL se ignora.
-  const [members, { data: closerFlags }, service] = await Promise.all([
+  // Los closers que se pueden elegir: quienes grabaron alguna llamada que esta persona ve (la RLS decide). Un id inventado en la URL se ignora.
+  const [members, { data: recorded }, service] = await Promise.all([
     getWorkspaceMembers(workspace.id),
-    supabase.from("workspace_members").select("user_id").eq("workspace_id", workspace.id).eq("is_closer", true),
+    supabase.from("calls").select("recorded_by_user_id").eq("workspace_id", workspace.id).not("recorded_by_user_id", "is", null).is("archived_at", null).limit(5000),
     createServiceClient(),
   ]);
   const names = new Map(members.map((m) => [m.userId, m.name]));
-  const closers = (closerFlags ?? []).map((c) => ({ id: c.user_id, name: names.get(c.user_id) ?? "Sin nombre" })).sort((a, b) => a.name.localeCompare(b.name, "es"));
+  const recorderIds = [...new Set((recorded ?? []).map((c) => c.recorded_by_user_id as string))];
+  const closers = recorderIds.map((id) => ({ id, name: names.get(id) ?? "Sin nombre" })).sort((a, b) => a.name.localeCompare(b.name, "es"));
   const requested = typeof sp.closer === "string" && UUID.test(sp.closer) ? sp.closer : null;
   const closerId = requested && closers.some((c) => c.id === requested) ? requested : null;
 

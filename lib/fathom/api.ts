@@ -4,8 +4,8 @@
  * OAuth) `/users/me`.
  *
  * - Cada pedido cuesta del presupuesto de la corrida (`rate-budget.ts`).
- * - Pagina con `cursor` / `next_cursor`, pide solo lo nuevo con `created_after`
- *   y solo las llamadas de los closers con `recorded_by[]`.
+ * - Pagina con `cursor` / `next_cursor`, acota por fecha con `created_after` y
+ *   `created_before`, y pide solo lo que grabo quien conecto con `recorded_by[]`.
  * - Un 429 o un 5xx lanzan `FathomError` TEMPORAL (nunca matan la conexion); un
  *   401 lanza `permanent` con `status 401` para que la ingesta fuerce UNA
  *   renovacion; un 404 de transcripcion es una transcripcion vacia.
@@ -85,7 +85,9 @@ async function call(deps: ApiDeps, url: string, what: string): Promise<Response>
 export interface ListParams {
   /** Solo reuniones creadas despues de este instante (ISO). */
   createdAfter?: string | null;
-  /** Los correos de los closers: solo se piden sus grabaciones. */
+  /** Solo reuniones creadas antes de este instante (ISO). */
+  createdBefore?: string | null;
+  /** Los correos de quien conecto: solo se piden sus grabaciones. */
   recordedBy: string[];
   cursor?: string | null;
 }
@@ -98,6 +100,7 @@ export interface MeetingsPage {
 export async function listMeetings(deps: ApiDeps, params: ListParams): Promise<MeetingsPage> {
   const url = new URL(`${FATHOM_API_BASE}/meetings`);
   if (params.createdAfter) url.searchParams.set("created_after", params.createdAfter);
+  if (params.createdBefore) url.searchParams.set("created_before", params.createdBefore);
   for (const email of params.recordedBy) url.searchParams.append("recorded_by[]", email);
   if (params.cursor) url.searchParams.set("cursor", params.cursor);
 

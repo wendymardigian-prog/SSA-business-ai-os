@@ -8,13 +8,17 @@ import { storeSecret, SECRET_NAMES } from "@/lib/vault";
 import { revokeFathomConnection } from "@/lib/fathom/revoke";
 import { queueFathomSyncNow } from "@/lib/fathom/queue";
 import { validateFathomApp } from "@/lib/fathom/app-validation";
+import { loadRecorderCandidates } from "@/lib/fathom/ingest";
+import { resumeHistoryImport, startHistoryImport, stopHistoryImport } from "@/lib/fathom/history-import";
+import { validateRecorderEmails } from "@/lib/fathom/recorder-emails";
 
 /**
  * Server Actions de Fathom (F5, F6, F10).
  *
  * Reglas: el permiso se revalida ACA; el valor de un secreto jamas vuelve al
- * navegador ni se loguea; conectar o desconectar el propio Fathom lo hace
- * cualquier miembro, pero solo sobre SU conexion.
+ * navegador ni se loguea; usar el propio Fathom pide `calls.view` y siempre es
+ * sobre SU conexion, que sale de la sesion. Desconectarse lo puede cualquier
+ * miembro: quien perdio el permiso igual tiene que poder cortar su conexion.
  */
 
 export type FathomActionResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -91,20 +95,11 @@ const SYNC_NOW_LIMIT_PER_MINUTE = 1;
 
 /** "Sincronizar ahora": encola el mismo job de su conexion, sin esperar a los 10 minutos. */
 export async function syncFathomNow(): Promise<FathomActionResult<{ message: string }>> {
-  const ctx = await getMemberAction();
-  if (!ctx) return { ok: false, error: "Tenés que iniciar sesión" };
+  const ctx = await getPermissionAction("calls.view");
+  if (!ctx) return { ok: false, error: NO_CALLS_PERMISSION };
 
   const service = await createServiceClient();
-  const { data: connection } = await service
-    .from("oauth_connections")
-    .select("id, status")
-    .eq("workspace_id", ctx.workspace.id)
-    .eq("provider", "fathom")
-    .eq("user_id", ctx.user.id)
-    .in("status", ["active", "attention"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const connection = await myLiveConnection(service, ctx.workspace.id, ctx.user.id);
   if (!connection) return { ok: false, error: "Todavía no conectaste tu Fathom" };
 
   const now = new Date();
@@ -118,4 +113,127 @@ export async function syncFathomNow(): Promise<FathomActionResult<{ message: str
   if (!queued.queued && queued.reason === "already") return { ok: true, message: "Ya se está sincronizando" };
   if (!queued.queued) return { ok: false, error: "No pude pedir la sincronización. Probá de nuevo en un rato." };
   return { ok: true, message: "Listo: en un par de minutos entran las llamadas nuevas" };
+}
+
+const NO_CALLS_PERMISSION = "Tu rol no tiene permiso para ver grabaciones";
+
+type Service = Awaited<ReturnType<typeof createServiceClient>>;
+
+/** La conexion que sirve de esta persona: siempre la propia, por la sesion. */
+async function myLiveConnection(service: Service, workspaceId: string, userId: string) {
+  const { data } = await service
+    .from("oauth_connections")
+    .select("id, status")
+    .eq("workspace_id", workspaceId)
+    .eq("provider", "fathom")
+    .eq("user_id", userId)
+    .in("status", ["active", "attention"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data;
+}
+
+/**
+ * Los otros correos con los que esta persona graba en Fathom. Al sumar uno, la
+ * proxima consulta vuelve a mirar los ultimos 14 dias: si no, las llamadas que ya
+ * paso con ese correo no entrarian nunca.
+ */
+export async function saveMyFathomEmails(emails: string[]): Promise<FathomActionResult<{ emails: string[] }>> {
+  const ctx = await getPermissionAction("calls.view");
+  if (!ctx) return { ok: false, error: NO_CALLS_PERMISSION };
+
+  const service = await createServiceClient();
+  const candidates = await loadRecorderCandidates(service, ctx.workspace.id);
+  const me = candidates.find((c) => c.userId === ctx.user.id);
+  if (!me) return { ok: false, error: "No encontré tu lugar en el equipo" };
+
+  const checked = validateRecorderEmails(ctx.user.id, emails, candidates);
+  if (!checked.ok) return checked;
+
+  const { error } = await service
+    .from("workspace_members")
+    .update({ closer_emails: checked.emails })
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("user_id", ctx.user.id);
+  if (error) return { ok: false, error: "No pude guardar los correos. Probá de nuevo." };
+
+  const before = me.extraEmails;
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "workspace_member",
+    entityId: ctx.user.id,
+    action: "update",
+    changes: { closer_emails: { old: before, new: checked.emails } },
+    performedBy: ctx.user.id,
+  });
+
+  const added = checked.emails.some((e) => !before.includes(e));
+  if (added) {
+    const connection = await myLiveConnection(service, ctx.workspace.id, ctx.user.id);
+    if (connection) {
+      await service.from("oauth_connections").update({ sync_watermark: null, sync_cursor: null }).eq("id", connection.id);
+      await queueFathomSyncNow(service, connection.id);
+    }
+  }
+
+  revalidatePath(MI_FATHOM_PATH);
+  return { ok: true, emails: checked.emails };
+}
+
+const DAY_ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
+
+/** Arranca una importacion del historial: todo (`from` null) o desde esa fecha. */
+export async function startFathomHistoryImport(input: { from: string | null }): Promise<FathomActionResult> {
+  const ctx = await getPermissionAction("calls.view");
+  if (!ctx) return { ok: false, error: NO_CALLS_PERMISSION };
+  if (input.from !== null && !DAY_ISO.test(input.from)) return { ok: false, error: "La fecha no es válida" };
+
+  const service = await createServiceClient();
+  const connection = await myLiveConnection(service, ctx.workspace.id, ctx.user.id);
+  if (!connection) return { ok: false, error: "Todavía no conectaste tu Fathom" };
+
+  const result = await startHistoryImport({ supabase: service }, connection.id, input.from);
+  if (!result.ok) return result;
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "oauth_connection",
+    entityId: connection.id,
+    action: "update",
+    metadata: { provider: "fathom", kind: "history_import_started", from: input.from },
+    performedBy: ctx.user.id,
+  });
+  revalidatePath(MI_FATHOM_PATH);
+  return { ok: true };
+}
+
+/** Sigue una importacion incompleta o frenada desde donde quedo. */
+export async function resumeFathomHistoryImport(): Promise<FathomActionResult> {
+  const ctx = await getPermissionAction("calls.view");
+  if (!ctx) return { ok: false, error: NO_CALLS_PERMISSION };
+
+  const service = await createServiceClient();
+  const connection = await myLiveConnection(service, ctx.workspace.id, ctx.user.id);
+  if (!connection) return { ok: false, error: "Reconectá tu Fathom para seguir con la importación" };
+
+  const result = await resumeHistoryImport({ supabase: service }, connection.id);
+  revalidatePath(MI_FATHOM_PATH);
+  return result;
+}
+
+/** Frena la importacion en curso. Lo que ya entro queda. */
+export async function stopFathomHistoryImport(): Promise<FathomActionResult> {
+  const ctx = await getPermissionAction("calls.view");
+  if (!ctx) return { ok: false, error: NO_CALLS_PERMISSION };
+
+  const service = await createServiceClient();
+  const connection = await myLiveConnection(service, ctx.workspace.id, ctx.user.id);
+  if (!connection) return { ok: false, error: "No hay ninguna importación en curso" };
+
+  const result = await stopHistoryImport({ supabase: service }, connection.id);
+  revalidatePath(MI_FATHOM_PATH);
+  return result;
 }

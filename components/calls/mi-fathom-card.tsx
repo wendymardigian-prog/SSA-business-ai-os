@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Plug, RefreshCw, TriangleAlert, Unplug } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -18,7 +19,6 @@ const connectHref = "/api/oauth/fathom/start?redirect_to=/dashboard/llamadas/mi-
 const TONE: Record<FathomCardView["state"], string> = {
   missing_app: "border-border",
   error: "border-red-500/40",
-  not_closer: "border-amber-500/40",
   connected: "border-emerald-500/40",
   not_connected: "border-border",
 };
@@ -33,7 +33,7 @@ export function MiFathomCard({
   connectionId: string | null;
   /**
    * Dentro de otra pantalla (Integraciones > Mis conexiones): sin el envoltorio de pagina (ancho maximo, centrado y
-   * margenes), para alinearse con las demas tarjetas. Como pagina propia (Llamadas > Mi Fathom) queda como siempre.
+   * margenes), para alinearse con las demas tarjetas. Como pagina propia (Grabaciones > Mi Fathom) queda como siempre.
    */
   embedded?: boolean;
   /** Lo que dejo el retorno de Fathom: `?connected=1` o `?error=...`. */
@@ -68,14 +68,14 @@ export function MiFathomCard({
     });
   }
 
-  const Icon = view.state === "connected" ? CheckCircle2 : view.state === "error" || view.state === "not_closer" ? TriangleAlert : Plug;
-  const iconTone = view.state === "connected" ? "text-emerald-600 dark:text-emerald-400" : view.state === "error" ? "text-red-600 dark:text-red-400" : view.state === "not_closer" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
+  const Icon = view.state === "connected" ? CheckCircle2 : view.state === "error" ? TriangleAlert : Plug;
+  const iconTone = view.state === "connected" ? "text-emerald-600 dark:text-emerald-400" : view.state === "error" ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
 
   return (
     <div className={embedded ? "w-full" : "mx-auto w-full max-w-xl p-4 md:p-6"}>
       {flash?.kind === "connected" && (
         <p role="status" className="mb-4 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
-          Listo, conectaste tu Fathom. Las llamadas nuevas entran en unos minutos.
+          Listo, conectaste tu Fathom. Las llamadas de los últimos 14 días entran en unos minutos; las anteriores las podés importar abajo.
         </p>
       )}
       {flash?.kind === "error" && (
@@ -136,6 +136,11 @@ export function MiFathomCard({
           )}
         </div>
 
+        {embedded && view.connected && (
+          <Link href="/dashboard/llamadas/mi-fathom" className="mt-3 inline-block text-sm text-primary-ink underline-offset-2 hover:underline">
+            Importar historial y ver tus correos
+          </Link>
+        )}
         {message && <p role="status" className="mt-3 text-sm text-emerald-700 dark:text-emerald-300">{message}</p>}
         {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
       </section>

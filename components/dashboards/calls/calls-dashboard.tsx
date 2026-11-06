@@ -82,7 +82,7 @@ export function CallsDashboard({
 
         {!failed && empty && (
           <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            Todavía no hay llamadas analizadas en este período. Probá con uno más largo, o analizá llamadas desde <Link href="/dashboard/llamadas" className="underline underline-offset-2">Llamadas</Link>.
+            Todavía no hay llamadas analizadas en este período. Probá con uno más largo, o analizá llamadas desde <Link href="/dashboard/llamadas" className="underline underline-offset-2">Grabaciones</Link>.
           </p>
         )}
 

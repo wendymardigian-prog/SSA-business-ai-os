@@ -383,7 +383,7 @@ describe("caracterizacion: el menu (F68)", () => {
       // @plantilla-hasta(formularios)
       // @plantilla-desde(llamadas)
       // Llamadas (decision 152): el Member de sistema tiene calls.view.
-      "Llamadas",
+      "Grabaciones",
       // @plantilla-hasta(llamadas)
       // @plantilla-desde(formularios)
       // Reporte de fin de día (E10): no pide permiso, pide estar en la audiencia de un

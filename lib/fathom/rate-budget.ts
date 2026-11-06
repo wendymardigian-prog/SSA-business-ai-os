@@ -1,10 +1,12 @@
 /**
  * El presupuesto de pedidos a Fathom por corrida (F8).
  *
- * Fathom no publica su limite (prevxcrm y el alcance usan 10 por minuto), asi
- * que cada corrida de un job `fathom_sync` gasta como maximo 9 pedidos
- * (1 lista + 8 transcripciones, o varias listas) y se reencola a los 70
- * segundos si le quedo trabajo. Puro: lo cuenta el, no el cliente de red.
+ * Fathom publica 60 pedidos por minuto, y 30 para las transcripciones, que bajan
+ * a 5 cuando tiene mucha actividad. Cada corrida de un job `fathom_sync` o
+ * `fathom_history_import` gasta como maximo 9 pedidos (1 lista + 8
+ * transcripciones, o varias listas) y se reencola a los 70 segundos si le quedo
+ * trabajo: va holgado siempre, y si Fathom igual pide esperar se respeta su
+ * `Retry-After`. Puro: lo cuenta el, no el cliente de red.
  */
 
 export const REQUEST_BUDGET = 9;

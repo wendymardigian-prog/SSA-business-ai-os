@@ -31,27 +31,27 @@ const call = (provider: string, qs = "") =>
 
 describe("empezar una conexion como Member", () => {
   // @plantilla-desde(llamadas)
-  it("fathom la puede iniciar cualquier miembro, sin scheduling.use, a su nombre", async () => {
-    guards.getPermissionAction.mockResolvedValue(null); // sin ningun permiso
+  it("fathom la inicia quien tiene calls.view, sin scheduling.use, a su nombre", async () => {
+    guards.getPermissionAction.mockImplementation(async (key: string) => (key === "calls.view" ? memberCtx : null));
     startOAuth.mockResolvedValue({ ok: true, authorizeUrl: "https://fathom.video/external/v1/oauth2/authorize?x=1", nonce: "n" });
     const res = await call("fathom", "?login_hint=ana%40ejemplo.com");
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("fathom.video");
     expect(startOAuth.mock.calls[0][0]).toMatchObject({ userId: "member-1", workspaceId: "ws-1" });
     expect(startOAuth.mock.calls[0][0].adapter.provider).toBe("fathom");
-    expect(guards.getPermissionAction).not.toHaveBeenCalled();
+    expect(guards.getPermissionAction).toHaveBeenCalledWith("calls.view");
   });
   // @plantilla-hasta(llamadas)
 
   // @plantilla-desde(llamadas)
-  it("fathom sin sesion da 403", async () => {
-    guards.getMemberAction.mockResolvedValue(null);
+  it("fathom sin calls.view da 403", async () => {
+    guards.getPermissionAction.mockResolvedValue(null);
     expect((await call("fathom")).status).toBe(403);
     expect(startOAuth).not.toHaveBeenCalled();
   });
   // @plantilla-hasta(llamadas)
 
-  it("que fathom no pida permiso NO le abre la puerta a Google Calendar (no regresion)", async () => {
+  it("sin scheduling.use, Google Calendar da 403", async () => {
     guards.getPermissionAction.mockResolvedValue(null);
     expect((await call("google_calendar")).status).toBe(403);
     expect(guards.getMemberAction).not.toHaveBeenCalled();

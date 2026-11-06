@@ -122,7 +122,7 @@ describe("Agenda en el menu (F8)", () => {
     const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { inbox: true } }).map((i) => i.name);
     // Plano formularios-ui (D4): Recursos ya no es un item (se llega por Ajustes) y Ajustes pide su bandera,
     // que aca no se pasa: un viewer sin flags no lo ve.
-    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]); // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,tareas,formularios)
+    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]); // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,tareas,formularios)
     // @plantilla-sin(llamadas,ventas,finanzas,comisiones,tareas,formularios): expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Automatizaciones", "Agentes IA"]);
     // (cambio aprobado M9: «Finanzas» se suma al Member de sistema, que tiene commissions.view) // @plantilla-quitar(comisiones)
     // Sin ningun permiso (y sin banderas), no queda nada.
@@ -147,7 +147,7 @@ describe("Ventas en el menu (Etapa 5)", () => {
   it("va en el grupo Ventas, despues de Llamadas, y abre la lista sin engranaje", () => {
     expect(ventas).toMatchObject({ href: "/dashboard/ventas", group: "ventas", permissions: ["sales.view"] });
     const nombres = NAV_ITEMS.map((i) => i.name);
-    expect(nombres.indexOf("Ventas")).toBe(nombres.indexOf("Llamadas") + 1);
+    expect(nombres.indexOf("Ventas")).toBe(nombres.indexOf("Grabaciones") + 1);
   });
 
   it("se ve con sales.view y no sin el", () => {
@@ -162,19 +162,19 @@ describe("Ventas en el menu (Etapa 5)", () => {
 
 // @plantilla-desde(llamadas)
 describe("Llamadas en el menu", () => {
-  const llamadas = NAV_ITEMS.find((i) => i.name === "Llamadas");
+  const llamadas = NAV_ITEMS.find((i) => i.name === "Grabaciones");
 
   it("va debajo de Agenda, en Ventas, con el permiso calls.view", () => {
     expect(llamadas).toMatchObject({ href: "/dashboard/llamadas", icon: "PhoneCall", group: "ventas", permissions: ["calls.view"] });
     const nombres = NAV_ITEMS.map((i) => i.name);
-    expect(nombres.indexOf("Llamadas")).toBe(nombres.indexOf("Agenda") + 1);
+    expect(nombres.indexOf("Grabaciones")).toBe(nombres.indexOf("Agenda") + 1);
   });
 
   it("aparece con calls.view y a nadie mas", () => {
     const names = (keys: string[]) => visibleNavItems(NAV_ITEMS, { permissionKeys: keys }).map((i) => i.name);
-    expect(names(["calls.view"])).toContain("Llamadas");
-    expect(names(["calls.edit"])).not.toContain("Llamadas");
-    expect(names([])).not.toContain("Llamadas");
+    expect(names(["calls.view"])).toContain("Grabaciones");
+    expect(names(["calls.edit"])).not.toContain("Grabaciones");
+    expect(names([])).not.toContain("Grabaciones");
   });
 });
 // @plantilla-hasta(llamadas)
@@ -284,7 +284,7 @@ describe("grupos del menu (bloque N, N1)", () => {
       ["inicio", ["Dashboards", "Bandeja", "Mi reporte del día"]], // @plantilla-quitar(formularios)
       // @plantilla-sin(formularios): ["inicio", ["Dashboards", "Bandeja"]],
       ["adquisicion", ["Contenido", "Social", "Anuncios"]],
-      ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones)
+      ["ventas", ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones)
       // @plantilla-sin(llamadas,ventas,finanzas,comisiones): ["ventas", ["Contactos", "Agenda"]],
       ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)
       // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Agentes IA", "Ajustes"]],

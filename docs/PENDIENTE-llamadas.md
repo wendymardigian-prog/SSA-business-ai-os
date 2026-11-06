@@ -52,3 +52,13 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 - **`verify-knowledge.mjs` llama a Voyage de verdad** (embeddings, centavos del free tier): es el script de siempre y hace falta para su definición de listo. Se corrió dos veces en esta corrida (una vez para ver el fallo de antes y una al final). Corre contra el primer workspace, que tiene un documento real: por eso se corrigió el caso que fallaba.
 - **Verificación en vivo pendiente** (no se llamó a ningún proveedor real): un resumen con IA, la integración de la memoria contra un cierre de conversación real, la indexación con Voyage de una llamada, y un flujo real que dispare `call_analyzed`.
 - **Cuidado al probar a mano en producción:** "Resumir" y "Mandar a Conocimiento" encolan un job. Mientras el código de esta rama no esté desplegado, el runner de producción no conoce esos tipos y los marca fallidos.
+
+## Sacar la marca de closer e importar el historial (6/11/2026)
+
+- **Borrar `workspace_members.is_closer`.** Ya no se lee (la 00295 lo deja comentado). Se borra en una migración aparte, DESPUÉS de desplegar el código. `closer_emails` se queda: son los otros correos de la persona. Las etiquetas de `lib/audit-history.ts` se quedan para el historial viejo.
+- **Un clon con conexiones existentes:** quien había conectado sin la marca empieza a recibir sus llamadas al desplegar, y su primera consulta mira 14 días. En producción no hay ninguna conexión.
+- **La conexión de un admin ya no trae las llamadas de otros.** Antes, una conexión podía traer lo compartido por otros closers; ahora cada persona conecta la suya.
+- **Prueba real pendiente (lo más importante):** conectar una cuenta de Fathom e importar un rango chico. Confirma `recorded_by[]` con OAuth, la transcripción, el refresco del token y cuánto historial devuelve Fathom (su documentación no dice un límite de antigüedad). Todo se probó contra Fathom simulado.
+- **`/users/me` no aparece en la documentación de Fathom** (revisada el 6/11/2026). Si no contesta, la etiqueta queda "Cuenta de Fathom" y se usan el correo de la cuenta del sistema y los que cargue la persona.
+- **El primer ingreso de 14 días sigue disparando automatizaciones y análisis**, como siempre: no es la importación. Si molesta al conectar a alguien con mucho movimiento, se puede tratar igual que el historial.
+- **Sin aviso al terminar la importación.** Puede tardar horas; el avance se ve en Mi Fathom. Un aviso en la campana pide sumar un tipo y su evento en `lib/notifications/preferences.ts`.

@@ -136,7 +136,7 @@ retiraron en la 00249/00250.
 
 | Clave | Qué permite | Member |
 |---|---|---|
-| `calls.view` | Ver las llamadas | sí |
+| `calls.view` | Ver las grabaciones, conectar su propio Fathom e importar su historial | sí |
 | `calls.edit` | Editar las llamadas | — |
 | `calls.configure` | Configurar el análisis de llamadas | — |
 
@@ -275,7 +275,7 @@ Pantalla: **Ajustes → Equipo y roles**.
   «anulada» en el historial; no la borra.
 - **Historial**: aceptadas, anuladas y vencidas, agrupado y de a veinte.
 - **Aceptar** guarda `role` y `role_id`; si el rol personalizado ya no existe, la persona entra como Member de sistema.
-- **Cambiar rol y Closer** piden `team.manage`; **quitar a alguien** pide `team.remove` y es solo del Owner.
+- **Cambiar rol** pide `team.manage`; **quitar a alguien** pide `team.remove` y es solo del Owner.
 - Cada paso queda en el registro de auditoría (`invite_*`, `member_role_changed`, `member_removed`), sin emails ni links.
 
 ## Roles
@@ -340,7 +340,7 @@ estado de UN contacto es de `contacts.edit` (y que la persona vea el contacto). 
 ## Para quien toque el código
 
 - En el servidor: `requirePermission(key)` y `requireAnyPermission([...])` para páginas; `getPermissionAction(key)` y `getAnyPermissionAction([...])` para acciones;
-  `getMemberAction()` para lo que usa cualquier miembro (conectar el propio Fathom). `requireWorkspaceAdmin` y `getAdminContext` ya casi no se usan: lo que
+  `getMemberAction()` para lo que usa cualquier miembro (desconectar el propio Fathom, también si perdió el permiso). `requireWorkspaceAdmin` y `getAdminContext` ya casi no se usan: lo que
   quede es «ve todo» (alcance), no «puede hacer».
 - Lo que escribe `workspaces` va con el cliente de servicio **después** del guard de la clave (la política de `workspaces` sigue en Admin).
 - En la base: `has_permission(workspace_id, key)` (nunca NULL; el Member de sistema usa `member_permission_keys()`) y `permission_scope(workspace_id, module)`.

@@ -81,12 +81,11 @@ export default async function LlamadasPage({
 
   // Para los estados vacios y el aviso de "conecta tu Fathom".
   const service = await createServiceClient();
-  const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: me }, { data: outcomes }, { count: pendingCount }] = await Promise.all([
+  const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }] = await Promise.all([
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null),
     service.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "fathom").neq("status", "revoked"),
     listSecretNames(service, workspace.id),
     supabase.from("oauth_connections").select("id, status, account_label, last_synced_at, last_error, sync_last_error").eq("workspace_id", workspace.id).eq("provider", "fathom").eq("user_id", user.id),
-    supabase.from("workspace_members").select("is_closer").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(),
     supabase.from("calls").select("outcome").eq("workspace_id", workspace.id).not("outcome", "is", null).limit(1000),
     // Las pendientes de analisis que esta persona ve (la RLS decide), para "Analizar pendientes".
     ctx.can("calls.edit")
@@ -104,7 +103,6 @@ export default async function LlamadasPage({
   const hasApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
   const myConnection = pickConnection(mine ?? []);
   const hasLiveConnection = !!myConnection && (myConnection.status === "active" || myConnection.status === "attention");
-  const isCloser = me?.is_closer === true;
 
   return (
     <CallsList
@@ -127,7 +125,7 @@ export default async function LlamadasPage({
       workspaceHasConnections={(workspaceConnections ?? []).length > 0}
       hasApp={hasApp}
       hasLiveConnection={hasLiveConnection}
-      nudgeConnect={shouldNudgeToConnect({ isCloser, hasLiveConnection, hasApp })}
+      nudgeConnect={shouldNudgeToConnect({ hasLiveConnection, hasApp })}
     />
   );
 }

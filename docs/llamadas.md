@@ -1,6 +1,10 @@
-# Llamadas (Fathom + analizador de llamadas con IA)
+# Grabaciones de llamadas (Fathom + analizador de llamadas con IA)
 
-Cada closer conecta su Fathom y sus llamadas de venta entran solas: se vinculan
+En el menú se llama **Grabaciones** y en la barra de arriba **Grabaciones de
+llamadas** (desde el 6/11/2026). Por dentro sigue siendo `calls` y la dirección
+sigue siendo `/dashboard/llamadas`.
+
+Cada persona con `calls.view` conecta su Fathom y lo que grabó entra solo: se vincula
 al contacto y a la agenda, se clasifican, se analizan con la metodología del
 negocio (el SPSP), se pueden corregir sin perder lo que dijo la IA, y lo
 aprendido vuelve al negocio (dashboard, memoria del contacto, ideas de
@@ -40,7 +44,11 @@ Una sola tabla nueva: **`calls`**. Todo lo demás son columnas y funciones.
   (`last_synced_at`, `sync_watermark`, `sync_cursor`, `sync_last_error`) y el
   candado del refresh token (`claim_oauth_refresh`, `release_oauth_refresh`: el
   refresh token de Fathom es de UN SOLO USO).
-- `workspace_members` suma `is_closer` y `closer_emails`.
+- `workspace_members` suma `closer_emails` (los otros correos con los que la
+  persona graba en Fathom, los carga ella) e `is_closer` (**sin usar desde la
+  00295**: se borra en otra migración, después del deploy).
+- `oauth_connections.history_import` y `calls.imported_from_history` (00295): ver
+  "Importar el historial".
 - `audit_log` suma `actor_type` y `actor_label` (00144): quién hizo cada cosa,
   incluidos los procesos del sistema ("Análisis automático", "Fathom").
   `<Historial/>` (`components/historial/`) lo muestra y lo usan otros módulos.
@@ -55,7 +63,8 @@ Migraciones: **00144 a 00149**. Cada una tiene en su cabecera cómo volver atrá
 (`own` | `all`). El Member de sistema tiene `calls.view` con alcance `own`.
 
 - **Ver**: la lista, la ficha, el dashboard y la sección del contacto, según el
-  alcance.
+  alcance. También conectar el propio Fathom, cargar sus correos e importar su
+  historial. Desconectarse lo puede cualquier miembro, también si perdió el permiso.
 - **Editar**: cambiar el tipo, vincular, analizar, corregir, regenerar, resumir,
   mandar a Conocimiento, importar.
 - **Configurar**: reglas, tipos, rúbrica, categorías y contexto del negocio de
@@ -76,8 +85,42 @@ Migraciones: **00144 a 00149**. Cada una tiene en su cabecera cómo volver atrá
   encima de la espera propia).
 - Un `analyzing` de más de 15 minutos vuelve a `pending` (lo barre el mismo
   cron).
-- Detalle y límites no verificados (el límite real de Fathom, el endpoint de la
-  transcripción, `recorded_by[]` con OAuth): ver PENDIENTE-llamadas.
+- Detalle y límites no verificados (el endpoint de la transcripción,
+  `recorded_by[]` con OAuth): ver PENDIENTE-llamadas.
+
+### Qué entra
+
+Entra lo que **grabó quien conectó**, a su nombre, con estos correos
+(`recorderEmailsFor`, `lib/fathom/recorder-emails.ts`): el de su cuenta del sistema,
+el de su cuenta de Fathom si se conoce y los que cargó en Mi Fathom. Lo que le
+comparten en Fathom no entra: cada persona conecta lo suyo. Si su rol pierde
+`calls.view`, la consulta se saltea y vuelve a andar si lo recupera.
+
+`/users/me` **no está en la documentación de Fathom**, así que el correo de la cuenta
+puede no llegar nunca. Por eso Mi Fathom muestra los correos en uso: si alguien graba
+con otro y no lo carga, sus llamadas no entran. Al sumar un correo, la próxima consulta
+vuelve a mirar los últimos 14 días.
+
+## Importar el historial
+
+Al conectar solo entran los últimos 14 días. Lo anterior se trae desde **Mi Fathom →
+Importar historial**: todo, o desde una fecha. Un clic alcanza.
+
+- Corre en la cola, por partes (`fathom_history_import`, `lib/fathom/history-import.ts`;
+  las reglas son puras, en `history-state.ts`). Cada transcripción es un pedido aparte:
+  9 pedidos por vuelta cada 70 s, unas 400 llamadas por hora como máximo.
+- **Llega hasta la marca de agua** (`historyUpperBound`). Lo posterior lo cubre la
+  consulta de cada 10 minutos: si no, una llamada nueva quedaría marcada como historia y
+  no dispararía sus automatizaciones.
+- **Lo importado es historia** (`calls.imported_from_history`): `emitCallEvent` no emite
+  nada, ni aunque alguien la vincule o la analice después, y no se analiza sola (se
+  analiza con el botón). Se clasifica con el modo que tenga el negocio (gasta IA por
+  llamada y respeta los topes) y se vincula a contacto y agenda.
+- Una corrida a la vez por conexión. El avance se guarda condicionado a `run_id` + `step`,
+  así una vuelta vieja o repetida no avanza.
+- No lanza por un fallo de Fathom: 429 y 5xx esperan 1, 5 y 15 minutos (o el `Retry-After`,
+  si es mayor) y después queda incompleta con "Seguir desde donde quedó". Repetir no
+  duplica: la llamada es única por `external_id`.
 
 ## Clasificación y análisis (L2)
 

@@ -85,6 +85,27 @@ describe("runCallClassification", () => {
     expect(update.values).toMatchObject({ analysis_status: "pending", analysis_status_reason: "manual" });
   });
 
+  it("con el analisis automatico prendido, una llamada nueva se manda a analizar", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }, { mode: "now" }) });
+    const generate = generateOk({ tipo: "cierre", confianza: 0.95, motivo: "x" });
+    await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
+    expect(db.writesTo("scheduled_jobs").some((w) => (w.values as { type: string }).type === "call_analyze")).toBe(true);
+  });
+
+  it("una llamada importada del historial se clasifica, pero NO se analiza sola", async () => {
+    const db = setup({ call: { imported_from_history: true }, settings: settingsWith({ rules: [] }, { mode: "now" }) });
+    const generate = generateOk({ tipo: "cierre", confianza: 0.95, motivo: "x" });
+    await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ call_type: "cierre", analysis_status: "pending", analysis_status_reason: "manual" });
+    expect(db.writesTo("scheduled_jobs").some((w) => (w.values as { type: string }).type === "call_analyze")).toBe(false);
+  });
+
+  it("tampoco si una persona ya le habia puesto el tipo", async () => {
+    const db = setup({ call: { imported_from_history: true, call_type: "cierre", call_type_source: "human" }, settings: settingsWith({}, { mode: "now" }) });
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({}) }, "c1");
+    expect(db.writesTo("scheduled_jobs").some((w) => (w.values as { type: string }).type === "call_analyze")).toBe(false);
+  });
+
   it("una regla decide sin gastar IA", async () => {
     const db = setup({ call: { duration_seconds: 120 } }); // regla por defecto: menos de 10 min => no_show
     const generate = generateOk({ tipo: "cierre", confianza: 1, motivo: "x" });

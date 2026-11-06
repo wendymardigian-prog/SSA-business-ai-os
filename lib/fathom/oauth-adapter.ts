@@ -1,11 +1,10 @@
 /**
  * Fathom como proveedor del OAuth generico (F5).
  *
- * Cada closer conecta SU cuenta de Fathom con la app OAuth del negocio (Client
+ * Cada persona conecta SU cuenta de Fathom con la app OAuth del negocio (Client
  * ID y Secret en Vault, cargados en Integraciones). Es una conexion por
- * persona (`perUser`) y no pide permiso: cualquier miembro puede conectar la
- * suya (`anyMember`, decision 153). Que sus llamadas entren o no lo decide la
- * marca "es closer" de Equipo, no la conexion.
+ * persona (`perUser`) y la puede hacer quien tiene `calls.view`, el mismo permiso
+ * con el que ve Grabaciones. Entra lo que esa persona grabo.
  *
  * Portado de prevxcrm (`fathom-oauth.ts`): sin el `state` propio (se usa el
  * firmado de `lib/oauth/state.ts`) y sin `fetch` directo (todo recibe
@@ -158,7 +157,7 @@ export const fathomAdapter: OAuthAdapter = {
   provider: "fathom",
   label: "Fathom",
   perUser: true,
-  anyMember: true,
+  requiredPermission: "calls.view",
   scopes: [FATHOM_SCOPE],
   requiredScopes: [FATHOM_SCOPE],
   clientIdSecretName: SECRET_NAMES.fathomClientId,

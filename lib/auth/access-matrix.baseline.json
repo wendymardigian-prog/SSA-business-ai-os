@@ -1967,11 +1967,6 @@
       true,
       false
     ],
-    "lib/actions/team.ts#setMemberCloser": [
-      true,
-      true,
-      false
-    ],
     "lib/actions/user-preferences.ts#saveDetectedTimezone": [
       true,
       true,
@@ -2252,7 +2247,7 @@
         "Formularios",
         "Contactos",
         "Agenda",
-        "Llamadas",
+        "Grabaciones",
         "Ventas",
         "Automatizaciones",
         "Agentes IA",
@@ -2329,7 +2324,7 @@
         "Formularios",
         "Contactos",
         "Agenda",
-        "Llamadas",
+        "Grabaciones",
         "Ventas",
         "Automatizaciones",
         "Agentes IA",
@@ -2405,7 +2400,7 @@
         "Formularios",
         "Contactos",
         "Agenda",
-        "Llamadas",
+        "Grabaciones",
         "Ventas",
         "Automatizaciones",
         "Agentes IA",

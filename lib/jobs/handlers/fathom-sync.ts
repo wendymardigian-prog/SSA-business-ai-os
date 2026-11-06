@@ -33,7 +33,7 @@ export async function handleFathomSync(ctx: JobContext): Promise<void> {
     // Una llamada nueva que queda vinculada a un contacto dispara los flujos de `call_linked`.
     const result = await syncFathomConnection({ supabase: service, onLinked: async ({ callId }) => void (await emitCallEvent(service, "call_linked", callId)) }, connectionId);
     // Solo numeros y el resultado: nunca titulos, correos ni transcripciones.
-    console.log(`[fathom_sync] ${result.outcome} · nuevas ${result.ingested} · ya estaban ${result.skippedExisting} · de otros ${result.skippedNotCloser} · pedidos ${result.requests}`);
+    console.log(`[fathom_sync] ${result.outcome} · nuevas ${result.ingested} · ya estaban ${result.skippedExisting} · de otros ${result.skippedOtherRecorder} · pedidos ${result.requests}`);
   } catch (err) {
     console.error("[fathom_sync] fallo inesperado:", err instanceof Error ? err.message : "error");
     await service.from("oauth_connections").update({ sync_last_error: "Falló la consulta a Fathom" }).eq("id", connectionId);
