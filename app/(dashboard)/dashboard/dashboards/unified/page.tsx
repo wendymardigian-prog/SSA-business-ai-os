@@ -6,8 +6,7 @@ import { loadAdsInsights } from "@/lib/dashboards/ads-load";
 import { buildUnified, type OrganicSummary, type PaidSummary } from "@/lib/dashboards/unified";
 import { computeTotals, dailySeries } from "@/lib/dashboards/ads";
 import { followerGrowth, sumByBucket, total } from "@/lib/dashboards/content";
-import { isPeriodPreset, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
-import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
+import { readDashboardPeriod, resolveDashboardPeriod } from "@/lib/dashboards/period-filter";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 
@@ -28,12 +27,10 @@ export default async function UnifiedDashboardPage({
   const dashboards = availableDashboards((await getPermissionContext()).can);
   const sp = await searchParams;
 
-  const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
-  const period: PeriodPreset =
-    periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
+  const period = readDashboardPeriod(sp);
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
-  const range = resolvePeriod(period, new Date(), timeZone);
+  const range = resolveDashboardPeriod(period, new Date(), timeZone);
 
   const [{ data: configRow }, { data: accounts }, content] = await Promise.all([
     supabase

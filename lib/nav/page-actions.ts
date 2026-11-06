@@ -54,7 +54,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/anuncios": {
     title: "Anuncios",
-    tooltip: "Tus campañas, conjuntos y anuncios de Meta, con lo que dice Meta al lado de lo que pasó en el CRM.",
+    tooltip: "Tus campañas, conjuntos y anuncios de Meta, con lo que dice Meta al lado de lo que pasó en el CRM. Cuenta lo que pasó en el período elegido, no cuándo se publicó cada campaña.",
   },
   "/dashboard/dashboards/agenda": {
     title: "Dashboards",

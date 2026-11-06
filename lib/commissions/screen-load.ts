@@ -14,7 +14,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { financeContextOf } from "@/lib/finance/context";
 import { expenseStatusLabel } from "@/lib/finance/expense-status";
-import { fetchAllPages } from "@/lib/finance/paginate";
+import { fetchAllPages } from "@/lib/shared/paginate";
 import { monthStart } from "@/lib/finance/dates";
 import { toCents } from "@/lib/shared/money";
 import { FINANCING_TYPE_LABELS, type FinancingType } from "@/lib/sales/labels";

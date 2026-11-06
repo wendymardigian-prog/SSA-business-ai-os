@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
+import { applyPeriodToParams, type PeriodSelection } from "@/lib/dashboards/period-filter";
 
 /**
  * Cambiar el periodo o la cuenta y actualizar, en el dashboard y en los
@@ -15,15 +16,20 @@ export function useAdsNavigation() {
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
-  function navigate(params: { cuenta?: string; periodo?: string }) {
+  function navigate(params: { cuenta?: string }) {
     const next = new URLSearchParams(searchParams.toString());
     for (const [key, value] of Object.entries(params)) if (value) next.set(key, value);
     startTransition(() => router.push(`${pathname}?${next.toString()}`));
+  }
+
+  function applyPeriod(selection: PeriodSelection) {
+    const query = applyPeriodToParams(new URLSearchParams(searchParams.toString()), selection).toString();
+    startTransition(() => router.push(query ? `${pathname}?${query}` : pathname));
   }
 
   function refresh() {
     startTransition(() => router.refresh());
   }
 
-  return { pending, navigate, refresh };
+  return { pending, navigate, applyPeriod, refresh };
 }

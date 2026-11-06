@@ -14,7 +14,7 @@ import {
   type DetailLevel,
   type DetailView,
 } from "@/lib/dashboards/ads-detail";
-import type { PeriodPreset } from "@/lib/dashboards/period";
+import { periodQuery, type PeriodFilter } from "@/lib/dashboards/period-filter";
 import type { Rankings } from "@/lib/dashboards/ads-view";
 import type { BreakdownRow } from "@/lib/meta/live";
 import { AudienceCard, HourlyCard } from "./ads/audience-card";
@@ -72,7 +72,7 @@ export interface AdsDetailViewProps {
   rankings: Rankings | null;
   adAccountId: string;
   currency: string | null;
-  period: PeriodPreset;
+  period: PeriodFilter;
   days: number;
   syncedLabel: string | null;
   reach: { adset: Record<string, number> | null; ad: Record<string, number> | null };
@@ -119,7 +119,7 @@ export function AdsDetailView({
   canLinkContent = false,
 }: AdsDetailViewProps) {
   const router = useRouter();
-  const { pending, navigate, refresh } = useAdsNavigation();
+  const { pending, navigate, applyPeriod, refresh } = useAdsNavigation();
 
   const crumbs = useMemo(
     () =>
@@ -152,7 +152,7 @@ export function AdsDetailView({
 
   // A donde vuelve la flecha: la ultima miga que es un link.
   const parent = [...crumbs].reverse().find((c) => c.href);
-  const parentHref = parent?.href ?? `/dashboard/dashboards/ads?cuenta=${adAccountId}&periodo=${period}`;
+  const parentHref = parent?.href ?? `/dashboard/dashboards/ads?${periodQuery(period, { cuenta: adAccountId })}`;
   const parentLabel = parent?.label ?? "Meta Ads";
 
   const budget = budgetProgress({
@@ -221,7 +221,7 @@ export function AdsDetailView({
             )}
           </>
         }
-        filters={<HeaderFilters accounts={[]} adAccountId={adAccountId} period={period} onChange={navigate} />}
+        filters={<HeaderFilters accounts={[]} adAccountId={adAccountId} period={period} onChange={navigate} onApplyPeriod={applyPeriod} />}
         right={
           <div className="flex items-center gap-2">
             <RefreshButton refreshing={pending} onRefresh={refresh} />
@@ -283,7 +283,7 @@ export function AdsDetailView({
               aria-label="Otro anuncio de la campaña"
               value={detail.objectId}
               onChange={(e) =>
-                router.push(`/dashboard/dashboards/ads/ads/${e.target.value}?cuenta=${adAccountId}&periodo=${period}`)
+                router.push(`/dashboard/dashboards/ads/ads/${e.target.value}?${periodQuery(period, { cuenta: adAccountId })}`)
               }
               className="h-8 min-w-0 max-w-full rounded-lg border border-input bg-background px-2 text-xs text-foreground"
             >

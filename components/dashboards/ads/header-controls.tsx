@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Bot, CheckCircle2, AlertCircle, RefreshCw, Settings } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
 import { Tip } from "@/components/ui/tooltip";
-import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
+import type { PeriodFilter, PeriodSelection } from "@/lib/dashboards/period-filter";
+import { DashboardPeriodControl } from "../dashboard-period-control";
 import { syncMetaAdsNow } from "@/lib/actions/meta-ads-sync";
 
 /**
@@ -37,11 +38,13 @@ export function HeaderFilters({
   adAccountId,
   period,
   onChange,
+  onApplyPeriod,
 }: {
   accounts: Array<{ id: string; name: string | null }>;
   adAccountId: string;
-  period: PeriodPreset;
-  onChange: (params: { cuenta?: string; periodo?: string }) => void;
+  period: PeriodFilter;
+  onChange: (params: { cuenta?: string }) => void;
+  onApplyPeriod: (selection: PeriodSelection) => void;
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -59,13 +62,7 @@ export function HeaderFilters({
           ))}
         </select>
       )}
-      <select aria-label="Periodo" value={period} onChange={(e) => onChange({ periodo: e.target.value })} className={SELECT}>
-        {PERIOD_PRESETS.map((preset) => (
-          <option key={preset} value={preset}>
-            {PERIOD_LABELS[preset]}
-          </option>
-        ))}
-      </select>
+      <DashboardPeriodControl period={period} onApply={onApplyPeriod} />
     </div>
   );
 }

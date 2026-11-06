@@ -12,7 +12,8 @@ import { GroupTable } from "./group-table";
 import { PostsTable, toRows } from "./posts-table";
 import { PostAnalysisPanel } from "./post-analysis-panel";
 import { refreshMetricsNow } from "@/lib/actions/metrics";
-import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
+import type { PeriodFilter } from "@/lib/dashboards/period-filter";
+import { DashboardPeriodControl } from "./dashboard-period-control";
 import { platformLabel } from "@/lib/platforms";
 import { FUNNEL_STAGES } from "@/lib/content/classification";
 import { DEFAULT_GROUP, GROUP_PARAM, selectedFor, withParam } from "@/lib/dashboards/content-params";
@@ -64,7 +65,7 @@ export interface ContentDashboardProps {
   /** El caption y la miniatura de cada publicacion, para la tabla. */
   postDetails: Array<[string, { caption: string | null; thumbnailUrl: string | null }]>;
   connectedPlatforms: string[];
-  period: PeriodPreset;
+  period: PeriodFilter;
   platform: string | null;
   canRefresh: boolean;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
@@ -254,7 +255,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
       <PageHeader
         route="/dashboard/dashboards/content"
         left={<DashboardSwitcher options={props.dashboards} />}
-        right={
+        filters={
           <div className="flex items-center gap-2">
             <select
               aria-label="Red"
@@ -269,34 +270,25 @@ export function ContentDashboard(props: ContentDashboardProps) {
                 </option>
               ))}
             </select>
-            <select
-              aria-label="Periodo"
-              value={props.period}
-              onChange={(e) => setParam("periodo", e.target.value)}
-              className="rounded-md border border-input bg-background px-2 py-1 text-sm"
-            >
-              {PERIOD_PRESETS.map((preset) => (
-                <option key={preset} value={preset}>
-                  {PERIOD_LABELS[preset]}
-                </option>
-              ))}
-            </select>
-            {props.canRefresh && (
-              <button
-                type="button"
-                onClick={refresh}
-                disabled={pending}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs disabled:opacity-60"
-              >
-                {pending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : (
-                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                )}
-                Actualizar ahora
-              </button>
-            )}
+            <DashboardPeriodControl period={props.period} />
           </div>
+        }
+        right={
+          props.canRefresh ? (
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={pending}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs disabled:opacity-60"
+            >
+              {pending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+              Actualizar ahora
+            </button>
+          ) : undefined
         }
       />
 

@@ -7,7 +7,8 @@ import type { DashboardOption } from "@/lib/dashboards/available";
 import { DualAxisChart, type ChartSeries } from "./charts";
 import { count, money } from "@/lib/dashboards/ads";
 import { comparison, type UnifiedView } from "@/lib/dashboards/unified";
-import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
+import type { PeriodFilter } from "@/lib/dashboards/period-filter";
+import { DashboardPeriodControl } from "./dashboard-period-control";
 
 /**
  * El dashboard unificado (F59).
@@ -23,7 +24,7 @@ export function UnifiedDashboard({
   dashboards,
 }: {
   view: UnifiedView;
-  period: PeriodPreset;
+  period: PeriodFilter;
   currency: string | null;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
   dashboards: DashboardOption[];
@@ -59,24 +60,7 @@ export function UnifiedDashboard({
       <PageHeader
         route="/dashboard/dashboards/unified"
         left={<DashboardSwitcher options={dashboards} />}
-        right={
-          <select
-            aria-label="Periodo"
-            value={period}
-            onChange={(e) => {
-              const url = new URL(window.location.href);
-              url.searchParams.set("periodo", e.target.value);
-              window.location.href = url.toString();
-            }}
-            className="rounded-md border border-input bg-background px-2 py-1 text-sm"
-          >
-            {PERIOD_PRESETS.map((preset) => (
-              <option key={preset} value={preset}>
-                {PERIOD_LABELS[preset]}
-              </option>
-            ))}
-          </select>
-        }
+        filters={<DashboardPeriodControl period={period} />}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">

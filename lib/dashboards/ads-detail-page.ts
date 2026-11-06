@@ -8,8 +8,8 @@
 
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/guards";
-import { previousPeriod, isPeriodPreset, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
-import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
+import { previousPeriod } from "@/lib/dashboards/period";
+import { readDashboardPeriod, resolveDashboardPeriod, type PeriodFilter } from "@/lib/dashboards/period-filter";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
 import { getMetaToken } from "@/lib/meta/token";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -43,7 +43,7 @@ export interface DetailPageData {
   rankings: Rankings | null;
   adAccountId: string;
   currency: string | null;
-  period: PeriodPreset;
+  period: PeriodFilter;
   days: number;
   /** "hoy 14:32": la ultima escritura del sync. */
   syncedLabel: string | null;
@@ -75,18 +75,23 @@ export interface DetailPageData {
   canLinkContent: boolean;
 }
 
+/** El objeto existe en esta cuenta, pero no tuvo datos en el rango elegido. */
+export interface EmptyDetailPageData {
+  empty: true;
+  adAccountId: string;
+  period: PeriodFilter;
+}
+
 export async function loadDetailPage(params: {
   level: DetailLevel;
   objectId: string;
   searchParams: Record<string, string | string[] | undefined>;
-}): Promise<DetailPageData> {
+}): Promise<DetailPageData | EmptyDetailPageData> {
   // El permiso, no el cargo (F32).
   const { workspace, supabase, can } = await requirePermission("dashboards.ads.view");
   const sp = params.searchParams;
 
-  const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
-  const period: PeriodPreset =
-    periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
+  const period = readDashboardPeriod(sp);
 
   // Las cuentas estan en `integration_configs` (solo la lee un Admin): con el permiso de la pantalla se leen con el
   // cliente de servicio, filtradas por el workspace de la sesion.
@@ -110,7 +115,7 @@ export async function loadDetailPage(params: {
 
   const now = new Date();
   const timeZone = await resolveViewerTimezone(workspace.timezone);
-  const range = resolvePeriod(period, now, timeZone);
+  const range = resolveDashboardPeriod(period, now, timeZone);
   const before = previousPeriod(range, now);
   // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
   // servidor. El workspace sale del guard de Admin, no del pedido.
@@ -153,9 +158,20 @@ export async function loadDetailPage(params: {
     uniqueReach: reachNow?.ok ? reachNow.data.reach : null,
   });
 
-  // Sin filas propias no hay nada que mostrar: el objeto no tuvo actividad
-  // en este periodo, o es de otra cuenta.
-  if (!detail) notFound();
+  // Sin filas propias en el rango: si el objeto existe en esta cuenta, la pantalla lo dice y deja elegir otro rango
+  // (con un rango a mano pasa seguido). Si no tiene ninguna fila en ninguna fecha, no es de esta cuenta.
+  if (!detail) {
+    const { data: known } = await supabase
+      .from("meta_ads_insights_daily")
+      .select("object_id")
+      .eq("workspace_id", workspace.id)
+      .eq("ad_account_id", adAccountId)
+      .eq("level", level)
+      .eq("object_id", objectId)
+      .limit(1);
+    if (!known?.length) notFound();
+    return { empty: true, adAccountId, period };
+  }
 
   const previousOwn = ownRows(previousRows, { level, objectId });
   let previousTotals: AdsTotals | null =

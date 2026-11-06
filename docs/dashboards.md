@@ -387,6 +387,10 @@ lectura.
 partnership. Se dice en pantalla; no es un error que alguien pueda arreglar
 reconectando.
 
+## El selector de fechas (6/11/2026)
+
+Todos los dashboards usan `PeriodPopover`: atajos y un calendario de dos meses en la zona de quien mira. Meta Ads, sus detalles, Anuncios, Contenido y Unificado lo usan por `DashboardPeriodControl` y leen el período con `lib/dashboards/period-filter.ts`: `range` es el atajo, `from` y `to` el rango a medida (el rango gana). `periodo` es el nombre viejo: se sigue leyendo para no romper links guardados, y ya no se escribe. Los links entre pantallas de anuncios conservan el rango con `periodQuery`. Un detalle sin datos en el rango elegido muestra «Sin actividad en este período» en vez de un 404, y sigue siendo 404 si el objeto no es de esa cuenta.
+
 ## La pantalla Anuncios (menú → Adquisición)
 
 `/dashboard/anuncios` muestra la tabla «Meta vs CRM» sin el resto del dashboard: las pestañas Campañas, AdSets y Anuncios, con los filtros de cuenta y período. Pide el mismo permiso (`dashboards.ads.view`), y los números salen de la misma consulta que el dashboard (`loadCrmForRows`). La tabla sigue también en el dashboard de Meta Ads. Un clic en una fila abre el detalle de siempre, que cuelga de Dashboards. Los datos se cargan en `lib/dashboards/ads-table-page.ts`: de lo que se pide en vivo a Meta, esta pantalla solo necesita el alcance único de la cuenta, para el total.
@@ -397,14 +401,24 @@ Cada pestaña del desglose (Campañas, AdSets, Anuncios) cruza lo que dice **Met
 ventas, revenue y cash). Las cuentas estan en `lib/dashboards/ads-crm.ts` (puras), las columnas y sus tooltips en `ads-crm-columns.ts`, el selector
 guardado en `ads-columns.ts`, el CSV en `ads-crm-csv.ts`, y la carga en `ads-crm-load.ts`.
 
-- **Los datos del CRM** salen de `public.ads_crm_metrics(nivel, desde, hasta, cuenta, workspace)`, **SECURITY INVOKER**: la RLS de quien mira decide
+- **Los datos del CRM** salen de `public.ads_crm_metrics_v2(nivel, desde, hasta, cuenta, workspace)`, **SECURITY INVOKER**: la RLS de quien mira decide
   que contactos, toques, agendas y ventas cuenta (un Member con alcance propio ve solo lo suyo y la pantalla lo dice). Las fechas se interpretan en la zona
-  del workspace. Definiciones (alcance v9, §4.3): leads 1er toque (por fecha de creacion del contacto), leads totales (por fecha del toque, no aditivo),
-  agendas (por fecha de creacion, **sin las liberadas**, con las canceladas normales; la que no trae toque propio hereda el ultimo toque con anuncio
-  anterior), asistidas (`status_group = 'outcome'`), ventas (no `cancelled` ni `refunded`, por `sale_date`), revenue (centavos USD), cash (pagos cobrados
-  menos reembolsos, por `paid_on`).
-- **Tres grupos con encabezado de color**: Meta, Meta vs CRM (Leads Meta · Leads CRM · Agendas Meta · Agendas CRM) y CRM (Leads 1er toque · Leads totales ·
-  Agendas · Asistidas · Lead → Agenda · CPL real · Costo por agenda · Ventas · Revenue · Cash · ROAS · ROAS cash · CAC · Costo por cierre).
+  del workspace.
+- **Que cuenta el filtro de fechas.** Nunca filtra por la fecha de publicacion de la campaña: una campaña aparece si tuvo datos de Meta o del CRM en el
+  rango. Cada columna mira su propia fecha:
+
+  | Columna | Que decide si entra en el rango |
+  |---|---|
+  | Gasto, impresiones, clics, leads de Meta | El dia de entrega del anuncio (`date`) |
+  | Leads nuevos | El contacto se creo en el rango y su primer toque es de ese anuncio |
+  | Leads totales | Tuvo un toque de ese anuncio en el rango (una persona cuenta una vez por anuncio; el Total, una vez) |
+  | Agendas | La reunion se agendo en el rango (`created_at`, no la fecha de la reunion), sin las liberadas y con las canceladas. La que no trae toque propio hereda el ultimo toque con anuncio anterior |
+  | Asistidas | Las mismas agendas, con `status_group = 'outcome'` |
+  | Ventas y Revenue | La fecha de la venta (`sale_date`) esta en el rango, aunque el lead haya entrado antes. Sin `cancelled` ni `refunded`. Revenue en centavos USD |
+  | Cash | El pago se cobro en el rango (`paid_on`), aunque la venta sea anterior. Pagos cobrados menos reembolsos |
+
+  Por eso el ROAS cruza el gasto y las ventas del mismo rango, no los de una misma cohorte: una venta de este mes puede venir de un gasto del mes pasado.
+- **Grupos con encabezado de color**: Informacion, Meta, Meta vs CRM y CRM. Las columnas salen del catalogo `lib/dashboards/ads-crm-columns.ts`.
 - **Una division por cero es «—», nunca 0.** La fila de Total suma lo sumable y calcula los cocientes **sobre los totales**. Un objeto que solo tiene CRM
   (sin gasto en el periodo) aparece con el gasto en «—».
 - **Nombre y estado salen del catalogo** de Meta (`meta_*`), no de la fila de metricas mas reciente. Filtro por estado (Todos · Activos · Pausados, esta

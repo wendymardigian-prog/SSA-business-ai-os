@@ -17,15 +17,14 @@ import type { AdsRow } from "./ads";
 import { loadCrmForRows, type CrmTableData } from "./ads-crm-load";
 import { loadAdsInsights } from "./ads-load";
 import { lastSyncedAt, syncedLabel as buildSyncedLabel } from "./ads-view";
-import { isPeriodPreset, resolvePeriod, type PeriodPreset } from "./period";
-import { DEFAULT_PERIOD } from "./url-state";
+import { readDashboardPeriod, resolveDashboardPeriod, type PeriodFilter } from "./period-filter";
 
 export interface AdsTablePageData {
   rows: AdsRow[];
   accounts: Array<{ id: string; name: string | null; currency: string | null }>;
   adAccountId: string;
   currency: string | null;
-  period: PeriodPreset;
+  period: PeriodFilter;
   /** El alcance unico del periodo, de la consulta en vivo. Null si no se pudo leer: el total usa la suma de los dias. */
   uniqueReach: number | null;
   liveError: string | null;
@@ -41,8 +40,7 @@ export async function loadAdsTablePage(
 ): Promise<AdsTablePageData> {
   const { workspace, supabase } = permissions;
 
-  const periodParam = typeof searchParams.periodo === "string" ? searchParams.periodo : null;
-  const period: PeriodPreset = periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
+  const period = readDashboardPeriod(searchParams);
 
   // Las cuentas estan en `integration_configs` (solo la lee un Admin): con el permiso de la pantalla se leen con el
   // cliente de servicio, filtradas por el workspace de la sesion.
@@ -68,7 +66,7 @@ export async function loadAdsTablePage(
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const now = new Date();
-  const range = resolvePeriod(period, now, timeZone);
+  const range = resolveDashboardPeriod(period, now, timeZone);
   const since = range.from ? isoToDateInput(range.from, timeZone) : null;
   const until = isoToDateInput(range.to ?? now.toISOString(), timeZone);
 
