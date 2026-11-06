@@ -18,7 +18,7 @@ const { checkWhatsappNumber, getEvolutionConfig, sendChannelMessage, recordSend,
   channel: {
     id: "ch-wa",
     kind: "whatsapp",
-    label: "WhatsApp · Wendy",
+    label: "WhatsApp · Ventas",
     evolutionInstance: "ssa-wa",
     policy: { minGapSeconds: 25, maxGapSeconds: 60, perMinute: 2, perHour: 60, perDay: 300, window: { enabled: false, days: [], start: "00:00", end: "23:59" }, pauseAfterFailures: 5 },
     connectionStatus: "open",

@@ -10,7 +10,7 @@ const OLD = Math.floor(new Date("2026-04-01T12:00:00.000Z").getTime() / 1000);
 const RECENT = Math.floor(new Date("2026-11-04T12:00:00.000Z").getTime() / 1000);
 
 function record(id: string, jid: string, text: string, at = OLD, fromMe = false): EvolutionStoredMessage {
-  return { key: { id, fromMe, remoteJid: jid }, pushName: fromMe ? "Wendy" : "Ana", message: { conversation: text }, messageTimestamp: at };
+  return { key: { id, fromMe, remoteJid: jid }, pushName: fromMe ? "Equipo" : "Ana", message: { conversation: text }, messageTimestamp: at };
 }
 
 function setup(state: unknown = null, seed: Record<string, Array<Record<string, unknown>>> = {}) {
