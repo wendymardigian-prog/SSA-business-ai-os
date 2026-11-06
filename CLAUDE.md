@@ -1275,6 +1275,7 @@ cuentan los toques que pueden traer datos de anuncio)** y `00195` (`ads_crm_metr
 - **`ads_crm_metrics` es SECURITY INVOKER**: la RLS de quien mira decide que cuenta. No se la pasa a DEFINER para ganar velocidad (a 10.000 toques en
   90 dias tarda ~0,9 s bajo RLS; la salida es una politica de lectura mas barata, con aprobacion). Una division por cero es «—» (null), nunca 0; la plata
   del CRM va en centavos y se pasa con `fromCents`; el Total calcula los cocientes sobre los totales.
+- **La pantalla Anuncios (`/dashboard/anuncios`, menú → Adquisición) es la misma tabla del dashboard**, con el mismo permiso y la misma consulta (`loadCrmForRows`): si se cambia una, cambian las dos.
 - **El dashboard de Anuncios pide `dashboards.ads.view`, no el cargo.** Las cuentas publicitarias (`integration_configs`) se leen con el cliente de servicio
   filtrado por el workspace de la sesion. `meta_ads_insights_daily` tiene una politica ADICIONAL de lectura por permiso (00191); la de Owner/Admin no se toco.
 - **`localStorage` siempre en `try/catch`** (el selector de columnas): sin el, las columnas por defecto.

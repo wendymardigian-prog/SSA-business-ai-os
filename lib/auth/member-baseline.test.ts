@@ -201,6 +201,8 @@ const PERMISSION_PAGES = [
   ["app/(dashboard)/dashboard/dashboards/agenda/page.tsx", "dashboards.agenda.view"],
   // Extra L (AT4, F32): el dashboard de Ads pide su permiso, no el cargo (Owner y Admin lo tienen siempre).
   ["app/(dashboard)/dashboard/dashboards/ads/page.tsx", "dashboards.ads.view"],
+  // La pantalla Anuncios muestra la misma tabla: pide el mismo permiso.
+  ["app/(dashboard)/dashboard/anuncios/page.tsx", "dashboards.ads.view"],
   // Ventas (Etapa 5): la lista pide sales.view.  @plantilla-quitar(ventas)
   // El detalle de un producto pide la misma products.manage que la lista de Productos.
   ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"], // @plantilla-quitar(ventas)
@@ -346,14 +348,15 @@ describe("caracterizacion: el menu (F68)", () => {
     expect(NAV_ITEMS.find((item) => item.name === "Ajustes")?.requires).toBe("settings");
   });
 
-  it("la unica entrada que el Member NO ve es Social (no tiene social.view)", () => {
+  it("las unicas entradas que el Member NO ve son Anuncios y Social (no tiene dashboards.ads.view ni social.view)", () => {
     const visibles = memberMenu();
     const ocultas = NAV_ITEMS.map((item) => item.name).filter((n) => !visibles.includes(n)).sort();
 
     // Cambio aprobado M9 (Extra I): el Member de sistema ve «Finanzas» (tiene commissions.view, para sus  @plantilla-quitar(comisiones)
     // propias comisiones). Sigue sin Social.  @plantilla-quitar(comisiones)
     // @plantilla-sin(comisiones): // El Member de sistema no ve Social.
-    expect(ocultas).toEqual(["Social"]);
+    // Anuncios no le saca nada al Member: es un item nuevo, con un permiso que nunca tuvo.
+    expect(ocultas).toEqual(["Anuncios", "Social"]);
   });
 
   it("las demas las ve un Member", () => {

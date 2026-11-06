@@ -1,11 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { BarChart2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
 import type { DashboardOption } from "@/lib/dashboards/available";
+import { ConnectMetaAdsCard, UniqueReachNotice } from "./ads/ads-page-notices";
 import { EvolutionCard } from "./ads/evolution-card";
 import { buildKpiItems } from "./ads/kpi-items";
 import { HeaderActions, HeaderFilters, SyncedPill } from "./ads/header-controls";
@@ -89,26 +88,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
     return (
       <div className="flex h-full flex-col">
         <PageHeader route="/dashboard/dashboards/ads" left={<DashboardSwitcher options={props.dashboards} />} />
-        <div className="flex flex-1 items-center justify-center overflow-y-auto p-6">
-          <div className="w-full max-w-xl space-y-6 rounded-2xl border border-border bg-card p-6">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
-              <BarChart2 className="h-7 w-7 text-primary-ink" aria-hidden />
-            </div>
-            <div className="space-y-2 text-center">
-              <h2 className="text-2xl font-bold">Conectar Meta Ads</h2>
-              <p className="text-sm text-muted-foreground">
-                Todavía no hay ninguna cuenta publicitaria sincronizando. Conectá Meta y elegí cuáles
-                querés ver acá para seguir el rendimiento de tus campañas.
-              </p>
-            </div>
-            <Link
-              href="/dashboard/settings/integrations"
-              className="flex h-10 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              Ir a Integraciones
-            </Link>
-          </div>
-        </div>
+        <ConnectMetaAdsCard />
       </div>
     );
   }
@@ -153,12 +133,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
         className={`min-h-0 flex-1 space-y-3 overflow-y-auto p-4 transition-opacity sm:p-6 ${pending ? "opacity-60" : ""}`}
         aria-busy={pending}
       >
-        {props.liveError && (
-          <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
-            El alcance unico del periodo no se pudo leer: {props.liveError}. Lo que se muestra es la
-            suma de los dias, que cuenta dos veces a quien vio el anuncio en dos dias distintos.
-          </p>
-        )}
+        {props.liveError && <UniqueReachNotice error={props.liveError} />}
 
         <section className="space-y-2" aria-label="Resumen">
           <p className={SECTION_LABEL}>Resumen</p>

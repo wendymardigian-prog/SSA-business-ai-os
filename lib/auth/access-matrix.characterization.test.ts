@@ -296,8 +296,8 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     // acceso: Conocimiento se abre con un boton de Agentes IA, y Recursos e Integraciones son pestañas de Ajustes.
     // Ajustes ahora lo ven todos (todos llegan a Recursos). Por eso el menu se compara como CONJUNTO.
     const REMOVED_FROM_MENU = ["Conocimiento", "Recursos", "Integraciones"];
-    // Extra I (Finanzas): Owner y Admin GANAN un item. No se regenera la foto: se declara aca, a proposito.
-    const ADDED_TO_MENU = ["Finanzas"];
+    // Extra I (Finanzas) y Anuncios: Owner y Admin GANAN un item. No se regenera la foto: se declara aca, a proposito.
+    const ADDED_TO_MENU = ["Finanzas", "Anuncios"];
     // Cambio aprobado M9 (Extra I): el Member de sistema tambien gana «Finanzas», por `commissions.view`.
     const ADDED_TO_MENU_MEMBER = ["Finanzas"];
     const sorted = (names: string[]) => [...names].sort();

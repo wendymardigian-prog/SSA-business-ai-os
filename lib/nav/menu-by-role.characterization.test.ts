@@ -39,7 +39,8 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
       expect(menuFor({ permissionKeys: keysOf(role), eod: true })).toEqual([
         { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Mi reporte del día"] }, // @plantilla-quitar(formularios)
         // @plantilla-sin(formularios): { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja"] },
-        { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido", "Social"] },
+        // Owner y Admin ganan «Anuncios» (tienen dashboards.ads.view); el Member de sistema no.
+        { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido", "Social", "Anuncios"] },
         // Extra I: Owner y Admin ganan «Finanzas» al final del grupo; el resto del orden no cambia. // @plantilla-quitar(finanzas)
         { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"] }, // @plantilla-quitar(llamadas,ventas,finanzas)
         // @plantilla-sin(llamadas,ventas,finanzas): { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda"] },
