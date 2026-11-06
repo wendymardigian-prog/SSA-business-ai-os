@@ -95,6 +95,32 @@ describe("planChatImport", () => {
   });
 });
 
+describe("el nombre, cuando Evolution no lo conoce", () => {
+  const unnamed = (id: string) => msg({ id, pushName: "177266285895698" });
+
+  it("los digitos del chat no son un nombre: usa el del chat si lo tiene", () => {
+    const plan = planChatImport({ remoteJid: LID, pushName: "Ana Perez", lastMessage: { key: { fromMe: false } } }, [unnamed("m1")]);
+    expect(plan?.name).toBe("Ana Perez");
+  });
+
+  it("prefiere un nombre de un mensaje viejo antes que los digitos de uno nuevo", () => {
+    const plan = planChatImport({ remoteJid: LID }, [
+      { ...unnamed("nuevo"), messageTimestamp: 1_761_900_000 },
+      msg({ id: "viejo", at: 1_761_800_000 }),
+    ]);
+    expect(plan?.name).toBe("Ana");
+  });
+
+  it("sin nombre en ningun lado: el telefono o, si no hay, el texto generico del receptor", () => {
+    expect(planChatImport({ remoteJid: PHONE_JID, pushName: "5491122334455" }, [unnamed("m1")])?.name).toBe("+5491122334455");
+    expect(planChatImport({ remoteJid: LID, pushName: "177266285895698" }, [unnamed("m1")])?.name).toBe("Contacto de WhatsApp");
+  });
+
+  it("con telefono, gana el nombre del chat", () => {
+    expect(planChatImport({ remoteJid: PHONE_JID, pushName: "Ana Perez" }, [unnamed("m1")])?.name).toBe("Ana Perez");
+  });
+});
+
 describe("importedConversationStatus", () => {
   const now = new Date("2026-11-05T12:00:00.000Z");
   it("sin movimiento hace mas de 7 dias nace cerrada: no llena Esperando respuesta", () => {
