@@ -20,6 +20,17 @@ import { hasTouchKeys } from "./collect";
 import { ENTRY_URL_KEY } from "./entry-url";
 import type { Attribution, StoredAttribution, Visit } from "./types";
 
+/** El referrer de esta visita si es de OTRO sitio que la pagina: navegar dentro del mismo sitio no es de donde vino. */
+function externalReferrer(now: Attribution): string | null {
+  const referrer = now.referrer_url;
+  if (!referrer) return null;
+  try {
+    return !now.page_url || new URL(referrer).hostname !== new URL(now.page_url).hostname ? referrer : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Una visita sin su sello de tiempo: queda como objeto plano de texto. */
 function visitToAttribution(visit: Visit | undefined): Attribution {
   const out: Attribution = {};
@@ -49,6 +60,12 @@ export function effectiveAttribution(
     base = { ...last };
     if (now.page_url) base.page_url = now.page_url;
     // Si la visita actual no trae referrer ni página de llegada propios, no pisan a los guardados.
+    // Sin ninguna visita guardada, son lo único que hay: un link a `/f/<slug>` sin UTM no pierde de dónde vino.
+    if (!stored?.last) {
+      const referrer = externalReferrer(now);
+      if (referrer) base.referrer_url = referrer;
+      if (now.landing_page) base.landing_page = now.landing_page;
+    }
   }
 
   // Una visita guardada de antes de esta funcion no trae `entry_url`: ahi vale la de la pagina.
@@ -74,4 +91,18 @@ export function effectiveAttribution(
 export function preferEmbeddedEntryUrl<T extends Attribution>(result: T, fromEmbed: Record<string, unknown> | null | undefined): T {
   const entry = fromEmbed?.[ENTRY_URL_KEY];
   return typeof entry === "string" && entry !== "" ? { ...result, [ENTRY_URL_KEY]: entry } : result;
+}
+
+/**
+ * En un embed, el iframe solo conoce la pagina que lo contiene y la usa como referrer, pero esa pagina no es de donde
+ * vino la persona. El referrer real lo manda el script de esa pagina dentro de `attr`: si llego `attr`, manda el suyo,
+ * y si no trae ninguno es que la persona entro directo. La pagina que contiene el formulario sigue en `page_url`.
+ */
+export function preferEmbeddedReferrer<T extends Attribution>(result: T, fromEmbed: Record<string, unknown> | null | undefined): T {
+  if (!fromEmbed || Object.keys(fromEmbed).length === 0) return result;
+  const out: Attribution = { ...result };
+  const referrer = fromEmbed.referrer_url;
+  if (typeof referrer === "string" && referrer !== "") out.referrer_url = referrer;
+  else delete out.referrer_url;
+  return out as T;
 }

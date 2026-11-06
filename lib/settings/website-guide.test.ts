@@ -16,6 +16,8 @@ describe("la guía de Tu sitio web", () => {
     expect(code).toContain('"email": "persona@ejemplo.com"');
     expect(code).toContain('origin: "site"');
     expect(code).toContain("idempotency_key");
+    expect(code).toContain("entry_url");
+    expect(code).toContain("referrer_url");
     expect(unsubscribeLinkSnippet("https://app.ejemplo.com", "mi-negocio-1a2b")).toContain("honeypot");
   });
 });

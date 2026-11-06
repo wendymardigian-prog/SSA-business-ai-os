@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { attributionFromParams, parseCookieHeader, sanitizeAttribution } from "@/lib/attribution/collect";
-import { effectiveAttribution, preferEmbeddedEntryUrl } from "@/lib/attribution/merge";
+import { effectiveAttribution, preferEmbeddedEntryUrl, preferEmbeddedReferrer } from "@/lib/attribution/merge";
 import { cookieEnv, storedFromEffective } from "@/lib/attribution/browser";
 import { parseStored } from "@/lib/attribution/store";
 import { decodeAttr } from "@/lib/attribution/embed-attr";
@@ -207,7 +207,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
       });
       if (mode === "embed") {
         const fromEmbed = sanitizeAttribution(decodeAttr(params.attr));
-        return preferEmbeddedEntryUrl(effectiveAttribution(current, storedFromEffective(fromEmbed)), fromEmbed);
+        return preferEmbeddedReferrer(preferEmbeddedEntryUrl(effectiveAttribution(current, storedFromEffective(fromEmbed)), fromEmbed), fromEmbed);
       }
       // Las páginas propias: la cookie `ssa_attr`; la URL actual manda si trae un toque nuevo.
       return effectiveAttribution(current, parseStored(cookieEnv(document, window.location).readStored()));
