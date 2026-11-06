@@ -88,7 +88,7 @@ async function makeUser(tag: string): Promise<TestUser> {
 
 /** Consultas de solo lectura por la CLI (esquemas que la API no expone). */
 function sql(query: string): Array<Record<string, unknown>> {
-  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return (JSON.parse(out).rows ?? []) as Array<Record<string, unknown>>;
 }
 
@@ -1247,8 +1247,10 @@ try {
   // El PDF, de verdad: con la base y el bucket reales, sin proveedores.
   console.log("\n— F27-F28: el PDF y el email (base y Storage reales; Resend simulado) —");
   const pdfDeps = { db: svc, businessName: () => "zz-test negocio" };
+  // `already` = el trabajador real de la cola se adelanto al script (el job lo agenda la firma). Solo sale con el PDF
+  // ya generado, y los controles de abajo leen ese archivo: la ruta, el estado y el contenido se comprueban igual.
   const pdfResult = await runContractPdf(pdfDeps, sig1!.id);
-  check(pdfResult === "generated", "el job genera el PDF de la firma", pdfResult);
+  check(pdfResult === "generated" || pdfResult === "already", "el job genera el PDF de la firma", pdfResult);
   const { data: sig1Pdf } = await svc.from("contract_signatures").select("pdf_path, pdf_status, email_status").eq("id", sig1!.id).single();
   check(sig1Pdf?.pdf_status === "generated" && sig1Pdf?.pdf_path === `${ws.id}/${kForm!.id}/${sig1!.id}/contrato-v1.pdf`, "queda generated con la ruta contratos/{ws}/{form}/{firma}/contrato-v1.pdf", sig1Pdf?.pdf_path ?? "");
   if (sig1Pdf?.pdf_path) contractFiles.push(sig1Pdf.pdf_path);
@@ -1291,7 +1293,7 @@ try {
 
   // Reintentos con la cola real: un fallo transitorio agenda el siguiente a +5 minutos.
   const secondPdf = await runContractPdf(pdfDeps, sig2!.id);
-  check(secondPdf === "generated", "se genera tambien el PDF de la firma de la version 2");
+  check(secondPdf === "generated" || secondPdf === "already", "se genera tambien el PDF de la firma de la version 2", secondPdf);
   const { data: sig2Pdf } = await svc.from("contract_signatures").select("pdf_path").eq("id", sig2!.id).single();
   if (sig2Pdf?.pdf_path) contractFiles.push(sig2Pdf.pdf_path);
   const { data: sig2EmailJob } = await svc.from("scheduled_jobs").select("id").eq("dedupe_key", `contract_email:${sig2!.id}:0`);
