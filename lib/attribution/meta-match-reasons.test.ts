@@ -47,10 +47,22 @@ describe("describeMatchMethod", () => {
   it("dice como se hallo", () => {
     expect(describeMatchMethod("ad_id")).toBe("por el id del anuncio");
     expect(describeMatchMethod("manual")).toBe("a mano");
-    expect(describeMatchMethod("utm_content_name_campaign")).toContain("nombre del anuncio y su campaña");
+    expect(describeMatchMethod("utm_content_name_campaign")).toContain("único dentro de su campaña");
   });
   it("un metodo desconocido o vacio no inventa nada", () => {
     expect(describeMatchMethod("otro")).toBeNull();
     expect(describeMatchMethod(null)).toBeNull();
+  });
+});
+
+describe("los motivos y metodos de la regla por id (00299)", () => {
+  it("name_without_id dice que falta el id y que se elige a mano", () => {
+    expect(describeMatchReason("name_without_id")).toContain("sin ningún id");
+    expect(describeMatchReason("name_without_id")).toContain("a mano");
+  });
+
+  it("los metodos nuevos se dicen en palabras", () => {
+    expect(describeMatchMethod("adset_single_ad")).toContain("un solo anuncio");
+    expect(describeMatchMethod("utm_content_name_adset")).toContain("único dentro de su conjunto");
   });
 });

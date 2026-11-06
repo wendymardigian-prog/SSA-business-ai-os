@@ -292,3 +292,9 @@ Se midió con `EXPLAIN ANALYZE` sobre los 10.000 toques sintéticos de `verify-a
 - **El editor de pasos de las pantallas de agenda, formularios y fin de día no ofrece «la dirección de una variable»**: solo el lienzo (el
   editor de los flujos de webhook). Los destinos de esas pantallas siguen siendo los de antes.
 
+## Vínculo por id (6/11/2026)
+
+- **Lo resuelto:** el ruido de UTMs que no son de Meta en «Sin vincular» (arriba) se resolvió en la 00299, y «Hechos a mano» ya no muestra lo que ignoró el sistema.
+- **Sigue pendiente:** filtrar la Agenda o Contactos por campaña o anuncio (F33). Qué: hoy solo se ve en columnas. Por qué: no se pidió en esta tanda.
+- **Panel de contacto de la bandeja:** sigue mostrando ids. Qué: no carga los nombres de Meta. Por qué: es una consulta más en cada chat que se abre; sumarla cuando se pida.
+- **Un UTM numérico que no es de Meta** (por ejemplo `utm_source=google&utm_campaign=123`) sigue cayendo en «Sin vincular» como `id_not_in_catalog`. Se dejó así para no perder el id de un contacto importado con una fuente propia.

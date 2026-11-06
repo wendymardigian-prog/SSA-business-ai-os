@@ -2,16 +2,17 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Check, Copy, Download, Inbox, Loader2 } from "lucide-react";
+import { Download, Inbox, Loader2 } from "lucide-react";
+import { ColumnCell } from "@/components/attribution/column-cell";
+import { ColumnsMenu, useColumnPrefs } from "@/components/attribution/columns-menu";
 import { Notice } from "@/components/agents/fields";
 import { FilterBar, FilterSelect, Pagination, useUrlFilters } from "@/components/agents/filters";
 import { exportResponsesCsv } from "@/lib/actions/forms/responses";
 import type { MetaRowNames } from "@/lib/forms/meta-names";
-import { originSummary, responseColumnDefs } from "@/lib/forms/response-columns";
+import { RESPONSE_COLUMN_GROUPS, originSummary, responseColumnDefs, responseColumnsStorageKey } from "@/lib/forms/response-columns";
 import { cellFor, statusLabel, type ResponseColumn, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
 import { formatInZone } from "@/lib/forms/responses-query";
 import { cn } from "@/lib/utils";
-import { ResponseColumnsMenu, useResponseColumnPrefs } from "./columns-menu";
 
 export interface ResponseTableRow {
   id: string;
@@ -24,6 +25,7 @@ export interface ResponseTableRow {
   npsCategory: string | null;
   attribution: Record<string, string>;
   metaNames: MetaRowNames;
+  metaStatus: string;
 }
 
 const STATUS_STYLE: Record<SubmissionStatus, string> = {
@@ -31,27 +33,6 @@ const STATUS_STYLE: Record<SubmissionStatus, string> = {
   no_contact: "border-border text-muted-foreground",
   spam: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
 };
-
-/** Copia el valor completo de una celda recortada, como la URL de entrada. */
-function CopyCellButton({ value, label }: { value: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  }
-
-  return (
-    <button type="button" onClick={copy} aria-label={`Copiar ${label}`} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground">
-      {copied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
-    </button>
-  );
-}
 
 export function ResponsesTable({
   header,
@@ -92,7 +73,7 @@ export function ResponsesTable({
   const active = [filters.from, filters.to, filters.status !== "all" ? filters.status : "", filters.contact !== "all" ? filters.contact : ""].filter(Boolean).length;
   const showScore = formType === "survey";
   const columnDefs = useMemo(() => responseColumnDefs(columns), [columns]);
-  const { visible: visibleDefs, toggle, showAll, reset } = useResponseColumnPrefs(formId, columnDefs);
+  const { visible: visibleDefs, toggle, showAll, reset } = useColumnPrefs(responseColumnsStorageKey(formId), columnDefs);
 
   function exportCsv() {
     setMessage(null);
@@ -123,7 +104,7 @@ export function ResponsesTable({
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         <div className="mb-3 flex items-center justify-end gap-2">
           <div className="hidden md:block">
-            <ResponseColumnsMenu defs={columnDefs} visible={visibleDefs} onToggle={toggle} onShowAll={showAll} onReset={reset} />
+            <ColumnsMenu defs={columnDefs} groups={RESPONSE_COLUMN_GROUPS} visible={visibleDefs} onToggle={toggle} onShowAll={showAll} onReset={reset} />
           </div>
           {/* Exportar es `canExport` (equipo y roles, M2): quien no puede, no ve el boton. */}
           {canExport && (
@@ -226,28 +207,9 @@ export function ResponsesTable({
                         <span className={cn("whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px]", STATUS_STYLE[row.status])}>{statusLabel(row.status)}</span>
                       </td>
                       {showScore && <td className="px-3 py-2">{row.score ?? "—"}</td>}
-                      {visibleDefs.map((def) => {
-                        const value = def.value(row);
-                        if (!value) {
-                          return (
-                            <td key={def.key} className="px-3 py-2 text-muted-foreground">
-                              —
-                            </td>
-                          );
-                        }
-                        return (
-                          <td key={def.key} className="max-w-[16rem] px-3 py-2" title={value}>
-                            {def.copyable ? (
-                              <div className="flex items-center gap-1">
-                                <span className="min-w-0 flex-1 truncate">{value}</span>
-                                <CopyCellButton value={value} label={def.label} />
-                              </div>
-                            ) : (
-                              <div className="truncate">{value}</div>
-                            )}
-                          </td>
-                        );
-                      })}
+                      {visibleDefs.map((def) => (
+                        <ColumnCell key={def.key} def={def} row={row} />
+                      ))}
                     </tr>
                   ))}
                 </tbody>

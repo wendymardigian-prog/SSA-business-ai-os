@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { BookingOrigin, BookingStatus } from "@/lib/scheduling/types";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
+import { flatAttribution } from "@/lib/attribution/columns";
 
 type Db = SupabaseClient<Database>;
 
@@ -40,6 +41,15 @@ export interface BookingListItem {
   syncStatus: string;
   /** Agenda v2: su horario dejó de contar como ocupado. null = nunca se liberó. */
   slotReleasedAt: string | null;
+  createdAt: string;
+  /** La atribución de la reunión: solo texto (`utm`, más `referrer_url`), sin `first_visit`. */
+  attribution: Record<string, string>;
+}
+
+/** La atribución de una reunión, tal como la leen la lista y el panel. */
+export function bookingAttributionOf(utm: unknown, referrerUrl: string | null | undefined): Record<string, string> {
+  const flat = flatAttribution(utm);
+  return referrerUrl && !flat.referrer_url ? { ...flat, referrer_url: referrerUrl } : flat;
 }
 
 /** Cuántas agendas trae una página (F33). */
@@ -79,7 +89,7 @@ export interface BookingQuery {
 }
 
 const SELECT =
-  "id, uid, title, start_at, end_at, status, status_group, host_user_id, contact_id, booker_name, booker_email, booker_phone, event_type_id, category_snapshot, origin, location_type, location_text, meet_url, booker_timezone, google_sync_status, slot_released_at, event_types!inner(color), contacts!inner(display_name)";
+  "id, uid, title, start_at, end_at, status, status_group, host_user_id, contact_id, booker_name, booker_email, booker_phone, event_type_id, category_snapshot, origin, location_type, location_text, meet_url, booker_timezone, google_sync_status, slot_released_at, created_at, utm, referrer_url, event_types!inner(color), contacts!inner(display_name)";
 
 export async function listBookings(
   supabase: Db,
@@ -156,6 +166,8 @@ export async function listBookings(
       timezone: r.booker_timezone,
       syncStatus: r.google_sync_status,
       slotReleasedAt: r.slot_released_at,
+      createdAt: r.created_at,
+      attribution: bookingAttributionOf(r.utm, r.referrer_url),
     })),
     total: count ?? rows.length,
   };

@@ -247,9 +247,9 @@ try {
     check(attr3?.last_touch && !("meta_match_status" in attr3.last_touch), "y no ensucia la atribucion con un meta_match_status 'none'", JSON.stringify(attr3));
 
     // Un toque insertado a mano en la tabla (sin pasar por la funcion) tambien se vincula.
-    const direct = await svc.from("contact_touches").insert({ workspace_id: wsM.id, contact_id: c3, occurred_at: new Date().toISOString(), source: "facebook", medium: "paid_social", content_label: "Oferta%20%C3%9Anica", origin: "form", dedupe_key: `zz-${randomUUID()}` }).select("*").single(); // @plantilla-quitar(formularios)
-    // @plantilla-sin(formularios): const direct = await svc.from("contact_touches").insert({ workspace_id: wsM.id, contact_id: c3, occurred_at: new Date().toISOString(), source: "facebook", medium: "paid_social", content_label: "Oferta%20%C3%9Anica", origin: "manual", dedupe_key: `zz-${randomUUID()}` }).select("*").single();
-    check(!direct.error && direct.data.meta_match_status === "matched" && direct.data.meta_match_method === "utm_content_name", "un insert directo tambien pasa por el trigger (utm_content codificado)", direct.error?.message);
+    const direct = await svc.from("contact_touches").insert({ workspace_id: wsM.id, contact_id: c3, occurred_at: new Date().toISOString(), source: "facebook", medium: "paid_social", campaign_id: "1001", content_label: "Oferta%20%C3%9Anica", origin: "form", dedupe_key: `zz-${randomUUID()}` }).select("*").single(); // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): const direct = await svc.from("contact_touches").insert({ workspace_id: wsM.id, contact_id: c3, occurred_at: new Date().toISOString(), source: "facebook", medium: "paid_social", campaign_id: "1001", content_label: "Oferta%20%C3%9Anica", origin: "manual", dedupe_key: `zz-${randomUUID()}` }).select("*").single();
+    check(!direct.error && direct.data.meta_match_status === "matched" && direct.data.meta_match_method === "utm_content_name_campaign", "un insert directo tambien pasa por el trigger (utm_content codificado)", direct.error?.message);
   }
 
   console.log("\n— AT3: solo cuentan los toques que pueden traer datos de anuncio (00194) —");
@@ -259,10 +259,11 @@ try {
     const rowC = await touchRow(comment.data.touch_id);
     check(rowC.meta_match_status === "none" && rowC.meta_match_reason === null, "un comentario organico cuyo titulo se parece a un anuncio queda none (no es un UTM)", JSON.stringify(rowC));
     const booking = await record(c, { source: "facebook", medium: "paid_social", origin: "booking", content: "Oferta Única" });
-    check((await touchRow(booking.data.touch_id)).meta_match_status === "matched", "la misma etiqueta en una reserva SI se vincula por nombre");
+    const rowBooking = await touchRow(booking.data.touch_id);
+    check(rowBooking.meta_match_status === "unmatched" && rowBooking.meta_match_reason === "name_without_id", "la misma etiqueta en una reserva cuenta, pero sin un id no se vincula por nombre (00299)", JSON.stringify(rowBooking));
     const dm = await record(c, { source: "facebook", medium: "paid_social", origin: "dm", ad_id: "999", content: "Oferta Única" });
     const rowD = await touchRow(dm.data.touch_id);
-    check(rowD.meta_match_status === "matched" && rowD.meta_ad_id === "3003", "un DM que viene de un anuncio usa el titulo como nombre", JSON.stringify(rowD));
+    check(rowD.meta_match_status === "unmatched" && rowD.meta_match_reason === "id_not_in_catalog", "un DM con un ad_id que no esta en el catalogo no se vincula por el titulo (00299)", JSON.stringify(rowD));
     const fb = await record(c, { source: "instagram", medium: "dm", origin: "dm", fbclid: "IwAR0zz" });
     check((await touchRow(fb.data.touch_id)).meta_match_reason === "fbclid_only", "un fbclid solo cuenta siempre (fbclid_only)");
   }
@@ -315,6 +316,36 @@ try {
     // f364db1862cc0f90291ca14ef855a214; la definicion completa esta en la cabecera de la 00215).
     check(rows[0]?.h === "2f51ddbf060e31528b89ce7481b38e3d", "record_contact_touch tiene la huella de la 00215 (solo suma entry_url)", rows[0]?.h); // @plantilla-quitar(formularios,webhooks)
     // @plantilla-sin(formularios,webhooks): check(rows[0]?.h === "2c4111535463a1cc0d1225fa2626d6ca", "record_contact_touch tiene la huella de la plantilla", rows[0]?.h);
+  }
+
+  console.log("\n— 00299: siempre por id —");
+  {
+    const c = await mkContact("solo-ids");
+    const noMeta = await record(c, { source: "whatsapp", medium: "form", origin: "form", campaign: "grupo-editor", dedupe_key: `zz-${randomUUID()}` });
+    check((await touchRow(noMeta.data.touch_id)).meta_match_status === "none", "una fuente que no es de Meta con UTMs de texto queda none");
+    const numeric = await record(c, { source: "calculadora_hero", medium: "form", origin: "import", campaign: "1001", dedupe_key: `zz-${randomUUID()}` });
+    check((await touchRow(numeric.data.touch_id)).meta_campaign_id === "1001", "esa fuente con un UTM numerico se vincula por el id");
+    const single = await record(c, { source: "meta", medium: "paid", origin: "form", term: "2002", content: "ad-n6-12veces", dedupe_key: `zz-${randomUUID()}` });
+    const rowSingle = await touchRow(single.data.touch_id);
+    check(rowSingle.meta_ad_id === "3002" && rowSingle.meta_match_method === "adset_single_ad", "el conjunto con un solo anuncio vincula ese anuncio", JSON.stringify(rowSingle));
+    const utmId = await record(c, { source: "meta", medium: "booking", origin: "booking", content: "Oferta Única", raw: { utm: { utm_id: "1001" } }, dedupe_key: `zz-${randomUUID()}` });
+    const rowUtmId = await touchRow(utmId.data.touch_id);
+    check(rowUtmId.meta_ad_id === "3003" && rowUtmId.meta_campaign_id === "1001", "el utm_id de una reunion es el id de la campaña", JSON.stringify(rowUtmId));
+    const utmIdForm = await record(c, { source: "meta", medium: "form", origin: "form", content: "Oferta Única", raw: { utm_id: "1001" }, dedupe_key: `zz-${randomUUID()}` });
+    check((await touchRow(utmIdForm.data.touch_id)).meta_ad_id === "3003", "y el de un formulario, que lo guarda en otro lugar");
+
+    // Un vinculo hecho por nombre con la regla vieja no se pierde.
+    const old = await record(c, { source: "meta", medium: "form", origin: "form", campaign: "Campaña Octubre", dedupe_key: `zz-${randomUUID()}` });
+    await svc.from("contact_touches").update({ meta_match_status: "matched", meta_campaign_id: "1001", meta_match_method: "utm_campaign_name", meta_match_reason: null }).eq("id", old.data.touch_id);
+    await svc.rpc("rematch_meta_touches", { p_workspace_id: wsM.id, p_since: "-infinity" });
+    const rowOld = await touchRow(old.data.touch_id);
+    check(rowOld.meta_match_status === "matched" && rowOld.meta_campaign_id === "1001", "rematch no empeora un vinculo viejo por nombre", JSON.stringify(rowOld));
+
+    // Un toque con conjunto y sin anuncio se completa al correr el rematch.
+    const partial = await record(c, { source: "meta", medium: "paid", origin: "form", term: "2002", dedupe_key: `zz-${randomUUID()}` });
+    await svc.from("contact_touches").update({ meta_ad_id: null, meta_match_method: "utm_term_id" }).eq("id", partial.data.touch_id);
+    await svc.rpc("rematch_meta_touches", { p_workspace_id: wsM.id, p_since: "-infinity" });
+    check((await touchRow(partial.data.touch_id)).meta_ad_id === "3002", "rematch completa el anuncio de un conjunto de un solo anuncio");
   }
 
   console.log("\n— AT3: re-vincular despues de un sync (rematch_meta_touches) —");

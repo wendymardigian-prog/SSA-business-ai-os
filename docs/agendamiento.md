@@ -348,3 +348,7 @@ Equipo (tipos: Reunión interna, Uno a uno, Entrevista) y Otros (General) se sum
 de candidatos son un tipo del área **Equipo**. Se precargan en los workspaces nuevos y se agregan a los existentes con
 `seed_booking_categories_for_workspace`: idempotente, respeta un área con el mismo nombre que el negocio ya tuviera y
 no cambia ninguna reunión ni el `category_snapshot` ya congelado. Se renombran pero no se archivan.
+
+## Atribución de una reunión (6/11/2026)
+
+La lista suma columnas de UTM y de campaña, conjunto y anuncio de Meta, con un menú «Columnas» que recuerda lo elegido. El panel muestra toda la atribución, la URL de entrada y el vínculo con Meta, que se puede corregir ahí mismo. Kanban y calendario no cambian. Reglas en [atribucion.md](atribucion.md), «Vínculo con Meta: siempre por id».

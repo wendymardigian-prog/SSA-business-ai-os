@@ -10,6 +10,10 @@
  * deshabilitados con el motivo, en vez de esconderse.
  */
 
+import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
+import { MetaMatchControl } from "@/components/attribution/meta-match-control";
+import { attributionSections, bestEntryUrl } from "@/lib/attribution/attribution-view";
+import type { MetaLink } from "@/lib/attribution/meta-link";
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -56,8 +60,10 @@ export interface BookingDetailData {
   syncError: string | null;
   rescheduleUrl: string;
   history: Array<{ id: string; text: string; at: string }>;
-  /** De dónde vino el lead que agendó (Agenda v2). `null`: agendada a mano o por el agente, sin UTM que mostrar. */
-  attribution: { source: string; medium: string; campaign: string; content: string; term: string; referrerUrl: string | null } | null;
+  /** De dónde vino el lead que agendó: solo texto. Vacía si se agendó a mano o por el agente. */
+  attribution: Record<string, string>;
+  /** El vínculo con Meta de su toque o, si no tiene, de un toque anterior del contacto. */
+  metaLink: MetaLink | null;
   /** Agenda v2: su horario dejó de contar como ocupado. null = nunca se liberó. */
   slotReleasedAt: string | null;
   /** Las llamadas vinculadas a esta agenda que quien mira puede ver (vacio si no tiene `calls.view` o no hay ninguna). */ // @plantilla-quitar(llamadas)
@@ -76,6 +82,7 @@ export function BookingDetailPanel({
   timezone,
   timeFormat,
   canManage,
+  canLinkMeta,
   canReassign,
   hostOptions,
   onClose,
@@ -85,6 +92,8 @@ export function BookingDetailPanel({
   timezone: string;
   timeFormat: "12h" | "24h";
   canManage: boolean;
+  /** `settings.general`: vincular, ignorar o quitar el vínculo con Meta. */
+  canLinkMeta: boolean;
   /** Owner/Admin con alcance total (Agenda v2): solo ellos pueden reasignar. */
   canReassign: boolean;
   /** Quién tiene perfil de agenda, para elegir a quién reasignar. Sin el anfitrión actual. */
@@ -136,6 +145,8 @@ export function BookingDetailPanel({
     };
   }, [waiting, booking.id, router]);
   const joinHref = meetJoinHref(booking.meetUrl);
+  const attributionSectionsOf = attributionSections(booking.attribution);
+  const entryUrl = bestEntryUrl(booking.attribution);
 
   const now = new Date();
   const group = groupOf(booking.status);
@@ -469,47 +480,33 @@ export function BookingDetailPanel({
 
           <section className="rounded-lg border border-border p-3">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Atribución</h3>
-            {booking.attribution ? (
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                {booking.attribution.source && (
-                  <>
-                    <dt className="text-muted-foreground">Fuente</dt>
-                    <dd>{booking.attribution.source}</dd>
-                  </>
-                )}
-                {booking.attribution.medium && (
-                  <>
-                    <dt className="text-muted-foreground">Medio</dt>
-                    <dd>{booking.attribution.medium}</dd>
-                  </>
-                )}
-                {booking.attribution.campaign && (
-                  <>
-                    <dt className="text-muted-foreground">Campaña</dt>
-                    <dd>{booking.attribution.campaign}</dd>
-                  </>
-                )}
-                {booking.attribution.content && (
-                  <>
-                    <dt className="text-muted-foreground">Contenido</dt>
-                    <dd>{booking.attribution.content}</dd>
-                  </>
-                )}
-                {booking.attribution.term && (
-                  <>
-                    <dt className="text-muted-foreground">Término</dt>
-                    <dd>{booking.attribution.term}</dd>
-                  </>
-                )}
-                {booking.attribution.referrerUrl && (
-                  <>
-                    <dt className="text-muted-foreground">Página de origen</dt>
-                    <dd className="truncate" title={booking.attribution.referrerUrl}>
-                      {booking.attribution.referrerUrl}
-                    </dd>
-                  </>
-                )}
-              </dl>
+            <div className="mb-3 rounded-md border border-border p-2.5">
+              <h4 className="mb-1 text-xs font-medium text-muted-foreground">Vínculo con Meta</h4>
+              <MetaMatchControl
+                link={booking.metaLink}
+                target={booking.metaLink?.touchId ? { touchId: booking.metaLink.touchId } : { bookingId: booking.id }}
+                canManage={canLinkMeta}
+              />
+            </div>
+            {attributionSectionsOf.length > 0 || entryUrl ? (
+              <div className="flex flex-col gap-3">
+                {attributionSectionsOf.map((section) => (
+                  <div key={section.title}>
+                    <h4 className="mb-1 text-xs font-medium text-muted-foreground">{section.title}</h4>
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                      {section.items.map((item) => (
+                        <div key={item.key} className="contents">
+                          <dt className="text-muted-foreground">{item.label}</dt>
+                          <dd className="min-w-0 truncate" title={item.value}>
+                            {item.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+                {entryUrl && <EntryUrlBlock url={entryUrl} />}
+              </div>
             ) : (
               <p className="text-xs text-muted-foreground">
                 Sin datos de atribución ({booking.origin === "A mano" || booking.origin === "Agente de IA" ? "agendada a mano o por el agente" : "no llegó ningún UTM"}).

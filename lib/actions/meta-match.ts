@@ -5,6 +5,8 @@ import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit, type AuditChanges } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { metaNameKey } from "@/lib/meta/name-key";
+import { bookingTouchKey } from "@/lib/attribution/source-touches";
+import { recordTouch } from "@/lib/contacts/touch";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -115,6 +117,57 @@ export async function linkTouchToMeta(input: {
   campaignId?: string | null;
 }): Promise<MetaMatchActionResult> {
   return run(input.touchId, "link", { adId: input.adId, adsetId: input.adsetId, campaignId: input.campaignId });
+}
+
+/**
+ * Vincula una reunion que no tiene toque propio (agendada a mano o por el agente): le crea el suyo, con la fecha de la
+ * reunion y la clave `booking:<id>`, y lo vincula. Puede pasar a ser el ultimo toque del contacto, y queda en su historial.
+ */
+export async function linkBookingToMeta(input: {
+  bookingId: string;
+  adId?: string | null;
+  adsetId?: string | null;
+  campaignId?: string | null;
+}): Promise<MetaMatchActionResult> {
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  if (!input.bookingId) return { ok: false, error: NOT_FOUND };
+
+  // Con la sesion: si no ve la reunion o su contacto, es como si no existieran.
+  const { data: booking } = await ctx.supabase
+    .from("bookings")
+    .select("id, contact_id, created_at")
+    .eq("id", input.bookingId)
+    .eq("workspace_id", ctx.workspace.id)
+    .maybeSingle();
+  if (!booking) return { ok: false, error: "No encontré esa reunión." };
+  const { data: visible } = await ctx.supabase.from("contacts").select("id").eq("id", booking.contact_id).maybeSingle();
+  if (!visible) return { ok: false, error: NO_CONTACT };
+
+  const service = await createServiceClient();
+  const dedupeKey = bookingTouchKey(booking.id);
+  const findTouch = () =>
+    service.from("contact_touches").select("id").eq("workspace_id", ctx.workspace.id).eq("dedupe_key", dedupeKey).maybeSingle();
+
+  let { data: touch } = await findTouch();
+  if (!touch) {
+    await recordTouch(service, {
+      workspaceId: ctx.workspace.id,
+      contactId: booking.contact_id,
+      touch: {
+        occurredAt: booking.created_at,
+        source: "manual",
+        medium: "booking",
+        origin: "booking",
+        dedupeKey,
+        raw: { source_type: "booking", source_id: booking.id },
+      },
+    });
+    ({ data: touch } = await findTouch());
+  }
+  if (!touch) return { ok: false, error: "No pude guardar el cambio. Probá de nuevo en un rato." };
+
+  return run(touch.id, "link", { adId: input.adId, adsetId: input.adsetId, campaignId: input.campaignId });
 }
 
 /** El toque no tiene que vincularse con ningun anuncio (no vuelve a aparecer en «Sin vincular»). */

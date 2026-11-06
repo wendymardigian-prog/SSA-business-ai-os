@@ -18,6 +18,8 @@ import { drawerHref } from "@/lib/content/drawer-url";
 import { readAttribution, type AttributionTouch } from "./attribution";
 import { channelLabel, mediumLabel, sourceLabel } from "./taxonomy";
 import { describeMatchMethod } from "@/lib/attribution/meta-match-reasons";
+import { metaLinkFromTouch, type MetaLink } from "@/lib/attribution/meta-link";
+import { EMPTY_META_NAMES } from "@/lib/attribution/meta-names";
 
 /** Un toque guardado en la tabla `contact_touches`, en lo que la pantalla usa. */
 export interface TouchRow {
@@ -48,6 +50,7 @@ export interface TouchRow {
   meta_ad_id?: string | null;
   meta_match_status?: string | null;
   meta_match_method?: string | null;
+  meta_match_reason?: string | null;
   /** El canal (00230): organic | paid | referral | direct. */
   channel?: string | null;
   /** La carga original del toque (lista blanca): de ahi sale `source_id`, el formulario de un toque de formulario. */
@@ -118,6 +121,11 @@ export interface AttributionView {
   last: TouchView | null;
   /** Todos los toques, del más viejo al más nuevo. Vacío si no hay tabla que leer. */
   path: TouchView[];
+}
+
+/** El vínculo de un toque, para las acciones de la ficha. Los nombres no hacen falta: la línea ya la arma `describeTouch`. */
+export function touchLink(row: TouchRow): MetaLink {
+  return metaLinkFromTouch(row, EMPTY_META_NAMES);
 }
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -369,6 +377,24 @@ export function buildAttributionView(params: {
         ),
     path,
   };
+}
+
+/**
+ * El vínculo con Meta del primer y del último toque, para revisarlo o cambiarlo desde la ficha. La copia derivada no guarda
+ * el id del toque: se busca en la tabla por su fecha. Sin tabla de toques (el panel de la bandeja), nada.
+ */
+export function attributionTouchLinks(attribution: unknown, rows: TouchRow[]): { first?: MetaLink; last?: MetaLink } {
+  if (rows.length === 0) return {};
+  const sorted = sortedRows(rows);
+  const { first_touch, last_touch } = readAttribution(attribution);
+  const rowOf = (touch: AttributionTouch | undefined, fallback: TouchRow) => {
+    if (!touch) return fallback;
+    const at = new Date(touch.occurred_at ?? 0).getTime();
+    return rows.find((r) => new Date(r.occurred_at).getTime() === at) ?? fallback;
+  };
+  const first = rowOf(first_touch, sorted[0]);
+  const last = rowOf(last_touch, sorted[sorted.length - 1]);
+  return { first: touchLink(first), ...(last.id !== first.id ? { last: touchLink(last) } : {}) };
 }
 
 function sortedRows(rows: TouchRow[]): TouchRow[] {

@@ -126,3 +126,14 @@ describe("parentAttributionFromSearch", () => {
     });
   });
 });
+
+describe("la Agenda embebida con un anuncio", () => {
+  it("reenvía los ids del anuncio: sin esto se pierden cuando la URL también trae un UTM", () => {
+    const parent = parentUtmFromSearch("?utm_source=meta&ad_id=123&adset_id=456&campaign_id=789&utm_id=789&placement=reels");
+    expect(parent).toMatchObject({ ad_id: "123", adset_id: "456", campaign_id: "789", utm_id: "789", placement: "reels" });
+    const url = new URL(buildEmbedIframeUrl("ana/llamada", {}, parent, "https://app.test"));
+    expect(url.searchParams.get("ad_id")).toBe("123");
+    expect(url.searchParams.get("adset_id")).toBe("456");
+    expect(url.searchParams.get("placement")).toBe("reels");
+  });
+});

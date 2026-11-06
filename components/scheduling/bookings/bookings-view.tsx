@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Plus, Settings } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ReconnectBanner } from "../reconnect-banner";
+import type { MetaLink } from "@/lib/attribution/meta-link";
 import { BookingsList } from "./list";
 import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
@@ -97,6 +98,8 @@ export function BookingsScreen({
   canReassign,
   reassignHostOptions,
   detail,
+  metaLinks,
+  canLinkMeta,
   view,
   quick,
   calendarView,
@@ -141,6 +144,10 @@ export function BookingsScreen({
   /** Quién tiene perfil de agenda, para elegir a quién reasignar (incluye al anfitrión actual, se saca al armar el detalle). */
   reassignHostOptions: Array<{ userId: string; label: string; hasGoogle: boolean }>;
   detail: BookingDetailData | null;
+  /** El vínculo con Meta de cada reunión de la lista. */
+  metaLinks: Record<string, MetaLink>;
+  /** `settings.general`: vincular, ignorar o quitar el vínculo con Meta. */
+  canLinkMeta: boolean;
   view: "list" | "kanban" | "calendar";
   quick: QuickPick;
   calendarView: CalendarView;
@@ -329,7 +336,7 @@ export function BookingsScreen({
           <AgendaEmptyFiltered onClearFilters={clearAll} onShowAll={() => setPeriod({ preset: "todo", from: null, to: null })} />
         ) : view === "list" ? (
           <>
-            <BookingsList items={items} hostNames={hostNames} timezone={timezone} timeFormat={timeFormat} now={now} onOpen={openDetail} />
+            <BookingsList items={items} hostNames={hostNames} timezone={timezone} timeFormat={timeFormat} now={now} metaLinks={metaLinks} onOpen={openDetail} />
             {pages > 1 && (
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
@@ -417,6 +424,7 @@ export function BookingsScreen({
       {detail && (
         <BookingDetailPanel
           booking={detail}
+          canLinkMeta={canLinkMeta}
           categories={categories}
           timezone={timezone}
           timeFormat={timeFormat}

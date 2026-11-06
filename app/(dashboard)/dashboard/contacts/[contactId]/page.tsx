@@ -9,7 +9,7 @@ import { MarkSection } from "@/components/contacts/mark-section";
 import { contactMarks, markLabel } from "@/lib/inbox/marks";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
-import { buildAttributionView } from "@/lib/contacts/attribution-view";
+import { attributionTouchLinks, buildAttributionView } from "@/lib/contacts/attribution-view";
 import { loadContactTouches } from "@/lib/contacts/load-touches";
 import { loadMetaNames } from "@/lib/contacts/meta-names";
 import type { AuditAction, Json, LeadTemperature } from "@/lib/types/database";
@@ -635,7 +635,7 @@ export default async function ContactDetailPage({
             {contactForms && <ContactFormsSection rows={contactForms.rows} total={contactForms.total} contactId={contact.id} timeZone={viewerTimezone} />}
             {/* @plantilla-hasta(formularios) */}
 
-            <AttributionSection view={attributionView} contactId={contact.id} />
+            <AttributionSection view={attributionView} contactId={contact.id} links={attributionTouchLinks(contact.attribution, touchRows)} canLinkMeta={permissionCtx.can("settings.general")} />
 
             <HistorySection items={history} />
           </div>
