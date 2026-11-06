@@ -227,6 +227,23 @@ describe("Social en el menu (F78)", () => {
   });
 });
 
+describe("Anuncios en el menu", () => {
+  const names = (keys: string[]) => visibleNavItems(NAV_ITEMS, { permissionKeys: keys }).map((i) => i.name);
+
+  it("va en Adquisición, despues de Social, y abre su propia pantalla", () => {
+    expect(NAV_ITEMS.find((i) => i.name === "Anuncios")).toMatchObject({ href: "/dashboard/anuncios", icon: "Megaphone", group: "adquisicion", permissions: ["dashboards.ads.view"] });
+    const nombres = NAV_ITEMS.map((i) => i.name);
+    expect(nombres.indexOf("Anuncios")).toBe(nombres.indexOf("Social") + 1);
+  });
+
+  it("se ve con dashboards.ads.view, y no sin el (el Member de sistema no lo tiene)", () => {
+    expect(names(["dashboards.ads.view"])).toContain("Anuncios");
+    expect(names(["dashboards.chat.view"])).not.toContain("Anuncios");
+    expect(names(SYSTEM_ROLE_PERMISSIONS.member.keys)).not.toContain("Anuncios");
+    expect(names(ALL_PERMISSION_KEYS)).toContain("Anuncios");
+  });
+});
+
 // ── Bloque N: grupos (requerimientos v2.0, seccion 4, N1/N5) ───────────────
 
 describe("grupos del menu (bloque N, N1)", () => {
@@ -266,7 +283,7 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(NAV_GROUPS.map((g) => [g.id, NAV_ITEMS.filter((i) => i.group === g.id).map((i) => i.name)])).toEqual([
       ["inicio", ["Dashboards", "Bandeja", "Mi reporte del día"]], // @plantilla-quitar(formularios)
       // @plantilla-sin(formularios): ["inicio", ["Dashboards", "Bandeja"]],
-      ["adquisicion", ["Contenido", "Social"]],
+      ["adquisicion", ["Contenido", "Social", "Anuncios"]],
       ["ventas", ["Contactos", "Agenda", "Llamadas", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones)
       // @plantilla-sin(llamadas,ventas,finanzas,comisiones): ["ventas", ["Contactos", "Agenda"]],
       ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)

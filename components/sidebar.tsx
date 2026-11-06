@@ -8,6 +8,7 @@ import {
   Clapperboard,
   GitBranch,
   Grid3x3,
+  Megaphone,
   MessageSquare,
   Users,
   LayoutGrid,
@@ -57,7 +58,7 @@ type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
 // Integraciones (que hoy es una pestaña de Ajustes, no un item).
 const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Bot, Settings,
-  Clapperboard, Grid3x3, CalendarDays, PhoneCall, ClipboardList, CircleDollarSign, Wallet, ListChecks, ListTodo,
+  Clapperboard, Grid3x3, Megaphone, CalendarDays, PhoneCall, ClipboardList, CircleDollarSign, Wallet, ListChecks, ListTodo,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({

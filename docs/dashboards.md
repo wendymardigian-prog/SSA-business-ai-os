@@ -387,6 +387,10 @@ lectura.
 partnership. Se dice en pantalla; no es un error que alguien pueda arreglar
 reconectando.
 
+## La pantalla Anuncios (menú → Adquisición)
+
+`/dashboard/anuncios` muestra la tabla «Meta vs CRM» sin el resto del dashboard: las pestañas Campañas, AdSets y Anuncios, con los filtros de cuenta y período. Pide el mismo permiso (`dashboards.ads.view`), y los números salen de la misma consulta que el dashboard (`loadCrmForRows`). La tabla sigue también en el dashboard de Meta Ads. Un clic en una fila abre el detalle de siempre, que cuelga de Dashboards. Los datos se cargan en `lib/dashboards/ads-table-page.ts`: de lo que se pide en vivo a Meta, esta pantalla solo necesita el alcance único de la cuenta, para el total.
+
 ## Tabla «Meta vs CRM» en el dashboard de Anuncios (Extra L, AT4)
 
 Cada pestaña del desglose (Campañas, AdSets, Anuncios) cruza lo que dice **Meta** (gasto, clics, leads) con lo que paso en el **CRM** (leads, agendas,

@@ -7,7 +7,9 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PermissionContext } from "@/lib/auth/guards";
 import type { Database } from "@/lib/types/database";
+import type { AdsRow } from "./ads";
 import { publicationUrlOf, type AdLink, type CatalogEntry, type CrmLevel, type CrmMetrics, type DistinctLeads } from "./ads-crm";
 
 type Db = SupabaseClient<Database>;
@@ -265,4 +267,27 @@ export async function loadCrmData(
   }
 
   return data;
+}
+
+/**
+ * Lo mismo que `loadCrmData`, a partir de las filas que ya se leyeron y de quien mira. Lo usan el dashboard de Meta Ads y
+ * la pantalla Anuncios: las dos tablas muestran la misma cuenta, y asi no hay forma de que den numeros distintos.
+ */
+export async function loadCrmForRows(
+  viewer: Pick<PermissionContext, "supabase" | "workspace" | "scope" | "can">,
+  params: { adAccountId: string; rows: AdsRow[]; since: string; until: string; timeZone: string; now: Date },
+): Promise<CrmTableData> {
+  const idsOf = (level: CrmLevel) => params.rows.filter((r) => r.level === level).map((r) => r.objectId);
+  const crm = await loadCrmData(viewer.supabase, {
+    workspaceId: viewer.workspace.id,
+    adAccountId: params.adAccountId,
+    since: params.since,
+    until: params.until,
+    objectIds: { campaign: idsOf("campaign"), adset: idsOf("adset"), ad: idsOf("ad") },
+    scopeLimited: viewer.scope("leads") !== "all",
+    now: params.now,
+  });
+  crm.canExport = viewer.can("data.export");
+  crm.timeZone = params.timeZone;
+  return crm;
 }

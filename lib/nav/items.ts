@@ -95,6 +95,9 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // `social.view` (F78): Owner y Admin lo tienen siempre, y un rol
   // personalizado se lo puede dar a un Member.
   { name: "Social", href: "/dashboard/social", icon: "Grid3x3", permissions: ["social.view"], group: "adquisicion" },
+  // Anuncios: la tabla de campañas, conjuntos y anuncios, con el mismo permiso que el dashboard de Meta Ads.
+  // Los detalles de cada fila siguen colgando de Dashboards, y ahi queda marcado ese item.
+  { name: "Anuncios", href: "/dashboard/anuncios", icon: "Megaphone", permissions: ["dashboards.ads.view"], group: "adquisicion" },
 
   { name: "Contactos", href: "/dashboard/contacts", icon: "Users", permissions: ["contacts.view"], group: "ventas" },
   // Agenda (Etapa 4, F8): abre directo las agendas. La configuracion va

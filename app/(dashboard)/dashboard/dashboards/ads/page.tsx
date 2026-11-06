@@ -2,7 +2,7 @@ import { requirePermission } from "@/lib/auth/guards";
 import { availableDashboards } from "@/lib/dashboards/available";
 import { AdsDashboard } from "@/components/dashboards/ads-dashboard";
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
-import { loadCrmData } from "@/lib/dashboards/ads-crm-load";
+import { loadCrmForRows } from "@/lib/dashboards/ads-crm-load";
 import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
 import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
@@ -129,18 +129,14 @@ export default async function AdsDashboardPage({
 
   // Lo que dice el CRM por campaña, conjunto y anuncio (AT4). Con la sesion de quien mira: la RLS decide que leads,
   // agendas y ventas cuenta. Si algo falla, el dashboard se ve igual con lo de Meta y la tabla avisa.
-  const idsOf = (level: "campaign" | "adset" | "ad") => rows.filter((r) => r.level === level).map((r) => r.objectId);
-  const crm = await loadCrmData(supabase, {
-    workspaceId: workspace.id,
+  const crm = await loadCrmForRows(permissions, {
     adAccountId,
+    rows,
     since: sinceOf(range) ?? "2000-01-01",
     until: untilOf(range),
-    objectIds: { campaign: idsOf("campaign"), adset: idsOf("adset"), ad: idsOf("ad") },
-    scopeLimited: permissions.scope("leads") !== "all",
+    timeZone,
     now,
   });
-  crm.canExport = permissions.can("data.export");
-  crm.timeZone = timeZone;
 
   // Si alguno de los dos no llego, los dos quedan en la suma de los dias:
   // comparar un alcance unico contra uno sumado inventaria una variacion.

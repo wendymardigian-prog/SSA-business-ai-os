@@ -139,7 +139,8 @@ describe("el Member es exactamente el de hoy (F68)", () => {
     const ocultos = NAV_ITEMS.map((i) => i.name).filter((n) => !visibles.includes(n)).sort();
     // Cambio aprobado M9 (Extra I): Finanzas se ve con expenses.view O commissions.view; el Member de sistema
     // tiene commissions.view (sus comisiones), asi que lo ve. Sigue sin Social.
-    expect(ocultos).toEqual(["Social"]);
+    // Anuncios tampoco: es un item nuevo, con un permiso que nunca tuvo (dashboards.ads.view).
+    expect(ocultos).toEqual(["Anuncios", "Social"]);
     expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
     expect(can(member, "knowledge.view")).toBe(false);
     // Social no es por cargo (F78): se ve con `social.view`, que el Member de sistema no tiene.
