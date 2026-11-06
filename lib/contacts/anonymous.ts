@@ -49,7 +49,7 @@ export const HANDLE_NAME_PATTERN = "^@[A-Za-z0-9._]+$";
 const ID_NAME = new RegExp(ID_NAME_PATTERN);
 const HANDLE_NAME = new RegExp(HANDLE_NAME_PATTERN);
 
-/** Vacio o uno de la lista: lo mismo que mira la columna generada `is_anonymous` (00032). */
+/** Vacio o uno de la lista. */
 function isListedPlaceholder(name: string | null | undefined): boolean {
   const clean = normalize(name);
   return clean === "" || (PLACEHOLDER_NAMES as readonly string[]).includes(clean);
@@ -97,11 +97,11 @@ export interface ContactIdentity {
  * saberse quien es.
  */
 export function isAnonymousContact(contact: ContactIdentity): boolean {
-  // La lista sola, sin el id ni el @usuario: es lo que calcula la columna
-  // generada `is_anonymous`, y las dos tienen que decir lo mismo. Un contacto
-  // con un @usuario como nombre ademas tiene `instagram_username`.
+  // La lista y el id, sin el @usuario: es lo que calcula la columna generada
+  // `is_anonymous` (00295), y las dos tienen que decir lo mismo. Un contacto con
+  // un @usuario como nombre ademas tiene `instagram_username`.
   return (
-    isListedPlaceholder(contact.display_name) &&
+    (isListedPlaceholder(contact.display_name) || ID_NAME.test((contact.display_name ?? "").trim())) &&
     !contact.email &&
     !contact.secondary_email &&
     !contact.phone &&

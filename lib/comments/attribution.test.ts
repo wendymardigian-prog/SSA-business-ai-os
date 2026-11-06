@@ -116,6 +116,35 @@ describe("Instagram: el contacto se encuentra por el id del autor, aunque no ten
     expect(result.contactId).toBe("c-eco");
   });
 
+  it("completa al contacto con el @ y el nombre del comentario", async () => {
+    const db = withSender();
+    db.rows("contacts")[0].display_name = "1784123456789";
+    await attributeComment(db.client, params({ authorUsername: "@Ana.G", authorName: "Ana Gómez", authorExternalId: "igsid-7", channelId: "ch-ig" }));
+    expect(db.rows("contacts")[0]).toMatchObject({ instagram_username: "ana.g", display_name: "Ana Gómez" });
+  });
+
+  it("sin nombre real, el número pasa a «@usuario»", async () => {
+    const db = withSender();
+    db.rows("contacts")[0].display_name = "1784123456789";
+    await attributeComment(db.client, params({ authorUsername: "ana", authorName: "Instagram User", authorExternalId: "igsid-7", channelId: "ch-ig" }));
+    expect(db.rows("contacts")[0]).toMatchObject({ instagram_username: "ana", display_name: "@ana" });
+  });
+
+  it("no pisa el nombre que escribió una persona ni el @ que ya tiene", async () => {
+    const db = withSender();
+    Object.assign(db.rows("contacts")[0], { display_name: "Ana del gimnasio", instagram_username: "otro" });
+    await attributeComment(db.client, params({ authorUsername: "ana", authorName: "Ana Gómez", authorExternalId: "igsid-7", channelId: "ch-ig" }));
+    expect(db.rows("contacts")[0]).toMatchObject({ display_name: "Ana del gimnasio", instagram_username: "otro" });
+  });
+
+  it("no escribe un @ que ya es de otro contacto, y el comentario se vincula igual", async () => {
+    const db = withSender();
+    db.rows("contacts").push({ id: "c-otro", workspace_id: WS, display_name: "Ana", instagram_username: "ana", deleted_at: null, created_at: "2026-01-01" });
+    const result = await attributeComment(db.client, params({ authorUsername: "ana", authorName: "Ana Gómez", authorExternalId: "igsid-7", channelId: "ch-ig" }));
+    expect(result.contactId).toBe("c-eco");
+    expect(db.rows("contacts")[0]).toMatchObject({ instagram_username: null, display_name: "1784..." });
+  });
+
   it("sin canal no busca por id, y sin @ no hace nada", async () => {
     const db = withSender();
     const result = await attributeComment(db.client, params({ authorUsername: null, authorExternalId: "igsid-7", channelId: null }));

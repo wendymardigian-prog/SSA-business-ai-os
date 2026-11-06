@@ -102,7 +102,12 @@ su primer mensaje. Los que ya estaban se arreglan con
 Instagram no informa quién sigue a la cuenta ni desde cuándo: «chat iniciado
 fuera del sistema» no distingue si ManyChat escribió por un follow, un comentario
 o una historia. Para eso, ManyChat tendría que avisarnos (por un webhook) qué
-disparador usó.
+disparador usó, junto con el id de Instagram de la persona: con solo el nombre y el
+@ ese webhook crearía un segundo contacto, porque el que nació por el eco no tiene @.
+
+Desde la 00295 ese contacto queda **oculto hasta saber quién es**, con su toque
+guardado. Ver «El contacto sin identificar» en
+[flujo-de-mensajes.md](flujo-de-mensajes.md).
 
 ### De los comentarios (F86)
 

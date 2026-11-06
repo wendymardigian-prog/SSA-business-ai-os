@@ -13,6 +13,7 @@ import {
   HIDE_KNOWN_PARAM,
   HIDE_KNOWN_VALUE,
   HIDE_CUSTOMERS_PARAM,
+  UNIDENTIFIED_PARAM,
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
@@ -256,6 +257,18 @@ export function InboxFiltersMenu({
           </div>
         </FilterGroup>
 
+        {/* 00295: las que la lista oculta por defecto. */}
+        <FilterGroup label="Quién es">
+          <div className="flex flex-wrap gap-1.5">
+            <Chip
+              active={!!filters.onlyUnidentified}
+              onClick={() => setParam(UNIDENTIFIED_PARAM, filters.onlyUnidentified ? "" : "1")}
+            >
+              Sin identificar
+            </Chip>
+          </div>
+        </FilterGroup>
+
         <FilterGroup label="Asignación">
           <select
             value={filters.assignment}
@@ -328,6 +341,25 @@ export function InboxFiltersMenu({
         )}
       </div>
     </FilterMenu>
+  );
+}
+
+/**
+ * Cuantos chats oculta la lista por defecto (00295) y el link para verlos. Sin
+ * esto, la lista baja de golpe y parece que se perdieron conversaciones.
+ */
+export function UnidentifiedNotice({ count }: { count: number }) {
+  const { setParam } = useInboxUrl();
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => setParam(UNIDENTIFIED_PARAM, "1")}
+      className="w-full border-b border-border bg-muted/30 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      {count === 1 ? "1 chat sin identificar" : `${count} chats sin identificar`}: todavía no respondieron.{" "}
+      <span className="font-medium text-primary-ink">Ver</span>
+    </button>
   );
 }
 

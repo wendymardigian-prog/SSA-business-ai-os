@@ -204,6 +204,35 @@ La importación trae la conversación, no sus mensajes viejos: en Instagram la
 bandeja lee el hilo en vivo de Zernio, así que se ven igual. Copiarlos a
 `messages` es el backfill de abajo.
 
+## El contacto sin identificar (00295, 6/11/2026)
+
+Cuando el negocio o ManyChat le escribe a alguien que nunca interactuó, Instagram
+no da su nombre ni su usuario: solo el id. El contacto se guarda igual, con el id
+como nombre, pero **queda oculto hasta saber quién es**:
+
+| | Hasta identificarse | Después |
+|---|---|---|
+| Contactos | Oculto (`is_anonymous`), filtro «Sin datos» | Visible |
+| Bandeja | Oculto si nunca escribió, filtro «Sin identificar» | Visible |
+| Asignación y «Contacto creado» | No corren | Corren una vez |
+| Toques y mensajes | Se guardan | Son los mismos, en el mismo contacto |
+
+Deja de estar oculto de tres maneras, sin mover ni fusionar nada:
+
+1. **Responde.** El chat aparece en la Bandeja en el momento (`contact_wrote_at`),
+   aunque todavía no se sepa quién es. Zernio trae su perfil y el contacto aparece
+   también en Contactos. Desde el 28/10 respondió el 22 % y, de esos, todos quedaron
+   identificados.
+2. **Comenta.** El comentario trae el @ y el nombre (`completeProfileFromComment`).
+3. **Alguien carga un dato** en la ficha.
+
+Una conversación vieja sin `contact_wrote_at` puede tener mensajes de antes de que se
+guardaran los entrantes. Vuelve sola con cualquier mensaje nuevo y se ve con el filtro.
+
+El costo: la lista de la Bandeja mira el contacto de cada chat que nunca escribió
+(unos 110 ms con 600). Si esos chats pasan los 10.000, conviene guardar el dato en una
+columna en vez de calcularlo.
+
 ## Backfill
 
 `scripts/backfill-zernio-messages.mjs` trae lo que la API todavía tenga. El

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
 import { handleCommentBackfill, handleCommentBackfillWorkspace } from "./comment-backfill";
 
 const WS = "11111111-1111-4111-8111-111111111111";
@@ -20,7 +21,7 @@ const world = (comments: Array<Record<string, unknown>>, contact: Record<string,
       social_post_comments: comments,
       social_posts: [], content_posts: [], scheduled_jobs: [], channels: [], contact_channels: [],
     },
-    { rpc: { record_contact_touch: (args) => (touches.push(args), { inserted: true }) } },
+    { rpc: { find_or_create_contact: memoryCentralRpc, record_contact_touch: (args) => (touches.push(args), { inserted: true }) } },
   );
 };
 const run = (payload: Record<string, unknown>, handler = handleCommentBackfill) => handler({ supabase: db.client, job: { id: "j", type: "x", payload, attempts: 0 } });
@@ -95,6 +96,15 @@ describe("comment_backfill por el id de Instagram (contactos sin @)", () => {
     await run({ workspace_id: WS, contact_id: C1 });
     expect(db.rows("social_post_comments").every((c) => c.contact_id === C1)).toBe(true);
     expect(touches).toHaveLength(2);
+  });
+
+  it("completa al contacto sin @ con el comentario más reciente", async () => {
+    byId([
+      comment("c-1", { author_username: "viejo", author_external_id: "igsid-7", commented_at: "2026-10-01T00:00:00.000Z" }),
+      comment("c-2", { author_username: "ana", author_name: "Ana Gómez", author_external_id: "igsid-7", commented_at: "2026-10-02T00:00:00.000Z" }),
+    ]);
+    await run({ workspace_id: WS, contact_id: C1 });
+    expect(db.rows("contacts")[0]).toMatchObject({ instagram_username: "ana", display_name: "Ana Gómez" });
   });
 
   it("no usa el id de otra red ni toca comentarios de otra persona", async () => {

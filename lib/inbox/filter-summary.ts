@@ -122,6 +122,7 @@ export function describeInboxFilters(filters: InboxFilters, catalog: FilterSumma
   if (filters.needsHuman) parts.push("Necesita humano");
   if (filters.awaiting) parts.push(AWAITING_FILTER_LABELS[filters.awaiting]);
   if (filters.hideKnown) parts.push("Sin conocidos");
+  if (filters.onlyUnidentified) parts.push("Sin identificar");
 
   return parts;
 }

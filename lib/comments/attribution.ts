@@ -33,6 +33,7 @@ import type { TouchAccount } from "@/lib/inbox/accounts";
 import { findContact, findOrCreateContact } from "@/lib/contacts/find-or-create";
 import { shouldCreateFromComment, type AttributionSettings } from "@/lib/attribution/settings";
 import { loadAttributionSettings } from "@/lib/attribution/settings-load";
+import { completeProfileFromComment } from "./complete-profile";
 import { linkCommentToContact } from "./link-to-contact";
 
 type Db = SupabaseClient<Database>;
@@ -53,6 +54,8 @@ export interface CommentAttributionParams {
   /** El id del comentario EN LA RED. */
   externalCommentId: string;
   authorUsername: string | null;
+  /** El nombre del autor en la red, si lo da. Completa a un contacto que todavía no sabemos quién es. */
+  authorName?: string | null;
   /**
    * El id del autor en la red y el canal de esa cuenta (solo Instagram). Es el mismo id con el que el autor escribe por
    * DM (`contact_channels.platform_sender_id`): encuentra a un contacto que no tiene el @ guardado, como el que nace por
@@ -110,6 +113,7 @@ export async function attributeComment(
     const senderId = params.authorExternalId?.trim();
     if (platform === "instagram" && params.channelId && senderId) {
       contactId = (await findContact(supabase, { workspaceId: params.workspaceId, identity: { channel_id: params.channelId, sender_id: senderId } })).contactId;
+      if (contactId) await completeProfileFromComment(supabase, { workspaceId: params.workspaceId, contactId, username, name: params.authorName });
     }
 
     if (!contactId) {
