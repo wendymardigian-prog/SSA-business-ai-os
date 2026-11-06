@@ -43,7 +43,7 @@ Cómo se reconoce a una persona y cómo nace un contacto. Plan y decisiones en `
 
 Un teléfono o un email principal solo puede ser de un contacto **vivo** por workspace (`uq_contacts_workspace_phone`, `uq_contacts_workspace_email`). Están escritos y ensayados, pero **se aplican después de desplegar el PR** (ver `docs/PENDIENTE-contactos.md`).
 
-## Quién queda oculto (00295)
+## Quién queda oculto (00296)
 
 Un contacto sin nombre propio (vacío, «Instagram User» o un id numérico) y sin
 email, teléfono, WhatsApp ni @ de Instagram es **anónimo**: no aparece en la lista

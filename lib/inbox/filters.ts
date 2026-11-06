@@ -77,7 +77,7 @@ export interface InboxFilters {
   /** Esconde los chats de clientes (00268). */
   hideCustomers?: boolean;
   /**
-   * Solo las conversaciones que la lista oculta por defecto (00295): le escribio el
+   * Solo las conversaciones que la lista oculta por defecto (00296): le escribio el
    * negocio o una automatizacion, la persona nunca respondio y no se sabe quien es.
    */
   onlyUnidentified?: boolean;
@@ -106,7 +106,7 @@ export const HIDE_KNOWN_PARAM = "conocidos";
 export const HIDE_KNOWN_VALUE = "ocultar";
 /** `?clientes=ocultar` (00268). */
 export const HIDE_CUSTOMERS_PARAM = "clientes";
-/** `?sin-identificar=1` (00295). */
+/** `?sin-identificar=1` (00296). */
 export const UNIDENTIFIED_PARAM = "sin-identificar";
 /** El campo calculado de PostgREST que decide que conversaciones se ocultan. */
 export const SILENT_OUTREACH_FIELD = "conversation_is_silent_outreach";

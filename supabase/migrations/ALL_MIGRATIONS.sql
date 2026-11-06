@@ -52070,10 +52070,10 @@ COMMENT ON COLUMN public.broadcasts.email_preheader IS
   'Email: la linea que la bandeja de entrada muestra al lado del asunto. Admite las variables del broadcast. Opcional.';
 
 -- ============================================================
--- MIGRATION 295: UNIDENTIFIED CONTACTS
+-- MIGRATION 296: UNIDENTIFIED CONTACTS
 -- ============================================================
 -- ============================================================
--- MIGRACION 00295 — UN CONTACTO SIN DATOS QUEDA OCULTO HASTA SABER QUIEN ES
+-- MIGRACION 00296 — UN CONTACTO SIN DATOS QUEDA OCULTO HASTA SABER QUIEN ES
 -- ============================================================
 -- ManyChat le escribe a cada seguidor nuevo y Zernio avisa ese mensaje (el eco).
 -- Instagram todavia no da el nombre ni el usuario de esa persona, asi que el
@@ -52218,7 +52218,7 @@ ALTER TABLE public.conversations
   ADD COLUMN IF NOT EXISTS contact_wrote_at timestamptz;
 
 COMMENT ON COLUMN public.conversations.contact_wrote_at IS
-  'Cuando escribio la persona por primera vez en esta conversacion. Null = nunca escribio, o escribio antes de que se guardaran los mensajes entrantes. La mantiene el trigger messages_zz_contact_wrote (00295); no depende de la retencion de mensajes.';
+  'Cuando escribio la persona por primera vez en esta conversacion. Null = nunca escribio, o escribio antes de que se guardaran los mensajes entrantes. La mantiene el trigger messages_zz_contact_wrote (00296); no depende de la retencion de mensajes.';
 
 CREATE INDEX IF NOT EXISTS idx_conversations_never_wrote
   ON public.conversations(workspace_id)
@@ -52246,7 +52246,7 @@ $$;
 REVOKE ALL ON FUNCTION public.messages_mark_contact_wrote() FROM PUBLIC, anon, authenticated;
 
 COMMENT ON FUNCTION public.messages_mark_contact_wrote() IS
-  'Anota en la conversacion cuando escribio la persona (00295). Nunca tumba el insert de un mensaje.';
+  'Anota en la conversacion cuando escribio la persona (00296). Nunca tumba el insert de un mensaje.';
 
 -- Tambien al mover un mensaje de conversacion: es lo que hace merge_contacts cuando
 -- dos contactos fusionados tenian un chat en el mismo canal.
@@ -52295,7 +52295,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.conversation_is_silent_outreach(public.conversations) IS
-  'true si le escribio el negocio o una automatizacion, la persona nunca respondio y no se sabe quien es (00295). La bandeja las oculta por defecto. Nunca devuelve NULL.';
+  'true si le escribio el negocio o una automatizacion, la persona nunca respondio y no se sabe quien es (00296). La bandeja las oculta por defecto. Nunca devuelve NULL.';
 
 REVOKE ALL ON FUNCTION public.conversation_is_silent_outreach(public.conversations) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.conversation_is_silent_outreach(public.conversations) TO authenticated, service_role;

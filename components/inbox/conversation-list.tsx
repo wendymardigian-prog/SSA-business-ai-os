@@ -94,7 +94,7 @@ export function ConversationList({
   canDeleteContacts?: boolean;
   /** Hay grupos de WhatsApp activados que esta persona ve: se muestra «Chats | Grupos» (00280). */
   hasGroups?: boolean;
-  /** Chats que la lista oculta por defecto (00295). */
+  /** Chats que la lista oculta por defecto (00296). */
   unidentifiedCount?: number;
 }) {
   const router = useRouter();

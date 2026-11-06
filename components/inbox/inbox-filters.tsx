@@ -257,7 +257,7 @@ export function InboxFiltersMenu({
           </div>
         </FilterGroup>
 
-        {/* 00295: las que la lista oculta por defecto. */}
+        {/* 00296: las que la lista oculta por defecto. */}
         <FilterGroup label="Quién es">
           <div className="flex flex-wrap gap-1.5">
             <Chip
@@ -345,7 +345,7 @@ export function InboxFiltersMenu({
 }
 
 /**
- * Cuantos chats oculta la lista por defecto (00295) y el link para verlos. Sin
+ * Cuantos chats oculta la lista por defecto (00296) y el link para verlos. Sin
  * esto, la lista baja de golpe y parece que se perdieron conversaciones.
  */
 export function UnidentifiedNotice({ count }: { count: number }) {

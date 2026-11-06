@@ -145,7 +145,7 @@ export default async function InboxPage({
   const hideKnown = firstParam(params[HIDE_KNOWN_PARAM]) === HIDE_KNOWN_VALUE;
   // Clientes (00268), igual.
   const hideCustomers = firstParam(params[HIDE_CUSTOMERS_PARAM]) === HIDE_KNOWN_VALUE;
-  // 00295: las que le escribio el negocio y la persona nunca respondio. Se ocultan por defecto.
+  // 00296: las que le escribio el negocio y la persona nunca respondio. Se ocultan por defecto.
   const onlyUnidentified = firstParam(params[UNIDENTIFIED_PARAM]) === "1";
   const page = pickPage(params.page);
   const selectedId = firstParam(params.c);

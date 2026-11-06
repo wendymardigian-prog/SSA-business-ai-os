@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verificacion de los contactos sin identificar (00295).
+ * Verificacion de los contactos sin identificar (00296).
  *
  * Corre contra la base real. Prueba lo que Vitest NO puede probar: que la BASE
  * haga lo que dice

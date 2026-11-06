@@ -204,7 +204,7 @@ La importación trae la conversación, no sus mensajes viejos: en Instagram la
 bandeja lee el hilo en vivo de Zernio, así que se ven igual. Copiarlos a
 `messages` es el backfill de abajo.
 
-## El contacto sin identificar (00295, 6/11/2026)
+## El contacto sin identificar (00296, 6/11/2026)
 
 Cuando el negocio o ManyChat le escribe a alguien que nunca interactuó, Instagram
 no da su nombre ni su usuario: solo el id. El contacto se guarda igual, con el id

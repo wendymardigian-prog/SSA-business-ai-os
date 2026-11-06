@@ -105,7 +105,7 @@ o una historia. Para eso, ManyChat tendría que avisarnos (por un webhook) qué
 disparador usó, junto con el id de Instagram de la persona: con solo el nombre y el
 @ ese webhook crearía un segundo contacto, porque el que nació por el eco no tiene @.
 
-Desde la 00295 ese contacto queda **oculto hasta saber quién es**, con su toque
+Desde la 00296 ese contacto queda **oculto hasta saber quién es**, con su toque
 guardado. Ver «El contacto sin identificar» en
 [flujo-de-mensajes.md](flujo-de-mensajes.md).
 

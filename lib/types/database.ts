@@ -2264,7 +2264,7 @@ export interface Database {
           needs_human_reason: string | null;
           needs_human_at: string | null;
           /**
-           * Cuando escribio la persona por primera vez (00295). Null = nunca
+           * Cuando escribio la persona por primera vez (00296). Null = nunca
            * escribio. Lo mantiene el trigger de messages.
            */
           contact_wrote_at: string | null;

@@ -98,7 +98,7 @@ export interface ContactIdentity {
  */
 export function isAnonymousContact(contact: ContactIdentity): boolean {
   // La lista y el id, sin el @usuario: es lo que calcula la columna generada
-  // `is_anonymous` (00295), y las dos tienen que decir lo mismo. Un contacto con
+  // `is_anonymous` (00296), y las dos tienen que decir lo mismo. Un contacto con
   // un @usuario como nombre ademas tiene `instagram_username`.
   return (
     (isListedPlaceholder(contact.display_name) || ID_NAME.test((contact.display_name ?? "").trim())) &&

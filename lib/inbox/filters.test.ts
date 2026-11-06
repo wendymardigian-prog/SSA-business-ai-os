@@ -199,7 +199,7 @@ describe("filtro por cuenta (channelIds)", () => {
   });
 });
 
-describe("Sin identificar (00295)", () => {
+describe("Sin identificar (00296)", () => {
   it("cuenta como un filtro y lo tiene que resolver el servidor", () => {
     const filters = { ...EMPTY_INBOX_FILTERS, onlyUnidentified: true };
     expect(countActiveFilters(filters)).toBe(1);
