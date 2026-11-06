@@ -3,8 +3,8 @@
 -- ============================================================
 -- ManyChat le escribe a cada seguidor nuevo y Zernio avisa ese mensaje (el eco).
 -- Instagram todavia no da el nombre ni el usuario de esa persona, asi que el
--- contacto nace con el id de la plataforma como nombre ("1127362606826154"). En
--- produccion son 667 de 2806, entran 40 a 70 por dia y nadie los trabajo.
+-- contacto nace con el id de la plataforma como nombre ("1127362606826154"), y
+-- esos contactos llenan la lista sin que nadie pueda trabajarlos.
 --
 -- El sistema ya sabe ocultar a quien no se puede reconocer: `is_anonymous` (00032)
 -- lo saca de la lista de Contactos y de la asignacion, y `contact_created` recien
