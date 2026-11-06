@@ -52070,9 +52070,9 @@ COMMENT ON COLUMN public.broadcasts.email_preheader IS
   'Email: la linea que la bandeja de entrada muestra al lado del asunto. Admite las variables del broadcast. Opcional.';
 
 -- ============================================================
--- MIGRATION 295: FATHOM HISTORY IMPORT
+-- MIGRATION 296: FATHOM HISTORY IMPORT
 -- ============================================================
--- 00295_fathom_history_import (6/11/2026)
+-- 00296_fathom_history_import (6/11/2026)
 --
 -- Importar el historial de Fathom y dejar de usar la marca "es closer".
 --
@@ -52103,7 +52103,7 @@ COMMENT ON COLUMN public.calls.imported_from_history IS
   'Entro por una importacion del historial: no dispara automatizaciones y no se analiza sola.';
 
 COMMENT ON COLUMN public.workspace_members.is_closer IS
-  'Sin usar desde la 00295: entra lo que graba quien conecto su Fathom y tiene calls.view.';
+  'Sin usar desde la 00296: entra lo que graba quien conecto su Fathom y tiene calls.view.';
 
 COMMENT ON COLUMN public.workspace_members.closer_emails IS
   'Los otros correos con los que esta persona graba en Fathom. Los carga ella en Mi Fathom.';
