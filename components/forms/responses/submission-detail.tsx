@@ -15,7 +15,7 @@ import { setSubmissionSpam } from "@/lib/actions/forms/forms";
 import { answerToText, orderedAnswers, statusLabel, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
 import { filesOfAnswers } from "@/lib/forms/files";
 import { formatInZone } from "@/lib/forms/responses-query";
-import { attributionSections, entryUrlOf } from "@/lib/forms/attribution-view";
+import { attributionSections, bestEntryUrl } from "@/lib/forms/attribution-view";
 import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
 import { matchedByText, type ConflictView } from "@/lib/forms/contact-outcome";
 
@@ -77,7 +77,7 @@ export function SubmissionDetail({
   const files = filesOfAnswers(submission.answers);
   const fileKeys = new Set(files.map((f) => f.path));
   const sections = attributionSections(submission.attribution);
-  const entryUrl = entryUrlOf(submission.attribution);
+  const entryUrl = bestEntryUrl(submission.attribution);
 
   function openFile(path: string) {
     setMessage(null);

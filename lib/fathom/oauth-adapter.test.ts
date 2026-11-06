@@ -5,9 +5,8 @@ import { FATHOM_TOKEN_URL } from "./api-constants";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 describe("fathomAdapter", () => {
-  it("es por persona, sin permiso aparte, con el scope public_api", () => {
-    expect(fathomAdapter).toMatchObject({ provider: "fathom", perUser: true, anyMember: true, scopes: ["public_api"], requiredScopes: ["public_api"] });
-    expect(fathomAdapter.requiredPermission).toBeUndefined();
+  it("es por persona, pide calls.view y usa el scope public_api", () => {
+    expect(fathomAdapter).toMatchObject({ provider: "fathom", perUser: true, requiredPermission: "calls.view", scopes: ["public_api"], requiredScopes: ["public_api"] });
     expect(fathomAdapter.clientIdSecretName).toBe("fathom_client_id");
     expect(fathomAdapter.clientSecretSecretName).toBe("fathom_client_secret");
   });

@@ -42,7 +42,7 @@ export default async function IntegrationsPage() {
   // @plantilla-sin(llamadas): // Mis conexiones: mi Google Calendar (los mismos datos y OAuth personal de siempre).
   const service = await createServiceClient(); // @plantilla-quitar(llamadas)
   const since = daysAgoIso(7); // @plantilla-quitar(llamadas)
-  const [profile, googleConnections, secretNames, { data: fathomConnections }, { data: me }] = await Promise.all([ // @plantilla-quitar(llamadas)
+  const [profile, googleConnections, secretNames, { data: fathomConnections }] = await Promise.all([ // @plantilla-quitar(llamadas)
   // @plantilla-sin(llamadas): const [profile, googleConnections] = await Promise.all([
     getProfileForUser(supabase, workspace.id, user.id),
     listCalendarConnections(supabase, workspace.id, user.id),
@@ -56,7 +56,6 @@ export default async function IntegrationsPage() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false }),
     // @plantilla-hasta(llamadas)
-    supabase.from("workspace_members").select("is_closer").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(), // @plantilla-quitar(llamadas)
   ]);
   // @plantilla-desde(llamadas)
   const hasFathomApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
@@ -73,7 +72,7 @@ export default async function IntegrationsPage() {
       .gte("created_at", since);
     callsLast7d = count ?? 0;
   }
-  const fathomView = fathomCardView({ hasApp: hasFathomApp, connection: mineFathom, isCloser: me?.is_closer === true, callsLast7d });
+  const fathomView = fathomCardView({ hasApp: hasFathomApp, connection: mineFathom, callsLast7d });
   // @plantilla-hasta(llamadas)
 
   const mine = (
@@ -88,7 +87,7 @@ export default async function IntegrationsPage() {
         }))}
       />
       {/* @plantilla-desde(llamadas) */}
-      <MiFathomCard view={fathomView} connectionId={fathomConnectionId} flash={null} embedded />
+      {ctx.can("calls.view") && <MiFathomCard view={fathomView} connectionId={fathomConnectionId} flash={null} embedded />}
       {/* @plantilla-hasta(llamadas) */}
     </>
   );

@@ -7,8 +7,8 @@ import { saveFathomApp } from "@/lib/actions/fathom";
 
 /**
  * La app de Fathom del negocio (F5): Client ID y Client Secret, que se
- * guardan en Vault y NUNCA vuelven a mostrarse. Cada closer conecta SU cuenta
- * despues, desde Llamadas > Mi Fathom.
+ * guardan en Vault y NUNCA vuelven a mostrarse. Cada persona conecta SU cuenta
+ * despues, desde Grabaciones > Mi Fathom.
  *
  * Se ve como las demas tarjetas de integracion (nombre y estado, una linea de
  * descripcion y un boton) y vive junto a ellas, en "Conexiones". Los campos NO
@@ -84,7 +84,7 @@ export function FathomAppCard({
       </div>
 
       <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
-        Trae las llamadas de venta de tus closers desde Fathom. Cargás la app una vez; cada closer conecta su cuenta.
+        Trae las grabaciones de tu equipo desde Fathom. Cargás la app una vez; cada persona conecta su cuenta.
       </p>
 
       {saved && (
@@ -174,7 +174,7 @@ export function FathomAppCard({
         </button>
         {saved && (
           <Link href="/dashboard/llamadas/mi-fathom" className="mt-2 block text-center text-[11px] text-primary-ink underline-offset-2 hover:underline">
-            Cada closer conecta su cuenta en Llamadas &gt; Mi Fathom
+            Cada persona conecta su cuenta en Grabaciones &gt; Mi Fathom
           </Link>
         )}
       </div>

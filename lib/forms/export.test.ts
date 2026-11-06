@@ -92,6 +92,26 @@ describe("atribución en el CSV (F33)", () => {
   });
 });
 
+describe("URL de entrada y nombres de Meta en el CSV", () => {
+  it("suma la URL de entrada y, si no hay, la saca de la página de llegada sin parámetros sensibles", () => {
+    const rows = [
+      row({ attribution: { entry_url: "https://s.test/a?ref=podcast" } }),
+      row({ attribution: { landing_page: "https://s.test/b?utm_source=meta&token=secreto" } }),
+    ];
+    const matrix = buildResponsesMatrix(rows, columns, opts);
+    const at = matrix[0].indexOf("Atribución: URL de entrada");
+    expect(at).toBeGreaterThan(-1);
+    expect(matrix[1][at]).toBe("https://s.test/a?ref=podcast");
+    expect(matrix[2][at]).toBe("https://s.test/b?utm_source=meta");
+  });
+
+  it("suma solo los nombres de Meta que alguna fila tiene", () => {
+    const matrix = buildResponsesMatrix([row({ meta_names: { campaign: "Clase", adset: "N6", ad: null } })], columns, opts);
+    expect(matrix[0].slice(-2)).toEqual(["Atribución: Campaña de Meta", "Atribución: Conjunto de Meta"]);
+    expect(matrix[1].slice(-2)).toEqual(["Clase", "N6"]);
+  });
+});
+
 describe("buildExportFilename", () => {
   it("nombre seguro y con extensión csv", () => {
     expect(buildExportFilename("Aplicación al programa", "todos", "2026-10-10")).toBe("aplicacion_al_programa_todos_2026-10-10.csv");

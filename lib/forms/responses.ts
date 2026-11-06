@@ -32,6 +32,8 @@ export interface ResponseRow {
   score?: number | null;
   nps_category?: string | null;
   attribution?: Record<string, unknown> | null;
+  /** Nombres del catálogo de Meta, solo para quien puede verlos. */
+  meta_names?: { campaign: string | null; adset: string | null; ad: string | null } | null;
   /** Solo contratos: estado del email con la copia firmada. */
   email_status?: string | null;
 }

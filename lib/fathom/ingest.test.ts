@@ -18,7 +18,7 @@ const meeting = (i: number, email = "ana@negocio.io"): Meeting => ({
   calendar_invitees: [{ name: "Lead", email: "lead@x.com", is_external: true }],
 });
 
-function world(opts: { watermark?: string | null; cursor?: string | null; closers?: boolean; status?: string; callsPre?: string[] } = {}) {
+function world(opts: { watermark?: string | null; cursor?: string | null; permission?: boolean; noEmails?: boolean; status?: string; callsPre?: string[] } = {}) {
   const conn = {
     id: CONN, workspace_id: WS, user_id: "user-ana", status: opts.status ?? "active", vault_secret_prefix: "oauth_fathom_c1",
     token_expires_at: "2026-10-10T19:00:00Z", account_label: "ana@negocio.io",
@@ -32,10 +32,12 @@ function world(opts: { watermark?: string | null; cursor?: string | null; closer
       "oauth_connections:select": () => ({ data: { ...conn } }),
       "oauth_connections:update": (c) => { Object.assign(conn, c.values); return { data: null }; },
       "workspace_members:select": () => ({
-        data: opts.closers === false
-          ? [{ user_id: "user-ana", is_closer: false, closer_emails: [] }]
-          : [{ user_id: "user-ana", is_closer: true, closer_emails: ["ana.personal@gmail.com"] }, { user_id: "user-beto", is_closer: false, closer_emails: [] }],
+        data: [
+          { user_id: "user-ana", role: "member", role_id: opts.permission === false ? "rol-sin-grabaciones" : null, closer_emails: opts.noEmails ? [] : ["ana.personal@gmail.com"] },
+          { user_id: "user-beto", role: "member", role_id: null, closer_emails: [] },
+        ],
       }),
+      "workspace_roles:select": { data: [{ id: "rol-sin-grabaciones", system_role: null, permissions: { keys: [] } }] },
       "calls:select": (c) => {
         const ids = (c.filters.find((f) => f.method === "in")?.value ?? []) as string[];
         return { data: calls.filter((x) => ids.includes(String(x.external_id))).map((x) => ({ external_id: x.external_id })) };
@@ -55,8 +57,9 @@ function world(opts: { watermark?: string | null; cursor?: string | null; closer
       },
       "scheduled_jobs:insert": (c) => { jobs.push({ ...(c.values as object), status: "pending" }); return { data: { id: "j" } }; },
     },
-    { workspace_member_profiles: { data: [{ user_id: "user-ana", email: "ana@negocio.io" }, { user_id: "user-beto", email: "beto@negocio.io" }] } },
+    { workspace_member_profiles: { data: [{ user_id: "user-ana", email: opts.noEmails ? null : "ana@negocio.io" }, { user_id: "user-beto", email: "beto@negocio.io" }] } },
   );
+  if (opts.noEmails) conn.account_label = "Cuenta de Fathom";
   return { conn, calls, jobs, audits, db };
 }
 
@@ -124,23 +127,23 @@ describe("syncFathomConnection", () => {
     expect(w.conn.sync_cursor).toBeNull();
   });
 
-  it("una reunion grabada por alguien que no es closer no guarda nada", async () => {
+  it("lo que grabo otra persona no guarda nada, aunque Fathom se lo muestre compartido", async () => {
     const w = world();
     const f = fathom({ pages: { first: { items: [meeting(1, "setter@negocio.io"), meeting(2, "beto@negocio.io")] } }, log: [] });
     const r = await syncFathomConnection(baseDeps(w, f), CONN);
     expect(r.ingested).toBe(0);
-    expect(r.skippedNotCloser).toBe(2);
+    expect(r.skippedOtherRecorder).toBe(2);
     expect(w.calls).toHaveLength(0);
   });
 
-  it("reconoce al closer por su correo alterno y le asigna la llamada", async () => {
+  it("reconoce a la persona por su otro correo y le asigna la llamada", async () => {
     const w = world();
     const f = fathom({ pages: { first: { items: [meeting(1, "Ana.Personal@Gmail.com")] } }, log: [] });
     await syncFathomConnection(baseDeps(w, f), CONN);
     expect(w.calls[0]).toMatchObject({ recorded_by_user_id: "user-ana", recorded_by_email: "ana.personal@gmail.com", source: "fathom", analysis_status: "classifying" });
   });
 
-  it("pide solo las llamadas de los closers (recorded_by[]) y desde la marca de agua menos 2 h", async () => {
+  it("pide solo lo que grabo quien conecto (recorded_by[]) y desde la marca de agua menos 2 h", async () => {
     const w = world({ watermark: "2026-10-09T12:00:00Z" });
     const log: string[] = [];
     await syncFathomConnection(baseDeps(w, fathom({ pages: { first: { items: [] } }, log })), CONN);
@@ -166,7 +169,7 @@ describe("syncFathomConnection", () => {
 
   it("si otra conexion la inserta justo antes (23505), no es un error ni se duplica", async () => {
     const w = world();
-    const racing = fakeDb({ ...{}, "calls:select": { data: [] }, "calls:insert": { error: { message: "dup", code: "23505" } }, "oauth_connections:select": () => ({ data: { ...w.conn } }), "oauth_connections:update": (c) => { Object.assign(w.conn, c.values); return { data: null }; }, "workspace_members:select": { data: [{ user_id: "user-ana", is_closer: true, closer_emails: [] }] }, "contacts:select": { data: [] } }, { workspace_member_profiles: { data: [{ user_id: "user-ana", email: "ana@negocio.io" }] } });
+    const racing = fakeDb({ ...{}, "calls:select": { data: [] }, "calls:insert": { error: { message: "dup", code: "23505" } }, "oauth_connections:select": () => ({ data: { ...w.conn } }), "oauth_connections:update": (c) => { Object.assign(w.conn, c.values); return { data: null }; }, "workspace_members:select": { data: [{ user_id: "user-ana", role: "member", role_id: null, closer_emails: [] }] }, "workspace_roles:select": { data: [] }, "contacts:select": { data: [] } }, { workspace_member_profiles: { data: [{ user_id: "user-ana", email: "ana@negocio.io" }] } });
     const r = await syncFathomConnection({ ...baseDeps(w, fathom({ pages: { first: { items: [meeting(1)] } }, log: [] })), supabase: racing.client }, CONN);
     expect(r.outcome).toBe("complete");
     expect(r.ingested).toBe(0);
@@ -222,14 +225,26 @@ describe("syncFathomConnection", () => {
     expect(w.conn.last_synced_at).toBe(NOW.toISOString());
   });
 
-  it("sin closers no pide nada; una conexion caida tampoco", async () => {
-    const a = world({ closers: false });
+  it("si su rol ya no tiene calls.view no pide nada", async () => {
     const log: string[] = [];
-    expect((await syncFathomConnection(baseDeps(a, fathom({ pages: {}, log })), CONN)).outcome).toBe("no_closers");
+    const r = await syncFathomConnection(baseDeps(world({ permission: false }), fathom({ pages: {}, log })), CONN);
+    expect(r.outcome).toBe("no_permission");
+    expect(log).toHaveLength(0);
+  });
+
+  it("sin ningun correo conocido no pide nada; una conexion caida tampoco", async () => {
+    const log: string[] = [];
+    expect((await syncFathomConnection(baseDeps(world({ noEmails: true }), fathom({ pages: {}, log })), CONN)).outcome).toBe("no_emails");
     expect(log).toHaveLength(0);
     const b = world({ status: "revoked" });
     expect((await syncFathomConnection(baseDeps(b, fathom({ pages: {}, log })), CONN)).outcome).toBe("inactive");
     expect(log).toHaveLength(0);
+  });
+
+  it("la llamada de la consulta normal no queda marcada como historia", async () => {
+    const w = world();
+    await syncFathomConnection(baseDeps(w, fathom({ pages: { first: { items: [meeting(1)] } }, log: [] })), CONN);
+    expect(w.calls[0]).toMatchObject({ imported_from_history: false });
   });
 
   it("una reunion sin recording_id se descarta", async () => {
@@ -259,7 +274,8 @@ describe("syncFathomConnection", () => {
       ...{},
       "oauth_connections:select": () => ({ data: { ...w.conn } }),
       "oauth_connections:update": (c) => { Object.assign(w.conn, c.values); return { data: null }; },
-      "workspace_members:select": { data: [{ user_id: "user-ana", is_closer: true, closer_emails: [] }] },
+      "workspace_members:select": { data: [{ user_id: "user-ana", role: "member", role_id: null, closer_emails: [] }] },
+      "workspace_roles:select": { data: [] },
       "calls:select": { data: [] },
       "calls:insert": (c) => { w.calls.push(c.values as Record<string, unknown>); return { data: { id: "call-1" } }; },
       "contacts:select": { data: [{ id: "c-9", created_at: "2026-01-01T00:00:00Z", email: "Lead@X.com", secondary_email: null }] },

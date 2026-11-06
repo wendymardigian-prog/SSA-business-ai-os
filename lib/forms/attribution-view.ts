@@ -3,6 +3,7 @@
  * nombres legibles y en este orden — primero los UTM, después el anuncio, el
  * navegador, de dónde vino y la primera visita si es distinta. Puro.
  */
+import { entryUrlFrom } from "@/lib/attribution/entry-url";
 import { AD_KEYS, CLICK_ID_KEYS, UTM_KEYS } from "@/lib/attribution/keys";
 
 export interface AttributionItem {
@@ -16,7 +17,7 @@ export interface AttributionSection {
   items: AttributionItem[];
 }
 
-const LABELS: Record<string, string> = {
+export const ATTRIBUTION_LABELS: Record<string, string> = {
   utm_source: "Fuente (utm_source)",
   utm_medium: "Medio (utm_medium)",
   utm_campaign: "Campaña (utm_campaign)",
@@ -53,7 +54,7 @@ function str(value: unknown): string | null {
 function itemsOf(attribution: Record<string, unknown>, keys: readonly string[]): AttributionItem[] {
   return keys.flatMap((key) => {
     const value = str(attribution[key]);
-    return value ? [{ key, label: LABELS[key] ?? key, value }] : [];
+    return value ? [{ key, label: ATTRIBUTION_LABELS[key] ?? key, value }] : [];
   });
 }
 
@@ -84,4 +85,13 @@ export function attributionSections(attribution: Record<string, unknown> | null 
 export function entryUrlOf(attribution: Record<string, unknown> | null | undefined): string | null {
   const value = attribution?.entry_url;
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/**
+ * La mejor URL de entrada que hay para mostrar. La web propia de un cliente no siempre manda `entry_url`, y ahi
+ * la pagina de llegada es lo mas parecido: trae la direccion con sus UTM e ids de clic, aunque el servidor le saca
+ * lo demas. Pasa por el mismo saneo que `entry_url`, asi nunca se muestra un parametro sensible.
+ */
+export function bestEntryUrl(attribution: Record<string, unknown> | null | undefined): string | null {
+  return entryUrlOf(attribution) ?? entryUrlFrom(attribution?.landing_page);
 }

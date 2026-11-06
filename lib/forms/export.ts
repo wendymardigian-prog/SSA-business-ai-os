@@ -10,6 +10,7 @@
  * ve qué.
  */
 import { ATTRIBUTION_KEYS, VISIT_META_KEYS } from "@/lib/attribution/keys";
+import { bestEntryUrl } from "./attribution-view";
 import { FORM_LIMITS } from "./limits";
 import {
   cellFor,
@@ -42,6 +43,17 @@ export function attributionColumns(rows: Array<Pick<ResponseRow, "attribution">>
   return order.filter((key) => rows.some((r) => typeof r.attribution?.[key] === "string" && r.attribution[key] !== ""));
 }
 
+/**
+ * Columnas que no son una clave guardada: la URL de entrada (que nunca entra en las listas de `keys.ts`) y los nombres
+ * del catálogo de Meta. Salen solo si alguna fila tiene el dato.
+ */
+const DERIVED_COLUMNS: ReadonlyArray<{ label: string; value: (row: ResponseRow) => string }> = [
+  { label: "Atribución: URL de entrada", value: (row) => bestEntryUrl(row.attribution) ?? "" },
+  { label: "Atribución: Campaña de Meta", value: (row) => row.meta_names?.campaign ?? "" },
+  { label: "Atribución: Conjunto de Meta", value: (row) => row.meta_names?.adset ?? "" },
+  { label: "Atribución: Anuncio de Meta", value: (row) => row.meta_names?.ad ?? "" },
+];
+
 export interface ExportOptions {
   /** Fecha ya en la zona del workspace. */
   formatDate: (iso: string) => string;
@@ -63,6 +75,7 @@ export function buildResponsesMatrix(
   options: ExportOptions,
 ): string[][] {
   const attrKeys = attributionColumns(rows);
+  const derived = DERIVED_COLUMNS.filter((column) => rows.some((row) => column.value(row) !== ""));
   const header = [
     "Fecha",
     "Contacto",
@@ -72,6 +85,7 @@ export function buildResponsesMatrix(
     ...(options.includeEmailStatus ? ["Email del contrato"] : []),
     ...columns.map((c) => c.label),
     ...attrKeys.map((k) => `Atribución: ${k}`),
+    ...derived.map((column) => column.label),
   ];
 
   const body = rows.map((row) => [
@@ -88,6 +102,7 @@ export function buildResponsesMatrix(
       const v = row.attribution?.[k];
       return typeof v === "string" ? v : "";
     }),
+    ...derived.map((column) => column.value(row)),
   ]);
 
   return [header, ...body];

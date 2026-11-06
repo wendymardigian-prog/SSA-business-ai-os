@@ -4,9 +4,9 @@ import { fathomCardView, pickConnection, shouldNudgeToConnect, type FathomConnec
 const conn = (over: Partial<FathomConnectionInfo> = {}): FathomConnectionInfo => ({
   status: "active", account_label: "ana@negocio.io", last_synced_at: "2026-10-10T18:00:00Z", last_error: null, sync_last_error: null, ...over,
 });
-const base = { hasApp: true, connection: null, isCloser: true, callsLast7d: 0 };
+const base = { hasApp: true, connection: null, callsLast7d: 0 };
 
-describe("fathomCardView: los 5 estados", () => {
+describe("fathomCardView: los 4 estados", () => {
   it("falta la app: nada que hacer, se le pide a un admin", () => {
     const v = fathomCardView({ ...base, hasApp: false });
     expect(v.state).toBe("missing_app");
@@ -36,22 +36,8 @@ describe("fathomCardView: los 5 estados", () => {
     expect(v.actions).toEqual({ connect: false, reconnect: true, syncNow: false, disconnect: true });
   });
 
-  it("no sos closer: puede conectar y se le avisa que sus llamadas no entran todavia", () => {
-    const v = fathomCardView({ ...base, isCloser: false });
-    expect(v.state).toBe("not_closer");
-    expect(v.message).toContain("Equipo");
-    expect(v.actions.connect).toBe(true);
-  });
-
-  it("no sos closer pero ya conectaste: sigue el aviso, y puede sincronizar o desconectar", () => {
-    const v = fathomCardView({ ...base, isCloser: false, connection: conn() });
-    expect(v.state).toBe("not_closer");
-    expect(v.connected).toBe(true);
-    expect(v.actions).toMatchObject({ connect: false, syncNow: true, disconnect: true });
-  });
-
   it("la falta de la app gana sobre todo lo demas", () => {
-    expect(fathomCardView({ ...base, hasApp: false, isCloser: false, connection: conn({ status: "error" }) }).state).toBe("missing_app");
+    expect(fathomCardView({ ...base, hasApp: false, connection: conn({ status: "error" }) }).state).toBe("missing_app");
   });
 
   it("una conexion revocada es como no tener ninguna", () => {
@@ -71,10 +57,9 @@ describe("pickConnection / shouldNudgeToConnect", () => {
     expect(pickConnection([conn({ status: "revoked" }), conn({ status: "error", account_label: "caida" })])?.account_label).toBe("caida");
     expect(pickConnection([conn({ status: "revoked" })])).toBeNull();
   });
-  it("avisa solo a un closer sin conexion viva y con la app cargada", () => {
-    expect(shouldNudgeToConnect({ isCloser: true, hasLiveConnection: false, hasApp: true })).toBe(true);
-    expect(shouldNudgeToConnect({ isCloser: true, hasLiveConnection: true, hasApp: true })).toBe(false);
-    expect(shouldNudgeToConnect({ isCloser: false, hasLiveConnection: false, hasApp: true })).toBe(false);
-    expect(shouldNudgeToConnect({ isCloser: true, hasLiveConnection: false, hasApp: false })).toBe(false);
+  it("avisa a quien no tiene conexion viva, solo si la app esta cargada", () => {
+    expect(shouldNudgeToConnect({ hasLiveConnection: false, hasApp: true })).toBe(true);
+    expect(shouldNudgeToConnect({ hasLiveConnection: true, hasApp: true })).toBe(false);
+    expect(shouldNudgeToConnect({ hasLiveConnection: false, hasApp: false })).toBe(false);
   });
 });

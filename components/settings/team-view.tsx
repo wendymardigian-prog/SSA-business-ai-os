@@ -23,7 +23,6 @@ import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
-import { CloserControl } from "@/components/settings/closer-control"; // @plantilla-quitar(llamadas)
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { memberRowControls, teamSections } from "@/lib/team/view-model";
 import { deliveryChip, inviteState } from "@/lib/team/invite-state";
@@ -37,9 +36,6 @@ interface MemberDetail {
   joinedAt: string;
   email: string;
   name: string;
-  /** Graba llamadas de venta (Llamadas, 00145).  @plantilla-quitar(llamadas) */
-  isCloser?: boolean;
-  closerEmails?: string[];
 }
 
 /** Un rol del workspace, para el selector. */
@@ -336,11 +332,6 @@ export function TeamView({
                           )}
                         </div>
                       </div>
-                      {/* @plantilla-desde(llamadas) */}
-                      {controls.closer && (
-                        <CloserControl userId={member.userId} name={member.name} initialIsCloser={member.isCloser ?? false} initialEmails={member.closerEmails ?? []} />
-                      )}
-                      {/* @plantilla-hasta(llamadas) */}
                     </div>
                   );
                 })}

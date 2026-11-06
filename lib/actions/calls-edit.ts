@@ -63,7 +63,7 @@ export async function changeCallType(input: { callId: string; type: string }): P
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, analysis_status, transcript")
+    .select("id, call_type, analysis_status, transcript, imported_from_history")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -79,7 +79,8 @@ export async function changeCallType(input: { callId: string; type: string }): P
   const analysis = settings.call_analysis;
   const next = nextStatusAfterClassify(input.type, {
     analyzeTypes: analysis.analyze_types,
-    auto: analysis.mode === "now",
+    // Lo importado del historial no se analiza solo: se analiza con el boton.
+    auto: analysis.mode === "now" && !call.imported_from_history,
     hasTranscript: Array.isArray(call.transcript) && call.transcript.length > 0,
   });
 

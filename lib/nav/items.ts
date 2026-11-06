@@ -106,7 +106,7 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // @plantilla-desde(llamadas)
   // Llamadas (Fathom + analizador): menu propio (decision 151), debajo de
   // Agenda. Se ve con `calls.view`; un Member de sistema lo tiene (decision 152).
-  { name: "Llamadas", href: "/dashboard/llamadas", icon: "PhoneCall", permissions: ["calls.view"], group: "ventas" },
+  { name: "Grabaciones", href: "/dashboard/llamadas", icon: "PhoneCall", permissions: ["calls.view"], group: "ventas" },
   // @plantilla-hasta(llamadas)
   // @plantilla-desde(ventas)
   // Ventas y pagos (Etapa 5, F8): abre la lista de ventas, SIN engranaje. Los

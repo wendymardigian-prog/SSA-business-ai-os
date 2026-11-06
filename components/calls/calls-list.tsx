@@ -193,7 +193,7 @@ export function CallsList(props: Props) {
             )}
             {props.canConfigure && (
               <Popover label="Configurar clasificación y análisis" trigger={<Settings className="h-4 w-4" aria-hidden />} panelClassName="w-64" triggerClassName="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-accent">
-                <p className="mb-2 text-xs font-semibold">Configuración de Llamadas</p>
+                <p className="mb-2 text-xs font-semibold">Configuración de grabaciones</p>
                 <ul className="space-y-1 text-sm">
                   <li><Link href="/dashboard/agents/tareas/call_classification?tab=config" className="block rounded-md px-2 py-1.5 hover:bg-accent">Clasificación de llamadas</Link></li>
                   <li><Link href="/dashboard/agents/tareas/call_analysis?tab=config" className="block rounded-md px-2 py-1.5 hover:bg-accent">Análisis de llamadas</Link></li>
@@ -212,8 +212,8 @@ export function CallsList(props: Props) {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         {props.nudgeConnect && (
-          <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
-            <span>Todavía no conectaste tu Fathom: tus llamadas no entran solas.</span>
+          <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm">
+            <span>Si grabás tus llamadas con Fathom, conectalo y entran solas.</span>
             <Link href="/dashboard/llamadas/mi-fathom" className="font-medium text-primary-ink underline-offset-2 hover:underline">Conectá tu Fathom</Link>
           </div>
         )}
@@ -468,14 +468,13 @@ function EmptyState(props: Props & { onImport: () => void }) {
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary-ink"><Phone className="h-5 w-5" aria-hidden /></span>
           <div>
-            <h2 className="text-base font-semibold">Todavía no hay llamadas</h2>
-            <p className="text-sm text-muted-foreground">Tus closers conectan Fathom y las llamadas entran solas.</p>
+            <h2 className="text-base font-semibold">Todavía no hay grabaciones de llamadas</h2>
+            <p className="text-sm text-muted-foreground">Cada persona conecta su Fathom y las grabaciones entran solas.</p>
           </div>
         </div>
         <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm">
           <li>Un admin carga la app de Fathom en <Link className="text-primary-ink underline-offset-2 hover:underline" href="/dashboard/settings/integrations">Integraciones</Link>.</li>
-          <li>Un admin marca a los closers en <Link className="text-primary-ink underline-offset-2 hover:underline" href="/dashboard/settings/team">Equipo</Link>.</li>
-          <li>Cada closer conecta su cuenta en <Link className="text-primary-ink underline-offset-2 hover:underline" href="/dashboard/llamadas/mi-fathom">Mi Fathom</Link>.</li>
+          <li>Cada persona conecta su cuenta en <Link className="text-primary-ink underline-offset-2 hover:underline" href="/dashboard/llamadas/mi-fathom">Mi Fathom</Link>. Ahí también puede importar sus llamadas anteriores.</li>
         </ol>
         {props.canEdit && (
           <button type="button" onClick={props.onImport} className="mt-4 text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground">
@@ -488,7 +487,7 @@ function EmptyState(props: Props & { onImport: () => void }) {
   return (
     <div className="mx-auto mt-6 max-w-xl rounded-xl border border-border bg-card p-6 text-center">
       <Link2 className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden />
-      <h2 className="mt-2 text-base font-semibold">Todavía no entró ninguna llamada</h2>
+      <h2 className="mt-2 text-base font-semibold">Todavía no entró ninguna grabación</h2>
       <p className="mt-1 text-sm text-muted-foreground">Se consulta Fathom cada 10 minutos.</p>
     </div>
   );
