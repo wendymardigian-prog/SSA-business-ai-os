@@ -1652,6 +1652,8 @@ export interface Database {
            * en una columna generada, por eso no esta en Insert ni en Update.
            */
           is_anonymous: boolean;
+          /** Cuando escribio la persona por primera vez (00298). Lo mantienen triggers. */
+          first_inbound_at: string | null;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
@@ -2277,6 +2279,11 @@ export interface Database {
           needs_human_reason: string | null;
           needs_human_at: string | null;
           /**
+           * Cuando escribio la persona por primera vez (00296). Null = nunca
+           * escribio. Lo mantiene el trigger de messages.
+           */
+          contact_wrote_at: string | null;
+          /**
            * "Esperando respuesta" (00259): los mantiene el trigger de messages.
            * awaiting_* en null = el ultimo mensaje que importa es nuestro.
            */
@@ -2318,6 +2325,7 @@ export interface Database {
           needs_human?: boolean;
           needs_human_reason?: string | null;
           needs_human_at?: string | null;
+          contact_wrote_at?: string | null;
           awaiting_reply_since?: string | null;
           awaiting_last_inbound_at?: string | null;
           reply_window_until?: string | null;
@@ -2337,6 +2345,7 @@ export interface Database {
           needs_human?: boolean;
           needs_human_reason?: string | null;
           needs_human_at?: string | null;
+          contact_wrote_at?: string | null;
           awaiting_reply_since?: string | null;
           awaiting_last_inbound_at?: string | null;
           reply_window_until?: string | null;

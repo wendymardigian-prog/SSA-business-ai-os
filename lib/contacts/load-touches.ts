@@ -14,7 +14,7 @@ import type { TimelineTouch } from "./touch-timeline";
 type Db = SupabaseClient<Database>;
 
 const BASE_COLUMNS =
-  "id, occurred_at, source, medium, content_label, content_post_id, origin, raw, campaign, term, ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid, referrer_url, landing_page, meta_campaign_id, meta_adset_id, meta_ad_id, meta_match_status, meta_match_method";
+  "id, occurred_at, source, medium, content_label, content_post_id, origin, raw, campaign, term, ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid, referrer_url, landing_page, meta_campaign_id, meta_adset_id, meta_ad_id, meta_match_status, meta_match_method, meta_match_reason";
 
 /** Postgres: undefined_column. */
 const UNDEFINED_COLUMN = "42703";

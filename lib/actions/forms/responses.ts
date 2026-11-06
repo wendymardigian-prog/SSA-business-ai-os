@@ -8,6 +8,9 @@ import { fieldsOf } from "@/lib/forms/server-ports";
 import { buildExportFilename, buildResponsesCsv } from "@/lib/forms/export";
 import { FORM_LIMITS } from "@/lib/forms/limits";
 import { isFileOfSubmission, SIGNED_URL_SECONDS } from "@/lib/forms/files";
+import { metaLinkFromAttribution, metaLinkFromTouch, touchMetaIds } from "@/lib/attribution/meta-link";
+import { EMPTY_META_NAMES, loadMetaNamesByIds, metaIdsFrom } from "@/lib/attribution/meta-names";
+import { formTouchKey, loadTouchesByKey } from "@/lib/attribution/source-touches";
 import { parseResponseFilters, responseColumns, type ResponseRow } from "@/lib/forms/responses";
 import { applyResponseFilters, formatInZone } from "@/lib/forms/responses-query";
 import { UPLOADS_BUCKET } from "@/lib/forms/server-ports";
@@ -71,6 +74,15 @@ export async function exportResponsesCsv(input: { formId: string; params: Record
     : { data: [] as Array<{ id: string; display_name: string | null; email: string | null }> };
   const byId = new Map((contacts ?? []).map((c) => [c.id, c]));
 
+  // El vinculo con Meta es el del toque de cada respuesta; sin toque (sin contacto), los ids que trajo su URL.
+  const attributionOf = (s: { attribution: unknown }) => (s.attribution ?? {}) as Record<string, unknown>;
+  const touches = await loadTouchesByKey(await createServiceClient(), workspace.id, submissions.map((s) => formTouchKey(s.id)));
+  const metaIds = submissions.map((s) => {
+    const touch = touches.get(formTouchKey(s.id));
+    return touch ? touchMetaIds(touch) : metaIdsFrom(attributionOf(s));
+  });
+  const metaNames = ctx.can("dashboards.ads.view") ? await loadMetaNamesByIds(supabase, workspace.id, metaIds) : EMPTY_META_NAMES;
+
   const rows: ResponseRow[] = submissions.map((s) => ({
     id: s.id,
     created_at: s.created_at,
@@ -82,6 +94,10 @@ export async function exportResponsesCsv(input: { formId: string; params: Record
     score: s.score,
     nps_category: s.nps_category,
     attribution: (s.attribution ?? {}) as Record<string, unknown>,
+    meta_names: (() => {
+      const touch = touches.get(formTouchKey(s.id));
+      return (touch ? metaLinkFromTouch(touch, metaNames) : metaLinkFromAttribution(attributionOf(s), metaNames)).names;
+    })(),
   }));
 
   const columns = responseColumns(fieldsOf(definition), rows);

@@ -1,6 +1,8 @@
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Solo grupos: ninguna conversacion entra en la lista, y cada una que se mueve pediria la pagina entera.
+    if (filters.listType === "grupos") return;
     const supabase = createClient();
     const serverOnly = needsServerToFilter(filters);
 

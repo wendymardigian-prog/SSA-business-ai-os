@@ -15,7 +15,8 @@
  * Modulo PURO.
  */
 import { CHANNEL_LABELS, isOriginChannel, touchChannel, TOUCH_CHANNELS, type TouchChannel } from "@/lib/attribution/channel";
-import { accountOfRaw, describeTouch, type MetaNames, type TouchRow, type TouchView } from "./attribution-view";
+import type { MetaLink } from "@/lib/attribution/meta-link";
+import { accountOfRaw, describeTouch, touchLink, type MetaNames, type TouchRow, type TouchView } from "./attribution-view";
 import type { AttributionTouch } from "./attribution";
 
 /** Una fila de `contact_touches` con lo que la linea de tiempo necesita (todo lo de la ficha mas el orden y el canal). */
@@ -63,6 +64,8 @@ export interface TimelineItem {
   adId: string | null;
   /** La frase, la pieza con su link, el anuncio, la fecha y el detalle plegado (UTM, ids de clic, pagina). */
   view: TouchView;
+  /** El vinculo con Meta, para revisarlo o cambiarlo. */
+  link: MetaLink;
 }
 
 export interface Timeline {
@@ -204,6 +207,7 @@ export function buildTimeline(touches: readonly TimelineTouch[], options: Timeli
       socialPostId: touch.social_post_id ?? null,
       adId: touch.meta_ad_id ?? touch.ad_id ?? null,
       view,
+      link: touchLink(touch),
     };
   });
 

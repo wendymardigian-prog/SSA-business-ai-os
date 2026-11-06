@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { attributionSections } from "./attribution-view";
+import { attributionSections, bestEntryUrl } from "./attribution-view";
 
 describe("attributionSections", () => {
   it("agrupa y ordena: campaña, anuncio, navegador y páginas", () => {
@@ -31,5 +31,21 @@ describe("attributionSections", () => {
 
   it("ignora valores que no son texto", () => {
     expect(attributionSections({ utm_source: 5, utm_medium: "", utm_term: "x" }).flatMap((s) => s.items.map((i) => i.key))).toEqual(["utm_term"]);
+  });
+});
+
+describe("bestEntryUrl", () => {
+  it("usa entry_url si está", () => {
+    expect(bestEntryUrl({ entry_url: "https://s.test/a?ref=x", landing_page: "https://s.test/b" })).toBe("https://s.test/a?ref=x");
+  });
+
+  it("si no está, usa la página de llegada sin parámetros sensibles", () => {
+    expect(bestEntryUrl({ landing_page: "https://s.test/b?utm_source=meta&token=secreto" })).toBe("https://s.test/b?utm_source=meta");
+  });
+
+  it("sin ninguna de las dos, o con algo que no es una URL, no devuelve nada", () => {
+    expect(bestEntryUrl({})).toBeNull();
+    expect(bestEntryUrl(null)).toBeNull();
+    expect(bestEntryUrl({ landing_page: "javascript:alert(1)" })).toBeNull();
   });
 });

@@ -339,6 +339,9 @@ async function saveChat(
   for (let i = 0; i < rows.length; i += ROWS_PER_INSERT) {
     messages += await insertHistoricMessages(db, rows.slice(i, i + ROWS_PER_INSERT));
   }
+  // Otra vez: el primer mensaje entrante puede volver visible a un contacto oculto
+  // (00298), y eso emite `contact_created`. Un chat viejo no es un contacto nuevo.
+  if (rows.some((row) => row.direction === "inbound")) await silenceContactSideEffects(service, contact, startedAt);
   return { createdConversation: conversation.created, messages };
 }
 

@@ -1030,6 +1030,7 @@ Menu con la seccion **Herramientas** colapsable, Formularios rediseñado (lista 
 - **La pestaña del editor vive en `?tab=`** y se cambia con `window.history.pushState(null, ...)` (sin pedirle la pagina al servidor).
 - **El formulario publico ya no muestra el logo** (`design.showLogo` queda guardado, nadie lo usa).
 - **`entry_url`**: la direccion completa por la que entro la persona, con todos sus parametros menos los sensibles (`lib/attribution/sensitive-params.ts`), los internos y el `#`; tope de 2000. Se arma y se vuelve a sanear en UN solo lugar (`lib/attribution/entry-url.ts`), viaja en `form_submissions.attribution.entry_url` y en `contact_touches.entry_url`, y se ve en el detalle de una respuesta y en las visitas del contacto. **Nunca se loguea.** `landing_page` y `page_url` siguen filtradas, la lista de claves de `lib/attribution/keys.ts` no cambio y `contacts.attribution` (copia derivada) no la incluye.
+- **Las columnas de la tabla de respuestas salen de `lib/forms/response-columns.ts`**, encima del catálogo común de `lib/attribution/columns.ts` (preguntas + atribución, con menú «Columnas»; lo elegido se guarda por tabla en `localStorage`, como diferencia con lo normal). La URL que se muestra es `bestEntryUrl`: `entry_url` o, si la web externa no la mandó, `landing_page` saneada.
 - **`record_contact_touch` cambio A PROPOSITO en la 00215** y solo para escribir `entry_url` (misma firma, mismo comportamiento): su huella ahora es `2f51ddbf060e31528b89ce7481b38e3d` (la vieja era `f364db1862cc0f90291ca14ef855a214`; la definicion completa esta en la cabecera de la migracion y `lib/contacts/record-touch-00215-diff.test.ts` fija el diff). `create_booking` NO se toco: la Agenda manda la URL dentro de `p_utm` y llega por `raw.utm`.
 - **El `embed.js` se regenera** cuando se toca `lib/attribution/` o `lib/embed/` (`npm run build:embed`, se commitea, tope 60 KB). El `attr` del embed admite hasta 4096 bytes.
 
@@ -1296,6 +1297,24 @@ node scripts/verify-ads-attribution.mjs    # catalogo, RLS, paridad SQL↔TS (29
 
 `verify-rls.mjs --despues-de-00143` y `verify-roles.mjs --despues-de-00136` son los que corresponden hoy. Mismas reglas que los demas: crean y limpian sus datos
 (prefijo `zz-test-`) y no se corren dos en simultaneo.
+
+# Vínculo con Meta: siempre por id (6/11/2026)
+
+Reuniones y respuestas muestran su atribución y su vínculo con campaña, conjunto y anuncio, y se pueden vincular a mano desde donde se las mira. Detalle en [docs/atribucion.md](docs/atribucion.md) («Vínculo con Meta: siempre por id»).
+
+## Lo que no se puede romper
+
+- **Nunca se vincula por un nombre suelto.** Dos campañas o anuncios pueden llamarse igual. Campaña y conjunto, solo por id. Un anuncio por nombre, solo si es único dentro del conjunto (o, sin conjunto, de la campaña) ya conocidos por id. Si el conjunto tiene un solo anuncio, ese (`adset_single_ad`), salvo que haya llegado un id de anuncio que no está en el catálogo. Gemelas `resolve_meta_match` y `resolveMetaMatch`, con `meta-match.cases.json`.
+- **Un toque sin ids cuya fuente no es de Meta y con UTMs de texto queda `none`**: no ensucia «Sin vincular». `utm_id` numérico cuenta como id de campaña (`raw.utm_id` en un formulario, `raw.utm.utm_id` en una reunión).
+- **El toque es la ÚNICA fuente del vínculo.** Ni `form_submissions` ni `bookings` tienen columnas de Meta; se unen por `dedupe_key` (`form:<id>`, `booking:<id>`, `lib/attribution/source-touches.ts`), con el cliente de servicio y solo para filas que la persona ya leyó con su sesión: quien atiende una reunión puede no ver el contacto.
+- **Una reunión sin vínculo propio muestra el último toque con vínculo del contacto anterior a ella**, aclarándolo, igual que `ads_crm_items`. Vincularla no cambia ese toque viejo: le crea el suyo (`linkBookingToMeta`).
+- **`rematch_meta_touches` nunca empeora un `matched`**, y sigue sin tocar `manual` ni `ignored`.
+- **Lo común vive en `lib/attribution` y `components/attribution`**, no en `lib/forms`: la plantilla de estudiantes no tiene Formularios y sí Agenda.
+- **Todo lo que la Agenda guarda de más va dentro de `bookings.utm`** (`bookingUtmPayload`): `create_booking` no cambió.
+
+## Migración
+
+`00299_meta_match_ids_only`: cambia a propósito la huella de `resolve_meta_match`. Se puede aplicar antes o después del código. Lo existente se vincula con el próximo sync o con `select public.rematch_meta_touches(<workspace>, '-infinity')`. **La próxima libre es la `00300`** (confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
@@ -1576,6 +1595,14 @@ Responsable de cada conversación (a mano y con reglas por cuenta), la marca «C
 
 `00255` (reglas y `conversation_people`), `00256` (Conocido; redefine `assign_new_conversation` con la de la 00255 en su archivo), `00257` (stickers) y `00258` (llamadas). Las cuatro son aditivas y se aplican ANTES de desplegar: **aplicadas y registradas** el 23/10/2026 (versiones `20261023210235` a `...38`), con `verify-contact-merge` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. La `00259` a la `00261` son de «Esperando respuesta» (ver esa sección): **la próxima libre es la `00262`** (confirmar con `list_migrations`).
 
+# Bandeja: la barra de la lista (6/11/2026)
+
+Todo lo que filtra la lista vive arriba de ella (`components/inbox/inbox-list-header.tsx`): la cantidad, el boton **Filtros** (`InboxFiltersMenu`), el icono de buscar y los borradores.
+
+- **Un solo menu de filtros, en este orden**: Canal, Asignacion, Estado, Chats y grupos (solo si hay grupos activados), Respuesta, Tags, Conocidos y clientes, Quien es, Agente de IA, Ultimo mensaje. El contador del boton cuenta todo menos la busqueda (`countMenuFilters`); "Abiertas" es el estado de siempre y no cuenta.
+- **El buscador se despliega desde el icono** y arranca abierto solo si la URL trae `?q=`. La `×` (o Esc) borra lo buscado y lo cierra. `SectionSearch` con `onClose` es ese modo; Broadcasts, Secuencias y Growth lo siguen usando en la barra de arriba.
+- **Limpiar filtros conserva lo abierto** (`?c=` y `?g=`).
+
 # Contactos: Kanban, columnas y filtros (3/11/2026)
 
 Tabla y Kanban (`?vista=kanban`) con los MISMOS filtros: un solo planificador (`lib/contacts/list-query.ts`) y un catálogo de filtros (`lib/contacts/filters/catalog.ts` + las áreas de `lib/contacts/related/*`, registradas en `lib/contacts/list-modules.ts`). Panel de filtros y menú de columnas con buscador, chips de filtros puestos. Resumen en [docs/contactos.md](docs/contactos.md) («Lista: vistas, columnas y filtros»).
@@ -1611,7 +1638,7 @@ WhatsApp a veces identifica a la persona con un `@lid` (un id interno) en vez de
 
 # Grupos de WhatsApp (construido, 3/11/2026)
 
-Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (vista «Grupos», `?vista=grupos&g=`), guardar como contacto a quien se une (toque «Grupo de WhatsApp», organico) y disparar automatizaciones cuando alguien se une, reacciona o vota en una encuesta. Resumen en [docs/whatsapp-grupos.md](docs/whatsapp-grupos.md).
+Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (en la misma lista que los chats, `?g=` abre uno y `?tipo=chats|grupos` filtra), guardar como contacto a quien se une (toque «Grupo de WhatsApp», organico) y disparar automatizaciones cuando alguien se une, reacciona o vota en una encuesta. Resumen en [docs/whatsapp-grupos.md](docs/whatsapp-grupos.md).
 
 ## Lo que no se puede romper
 
@@ -1622,6 +1649,7 @@ Un numero puede ACTIVAR grupos para verlos y escribir en la bandeja (vista «Gru
 - **Un voto de encuesta NO es un mensaje** (`parseBaileysPollVote`): en privado se ignora (antes entraba vacio y despertaba al agente). Evolution solo descifra votos de encuestas que salieron de nuestro numero.
 - **Los disparadores** (`whatsapp_group_joined|reaction|poll_vote`, 00282) son de contacto, por la cola; declaran `conversationFor` (hook nuevo: el flujo escribe por privado en el numero del grupo) y saltean «no contactar». Filtros puros en `lib/whatsapp-groups/automation/trigger-config.ts`. Nodo `send_poll` («Enviar encuesta», sin contacto).
 - **Un solo envio a un grupo** (`lib/whatsapp-groups/send.ts`): bandeja y paso «Enviar encuesta». El eco se junta por `(group_id, platform_message_id)` (indice NO parcial, para el `on_conflict`).
+- **Chats y grupos son una sola lista, sin tocar la base** (`lib/inbox/unified-list.ts`, puro): las conversaciones se paginan como siempre (se pide una fila de mas) y cada grupo cae en LA pagina que le toca por la fecha de su ultimo mensaje; no cuenta para el tamaño de la pagina. Un grupo no tiene estado, etiquetas, responsable ni agente: con esos filtros puestos no entra (`groupsCanMatch`). Se considera abierto. `?vista=grupos` (el link viejo) sigue queriendo decir `?tipo=grupos`.
 - **`participantsData` de Evolution 2.3.7 viene roto**: se lee `participants[]` (objetos `{id, phoneNumber, lid}`).
 
 ## Migraciones
@@ -1646,7 +1674,18 @@ Traer TODAS las conversaciones de cada cuenta de Instagram, y las que empieza el
 - **Una conversacion que empieza el negocio entra igual**: el eco `message.sent` sin conversacion la crea con la persona de `payload.conversation` (`ensureZernioConversation`, regla unica de contactos, sin no leidos, sin sellar `last_interaction_at`); `conversation.started` hace lo mismo sin mensaje. Sin `participantId`, se descarta como antes.
 - **`upsertConversation` no pierde un mensaje por una carrera**: si el insert choca (23505) porque otra llegada creo la conversacion en el mismo instante, usa la que gano.
 - **Despues del deploy, cada instalacion toca "Sincronizar canales" una vez**: arranca la importacion completa y suma `conversation.started` al webhook de Zernio.
-- **Un contacto sin nombre nace con "@usuario" y, si tampoco hay usuario, con el id de la plataforma** (`fallbackContactName`, `lib/contacts/anonymous.ts`), en los cuatro caminos de Instagram (mensaje, eco/`conversation.started`, importacion y comentarios). Los dos son **rellenos** desde la `00284`: `is_placeholder_name` (y su gemela `isPlaceholderName`) reconoce un nombre de solo digitos (8+, "+" opcional: id o telefono) y uno que es un solo `@usuario`, asi que el nombre real los reemplaza cuando la persona escribe. Antes un id quedaba como nombre para siempre (325 de 1505 conversaciones). La importacion tambien completa el nombre de una conversacion YA conocida cuyo contacto tiene un relleno. La variable `commenter_name` de los flujos NO cambio (sin "@"). La columna `is_anonymous` NO cambio: un id como nombre sigue sin contar como anonimo.
+- **Un contacto sin nombre nace con "@usuario" y, si tampoco hay usuario, con el id de la plataforma** (`fallbackContactName`, `lib/contacts/anonymous.ts`), en los cuatro caminos de Instagram (mensaje, eco/`conversation.started`, importacion y comentarios). Los dos son **rellenos** desde la `00284`: `is_placeholder_name` (y su gemela `isPlaceholderName`) reconoce un nombre de solo digitos (8+, "+" opcional: id o telefono) y uno que es un solo `@usuario`, asi que el nombre real los reemplaza cuando la persona escribe. Antes un id quedaba como nombre para siempre (325 de 1505 conversaciones). La importacion tambien completa el nombre de una conversacion YA conocida cuyo contacto tiene un relleno. La variable `commenter_name` de los flujos NO cambio (sin "@"). Desde la `00296`, un id como nombre sin ningun dato cuenta como anonimo si la persona nunca escribio (ver "Contactos sin identificar").
+
+# Contactos sin identificar (6/11/2026)
+
+ManyChat le escribe a cada seguidor nuevo; Instagram no da el nombre ni el usuario hasta que la persona interactua. El contacto **se guarda igual pero queda oculto** hasta saber quien es. Detalle en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md) («El contacto sin identificar»).
+
+- **`is_anonymous` (columna generada, 00296 y 00298) suma un nombre de solo digitos (8+) sin ningun dato, solo si la persona nunca escribio (`contacts.first_inbound_at`).** Quien escribio y solo tiene un id, como un `@lid` de WhatsApp, sigue visible: WhatsApp nunca lo va a completar. Lo saca de Contactos y de la asignacion, y `contact_created` recien se emite al identificarse. La misma expresion vive en `isAnonymousContact` y un test las compara. Un id SOLO no identifica: nunca crear otra tabla para esto, los toques ya estan en el contacto y no hay nada que mover.
+- **La bandeja oculta lo mismo por defecto**: `conversation_is_silent_outreach` (campo calculado, misma razon que `conversation_people`) = la persona nunca escribio (`contact_wrote_at` null) y el contacto es anonimo. `contact_wrote_at` lo mantiene el trigger `messages_zz_contact_wrote` (tambien al mover un mensaje, por la fusion) y no depende de la retencion. Se ven con `?sin-identificar=1` y la linea de arriba de la lista; un link `?c=` abre igual.
+- **Un comentario completa al contacto** con su @ y su nombre (`completeProfileFromComment`): no pisa lo escrito por una persona ni escribe un @ que ya es de otro contacto. Va en `try/catch`.
+- **Un webhook de ManyChat con solo nombre y @ crearia una persona duplicada**: el contacto oculto solo tiene el id de Instagram. Antes de armarlo, comprobar que ManyChat manda ese mismo id y sumarlo a «Crear o actualizar contacto» (hoy no lo acepta).
+
+`00296_unidentified_contacts` y `00298_anonymous_only_if_never_wrote` van ANTES de desplegar el codigo (la bandeja lee el campo calculado). `node scripts/verify-unidentified-contacts.mjs`. **La proxima libre es la `00299`** (la `00297` es de Grabaciones, la `00295` quedo sin usar y la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
 
 # Conocido, Cliente y agenda en un paso (28/10/2026)
 

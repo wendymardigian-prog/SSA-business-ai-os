@@ -15,8 +15,10 @@ import { setSubmissionSpam } from "@/lib/actions/forms/forms";
 import { answerToText, orderedAnswers, statusLabel, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
 import { filesOfAnswers } from "@/lib/forms/files";
 import { formatInZone } from "@/lib/forms/responses-query";
-import { attributionSections, entryUrlOf } from "@/lib/forms/attribution-view";
+import { attributionSections, bestEntryUrl } from "@/lib/forms/attribution-view";
 import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
+import { MetaMatchControl } from "@/components/attribution/meta-match-control";
+import type { MetaLink } from "@/lib/attribution/meta-link";
 import { matchedByText, type ConflictView } from "@/lib/forms/contact-outcome";
 
 export interface SubmissionView {
@@ -52,6 +54,8 @@ export function SubmissionDetail({
   fieldOrder,
   contact,
   canManage,
+  metaLink,
+  canLinkMeta,
   showHistory,
   names,
   timeZone,
@@ -65,6 +69,9 @@ export function SubmissionDetail({
   fieldOrder: string[];
   contact: { id: string; name: string } | null;
   canManage: boolean;
+  metaLink: MetaLink;
+  /** `settings.general`: vincular, ignorar o quitar el vínculo con Meta. */
+  canLinkMeta: boolean;
   showHistory: boolean;
   names: Record<string, string>;
   timeZone: string;
@@ -77,7 +84,7 @@ export function SubmissionDetail({
   const files = filesOfAnswers(submission.answers);
   const fileKeys = new Set(files.map((f) => f.path));
   const sections = attributionSections(submission.attribution);
-  const entryUrl = entryUrlOf(submission.attribution);
+  const entryUrl = bestEntryUrl(submission.attribution);
 
   function openFile(path: string) {
     setMessage(null);
@@ -244,6 +251,11 @@ export function SubmissionDetail({
               De dónde vino
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">La atribución de la visita: se guarda sola en cada respuesta.</p>
+            <div className="mt-3 rounded-lg border border-border p-3">
+              <h3 className="mb-1 text-xs font-semibold text-muted-foreground">Vínculo con Meta</h3>
+              <MetaMatchControl link={metaLink} target={metaLink.touchId ? { touchId: metaLink.touchId } : null} canManage={canLinkMeta} />
+              {!metaLink.touchId && canLinkMeta && <p className="mt-1.5 text-[11px] text-muted-foreground">Vinculá primero el contacto para poder elegir la campaña o el anuncio.</p>}
+            </div>
             {sections.length === 0 && !entryUrl ? (
               <p className="mt-3 text-sm text-muted-foreground">Esta visita llegó sin datos de campaña.</p>
             ) : (

@@ -6,6 +6,11 @@ import { loadEditorBar } from "@/lib/forms/editor-bar-load";
 import { ResponsesTable, type ResponseTableRow } from "@/components/forms/responses/responses-table";
 import { fieldsOf } from "@/lib/forms/server-ports";
 import { FORM_LIMITS } from "@/lib/forms/limits";
+import { createServiceClient } from "@/lib/supabase/server";
+import { metaLinkFromAttribution, metaLinkFromTouch, touchMetaIds } from "@/lib/attribution/meta-link";
+import { EMPTY_META_NAMES, loadMetaNamesByIds, metaIdsFrom } from "@/lib/attribution/meta-names";
+import { formTouchKey, loadTouchesByKey } from "@/lib/attribution/source-touches";
+import { flatAttribution } from "@/lib/forms/response-columns";
 import { parseResponseFilters, responseColumns, type ResponseRow } from "@/lib/forms/responses";
 import { applyResponseFilters } from "@/lib/forms/responses-query";
 
@@ -47,7 +52,7 @@ export default async function RespuestasPage({
 
   const base = supabase
     .from("form_submissions")
-    .select("id, created_at, status, contact_id, answers, score, nps_category, meta", { count: "exact" })
+    .select("id, created_at, status, contact_id, answers, score, nps_category, attribution", { count: "exact" })
     .eq("form_id", id)
     .eq("workspace_id", workspace.id);
   const { data, count, error } = await applyResponseFilters(base, filters, timeZone)
@@ -60,6 +65,19 @@ export default async function RespuestasPage({
     ? await supabase.from("contacts").select("id, display_name, email").in("id", contactIds)
     : { data: [] as Array<{ id: string; display_name: string | null; email: string | null }> };
   const byId = new Map((contacts ?? []).map((c) => [c.id, c]));
+
+  const attributions = new Map(submissions.map((s) => [s.id, flatAttribution(s.attribution)]));
+  // El vinculo con Meta es el del toque de cada respuesta; sin toque (sin contacto), los ids que trajo su URL.
+  const touches = await loadTouchesByKey(await createServiceClient(), workspace.id, submissions.map((s) => formTouchKey(s.id)));
+  const metaIds = submissions.map((s) => {
+    const touch = touches.get(formTouchKey(s.id));
+    return touch ? touchMetaIds(touch) : metaIdsFrom(attributions.get(s.id));
+  });
+  const metaNames = ctx.can("dashboards.ads.view") ? await loadMetaNamesByIds(supabase, workspace.id, metaIds) : EMPTY_META_NAMES;
+  const metaLinkOf = (id: string) => {
+    const touch = touches.get(formTouchKey(id));
+    return touch ? metaLinkFromTouch(touch, metaNames) : metaLinkFromAttribution(attributions.get(id), metaNames);
+  };
 
   const rows: ResponseRow[] = submissions.map((s) => ({
     id: s.id,
@@ -83,6 +101,9 @@ export default async function RespuestasPage({
     answers: r.answers,
     score: r.score ?? null,
     npsCategory: r.nps_category ?? null,
+    attribution: attributions.get(r.id) ?? {},
+    metaNames: metaLinkOf(r.id).names,
+    metaStatus: metaLinkOf(r.id).statusLabel,
   }));
 
   return (

@@ -1,5 +1,6 @@
 "use server";
 
+import { recordFormTouch } from "@/lib/contacts/touch-entry";
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -142,7 +143,7 @@ export async function linkSubmissionToContact(input: { submissionId: string; con
   // Con el cliente de la persona: si no ve la respuesta o el contacto, es como si no existieran.
   const { data: seen } = await ctx.supabase
     .from("form_submissions")
-    .select("id, form_id, status, contact_id, score, nps_category")
+    .select("id, form_id, status, contact_id, score, nps_category, attribution")
     .eq("id", input.submissionId)
     .eq("workspace_id", ctx.workspace.id)
     .maybeSingle();
@@ -182,6 +183,16 @@ export async function linkSubmissionToContact(input: { submissionId: string; con
     action: "contact.linked",
     metadata: { source: "form", form_id: form.id, submission_id: input.submissionId, matched_by: "manual" },
     performedBy: ctx.user.id,
+  });
+
+  // Sin toque, la respuesta no entra al vinculo con Meta. `dedupe_key` evita duplicarlo y nunca lanza.
+  await recordFormTouch(service, {
+    workspaceId: ctx.workspace.id,
+    contactId: input.contactId,
+    submissionId: input.submissionId,
+    formId: form.id,
+    formName: form.name,
+    attribution: (seen.attribution ?? {}) as Record<string, unknown>,
   });
 
   if (input.fireAutomations === true && isPublicFormType(form.type)) {

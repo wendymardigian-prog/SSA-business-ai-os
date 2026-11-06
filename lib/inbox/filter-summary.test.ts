@@ -22,16 +22,26 @@ describe("countMenuFilters (el numero del boton, I3)", () => {
     expect(countMenuFilters(EMPTY_INBOX_FILTERS)).toBe(0);
   });
 
-  it("la busqueda y el estado no cuentan: viven afuera del popover", () => {
-    const filters = f({ search: "ana", status: "closed" });
-    expect(countActiveFilters(filters)).toBe(2);
+  it("la busqueda no cuenta: tiene su propio icono afuera del popover", () => {
+    const filters = f({ search: "ana" });
+    expect(countActiveFilters(filters)).toBe(1);
     expect(countMenuFilters(filters)).toBe(0);
+  });
+
+  it("el estado, las cuentas y chats o grupos viven adentro: cuentan", () => {
+    expect(countMenuFilters(f({ status: "closed" }))).toBe(1);
+    expect(countMenuFilters(f({ channelIds: ["a1", "a2"] }))).toBe(1);
+    expect(countMenuFilters(f({ listType: "grupos" }))).toBe(1);
+  });
+
+  it("Abiertas es el estado de siempre: no cuenta como filtro", () => {
+    expect(countMenuFilters(f({ status: "open" }))).toBe(0);
   });
 
   it("tres cosas puestas adentro son tres, haya o no busqueda", () => {
     const three = f({ platforms: ["instagram"], tagIds: ["t1", "t2"], needsHuman: true });
     expect(countMenuFilters(three)).toBe(3);
-    expect(countMenuFilters({ ...three, search: "ana", status: "all" })).toBe(3);
+    expect(countMenuFilters({ ...three, search: "ana" })).toBe(3);
   });
 
   it("cuenta igual que countActiveFilters para todo lo que si esta adentro", () => {
@@ -58,6 +68,11 @@ describe("describeInboxFilters (la linea de resumen, I3)", () => {
 
   it("siempre arranca por el estado", () => {
     expect(describeInboxFilters(f({ status: "snoozed" }), catalog)).toEqual(["Pospuestas"]);
+  });
+
+  it("chats o grupos va despues del estado", () => {
+    expect(describeInboxFilters(f({ listType: "grupos", tagIds: ["t1"] }), catalog)).toEqual(["Abiertas", "Solo grupos", "#vip"]);
+    expect(describeInboxFilters(f({ listType: "chats" }), catalog)).toEqual(["Abiertas", "Solo chats"]);
   });
 
   it("muestra la busqueda entre comillas", () => {
@@ -98,6 +113,10 @@ describe("describeInboxFilters (la linea de resumen, I3)", () => {
     expect(describeInboxFilters(f({ datePreset: "custom" }), catalog)).toContain("Rango personalizado");
   });
 
+  it("ocultar conocidos y clientes se dice", () => {
+    expect(describeInboxFilters(f({ hideKnown: true, hideCustomers: true }), catalog)).toEqual(["Abiertas", "Sin conocidos", "Sin clientes"]);
+  });
+
   it("las dos marcas del agente", () => {
     expect(describeInboxFilters(f({ agentError: true, needsHuman: true }), catalog)).toEqual([
       "Abiertas",
@@ -114,12 +133,6 @@ describe("las cuentas en el resumen y en el contador", () => {
     { id: "a3", platform: "whatsapp", label: "WhatsApp" },
   ];
   const cat = { ...catalog, accounts, multiPlatforms: ["instagram"] };
-
-  it("el menu de Canal tiene su propio boton: las cuentas no suman al contador de Filtros", () => {
-    const filters = f({ channelIds: ["a1", "a2"] });
-    expect(countActiveFilters(filters)).toBe(1);
-    expect(countMenuFilters(filters)).toBe(0);
-  });
 
   it("con una o dos cuentas las nombra; con una red de varias cuentas, junto a la red", () => {
     expect(describeInboxFilters(f({ channelIds: ["a2"] }), cat)).toEqual(["Abiertas", "Instagram @marca_academia"]);

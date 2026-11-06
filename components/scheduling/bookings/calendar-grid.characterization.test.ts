@@ -12,7 +12,7 @@ import { BookingsCalendar } from "./calendar-grid";
 const item = (over: Partial<BookingListItem> & { id: string; startAt: string; endAt: string }): BookingListItem => ({
   uid: `uid-${over.id}`, title: "Llamada", status: "scheduled", hostUserId: "h1", hostName: "Ana", contactId: "c1", contactName: "Beto Perez", bookerName: null,
   bookerEmail: null, bookerPhone: null, eventTypeId: "e1", eventColor: "#2563eb", categorySnapshot: null as never, origin: "public", locationType: null,
-  locationText: null, meetUrl: null, timezone: null, syncStatus: "synced", slotReleasedAt: null, ...over,
+  locationText: null, meetUrl: null, timezone: null, syncStatus: "synced", slotReleasedAt: null, createdAt: "2026-01-01T00:00:00Z", attribution: {}, ...over,
 });
 
 // 2026-10-14 (miercoles) 15:00 UTC = 09:00 en Costa Rica.

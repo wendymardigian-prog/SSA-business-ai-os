@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Download, Inbox, Loader2 } from "lucide-react";
+import { ColumnCell } from "@/components/attribution/column-cell";
+import { ColumnsMenu, useColumnPrefs } from "@/components/attribution/columns-menu";
 import { Notice } from "@/components/agents/fields";
 import { FilterBar, FilterSelect, Pagination, useUrlFilters } from "@/components/agents/filters";
 import { exportResponsesCsv } from "@/lib/actions/forms/responses";
+import type { MetaRowNames } from "@/lib/forms/meta-names";
+import { RESPONSE_COLUMN_GROUPS, originSummary, responseColumnDefs, responseColumnsStorageKey } from "@/lib/forms/response-columns";
 import { cellFor, statusLabel, type ResponseColumn, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
 import { formatInZone } from "@/lib/forms/responses-query";
 import { cn } from "@/lib/utils";
@@ -19,6 +23,9 @@ export interface ResponseTableRow {
   answers: Record<string, StoredAnswer>;
   score: number | null;
   npsCategory: string | null;
+  attribution: Record<string, string>;
+  metaNames: MetaRowNames;
+  metaStatus: string;
 }
 
 const STATUS_STYLE: Record<SubmissionStatus, string> = {
@@ -65,6 +72,8 @@ export function ResponsesTable({
 
   const active = [filters.from, filters.to, filters.status !== "all" ? filters.status : "", filters.contact !== "all" ? filters.contact : ""].filter(Boolean).length;
   const showScore = formType === "survey";
+  const columnDefs = useMemo(() => responseColumnDefs(columns), [columns]);
+  const { visible: visibleDefs, toggle, showAll, reset } = useColumnPrefs(responseColumnsStorageKey(formId), columnDefs);
 
   function exportCsv() {
     setMessage(null);
@@ -93,15 +102,18 @@ export function ResponsesTable({
     <div className="flex h-full min-h-0 flex-col">
       {header}
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
-        {/* Exportar es `canExport` (equipo y roles, M2): quien no puede, no ve el boton. */}
-        {canExport && (
-          <div className="mb-3 flex items-center justify-end">
-            <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
-            Exportar CSV
-          </button>
+        <div className="mb-3 flex items-center justify-end gap-2">
+          <div className="hidden md:block">
+            <ColumnsMenu defs={columnDefs} groups={RESPONSE_COLUMN_GROUPS} visible={visibleDefs} onToggle={toggle} onShowAll={showAll} onReset={reset} />
           </div>
-        )}
+          {/* Exportar es `canExport` (equipo y roles, M2): quien no puede, no ve el boton. */}
+          {canExport && (
+            <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+              Exportar CSV
+            </button>
+          )}
+        </div>
 
         {message && (
           <div className="mb-3" role="status">
@@ -163,25 +175,26 @@ export function ResponsesTable({
                 <thead className="bg-muted/50 text-xs text-muted-foreground">
                   <tr>
                     <th scope="col" className="px-3 py-2 font-medium">Fecha</th>
-                    <th scope="col" className="px-3 py-2 font-medium">Contacto</th>
+                    {/* Fijo al desplazar: con tantas columnas, si no se pierde de quién es cada fila. */}
+                    <th scope="col" className="sticky left-0 z-10 border-r border-border bg-muted px-3 py-2 font-medium">Contacto</th>
                     <th scope="col" className="px-3 py-2 font-medium">Estado</th>
                     {showScore && <th scope="col" className="px-3 py-2 font-medium">Puntaje</th>}
-                    {columns.map((c) => (
-                      <th key={c.key} scope="col" className={cn("px-3 py-2 font-medium", c.removed && "italic")} title={c.removed ? "Este campo ya no está en el formulario" : undefined}>
-                        {c.label}
+                    {visibleDefs.map((def) => (
+                      <th key={def.key} scope="col" className={cn("whitespace-nowrap px-3 py-2 font-medium", def.removed && "italic")} title={def.hint}>
+                        {def.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {rows.map((row) => (
-                    <tr key={row.id} className="hover:bg-muted/30">
+                    <tr key={row.id} className="group hover:bg-muted/30">
                       <td className="whitespace-nowrap px-3 py-2">
                         <Link href={`/dashboard/formularios/${formId}/respuestas/${row.id}`} className="underline-offset-2 hover:underline">
                           {formatInZone(row.createdAt, timeZone)}
                         </Link>
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="sticky left-0 z-10 max-w-[14rem] truncate border-r border-border bg-background px-3 py-2 group-hover:bg-[color-mix(in_oklab,var(--muted)_30%,var(--background))]">
                         {row.contactId ? (
                           <Link href={`/dashboard/contacts/${row.contactId}`} className="underline-offset-2 hover:underline">
                             {row.contactName}
@@ -191,13 +204,11 @@ export function ResponsesTable({
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <span className={cn("rounded-full border px-2 py-0.5 text-[11px]", STATUS_STYLE[row.status])}>{statusLabel(row.status)}</span>
+                        <span className={cn("whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px]", STATUS_STYLE[row.status])}>{statusLabel(row.status)}</span>
                       </td>
                       {showScore && <td className="px-3 py-2">{row.score ?? "—"}</td>}
-                      {columns.map((c) => (
-                        <td key={c.key} className="max-w-[16rem] truncate px-3 py-2" title={cellFor(row, c)}>
-                          {cellFor(row, c) || <span className="text-muted-foreground">—</span>}
-                        </td>
+                      {visibleDefs.map((def) => (
+                        <ColumnCell key={def.key} def={def} row={row} />
                       ))}
                     </tr>
                   ))}
@@ -220,6 +231,11 @@ export function ResponsesTable({
                         <span className="font-medium text-foreground">{c.label}:</span> {cellFor(row, c) || "—"}
                       </p>
                     ))}
+                    {originSummary(row.attribution) && (
+                      <p className="truncate text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Origen:</span> {originSummary(row.attribution)}
+                      </p>
+                    )}
                   </Link>
                 </li>
               ))}

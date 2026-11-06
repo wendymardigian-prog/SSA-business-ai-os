@@ -102,7 +102,12 @@ su primer mensaje. Los que ya estaban se arreglan con
 Instagram no informa quién sigue a la cuenta ni desde cuándo: «chat iniciado
 fuera del sistema» no distingue si ManyChat escribió por un follow, un comentario
 o una historia. Para eso, ManyChat tendría que avisarnos (por un webhook) qué
-disparador usó.
+disparador usó, junto con el id de Instagram de la persona: con solo el nombre y el
+@ ese webhook crearía un segundo contacto, porque el que nació por el eco no tiene @.
+
+Desde la 00296 ese contacto queda **oculto hasta saber quién es**, con su toque
+guardado. Ver «El contacto sin identificar» en
+[flujo-de-mensajes.md](flujo-de-mensajes.md).
 
 ### De los comentarios (F86)
 
@@ -256,14 +261,35 @@ El vínculo automático (`lib/meta/content-link.ts`) no cambió y **nunca pisa u
 
 ### Guia: parametros de URL para los anuncios
 
-Para que un anuncio quede vinculado, la URL de destino tiene que llevar (en el Ads Manager, «Parametros de URL»):
+Para que todo quede vinculado, la URL de destino tiene que llevar los ids (en el Ads Manager, «Parametros de URL»):
 
 ```
-utm_source=facebook&utm_medium=paid_social&utm_campaign={{campaign.id}}&utm_content={{ad.id}}&utm_term={{adset.id}}
+utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_id={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.name}}&ad_id={{ad.id}}
 ```
 
-`{{campaign.id}}`, `{{ad.id}}` y `{{adset.id}}` los reemplaza Meta por los ids; con ids el vinculo es exacto. Con nombres (`{{campaign.name}}`,
-`{{ad.name}}`) tambien funciona, pero un nombre repetido queda ambiguo y va a «Sin vincular».
+`{{campaign.id}}`, `{{adset.id}}` y `{{ad.id}}` los reemplaza Meta por los ids. **Sin ids no se vincula**: los nombres solos no alcanzan (ver la seccion siguiente).
+
+**El referrer** (`referrer_url`, «De dónde vino») es casi siempre solo un dominio (`instagram.com`, `m.facebook.com`): los navegadores y las apps no dejan ver la dirección completa de la página anterior, y eso no se puede mejorar desde el sistema.
+
+## Vínculo con Meta: siempre por id (6/11/2026)
+
+Dos campañas o dos anuncios pueden llamarse igual, así que un nombre solo no identifica a ninguno. La regla (`resolve_meta_match`, gemela `lib/attribution/meta-match.ts`, migración 00299):
+
+| Nivel | Cómo se encuentra |
+|---|---|
+| Campaña | `campaign_id`, `utm_id`, `utm_campaign` igual a un id, o la del conjunto o del anuncio. Nunca por nombre. |
+| Conjunto | `adset_id`, `utm_term` igual a un id, o el del anuncio. Nunca por nombre. |
+| Anuncio por id | `ad_id` o `utm_content` igual a un id. |
+| Anuncio por nombre | Solo si es único dentro del conjunto (o, sin conjunto, de la campaña) ya conocidos por id. |
+| Anuncio único | Si el conjunto, conocido por id, tiene un solo anuncio en el catálogo, ese. No aplica si llegó un id de anuncio que no está en el catálogo. Si se suma un anuncio a ese conjunto, los leads que entren antes de la próxima sincronización se atribuyen al anterior. |
+
+Sin ningún id queda «Sin vincular» con el motivo `name_without_id`. Un vínculo hecho por nombre con la regla vieja se conserva.
+
+**Qué no se revisa:** un toque sin ids cuya fuente no es de Meta (`meta`, `facebook`, `fb`, `instagram`, `ig`, `msg`, `an`, o la genérica `web`) y con UTMs de texto, como `utm_source=whatsapp&utm_campaign=grupo`, queda `none`. Un UTM numérico cuenta igual: puede ser el id de un contacto importado.
+
+**Dónde se ve y se corrige:** la tabla de respuestas, la lista de agendas (columnas de campaña, conjunto, anuncio y «Vínculo con Meta»), el detalle de una respuesta, el panel de una reunión y la ficha del contacto (primer toque, último toque y `/toques`). Desde ahí, con `settings.general`, se puede vincular, ignorar o quitar. La revisión en lote sigue en «Sin vincular» (Dashboards → Anuncios), con la vista nueva «Sin anuncio» y el link a la respuesta o reunión de origen. Los nombres piden `dashboards.ads.view`; sin ese permiso se ven los ids.
+
+**La Agenda guarda lo mismo que un formulario:** todas las claves de atribución, la URL de entrada, la página de llegada y la del envío, en `bookings.utm`. Un embed reenvía todas las claves y guarda el referrer real, no la página que lo contiene. Una reunión sin vínculo propio (a mano, por el agente o sin datos de Meta) muestra el último toque con vínculo del contacto anterior a ella, igual que la tabla Meta vs CRM. Vincularla le crea su propio toque (`booking:<id>`), con la fecha de la reunión, que puede pasar a ser el último toque del contacto.
 
 ## La URL de entrada completa (`entry_url`, octubre 2026)
 
@@ -272,7 +298,7 @@ Hasta acá se guardaba solo lo que el vocabulario cerrado reconoce (UTM, ids de 
 - **Qué se guarda** (`lib/attribution/entry-url.ts`, `entryUrlFrom`): solo `http`/`https`, con todos los parámetros en su orden y su codificación originales. **Se sacan** los que identifican a una persona (`lib/attribution/sensitive-params.ts`: tokens, claves, contraseñas), los internos del sistema (`embed`, `attr`, `preview`, `c`, `referrer`), el `#`, las credenciales y los caracteres de control. Tope de 2000 caracteres (nunca corta un `%` a la mitad).
 - **De dónde sale:** de la página de llegada. Si la visita de ahora trae UTM o ids de clic, gana la de esta visita; si no, la de la última visita guardada; si no hay ninguna, la de la página. En un embed, la página que lo contiene manda la URL **entera** dentro de `attr` (su tope subió de 2048 a 4096 bytes) y gana sobre el `referrer`, que llega cortado a 500.
 - **Dónde queda:** `form_submissions.attribution.entry_url` (en cada respuesta, ya sanitizada de nuevo en el servidor), `contact_touches.entry_url` (migración 00215; `record_contact_touch` la escribe sin cambiar su firma ni su comportamiento) y, para la Agenda, `bookings.utm.entry_url` (de ahí pasa al toque por `raw.utm`, sin tocar `create_booking`).
-- **Dónde se ve:** el detalle de una respuesta ("De dónde vino") y las visitas del contacto, con un bloque monoespaciado que parte líneas y un botón Copiar. El CSV de respuestas **no** suma una columna (queda anotado en PENDIENTE).
+- **Dónde se ve:** el detalle de una respuesta ("De dónde vino") y las visitas del contacto, con un bloque monoespaciado que parte líneas y un botón Copiar; la tabla de respuestas y su CSV, con la columna «URL de entrada». Una web externa que no manda `entry_url` muestra su `landing_page`, que trae los UTM y los ids de clic pero no el resto de los parámetros (`bestEntryUrl`, `lib/forms/attribution-view.ts`).
 - **Lo que NO cambia:** `landing_page` y `page_url` siguen filtradas (solo claves de atribución / sin query); la lista de claves es la de siempre (`lib/attribution/keys.ts`) y `contacts.attribution` sigue siendo una copia derivada que no incluye la URL completa.
 - **Nunca se loguea** una URL de entrada: puede traer datos de la campaña que no tienen por qué quedar en los logs.
 
@@ -302,7 +328,7 @@ La atribución de la venta sugiere el último toque **con origen** cuando el úl
 ### Varias cuentas de la misma red (16/10/2026)
 Zernio permite conectar más de una cuenta por red (dos Instagram, por ejemplo); cada una es una fila de `channels` y cada conversación guarda su `channel_id`. Lo que se sumó para diferenciarlas, **sin migración**:
 
-- **Bandeja:** el menú **Canal** (`InboxChannelMenu`) lista una opción por cuenta, agrupadas por red y con selección múltiple (`?cuenta=<id>,<id>`; el `?canal=` viejo sigue funcionando). La lista de conversaciones y el encabezado del hilo dicen la cuenta ("@marca_academia", "Vía @marca_academia") y el panel del contacto dice "· vía @cuenta" — **solo cuando esa red tiene más de una cuenta**: con una sola no hay nada que diferenciar. Las reglas son puras (`lib/inbox/accounts.ts`).
+- **Bandeja:** el grupo **Canal** del menú de Filtros (`InboxFiltersMenu`) lista una opción por cuenta, con selección múltiple (`?cuenta=<id>,<id>`; el `?canal=` viejo sigue funcionando). La lista de conversaciones y el encabezado del hilo dicen la cuenta ("@marca_academia", "Vía @marca_academia") y el panel del contacto dice "· vía @cuenta" — **solo cuando esa red tiene más de una cuenta**: con una sola no hay nada que diferenciar. Las reglas son puras (`lib/inbox/accounts.ts`).
 - **Atribución:** cada toque que entra por una cuenta nuestra guarda en `contact_touches.raw` `account_id` (la clave de la cuenta en el proveedor: `channels.late_account_id`) y `account_label` (el nombre al momento del toque). Lo guardan los mensajes directos de los tres receptores (Zernio, Evolution y email), los comentarios y el toque del anuncio de origen. Se ve en la ficha y en la línea de tiempo ("Instagram · Mensaje directo · @marca_academia"). Los toques anteriores no la tienen, y el vínculo retroactivo de comentarios (`comment_backfill`) tampoco la conoce.
 - `contact_touches.raw` ya tenía lista blanca (`RAW_KEYS`): las dos claves nuevas están ahí. `record_contact_touch` no se tocó. Si más adelante hace falta filtrar o agrupar métricas por cuenta, el paso siguiente es una columna propia (`channel_id`) con su migración.
 

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { AttributionView, TouchView } from "@/lib/contacts/attribution-view";
 import { EntryUrlBlock } from "@/components/attribution/entry-url-block";
+import { MetaMatchControl } from "@/components/attribution/meta-match-control";
+import type { MetaLink } from "@/lib/attribution/meta-link";
 import { EmptyHint, Section } from "./ui";
 
 /**
@@ -12,7 +14,18 @@ import { EmptyHint, Section } from "./ui";
  * uno solo, porque dos tarjetas iguales parecen dos eventos. El camino completo
  * va plegado: es para quien lo quiere mirar, no para quien solo pasa.
  */
-export function AttributionSection({ view, contactId }: { view: AttributionView; contactId?: string }) {
+export function AttributionSection({
+  view,
+  contactId,
+  links,
+  canLinkMeta = false,
+}: {
+  view: AttributionView;
+  contactId?: string;
+  /** El vínculo con Meta del primer y del último toque. */
+  links?: { first?: MetaLink; last?: MetaLink };
+  canLinkMeta?: boolean;
+}) {
   return (
     <Section title="Atribución">
       {view.empty || !view.first ? (
@@ -27,9 +40,11 @@ export function AttributionSection({ view, contactId }: { view: AttributionView;
               title={view.last ? "Primer toque" : "Único toque"}
               hint={view.last ? "No cambia nunca" : "Todavía no volvió a interactuar"}
               touch={view.first}
+              link={links?.first}
+              canLinkMeta={canLinkMeta}
             />
             {view.last && (
-              <TouchCard title="Último toque" hint="Se actualiza con cada interacción nueva" touch={view.last} />
+              <TouchCard title="Último toque" hint="Se actualiza con cada interacción nueva" touch={view.last} link={links?.last} canLinkMeta={canLinkMeta} />
             )}
           </div>
 
@@ -62,7 +77,7 @@ export function AttributionSection({ view, contactId }: { view: AttributionView;
   );
 }
 
-function TouchCard({ title, hint, touch }: { title: string; hint: string; touch: TouchView }) {
+function TouchCard({ title, hint, touch, link, canLinkMeta }: { title: string; hint: string; touch: TouchView; link?: MetaLink; canLinkMeta: boolean }) {
   return (
     <div className="rounded-lg border border-border p-3">
       <p className="text-xs font-semibold">{title}</p>
@@ -71,6 +86,11 @@ function TouchCard({ title, hint, touch }: { title: string; hint: string; touch:
         <TouchText touch={touch} />
       </p>
       <TouchDetail touch={touch} />
+      {link?.touchId && (
+        <div className="mt-2">
+          <MetaMatchControl link={link} target={{ touchId: link.touchId }} canManage={canLinkMeta} actionsOnly />
+        </div>
+      )}
       {touch.entryUrl && <EntryUrlBlock url={touch.entryUrl} className="mt-2" />}
     </div>
   );

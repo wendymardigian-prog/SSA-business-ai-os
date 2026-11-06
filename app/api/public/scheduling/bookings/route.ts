@@ -5,7 +5,7 @@ import { createBooking } from "@/lib/scheduling/booking/create";
 import { clientIp, originFrom, pickUtm, safeReferrer } from "@/lib/scheduling/antispam";
 import { isValidTimeZone } from "@/lib/timezone";
 import { notifyBooking } from "@/lib/scheduling/notifications";
-import { fillFromRequestCookies } from "@/lib/scheduling/booker/attribution";
+import { bookingUtmPayload, fillFromRequestCookies } from "@/lib/scheduling/booker/attribution";
 
 /**
  * POST /api/public/scheduling/bookings (F26): crea la agenda.
@@ -38,7 +38,11 @@ export async function POST(request: NextRequest) {
     responses: (body.responses as Record<string, unknown>) ?? {},
     origin: originFrom({ embed: typeof body.embed === "string" ? body.embed : body.embed ? "1" : null }),
     // Toda la atribucion (Extra L, F16), re-saneada, y las cookies de anuncios que el navegador no mando.
-    utm: fillFromRequestCookies(pickUtm((body.utm as Record<string, unknown>) ?? {}), request.headers.get("cookie")),
+    utm: bookingUtmPayload(
+      fillFromRequestCookies(pickUtm((body.utm as Record<string, unknown>) ?? {}), request.headers.get("cookie")),
+      (body.utm as Record<string, unknown>) ?? {},
+      body.landingPage,
+    ),
     referrerUrl: safeReferrer(body.referrer),
     landingPage: safeReferrer(body.landingPage),
     honeypot: body.website,

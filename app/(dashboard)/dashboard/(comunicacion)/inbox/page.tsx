@@ -17,6 +17,11 @@ import {
   HIDE_KNOWN_PARAM,
   HIDE_KNOWN_VALUE,
   HIDE_CUSTOMERS_PARAM,
+  LEGACY_VIEW_PARAM,
+  LIST_TYPE_PARAM,
+  UNIDENTIFIED_PARAM,
+  SILENT_OUTREACH_FIELD,
+  parseListType,
   statusForQuery,
   type InboxFilters,
   type InboxStatus,
@@ -24,7 +29,8 @@ import {
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { AWAITING_PARAM, awaitingQueryBounds, parseAwaitingFilter } from "@/lib/inbox/awaiting";
 import { InboxView } from "./inbox-view";
-import { GroupsInbox } from "./groups-inbox";
+import { groupsCanMatch, groupsForPage } from "@/lib/inbox/unified-list";
+import { loadInboxGroups, loadSelectedGroup } from "@/lib/whatsapp-groups/inbox-data";
 import type { InboxAsset } from "@/components/inbox/message-thread";
 import { toBankAsset } from "@/lib/response-assets/list";
 import { getPermissionContext } from "@/lib/auth/guards";
@@ -37,8 +43,6 @@ import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
-import { SectionSearch } from "@/components/comunicacion/section-search";
-import { InboxChannelMenu, InboxFiltersMenu, InboxFilterSummary } from "@/components/inbox/inbox-filters";
 
 /**
  * Bandeja de conversaciones (F16).
@@ -67,8 +71,6 @@ export default async function InboxPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  // Los grupos de WhatsApp activados tienen su propia vista (00280): no son conversaciones con un lead.
-  if (firstParam(params.vista) === "grupos") return <GroupsInbox params={params} />;
   const { workspace, supabase, user, role } = await getWorkspace();
 
   // Lo que necesitan los filtros para poder validar lo que viene de la URL:
@@ -81,7 +83,7 @@ export default async function InboxPage({
     supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", workspace.id).is("deleted_at", null),
     // Las IAs conectadas (E1): un agente encendido cuya IA no esta conectada no puede responder.
     listConnectedAiProviders(workspace.id),
-    // ¿Hay grupos de WhatsApp para ver? (00280) Solo para mostrar «Chats | Grupos»; la RLS cuenta los que ve.
+    // ¿Hay grupos de WhatsApp para ver? (00280) Solo para ofrecer el filtro de chats o grupos; la RLS cuenta los que ve.
     supabase.from("whatsapp_groups").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("in_inbox", true).is("left_at", null),
   ]);
 
@@ -143,8 +145,14 @@ export default async function InboxPage({
   const hideKnown = firstParam(params[HIDE_KNOWN_PARAM]) === HIDE_KNOWN_VALUE;
   // Clientes (00268), igual.
   const hideCustomers = firstParam(params[HIDE_CUSTOMERS_PARAM]) === HIDE_KNOWN_VALUE;
-  const page = pickPage(params.page);
+  // 00296: las que le escribio el negocio y la persona nunca respondio. Se ocultan por defecto.
+  const onlyUnidentified = firstParam(params[UNIDENTIFIED_PARAM]) === "1";
+  // Chats, grupos o los dos. `?vista=grupos` es el link viejo de cuando los grupos eran otra pantalla.
+  const listType = parseListType(firstParam(params[LIST_TYPE_PARAM]), firstParam(params[LEGACY_VIEW_PARAM]));
+  // Los grupos no se paginan: solos, entran todos en la primera.
+  const page = listType === "grupos" ? 1 : pickPage(params.page);
   const selectedId = firstParam(params.c);
+  const selectedGroupId = firstParam(params.g);
 
   const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
   const range = resolveDateRange(datePreset, dateFrom, dateTo, new Date(), viewerTimezone);
@@ -196,6 +204,7 @@ export default async function InboxPage({
   }
   if (hideKnown) query = query.eq("contacts.is_known", false);
   if (hideCustomers) query = query.eq("contacts.is_customer", false);
+  query = query.filter(SILENT_OUTREACH_FIELD, "eq", onlyUnidentified);
 
   if (search) {
     // Sobre el contacto (la tabla embebida): nombre, emails, telefonos, los @ y el
@@ -229,11 +238,50 @@ export default async function InboxPage({
 
   const from = (page - 1) * PAGE_SIZE;
 
-  const [conversationsRes, assetsRes, permissionCtx, draftCounts] = await Promise.all([
-    query
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .range(from, from + PAGE_SIZE - 1),
+  // Cuantas quedaron afuera: sin este numero, la lista baja de golpe y parece que se perdieron
+  // chats. Mismo estado y mismas cuentas que la lista. La columna va primero: usa el indice parcial.
+  let hiddenQuery = supabase
+    .from("conversations")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .is("contact_wrote_at", null)
+    .filter(SILENT_OUTREACH_FIELD, "eq", true);
+  if (statusValue) hiddenQuery = hiddenQuery.eq("status", statusValue);
+  if (channelRestriction) {
+    hiddenQuery = hiddenQuery.in("channel_id", channelRestriction.length > 0 ? channelRestriction : ["00000000-0000-0000-0000-000000000000"]);
+  }
+  if (platforms.length > 0) hiddenQuery = hiddenQuery.in("platform", platforms as Platform[]);
+  if (channelIds.length > 0) hiddenQuery = hiddenQuery.in("channel_id", channelIds);
+
+  const filters: InboxFilters = {
+    search,
+    status,
+    listType,
+    platforms,
+    channelIds,
+    tagIds,
+    assignment,
+    datePreset,
+    dateFrom,
+    dateTo,
+    agentError,
+    needsHuman,
+    awaiting,
+    hideKnown,
+    hideCustomers,
+    onlyUnidentified,
+  };
+
+  const [conversationsRes, assetsRes, permissionCtx, draftCounts, hiddenRes, allGroups, openGroup] = await Promise.all([
+    // Solo grupos: no se le pregunta nada a la base. Una fila de mas que la pagina: la primera de la siguiente dice
+    // hasta donde llegan los grupos de esta (lib/inbox/unified-list.ts).
+    listType === "grupos"
+      ? Promise.resolve({ data: [], count: 0, error: null })
+      : query
+          .order("last_message_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE_SIZE),
     // La banca de recursos del widget del composer (los seis tipos). Cualquier
     // miembro la lee. Sin URLs firmadas: las miniaturas cargan lazy y los
     // reproductores firman al apretar play. Los mas usados primero.
@@ -252,6 +300,11 @@ export default async function InboxPage({
     // Bloque 2d: el valor inicial de la pestana "Borradores (N)". Despues lo
     // mantiene al dia Realtime (useDraftCounts).
     countPendingDrafts(),
+    hiddenQuery,
+    groupsCanMatch(filters) ? loadInboxGroups(supabase, workspace.id, channelsRes.data ?? [], filters, range) : Promise.resolve([]),
+    selectedGroupId
+      ? loadSelectedGroup(supabase, workspace.id, selectedGroupId, channelsRes.data ?? [], { isAdmin: isAdminRole(role), permissions: access.permissions })
+      : Promise.resolve(null),
   ]);
 
   if (conversationsRes.error) {
@@ -259,6 +312,9 @@ export default async function InboxPage({
   }
   if (assetsRes.error) {
     console.error("[inbox] banca de recursos fallida:", assetsRes.error.message);
+  }
+  if (hiddenRes.error) {
+    console.error("[inbox] no pude contar los chats sin identificar:", hiddenRes.error.message);
   }
 
   const assets: InboxAsset[] = (assetsRes.data ?? []).map(toBankAsset);
@@ -269,7 +325,13 @@ export default async function InboxPage({
   // El responsable de cada conversación (00255): con `contacts.assign` se cambia; sin la clave, solo "Tomar".
   const canAssignConversations = permissionCtx.can("contacts.assign");
 
-  let conversations = toRows(conversationsRes.data);
+  const fetchedRows = toRows(conversationsRes.data);
+  let conversations = fetchedRows.slice(0, PAGE_SIZE);
+  const groupsOnPage = groupsForPage(allGroups, {
+    page,
+    newestOnPage: fetchedRows[0]?.last_message_at,
+    newestOnNextPage: fetchedRows[PAGE_SIZE]?.last_message_at,
+  });
 
   // "Agente IA" necesita saber si un flow escribio en la conversacion, y eso
   // esta en messages. Se resuelve despues de traer la pagina y no con un join:
@@ -307,45 +369,13 @@ export default async function InboxPage({
     ...(selected && !conversations.some((c) => c.id === selected!.id) ? [selected.id] : []),
   ]);
 
-  const filters: InboxFilters = {
-    search,
-    status,
-    platforms,
-    channelIds,
-    tagIds,
-    assignment,
-    datePreset,
-    dateFrom,
-    dateTo,
-    agentError,
-    needsHuman,
-    awaiting,
-    hideKnown,
-    hideCustomers,
-  };
-
   const platformItems = platformOptions.map((p) => ({ value: p, label: platformLabel(p) }));
   const memberItems = members.map((m) => ({ userId: m.userId, label: m.name }));
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Bloque I: pestañas, buscador y filtros en la barra superior. El
-          popover de filtros es solo de Conversaciones (I5). */}
-      <PageHeader
-        route="/dashboard/inbox"
-        left={<SectionTabs />}
-        filters={
-          <>
-            <SectionSearch value={filters.search} placeholder="Buscar por nombre, teléfono o usuario" label="Buscar conversaciones" />
-            <InboxChannelMenu filters={filters} accounts={accounts} multiPlatforms={multiAccountPlatforms(accounts)} />
-            <InboxFiltersMenu filters={filters} tags={tags} members={memberItems} />
-          </>
-        }
-      />
-      <InboxFilterSummary
-        filters={filters}
-        catalog={{ platforms: platformItems, accounts, multiPlatforms: multiAccountPlatforms(accounts), tags, members: memberItems }}
-      />
+      {/* Los filtros y el buscador viven en el encabezado de la lista: filtran esa columna. */}
+      <PageHeader route="/dashboard/inbox" left={<SectionTabs />} />
       <div className="min-h-0 flex-1">
         <InboxView
       conversations={conversations}
@@ -375,6 +405,14 @@ export default async function InboxPage({
       draftCounts={draftCounts}
       draftConversationIds={draftConversationIds}
       hasGroups={(groupsCount.count ?? 0) > 0}
+      unidentifiedCount={hiddenRes.count ?? 0}
+      groups={groupsOnPage}
+      groupsTotal={allGroups.length}
+      selectedGroup={openGroup?.group ?? null}
+      groupThread={openGroup?.thread ?? []}
+      canCreateGroupAutomation={permissionCtx.can("flows.edit")}
+      canManageGroups={permissionCtx.can("channels.manage")}
+      filterCatalog={{ platforms: platformItems, accounts, multiPlatforms: multiAccountPlatforms(accounts), tags, members: memberItems }}
         />
       </div>
     </div>

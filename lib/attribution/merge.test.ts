@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { effectiveAttribution } from "./merge";
+import { effectiveAttribution, preferEmbeddedReferrer } from "./merge";
 import type { StoredAttribution } from "./types";
 
 const stored: StoredAttribution = {
@@ -44,5 +44,52 @@ describe("effectiveAttribution", () => {
 
   it("first_visit no lleva sello de tiempo borrado: se conserva tal cual", () => {
     expect(effectiveAttribution({}, stored).first_visit?.ts).toBe(1000);
+  });
+});
+
+describe("effectiveAttribution sin visita guardada", () => {
+  const page = "https://app.test/f/registro";
+
+  it("un link sin UTM conserva de dónde vino y su página de llegada", () => {
+    const out = effectiveAttribution({ referrer_url: "https://instagram.com/", landing_page: page, page_url: page }, null);
+    expect(out.referrer_url).toBe("https://instagram.com/");
+    expect(out.landing_page).toBe(page);
+  });
+
+  it("un referrer del mismo sitio no cuenta como de dónde vino", () => {
+    const out = effectiveAttribution({ referrer_url: "https://app.test/otra", landing_page: page, page_url: page }, null);
+    expect(out.referrer_url).toBeUndefined();
+  });
+
+  it("con una visita guardada no pisa lo guardado", () => {
+    const out = effectiveAttribution({ referrer_url: "https://google.com/", landing_page: page, page_url: page }, stored);
+    expect(out.referrer_url).toBe("https://l.facebook.com/");
+    expect(out.landing_page).toBe("https://s.test/promo");
+  });
+
+  it("una visita guardada sin referrer no toma el de ahora: son visitas distintas", () => {
+    const sinReferrer: StoredAttribution = { v: 1, last: { utm_source: "meta", ts: 2000 } };
+    const out = effectiveAttribution({ referrer_url: "https://google.com/", page_url: page }, sinReferrer);
+    expect(out.referrer_url).toBeUndefined();
+  });
+});
+
+describe("preferEmbeddedReferrer", () => {
+  const parent = "https://web.test/landing";
+
+  it("en un embed gana el referrer real que mandó la página, no la página misma", () => {
+    const out = preferEmbeddedReferrer({ utm_source: "meta", referrer_url: parent }, { referrer_url: "https://l.facebook.com/", utm_source: "meta" });
+    expect(out.referrer_url).toBe("https://l.facebook.com/");
+  });
+
+  it("si la persona entró directo a la página, queda sin referrer", () => {
+    const out = preferEmbeddedReferrer({ utm_source: "meta", referrer_url: parent, page_url: parent }, { utm_source: "meta" });
+    expect(out.referrer_url).toBeUndefined();
+    expect(out.page_url).toBe(parent);
+  });
+
+  it("sin datos del script no cambia nada", () => {
+    expect(preferEmbeddedReferrer({ referrer_url: parent }, {}).referrer_url).toBe(parent);
+    expect(preferEmbeddedReferrer({ referrer_url: parent }, null).referrer_url).toBe(parent);
   });
 });

@@ -12,7 +12,7 @@
  * PURO: recibe lo que lee el navegador; no toca `window` ni `document`.
  */
 import { attributionFromParams, gaClientId, parseCookieHeader, sanitizeAttribution } from "@/lib/attribution/collect";
-import { effectiveAttribution, preferEmbeddedEntryUrl } from "@/lib/attribution/merge";
+import { effectiveAttribution, preferEmbeddedEntryUrl, preferEmbeddedReferrer } from "@/lib/attribution/merge";
 import { storedFromEffective } from "@/lib/attribution/browser";
 import { parseStored } from "@/lib/attribution/store";
 import { COOKIE_KEYS } from "@/lib/attribution/keys";
@@ -47,12 +47,25 @@ export function bookingAttribution(input: BookingAttributionInput): Record<strin
     });
     if (input.isEmbed) {
       const fromEmbed = sanitizeAttribution(decodeAttr(input.attrParam));
-      return preferEmbeddedEntryUrl(effectiveAttribution(current, storedFromEffective(fromEmbed)), fromEmbed);
+      return preferEmbeddedReferrer(preferEmbeddedEntryUrl(effectiveAttribution(current, storedFromEffective(fromEmbed)), fromEmbed), fromEmbed);
     }
     return effectiveAttribution(current, parseStored(input.storedCookie));
   } catch {
     return {};
   }
+}
+
+/**
+ * Lo que se guarda en `bookings.utm`: lo que deja `pickUtm` más la página de llegada y la del envío, saneadas. Van en el
+ * mismo jsonb para no tocar `create_booking`, que ya lo guarda tal cual. Sin esto, si falla el toque se pierden.
+ */
+export function bookingUtmPayload(pickedUtm: Record<string, unknown>, raw: Record<string, unknown>, landingPage: unknown): Record<string, unknown> {
+  const pages = sanitizeAttribution({ landing_page: landingPage ?? raw.landing_page, page_url: raw.page_url });
+  return {
+    ...pickedUtm,
+    ...(pages.landing_page ? { landing_page: pages.landing_page } : {}),
+    ...(pages.page_url ? { page_url: pages.page_url } : {}),
+  };
 }
 
 /**

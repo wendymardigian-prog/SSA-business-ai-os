@@ -49,12 +49,18 @@ const res = await fetch("https://<este-sistema>/api/public/forms/<slug>/submit",
     origin: "site",                      // así no hace falta version_id: usa la versión publicada
     answers: { name: "…", email: "…", email_consent: true },
     honeypot: "",                         // un campo invisible: si un bot lo llena, no se guarda nada
-    attribution: { utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, fbp, fbc, meta_event_id },
+    attribution: {
+      entry_url, landing_page, referrer_url, page_url,
+      utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_id,
+      campaign_id, adset_id, ad_id, placement,
+      fbclid, fbp, fbc, meta_event_id,
+    },
   }),
 });
 const data = await res.json();
 ```
 
+- La atribución se guarda cuando la persona LLEGA a la web (por ejemplo, en `sessionStorage`), no al enviar, porque para entonces puede haber cambiado de página: `entry_url` y `landing_page` son el `location.href` de esa primera página, `referrer_url` es su `document.referrer`, y los UTM y los ids del anuncio salen de la URL. `page_url` es la página donde está el formulario al enviar. Con estos nombres exactos se ven en la tabla de respuestas; una clave con otro nombre se descarta.
 - `fbp` y `fbc` van dentro de `attribution` porque las cookies `_fbp` y `_fbc` de la web no viajan a otro dominio.
 - `meta_event_id` (el id del evento del Pixel) se guarda con la respuesta, para no contar dos veces el mismo lead cuando se sume la API de Conversiones de Meta.
 

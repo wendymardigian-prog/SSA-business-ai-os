@@ -46,12 +46,12 @@ export interface EmbedConfig {
   [key: string]: unknown;
 }
 
-export type ParentUtm = Partial<Record<(typeof UTM_KEYS)[number] | (typeof CLICK_ID_KEYS)[number], string>>;
+export type ParentUtm = Partial<Record<string, string>>;
 
 /**
  * Los datos de atribucion de la pagina padre de un FORMULARIO: todas las claves
  * de `lib/attribution/keys.ts` (UTM, ids de clic de cada plataforma, ids de
- * anuncio). La Agenda sigue usando solo las suyas (`parentUtmFromSearch`).
+ * anuncio). La Agenda usa `parentUtmFromSearch`, que trae las mismas sin alias.
  */
 export type ParentAttribution = Record<string, string>;
 
@@ -113,11 +113,11 @@ function text(value: unknown): string | null {
   return s ? s.slice(0, MAX_TEXT) : null;
 }
 
-/** Los UTM y click ids presentes en la URL de la página padre. */
+/** Toda la atribución de la URL de la página padre (`TOUCH_KEYS`). Una clave que no viaja se pierde si la URL trae otro UTM. */
 export function parentUtmFromSearch(search: string): ParentUtm {
   const params = new URLSearchParams(search);
   const out: ParentUtm = {};
-  for (const k of [...UTM_KEYS, ...CLICK_ID_KEYS]) {
+  for (const k of TOUCH_KEYS) {
     const v = params.get(k);
     if (v && v.trim()) out[k] = v.trim().slice(0, MAX_TEXT);
   }
@@ -165,7 +165,7 @@ export function buildEmbedIframeUrl(
     if (s) params.set(k, s);
   }
 
-  for (const k of [...UTM_KEYS, ...CLICK_ID_KEYS]) {
+  for (const k of TOUCH_KEYS) {
     const v = parentUtm[k];
     if (v) params.set(k, v);
   }

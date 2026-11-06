@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { MessageSquare, RefreshCw, User } from "lucide-react";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread, type InboxAsset } from "@/components/inbox/message-thread";
 import { ContactPanel } from "@/components/inbox/contact-panel";
 import { KnownGate } from "@/components/inbox/known-gate";
+import { GroupThreadPanel } from "@/components/inbox/groups/group-thread-panel";
+import { useGroupListRealtime } from "@/components/inbox/groups/use-group-list-realtime";
 import { knownLabel } from "@/lib/inbox/known";
 import { customerLabel, markGate } from "@/lib/inbox/marks";
 import { assigneeName } from "@/lib/inbox/assignee";
@@ -15,6 +17,8 @@ import { cn } from "@/lib/utils";
 import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
 import type { InboxAccountsInfo } from "@/lib/inbox/accounts";
+import type { FilterSummaryCatalog } from "@/lib/inbox/filter-summary";
+import type { GroupListRow, SelectedGroup, ThreadMessage } from "@/lib/whatsapp-groups/thread";
 import { countActiveFilters, type InboxFilters } from "@/lib/inbox/filters";
 import type { DateRange } from "@/lib/dates";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
@@ -51,6 +55,14 @@ export function InboxView({
   draftCounts,
   draftConversationIds = [],
   hasGroups = false,
+  unidentifiedCount = 0,
+  groups = [],
+  groupsTotal = 0,
+  selectedGroup: selectedGroupFromServer = null,
+  groupThread = [],
+  canCreateGroupAutomation = false,
+  canManageGroups = false,
+  filterCatalog,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -98,6 +110,20 @@ export function InboxView({
   draftConversationIds?: string[];
   /** Hay grupos de WhatsApp activados para ver (00280). */
   hasGroups?: boolean;
+  /** Chats que la lista oculta por defecto (00296). */
+  unidentifiedCount?: number;
+  /** Los grupos de esta pagina, ya filtrados; van intercalados con los chats. */
+  groups?: GroupListRow[];
+  /** Cuantos grupos cumplen los filtros, en todas las paginas. */
+  groupsTotal?: number;
+  /** El grupo de ?g= y su hilo, resueltos en el servidor. */
+  selectedGroup?: SelectedGroup | null;
+  groupThread?: ThreadMessage[];
+  /** `flows.edit`: crear una automatización desde un mensaje del grupo. */
+  canCreateGroupAutomation?: boolean;
+  /** `channels.manage`: el vacío de los grupos lleva a donde se activan. */
+  canManageGroups?: boolean;
+  filterCatalog?: FilterSummaryCatalog;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -154,7 +180,9 @@ export function InboxView({
    * `useSearchParams` al dia.
    */
   const selectedId = searchParams.get("c");
-  const selected = selectedId
+  const groupId = searchParams.get("g");
+  // Un grupo abierto le gana a la conversacion: abrir uno saca ?c= y al reves.
+  const selected = selectedId && !groupId
     ? (conversations.find((c) => c.id === selectedId) ?? (selectedFromServer?.id === selectedId ? selectedFromServer : null))
     : null;
 
@@ -179,16 +207,38 @@ export function InboxView({
   const handleSelect = useCallback(
     (c: Conversation) => {
       const next = new URLSearchParams(searchParams.toString());
+      next.delete("g");
       next.set("c", c.id);
       replaceQuery(next);
     },
     [replaceQuery, searchParams],
   );
 
-  /** Telefono: volver del hilo a la lista (saca ?c= de la URL). */
+  // Un grupo, a diferencia de una conversacion, no tiene sus mensajes en el navegador: su hilo lo arma el servidor.
+  // Mientras llega, la fila queda marcada y el panel muestra que esta cargando.
+  const [openingGroup, startOpeningGroup] = useTransition();
+  const [openingGroupId, setOpeningGroupId] = useState<string | null>(null);
+  const selectedGroup = selectedGroupFromServer?.id === groupId ? selectedGroupFromServer : null;
+  const opening = openingGroup ? openingGroupId : null;
+
+  const handleSelectGroup = useCallback(
+    (id: string) => {
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("c");
+      next.set("g", id);
+      setOpeningGroupId(id);
+      startOpeningGroup(() => router.replace(`${pathname}?${next.toString()}`, { scroll: false }));
+    },
+    [pathname, router, searchParams],
+  );
+
+  useGroupListRealtime(workspaceId, hasGroups && filters.listType !== "chats");
+
+  /** Telefono: volver del hilo a la lista (saca ?c= y ?g= de la URL). */
   const handleBack = useCallback(() => {
     const next = new URLSearchParams(searchParams.toString());
     next.delete("c");
+    next.delete("g");
     setContactSheetOpen(false);
     replaceQuery(next);
   }, [replaceQuery, searchParams]);
@@ -233,12 +283,14 @@ export function InboxView({
     loadMessages();
   }, [selected?.id, gated]);
 
+  const anyOpen = !!selected || !!selectedGroup || !!opening;
+
   return (
     // En el telefono (Bloque 2d) es lista -> hilo a pantalla completa: con una
     // conversacion abierta se ve el hilo, sin ninguna se ve la lista.
     <div className="flex h-full">
       {/* Left panel: Conversation list */}
-      <div className={cn("w-full flex-shrink-0 md:block md:w-80", selected ? "hidden" : "block")}>
+      <div className={cn("w-full flex-shrink-0 md:block md:w-80", anyOpen ? "hidden" : "block")}>
         <ConversationList
           conversations={conversations}
           workspaceId={workspaceId}
@@ -258,11 +310,19 @@ export function InboxView({
           canEditContacts={canEditContacts}
           canDeleteContacts={canDeleteContacts}
           hasGroups={hasGroups}
+          unidentifiedCount={unidentifiedCount}
+          groups={groups}
+          groupsTotal={groupsTotal}
+          selectedGroupId={opening ?? selectedGroup?.id ?? null}
+          onSelectGroup={handleSelectGroup}
+          canManageGroups={canManageGroups}
+          filterCatalog={filterCatalog}
+          tags={tags}
         />
       </div>
 
       {/* Center panel: Message thread */}
-      <div className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", selected ? "flex" : "hidden")}>
+      <div className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", anyOpen ? "flex" : "hidden")}>
         {/* Toggle contact panel button */}
         {selected && !showContactPanel && (
           <div className="hidden shrink-0 justify-end border-b border-border px-2 py-1 md:flex">
@@ -281,7 +341,19 @@ export function InboxView({
               Una bandeja vacia porque el filtro no encontro nada es otra cosa:
               ahi el aviso lo da la lista de la izquierda y ofrecer "traer
               conversaciones de Zernio" solo confunde. */}
-          {conversations.length === 0 && !hasFilters ? (
+          {opening ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+            </div>
+          ) : selectedGroup ? (
+            <GroupThreadPanel
+              key={selectedGroup.id}
+              group={selectedGroup}
+              thread={groupThread}
+              canCreateAutomation={canCreateGroupAutomation}
+              onBack={handleBack}
+            />
+          ) : conversations.length === 0 && groups.length === 0 && !hasFilters ? (
             <div className="flex h-full flex-col items-center justify-center px-6 text-center">
               <MessageSquare className="h-10 w-10 text-muted-foreground/40" />
               <p className="mt-3 text-sm font-medium text-muted-foreground">

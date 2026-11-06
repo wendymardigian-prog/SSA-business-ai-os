@@ -1,18 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { SlidersHorizontal, X, Loader2, FileText, Check, Inbox } from "lucide-react";
+import { SlidersHorizontal, X, Loader2, FileText } from "lucide-react";
 import { DATE_PRESETS, DATE_PRESET_LABELS } from "@/lib/dates";
 import {
+  INBOX_LIST_TYPES,
+  INBOX_LIST_TYPE_LABELS,
   INBOX_STATUS_VALUES,
   INBOX_STATUS_LABELS,
   DEFAULT_INBOX_STATUS,
+  LEGACY_VIEW_PARAM,
+  LIST_TYPE_PARAM,
   ASSIGNMENT_UNASSIGNED,
   ASSIGNMENT_AI,
   ASSIGNMENT_MINE,
   HIDE_KNOWN_PARAM,
   HIDE_KNOWN_VALUE,
   HIDE_CUSTOMERS_PARAM,
+  UNIDENTIFIED_PARAM,
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
@@ -22,140 +27,42 @@ import { AWAITING_FILTER_LABELS, AWAITING_FILTER_VALUES, AWAITING_PARAM } from "
 import { cn } from "@/lib/utils";
 import { FilterMenu, MenuGroupLabel } from "@/components/ui/filter-menu";
 import { PlatformIcon } from "@/components/platform-icon";
-import { accountFilterLabel, groupAccounts, type InboxAccount } from "@/lib/inbox/accounts";
+import type { InboxAccount } from "@/lib/inbox/accounts";
 import { useInboxUrl } from "@/components/inbox/use-inbox-url";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 /**
- * Los filtros de la Bandeja (F16), repartidos en el Bloque I:
+ * Los filtros de la Bandeja (F16). Viven en el encabezado de la lista (`InboxListHeader`):
  *
- * - `InboxChannelMenu`: el menu de Canal. Una opcion por CUENTA conectada,
- *   agrupadas por red (dos Instagram son dos lineas). Se pueden marcar varias.
- * - `InboxFiltersMenu`: el boton de la barra superior y su popover (I3). Tags,
- *   agente, asignacion y fecha. Flota: no empuja la lista.
- * - `InboxFilterSummary`: la linea de abajo de la barra, con lo que esta
- *   filtrado en palabras y una `×` para limpiar. Sin filtros no se dibuja.
- * - `InboxStatusControls`: el desplegable de estado y el link a borradores, en
- *   la linea del titulo de la lista (I6). Es el filtro que mas se usa y no se
- *   esconde detras de un clic.
+ * - `InboxFiltersMenu`: el boton y su popover, con TODOS los filtros: canal, asignacion, estado, chats o grupos, y el
+ *   resto. Flota: no empuja la lista.
+ * - `InboxFilterSummary`: la linea de abajo del encabezado, con lo que esta filtrado en palabras y una `×` para
+ *   limpiar. Sin filtros no se dibuja.
+ * - `InboxDraftsLink`: el acceso a los borradores que esperan.
  *
- * El buscador es `SectionSearch` (`components/comunicacion/section-search.tsx`),
- * compartido con las otras tres secciones. Todos cambian la URL con
- * `useInboxUrl`: el estado vive ahi y no en los componentes.
+ * Todos cambian la URL con `useInboxUrl`: el estado vive ahi y no en los componentes.
  */
-
-/**
- * El menu de Canal: todas las cuentas conectadas, agrupadas por red, una por linea.
- *
- * Se marcan varias a la vez (por ejemplo las dos cuentas de Instagram y nada mas) y el menu NO se cierra al elegir,
- * como los chips del popover de Filtros. "Todos los canales" limpia las cuentas y tambien el `?canal=` de un link
- * viejo. Sin cuentas conectadas el menu no se dibuja: no hay nada que elegir.
- */
-export function InboxChannelMenu({
-  filters,
-  accounts,
-  multiPlatforms,
-}: {
-  filters: InboxFilters;
-  accounts: InboxAccount[];
-  /** Las redes con mas de una cuenta: ahi el boton nombra la cuenta ("Instagram @marca"). */
-  multiPlatforms: string[];
-}) {
-  const { pending, setParams, toggle } = useInboxUrl();
-  if (accounts.length === 0) return null;
-
-  const selected = filters.channelIds;
-  const legacyPlatforms = filters.platforms.length;
-  const active = selected.length > 0 || legacyPlatforms > 0;
-  const groups = groupAccounts(accounts);
-
-  let value: string;
-  if (selected.length === 0 && legacyPlatforms === 0) value = "Todos";
-  else if (selected.length === 1) {
-    const account = accounts.find((a) => a.id === selected[0]);
-    value = account ? accountFilterLabel(account, multiPlatforms) : "1 cuenta";
-  } else if (selected.length > 1) value = `${selected.length} cuentas`;
-  else value = legacyPlatforms === 1 ? "1 red" : `${legacyPlatforms} redes`;
-
-  return (
-    <FilterMenu
-      label="Canal"
-      active={active}
-      icon={
-        pending ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />
-        ) : (
-          <Inbox className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        )
-      }
-      value={<span className="max-w-[9rem] truncate">{value}</span>}
-      menuClassName="topbar:w-[300px]"
-    >
-      <div className="space-y-0.5 pb-1">
-        <AccountRow
-          checked={!active}
-          onClick={() => setParams({ cuenta: "", canal: "" })}
-          title="Todos los canales"
-        />
-        {groups.map((group) => (
-          <div key={group.platform}>
-            <MenuGroupLabel>{group.platformLabel}</MenuGroupLabel>
-            {group.accounts.map((account) => (
-              <AccountRow
-                key={account.id}
-                checked={selected.includes(account.id)}
-                onClick={() => toggle("cuenta", account.id)}
-                title={account.label}
-                leading={<PlatformIcon platform={account.platform} className="h-4 w-4" size={16} />}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-    </FilterMenu>
-  );
-}
-
-/** Una cuenta del menu: una casilla que se prende y se apaga sin cerrar el menu. */
-function AccountRow({
-  checked,
-  onClick,
-  title,
-  leading,
-}: {
-  checked: boolean;
-  onClick: () => void;
-  title: string;
-  leading?: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked}
-      onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent focus:bg-accent focus:outline-none"
-    >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center">{leading}</span>
-      <span className={cn("min-w-0 flex-1 truncate", checked && "font-medium")}>{title}</span>
-      {checked && <Check className="h-4 w-4 shrink-0 text-primary-ink" aria-hidden />}
-    </button>
-  );
-}
 
 export function InboxFiltersMenu({
   filters,
+  accounts,
   tags,
   members,
+  hasGroups,
 }: {
   filters: InboxFilters;
+  /** Las cuentas conectadas que esta persona ve: una opcion por cuenta, se marcan varias. */
+  accounts: InboxAccount[];
   tags: { id: string; name: string; color: string | null }[];
   members: { userId: string; label: string }[];
+  /** Hay grupos de WhatsApp activados: recien ahi tiene sentido elegir entre chats y grupos. */
+  hasGroups: boolean;
 }) {
-  const { pending, setParam, toggle, clearAll } = useInboxUrl();
+  const { pending, setParam, setParams, toggle, clearAll } = useInboxUrl();
   const menuCount = countMenuFilters(filters);
+  const anyAccount = filters.channelIds.length === 0 && filters.platforms.length === 0;
 
   return (
     <FilterMenu
@@ -168,23 +75,107 @@ export function InboxFiltersMenu({
           <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
         )
       }
+      plain
+      align="left"
       value={
-        <>
-          {/* El "Filtros:" del boton se esconde en el telefono; el lector de
-              pantalla lo sigue leyendo. */}
-          <span className="sr-only md:hidden">Filtros: </span>
-          {menuCount > 0 ? (
-            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-              {menuCount}
-            </span>
-          ) : (
-            <span className="font-normal text-muted-foreground">ninguno</span>
-          )}
-        </>
+        menuCount > 0 ? (
+          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+            {menuCount}
+            <span className="sr-only"> {menuCount === 1 ? "filtro activo" : "filtros activos"}</span>
+          </span>
+        ) : null
       }
       menuClassName="topbar:w-[340px]"
     >
       <div className="space-y-1 pb-1.5">
+        {accounts.length > 0 && (
+          <FilterGroup label="Canal">
+            <div className="flex flex-wrap gap-1.5">
+              {/* "Todos" limpia las cuentas y tambien el `?canal=` de un link viejo. */}
+              <Chip active={anyAccount} onClick={() => setParams({ cuenta: "", canal: "" })}>
+                Todos
+              </Chip>
+              {accounts.map((account) => (
+                <Chip key={account.id} active={filters.channelIds.includes(account.id)} onClick={() => toggle("cuenta", account.id)}>
+                  <span className="inline-flex max-w-[15rem] items-center gap-1.5">
+                    <PlatformIcon platform={account.platform} className="h-3.5 w-3.5 shrink-0" size={14} />
+                    <span className="truncate">{account.label}</span>
+                  </span>
+                </Chip>
+              ))}
+            </div>
+          </FilterGroup>
+        )}
+
+        <FilterGroup label="Asignación">
+          <select
+            value={filters.assignment}
+            onChange={(e) => setParam("asignado", e.target.value)}
+            aria-label="Filtrar por asignación"
+            className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">Todas</option>
+            <option value={ASSIGNMENT_MINE}>Asignadas a mí</option>
+            <option value={ASSIGNMENT_UNASSIGNED}>Sin asignar</option>
+            <option value={ASSIGNMENT_AI}>Agente IA</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </FilterGroup>
+
+        <FilterGroup label="Estado">
+          <div className="flex flex-wrap gap-1.5">
+            {INBOX_STATUS_VALUES.map((value) => (
+              <Chip
+                key={value}
+                active={filters.status === value}
+                onClick={() => setParam("estado", value === DEFAULT_INBOX_STATUS ? "" : value)}
+              >
+                {INBOX_STATUS_LABELS[value]}
+              </Chip>
+            ))}
+          </div>
+        </FilterGroup>
+
+        {/* Sin grupos activados no hay nada que elegir; con el filtro puesto (un link) se puede sacar. */}
+        {(hasGroups || filters.listType) && (
+          <FilterGroup label="Chats y grupos">
+            <div className="flex flex-wrap gap-1.5">
+              <Chip active={!filters.listType} onClick={() => setParams({ [LIST_TYPE_PARAM]: "", [LEGACY_VIEW_PARAM]: "" })}>
+                Ambos
+              </Chip>
+              {INBOX_LIST_TYPES.map((value) => (
+                <Chip
+                  key={value}
+                  active={filters.listType === value}
+                  onClick={() => setParams({ [LIST_TYPE_PARAM]: value, [LEGACY_VIEW_PARAM]: "" })}
+                >
+                  {INBOX_LIST_TYPE_LABELS[value]}
+                </Chip>
+              ))}
+            </div>
+          </FilterGroup>
+        )}
+
+        {/* 00259: el mismo criterio que la tarjeta "Esperando respuesta ahora"
+            del dashboard. Se elige una de las dos o ninguna. */}
+        <FilterGroup label="Respuesta">
+          <div className="flex flex-wrap gap-1.5">
+            {AWAITING_FILTER_VALUES.map((value) => (
+              <Chip
+                key={value}
+                active={filters.awaiting === value}
+                onClick={() => setParam(AWAITING_PARAM, filters.awaiting === value ? "" : value)}
+              >
+                {AWAITING_FILTER_LABELS[value]}
+              </Chip>
+            ))}
+          </div>
+        </FilterGroup>
+
         <FilterGroup label="Tags">
           {tags.length === 0 ? (
             <p className="text-xs text-muted-foreground/70">Todavía no hay tags.</p>
@@ -203,19 +194,32 @@ export function InboxFiltersMenu({
           )}
         </FilterGroup>
 
-        {/* 00259: el mismo criterio que la tarjeta "Esperando respuesta ahora"
-            del dashboard. Se elige una de las dos o ninguna. */}
-        <FilterGroup label="Respuesta">
+        <FilterGroup label="Conocidos y clientes">
           <div className="flex flex-wrap gap-1.5">
-            {AWAITING_FILTER_VALUES.map((value) => (
-              <Chip
-                key={value}
-                active={filters.awaiting === value}
-                onClick={() => setParam(AWAITING_PARAM, filters.awaiting === value ? "" : value)}
-              >
-                {AWAITING_FILTER_LABELS[value]}
-              </Chip>
-            ))}
+            <Chip
+              active={!!filters.hideKnown}
+              onClick={() => setParam(HIDE_KNOWN_PARAM, filters.hideKnown ? "" : HIDE_KNOWN_VALUE)}
+            >
+              Ocultar conocidos
+            </Chip>
+            <Chip
+              active={!!filters.hideCustomers}
+              onClick={() => setParam(HIDE_CUSTOMERS_PARAM, filters.hideCustomers ? "" : HIDE_KNOWN_VALUE)}
+            >
+              Ocultar clientes
+            </Chip>
+          </div>
+        </FilterGroup>
+
+        {/* 00296: las que la lista oculta por defecto. */}
+        <FilterGroup label="Quién es">
+          <div className="flex flex-wrap gap-1.5">
+            <Chip
+              active={!!filters.onlyUnidentified}
+              onClick={() => setParam(UNIDENTIFIED_PARAM, filters.onlyUnidentified ? "" : "1")}
+            >
+              Sin identificar
+            </Chip>
           </div>
         </FilterGroup>
 
@@ -237,42 +241,6 @@ export function InboxFiltersMenu({
               Necesita humano
             </Chip>
           </div>
-        </FilterGroup>
-
-        <FilterGroup label="Conocidos y clientes">
-          <div className="flex flex-wrap gap-1.5">
-            <Chip
-              active={!!filters.hideKnown}
-              onClick={() => setParam(HIDE_KNOWN_PARAM, filters.hideKnown ? "" : HIDE_KNOWN_VALUE)}
-            >
-              Ocultar conocidos
-            </Chip>
-            <Chip
-              active={!!filters.hideCustomers}
-              onClick={() => setParam(HIDE_CUSTOMERS_PARAM, filters.hideCustomers ? "" : HIDE_KNOWN_VALUE)}
-            >
-              Ocultar clientes
-            </Chip>
-          </div>
-        </FilterGroup>
-
-        <FilterGroup label="Asignación">
-          <select
-            value={filters.assignment}
-            onChange={(e) => setParam("asignado", e.target.value)}
-            aria-label="Filtrar por asignación"
-            className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">Todas</option>
-            <option value={ASSIGNMENT_MINE}>Asignadas a mí</option>
-            <option value={ASSIGNMENT_UNASSIGNED}>Sin asignar</option>
-            <option value={ASSIGNMENT_AI}>Agente IA</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.label}
-              </option>
-            ))}
-          </select>
         </FilterGroup>
 
         <FilterGroup label="Último mensaje">
@@ -332,7 +300,26 @@ export function InboxFiltersMenu({
 }
 
 /**
- * Lo filtrado, en una linea, debajo de la barra (I3). Cuenta con la funcion de
+ * Cuantos chats oculta la lista por defecto (00296) y el link para verlos. Sin
+ * esto, la lista baja de golpe y parece que se perdieron conversaciones.
+ */
+export function UnidentifiedNotice({ count }: { count: number }) {
+  const { setParam } = useInboxUrl();
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => setParam(UNIDENTIFIED_PARAM, "1")}
+      className="w-full border-b border-border bg-muted/30 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+    >
+      {count === 1 ? "1 chat sin identificar" : `${count} chats sin identificar`}: todavía no respondieron.{" "}
+      <span className="font-medium text-primary-ink">Ver</span>
+    </button>
+  );
+}
+
+/**
+ * Lo filtrado, en una linea, debajo del encabezado de la lista (I3). Cuenta con la funcion de
  * siempre (`countActiveFilters`), asi que tambien aparece con solo una busqueda
  * o un estado distinto de "Abiertas": la linea dice todo lo que recorta la lista.
  */
@@ -348,7 +335,7 @@ export function InboxFilterSummary({
 
   const text = describeInboxFilters(filters, catalog).join(" · ");
   return (
-    <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-3 md:px-6">
+    <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-muted/30 pl-3 pr-1">
       <span className="text-xs font-medium text-muted-foreground">Filtrando:</span>
       <span className="min-w-0 flex-1 truncate text-xs" title={text}>
         {text}
@@ -367,61 +354,30 @@ export function InboxFilterSummary({
 }
 
 /**
- * El estado y el link a borradores, en la misma linea que el titulo de la
- * lista (I6, compactado el 23/10/2026).
- *
- * Antes eran cuatro pastillas en una fila propia, debajo del titulo: en el
- * celular eran dos filas enteras antes del primer chat. El estado sigue afuera
- * del popover de Filtros —es el que mas se usa y no se esconde detras de un
- * clic—, pero como un desplegable que entra al lado del titulo.
+ * Bloque 2d: la cola de borradores vive aca y no en el menu. Un borrador es una conversacion esperando respuesta, no
+ * otra seccion del sistema. Con cero no aparece.
  */
-export function InboxStatusControls({
-  filters,
+export function InboxDraftsLink({
   workspaceId,
   draftCounts,
 }: {
-  filters: InboxFilters;
   workspaceId: string;
   /** Valor inicial del contador de borradores; Realtime lo mantiene al dia. */
   draftCounts?: PendingDraftCounts;
 }) {
-  const { setParam } = useInboxUrl();
   const drafts = useDraftCounts(workspaceId, draftCounts, "inbox-drafts");
   const waitingDrafts = visibleDraftCount(drafts);
-  const notDefault = filters.status !== DEFAULT_INBOX_STATUS;
-
+  if (waitingDrafts === 0) return null;
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <select
-        value={filters.status}
-        onChange={(e) => setParam("estado", e.target.value)}
-        aria-label="Estado de los chats"
-        className={cn(
-          "h-8 rounded-lg border pl-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring",
-          notDefault ? "border-primary-edge bg-primary/10 text-primary-ink" : "border-input bg-background",
-        )}
-      >
-        {INBOX_STATUS_VALUES.map((value) => (
-          <option key={value} value={value}>
-            {INBOX_STATUS_LABELS[value]}
-          </option>
-        ))}
-      </select>
-      {/* Bloque 2d: la cola de borradores vive aca y no en el menu. Un
-          borrador es una conversacion esperando respuesta, no otra seccion
-          del sistema. Con cero no aparece. */}
-      {waitingDrafts > 0 && (
-        <Link
-          href={draftsQueueHref(drafts)}
-          aria-label={`Borradores: ${waitingDrafts} esperando`}
-          title="Borradores esperando"
-          className="inline-flex h-8 items-center gap-0.5 rounded-lg border border-dashed border-amber-400 px-1.5 text-xs font-medium tabular-nums text-amber-800 transition-colors hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30"
-        >
-          <FileText className="h-3.5 w-3.5" aria-hidden />
-          {waitingDrafts}
-        </Link>
-      )}
-    </div>
+    <Link
+      href={draftsQueueHref(drafts)}
+      aria-label={`Borradores: ${waitingDrafts} esperando`}
+      title="Borradores esperando"
+      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg border border-dashed border-amber-400 px-1.5 text-xs font-medium tabular-nums text-amber-800 transition-colors hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30"
+    >
+      <FileText className="h-3.5 w-3.5" aria-hidden />
+      {waitingDrafts}
+    </Link>
   );
 }
 

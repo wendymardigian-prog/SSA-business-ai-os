@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 import { EvolutionError, type EvolutionStoredChat, type EvolutionStoredMessage } from "@/lib/evolution-client";
@@ -142,6 +144,12 @@ describe("runWhatsappImportStep", () => {
     expect(db.rows("conversations")[0]).toMatchObject({ status: "open", unread_count: 3, last_message_preview: "lo de hoy" });
     expect(db.rows("messages").map((m) => m.platform_message_id).sort()).toEqual(["m0", "m1"]);
     expect(stateOf(db)).toMatchObject({ conversations: 0, messages: 1 });
+  });
+
+  it("vuelve a apagar los eventos despues de guardar los mensajes: uno entrante puede volver visible al contacto (00298)", () => {
+    const source = readFileSync(resolve(__dirname, "run-import.ts"), "utf8");
+    const save = source.slice(source.indexOf("async function saveChat"), source.indexOf("async function silenceContactSideEffects"));
+    expect(save.indexOf("silenceContactSideEffects", save.indexOf("insertHistoricMessages"))).toBeGreaterThan(-1);
   });
 
   it("no dispara automatizaciones ni la asignacion de un contacto nuevo", async () => {
