@@ -53,12 +53,6 @@ function cssString(value: string): string {
   return value.replace(/[\\"\n\r<>]/g, "");
 }
 
-/**
- * Limpieza defensiva del HTML de un elemento `html`. La limpieza de verdad es
- * la de DS4 al guardar (`lib/designer/import/sanitize.ts`); esto garantiza que
- * el render NUNCA devuelva algo ejecutable aunque llegara un documento viejo o
- * mal guardado.
- */
 /** Decodifica las entidades que se usan para disfrazar un esquema (`jav&#x61;script:`, `&colon;`) y saca los blancos. */
 function normalizeUrlValue(value: string): string {
   return value
@@ -76,11 +70,38 @@ function isSafeUrl(value: string): boolean {
   if (v === "" || v.startsWith("#") || v.startsWith("/") || v.startsWith("./") || v.startsWith("../") || v.startsWith("?")) return true;
   if (/^(https?:|mailto:|tel:|asset:)/.test(v)) return true;
   if (/^data:image\/(png|jpe?g|gif|webp);/.test(v)) return true;
-  // Sin esquema (una ruta relativa): solo si no hay ":" antes de la primera "/" o "?".
-  const scheme = v.match(/^([a-z][a-z0-9+.-]*):/);
-  return !scheme;
+  // Sin esquema (una ruta relativa): solo si no hay "algo:" al principio.
+  return !/^([a-z][a-z0-9+.-]*):/.test(v);
 }
 
+/** Limpia los atributos de UNA etiqueta de apertura: manejadores, `srcdoc`, URLs inseguras y CSS peligroso en `style`. */
+function cleanTag(tag: string): string {
+  let out = tag;
+  let prev: string;
+  do {
+    prev = out;
+    out = out
+      // Un manejador de eventos, también pegado al nombre de la etiqueta con "/" (`<img/onerror=…>`) o a una comilla.
+      .replace(/([\s/"'])on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (_m, pre: string) => (pre.trim() === "" ? "" : pre))
+      .replace(/\ssrcdoc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      // Atributos de URL: solo destinos seguros, aunque el esquema venga disfrazado con entidades.
+      .replace(/\b(href|src|xlink:href|action|formaction|poster|background|data|to|values|from|by)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>"']+))/gi, (attr, _n, _q, d, s1, bare) =>
+        isSafeUrl((d ?? s1 ?? bare ?? "") as string) ? attr : "",
+      )
+      .replace(/\bstyle\s*=\s*("[^"]*"|'[^']*')/gi, (attr) =>
+        attr.replace(/expression\s*\(/gi, "(").replace(/behavior\s*:/gi, "").replace(/-moz-binding\s*:/gi, "").replace(/javascript\s*:/gi, "").replace(/vbscript\s*:/gi, ""),
+      );
+  } while (out !== prev);
+  return out;
+}
+
+/**
+ * Limpieza defensiva del HTML de un elemento `html`. La limpieza de verdad es
+ * la de DS4 al guardar (`lib/designer/import/sanitize.ts`); esto garantiza que
+ * el render NUNCA devuelva algo ejecutable aunque llegara un documento viejo o
+ * mal guardado. Los atributos se limpian SOLO dentro de las etiquetas: el texto
+ * que ve la persona no se toca.
+ */
 export function stripActiveContent(html: string): string {
   let out = html;
   let prev: string;
@@ -89,17 +110,8 @@ export function stripActiveContent(html: string): string {
     out = out
       .replace(/<\s*(script|iframe|object|embed|frame|frameset|applet|base|meta|link|form)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
       .replace(/<\s*\/?\s*(script|iframe|object|embed|frame|frameset|applet|base|meta|link|form)\b[^>]*>/gi, "")
-      // Un manejador de eventos, también pegado al nombre de la etiqueta con "/" (`<img/onerror=…>`) o a otra comilla.
-      .replace(/([\s/"'])on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (_m, pre: string) => (pre.trim() === "" ? "" : pre))
-      .replace(/srcdoc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-      // Atributos de URL: solo destinos seguros, aunque el esquema venga disfrazado con entidades.
-      .replace(/\b(href|src|xlink:href|action|formaction|poster|background|data)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>"']+))/gi, (attr, _n, _q, d, s1, bare) =>
-        isSafeUrl((d ?? s1 ?? bare ?? "") as string) ? attr : "",
-      )
       .replace(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi, (_m, css: string) => `<style>${stripActiveCss(css)}</style>`)
-      .replace(/style\s*=\s*("[^"]*"|'[^']*')/gi, (attr) => attr.replace(/expression\s*\(/gi, "(").replace(/behavior\s*:/gi, "").replace(/-moz-binding\s*:/gi, ""))
-      .replace(/javascript\s*:/gi, "")
-      .replace(/vbscript\s*:/gi, "");
+      .replace(/<[a-zA-Z][^<>]*>/g, (tag) => cleanTag(tag));
   } while (out !== prev);
   return out;
 }

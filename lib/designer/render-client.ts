@@ -33,11 +33,14 @@ export class RenderFailed extends Error {
   /** Si conviene reintentar más tarde (red, servicio dormido u ocupado). */
   readonly retryable: boolean;
   readonly status: number | null;
-  constructor(message: string, opts: { retryable: boolean; status?: number | null }) {
+  /** Lo que se le muestra a la persona, si el motivo no es el servicio (por ejemplo, las imágenes). */
+  readonly userMessage: string | null;
+  constructor(message: string, opts: { retryable: boolean; status?: number | null; userMessage?: string | null }) {
     super(message);
     this.name = "RenderFailed";
     this.retryable = opts.retryable;
     this.status = opts.status ?? null;
+    this.userMessage = opts.userMessage ?? null;
   }
 }
 
@@ -195,6 +198,9 @@ export async function renderDesign(req: RenderRequest, deps: RenderDeps = {}): P
 /** El mensaje para la persona de cualquier error del render (sin detalles técnicos). */
 export function renderErrorMessage(error: unknown): string {
   if (error instanceof RenderNotConfigured) return RENDER_NOT_CONFIGURED_MESSAGE;
-  if (error instanceof RenderFailed) return error.retryable ? "El servicio de render no respondió. Se vuelve a intentar solo." : "No se pudo armar el archivo.";
+  if (error instanceof RenderFailed) {
+    if (error.userMessage) return error.userMessage;
+    return error.retryable ? "El servicio de render no respondió. Se vuelve a intentar solo." : "No se pudo armar el archivo.";
+  }
   return "No se pudo armar el archivo.";
 }

@@ -166,5 +166,8 @@ describe("design_render (F6)", () => {
     expect(state.updates).toEqual([]);
     const last = await runDesignRender(db, { designId: DESIGN, purpose: "export", exportKind: "pdf", stamp: "s", retry: 3 }, { render: failing, now: () => NOW, schedule: schedule as never });
     expect(last.status).toBe("failed");
+    // Deja el motivo en la carpeta de la exportación: quien la pidió deja de mostrar "Preparando".
+    expect(state.uploads).toContain(`${WS}/${DESIGN}/exports/s/error.json`);
+    expect(state.updates).toEqual([]);
   });
 });

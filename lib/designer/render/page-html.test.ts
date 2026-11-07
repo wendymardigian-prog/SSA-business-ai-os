@@ -196,4 +196,8 @@ describe("limpieza defensiva", () => {
   it("renderText no interpreta nada que no sea una variable", () => {
     expect(renderText("{{ no es variable }} & {{contact.email}}", { mode: "export", values: { "contact.email": "a@b.c" } })).toBe("{{ no es variable }} &amp; a@b.c");
   });
+
+  it("no toca el texto que ve la persona (solo limpia dentro de las etiquetas)", () => {
+    expect(stripActiveContent('<p>Texto "one=2" y javascript: en una frase</p>')).toBe('<p>Texto "one=2" y javascript: en una frase</p>');
+  });
 });
