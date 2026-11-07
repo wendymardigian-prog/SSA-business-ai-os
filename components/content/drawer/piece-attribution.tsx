@@ -4,6 +4,15 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Copy, Link2 } from "lucide-react";
 import { attributionCodeHint } from "@/lib/attribution/code-hint";
 import { composePieceLink, PIECE_LINK_PLATFORMS } from "@/lib/attribution/piece-link";
+import {
+  CUSTOM_DESTINATION,
+  destinationHint,
+  destinationKey,
+  destinationUrl,
+  selectedDestination,
+  type PieceLinkDestinations,
+} from "@/lib/attribution/piece-link-destinations";
+import { loadPieceLinkDestinations } from "@/lib/actions/piece-link-destinations";
 
 /**
  * El código de atribución de la pieza y el generador de links (Extra I, F38 y F42).
@@ -13,6 +22,9 @@ import { composePieceLink, PIECE_LINK_PLATFORMS } from "@/lib/attribution/piece-
  *
  * El generador es un panel que se despliega acá mismo (no un modal): el drawer ya atrapa el foco y cierra con Esc, y un modal
  * encima se pelearía con eso. Arma el link mientras se escribe; no hay botón de "generar".
+ *
+ * El destino se pega a mano o se elige de los formularios publicados y las agendas del negocio (7/11/2026). La lista se
+ * pide al abrir el panel; qué entra y qué dice el aviso de abajo lo decide `lib/attribution/piece-link-destinations.ts`.
  */
 
 /** Copia un texto y avisa un instante («Copiado»). Si el navegador no deja copiar, lo dice. */
@@ -103,35 +115,112 @@ export function PieceAttribution({ code, pieceTitle }: { code: string | null; pi
   );
 }
 
+type DestinationsState =
+  | { status: "loading" }
+  | { status: "ready"; destinations: PieceLinkDestinations }
+  | { status: "failed"; error: string };
+
+/**
+ * Los formularios y las agendas del negocio, pedidos al abrir el panel (no con el drawer). Si la pieza se cierra antes
+ * de que lleguen, no se escriben.
+ */
+function useDestinations(): DestinationsState {
+  const [state, setState] = useState<DestinationsState>({ status: "loading" });
+  useEffect(() => {
+    let alive = true;
+    loadPieceLinkDestinations()
+      .then((res) => {
+        if (!alive) return;
+        setState(res.ok ? { status: "ready", destinations: res.destinations } : { status: "failed", error: res.error });
+      })
+      .catch(() => {
+        if (alive) setState({ status: "failed", error: "No pude cargar tus formularios y agendas. Podés pegar el link a mano." });
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return state;
+}
+
 function LinkBuilder({ code, pieceTitle }: { code: string; pieceTitle: string }) {
   const urlId = useId();
+  const destinationId = useId();
   const platformId = useId();
   const errorId = useId();
   const [url, setUrl] = useState("");
+  const [selected, setSelected] = useState<string>(CUSTOM_DESTINATION);
   const [platform, setPlatform] = useState<string>(PIECE_LINK_PLATFORMS[0].value);
+  const loaded = useDestinations();
 
-  const typed = url.trim() !== "";
-  const result = composePieceLink({ url, platform, pieceTitle, contentCode: code });
+  const destinations = loaded.status === "ready" ? loaded.destinations : null;
+  const hasOptions = destinations !== null && destinations.forms.length + destinations.events.length > 0;
+  // Sin nada para elegir, el desplegable ni aparece: queda el campo, como siempre.
+  const showPicker = loaded.status === "loading" || hasOptions;
+  const destination = selectedDestination(selected, destinations);
+  const target = destinationUrl(destination, url);
+
+  const typed = target.trim() !== "";
+  const result = composePieceLink({ url: target, platform, pieceTitle, contentCode: code });
   const error = typed && !result.ok ? result.error : null;
 
   return (
     <div className="mt-1 space-y-2 rounded-lg bg-muted p-3">
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-        <div className="min-w-0">
-          <label htmlFor={urlId} className="mb-1 block text-xs font-medium">
-            Link de destino
-          </label>
-          <input
-            id={urlId}
-            type="url"
-            inputMode="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://tu-sitio.com/programa"
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? errorId : undefined}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-          />
+        <div className="min-w-0 space-y-2">
+          {showPicker && (
+            <div>
+              <label htmlFor={destinationId} className="mb-1 block text-xs font-medium">
+                Destino
+              </label>
+              <select
+                id={destinationId}
+                value={destination ? selected : CUSTOM_DESTINATION}
+                onChange={(e) => setSelected(e.target.value)}
+                disabled={loaded.status === "loading"}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:opacity-60"
+              >
+                <option value={CUSTOM_DESTINATION}>{loaded.status === "loading" ? "Cargando…" : "Otro link (lo pego yo)"}</option>
+                {destinations && destinations.forms.length > 0 && (
+                  <optgroup label="Formularios">
+                    {destinations.forms.map((d) => (
+                      <option key={destinationKey(d)} value={destinationKey(d)}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {destinations && destinations.events.length > 0 && (
+                  <optgroup label="Agendas">
+                    {destinations.events.map((d) => (
+                      <option key={destinationKey(d)} value={destinationKey(d)}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+          )}
+
+          {!destination && (
+            <div>
+              <label htmlFor={urlId} className="mb-1 block text-xs font-medium">
+                Link de destino
+              </label>
+              <input
+                id={urlId}
+                type="url"
+                inputMode="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://tu-sitio.com/programa"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? errorId : undefined}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              />
+            </div>
+          )}
         </div>
         <div>
           <label htmlFor={platformId} className="mb-1 block text-xs font-medium">
@@ -171,8 +260,10 @@ function LinkBuilder({ code, pieceTitle }: { code: string; pieceTitle: string })
         </div>
       )}
 
-      <p className="text-[11px] text-muted-foreground">
-        Es un link sin seguimiento: como no hay un contacto, solo agrega los parámetros y no registra el clic.
+      {loaded.status === "failed" && <p className="text-[11px] text-muted-foreground">{loaded.error}</p>}
+
+      <p className={destination?.noContact ? "text-[11px] text-amber-700 dark:text-amber-400" : "text-[11px] text-muted-foreground"}>
+        {destinationHint(destination)}
       </p>
     </div>
   );
