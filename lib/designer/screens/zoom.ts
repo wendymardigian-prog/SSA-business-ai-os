@@ -48,6 +48,11 @@ export function pinchScale(startScale: number, startDistance: number, distance: 
   return clamp(startScale * (distance / startDistance), MIN_SCALE, MAX_SCALE);
 }
 
+/** La distancia entre dos dedos (para el pellizco). */
+export function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
 /** La inversa de la escala: para que las asas y los textos de la selección no crezcan ni se achiquen con el zoom. */
 export function inverseScale(scale: number): number {
   return 1 / Math.max(scale, MIN_SCALE);

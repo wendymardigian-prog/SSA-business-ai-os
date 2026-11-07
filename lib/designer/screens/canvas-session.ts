@@ -248,6 +248,53 @@ export function handlesFor(el: Pick<DesignElement, "type" | "locked"> & { shape?
   }
 }
 
+/**
+ * El estilo de cada asa de la selección. El lienzo está escalado con el zoom: las asas se dibujan con la escala inversa
+ * (`inv`, de `inverseScale`) para medir lo mismo en pantalla a cualquier zoom.
+ */
+export function handleStyle(id: HandleId, inv: number): Record<string, string> {
+  const u = (n: number) => `${round(n * inv)}px`;
+  const base: Record<string, string> = {
+    position: "absolute",
+    background: "#ffffff",
+    border: `${u(2)} solid var(--primary-edge)`,
+    zIndex: "5",
+    touchAction: "none",
+    borderRadius: u(4),
+  };
+  switch (id) {
+    case "left":
+      return { ...base, width: u(10), height: u(26), left: u(-5), top: "50%", marginTop: u(-13), cursor: "ew-resize" };
+    case "right":
+      return { ...base, width: u(10), height: u(26), right: u(-5), top: "50%", marginTop: u(-13), cursor: "ew-resize" };
+    case "top":
+      return { ...base, width: u(26), height: u(10), top: u(-5), left: "50%", marginLeft: u(-13), cursor: "ns-resize" };
+    case "bottom":
+      return { ...base, width: u(26), height: u(10), bottom: u(-5), left: "50%", marginLeft: u(-13), cursor: "ns-resize" };
+    case "corner":
+      return { ...base, width: u(16), height: u(16), right: u(-8), bottom: u(-8), borderRadius: "50%", cursor: "nwse-resize" };
+    case "rotate":
+      return { ...base, width: u(16), height: u(16), top: u(-34), left: "50%", marginLeft: u(-8), borderRadius: "50%", cursor: "grab" };
+  }
+}
+
+/** El borde de un elemento seleccionado (2 px del color de acento, que no cambia con el zoom). */
+export function outlineStyle(inv: number): Record<string, string> {
+  return { position: "absolute", inset: `${round(-2 * inv)}px`, border: `${round(2 * inv)}px solid var(--primary-edge)`, pointerEvents: "none", zIndex: "4" };
+}
+
+/** Una caja (centro y tamaño, en %) como `left/top/width/height` de CSS, para dibujar el rectángulo de selección. */
+export function boxRectStyle(box: Box): Record<string, string> {
+  return { left: `${round(box.x - box.w / 2)}%`, top: `${round(box.y - box.h / 2)}%`, width: `${round(box.w)}%`, height: `${round(box.h)}%` };
+}
+
+/** El estilo de una guía dibujada en pantalla: rosa continua (centro y otros elementos) o celeste punteada (márgenes). */
+export function guideLineStyle(guide: Guide, inv: number): Record<string, string> {
+  const tone = guideTone(guide) === "cyan" ? "#22d3ee" : "#ec4899";
+  const line = `${round(2 * inv)}px ${guideTone(guide) === "cyan" ? "dashed" : "solid"} ${tone}`;
+  return { position: "absolute", pointerEvents: "none", zIndex: "3000", ...guideStyle(guide), ...(guide.axis === "x" ? { borderLeft: line } : { borderTop: line }) };
+}
+
 /** El `inset` CSS de la zona segura (celeste y punteada mientras se arrastra), a partir de los márgenes del formato. */
 export function safeInset(safe: SafeZone): string {
   return `${round(safe.top)}% ${round(safe.right)}% ${round(safe.bottom)}% ${round(safe.left)}%`;
@@ -261,4 +308,52 @@ export function guideStyle(guide: Guide): Record<string, string> {
 /** Las guías de márgenes de seguridad son celestes y punteadas; las del centro y de otros elementos, rosa. */
 export function guideTone(guide: Guide): "pink" | "cyan" {
   return guide.kind === "margin" ? "cyan" : "pink";
+}
+
+// ─── Del DOM a porcentajes (el lienzo solo mide; estas funciones calculan) ───
+
+/** Un rectángulo del DOM en px de pantalla (lo que devuelve `getBoundingClientRect`). */
+export interface ScreenRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Dónde está el puntero dentro de la página, en % de la página (puede salirse de 0–100). */
+export function pointToPct(pointer: Point, page: ScreenRect): Point {
+  return { x: ((pointer.x - page.left) / Math.max(page.width, 1)) * 100, y: ((pointer.y - page.top) / Math.max(page.height, 1)) * 100 };
+}
+
+/** El rectángulo que se arrastra en vacío (de una esquina a la otra) como caja en % de la página, cortado a la página. */
+export function marqueeBox(from: Point, to: Point, page: ScreenRect): Box {
+  const a = pointToPct(from, page);
+  const b = pointToPct(to, page);
+  const left = clamp(Math.min(a.x, b.x), 0, 100);
+  const right = clamp(Math.max(a.x, b.x), 0, 100);
+  const top = clamp(Math.min(a.y, b.y), 0, 100);
+  const bottom = clamp(Math.max(a.y, b.y), 0, 100);
+  return { x: (left + right) / 2, y: (top + bottom) / 2, w: right - left, h: bottom - top };
+}
+
+/** El rectángulo de un elemento del DOM como caja en % de la página (para el alto real de un texto, que es automático). */
+export function rectToBox(rect: ScreenRect, page: ScreenRect): Box {
+  const width = Math.max(page.width, 1);
+  const height = Math.max(page.height, 1);
+  return {
+    x: round(((rect.left + rect.width / 2 - page.left) / width) * 100),
+    y: round(((rect.top + rect.height / 2 - page.top) / height) * 100),
+    w: round((rect.width / width) * 100),
+    h: round((rect.height / height) * 100),
+  };
+}
+
+/** El centro de un rectángulo del DOM (para el asa de rotación). */
+export function rectCenter(rect: ScreenRect): Point {
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+/** Si el puntero se movió lo suficiente como para dejar de ser un clic (para el rectángulo de selección). */
+export function passedThreshold(from: Point, to: Point): boolean {
+  return pixelsMoved(from, to) > DRAG_THRESHOLD_PX;
 }

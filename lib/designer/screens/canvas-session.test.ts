@@ -4,8 +4,15 @@ import {
   DRAG_THRESHOLD_PX,
   guideStyle,
   guideTone,
+  handleStyle,
+  outlineStyle,
   handlesFor,
   keyboardNudge,
+  marqueeBox,
+  passedThreshold,
+  pointToPct,
+  rectCenter,
+  rectToBox,
   safeInset,
   startCorner,
   startMove,
@@ -160,6 +167,50 @@ describe("rotar (F19)", () => {
     expect(patch.rotation).toBe(45);
     const free = updateRotate(session, at(130, 40), { shift: false }).result.patches.el_a as { rotation: number };
     expect(free.rotation % 15).not.toBe(0);
+  });
+});
+
+describe("asas de la selección", () => {
+  it("miden lo mismo en pantalla a cualquier zoom (con la escala inversa)", () => {
+    expect(handleStyle("corner", 1).width).toBe("16px");
+    expect(handleStyle("corner", 2).width).toBe("32px");
+    expect(handleStyle("left", 0.5).height).toBe("13px");
+    expect(outlineStyle(2).border).toContain("4px");
+  });
+
+  it("cada asa tiene su cursor", () => {
+    expect(handleStyle("left", 1).cursor).toBe("ew-resize");
+    expect(handleStyle("top", 1).cursor).toBe("ns-resize");
+    expect(handleStyle("corner", 1).cursor).toBe("nwse-resize");
+    expect(handleStyle("rotate", 1).cursor).toBe("grab");
+  });
+});
+
+describe("del DOM a porcentajes (F18, F19)", () => {
+  const page = { left: 100, top: 50, width: 500, height: 500 };
+
+  it("el puntero en la página, en %", () => {
+    expect(pointToPct(at(350, 300), page)).toEqual({ x: 50, y: 50 });
+    expect(pointToPct(at(100, 50), page)).toEqual({ x: 0, y: 0 });
+    expect(pointToPct(at(0, 0), page).x).toBeLessThan(0);
+  });
+
+  it("el rectángulo de selección se arrastra desde cualquier esquina y se corta a la página", () => {
+    const a = marqueeBox(at(200, 150), at(300, 250), page);
+    expect(a).toEqual({ x: 30, y: 30, w: 20, h: 20 });
+    expect(marqueeBox(at(300, 250), at(200, 150), page)).toEqual(a);
+    const out = marqueeBox(at(0, 0), at(350, 300), page);
+    expect(out).toEqual({ x: 25, y: 25, w: 50, h: 50 });
+  });
+
+  it("la caja de un elemento del DOM en % de la página (alto real de un texto)", () => {
+    expect(rectToBox({ left: 200, top: 100, width: 100, height: 50 }, page)).toEqual({ x: 30, y: 15, w: 20, h: 10 });
+    expect(rectCenter({ left: 10, top: 20, width: 100, height: 40 })).toEqual({ x: 60, y: 40 });
+  });
+
+  it("el umbral para que un toque deje de ser un clic", () => {
+    expect(passedThreshold(at(0, 0), at(2, 1))).toBe(false);
+    expect(passedThreshold(at(0, 0), at(4, 1))).toBe(true);
   });
 });
 
