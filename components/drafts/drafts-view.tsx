@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { EmptyState, FilterBar, FilterSelect, Pagination, useUrlFilters } from "@/components/agents/filters";
 import { noticeForDraftChange } from "@/lib/agent/drafts/queue-notices";
 import { emptyQueueHint } from "@/lib/agent/drafts/destination";
-import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 import { DRAFTS_PAGE_SIZE, QUIEN_ALL, QUIEN_MINE, QUIEN_UNASSIGNED, type DraftFilters, type DraftQueue } from "@/lib/agent/drafts/queue-query";
 import { DraftQueueItem } from "./draft-card";
 import { WindowLegend } from "./window-badge";

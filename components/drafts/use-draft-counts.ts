@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { countPendingDrafts, type PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import { countPendingDrafts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
 /**
  * Los borradores esperando, al dia con Realtime sobre agent_drafts (Bloque 2c).

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import type { InboxFilters } from "@/lib/inbox/filters";
 import type { InboxAccount } from "@/lib/inbox/accounts";
 import type { FilterSummaryCatalog } from "@/lib/inbox/filter-summary";
-import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 import { SectionSearch } from "@/components/comunicacion/section-search";
 import { InboxDraftsLink, InboxFilterSummary, InboxFiltersMenu } from "@/components/inbox/inbox-filters";
 

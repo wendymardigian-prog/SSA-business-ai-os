@@ -11,9 +11,11 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { agentSectionVisibility } from "@/lib/dashboards/chat/agent-visibility";
 import { AGENT_PUBLIC_COLUMNS, publicChannelMode, type PublicAgent } from "@/lib/agent/public";
 import { getAgentType } from "@/lib/agent/agent-types";
-import { validateRules } from "@/lib/agent/rules/schema";
 import { draftChannelLabels, draftChannels } from "@/lib/dashboards/chat/channel-modes";
-import { chatQueryArgs, loadAgent, loadAgentActions, loadCards, loadDrafts, loadEscalationReasons, loadFirstResponder, loadPatterns, loadQualityLine, loadRuleResults, loadTeam, loadTrends } from "@/lib/dashboards/chat/loaders";
+import { agentSectionMode } from "@/lib/dashboards/chat/agent";
+import { loadChatBlock, loadRuleNames, type ChatBlockContext } from "@/lib/dashboards/chat/blocks";
+import { readChatGenerations } from "@/lib/dashboards/chat/generation";
+import { chatQueryArgs } from "@/lib/dashboards/chat/loaders";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import { ChatDashboardShell } from "@/components/dashboards/chat/chat-dashboard-shell";
@@ -24,14 +26,15 @@ export const dynamic = "force-dynamic";
 /**
  * Dashboard de Chat (Bloques 2e y 3, F14-F18, F22).
  *
- * Todo se calcula con funciones SQL SECURITY INVOKER: se llaman con el cliente
- * del usuario, asi la RLS aplica el scope de leads sin lógica extra acá. Un
- * Member ve solo sus conversaciones; Owner y Admin, todo el workspace.
+ * Todo se calcula con funciones SQL que se llaman con el cliente del usuario: la
+ * base aplica el scope de leads sin lógica extra acá. Un Member ve solo sus
+ * conversaciones; Owner y Admin, todo el workspace.
  *
  * **Las consultas de los bloques NO se esperan acá**: se crean las promesas y se
  * pasan al componente, que muestra cada bloque cuando llega el suyo. Lo único
  * que se espera es el armazón (workspace, canales, equipo, agentes), que es
- * rápido y decide qué bloques existen.
+ * rápido y decide qué bloques existen. "Quién responde" y "Patrones" no salen de
+ * acá: los pide el navegador al llegar con el scroll (`DeferredBlock`).
  */
 export default async function ChatDashboardPage({
   searchParams,
@@ -87,54 +90,55 @@ export default async function ChatDashboardPage({
   });
   const showAgentSection = agentVisibility.mode === "full" || agentVisibility.mode === "full-with-warning";
 
+  // Con "Respondido por" en una persona la pantalla oculta estos números: no se consultan.
+  const queryAgentSection = showAgentSection && agentSectionMode(filters.author, 1) === "full";
+
   // Los resultados de reglas solo existen si algún canal decide por reglas.
-  const anyRulesChannel = showAgentSection && agents.some((a) =>
+  const anyRulesChannel = queryAgentSection && agents.some((a) =>
     (a.enabled_channel_ids ?? []).some((id) => publicChannelMode(a, id) === "rules"),
   );
-  // Los nombres de las reglas, para que la tarjeta diga "Regla 3 · menciona
-  // precio" y nunca el id (§16). Columna explícita: `response_rules` está
-  // concedida a authenticated (00077), los topes de gasto no.
-  let rules: Array<{ id: string; name?: string | null }> = [];
-  if (anyRulesChannel && agent) {
-    const { data } = await supabase.from("agents").select("response_rules").eq("id", agent.id).maybeSingle();
-    const parsed = validateRules((data as { response_rules?: unknown } | null)?.response_rules);
-    // Una lista invalida en la base no rompe la pantalla: la tarjeta muestra los
-    // turnos por numero de regla y se sigue.
-    if (parsed.ok) rules = (parsed.rules ?? []).map((r) => ({ id: r.id, name: r.name ?? null }));
-  }
 
-  const args = chatQueryArgs({ workspaceId: workspace.id, filters, timezone });
+  const generations = await readChatGenerations();
+  const teamMembers = members.map((m) => ({ id: m.userId, label: m.name, role: m.role }));
+  const ctx: ChatBlockContext = {
+    client: supabase,
+    args: chatQueryArgs({ workspaceId: workspace.id, filters, timezone }),
+    userId: user.id,
+    generations,
+    includeAgent: queryAgentSection,
+    members: async () => teamMembers,
+    rules: async () => (agent ? loadRuleNames(supabase, agent.id) : []),
+  };
 
   // Una promesa por bloque, sin await: la pantalla no espera a la más lenta.
   const blocks = {
-    cards: loadCards(supabase, args),
-    trends: loadTrends(supabase, args),
-    agentSection: showAgentSection
+    cards: loadChatBlock("cards", ctx),
+    trends: loadChatBlock("trends", ctx),
+    agentSection: queryAgentSection
       ? {
-          agent: loadAgent(supabase, args),
-          firstResponder: loadFirstResponder(supabase, args),
-          escalations: loadEscalationReasons(supabase, args),
-          actions: loadAgentActions(supabase, args),
-          rules: anyRulesChannel ? loadRuleResults(supabase, args, rules) : null,
+          agent: loadChatBlock("agent", ctx),
+          firstResponder: loadChatBlock("firstResponder", ctx),
+          escalations: loadChatBlock("escalations", ctx),
+          actions: loadChatBlock("actions", ctx),
+          rules: anyRulesChannel ? loadChatBlock("rules", ctx) : null,
         }
       : null,
-    drafts: loadDrafts(supabase, args),
-    team: loadTeam(
-      supabase,
-      args,
-      members.map((m) => ({ id: m.userId, label: m.name, role: m.role })),
-      user.id,
-    ),
-    patterns: loadPatterns(supabase, args),
-    quality: loadQualityLine(supabase, args),
+    drafts: loadChatBlock("drafts", ctx),
   };
+
+  // Sin canales o sin agentes la pantalla igual anda: se avisa, no se oculta en silencio.
+  const setupFailed = channelsRes.error ?? agentsRes.error;
+  if (setupFailed) console.error("[dashboard-chat] armazón:", setupFailed.message);
 
   return (
     <ChatDashboardShell
       blocks={blocks}
+      generation={generations.all}
+      patternsGeneration={generations.patterns}
+      setupWarning={setupFailed ? "No pudimos cargar la lista de canales o de agentes. Algunos filtros o secciones pueden faltar. Probá actualizar en unos segundos." : null}
       filters={filters}
       channels={channels}
-      members={members.map((m) => ({ id: m.userId, label: m.name, role: m.role }))}
+      members={teamMembers}
       dashboards={availableDashboards(permissions.can)}
       comingSoon={comingSoonDashboards(permissions.can)}
       isAdmin={isAdmin}

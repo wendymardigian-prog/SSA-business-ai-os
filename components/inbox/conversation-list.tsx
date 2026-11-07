@@ -38,7 +38,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { conversationListPreview, EMPTY_PREVIEW } from "@/lib/inbox/last-message";
 import { listTimeLabel } from "@/lib/inbox/day-label";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
-import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
 type Conversation = ConversationRow;
 

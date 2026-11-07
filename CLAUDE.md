@@ -1961,6 +1961,29 @@ Cada persona ve TODAS las fechas y horas en su zona. Detalle en [docs/agendamien
 
 `00289_flows_no_event_templates` (aditiva, va ANTES del deploy): **aplicada y registrada** el 4/11/2026 (versión `20261105001801`), después de ensayarla en una transacción que se deshizo sola. **La `00290` es de Cambiar el anfitrion de un evento: la proxima libre es la `00291`** (confirmar con `list_migrations` y las ramas locales).
 
+# Dashboard de Chat: que no se corte (6/11/2026)
+
+Se cortaba por el `statement_timeout` de 8 s con solo 6.361 mensajes: la RLS de `messages` chequea permisos por cada mensaje y cada bloque repasaba toda la historia. Detalle en [docs/dashboards.md](docs/dashboards.md) («Por qué no se corta»).
+
+## Lo que no se puede romper
+
+- **`chat_dashboard_core`, `chat_dashboard_patterns_v2` y `chat_visible_messages` son `SECURITY DEFINER`** y aplican la regla a mano: `me.member` corta todo a quien no es miembro (también categorías y textos en Patrones) y cada lectura sale de `vis`, con `can_see_conversation`. **`chat_dashboard_team_v2` sigue INVOKER**: lo que lee de `audit_log` depende del rol (`audit.view`). `lib/dashboards/chat/core-migration.test.ts` fija esas protecciones. Un `CASE`, no un `OR`, para que un admin no corra el permiso por cada conversación.
+- **Las funciones viejas no se tocan**: son la referencia de `scripts/verify-chat-core.mjs`, que compara cada número como Owner, Admin, dos Member, un rol de una sola cuenta y alguien de otro negocio. Si se cambia una regla en `core`, se cambia en la vieja (o se saca de la comparación con su motivo). Borrarlas va en otra migración, cuando `core` lleve un tiempo andando.
+- **Un mensaje sabe de qué episodio es por ventana, sin unir mensajes con episodios por rango**: esa unión crece al cuadrado (la prueba `--carga` la atrapó con 2.000 conversaciones).
+- **`chatRpc` (`lib/dashboards/chat/rpc.ts`) es el único camino a la base**: cola de 4, un reintento ante 57014 y texto claro. `rpc-boundary.test.ts` falla si aparece un `.rpc(` afuera. La espera del reintento va afuera de la cola.
+- **La cache (`block-cache.ts`) lleva al usuario en la clave**, usa el rango resuelto y nunca el período anterior (con un rango abierto cambia a cada milisegundo). Solo guarda lo que anduvo. `drafts` no se guarda. La invalidan las cookies de `generation.ts`, y toda acción que corrija lo que ve Patrones tiene que llamar a `bumpChatPatternsGeneration`.
+- **Cada `Block` lleva un `key` con los filtros y `generation`**: un `Suspense` nuevo muestra su skeleton también en una transición. El aviso de demora va por CSS (`.chat-slow-hint`): un fallback que llega en streaming no se hidrata.
+- **Los bloques que salen de `core` se mapean adentro de `blockResult`**: un `.then(map)` suelto que lanzara rompe `use()`.
+
+## Migración
+
+`00305_chat_dashboard_core` (aditiva, va **ANTES** de desplegar el código): **aplicada y registrada** el 7/11/2026 UTC (versión `20261107042726`), con `verify-chat-core --carga=2000` en verde. El mismo día se corrigió `chat_dashboard_team_v2`; el SQL registrado es el corregido. **La próxima libre es la `00306`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-chat-core.mjs             # cada número nuevo contra el viejo, por rol y filtro
+node scripts/verify-chat-core.mjs --carga     # además, tiempos con 2.000 conversaciones
+```
+
 # Seguridad
 
 ## Autenticacion y sesiones

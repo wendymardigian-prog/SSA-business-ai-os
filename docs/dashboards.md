@@ -27,10 +27,13 @@ JavaScript por cuatro tarjetas no se justifica.
 
 ## Chat (Fase 3, Bloques 2e y 3)
 
-Métricas de la operación de chat. Todo se calcula con funciones SQL
-`SECURITY INVOKER`: se llaman con el cliente del usuario, así la RLS aplica el
-scope de leads sin lógica extra en la app. Un Member ve solo sus conversaciones;
-Owner y Admin, todo el workspace.
+Métricas de la operación de chat. Todo se calcula con funciones SQL que se llaman
+con el cliente del usuario: la base aplica el scope de leads sin lógica extra en la
+app. Un Member ve solo sus conversaciones; Owner y Admin, todo el workspace.
+
+Las funciones pesadas (`chat_dashboard_core`, `chat_dashboard_patterns_v2`,
+`chat_visible_messages`) son `SECURITY DEFINER` desde la 00305: ver "Por qué no se
+corta" más abajo. El resto sigue `SECURITY INVOKER`.
 
 **Ninguna función toca `cost_usd` ni los tokens de `agent_runs`.**
 `authenticated` no puede leerlos (GRANT por columna de la 00060) y una función
@@ -43,7 +46,10 @@ y detrás de `requireWorkspaceAdmin`.
 La página crea **una promesa por bloque** y no las espera: se las pasa al
 componente, que muestra cada pedazo cuando llega el suyo, con su skeleton.
 Antes la pantalla entera esperaba las siete consultas y la más lenta marcaba el
-tiempo de todas.
+tiempo de todas. "Quién responde" y "Patrones" ni siquiera vienen con la página:
+los pide el navegador al llegar con el scroll (`DeferredBlock`), por la ruta
+`/api/v1/dashboards/chat/block`, la misma que usa "Reintentar" para volver a pedir
+un solo bloque.
 
 Los loaders (`lib/dashboards/chat/loaders.ts`) **nunca lanzan**: devuelven
 `{ ok: false, error }`. Eso es lo que permite leerlos con `use()` en el navegador
@@ -52,6 +58,30 @@ versión anterior: **no miraba el `error` de ninguna consulta**, así que una
 función caída se veía igual que un período sin actividad, todo en cero. Un cero
 es una afirmación ("ese día no pasó nada") y era falsa. Ahora el bloque que falla
 dice qué falló y ofrece Reintentar, y los demás siguen andando.
+
+### Por qué no se corta
+
+La base corta toda consulta de un usuario a los 8 s (`statement_timeout` del rol
+`authenticated`). Con solo 6.361 mensajes se cortaba igual, por dos cosas: la RLS de
+`messages` chequea permisos por CADA mensaje, y cada bloque repasaba toda la historia
+por su cuenta. Medido en producción: la lectura base bajó de 520 ms y 51.586 bloques a
+25 ms y 931 bloques, y el dashboard entero, de 8,6 s a 2,4 s.
+
+- **En la base (00305).** El permiso se decide una vez por consulta (admin) o una vez
+  por conversación (el resto), con la misma regla de siempre: `can_see_conversation`.
+  `chat_dashboard_core` calcula de una sola pasada las cifras, las tendencias y la
+  sección del agente. Las funciones de antes siguen ahí, para volver atrás y como
+  referencia de `scripts/verify-chat-core.mjs`, que compara cada número por rol.
+- **En la app.** Todo pasa por `chatRpc` (`lib/dashboards/chat/rpc.ts`): una cola de 4
+  consultas a la vez (`query-limiter.ts`), un reintento si la base la cortó y un texto
+  en castellano; el error crudo queda en el log del servidor. `rpc-boundary.test.ts`
+  falla si aparece un `.rpc(` afuera.
+- **Cache en memoria de 90 s por persona** (`block-cache.ts`): la clave lleva al
+  usuario, solo guarda lo que anduvo y comparte lo que está en curso. "Actualizar" y
+  las correcciones de categorías la hacen vencer con una cookie (`generation.ts`), que
+  también vale para las otras réplicas. Los borradores no se guardan: tienen que
+  coincidir con el contador del menú. Si a alguien le reducen el alcance, puede ver
+  totales viejos hasta 90 s (solo agregados).
 
 ### Cuándo existe la sección "El agente"
 
@@ -97,8 +127,12 @@ prendió el agente no tiene nada que medir.
 | `chat_dashboard_team(ws, from, to, channel)` | Una fila por autor: el agente, **Automatizaciones (una sola)**, Fuera del sistema y cada persona. Con conversaciones, enviados, las dos medianas, % < 1 h, derivaciones recibidas y borradores aprobados. |
 | `chat_dashboard_trends(ws, from, to, channel, author, tz)` | Serie diaria **densa**: todos los días del período, con recibidos, enviados, conversaciones nuevas, enviados por grupo de autor y la mediana diaria de primera respuesta. |
 | `chat_dashboard_patterns(ws, direction, from, to, channel, author)` | Categorías con su volumen de MENSAJES, autor principal, % que obtuvo respuesta, y hasta 5 variantes con su `text_id`. |
+| `chat_visible_messages(ws, channel)` | **DEFINER (00305).** Los mensajes de las conversaciones que la persona puede ver, sin texto. |
+| `chat_dashboard_core(ws, from, to, prev_from, prev_to, channel, author, tz, include_agent)` | **DEFINER (00305). Es lo que usa la app** para cifras, tiempo de respuesta, tendencias, quién respondió primero y la sección del agente, en un jsonb y de una sola pasada. `prev_from` null = no comparar (Histórico). |
+| `chat_dashboard_team_v2(ws, from, to, channel)` | **Lo que usa la app (00305)** para "Quién responde". Sigue INVOKER: lo que lee de `audit_log` depende del rol. |
+| `chat_dashboard_patterns_v2(ws, direction, from, to, channel, author)` | **DEFINER (00305). Lo que usa la app** para Patrones. |
 | `chat_dashboard_replies(ws, category_id, from, to, channel)` | "Qué le responden" a una categoría (§11.7), más los totales para el "% no respondió". |
-| `message_text_volumes(ws, direction, from, to)` | Cada texto distinto con su volumen de mensajes. Entrada de las fórmulas de calidad. |
+| `message_text_volumes(ws, direction, from, to)` | Cada texto distinto con su volumen de mensajes. Entrada de las fórmulas de calidad en la pantalla de la tarea. La línea de calidad del dashboard ya no la usa: cuenta directo en `message_texts`. |
 | `message_classification_status(ws, tz)` | Última corrida del clasificador, clasificados hoy y cuántos quedan sin clasificar. |
 
 El período anterior se calcula en la app (`lib/dashboards/period.ts`

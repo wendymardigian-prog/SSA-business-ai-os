@@ -499,3 +499,18 @@ select.select-bare {
     }
   }
 }
+
+/*
+ * El aviso de demora de los bloques del dashboard de Chat: aparece solo a los 6 s.
+ * Por CSS y no con un timer de React: un fallback que llega en streaming no se
+ * hidrata, y la primera carga es justo cuando mas tarda.
+ */
+.chat-slow-hint {
+  visibility: hidden;
+  animation: chat-slow-hint-in 0s linear 6s forwards;
+}
+@keyframes chat-slow-hint-in {
+  to {
+    visibility: visible;
+  }
+}

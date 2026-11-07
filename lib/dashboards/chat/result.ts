@@ -5,12 +5,18 @@
  * promesa se rompe o si tarda demasiado, el bloque queda en `ok: false` con un
  * motivo en castellano. **Nunca lanza**, y eso es lo que permite pasarle la
  * promesa al navegador y leerla con `use()` sin romper la hidratacion.
+ *
+ * El motivo se muestra debajo de "No pudimos mostrar {bloque}", asi que no repite
+ * el nombre del bloque.
  */
 
 import type { BlockResult } from "./types";
 
-/** Un bloque que tarda mas que esto se da por caido: la respuesta no se puede quedar abierta. */
-export const BLOCK_TIMEOUT_MS = 15_000;
+/**
+ * Un bloque que tarda mas que esto se da por caido: la respuesta no se puede
+ * quedar abierta. Incluye la espera en la cola de consultas (`query-limiter.ts`).
+ */
+export const BLOCK_TIMEOUT_MS = 25_000;
 
 export function ok<T>(data: T, loadedAt: string = new Date().toISOString()): BlockResult<T> {
   return { ok: true, data, loadedAt };
@@ -41,10 +47,10 @@ export async function blockResult<T>(
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     const timeout = new Promise<{ error: string }>((resolve) => {
-      timer = setTimeout(() => resolve({ error: "tardó demasiado en responder" }), timeoutMs);
+      timer = setTimeout(() => resolve({ error: "La consulta tardó demasiado en responder. Probá de nuevo en unos segundos." }), timeoutMs);
     });
     const result = await Promise.race([load(), timeout]);
-    if ("error" in result) return fail(`No pudimos cargar ${label}: ${result.error}`);
+    if ("error" in result) return fail(result.error);
     return ok(result.data);
   } catch (err) {
     console.error(`[dashboard-chat] ${label}:`, errorMessage(err));

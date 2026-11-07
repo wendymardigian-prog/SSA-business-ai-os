@@ -27,6 +27,7 @@ export function PatternsSection({
   onSelectCategory,
   replies,
   repliesLoading,
+  repliesError,
   isAdmin,
   authorLabel,
   quality,
@@ -37,6 +38,8 @@ export function PatternsSection({
   onSelectCategory: (categoryId: string | null) => void;
   replies: RepliesPanel | null;
   repliesLoading: boolean;
+  /** Si fallo "Qué le responden": se dice, no se muestra como si nadie hubiera respondido. */
+  repliesError?: string | null;
   isAdmin: boolean;
   authorLabel: string | null;
   quality?: React.ReactNode;
@@ -105,6 +108,10 @@ export function PatternsSection({
                 <p className="flex items-center gap-2 px-[18px] pb-4 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   Buscando qué le responden…
+                </p>
+              ) : repliesError ? (
+                <p role="alert" className="px-[18px] pb-4 text-sm text-muted-foreground">
+                  {repliesError}
                 </p>
               ) : replies && replies.rows.length > 0 ? (
                 <ul className="flex flex-col gap-2 px-[18px] pb-4 text-[13px]">

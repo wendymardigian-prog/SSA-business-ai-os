@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, use, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { createContext, Suspense, use, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchChatBlock } from "@/lib/dashboards/chat/block-client";
+import type { ChatBlockData, ChatBlockKey } from "@/lib/dashboards/chat/block-keys";
 import type { BlockResult } from "@/lib/dashboards/chat/types";
 
 /**
@@ -15,50 +16,191 @@ import type { BlockResult } from "@/lib/dashboards/chat/types";
  * su skeleton. Los loaders nunca rechazan (ver lib/dashboards/chat/result.ts),
  * asi que `use()` no puede tirar la pantalla abajo.
  *
- * "Reintentar" rehace la consulta del servidor (`router.refresh()`), que vuelve
- * a pedir todos los bloques. Es mas simple que un reintento por bloque y, si se
- * cayo la base, igual hacia falta rehacerlos todos.
+ * "Reintentar" vuelve a pedir SOLO ese bloque. Antes rehacia la pantalla entera:
+ * si la base estaba saturada, cada reintento le sumaba todas las consultas de nuevo.
+ *
+ * Quien usa `Block` le pone un `key` con los filtros: un `Suspense` nuevo muestra su
+ * skeleton aunque el cambio venga en una transicion, en vez de dejar los numeros
+ * viejos a la vista hasta que llegue el bloque mas lento.
  */
 
-export function Block<T>({
+/** Los filtros como los tiene la URL: lo que necesita un bloque para volver a pedirse. */
+export const ChatBlockQueryContext = createContext<string>("");
+
+export function Block<K extends ChatBlockKey>({
+  block,
   promise,
   label,
   skeleton,
   children,
 }: {
-  promise: Promise<BlockResult<T>>;
+  block: K;
+  promise: Promise<BlockResult<ChatBlockData[K]>>;
   /** Como se llama el bloque en el mensaje de error. */
   label: string;
+  /** `null` = no mostrar nada mientras llega. Sin pasarlo, el panel generico. */
   skeleton?: ReactNode;
-  children: (data: T, loadedAt: string) => ReactNode;
+  children: (data: ChatBlockData[K], loadedAt: string) => ReactNode;
 }) {
   return (
-    <Suspense fallback={skeleton ?? <BlockSkeleton />}>
-      <Resolved promise={promise} label={label}>
+    <Suspense fallback={<BlockFallback skeleton={skeleton} />}>
+      <Resolved block={block} promise={promise} label={label}>
         {children}
       </Resolved>
     </Suspense>
   );
 }
 
-function Resolved<T>({
+/**
+ * Lo que se ve mientras el bloque viaja, con el aviso de demora.
+ *
+ * El aviso aparece solo por CSS (`.chat-slow-hint`): en la primera carga, un
+ * fallback que llega en streaming no se hidrata, asi que un `setTimeout` de React
+ * no correria nunca, que es justo cuando mas tarda.
+ */
+function BlockFallback({ skeleton }: { skeleton?: ReactNode }) {
+  if (skeleton === null) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      {skeleton === undefined ? <BlockSkeleton /> : skeleton}
+      <p role="status" className="chat-slow-hint text-xs text-muted-foreground">
+        Esto está tardando más de lo normal. Seguimos buscando los datos…
+      </p>
+    </div>
+  );
+}
+
+function Resolved<K extends ChatBlockKey>({
+  block,
   promise,
   label,
   children,
 }: {
-  promise: Promise<BlockResult<T>>;
+  block: K;
+  promise: Promise<BlockResult<ChatBlockData[K]>>;
   label: string;
-  children: (data: T, loadedAt: string) => ReactNode;
+  children: (data: ChatBlockData[K], loadedAt: string) => ReactNode;
 }) {
-  const result = use(promise);
-  if (!result.ok) return <BlockError label={label} error={result.error} />;
+  const query = useContext(ChatBlockQueryContext);
+  // Lo reintentado vale solo para la promesa que fallo: si despues la pagina manda
+  // otra, manda la nueva.
+  const [retry, setRetry] = useState<{ forPromise: typeof promise; result: BlockResult<ChatBlockData[K]> | null } | null>(null);
+  const current = retry?.forPromise === promise ? retry : null;
+  const loaded = use(promise);
+  const result = current?.result ?? loaded;
+
+  if (!result.ok) {
+    return (
+      <BlockError
+        label={label}
+        error={result.error}
+        pending={current !== null && current.result === null}
+        onRetry={() => {
+          setRetry({ forPromise: promise, result: null });
+          void fetchChatBlock(block, query, { fresh: true }).then((next) => setRetry({ forPromise: promise, result: next }));
+        }}
+      />
+    );
+  }
   return <>{children(result.data, result.loadedAt)}</>;
 }
 
+/**
+ * Un bloque que se pide recien cuando esta por entrar en pantalla.
+ *
+ * Los de abajo de todo casi nunca se llegan a mirar antes de cambiar un filtro: no
+ * tiene sentido pagarlos en cada carga. Se cancela solo si cambian los filtros o se
+ * desmonta, y sin `IntersectionObserver` se pide enseguida.
+ *
+ * `refreshToken`: cuando cambia, vuelve a pedir sin sacar lo que se esta viendo (una
+ * correccion de categorias no tiene por que hacer parpadear la tabla).
+ */
+export function DeferredBlock<K extends ChatBlockKey>({
+  block,
+  label,
+  skeleton,
+  refreshToken,
+  children,
+}: {
+  block: K;
+  label: string;
+  skeleton?: ReactNode;
+  refreshToken?: number;
+  children: (data: ChatBlockData[K], loadedAt: string) => ReactNode;
+}) {
+  const query = useContext(ChatBlockQueryContext);
+  const anchor = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [result, setResult] = useState<BlockResult<ChatBlockData[K]> | null>(null);
+  // El contador de "Reintentar": el primer pedido puede usar lo guardado, el resto no.
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (visible || !anchor.current) return;
+    const element = anchor.current;
+    if (typeof IntersectionObserver === "undefined") {
+      const timer = setTimeout(() => setVisible(true), 0);
+      return () => clearTimeout(timer);
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
+      },
+      { root: element.closest("[data-dashboard-scroll]"), rootMargin: "300px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const controller = new AbortController();
+    void fetchChatBlock(block, query, { fresh: attempt > 0, signal: controller.signal }).then((next) => {
+      if (!controller.signal.aborted) setResult(next);
+    });
+    return () => controller.abort();
+  }, [visible, block, query, attempt, refreshToken]);
+
+  if (result?.ok) return <>{children(result.data, result.loadedAt)}</>;
+  if (result) {
+    return (
+      <BlockError
+        label={label}
+        error={result.error}
+        pending={false}
+        onRetry={() => {
+          setResult(null);
+          setAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
+  return (
+    <div ref={anchor}>
+      <DeferredFallback skeleton={skeleton} waiting={visible} />
+    </div>
+  );
+}
+
+/** Antes de que se pida no hay nada demorado: el aviso corre recien con el pedido en camino. */
+function DeferredFallback({ skeleton, waiting }: { skeleton?: ReactNode; waiting: boolean }) {
+  if (waiting) return <BlockFallback skeleton={skeleton} />;
+  if (skeleton === null) return <div className="h-px" aria-hidden />;
+  return <>{skeleton === undefined ? <BlockSkeleton /> : skeleton}</>;
+}
+
 /** El error de un bloque: que falló y como volver a intentarlo. Nunca un 0. */
-export function BlockError({ label, error }: { label: string; error: string }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
+export function BlockError({
+  label,
+  error,
+  pending,
+  onRetry,
+}: {
+  label: string;
+  error: string;
+  pending: boolean;
+  onRetry: () => void;
+}) {
   return (
     <div
       role="alert"
@@ -71,12 +213,12 @@ export function BlockError({ label, error }: { label: string; error: string }) {
       <p className="text-xs text-muted-foreground">{error}</p>
       <button
         type="button"
-        onClick={() => start(() => router.refresh())}
+        onClick={onRetry}
         disabled={pending}
         className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
       >
         <RefreshCw className={cn("h-3.5 w-3.5", pending && "animate-spin")} aria-hidden />
-        Reintentar
+        {pending ? "Reintentando…" : "Reintentar"}
       </button>
     </div>
   );
