@@ -15,6 +15,9 @@ vi.mock("ai", () => ({ generateText }));
 const { getWorkspaceModel } = vi.hoisted(() => ({ getWorkspaceModel: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ getWorkspaceModel }));
 
+const { withinWorkspaceBudget } = vi.hoisted(() => ({ withinWorkspaceBudget: vi.fn(async () => ({ allowed: true }) as { allowed: boolean; message?: string }) }));
+vi.mock("@/lib/ai/workspace-budget", () => ({ withinWorkspaceBudget }));
+
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 import { emptyAttachment } from "@/lib/messages/attachments";
 import { getJobHandler, resetJobHandlers } from "@/lib/jobs/registry";
@@ -253,5 +256,19 @@ describe("el handler del job (F8)", () => {
 
   it("la clave de dedupe es una por mensaje", () => {
     expect(describeDedupeKey("m-1")).toBe("describe:m-1");
+  });
+});
+
+describe("describeMessageMedia: el tope de gasto de IA del negocio (noviembre 2026)", () => {
+  it("sin presupuesto no llama al modelo: el mensaje queda no interpretable (el agente escala)", async () => {
+    withinWorkspaceBudget.mockResolvedValueOnce({ allowed: false, message: "Tope diario alcanzado" });
+    const memory = db();
+
+    const result = await describeMessageMedia(memory.client, MSG);
+
+    expect(generateText).not.toHaveBeenCalled();
+    expect(result).toEqual({ kind: "failed", reason: "Tope diario alcanzado" });
+    expect(row(memory)).toMatchObject({ media_description: null, interpretability: "unreadable" });
+    expect(withinWorkspaceBudget).toHaveBeenCalledWith(memory.client, WS, expect.any(Date), { model: { provider: "openai", model: "gpt-5" } });
   });
 });

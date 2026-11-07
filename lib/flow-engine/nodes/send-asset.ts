@@ -7,6 +7,8 @@
  * decide que se puede mandar, el archivo viaja como copia, las variables salen
  * de los datos reales del contacto.
  *
+ * Un contacto marcado "no contactar" no lo recibe, salvo en un flujo de la agenda (`lib/flow-engine/do-not-contact.ts`).
+ *
  * Como el resto de los nodos que mandan por un canal, si el flow no tiene canal
  * (un evento de agenda sobre un contacto sin conversacion) se saltea con motivo
  * y el flow sigue. Tambien se saltea, con motivo, un recurso que el canal no
@@ -17,6 +19,7 @@
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { deliverAsset } from "@/lib/response-assets/deliver";
 import { deferFlowNode } from "../defer-node";
+import { doNotContactSkipReason, skipForDoNotContact } from "../do-not-contact";
 
 export interface SendAssetNodeData {
   /** El recurso de la banca. */
@@ -31,6 +34,10 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     context.noteStep?.({ status: "skipped", reason: "El paso no tiene un recurso elegido." });
     return;
   }
+
+  // "No contactar" frena el recurso (salvo un flujo de la agenda). Las secuencias lo miran por su cuenta.
+  const blocked = await doNotContactSkipReason(supabase, context);
+  if (blocked) return skipForDoNotContact(supabase, context, { nodeId: node.id, nodeType: "sendAsset", label: "Enviar recurso", reason: blocked });
 
   const result = await deliverAsset(supabase, {
     assetId: data.assetId,

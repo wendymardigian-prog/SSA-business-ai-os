@@ -345,7 +345,16 @@ porque su URL ya venció: esos se ven como "ya no disponible".
 
 En el bucket privado `chat-media`, en
 `<workspace_id>/<conversation_id>/<message_id>-<n>.<ext>`. El primer segmento es
-el workspace porque **es lo único que lee la policy**.
+el workspace y el segundo la conversación.
+
+**Quién lo lee (00313, noviembre 2026):** Owner y Admin, todo lo de su workspace; un
+Member, solo lo de una conversación que ve (`can_see_conversation`), lo de un grupo que
+ve (`<ws>/groups/<grupo>/…`, `can_see_whatsapp_group`) y las carpetas compartidas
+del negocio (`<ws>/library/…`, la banca, y `<ws>/stickers/…`). Cualquier otra forma
+de path no la lee un Member: **un archivo nuevo en `chat-media` tiene que usar una de
+esas formas** o sumarse a `public.can_read_chat_media`. Los adjuntos de email
+(`<ws>/<id del email>/…`) siguen la conversación de su mensaje
+(`public.can_read_email_attachment`). Antes alcanzaba con ser miembro del workspace.
 
 Se copia dentro del `after()` del webhook y no en la cola, por una razón
 concreta: la URL que da Instagram es del CDN de Meta y vence, y WhatsApp borra la

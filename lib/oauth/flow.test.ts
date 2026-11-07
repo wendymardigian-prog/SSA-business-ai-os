@@ -45,11 +45,16 @@ const adapter: OAuthAdapter = {
   fetchIdentity,
 };
 
-/** Vault con estos secretos; lo que no este, no existe. */
+/** Vault con estos secretos; lo que no este, no existe. Lo que se guarda, se lee despues. */
 function vault(secrets: Record<string, string>) {
+  const store = { ...secrets };
   readSecret.mockImplementation(async (_c: unknown, _ws: string, name: string) => {
-    if (name in secrets) return secrets[name];
+    if (name in store) return store[name];
     return null;
+  });
+  storeSecret.mockImplementation(async (_c: unknown, _ws: string, name: string, value: string) => {
+    store[name] = value;
+    return { ok: true };
   });
 }
 
@@ -131,6 +136,18 @@ describe("empezar la conexion", () => {
       "oauth_state_secret",
       expect.any(String),
     );
+  });
+
+  it("si Vault falla al leer la clave de firma, NO genera otra encima de la guardada", async () => {
+    readSecret.mockImplementation(async (_c: unknown, _ws: string, name: string) => {
+      if (name === "oauth_state_secret") throw new Error("vault caido");
+      return name === "google_client_id" ? "client-id-de-prueba" : null;
+    });
+
+    await expect(
+      startOAuth({ supabase: db().client, adapter, workspaceId: WS, userId: USER, callbackUrl: CALLBACK, now: NOW }),
+    ).rejects.toThrow("vault caido");
+    expect(storeSecret).not.toHaveBeenCalled();
   });
 });
 

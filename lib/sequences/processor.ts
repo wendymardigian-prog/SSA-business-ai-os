@@ -67,6 +67,13 @@ export async function processSequenceSteps(): Promise<ProcessResult> {
   }
 
   const blocked = await loadBlockedContacts(supabase, enrollments);
+  if (!blocked) {
+    // Sin saber quien tiene "no contactar", no se manda nada: se sueltan las
+    // inscripciones y las toma el proximo tick (antes un error se leia como
+    // "nadie esta bloqueado" y la tanda salia igual).
+    for (const enrollment of enrollments) await release(supabase, enrollment.id);
+    return { processed: 0, failed: 0, paused: 0, skipped: enrollments.length, total: enrollments.length };
+  }
 
   const result: ProcessResult = {
     processed: 0,
@@ -126,14 +133,19 @@ export async function processSequenceSteps(): Promise<ProcessResult> {
  *
  * El opt-out ya pausa las inscripciones al llegar el mensaje, pero entre ese
  * momento y este puede haber una marcada a mano desde la ficha. Es una sola
- * consulta para toda la tanda.
+ * consulta para toda la tanda. Null si la base no contesto: quien llama no
+ * procesa la tanda (ante la duda, no se manda).
  */
-async function loadBlockedContacts(supabase: Db, enrollments: Enrollment[]): Promise<Map<string, "opt_out" | "known" | "customer">> {
+async function loadBlockedContacts(supabase: Db, enrollments: Enrollment[]): Promise<Map<string, "opt_out" | "known" | "customer"> | null> {
   const ids = [...new Set(enrollments.map((e) => e.contact_id))];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("contacts")
     .select("id, do_not_contact, deleted_at, is_known, is_customer")
     .in("id", ids);
+  if (error) {
+    console.error("[sequences] no pude leer los contactos bloqueados; la tanda se reintenta:", error.message);
+    return null;
+  }
 
   // Un conocido (00256) tampoco recibe secuencias: se pausa con su propio motivo,
   // que se puede reanudar si se le saca la marca. Un cliente (00268), igual: asi

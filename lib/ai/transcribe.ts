@@ -24,6 +24,7 @@ import type { Database } from "@/lib/types/database";
 import { readSecret, SECRET_NAMES, type SecretName } from "@/lib/vault";
 import { getProvider } from "@/lib/integrations/providers";
 import { openAiRun } from "./run";
+import { withinWorkspaceBudget } from "./workspace-budget";
 
 type Db = SupabaseClient<Database>;
 
@@ -45,6 +46,8 @@ export type TranscribeErrorCode =
   | "PROVIDER_DOWN"
   | "NETWORK"
   | "READ_FAILED"
+  /** El tope de gasto de IA del negocio (o un modelo sin precio con un tope que corta): no se llamo. */
+  | "BUDGET_EXCEEDED"
   | "UNKNOWN";
 
 export type TranscribeResult =
@@ -367,6 +370,8 @@ export interface TranscribeAudioArgs {
   threadId?: string | null;
   conversationId?: string | null;
   fetchImpl?: typeof fetch;
+  /** El tope de gasto del negocio. Por defecto, `withinWorkspaceBudget`. */
+  checkBudget?: typeof withinWorkspaceBudget;
 }
 
 /**
@@ -378,6 +383,7 @@ export interface TranscribeAudioArgs {
  */
 export async function transcribeAudio(args: TranscribeAudioArgs): Promise<TranscribeResult> {
   const fetchImpl = args.fetchImpl ?? fetch;
+  const checkBudget = args.checkBudget ?? withinWorkspaceBudget;
 
   if (args.bytes.byteLength === 0) {
     return { ok: false, code: "EMPTY_AUDIO", message: "El archivo de audio está vacío.", retryable: false };
@@ -411,6 +417,17 @@ export async function transcribeAudio(args: TranscribeAudioArgs): Promise<Transc
   for (const [index, candidate] of providers.entries()) {
     const transcriber = buildTranscriber(candidate.provider, candidate.apiKey, candidate.model);
     if (!transcriber) continue;
+
+    // El tope de gasto del negocio, ANTES de llamar (antes la transcripcion no lo miraba). Se pregunta por cada
+    // proveedor porque uno puede no tener precio por hora y el respaldo si. No alcanza: `failed` con el motivo
+    // (no se reintenta solo) y el agente escala por no poder entender el audio.
+    const budget = await checkBudget(args.supabase, args.workspaceId, new Date(), {
+      model: { provider: candidate.provider, model: candidate.model, kind: "audio" },
+    });
+    if (!budget.allowed) {
+      last = { ok: false, code: "BUDGET_EXCEEDED", message: budget.message ?? "Se alcanzó el tope de gasto de IA del negocio.", retryable: false };
+      continue;
+    }
 
     const attempt = await transcriber({ bytes: args.bytes, mime: args.mime, fetchImpl });
 

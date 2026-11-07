@@ -25,6 +25,8 @@ import { syncRelativeJobs } from "@/lib/scheduling/automation/relative";
 // publico, que corre en el navegador (ver lib/vault-boundary.test.ts).
 import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
 import { isSafeRedirectUrl } from "@/lib/scheduling/event-validation";
+import { checkLimit } from "@/lib/antispam/rate-limit";
+import { GUEST_EMAIL_LIMITS, GUEST_EMAIL_WINDOW_MS, GUEST_EMAILS_SUPPRESSED, guestEmailLimitKey } from "./guest-email-limit";
 
 export { countryFromTimezone };
 
@@ -152,6 +154,18 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible." };
   }
 
+  // 5b. Tope de emails al invitado por direccion (solo lo publico): pasado, la reserva se guarda igual pero al
+  // invitado no le sale nada (ni la invitacion de Google ni los emails de los flujos). Al publico no se le dice.
+  let metadata = input.metadata ?? {};
+  if (contactData.email && (input.origin === "public_page" || input.origin === "embed")) {
+    const perAddress = await checkLimit(
+      service,
+      { key: guestEmailLimitKey(event.id, contactData.email), max: GUEST_EMAIL_LIMITS.perAddressPerDay, windowMs: GUEST_EMAIL_WINDOW_MS },
+      now,
+    );
+    if (!perAddress.allowed) metadata = { ...metadata, [GUEST_EMAILS_SUPPRESSED]: true };
+  }
+
   // 6. La transaccion.
   const categories = (await listCategories(service, event.workspace_id)).map(toCategoryRow);
   const uid = newBookingUid();
@@ -180,7 +194,7 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     p_contact_assignment: event.contact_assignment,
     p_created_by: input.createdBy ?? null,
     p_contact_id: input.contactId ?? null,
-    p_metadata: (input.metadata ?? {}) as unknown as Json,
+    p_metadata: metadata as unknown as Json,
   });
 
   if (error) {

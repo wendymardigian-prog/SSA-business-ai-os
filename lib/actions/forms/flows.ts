@@ -8,6 +8,7 @@ import type { Json } from "@/lib/types/database";
 import { isPublicFormType, type FormType } from "@/lib/forms/fields";
 import { appUrl } from "@/lib/app-url";
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
+import { lowerFirst, replaceFlowTriggers } from "@/lib/flow-triggers-replace";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { bodyToHtml } from "@/lib/flow-engine/nodes/send-email";
 import { connectionProblemsForGraph } from "@/lib/flow-engine/connection-problems";
@@ -221,9 +222,12 @@ export async function toggleFormFlow(input: { flowId: string; enabled: boolean }
 
   // El trigger se escribe desde el grafo, igual que al publicar desde el canvas.
   const desired = buildDesiredTriggers(found.nodes as unknown as Array<Record<string, unknown>>, input.flowId);
-  await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
-  if (desired.length > 0) {
-    await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: input.enabled })));
+  const triggers = await replaceFlowTriggers(ctx.supabase, { flowId: input.flowId, workspaceId: ctx.workspace.id, desired, isActive: input.enabled });
+  if (!triggers.ok) {
+    // Sin disparador el cambio no sirve: el flujo vuelve al estado que tenia (mejor esfuerzo).
+    const { error: revertError } = await ctx.supabase.from("flows").update({ status: found.flow.status }).eq("id", input.flowId);
+    if (revertError) console.error("[forms/flows] no pude volver el flujo a su estado:", revertError.message);
+    return { ok: false, error: triggers.error };
   }
 
   await audit(ctx, found.formId, { flow_id: input.flowId, enabled: input.enabled, name: found.flow.name });
@@ -249,10 +253,8 @@ export async function saveFormLinearFlow(input: { flowId: string; linear: Linear
   // Si estaba encendido, el trigger se rehace con lo que quedó.
   if (found.flow.status === "published") {
     const desired = buildDesiredTriggers(graph.nodes as unknown as Array<Record<string, unknown>>, input.flowId);
-    await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
-    if (desired.length > 0) {
-      await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
-    }
+    const triggers = await replaceFlowTriggers(ctx.supabase, { flowId: input.flowId, workspaceId: ctx.workspace.id, desired, isActive: true });
+    if (!triggers.ok) return { ok: false, error: `Guardé los pasos, pero ${lowerFirst(triggers.error)}` };
   }
 
   await audit(ctx, found.formId, { flow_id: input.flowId, saved: true });
@@ -314,10 +316,8 @@ export async function saveFormFlowTree(input: {
   // Si estaba encendido, el trigger se rehace con lo que quedó.
   if (found.flow.status === "published") {
     const desired = buildDesiredTriggers(graph.nodes as unknown as Array<Record<string, unknown>>, input.flowId);
-    await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
-    if (desired.length > 0) {
-      await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
-    }
+    const triggers = await replaceFlowTriggers(ctx.supabase, { flowId: input.flowId, workspaceId: ctx.workspace.id, desired, isActive: true });
+    if (!triggers.ok) return { ok: false, error: `Guardé los pasos, pero ${lowerFirst(triggers.error)}` };
   }
 
   await audit(ctx, found.formId, { flow_id: input.flowId, saved: true });
@@ -395,8 +395,8 @@ export async function setEodFlowOn(input: { flowId: string; on: unknown }): Prom
   if (error) return { ok: false, error: "No pude guardar. Probá de nuevo." };
   if (found.flow.status === "published") {
     const desired = buildDesiredTriggers(nodes as unknown as Array<Record<string, unknown>>, input.flowId);
-    await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
-    if (desired.length > 0) await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
+    const triggers = await replaceFlowTriggers(ctx.supabase, { flowId: input.flowId, workspaceId: ctx.workspace.id, desired, isActive: true });
+    if (!triggers.ok) return { ok: false, error: `Guardé el cambio, pero ${lowerFirst(triggers.error)}` };
   }
   await audit(ctx, found.formId, { flow_id: input.flowId, eod_on: input.on });
   refresh(found.formId, input.flowId);

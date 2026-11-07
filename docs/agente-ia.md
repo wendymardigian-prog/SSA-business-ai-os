@@ -154,6 +154,12 @@ sin lo segundo, en modo borrador no subirían nunca.
 - El filtro de tags e `internal_only` va **dentro del SQL**
   (`match_knowledge_chunks_filtered`, 00062). Verificado contra la base en
   `scripts/verify-rls.mjs`.
+- **Quién lee la base (00314, noviembre 2026):** un documento interno (`internal_only`, por
+  ejemplo lo que sale de una llamada) solo quien tiene `knowledge.edit` (Owner y Admin
+  siempre); uno que no es interno, `knowledge.view`, `knowledge.edit` o `agents.view` (el
+  Member de sistema ve en Corridas los títulos de lo que leyó el agente). La regla vive en
+  `public.can_read_knowledge` y la usan las dos políticas de lectura y las dos búsquedas.
+  `p_include_internal = true` solo lo pide el servidor: con la sesión de una persona da error.
 
 ## Herramientas (tool registry, `lib/agent/tools/`)
 
@@ -180,7 +186,7 @@ valida server-side contra el schema de cada una (`updateAgentTools`).
 | `cambiar_estado_setter` | Estados de setter que puede poner (lista blanca de los activos); si puede pisar un estado que puso una persona (default: no). El de vendedor no lo toca nunca. También lo usa la clasificación al cierre. Ver [pipeline-contactos.md](pipeline-contactos.md) |
 | `programar_seguimiento` | Máximo de días (90); si puede pisar una fecha puesta a mano por una persona (se detecta por el audit) |
 | `asignar_conversacion` | Usuarios habilitados; criterio: round-robin (sin estado nuevo, por el audit), usuario fijo, o el setter del contacto |
-| `buscar_datos_del_contacto` | Qué campos lee; email y teléfono apagados por defecto. Es lectura: deja paso en el run, **no** entrada en `audit_log` |
+| `buscar_datos_del_contacto` | Qué campos lee; email, teléfono, notas del equipo y setter/vendedor apagados por defecto (sin nombre cargado, la persona del equipo es «una persona del equipo», nunca su email). Es lectura: deja paso en el run, **no** entrada en `audit_log` |
 | `pausarse` | Máximo de minutos; si se reanuda sola al vencer (usa `agent_paused_until`) |
 | `generar_link_whatsapp` | Número de destino (internacional sin +, se normaliza al guardar quitando +, espacios, guiones y paréntesis; 8 a 15 dígitos, sin empezar en 0); mensaje por defecto; largo máximo del texto preescrito (40-300). Sin número no existe para el modelo y la pantalla lo explica |
 
@@ -898,7 +904,15 @@ motivo en `status_detail`, sin llamar al proveedor.
 
 Un modelo que no esté en `model_pricing` deja el run con `cost_usd` en NULL y un
 aviso en consola —el run no se pierde—, pero ojo: **un costo desconocido no suma
-a los topes**.
+a los topes**. Por eso (noviembre 2026), con un tope **del negocio** que corta, quien sabe qué
+modelo va a usar lo pasa a `withinWorkspaceBudget(..., { model })` y un modelo sin
+precio (para audio, sin precio por hora) **no se usa**: la transcripción, la
+descripción de imágenes, el resumen al cierre y la respuesta con IA de los flujos.
+Sin topes cargados no cambia nada. Esas cuatro tareas, además, preguntan por el tope
+antes de llamar (antes no lo miraban): el audio queda `failed` con el motivo, la
+imagen no interpretable (el agente escala) y el resumen deja una corrida
+`budget_exceeded`. El agente, el copywriter, Grabaciones y el clasificador todavía
+no le pasan el modelo (solo miran el tope).
 
 ## El encadenado
 

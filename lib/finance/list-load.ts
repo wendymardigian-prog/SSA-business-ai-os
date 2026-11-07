@@ -6,6 +6,7 @@
 import type { PermissionContext } from "@/lib/auth/guards";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { toCents } from "@/lib/shared/money";
+import { fetchAllPages } from "@/lib/shared/paginate";
 import { financeContextOf } from "./context";
 import type { ExpenseCategory } from "./categories";
 import {
@@ -17,7 +18,10 @@ import type { VendorLite } from "./vendors";
 
 export const LIST_COLUMNS =
   "id, concept, vendor_id, category_key, amount, status, scheduled_date, paid_date, origin, receipt_path, responsible_id, notes, void_reason, auto_drift_amount, auto_drift_resolved_at, recurring_expense_id, adjusts_expense_id";
-/** Tope de filas para los totales y el CSV. */
+/**
+ * Tope de filas para los totales y el CSV. Se leen de a páginas (`fetchAllPages`): PostgREST corta
+ * cada respuesta en 1.000 sin avisar, así que un `.limit(5000)` sumaba solo las primeras mil.
+ */
 export const TOTALS_LIMIT = 5000;
 
 export interface ExpenseListData {
@@ -51,12 +55,18 @@ export async function loadExpenseList(ctx: PermissionContext, filters: ExpenseFi
   const base = () => supabase.from("expenses").select(LIST_COLUMNS, { count: "exact" }).eq("workspace_id", workspace.id);
 
   const pillQueries = EXPENSE_PILLS.map((pill) =>
-    applyExpenseConditions(supabase.from("expenses").select("amount").eq("workspace_id", workspace.id), pillConditions(pill, f.todayLocal)).limit(TOTALS_LIMIT),
+    fetchAllPages(
+      (a, b) => applyExpenseConditions(supabase.from("expenses").select("amount").eq("workspace_id", workspace.id), pillConditions(pill, f.todayLocal)).order("id", { ascending: true }).range(a, b),
+      { maxRows: TOTALS_LIMIT },
+    ),
   );
 
   const [page, totalsRes, vendors, members, ...pillRes] = await Promise.all([
     applyExpenseConditions(base(), conditions).order("scheduled_date", { ascending: true }).order("created_at", { ascending: true }).range(from, from + EXPENSES_PAGE_SIZE - 1),
-    applyExpenseConditions(supabase.from("expenses").select("status, amount").eq("workspace_id", workspace.id), conditions).limit(TOTALS_LIMIT),
+    fetchAllPages(
+      (a, b) => applyExpenseConditions(supabase.from("expenses").select("status, amount").eq("workspace_id", workspace.id), conditions).order("id", { ascending: true }).range(a, b),
+      { maxRows: TOTALS_LIMIT },
+    ),
     loadVendorsLite(ctx),
     getWorkspaceMembers(workspace.id),
     ...pillQueries,
@@ -64,12 +74,12 @@ export async function loadExpenseList(ctx: PermissionContext, filters: ExpenseFi
 
   const pills = Object.fromEntries(
     EXPENSE_PILLS.map((pill, i) => {
-      const rows = ((pillRes[i] as { data: Array<{ amount: unknown }> | null }).data ?? []);
+      const rows = (pillRes[i] as { rows: Array<{ amount: unknown }> }).rows;
       return [pill, { count: rows.length, cents: rows.reduce((s, r) => s + toCents(r.amount), 0) }];
     }),
   ) as ExpenseListData["pills"];
 
-  const totalsRows = (totalsRes.data ?? []) as unknown as Array<{ status: string; amount: unknown }>;
+  const totalsRows = totalsRes.rows as unknown as Array<{ status: string; amount: unknown }>;
   // Vencidos primero en cada página (el orden de la consulta es por fecha; acá se acomoda la página).
   const rows = sortExpenses(((page.data ?? []) as unknown as ExpenseListRow[]));
 
@@ -81,7 +91,7 @@ export async function loadExpenseList(ctx: PermissionContext, filters: ExpenseFi
     filters,
     pills,
     totals: totalsByStatus(totalsRows),
-    totalsTruncated: totalsRows.length >= TOTALS_LIMIT,
+    totalsTruncated: totalsRes.truncated || pillRes.some((r) => (r as { truncated: boolean }).truncated),
     loadError: !!page.error,
     today: f.todayLocal,
     categories: f.settings.expense_categories,
@@ -95,8 +105,11 @@ export async function loadExpenseList(ctx: PermissionContext, filters: ExpenseFi
 export async function loadExpenseRowsForExport(ctx: PermissionContext, filters: ExpenseFilters): Promise<{ rows: ExpenseListRow[]; truncated: boolean }> {
   const f = financeContextOf(ctx);
   const conditions = expenseConditions(filters, f.todayLocal, f.settings.expense_categories);
-  const { data } = await applyExpenseConditions(ctx.supabase.from("expenses").select(LIST_COLUMNS).eq("workspace_id", ctx.workspace.id), conditions)
-    .order("scheduled_date", { ascending: true }).order("created_at", { ascending: true }).limit(TOTALS_LIMIT + 1);
-  const rows = ((data ?? []) as unknown as ExpenseListRow[]);
-  return { rows: rows.slice(0, TOTALS_LIMIT), truncated: rows.length > TOTALS_LIMIT };
+  const res = await fetchAllPages(
+    (a, b) => applyExpenseConditions(ctx.supabase.from("expenses").select(LIST_COLUMNS).eq("workspace_id", ctx.workspace.id), conditions)
+      .order("scheduled_date", { ascending: true }).order("created_at", { ascending: true }).order("id", { ascending: true }).range(a, b),
+    { maxRows: TOTALS_LIMIT },
+  );
+  // `truncated` de fetchAllPages: llegó al tope con una página llena (puede haber más).
+  return { rows: res.rows as unknown as ExpenseListRow[], truncated: res.truncated };
 }

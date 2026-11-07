@@ -6,12 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BrandMark } from "@/components/brand-mark";
 import { brandName } from "@/lib/brand";
-
-/** Solo rutas relativas propias: nunca se redirige a un dominio externo. */
-function safeNext(raw: string | null): string {
-  if (!raw) return "/dashboard";
-  return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/dashboard";
-}
+// Solo rutas relativas propias: la misma regla que `/auth/confirm` y `/auth/callback`.
+import { safeNextPath } from "@/lib/account/password-reset";
 
 // `useSearchParams` (para `?next=`) exige un limite de Suspense, si no Next
 // no puede pre-renderizar nada de esta pagina en el build.
@@ -31,7 +27,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
-  const next = safeNext(searchParams.get("next"));
+  const next = safeNextPath(searchParams.get("next"));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

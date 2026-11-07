@@ -159,12 +159,16 @@ export async function attachMedia(input: {
   });
   if (!resync.ok) return { ok: false, error: resync.error };
 
-  const { error } = await supabase
+  // Con `.select` se sabe si la RLS dejo escribir: sin filas, el reenvio (con el
+  // cliente de servicio) no corre por un cambio que nunca quedo guardado.
+  const { data: updated, error } = await supabase
     .from("content_posts")
     .update({ media: media as never })
-    .eq("id", input.postId);
+    .eq("id", input.postId)
+    .select("id");
 
   if (error) return { ok: false, error: "No pude guardar el archivo en la pieza" };
+  if (!updated || updated.length === 0) return { ok: false, error: "No tenés permiso para editar esta pieza" };
 
   await applyContentResync(service, { workspaceId: workspace.id, targets: resync.targets });
 
@@ -225,19 +229,27 @@ export async function removeMedia(input: {
   });
   if (!resync.ok) return { ok: false, error: resync.error };
 
-  const { error } = await supabase
+  // Con `.select` se sabe si la RLS dejo escribir: el archivo se borra con el
+  // cliente de servicio, asi que un UPDATE que no toco ninguna fila (sin
+  // permiso) no puede terminar borrandolo igual.
+  const { data: updated, error } = await supabase
     .from("content_posts")
     .update({
       media: plan.media as never,
       ...(stripped.affected.length > 0 ? { networks: stripped.networks as never } : {}),
     })
-    .eq("id", input.postId);
+    .eq("id", input.postId)
+    .select("id");
 
   if (error) return { ok: false, error: "No pude actualizar la pieza" };
+  if (!updated || updated.length === 0) return { ok: false, error: "No tenés permiso para editar esta pieza" };
 
   await applyContentResync(service, { workspaceId: workspace.id, targets: resync.targets });
 
-  if (plan.deleteFromBucket) {
+  // La ruta sale de la pieza, que la escribio una persona: se borra solo si es de este workspace.
+  if (plan.deleteFromBucket && !pathBelongsToWorkspace(target.storage_path, workspace.id)) {
+    console.error("[content] no borro un archivo con una ruta de otro workspace");
+  } else if (plan.deleteFromBucket) {
     const { error: storageError } = await service.storage
       .from("content-media")
       .remove([target.storage_path]);

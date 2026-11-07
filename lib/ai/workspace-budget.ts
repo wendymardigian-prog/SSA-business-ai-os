@@ -14,18 +14,41 @@
  * La decision que importa: **si no se puede leer el gasto, o los topes, no
  * se llama al modelo**. Un tope que se salta cuando falla la consulta no es
  * un tope.
+ *
+ * Gasto invisible (seguridad, noviembre 2026): una corrida de un modelo SIN precio
+ * cargado queda con `cost_usd` null y `sum_ai_spend` no la cuenta, asi que con
+ * un tope que corta podia gastar sin limite. La opcion mas simple: quien sabe
+ * que modelo va a usar lo pasa en `opts.model`, y si hay un tope del negocio
+ * que CORTA y ese modelo no tiene precio (para audio, precio por hora), no se
+ * llama. Sin topes cargados, nada cambia (no se agregan topes por defecto).
+ * Solo mira los topes del negocio: los del agente tienen valores por defecto y
+ * un modelo sin precio los dejaria apagados sin que nadie los haya pedido.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { evaluateSpend, isTemporaryBlock, workspaceSpendCandidates } from "@/lib/ai/spend";
 import { approachingThresholds, notifySpendApproaching } from "@/lib/ai/spend-alerts";
+import { resolvePricing } from "@/lib/ai/pricing";
 
 type Db = SupabaseClient<Database>;
 
 export interface BudgetDecision {
   allowed: boolean;
   message?: string;
+}
+
+/** El modelo que se va a usar, para no dejar pasar uno sin precio cuando hay un tope que corta. */
+export interface BudgetModel {
+  provider: string;
+  model: string;
+  /** `audio` se cobra por hora (transcripcion); el resto, por tokens. */
+  kind?: "chat" | "audio";
+}
+
+/** El mensaje cuando el modelo no tiene precio y hay un tope que corta. */
+export function unpricedModelMessage(model: BudgetModel): string {
+  return `El modelo ${model.provider}/${model.model} no tiene precio cargado y el negocio tiene un tope de gasto de IA: no se usa hasta cargar su precio (sin precio, lo que gasta no se puede contar).`;
 }
 
 const READ_ERROR_MESSAGE = "No pude verificar el gasto de IA del workspace.";
@@ -48,6 +71,7 @@ export async function withinWorkspaceBudget(
   supabase: Db,
   workspaceId: string,
   now: Date = new Date(),
+  opts: { model?: BudgetModel | null } = {},
 ): Promise<BudgetDecision> {
   const { data: workspace, error } = await supabase
     .from("workspaces")
@@ -69,6 +93,13 @@ export async function withinWorkspaceBudget(
   });
   // Sin topes configurados no hay nada que chequear.
   if (candidates.length === 0) return { allowed: true };
+
+  // Un tope que corta y un modelo sin precio: lo que gaste no se podria contar.
+  if (opts.model && candidates.some((c) => c.action === "disable")) {
+    const price = await resolvePricing(supabase, { workspaceId, provider: opts.model.provider, model: opts.model.model, at: now });
+    const priced = price !== null && (opts.model.kind !== "audio" || price.audio_per_hour !== null);
+    if (!priced) return { allowed: false, message: unpricedModelMessage(opts.model) };
+  }
 
   const spent = await Promise.all(candidates.map((c) => sumSpend(supabase, workspaceId, c.since)));
   if (spent.some((s) => s === null)) return { allowed: false, message: READ_ERROR_MESSAGE };

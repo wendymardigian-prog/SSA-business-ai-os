@@ -18,6 +18,7 @@ import type { Booking } from "../types";
 import { bookingVariables, emptyBookingVariables } from "./variables";
 import { eventPublicUrl, publicBaseUrl } from "../public-url";
 import { eventOwnerUsername } from "../data/public-booking";
+import { guestEmailsSuppressed } from "../booking/guest-email-limit";
 
 type Db = SupabaseClient<Database>;
 
@@ -59,7 +60,14 @@ export async function bookingContextVariables(supabase: Db, booking: Record<stri
   const ownerUsername = event.is_internal ? null : await eventOwnerUsername(supabase, workspaceId, event.owner_user_id);
   const link = ownerUsername ? eventPublicUrl(baseUrl, ownerUsername, event.slug) : "";
 
-  return { booking: vars, scheduling: { link }, trigger_scope: BOOKING_TRIGGER_SCOPE };
+  return {
+    booking: vars,
+    scheduling: { link },
+    trigger_scope: BOOKING_TRIGGER_SCOPE,
+    // Una reserva publica pasada del tope por direccion (lib/scheduling/booking/guest-email-limit.ts): `send_email`
+    // no le manda nada al contacto.
+    ...(guestEmailsSuppressed(booking.metadata) ? { booking_guest_emails_suppressed: true } : {}),
+  };
 }
 
 /** Las variables vacías, para que un flujo sin agenda no muestre `{{…}}`. */
