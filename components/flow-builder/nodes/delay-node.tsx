@@ -1,5 +1,6 @@
 "use client";
 
+import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,7 +39,7 @@ function formatWaitUntil(iso: string, timeZone: string): string | null {
   });
 }
 
-export function DelayNode({ data, selected }: NodeProps) {
+export function DelayNode({ id, data, selected }: NodeProps) {
   const timeZone = useViewerTimezone();
   const nodeData = data as DelayNodeProps;
   const label = nodeData.label || "Esperar";
@@ -75,6 +76,9 @@ export function DelayNode({ data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-purple-500 px-3 py-2 text-white">
         <Clock className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Esperar</span>
+        <div className="ml-auto">
+          <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
+        </div>
       </div>
       <div className="p-3">
         <p className="text-sm font-medium">{label}</p>

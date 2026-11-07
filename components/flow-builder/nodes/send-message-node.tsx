@@ -1,5 +1,6 @@
 "use client";
 
+import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,7 @@ export interface SendMessageNodeProps {
   }>;
 }
 
-export function SendMessageNode({ data, selected }: NodeProps) {
+export function SendMessageNode({ id, data, selected }: NodeProps) {
   const nodeData = data as SendMessageNodeProps;
   const label = nodeData.label || "Enviar mensaje";
   const firstMessage = nodeData.messages?.[0];
@@ -41,6 +42,9 @@ export function SendMessageNode({ data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-blue-500 px-3 py-2 text-white">
         <MessageSquare className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Enviar mensaje</span>
+        <div className="ml-auto">
+          <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
+        </div>
       </div>
       <div className="p-3">
         <p className="text-sm font-medium">{label}</p>

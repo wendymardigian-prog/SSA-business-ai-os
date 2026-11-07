@@ -4,10 +4,13 @@ import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import type { CommentReplyNodeData, FlowExecutionContext, PrivateReplyNodeData } from "../types";
 import { interpolateDeep, interpolateVariables } from "../interpolate";
-import { sendablePrivateReplyButtons } from "../private-reply";
+import { sendablePrivateReplyButtons, type PrivateReplyButton } from "../private-reply";
+import { deferFlowNode } from "../defer-node";
+import { clearProviderRetry, nextProviderRetry, PROVIDER_RETRY_VAR, retryNote } from "../provider-retry";
+import { attributeOutgoing } from "@/lib/attribution/outgoing-links";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
-import { describeSendError } from "@/lib/instagram-errors";
+import { canAutoRetry, describeSendError } from "@/lib/instagram-errors";
 import { sentContentContext } from "@/lib/attribution/content-variables";
 
 /**
@@ -79,6 +82,91 @@ export const commentReplyNode: NodeDefinition<CommentReplyNodeData> = {
 };
 
 /**
+ * Manda la respuesta privada a un comentario y deja todo anotado: el mensaje (enviado o fallido, con su motivo), el
+ * paso en el historial con la clave del motivo, y, si el problema es pasajero, el paso queda para reintentar a 1, 5 y
+ * 15 minutos. La usan «Responder por privado» y el respaldo de «Enviar mensaje» en un flujo de comentario.
+ *
+ * Devuelve `"pause"` si quedo para reintentar (el motor no sigue con el paso siguiente), o nada.
+ */
+export async function deliverPrivateReply(
+  supabase: SupabaseClient<Database>,
+  args: {
+    context: FlowExecutionContext;
+    nodeId: string;
+    nodeType: string;
+    sessionId: string;
+    apiKey: string;
+    lateAccountId: string;
+    postId: string;
+    commentId: string;
+    text: string;
+    buttons: PrivateReplyButton[];
+    attachments?: unknown[] | null;
+  },
+): Promise<"pause" | void> {
+  const { context, nodeId } = args;
+  try {
+    await createZernioClient(args.apiKey).comments.sendPrivateReplyToComment({
+      path: { postId: args.postId, commentId: args.commentId },
+      body: { accountId: args.lateAccountId, message: args.text, ...(args.buttons.length > 0 ? { buttons: args.buttons } : {}) },
+    });
+  } catch (error) {
+    const failure = describeSendError(error);
+    const status = (error as { statusCode?: unknown } | null)?.statusCode;
+    // Sin el texto ni el comentario: la clave del motivo y el status alcanzan para seguirlo en los logs.
+    console.error(`[flow-engine] Instagram rechazo la respuesta privada (${failure.kind}, status=${typeof status === "number" ? status : "?"})`);
+
+    if (canAutoRetry(failure.kind)) {
+      const retryAt = nextProviderRetry(context, nodeId);
+      if (retryAt) {
+        const attempt = (((context.variables as Record<string, unknown>)?.[PROVIDER_RETRY_VAR] as Record<string, number>) ?? {})[nodeId] ?? 1;
+        return deferFlowNode(supabase, {
+          nodeId,
+          nodeType: args.nodeType,
+          sessionId: args.sessionId,
+          context,
+          retryAt,
+          reason: "provider_retry",
+          message: retryNote(failure.message, attempt),
+        });
+      }
+    }
+    clearProviderRetry(context, nodeId);
+
+    context.noteStep?.({ status: "failed", reason: failure.message, kind: failure.kind });
+    // El texto queda como se quiso mandar y el motivo aparte: asi la bandeja muestra por que no salio.
+    await supabase.from("messages").insert({
+      ...outboundMessageRow({
+        conversationId: context.conversationId,
+        origin: "flow",
+        text: args.text,
+        attachments: (args.attachments as never) ?? null,
+        sentByFlowId: context.flowId ?? null,
+        sentByNodeId: nodeId,
+        status: "failed",
+        originContext: sentContentContext(context),
+      }),
+      send_error: failure.message,
+    });
+    return;
+  }
+
+  clearProviderRetry(context, nodeId);
+  await supabase.from("messages").insert(
+    outboundMessageRow({
+      conversationId: context.conversationId,
+      origin: "flow",
+      text: args.text,
+      attachments: (args.attachments as never) ?? null,
+      sentByFlowId: context.flowId ?? null,
+      sentByNodeId: nodeId,
+      status: "sent",
+      originContext: sentContentContext(context),
+    }),
+  );
+}
+
+/**
  * Le manda un DM privado a quien comento, que abre la conversacion.
  *
  * Sale siempre como respuesta al comentario, aunque la persona ya tenga un chat: es lo unico que Instagram deja mandar
@@ -90,7 +178,7 @@ export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
   type: "privateReply",
   label: "Responder por privado",
   aliases: [{ nodeType: "action", actionType: "privateReply" }],
-  async execute({ supabase, data, context, node }: NodeExecutionArgs<PrivateReplyNodeData>) {
+  async execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<PrivateReplyNodeData>) {
     const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
     if (!apiKey) {
       context.noteStep?.({ status: "skipped", reason: "Zernio no está conectado." });
@@ -114,43 +202,37 @@ export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
       return;
     }
 
-    const text = interpolateVariables(data.text, context.variables || {});
-    const buttons = sendablePrivateReplyButtons(interpolateDeep(data.buttons ?? [], context.variables || {}));
+    const interpolated = interpolateVariables(data.text, context.variables || {});
+    const rawButtons = sendablePrivateReplyButtons(interpolateDeep(data.buttons ?? [], context.variables || {}));
+    // UTM y, con «Contar clics», cada boton con su clave: el lienzo cuenta los clics por boton. Apagado, igual que antes.
+    const attributed = await attributeOutgoing(
+      supabase,
+      {
+        workspaceId: context.workspaceId,
+        contactId: context.contactId,
+        flowId: context.flowId,
+        platform: "instagram",
+        variables: context.variables,
+        nodeId: node.id,
+        sessionId,
+      },
+      data.attribution,
+      { text: interpolated, buttons: rawButtons as Array<PrivateReplyButton & Record<string, unknown>> },
+    );
+    const buttons = sendablePrivateReplyButtons(attributed.buttons ?? rawButtons);
 
-    try {
-      await createZernioClient(apiKey).comments.sendPrivateReplyToComment({
-        path: { postId, commentId },
-        body: { accountId: lateAccountId, message: text, ...(buttons.length > 0 ? { buttons } : {}) },
-      });
-
-      await supabase.from("messages").insert(
-        outboundMessageRow({
-          conversationId: context.conversationId,
-          origin: "flow",
-          text,
-          attachments: data.imageUrl ? [{ type: "image", url: data.imageUrl }] : null,
-          sentByFlowId: context.flowId ?? null,
-          sentByNodeId: node.id,
-          status: "sent",
-          originContext: sentContentContext(context),
-        }),
-      );
-    } catch (error) {
-      console.error("Failed to send private reply:", error);
-      const reason = describeSendError(error).message ?? "No se pudo mandar la respuesta por privado.";
-      context.noteStep?.({ status: "failed", reason });
-      // El texto queda como se quiso mandar y el motivo aparte: asi la bandeja muestra por que no salio.
-      await supabase.from("messages").insert({
-        ...outboundMessageRow({
-          conversationId: context.conversationId,
-          origin: "flow",
-          text,
-          sentByFlowId: context.flowId ?? null,
-          sentByNodeId: node.id,
-          status: "failed",
-        }),
-        send_error: reason,
-      });
-    }
+    return deliverPrivateReply(supabase, {
+      context,
+      nodeId: node.id,
+      nodeType: "privateReply",
+      sessionId,
+      apiKey,
+      lateAccountId,
+      postId: String(postId),
+      commentId: String(commentId),
+      text: attributed.text,
+      buttons,
+      attachments: data.imageUrl ? [{ type: "image", url: data.imageUrl }] : null,
+    });
   },
 };

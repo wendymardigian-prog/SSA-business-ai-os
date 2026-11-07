@@ -13,6 +13,7 @@ import { FormTriggerPanel } from "./FormTriggerPanel"; // @plantilla-quitar(form
 import { WebhookTriggerPanel } from "./WebhookTriggerPanel"; // @plantilla-quitar(webhooks)
 import { TaskTriggerPanel } from "./TaskTriggerPanel"; // @plantilla-quitar(tareas)
 import { WhatsappGroupTriggerPanel } from "./WhatsappGroupTriggerPanel";
+import { CommentScopePicker } from "./CommentScopePicker";
 import { SalesTriggerPanel } from "./SalesTriggerPanel"; // @plantilla-quitar(ventas)
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 import { ONCE_PER_CONTACT_DETAIL, ONCE_PER_CONTACT_TITLE, supportsOncePerContact } from "@/lib/flow-engine/once-per-contact";
@@ -680,6 +681,27 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
         </div>
       )}
 
+      {/* Comentarios: en qué cuenta y en qué publicaciones (antes solo desde la pestaña Growth). */}
+      {triggerType === "comment_keyword" && (
+        <CommentScopePicker
+          flowId={flowId}
+          channelId={typeof data.channelId === "string" && data.channelId ? data.channelId : null}
+          postIds={Array.isArray(data.postIds) ? (data.postIds as unknown[]).filter((p): p is string => typeof p === "string") : []}
+          onChange={(patch) => {
+            const next: Record<string, unknown> = { ...data };
+            if ("channelId" in patch) {
+              if (patch.channelId) next.channelId = patch.channelId;
+              else delete next.channelId;
+            }
+            if (patch.postIds) {
+              if (patch.postIds.length > 0) next.postIds = patch.postIds;
+              else delete next.postIds;
+            }
+            onChange(next);
+          }}
+        />
+      )}
+
       {/* Comentarios: la respuesta pública que el motor ya mandaba y el panel no mostraba. */}
       {triggerType === "comment_keyword" && (
         <div>
@@ -694,7 +716,9 @@ export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages, o
             placeholder="¡Te escribimos por privado! 💬"
             className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
-          <p className="mt-1.5 text-xs text-muted-foreground">Se contesta debajo del comentario, a la vista de todos. Para limitarlo a ciertas publicaciones, usá la pestaña Growth.</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Se contesta debajo del comentario, a la vista de todos, después del mensaje privado. Si el privado no sale (por ejemplo, otra app ya le contestó), no se publica.
+          </p>
         </div>
       )}
 

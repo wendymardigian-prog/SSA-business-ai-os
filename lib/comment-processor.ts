@@ -173,28 +173,6 @@ export async function processComment({
       return { matched: true, triggerId: matchedTrigger.id, skipped: "do_not_contact" };
     }
 
-    let replySent = false;
-    if (config.replyText) {
-      const apiKey = await getZernioApiKey(channel.workspace_id, { supabase });
-
-      if (apiKey) {
-        try {
-          const zernio = createZernioClient(apiKey);
-          await zernio.comments.replyToInboxPost({
-            path: { postId: comment.postId },
-            body: {
-              accountId: channel.late_account_id,
-              message: config.replyText,
-              commentId: comment.id,
-            },
-          });
-          replySent = true;
-        } catch (err) {
-          console.error("Failed to post comment reply:", err);
-        }
-      }
-    }
-
     // Local conversation only — there is no Zernio DM conversation until the
     // flow's privateReply node creates one, so late_conversation_id stays null
     // and sendMessage nodes in comment flows are no-ops until the contact replies.
@@ -221,9 +199,11 @@ export async function processComment({
     if (conversation) await applyConversationRules(supabase, { workspaceId: channel.workspace_id, conversationId: conversation.id });
 
     let dmSent = false;
+    let outcome: CommentDeliveryOutcome = { dmSent: false, privateReplyFailed: false, pending: false };
+    const flowStartedAt = new Date().toISOString();
     if (conversation) {
       try {
-        await executeFlow(supabase, {
+        const sessionId = await executeFlow(supabase, {
           triggerId: matchedTrigger.id,
           flowId: matchedTrigger.flow_id,
           channelId: channel.id,
@@ -250,9 +230,41 @@ export async function processComment({
             content: await resolveContentForPost(supabase, { workspaceId: channel.workspace_id, platform: channel.platform, externalPostId: comment.postId }),
           },
         });
-        dmSent = true;
+        // «DM enviado» es que el mensaje salio de verdad: antes alcanzaba con que el flujo no lanzara, y una respuesta
+        // privada rechazada (el paso no lanza) contaba como enviada.
+        outcome = await commentDeliveryOutcome(supabase, {
+          sessionId: sessionId ?? null,
+          conversationId: conversation.id,
+          flowId: matchedTrigger.flow_id,
+          since: flowStartedAt,
+        });
+        dmSent = outcome.dmSent;
       } catch (err) {
         console.error("Failed to execute comment flow:", err);
+      }
+    }
+
+    // La respuesta publica va DESPUES del flujo, y no sale si la respuesta privada fallo: un «Te envie por DM!» sin DM
+    // confunde a quien comento (paso el 6/11/2026, cuando otra app contesto primero).
+    let replySent = false;
+    if (config.replyText && shouldPostPublicReply(outcome)) {
+      const apiKey = await getZernioApiKey(channel.workspace_id, { supabase });
+
+      if (apiKey) {
+        try {
+          const zernio = createZernioClient(apiKey);
+          await zernio.comments.replyToInboxPost({
+            path: { postId: comment.postId },
+            body: {
+              accountId: channel.late_account_id,
+              message: config.replyText,
+              commentId: comment.id,
+            },
+          });
+          replySent = true;
+        } catch (err) {
+          console.error("[comments] no pude publicar la respuesta al comentario:", err instanceof Error ? err.name : "error");
+        }
       }
     }
 
@@ -290,6 +302,52 @@ export async function processComment({
       error: errorMessage,
     });
     return { matched: true, triggerId: matchedTrigger.id, error: errorMessage };
+  }
+}
+
+/** Lo que paso con el mensaje privado de una automatizacion de comentario. */
+export interface CommentDeliveryOutcome {
+  /** Salio al menos un mensaje del flujo en esa conversacion. */
+  dmSent: boolean;
+  /** Hubo un mensaje del flujo que no salio (la respuesta privada rechazada). */
+  privateReplyFailed: boolean;
+  /** Un paso quedo para reintentar (todavia no se sabe). */
+  pending: boolean;
+}
+
+/** La respuesta publica solo si el DM salio, o si el flujo no intento ninguno (una regla sin respuesta privada). */
+export function shouldPostPublicReply(outcome: CommentDeliveryOutcome): boolean {
+  if (outcome.dmSent) return true;
+  return !outcome.privateReplyFailed && !outcome.pending;
+}
+
+/** Lee de la base que paso con los mensajes del flujo despues de correrlo. Ante un error, «no se sabe»: no se publica. */
+export async function commentDeliveryOutcome(
+  supabase: SupabaseClient<Database>,
+  args: { sessionId: string | null; conversationId: string; flowId: string; since: string },
+): Promise<CommentDeliveryOutcome> {
+  try {
+    const { data: messages, error } = await supabase
+      .from("messages")
+      .select("status")
+      .eq("conversation_id", args.conversationId)
+      .eq("sent_by_flow_id", args.flowId)
+      .gte("created_at", args.since);
+    if (error) throw error;
+    const statuses = (messages ?? []).map((m) => (m as { status: string }).status);
+    let pending = false;
+    if (args.sessionId) {
+      const { data: steps } = await supabase.from("flow_session_steps").select("status").eq("session_id", args.sessionId).eq("status", "deferred");
+      pending = (steps ?? []).length > 0;
+    }
+    return {
+      dmSent: statuses.some((s) => s !== "failed" && s !== "pending"),
+      privateReplyFailed: statuses.includes("failed"),
+      pending,
+    };
+  } catch (err) {
+    console.error("[comments] no pude leer como salio el mensaje del comentario:", err instanceof Error ? err.name : "error");
+    return { dmSent: false, privateReplyFailed: true, pending: false };
   }
 }
 

@@ -204,7 +204,8 @@ export function createAutomationHref(check: KeywordCheck, channelId: string | nu
     keyword: check.keyword,
   });
   if (channelId) params.set("channel", channelId);
-  return `/dashboard/flows?${params.toString()}`;
+  // La pestaña Comentarios lee estos parametros y ofrece crearla con la palabra y la cuenta ya puestas.
+  return `/dashboard/comentarios?${params.toString()}`;
 }
 
 /**

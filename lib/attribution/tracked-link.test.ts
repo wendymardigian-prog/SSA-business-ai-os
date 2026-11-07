@@ -32,8 +32,26 @@ describe("signTrackedLink / verifyTrackedLink", () => {
     const read = verifyTrackedLink(make(), SECRET, NOW + 1000);
     expect(read).toEqual({
       ok: true,
-      payload: { v: 1, w: W, c: C, u: DEST, f: F, p: P, s: S, e: Math.floor((NOW + TRACKED_LINK_TTL_DAYS * DAY) / 1000) },
+      payload: { v: 1, w: W, c: C, u: DEST, f: F, p: P, s: S, e: Math.floor((NOW + TRACKED_LINK_TTL_DAYS * DAY) / 1000), n: null, b: null, r: null },
     });
+  });
+
+  it("el paso, el link y la ejecucion viajan si se firman (metricas del lienzo)", () => {
+    const R = "44444444-4444-4444-8444-444444444444";
+    const read = verifyTrackedLink(make({ n: "step-1", b: "b0", r: R }), SECRET, NOW);
+    expect(read.ok && read.payload.n).toBe("step-1");
+    expect(read.ok && read.payload.b).toBe("b0");
+    expect(read.ok && read.payload.r).toBe(R);
+  });
+
+  it("sin paso, el token es exactamente el de siempre (no suma claves)", () => {
+    const [body] = make().split(".");
+    expect(Object.keys(JSON.parse(Buffer.from(body, "base64url").toString("utf8")))).toEqual(["v", "w", "c", "u", "f", "p", "s", "e"]);
+  });
+
+  it("no firma un paso o una ejecucion con forma rara", () => {
+    expect(() => make({ n: "paso con espacios" })).toThrow();
+    expect(() => make({ r: "no-es-uuid" })).toThrow();
   });
 
   it("la pieza y la publicacion son opcionales: quedan en null", () => {

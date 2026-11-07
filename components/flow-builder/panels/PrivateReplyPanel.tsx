@@ -9,6 +9,7 @@ import {
   type PrivateReplyButton,
 } from "@/lib/flow-engine/private-reply";
 import { VariableChips } from "./variable-chips";
+import { AttributionBlock, type AttributionPanelContext } from "./SendMessagePanel";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -18,10 +19,12 @@ export function PrivateReplyPanel({
   data,
   onChange,
   availableVariables,
+  attributionContext,
 }: {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
   availableVariables?: string[];
+  attributionContext?: AttributionPanelContext;
 }) {
   const text = typeof data.text === "string" ? data.text : "";
   const buttons = (Array.isArray(data.buttons) ? data.buttons : []) as PrivateReplyButton[];
@@ -103,6 +106,9 @@ export function PrivateReplyPanel({
           </p>
         )}
       </div>
+
+      {/* Con «Registrar el clic», cada botón sale con su propio link medido: el lienzo cuenta los clics por botón. */}
+      {attributionContext && <AttributionBlock data={data} onChange={onChange} context={attributionContext} />}
     </div>
   );
 }

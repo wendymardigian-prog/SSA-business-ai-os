@@ -447,6 +447,8 @@ export type KnowledgeStatus = "processing" | "pending" | "ready" | "error";
 export type ContactLinkReason = "channel" | "phone" | "email" | "username";
 /** Entidades que registra el audit log (migracion 00023). */
 export type AuditEntityType =
+  /** Una automatizacion: reintentar un paso desde Ejecuciones (00316). */
+  | "flow"
   | "contact"
   | "contact_note"
   | "conversation"
@@ -2097,6 +2099,28 @@ export interface Database {
           },
         ];
       };
+      flow_link_clicks: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          flow_id: string;
+          node_id: string;
+          button_key: string | null;
+          session_id: string | null;
+          clicked_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          flow_id: string;
+          node_id: string;
+          button_key?: string | null;
+          session_id?: string | null;
+          clicked_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
       flow_session_steps: {
         Row: {
           id: string;
@@ -2112,6 +2136,10 @@ export interface Database {
           resumes_at: string | null;
           started_at: string;
           finished_at: string;
+          /** 00316: la clave del motivo de un fallo (`already_replied`...). */
+          error_kind: string | null;
+          /** 00316: el handle crudo por el que siguio el paso (`true`, `else`, `reply`...). */
+          exit_handle: string | null;
         };
         Insert: {
           id?: string;
@@ -2122,6 +2150,8 @@ export interface Database {
           node_label: string;
           status: "ok" | "failed" | "skipped" | "waiting" | "deferred";
           exit_label?: string | null;
+          error_kind?: string | null;
+          exit_handle?: string | null;
           reason?: string | null;
           resumes_at?: string | null;
           started_at: string;
@@ -6644,6 +6674,10 @@ export interface Database {
         Returns: Array<{ obj: string; contact_id: string | null; item_id: string | null; occurred_at: string | null; origin: string | null; detail_at: string | null; amount_cents: number | null }>;
       };
       /** La tabla Meta vs CRM v2: lo mismo que `ads_crm_metrics` mas una fila `is_total` con personas distintas y el primer pago (00219). SECURITY INVOKER. */
+      flow_node_stats: {
+        Args: { p_flow_id: string; p_from: string; p_to: string };
+        Returns: Array<{ node_id: string; metric: string; key: string | null; value: number }>;
+      };
       ads_crm_metrics_v2: {
         Args: { p_level: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null; p_object_ids?: string[] | null };
         Returns: Array<{

@@ -32,6 +32,25 @@ export interface LinkClickResult {
   location: string | null;
   /** El toque a registrar (después de responder). Null si no corresponde registrar nada. */
   touch: { workspaceId: string; contactId: string; input: TouchInput } | null;
+  /**
+   * El clic para las métricas del lienzo (`flow_link_clicks`), solo si el link dice de qué paso salió. Se cuenta cada
+   * clic (no uno por día, como el toque); las personas distintas salen de la ejecución.
+   */
+  flowClick: FlowLinkClick | null;
+}
+
+export interface FlowLinkClick {
+  workspaceId: string;
+  flowId: string;
+  nodeId: string;
+  buttonKey: string | null;
+  sessionId: string | null;
+}
+
+/** El clic de un paso, si el token lo trae. */
+export function flowClickFor(payload: TrackedLinkPayload): FlowLinkClick | null {
+  if (!payload.n) return null;
+  return { workspaceId: payload.w, flowId: payload.f, nodeId: payload.n, buttonKey: payload.b ?? null, sessionId: payload.r ?? null };
 }
 
 const param = (url: string, key: string): string | null => {
@@ -70,7 +89,7 @@ export async function resolveLinkClick(args: { token: unknown; userAgent: string
   const fallback = deps.fallbackUrl;
   try {
     const limited = await deps.limit(args.ip);
-    if (!limited.allowed) return { status: 429, location: null, touch: null };
+    if (!limited.allowed) return { status: 429, location: null, touch: null, flowClick: null };
 
     const workspaceId = peekTrackedLinkWorkspace(args.token);
     const secret = workspaceId ? await deps.readSecret(workspaceId) : null;
@@ -79,12 +98,12 @@ export async function resolveLinkClick(args: { token: unknown; userAgent: string
 
     if (!verified.ok) {
       // Vencido o con una carga que no sirve para registrar pero con firma válida: se redirige igual al destino.
-      return { status: 302, location: safeRedirectTarget(verified.destination, fallback), touch: null };
+      return { status: 302, location: safeRedirectTarget(verified.destination, fallback), touch: null, flowClick: null };
     }
     const location = safeRedirectTarget(verified.payload.u, fallback);
-    if (isLinkPreviewBot(args.userAgent)) return { status: 302, location, touch: null };
-    return { status: 302, location, touch: clickTouchFor(verified.payload, new Date(now)) };
+    if (isLinkPreviewBot(args.userAgent)) return { status: 302, location, touch: null, flowClick: null };
+    return { status: 302, location, touch: clickTouchFor(verified.payload, new Date(now)), flowClick: flowClickFor(verified.payload) };
   } catch {
-    return { status: 302, location: fallback, touch: null };
+    return { status: 302, location: fallback, touch: null, flowClick: null };
   }
 }

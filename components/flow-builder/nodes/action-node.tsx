@@ -1,5 +1,6 @@
 "use client";
 
+import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { BarChart3,
   Tag,
@@ -11,10 +12,12 @@ import { BarChart3,
   Shuffle,
   Hourglass,
   Cog,
+  MessageCircle,
+  MessageSquare,
   PauseCircle,
   PlayCircle,
   Library,
-  ListTodo,
+  ListPlus,
   ListChecks,
   Mail,
   Smartphone,
@@ -107,12 +110,12 @@ const actionConfig: Record<
     color: "bg-gray-500",
   },
   commentReply: {
-    icon: Cog,
+    icon: MessageCircle,
     label: "Responder el comentario",
     color: "bg-gray-500",
   },
   privateReply: {
-    icon: Cog,
+    icon: MessageSquare,
     label: "Responder por privado",
     color: "bg-gray-500",
   },
@@ -143,7 +146,7 @@ const actionConfig: Record<
   },
   // @plantilla-desde(tareas)
   create_task: {
-    icon: ListTodo,
+    icon: ListPlus,
     label: "Crear tarea",
     color: "bg-gray-500",
   },
@@ -257,7 +260,7 @@ function getSummary(nodeData: ActionNodeProps): string | null {
   }
 }
 
-export function ActionNode({ data, selected }: NodeProps) {
+export function ActionNode({ id, data, selected }: NodeProps) {
   const nodeData = data as ActionNodeProps;
   const actionType = nodeData.actionType || "addTag";
   const config = actionConfig[actionType] || {
@@ -296,6 +299,9 @@ export function ActionNode({ data, selected }: NodeProps) {
       >
         <Icon className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">{config.label}</span>
+        <div className="ml-auto">
+          <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
+        </div>
       </div>
       <div className="p-3">
         <p className="text-sm font-medium">{label}</p>

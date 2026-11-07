@@ -81,8 +81,8 @@ describe("activeNavHref: gana el candidato mas largo (N4)", () => {
   });
   // @plantilla-hasta(formularios)
 
-  it("Bandeja queda marcada desde drafts, broadcasts, sequences y growth", () => {
-    for (const pathname of ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"]) {
+  it("Bandeja queda marcada desde drafts, broadcasts, sequences y comentarios", () => {
+    for (const pathname of ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/comentarios", "/dashboard/growth"]) {
       expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/inbox");
     }
   });

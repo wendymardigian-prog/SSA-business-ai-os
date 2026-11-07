@@ -42,6 +42,14 @@ export interface OutgoingContext {
   flowId: string | null | undefined;
   platform: string | null | undefined;
   variables?: Record<string, unknown> | null;
+  /**
+   * El paso que manda el mensaje y la ejecucion: con «Registrar el clic», cada link sale con su paso y su clave (`t` el
+   * texto, `b0`… los botones) para que el lienzo cuente los clics por boton. Sin paso, el link firma igual que siempre.
+   */
+  nodeId?: string | null;
+  sessionId?: string | null;
+  /** Un paso con varios mensajes: el segundo en adelante antepone `m1-`, `m2-`… a la clave de cada link. */
+  linkPrefix?: string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -92,15 +100,31 @@ export async function attributeOutgoing(
     const canTrack = attribution.trackClicks && !!context.contactId && UUID.test(context.contactId) && !!context.flowId && UUID.test(context.flowId) && UUID.test(context.workspaceId);
     let secret: string | null = null;
     let base: string | null = null;
+    const nodeId = context.nodeId && /^[A-Za-z0-9_-]{1,64}$/.test(context.nodeId) ? context.nodeId : null;
+    const sessionId = context.sessionId && UUID.test(context.sessionId) ? context.sessionId : null;
     const resolved = new Map<string, string>();
-    for (const url of urls) {
+    /** El link final de una URL. `key` dice cual de los links del paso es (solo cuenta si hay paso). */
+    const prefix = context.linkPrefix && /^[A-Za-z0-9_-]{1,16}$/.test(context.linkPrefix) ? context.linkPrefix : "";
+    const resolve = async (url: string, rawKey: string): Promise<string> => {
+      const key = `${prefix}${rawKey}`;
+      const cacheKey = nodeId ? `${key}|${url}` : url;
+      const cached = resolved.get(cacheKey);
+      if (cached !== undefined) return cached;
       const withUtm = buildAttributedUrl(url, ctx);
       let final = withUtm;
       if (canTrack && /^https?:\/\//i.test(withUtm.trim()) && !isChatLink(withUtm.trim())) {
         try {
           secret ??= await getOrCreateAttributionLinkSecret(supabase, context.workspaceId);
           const token = signTrackedLink(
-            { w: context.workspaceId, c: context.contactId!, u: withUtm.trim(), f: context.flowId!, p: uuidOrNull(content?.content_post_id), s: uuidOrNull(content?.social_post_id) },
+            {
+              w: context.workspaceId,
+              c: context.contactId!,
+              u: withUtm.trim(),
+              f: context.flowId!,
+              p: uuidOrNull(content?.content_post_id),
+              s: uuidOrNull(content?.social_post_id),
+              ...(nodeId ? { n: nodeId, b: key, r: sessionId } : {}),
+            },
             secret,
           );
           // El lead toca el link: con el dominio del negocio (o el principal).
@@ -111,20 +135,43 @@ export async function attributeOutgoing(
           console.error("[atribucion] no pude firmar el link con seguimiento:", e instanceof Error ? e.message : String(e));
         }
       }
-      resolved.set(url, final);
-    }
-    const swap = (u: string) => resolved.get(u) ?? u;
+      resolved.set(cacheKey, final);
+      return final;
+    };
+
+    // El texto primero (todas sus URLs con la clave `t`), despues cada boton con la suya.
+    const textUrls: string[] = [];
+    mapUrlsInText(message.text, (u) => (textUrls.push(u), u));
+    const textMap = new Map<string, string>();
+    for (const url of textUrls) textMap.set(url, await resolve(url, "t"));
+
+    const mapButtons = async <T extends { url?: unknown }>(list: T[], prefix: string): Promise<T[]> => {
+      const out: T[] = [];
+      for (const [i, b] of list.entries()) out.push(typeof b.url === "string" ? { ...b, url: await resolve(b.url, `${prefix}${i}`) } : b);
+      return out;
+    };
+    const buttons = message.buttons ? await mapButtons(message.buttons, "b") : undefined;
+    const template = message.template
+      ? {
+          ...message.template,
+          elements: await Promise.all(
+            message.template.elements.map(async (el, e) => (el.buttons ? { ...el, buttons: await mapButtons(el.buttons, `c${e}-`) } : el)),
+          ),
+        }
+      : undefined;
+    const replyMarkup = message.replyMarkup
+      ? {
+          ...message.replyMarkup,
+          keyboard: await Promise.all(message.replyMarkup.keyboard.map((row, r) => mapButtons(row, `k${r}-`))),
+        }
+      : undefined;
 
     return {
       ...message,
-      text: mapUrlsInText(message.text, swap),
-      ...(message.buttons ? { buttons: message.buttons.map((b) => (typeof b.url === "string" ? { ...b, url: swap(b.url) } : b)) } : {}),
-      ...(message.template
-        ? { template: { ...message.template, elements: message.template.elements.map((el) => (el.buttons ? { ...el, buttons: el.buttons.map((b) => (typeof b.url === "string" ? { ...b, url: swap(b.url) } : b)) } : el)) } }
-        : {}),
-      ...(message.replyMarkup
-        ? { replyMarkup: { ...message.replyMarkup, keyboard: message.replyMarkup.keyboard.map((row) => row.map((k) => (typeof k.url === "string" ? { ...k, url: swap(k.url) } : k))) } }
-        : {}),
+      text: mapUrlsInText(message.text, (u) => textMap.get(u) ?? u),
+      ...(buttons ? { buttons } : {}),
+      ...(template ? { template } : {}),
+      ...(replyMarkup ? { replyMarkup } : {}),
     };
   } catch (e) {
     console.error("[atribucion] fallo la atribución de los links del mensaje:", e instanceof Error ? e.message : String(e));

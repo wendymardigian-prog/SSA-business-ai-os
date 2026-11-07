@@ -1,5 +1,6 @@
 "use client";
 
+import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,7 +12,7 @@ export interface AiResponseNodeProps {
   model?: string;
 }
 
-export function AiResponseNode({ data, selected }: NodeProps) {
+export function AiResponseNode({ id, data, selected }: NodeProps) {
   const nodeData = data as AiResponseNodeProps;
   const label = nodeData.label || "Respuesta con IA";
   const prompt = nodeData.systemPrompt;
@@ -31,6 +32,9 @@ export function AiResponseNode({ data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-violet-500 px-3 py-2 text-white">
         <Sparkles className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Respuesta con IA</span>
+        <div className="ml-auto">
+          <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
+        </div>
       </div>
       <div className="p-3">
         <p className="text-sm font-medium">{label}</p>

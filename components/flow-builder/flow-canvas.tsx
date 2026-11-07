@@ -35,6 +35,7 @@ import { pruneBranchEdges } from "@/lib/automations/branch-edit";
 
 import { NodePalette, type PaletteItem } from "./node-palette";
 import { FlowCapabilitiesProvider, FlowConnectionBanner, useFlowCapabilities } from "./capabilities-context";
+import { FlowMetricsError, FlowMetricsProvider, FlowMetricsToggle } from "./metrics-context";
 import {
   ALL_CONNECTED,
   blockedNodes,
@@ -522,6 +523,8 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             </span>
           )}
           <button
+            title="Probar"
+            aria-label="Probar"
             onClick={() => {
               setTestPanelOpen(!testPanelOpen);
               if (!testPanelOpen) {
@@ -537,9 +540,11 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             )}
           >
             <Play className="h-3.5 w-3.5" />
-            Probar
+            <span className="hidden 2xl:inline">Probar</span>
           </button>
           <button
+            title="Versiones"
+            aria-label="Versiones"
             onClick={() => {
               setVersionPanelOpen(!versionPanelOpen);
               if (!versionPanelOpen) {
@@ -555,15 +560,18 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
             )}
           >
             <History className="h-3.5 w-3.5" />
-            Versiones
+            <span className="hidden 2xl:inline">Versiones</span>
           </button>
           <button
+            title="Ejecuciones"
+            aria-label="Ejecuciones"
             onClick={() => unsaved.guard(() => router.push(`/dashboard/flows/${flow.id}/ejecuciones`))}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
           >
             <Activity className="h-3.5 w-3.5" />
-            Ejecuciones
+            <span className="hidden 2xl:inline">Ejecuciones</span>
           </button>
+          <FlowMetricsToggle />
           <button
             onClick={handleSave}
             disabled={saving}
@@ -649,6 +657,7 @@ function FlowCanvasInner({ flow, attributionDefaults = NO_ATTRIBUTION_DEFAULTS }
 
       {/* Los pasos que no se van a ejecutar por una conexion que falta (G1.6): un flujo publicado no se despublica solo. */}
       <FlowConnectionBanner nodes={nodes as unknown as GraphNodeLike[]} edges={edges as unknown as GraphEdgeLike[]} published={flow.status === "published"} />
+      <FlowMetricsError />
 
       {publishProblems.length > 0 && (
         <div role="alert" className="flex items-start gap-3 border-b border-red-300/60 bg-red-50 px-4 py-2.5 text-xs text-red-900 dark:bg-red-950/30 dark:text-red-200">
@@ -763,7 +772,9 @@ export function FlowCanvas({ flow, attributionDefaults, capabilities = ALL_CONNE
   return (
     <ReactFlowProvider>
       <FlowCapabilitiesProvider capabilities={capabilities}>
-        <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
+        <FlowMetricsProvider flowId={flow.id}>
+          <FlowCanvasInner flow={flow} attributionDefaults={attributionDefaults} />
+        </FlowMetricsProvider>
       </FlowCapabilitiesProvider>
     </ReactFlowProvider>
   );

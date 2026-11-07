@@ -60,7 +60,18 @@ describe("publicar reconcilia todas las filas que arma el editor", () => {
     expect(db.rows("triggers")).toHaveLength(0);
   });
 
-  it("una fila con canal (pestaña Growth) apagada a mano sigue apagada despues de publicar", async () => {
+  it("el disparador de comentario con cuenta arma su fila con canal y la marca del lienzo; republicar no la duplica", async () => {
+    const CH = "11111111-1111-4111-8111-111111111111";
+    const db = world({ triggerType: "comment_keyword", channelId: CH, keywords: [{ value: "clase", matchType: "exact" }] });
+    for (let i = 0; i < 3; i++) await publish(db);
+    const rows = db.rows("triggers").filter((t) => t.flow_id === "flow-1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ channel_id: CH, type: "comment_keyword", config: { origin: "canvas" } });
+    expect(await unpublishFlow(db.client, WS, "flow-1")).toBe(true);
+    expect(db.rows("triggers")).toHaveLength(0);
+  });
+
+  it("una regla vieja de Growth (con canal y sin la marca) apagada a mano sigue apagada despues de publicar", async () => {
     const db = world({ triggerType: "keyword", keywords: [{ value: "hola", matchType: "contains" }] }, [
       { id: "growth-1", flow_id: "flow-1", channel_id: "ch-1", type: "comment_keyword", config: {}, is_active: false, priority: 0 },
     ]);

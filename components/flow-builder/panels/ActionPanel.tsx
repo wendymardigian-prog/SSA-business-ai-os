@@ -13,6 +13,7 @@ import { CompleteTaskPanel } from "./CompleteTaskPanel"; // @plantilla-quitar(ta
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
 import { SendPollPanel } from "./SendPollPanel";
 import { PrivateReplyPanel } from "./PrivateReplyPanel";
+import type { AttributionPanelContext } from "./SendMessagePanel";
 import { SendEmailPanel } from "./SendEmailPanel";
 import { CancelBookingPanel, NotifyTeamPanel, SetBookingStatusPanel } from "./ExtraActionPanels";
 import { VariableChips } from "./variable-chips";
@@ -44,6 +45,8 @@ interface ActionPanelProps {
   onChange: (data: Record<string, unknown>) => void;
   /** Las variables que el flujo ofrece en este punto (para los campos de texto del paso). */
   availableVariables?: string[];
+  /** «Atribución de links» de «Responder por privado» (UTM y contar clics de los botones). */
+  attributionContext?: AttributionPanelContext;
 }
 
 interface ActionSubPanelProps {
@@ -52,7 +55,7 @@ interface ActionSubPanelProps {
   availableVariables?: string[];
 }
 
-export function ActionPanel({ data: rawData, onChange, availableVariables }: ActionPanelProps) {
+export function ActionPanel({ data: rawData, onChange, availableVariables, attributionContext }: ActionPanelProps) {
   const data = rawData as ActionPanelData;
   const actionType = data.actionType || "addTag";
 
@@ -84,7 +87,7 @@ export function ActionPanel({ data: rawData, onChange, availableVariables }: Act
     case "resumeAgent":
       return <ResumeAgentConfig />;
     case "privateReply":
-      return <PrivateReplyPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+      return <PrivateReplyPanel data={rawData} onChange={onChange} availableVariables={availableVariables} attributionContext={attributionContext} />;
     // Tirón 2, D3: un aviso por WhatsApp a un número que puede no ser de ningún contacto.
     case "send_whatsapp_number" as NodeType:
       return <SendWhatsAppNumberPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;

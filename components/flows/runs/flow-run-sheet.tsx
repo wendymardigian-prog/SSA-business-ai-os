@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarClock, CheckCircle2, Clock, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { CalendarClock, CheckCircle2, Clock, Loader2, MinusCircle, RotateCcw, XCircle, type LucideIcon } from "lucide-react";
+import { retryFlowStep } from "@/lib/actions/flow-runs";
 import { Sheet } from "@/components/ui/sheet";
 import {
+  canRetryStep,
   formatRunDate,
   formatRunDuration,
   runEndReasonLabel,
@@ -25,8 +29,23 @@ const STEP_ICONS: Record<RunStepStatus, { icon: LucideIcon; className: string }>
 };
 
 /** Una ejecucion paso a paso. Un paso que se reintento aparece dos veces: es lo que paso de verdad. */
-export function FlowRunSheet({ run, steps, timeZone, onClose }: { run: FlowRunRow; steps: FlowRunStep[]; timeZone: string; onClose: () => void }) {
+export function FlowRunSheet({
+  flowId,
+  canRetry,
+  run,
+  steps,
+  timeZone,
+  onClose,
+}: {
+  flowId: string;
+  canRetry: boolean;
+  run: FlowRunRow;
+  steps: FlowRunStep[];
+  timeZone: string;
+  onClose: () => void;
+}) {
   const endReason = runEndReasonLabel(run.end_reason);
+  const lastFailureId = [...steps].reverse().find((s) => s.status === "failed")?.id ?? null;
 
   return (
     <Sheet title="Detalle de la ejecución" onClose={onClose}>
@@ -82,6 +101,7 @@ export function FlowRunSheet({ run, steps, timeZone, onClose }: { run: FlowRunRo
                       {step.resumes_at && isLast && <p className="mt-1 text-xs text-muted-foreground">Sigue el {formatRunDate(step.resumes_at, timeZone)}</p>}
                       {step.exit_label && <p className="mt-1 text-xs text-muted-foreground">Siguió por: {step.exit_label}</p>}
                       {reason && <p className={cn("mt-1 break-words text-xs", step.status === "failed" ? "text-red-700 dark:text-red-300" : "text-muted-foreground")}>{reason}</p>}
+                      {step.status === "failed" && step.id === lastFailureId && canRetry && <RetryStep flowId={flowId} run={run} step={step} />}
                     </div>
                   </li>
                 );
@@ -91,6 +111,52 @@ export function FlowRunSheet({ run, steps, timeZone, onClose }: { run: FlowRunRo
         </section>
       </div>
     </Sheet>
+  );
+}
+
+/** «Reintentar desde este paso», o por que no se puede. La regla es `canRetryStep`; el servidor la vuelve a mirar. */
+function RetryStep({ flowId, run, step }: { flowId: string; run: FlowRunRow; step: FlowRunStep }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const allowed = canRetryStep({
+    stepStatus: step.status,
+    errorKind: step.error_kind,
+    nodeType: step.node_type,
+    isLastFailure: true,
+    runStatus: run.status,
+    runCreatedAt: run.created_at,
+  });
+
+  if (!allowed.ok) return <p className="mt-1.5 text-xs text-muted-foreground">No se puede reintentar: {allowed.reason}</p>;
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        disabled={pending || message?.ok === true}
+        onClick={() =>
+          startTransition(async () => {
+            const result = await retryFlowStep({ flowId, runId: run.id, stepId: step.id });
+            if (result.ok) {
+              setMessage({ ok: true, text: "Listo: en menos de un minuto vuelve a correr desde este paso. Tocá «Actualizar» para ver cómo salió." });
+              router.refresh();
+            } else {
+              setMessage({ ok: false, text: result.error });
+            }
+          })
+        }
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent disabled:opacity-50"
+      >
+        {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+        Reintentar desde este paso
+      </button>
+      {message && (
+        <p role="status" className={cn("mt-1.5 text-xs", message.ok ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300")}>
+          {message.text}
+        </p>
+      )}
+    </div>
   );
 }
 

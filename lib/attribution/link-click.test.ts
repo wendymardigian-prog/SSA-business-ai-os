@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LINK_CLICKS_PER_MINUTE, clickTouchFor, resolveLinkClick, type LinkClickDeps } from "./link-click";
+import { LINK_CLICKS_PER_MINUTE, clickTouchFor, flowClickFor, resolveLinkClick, type LinkClickDeps } from "./link-click";
 import { signTrackedLink } from "./tracked-link";
 
 const WS = "11111111-1111-4111-8111-111111111111";
@@ -63,34 +63,47 @@ describe("resolveLinkClick", () => {
     const [body, sig] = t.split(".");
     const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url").toString()), u: "https://evil.example/phish" })).toString("base64url") + "." + sig;
     const r = await open(forged);
-    expect(r).toEqual({ status: 302, location: APP, touch: null });
-    expect(await open(t.slice(0, -3) + "AAA")).toEqual({ status: 302, location: APP, touch: null });
+    expect(r).toEqual({ status: 302, location: APP, touch: null, flowClick: null });
+    expect(await open(t.slice(0, -3) + "AAA")).toEqual({ status: 302, location: APP, touch: null, flowClick: null });
   });
 
   it("un token firmado con otro secreto, sin secreto, o basura, cae a la app", async () => {
     expect((await open(token({}, "otro-secreto"))).location).toBe(APP);
     expect((await open(token(), BROWSER, { readSecret: async () => null })).location).toBe(APP);
     for (const junk of ["", "x", "a.b", null, undefined, 42, "a".repeat(5000)]) {
-      expect(await open(junk)).toEqual({ status: 302, location: APP, touch: null });
+      expect(await open(junk)).toEqual({ status: 302, location: APP, touch: null, flowClick: null });
     }
   });
 
   it("vencido pero con firma válida: redirige al destino sin registrar", async () => {
     const expired = signTrackedLink({ w: WS, c: C, u: DEST, f: F, e: Math.floor(NOW / 1000) - 10 }, SECRET, NOW);
     const r = await open(expired);
-    expect(r).toEqual({ status: 302, location: DEST, touch: null });
+    expect(r).toEqual({ status: 302, location: DEST, touch: null, flowClick: null });
   });
 
   it("si el secreto no se puede leer (la base falla), cae a la app sin lanzar", async () => {
     const r = await open(token(), BROWSER, { readSecret: async () => { throw new Error("vault"); } });
-    expect(r).toEqual({ status: 302, location: APP, touch: null });
+    expect(r).toEqual({ status: 302, location: APP, touch: null, flowClick: null });
   });
 
   it("pasado el tope por IP responde 429 y no mira el token", async () => {
     let read = 0;
     const r = await open(token(), BROWSER, { limit: async () => ({ allowed: false }), readSecret: async () => (read++, SECRET) });
-    expect(r).toEqual({ status: 429, location: null, touch: null });
+    expect(r).toEqual({ status: 429, location: null, touch: null, flowClick: null });
     expect(read).toBe(0);
     expect(LINK_CLICKS_PER_MINUTE).toBe(120);
+  });
+});
+
+describe("clic de un paso (metricas del lienzo)", () => {
+  it("un token con paso devuelve el clic del paso; sin paso, nada", () => {
+    expect(flowClickFor({ v: 1, w: "w", c: "c", u: "https://x.com", f: "f", p: null, s: null, e: 1, n: "step-1", b: "b0", r: "r" })).toEqual({
+      workspaceId: "w",
+      flowId: "f",
+      nodeId: "step-1",
+      buttonKey: "b0",
+      sessionId: "r",
+    });
+    expect(flowClickFor({ v: 1, w: "w", c: "c", u: "https://x.com", f: "f", p: null, s: null, e: 1 })).toBeNull();
   });
 });

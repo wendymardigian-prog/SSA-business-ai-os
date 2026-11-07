@@ -1,5 +1,6 @@
 "use client";
 
+import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,7 @@ const operatorLabels: Record<string, string> = {
   lt: "<",
 };
 
-export function ConditionNode({ data, selected }: NodeProps) {
+export function ConditionNode({ id, data, selected }: NodeProps) {
   const nodeData = data as ConditionNodeProps;
   const label = nodeData.label || "Condición";
   const conditions = nodeData.conditions || [];
@@ -44,6 +45,9 @@ export function ConditionNode({ data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-amber-500 px-3 py-2 text-white">
         <GitBranch className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Condición (sí / si no)</span>
+        <div className="ml-auto">
+          <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
+        </div>
       </div>
       <div className="p-3">
         <p className="text-sm font-medium">{label}</p>

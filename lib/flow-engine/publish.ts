@@ -15,7 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { emailAttachmentProblems } from "@/lib/email/attachment-limits";
-import { buildDesiredTriggers, persistableTriggerTypes } from "@/lib/flow-triggers";
+import { buildDesiredTriggers, CANVAS_TRIGGER_ROWS_FILTER, persistableTriggerTypes } from "@/lib/flow-triggers";
 import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative"; // @plantilla-quitar(ventas)
 import { isRelativeSalesTrigger } from "@/lib/sales/automation/triggers"; // @plantilla-quitar(ventas)
 import type { Database, Json } from "@/lib/types/database";
@@ -100,9 +100,9 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
   // The runtime matcher (lib/flow-engine/trigger-matcher.ts) reads triggers.config,
   // but the builder only ever saved keywords into flows.nodes — so triggers configured
   // in the UI never fired in production. Reconcile them here on publish. This includes
-  // `comment_keyword`: builder-created rows are workspace-wide (channel_id null), while
-  // Growth-tab rows are channel-scoped (channel_id set) and must survive republish —
-  // hence the null-channel guard on the delete below. A comment_keyword node with
+  // `comment_keyword`. El lienzo es el dueno de sus filas: sin canal, o con canal y la marca `origin: "canvas"` (el
+  // disparador de comentario elige su cuenta). Una regla vieja de la pestana Growth (con canal, sin marca) no se toca.
+  // A comment_keyword node with
   // "also match in DMs" emits a second row typed `keyword` (see below), so both rows
   // are reconciled together on every republish.
   const flowNodes = nodes as Array<Record<string, unknown>>;
@@ -110,13 +110,12 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
 
   // Reconcile: clear the builder-managed trigger rows for this flow, then insert the
   // fresh set derived from the current node graph (delete-and-reinsert keeps the table
-  // in sync with what was published and avoids duplicates on republish). Only
-  // null-channel rows are builder-managed; channel-scoped rows belong to the Growth tab.
+  // in sync with what was published and avoids duplicates on republish).
   await db
     .from("triggers")
     .delete()
     .eq("flow_id", flowId)
-    .is("channel_id", null)
+    .or(CANVAS_TRIGGER_ROWS_FILTER)
     // TODOS los tipos que arma el editor (mensaje, eventos, programados...): republicar no duplica ninguna fila.
     .in("type", persistableTriggerTypes());
 
@@ -127,7 +126,7 @@ export async function publishFlow(args: PublishFlowArgs): Promise<PublishFlowRes
     }
   }
 
-  // Las filas con canal (las de la pestaña Growth) NO se reactivan: si alguien apago una a mano, publicar no la vuelve
+  // Las reglas viejas de la pestaña Growth NO se reactivan: si alguien apago una a mano, publicar no la vuelve
   // a prender. Las que arma el editor ya nacen activas.
 
   // @plantilla-desde(ventas)
@@ -159,7 +158,7 @@ export async function unpublishFlow(db: Db, workspaceId: string, flowId: string)
     .from("triggers")
     .delete()
     .eq("flow_id", flowId)
-    .is("channel_id", null)
+    .or(CANVAS_TRIGGER_ROWS_FILTER)
     .in("type", persistableTriggerTypes());
   if (triggersError) {
     console.error("[publish] no pude sacar los disparadores del flujo:", triggersError.message);

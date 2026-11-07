@@ -4,15 +4,13 @@ import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { FlowExecutionContext, SendMessageNodeData } from "../types";
 import { adaptMessage } from "../platform-adapter";
 import { interpolateDeep } from "../interpolate";
-import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { sendChannelMessage, recordSend } from "../send";
-import { sentContentContext } from "@/lib/attribution/content-variables";
 import { attributeOutgoing, type OutgoingMessage } from "@/lib/attribution/outgoing-links";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
-import { outboundMessageRow } from "@/lib/messages/outbound";
 import { emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
 import { deferFlowNode, takeAlreadySent } from "../defer-node";
+import { deliverPrivateReply } from "./comment-reply";
 
 /** Los kinds que un flow puede declarar en mediaType; cualquier otra cosa cae en "image", como siempre. */
 const VALID_MEDIA_KINDS = new Set<AttachmentKind>(["image", "video", "audio", "voice", "document"]);
@@ -58,8 +56,7 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
     // comentario, asi que el primer mensaje sale por ahi en vez de perderse: la
     // gente arma esos flows con un Send Message comun, no con Private Reply.
     if (await needsCommentFallback(supabase, context)) {
-      await sendFirstMessageAsPrivateReply(supabase, data, context, node.id);
-      return;
+      return sendFirstMessageAsPrivateReply(supabase, data, context, node.id, sessionId);
     }
 
     // Por email, un mensaje de marketing que la guardia de entrega deja para despues (00287): el paso se vuelve a
@@ -88,7 +85,16 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
       // mismo objeto y no lee nada (lo fija la caracterización).
       const outgoing = await attributeOutgoing(
         supabase,
-        { workspaceId: context.workspaceId, contactId: context.contactId, flowId: context.flowId, platform: context.platform, variables: context.variables },
+        {
+          workspaceId: context.workspaceId,
+          contactId: context.contactId,
+          flowId: context.flowId,
+          platform: context.platform,
+          variables: context.variables,
+          nodeId: node.id,
+          sessionId,
+          linkPrefix: index > 0 ? `m${index}-` : null,
+        },
         data.attribution,
         { text, buttons: adapted.buttons, template: adapted.template, replyMarkup: adapted.replyMarkup } as OutgoingMessage,
       );
@@ -176,8 +182,9 @@ async function sendFirstMessageAsPrivateReply(
   supabase: SupabaseClient<Database>,
   data: SendMessageNodeData,
   context: FlowExecutionContext,
-  nodeId: string
-) {
+  nodeId: string,
+  sessionId: string,
+): Promise<"pause" | void> {
   const first = data.messages[0];
   if (!first) return;
 
@@ -195,8 +202,6 @@ async function sendFirstMessageAsPrivateReply(
     lateAccountId = channel.late_account_id;
   }
 
-  const zernio = createZernioClient(apiKey);
-
   // Las mismas variables que el envio normal, y las de la banca (antes este respaldo no las completaba).
   const firstText = adaptMessage(interpolateDeep(first, context.variables || {}), context.platform ?? "instagram").text;
   const [interpolated] = context.contactId
@@ -206,54 +211,32 @@ async function sendFirstMessageAsPrivateReply(
   const text = (
     await attributeOutgoing(
       supabase,
-      { workspaceId: context.workspaceId, contactId: context.contactId, flowId: context.flowId, platform: context.platform ?? "instagram", variables: context.variables },
+      { workspaceId: context.workspaceId, contactId: context.contactId, flowId: context.flowId, platform: context.platform ?? "instagram", variables: context.variables, nodeId, sessionId },
       data.attribution,
       { text: interpolated },
     )
   ).text;
 
-  try {
-    await zernio.comments.sendPrivateReplyToComment({
-      path: {
-        postId: String(context.variables!.post_id),
-        commentId: String(context.variables!.comment_id),
-      },
-      body: { accountId: lateAccountId, message: text },
-    });
+  const outcome = await deliverPrivateReply(supabase, {
+    context,
+    nodeId,
+    nodeType: "sendMessage",
+    sessionId,
+    apiKey,
+    lateAccountId,
+    postId: String(context.variables!.post_id),
+    commentId: String(context.variables!.comment_id),
+    text,
+    buttons: [],
+  });
+  if (outcome === "pause") return "pause";
 
-    await supabase.from("messages").insert(
-      outboundMessageRow({
-        conversationId: context.conversationId,
-        origin: "flow",
-        text,
-        sentByFlowId: context.flowId ?? null,
-        sentByNodeId: nodeId,
-        status: "sent",
-        originContext: sentContentContext(context),
-      }),
-    );
-
-    await supabase.from("analytics_events").insert({
-      workspace_id: context.workspaceId,
-      flow_id: context.flowId,
-      contact_id: context.contactId,
-      event_type: "message_sent",
-    });
-  } catch (error) {
-    console.error("Failed to send comment-context message as private reply:", error);
-    context.noteStep?.({ status: "failed", reason: "No se pudo mandar la respuesta por privado." });
-    await supabase.from("messages").insert(
-      outboundMessageRow({
-        conversationId: context.conversationId,
-        origin: "flow",
-        text,
-        sentByFlowId: context.flowId ?? null,
-        sentByNodeId: nodeId,
-        status: "failed",
-      }),
-    );
-    return;
-  }
+  await supabase.from("analytics_events").insert({
+    workspace_id: context.workspaceId,
+    flow_id: context.flowId,
+    contact_id: context.contactId,
+    event_type: "message_sent",
+  });
 
   if (data.messages.length > 1) {
     console.warn(

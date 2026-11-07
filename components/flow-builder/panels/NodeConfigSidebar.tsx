@@ -196,6 +196,15 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
   function renderPanel() {
     const data = node.data as Record<string, unknown>;
     const triggerData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
+    const attributionContext = attributionDefaults
+      ? {
+          flowId,
+          flowName: flowName ?? "",
+          defaults: attributionDefaults,
+          triggerType: triggerData?.triggerType as string | undefined,
+          storyReply: triggerData?.storyReply === true,
+        }
+      : undefined;
     switch (nodeType) {
       case "trigger":
         return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} sendsMessages={flowSendsMessages(nodes)} onChangeTrigger={onChangeTrigger} />; // @plantilla-quitar(webhooks)
@@ -207,17 +216,7 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
             data={data}
             onChange={handleChange}
             availableVariables={variables}
-            attributionContext={
-              attributionDefaults
-                ? {
-                    flowId,
-                    flowName: flowName ?? "",
-                    defaults: attributionDefaults,
-                    triggerType: triggerData?.triggerType as string | undefined,
-                    storyReply: triggerData?.storyReply === true,
-                  }
-                : undefined
-            }
+            attributionContext={attributionContext}
           />
         );
       case "condition":
@@ -233,7 +232,7 @@ export function NodeConfigSidebar({ flowId, flowName, attributionDefaults, node,
       case "aiResponse":
         return <AiResponsePanel data={data} onChange={handleChange} availableVariables={variables} />;
       case "action":
-        return <ActionPanel data={data} onChange={handleChange} availableVariables={variables} />;
+        return <ActionPanel data={data} onChange={handleChange} availableVariables={variables} attributionContext={attributionContext} />;
       default:
         return (
           <p className="text-sm text-muted-foreground">

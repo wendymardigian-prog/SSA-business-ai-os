@@ -151,6 +151,8 @@ export interface PrivateReplyNodeData {
   imageUrl?: string;
   /** Hasta tres botones que abren un link. Instagram puede rechazarlos si la persona no sigue la cuenta. */
   buttons?: Array<{ type: "url"; title: string; url: string }>;
+  /** Igual que en «Enviar mensaje»: UTM en los links y, con `trackClicks`, el clic de cada boton (metricas del lienzo). */
+  attribution?: { append: boolean; trackClicks: boolean };
 }
 
 export interface AiResponseNodeData {

@@ -23,7 +23,26 @@ type Db = SupabaseClient<Database>;
 
 export interface PostIdPlan {
   triggerId: string;
+  /** El flujo de esa fila: el id tambien se escribe en su disparador del lienzo. */
+  flowId?: string;
   postIds: string[];
+}
+
+/**
+ * Los nodos del flujo con el `postIds` nuevo en su disparador de comentario. El lienzo es el dueno de las filas de
+ * `triggers` (republicar las arma de nuevo desde el nodo): sin esto, el id que se completo en la fila se perdia en la
+ * proxima publicacion. Devuelve null si no hay un disparador de comentario que tocar.
+ */
+export function withNodePostIds(nodes: unknown, postIds: string[]): unknown[] | null {
+  if (!Array.isArray(nodes)) return null;
+  let touched = false;
+  const next = nodes.map((node) => {
+    const n = node as { type?: unknown; data?: Record<string, unknown> } | null;
+    if (n?.type !== "trigger" || n.data?.triggerType !== "comment_keyword") return node;
+    touched = true;
+    return { ...n, data: { ...n.data, postIds } };
+  });
+  return touched ? next : null;
 }
 
 /**
@@ -56,7 +75,7 @@ export function planPostId(params: {
   const postIds = addPostId(rule.postIds, params.externalPostId);
   if (postIds.length === rule.postIds.length) return null;
 
-  return { triggerId: rule.triggerId, postIds };
+  return { triggerId: rule.triggerId, flowId: rule.flowId, postIds };
 }
 
 /** Las automatizaciones del workspace, en la forma que espera `planPostId`. */
@@ -125,6 +144,21 @@ export async function completePostIds(
     if (error) {
       console.error("[publishing] no pude completar el postId:", error.message);
       return false;
+    }
+
+    // El mismo id en el disparador del lienzo (y en su borrador, si hay uno): asi sobrevive a republicar.
+    if (plan.flowId) {
+      const { data: flow } = await supabase.from("flows").select("nodes, draft_nodes").eq("id", plan.flowId).maybeSingle();
+      const row = flow as { nodes?: unknown; draft_nodes?: unknown } | null;
+      const nodes = withNodePostIds(row?.nodes, plan.postIds);
+      const draft = withNodePostIds(row?.draft_nodes, plan.postIds);
+      if (nodes || draft) {
+        const { error: flowError } = await supabase
+          .from("flows")
+          .update({ ...(nodes ? { nodes: nodes as Json } : {}), ...(draft ? { draft_nodes: draft as Json } : {}) })
+          .eq("id", plan.flowId);
+        if (flowError) console.error("[publishing] no pude completar el postId en el lienzo:", flowError.message);
+      }
     }
     return true;
   } catch (err) {

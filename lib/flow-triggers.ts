@@ -22,7 +22,16 @@ const isBuilderTriggerType = (t: string): t is BuilderTriggerType =>
   (BUILDER_TRIGGER_TYPES as readonly string[]).includes(t);
 
 /** Las claves del nodo que NO son configuración del trigger. */
-const NODE_ONLY_KEYS = new Set(["triggerType", "config", "keywords", "payload", "label", "description", "postIds", "replyText", "matchType", "alsoMatchInDms", "onlyIfAgentOff", "priority"]);
+const NODE_ONLY_KEYS = new Set(["triggerType", "config", "keywords", "payload", "label", "description", "postIds", "replyText", "matchType", "alsoMatchInDms", "onlyIfAgentOff", "priority", "channelId"]);
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * La marca de una fila de `triggers` que arma el lienzo. Las filas sin canal siempre fueron del lienzo; desde que el
+ * disparador de comentario elige su cuenta, una fila del lienzo puede tener canal, y la marca la distingue de una regla
+ * vieja de la pestana Growth (que republicar no borra).
+ */
+export const CANVAS_TRIGGER_ORIGIN = "canvas";
 
 /**
  * Los tipos que el editor puede guardar: los seis de mensaje más cualquiera
@@ -44,6 +53,12 @@ function isPersistableTriggerType(type: string): boolean {
  * publicar y despublicar reconcilian. Si no, cada republicacion de un flujo dejaria
  * UNA FILA MAS: el flujo correria una vez por cada vez que se habia publicado.
  */
+/**
+ * El filtro PostgREST de las filas que arma el lienzo: sin canal, o con canal y la marca `origin: "canvas"`. Una regla
+ * vieja de Growth (con canal y sin marca) no se toca al republicar: se ve en la pestana Comentarios como «regla vieja».
+ */
+export const CANVAS_TRIGGER_ROWS_FILTER = `channel_id.is.null,config->>origin.eq.${CANVAS_TRIGGER_ORIGIN}`;
+
 export function persistableTriggerTypes(): TriggerType[] {
   const types = new Set<string>(BUILDER_TRIGGER_TYPES);
   for (const t of listTriggers()) if (isPersistableTriggerType(t.type)) types.add(t.type);
@@ -52,7 +67,7 @@ export function persistableTriggerTypes(): TriggerType[] {
 
 export interface DesiredTrigger {
   flow_id: string;
-  channel_id: null;
+  channel_id: string | null;
   type: TriggerType;
   config: Json;
   is_active: boolean;
@@ -128,9 +143,16 @@ export function buildDesiredTriggers(
         config.only_if_agent_off = true;
       }
 
+      // La cuenta del disparador de comentario (o de palabra clave): sin elegir, todas las cuentas del negocio.
+      const channelId =
+        (type === "comment_keyword" || type === "keyword") && typeof data.channelId === "string" && UUID.test(data.channelId)
+          ? data.channelId
+          : null;
+      if (channelId) config.origin = CANVAS_TRIGGER_ORIGIN;
+
       const row: DesiredTrigger = {
         flow_id: flowId,
-        channel_id: null,
+        channel_id: channelId,
         type: type as TriggerType,
         config,
         is_active: true,

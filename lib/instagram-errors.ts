@@ -18,12 +18,15 @@
 
 /** Motivos que sabemos distinguir. */
 export type InstagramErrorKind =
+  | "already_replied"
+  | "buttons_not_allowed"
   | "not_thread_owner"
   | "outside_window"
   | "rate_limited"
   | "user_unavailable"
   | "token_expired"
   | "policy_violation"
+  | "temporary"
   | "unknown";
 
 export interface FriendlyError {
@@ -129,6 +132,36 @@ function isNotThreadOwner(error: unknown, meta: MetaErrorShape, text: string): b
 }
 
 const OUTSIDE_WINDOW_SUBCODES = new Set([2534022, 2018278]);
+
+/**
+ * Un subcodigo de Meta que Zernio deja dentro de `details` (su SDK descarta el error crudo, pero a veces copia el
+ * subcodigo ahi). Se mira ademas del que trae el error de Meta propiamente dicho.
+ */
+function detailsSubcode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const details = (error as { details?: unknown }).details;
+  if (!details || typeof details !== "object") return undefined;
+  const d = details as Record<string, unknown>;
+  for (const key of ["error_subcode", "errorSubcode", "subcode"]) {
+    const value = d[key];
+    if (typeof value === "number") return value;
+    if (typeof value === "string" && /^\d+$/.test(value)) return Number(value);
+  }
+  return undefined;
+}
+
+/** El status HTTP que deja el SDK de Zernio (`statusCode`), si lo hay. */
+function httpStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const status = (error as { statusCode?: unknown }).statusCode;
+  return typeof status === "number" ? status : undefined;
+}
+
+/**
+ * Instagram rechaza un mensaje con botones a quien no sigue la cuenta (codigo 2, subcodigo 1545133). Ese intento puede
+ * gastar la unica respuesta privada del comentario, asi que no se reintenta.
+ */
+const BUTTONS_NOT_ALLOWED_SUBCODE = 1545133;
 const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
 
 /**
@@ -139,8 +172,37 @@ const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
 export function describeSendError(error: unknown): FriendlyError {
   const meta = extractMetaError(error);
   const text = (meta.message ?? "").toLowerCase();
+  const subcode = meta.error_subcode ?? detailsSubcode(error);
 
-  if (isNotThreadOwner(error, meta, text)) {
+  // Instagram deja UNA respuesta privada por comentario. Si otra app (ManyChat, por ejemplo) contesto primero, la
+  // nuestra ya no sale y reintentar no sirve.
+  if (
+    text.includes("private reply has already been sent") ||
+    text.includes("one private reply per comment") ||
+    text.includes("already replied privately")
+  ) {
+    return {
+      kind: "already_replied",
+      message:
+        "Este comentario ya tenia una respuesta por privado: otra app (por ejemplo ManyChat) contesto primero. Instagram deja una sola.",
+      hint: "Si otra app tiene una automatizacion con la misma palabra, conviene apagarla alla para que conteste el sistema.",
+      retryable: false,
+    };
+  }
+
+  if (
+    subcode === BUTTONS_NOT_ALLOWED_SUBCODE ||
+    ((text.includes("button") || text.includes("template")) && text.includes("follow"))
+  ) {
+    return {
+      kind: "buttons_not_allowed",
+      message: "Instagram rechazo los botones porque la persona no sigue la cuenta.",
+      hint: "Instagram puede rechazar los botones a quien no sigue la cuenta, y ese intento gasta la respuesta privada del comentario.",
+      retryable: false,
+    };
+  }
+
+  if (isNotThreadOwner(error, { ...meta, error_subcode: subcode }, text)) {
     return {
       kind: "not_thread_owner",
       message: "Instagram no dejo enviar: esta conversacion la esta manejando otra app conectada a la cuenta (por ejemplo ManyChat).",
@@ -150,7 +212,7 @@ export function describeSendError(error: unknown): FriendlyError {
   }
 
   const outsideWindow =
-    (meta.error_subcode !== undefined && OUTSIDE_WINDOW_SUBCODES.has(meta.error_subcode)) ||
+    (subcode !== undefined && OUTSIDE_WINDOW_SUBCODES.has(subcode)) ||
     text.includes("outside of allowed window") ||
     text.includes("outside the allowed window") ||
     text.includes("24-hour") ||
@@ -218,12 +280,30 @@ export function describeSendError(error: unknown): FriendlyError {
     };
   }
 
+  const status = httpStatus(error);
+  if (status !== undefined && status >= 500) {
+    return {
+      kind: "temporary",
+      message: "Instagram o Zernio no respondieron bien en ese momento.",
+      hint: "Suele ser pasajero: el sistema lo reintenta solo.",
+      retryable: true,
+    };
+  }
+
   return {
     kind: "unknown",
     message: "No se pudo enviar el mensaje por Instagram.",
     hint: "El sistema lo va a reintentar. Si se repite, conviene revisar el estado del canal.",
     retryable: true,
   };
+}
+
+/**
+ * Si el motor puede reintentar solo, sin que nadie lo mire. Solo lo que es claramente pasajero: un motivo desconocido
+ * no, porque en una respuesta privada un intento de mas puede gastar la unica que Instagram deja.
+ */
+export function canAutoRetry(kind: InstagramErrorKind): boolean {
+  return kind === "rate_limited" || kind === "temporary";
 }
 
 /** Motivo cuando el freno lo puso el sistema, no la API. */

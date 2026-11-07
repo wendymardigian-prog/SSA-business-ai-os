@@ -1,5 +1,6 @@
 "use client";
 
+import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { UserRoundPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -9,7 +10,7 @@ import { parseUpsertContactConfig } from "@/lib/webhooks/upsert-config";
  * «Crear o actualizar contacto»: dos salidas, «Listo» (`ok`) y «No se pudo» (`fail`). Los pasos que
  * necesitan un contacto se conectan a «Listo»: el editor no deja publicar si falta (F10).
  */
-export function UpsertContactNode({ data, selected }: NodeProps) {
+export function UpsertContactNode({ id, data, selected }: NodeProps) {
   const nodeData = data as { label?: string };
   const config = parseUpsertContactConfig(data);
   const fields = config.map.length;
@@ -20,6 +21,9 @@ export function UpsertContactNode({ data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-teal-600 px-3 py-2 text-white">
         <UserRoundPlus className="h-3.5 w-3.5" aria-hidden />
         <span className="text-xs font-semibold">Crear o actualizar contacto</span>
+        <div className="ml-auto">
+          <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
+        </div>
       </div>
       <div className="p-3">
         <p className="text-sm font-medium">{nodeData.label || (config.mode === "update_only" ? "Actualizar contacto" : "Crear o actualizar")}</p>

@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ChevronDown, MessageSquare, Radio, ListOrdered, Sprout, type LucideIcon } from "lucide-react";
+import { ChevronDown, MessageCircle, MessageSquare, Radio, ListOrdered, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   comunicacionTabHref,
@@ -44,7 +44,7 @@ export const COMUNICACION_TABS: Tab[] = [
   { name: "Conversaciones", href: "/dashboard/inbox", icon: MessageSquare },
   { name: "Broadcasts", href: "/dashboard/broadcasts", icon: Radio },
   { name: "Sequences", href: "/dashboard/sequences", icon: ListOrdered },
-  { name: "Growth", href: "/dashboard/growth", icon: Sprout },
+  { name: "Comentarios", href: "/dashboard/comentarios", icon: MessageCircle },
 ];
 
 function readRememberedInboxQuery(): string | null {
