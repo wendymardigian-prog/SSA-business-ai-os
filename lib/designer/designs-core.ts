@@ -14,7 +14,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit } from "@/lib/audit";
 import type { Database, Json } from "@/lib/types/database";
-import type { ActionResult, CreateDesignInput, DesignKind } from "./contracts";
+import type { CreateDesignInput, DesignKind } from "./contracts";
 import { parseDesignDoc, type DesignDoc } from "./doc/schema";
 import { formatsForNew, isFormatKey, type FormatKey } from "./formats";
 import { pathBelongsTo } from "./storage";
@@ -62,7 +62,7 @@ export function isOwnImagePath(path: unknown, workspaceId: string): path is stri
   return typeof path === "string" && pathBelongsTo(path, workspaceId) && path.startsWith(`${workspaceId}/images/`) && path.length <= 500;
 }
 
-function asJson(value: unknown): Json {
+export function asJson(value: unknown): Json {
   return value as Json;
 }
 
@@ -164,4 +164,3 @@ export async function createDesignCore(env: CoreEnv, input: CreateDesignInput, c
   return { ok: true, data: { id, kind: input.kind, href: hrefFor(input.kind, id), doc: parsed.doc } };
 }
 
-export type { ActionResult };

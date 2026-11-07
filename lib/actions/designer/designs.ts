@@ -16,8 +16,10 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { resolveBrand } from "@/lib/brand";
 import { createServiceClient } from "@/lib/supabase/server";
-import { NOT_BUILT_YET, type ActionResult, type CreateDesignInput, type DesignTarget, type SaveDocResult, type TemplateSettingsInput, type VersionSummary } from "@/lib/designer/contracts";
+import type { ActionResult, CreateDesignInput, DesignTarget, SaveDocResult, TemplateSettingsInput, VersionSummary } from "@/lib/designer/contracts";
 import { createDesignCore, isOwnImagePath, type CoreEnv } from "@/lib/designer/designs-core";
+import { archiveCore, deleteCore, duplicateCore, listVersionsCore, renameCore, restoreVersionCore, saveDocCore, updateTemplateSettingsCore } from "@/lib/designer/designs-ops";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 import type { AiNotice, CreatedDesign, UploadedFile, UploadedImage } from "@/lib/designer/designs-types";
 import { MAX_IMAGE_BYTES, DESIGN_ASSETS_BUCKET, pathBelongsTo, signAssetUrls, uploadDesignImage } from "@/lib/designer/storage";
 import { parseDesignSettings } from "@/lib/designer/settings-schema";
@@ -75,35 +77,81 @@ export async function createDesign(input: CreateDesignInput): Promise<ActionResu
   }
 }
 
-export async function saveDesignDoc(_input: DesignTarget & { doc: unknown; rev: number }): Promise<SaveDocResult> {
-  return NOT_BUILT_YET(2);
+/**
+ * Guardar con control de versión (F27): `UPDATE … WHERE rev = $rev`. Con una `rev` vieja responde `conflict` con lo
+ * vigente (nunca pisa en silencio). Valida el documento con `parseDesignDoc`; en una plantilla acepta además las
+ * variables propias (`customVars`), que se validan acá. No encola ningún render.
+ */
+export async function saveDesignDoc(input: DesignTarget & { doc: unknown; rev: number; customVars?: unknown }): Promise<SaveDocResult> {
+  const scope = await editContext();
+  if (!scope) return { ok: false, error: NO_PERMISSION };
+  try {
+    return await saveDocCore(scope.env, { kind: input.kind, id: input.id, doc: input.doc, rev: input.rev, customVars: input.customVars });
+  } catch (error) {
+    console.error("[designer] saveDesignDoc falló:", error instanceof Error ? error.message : "error");
+    return { ok: false, error: "No pudimos guardar. Probá de nuevo." };
+  }
 }
 
-export async function renameDesign(_input: DesignTarget & { name: string }): Promise<ActionResult> {
-  return NOT_BUILT_YET(2);
+export async function renameDesign(input: DesignTarget & { name: string }): Promise<ActionResult> {
+  const scope = await editContext();
+  if (!scope) return { ok: false, error: NO_PERMISSION };
+  const result = await renameCore(scope.env, input, input.name);
+  if (result.ok) revalidatePath("/dashboard/disenos");
+  return result;
 }
 
-export async function duplicateDesign(_input: DesignTarget): Promise<ActionResult<{ id: string; href: string }>> {
-  return NOT_BUILT_YET(2);
+export async function duplicateDesign(input: DesignTarget): Promise<ActionResult<{ id: string; href: string }>> {
+  const scope = await editContext();
+  if (!scope) return { ok: false, error: NO_PERMISSION };
+  const result = await duplicateCore(scope.env, input);
+  if (result.ok) revalidatePath("/dashboard/disenos");
+  return result;
 }
 
-/** Archivar: un diseño publicado pide confirmación (`needsConfirm`) y se despublica antes. */
-export async function archiveDesign(_input: DesignTarget & { confirmUnpublish?: boolean }): Promise<ActionResult<{ needsConfirm?: boolean }>> {
-  return NOT_BUILT_YET(2);
+/**
+ * Archivar: un diseño publicado pide confirmación (`needsConfirm`) y se despublica antes. Con `restore: true` lo saca
+ * de archivados. Nunca borra.
+ */
+export async function archiveDesign(input: DesignTarget & { confirmUnpublish?: boolean; restore?: boolean }): Promise<ActionResult<{ needsConfirm?: boolean }>> {
+  const scope = await editContext();
+  if (!scope) return { ok: false, error: NO_PERMISSION };
+  const result = await archiveCore(scope.env, input, { confirmUnpublish: input.confirmUnpublish, restore: input.restore });
+  if (result.ok) revalidatePath("/dashboard/disenos");
+  return result;
 }
 
 /** Borrar definitivamente: solo borradores sin uso y con `designer.manage`. */
-export async function deleteDesign(_input: DesignTarget): Promise<ActionResult> {
-  return NOT_BUILT_YET(2);
+export async function deleteDesign(input: DesignTarget): Promise<ActionResult> {
+  const ctx = await getPermissionAction("designer.manage");
+  if (!ctx) return { ok: false, error: "Borrar definitivamente lo hace quien administra el Diseñador IA." };
+  const service = await createServiceClient();
+  const result = await deleteCore({ service, actor: { workspaceId: ctx.workspace.id, userId: ctx.user.id } }, input, true);
+  if (result.ok) revalidatePath("/dashboard/disenos");
+  return result;
 }
 
-export async function listVersions(_input: DesignTarget): Promise<ActionResult<VersionSummary[]>> {
-  return NOT_BUILT_YET(2);
+/** Las versiones más nuevas primero, con su documento para dibujar la miniatura en vivo. Se lee con la sesión: la RLS decide. */
+export async function listVersions(input: DesignTarget): Promise<ActionResult<VersionSummary[]>> {
+  const ctx = await getPermissionAction("designer.view");
+  if (!ctx) return { ok: false, error: "No tenés permiso para ver diseños." };
+  try {
+    const members = await getWorkspaceMembers(ctx.workspace.id);
+    const names = new Map(members.map((m) => [m.userId, m.name]));
+    return { ok: true, data: await listVersionsCore(ctx.supabase, ctx.workspace.id, input, names) };
+  } catch (error) {
+    console.error("[designer] listVersions falló:", error instanceof Error ? error.message : "error");
+    return { ok: false, error: "No pudimos leer las versiones. Probá de nuevo." };
+  }
 }
 
 /** Restaurar crea una versión nueva (nunca borra). */
-export async function restoreVersion(_input: DesignTarget & { versionId: string }): Promise<ActionResult<{ rev: number }>> {
-  return NOT_BUILT_YET(2);
+export async function restoreVersion(input: DesignTarget & { versionId: string }): Promise<ActionResult<{ rev: number }>> {
+  const scope = await editContext();
+  if (!scope) return { ok: false, error: NO_PERMISSION };
+  const result = await restoreVersionCore(scope.env, input, input.versionId);
+  if (result.ok) revalidatePath("/dashboard/disenos");
+  return result;
 }
 
 /** Sube una imagen validada por sus bytes a `design-assets`. Devuelve la ruta y un link firmado para verla. */
@@ -150,6 +198,15 @@ export async function listUploadedImages(): Promise<ActionResult<UploadedImage[]
 }
 
 /** Configuración de una plantilla (F28): formato, verificación y tipo, formato de fecha, descarga y variables propias. */
-export async function updateTemplateSettings(_input: TemplateSettingsInput): Promise<ActionResult<{ notice: string | null }>> {
-  return NOT_BUILT_YET(2);
+export async function updateTemplateSettings(input: TemplateSettingsInput): Promise<ActionResult<{ notice: string | null }>> {
+  const scope = await editContext();
+  if (!scope) return { ok: false, error: NO_PERMISSION };
+  try {
+    const result = await updateTemplateSettingsCore(scope.env, input);
+    if (result.ok) revalidatePath("/dashboard/disenos");
+    return result;
+  } catch (error) {
+    console.error("[designer] updateTemplateSettings falló:", error instanceof Error ? error.message : "error");
+    return { ok: false, error: "No pudimos guardar la configuración. Probá de nuevo." };
+  }
 }
