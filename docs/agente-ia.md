@@ -154,6 +154,12 @@ sin lo segundo, en modo borrador no subirían nunca.
 - El filtro de tags e `internal_only` va **dentro del SQL**
   (`match_knowledge_chunks_filtered`, 00062). Verificado contra la base en
   `scripts/verify-rls.mjs`.
+- **Quién lee la base (00314, noviembre 2026):** un documento interno (`internal_only`, por
+  ejemplo lo que sale de una llamada) solo quien tiene `knowledge.edit` (Owner y Admin
+  siempre); uno que no es interno, `knowledge.view`, `knowledge.edit` o `agents.view` (el
+  Member de sistema ve en Corridas los títulos de lo que leyó el agente). La regla vive en
+  `public.can_read_knowledge` y la usan las dos políticas de lectura y las dos búsquedas.
+  `p_include_internal = true` solo lo pide el servidor: con la sesión de una persona da error.
 
 ## Herramientas (tool registry, `lib/agent/tools/`)
 
