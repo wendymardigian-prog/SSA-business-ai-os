@@ -1,18 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Columns3, GripVertical, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, Columns3, GripVertical, Pin, Search } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
 import type { ColumnId } from "@/lib/dashboards/ads-crm-columns";
 import { menuGroups, moveColumn, moveColumnTo, resetPrefs, toggleColumn, type ColumnLevel, type ColumnPrefs } from "@/lib/dashboards/ads-columns";
+import type { TableView } from "./use-table-view";
 
 /**
  * El selector de columnas (Tirón 2, E4): un buscador arriba (son muchas), las columnas agrupadas como en la tabla (en Meta, con
  * subtítulos: Entrega, Clics, Video, Conversiones y Calidad), un checkbox por columna y dos formas de reordenar DENTRO de su bloque:
  * las flechas (botones, funcionan con teclado) y arrastrar el asa. Lo elegido se guarda por persona y por pestaña (`useColumnPrefs`).
  * Toda la lógica (qué se muestra, el filtro, el orden) está en `lib/dashboards/ads-columns.ts`.
+ *
+ * Con `view` suma el interruptor de los colores (verde y rojo) y marca con un alfiler las columnas fijas, que se sueltan desde acá
+ * o desde el encabezado. `compact`: solo el icono (la barra superior de Anuncios).
  */
-export function ColumnsMenu({ prefs, onChange, level }: { prefs: ColumnPrefs; onChange: (next: ColumnPrefs) => void; level: ColumnLevel }) {
+export function ColumnsMenu({
+  prefs,
+  onChange,
+  level,
+  view,
+  compact = false,
+}: {
+  prefs: ColumnPrefs;
+  onChange: (next: ColumnPrefs) => void;
+  level: ColumnLevel;
+  view?: TableView;
+  compact?: boolean;
+}) {
   const visible = new Set(prefs.visible);
   const [query, setQuery] = useState("");
   const [dragging, setDragging] = useState<ColumnId | null>(null);
@@ -21,17 +37,27 @@ export function ColumnsMenu({ prefs, onChange, level }: { prefs: ColumnPrefs; on
   return (
     <Popover
       label="Columnas"
-      triggerClassName="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs transition-colors hover:bg-accent"
+      triggerClassName={`inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background text-xs transition-colors hover:bg-accent ${compact ? "w-8 justify-center" : "px-2.5"}`}
       trigger={
         <>
           <Columns3 className="h-3.5 w-3.5" aria-hidden />
-          <span>Columnas</span>
+          {compact ? <span className="sr-only">Columnas</span> : <span>Columnas</span>}
         </>
       }
       panelClassName="w-80 max-h-[70vh] overflow-y-auto space-y-3"
       align="end"
     >
       <p className="text-[11px] text-muted-foreground">Elegí qué columnas ver y su orden. Se recuerda para vos, en cada pestaña.</p>
+
+      {view && (
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-2 text-xs">
+          <input type="checkbox" checked={view.colors} onChange={(e) => view.setColors(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--color-primary)]" />
+          <span>
+            <span className="block font-medium">Colores de mejor y peor</span>
+            <span className="block text-[11px] text-muted-foreground">Verde o rojo en costos, CTR, ROAS y Lead → Agenda, contra el valor del medio de lo que ves.</span>
+          </span>
+        </label>
+      )}
 
       <label className="relative block">
         <span className="sr-only">Buscar una columna</span>
@@ -84,6 +110,17 @@ export function ColumnsMenu({ prefs, onChange, level }: { prefs: ColumnPrefs; on
                       />
                       <span className="truncate">{column.label}</span>
                     </label>
+                    {view?.pinned.includes(column.id) && (
+                      <button
+                        type="button"
+                        onClick={() => view.togglePin(column.id)}
+                        aria-label={`Soltar ${column.label}`}
+                        title="Fijada a la izquierda. Clic para soltarla."
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-primary-ink hover:bg-accent"
+                      >
+                        <Pin className="h-3 w-3" aria-hidden />
+                      </button>
+                    )}
                     {!query && (
                       <>
                         <button
