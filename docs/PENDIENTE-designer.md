@@ -23,3 +23,31 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** el recorrido interactivo del prototipo del paso 0.
 - **Por qué:** Chrome respondió "extension disconnected" y el navegador de la app solo muestra un archivo local como imagen estática.
 - **Qué se decidió:** se leyó entero como texto (estructura, textos, orden e interacciones del HTML), como estaba previsto. La comparación visual se hace contra las capturas de la app en cada revisión; si Chrome vuelve a conectarse, se recorre en la revisión de la Ola 2.
+
+## Ola 1 (7/11/2026)
+
+### La 00318 la tomó otra sesión: el Diseñador IA usa 00319 a 00322
+- **Qué quedó:** D1 = 00319, D2 = 00320, D3 = 00321 (el plan decía 00318–00320), más la 00322 que corrige la 00320.
+- **Por qué:** a las 21:54 UTC otra sesión (vincular anuncios sin id) registró la `00318_meta_match_rules_similar`. La 00322: el trigger del documento leía `NEW.format` en `design_versions` (no tiene esa columna) y ninguna versión se podía guardar; lo detectó `verify-permissions-matrix` antes de que el código nuevo se usara en producción.
+- **Qué se decidió:** se corrió la numeración y se corrigió con una migración nueva (la 00320 ya estaba aplicada). **La próxima libre es la 00323.**
+
+### La imagen Docker del servicio de render no se probó
+- **Qué quedó:** `render/Dockerfile` (Playwright 1.65.0, `mcr.microsoft.com/playwright:v1.65.0-noble`) sin construir.
+- **Por qué:** en esta máquina no hay Docker. El servidor sí se probó con un Chromium real (Playwright en una carpeta temporal) y con 57 tests con navegador simulado.
+- **Qué se decidió:** se prueba en el primer despliegue en Railway (paso a paso en `docs/designer/puesta-en-marcha.md`). Los flags `--no-sandbox --disable-dev-shm-usage` son los de un contenedor sin sandbox; confirmarlos ahí.
+
+### La limpieza diaria todavía puede encolar un trabajo que no borra nada
+- **Qué quedó:** si la versión vieja de una pieza es la última PUBLICADA y hay otra más nueva sin publicar, `enqueue_design_cleanup` la cuenta como candidata pero `cleanupPlan` la conserva.
+- **Por qué:** afinarlo en SQL repite la regla de `cleanupPlan`; el costo es un job diario chico que no hace nada.
+- **Qué se decidió:** se deja así; si molesta, otra migración.
+
+### `verify-designer --bloque ds0` llama a la limpieza sobre toda la base
+- **Qué quedó:** el bloque prueba `private.enqueue_design_cleanup(now())`, que mira todos los negocios.
+- **Por qué:** la función no recibe un negocio.
+- **Qué se decidió:** hoy no hay datos del Diseñador IA en producción, así que no encola nada real. Cuando los haya, cada corrida puede encolar limpiezas reales (que solo borran lo que ya correspondía borrar).
+
+### Para los bloques que siguen (notas del auditor)
+- `design.code` solo se ofrece en plantillas con verificación (`variableGroups`); DS6 confirma si hace falta en las que no verifican.
+- `custom_vars` no se valida en SQL (forma de la clave y unicidad): lo validan las acciones de DS2 y DS6.
+- `design_public_get` devuelve una generación con verificación en cualquier estado: DS5 muestra solo `ready` o `void` (y "Se está preparando" en los demás).
+- La limpieza lista hasta 2000 carpetas de diseños por negocio.

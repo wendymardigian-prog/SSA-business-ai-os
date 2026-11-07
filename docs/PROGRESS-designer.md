@@ -56,7 +56,7 @@ Módulo nuevo de BAIOS: diseñar piezas visuales con IA o a mano (carruseles, hi
 
 | # | El plano dice | El código real | Qué hacemos |
 |---|---|---|---|
-| 1 | Última migración 00316 | 00317 (`flow_step_metrics`) en el registro de producción y en el repo. Ninguna rama local usa 00318 o más | D1 = **00318**, D2 = **00319**, D3 = **00320** (se reconfirma antes de cada una) |
+| 1 | Última migración 00316 | 00317 (`flow_step_metrics`) en el registro de producción y en el repo. Ninguna rama local usa 00318 o más | D1 = **00319**, D2 = **00320**, D3 = **00321**. Se planificaron como 00318–00320, pero el 7/11 a las 21:54 UTC otra sesión (vincular anuncios sin id) registró la `00318_meta_match_rules_similar`: se corrió todo uno |
 | 2 | §15: puede haber CHECK de tipos de nodo o de job | **No hay**. Consultado en la base: `scheduled_jobs` solo tiene CHECK de `status`, y los nodos viven en jsonb | No hay 4ª migración |
 | 3 | `designs.subject_contact_id → contacts` y `ai_threads.contact_id → contacts` | Toda FK a `contacts` tiene que estar cubierta por la fusión. `verify-contact-merge` falla si no está en `CONTACT_MERGE_TABLES` ni en `CONTACT_MERGE_EXCLUSIONS` | Se sigue el patrón de 00256 (`contacts_known_on_merge`), **sin reescribir `merge_contacts`**:<br>• en D2, trigger `contacts_designs_on_merge`, AFTER UPDATE OF `deleted_at` con `metadata.merged_into`, que reapunta `designs.subject_contact_id` y `ai_threads.contact_id`;<br>• `designs` y `ai_threads` van a `CONTACT_MERGE_EXCLUSIONS` con ese motivo;<br>• `verify-contact-merge` en verde |
 | 4 | F6: "`attempts` y `next_attempt_at`" | `scheduled_jobs` no tiene `next_attempt_at`: reintenta moviendo `run_at`, con `MAX_ATTEMPTS=3` y backoff de 10/20 s | D2 suma `designs.next_attempt_at timestamptz NULL`. Los handlers **nunca lanzan**: se reagendan a 1, 5 y 15 min con `scheduleJob`, como `decideAiFailure` (`lib/calls/ai-retry.ts`), y anotan `error` y `attempts` en la fila |
@@ -144,9 +144,12 @@ Lo que ya falla se anota y no puede empeorar.
 
 | Plano | Número | Qué | Cuándo |
 |---|---|---|---|
-| D1 | `00318_designer_settings_permissions` | Esto:<br>• `workspaces.design_settings` + `validate_design_settings` (trigger);<br>• `private.member_permission_keys()` redefinida, copiando la de 00250 letra por letra y sumando `designer.view` y `designer.edit`;<br>• buckets privados `design-assets` (20 MB) y `design-renders`, con política SELECT por `has_permission(<ws>, 'designer.view')`;<br>• sin escritura para `authenticated` | Ola 1 |
-| D2 | `00319_designer_tables` | **5 tablas**, con RLS SELECT, sin políticas de escritura y con sus `GRANT`:<br>• `design_templates` (+ `doc_type`, `doc_type_label`, `verify` por defecto `false`, CHECKs de V1 y V2; sin `thumb_path`);<br>• `designs` (+ `next_attempt_at`; `renders` sin miniatura);<br>• `design_versions` (solo el `doc`, sin `thumb_path`);<br>• **`ai_threads`** (`channel` CHECK `designer`/`portal`/`assistant`, `agent_id → agents`, `user_id → auth.users`, `contact_id → contacts` ON DELETE SET NULL, `subject_type` CHECK `design`/`design_template`/`product`, `subject_id` sin FK, `title`, `last_message_at`, `archived_at`; índices de §8.2 y único parcial `(subject_type, subject_id) WHERE channel = 'designer'`);<br>• **`ai_messages`** (`thread_id` ON DELETE CASCADE, `role` CHECK `user`/`assistant`, `content`, `attachments`, `context`, `result`, `citations`, `agent_run_id → agent_runs` ON DELETE SET NULL, `feedback` CHECK `up`/`down`; índice `(thread_id, created_at)`).<br><br>**RLS de los hilos, por canal:** `designer` → `has_permission(ws, 'designer.view')`; `assistant` → `user_id = auth.uid()` **y** `is_workspace_member(workspace_id)` (el hilo tiene que ser de un negocio del que la persona es miembro; caso propio en `verify-designer --bloque ds0`); `portal` → sin política todavía (la suma Servicios). `ai_messages` hereda la del hilo con `EXISTS`.<br><br>**Además:**<br>• `private.design_new_code()`;<br>• `validate_design_doc` (trigger);<br>• `design_public_get(code)` (DEFINER, `EXECUTE` para `anon` a propósito, comentado);<br>• trigger de fusión `contacts_designs_on_merge`, que reapunta `designs.subject_contact_id` **y** `ai_threads.contact_id`;<br>• limpieza diaria: `private.enqueue_design_cleanup()` (encola un `design_cleanup` por negocio y por día, **solo si hay candidatas**) + `cron.schedule` diario por SQL directo, como el de Finanzas y Tareas, sin tocar `call_app_cron`. Con las tablas vacías no encola nada, así que es segura antes del deploy;<br>• índices de §8.2 | Ola 1 |
-| D3 | `00320_agent_runs_source_designer` | CHECK de `agent_runs.source` + `'designer'`, con el CHECK viejo copiado en la cabecera | Ola 1 |
+| D1 | `00319_designer_settings_permissions` | Esto:<br>• `workspaces.design_settings` + `validate_design_settings` (trigger);<br>• `private.member_permission_keys()` redefinida, copiando la de 00250 letra por letra y sumando `designer.view` y `designer.edit`;<br>• buckets privados `design-assets` (20 MB) y `design-renders`, con política SELECT por `has_permission(<ws>, 'designer.view')`;<br>• sin escritura para `authenticated` | Ola 1 |
+| D2 | `00320_designer_tables` | **5 tablas**, con RLS SELECT, sin políticas de escritura y con sus `GRANT`:<br>• `design_templates` (+ `doc_type`, `doc_type_label`, `verify` por defecto `false`, CHECKs de V1 y V2; sin `thumb_path`);<br>• `designs` (+ `next_attempt_at`; `renders` sin miniatura);<br>• `design_versions` (solo el `doc`, sin `thumb_path`);<br>• **`ai_threads`** (`channel` CHECK `designer`/`portal`/`assistant`, `agent_id → agents`, `user_id → auth.users`, `contact_id → contacts` ON DELETE SET NULL, `subject_type` CHECK `design`/`design_template`/`product`, `subject_id` sin FK, `title`, `last_message_at`, `archived_at`; índices de §8.2 y único parcial `(subject_type, subject_id) WHERE channel = 'designer'`);<br>• **`ai_messages`** (`thread_id` ON DELETE CASCADE, `role` CHECK `user`/`assistant`, `content`, `attachments`, `context`, `result`, `citations`, `agent_run_id → agent_runs` ON DELETE SET NULL, `feedback` CHECK `up`/`down`; índice `(thread_id, created_at)`).<br><br>**RLS de los hilos, por canal:** `designer` → `has_permission(ws, 'designer.view')`; `assistant` → `user_id = auth.uid()` **y** `is_workspace_member(workspace_id)` (el hilo tiene que ser de un negocio del que la persona es miembro; caso propio en `verify-designer --bloque ds0`); `portal` → sin política todavía (la suma Servicios). `ai_messages` hereda la del hilo con `EXISTS`.<br><br>**Además:**<br>• `private.design_new_code()`;<br>• `validate_design_doc` (trigger);<br>• `design_public_get(code)` (DEFINER, `EXECUTE` para `anon` a propósito, comentado);<br>• trigger de fusión `contacts_designs_on_merge`, que reapunta `designs.subject_contact_id` **y** `ai_threads.contact_id`;<br>• limpieza diaria: `private.enqueue_design_cleanup()` (encola un `design_cleanup` por negocio y por día, **solo si hay candidatas**) + `cron.schedule` diario por SQL directo, como el de Finanzas y Tareas, sin tocar `call_app_cron`. Con las tablas vacías no encola nada, así que es segura antes del deploy;<br>• índices de §8.2 | Ola 1 |
+| D3 | `00321_agent_runs_source_designer` | CHECK de `agent_runs.source` + `'designer'`, con el CHECK viejo copiado en la cabecera | Ola 1 |
+| D2-fix | `00322_designer_doc_check_fix` | Corrige la 00320: el trigger del documento leía `NEW.format` también en `design_versions` (no tiene esa columna) y ninguna versión se podía guardar; y la limpieza diaria contaba la versión ACTUAL como candidata. Lo detectó `verify-permissions-matrix` antes de que el código nuevo se usara. Misma firma, ninguna tabla | Ola 1 |
+
+**Aplicadas y registradas el 7/11/2026 (UTC):** 00319 (`20261107220710`), 00320 (`20261107220734`), 00321 (`20261107221149`; el primer intento no llegó a correr por un error de autenticación de la CLI con el pooler, se reintentó) y 00322 (`20261107223521`). Las tres primeras se ensayaron juntas y la 00322 sola, cada una en una transacción que se deshizo sola. Las 4 huellas siguen iguales.
 
 **Las tres:**
 - son idempotentes;
@@ -299,7 +302,7 @@ En `lib/designer/contracts.ts` (solo tipos y reexportaciones) y `docs/designer/c
 | `components/designer/content/use-in-content.tsx` | DS8 |
 | `components/designer/automate/automate-modal.tsx` | DS7 |
 
-**7. Verificación:** `scripts/verify-designer.mjs` (runner + `--bloque`) y un archivo por bloque en `scripts/verify-designer/<bloque>.ts`, cada uno de un solo dueño.
+**7. Verificación:** `scripts/verify-designer.mjs` (runner + `--bloque`) y un archivo por bloque en `scripts/verify-designer/verify-<bloque>.ts`, cada uno de un solo dueño.
 
 ## Olas y bloques
 
@@ -335,7 +338,7 @@ En `lib/designer/contracts.ts` (solo tipos y reexportaciones) y `docs/designer/c
   - `verify-permissions-matrix` suma las tablas con `designer.view` (Owner, Admin, Member, rol con solo la clave y rol sin ella).
 - **F7:** `docs/designer/puesta-en-marcha.md`, con **Serverless prendido** en Railway (duerme sin pedidos), las tres variables, `GET /health`, costo, qué pasa si no está y que la primera exportación del día puede tardar unos segundos más.
 - **Dependencias:** `fflate` y `sanitize-html` (+ `.d.ts`).
-- **`scripts/verify-designer/ds0.ts`:**
+- **`scripts/verify-designer/verify-ds0.ts`:**
   - buckets privados y sus políticas;
   - RLS con Owner, Member y un rol sin `designer.view`;
   - unicidad de 2000 códigos;
@@ -383,7 +386,7 @@ Todos usan `sonnet`, worktree y rama `feat/disenador-ia-dsN`, que sale del tip i
   - el botón "Emitir …" sale de `issueButtonLabel`;
   - "copiar link" usa la URL que llega del servidor (V4).
 - **F48 (en vivo, V6):** la tarjeta de la lista, el historial de versiones (F27) y los selectores dibujan la página 1 con `renderPageHTML` reducido, en un contenedor escalado. Test: **guardar una versión no encola ningún render** (espía sobre `scheduleJob`/`enqueueDesignRender`) y la lista no dispara renders.
-- **Verify:** `scripts/verify-designer/ds2.ts` (conflicto de `rev` y que una generación no aparezca en la lista). La revisión visual es la del cierre de ola.
+- **Verify:** `scripts/verify-designer/verify-ds2.ts` (conflicto de `rev` y que una generación no aparezca en la lista). La revisión visual es la del cierre de ola.
 
 **DS3 — IA** (F31–F38)
 - **Archivos:**
@@ -413,7 +416,7 @@ Todos usan `sonnet`, worktree y rama `feat/disenador-ia-dsN`, que sale del tip i
   - `app/d/[code]/{page.tsx,layout.tsx,descargar/route.ts,preview.png/route.ts}`;
   - `lib/designer/public/*`, `lib/designer/export.ts` (`exportPlan`);
   - `lib/actions/designer/publish.ts`, `components/designer/publish/*`;
-  - `scripts/verify-designer/ds5.ts`.
+  - `scripts/verify-designer/verify-ds5.ts`.
 - **Reglas:**
   - tope por IP con `checkLimit` (120/min);
   - `noindex`;
@@ -471,7 +474,7 @@ Lo que nunca hace:
   - `lib/designer/jobs/generate-many.ts`;
   - `lib/designer/screens/generations.ts`;
   - `components/designer/generate/*`, `lib/actions/designer/generate.ts`;
-  - `scripts/verify-designer/ds6.ts`.
+  - `scripts/verify-designer/verify-ds6.ts`.
 - **Reglas:**
   - "Generar para varios" usa los filtros de Contactos (`prepareContactList` + `applyListClauses`, con el cliente de la persona, como Broadcasts);
   - el email sale por `sendTransactionalEmail` con categoría transaccional (pasa la puerta de suscripción);
@@ -488,7 +491,7 @@ Lo que nunca hace:
   - `lib/designer/content-map.ts`, `lib/designer/content-sync.ts` (`syncDecision`, ids estables), `lib/designer/jobs/content-sync.ts`;
   - `lib/actions/designer/content.ts`, `components/designer/content/*`;
   - en Contenido: botón y grupo "Del diseño" en `piece-drawer.tsx` / `media-uploader`, `hasDesign` en `BoardPost` + `kanban.tsx`, `designGroups`;
-  - `scripts/verify-designer/ds8.ts`.
+  - `scripts/verify-designer/verify-ds8.ts`.
 - **Antes de tocar el drawer:** tests de caracterización del drawer y de `media-uploader` como están hoy.
 - **Al cerrar:** `verify-content` en 0.
 
@@ -511,7 +514,7 @@ Lo que nunca hace:
    - `design.link` y `design.pdf_url` con `loadDesignLinks` (V4), con test con y sin dominio propio.
 3. **El adjunto (#17).**
 4. **"Automatizar" (F60):** `lib/actions/designer/automate.ts` + `automate-modal.tsx`.
-5. **`scripts/verify-designer/ds7.ts`** de punta a punta, con formulario de prueba y render simulado:
+5. **`scripts/verify-designer/verify-ds7.ts`** de punta a punta, con formulario de prueba y render simulado:
    - con el dato, la generación tiene ese valor;
    - con la respuesta vacía y "No generar", la generación queda `failed`.
 6. **Tests:** `lib/flow-engine` completo + `verify-flow-runs` y `verify-flow-metrics`. Una automatización existente corre igual.
@@ -600,7 +603,7 @@ En el worktree, después de `npm ci`:
 - **Huellas**: las de la tabla de "Punto de partida" de arriba.
 - **Prototipo**: Chrome respondió "extension disconnected" y el navegador de la app solo muestra el archivo como imagen. Se leyó como texto (ver PENDIENTE).
 
-**`verify-*`** desde la carpeta principal (mismo commit `5a12a81`, tiene el `.env`), de a uno con el candado. Al momento de este commit iban 25 de 44; la tabla completa se suma en el commit de la Ola 1.
+**`verify-*`** desde la carpeta principal (mismo commit `5a12a81`, tiene el `.env`), de a uno con el candado: **37 de 44 en 0**.
 
 | Script | Resultado | Duración |
 |---|---|---|
@@ -629,11 +632,32 @@ En el worktree, después de `npm ci`:
 | `verify-flow-metrics` | ✅ 0 | 19s |
 | `verify-flow-runs` | ✅ 0 | 36s |
 | `verify-forms` | ✅ 0 | 531s |
+| `verify-inbound-webhooks` | ✅ 0 | 67s |
+| `verify-inbox-filters` | ✅ 0 | 74s |
+| `verify-knowledge` | ✅ 0 | 12s |
+| `verify-message-persistence` | ✅ 0 | 9s |
+| `verify-optout` | ✅ 0 | 13s |
+| `verify-organic-attribution` | ✅ 0 | 94s |
+| `verify-payment-methods` | ✅ 0 | 41s |
+| `verify-permissions-matrix` | ✅ 0 | 311s |
+| `verify-publishing` | ✅ 0 | 62s |
+| `verify-rls` | ✅ 0 | 239s |
+| `verify-roles` | ✅ 0 | 131s |
+| `verify-sales` | ✅ 0 | 148s |
+| `verify-scheduling` | ✅ 0 | 60s |
+| `verify-student-schema` | ❌ 1 | 67s |
+| `verify-tasks` | ✅ 0 | 196s |
+| `verify-unidentified-contacts` | ✅ 0 | 43s |
+| `verify-webhook` | ❌ 1 | 0s |
+| `verify-whatsapp-groups` | ✅ 0 | 25s |
+| `verify-workspace-isolation` | ✅ 0 | 31s |
 
 Fallas que ya estaban antes de tocar nada (no pueden empeorar):
 - **`verify-attribution`**: 118 de 3200 contactos reales no tienen "primer toque". Son datos de producción, no código.
 - **`verify-booking-concurrency`**: en la ronda 1, de dos pedidos a la vez se creó una reunión y el otro no recibió el rechazo esperado; después la limpieza se cortó por el tiempo máximo de la base.
 - **`verify-broadcasts`**: no pudo borrar dos usuarios de prueba al limpiar.
+- **`verify-student-schema`**: necesita un Supabase local (`127.0.0.1:55322`) que acá no está corriendo.
+- **`verify-webhook`**: prueba el receptor contra la app levantada en `localhost:3000` (ECONNREFUSED).
 - **`verify-chat-core`** (382 de 383) y **`verify-eod`**: todas sus comprobaciones pasan; falla solo la limpieza. Borrar un workspace de prueba se corta por el tiempo máximo de sentencia de la base (`canceling statement due to statement timeout`), y una limpieza que falla cuenta como falla. Es el mismo patrón de `verify-booking-concurrency` y `verify-broadcasts`: la base de producción tarda en borrar en cascada. Los restos `zz-test-` los barre la limpieza del siguiente script.
 
 ## Checklist F1–F70 (por ola y bloque)
@@ -643,32 +667,32 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 ### Ola 1
 
 #### DS0 · Fundaciones (sesión principal)
-- [ ] F1 — Migración D1 (00318): `design_settings`, claves `designer.*` en tres capas, M12, buckets privados · prueba: — · auditado: —
-- [ ] F2 — Migración D2 (00319): `design_templates`, `designs`, `design_versions`, `design_public_get`, códigos · prueba: — · auditado: —
-  - [ ] F2 / V1–V2 — `doc_type`, `doc_type_label`, `verify` apagada por defecto, CHECK solo impresos y tipo obligatorio · prueba: — · auditado: —
-  - [ ] F2 / V5 — `ai_threads` y `ai_messages`, RLS por canal (designer / assistant / portal), único parcial por diseño · prueba: — · auditado: —
-  - [ ] F2 / fusión — trigger `contacts_designs_on_merge` (designs + ai_threads) y `CONTACT_MERGE_EXCLUSIONS` · prueba: — · auditado: —
-- [ ] F3 — Migración D3 (00320): `agent_runs.source` + `designer`; `AgentRunSource`, `AGENT_RUN_SOURCES`, `RUN_SOURCE_LABELS` ("Diseñador IA") · prueba: — · auditado: —
-- [ ] F4 — Menú (Herramientas › Diseñador IA, `Sparkles`) y rutas; `/d/` en `RESERVED_ROUTES` y robots · prueba: — · auditado: —
-- [ ] F6 — Jobs: 5 tipos registrados, `design_render` con 1/5/15 min y `failed` al 4º · prueba: — · auditado: —
-  - [ ] F6 / limpieza (F48b, parte DS0) — `cleanupPlan` + job `design_cleanup` + cron diario de D2 (solo encola con candidatas) · prueba: — · auditado: —
-- [ ] F7 — `docs/designer/puesta-en-marcha.md` con Serverless prendido y las tres variables · prueba: — · auditado: —
-- [ ] Contratos — `lib/designer/contracts.ts` + `docs/designer/contratos.md` · prueba: — · auditado: —
-- [ ] V4 contrato — `lib/designer/public-links.ts` (con y sin dominio propio) · prueba: — · auditado: —
-- [ ] V5 contrato — `lib/ai-threads/{schema,store}.ts` · prueba: — · auditado: —
+- [x] F1 — Migración D1 (00319): `design_settings`, claves `designer.*` en tres capas, M12, buckets privados · prueba: `member-sql-parity`, `catalog-usage`, `access-matrix`, `member-baseline`, `member-permissions-characterization`, `roles.patch` (M12) en verde; `verify-designer --bloque ds0` 60/60 (permisos del Member, buckets privados, nadie sube con la sesión, trigger de ajustes); `verify-roles` 0 · auditado: —
+- [x] F2 — Migración D2 (00320): `design_templates`, `designs`, `design_versions`, `design_public_get`, códigos · prueba: `verify-designer ds0`: RLS con Owner, Member, rol con solo `designer.view` y rol sin nada; sin escritura con la sesión; 2000 códigos únicos; `design_public_get` (inexistente, borrador, publicado, generación sin datos del sujeto, anulada); `verify-permissions-matrix` (5 tablas); 00322 corrige el trigger de versiones · auditado: —
+  - [x] F2 / V1–V2 — `doc_type`, `doc_type_label`, `verify` apagada por defecto, CHECK solo impresos y tipo obligatorio · prueba: `verification.test.ts` (18 casos); `verify-designer ds0` corre los mismos casos contra los CHECK de la base · auditado: —
+  - [x] F2 / V5 — `ai_threads` y `ai_messages`, RLS por canal (designer / assistant / portal), único parcial por diseño · prueba: `lib/ai-threads/schema.test.ts`, `store.test.ts`; `verify-designer ds0` (designer, assistant propio/ajeno, portal, otro negocio, único parcial); `verify-rls` (sección Diseñador IA); `verify-permissions-matrix` (ai_threads y ai_messages) · auditado: —
+  - [x] F2 / fusión — trigger `contacts_designs_on_merge` (designs + ai_threads) y `CONTACT_MERGE_EXCLUSIONS` · prueba: `merge.test.ts` (la guardia cuenta las exclusiones); `verify-designer ds0` (la generación y el hilo pasan al principal); `verify-contact-merge` 0 · auditado: —
+- [x] F3 — Migración D3 (00321): `agent_runs.source` + `designer`; `AgentRunSource`, `AGENT_RUN_SOURCES`, `RUN_SOURCE_LABELS` ("Diseñador IA") · prueba: `lib/agent/run-labels.test.ts` (CHECK = `RUN_SOURCE_LABELS`), guarda de exhaustividad de `AGENT_RUN_SOURCES`; `verify-designer ds0` (el CHECK suma 'designer' y conserva los demás) · auditado: —
+- [x] F4 — Menú (Herramientas › Diseñador IA, `Sparkles`) y rutas; `/d/` en `RESERVED_ROUTES` y robots · prueba: `lib/nav/items.test.ts`, `menu-by-role.characterization.test.ts`, `page-actions.test.ts`, `lib/site/pages.test.ts`, `middleware-characterization.test.ts` (`/d/…` sin sesión), `lib/designer/guards.test.ts` (404 sin la clave) · auditado: —
+- [x] F6 — Jobs: 5 tipos registrados, `design_render` con 1/5/15 min y `failed` al 4º · prueba: `lib/designer/jobs/render.test.ts` (1/5/15 min, `failed` al cuarto, sin servicio, imágenes sin firmar se reintentan, exportar prueba de plantilla); `lib/jobs/bootstrap-characterization.test.ts` (5 tipos) · auditado: —
+  - [x] F6 / limpieza (F48b, parte DS0) — `cleanupPlan` + job `design_cleanup` + cron diario de D2 (solo encola con candidatas) · prueba: `lib/designer/cleanup.test.ts` (29/31 días, 6/8 días, actual, publicada, generación); `verify-designer ds0` (sin candidatas no encola, la actual no cuenta, con candidata encola una vez, cron programado) · auditado: —
+- [x] F7 — `docs/designer/puesta-en-marcha.md` con Serverless prendido y las tres variables · prueba: `docs/designer/puesta-en-marcha.md` (Serverless, `RENDER_SERVICE_URL`, `RENDER_SERVICE_SECRET`, `RENDER_ALLOWED_HOSTS`) y `.env.example` · auditado: —
+- [x] Contratos — `lib/designer/contracts.ts` + `docs/designer/contratos.md` · prueba: `lib/designer/contracts.ts`, `docs/designer/contratos.md`, 8 archivos de Server Actions con firma definitiva, 9 puntos de montaje; `npx tsc --noEmit` 0 · auditado: —
+- [x] V4 contrato — `lib/designer/public-links.ts` (con y sin dominio propio) · prueba: `lib/designer/public-links.test.ts` (con y sin dominio propio, si la base falla, frontera sin dominio del navegador ni variable) · auditado: —
+- [x] V5 contrato — `lib/ai-threads/{schema,store}.ts` · prueba: `lib/ai-threads/schema.test.ts`, `store.test.ts` · auditado: —
 
 #### R · Servicio de render (subagente)
-- [ ] F5 — `render/` (servidor, firma HMAC con marca de tiempo, sin JS, red restringida, `measure`, Dockerfile Playwright); `render-client.ts` con arranque en frío y `DESIGNER_FAKE_RENDER` · prueba: — · auditado: —
+- [x] F5 — `render/` (servidor, firma HMAC con marca de tiempo, sin JS, red restringida, `measure`, Dockerfile Playwright); `render-client.ts` con arranque en frío y `DESIGNER_FAKE_RENDER` · prueba: `cd render && node --test` 57/57 (firma 401/60 s, 413, 503, 504, sin JS, red restringida, medición); `lib/designer/render-client.test.ts` (firma igual a la del servicio, copias iguales, simulado, arranque en frío, 401 no reintenta); Playwright 1.65.0, imagen `v1.65.0-noble` (no se construyó: no hay Docker acá) · auditado: —
 
 #### DS1 · Documento y render (sesión principal)
-- [ ] F8 — `DesignDoc` (Zod) + `doc.cases.json` (≥ 20) gemelo de `validate_design_doc` · prueba: — · auditado: —
-- [ ] F9 — Formatos y zonas seguras · prueba: — · auditado: —
-- [ ] F10 — `renderPageHTML` único, sin `<script>`, paridad con `elementStyle` · prueba: — · auditado: —
-- [ ] F11 — Tipografías (60 + Google + subidas, `sniffFont`) · prueba: — · auditado: —
-- [ ] F12 — Colores y contraste · prueba: — · auditado: —
-- [ ] F13 — Estilos de fábrica (6) · prueba: — · auditado: —
-- [ ] F14 — `canvas-math` (≥ 15 casos) · prueba: — · auditado: —
-- [ ] V2–V3 contrato — `verification.ts` + `verification.cases.json` (4 tipos × válido/anulado) · prueba: — · auditado: —
+- [x] F8 — `DesignDoc` (Zod) + `doc.cases.json` (≥ 20) gemelo de `validate_design_doc` · prueba: `lib/designer/doc/schema.test.ts` (31 casos de `doc.cases.json`); `verify-designer ds0` corre los mismos contra `validate_design_doc` · auditado: —
+- [x] F9 — Formatos y zonas seguras · prueba: `lib/designer/formats.test.ts` · auditado: —
+- [x] F10 — `renderPageHTML` único, sin `<script>`, paridad con `elementStyle` · prueba: `lib/designer/render/page-html.test.ts` (sin `<script`/`on…=`/`javascript:`, 13 ataques disfrazados, texto escapado, z-index, paridad de 10 elementos, web responsive) · auditado: —
+- [x] F11 — Tipografías (60 + Google + subidas, `sniffFont`) · prueba: `lib/designer/fonts.test.ts` (60 familias, una URL, pesos ajustados, `sniffFont`, 2 MB) · auditado: —
+- [x] F12 — Colores y contraste · prueba: `lib/designer/color.test.ts` (21 y 1, capa mínima para contraste) · auditado: —
+- [x] F13 — Estilos de fábrica (6) · prueba: `lib/designer/styles.test.ts` (6 de fábrica válidos con fuentes curadas) · auditado: —
+- [x] F14 — `canvas-math` (≥ 15 casos) · prueba: `lib/designer/canvas-math.test.ts` (21 tests) · auditado: —
+- [x] V2–V3 contrato — `verification.ts` + `verification.cases.json` (4 tipos × válido/anulado) · prueba: `lib/designer/verification.test.ts` (4 tipos × válido/anulado, botones, avisos, apagado al cambiar de formato) · auditado: —
 
 ### Ola 2
 
@@ -762,7 +786,7 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 
 | Subagente | Rama | Estado | Informe | Integrado | Auditado |
 |---|---|---|---|---|---|
-| R (render) | `feat/disenador-ia-render` | sin arrancar | — | no | no |
+| R (render) | `feat/disenador-ia-render` | terminado (`7c2d34e`) | F5 completo, 57 tests; Playwright 1.65.0; Docker sin probar (no hay Docker) | sí (merge en la Ola 1) | sí (auditor Ola 1) |
 | DS2 | `feat/disenador-ia-ds2` | sin arrancar | — | no | no |
 | DS3 | `feat/disenador-ia-ds3` | sin arrancar | — | no | no |
 | DS4 | `feat/disenador-ia-ds4` | sin arrancar | — | no | no |
