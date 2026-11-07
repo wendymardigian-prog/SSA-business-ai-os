@@ -698,25 +698,26 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 ### Ola 2
 
 #### DS2 · Editor manual (subagente)
-- [ ] F15 — Lista de Diseños y Plantillas · prueba: — · auditado: —
-- [ ] F16 — Crear (3 pasos, 4 caminos con ilustración) · prueba: — · auditado: —
-- [ ] F17 — Barra superior · prueba: — · auditado: —
-  - [ ] F17 / V3 — botón "Emitir <tipo>" desde `verification.ts` · prueba: — · auditado: —
-- [ ] F18 — Seleccionar y editar texto · prueba: — · auditado: —
-- [ ] F19 — Mover, imanes, tamaño y rotación · prueba: — · auditado: —
-- [ ] F20 — Capas · prueba: — · auditado: —
-- [ ] F21 — Barra del elemento · prueba: — · auditado: —
-- [ ] F22 — Agregar · prueba: — · auditado: —
-- [ ] F23 — Fondo y capa de color · prueba: — · auditado: —
-- [ ] F24 — Variables en el lienzo · prueba: — · auditado: —
-- [ ] F25 — Páginas · prueba: — · auditado: —
-- [ ] F26 — Deshacer y rehacer · prueba: — · auditado: —
-- [ ] F27 — Guardar (`rev`) y versiones · prueba: — · auditado: —
-- [ ] F28 — Configuración (drawer) · prueba: — · auditado: —
-  - [ ] F28 / V2 — "Se puede verificar" y tipo solo en impresos; al cambiar a no impreso se apaga con "Este formato no admite verificación" · prueba: — · auditado: —
-- [ ] F29 — Página web · prueba: — · auditado: —
-- [ ] F30 — Desde una imagen y en blanco · prueba: — · auditado: —
-- [ ] F48 — Miniaturas en vivo (`renderPageHTML` reducido); guardar una versión no encola renders · prueba: — · auditado: —
+> Integrado (`c3697e5`). `verify-designer --bloque ds2`: 27/27. Las pruebas son de `lib/designer/screens/*` (puras) y `lib/actions/designer/designs*.test.ts`.
+- [~] F15 — Lista de Diseños y Plantillas · prueba: `screens/list.test.ts` (filtros ↔ URL), `thumbs.test.ts`; verify ds2 (una generación nunca aparece, ni para un Member; contadores) · auditado: —
+- [~] F16 — Crear (3 pasos, 4 caminos con ilustración) · prueba: `screens/new-flow.test.ts`, `starter-docs.test.ts`, `uploads.test.ts` (SVG rechazado), `lib/actions/designer/designs.test.ts` · auditado: —
+- [~] F17 — Barra superior · prueba: `screens/toolbar.test.ts` (`editorActions`: lo que el permiso no da se oculta), `panels.test.ts` · auditado: —
+  - [~] F17 / V3 — botón "Emitir <tipo>" desde `verification.ts` · prueba: `toolbar.test.ts` · auditado: —
+- [~] F18 — Seleccionar y editar texto · prueba: `screens/selection.test.ts`, `variables.test.ts` (texto con fichas), `keyboard.test.ts` · auditado: —
+- [~] F19 — Mover, imanes, tamaño y rotación · prueba: `screens/canvas-session.test.ts`, `zoom.test.ts`, `canvas-boundary.test.ts` (el lienzo no calcula posiciones fuera de `canvas-math`) · auditado: —
+- [~] F20 — Capas · prueba: `screens/layers.test.ts` (reordenar y las 4 acciones; página cargada con `isImportedPage`) · auditado: —
+- [~] F21 — Barra del elemento · prueba: `screens/element-toolbar.test.ts` · auditado: —
+- [~] F22 — Agregar · prueba: `starter-docs.test.ts`, `uploads.test.ts`; panel `editor/add-panel.tsx` · auditado: —
+- [~] F23 — Fondo y capa de color · prueba: `screens/background.test.ts` · auditado: —
+- [~] F24 — Variables en el lienzo · prueba: `screens/variables.test.ts` (`serializeText`/`parseText`, variables propias validadas, `design.code` solo con verificación) · auditado: —
+- [~] F25 — Páginas · prueba: `screens/pages.test.ts` (máx. 20, la web sin tira) · auditado: —
+- [~] F26 — Deshacer y rehacer · prueba: `screens/history.test.ts` (un arrastre es un paso) · auditado: —
+- [~] F27 — Guardar (`rev`) y versiones · prueba: `save.test.ts`, `versions.test.ts`, `designs-ops.test.ts`; verify ds2 (conflict con la misma rev, una versión por sesión de 10 min, restaurar no borra) · auditado: —
+- [~] F28 — Configuración (drawer) · prueba: `screens/config.test.ts`, `format-change.test.ts`, `designs-ops.test.ts`; verify ds2 (archivar uno publicado confirma y despublica; borrar con generaciones se rechaza) · auditado: —
+  - [~] F28 / V2 — "Se puede verificar" y tipo solo en impresos; al cambiar a no impreso se apaga con "Este formato no admite verificación" · prueba: `format-change.test.ts`, `config.test.ts` (`updateTemplateSettings` con `verifyAfterFormatChange` + `validateTemplateVerification`) · auditado: —
+- [~] F29 — Página web · prueba: `screens/web.test.ts` (sin desplazamiento horizontal a 390 px) · auditado: —
+- [~] F30 — Desde una imagen y en blanco · prueba: `starter-docs.test.ts`, `designs.test.ts` (`createDesign`: imagen de fondo bloqueada «Cubrir»; en blanco con el color de la marca) · auditado: —
+- [~] F48 — Miniaturas en vivo (`renderPageHTML` reducido); guardar una versión no encola renders · prueba: `designs-ops.test.ts` (espía: guardar no encola salvo un diseño publicado), `thumbs.test.ts`; verify ds2 (guardar y restaurar no encolan) · auditado: —
 
 #### DS3 · IA (subagente)
 - [~] F31 — La conversación (en `ai_threads` / `ai_messages`, canal `designer`) · prueba: `lib/designer/ai/merge.test.ts`, `requests.test.ts`, `lib/actions/designer/ai.test.ts`, `screens/ai-panel.test.ts`, `ai-panel.test.ts`; todo por `lib/ai-threads/store.ts` · auditado: —
@@ -792,7 +793,7 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 | Subagente | Rama | Estado | Informe | Integrado | Auditado |
 |---|---|---|---|---|---|
 | R (render) | `feat/disenador-ia-render` | terminado (`7c2d34e`) | F5 completo, 57 tests; Playwright 1.65.0; Docker sin probar (no hay Docker) | sí (merge en la Ola 1) | sí (auditor Ola 1) |
-| DS2 | `feat/disenador-ia-ds2` | trabajando | — | no | no |
+| DS2 | `feat/disenador-ia-ds2` | terminado (`9f73da7`) | F15–F30, F48; verify-ds2 27/27 | sí (`c3697e5`) | no |
 | DS3 | `feat/disenador-ia-ds3` | terminado (`a3406c2`) | F31–F38, F11, V2; 17.257 tests en su rama | sí (`063d970`; `sanitizeAiDoc` enganchado a `sanitizeDocHtml`) | no |
 | DS4 | `feat/disenador-ia-ds4` | terminado (`978d3a8`) | F39–F42, 54 ataques | sí (`2365ee6`; tope de 51 MB y `@import` primero) | no |
 | DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | no |
