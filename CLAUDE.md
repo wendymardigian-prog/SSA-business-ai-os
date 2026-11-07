@@ -1330,7 +1330,7 @@ En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el últim
 
 ## Migración
 
-`00302_ads_crm_sales_fallback` (misma firma, ninguna tabla; la definición vieja en su cabecera) puede ir antes o después del deploy. La `00300` y la `00301` son de Grabaciones. **La próxima libre es la `00303`** (la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
+`00302_ads_crm_sales_fallback` (misma firma, ninguna tabla; la definición vieja en su cabecera) puede ir antes o después del deploy: **aplicada y registrada** el 6/11/2026 (versión `20261107011534`), con `verify-ads-attribution` en verde. La `00300` y la `00301` son de Grabaciones. **La próxima libre es la `00303`** (la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
