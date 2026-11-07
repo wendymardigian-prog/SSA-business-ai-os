@@ -319,7 +319,7 @@ Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de apl
 
 **Varios negocios en una instalacion (25/10/2026).** `00266_workspace_brand` (marca y tono por workspace, bucket publico `brand-assets`, usuario de agenda unico en toda la instalacion): **aplicada y registrada** el 25/10/2026 (version `20261025202218`), antes del deploy, con `verify-workspace-isolation --despues-de-00143` en verde. En un clon nuevo va ANTES de desplegar el codigo (el layout y los formularios leen sus columnas). Ver [docs/sumar-un-negocio.md](docs/sumar-un-negocio.md).
 
-**Una sola clasificacion de grabaciones (6/11/2026).** `00300_calls_catalog_classification` (aditiva: `booking_categories.description/system_key`, area y tipo en `calls`, conversion de lo viejo) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 6/11/2026 (version `20261106205222`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-calls --despues-de-00300` y `verify-scheduling --despues-de-00290` en verde. **La proxima libre es la `00301`** (confirmar con `list_migrations` y las ramas locales: la `00299` la uso otra sesion).
+**Una sola clasificacion de grabaciones (6/11/2026).** `00300_calls_catalog_classification` (aditiva: `booking_categories.description/system_key`, area y tipo en `calls`, conversion de lo viejo) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 6/11/2026 (version `20261106205222`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-calls --despues-de-00300` y `verify-scheduling --despues-de-00290` en verde. **Alcance por area (6/11/2026).** `00301_calls_scope_by_area` (aditiva: `scope_rank` con `areas`, `can_see_call`, `can_grant_call_areas`, el trigger, `can_give_role` y la politica de crear) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 6/11/2026 (version `20261106220002`), con `verify-calls --despues-de-00300 --despues-de-00301`, `verify-roles` (con todas sus banderas y `--despues-de-00301`), `verify-permissions-matrix` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. **La proxima libre es la `00302`** (confirmar con `list_migrations` y las ramas locales: la `00299` la uso otra sesion).
 
 **Importacion de conversaciones de Instagram (28/10/2026).** `00267_channel_inbox_import` (`channels.inbox_import`, el avance de la importacion): aditiva, **escrita y SIN aplicar todavia**. Va ANTES de desplegar el codigo (la cola y la pantalla de Canales la leen). Ver la seccion "Importacion de conversaciones de Zernio" mas abajo. **La proxima libre es la `00268`** (confirmar con `list_migrations`). La `00284_placeholder_name_ids` (un id o un @usuario como nombre es un relleno, y el backfill de los ~75 contactos con id como nombre y @usuario guardado) es aditiva y puede ir antes o despues del deploy.
 
@@ -542,7 +542,8 @@ corrigen sin perder lo que dijo la IA, y lo aprendido vuelve al negocio. Plano e
 - **`access-matrix.baseline.json` NO se regenera con `UPDATE_ACCESS_BASELINE`**: es la foto vieja a proposito y se reescribiria entera. Una entrada que se borra de verdad se saca a mano.
 - **Una sola tabla nueva: `calls`.** Escribe solo el servidor; la ven Owner y
   Admin, quien la grabo, quien ve su contacto (`can_see_contact`) y un rol con
-  `calls.view` de alcance `all` (`can_see_call`).
+  `calls.view` de alcance `all` o, con `areas`, de una de sus areas (`can_see_call`).
+- **Alcance por area (00301)**: `scopes.calls = 'areas'` + `permissions.call_areas`. Sin clasificar no entra por el area. Gemelas `lib/auth/call-areas.ts` y `private.role_sees_call_area` / `private.call_areas_exceed`, con `call-areas.cases.json`. **Dar un area se mira area por area**, no solo por el alcance: `assertCanGrant` y, en la base, la politica al crear, el trigger al editar y `can_give_role`. Un alcance nuevo tiene que entrar en `private.scope_rank` y en `SCOPE_RANK`: lo que no conocen vale lo mas bajo y se podria dar sin tenerlo. Detalle en docs/llamadas.md.
 - **Dos copias del analisis.** `analysis_ai` (lo que dijo la IA) solo cambia con
   una corrida nueva (otro `analysis_run_id`: lo exige el trigger
   `calls_protect_analysis_ai`); `analysis` es lo que se muestra y se corrige, y un
@@ -1318,6 +1319,20 @@ Reuniones y respuestas muestran su atribución y su vínculo con campaña, conju
 ## Migración
 
 `00299_meta_match_ids_only`: cambia a propósito la huella de `resolve_meta_match`. Se puede aplicar antes o después del código. Lo existente se vincula con el próximo sync o con `select public.rematch_meta_touches(<workspace>, '-infinity')`. **La próxima libre es la `00300`** (confirmar con `list_migrations` y las ramas locales).
+
+# A qué anuncio cuenta una venta (6/11/2026)
+
+En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el último toque con anuncio anterior a ella. Detalle en [docs/dashboards.md](docs/dashboards.md) («A qué anuncio cuenta una venta»).
+
+## Lo que no se puede romper
+
+- **Una venta `manual` nunca hereda**: es la decisión de una persona. Hereda solo `last_touch` o `none`.
+- **Solo la tabla decide al leer** (`ads_crm_items`, `v_sale_touch`): `sales.attribution`, `attribution_touch_id`, `create_sale`, la ficha y las comisiones no cambiaron.
+- **Ventas, UF cash y Cash salen de la misma búsqueda**: el Cash ya no tiene cruce propio en `ads_crm_metrics_v2`. `cash` es una métrica interna de `ads_crm_items`: `ads_crm_cell_detail` la rechaza.
+
+## Migración
+
+`00302_ads_crm_sales_fallback` (misma firma, ninguna tabla; la definición vieja en su cabecera) puede ir antes o después del deploy: **aplicada y registrada** el 6/11/2026 (versión `20261107011534`), con `verify-ads-attribution` en verde. La `00300` y la `00301` son de Grabaciones. **La próxima libre es la `00303`** (la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 

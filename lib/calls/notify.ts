@@ -3,9 +3,10 @@
  * administradores" en general). Nunca lanzan: un aviso que falla no puede
  * tumbar el job que lo genero.
  */
+import { roleSeesCallArea } from "@/lib/auth/call-areas";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { can, parsePermissions, scopeFor, systemRolePermissions } from "@/lib/auth/permissions";
+import { can, parsePermissions, systemRolePermissions } from "@/lib/auth/permissions";
 import { createNotificationOnce } from "@/lib/notifications/create";
 
 type Db = SupabaseClient<Database>;
@@ -19,8 +20,8 @@ export async function membersWithPermission(
   db: Db,
   workspaceId: string,
   key: string,
-  /** `scope: "all"`: solo quienes ven TODAS las llamadas (el alcance del modulo `calls`). */
-  opts: { scope?: "all" } = {},
+  /** `scope: "all"`: solo quienes ven TODAS las llamadas o, con `areaId`, las de esa area. */
+  opts: { scope?: "all"; areaId?: string | null } = {},
 ): Promise<string[]> {
   try {
     const [{ data: members }, { data: roles }] = await Promise.all([
@@ -37,7 +38,7 @@ export async function membersWithPermission(
         }
         const resolved = permissions ?? systemRolePermissions("member");
         if (!can(resolved, key)) return false;
-        return opts.scope === "all" ? scopeFor(resolved, "calls") === "all" : true;
+        return opts.scope === "all" ? roleSeesCallArea(resolved, opts.areaId ?? null) : true;
       })
       .map((m) => m.user_id);
   } catch (err) {
@@ -67,9 +68,9 @@ export async function notifyBudgetBlocked(db: Db, workspaceId: string, callId: s
   return sent;
 }
 
-/** El closer objeto un analisis: avisa a quienes editan TODAS las llamadas (nunca al propio closer). */
-export async function notifyObjection(db: Db, args: { workspaceId: string; callId: string; closerId: string; callTitle: string }): Promise<number> {
-  const editors = (await membersWithPermission(db, args.workspaceId, "calls.edit", { scope: "all" })).filter((id) => id !== args.closerId);
+/** El closer objeto un analisis: avisa a quienes editan todas las llamadas o las de su area (nunca al propio closer). */
+export async function notifyObjection(db: Db, args: { workspaceId: string; callId: string; closerId: string; callTitle: string; areaId?: string | null }): Promise<number> {
+  const editors = (await membersWithPermission(db, args.workspaceId, "calls.edit", { scope: "all", areaId: args.areaId })).filter((id) => id !== args.closerId);
   let sent = 0;
   for (const recipientId of editors) {
     const created = await createNotificationOnce({

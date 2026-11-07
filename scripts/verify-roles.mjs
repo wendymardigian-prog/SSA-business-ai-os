@@ -48,8 +48,9 @@ const PERMISSION_CHECKS = process.argv.includes("--despues-de-00208");
 const RETIRE_SETTINGS_MANAGE = process.argv.includes("--despues-de-00211");
 const TEAM_RLS = process.argv.includes("--despues-de-00212");
 const INBOX_BY_ACCOUNT = process.argv.includes("--despues-de-00249");
+const CALL_AREAS = process.argv.includes("--despues-de-00301");
 // @plantilla-hasta(proyecto)
-// @plantilla-sin(proyecto): const ROLE_SCOPES = true, PERMISSION_CHECKS = true, TEAM_RLS = true, INBOX_BY_ACCOUNT = true;
+// @plantilla-sin(proyecto): const ROLE_SCOPES = true, PERMISSION_CHECKS = true, TEAM_RLS = true, CALL_AREAS = true, INBOX_BY_ACCOUNT = true;
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 let failures = 0;
@@ -381,7 +382,7 @@ try {
 
   if (TEAM_RLS) {
     console.log("\n— RLS de equipo: no podes dar lo que no tenes —");
-    const casos = JSON.parse(readFileSync("lib/team/grant.cases.json", "utf8")).cases;
+    const casos = JSON.parse(readFileSync(new globalThis.URL("../lib/team/grant.cases.json", import.meta.url), "utf8")).cases;
     const dueno2 = await makeUser("roles-owner-212");
     await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: dueno2.id, role: "owner" });
 
@@ -664,6 +665,67 @@ try {
       const inv = await gestorIg1.client.from("workspace_invites").insert({ workspace_id: ws.id, email: `zz-test-inv-${randomUUID().slice(0, 8)}@example.test`, invited_by: gestorIg1.id, delivery: "link", role: "member", role_id: rolIg2 }).select("id");
       check(!!inv.error, "ni invita con un rol que tiene una cuenta que no tiene");
     }
+  }
+  if (CALL_AREAS) {
+    console.log("\n— Grabaciones por área: no podés dar un área que no tenés (00301) —");
+    const casos = JSON.parse(readFileSync(new globalThis.URL("../lib/auth/call-areas.cases.json", import.meta.url), "utf8"));
+    const res = (p) => (p && p.call_areas ? { ...p, call_areas: p.call_areas.map((k) => casos.ids[k]) } : p);
+    const lit = (v) => (v === null ? "NULL::jsonb" : `'${JSON.stringify(v).replace(/'/g, "''")}'::jsonb`);
+
+    // 1) Las gemelas puras, con la CLI.
+    {
+      const sql = [
+        ...casos.sees.map((c, i) => `select 's' as t, ${i} as i, private.role_sees_call_area(${lit(res(c.permissions))}, ${c.area ? `'${casos.ids[c.area]}'` : "NULL"}::uuid) = ${c.sees} as ok`),
+        ...casos.exceeds.map((c, i) => `select 'e' as t, ${i} as i, private.call_areas_exceed(${lit(res(c.wanted))}, ${lit(res(c.before))}, ${lit(res(c.actor))}) = ${c.exceeds} as ok`),
+      ].join(" union all ");
+      try {
+        const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), "-o", "json", `select json_agg(x) as r from (${sql}) x`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+        for (const row of JSON.parse(out).rows[0].r) check(row.ok, `gemela SQL: ${(row.t === "s" ? casos.sees : casos.exceeds)[row.i].name}`);
+      } catch (e) { fail("no pude correr los casos de las áreas (¿está la CLI de Supabase?)", String(e.message).slice(0, 200)); }
+    }
+
+    // 2) Con usuarios de verdad: política al crear, trigger al editar, can_give_role al invitar.
+    const { data: cats } = await svc.from("booking_categories").select("id, system_key").eq("workspace_id", ws.id);
+    const areaA = cats.find((c) => c.system_key === "ventas").id;
+    const areaB = cats.find((c) => c.system_key === "servicio").id;
+    const noChannels = { mode: "custom", byChannel: {} };
+    const permsDe = (calls, areas, keys = []) => ({ keys, scopes: { leads: "own", calls }, channels: noChannels, ...(areas ? { call_areas: areas } : {}) });
+    let n = 0;
+    const rol = async (permissions) => {
+      const { data, error } = await svc.from("workspace_roles").insert({ workspace_id: ws.id, name: `zz-test Areas ${++n}`, permissions }).select("id").single();
+      if (error) throw new Error(`no pude crear el rol: ${error.message}`);
+      return data.id;
+    };
+    const conRol = async (tag, permissions) => {
+      const u = await makeUser(tag);
+      await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: u.id, role: "member", role_id: await rol(permissions) });
+      return u;
+    };
+    const claves = ["roles.manage", "team.invite"];
+    const conA = await conRol("roles-areas-a", permsDe("areas", [areaA], claves));
+    const soloSuyas = await conRol("roles-areas-own", permsDe("own", null, claves));
+    const crear = (u, permissions) => u.client.from("workspace_roles").insert({ workspace_id: ws.id, name: `zz-test Creado ${++n}`, permissions }).select("id").single();
+
+    check(!(await crear(conA, permsDe("areas", [areaA]))).error, "crear: quien tiene un área crea un rol con esa área");
+    check(!!(await crear(conA, permsDe("areas", [areaB]))).error, "crear: ...pero no con otra");
+    check(!!(await crear(conA, permsDe("all"))).error, "crear: ...ni con todas");
+    check(!!(await crear(soloSuyas, permsDe("areas", [areaA]))).error, "crear: quien tiene las suyas no crea un rol por áreas");
+
+    const editable = await rol(permsDe("areas", [areaA]));
+    const editar = (u, permissions) => u.client.from("workspace_roles").update({ permissions }).eq("id", editable).select("id");
+    const leer = async () => (await svc.from("workspace_roles").select("permissions").eq("id", editable).single()).data.permissions.call_areas;
+    check(!!(await editar(conA, permsDe("areas", [areaA, areaB]))).error, "editar: el trigger frena agregar un área que no tiene, aunque el alcance no suba");
+    check(JSON.stringify(await leer()) === JSON.stringify([areaA]), "editar: ...y el rol queda como estaba");
+    check(!!(await editar(soloSuyas, permsDe("areas", [areaA, areaB]))).error, "editar: quien tiene las suyas tampoco");
+    check(!(await editar(soloSuyas, permsDe("areas", []))).error, "editar: sacar áreas siempre se puede");
+
+    const rolB = await rol(permsDe("areas", [areaB]));
+    const rolA = await rol(permsDe("areas", [areaA]));
+    const dar = async (u, roleId) => (await u.client.rpc("can_give_role", { p_workspace_id: ws.id, p_role_id: roleId, p_base_role: "member" })).data;
+    check((await dar(conA, rolA)) === true, "invitar: con el área que tiene, sí");
+    check((await dar(conA, rolB)) === false, "invitar: con otra área, no");
+    check((await dar(admin, rolB)) === true, "invitar: un Admin da cualquiera");
+    check(!!(await svc.from("workspace_roles").update({ permissions: permsDe("areas", [areaB]) }).eq("id", rolA).select("id").single()).data, "el servidor (service role) no pasa por la regla de quién da");
   }
 } catch (err) {
   fail("error inesperado", err instanceof Error ? err.message : String(err));
