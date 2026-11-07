@@ -169,3 +169,39 @@ export function isDesignGenerateNode(node: { type?: string; data?: unknown }): b
   if (node.type === DESIGN_GENERATE_TYPE) return true;
   return node.type === "action" && (node.data as { actionType?: unknown } | undefined)?.actionType === DESIGN_GENERATE_TYPE;
 }
+
+/** Una fila del panel: una variable que usa la plantilla y que el paso puede llenar. */
+export interface MappingRow {
+  key: string;
+  label: string;
+  /** "Propias", "Contacto", "Negocio" o el del módulo que la registró. */
+  group: string;
+  /** Una propia sin valor por defecto: si nadie la llena, decide «si falta un dato». */
+  required: boolean;
+}
+
+/** Las que completa el sistema solo (el código, el tipo y las fechas): no se asignan en el paso. */
+export const AUTO_DESIGN_KEYS: readonly string[] = ["design.code", "design.doc_type", "design.issued_on", "design.today"];
+
+/**
+ * Las filas del panel a partir de las variables que usa la plantilla (`docVariables`) y sus variables propias. Las
+ * propias van primero (son las que el disparador suele tener que llenar). Puro.
+ */
+export function mappingRows(
+  usedKeys: readonly string[],
+  customVars: ReadonlyArray<{ key: string; label: string; default?: string | null }>,
+  info: (key: string) => { label: string; group: string },
+): MappingRow[] {
+  const custom = new Map(customVars.map((v) => [v.key, v]));
+  const rows: MappingRow[] = [];
+  for (const key of usedKeys) {
+    if (AUTO_DESIGN_KEYS.includes(key) || rows.some((r) => r.key === key)) continue;
+    const own = custom.get(key);
+    if (own) rows.push({ key, label: own.label, group: "Propias", required: !(own.default ?? "").trim() });
+    else {
+      const meta = info(key);
+      rows.push({ key, label: meta.label, group: meta.group, required: false });
+    }
+  }
+  return rows.sort((a, b) => Number(b.group === "Propias") - Number(a.group === "Propias"));
+}

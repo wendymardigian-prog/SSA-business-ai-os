@@ -100,3 +100,24 @@ describe("la configuración del paso", () => {
     expect(hasDesignStepBefore("e0", nodes, edges)).toBe(false);
   });
 });
+
+describe("mappingRows (las filas del panel)", () => {
+  it("las propias primero; las automáticas no aparecen; sin repetidas", async () => {
+    const { mappingRows } = await import("./node-config");
+    const info = (key: string) => ({ label: key === "contact.first_name" ? "Nombre" : key, group: key.startsWith("contact.") ? "Contacto" : "Desconocida" });
+    expect(
+      mappingRows(
+        ["contact.first_name", "nombre_en_el_certificado", "design.code", "design.issued_on", "curso", "contact.first_name"],
+        [
+          { key: "nombre_en_el_certificado", label: "Nombre en el certificado" },
+          { key: "curso", label: "Curso", default: "Curso general" },
+        ],
+        info,
+      ),
+    ).toEqual([
+      { key: "nombre_en_el_certificado", label: "Nombre en el certificado", group: "Propias", required: true },
+      { key: "curso", label: "Curso", group: "Propias", required: false },
+      { key: "contact.first_name", label: "Nombre", group: "Contacto", required: false },
+    ]);
+  });
+});
