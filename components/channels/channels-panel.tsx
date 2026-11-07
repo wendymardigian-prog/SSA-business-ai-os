@@ -22,6 +22,7 @@ import { WhatsAppConnectModal } from "@/components/channels/whatsapp-connect-mod
 import { WhatsappCallSettings } from "@/components/channels/whatsapp-call-settings";
 import { WhatsappHistoryReview } from "@/components/channels/whatsapp-history-review";
 import { WhatsappGroupSettings } from "@/components/channels/whatsapp-group-settings";
+import { WhatsappBanRiskNotice } from "@/components/channels/whatsapp-ban-risk-notice";
 import { WhatsappSendPace } from "@/components/channels/whatsapp-send-pace";
 import { PlatformIcon } from "@/components/platform-icon";
 import type { Database } from "@/lib/types/database";
@@ -397,6 +398,7 @@ export function ChannelsPanel({
 
       {/* Channel cards */}
       <div>
+        {provider === "evolution" && <WhatsappBanRiskNotice className="mb-4" />}
         {webhookError && (
           <div
             role="alert"

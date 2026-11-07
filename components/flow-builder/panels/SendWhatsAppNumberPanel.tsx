@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { loadWhatsAppChannelOptions } from "@/lib/actions/flow-node-options";
 import type { SendWhatsAppNumberData } from "@/lib/flow-engine/nodes/send-whatsapp-number";
+import { WhatsappBanRiskNotice } from "@/components/channels/whatsapp-ban-risk-notice";
 import { FieldEmojiButton } from "@/components/ui/emoji-picker";
 import { resolveWhatsAppTarget } from "@/lib/flow-engine/whatsapp-target";
 
@@ -57,6 +58,8 @@ export function SendWhatsAppNumberPanel({
 
   return (
     <div className="space-y-4">
+      <WhatsappBanRiskNotice />
+
       <div>
         <label htmlFor="wa-to" className={labelClass}>A quién</label>
         <select id="wa-to" value={mode} onChange={(e) => set({ to: e.target.value as "fixed" | "variable" })} className={inputClass}>

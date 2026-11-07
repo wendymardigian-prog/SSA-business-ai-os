@@ -70,6 +70,8 @@ Cada aviso nuevo encola un job `notification_deliver` (trigger de la 00275, que 
 
 **El WhatsApp de avisos** se elige en Ajustes → General → "Avisos al equipo por WhatsApp" (`workspaces.team_alerts_settings`, pide `settings.general`). Tiene que ser un WhatsApp conectado por Evolution. Sin él, la columna WhatsApp aparece deshabilitada con el motivo. En el perfil, "Mandarme un WhatsApp de prueba" (3 por hora) confirma que el número está bien.
 
+**Estos WhatsApp no pasan por la cola de envíos.** Salen en el momento por `sendEvolutionDirect`: sin el ritmo de los broadcasts y sin el tope de 200 por hora de los envíos automáticos. Su único freno es el de arriba (uno cada 10 minutos, por persona, evento y cosa). La pantalla lo advierte con `WhatsappBanRiskNotice` (`components/channels/whatsapp-ban-risk-notice.tsx`), el mismo aviso de riesgo de bloqueo que se ve en Canales y en los pasos «Enviar WhatsApp a un número» y «Enviar encuesta».
+
 El aviso de "canal desconectado" ya no manda su propio email desde `notifyWorkspaceAdmins`: lo manda el job, y por defecto le sigue llegando a Owner/Admin.
 
 ## Migraciones
