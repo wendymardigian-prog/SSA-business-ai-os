@@ -276,7 +276,7 @@ export async function answerProposalRequest(db: Db, input: Who & { kind: DesignK
     });
     const valid = parseDesignDoc(normalized.doc);
     if (!valid.ok) return fail("La propuesta no se pudo aplicar. Pedila de nuevo.");
-    const clean = sanitizeAiDoc(valid.doc, current.doc).doc;
+    const clean = sanitizeAiDoc(valid.doc, current.doc, input.workspaceId).doc;
     const rev = await saveDocWithRev(db, { workspaceId: input.workspaceId, kind: input.kind, id: input.id, rev: current.rev, doc: clean });
     if (rev === null) continue;
     await insertVersion(db, { workspaceId: input.workspaceId, kind: input.kind, id: input.id, doc: clean, reason: "ai", authorKind: "ai", authorId: null, createdBy: input.userId });

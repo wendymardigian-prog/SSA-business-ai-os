@@ -11,12 +11,14 @@
  *
  * Es el ÚNICO lugar por el que pasa todo documento de la IA antes de guardarse
  * (la primera versión, un parche aplicado, una propuesta aceptada): si el
- * documento trae un `sanitizeDocHtml` propio (carga de HTML), se engancha acá.
+ * Después, con el negocio, todo `html`/`css` vuelve a pasar por `sanitizeDocHtml` (la limpieza de la carga de HTML,
+ * DS4): aunque lo que quedó ya estaba limpio, nunca se guarda sin limpiar.
  *
  * Módulo puro.
  */
 
 import type { DesignDoc } from "../doc/schema";
+import { sanitizeDocHtml } from "../import/edit";
 
 export interface SanitizedDoc {
   doc: DesignDoc;
@@ -24,7 +26,14 @@ export interface SanitizedDoc {
   removed: number;
 }
 
-export function sanitizeAiDoc(doc: DesignDoc, base: DesignDoc): SanitizedDoc {
+export function sanitizeAiDoc(doc: DesignDoc, base: DesignDoc, workspaceId?: string): SanitizedDoc {
+  const kept = keepKnownHtml(doc, base);
+  if (!workspaceId) return kept;
+  const cleaned = sanitizeDocHtml(kept.doc, workspaceId);
+  return cleaned.changed ? { doc: cleaned.doc, removed: kept.removed } : kept;
+}
+
+function keepKnownHtml(doc: DesignDoc, base: DesignDoc): SanitizedDoc {
   const known = new Map<string, string>();
   for (const page of base.pages) {
     for (const el of page.elements) if (el.type === "html") known.set(el.id, JSON.stringify([el.html, el.css ?? ""]));

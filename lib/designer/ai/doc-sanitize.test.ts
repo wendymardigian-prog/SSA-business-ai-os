@@ -83,3 +83,13 @@ describe("ai/doc-sanitize: un parche de la IA que mete <script> no llega a guard
     expect(out.doc.pages.every((p) => p.elements.every((e) => e.type !== "html"))).toBe(true);
   });
 });
+
+describe("ai/doc-sanitize: con el negocio, también pasa por la limpieza de la carga de HTML (DS4)", () => {
+  it("un bloque cargado que alguien adulteró en la base sale limpio aunque la IA no lo haya tocado", () => {
+    const dirty = withHtml('<p onclick="alert(1)">Cargado</p><script>alert(2)</script>');
+    const r = sanitizeAiDoc(structuredClone(dirty), dirty, "11111111-1111-4111-8111-111111111111");
+    const html = r.doc.pages.flatMap((p) => p.elements).find((el) => el.type === "html") as { html: string } | undefined;
+    expect(html?.html).toContain("Cargado");
+    expect(html?.html).not.toMatch(/<script|onclick/i);
+  });
+});
