@@ -20,6 +20,7 @@ import { parseStatusSettings } from "@/lib/contacts/statuses";
 import { getAgentTool } from "./tools/index";
 import { newNonce, wrapUntrusted } from "./untrusted";
 import { effectiveMessageText } from "./effective-text";
+import { isLowSignalConversation } from "./low-signal";
 import { aiLanguageStyle } from "@/lib/ai/language-style";
 import { assembleTaskPrompt, interpolate, SUMMARY_DEFAULT_INSTRUCTIONS } from "@/lib/ai-tasks/instructions";
 import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
@@ -42,8 +43,9 @@ import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
  *     (lista blanca de tags, si puede bajar la temperatura, maximo de dias):
  *     lo que el modelo proponga fuera de eso no se aplica.
  *   - Todo pasa por openAiRun con source conversation_summary: su costo entra
- *     al total. Sin mensajes nuevos desde el ultimo resumen, no se llama al
- *     modelo ni se abre run.
+ *     al total. Sin mensajes nuevos desde el ultimo resumen, o sin nada del
+ *     lead que valga la pena (low-signal.ts), no se llama al modelo ni se abre
+ *     run.
  *
  * Nunca se loguea contenido de mensajes ni del resumen.
  */
@@ -69,7 +71,7 @@ export const defaultSummaryDeps: SummaryDeps = {
 };
 
 export type SummaryOutcome =
-  | { kind: "skipped"; reason: "not_closed" | "no_agent" | "summary_disabled" | "no_new_messages" | "no_conversation" }
+  | { kind: "skipped"; reason: "not_closed" | "no_agent" | "summary_disabled" | "no_new_messages" | "low_signal" | "no_conversation" }
   | { kind: "run"; status: "completed" | "error"; detail: string | null; runId: string | null };
 
 const outputSchema = z.object({
@@ -220,6 +222,14 @@ export async function summarizeConversationOnClose(
     .map((m) => ({ ...m, text: effectiveMessageText(m) }))
     .filter((m) => m.text);
   if (messages.length === 0) return { kind: "skipped", reason: "no_new_messages" };
+
+  // Sin nada del lead que valga la pena (nunca contesto, o solo un "si" a la
+  // automatizacion): no se gasta una llamada ni se pisa la memoria del contacto.
+  // Se mira `rows` y no `messages`: un audio sin transcribir ya quedo afuera de
+  // `messages`, pero sigue siendo algo que dijo el lead.
+  if (isLowSignalConversation((rows ?? []).map((m) => ({ direction: m.direction, text: effectiveMessageText(m), attachments: m.attachments })))) {
+    return { kind: "skipped", reason: "low_signal" };
+  }
 
   const { data: contact } = await supabase
     .from("contacts")
