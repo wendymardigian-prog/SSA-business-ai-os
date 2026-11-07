@@ -3988,11 +3988,7 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
-      /**
-       * Historial de instrucciones (la parte editable del prompt) de las
-       * tareas de IA, mismo patron que agent_prompt_versions (migracion
-       * 00137). Solo Owner/Admin; nadie actualiza ni borra una version.
-       */
+      // @plantilla-desde(llamadas)
       /** Un analizador por tipo de reunion o area (00303). Escribe solo el servidor. */
       call_analysis_profiles: {
         Row: {
@@ -4034,6 +4030,12 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["call_analysis_profiles"]["Insert"]>;
         Relationships: [];
       };
+      // @plantilla-hasta(llamadas)
+      /**
+       * Historial de instrucciones (la parte editable del prompt) de las
+       * tareas de IA, mismo patron que agent_prompt_versions (migracion
+       * 00137). Solo Owner/Admin; nadie actualiza ni borra una version.
+       */
       ai_task_prompt_versions: {
         Row: {
           id: string;
