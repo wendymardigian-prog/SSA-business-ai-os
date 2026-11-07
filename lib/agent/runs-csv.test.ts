@@ -54,6 +54,19 @@ describe("runsToCsv", () => {
     expect(lines[1]).toContain('""cuidado""');
   });
 
+  it("un nombre de contacto que parece una formula no se ejecuta al abrir el CSV", () => {
+    // El nombre lo pone quien escribe por Instagram o WhatsApp: no se confia en el.
+    for (const name of ["=1+1", "+1+1", "-2+3", "@SUM(A1)"]) {
+      const csv = runsToCsv([run({ id: "r1", contactName: name })], { includeCost: false });
+      expect(csv.split("\r\n")[1]).toContain(`,'${name},`);
+    }
+  });
+
+  it("un nombre normal sale igual que antes", () => {
+    const csv = runsToCsv([run({ id: "r1", contactName: "Ana Perez" })], { includeCost: false });
+    expect(csv.split("\r\n")[1]).toContain(",Ana Perez,");
+  });
+
   it("el encabezado es exactamente el que pide el documento", () => {
     const csv = runsToCsv([], { includeCost: true });
     expect(csv).toBe(

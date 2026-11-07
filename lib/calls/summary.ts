@@ -88,8 +88,8 @@ export interface SummaryCall {
 export function buildSummaryUser(call: SummaryCall, previousMemory: string | null, nonce: string): string {
   return [
     `Tipo de llamada: ${call.call_type ?? "desconocido"}`,
-    `Título: ${call.title}`,
-    `Invitados:\n${attendeesText(call.attendees)}`,
+    // El titulo y los invitados vienen de Fathom (los escribio quien agendo): dato, igual que la transcripcion.
+    wrapUntrusted("llamada", nonce, `Título: ${call.title}\nInvitados:\n${attendeesText(call.attendees)}`),
     previousMemory ? `Memoria previa del contacto:\n${wrapUntrusted("memoria", nonce, previousMemory)}` : "No hay memoria previa del contacto.",
     `Transcripción:\n${wrapUntrusted("llamada", nonce, headAndTail(transcriptText(call.transcript), SUMMARY_MAX_TRANSCRIPT, SUMMARY_MAX_TRANSCRIPT / 2))}`,
   ].join("\n\n");

@@ -40,6 +40,8 @@ describe("antispam (F29)", () => {
 
   it("la IP sale del proxy", () => {
     expect(clientIp(new Headers({ "x-forwarded-for": "9.9.9.9, 10.0.0.1" }))).toBe("9.9.9.9");
+    // X-Real-IP lo pisa el borde de Railway: gana sobre un X-Forwarded-For que manda el cliente.
+    expect(clientIp(new Headers({ "x-forwarded-for": "1.1.1.1", "x-real-ip": "8.8.8.8" }))).toBe("8.8.8.8");
     expect(clientIp(new Headers({ "x-real-ip": "8.8.8.8" }))).toBe("8.8.8.8");
     expect(clientIp(new Headers())).toBe("0.0.0.0");
   });

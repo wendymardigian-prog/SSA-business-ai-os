@@ -143,6 +143,27 @@ describe("resolver los permisos (F70)", () => {
     expect(ctx.permissions).toEqual(SYSTEM_ROLE_PERMISSIONS.member);
   });
 
+  it("si falla la lectura del rol personalizado, no da ningun permiso", async () => {
+    // Antes caia en los de Member: un rol mas chico que Member ganaba permisos.
+    const failing = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: "timeout" } }) }),
+        }),
+      }),
+    };
+    getWorkspace.mockResolvedValue({ user: { id: "u-1" }, workspace: { id: WS }, role: "member", roleId: "r-1", supabase: failing });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const ctx = await getPermissionContext();
+
+    expect(ctx.permissions.keys).toEqual([]);
+    expect(ctx.can("content.create")).toBe(false);
+    expect(ctx.can("contacts.view")).toBe(false);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("[permisos]"), "timeout");
+    spy.mockRestore();
+  });
+
   it("un rol que ya no existe deja los permisos de Member", async () => {
     // Del lado seguro: nunca mas permisos de los que corresponden.
     context({ role: "member", roleId: "r-borrado", roles: [] });

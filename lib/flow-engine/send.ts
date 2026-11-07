@@ -598,7 +598,8 @@ async function sendEvolutionDirectOnce(
     );
     return { ok: true, platformMessageId: sent.id };
   } catch (error) {
-    const detail = error instanceof EvolutionError ? error.message : "error desconocido";
+    // Solo el estado HTTP: el mensaje de Evolution puede traer el numero de la persona.
+    const detail = error instanceof EvolutionError ? `estado ${error.status ?? "sin respuesta"}` : "error desconocido";
     console.error("[send] WhatsApp rechazo el envio:", detail);
     return {
       ok: false,

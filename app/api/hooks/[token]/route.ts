@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { receiveWebhook } from "@/lib/webhooks/receive";
+import { requestIp } from "@/lib/antispam/client-ip";
 import { receiveDeps } from "@/lib/webhooks/server-ports";
 import { processInbound } from "@/lib/webhooks/process";
 
@@ -24,7 +25,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
       secretHeader: request.headers.get("x-webhook-secret"),
       contentType: request.headers.get("content-type"),
       searchParams: request.nextUrl.searchParams,
-      ip: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
+      // Solo se guarda truncada (`truncateIp`) como dato del envio; sin IP queda null.
+      ip: requestIp(request.headers),
       userAgent: request.headers.get("user-agent"),
     });
 

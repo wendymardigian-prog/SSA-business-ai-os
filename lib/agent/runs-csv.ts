@@ -8,15 +8,13 @@
  */
 
 import type { RunRow } from "./screen";
+// El escritor comun: neutraliza formulas (`=`, `+`, `-`, `@`). El nombre del contacto lo
+// escribio un desconocido, y abierto en Excel o Sheets no puede ejecutarse.
+import { csvCell } from "@/lib/csv/write";
 import { RUN_SOURCE_LABELS, RUN_STATUS_LABELS, TRIGGER_LABELS, describeModelError, describeRunDetail } from "./run-labels";
 
 const BASE_HEADER = ["id", "fecha", "origen", "disparador", "contacto", "canal", "modelo", "estado", "motivo", "pasos", "duracion_ms"];
 const COST_HEADER = ["tokens_in", "tokens_out", "costo_usd"];
-
-function csvCell(value: string | number | null): string {
-  const s = value === null ? "" : String(value);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 function motivoOf(run: RunRow): string {
   const detail = describeRunDetail(run.statusDetail);

@@ -3,6 +3,7 @@ import { appUrl } from "@/lib/app-url";
 import { LINK_CLICKS_PER_MINUTE, resolveLinkClick } from "@/lib/attribution/link-click";
 import { readAttributionLinkSecret } from "@/lib/attribution/link-secret";
 import { checkLimit } from "@/lib/antispam/rate-limit";
+import { requestIp } from "@/lib/antispam/client-ip";
 import { hashIp } from "@/lib/scheduling/antispam";
 import { recordTouch } from "@/lib/contacts/touch";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -24,7 +25,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   try {
     const { token } = await params;
     const service = await createServiceClient();
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
+    // Sin IP, "unknown": todos los clics sin IP comparten un tope (igual que antes).
+    const ip = requestIp(request.headers) ?? "unknown";
 
     const result = await resolveLinkClick(
       { token, userAgent: request.headers.get("user-agent"), ip },

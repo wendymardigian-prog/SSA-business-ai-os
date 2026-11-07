@@ -181,11 +181,9 @@ export async function POST(request: NextRequest) {
   try {
     return await handleWebhook(request);
   } catch (err) {
+    // Nunca se devuelve el detalle: quien llama es un endpoint publico (igual que Evolution).
     console.error("Webhook handler error:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

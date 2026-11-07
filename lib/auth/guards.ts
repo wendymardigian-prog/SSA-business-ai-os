@@ -90,15 +90,23 @@ export const getPermissionContext = cache(async (): Promise<PermissionContext> =
 
   // Un member con rol personalizado: sus permisos estan en la fila.
   if (ctx.role === "member" && ctx.roleId) {
-    const { data: row } = await ctx.supabase
+    const { data: row, error } = await ctx.supabase
       .from("workspace_roles")
       .select("system_role, permissions")
       .eq("id", ctx.roleId)
       .maybeSingle();
 
-    // Si la fila es el rol de sistema "Member", sus permisos son los de la
-    // tabla de TypeScript (la fila los tiene vacios a proposito).
-    if (row && !row.system_role) permissions = parsePermissions(row.permissions);
+    if (error) {
+      // Si no se pudo leer el rol, no se sabe que puede: se niega todo. Caer en
+      // los de Member le daria a un rol mas chico permisos que no tiene. Sin el
+      // usuario ni el workspace en el log: solo el mensaje de la base.
+      console.error("[permisos] no pude leer el rol personalizado; sin permisos:", error.message);
+      permissions = parsePermissions(null);
+    } else if (row && !row.system_role) {
+      // Si la fila es el rol de sistema "Member", sus permisos son los de la
+      // tabla de TypeScript (la fila los tiene vacios a proposito).
+      permissions = parsePermissions(row.permissions);
+    }
   }
 
   const resolved = permissions ?? systemRolePermissions("member")!;

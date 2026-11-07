@@ -16,6 +16,7 @@ import {
   providerForConfigRow,
   SECTION_ORDER,
   chipsOf,
+  secretRebindProblem,
 } from "./providers";
 import { ALL_SECRET_NAMES } from "@/lib/secret-names";
 
@@ -334,5 +335,30 @@ describe("serializableProvider (la pagina de detalle no puede mandar funciones a
   it("una integracion sin campos de configuracion pasa tal cual", () => {
     const zernio = getProvider("zernio")!;
     expect(serializableProvider(zernio)).toEqual(zernio);
+  });
+});
+
+describe("una direccion atada a un secreto (Evolution)", () => {
+  const evolution = getProvider("evolution")!;
+  const before = { api_url: "https://evolution.example.test", instance_prefix: "ssa" };
+
+  it("la misma direccion (con o sin barra final) no pide la clave", () => {
+    expect(secretRebindProblem(evolution, before, { api_url: "https://evolution.example.test/", instance_prefix: "otro" }, [])).toBeNull();
+  });
+
+  it("otra direccion sin la API key nueva se rechaza; con ella, pasa", () => {
+    const next = { api_url: "https://otro.example.test", instance_prefix: "ssa" };
+    expect(secretRebindProblem(evolution, before, next, [])).toContain("api key del servidor");
+    expect(secretRebindProblem(evolution, before, next, ["webhook_token"])).toContain("api key del servidor");
+    expect(secretRebindProblem(evolution, before, next, ["api_key"])).toBeNull();
+  });
+
+  it("la primera vez (sin fila guardada) tambien pide la clave", () => {
+    expect(secretRebindProblem(evolution, null, before, [])).not.toBeNull();
+  });
+
+  it("solo https", () => {
+    expect(validateConfig("evolution", { api_url: "http://evolution.example.test" }).ok).toBe(false);
+    expect(validateConfig("evolution", { api_url: "https://evolution.example.test" }).ok).toBe(true);
   });
 });

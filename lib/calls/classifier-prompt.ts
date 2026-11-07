@@ -50,8 +50,8 @@ export function headAndTailForClassifier(text: string): string {
 /** El mensaje de usuario: titulo, invitados y la transcripcion recortada, todo marcado como dato. */
 export function buildClassifierUser(call: { title: string; attendees: unknown; transcript: unknown }, nonce: string): string {
   return [
-    `Título: ${call.title}`,
-    `Invitados:\n${attendeesText(call.attendees)}`,
+    // El titulo y los invitados vienen de Fathom (los escribio quien agendo): dato, igual que la transcripcion.
+    wrapUntrusted("llamada", nonce, `Título: ${call.title}\nInvitados:\n${attendeesText(call.attendees)}`),
     `Transcripción:\n${wrapUntrusted("llamada", nonce, headAndTailForClassifier(transcriptText(call.transcript)))}`,
   ].join("\n\n");
 }

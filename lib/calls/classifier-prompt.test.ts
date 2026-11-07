@@ -58,6 +58,8 @@ describe("prompt del clasificador de llamadas", () => {
     expect(u).toContain("<<<fin llamada abc123>>>");
     expect(u).not.toContain("fin >>>");
     expect(u).toContain("Título: Llamada con Ana");
+    // El titulo y los invitados (los escribio quien agendo) van adentro de un bloque de dato.
+    expect(u.startsWith("<<<llamada abc123>>>\nTítulo: Llamada con Ana\nInvitados:")).toBe(true);
   });
 
   it("el esquema pide confianza entre 0 y 1", () => {

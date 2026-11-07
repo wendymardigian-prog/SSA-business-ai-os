@@ -35,6 +35,14 @@ export interface ConfigField {
    * verificado). El generico no lo dibuja, y volver a guardar la key conserva el valor guardado.
    */
   hidden?: boolean;
+  /**
+   * La clave del secreto que viaja a esta direccion (Evolution: `api_url` lleva la `api_key` en el header). Si el
+   * campo cambia, ese secreto se tiene que volver a escribir en el MISMO guardado: si no, quien puede editar la
+   * integracion apuntaria la direccion a su servidor y recibiria la clave guardada, que nunca vio.
+   */
+  secretBoundTo?: string;
+  /** Es una direccion a la que llama el servidor: al cambiar se comprueba que no sea interna (`assertPublicUrl`). */
+  publicUrl?: boolean;
 }
 
 /**
@@ -308,10 +316,13 @@ export const PROVIDERS: ProviderDefinition[] = [
         hint: "El dominio publico de tu Evolution en Railway. La red privada no sirve: son dos proyectos distintos.",
         placeholder: "https://evolution-production.up.railway.app",
         required: true,
+        // Solo https: la API key viaja en un header en cada pedido.
         validate: (value) =>
-          /^https?:\/\/[^\s]+$/.test(value.trim())
+          /^https:\/\/[^\s]+$/.test(value.trim())
             ? null
             : "Tiene que ser una direccion completa, con https://",
+        secretBoundTo: "api_key",
+        publicUrl: true,
       },
       {
         key: "instance_prefix",
@@ -844,6 +855,40 @@ export function validateApiKey(providerId: string, value: string): ValidationRes
 }
 
 /** Valida los campos de config (remitente, modelo). Devuelve el primer error. */
+/** Una direccion comparada sin espacios ni barra final: `https://x.app/` y `https://x.app` son la misma. */
+function sameConfigValue(a: unknown, b: unknown): boolean {
+  const norm = (v: unknown) => (typeof v === "string" ? v.trim().replace(/\/+$/, "") : "");
+  return norm(a) === norm(b);
+}
+
+/** Los campos de config que cambian respecto de lo guardado. */
+export function changedConfigFields(
+  provider: ProviderDefinition,
+  previous: Record<string, unknown> | null | undefined,
+  next: Record<string, string>,
+): ConfigField[] {
+  return provider.configFields.filter((field) => !field.hidden && !sameConfigValue(previous?.[field.key], next[field.key]));
+}
+
+/**
+ * Si cambia un campo atado a un secreto (`secretBoundTo`), el secreto se tiene que volver a escribir en el mismo
+ * guardado. Devuelve el mensaje de error, o null. Puro: lo llama `saveIntegration` antes de escribir nada.
+ */
+export function secretRebindProblem(
+  provider: ProviderDefinition,
+  previous: Record<string, unknown> | null | undefined,
+  next: Record<string, string>,
+  newSecretKeys: readonly string[],
+): string | null {
+  for (const field of changedConfigFields(provider, previous, next)) {
+    if (!field.secretBoundTo || newSecretKeys.includes(field.secretBoundTo)) continue;
+    const secret = secretFieldsOf(provider).find((f) => f.key === field.secretBoundTo);
+    const name = secret ? secret.label.toLowerCase() : "la clave";
+    return `Cambiaste "${field.label}": volvé a escribir ${name} en el mismo guardado. La guardada no se manda a una dirección nueva.`;
+  }
+  return null;
+}
+
 export function validateConfig(
   providerId: string,
   config: Record<string, string>,
