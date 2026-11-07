@@ -32,6 +32,12 @@ export interface CreateGenerationInput {
   replaceExisting?: boolean;
   /** Quien la pidió (para el historial); null si es automática. */
   actorUserId: string | null;
+  /**
+   * `true` (por defecto): encola el render (`design_render`, `purpose: "generation"`). `false`: NO lo encola, porque
+   * quien llama lo corre en el momento (el nodo de automatizaciones con "Esperar el PDF antes de seguir", F57) y una
+   * segunda corrida en la cola renderizaría dos veces.
+   */
+  enqueueRender?: boolean;
 }
 
 export type CreateGenerationResult =
