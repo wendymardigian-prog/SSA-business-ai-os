@@ -1,5 +1,5 @@
 -- ============================================================
--- 00316_flow_step_metrics
+-- 00317_flow_step_metrics
 -- ============================================================
 -- Metricas por paso en el lienzo, el motivo de cada fallo y el lienzo como unico
 -- lugar donde se arman las automatizaciones de comentarios (noviembre 2026).
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS public.flow_link_clicks (
 );
 
 COMMENT ON TABLE public.flow_link_clicks IS
-  'Cada clic en un link con seguimiento que salio de un paso de una automatizacion (00316). La persona sale de la ejecucion (session_id): sin contact_id a proposito.';
+  'Cada clic en un link con seguimiento que salio de un paso de una automatizacion (00317). La persona sale de la ejecucion (session_id): sin contact_id a proposito.';
 
 CREATE INDEX IF NOT EXISTS idx_flow_link_clicks_flow_node
   ON public.flow_link_clicks(flow_id, node_id, clicked_at);
@@ -214,7 +214,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.flow_node_stats(uuid, timestamptz, timestamptz) IS
-  'Las cuentas de cada paso de una automatizacion para el lienzo (00316). SECURITY INVOKER: la RLS de quien mira decide que cuenta.';
+  'Las cuentas de cada paso de una automatizacion para el lienzo (00317). SECURITY INVOKER: la RLS de quien mira decide que cuenta.';
 
 REVOKE ALL ON FUNCTION public.flow_node_stats(uuid, timestamptz, timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.flow_node_stats(uuid, timestamptz, timestamptz) TO authenticated, service_role;
@@ -313,6 +313,6 @@ BEGIN
        AND type = 'comment_keyword'
        AND channel_id IS NULL;
 
-    RAISE NOTICE '00316: la regla % del flujo % paso al disparador del lienzo', r.trigger_id, r.flow_id;
+    RAISE NOTICE '00317: la regla % del flujo % paso al disparador del lienzo', r.trigger_id, r.flow_id;
   END LOOP;
 END $$;

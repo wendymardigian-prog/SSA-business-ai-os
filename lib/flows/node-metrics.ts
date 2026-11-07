@@ -1,5 +1,5 @@
 /**
- * Las metricas de cada paso en el lienzo. Puro: arma lo que devuelve `flow_node_stats` (00316, formato largo) en una
+ * Las metricas de cada paso en el lienzo. Puro: arma lo que devuelve `flow_node_stats` (00317, formato largo) en una
  * ficha por paso, y decide los textos (la insignia, los porcentajes, el nombre de cada boton).
  *
  * Reglas:

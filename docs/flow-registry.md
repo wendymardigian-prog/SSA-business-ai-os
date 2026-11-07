@@ -611,17 +611,17 @@ Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CH
 - **Si otra app es la dueña de los chats** (ManyChat), puede responder al comentario antes y gastar esa única respuesta. Una palabra clave se atiende en una sola app.
 - **Solo se publica con el disparador `comment_keyword`** (`triggerProblems`): sin un comentario no tiene a qué responder.
 - **Cuenta y publicaciones se eligen en el disparador del lienzo** (`channelId`, `postIds` en el nodo; `CommentScopePicker`). Sin cuenta, todas las de Instagram; sin publicaciones, todas. Publicar arma la fila de `triggers` con ese canal y la marca `config.origin = "canvas"`. Contenido, al publicar una pieza, completa el id también en el nodo (`withNodePostIds`): si no, se perdía al republicar.
-- **El motivo de un fallo queda con su clave** (`describeSendError` → `flow_session_steps.error_kind`, 00316): `already_replied` (otra app, por ejemplo ManyChat, contestó primero: pasó el 6/11/2026), `buttons_not_allowed` (subcódigo 1545133), `not_thread_owner`, etc. Solo lo pasajero (`rate_limited`, `temporary`) se reintenta solo, a 1, 5 y 15 minutos (`provider-retry.ts` + `deferFlowNode`): un intento de más puede gastar la única respuesta.
+- **El motivo de un fallo queda con su clave** (`describeSendError` → `flow_session_steps.error_kind`, 00317): `already_replied` (otra app, por ejemplo ManyChat, contestó primero: pasó el 6/11/2026), `buttons_not_allowed` (subcódigo 1545133), `not_thread_owner`, etc. Solo lo pasajero (`rate_limited`, `temporary`) se reintenta solo, a 1, 5 y 15 minutos (`provider-retry.ts` + `deferFlowNode`): un intento de más puede gastar la única respuesta.
 - **La respuesta pública va DESPUÉS del flujo** y solo si la privada salió (o si la automatización no intentó ninguna): `shouldPostPublicReply`. `comment_logs.dm_sent` es que el mensaje salió de verdad, no que el flujo no lanzó.
 - **Contar clics de los botones:** el bloque «Atribución de links» del paso (igual que «Enviar mensaje»). Con «Registrar el clic», cada botón sale con su propio link medido, que lleva el paso, la clave (`b0`, `b1`…) y la ejecución.
 
-## Todo en el lienzo: la pestaña Comentarios (antes Growth, 00316)
+## Todo en el lienzo: la pestaña Comentarios (antes Growth, 00317)
 
 - **Growth ya no configura nada.** Escribía en la misma tabla `triggers` que el lienzo y se pisaban (editar ahí una regla del lienzo la duplicaba al republicar). Ahora es **Comentarios** (`/dashboard/comentarios`, `/dashboard/growth` redirige): las automatizaciones de comentarios con su cuenta, sus palabras y cómo les fue en 30 días, y la actividad reciente. Solo lectura; cada fila lleva al lienzo (`lib/comments/automation-list.ts`).
-- **El lienzo es el dueño de sus filas:** republicar borra y recrea las sin canal y las que tienen `config.origin = "canvas"` (`CANVAS_TRIGGER_ROWS_FILTER`). Una regla vieja de Growth (con canal, sin la marca) no se toca y la pestaña la muestra como «regla vieja». La 00316 pasa al lienzo las que encajan (una por flujo, con disparador de comentario sin cuenta).
+- **El lienzo es el dueño de sus filas:** republicar borra y recrea las sin canal y las que tienen `config.origin = "canvas"` (`CANVAS_TRIGGER_ROWS_FILTER`). Una regla vieja de Growth (con canal, sin la marca) no se toca y la pestaña la muestra como «regla vieja». La 00317 pasa al lienzo las que encajan (una por flujo, con disparador de comentario sin cuenta).
 - **«Nueva automatización de comentario»** crea el flujo con el disparador ya elegido; el link que arma Contenido cuando falta la automatización de una pieza (`createAutomationHref`) ahora lleva a Comentarios, con la palabra y la cuenta.
 
-## Métricas por paso en el lienzo (00316)
+## Métricas por paso en el lienzo (00317)
 
 - **Botón «Métricas»** en la barra del editor, con período (7, 30, 90 días o desde siempre). Prendido, cada paso muestra una insignia (personas que pasaron y fallos) y un clic abre el detalle: bien / fallaron (con los motivos y «Ver las que fallaron» → `ejecuciones?paso_fallido=`), mensajes enviados y respondieron en 24 h, clics por botón, emails abiertos y con clic, y por dónde siguieron.
 - **Una sola consulta:** `flow_node_stats` (SECURITY INVOKER: la RLS de quien mira decide). Formato largo; lo arma `buildNodeMetrics` (`lib/flows/node-metrics.ts`). El estado de cada ejecución en un paso es su ÚLTIMA fila: un paso que quedó para después y salió cuenta una vez.
@@ -629,7 +629,7 @@ Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CH
 - **Clics:** `flow_link_clicks` (sin `contact_id` a propósito: la persona sale de la ejecución). Solo existen con «Registrar el clic» prendido en el paso. «Respondieron» es: la conversación tuvo un entrante dentro de las 24 h del primer mensaje del paso (cuenta también respuestas a otra app).
 - **`exit_handle`** guarda el handle crudo de cada salida; al retomar un «Esperar respuesta» se completa con `reply` o `timeout` (`noteWaitExit`).
 
-## Reintentar desde un paso (00316)
+## Reintentar desde un paso (00317)
 
 - **En Ejecuciones**, el último paso fallido de una ejecución terminada muestra «Reintentar desde este paso» (pide `flows.edit`). La regla es `canRetryStep` (`lib/flows/runs.ts`): nunca con un motivo que no se arregla reintentando (`NOT_RETRYABLE_KINDS`) ni con una respuesta privada de más de 7 días.
 - **`retryFlowStep`** (`lib/actions/flow-runs.ts`) reabre la sesión en ese paso con un reclamo condicional (doble clic = un reintento) y encola un `resume_flow` con `rerunNode`, el mismo camino que un paso que quedó para después. Queda en `audit_log` (entidad `flow`).

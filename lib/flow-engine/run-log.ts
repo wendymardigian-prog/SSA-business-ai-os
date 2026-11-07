@@ -146,10 +146,10 @@ export interface RecordStepArgs {
   label: string;
   status: StepStatus;
   exitLabel?: string | null;
-  /** El handle crudo (`stepExitHandle`). Columna de la 00310. */
+  /** El handle crudo (`stepExitHandle`). Columna de la 00317. */
   exitHandle?: string | null;
   reason?: unknown;
-  /** La clave del motivo (`sanitizeErrorKind`). Columna de la 00310. */
+  /** La clave del motivo (`sanitizeErrorKind`). Columna de la 00317. */
   errorKind?: string | null;
   resumesAt?: string | null;
   startedAt: string;
@@ -177,7 +177,7 @@ export async function recordStep(supabase: Db, args: RecordStepArgs): Promise<vo
     };
     const extra = { exit_handle: args.exitHandle ?? null, error_kind: sanitizeErrorKind(args.errorKind) };
     let { error } = await supabase.from("flow_session_steps").insert({ ...row, ...extra });
-    // Sin la 00310 la fila se anota igual, sin las dos columnas nuevas: el historial no se pierde por un deploy adelantado.
+    // Sin la 00317 la fila se anota igual, sin las dos columnas nuevas: el historial no se pierde por un deploy adelantado.
     if (isMissingColumn(error)) ({ error } = await supabase.from("flow_session_steps").insert(row));
     if (error) console.error(`[flow-engine] no pude anotar el paso (code=${error.code ?? "?"})`);
     if (args.status === "failed") {

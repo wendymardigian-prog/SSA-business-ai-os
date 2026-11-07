@@ -2000,7 +2000,7 @@ El 6/11 una respuesta privada a un comentario «clase» falló con un texto gen�
 
 ## Migración
 
-`00316_flow_step_metrics` (aditiva: `error_kind`, `exit_handle`, `flow_link_clicks`, `flow_node_stats`, índices y el paso de las reglas de Growth al lienzo) va **ANTES** de desplegar el código. Sin aplicar, el motor anota los pasos sin las columnas nuevas, pero las métricas y el reintento no andan. Las `00309` a `00315` son de las ramas de seguridad. **La próxima libre es la `00317`** (confirmar con `list_migrations` y las ramas locales).
+`00317_flow_step_metrics` (aditiva: `error_kind`, `exit_handle`, `flow_link_clicks`, `flow_node_stats`, índices y el paso de las reglas de Growth al lienzo) va **ANTES** de desplegar el código. Sin aplicar, el motor anota los pasos sin las columnas nuevas, pero las métricas y el reintento no andan. Las `00309` a `00316` son de las ramas de seguridad. **La próxima libre es la `00318`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-flow-metrics.mjs   # flow_node_stats por rol, un deferred cuenta una vez, 24 h de respuesta, clics, restricciones

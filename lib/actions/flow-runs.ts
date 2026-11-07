@@ -10,7 +10,7 @@ import { buildNodeMetrics, isMetricPeriod, periodRange, type NodeMetrics, type N
 import { PROVIDER_RETRY_VAR } from "@/lib/flow-engine/provider-retry";
 
 /**
- * Las metricas de cada paso en el lienzo y «Reintentar desde este paso» en las ejecuciones (00316).
+ * Las metricas de cada paso en el lienzo y «Reintentar desde este paso» en las ejecuciones (00317).
  *
  * Las metricas se leen con la sesion de quien mira (`flow_node_stats` es SECURITY INVOKER: la RLS decide que cuenta).
  * Reintentar pide `flows.edit`, comprueba con la sesion que la ejecucion se ve y es de este negocio, y recien despues

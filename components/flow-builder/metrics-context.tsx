@@ -18,7 +18,7 @@ import {
 } from "@/lib/flows/node-metrics";
 
 /**
- * Las metricas de cada paso sobre el lienzo (00316). Viven en un contexto y NUNCA en `node.data`: si estuvieran en el
+ * Las metricas de cada paso sobre el lienzo (00317). Viven en un contexto y NUNCA en `node.data`: si estuvieran en el
  * nodo, el lienzo las veria como «cambios sin guardar» y se guardarian con el flujo.
  *
  * Apagadas no consultan nada. Prendidas, una sola consulta por periodo (`flow_node_stats`, con la RLS de quien mira).

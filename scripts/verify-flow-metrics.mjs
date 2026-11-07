@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verificacion de las metricas por paso del lienzo (00316) contra la base real.
+ * Verificacion de las metricas por paso del lienzo (00317) contra la base real.
  *
  * Lanza la version TypeScript con vite-node: lo que se prueba es el codigo de verdad (el motor y la consulta de la
  * pantalla), no una copia en JavaScript.

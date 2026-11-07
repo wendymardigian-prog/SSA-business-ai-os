@@ -447,7 +447,7 @@ export type KnowledgeStatus = "processing" | "pending" | "ready" | "error";
 export type ContactLinkReason = "channel" | "phone" | "email" | "username";
 /** Entidades que registra el audit log (migracion 00023). */
 export type AuditEntityType =
-  /** Una automatizacion: reintentar un paso desde Ejecuciones (00316). */
+  /** Una automatizacion: reintentar un paso desde Ejecuciones (00317). */
   | "flow"
   | "contact"
   | "contact_note"
@@ -2136,9 +2136,9 @@ export interface Database {
           resumes_at: string | null;
           started_at: string;
           finished_at: string;
-          /** 00316: la clave del motivo de un fallo (`already_replied`...). */
+          /** 00317: la clave del motivo de un fallo (`already_replied`...). */
           error_kind: string | null;
-          /** 00316: el handle crudo por el que siguio el paso (`true`, `else`, `reply`...). */
+          /** 00317: el handle crudo por el que siguio el paso (`true`, `else`, `reply`...). */
           exit_handle: string | null;
         };
         Insert: {
