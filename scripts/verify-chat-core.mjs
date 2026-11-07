@@ -57,7 +57,7 @@ const compare = (got, want, name) => check(same(got, want), name, `viejo ${JSON.
 async function makeUser(tag) {
   const email = `zz-test-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@example.test`;
   const password = randomUUID();
-  const { data, error } = await svc.auth.admin.createUser({ email, password, email_confirm: true });
+  const { data, error } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password, email_confirm: true });
   if (error) throw new Error(`no pude crear usuario ${tag}: ${error.message}`);
   const client = createClient(URL, ANON, { auth: { persistSession: false } });
   const { error: e } = await client.auth.signInWithPassword({ email, password });

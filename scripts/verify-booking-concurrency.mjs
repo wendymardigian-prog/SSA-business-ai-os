@@ -41,7 +41,7 @@ try {
     .insert({ name: "zz-test-conc", slug: `zz-test-conc-${Date.now()}` }).select("id").single();
 
   const email = `zz-test-conc-host-${Date.now()}@example.test`;
-  const { data: created, error: eU } = await svc.auth.admin.createUser({ email, password: randomUUID(), email_confirm: true });
+  const { data: created, error: eU } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password: randomUUID(), email_confirm: true });
   if (eU) throw new Error(`no pude crear el anfitrion: ${eU.message}`);
   const host = created.user.id;
   await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: host, role: "owner" });
@@ -130,7 +130,7 @@ try {
   console.log("\n— El mismo horario con otro anfitrion no choca —");
   {
     const email2 = `zz-test-conc-host2-${Date.now()}@example.test`;
-    const { data: c2 } = await svc.auth.admin.createUser({ email: email2, password: randomUUID(), email_confirm: true });
+    const { data: c2 } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email: email2, password: randomUUID(), email_confirm: true });
     await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: c2.user.id, role: "member" });
     const { data: ev2 } = await svc.from("event_types").insert({
       workspace_id: ws.id, owner_user_id: c2.user.id, category_id: cat.id, title: "zz-test-carrera-2", slug: "zz-test-carrera-2",

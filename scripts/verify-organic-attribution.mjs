@@ -74,10 +74,10 @@ try {
   const { data: ws2 } = await svc.from("workspaces").insert({ name: "zz-test-organic-otro", slug: `zz-test-organic-otro-${stamp}` }).select("id").single();
 
   const email = `zz-test-organic-${stamp}@example.test`;
-  const { data: u, error: uErr } = await svc.auth.admin.createUser({ email, password: randomUUID(), email_confirm: true });
+  const { data: u, error: uErr } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password: randomUUID(), email_confirm: true });
   if (uErr) throw new Error(`no pude crear usuario: ${uErr.message}`);
   const outsiderEmail = `zz-test-organic-out-${stamp}@example.test`;
-  const { data: out } = await svc.auth.admin.createUser({ email: outsiderEmail, password: randomUUID(), email_confirm: true });
+  const { data: out } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email: outsiderEmail, password: randomUUID(), email_confirm: true });
   await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: u.user.id, role: "owner" });
 
   const newContact = async (extra = {}, workspace = ws.id) => {

@@ -139,7 +139,7 @@ try {
   console.log("\n5. Con sesion, como la bandeja");
   const email = `zz-test-unidentified-${stamp}@example.test`;
   const password = randomUUID();
-  const { data: u, error: uErr } = await svc.auth.admin.createUser({ email, password, email_confirm: true });
+  const { data: u, error: uErr } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password, email_confirm: true });
   if (uErr) throw new Error(`no pude crear usuario: ${uErr.message}`);
   await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: u.user.id, role: "owner" });
   const user = createClient(URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });

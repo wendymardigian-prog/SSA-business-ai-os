@@ -45,7 +45,7 @@ const forbidden = (error) => !!error && /forbidden|permission denied/.test(error
 async function makeUser(tag) {
   const email = `zz-test-${tag}-${Date.now()}@example.test`;
   const password = randomUUID();
-  const { data, error } = await svc.auth.admin.createUser({ email, password, email_confirm: true });
+  const { data, error } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password, email_confirm: true });
   if (error) throw new Error(`no pude crear usuario ${tag}: ${error.message}`);
   const client = createClient(URL, ANON, { auth: { persistSession: false } });
   const { error: e } = await client.auth.signInWithPassword({ email, password });
@@ -69,6 +69,8 @@ const SECRET = "zz_test_iso";
 const SECRETS_SERVER_ONLY = process.argv.includes("--despues-de-00143");
 // @plantilla-hasta(proyecto)
 // @plantilla-sin(proyecto): const SECRETS_SERVER_ONLY = true;
+// Desde la 00309 un registro publico (sin invitacion ni la marca de app_metadata) no se arma un negocio.
+const POST_00309 = process.argv.includes("--despues-de-00309");
 // Los secretos no se van con el workspace (viven en vault.secrets), asi que
 // se anotan aca y se borran en el finally, antes de la limpieza general.
 const secretsToDelete = [];
@@ -186,14 +188,24 @@ try {
     const { data: suyos } = await svc.from("workspace_members").select("workspace_id").eq("user_id", created.user.id);
     check((suyos ?? []).length === 0, "la persona invitada no recibe un workspace propio",
       `quedo en ${(suyos ?? []).length} workspace(s)`); }
-  { // Y el control: sin invitacion, el trigger sigue armando el workspace
+  { // Y el control: sin invitacion y con la marca del servidor, el trigger sigue armando el workspace
     // (es como scripts/create-owner.mjs crea el primer Owner de una copia).
     const { data: created } = await svc.auth.admin.createUser({
+      app_metadata: { ssa_create_workspace: true },
       email: `zz-test-iso-sin-invite-${Date.now()}@example.test`, password: randomUUID(), email_confirm: true,
     });
     const { data: suyos } = await svc.from("workspace_members").select("role").eq("user_id", created.user.id);
     check((suyos ?? []).length === 1 && suyos[0].role === "owner",
       "sin invitacion, el alta si crea su workspace (el camino de create-owner)"); }
+  if (POST_00309) { // 00309: un registro publico (sin invitacion y sin la marca de app_metadata) ya no se arma
+    // un negocio. Se simula con la API de admin, que crea la cuenta igual que /auth/v1/signup salvo por la marca.
+    const { data: created } = await svc.auth.admin.createUser({
+      email: `zz-test-iso-registro-publico-${Date.now()}@example.test`, password: randomUUID(), email_confirm: true,
+      user_metadata: { full_name: "zz-test-iso-registro-publico" },
+    });
+    const { data: suyos } = await svc.from("workspace_members").select("role").eq("user_id", created.user.id);
+    check((suyos ?? []).length === 0, "sin invitacion ni marca, la cuenta queda sin workspace (00309)",
+      `quedo en ${(suyos ?? []).length} workspace(s)`); }
 } catch (err) {
   fail(`error inesperado: ${err.message}`);
 } finally {

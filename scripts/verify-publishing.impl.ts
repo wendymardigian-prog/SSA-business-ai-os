@@ -168,6 +168,7 @@ const TIKTOK_OPTIONS = {
 async function makeUser(tag: string) {
   const email = `zz-test-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.test`;
   const { data, error } = await svc.auth.admin.createUser({
+    app_metadata: { ssa_create_workspace: true },
     email,
     password: randomUUID(),
     email_confirm: true,
