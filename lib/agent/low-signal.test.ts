@@ -37,14 +37,14 @@ describe("conversacion de poca senal (no se gasta IA)", () => {
   it("una palabra que no es un si o un gracias es contenido, aunque el mensaje sea corto", () => {
     // Casos reales que un corte por largo habria dejado afuera.
     expect(isLowSignalConversation([lead("no me llego nada")])).toBe(false);
-    expect(isLowSignalConversation([lead("Hola wendy, no encuentro el enlace al archivo")])).toBe(false);
-    expect(isLowSignalConversation([lead("Hola wen quiero más info de la academia")])).toBe(false);
+    expect(isLowSignalConversation([lead("Hola, no encuentro el enlace al archivo")])).toBe(false);
+    expect(isLowSignalConversation([lead("Hola quiero más info del curso")])).toBe(false);
     expect(isLowSignalConversation([lead("Lo pense mejor y quiero el plan anual")])).toBe(false);
     expect(isLowSignalConversation([lead("Si enviamelo!"), lead("Gracias, lo voy a mirar")])).toBe(false);
   });
 
   it("una palabra suelta de un tema tampoco se descarta", () => {
-    expect(isLowSignalConversation([lead("Academia")])).toBe(false);
+    expect(isLowSignalConversation([lead("Marketing")])).toBe(false);
   });
 
   it("mas de dos mensajes del lead es una conversacion de verdad", () => {
