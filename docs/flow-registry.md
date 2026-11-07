@@ -701,6 +701,12 @@ Revisión de punta a punta del motor, los disparadores, los pasos y la pantalla.
 - **Etiquetas**: agregar o quitar sale del tipo del paso (antes «Agregar etiqueta» del lienzo QUITABA); el nombre acepta
   variables; quitar no crea etiquetas.
 - **Enviar mensaje**: las variables se reemplazan en todo el mensaje (`interpolateDeep`), una sola vez.
+- **«No contactar» en Enviar mensaje, Enviar recurso y Respuesta con IA (noviembre 2026, cambio aprobado)**: un
+  contacto marcado no recibe nada por WhatsApp ni Instagram (tampoco la respuesta privada a un comentario), con la MISMA
+  regla que Enviar email: salvo que el flujo haya arrancado por un disparador de la agenda (`trigger_scope = booking`,
+  `isBookingTriggered`). El paso se saltea con el motivo (historial y `node_skipped`) y el flujo sigue. Respuesta con IA
+  que se iba a mandar ni se genera; si solo guarda `{{ai_response}}`, sigue igual. Si la base no contesta, no se manda.
+  Todo en `lib/flow-engine/do-not-contact.ts`. Antes WhatsApp e Instagram mandaban igual.
 - **Enviar email, vista previa y saludo**: `preheader` (opcional, con variables) es la línea que la bandeja muestra al lado del asunto; se pone después de limpiar el HTML (`withPreheader`). Un respaldo vacío saluda bien en los dos casos: `Hola, {{contact.first_name|}}.` da «Hola, Ana.» o «Hola.» (`dropDanglingComma`).
 - **Enviar email**: `attachments: [{ assetId }]`, recursos de la banca con archivo, hasta 10 y 25 MB
   (`lib/email/attachment-limits.ts`, `lib/email/flow-attachments.ts`).

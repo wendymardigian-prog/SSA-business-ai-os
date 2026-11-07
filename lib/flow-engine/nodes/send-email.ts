@@ -26,7 +26,7 @@ import { stepEmailCategory } from "@/lib/email/categories";
 import { protectUnsubscribeVariable } from "@/lib/email/unsubscribe";
 import { deferFlowNode, takeAlreadySent } from "../defer-node";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
-import { BOOKING_TRIGGER_SCOPE } from "@/lib/scheduling/automation/context";
+import { isBookingTriggered } from "../do-not-contact";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import { parseEmailAttachments, type EmailAttachmentRef } from "@/lib/email/attachment-limits";
 import { loadEmailAttachments } from "@/lib/email/flow-attachments";
@@ -94,7 +94,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   if (!subject && !body) return;
 
   // Un flujo de agenda manda igual: es una reunión que la persona pidió.
-  const fromBooking = context.variables?.trigger_scope === BOOKING_TRIGGER_SCOPE;
+  const fromBooking = isBookingTriggered(context);
   const category = await nodeCategory(supabase, data, context, fromBooking);
 
   let contactEmail: string | null = null;
