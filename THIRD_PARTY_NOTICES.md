@@ -8,6 +8,12 @@ Este proyecto incluye código adaptado de proyectos de código abierto. Cada arc
 - Uso: este proyecto arrancó como un fork completo de ZernFlow. La base de datos, el motor de flows, la bandeja, el CRM y la autenticación parten de su código; el aviso de copyright original queda en [LICENSE](LICENSE), como exige la licencia MIT.
 - Licencia: MIT (ver [LICENSE](LICENSE), que es la licencia de este mismo repositorio).
 
+## Inter
+
+- Origen: https://github.com/rsms/inter (archivos de `@fontsource/inter` 5.0.18)
+- Uso: la tipografía de la imagen de la tarjeta al compartir un link, en `lib/og/fonts/`.
+- Licencia: SIL Open Font License 1.1 (texto completo en [lib/og/fonts/LICENSE-Inter.txt](lib/og/fonts/LICENSE-Inter.txt)).
+
 ## Cal.diy
 
 - Origen: https://github.com/calcom/cal.diy (rama `main`, commit `54343aa`)

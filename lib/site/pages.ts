@@ -6,6 +6,8 @@
  * Cada página nueva de `app/(sitio)/<ruta>/page.tsx` se suma acá (ver `docs/sitio.md`).
  */
 
+import { previewBotRule } from "@/lib/og/robots";
+
 export interface SitePage {
   /** La ruta, con la barra inicial: `/`, `/servicios`, `/blog/hola`. */
   path: string;
@@ -66,20 +68,22 @@ export function sitemapEntries(pages: SitePage[], baseUrl: string): SitemapEntry
 }
 
 export interface RobotsConfig {
-  rules: Array<{ userAgent: string; allow?: string[]; disallow: string }>;
+  rules: Array<{ userAgent: string | string[]; allow?: string[]; disallow: string | string[] }>;
   sitemap?: string;
 }
 
 /**
  * `robots.txt`: sigue bloqueando todo (`disallow: "/"`) y deja pasar SOLO las páginas de
- * la lista. Sin páginas queda exactamente como antes. Con páginas, suma el sitemap.
+ * la lista, más lo que necesitan los lectores de vista previa (`previewBotRule`). Con
+ * páginas, suma el sitemap.
  */
 export function buildRobots(pages: SitePage[], baseUrl: string): RobotsConfig {
   const valid = pages.filter((page) => PATH_RE.test(page.path) && !isReservedPath(page.path));
-  if (valid.length === 0) return { rules: [{ userAgent: "*", disallow: "/" }] };
+  if (valid.length === 0) return { rules: [previewBotRule(), { userAgent: "*", disallow: "/" }] };
+  // `$` ancla la ruta exacta: "/" permitido no abre todo el sitio.
+  const allow = valid.map((page) => (page.path === "/" ? "/$" : page.path));
   return {
-    // `$` ancla la ruta exacta: "/" permitido no abre todo el sitio.
-    rules: [{ userAgent: "*", allow: valid.map((page) => (page.path === "/" ? "/$" : page.path)), disallow: "/" }],
+    rules: [previewBotRule(allow), { userAgent: "*", allow, disallow: "/" }],
     sitemap: `${baseUrl.replace(/\/$/, "")}/sitemap.xml`,
   };
 }
