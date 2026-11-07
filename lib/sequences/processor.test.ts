@@ -394,9 +394,11 @@ describe("processSequenceSteps", () => {
 
     await processSequenceSteps();
 
-    // La consigna se interpola antes de mandarsela al modelo.
-    const request = vi.mocked(generateAiReply).mock.calls[0][1] as { userPrompt: string };
-    expect(request.userPrompt).toBe("recordale la promo a Ana");
+    // La consigna se interpola antes de mandarsela al modelo, con el nombre (lo escribio el contacto) envuelto como
+    // dato y el mismo codigo que despues usa el system prompt.
+    const request = vi.mocked(generateAiReply).mock.calls[0][1] as { userPrompt: string; nonce: string };
+    expect(request.nonce).toMatch(/^[0-9a-f]{8}$/);
+    expect(request.userPrompt).toBe(`recordale la promo a <<<crm ${request.nonce}>>>\nAna\n<<<fin crm ${request.nonce}>>>`);
 
     const sent = vi.mocked(sendChannelMessage).mock.calls[0][2] as { text: string };
     expect(sent.text).toBe("te escribo por la promo");

@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { deliverAsset } from "@/lib/response-assets/deliver";
 import { sendChannelMessage, recordSend } from "@/lib/flow-engine/send";
 import { interpolateVariables } from "@/lib/flow-engine/interpolate";
+import { newNonce, wrapVariableValues } from "@/lib/agent/untrusted";
 import { generateAiReply } from "@/lib/ai/generate-reply";
 import { buildSequenceSendContext } from "./send";
 import {
@@ -368,6 +369,8 @@ async function deliverStep(
   let text: string;
 
   if (step.type === "aiMessage") {
+    // La consigna es del negocio; el nombre y el @usuario que se interpolan, del contacto: van envueltos como dato.
+    const nonce = newNonce();
     const reply = await generateAiReply(supabase, {
       workspaceId,
       conversationId: context.conversationId,
@@ -377,7 +380,8 @@ async function deliverStep(
       modelId: step.model,
       systemPrompt:
         `Sos quien atiende los mensajes de este negocio. Escribi en ${await loadLanguageStyle(supabase, workspaceId)}, breve y natural, como una persona. No saludes de nuevo si la conversacion ya empezo.`,
-      userPrompt: interpolateVariables(step.prompt ?? "", variables),
+      userPrompt: interpolateVariables(step.prompt ?? "", wrapVariableValues(variables, nonce)),
+      nonce,
       temperature: step.temperature,
       maxTokens: step.maxTokens,
       contextMessages: step.contextMessages,
