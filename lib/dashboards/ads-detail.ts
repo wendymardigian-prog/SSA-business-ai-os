@@ -115,6 +115,8 @@ export function buildDetail(params: {
   level: DetailLevel;
   objectId: string;
   uniqueReach?: number | null;
+  /** La frecuencia de la misma respuesta de Meta que `uniqueReach`. */
+  uniqueFrequency?: number | null;
 }): DetailView | null {
   const own = ownRows(params.rows, params);
   // Sin filas propias no hay detalle que mostrar: el objeto no tuvo
@@ -133,7 +135,7 @@ export function buildDetail(params: {
     status: latest.effectiveStatus ?? latest.status,
     campaignId: latest.campaignId,
     adsetId: latest.adsetId,
-    totals: computeTotals(own, params.uniqueReach),
+    totals: computeTotals(own, params.uniqueReach, params.uniqueFrequency),
     children: childLevel ? groupByObject(scoped, childLevel) : [],
     ads: groupByObject(scoped, "ad"),
     daily: own,

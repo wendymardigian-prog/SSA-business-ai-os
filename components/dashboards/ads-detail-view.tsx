@@ -15,6 +15,7 @@ import {
   type DetailView,
 } from "@/lib/dashboards/ads-detail";
 import { periodQuery, type PeriodFilter } from "@/lib/dashboards/period-filter";
+import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 import type { Rankings } from "@/lib/dashboards/ads-view";
 import type { BreakdownRow } from "@/lib/meta/live";
 import { AudienceCard, HourlyCard } from "./ads/audience-card";
@@ -26,6 +27,7 @@ import { HeaderFilters, RefreshButton } from "./ads/header-controls";
 import { HierarchyCard, type Level } from "./ads/hierarchy-tables";
 import { ActionsCard, DeviceCard, PlacementCard, RankingsCard, VideoCard, type Live } from "./ads/insight-cards";
 import { buildKpiItems } from "./ads/kpi-items";
+import { ReachAheadNote } from "./ads/ads-page-notices";
 import { KpiRow } from "./ads/kpi-row";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 import { LinkContentMenu } from "./ads/link-content-menu";
@@ -75,7 +77,8 @@ export interface AdsDetailViewProps {
   period: PeriodFilter;
   days: number;
   syncedLabel: string | null;
-  reach: { adset: Record<string, number> | null; ad: Record<string, number> | null };
+  /** Alcance unico de cada anuncio (en vivo), para la comparativa. Null si Meta no respondio. */
+  adReach: Record<string, number> | null;
   live: {
     placement: Live<BreakdownRow[]>;
     device: Live<BreakdownRow[]>;
@@ -100,6 +103,8 @@ export interface AdsDetailViewProps {
   contentLink?: AdContentLink | null;
   /** Mostrar el menú «⋯» para vincular el anuncio con una pieza. */
   canLinkContent?: boolean;
+  /** Lo que dice el CRM: la tabla de los hijos y el funnel. */
+  crm: CrmTableData;
 }
 
 export function AdsDetailView({
@@ -112,11 +117,12 @@ export function AdsDetailView({
   currency,
   period,
   days,
-  reach,
+  adReach,
   live,
   meta,
   contentLink = null,
   canLinkContent = false,
+  crm,
 }: AdsDetailViewProps) {
   const router = useRouter();
   const { pending, navigate, applyPeriod, refresh } = useAdsNavigation();
@@ -196,6 +202,12 @@ export function AdsDetailView({
   const creativeType = meta.creative?.objectType ? (CREATIVE_TYPE_LABELS[meta.creative.objectType] ?? meta.creative.objectType) : null;
 
   const m = (value: number | null) => money(value, currency, { narrow: true });
+
+  const childScope = useMemo(() => (level === "ad" ? null : { level, id: detail.objectId }), [level, detail.objectId]);
+
+  // Sin fila en el CRM es que no hubo nada atribuido: cero, no un dato faltante.
+  const crmMetrics = crm.metrics[level].find((metric) => metric.objectId === detail.objectId);
+  const funnelCrm = crm.error ? null : { leadsTotal: crmMetrics?.leadsTotal ?? 0, bookings: crmMetrics?.bookings ?? 0, sales: crmMetrics?.sales ?? 0 };
 
   return (
     <div className="flex h-full flex-col">
@@ -339,11 +351,12 @@ export function AdsDetailView({
         <section className="space-y-2" aria-label="Resumen">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Resumen</p>
           <KpiRow items={kpis} />
+          <ReachAheadNote totals={detail.totals} />
         </section>
 
         <EvolutionCard rows={own} currency={currency} />
 
-        {level !== "ad" && <ComparisonCards variant="ads" rows={scoped} currency={currency} adReach={reach.ad} />}
+        {level !== "ad" && <ComparisonCards variant="ads" rows={scoped} currency={currency} adReach={adReach} />}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionsCard rows={own} />
@@ -354,17 +367,18 @@ export function AdsDetailView({
 
         <AudienceCard result={live.audience} />
         <HourlyCard result={live.hourly} currency={currency} />
-        <FunnelCard totals={detail.totals} currency={currency} />
+        <FunnelCard totals={detail.totals} currency={currency} crm={funnelCrm} crmFailed={Boolean(crm.error)} />
 
         {CHILD_LEVELS[level].length > 0 && (
           <HierarchyCard
             levels={CHILD_LEVELS[level]}
             rows={scoped}
             totals={detail.totals}
-            uniqueReach={{ campaign: null, adset: reach.adset, ad: reach.ad }}
             currency={currency}
             adAccountId={adAccountId}
             period={period}
+            crm={crm}
+            scope={childScope}
           />
         )}
 

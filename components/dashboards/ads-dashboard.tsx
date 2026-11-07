@@ -4,14 +4,14 @@ import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
 import type { DashboardOption } from "@/lib/dashboards/available";
-import { ConnectMetaAdsCard, UniqueReachNotice } from "./ads/ads-page-notices";
+import { ConnectMetaAdsCard, ReachAheadNote, UniqueReachNotice } from "./ads/ads-page-notices";
 import { EvolutionCard } from "./ads/evolution-card";
 import { buildKpiItems } from "./ads/kpi-items";
 import { HeaderActions, HeaderFilters, SyncedPill } from "./ads/header-controls";
 import { AudienceCard } from "./ads/audience-card";
 import { ComparisonCards } from "./ads/comparison-cards";
 import { DailyTableCard } from "./ads/daily-table";
-import { HierarchyCard, type UniqueReach } from "./ads/hierarchy-tables";
+import { HierarchyCard } from "./ads/hierarchy-tables";
 import { ActionsCard, DeviceCard, PlacementCard, VideoCard, type Live } from "./ads/insight-cards";
 import type { BreakdownRow } from "@/lib/meta/live";
 import { KpiRow } from "./ads/kpi-row";
@@ -42,13 +42,15 @@ export interface AdsDashboardProps {
   period: PeriodFilter;
   /** El alcance unico del periodo, de la consulta en vivo (F58). */
   uniqueReach: number | null;
+  /** La frecuencia de la misma respuesta de Meta que `uniqueReach`. */
+  uniqueFrequency: number | null;
   /** El del periodo anterior; solo viene si el de este llego tambien. */
   previousUniqueReach: number | null;
   liveError: string | null;
   /** Los desgloses que se piden a Meta en vivo, cada uno por su cuenta. */
   live: { placement: Live<BreakdownRow[]>; device: Live<BreakdownRow[]>; audience: Live<BreakdownRow[]> };
-  /** Alcance unico de cada campaña, conjunto y anuncio (en vivo). Null si Meta no respondio. */
-  reach: UniqueReach;
+  /** Alcance unico de cada anuncio (en vivo), para la comparativa. Null si Meta no respondio. */
+  adReach: Record<string, number> | null;
   /** El modelo elegido para el analisis de IA ("proveedor/modelo"); null = el del negocio. */
   aiModel: string | null;
   /** "hoy 14:32": cuando escribio el sync por ultima vez. Armado en el servidor. */
@@ -70,8 +72,8 @@ export function AdsDashboard(props: AdsDashboardProps) {
   const accountRows = useMemo(() => props.rows.filter((r) => r.level === "account"), [props.rows]);
 
   const totals = useMemo(
-    () => computeTotals(accountRows, props.uniqueReach),
-    [accountRows, props.uniqueReach],
+    () => computeTotals(accountRows, props.uniqueReach, props.uniqueFrequency),
+    [accountRows, props.uniqueReach, props.uniqueFrequency],
   );
 
   const previousTotals = useMemo(
@@ -139,11 +141,12 @@ export function AdsDashboard(props: AdsDashboardProps) {
         <section className="space-y-2" aria-label="Resumen">
           <p className={SECTION_LABEL}>Resumen</p>
           <KpiRow items={kpis} />
+          <ReachAheadNote totals={totals} />
         </section>
 
         <EvolutionCard rows={accountRows} currency={props.currency} />
 
-        <ComparisonCards variant="campaigns" rows={props.rows} currency={props.currency} adReach={props.reach.ad} />
+        <ComparisonCards variant="campaigns" rows={props.rows} currency={props.currency} adReach={props.adReach} />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionsCard rows={accountRows} />
@@ -154,16 +157,17 @@ export function AdsDashboard(props: AdsDashboardProps) {
 
         <AudienceCard result={props.live.audience} />
 
-        <HierarchyCard
-          levels={["campaign", "adset", "ad"]}
-          rows={props.rows}
-          totals={totals}
-          uniqueReach={props.reach}
-          currency={props.currency}
-          adAccountId={props.adAccountId}
-          period={props.period}
-          crm={props.crm}
-        />
+        {props.crm && (
+          <HierarchyCard
+            levels={["campaign", "adset", "ad"]}
+            rows={props.rows}
+            totals={totals}
+            currency={props.currency}
+            adAccountId={props.adAccountId}
+            period={props.period}
+            crm={props.crm}
+          />
+        )}
 
         <DailyTableCard rows={accountRows} totals={totals} currency={props.currency} />
       </div>

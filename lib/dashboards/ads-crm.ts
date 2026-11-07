@@ -60,8 +60,10 @@ export interface CatalogEntry {
   parentName?: string | null;
   /** La campaña a la que pertenece (conjuntos y anuncios). */
   campaignName?: string | null;
+  campaignId?: string | null;
   /** El conjunto al que pertenece (anuncios). */
   adsetName?: string | null;
+  adsetId?: string | null;
   /** El objetivo de la campaña (solo campañas). */
   objective?: string | null;
   /** La miniatura firmada (solo anuncios). */
@@ -100,6 +102,9 @@ export interface CrmRow extends MetaRatios, MetaCounters {
   parentName: string | null;
   campaignName: string | null;
   adsetName: string | null;
+  /** De que campaña y conjunto cuelga: para mostrar solo los hijos de uno. */
+  campaignId: string | null;
+  adsetId: string | null;
   objective: string | null;
   publicationUrl: string | null;
   /** Cuantos anuncios tiene (campañas y conjuntos). */
@@ -346,6 +351,8 @@ export function buildCrmRows(params: BuildParams): CrmRow[] {
       parentName: info.parentName,
       campaignName: info.campaignName,
       adsetName: info.adsetName,
+      campaignId: params.level === "campaign" ? objectId : (cat?.campaignId ?? g?.campaignId ?? null),
+      adsetId: params.level === "adset" ? objectId : params.level === "ad" ? (cat?.adsetId ?? g?.adsetId ?? null) : null,
       objective: info.objective,
       publicationUrl: info.publicationUrl,
       adsCount: info.adsCount,
@@ -395,6 +402,21 @@ export function sortCrmRows(rows: CrmRow[]): CrmRow[] {
     if (leads !== 0) return leads;
     return (a.name ?? a.objectId).localeCompare(b.name ?? b.objectId);
   });
+}
+
+/** Mostrar solo los hijos de una campaña o de un conjunto. */
+export interface ParentScope {
+  level: "campaign" | "adset";
+  id: string;
+}
+
+/**
+ * Lo que `ads_crm_metrics_v2` devuelve es de toda la cuenta: sin esto, el detalle de una campaña mostraria los conjuntos de
+ * las demas. Un objeto del que no se conoce el padre queda afuera: no se puede afirmar que sea de este.
+ */
+export function filterByParent(rows: CrmRow[], scope: ParentScope | null): CrmRow[] {
+  if (!scope) return rows;
+  return rows.filter((row) => (scope.level === "campaign" ? row.campaignId : row.adsetId) === scope.id);
 }
 
 export function filterByStatus(rows: CrmRow[], filter: StatusFilter): CrmRow[] {
@@ -470,6 +492,8 @@ export function totalRowDetailed(rows: CrmRow[], options: TotalOptions = {}): To
     parentName: null,
     campaignName: null,
     adsetName: null,
+    campaignId: null,
+    adsetId: null,
     objective: null,
     publicationUrl: null,
     adsCount: null,
