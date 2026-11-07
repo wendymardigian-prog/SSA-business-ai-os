@@ -497,7 +497,8 @@ try {
     check(!sPaid.error, "se crea una venta de prueba", sPaid.error?.message);
     await mkSale(tB.data.touch_id, "cancelled", 999);
     await mkSale(tB.data.touch_id, "refunded", 888);
-    await mkSale(null, "paid", 777);
+    // Manual sin toque (un referido, cargado a mano): no le cuenta a ningun anuncio, aunque el contacto haya tocado A y B (00302).
+    await mkSale(null, "paid", 777, { attribution_type: "manual", attribution: { source: "referral" } });
     // Un pago cobrado y un reembolso (fila negativa): cash neto.
     const payBase = { workspace_id: wsC.id, sale_id: sPaid.data?.id, status: "paid", paid_at: new Date().toISOString(), paid_on: dateOf(0) };
     const p1 = await svc.from("payments").insert({ ...payBase, type: "full", amount: 100.5 });
@@ -710,6 +711,95 @@ try {
       check(detailVacio.length === 0, "(el detalle se pide con la cuenta ACC; a-Z es de otra: no aparece)");
       const { data: dz } = await adminC.client.rpc("ads_crm_cell_detail", { p_level: "ad", p_metric: "leads_total", p_since: since, p_until: until, p_ad_account_id: ACC2, p_workspace_id: wsC.id, p_object_id: "a-Z", p_limit: 50, p_offset: 0 });
       check((dz ?? []).length === 1 && Number(dz[0].total_count) === 1, "y con SU cuenta el detalle de a-Z tiene su lead", JSON.stringify(dz));
+
+      // 9. La venta sin anuncio en su toque hereda el ultimo toque con anuncio anterior (00302).
+      // @plantilla-desde(ventas)
+      console.log("\n— 00302: el anuncio de una venta —");
+      await svc.from("meta_campaigns").insert({ workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-3", name: "Camp 3", name_key: "camp 3" });
+      await svc.from("meta_adsets").insert({ workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-3", adset_id: "s-3", name: "Conj 3", name_key: "conj 3" });
+      await svc.from("meta_ads").insert(["a-F", "a-G", "a-H", "a-I", "a-J", "a-K"].map((ad) => ({ workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-3", adset_id: "s-3", ad_id: ad, name: `Anuncio ${ad}`, name_key: `anuncio ${ad}` })));
+      const adTouch = async (contactId, ad, days) => (await touchC(contactId, { ad_id: ad, occurred_at: ago(days) })).data.touch_id;
+      const plainTouch = async (contactId, days, t) => (await touchC(contactId, { occurred_at: ago(days), ...t })).data.touch_id;
+      const saleFor = (contactId, touchId, amount, type, over = {}) =>
+        mkSale(touchId, "paid", amount, { contact_id: contactId, attribution_type: type, attribution: type === "none" ? null : { source: "zz" }, ...over });
+
+      // Vino por un anuncio y despues se unio a un grupo: el ultimo toque no tiene anuncio. Es el caso que se perdia.
+      const kF = await mkC("kf");
+      await adTouch(kF, "a-F", 3);
+      const tGrupo = await plainTouch(kF, 1, { source: "whatsapp", medium: "organic", origin: "whatsapp_group" });
+      const sF = await saleFor(kF, tGrupo, 200, "last_touch");
+      check(!sF.error, "se crea la venta cuyo ultimo toque es el grupo", sF.error?.message);
+      await svc.from("payments").insert([
+        { workspace_id: wsC.id, sale_id: sF.data.id, type: "installment", amount: 120, status: "paid", paid_at: ago(2), paid_on: dateOf(2) },
+        { workspace_id: wsC.id, sale_id: sF.data.id, type: "installment", amount: 80, status: "paid", paid_at: new Date().toISOString(), paid_on: dateOf(0) },
+      ]);
+      // La misma persona, con una venta cancelada y una reembolsada: el respaldo no las hace contar.
+      await saleFor(kF, tGrupo, 999, "last_touch", { status: "cancelled" });
+      await saleFor(kF, tGrupo, 888, "last_touch", { status: "refunded" });
+      // Una persona eligio el origen (un referido): no se busca otro, aunque haya un anuncio anterior.
+      const kM = await mkC("km");
+      await adTouch(kM, "a-H", 3);
+      const tRef = await plainTouch(kM, 1, { source: "referral", medium: "referral", origin: "manual" });
+      await saleFor(kM, tRef, 300, "manual");
+      // El anuncio llego DESPUES de la fecha de la venta (cargada hoy con fecha vieja): no la trajo.
+      const kL = await mkC("kl");
+      await adTouch(kL, "a-I", 1);
+      await saleFor(kL, null, 400, "last_touch", { sale_date: dateOf(3) });
+      // Sin atribucion (el contacto no tenia toques al vender; por ejemplo, llego por una fusion) y con un anuncio anterior: cuenta.
+      const kN = await mkC("kn");
+      await adTouch(kN, "a-J", 2);
+      await saleFor(kN, null, 500, "none");
+      // Su toque guardado ya tiene anuncio: cuenta ese, aunque despues haya tocado otro.
+      const kO = await mkC("ko");
+      const tG = await adTouch(kO, "a-G", 3);
+      await adTouch(kO, "a-K", 1);
+      await saleFor(kO, tG, 600, "last_touch");
+
+      const fb = await v2(adminC.client, "ad", ACC);
+      const fbRow = (id) => fb.byObject[id] ?? {};
+      check(Number(fbRow("a-F").sales) === 1 && Number(fbRow("a-F").revenue_cents) === 20000, "ultimo toque sin anuncio + anuncio anterior: cuenta una sola venta, sin la cancelada ni la reembolsada", JSON.stringify(fbRow("a-F")));
+      check(Number(fbRow("a-F").cash_cents) === 20000, "el Cash sigue a la venta (120 + 80)", String(fbRow("a-F").cash_cents));
+      check(Number(fbRow("a-F").uf_cash_cents) === 12000, "y el UF cash tambien (el primer pago: 120)", String(fbRow("a-F").uf_cash_cents));
+      check(Number(fbRow("a-H").sales) === 0 && Number(fbRow("a-H").revenue_cents) === 0, "una venta manual sin anuncio no hereda nada: lo que eligio una persona no se pisa", JSON.stringify(fbRow("a-H")));
+      check(Number(fbRow("a-I").sales) === 0, "un anuncio posterior a la fecha de la venta no la cuenta", JSON.stringify(fbRow("a-I")));
+      check(Number(fbRow("a-J").sales) === 1 && Number(fbRow("a-J").revenue_cents) === 50000, "una venta sin atribucion con un anuncio anterior cuenta", JSON.stringify(fbRow("a-J")));
+      check(Number(fbRow("a-G").sales) === 1 && Number(fbRow("a-K").sales) === 0, "con anuncio en su toque guardado gana ese, aunque haya uno mas nuevo", JSON.stringify({ G: fbRow("a-G"), K: fbRow("a-K") }));
+      check(Number(fbRow("a-A").sales) === 0 && Number(fbRow("a-B").sales) === 1 && Number(fbRow("a-B").revenue_cents) === 10050, "lo que ya contaba no cambia: la venta manual de 777 de k1 sigue sin sumarle a A ni a B", JSON.stringify({ A: fbRow("a-A"), B: fbRow("a-B") }));
+
+      // Los tres niveles: la venta cae en un solo objeto por nivel, y la lista es igual al numero.
+      for (const level of ["adset", "campaign"]) {
+        const m = await v2(adminC.client, level, ACC);
+        const row = m.byObject[level === "adset" ? "s-3" : "c-3"] ?? {};
+        check(Number(row.sales) === 3 && Number(row.revenue_cents) === 130000 && Number(row.cash_cents) === 20000, `a nivel ${level} las tres ventas heredadas o propias suman una vez cada una`, JSON.stringify(row));
+      }
+      let saleCells = 0;
+      for (const level of ["ad", "adset", "campaign"]) {
+        const m = await v2(adminC.client, level, ACC);
+        for (const [id, row] of Object.entries(m.byObject)) {
+          const list = await detail(adminC.client, level, "sales", id);
+          const total = list.length ? Number(list[0].total_count) : 0;
+          if (list.length !== Number(row.sales) || total !== Number(row.sales)) fail(`la lista de ventas de ${level}:${id} no coincide con su numero`, `lista ${list.length}, total_count ${total}, numero ${row.sales}`);
+          saleCells++;
+        }
+        const all = await detail(adminC.client, level, "sales", null);
+        const expected = Object.values(m.byObject).reduce((acc, r) => acc + Number(r.sales), 0);
+        if (all.length !== expected) fail(`la lista del TOTAL de ventas (${level}) no coincide`, `lista ${all.length}, esperado ${expected}`);
+        saleCells++;
+      }
+      ok(`con ventas heredadas, la lista de ventas sigue igual al numero (${saleCells} celdas, en los tres niveles)`);
+      const fbList = await detail(adminC.client, "ad", "sales", "a-F");
+      check(fbList.length === 1 && fbList[0].item_id === sF.data.id && fbList[0].origin === "form", "la lista muestra la venta y el origen del toque con anuncio, no el del grupo", JSON.stringify(fbList));
+
+      // Lo guardado en la venta no se toca: la tabla decide al leer.
+      const { data: sFRow } = await svc.from("sales").select("attribution_touch_id, attribution_type").eq("id", sF.data.id).single();
+      check(sFRow.attribution_touch_id === tGrupo && sFRow.attribution_type === "last_touch", "la venta sigue guardando su toque: el grupo", JSON.stringify(sFRow));
+
+      // RLS (INVOKER): un Member no suma las ventas de contactos que no ve, ni por el respaldo.
+      const fbMember = await v2(memberC.client, "ad", null);
+      check(!fbMember.byObject["a-F"] && !fbMember.byObject["a-J"], "un Member no ve las ventas heredadas de contactos que no son suyos", JSON.stringify(Object.keys(fbMember.byObject)));
+      // Una metrica interna de la tabla no se abre como lista.
+      check(!!(await adminC.client.rpc("ads_crm_cell_detail", { p_level: "ad", p_metric: "cash", p_since: since, p_until: until, p_workspace_id: wsC.id })).error, "el detalle sigue rechazando `cash`");
+      // @plantilla-hasta(ventas)
     }
 
     // ══════════════════════════════════════════════════════════════════════════

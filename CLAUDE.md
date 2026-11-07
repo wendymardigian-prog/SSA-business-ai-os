@@ -1321,6 +1321,20 @@ Reuniones y respuestas muestran su atribución y su vínculo con campaña, conju
 
 `00299_meta_match_ids_only`: cambia a propósito la huella de `resolve_meta_match`. Se puede aplicar antes o después del código. Lo existente se vincula con el próximo sync o con `select public.rematch_meta_touches(<workspace>, '-infinity')`. **La próxima libre es la `00300`** (confirmar con `list_migrations` y las ramas locales).
 
+# A qué anuncio cuenta una venta (6/11/2026)
+
+En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el último toque con anuncio anterior a ella. Detalle en [docs/dashboards.md](docs/dashboards.md) («A qué anuncio cuenta una venta»).
+
+## Lo que no se puede romper
+
+- **Una venta `manual` nunca hereda**: es la decisión de una persona. Hereda solo `last_touch` o `none`.
+- **Solo la tabla decide al leer** (`ads_crm_items`, `v_sale_touch`): `sales.attribution`, `attribution_touch_id`, `create_sale`, la ficha y las comisiones no cambiaron.
+- **Ventas, UF cash y Cash salen de la misma búsqueda**: el Cash ya no tiene cruce propio en `ads_crm_metrics_v2`. `cash` es una métrica interna de `ads_crm_items`: `ads_crm_cell_detail` la rechaza.
+
+## Migración
+
+`00302_ads_crm_sales_fallback` (misma firma, ninguna tabla; la definición vieja en su cabecera) puede ir antes o después del deploy: **aplicada y registrada** el 6/11/2026 (versión `20261107011534`), con `verify-ads-attribution` en verde. La `00300` y la `00301` son de Grabaciones. **La próxima libre es la `00303`** (la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
+
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
 Webhooks que no repiten, flujos sin contacto con origen, leads de Meta sin duplicados, la tabla Meta vs CRM con detalle, el anuncio de origen y el vinculo
