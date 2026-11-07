@@ -20,6 +20,6 @@ describe("alcance del disparador de comentario", () => {
 
   it("resume cuenta y publicaciones", () => {
     expect(scopeSummary({ channelName: null, postCount: 0 })).toBe("Todas las cuentas · todas las publicaciones");
-    expect(scopeSummary({ channelName: "@wendy", postCount: 2 })).toBe("@wendy · 2 publicaciones");
+    expect(scopeSummary({ channelName: "@ana", postCount: 2 })).toBe("@ana · 2 publicaciones");
   });
 });

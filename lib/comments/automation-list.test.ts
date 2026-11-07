@@ -27,11 +27,11 @@ describe("la pestaña Comentarios", () => {
         { id: "g", flow_id: "f", channel_id: CH, is_active: true, config: { postIds: ["1"] }, flow: { id: "f", name: "A", status: "published" } },
         { id: "c", flow_id: "f2", channel_id: CH, is_active: true, config: { origin: "canvas" }, flow: { id: "f2", name: "B", status: "published" } },
       ],
-      channelNames: { [CH]: "@wendy" },
+      channelNames: { [CH]: "@ana" },
       logs: [],
       failures: [],
     });
-    expect(rows.find((r) => r.triggerId === "g")).toMatchObject({ legacy: true, scope: "@wendy · 1 publicación" });
+    expect(rows.find((r) => r.triggerId === "g")).toMatchObject({ legacy: true, scope: "@ana · 1 publicación" });
     expect(rows.find((r) => r.triggerId === "c")?.legacy).toBe(false);
   });
 
