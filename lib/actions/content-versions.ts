@@ -87,7 +87,7 @@ export async function restoreVersion(input: {
   // `script`. La columna `copy` NO se toca nunca mas (F90).
   const snapshot = normalizeSnapshot(version.snapshot as unknown as StoredSnapshot);
 
-  const { error } = await supabase
+  const { data: restored, error } = await supabase
     .from("content_posts")
     .update({
       title: snapshot.title,
@@ -98,12 +98,15 @@ export async function restoreVersion(input: {
       networks: snapshot.networks as never,
       media: snapshot.media as never,
     })
-    .eq("id", input.postId);
+    .eq("id", input.postId)
+    .select("id");
 
   if (error) {
     console.error("[content] no pude restaurar:", error.message);
     return { ok: false, error: "No pude restaurar esa version" };
   }
+  // Sin filas, la RLS no dejo escribir: no se devuelve como restaurado.
+  if (!restored || restored.length === 0) return { ok: false, error: "No tenés permiso para editar esta pieza" };
 
   revalidatePath(CONTENT_PATH);
   return { ok: true, data: { snapshot } };

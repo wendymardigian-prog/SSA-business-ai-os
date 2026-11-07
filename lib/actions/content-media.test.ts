@@ -66,6 +66,19 @@ beforeEach(() => {
   seed();
 });
 
+/** Simula la RLS que rechaza el UPDATE de la pieza: no da error, pero no toca ninguna fila. */
+function denyPostUpdates() {
+  const realFrom = db.client.from.bind(db.client) as unknown as (table: string) => Record<string, unknown>;
+  (db.client as unknown as { from: unknown }).from = (table: string) => {
+    const builder = realFrom(table);
+    if (table !== "content_posts") return builder;
+    return {
+      ...builder,
+      update: () => ({ eq: () => ({ select: async () => ({ data: [], error: null }) }) }),
+    };
+  };
+}
+
 describe("quitar un archivo de la biblioteca (F92)", () => {
   it("CRITERIO: si una red lo usa, se lo saca tambien, y se dice cuales eran", async () => {
     const result = await removeMedia({ postId: POST, fileId: "a" });
@@ -138,6 +151,25 @@ describe("quitar un archivo de la biblioteca (F92)", () => {
     expect(removeFromBucket).not.toHaveBeenCalled();
   });
 
+  it("si la RLS no deja escribir la pieza (0 filas), no se borra el archivo del bucket", async () => {
+    denyPostUpdates();
+
+    const result = await removeMedia({ postId: POST, fileId: "a" });
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("permiso") });
+    expect(removeFromBucket).not.toHaveBeenCalled();
+  });
+
+  it("una ruta de otro workspace guardada en la pieza no se borra del bucket", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    seed({ media: [{ ...entry("a"), storage_path: "otro-ws/post-x/a.jpg" }], networks: [] });
+
+    const result = await removeMedia({ postId: POST, fileId: "a" });
+
+    expect(result.ok).toBe(true);
+    expect(removeFromBucket).not.toHaveBeenCalled();
+  });
+
   it("si el bucket falla, la pieza ya quedo bien: no se deshace", async () => {
     removeFromBucket.mockResolvedValueOnce({ error: { message: "boom" } });
 
@@ -163,6 +195,14 @@ describe("subir un archivo a la biblioteca (F92)", () => {
     expect(result).toEqual({ ok: true, data: { id: "nuevo-uuid" } });
     const nuevo = (db.rows("content_posts")[0].media as Array<Record<string, unknown>>).at(-1)!;
     expect(nuevo).toMatchObject({ id: "nuevo-uuid", name: "portada.jpg", width: 1080, height: 1920 });
+  });
+
+  it("si la RLS no deja escribir la pieza, no dice que lo guardo", async () => {
+    denyPostUpdates();
+
+    const result = await attachMedia(base);
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("permiso") });
   });
 
   it("los archivos de antes quedan con su id al escribir", async () => {
