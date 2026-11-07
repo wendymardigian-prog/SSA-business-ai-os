@@ -11,6 +11,10 @@
  *    (NO lanza: la cola reintentaría a los 10 s encima). Uno permanente (un 4xx que no
  *    sea 429), Resend sin conectar o agotados los reintentos deja `not_sent` con el motivo.
  *  - La firma y el PDF NUNCA dependen de esto: un email que no sale no deshace nada.
+ *  - Tope por DIRECCION (seguridad): el formulario es publico y el tope por IP no alcanza para que alguien use el
+ *    contrato para llenarle la bandeja a un tercero cambiando de IP. Mas de `CONTRACT_COPY_LIMITS.perAddressPerDay`
+ *    copias automaticas por dia a la misma direccion desde el mismo formulario: la firma queda guardada y la copia
+ *    no sale (`not_sent`, con el motivo para el equipo). Un reintento o un "Reenviar copia" no cuentan.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
@@ -22,6 +26,17 @@ import { parseStoredContractConfig } from "./config";
 import { bodyToHtml } from "@/lib/flow-engine/nodes/send-email";
 import { brandedEmailHtml } from "@/lib/email/templates";
 import { resolveBrand, type WorkspaceBrandFields } from "@/lib/brand";
+import { checkLimit, type LimitResult, type LimitSpec } from "@/lib/antispam/rate-limit";
+import { hashIp } from "@/lib/scheduling/antispam";
+
+/** Copias automaticas por dia a una misma direccion desde un mismo formulario. */
+export const CONTRACT_COPY_LIMITS = { perAddressPerDay: 3 } as const;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** La clave del tope: el formulario y la direccion, hasheada (la direccion nunca queda en `rate_limits`). */
+export function contractCopyLimitKey(formId: string, email: string): string {
+  return `forms:contract-copy:${formId}:${hashIp(email.trim().toLowerCase())}`;
+}
 
 type Db = SupabaseClient<Database>;
 
@@ -35,6 +50,8 @@ export interface EmailRunDeps {
   schedule?: (type: string, payload: Record<string, unknown>, runAt: Date, dedupeKey: string) => Promise<void>;
   /** Los emails del/los Owner del workspace (para "Mandarme una copia"). Nunca lanza: sin dato, lista vacía. */
   ownerEmails?: (workspaceId: string) => Promise<string[]>;
+  /** El tope por direccion (`bump_rate_limit`). Por defecto, `checkLimit` con el cliente de servicio. */
+  limit?: (spec: LimitSpec) => Promise<LimitResult>;
 }
 
 /** Los Owner del workspace, con el cliente de servicio (`auth.admin`). Sin dato o con un error, ninguno. */
@@ -125,6 +142,13 @@ export async function runContractEmail(deps: EmailRunDeps, input: { signatureId:
     await db.from("contract_signatures").update({ email_status: "not_sent", email_attempts: attempt, email_next_retry_at: null, email_last_error: safeReason(reason) }).eq("id", sig.id);
     return "not_sent";
   };
+
+  // El tope por direccion, solo en el primer intento automatico (un reintento es la MISMA copia).
+  if (attempt === 0 && !input.manual && sig.signer_email) {
+    const limit = deps.limit ?? ((spec: LimitSpec) => checkLimit(db, spec));
+    const perAddress = await limit({ key: contractCopyLimitKey(sig.form_id, sig.signer_email), max: CONTRACT_COPY_LIMITS.perAddressPerDay, windowMs: DAY_MS });
+    if (!perAddress.allowed) return markNotSent("Se llegó al tope de copias por día para esa dirección: no se mandó (podés reenviarla a mano).");
+  }
 
   if (sig.pdf_status !== "generated" || !sig.pdf_path) {
     await markNotSent("Todavía no hay PDF para adjuntar");

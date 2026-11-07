@@ -19,6 +19,7 @@ import { notifyBooking } from "@/lib/scheduling/notifications";
 import { bookingPublicUrl, publicBaseUrl } from "@/lib/scheduling/public-url";
 import { formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { isValidTimeZone } from "@/lib/timezone";
+import { guestEmailsSuppressed } from "@/lib/scheduling/booking/guest-email-limit";
 
 type Db = SupabaseClient<Database>;
 
@@ -223,7 +224,9 @@ export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
         startUtc: booking.start_at,
         endUtc: booking.end_at,
         timeZone: googleEventTimezone(booking),
-        attendeeEmail: booking.booker_email,
+        // Una reserva publica pasada del tope de emails por direccion: Google no invita (y no le manda un correo) al
+        // invitado (lib/scheduling/booking/guest-email-limit.ts).
+        attendeeEmail: guestEmailsSuppressed(booking.metadata) ? null : booking.booker_email,
         attendeeName: booking.booker_name,
         location: booking.location_type === "google_meet" ? { kind: "google_meet" } : { kind: "manual", text: booking.location_text },
       });

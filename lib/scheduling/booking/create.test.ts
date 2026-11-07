@@ -9,6 +9,7 @@ import { createBooking, countryFromTimezone } from "./create";
 import { schedulingWorld, EVENT, HOST } from "@/lib/scheduling/testing/world";
 import { resetBusyCache } from "@/lib/scheduling/data/slots-input";
 import { HONEYPOT_FIELD } from "@/lib/scheduling/antispam";
+import { GUEST_EMAIL_LIMITS, guestEmailLimitKey, guestEmailsSuppressed } from "./guest-email-limit";
 
 // Jueves 1 de octubre de 2026, 10:00 en Costa Rica (UTC-6) = 16:00 UTC.
 const NOW = new Date("2026-09-30T16:00:00.000Z");
@@ -209,6 +210,29 @@ describe("createBooking", () => {
     const db = schedulingWorld({ event: { success_redirect_url: "https://ssa.example/gracias" } });
     const result = await createBooking(db.client, base);
     expect(result.ok && result.redirectUrl).toBe("https://ssa.example/gracias");
+  });
+});
+
+describe("createBooking: tope de emails al invitado por direccion", () => {
+  it("pasado el tope, la reserva se guarda igual y queda marcada sin emails al invitado; al publico no se le dice nada", async () => {
+    const db = schedulingWorld();
+    db.tables.rate_limits = [{ key: guestEmailLimitKey(EVENT, "juan@ejemplo.com"), hits: GUEST_EMAIL_LIMITS.perAddressPerDay, window_start: NOW.toISOString() }];
+    const result = await createBooking(db.client, { ...base, responses: { name: "Juan Pérez", email: "Juan@Ejemplo.com" } });
+    expect(result).toMatchObject({ ok: true });
+    expect(guestEmailsSuppressed(db.rows("bookings")[0].metadata)).toBe(true);
+  });
+
+  it("dentro del tope, nada cambia", async () => {
+    const db = schedulingWorld();
+    await createBooking(db.client, base);
+    expect(guestEmailsSuppressed(db.rows("bookings")[0].metadata)).toBe(false);
+  });
+
+  it("agendar a mano no cuenta para el tope", async () => {
+    const db = schedulingWorld();
+    db.tables.rate_limits = [{ key: guestEmailLimitKey(EVENT, "juan@ejemplo.com"), hits: 99, window_start: NOW.toISOString() }];
+    await createBooking(db.client, { ...base, origin: "manual" });
+    expect(guestEmailsSuppressed(db.rows("bookings")[0].metadata)).toBe(false);
   });
 });
 

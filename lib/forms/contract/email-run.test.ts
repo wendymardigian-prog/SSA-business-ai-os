@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { fakeDb } from "@/lib/testing/fake-db";
-import { runContractEmail, statusFromError, safeReason } from "./email-run";
+import { contractCopyLimitKey, CONTRACT_COPY_LIMITS, runContractEmail, statusFromError, safeReason } from "./email-run";
 
 const SIG = "11111111-1111-4111-8111-111111111111";
 const SHA = "c".repeat(64);
@@ -32,6 +32,8 @@ function setup(
     timezone?: string;
     sendResults?: Array<{ ok: boolean; reason?: string; error?: string }>;
     pdf?: Uint8Array | null;
+    /** El tope por direccion ya se paso. */
+    overLimit?: boolean;
   } = {},
 ) {
   const db = fakeDb({
@@ -51,8 +53,10 @@ function setup(
     return next as never;
   });
   const scheduled: Array<{ type: string; payload: Record<string, unknown>; runAt: Date; key: string }> = [];
+  const limit = vi.fn(async (spec: { max: number }) => ({ allowed: !over.overLimit, count: over.overLimit ? spec.max + 1 : 1, max: spec.max }));
   const deps = {
     db: db.client,
+    limit,
     storage: { download: vi.fn(async () => (over.pdf === undefined ? new Uint8Array([0x25, 0x50, 0x44, 0x46]) : over.pdf)), upload: vi.fn(async () => true) },
     now: () => NOW,
     send: send as never,
@@ -61,10 +65,38 @@ function setup(
       scheduled.push({ type, payload, runAt, key });
     },
   };
-  return { db, deps, sent, scheduled, send };
+  return { db, deps, sent, scheduled, send, limit };
 }
 
 const lastUpdate = (db: ReturnType<typeof setup>["db"]) => db.writesTo("contract_signatures").at(-1)!.values as Record<string, unknown>;
+
+describe("runContractEmail: tope de copias por direccion", () => {
+  it("pasado el tope, la copia no sale (ni al firmante ni al equipo) y queda anotado; la firma no se toca", async () => {
+    const { db, deps, sent, limit } = setup({ overLimit: true });
+    expect(await runContractEmail(deps, { signatureId: SIG })).toBe("not_sent");
+    expect(sent).toHaveLength(0);
+    expect(lastUpdate(db)).toMatchObject({ email_status: "not_sent", email_last_error: expect.stringContaining("tope") });
+    expect(limit).toHaveBeenCalledWith({ key: contractCopyLimitKey("form1", "ana@x.com"), max: CONTRACT_COPY_LIMITS.perAddressPerDay, windowMs: 24 * 60 * 60 * 1000 });
+  });
+
+  it("un reintento o un reenvio manual no cuentan para el tope", async () => {
+    const retry = setup({ overLimit: true });
+    await runContractEmail(retry.deps, { signatureId: SIG, attempt: 1 });
+    expect(retry.limit).not.toHaveBeenCalled();
+    expect(retry.sent).toHaveLength(1);
+
+    const manual = setup({ overLimit: true });
+    await runContractEmail(manual.deps, { signatureId: SIG, manual: true });
+    expect(manual.limit).not.toHaveBeenCalled();
+    expect(manual.sent).toHaveLength(1);
+  });
+
+  it("la clave no guarda la direccion y no distingue mayusculas", () => {
+    const key = contractCopyLimitKey("form1", "Ana@X.com ");
+    expect(key).toBe(contractCopyLimitKey("form1", "ana@x.com"));
+    expect(key).not.toContain("ana");
+  });
+});
 
 describe("runContractEmail", () => {
   it("la fecha del correo va en la zona del negocio", async () => {
