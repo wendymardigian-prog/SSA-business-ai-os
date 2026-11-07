@@ -55199,9 +55199,10 @@ REVOKE ALL ON FUNCTION public.chat_dashboard_core(uuid, timestamptz, timestamptz
 GRANT EXECUTE ON FUNCTION public.chat_dashboard_core(uuid, timestamptz, timestamptz, timestamptz, timestamptz, text, text, text, boolean) TO authenticated, service_role;
 
 -- 3. "Quien responde" ----------------------------------------------------------------
--- Copia de chat_dashboard_team (00110) leyendo los mensajes por chat_visible_messages
--- y armando los episodios sobre esa misma lectura. Sigue INVOKER: `handoff` y `esc`
--- leen `audit_log`, y lo que ve cada rol ahi depende de `audit.view`.
+-- Misma logica que chat_dashboard_team (00110), leyendo los mensajes por
+-- chat_visible_messages y numerando los episodios sobre esa misma lectura. Sigue
+-- INVOKER: `handoff` y `esc` leen `audit_log`, y lo que ve cada rol ahi depende de
+-- `audit.view`.
 CREATE OR REPLACE FUNCTION public.chat_dashboard_team_v2(
   p_workspace_id uuid,
   p_from timestamptz,
@@ -55232,8 +55233,11 @@ AS $$
     FROM public.agents a WHERE a.workspace_id = p_workspace_id AND a.deleted_at IS NULL
   ),
   ep_ordered AS (
-    SELECT b.*, LAG(b.created_at) OVER (PARTITION BY b.conversation_id ORDER BY b.created_at) AS prev_at
+    SELECT b.*,
+           LAG(b.direction) OVER w AS prev_dir,
+           LAG(b.created_at) OVER w AS prev_at
     FROM base b
+    WINDOW w AS (PARTITION BY b.conversation_id ORDER BY b.created_at)
   ),
   ep_starts AS (
     SELECT o.*,
@@ -55246,35 +55250,25 @@ AS $$
     SELECT s.*, SUM(s.is_start) OVER (PARTITION BY s.conversation_id ORDER BY s.created_at ROWS UNBOUNDED PRECEDING) AS episode_no
     FROM ep_starts s
   ),
-  ep AS MATERIALIZED (
-    SELECT g.*, LEAD(g.episode_start) OVER (PARTITION BY g.conversation_id ORDER BY g.episode_no) AS next_start
-    FROM (
-      SELECT n.conversation_id, n.contact_id, n.episode_no::integer AS episode_no,
-             MIN(n.created_at) AS episode_start,
-             MIN(n.created_at) FILTER (WHERE n.direction = 'inbound') AS first_inbound_at
-      FROM ep_numbered n
-      WHERE n.episode_no >= 1
-      GROUP BY n.conversation_id, n.contact_id, n.episode_no
-    ) g
-  ),
-  msgs AS (
-    SELECT
+  -- Cada mensaje ya sabe de que episodio es, sin unir mensajes con episodios por rango:
+  -- esa union crecia al cuadrado y se cortaba por tiempo con unas miles de conversaciones.
+  numbered AS MATERIALIZED (
+    SELECT n.*,
+      MIN(n.created_at) OVER e AS episode_start,
+      MIN(n.created_at) FILTER (WHERE n.direction = 'inbound') OVER e AS first_inbound_at,
       CASE
-        WHEN b.origin = 'user' THEN COALESCE(b.sent_by_user_id::text, 'user')
-        ELSE public.chat_origin_group(b.origin)
-      END AS author,
-      b.conversation_id, b.created_at, b.direction,
-      LAG(b.direction) OVER w AS prev_dir,
-      LAG(b.created_at) OVER w AS prev_at
-    FROM base b
-    WINDOW w AS (PARTITION BY b.conversation_id ORDER BY b.created_at)
+        WHEN n.origin = 'user' THEN COALESCE(n.sent_by_user_id::text, 'user')
+        ELSE public.chat_origin_group(n.origin)
+      END AS author
+    FROM ep_numbered n
+    WINDOW e AS (PARTITION BY n.conversation_id, n.episode_no)
   ),
   outs AS MATERIALIZED (
-    SELECT * FROM msgs WHERE direction = 'outbound' AND author IS NOT NULL
+    SELECT * FROM numbered n WHERE n.direction = 'outbound' AND n.author IS NOT NULL
   ),
   outs_p AS (
     SELECT * FROM outs
-    WHERE (p_from IS NULL OR created_at >= p_from) AND (p_to IS NULL OR created_at <= p_to)
+    WHERE (p_from IS NULL OR outs.created_at >= p_from) AND (p_to IS NULL OR outs.created_at <= p_to)
   ),
   sent AS (
     SELECT outs_p.author, COUNT(*) AS n FROM outs_p GROUP BY outs_p.author
@@ -55289,39 +55283,48 @@ AS $$
     GROUP BY outs_p.author
   ),
   author_ep AS MATERIALIZED (
-    -- El primer saliente de cada autor en cada episodio.
-    SELECT o.author, o.conversation_id, ep.episode_no, ep.episode_start, ep.first_inbound_at, ep.contact_id,
+    -- El primer saliente de cada autor en cada episodio. Un saliente anterior al
+    -- primer entrante no es de ningun episodio.
+    SELECT o.author, o.conversation_id, o.episode_no, o.episode_start, o.first_inbound_at, o.contact_id,
            MIN(o.created_at) AS author_first_out,
            BOOL_OR((p_from IS NULL OR o.created_at >= p_from) AND (p_to IS NULL OR o.created_at <= p_to)) AS in_period
     FROM outs o
-    JOIN ep ON ep.conversation_id = o.conversation_id
-      AND o.created_at >= ep.episode_start
-      AND (ep.next_start IS NULL OR o.created_at < ep.next_start)
-    GROUP BY o.author, o.conversation_id, ep.episode_no, ep.episode_start, ep.first_inbound_at, ep.contact_id
+    WHERE o.episode_no >= 1
+    GROUP BY o.author, o.conversation_id, o.episode_no, o.episode_start, o.first_inbound_at, o.contact_id
+  ),
+  handoff_events AS MATERIALIZED (
+    -- Una sola lectura de `audit_log`, con lo que este rol puede ver ahi.
+    SELECT al.entity_type, al.entity_id, al.action, al.performed_at, al.changes
+    FROM public.audit_log al
+    WHERE al.workspace_id = p_workspace_id
+      AND al.action IN ('assign', 'human_takeover')
+      AND al.entity_type IN ('conversation', 'contact')
   ),
   handoff AS (
     -- Para una PERSONA, su tiempo se cuenta desde que la conversacion le fue
     -- asignada o derivada, no desde que escribio el lead: antes de eso no era
     -- suya (§11.4). Para los grupos no hay asignacion y queda el primer
     -- entrante del episodio.
-    SELECT ae.author, ae.conversation_id, ae.episode_no,
-           MAX(al.performed_at) AS assigned_at
-    FROM author_ep ae
-    JOIN public.audit_log al
-      ON al.workspace_id = p_workspace_id
-     AND al.performed_at >= ae.episode_start
-     AND al.performed_at < ae.author_first_out
-     AND (
-       (al.entity_type = 'conversation' AND al.entity_id = ae.conversation_id
-         AND al.action = 'assign' AND al.changes->'assigned_to'->>'new' = ae.author)
-       OR (al.entity_type = 'contact' AND al.entity_id = ae.contact_id
-         AND al.action = 'assign'
-         AND (al.changes->'setter_id'->>'new' = ae.author OR al.changes->'vendedor_id'->>'new' = ae.author))
-       OR (al.entity_type = 'conversation' AND al.entity_id = ae.conversation_id
-         AND al.action = 'human_takeover')
-     )
-    WHERE ae.author ~ '^[0-9a-f-]{36}$'
-    GROUP BY ae.author, ae.conversation_id, ae.episode_no
+    SELECT h.author, h.conversation_id, h.episode_no, MAX(h.performed_at) AS assigned_at
+    FROM (
+      SELECT ae.author, ae.conversation_id, ae.episode_no, ev.performed_at
+      FROM author_ep ae
+      JOIN handoff_events ev ON ev.entity_type = 'conversation' AND ev.entity_id = ae.conversation_id
+      WHERE ae.author ~ '^[0-9a-f-]{36}$'
+        AND ev.performed_at >= ae.episode_start
+        AND ev.performed_at < ae.author_first_out
+        AND ((ev.action = 'assign' AND ev.changes->'assigned_to'->>'new' = ae.author) OR ev.action = 'human_takeover')
+      UNION ALL
+      SELECT ae.author, ae.conversation_id, ae.episode_no, ev.performed_at
+      FROM author_ep ae
+      JOIN handoff_events ev ON ev.entity_type = 'contact' AND ev.entity_id = ae.contact_id
+      WHERE ae.author ~ '^[0-9a-f-]{36}$'
+        AND ev.performed_at >= ae.episode_start
+        AND ev.performed_at < ae.author_first_out
+        AND ev.action = 'assign'
+        AND (ev.changes->'setter_id'->>'new' = ae.author OR ev.changes->'vendedor_id'->>'new' = ae.author)
+    ) h
+    GROUP BY h.author, h.conversation_id, h.episode_no
   ),
   first_resp AS (
     SELECT ae.author,
