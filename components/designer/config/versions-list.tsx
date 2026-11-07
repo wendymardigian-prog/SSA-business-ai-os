@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import { listVersions, restoreVersion, signDesignAssetUrls } from "@/lib/actions/designer/designs";
 import type { DesignTarget, VersionSummary } from "@/lib/designer/contracts";
@@ -22,6 +22,7 @@ export function VersionsList({
   timeZone,
   uploadedFonts,
   customVars,
+  beforeRestore,
   onRestored,
 }: {
   target: DesignTarget;
@@ -29,6 +30,8 @@ export function VersionsList({
   timeZone: string;
   uploadedFonts: readonly UploadedFont[];
   customVars: readonly CustomVar[];
+  /** Antes de restaurar se guarda lo que haya sin guardar (si no, el guardado automático chocaría con la `rev` nueva). */
+  beforeRestore?: () => Promise<void>;
   /** Se restauró una versión: el editor vuelve a leer el documento. */
   onRestored: () => void;
 }) {
@@ -38,30 +41,37 @@ export function VersionsList({
   const [busy, setBusy] = useState<string | null>(null);
   const [now] = useState(() => new Date());
 
-  const load = useCallback(async () => {
-    setError(null);
-    const result = await listVersions(target);
-    if (!result.ok) {
-      setError(result.error);
-      setVersions([]);
-      return;
-    }
-    setVersions(result.data);
-    // Las imágenes de la primera página de cada versión (un solo pedido).
-    const paths = [...new Set(result.data.flatMap((v) => collectAssetPathsOf(v.doc, 0)))];
-    if (paths.length > 0) {
-      const signed = await signDesignAssetUrls(paths);
-      if (signed.ok) setUrls(signed.data);
-    }
-  }, [target]);
+  const [reloadKey, setReloadKey] = useState(0);
+  const { kind, id } = target;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      const result = await listVersions({ kind, id });
+      if (cancelled) return;
+      if (!result.ok) {
+        setError(result.error);
+        setVersions([]);
+        return;
+      }
+      setError(null);
+      setVersions(result.data);
+      // Las imágenes de la primera página de cada versión (un solo pedido).
+      const paths = [...new Set(result.data.flatMap((v) => collectAssetPathsOf(v.doc, 0)))];
+      if (paths.length > 0) {
+        const signed = await signDesignAssetUrls(paths);
+        if (!cancelled && signed.ok) setUrls(signed.data);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, id, reloadKey]);
 
   async function restore(id: string) {
     setBusy(id);
     setError(null);
+    await beforeRestore?.();
     const result = await restoreVersion({ ...target, versionId: id });
     setBusy(null);
     if (!result.ok) {
@@ -69,7 +79,7 @@ export function VersionsList({
       return;
     }
     onRestored();
-    void load();
+    setReloadKey((k) => k + 1);
   }
 
   if (versions === null) {

@@ -207,7 +207,7 @@ export interface EditorRecord {
   contentPostId: string | null;
   contentNetwork: string | null;
   /** Una generación: de qué plantilla y para quién. */
-  generation: { templateId: string; templateName: string | null; subjectLabel: string | null; status: string } | null;
+  generation: { templateId: string; templateName: string | null; subjectLabel: string | null; status: string; verify: boolean; docType: "certificado" | "constancia" | "diploma" | "otro" | null; docTypeLabel: string | null } | null;
   voidInfo: { status: "valid" | "void" } | null;
   // Plantillas.
   customVars: CustomVar[];
@@ -266,9 +266,9 @@ export async function loadEditorRecord(db: Db, workspaceId: string, kind: Design
   if (!doc.ok) return { ok: false, reason: "invalid_doc" };
   let generation: EditorRecord["generation"] = null;
   if (data.template_id) {
-    const { data: tpl } = await db.from("design_templates").select("name").eq("id", data.template_id).eq("workspace_id", workspaceId).maybeSingle();
+    const { data: tpl } = await db.from("design_templates").select("name, verify, doc_type, doc_type_label").eq("id", data.template_id).eq("workspace_id", workspaceId).maybeSingle();
     const ref = data.subject_ref as { label?: unknown } | null;
-    generation = { templateId: data.template_id, templateName: tpl?.name ?? null, subjectLabel: typeof ref?.label === "string" ? ref.label : null, status: data.status };
+    generation = { templateId: data.template_id, templateName: tpl?.name ?? null, subjectLabel: typeof ref?.label === "string" ? ref.label : null, status: data.status, verify: !!tpl?.verify, docType: tpl?.doc_type ?? null, docTypeLabel: tpl?.doc_type_label ?? null };
   }
   return {
     ok: true,

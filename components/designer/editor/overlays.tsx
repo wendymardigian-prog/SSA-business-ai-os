@@ -131,7 +131,7 @@ export function BottomSheet({ title, label, onClose, children, tabs }: { title: 
   const panel = useRef<HTMLDivElement>(null);
   useLayer(onClose, panel);
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40 lg:hidden" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:hidden" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={panel} role="dialog" aria-modal="true" aria-label={label} className="flex max-h-[85dvh] w-full flex-col rounded-t-2xl border border-border bg-background shadow-xl">
         <header className="relative flex items-center gap-2 border-b border-border px-4 py-2.5 pt-4">
           <div aria-hidden className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-muted-foreground/30" />

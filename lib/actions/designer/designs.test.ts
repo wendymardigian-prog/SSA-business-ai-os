@@ -84,7 +84,14 @@ describe("createDesign (F16)", () => {
     const out = await createDesign({ kind: "design", origin: "ai", format: "v45", multiPage: true, style: "social", prompt: "  Un carrusel  " });
     expect(out).toMatchObject({ ok: true, data: { notice: null } });
     const id = db.tables.designs[0].id;
-    expect(startAiDesign).toHaveBeenCalledWith({ kind: "design", id, prompt: "Un carrusel", style: "social", attachments: [] });
+    expect(startAiDesign).toHaveBeenCalledWith({ kind: "design", id, prompt: "Un carrusel", style: "social", attachments: [], multiPage: true });
+  });
+
+  it("le pasa a la IA si se eligió una página o varias y el contexto de la pieza de Contenido", async () => {
+    startAiDesign.mockResolvedValue({ ok: true, data: { threadId: "t", messageId: "m" } });
+    const contentContext = { postId: "p1", network: "instagram", script: ["Portada", "Cierre"] };
+    await createDesign({ kind: "design", origin: "ai", format: "v45", multiPage: false, prompt: "Algo", contentContext });
+    expect(startAiDesign).toHaveBeenCalledWith(expect.objectContaining({ multiPage: false, contentContext }));
   });
 
   it("si la IA todavía no está construida, el diseño igual queda creado y se avisa (notice «pendiente»)", async () => {

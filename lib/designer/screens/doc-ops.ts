@@ -148,3 +148,28 @@ export function alignElements(doc: DesignDoc, pageIndex: number, ids: readonly s
   });
   return patchElements(doc, pageIndex, patches);
 }
+
+/** Los colores que usa el documento (letras, formas, fondos y la capa de color), para el selector de colores; sin repetir. */
+export function usedColorsOf(doc: DesignDoc): string[] {
+  const colors = new Set<string>();
+  for (const page of doc.pages) {
+    const bg = page.background;
+    if (bg.color) colors.add(bg.color.toLowerCase());
+    if (bg.gradient) {
+      colors.add(bg.gradient.from.toLowerCase());
+      colors.add(bg.gradient.to.toLowerCase());
+    }
+    if (bg.overlay) colors.add(bg.overlay.color.toLowerCase());
+    for (const el of page.elements) {
+      if (el.type === "text") {
+        colors.add(el.color.toLowerCase());
+        if (el.highlight) colors.add(el.highlight.color.toLowerCase());
+      }
+      if (el.type === "shape") {
+        if (el.fill) colors.add(el.fill.toLowerCase());
+        if (el.stroke) colors.add(el.stroke.color.toLowerCase());
+      }
+    }
+  }
+  return [...colors];
+}

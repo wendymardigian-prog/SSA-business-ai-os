@@ -70,6 +70,7 @@ export function ConfigDrawer({
   uploadedFonts,
   customVars,
   onClose,
+  beforeServer,
   onFormatChange,
   onPages,
   onTemplateSettings,
@@ -84,6 +85,8 @@ export function ConfigDrawer({
   uploadedFonts: readonly UploadedFont[];
   customVars: readonly CustomVar[];
   onClose: () => void;
+  /** Antes de un cambio que reescribe el documento en el servidor: guardar lo pendiente. */
+  beforeServer: () => Promise<void>;
   /** Un diseño cambia de formato acá mismo (se guarda solo); una plantilla lo hace por `updateTemplateSettings`. */
   onFormatChange: (format: FormatKey) => void;
   onPages: (update: (pages: DesignPage[]) => DesignPage[]) => void;
@@ -128,6 +131,7 @@ export function ConfigDrawer({
     setBusy("settings");
     setError(null);
     setNotice(null);
+    await beforeServer();
     const result = await updateTemplateSettings(patch);
     setBusy(null);
     if (!result.ok) {
@@ -147,6 +151,7 @@ export function ConfigDrawer({
     setBusy("settings");
     setError(null);
     setNotice(null);
+    await beforeServer();
     const result = await updateTemplateSettings({ id: subject.id, format: next });
     setBusy(null);
     if (!result.ok) {
@@ -390,7 +395,7 @@ export function ConfigDrawer({
           case "versions":
             return (
               <Section key={id} id={id}>
-                <VersionsList target={{ kind: subject.kind, id: subject.id }} canEdit={can.edit} timeZone={timeZone} uploadedFonts={uploadedFonts} customVars={customVars} onRestored={onReload} />
+                <VersionsList target={{ kind: subject.kind, id: subject.id }} canEdit={can.edit} timeZone={timeZone} uploadedFonts={uploadedFonts} customVars={customVars} beforeRestore={beforeServer} onRestored={onReload} />
               </Section>
             );
           case "more":

@@ -99,6 +99,7 @@ export function TextEditor({
         const chip = (event.target as HTMLElement).closest<HTMLElement>("[data-var]");
         const root = ref.current;
         if (!chip || !root) return;
+        root.normalize();
         const index = Array.prototype.indexOf.call(root.childNodes, chip) as number;
         onChipTap(index, chip.getBoundingClientRect());
       }}

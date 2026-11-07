@@ -77,6 +77,11 @@ export function ElementView(props: ElementViewProps) {
       style={style}
       onPointerDown={(event) => props.onPointerDown(event, el)}
       onDoubleClick={() => props.onDoubleClick(el)}
+      onClick={(event) => {
+        // Tocar un chip de variable (sin escribir) abre «Cambiar por… / Quitar la variable».
+        const chip = (event.target as HTMLElement).closest<HTMLElement>("[data-node]");
+        if (chip && el.type === "text" && sole && !editing && !readOnly) props.onChipTap(el, Number(chip.dataset.node), chip.getBoundingClientRect());
+      }}
     >
       {el.type === "text" &&
         (editing ? (

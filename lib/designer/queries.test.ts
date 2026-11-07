@@ -116,10 +116,10 @@ describe("el editor carga lo suyo", () => {
   it("una generación trae su plantilla y para quién es", async () => {
     const fake = fakeDb({
       designs: { data: { ...designRow("g1"), code: "K8F2-WQ4M-7TQA", allow_download: true, allow_indexing: false, style: null, rev: 2, template_id: "t1", content_post_id: null, content_network: null, subject_ref: { label: "Ana Pérez" }, status: "ready" } },
-      design_templates: { data: { name: "Certificado" } },
+      design_templates: { data: { name: "Certificado", verify: true, doc_type: "constancia", doc_type_label: null } },
     });
     const out = await loadEditorRecord(fake.client, WS, "design", "g1");
-    expect(out.ok && out.record.generation).toEqual({ templateId: "t1", templateName: "Certificado", subjectLabel: "Ana Pérez", status: "ready" });
+    expect(out.ok && out.record.generation).toEqual({ templateId: "t1", templateName: "Certificado", subjectLabel: "Ana Pérez", status: "ready", verify: true, docType: "constancia", docTypeLabel: null });
   });
 
   it("las variables propias se leen con su forma y lo demás se descarta", () => {

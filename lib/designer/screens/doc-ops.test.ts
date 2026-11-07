@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyDoc, parseDesignDoc, type DesignDoc, type DesignElement } from "../doc/schema";
-import { addElement, alignElements, allElementIds, boxOf, DUPLICATE_OFFSET, duplicateElements, estimateTextHeightPct, patchElement, patchElements, removeElements, replaceElement, unionBox } from "./doc-ops";
+import { usedColorsOf, addElement, alignElements, allElementIds, boxOf, DUPLICATE_OFFSET, duplicateElements, estimateTextHeightPct, patchElement, patchElements, removeElements, replaceElement, unionBox } from "./doc-ops";
 
 const text = (id: string, extra: Record<string, unknown> = {}): DesignElement =>
   ({ id, type: "text", x: 50, y: 50, w: 40, text: "Hola", font: { family: "Inter", weight: 400 }, size: 40, align: "left", color: "#111111", ...extra }) as DesignElement;
@@ -85,5 +85,11 @@ describe("operaciones del documento (F18–F25)", () => {
     const bottom = alignElements(doc, 0, ["el_cccc01"], "bottom", { el_cccc01: 10 });
     expect(bottom.pages[0].elements[2].y).toBe(95);
     expect(alignElements(doc, 0, ["el_bbbb01"], "left")).toBe(doc);
+  });
+
+  it("los colores usados en el documento, sin repetir", () => {
+    const doc = docWith(text("el_aaaaaa", { color: "#FF0000" }), shape("el_bbbbbb", { fill: "#ff0000", stroke: { color: "#00FF00", width: 2 } }));
+    doc.pages[0].background = { type: "image", color: "#112233", image: { asset: "a", fit: "cover", focal: { x: 1, y: 1 }, locked: true }, overlay: { color: "#000000", opacity: 0.5 } };
+    expect(usedColorsOf(doc).sort()).toEqual(["#00ff00", "#000000", "#112233", "#ff0000"].sort());
   });
 });

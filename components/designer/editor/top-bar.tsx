@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronLeft, HelpCircle, Loader2, MoreHorizontal, Redo2, Settings, Undo2, Zap } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
 import { SAVE_LABELS, type EditorActions } from "@/lib/designer/screens/toolbar";
@@ -77,18 +77,15 @@ export function TopBar({
   slots: { useInContent: ReactNode; exportMenu: ReactNode; publish: ReactNode };
   readOnly: boolean;
 }) {
-  const [draft, setDraft] = useState(name);
+  // Mientras se escribe, lo escrito; si no, el nombre guardado (así no hace falta copiarlo con un efecto).
+  const [typed, setTyped] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!focused.current) setDraft(name);
-  }, [name]);
+  const draft = typed ?? name;
 
   const commit = () => {
-    focused.current = false;
     const clean = draft.replace(/\s+/g, " ").trim();
+    setTyped(null);
     if (clean && clean !== name) onRename(clean);
-    else setDraft(name);
   };
 
   const saveText = saveStatus === "error" && saveError ? saveError : SAVE_LABELS[saveStatus];
@@ -141,13 +138,13 @@ export function TopBar({
           readOnly={readOnly}
           aria-label="Nombre"
           maxLength={200}
-          onFocus={() => (focused.current = true)}
-          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setTyped(name)}
+          onChange={(e) => setTyped(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
             if (e.key === "Escape") {
-              setDraft(name);
+              setTyped(null);
               e.currentTarget.blur();
             }
           }}

@@ -63,7 +63,7 @@ export async function createDesign(input: CreateDesignInput): Promise<ActionResu
 
     let notice: AiNotice | null = null;
     if (input.origin === "ai") {
-      const asked = await startAiDesign({ kind, id, prompt: (input.prompt ?? "").trim(), style: input.style ?? null, attachments });
+      const asked = await startAiDesign({ kind, id, prompt: (input.prompt ?? "").trim(), style: input.style ?? null, attachments, multiPage: input.multiPage === true, ...(input.contentContext ? { contentContext: input.contentContext } : {}) });
       if (!asked.ok) notice = aiNotice(asked.error);
     } else if (input.origin === "image" && kind === "template" && input.proposeTexts) {
       const asked = await proposeTemplateTexts({ templateId: id });
