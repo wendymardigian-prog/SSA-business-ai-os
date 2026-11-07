@@ -123,8 +123,11 @@ export function Tip({
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
+    // El panel mide hasta 320 px y `w-max` no deja que se comprima contra el borde: cerca de uno se corre para que entre entero.
+    const half = 168;
+    const viewport = window.innerWidth;
     setPos({
-      x: align === "start" ? rect.left : rect.left + rect.width / 2,
+      x: align === "start" ? Math.max(8, Math.min(rect.left, viewport - half * 2)) : Math.max(half, Math.min(rect.left + rect.width / 2, viewport - half)),
       y: side === "top" ? rect.top - 8 : rect.bottom + 8,
     });
   }, [align, side]);
@@ -165,7 +168,7 @@ export function Tip({
           id={id}
           role="tooltip"
           style={{ left: pos.x, top: pos.y, transform }}
-          className="pointer-events-none fixed z-[60] max-w-xs rounded-lg border border-border bg-popover px-3 py-2 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-popover-foreground shadow-lg"
+          className="pointer-events-none fixed z-[60] w-max max-w-[min(20rem,calc(100vw-1rem))] rounded-lg border border-border bg-popover px-3 py-2 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-popover-foreground shadow-lg"
         >
           {content}
         </span>

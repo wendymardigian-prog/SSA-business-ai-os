@@ -81,7 +81,7 @@ export function ratio(numerator: number | null, denominator: number | null): num
  * `uniqueReach` viene de la consulta en vivo (F58) y pisa la suma diaria:
  * sumar alcances cuenta a la misma persona una vez por dia.
  */
-export function computeTotals(rows: AdsRow[], uniqueReach?: number | null): AdsTotals {
+export function computeTotals(rows: AdsRow[], uniqueReach?: number | null, liveFrequency?: number | null): AdsTotals {
   const spend = sum(rows.map((r) => r.spend));
   const impressions = sum(rows.map((r) => r.impressions));
   const clicks = sum(rows.map((r) => r.clicks));
@@ -102,7 +102,8 @@ export function computeTotals(rows: AdsRow[], uniqueReach?: number | null): AdsT
     leads,
     purchases,
     purchaseValue: round(purchaseValue),
-    frequency: round(ratio(impressions, reach)),
+    // La de Meta viene en la misma respuesta que el alcance en vivo: dividir impresiones guardadas por ese alcance mezcla dos momentos.
+    frequency: round(uniqueReach != null && liveFrequency != null ? liveFrequency : ratio(impressions, reach)),
     ctr: round(ratio(clicks, impressions) === null ? null : (ratio(clicks, impressions) as number) * 100),
     cpm: round(ratio(spend, impressions) === null ? null : (ratio(spend, impressions) as number) * 1000),
     cpc: round(ratio(spend, clicks)),
