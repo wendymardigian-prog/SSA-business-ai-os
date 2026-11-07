@@ -1367,7 +1367,7 @@ En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el últim
 
 ## Migración
 
-`00318_meta_match_rules_similar` (aditiva: la tabla, las funciones, los CHECK de la tarea de IA y, al final, el re-vínculo y el canal de lo existente) va **ANTES** de desplegar el código. Ensayada en una transacción que se deshizo sola: los 87 toques de anuncios de la clase quedan vinculados y los 37 orgánicos salen de la lista. **La próxima libre es la `00319`** (confirmar con `list_migrations` y las ramas locales).
+`00318_meta_match_rules_similar` (aditiva: la tabla, las funciones, los CHECK de la tarea de IA y, al final, el re-vínculo y el canal de lo existente) va **ANTES** de desplegar el código: **aplicada y registrada** el 7/11/2026 (versión `20261107215432`), después de ensayarla en una transacción que se deshizo sola. Resultado: «Sin vincular» quedó en 0, 87 toques de anuncios en «Para revisar» y 37 orgánicos fuera de la lista. **La próxima libre es la `00319`** (confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
