@@ -11,6 +11,8 @@
  */
 
 /** Cuantos Message-ID se conservan en References. */
+import { linkifyToHtml } from "@/lib/messages/text-links";
+
 export const MAX_REFERENCES = 20;
 
 /**
@@ -86,17 +88,13 @@ export function replyHeaders(last: {
  *
  * Simple a proposito: los clientes de correo rompen casi todo el CSS, y lo
  * que se manda es texto que alguien escribio en la bandeja. Lo unico que
- * hace falta es respetar los saltos de linea y escapar lo que podria
- * romper el HTML.
+ * hace falta es respetar los saltos de linea, escapar lo que podria
+ * romper el HTML y volver links a los links.
  */
 export function textToHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-  const paragraphs = escaped
+  const paragraphs = linkifyToHtml(text, escape)
     .split(/\n{2,}/)
     .map((block) => `<p>${block.replace(/\n/g, "<br>")}</p>`)
     .join("\n");

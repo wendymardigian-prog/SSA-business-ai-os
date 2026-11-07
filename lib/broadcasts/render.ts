@@ -20,6 +20,7 @@ import { firstNameOf } from "@/lib/flow-engine/variable-catalog";
 import { isPlaceholderName } from "@/lib/contacts/anonymous";
 import { displayCustomValue } from "@/lib/custom-fields";
 import { dropDanglingComma, escapeHtml, finalizeEmailHtml, isHtmlTemplate, withPreheader } from "@/lib/email/html";
+import { protectUnsubscribeVariable } from "@/lib/email/unsubscribe";
 
 export const MAX_VARIANTS = 5;
 export const MAX_VARIANT_LENGTH = 4000;
@@ -166,7 +167,9 @@ export function renderEmail(
   return {
     subject: dropDanglingComma(subject, s.text).replace(/\s+/g, " ").trim(),
     preheader: previewLine,
-    html: withPreheader(dropDanglingComma(body, finalizeEmailHtml(b.text, wasHtml)), previewLine),
+    // `{{unsubscribe_url}}` se protege ANTES de limpiar: un href que no es https se descarta y el link de baja se perdia.
+    // El link real lo pone la puerta de envio (lib/email/unsubscribe.ts), que es la que conoce el token.
+    html: withPreheader(dropDanglingComma(body, finalizeEmailHtml(protectUnsubscribeVariable(b.text), wasHtml)), previewLine),
     missing: [...new Set([...s.missing, ...b.missing, ...p.missing])],
   };
 }

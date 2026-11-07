@@ -268,7 +268,7 @@ function AttributionBlock({
               checked={view.trackClicks}
               onChange={(value) => update({ trackClicks: value })}
               label="Registrar el clic"
-              description="Anota quién hizo clic y cuándo."
+              description="Anota quién hizo clic y cuándo. En WhatsApp, estos links pueden llegar sin vista previa."
             />
           )}
 
