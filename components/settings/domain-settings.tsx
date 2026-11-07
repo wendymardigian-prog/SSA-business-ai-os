@@ -45,7 +45,10 @@ export function DomainSettings({ initial, mainUrl }: { initial: string | null; m
         <h2 className="text-sm font-semibold">Dominio de tus links</h2>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
+        {/* @plantilla-desde(formularios) */}
         Los links que ve un lead de este negocio (agenda, formularios, contratos, bajas de email, links medidos) salen con
+        {/* @plantilla-hasta(formularios) */}
+        {/* @plantilla-sin(formularios): Los links que ve un lead de este negocio (agenda, bajas de email, links medidos) salen con */}
         este dominio. Sin cargar ninguno, salen con <code>{mainUrl}</code>.
       </p>
 

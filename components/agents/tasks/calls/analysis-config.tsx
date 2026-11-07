@@ -1,28 +1,25 @@
 "use client";
 
-import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, History, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, Plus } from "lucide-react";
 import { saveCallTaskSettings } from "@/lib/actions/call-task-settings";
 import { decideCategoryProposal } from "@/lib/actions/call-proposals";
 import { Switch } from "@/components/ui/switch";
 import { Notice, Section, inputClass } from "@/components/agents/fields";
 import { cn } from "@/lib/utils";
 import type { CallConfigData } from "@/lib/calls/config-data";
-import { CATEGORY_GROUPS, CATEGORY_GROUP_LABELS, uniqueKey, validateRubric, type CategoryGroup } from "@/lib/calls/rubric";
+import { PROFILE_STATE_LABELS, profileState, type CallAnalysisProfile } from "@/lib/calls/profiles";
+import { CATEGORY_GROUPS, CATEGORY_GROUP_LABELS, uniqueKey, type CategoryGroup } from "@/lib/calls/rubric";
 import { MAX_COMPANY_CONTEXT, type CallAnalysisSettings } from "@/lib/calls/task-settings";
-import { RubricEditor } from "./rubric-editor";
-import { PromptTestPanel } from "./prompt-test-panel";
+import { ProfileEditor, type ProfileTarget } from "./profile-editor";
 
 type Data = Extract<CallConfigData, { task: "call_analysis" }>;
 
 /**
- * Configuracion de "Analisis de llamadas" (F19): cuando se analiza, que se
- * analiza, el contexto del negocio, la rubrica y las categorias (con la bandeja
- * de propuestas de la IA). No hay borrador ni "publicar": lo guardado es lo
- * vigente, igual que las instrucciones de las tareas. Sin `calls.configure`,
- * todo en solo lectura.
+ * Configuracion de "Analisis de llamadas": un analizador por tipo de reunion y lo que comparten
+ * todos (el contexto del negocio y las categorias). Sin analizador, ese tipo no se analiza ni
+ * gasta IA. Sin `calls.configure`, todo en solo lectura.
  */
 export function AnalysisConfig({ data }: { data: Data }) {
   const router = useRouter();
@@ -32,8 +29,6 @@ export function AnalysisConfig({ data }: { data: Data }) {
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
 
   const dirty = JSON.stringify(settings) !== JSON.stringify(data.settings);
-  const problems = validateRubric(settings.rubric);
-  const canSave = dirty && problems.length === 0 && !pending;
   const patch = (p: Partial<CallAnalysisSettings>) => {
     setMessage(null);
     setSettings((s) => ({ ...s, ...p }));
@@ -44,10 +39,7 @@ export function AnalysisConfig({ data }: { data: Data }) {
     start(async () => {
       const result = await saveCallTaskSettings("call_analysis", settings);
       if (!result.ok) return setMessage({ tone: "error", text: result.error });
-      setMessage({
-        tone: "success",
-        text: result.rubricVersion !== undefined && result.rubricVersion !== data.settings.rubric.version ? `Configuración guardada. La rúbrica pasó a la versión ${result.rubricVersion}.` : "Configuración guardada.",
-      });
+      setMessage({ tone: "success", text: "Configuración guardada." });
       router.refresh();
     });
   }
@@ -56,73 +48,28 @@ export function AnalysisConfig({ data }: { data: Data }) {
     <div className="space-y-6">
       {readOnly && <Notice tone="info">Podés ver cómo está configurado, pero para cambiarlo necesitás el permiso “Configurar el análisis de llamadas”.</Notice>}
 
-      <Section title="Cuándo y qué se analiza" description="Analizar cuesta: cada llamada es una corrida de IA con la transcripción completa. Por eso arranca en “Solo con el botón”.">
-        <fieldset disabled={readOnly} className="space-y-2">
-          <legend className="sr-only">Análisis automático</legend>
-          {([["off", "Solo con el botón", "Alguien aprieta Analizar en cada llamada (o Analizar pendientes en la lista)."], ["now", "Automático", "Apenas se clasifica una llamada de un tipo que se analiza, se analiza sola."]] as const).map(([value, label, desc]) => (
-            <label key={value} className="flex cursor-pointer items-start gap-3">
-              <input type="radio" name="call-analysis-mode" checked={settings.mode === value} onChange={() => patch({ mode: value })} className="mt-1 h-4 w-4" />
-              <span>
-                <span className="block text-sm font-medium">{label}</span>
-                <span className="block text-xs text-muted-foreground">{desc}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+      <Section title="Analizadores por tipo de reunión" description="Cada tipo se evalúa con lo suyo: instrucciones, rúbrica, puntaje y cuándo corre. Un tipo sin analizador no se analiza ni gasta IA.">
+        <ProfileList data={data} />
+      </Section>
 
-        <fieldset disabled={readOnly}>
-          <legend className="text-xs font-semibold">Tipos de llamada que se analizan</legend>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-            {data.validTypes.map((t) => {
-              const on = settings.analyze_types.includes(t);
-              return (
-                <label key={t} className="flex items-center gap-1.5 text-sm">
-                  <input type="checkbox" checked={on} onChange={() => patch({ analyze_types: on ? settings.analyze_types.filter((x) => x !== t) : [...settings.analyze_types, t] })} className="h-4 w-4" />
-                  {t}
-                </label>
-              );
-            })}
-          </div>
-        </fieldset>
-
-        {([
-          ["auto_summary", "Resumir después de analizar", "Saca el resumen, los próximos pasos y las ideas de contenido, y actualiza la memoria del contacto."],
-          ["auto_knowledge", "Mandar a Conocimiento", "Cada llamada analizada queda como documento interno que el agente puede consultar."],
-          ["allow_new_categories", "La IA puede proponer categorías nuevas", "Las propuestas llegan a la bandeja de abajo; nada se suma solo."],
-        ] as const).map(([key, label, desc]) => (
-          <div key={key} className="flex items-start gap-3">
-            <Switch checked={settings[key]} onChange={(v) => patch({ [key]: v })} disabled={readOnly} label={label} />
-            <span>
-              <span className="block text-sm font-medium">{label}</span>
-              <span className="block text-xs text-muted-foreground">{desc}</span>
-            </span>
-          </div>
-        ))}
-
+      <Section title="Lo que comparten todos" description="Viaja en cada análisis y en cada prueba.">
         <div>
           <label htmlFor="call-company-context" className="block text-xs font-semibold text-foreground">Contexto del negocio</label>
           <textarea id="call-company-context" value={settings.company_context ?? ""} disabled={readOnly} onChange={(e) => patch({ company_context: e.target.value || null })} rows={5} className={cn(inputClass, "mt-1 resize-y")} />
           <p className={cn("mt-1 text-[11px]", (settings.company_context?.length ?? 0) > MAX_COMPANY_CONTEXT ? "text-red-700" : "text-muted-foreground")}>
-            {(settings.company_context?.length ?? 0).toLocaleString("es")} / {MAX_COMPANY_CONTEXT.toLocaleString("es")} caracteres. Qué vendés, a quién y cómo. Viaja en cada análisis y en cada prueba.
+            {(settings.company_context?.length ?? 0).toLocaleString("es")} / {MAX_COMPANY_CONTEXT.toLocaleString("es")} caracteres. Qué vendés, a quién y cómo.
           </p>
+        </div>
+        <div className="flex items-start gap-3">
+          <Switch checked={settings.allow_new_categories} onChange={(v) => patch({ allow_new_categories: v })} disabled={readOnly} label="La IA puede proponer categorías nuevas" />
+          <span>
+            <span className="block text-sm font-medium">La IA puede proponer categorías nuevas</span>
+            <span className="block text-xs text-muted-foreground">Las propuestas llegan a la bandeja de abajo; nada se suma solo.</span>
+          </span>
         </div>
       </Section>
 
-      <Section title="Rúbrica" description={`Versión ${settings.rubric.version}. Cada análisis guarda la copia de la rúbrica con la que se hizo: cambiarla no altera los puntajes de las llamadas viejas.`}>
-        {data.usingDefaultRubric && <Notice tone="info">Todavía no guardaste una rúbrica: se está usando la genérica de arranque. Cargá la de tu negocio y guardala.</Notice>}
-        <RubricEditor value={settings.rubric} onChange={(rubric) => patch({ rubric })} readOnly={readOnly} />
-        {!readOnly && data.rubricHistory.length > 0 && <RubricHistory history={data.rubricHistory} onLoad={(rubric) => patch({ rubric })} />}
-      </Section>
-
-      <PromptTestPanel
-        calls={data.testableCalls}
-        what="la rúbrica"
-        getDraft={() => ({ rubricDraft: settings.rubric })}
-        disabled={readOnly || problems.length > 0}
-        disabledReason={readOnly ? "Necesitás el permiso de configurar." : problems.length > 0 ? "Corregí la rúbrica para poder probarla." : undefined}
-      />
-
-      <Section title="Categorías" description="Los dolores, deseos, objeciones y razones que la IA elige para cada llamada. La clave de una categoría no cambia al renombrarla.">
+      <Section title="Categorías" description="Los dolores, deseos, objeciones y razones que la IA elige en el formato de ventas. Son las mismas para todos los tipos, así el dashboard las puede comparar. La clave de una categoría no cambia al renombrarla.">
         {data.categoryProposals.length > 0 && <CategoryInbox data={data} dirty={dirty} settings={settings} onError={(text) => setMessage({ tone: "error", text })} />}
         {CATEGORY_GROUPS.map((group) => (
           <CategoryList key={group} group={group} settings={settings} readOnly={readOnly} onChange={(categories) => patch({ categories })} />
@@ -131,11 +78,10 @@ export function AnalysisConfig({ data }: { data: Data }) {
 
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={save} disabled={!canSave} title={problems[0]} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+          <button type="button" onClick={save} disabled={!dirty || pending} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             {pending ? "Guardando…" : "Guardar"}
           </button>
-          {dirty && problems.length === 0 && <span className="text-xs text-amber-700 dark:text-amber-400">Cambios sin guardar</span>}
-          {problems.length > 0 && <span className="text-xs text-amber-800 dark:text-amber-300">No se puede guardar: {problems[0]}</span>}
+          {dirty && <span className="text-xs text-amber-700 dark:text-amber-400">Cambios sin guardar</span>}
         </div>
       )}
       {message && <Notice tone={message.tone}>{message.text}</Notice>}
@@ -143,23 +89,52 @@ export function AnalysisConfig({ data }: { data: Data }) {
   );
 }
 
-function RubricHistory({ history, onLoad }: { history: Data["rubricHistory"]; onLoad: (rubric: Data["settings"]["rubric"]) => void }) {
-  const timeZone = useViewerTimezone();
+const STATE_CLASS = {
+  none: "bg-muted text-muted-foreground",
+  manual: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300",
+  auto: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
+} as const;
+
+/** La lista por area y tipo, con su estado. Se edita uno a la vez, abajo de su fila. */
+function ProfileList({ data }: { data: Data }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const profileFor = (id: string): CallAnalysisProfile | null => data.profiles.find((p) => p.categoryId === id) ?? null;
+
+  const row = (target: ProfileTarget, hint?: string) => {
+    const profile = profileFor(target.categoryId);
+    const state = profileState(profile);
+    const isOpen = open === target.categoryId;
+    return (
+      <li key={target.categoryId}>
+        <div className="flex items-center gap-3 px-3 py-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm">{target.label}</p>
+            {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+          </div>
+          <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium", STATE_CLASS[state])}>{PROFILE_STATE_LABELS[state]}</span>
+          <button type="button" onClick={() => setOpen(isOpen ? null : target.categoryId)} aria-expanded={isOpen} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-accent">
+            {state === "none" ? "Configurar" : "Editar"}
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} aria-hidden />
+          </button>
+        </div>
+        {/* La clave vuelve a armar el formulario si el analizador cambio en el servidor (al guardar o quitar). */}
+        {isOpen && <ProfileEditor key={`${target.categoryId}:${profile?.id ?? "nuevo"}`} data={data} target={target} profile={profile} onClose={() => setOpen(null)} />}
+      </li>
+    );
+  };
+
   return (
-    <details className="rounded-lg border border-border">
-      <summary className="flex cursor-pointer items-center gap-1.5 px-3 py-2 text-xs font-semibold">
-        <History className="h-3.5 w-3.5" aria-hidden /> Historial de la rúbrica
-      </summary>
-      <ul className="divide-y divide-border border-t border-border">
-        {history.map((h) => (
-          <li key={h.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-            <span>Versión {h.version} · {new Date(h.at).toLocaleString("es", { timeZone })}</span>
-            <button type="button" onClick={() => onLoad(h.rubric)} className="rounded-md border border-border px-2 py-1 font-medium hover:bg-accent">Cargar en el editor</button>
-          </li>
-        ))}
-      </ul>
-      <p className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">Cargarla no la guarda: la ves en el editor, la probás y recién ahí decidís.</p>
-    </details>
+    <div className="space-y-3">
+      {data.categoryGroups.map((group) => (
+        <section key={group.areaId} aria-label={group.areaName} className="overflow-hidden rounded-lg border border-border">
+          <h4 className="border-b border-border bg-muted/40 px-3 py-1.5 text-xs font-semibold">{group.areaName}</h4>
+          <ul className="divide-y divide-border">
+            {group.types.map((t) => row({ categoryId: t.id, label: t.name }))}
+            {row({ categoryId: group.areaId, label: group.types.length > 0 ? "Toda el área" : group.areaName }, group.types.length > 0 ? "Para los tipos sin analizador propio y lo que tiene área pero no tipo." : undefined)}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 

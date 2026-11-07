@@ -19,6 +19,8 @@ export function useAdsNavigation() {
   function navigate(params: { cuenta?: string }) {
     const next = new URLSearchParams(searchParams.toString());
     for (const [key, value] of Object.entries(params)) if (value) next.set(key, value);
+    // Otra cuenta tiene otras campañas: un filtro de la anterior dejaria la tabla vacia.
+    if (params.cuenta) for (const key of ["campana", "conjunto"]) next.delete(key);
     startTransition(() => router.push(`${pathname}?${next.toString()}`));
   }
 

@@ -1305,3 +1305,12 @@ a propósito o por falta de revisión.
   `zz-test-` ya borrados. El modo "sin conexión" se simuló haciendo fallar la red desde la página
   (el navegador del panel no tiene modo offline): el indicador mostró "No se pudo guardar ·
   Reintentar", los "+1" quedaron en el navegador y se subieron solos al volver.
+
+## Links clicables y vista previa (6/11/2026)
+
+- **Probar en un celular** lo que recibe la otra persona en WhatsApp: una página con imagen, un link de Google Meet, un link con «Registrar el clic» y un número que no tenga agendado al negocio.
+- **Instagram:** probar un link común en una cuenta donde ManyChat no sea la dueña de los hilos. Según eso, decidir si hacen falta botones o tarjetas.
+- **Clics falsos en WhatsApp:** cuando Evolution arma un preview abre el link desde su servidor, y sin aviso eso registraría un clic que nadie hizo. `isLinkPreviewBot` ya ignora `node-fetch`, `undici` y `node` (el User-Agent real no está confirmado: depende de la versión que resuelve Evolution). Falta probarlo antes de usar «Registrar el clic» en WhatsApp: mandarse un link medido a un número propio; sin tocarlo tienen que quedar 0 toques `link_click`, y al tocarlo, 1.
+- **DNS rebinding en `safeFetch`:** se valida la IP y después `fetch` vuelve a resolver el nombre, así que un dominio podría cambiar de IP entre las dos cosas. Riesgo bajo: quien manda el link nunca ve la respuesta. Afecta también a la «Llamada HTTP» de los flujos.
+- **Tarjeta en grupos de WhatsApp:** los links se ven clicables, pero sin tarjeta.
+

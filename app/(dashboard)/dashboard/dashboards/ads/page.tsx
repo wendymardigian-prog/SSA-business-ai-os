@@ -66,8 +66,9 @@ export default async function AdsDashboardPage({
         currency={null}
         period={period}
         uniqueReach={null}
-        previousUniqueReach={null}
-        reach={{ campaign: null, adset: null, ad: null }}
+        uniqueFrequency={null}
+        previousLive={null}
+        adReach={null}
         aiModel={null}
         live={{ placement: null, device: null, audience: null }}
         liveError={null}
@@ -92,16 +93,12 @@ export default async function AdsDashboardPage({
   const sinceOf = (period: { from: string | null }) => (period.from ? isoToDateInput(period.from, timeZone) : null);
   const untilOf = (period: { to: string | null }) => isoToDateInput(period.to ?? now.toISOString(), timeZone);
 
-  const reachOf = (level: "campaign" | "adset" | "ad") =>
-    token && range.from
-      ? fetchReachByLevel({ token, adAccountId, level, since: sinceOf(range) as string, until: untilOf(range) })
-      : Promise.resolve(null);
   const breakdownOf = (breakdown: BreakdownKind) =>
     token && range.from
       ? fetchBreakdown({ token, adAccountId, breakdown, since: sinceOf(range) as string, until: untilOf(range) })
       : Promise.resolve(null);
 
-  const [rows, previousRows, live, previousLive, campaignReachLive, adsetReachLive, adReachLive, placementLive, deviceLive, audienceLive] = await Promise.all([
+  const [rows, previousRows, live, previousLive, adReachLive, placementLive, deviceLive, audienceLive] = await Promise.all([
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone }),
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: before, timeZone }),
     token && range.from
@@ -113,11 +110,11 @@ export default async function AdsDashboardPage({
     token && before.from
       ? fetchUniqueReach({ token, adAccountId, since: sinceOf(before) as string, until: untilOf(before) })
       : Promise.resolve(null),
-    // El alcance unico de cada campaña, conjunto y anuncio: sumar los dias
-    // contaria dos veces a quien vio el anuncio en dos dias distintos.
-    reachOf("campaign"),
-    reachOf("adset"),
-    reachOf("ad"),
+    // El alcance unico de cada anuncio, para la comparativa: sumar los dias contaria dos veces a quien lo vio en dos dias
+    // distintos. El de las filas de la tabla lo pide la tabla, solo si esas columnas estan a la vista.
+    token && range.from
+      ? fetchReachByLevel({ token, adAccountId, level: "ad", since: sinceOf(range) as string, until: untilOf(range) })
+      : Promise.resolve(null),
     // Los desgloses, cada uno por su cuenta: si uno falla, esa tarjeta sola
     // lo dice y el resto de la pantalla se ve igual.
     breakdownOf("publisher_platform,platform_position"),
@@ -136,10 +133,6 @@ export default async function AdsDashboardPage({
     now,
   });
 
-  // Si alguno de los dos no llego, los dos quedan en la suma de los dias:
-  // comparar un alcance unico contra uno sumado inventaria una variacion.
-  const bothReach = live?.ok && previousLive?.ok;
-
   const syncedAt =
     lastSyncedAt(rows.filter((r) => r.level === "account")) ?? account?.last_synced_at ?? null;
 
@@ -157,13 +150,10 @@ export default async function AdsDashboardPage({
       adAccountId={adAccountId}
       currency={account?.currency ?? null}
       period={period}
-      uniqueReach={bothReach ? live.data.reach : null}
-      previousUniqueReach={bothReach ? previousLive.data.reach : null}
-      reach={{
-        campaign: campaignReachLive?.ok ? campaignReachLive.data : null,
-        adset: adsetReachLive?.ok ? adsetReachLive.data : null,
-        ad: adReachLive?.ok ? adReachLive.data : null,
-      }}
+      uniqueReach={live?.ok ? live.data.reach : null}
+      uniqueFrequency={live?.ok ? live.data.frequency : null}
+      previousLive={previousLive?.ok ? previousLive.data : null}
+      adReach={adReachLive?.ok ? adReachLive.data : null}
       live={{ placement: placementLive, device: deviceLive, audience: audienceLive }}
       liveError={live && !live.ok ? live.error : null}
       aiModel={aiChoice ? `${aiChoice.provider}/${aiChoice.model}` : null}

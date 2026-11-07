@@ -1,3 +1,4 @@
+import { Tip } from "@/components/ui/tooltip";
 import type { KpiDelta } from "@/lib/dashboards/ads-view";
 
 /**
@@ -16,7 +17,7 @@ export interface KpiItem {
   sub: string;
   /** Contra el periodo anterior. Null si no hay con que comparar. */
   delta: KpiDelta | null;
-  /** Una explicacion corta (tooltip nativo) para las cifras que se prestan a confusion. */
+  /** Que es esta cifra: se abre al pasar por encima del nombre (y con el teclado). */
   tip?: string;
 }
 
@@ -33,12 +34,29 @@ export function KpiRow({ items }: { items: KpiItem[] }) {
         {items.map((item) => (
           <div
             key={item.key}
-            title={item.tip}
             className="min-w-0 border-l border-border/60 px-2 first:border-l-0 first:pl-0 sm:px-3 [&:nth-child(4n+1)]:border-l-0 [&:nth-child(4n+1)]:pl-0 lg:[&:nth-child(4n+1)]:border-l lg:[&:nth-child(4n+1)]:pl-3 lg:first:border-l-0 lg:first:pl-0"
           >
-            <p className="mb-1.5 truncate text-[9px] font-medium uppercase leading-none tracking-normal text-muted-foreground sm:text-[10px] sm:tracking-wider">
-              {item.label}
-            </p>
+            <div className="mb-1.5 flex min-w-0">
+              <Tip
+                side="bottom"
+                className="min-w-0"
+                content={
+                  item.tip ? (
+                    <>
+                      <span className="mb-1 block font-semibold">{item.label}</span>
+                      <span className="block text-muted-foreground">{item.tip}</span>
+                    </>
+                  ) : null
+                }
+              >
+                <span
+                  tabIndex={item.tip ? 0 : undefined}
+                  className={`truncate text-[9px] font-medium uppercase leading-none tracking-normal text-muted-foreground sm:text-[10px] sm:tracking-wider ${item.tip ? "cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring" : ""}`}
+                >
+                  {item.label}
+                </span>
+              </Tip>
+            </div>
             <p className="truncate text-base font-bold leading-none text-foreground sm:text-xl" title={item.value}>
               {item.value}
             </p>

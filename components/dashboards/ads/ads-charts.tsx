@@ -51,6 +51,15 @@ export const TOOLTIP_STYLE = {
 
 export const CURSOR = { fill: "var(--muted)", opacity: 0.4 } as const;
 
+/**
+ * Las propiedades de todos los tooltips de estos graficos. Sin `itemStyle` recharts pinta cada linea con el color de la serie,
+ * y cuando no lo tiene (una barra con `Cell`), de negro: sobre el fondo oscuro no se leia. El color de cada serie ya esta en el grafico.
+ */
+export const TOOLTIP_TEXT = {
+  labelStyle: { color: "var(--card-foreground)", fontWeight: 600 },
+  itemStyle: { color: "var(--card-foreground)" },
+} as const;
+
 /** El color de la linea del eje derecho, el de la referencia. */
 export const LINE_COLOR = "#ec4899";
 
@@ -102,6 +111,7 @@ export function DailyEvolutionChart({
           width={44}
         />
         <Tooltip
+          {...TOOLTIP_TEXT}
           contentStyle={TOOLTIP_STYLE}
           cursor={CURSOR}
           formatter={(value, name) => [
@@ -160,6 +170,7 @@ export function StackedCampaignChart({
         />
         <YAxis type="category" dataKey="campaign" tick={TICK} axisLine={false} tickLine={false} width={120} />
         <Tooltip
+          {...TOOLTIP_TEXT}
           contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
           cursor={CURSOR}
           formatter={(value, name) => [typeof value === "number" ? tooltipValue(metric, value, currency) : "—", String(name)]}
@@ -207,6 +218,7 @@ export function AdComparisonChart({
         />
         <YAxis type="category" dataKey="name" tick={TICK} axisLine={false} tickLine={false} width={140} />
         <Tooltip
+          {...TOOLTIP_TEXT}
           contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
           cursor={CURSOR}
           formatter={(value) => [typeof value === "number" ? tooltipValue(metric, value, currency) : "—", METRIC_LABELS[metric]]}
@@ -250,6 +262,7 @@ export function CostLinesChart({
           width={48}
         />
         <Tooltip
+          {...TOOLTIP_TEXT}
           contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8, fontSize: 11 }}
           formatter={(value, name) => [typeof value === "number" ? tooltipValue(metric, value, currency) : "—", String(name)]}
         />
@@ -282,6 +295,7 @@ export function AudienceStackChart({ rows, genders, metric }: { rows: Row[]; gen
         <XAxis dataKey="age" tick={TICK} axisLine={false} tickLine={false} />
         <YAxis tick={TICK} axisLine={false} tickLine={false} tickFormatter={(v: number) => compact(Math.round(v))} width={36} />
         <Tooltip
+          {...TOOLTIP_TEXT}
           contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
           cursor={CURSOR}
           formatter={(value, name) => [typeof value === "number" ? compact(Math.round(value)) : "—", `${GENDER_LABEL[name as Gender] ?? name} · ${label}`]}
@@ -312,6 +326,7 @@ export function CtrByAgeChart({ rows, genders }: { rows: Row[]; genders: Gender[
         <XAxis dataKey="age" tick={{ ...TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ ...TICK, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v}%`} width={32} />
         <Tooltip
+          {...TOOLTIP_TEXT}
           contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
           formatter={(value, name) => [typeof value === "number" ? `${value.toFixed(2)}%` : "—", GENDER_LABEL[name as Gender] ?? String(name)]}
         />
@@ -343,6 +358,7 @@ export function GenderDonut({ totals }: { totals: Array<{ gender: Gender; name: 
           ))}
         </Pie>
         <Tooltip
+          {...TOOLTIP_TEXT}
           contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
           formatter={(value, name) => [typeof value === "number" ? compact(Math.round(value)) : "—", String(name)]}
         />
@@ -370,6 +386,7 @@ export function HourlyChart({ data, metric, currency }: { data: HourPoint[]; met
           width={44}
         />
         <Tooltip
+          {...TOOLTIP_TEXT}
           contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
           cursor={CURSOR}
           formatter={(value) => [typeof value === "number" ? tooltipValue(metric, value, currency) : "—", METRIC_LABELS[metric]]}

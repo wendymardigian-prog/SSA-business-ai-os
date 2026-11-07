@@ -203,7 +203,7 @@ export async function loadCrmData(
     for (const r of adsetRows) {
       adsetName.set(r.adset_id, r.name);
       const campaign = r.campaign_id ? (campaignName.get(r.campaign_id) ?? null) : null;
-      data.catalog.adset[r.adset_id] = { name: r.name, effectiveStatus: r.effective_status, parentName: campaign, campaignName: campaign };
+      data.catalog.adset[r.adset_id] = { name: r.name, effectiveStatus: r.effective_status, parentName: campaign, campaignName: campaign, campaignId: r.campaign_id };
     }
     const missingAdsets = [...new Set(adRows.map((a) => a.adset_id).filter((id): id is string => !!id && !adsetName.has(id)))];
     for (const c of chunks(missingAdsets, CHUNK)) {
@@ -235,6 +235,8 @@ export async function loadCrmData(
         effectiveStatus: r.effective_status,
         parentName: adset,
         adsetName: adset,
+        adsetId: r.adset_id,
+        campaignId: r.campaign_id,
         campaignName: r.campaign_id ? (campaignName.get(r.campaign_id) ?? null) : null,
         thumbnailUrl: r.thumbnail_path ? (signed.get(r.thumbnail_path) ?? null) : null,
         creativeTitle: title,

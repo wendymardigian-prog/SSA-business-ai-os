@@ -16,7 +16,8 @@ export const EMAIL_CATEGORY_LABELS: Record<EmailCategory, string> = {
 
 export const EMAIL_CATEGORY_HINTS: Record<EmailCategory, string> = {
   marketing: "Promociones, novedades, seguimientos. No le llega a quien se dio de baja y lleva el link para darse de baja.",
-  transactional: "Lo que la persona pidió: confirmaciones de agenda, contratos, compras. Le llega aunque se haya dado de baja de marketing.",
+  transactional: "Lo que la persona pidió: confirmaciones de agenda, contratos, compras. Le llega aunque se haya dado de baja de marketing.", // @plantilla-quitar(formularios)
+  // @plantilla-sin(formularios): transactional: "Lo que la persona pidió, como una confirmación de agenda. Le llega aunque se haya dado de baja de marketing.",
 };
 
 export function isEmailCategory(value: unknown): value is EmailCategory {
@@ -32,7 +33,7 @@ export interface FlowOriginRow {
 
 /**
  * La categoria de un paso de email que no la guarda: transaccional en los flujos
- * de agenda, formularios, contratos y los del sistema (cobranza), y en cualquier
+ * de agenda y los del sistema, y en cualquier
  * flujo que arranco por una reunion; marketing en los que arma una persona. Asi
  * los flujos que ya existian no cambian de comportamiento para lo que la persona
  * pidio. Sin poder leer el flujo, marketing (no mandarle a alguien dado de baja).

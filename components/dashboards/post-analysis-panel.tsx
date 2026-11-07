@@ -9,6 +9,7 @@ import { ANALYSIS_METRIC_LABELS, ageLabel, type AnalysisMetric } from "@/lib/das
 import { platformLabel } from "@/lib/platforms";
 import { PostResponsible } from "@/components/social/post-responsible";
 import { colorFor, DualAxisChart, type ChartSeries } from "./charts";
+import { MessageText } from "@/components/inbox/message-text";
 
 /**
  * El panel de analisis de un post (F51, F52).
@@ -317,7 +318,7 @@ export function PostAnalysisPanel({
                     <p className="text-xs text-muted-foreground">
                       {comment.isOwn ? "Vos" : (comment.authorUsername ?? "Alguien")}
                     </p>
-                    <p className="mt-0.5">{comment.text}</p>
+                    <p className="mt-0.5 break-words"><MessageText text={comment.text} /></p>
                   </li>
                 ))}
               </ul>

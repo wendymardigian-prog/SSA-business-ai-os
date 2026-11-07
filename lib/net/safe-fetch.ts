@@ -11,7 +11,7 @@
  */
 
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 
 export const SAFE_FETCH_TIMEOUT_MS = 10_000;
 export const SAFE_FETCH_MAX_BYTES = 256 * 1024;
@@ -19,40 +19,45 @@ const MAX_REDIRECTS = 3;
 
 export class BlockedUrlError extends Error {}
 
-function ipv4ToInt(ip: string): number {
-  return ip.split(".").reduce((acc, part) => (acc << 8) + Number(part), 0) >>> 0;
+/**
+ * Las direcciones que no se pueden pedir. `BlockList` compara por el valor de la IP y no por como esta escrita: un
+ * IPv4 mapeado llega como `::ffff:7f00:1` (asi lo normaliza `new URL`) y una expresion regular sobre el texto lo dejaba pasar.
+ */
+const BLOCKED_ADDRESSES = new BlockList();
+for (const [base, bits] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4],
+] as const) {
+  BLOCKED_ADDRESSES.addSubnet(base, bits, "ipv4");
 }
-
-function inRange(ip: string, base: string, bits: number): boolean {
-  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
-  return (ipv4ToInt(ip) & mask) === (ipv4ToInt(base) & mask);
+for (const [base, bits] of [
+  ["::", 96], // sin especificar, loopback y el IPv4 "compatible" (::7f00:1)
+  ["64:ff9b::", 96], // NAT64: lleva un IPv4 adentro
+  ["2001::", 32], // Teredo: idem
+  ["2002::", 16], // 6to4: idem
+  ["fc00::", 7],
+  ["fe80::", 10],
+  ["fec0::", 10],
+  ["ff00::", 8],
+] as const) {
+  BLOCKED_ADDRESSES.addSubnet(base, bits, "ipv6");
 }
 
 /** Si una IP es de las que no se pueden pedir desde el servidor (internas, de la nube, reservadas). */
 export function isBlockedAddress(address: string): boolean {
   const ip = address.replace(/^\[|\]$/g, "").toLowerCase();
   const version = isIP(ip);
-  if (version === 4) {
-    return [
-      ["0.0.0.0", 8],
-      ["10.0.0.0", 8],
-      ["100.64.0.0", 10],
-      ["127.0.0.0", 8],
-      ["169.254.0.0", 16],
-      ["172.16.0.0", 12],
-      ["192.0.0.0", 24],
-      ["192.168.0.0", 16],
-      ["198.18.0.0", 15],
-      ["224.0.0.0", 4],
-      ["240.0.0.0", 4],
-    ].some(([base, bits]) => inRange(ip, base as string, bits as number));
-  }
-  if (version === 6) {
-    if (ip === "::" || ip === "::1") return true;
-    const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped) return isBlockedAddress(mapped[1]);
-    return /^(fc|fd)/.test(ip) || /^fe[89ab]/.test(ip) || /^ff/.test(ip);
-  }
+  if (version === 4) return BLOCKED_ADDRESSES.check(ip, "ipv4");
+  if (version === 6) return BLOCKED_ADDRESSES.check(ip, "ipv6");
   return true;
 }
 
@@ -80,6 +85,24 @@ export interface SafeFetchResult {
   ok: boolean;
   text: string;
   truncated: boolean;
+  /** El `content-type` de la respuesta, en minusculas y sin parametros. Vacio si no vino. */
+  contentType: string;
+  /** La direccion que respondio, despues de las redirecciones. */
+  finalUrl: string;
+}
+
+/** El juego de caracteres de la respuesta: el del encabezado o, en un HTML que no lo dice, el del `<meta>`. Si no, UTF-8. */
+function decoderFor(contentType: string, head: Uint8Array): TextDecoder {
+  let label = /charset\s*=\s*["']?([\w-]+)/i.exec(contentType)?.[1];
+  if (!label && /html/i.test(contentType)) {
+    const start = new TextDecoder("latin1").decode(head.subarray(0, 1024));
+    label = /<meta[^>]+charset\s*=\s*["']?([\w-]+)/i.exec(start)?.[1];
+  }
+  try {
+    return new TextDecoder(label ?? "utf-8");
+  } catch {
+    return new TextDecoder("utf-8");
+  }
 }
 
 /** Lee el cuerpo hasta `maxBytes`; si se pasa, corta y lo marca. */
@@ -101,7 +124,8 @@ async function readCapped(response: Response, maxBytes: number): Promise<{ text:
     chunks.push(value);
     total += value.byteLength;
   }
-  return { text: new TextDecoder().decode(Buffer.concat(chunks)), truncated };
+  const bytes = Buffer.concat(chunks);
+  return { text: decoderFor(response.headers.get("content-type") ?? "", bytes).decode(bytes), truncated };
 }
 
 export async function safeFetch(
@@ -129,7 +153,8 @@ export async function safeFetch(
       continue;
     }
     const { text, truncated } = await readCapped(response, options.maxBytes ?? SAFE_FETCH_MAX_BYTES);
-    return { status: response.status, ok: response.ok, text, truncated };
+    const contentType = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    return { status: response.status, ok: response.ok, text, truncated, contentType, finalUrl: url.toString() };
   }
   throw new BlockedUrlError("Demasiadas redirecciones.");
 }

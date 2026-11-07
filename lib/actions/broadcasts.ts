@@ -10,6 +10,7 @@ import { loadBroadcastChannel } from "@/lib/broadcasts/channels";
 import { loadRenderData, resolveAudience, sanitizeAudienceParams } from "@/lib/broadcasts/audience-load";
 import { SKIP_REASON_LABELS, type AudienceSkipReason } from "@/lib/broadcasts/audience";
 import type { AudiencePreview, MessagePreview } from "@/lib/broadcasts/preview-types";
+import { resolveUnsubscribeLink } from "@/lib/email/unsubscribe";
 import { broadcastVariables, cleanVariants, pickVariant, renderChatMessage, renderEmail } from "@/lib/broadcasts/render";
 import {
   cancelBroadcast,
@@ -158,7 +159,8 @@ export async function previewBroadcastMessage(input: {
         channel.kind === "email"
           ? (() => {
               const e = renderEmail(input.emailSubject ?? "", variants[0], vars, input.emailPreheader);
-              return { subject: e.subject, preheader: e.preheader || null, text: e.html, missing: e.missing };
+              // En la vista previa todavia no hay link de baja: se muestra la variable, no el marcador interno.
+              return { subject: e.subject, preheader: e.preheader || null, text: resolveUnsubscribeLink(e.html, "{{unsubscribe_url}}"), missing: e.missing };
             })()
           : { subject: null, preheader: null, ...renderChatMessage(variants, variant, vars) };
       if (r.missing.length > 0) missingCount += 1;

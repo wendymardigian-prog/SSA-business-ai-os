@@ -49,12 +49,12 @@ export function deriveRunState(run: RunStateInput): RunState {
 const SOURCE_LABELS: Record<string, string> = {
   contact: "Contacto",
   member: "Persona del equipo",
-  webhook: "Webhook",
-  task: "Tarea",
-  form: "Formulario",
+  webhook: "Webhook", // @plantilla-quitar(webhooks)
+  task: "Tarea", // @plantilla-quitar(tareas)
+  form: "Formulario", // @plantilla-quitar(formularios)
   booking: "Reunión",
-  sale: "Venta",
-  call: "Llamada",
+  sale: "Venta", // @plantilla-quitar(ventas)
+  call: "Llamada", // @plantilla-quitar(llamadas)
   system: "Sistema",
 };
 

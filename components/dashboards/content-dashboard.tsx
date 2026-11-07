@@ -14,6 +14,7 @@ import { PostAnalysisPanel } from "./post-analysis-panel";
 import { refreshMetricsNow } from "@/lib/actions/metrics";
 import type { PeriodFilter } from "@/lib/dashboards/period-filter";
 import { DashboardPeriodControl } from "./dashboard-period-control";
+import { InfoTooltip } from "@/components/ui/tooltip";
 import { platformLabel } from "@/lib/platforms";
 import { FUNNEL_STAGES } from "@/lib/content/classification";
 import { DEFAULT_GROUP, GROUP_PARAM, selectedFor, withParam } from "@/lib/dashboards/content-params";
@@ -368,7 +369,9 @@ export function ContentDashboard(props: ContentDashboardProps) {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           {kpis.map((kpi) => (
             <div key={kpi.key} className="rounded-xl border border-border p-3">
-              <p className="text-xs text-muted-foreground">{kpi.label}</p>
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                {kpi.label} <InfoTooltip text={kpi.tip} label={`Qué significa ${kpi.label}`} />
+              </p>
               <p className="mt-1 text-2xl font-semibold tabular-nums">
                 {kpi.value === null ? "—" : kpi.value.toLocaleString("es-AR")}
               </p>

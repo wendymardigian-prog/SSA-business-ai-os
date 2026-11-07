@@ -78,7 +78,7 @@ BEGIN
     'jobs', 'sequences', 'whatsapp-health', 'inactivity', 'automation-events',
     'agent-bursts', 'drafts-refresh', 'bg-dispatch', 'bg-collect',
     'social-token-refresh', 'content-media-cleanup', 'metrics-sync',
-    'content-upload'
+    'content-upload', 'send-queue'
   ) THEN
     RAISE EXCEPTION 'ruta de cron no permitida: %', p_path;
   END IF;
@@ -591,6 +591,8 @@ SELECT cron.schedule('purge-pg-net', '10 * * * *', 'SELECT private.purge_pg_net_
 SELECT cron.schedule('purge-send-windows', '20 4 * * *', 'SELECT public.purge_send_windows(2)');
 
 SELECT cron.schedule('purge-trigger-fires', '30 4 * * *', 'SELECT public.purge_trigger_fires(90)');
+
+SELECT cron.schedule('send-queue', '15 seconds', 'SELECT private.call_app_cron(''send-queue'')');
 
 SELECT cron.schedule('sequences', '* * * * *', 'SELECT private.call_app_cron(''sequences'')');
 

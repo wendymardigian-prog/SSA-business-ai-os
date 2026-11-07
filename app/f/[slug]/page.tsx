@@ -7,6 +7,8 @@ import { PublicForm } from "@/components/forms/public/public-form";
 import { AttributionTracker } from "@/components/attribution/attribution-tracker";
 import { isAlreadyAnswered, loadPreviewFormData, loadPublicContractContext, loadPublicFormData } from "@/lib/forms/public-load";
 import { isAvailable } from "@/lib/forms/public-client";
+import { loadFormShare } from "@/lib/forms/share-preview";
+import { shareMetadata } from "@/lib/og/share";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const service = await createServiceClient();
   const form = await loadPublicFormData(service, slug);
   const title = isAvailable(form) ? form.design?.title : null;
-  return { title: { absolute: title || (isAvailable(form) ? form.business_name : null) || brandName() } };
+  const share = isAvailable(form) ? await loadFormShare(service, form) : null;
+  return {
+    title: { absolute: title || (isAvailable(form) ? form.business_name : null) || brandName() },
+    ...(share?.description ? { description: share.description } : {}),
+    ...(share ? shareMetadata(share) : {}),
+  };
 }
 
 /**

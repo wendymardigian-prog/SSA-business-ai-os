@@ -9,15 +9,12 @@ import { HeaderFilters, RefreshButton, SyncedPill } from "./ads/header-controls"
 import { HierarchyCard } from "./ads/hierarchy-tables";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 
-/** Esta pantalla no usa el alcance por objeto: la tabla «Meta vs CRM» no lo lee (solo el de la cuenta, para el total). */
-const NO_OBJECT_REACH = { campaign: null, adset: null, ad: null };
-
 /** La pantalla Anuncios: la tabla de campañas, conjuntos y anuncios, con sus filtros de cuenta y periodo. */
 export function AdsTablePage(props: AdsTablePageData) {
   const { pending, navigate, applyPeriod, refresh } = useAdsNavigation();
   const totals = useMemo(
-    () => computeTotals(props.rows.filter((r) => r.level === "account"), props.uniqueReach),
-    [props.rows, props.uniqueReach],
+    () => computeTotals(props.rows.filter((r) => r.level === "account"), props.uniqueReach, props.uniqueFrequency),
+    [props.rows, props.uniqueReach, props.uniqueFrequency],
   );
 
   if (props.accounts.length === 0 || !props.crm) {
@@ -44,11 +41,11 @@ export function AdsTablePage(props: AdsTablePageData) {
           levels={["campaign", "adset", "ad"]}
           rows={props.rows}
           totals={totals}
-          uniqueReach={NO_OBJECT_REACH}
           currency={props.currency}
           adAccountId={props.adAccountId}
           period={props.period}
           crm={props.crm}
+          drill
         />
       </div>
     </div>

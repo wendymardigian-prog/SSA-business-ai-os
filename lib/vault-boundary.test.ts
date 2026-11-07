@@ -127,6 +127,9 @@ const SERVER_ONLY = [
   { label: "lib/attribution/tracked-link.ts", file: join(ROOT, "lib/attribution/tracked-link.ts") },
   { label: "lib/attribution/link-secret.ts", file: join(ROOT, "lib/attribution/link-secret.ts") },
   { label: "lib/attribution/outgoing-links.ts", file: join(ROOT, "lib/attribution/outgoing-links.ts") },
+  // Vista previa de links: piden paginas que escribio cualquiera; la regla contra direcciones internas es solo de servidor.
+  { label: "lib/net/safe-fetch.ts", file: join(ROOT, "lib/net/safe-fetch.ts") },
+  { label: "lib/link-preview/fetch.ts", file: join(ROOT, "lib/link-preview/fetch.ts") },
 ];
 
 describe("limite del servidor: lib/vault.ts", () => {

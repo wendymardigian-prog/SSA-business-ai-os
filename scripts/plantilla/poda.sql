@@ -660,7 +660,8 @@ ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check
   CHECK (type = ANY (ARRAY[
     'keyword', 'postback', 'quick_reply', 'welcome', 'default', 'comment_keyword', 'new_contact', 'crm_event',
     'inactivity', 'email_received', 'booking_created', 'booking_rescheduled', 'booking_cancelled', 'booking_updated',
-    'booking_ended', 'booking_status_changed', 'booking_before_start', 'booking_after_end', 'booking_after_created'
+    'booking_ended', 'booking_status_changed', 'booking_before_start', 'booking_after_end', 'booking_after_created',
+    'whatsapp_group_joined', 'whatsapp_group_reaction', 'whatsapp_group_poll_vote'
   ]::text[]));
 
 -- Origen de una corrida de IA: sin las tareas de Llamadas.
@@ -691,7 +692,7 @@ ALTER TABLE public.oauth_connections ADD CONSTRAINT oauth_connections_provider_c
 -- Origen de un toque de atribucion: sin 'form' (formulario) ni 'webhook' (webhook entrante).
 ALTER TABLE public.contact_touches DROP CONSTRAINT contact_touches_origin_check;
 ALTER TABLE public.contact_touches ADD CONSTRAINT contact_touches_origin_check
-  CHECK (origin = ANY (ARRAY['dm', 'comment', 'booking', 'manual', 'import', 'link_click']::text[]));
+  CHECK (origin = ANY (ARRAY['dm', 'comment', 'booking', 'manual', 'import', 'link_click', 'whatsapp_group']::text[]));
 
 -- Que disparo una sesion o un evento de automatizacion: contacto, persona, agenda o sistema.
 ALTER TABLE public.automation_events DROP CONSTRAINT automation_events_source_type_check;
@@ -806,6 +807,11 @@ ALTER TABLE public.oauth_connections DROP COLUMN sync_watermark;
 ALTER TABLE public.oauth_connections DROP COLUMN sync_cursor;
 ALTER TABLE public.oauth_connections DROP COLUMN sync_last_error;
 ALTER TABLE public.oauth_connections DROP COLUMN refresh_locked_until;
+ALTER TABLE public.oauth_connections DROP COLUMN history_import;
+
+-- Negocio: los origenes de la web propia. Solo los usan los formularios y el link de baja que
+-- se pide desde esa web, y ninguno de los dos viaja.
+ALTER TABLE public.workspaces DROP COLUMN website_settings;
 
 -- Negocio: ajustes de Ventas, Pagos, Finanzas y Comisiones (con sus CHECK).
 ALTER TABLE public.workspaces DROP CONSTRAINT workspaces_enabled_payment_methods_check;
@@ -856,8 +862,10 @@ DROP FUNCTION private.commission_failed_dimension(p_rule public.commission_rules
 -- En una sola orden: asi las llaves foraneas entre ellas (por ejemplo formularios
 -- y sus versiones, que se apuntan mutuamente) no obligan a un orden. Sus
 -- disparadores, politicas, indices y permisos se van con ellas.
+ALTER TABLE public.ai_task_prompt_versions DROP CONSTRAINT ai_task_prompt_versions_variant_fkey;
 DROP TABLE
   public.calls,
+  public.call_analysis_profiles,
   public.forms,
   public.form_versions,
   public.form_submissions,

@@ -181,7 +181,7 @@ const ROOT = resolve(__dirname, "..", "..");
 const TEAM_ONLY: Record<string, string> = {
   [join("lib", "jobs", "handlers", "notification-deliver.ts")]: "los avisos de la campana que cada persona del equipo eligio recibir por email (Mi cuenta)",
   [join("lib", "actions", "team.ts")]: "invitaciones al equipo",
-  [join("lib", "actions", "forms", "flows.ts")]: "la prueba del editor de formularios: va a quien la pide",
+  [join("lib", "actions", "forms", "flows.ts")]: "la prueba del editor de formularios: va a quien la pide", // @plantilla-quitar(formularios)
   [join("lib", "actions", "scheduling", "event-flows.ts")]: "la prueba del editor de la agenda: va a quien la pide",
 };
 
@@ -237,10 +237,12 @@ describe("la puerta unica: todo email a un contacto lleva su categoria", () => {
     expect([...seenTeam].sort()).toEqual(Object.keys(TEAM_ONLY).sort());
   });
 
+  // @plantilla-desde(formularios)
   it("la copia del contrato firmado (que llama por `send`) le pone categoria al firmante", () => {
     const src = readFileSync(join(ROOT, "lib", "forms", "contract", "email-run.ts"), "utf8");
     expect(src).toMatch(/copy \? \{\} : \{ category: "transactional" as const \}/);
   });
+  // @plantilla-hasta(formularios)
 
   it("cada llamada a sendEmailReply pasa `category` (el tipo lo exige y este test lo deja escrito)", () => {
     const offenders: string[] = [];

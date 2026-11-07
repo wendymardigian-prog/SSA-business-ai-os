@@ -104,6 +104,15 @@ Tres que vale la pena nombrar:
 - **El origen "sale" de la marca Cliente** (00268, 28/10/2026): la lista de orígenes permitidos (`contacts_customer_source_check`) sigue admitiendo "sale" (se marcó sola al cobrar). La función que lo escribe al cobrar (`payments_mark_customer`) sí se borra, así que en la plantilla un cliente solo se marca a mano y ese valor nunca aparece.
 - **Una función de atribución** (`meta_touch_utm_counts`) todavía nombra los orígenes "formulario" y "webhook". Es la gemela exacta de una regla del código; tocarla rompería la comprobación de que las dos dicen lo mismo, y como esos orígenes ya no pueden aparecer, no hace ningún efecto.
 
+## 9. Lo que se sumó en noviembre de 2026
+
+- **Viajan enteros**: suscripción a emails y guardia de entrega, Mi cuenta, Grupos de WhatsApp y encuestas, cola de broadcasts, historial de ejecuciones, cambiar anfitrión y lo demás de la `00270` a la `00299`.
+- **Se sacan dos columnas nuevas**: `oauth_connections.history_import` (importar el historial de Fathom) y `workspaces.website_settings` (la web propia de un negocio: solo la usan los formularios y el link de baja que se pide desde esa web). `check-residue.mjs` busca las dos por su nombre, porque no tienen ninguna palabra de un módulo.
+- **Áreas de la Agenda**: `booking_categories.description` y `system_key` (de la `00300`) se quedan. La pantalla no muestra «Cuándo se usa», porque solo le sirve a la IA que clasifica grabaciones.
+- **Áreas de grabaciones en los permisos (la `00301`) se dejan, inertes.** `can_give_role`, `workspace_roles_grant_check` y la política de insert de `workspace_roles` llaman a `can_grant_call_areas`, y `lib/team/grant.ts` usa su gemela. Sin Grabaciones ningún rol tiene ese alcance, así que nunca frenan nada. Reescribir esas tres en la poda las dejaría desfasadas del proyecto a la primera migración que las toque.
+- **El estado «Sin suscribir» se queda**: lo lee código que viaja (Broadcasts, Secuencias, la ficha), aunque en la plantilla solo lo pondría una casilla de un formulario.
+- **Reinstalar**: desde esta versión, quien la tenía instalada instala de cero. Los archivos de migración se llaman igual, así que `db push` sobre una base vieja no aplica nada (el README lo avisa).
+
 ## PREGUNTAS para vos
 
 1. **PREGUNTA — Tabla de anuncios sin ventas.** Sin el módulo Ventas, la tabla "Meta vs CRM" pierde las columnas de ventas, ingresos, cobrado y costo por venta. Quedan leads, agendas y asistencias. ¿Te sirve así para los estudiantes, o preferís que esa sección explique que "ventas" se suma con el módulo de Ventas?

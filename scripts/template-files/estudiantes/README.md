@@ -6,16 +6,20 @@ Un sistema operativo para tu negocio: CRM, bandeja multicanal (WhatsApp, Instagr
 
 ## Qué trae
 
-- **Bandeja multicanal**: WhatsApp (Evolution API), Instagram (Zernio) y email, con adjuntos, notas de voz transcriptas, reacciones, stickers y registro de llamadas de WhatsApp.
-- **Contactos (CRM)**: etiquetas, campos personalizados, segmentos, importación por CSV, estados de setter y de vendedor, producto de interés, fusión de duplicados y la marca «Conocido».
+- **Bandeja multicanal**: WhatsApp (Evolution API), Instagram (Zernio) y email, con adjuntos, notas de voz transcriptas, reacciones, stickers y registro de llamadas de WhatsApp. Un solo menú de filtros y búsqueda por nombre, teléfono, email o usuario.
+- **Grupos de WhatsApp**: verlos y escribir en la bandeja, encuestas, guardar como contacto a quien se une y automatizaciones cuando alguien se une, reacciona o vota.
+- **Historial de WhatsApp**: revisar e importar las conversaciones que Evolution tiene guardadas.
+- **Contactos (CRM)**: tabla y Kanban con los mismos filtros, columnas a elección, etiquetas, campos personalizados, importación por CSV, estados de setter y de vendedor, producto de interés, fusión de duplicados y las marcas «Conocido» y «Cliente».
+- **Emails**: suscripción por dirección, baja en un clic, rebotes y quejas, tope diario, calentamiento del dominio y freno automático del marketing, y resultados de cada envío.
 - **Asignación**: setter y vendedor de cada lead (a mano o por reglas) y responsable de cada chat.
 - **Banca de recursos**: textos, audios, videos, imágenes, archivos y enlaces listos para mandar desde la bandeja, los flujos o el agente.
-- **Secuencias, broadcasts y automatizaciones**: un editor visual de flujos con condiciones.
+- **Broadcasts**: envíos por WhatsApp o email a los filtros de Contactos, con variables, variantes y una cola con ritmo por número.
+- **Secuencias y automatizaciones**: un editor visual de flujos con condiciones, y el historial de cada ejecución, paso por paso.
 - **Agentes IA**: con tu propia clave de OpenAI, Anthropic o Google; tareas de IA en segundo plano (clasificar, resumir) y una base de conocimiento.
-- **Agenda**: conectada a Google Calendar, con página pública de reservas y un embed para cualquier web.
+- **Agenda**: conectada a Google Calendar (también funciona sin calendario), con página pública de reservas, Google Meet, un embed para cualquier web y la zona horaria de cada persona.
 - **Contenido y publicación**: ideas, piezas y publicación en Instagram, TikTok, YouTube, LinkedIn y Threads; métricas en Social.
-- **Dashboards**: Chat, Contenido, Anuncios de Meta (con la tabla Meta vs CRM), Agenda y uno unificado.
-- **Catálogo de productos**, **equipo con roles y permisos**, e **invitaciones**.
+- **Dashboards**: Chat, Contenido, Anuncios de Meta (con la tabla Meta vs CRM), Agenda y uno unificado. **Anuncios** también tiene su pantalla propia en el menú.
+- **Catálogo de productos**, **equipo con roles y permisos**, **invitaciones** con la marca del negocio, y **Mi cuenta** (perfil, foto y qué avisos recibe cada persona, por campana, email o WhatsApp).
 - **Varios negocios en la misma instalación**, cada uno con su marca.
 
 ## White label
@@ -132,6 +136,12 @@ Poné en el `.env` la URL (`http://127.0.0.1:54321`) y las claves que muestra `s
 Ojo: los canales no mandan mensajes a una app en `localhost` (el sistema se niega a registrar una dirección local como webhook), así que WhatsApp e Instagram se prueban con la app desplegada.
 
 Tampoco corren los trabajos programados (cron) contra la app local: `private.set_system_secret` solo acepta la dirección pública (`https://...`) de la app, así que la base local no puede llamar a `localhost`. Es lo esperado: no hace falta buscarle la vuelta. Lo que depende del cron (secuencias, recordatorios, sincronizaciones) se prueba con la app desplegada.
+
+## Cómo actualizar
+
+> **Una base armada con una versión anterior no se actualiza con `supabase db push`.** Esta versión cambió los 17 archivos de migración sin cambiarles el nombre: la CLI ve que ya los aplicó, dice que está todo al día y **no aplica nada**. Si desplegás el código nuevo sobre esa base, la app falla.
+>
+> Para pasar a esta versión hay que **instalarla de cero**: un proyecto de Supabase nuevo (o vacío), y volver a correr `/setup` con esa base. Lo que tengas en la instalación vieja no se traslada solo.
 
 ## Varios negocios en una instalación
 

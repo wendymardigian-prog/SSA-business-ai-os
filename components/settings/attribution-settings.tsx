@@ -149,7 +149,7 @@ export function AttributionSettingsCard({ initial }: { initial: AttributionSetti
             onChange={(next) => change({ links_track_clicks_default: next })}
             disabled={pending}
             title="Registrar el clic en los links por defecto"
-            description="Es el valor inicial en los pasos de envío nuevos. En cada paso se puede cambiar."
+            description="Es el valor inicial en los pasos de envío nuevos. En cada paso se puede cambiar. En WhatsApp, estos links pueden llegar sin vista previa."
           />
         </fieldset>
       </div>

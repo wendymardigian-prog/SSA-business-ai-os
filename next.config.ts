@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 import { nextHeadersConfig } from "./lib/security-headers";
 
 const nextConfig: NextConfig = {
+  // Las etiquetas de la tarjeta de un link van siempre en el <head>, para cualquier lector:
+  // no se sabe con qué identificador pregunta cada uno (Evolution, WhatsApp Web), y sin esto
+  // Next las manda al final a quien no está en su lista. Solo cambia algo en las páginas con
+  // `generateMetadata`; el Suspense del panel no depende de esta opción.
+  htmlLimitedBots: /.*/,
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**" },

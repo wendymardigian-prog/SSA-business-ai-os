@@ -144,7 +144,7 @@ function EmailEditor({ name, step, patch, disabled }: EditorProps) {
         )}
       </div>
       {to === "users" && <MemberPicker name={`${name}-users`} value={Array.isArray(d.userIds) ? (d.userIds as string[]) : []} onChange={(userIds) => patch({ userIds })} disabled={disabled} />}
-      {/* Estas pantallas (agenda, formularios, cobranza) mandan lo que la persona pidio: transaccional por defecto. */}
+      {/* Estas pantallas (agenda, por ejemplo) mandan lo que la persona pidio: transaccional por defecto. */}
       <EmailCategoryField id={`${name}-category`} value={d.category} fallback="transactional" disabled={disabled} onChange={(category) => patch({ category })} selectClassName={inputClass} />
       <div className="space-y-1">
         <label htmlFor={`${name}-subject`} className="text-xs text-muted-foreground">

@@ -98,6 +98,20 @@ describe("withUnsubscribe: pie y cabeceras solo en marketing", () => {
     expect(out).toEqual({ html: "<p>Tu reunión</p>", headers: {} });
   });
 
+  it("en texto plano, la variable sale como link y se reemplaza en el href y en el texto", () => {
+    const html = finalizeEmailHtml(protectUnsubscribeVariable("Baja: {{unsubscribe_url}}"), false);
+    const out = withUnsubscribe({ ...base, html, category: "marketing", token: TOKEN });
+    expect(out.html).not.toContain(UNSUBSCRIBE_PLACEHOLDER);
+    expect(out.html).toMatch(/<a href="https:[^"]*\/baja\/[^"]*"[^>]*>https:[^<]*\/baja\/[^<]*<\/a>/);
+    // No se duplica el pie: la plantilla ya lo usa.
+    expect(out.html.match(/\/baja\//g)).toHaveLength(2);
+  });
+
+  it("sin link de baja, el link queda vacio: no se ve ni lleva a ningun lado", () => {
+    const html = finalizeEmailHtml(protectUnsubscribeVariable("Baja: {{unsubscribe_url}}"), false);
+    expect(resolveUnsubscribeLink(html, null)).not.toContain("baja.invalid");
+  });
+
   it("marketing sin token (una direccion que no es de ningun contacto): sin pie ni cabeceras", () => {
     const out = withUnsubscribe({ ...base, html: "<p>Hola</p>", category: "marketing", token: null });
     expect(out).toEqual({ html: "<p>Hola</p>", headers: {} });

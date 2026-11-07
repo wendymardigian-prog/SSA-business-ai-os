@@ -23,11 +23,11 @@ const PAGE = 1000;
 /** 10 paginas = 10.000 llamadas por periodo: muy por encima de lo que maneja una agencia. */
 export const MAX_PAGES = 10;
 
-const COLUMNS = "id, recorded_at, recorded_by_user_id, call_type, closer_score, lead_score, lead_qualification, outcome, main_objection, has_open_alerts, rubrica:analysis->rubrica";
+const COLUMNS = "id, recorded_at, recorded_by_user_id, call_type, area_id, category_id, closer_score, lead_score, lead_qualification, outcome, main_objection, has_open_alerts, rubrica:analysis->rubrica";
 
 export async function loadCallRows(
   supabase: Db,
-  args: { workspaceId: string; range: ResolvedPeriod; closerId?: string | null },
+  args: { workspaceId: string; range: ResolvedPeriod; closerId?: string | null; areaId?: string | null; categoryId?: string | null },
 ): Promise<{ calls: DashboardCall[]; truncated: boolean; failed: boolean }> {
   const calls: DashboardCall[] = [];
 
@@ -41,6 +41,8 @@ export async function loadCallRows(
     if (args.range.from) q = q.gte("recorded_at", args.range.from);
     if (args.range.to) q = q.lte("recorded_at", args.range.to);
     if (args.closerId) q = q.eq("recorded_by_user_id", args.closerId);
+    if (args.areaId) q = q.eq("area_id", args.areaId);
+    if (args.categoryId) q = q.eq("category_id", args.categoryId);
 
     const { data, error } = await q
       .order("recorded_at", { ascending: false })
@@ -59,6 +61,7 @@ export async function loadCallRows(
         recordedAt: r.recorded_at as string,
         closerId: (r.recorded_by_user_id as string | null) ?? null,
         callType: (r.call_type as string | null) ?? null,
+        categoryKey: (r.category_id as string | null) ?? (r.area_id as string | null) ?? null,
         closerScore: (r.closer_score as number | null) ?? null,
         leadScore: (r.lead_score as number | null) ?? null,
         qualification: (r.lead_qualification as string | null) ?? null,

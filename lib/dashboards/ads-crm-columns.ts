@@ -133,8 +133,8 @@ export const COLUMNS: ColumnDef[] = [
   // ── Meta · entrega ────────────────────────────────────────────────────
   { id: "spend", group: "meta", subgroup: "delivery", label: "Gasto", kind: "money", defaultVisible: true, value: (r) => r.spend, tip: { title: "Gasto", body: "Inversión total ejecutada en el período seleccionado." } },
   { id: "impressions", group: "meta", subgroup: "delivery", label: "Impr.", kind: "count", defaultVisible: true, value: (r) => r.impressions, tip: { title: "Impresiones", body: "Cantidad de veces que se mostró el anuncio. Una misma persona puede generar varias." } },
-  { id: "reach", group: "meta", subgroup: "delivery", label: "Alcance", kind: "count", defaultVisible: false, value: (r) => r.reach, tip: { title: "Alcance", body: "Personas únicas que vieron el anuncio al menos una vez. No se puede sumar entre anuncios (la misma persona vería dos): en el Total se muestra solo cuando la tabla muestra todo, con el alcance único real de la cuenta." } },
-  { id: "frequency", group: "meta", subgroup: "delivery", label: "Frec.", kind: "decimal", defaultVisible: false, value: (r) => r.frequency, tip: { title: "Frecuencia", body: "Veces promedio que cada persona vio el anuncio. Impresiones ÷ Alcance. En el Total, igual que el alcance: «—» salvo que se vea todo." } },
+  { id: "reach", group: "meta", subgroup: "delivery", label: "Alcance", kind: "count", defaultVisible: false, value: (r) => r.reach, tip: { title: "Alcance", body: "Personas únicas que vieron el anuncio al menos una vez en el período. Se le pregunta a Meta en vivo, así que puede ir un poco más adelantado que el resto de la fila. Con «≈», Meta no lo dio y es la suma de los días: cuenta dos veces a quien vio el anuncio en días distintos. No se puede sumar entre anuncios: en el Total se muestra solo cuando la tabla muestra todo." } },
+  { id: "frequency", group: "meta", subgroup: "delivery", label: "Frec.", kind: "decimal", defaultVisible: false, value: (r) => r.frequency, tip: { title: "Frecuencia", body: "Veces promedio que cada persona vio el anuncio en el período, según Meta. Con «≈», Meta no la dio y sale de la suma de los días: queda más baja que la real. En el Total, igual que el alcance: «—» salvo que se vea todo." } },
   { id: "cpm", group: "meta", subgroup: "delivery", label: "CPM", kind: "money", defaultVisible: false, value: (r) => r.cpm, tip: { title: "CPM", body: "Lo que pagás por cada 1.000 impresiones." } },
   { id: "cpc", group: "meta", subgroup: "delivery", label: "CPC", kind: "money", defaultVisible: false, value: (r) => r.cpc, tip: { title: "CPC", body: "Lo que cuesta cada clic (de cualquier tipo). Gasto ÷ Clics. El del enlace está en «Clics»." } },
 
@@ -167,9 +167,9 @@ export const COLUMNS: ColumnDef[] = [
   { id: "costPerBookingMeta", group: "meta", subgroup: "conversions", label: "Costo agenda Meta", kind: "money", defaultVisible: false, value: (r) => r.costPerBookingMeta, tip: { title: "Costo por agenda según Meta", body: "Gasto ÷ Agendas Meta." } },
   { id: "purchasesMeta", group: "meta", subgroup: "conversions", label: "Compras Meta", kind: "count", defaultVisible: false, value: (r) => r.purchases, tip: { title: "Compras según Meta", body: "Compras que Meta registra con el píxel o la API de conversiones. «—» si no manda ese evento." } },
   { id: "costPerPurchase", group: "meta", subgroup: "conversions", label: "Costo compra", kind: "money", defaultVisible: false, value: (r) => r.costPerPurchase, tip: { title: "Costo por compra", body: "Gasto ÷ Compras Meta." } },
-  { id: "purchaseValue", group: "meta", subgroup: "conversions", label: "Valor de compras", kind: "money", defaultVisible: false, value: (r) => r.purchaseValue, tip: { title: "Valor de compras", body: "Suma del valor de las compras que registra Meta." } },
-  { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta. El ROAS del CRM («ROAS») usa tus ventas reales." } }, // @plantilla-quitar(ventas)
-  // @plantilla-sin(ventas): { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta." } },
+  { id: "purchaseValue", group: "meta", subgroup: "conversions", label: "Valor de compras", kind: "money", defaultVisible: false, value: (r) => r.purchaseValue, tip: { title: "Valor de compras", body: "El valor de las compras que registra Meta, contando cada compra una sola vez. Lo guardado antes del 6/11/2026 puede venir sumado de más, porque Meta repite la misma compra con varios nombres." } },
+  { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta. Lo guardado antes del 6/11/2026 puede venir inflado (ver «Valor de compras»). El ROAS del CRM («ROAS») usa tus ventas reales." } }, // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): { id: "roasMeta", group: "meta", subgroup: "conversions", label: "ROAS Meta", kind: "decimal", defaultVisible: false, value: (r) => r.roasMeta, tip: { title: "ROAS según Meta", body: "Valor de compras ÷ Gasto, con lo que registra Meta. Lo guardado antes del 6/11/2026 puede venir inflado (ver «Valor de compras»)." } },
 
   // ── Meta · calidad (solo anuncios) ────────────────────────────────────
   textCol("qualityRanking", "meta", "Ranking de calidad", "text", ["ad"], false, { title: "Ranking de calidad", body: "Cómo se percibe la calidad del anuncio frente a otros que compiten por la misma audiencia. Es el del último día con dato y no se suma." }, (r) => rankingLabel(r.qualityRanking), { subgroup: "quality" }),
@@ -214,6 +214,38 @@ export function formatCell(def: ColumnDef, row: CrmRow, currency: string | null)
   if (def.kind === "text" || def.kind === "status" || def.kind === "link") return def.text?.(row) ?? "—";
   const value = def.value(row);
   if (value === null) return "—";
+  const text = formatNumber(def, value, currency);
+  return isReachColumn(def.id) && row.reachIsSum ? `≈ ${text}` : text;
+}
+
+/** Alcance y Frec.: las dos que salen en vivo de Meta y, si no, de sumar los dias. */
+export function isReachColumn(id: ColumnId): boolean {
+  return id === "reach" || id === "frequency";
+}
+
+/** ¿Hay que preguntarle a Meta? Solo si alguna de las dos esta a la vista: estan ocultas por defecto y cada consulta gasta cupo. */
+export function needsLiveReach(columns: ColumnDef[]): boolean {
+  return columns.some((c) => isReachColumn(c.id));
+}
+
+/**
+ * El alcance en vivo supera a las impresiones guardadas: las dos cifras no son del mismo momento (Alcance y Frec. llegan hasta ahora,
+ * el resto de la fila hasta el ultimo sync). Pasa en una campaña recien prendida, y sin explicarlo la fila se lee como imposible.
+ */
+export function reachAheadOfSync(row: CrmRow): boolean {
+  return !row.reachIsSum && row.reach !== null && row.impressions !== null && row.reach > row.impressions;
+}
+
+/** Lo que explica un «≈». */
+export const REACH_SUM_NOTE = "Suma de los días: cuenta dos veces a quien vio el anuncio en días distintos, y por eso la frecuencia queda más baja.";
+
+/** El encabezado del CSV: un archivo no tiene «≈», y un número sumado no se puede confundir con el alcance único. */
+export function csvColumnLabel(def: ColumnDef, rows: CrmRow[]): string {
+  if (!isReachColumn(def.id) || !rows.some((row) => row.reachIsSum)) return def.label;
+  return `${def.label} (con suma de los días)`;
+}
+
+function formatNumber(def: ColumnDef, value: number, currency: string | null): string {
   switch (def.kind) {
     case "money":
       return money(value, currency, { narrow: true });

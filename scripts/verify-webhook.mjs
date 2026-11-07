@@ -323,8 +323,8 @@ try {
     const r = await evo(evoMessage({
       key: { remoteJid: "120363001122334455@g.us", fromMe: false, id: `GRP-${stamp}` },
     }));
-    check(r.body?.skipped === "sin telefono utilizable",
-      "un grupo se ignora: no hay un lead con telefono detras", JSON.stringify(r.body));
+    check(r.body?.skipped === "grupo no activado",
+      "un grupo que no se activo se ignora: no hay un lead con telefono detras", JSON.stringify(r.body));
     await nadaQueEsperar();
     const { data } = await svc.from("contact_channels").select("platform_sender_id")
       .eq("channel_id", waChannel.id);
@@ -342,7 +342,8 @@ try {
     const conv = await convDelLead(waChannel.id, "+5491122334455", "id, unread_count");
     const msgs = await mensajesDe(conv.id, "direction, text", 2);
     check(msgs?.length === 2, `el hilo tiene los dos mensajes (dio ${msgs?.length})`);
-    check(msgs?.[1]?.direction === "outbound", "el que salio del celular queda como saliente");
+    // Por el texto y no por la posicion: los dos pueden tener la misma hora y el orden no esta garantizado.
+    check(msgs?.find((m) => m.text === "ya te paso info")?.direction === "outbound", "el que salio del celular queda como saliente");
     check(conv.unread_count === 1, "y no suma no leidos");
   });
 

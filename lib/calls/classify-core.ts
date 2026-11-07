@@ -10,6 +10,8 @@ import type { CategoryRow, CategorySnapshot } from "@/lib/scheduling/categories"
 import { BOOKING_RULE_LABEL, NO_SHOW_TARGET, legacyCallTypeFor, readCategorySnapshot, ruleTargetSnapshot } from "./catalog";
 import { applyClassificationRules, teamNamesFrom, type MeetingForRules } from "./classification";
 import { categoryIdOf, type CascadeResult, type CascadeSource } from "./classify-cascade";
+import type { CallAnalysisProfile } from "./profiles";
+import { loadCallProfiles } from "./profiles-load";
 import { resolveCallTaskSettings, type CallTaskSettings } from "./task-settings";
 
 type Db = SupabaseClient<Database>;
@@ -22,6 +24,8 @@ export interface ClassificationContext {
   /** Lo que decidio la primera regla que se cumple, y su nombre. */
   rule: CategorySnapshot | null;
   ruleLabel: string | null;
+  /** Los analizadores del negocio: deciden que pasa despues de clasificar. */
+  profiles: CallAnalysisProfile[];
   /** Una regla dice que nadie se presento, y su nombre. */
   noShowRule: boolean;
   noShowRuleLabel: string | null;
@@ -40,13 +44,14 @@ export async function loadClassificationContext(
   db: Db,
   call: MeetingForRules & { workspace_id: string; booking_id?: string | null },
 ): Promise<ClassificationContext> {
-  const [{ data: ws }, rows, team, bookingRow] = await Promise.all([
+  const [{ data: ws }, rows, team, bookingRow, profiles] = await Promise.all([
     db.from("workspaces").select("ai_background_settings").eq("id", call.workspace_id).maybeSingle(),
     listCategories(db, call.workspace_id),
     loadTeam(db, call.workspace_id),
     call.booking_id
       ? db.from("bookings").select("category_snapshot").eq("id", call.booking_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    loadCallProfiles(db, call.workspace_id),
   ]);
   const settings = resolveCallTaskSettings(ws?.ai_background_settings);
   const categories = rows.map(toCategoryRow);
@@ -59,6 +64,7 @@ export async function loadClassificationContext(
   return {
     settings,
     categories,
+    profiles,
     booking: readCategorySnapshot((bookingRow.data as { category_snapshot?: unknown } | null)?.category_snapshot),
     rule,
     ruleLabel: rule && fired ? fired.rule_label : null,

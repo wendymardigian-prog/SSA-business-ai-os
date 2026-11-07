@@ -317,6 +317,7 @@ export type CallRow = {
   no_show: boolean;
   /** Con que clasificacion se hizo el ultimo analisis. */
   analyzed_category_id: string | null;
+  analysis_profile_id: string | null;
   /** Entro por una importacion del historial (00297): no dispara automatizaciones y no se analiza sola. */
   imported_from_history: boolean;
   attendees: CallAttendee[];
@@ -1199,7 +1200,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings: Json;
           team_alerts_settings: Json;
-          website_settings: Json;
+          website_settings: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */ // @plantilla-quitar(ventas)
           max_discount_percent: number | null; // @plantilla-quitar(ventas)
@@ -1256,7 +1257,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
-          website_settings?: Json;
+          website_settings?: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
@@ -1307,7 +1308,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
-          website_settings?: Json;
+          website_settings?: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
@@ -3979,6 +3980,7 @@ export interface Database {
           version: number;
           system_prompt: string;
           note?: string | null;
+          variant?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -3986,6 +3988,49 @@ export interface Database {
         Update: Record<string, never>;
         Relationships: [];
       };
+      // @plantilla-desde(llamadas)
+      /** Un analizador por tipo de reunion o area (00303). Escribe solo el servidor. */
+      call_analysis_profiles: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          category_id: string;
+          shape: "sales" | "general";
+          mode: "manual" | "auto";
+          rules: Json;
+          rubric: Json | null;
+          auto_summary: boolean;
+          auto_memory: boolean;
+          auto_knowledge: boolean;
+          active_prompt_version: number | null;
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          category_id: string;
+          shape?: "sales" | "general";
+          mode?: "manual" | "auto";
+          rules?: Json;
+          rubric?: Json | null;
+          auto_summary?: boolean;
+          auto_memory?: boolean;
+          auto_knowledge?: boolean;
+          active_prompt_version?: number | null;
+          archived_at?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["call_analysis_profiles"]["Insert"]>;
+        Relationships: [];
+      };
+      // @plantilla-hasta(llamadas)
       /**
        * Historial de instrucciones (la parte editable del prompt) de las
        * tareas de IA, mismo patron que agent_prompt_versions (migracion
@@ -3999,6 +4044,7 @@ export interface Database {
           version: number;
           instructions: string;
           note: string | null;
+          variant: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -4319,7 +4365,7 @@ export interface Database {
           /** Candado de renovacion del refresh token (claim_oauth_refresh). */
           refresh_locked_until: string | null;
           /** El avance de la importacion del historial (00297, lib/fathom/history-state.ts). */
-          history_import: Json | null;
+          history_import: Json | null; // @plantilla-quitar(llamadas)
           // @plantilla-hasta(llamadas)
         };
         Insert: {
@@ -4356,7 +4402,7 @@ export interface Database {
           sync_cursor?: string | null;
           sync_last_error?: string | null;
           refresh_locked_until?: string | null;
-          history_import?: Json | null;
+          history_import?: Json | null; // @plantilla-quitar(llamadas)
           // @plantilla-hasta(llamadas)
         };
         Relationships: [];

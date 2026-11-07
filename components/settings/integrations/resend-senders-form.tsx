@@ -113,7 +113,8 @@ export function ResendSendersForm({
       <SenderRow
         id="sender-important"
         label="Remitente de emails importantes"
-        hint="Agenda, contratos, invitaciones y avisos."
+        hint="Agenda, contratos, invitaciones y avisos." // @plantilla-quitar(formularios)
+        // @plantilla-sin(formularios): hint="Agenda, invitaciones y avisos."
         local={fromLocal}
         domain={fromDomain}
         domains={domains}

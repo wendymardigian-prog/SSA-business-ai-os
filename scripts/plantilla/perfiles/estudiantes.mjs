@@ -27,6 +27,8 @@ export const MODULES = {
       "components/contacts/calls-section.tsx",
       "lib/contacts/related/calls.ts",
       "components/settings/integrations/fathom-app-card.tsx",
+      "lib/actions/call-profiles.ts",
+      "lib/actions/call-profiles.test.ts",
       "lib/actions/call-proposals.ts",
       "lib/actions/call-proposals.test.ts",
       "lib/actions/call-task-settings.ts",
@@ -93,6 +95,17 @@ export const MODULES = {
       "components/settings/integrations/website-card.tsx",
       "lib/settings/website-guide.ts",
       "lib/settings/website-guide.test.ts",
+      // El link de baja que se pide desde esa web, y lo que solo usa esa cadena (CORS, cuerpo acotado,
+      // origenes). La baja de cada email sigue viajando: es otra cosa (`lib/email/unsubscribe*.ts`).
+      ".claude/commands/conectar-web.md",
+      "app/api/public/email/unsubscribe-link",
+      "lib/actions/website-settings.ts",
+      "lib/email/unsubscribe-link.ts",
+      "lib/email/unsubscribe-link.test.ts",
+      "lib/email/unsubscribe-link-ports.ts",
+      "lib/http",
+      "lib/settings/website.ts",
+      "lib/settings/website.test.ts",
       "lib/jobs/handlers/contract-email.ts",
       "lib/jobs/handlers/contract-email.test.ts",
       "lib/jobs/handlers/contract-pdf.ts",
@@ -242,7 +255,8 @@ export const MODULES = {
   // historia. Se marca con @plantilla-quitar(proyecto) y compania; no tiene rutas.
   proyecto: {
     label: "Solo del proyecto (historia, objetos sin uso)",
-    paths: [],
+    // Una reparacion de datos de una sola vez: en una base nueva no hay nada que reparar.
+    paths: ["scripts/backfill-missing-first-touch.mjs"],
   },
   sitio: {
     label: "Sitio publico del clon",

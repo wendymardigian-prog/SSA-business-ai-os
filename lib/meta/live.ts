@@ -158,14 +158,39 @@ export async function fetchUniqueReach(params: {
   };
 }
 
+/** El alcance y la frecuencia de un objeto en el periodo, los dos de la misma respuesta de Meta. */
+export interface ObjectReach {
+  reach: number;
+  frequency: number | null;
+}
+
+/** Hasta donde deja mirar Meta hacia atras en sus insights. */
+export const MAX_INSIGHT_MONTHS = 37;
+
+/**
+ * ¿Se le puede pedir a Meta el alcance unico de un periodo que arranca en `since`?
+ *
+ * Mas atras de 37 meses Meta devuelve un error, y "todo el historial" llega aca como 2000-01-01: ni se pregunta.
+ */
+export function canAskUniqueReach(since: string, now: Date = new Date()): boolean {
+  const limit = new Date(now);
+  limit.setUTCMonth(limit.getUTCMonth() - MAX_INSIGHT_MONTHS);
+  return since >= limit.toISOString().slice(0, 10);
+}
+
 /**
  * El alcance unico de cada campaña, conjunto o anuncio del periodo.
  *
  * Es el mismo problema que `fetchUniqueReach`, uno por fila de las tablas:
  * sumar los alcances diarios de una campaña cuenta a la misma persona una
  * vez por dia. Una sola consulta con `level` trae todos los objetos.
+ *
+ * La frecuencia viene en la misma respuesta y no se calcula aca: lo guardado llega hasta el ultimo sync y esto hasta
+ * ahora, asi que impresiones guardadas ÷ alcance en vivo puede dar menos de 1 en una campaña que recien arranca.
+ *
+ * Es UNA pagina (500 objetos): un objeto que no vino no tiene dato, y quien lo muestra tiene que decirlo.
  */
-export async function fetchReachByLevel(params: {
+export async function fetchObjectReach(params: {
   token: string;
   adAccountId: string;
   /** Desde donde se pide: la cuenta, o una campaña/conjunto para sus hijos. */
@@ -175,7 +200,7 @@ export async function fetchReachByLevel(params: {
   until: string;
   fetchImpl?: typeof fetch;
   now?: number;
-}): Promise<LiveResult<Record<string, number>>> {
+}): Promise<LiveResult<Record<string, ObjectReach>>> {
   const target = params.objectId ?? params.adAccountId;
   const idField = `${params.level}_id`;
 
@@ -191,7 +216,7 @@ export async function fetchReachByLevel(params: {
     path: `${target}/insights`,
     query: {
       level: params.level,
-      fields: `${idField},reach`,
+      fields: `${idField},reach,frequency`,
       time_range: JSON.stringify({ since: params.since, until: params.until }),
       limit: "500",
     },
@@ -201,13 +226,26 @@ export async function fetchReachByLevel(params: {
 
   if (!result.ok) return result;
 
-  const byId: Record<string, number> = {};
+  const byId: Record<string, ObjectReach> = {};
   for (const row of result.data.data ?? []) {
     const id = row[idField];
     const reach = row.reach === undefined || row.reach === null ? NaN : Number(row.reach);
-    if (typeof id === "string" && Number.isFinite(reach)) byId[id] = reach;
+    if (typeof id !== "string" || !Number.isFinite(reach)) continue;
+    const frequency = row.frequency === undefined || row.frequency === null ? NaN : Number(row.frequency);
+    byId[id] = { reach, frequency: Number.isFinite(frequency) ? frequency : null };
   }
   return { ok: true, fromCache: result.fromCache, data: byId };
+}
+
+/** Lo mismo que `fetchObjectReach`, solo el alcance: la misma consulta y la misma cache. */
+export async function fetchReachByLevel(params: Parameters<typeof fetchObjectReach>[0]): Promise<LiveResult<Record<string, number>>> {
+  const result = await fetchObjectReach(params);
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    fromCache: result.fromCache,
+    data: Object.fromEntries(Object.entries(result.data).map(([id, value]) => [id, value.reach])),
+  };
 }
 
 export type BreakdownKind =

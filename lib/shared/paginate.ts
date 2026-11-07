@@ -1,7 +1,7 @@
 /**
  * Lee TODAS las filas de una consulta que devuelve de a páginas (PostgREST corta cada respuesta en 1.000).
- * Pura: recibe la función que pide un rango, así se prueba sin base. La usan los totales de Finanzas y Comisiones, que
- * suman en el servidor, y las métricas de los anuncios.
+ * Pura: recibe la función que pide un rango, así se prueba sin base. La usan los totales que se suman en el
+ * servidor, como las métricas de los anuncios.
  */
 export interface PageResult<T> {
   data: T[] | null;

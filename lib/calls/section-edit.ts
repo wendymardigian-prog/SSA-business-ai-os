@@ -80,7 +80,8 @@ export interface DerivedColumns {
 /** Lo que se copia del analisis a las columnas de `calls`, con los puntajes recalculados por codigo. */
 export function deriveColumns(analysis: unknown, rubric: ScoringRubric | null, callType: string | null, transcript: string): DerivedColumns {
   const a = isObj(analysis) ? analysis : {};
-  const scores = computeScoresWithRubric(a, rubric, analyzerCallType(callType));
+  // Sin tipo: se analizo con un analizador propio y su rubrica se usa entera.
+  const scores = computeScoresWithRubric(a, rubric, callType ? analyzerCallType(callType) : null);
   const resultado = isObj(a.resultado) ? a.resultado : {};
   const objecion = isObj(a.objecion) ? a.objecion : {};
   const outcome = str(resultado.categoria);

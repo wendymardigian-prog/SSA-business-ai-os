@@ -235,6 +235,7 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.seed_sales_defaults() FROM PUBLIC, anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Indices

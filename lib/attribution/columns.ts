@@ -1,5 +1,5 @@
 /**
- * Las columnas de atribución de una tabla (respuestas de un formulario, agendas) y qué elige ver cada persona. Puro:
+ * Las columnas de atribución de una tabla (por ejemplo, las agendas) y qué elige ver cada persona. Puro:
  * las pantallas solo lo componen.
  *
  * Lo elegido se guarda como DIFERENCIA con lo normal, no como lista de lo visible: así una columna nueva, como una

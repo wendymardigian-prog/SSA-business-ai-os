@@ -402,3 +402,18 @@ Ahora el sistema escucha `account.connected` y `account.disconnected` (`SUBSCRIB
   guarda en `whatsapp_poll_votes`.
 
 Detalle en [whatsapp-grupos.md](whatsapp-grupos.md).
+
+## Links y vista previa
+
+La tarjeta de la bandeja la armamos nosotros leyendo la página. **No es la que ve la otra persona**, y por eso el composer lo aclara.
+
+| Canal | Lo que recibe la otra persona | En la bandeja |
+|---|---|---|
+| WhatsApp (Evolution 2.3.7) | Clicable. Evolution arma el preview al mandar, sin que se lo pidamos, si puede leer la página | Link y tarjeta |
+| Grupos de WhatsApp | Igual, usan el mismo envío | Link, sin tarjeta |
+| Instagram y demás redes por Zernio | Decide cada red. El SDK no tiene opción de preview para mensajes | Link y tarjeta |
+| Email (Resend) | Link de verdad (`<a>`). El preview no existe en email | Link, sin tarjeta |
+
+**Cuándo WhatsApp no arma el preview.** Según el código de Evolution y Baileys: si la página no trae título o no deja leerla, si tarda demasiado, o si redirige a otro dominio. Por eso un link con «Registrar el clic» (`/l/...`) o un acortador llegan clicables pero sin tarjeta. **Todavía falta confirmarlo en un celular.**
+
+**Instagram.** Meta admite mandar links por texto, pero no documenta si se muestra preview. Si ManyChat es la dueña de los hilos, ningún envío del sistema sale (409 `not_thread_owner`). Si el link común no alcanza, Zernio permite botones y tarjetas (`buttons`, `template`), que no se usan todavía: las tarjetas no se ven en Instagram de escritorio.

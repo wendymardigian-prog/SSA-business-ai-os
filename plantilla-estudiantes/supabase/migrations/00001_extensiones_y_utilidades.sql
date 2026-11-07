@@ -210,7 +210,7 @@ CREATE OR REPLACE FUNCTION private.scope_rank(p_scope text)
  IMMUTABLE
  SET search_path TO ''
 AS $function$
-  SELECT CASE p_scope WHEN 'all' THEN 2 WHEN 'own_unassigned' THEN 1 ELSE 0 END
+  SELECT CASE p_scope WHEN 'all' THEN 3 WHEN 'areas' THEN 2 WHEN 'own_unassigned' THEN 1 ELSE 0 END
 $function$;
 REVOKE ALL ON FUNCTION private.scope_rank(p_scope text) FROM PUBLIC;
 
@@ -222,9 +222,11 @@ CREATE OR REPLACE FUNCTION public.is_placeholder_name(p_name text)
 AS $function$
   SELECT lower(btrim(coalesce(p_name, ''))) IN (
     '', 'instagram user', 'facebook user', 'whatsapp user', 'unknown commenter'
-  );
+  )
+  OR btrim(coalesce(p_name, '')) ~ '^\+?[0-9]{8,}$'
+  OR btrim(coalesce(p_name, '')) ~ '^@[A-Za-z0-9._]+$';
 $function$;
-COMMENT ON FUNCTION public.is_placeholder_name(p_name text) IS 'true si el nombre es un relleno que manda la plataforma cuando no tiene el perfil ("Instagram User" y companiia), y no algo que escribio una persona. Espejo de PLACEHOLDER_NAMES en lib/contacts/anonymous.ts.';
+COMMENT ON FUNCTION public.is_placeholder_name(p_name text) IS 'true si el nombre es un relleno y no algo que escribio una persona: vacio, lo que manda la plataforma cuando no tiene el perfil ("Instagram User" y compania), un id o telefono (solo digitos) o un solo @usuario. Espejo de isPlaceholderName en lib/contacts/anonymous.ts.';
 REVOKE ALL ON FUNCTION public.is_placeholder_name(p_name text) FROM PUBLIC, anon;
 
 CREATE OR REPLACE FUNCTION public.linkedin_slug(p_url text)
