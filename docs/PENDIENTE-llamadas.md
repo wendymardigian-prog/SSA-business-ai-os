@@ -72,3 +72,10 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 - **Se borra en la Etapa 5:** `call_type`, `call_type_proposed`, `custom_types`, `allow_ai_types`, `discarded_types` y las claves viejas de las reglas (`LEGACY_TO_SYSTEM_KEY`).
 - **Sin revisar en pantalla con datos reales:** producción tiene 0 grabaciones. Falta ver una agendada de Servicio y una sin vínculo.
 
+## Alcance por área (Etapa 4, 6/11/2026)
+
+- **Sin revisar en pantalla:** el selector de áreas en Ajustes → Roles nunca se abrió en un navegador.
+- **La lista ofrece todas las áreas en el filtro**, también las que esa persona no ve por área: puede ver una grabación de otra área por su contacto, y sacarla del filtro la escondería. Filtrar por un área ajena solo devuelve esas.
+- **Quien ve por área puede moverla a otra área** si tiene `calls.edit`, y entonces deja de verla. No se frena: es lo mismo que le pasa a quien corrige una clasificación equivocada.
+- **El dashboard de llamadas** cuenta lo que la RLS deja ver: con alcance por área, solo eso. Sus filtros por área llegan con la Etapa 3.
+

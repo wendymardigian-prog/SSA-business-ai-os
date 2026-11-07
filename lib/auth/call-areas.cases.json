@@ -1,0 +1,32 @@
+{
+  "_doc": "Casos compartidos del alcance de grabaciones por area. Los corre call-areas.test.ts contra lib/auth/call-areas.ts y verify-roles.mjs --despues-de-00301 contra private.role_sees_call_area y private.call_areas_exceed. Si se cambia una regla, se cambia en las dos y se suma el caso.",
+  "ids": {
+    "A": "11111111-1111-4111-8111-111111111111",
+    "B": "22222222-2222-4222-8222-222222222222",
+    "C": "33333333-3333-4333-8333-333333333333"
+  },
+  "sees": [
+    { "name": "con todas, ve cualquier area", "permissions": { "scopes": { "calls": "all" } }, "area": "A", "sees": true },
+    { "name": "con todas, ve tambien lo sin clasificar", "permissions": { "scopes": { "calls": "all" } }, "area": null, "sees": true },
+    { "name": "con areas, ve la suya", "permissions": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "area": "A", "sees": true },
+    { "name": "con areas, no ve otra", "permissions": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "area": "B", "sees": false },
+    { "name": "con areas, no ve lo sin clasificar", "permissions": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "area": null, "sees": false },
+    { "name": "con areas y sin elegir ninguna, no ve nada por area", "permissions": { "scopes": { "calls": "areas" }, "call_areas": [] }, "area": "A", "sees": false },
+    { "name": "con areas y sin la lista, no ve nada por area", "permissions": { "scopes": { "calls": "areas" } }, "area": "A", "sees": false },
+    { "name": "con las suyas, la lista guardada no cuenta", "permissions": { "scopes": { "calls": "own" }, "call_areas": ["A"] }, "area": "A", "sees": false },
+    { "name": "sin alcance, no ve por area", "permissions": {}, "area": "A", "sees": false }
+  ],
+  "exceeds": [
+    { "name": "quien tiene todas da cualquier area", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["A", "B"] }, "before": null, "actor": { "scopes": { "calls": "all" } }, "exceeds": false },
+    { "name": "quien tiene un area la da", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "before": null, "actor": { "scopes": { "calls": "areas" }, "call_areas": ["A", "B"] }, "exceeds": false },
+    { "name": "quien tiene un area no da otra", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["C"] }, "before": null, "actor": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "exceeds": true },
+    { "name": "si una de las areas no es suya, no alcanza", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["A", "C"] }, "before": null, "actor": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "exceeds": true },
+    { "name": "quien tiene las suyas no da ninguna area", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "before": null, "actor": { "scopes": { "calls": "own" } }, "exceeds": true },
+    { "name": "un area que el rol ya tenia no hay que poder darla", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "before": { "scopes": { "calls": "areas" }, "call_areas": ["A", "B"] }, "actor": { "scopes": { "calls": "own" } }, "exceeds": false },
+    { "name": "agregar un area al rol pide tenerla, aunque el alcance no cambie", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["A", "C"] }, "before": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "actor": { "scopes": { "calls": "own" } }, "exceeds": true },
+    { "name": "pasar de todas a unas areas es achicar", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["A"] }, "before": { "scopes": { "calls": "all" } }, "actor": { "scopes": { "calls": "own" } }, "exceeds": false },
+    { "name": "una lista guardada sin el alcance areas no da nada", "wanted": { "scopes": { "calls": "areas" }, "call_areas": ["C"] }, "before": { "scopes": { "calls": "own" }, "call_areas": ["C"] }, "actor": { "scopes": { "calls": "own" } }, "exceeds": true },
+    { "name": "sin el alcance areas, la lista no se mira", "wanted": { "scopes": { "calls": "own" }, "call_areas": ["C"] }, "before": null, "actor": { "scopes": { "calls": "own" } }, "exceeds": false },
+    { "name": "dejar la lista vacia nunca excede", "wanted": { "scopes": { "calls": "areas" }, "call_areas": [] }, "before": null, "actor": { "scopes": { "calls": "own" } }, "exceeds": false }
+  ]
+}

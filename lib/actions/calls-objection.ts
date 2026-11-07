@@ -44,7 +44,7 @@ export async function objectToAnalysis(input: { callId: string; section: string;
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, title, recorded_by_user_id, objections, analysis_status")
+    .select("id, title, area_id, recorded_by_user_id, objections, analysis_status")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -75,7 +75,7 @@ export async function objectToAnalysis(input: { callId: string; section: string;
     metadata: { objectionId: objection.id },
     performedBy: ctx.user.id,
   });
-  await notifyObjection(service, { workspaceId: ctx.workspace.id, callId: call.id, closerId: ctx.user.id, callTitle: call.title });
+  await notifyObjection(service, { workspaceId: ctx.workspace.id, callId: call.id, closerId: ctx.user.id, areaId: call.area_id, callTitle: call.title });
   revalidatePath(`/dashboard/llamadas/${call.id}`);
   return { ok: true };
 }

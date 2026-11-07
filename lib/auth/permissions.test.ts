@@ -237,6 +237,17 @@ describe("leer un rol guardado (F68)", () => {
     expect(parsed.scopes.bookings).toBe("own");
     expect(scopeOptionsFor("leads")).toEqual(["own", "own_unassigned", "all"]);
     expect(scopeOptionsFor("bookings")).toEqual(["own", "all"]);
+    expect(scopeOptionsFor("calls")).toEqual(["own", "areas", "all"]);
+  });
+
+  it("el alcance por areas solo existe para las grabaciones, y la lista solo con ese alcance", () => {
+    const A = "11111111-1111-4111-8111-111111111111";
+    const conAreas = parsePermissions({ keys: [], scopes: { calls: "areas", bookings: "areas" }, call_areas: [A, A, "no-es-un-id"] });
+    expect(conAreas.scopes.calls).toBe("areas");
+    expect(conAreas.scopes.bookings).toBe("own");
+    expect(conAreas.call_areas).toEqual([A]);
+    expect(parsePermissions({ keys: [], scopes: { calls: "all" }, call_areas: [A] })).not.toHaveProperty("call_areas");
+    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes.calls).toBe("own");
   });
 
   it("el Member de sistema ve solo los suyos: los sin asignar son una decision del rol, no del Member", () => {
