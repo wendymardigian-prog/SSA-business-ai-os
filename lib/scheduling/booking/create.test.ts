@@ -9,6 +9,7 @@ import { createBooking, countryFromTimezone } from "./create";
 import { schedulingWorld, EVENT, HOST } from "@/lib/scheduling/testing/world";
 import { resetBusyCache } from "@/lib/scheduling/data/slots-input";
 import { HONEYPOT_FIELD } from "@/lib/scheduling/antispam";
+import { GUEST_EMAIL_LIMITS, guestEmailLimitKey, guestEmailsSuppressed } from "./guest-email-limit";
 
 // Jueves 1 de octubre de 2026, 10:00 en Costa Rica (UTC-6) = 16:00 UTC.
 const NOW = new Date("2026-09-30T16:00:00.000Z");
@@ -131,6 +132,22 @@ describe("createBooking", () => {
     expect(db.rows("bookings")[0].contact_id).toBe("c-viejo");
   });
 
+  it("un contacto de otro negocio no se agenda ni se toca", async () => {
+    const db = schedulingWorld({ contacts: [{ id: "c-ajeno", workspace_id: "ws-otro", email: null, phone: null }] });
+    const result = await createBooking(db.client, { ...base, eventTypeId: EVENT, username: undefined, slug: undefined, contactId: "c-ajeno", origin: "manual" });
+    expect(result).toMatchObject({ ok: false, status: 404, reason: "not_found" });
+    expect(db.rows("bookings")).toHaveLength(0);
+    expect(db.rows("contacts")[0].email).toBeNull();
+  });
+
+  it("una redireccion guardada que no es https no se devuelve", async () => {
+    const db = schedulingWorld({ event: { success_redirect_url: "javascript:alert(1)" } });
+    const result = await createBooking(db.client, base);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("no se creó");
+    expect(result.redirectUrl).toBeNull();
+  });
+
   it("un contacto con el mismo email se reutiliza", async () => {
     const db = schedulingWorld({ contacts: [{ id: "c-viejo", workspace_id: "ws-1", email: "juan@ejemplo.com", phone: null }] });
     const result = await createBooking(db.client, base);
@@ -193,6 +210,29 @@ describe("createBooking", () => {
     const db = schedulingWorld({ event: { success_redirect_url: "https://ssa.example/gracias" } });
     const result = await createBooking(db.client, base);
     expect(result.ok && result.redirectUrl).toBe("https://ssa.example/gracias");
+  });
+});
+
+describe("createBooking: tope de emails al invitado por direccion", () => {
+  it("pasado el tope, la reserva se guarda igual y queda marcada sin emails al invitado; al publico no se le dice nada", async () => {
+    const db = schedulingWorld();
+    db.tables.rate_limits = [{ key: guestEmailLimitKey(EVENT, "juan@ejemplo.com"), hits: GUEST_EMAIL_LIMITS.perAddressPerDay, window_start: NOW.toISOString() }];
+    const result = await createBooking(db.client, { ...base, responses: { name: "Juan Pérez", email: "Juan@Ejemplo.com" } });
+    expect(result).toMatchObject({ ok: true });
+    expect(guestEmailsSuppressed(db.rows("bookings")[0].metadata)).toBe(true);
+  });
+
+  it("dentro del tope, nada cambia", async () => {
+    const db = schedulingWorld();
+    await createBooking(db.client, base);
+    expect(guestEmailsSuppressed(db.rows("bookings")[0].metadata)).toBe(false);
+  });
+
+  it("agendar a mano no cuenta para el tope", async () => {
+    const db = schedulingWorld();
+    db.tables.rate_limits = [{ key: guestEmailLimitKey(EVENT, "juan@ejemplo.com"), hits: 99, window_start: NOW.toISOString() }];
+    await createBooking(db.client, { ...base, origin: "manual" });
+    expect(guestEmailsSuppressed(db.rows("bookings")[0].metadata)).toBe(false);
   });
 });
 

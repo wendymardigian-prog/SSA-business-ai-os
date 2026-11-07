@@ -438,19 +438,47 @@ async function roleIdForInvite(serviceClient: ServiceClient, invite: InviteRow):
   return system?.id ?? null;
 }
 
-/** Suma al workspace y marca la invitacion aceptada. Service client: bypassea la RLS de owner-only sobre workspace_members. */
+/**
+ * Suma al workspace y marca la invitacion aceptada. Service client: bypassea la RLS de owner-only sobre workspace_members.
+ *
+ * La invitacion se RECLAMA antes de sumar a la persona (pending -> accepted solo si sigue pendiente): una
+ * invitacion anulada en el medio, o dos pestañas aceptando a la vez, no se pisan, y un link ya usado no vuelve a
+ * servir aunque falle algo despues. Si no se pudo sumar a la persona, la invitacion vuelve a pendiente.
+ */
 async function finalizeAcceptInvite(serviceClient: ServiceClient, invite: InviteRow, userId: string) {
   const accepted = { status: "accepted", accepted_at: new Date().toISOString(), accepted_by: userId };
 
-  const { data: existingMembership } = await serviceClient
+  const { data: claimed, error: claimError } = await serviceClient
+    .from("workspace_invites")
+    .update(accepted)
+    .eq("id", invite.id)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  if (claimError) return { ok: false as const, error: "No pude aceptar la invitación. Probá de nuevo en un momento." };
+  if (!claimed) return { ok: false as const, error: "Esta invitación ya no es válida" };
+
+  const release = async () => {
+    const { error } = await serviceClient
+      .from("workspace_invites")
+      .update({ status: "pending", accepted_at: null, accepted_by: null })
+      .eq("id", invite.id)
+      .eq("accepted_by", userId);
+    if (error) console.error("[equipo] no pude devolver la invitación a pendiente:", error.message);
+  };
+
+  const { data: existingMembership, error: membershipError } = await serviceClient
     .from("workspace_members")
     .select("workspace_id")
     .eq("workspace_id", invite.workspace_id)
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
+  if (membershipError) {
+    await release();
+    return { ok: false as const, error: "No pude aceptar la invitación. Probá de nuevo en un momento." };
+  }
 
   if (existingMembership) {
-    await serviceClient.from("workspace_invites").update(accepted).eq("id", invite.id);
     // Quien ya es miembro de otro negocio de la instalacion entra al de la invitacion, no al que tenia elegido.
     await setActiveWorkspaceCookie(invite.workspace_id);
     return { ok: true as const, workspaceId: invite.workspace_id, alreadyMember: true };
@@ -464,10 +492,10 @@ async function finalizeAcceptInvite(serviceClient: ServiceClient, invite: Invite
   });
 
   if (insertError) {
+    await release();
     return { ok: false as const, error: insertError.message };
   }
 
-  await serviceClient.from("workspace_invites").update(accepted).eq("id", invite.id);
   await setActiveWorkspaceCookie(invite.workspace_id);
   try {
     await logAudit({

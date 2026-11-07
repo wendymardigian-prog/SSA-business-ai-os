@@ -27,11 +27,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   const { data: message } = await supabase
     .from("messages")
-    .select("id, workspace_id, conversation_id, attachments")
+    .select("id, workspace_id, conversation_id, direction, attachments")
     .eq("id", id)
     .maybeSingle();
 
   if (!message) return NextResponse.json({ error: "No encontre ese mensaje" }, { status: 404 });
+  // Solo lo que llego del proveedor: la direccion de un mensaje saliente la pudo escribir cualquiera (00311).
+  if (message.direction !== "inbound") {
+    return NextResponse.json({ error: "Este adjunto no se puede volver a bajar" }, { status: 409 });
+  }
 
   // Los que fallaron y todavia tienen de donde bajarse. Vuelven a `pending`, que
   // es lo que muestra "Descargando adjunto…" en la burbuja.

@@ -52,6 +52,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSess
 
 async function main() {
   const { data: created, error: createError } = await supabase.auth.admin.createUser({
+    app_metadata: { ssa_create_workspace: true },
     email,
     password,
     email_confirm: true,

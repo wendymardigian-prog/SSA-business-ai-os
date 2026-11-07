@@ -32,7 +32,7 @@ Data: @supabase/supabase-js 2.95 + @supabase/ssr 0.8
 Testing: Vitest 3
 
 Patterns a seguir (mantener consistencia con el fork, no reinventar):
-- Auth: Supabase SSR con cookies httpOnly. Trigger `on_auth_user_created` crea el workspace automaticamente.
+- Auth: Supabase SSR con cookies (NO son httpOnly: el cliente del navegador las lee; por eso un XSS se lleva la sesion). Trigger `on_auth_user_created` crea el workspace solo a la primera cuenta o a una creada por el servidor con `app_metadata.ssa_create_workspace` (00309).
 - State management: Server Components + React hooks. NO Redux, NO Zustand.
 - API layer: webhooks en API Routes (`app/api/`), mutaciones de UI en Server Actions.
 - Data access: `@supabase/supabase-js` con RLS del lado cliente; Service Role Key solo en server (cron jobs, webhooks).
@@ -1299,7 +1299,7 @@ cuentan los toques que pueden traer datos de anuncio)** y `00195` (`ads_crm_metr
   90 dias tarda ~0,9 s bajo RLS; la salida es una politica de lectura mas barata, con aprobacion). Una division por cero es «—» (null), nunca 0; la plata
   del CRM va en centavos y se pasa con `fromCents`; el Total calcula los cocientes sobre los totales.
 - **La pantalla Anuncios (`/dashboard/anuncios`, menú → Adquisición) es la misma tabla del dashboard**, con el mismo permiso y la misma consulta (`loadCrmForRows`): si se cambia una, cambian las dos.
-- **El desglose de anuncios es siempre `CrmLevelTable`** (dashboard, detalles y Anuncios), con las columnas por nivel. Lo que devuelve el CRM es de toda la cuenta: un detalle la filtra con `scope` (`filterByParent`), y entonces «Leads totales» del total se pide para lo que se ve. En Anuncios un clic en una fila abre un menú y baja de nivel sin salir (`drill`, `lib/dashboards/ads-drill.ts`, en la URL); en el resto lleva al detalle.
+- **El desglose de anuncios es siempre la tabla de `crm-table.tsx`** (dashboard, detalles y Anuncios), con las columnas por nivel. Lo que devuelve el CRM es de toda la cuenta: un detalle la filtra con `scope` (`filterByParent`), y entonces «Leads totales» del total se pide para lo que se ve (igual con cualquier filtro). El dashboard y los detalles usan `CrmLevelTable`; **Anuncios arma la misma tabla con `useCrmLevelTable` + `CrmLevelBody` y lleva pestañas, buscador, estado, Filtros, Columnas y Exportar a la barra superior**, todo en la URL (`lib/dashboards/ads-table-filters.ts`, `ads-drill.ts`). En Anuncios un clic en una fila abre un menú y baja de nivel sin salir; en el resto lleva al detalle. En las tres, el encabezado ordena y fija columnas (`ads-table-view.ts`, fijas en `localStorage`) y las métricas de eficiencia se pintan contra la mediana de lo que se ve (`ads-tone.ts`, ±20 %, nunca volúmenes ni el Total). Detalle en docs/dashboards.md («La barra superior», «Ordenar, fijar columnas y el semáforo»).
 - **Los tooltips de los gráficos usan `TOOLTIP_TEXT`** (`ads-charts.tsx`): sin `itemStyle`, recharts pinta de negro lo que no trae color y no se lee en el tema oscuro.
 - **Alcance y Frec. de cada fila los da Meta en vivo, los dos de la misma respuesta** (`fetchObjectReach`), y solo se piden si esas columnas están a la vista (`loadCrmObjectReach`). No calcular la frecuencia con las impresiones guardadas: lo guardado llega hasta el último sync y daría menos de 1. Lo que Meta no dio es la suma de los días y se ve con «≈» (`CrmRow.reachIsSum`). **El valor de compras usa un solo nombre, igual que el conteo** (`purchaseValueOf`); lo guardado antes del 6/11/2026 no se puede recontar sin releer de Meta (pasos en docs/dashboards.md).
 - **La Frecuencia de las tarjetas también es la de Meta** (`fetchUniqueReach`, tercer parámetro de `computeTotals`): con alcance en vivo nunca se divide lo guardado, y si Meta no la dio es «—». La variación del período anterior pasa por `computePreviousTotals` en el dashboard y los detalles: alcance en vivo contra sumado no se compara.
@@ -2006,10 +2006,36 @@ El 6/11 una respuesta privada a un comentario «clase» falló con un texto gen�
 node scripts/verify-flow-metrics.mjs   # flow_node_stats por rol, un deferred cuenta una vez, 24 h de respuesta, clics, restricciones
 ```
 
+# Auditoria de seguridad (7/11/2026)
+
+Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medias, #170 Bajas). Migraciones `00309` a `00316`, todas aditivas (pueden ir antes o despues del deploy), **aplicadas y registradas el 7/11/2026**. La `00316` corrige la `00309`: la API de admin escribe `app_metadata` en un UPDATE despues del alta, asi que el trigger tambien corre al llegar la marca. **La proxima libre es la `00317`** (confirmar con `list_migrations` y las ramas locales).
+
+## Lo que no se puede romper
+
+- **El registro publico de Supabase va APAGADO** ("Allow new users to sign up", panel de cada proyecto; `/setup` lo pide). Ademas `handle_new_user` (00309) solo arma un workspace a la primera cuenta de una instalacion vacia o a una creada por el servidor con `app_metadata.ssa_create_workspace = true`: **todo script que crea un usuario que necesita negocio pasa esa marca** (`create-owner` y los `verify-*` ya la pasan; la marca llega en un UPDATE y la atrapa el trigger `on_auth_user_workspace_flag`, 00316). `app_metadata` no lo puede escribir un registro publico.
+- **Un adjunto escrito con la sesion de un usuario** es v2, sin `sourceUrl` y con `storagePath` de su propio workspace (trigger `messages_guard_client_attachments`, 00311). Una URL que viene de un payload o de una fila se baja SOLO con `safeFetch` / `safeFetchResponse` (`lib/net/safe-fetch.ts`): IPs publicas en cada salto y tope de tiempo. Nunca un `fetch` suelto a una direccion que no escribimos nosotros.
+- **Una redireccion que se guarda y se usa en el navegador** se valida en la base (CHECK https, 00310), al leerla y antes de `window.location`. React no protege `location.href`.
+- **Las invitaciones las lee solo `team.invite`** (00312): su `id` es el link. Aceptar reclama la invitacion (`pending -> accepted` condicional) antes de sumar a la persona.
+- **Un id que llega del navegador se filtra por el workspace de la sesion**, tambien cuando despues se escribe con el cliente de servicio o se pasa a una funcion `SECURITY DEFINER` (`createBooking` valida el contacto contra el negocio del evento).
+- **Los archivos de `chat-media` y `email-attachments` respetan el alcance de leads** (`can_read_chat_media`, `can_read_email_attachment`, 00313): una ruta nueva en esos buckets tiene que encajar en esas funciones (`<ws>/<conversacion>/...`, `<ws>/groups/<grupo>/...`, `<ws>/library|stickers/...`) o ningun Member la lee.
+- **Conocimiento interno solo con `knowledge.edit`** (`can_read_knowledge`, 00314); la busqueda con lo interno, solo el servidor.
+- **La IP de los topes sale de `requestIp`** (`lib/antispam/client-ip.ts`): `X-Real-IP` primero (Railway la pisa). Nunca el primer valor de `X-Forwarded-For`, que lo elige el cliente. Si un clon pone un CDN adelante, ese CDN tiene que mandar `X-Real-IP`.
+- **`anon` y `authenticated` no tienen TRUNCATE, TRIGGER ni REFERENCES** (00315, y `lib/migrations-grants.test.ts` lo exige en cada migracion).
+- **"No contactar" frena los envios de los flujos** (mensaje, recurso, respuesta con IA), salvo los que arrancan por la agenda.
+- **El optimizador de imagenes esta apagado** (`images.unoptimized`): nunca `remotePatterns` con `"**"`.
+- **Un error al leer permisos, bloqueos o disparadores nunca abre**: niega, no manda o reintenta.
+
+## Pendiente
+- Apagar el registro publico y prender "Secure password change" en el Supabase de produccion y de cada clon (es de panel).
+- `eslint-config-next` sigue en 16.1.6 (la 16.4.5 trae react-hooks 7.1 con 18 errores nuevos).
+- El agente, el copywriter, Grabaciones y el clasificador todavia no pasan el modelo al chequeo de "modelo sin precio con tope".
+- DNS rebinding en `safeFetch` (fijar la IP validada con undici).
+- No hay CSP de scripts (solo `frame-ancestors`).
+
 # Seguridad
 
 ## Autenticacion y sesiones
-- Supabase Auth con email/password. Sesiones por Supabase SSR con cookies httpOnly (access token 1h, refresh 7d).
+- Supabase Auth con email/password. Sesiones por Supabase SSR con cookies que el navegador puede leer (`@supabase/ssr` las deja sin httpOnly; access token 1h, refresh 7d).
 - Rate limiting de login por defecto de Supabase. Recuperacion de contrasena con token de tiempo limitado.
 
 ## Row Level Security (RLS) — obligatorio

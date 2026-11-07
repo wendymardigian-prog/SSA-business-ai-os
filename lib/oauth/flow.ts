@@ -16,10 +16,11 @@
  * el cliente de Supabase), asi el flujo se prueba entero sin llamar a nadie.
  */
 
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, OAuthProvider } from "@/lib/types/database";
 import { readSecret, storeSecret, SECRET_NAMES, oauthSecretName } from "@/lib/vault";
+import { getOrCreateSecret } from "@/lib/vault-get-or-create";
 import {
   newNonce,
   safeRedirect,
@@ -51,19 +52,8 @@ export function vaultPrefixFor(provider: OAuthProvider, connectionId: string | n
  * `state` de un negocio no tiene por que validar en otro.
  */
 export async function getOrCreateStateSecret(supabase: Db, workspaceId: string): Promise<string> {
-  try {
-    const existing = await readSecret(supabase, workspaceId, SECRET_NAMES.oauthStateSecret);
-    if (existing) return existing;
-  } catch {
-    // No estar es el caso normal la primera vez.
-  }
-
-  const secret = randomBytes(32).toString("base64url");
-  const stored = await storeSecret(supabase, workspaceId, SECRET_NAMES.oauthStateSecret, secret);
-  if (!stored.ok) {
-    throw new Error(`No pude guardar la clave de firma del OAuth: ${stored.error}`);
-  }
-  return secret;
+  // Un error de Vault sube: generar otra pisaria la guardada (lib/vault-get-or-create.ts).
+  return getOrCreateSecret(supabase, workspaceId, SECRET_NAMES.oauthStateSecret, "del OAuth");
 }
 
 export interface StartInput {

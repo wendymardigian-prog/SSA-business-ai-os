@@ -324,6 +324,34 @@ describe("transcribeAudio: lo que no se intenta (F6)", () => {
   });
 });
 
+describe("transcribeAudio: el tope de gasto de IA del negocio (noviembre 2026)", () => {
+  it("si no alcanza el presupuesto, no llama al proveedor y no se reintenta solo", async () => {
+    const memory = db([{ provider: "groq" }]);
+    const { impl, calls } = queue([{ body: { text: "hola", duration: 1 } }]);
+    const checkBudget = vi.fn(async () => ({ allowed: false, message: "Tope diario alcanzado" }));
+
+    const result = await transcribeAudio({ supabase: memory.client, workspaceId: WS, bytes: AUDIO, mime: "audio/ogg", fetchImpl: impl, checkBudget });
+
+    expect(calls).toHaveLength(0);
+    expect(result).toEqual({ ok: false, code: "BUDGET_EXCEEDED", message: "Tope diario alcanzado", retryable: false });
+    expect(checkBudget).toHaveBeenCalledWith(expect.anything(), WS, expect.any(Date), { model: { provider: "groq", model: "whisper-large-v3-turbo", kind: "audio" } });
+  });
+
+  it("un proveedor sin precio (con un tope que corta) se saltea y se usa el respaldo", async () => {
+    const memory = db([{ provider: "groq" }, { provider: "openai" }]);
+    const { impl, calls } = queue([{ body: { text: "hola", duration: 1 } }]);
+    const checkBudget = vi.fn(async (_db: unknown, _ws: string, _now: Date, opts: { model?: { provider: string } | null } = {}) =>
+      opts.model?.provider === "groq" ? { allowed: false, message: "sin precio" } : { allowed: true },
+    );
+
+    const result = await transcribeAudio({ supabase: memory.client, workspaceId: WS, bytes: AUDIO, mime: "audio/ogg", fetchImpl: impl, checkBudget: checkBudget as never });
+
+    expect(result.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://api.openai.com/v1/audio/transcriptions");
+  });
+});
+
 describe("la extension desde el mime (F6)", () => {
   it("cada formato que llega de verdad tiene su extension", () => {
     expect(audioFilenameForMime("audio/ogg; codecs=opus")).toBe("audio.ogg");

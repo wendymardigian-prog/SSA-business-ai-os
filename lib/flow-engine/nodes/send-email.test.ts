@@ -192,6 +192,23 @@ describe("send_email: caracterizacion de 'no contactar' (antes de la suscripcion
   });
 });
 
+describe("send_email: reserva publica pasada del tope de emails al invitado", () => {
+  it("al contacto no le sale nada; a una direccion fija (el equipo) si", async () => {
+    const guest = args() as unknown as { context: { variables: Record<string, unknown>; noteStep?: unknown } };
+    const notes: unknown[] = [];
+    guest.context.variables = { trigger_scope: "booking", booking_guest_emails_suppressed: true };
+    guest.context.noteStep = (n: unknown) => notes.push(n);
+    await sendEmailNode.execute(guest as never);
+    expect(sendTransactionalEmail).not.toHaveBeenCalled();
+    expect(notes).toEqual([{ status: "skipped", reason: expect.stringContaining("máximo de emails") }]);
+
+    const team = args({ to: "fixed", fixedEmail: "equipo@negocio.com" }) as unknown as { context: { variables: Record<string, unknown> } };
+    team.context.variables = { trigger_scope: "booking", booking_guest_emails_suppressed: true };
+    await sendEmailNode.execute(team as never);
+    expect(sendTransactionalEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "equipo@negocio.com" }));
+  });
+});
+
 describe("send_email: adjuntos de Recursos (auditoria de automatizaciones)", () => {
   it("los adjuntos viajan en el envio", async () => {
     const loader = await import("@/lib/email/flow-attachments");

@@ -34,8 +34,12 @@ import {
   TOO_LARGE_MESSAGE,
   mediaPath,
 } from "@/lib/chat-media/bucket";
+import { safeFetchResponse } from "@/lib/net/safe-fetch";
 
 type Db = SupabaseClient<Database>;
+
+/** Un archivo de hasta 25 MB de un CDN lento: mas que los 10 s de la "Llamada HTTP", pero con techo. */
+const MEDIA_FETCH_TIMEOUT_MS = 60_000;
 
 /**
  * De donde salen los bytes de un adjunto.
@@ -106,6 +110,8 @@ export async function downloadAttachments(args: {
   fetcher: MediaFetcher;
   fetchImpl?: typeof fetch;
   maxBytes?: number;
+  /** Para los tests: la validacion de la direccion (por defecto, `assertPublicUrl`). */
+  checkUrl?: (url: string) => Promise<URL>;
 }): Promise<StoreMediaResult> {
   const fetchImpl = args.fetchImpl ?? fetch;
   const maxBytes = args.maxBytes ?? MAX_MEDIA_BYTES;
@@ -140,7 +146,9 @@ export async function downloadAttachments(args: {
         bytes = source.bytes;
         mime = normalizeMime(source.mime) ?? mime;
       } else {
-        const response = await fetchImpl(source.url);
+        // La direccion viene de un payload (o de una fila que alguien pudo escribir): se baja con la misma
+        // proteccion que la "Llamada HTTP" (solo IPs publicas, en cada redireccion, y con tope de tiempo).
+        const { response } = await safeFetchResponse(source.url, { fetchImpl, timeoutMs: MEDIA_FETCH_TIMEOUT_MS, checkUrl: args.checkUrl });
         if (!response.ok) {
           markFailed(`El proveedor respondió ${response.status} al pedirle el archivo`);
           continue;

@@ -14,6 +14,7 @@ import { startOfDay } from "@/lib/dates";
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { parseMetaConfig } from "@/lib/meta/accounts";
 import { toCents } from "@/lib/shared/money";
+import { fetchAllPages } from "@/lib/shared/paginate";
 import type { FinanceDailyContext } from "@/lib/jobs/handlers/finance-daily";
 import {
   autoClosePaidDate, autoExpenseConcept, autoKey, monthsInWindow, parseAutoKey, shouldAutoClose, sumMetaSpendCents, sumProcessorFeeCents,
@@ -27,6 +28,9 @@ import { findCategory } from "./categories";
 import { FINANCE_AUDIT_LABEL } from "./audit-label";
 
 type Detail = Record<string, number | string>;
+
+/** Pagos que se leen para las comisiones de procesador de la ventana (como mucho dos meses). */
+const FEE_PAYMENTS_MAX_ROWS = 100_000;
 
 const TEMPLATE_COLUMNS =
   "id, concept, vendor_id, category_key, amount_type, amount, charge_mode, frequency, weekly_day, weekly_interval, monthly_day, yearly_month, yearly_day, start_date, end_date, lead_days, generation_anchor, responsible_id, notes";
@@ -150,10 +154,16 @@ export async function autoExpensesStep(ctx: FinanceDailyContext): Promise<Detail
     const [y, m] = window[0].split("-").map(Number);
     // Un día de margen hacia atrás: el mes lo decide `sumProcessorFeeCents` con la zona del workspace.
     const since = new Date(startOfDay(y, m, 1, timeZone).getTime() - 86_400_000).toISOString();
-    const { data: payments, error: payError } = await db
+    // De a páginas y en orden estable: PostgREST corta cada respuesta en 1.000 sin avisar, y un
+    // automático se recalcula ENTERO (con mil pagos de menos, el gasto quedaba corto sin que nadie lo viera).
+    const paged = await fetchAllPages((a, b) => db
       .from("payments").select("payment_method, type, status, provider_fee_amount, paid_at")
-      .eq("workspace_id", workspaceId).eq("status", "paid").neq("type", "refund").gte("paid_at", since).limit(20000);
-    if (payError) throw new Error(`no pude leer los pagos: ${payError.message}`);
+      .eq("workspace_id", workspaceId).eq("status", "paid").neq("type", "refund").gte("paid_at", since)
+      .order("id", { ascending: true }).range(a, b), { maxRows: FEE_PAYMENTS_MAX_ROWS });
+    if (paged.error) throw new Error(`no pude leer los pagos: ${paged.error}`);
+    // Un total parcial pisaría el bueno: mejor no escribir nada y que el paso falle a la vista.
+    if (paged.truncated) throw new Error(`más de ${FEE_PAYMENTS_MAX_ROWS} pagos en la ventana: no calculo un total parcial`);
+    const payments = paged.rows;
     for (const [methodKey, setting] of feeSettings) {
       const def = methods.configs.find((c) => c.key === methodKey);
       if (!def) { notes.push(`método ${methodKey} ya no existe`); continue; }
@@ -181,12 +191,14 @@ export async function autoExpensesStep(ctx: FinanceDailyContext): Promise<Detail
       const acct = accounts.find((a) => a.ad_account_id === accountId);
       if (!acct) { notes.push(`cuenta ${accountId} ya no está en la integración`); continue; }
       if ((acct.currency ?? "").toUpperCase() !== "USD") { notes.push(`cuenta ${accountId} no es USD`); continue; }
-      const { data: insights, error: insightError } = await db
+      const insights = await fetchAllPages((a, b) => db
         .from("meta_ads_insights_daily").select("ad_account_id, level, date, spend")
         .eq("workspace_id", workspaceId).eq("ad_account_id", accountId).eq("level", "account")
-        .gte("date", monthStart(window[0])).lte("date", monthEnd(window[window.length - 1])).limit(5000);
-      if (insightError) throw new Error(`no pude leer la pauta: ${insightError.message}`);
-      const rows = (insights ?? []) as unknown as MetaInsightRow[];
+        .gte("date", monthStart(window[0])).lte("date", monthEnd(window[window.length - 1]))
+        .order("date", { ascending: true }).order("id", { ascending: true }).range(a, b));
+      if (insights.error) throw new Error(`no pude leer la pauta: ${insights.error}`);
+      if (insights.truncated) throw new Error("demasiadas filas de pauta: no calculo un total parcial");
+      const rows = insights.rows as unknown as MetaInsightRow[];
       for (const month of window) {
         try {
           if (!hasMetaAccountLevelRows(rows, accountId, month)) { notes.push(`${accountId} ${month}: sin datos de nivel cuenta`); continue; }

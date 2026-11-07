@@ -7,8 +7,9 @@ import type { LeadTemperature } from "@/lib/types/database";
 /**
  * buscar_datos_del_contacto: lee la ficha del CRM.
  *
- * Solo los campos habilitados; telefono y email son sensibles y vienen
- * apagados por defecto. Es una lectura: deja su paso en el run (que pidio, que
+ * Solo los campos habilitados; telefono, email, las notas del equipo y quien
+ * lo atiende son sensibles y vienen apagados por defecto (las notas son
+ * internas y el lead no tiene por que leerlas en una respuesta). Es una lectura: deja su paso en el run (que pidio, que
  * campos devolvio) y NO escribe en audit_log, porque no hay efecto que
  * revertir y llenaria la vista de Acciones de lecturas.
  *
@@ -23,8 +24,8 @@ export const CRM_FIELDS: ToolConfigOption[] = [
   { value: "lead_temperature", label: "Temperatura" },
   { value: "tags", label: "Etiquetas" },
   { value: "next_followup_date", label: "Proximo seguimiento" },
-  { value: "assignment", label: "Setter y vendedor" },
-  { value: "notes", label: "Notas del equipo (ultimas 5)" },
+  { value: "assignment", label: "Setter y vendedor", hint: "sensible" },
+  { value: "notes", label: "Notas del equipo (ultimas 5)", hint: "sensible" },
   { value: "email", label: "Email", hint: "sensible" },
   { value: "phone", label: "Telefono", hint: "sensible" },
 ];
@@ -51,7 +52,7 @@ export const crmLookupTool: AgentToolDefinition<z.infer<typeof inputSchema>, z.i
     {
       key: "fields",
       label: "Campos que puede leer",
-      hint: "Los sensibles (email, telefono) vienen apagados. Habilitalos solo si el agente los necesita de verdad.",
+      hint: "Los sensibles (email, telefono, notas del equipo, setter y vendedor) vienen apagados. Habilitalos solo si el agente los necesita de verdad.",
       kind: "multiselect",
       options: CRM_FIELDS,
     },
@@ -98,7 +99,9 @@ export const crmLookupTool: AgentToolDefinition<z.infer<typeof inputSchema>, z.i
         if (!userId) return "nadie";
         try {
           const { data } = await ctx.supabase.auth.admin.getUserById(userId);
-          return (data?.user?.user_metadata?.full_name as string | undefined) ?? data?.user?.email ?? "una persona del equipo";
+          // Nunca el email de la persona del equipo: sin nombre, un generico.
+          const fullName = (data?.user?.user_metadata?.full_name as string | undefined)?.trim();
+          return fullName || "una persona del equipo";
         } catch {
           return "una persona del equipo";
         }

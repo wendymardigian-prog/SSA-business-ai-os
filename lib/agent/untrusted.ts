@@ -23,3 +23,20 @@ export function wrapUntrusted(kind: "lead" | "conocimiento" | "crm" | "memoria" 
   const safe = content.replace(/<<</g, "‹‹‹").replace(/>>>/g, "›››");
   return `<<<${kind} ${nonce}>>>\n${safe}\n<<<fin ${kind} ${nonce}>>>`;
 }
+
+/**
+ * Las variables de una plantilla con cada texto no vacio envuelto como dato del CRM (`crm`). Para una consigna que
+ * escribio el negocio y lleva `{{contact.display_name}}` o el @usuario: esos los escribio el contacto. Un texto
+ * vacio queda vacio, asi el respaldo `{{x|y}}` sigue andando.
+ */
+export function wrapVariableValues(variables: Record<string, unknown>, nonce: string): Record<string, unknown> {
+  const wrap = (value: unknown): unknown => {
+    if (typeof value === "string") return value.trim() ? wrapUntrusted("crm", nonce, value) : value;
+    if (Array.isArray(value)) return value.map(wrap);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, wrap(v)]));
+    }
+    return value;
+  };
+  return wrap(variables) as Record<string, unknown>;
+}

@@ -237,7 +237,8 @@ export async function processInboundEmail(
   // Sin contacto (automatico) no hay conversacion: un rebote no abre un
   // hilo con nadie. Se registra en el log y ahi queda.
   if (!contact) {
-    console.log(`[email] correo automatico de ${fromAddress}: ${detection.reason}`);
+    // Sin la direccion del remitente: es un dato personal y no hace falta para entender el log.
+    console.log(`[email] correo automatico descartado: ${detection.reason}`);
     return {
       stored: false,
       automatic: true,

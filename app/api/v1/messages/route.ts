@@ -29,6 +29,13 @@ import { withLocalFailedSends } from "@/lib/zernio-message-merge";
 const THREAD_PAGE_SIZE = 100;
 
 /**
+ * Cuantos mensajes trae el hilo de nuestra tabla (WhatsApp y email): los ULTIMOS.
+ * Antes se pedian todos en orden ascendente y PostgREST corta en 1.000: en una
+ * conversacion larga se veian los mil mas viejos y nunca el ultimo.
+ */
+const LOCAL_THREAD_LIMIT = 500;
+
+/**
  * GET /api/v1/messages?conversationId=...
  *
  * De donde sale el hilo depende del canal:
@@ -78,17 +85,21 @@ export async function GET(request: NextRequest) {
   // leyendo de Zernio (ver el comentario del receptor).
   if (channelRef?.provider === "evolution" || channelRef?.provider === "resend") {
     // RLS ya filtro la conversacion: si el usuario llego hasta aca, puede verla.
-    const { data: messages, error } = await supabase
+    const { data: newestFirst, error } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(LOCAL_THREAD_LIMIT);
 
     if (error) {
       console.error("Failed to read messages from our table:", error);
       return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
     }
-    return NextResponse.json(await withChips(supabase, conversation.workspace_id, messages ?? []));
+    // Se piden los mas nuevos y se dan vuelta: el hilo se lee de arriba (viejo) a abajo (nuevo).
+    const messages = [...(newestFirst ?? [])].reverse();
+    return NextResponse.json(await withChips(supabase, conversation.workspace_id, messages));
   }
 
   if (!conversation.late_conversation_id) {

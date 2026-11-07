@@ -331,6 +331,16 @@ su nombre en la lista de la habilidad. Con la habilidad apagada no se ofrece.
 contra `fetch`, no contra un SDK. Otro proveedor sería otro archivo con la
 misma interfaz.
 
+## Tope de emails al invitado por dirección (noviembre 2026)
+
+La página de la agenda es pública y el tope por IP no alcanza para que alguien no use las reservas para llenarle la
+bandeja a un tercero. Una reserva pública (página o embed) cuenta por **evento y dirección**: pasadas **3 por día**
+(`GUEST_EMAIL_LIMITS`, `lib/scheduling/booking/guest-email-limit.ts`), la reserva **se guarda igual** y al público no
+se le dice nada distinto, pero queda `bookings.metadata.guest_emails_suppressed` y al invitado no le sale nada: ni la
+invitación de Google (`booking-sync` no lo suma como invitado) ni los emails de los flujos que van al contacto
+(`send_email` lo saltea con el motivo; al anfitrión o a una dirección fija, sí). Agendar a mano y el agente no cuentan.
+La dirección viaja hasheada en `rate_limits`.
+
 ## Los guardias
 
 Lo que no se puede romper sin que algo avise:

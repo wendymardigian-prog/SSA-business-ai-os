@@ -24,6 +24,9 @@ import { syncRelativeJobs } from "@/lib/scheduling/automation/relative";
 // Se reexporta: vive en phone-countries porque tambien la usa el formulario
 // publico, que corre en el navegador (ver lib/vault-boundary.test.ts).
 import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
+import { isSafeRedirectUrl } from "@/lib/scheduling/event-validation";
+import { checkLimit } from "@/lib/antispam/rate-limit";
+import { GUEST_EMAIL_LIMITS, GUEST_EMAIL_WINDOW_MS, GUEST_EMAILS_SUPPRESSED, guestEmailLimitKey } from "./guest-email-limit";
 
 export { countryFromTimezone };
 
@@ -117,6 +120,21 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     return { ok: false, status: 422, reason: "invalid", message: IDENTITY_REQUIRED_MESSAGE };
   }
 
+  // 4b. Un contacto que llega ya elegido (agendar a mano, el agente) tiene que ser de ESTE negocio y estar vivo:
+  // `create_booking` es SECURITY DEFINER y completa los datos de ese contacto sin mirar el workspace. Un error de
+  // la base no se toma como "no existe": no se agenda.
+  if (input.contactId) {
+    const { data: known, error: knownError } = await service
+      .from("contacts")
+      .select("id")
+      .eq("id", input.contactId)
+      .eq("workspace_id", event.workspace_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (knownError) return { ok: false, status: 503, reason: "temporarily_unavailable" };
+    if (!known) return { ok: false, status: 404, reason: "not_found", message: "No encontré ese contacto." };
+  }
+
   // 5. El horario, recalculado con datos frescos: Google sin cache.
   const from = new Date(new Date(input.startUtc).getTime() - 24 * 60 * 60 * 1000).toISOString();
   const to = new Date(new Date(endUtc).getTime() + 24 * 60 * 60 * 1000).toISOString();
@@ -134,6 +152,18 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
   }
   if (!isSlotAvailable(built.input, input.startUtc)) {
     return { ok: false, status: 409, reason: "slot_unavailable", message: "Ese horario ya no está disponible." };
+  }
+
+  // 5b. Tope de emails al invitado por direccion (solo lo publico): pasado, la reserva se guarda igual pero al
+  // invitado no le sale nada (ni la invitacion de Google ni los emails de los flujos). Al publico no se le dice.
+  let metadata = input.metadata ?? {};
+  if (contactData.email && (input.origin === "public_page" || input.origin === "embed")) {
+    const perAddress = await checkLimit(
+      service,
+      { key: guestEmailLimitKey(event.id, contactData.email), max: GUEST_EMAIL_LIMITS.perAddressPerDay, windowMs: GUEST_EMAIL_WINDOW_MS },
+      now,
+    );
+    if (!perAddress.allowed) metadata = { ...metadata, [GUEST_EMAILS_SUPPRESSED]: true };
   }
 
   // 6. La transaccion.
@@ -164,7 +194,7 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     p_contact_assignment: event.contact_assignment,
     p_created_by: input.createdBy ?? null,
     p_contact_id: input.contactId ?? null,
-    p_metadata: (input.metadata ?? {}) as unknown as Json,
+    p_metadata: metadata as unknown as Json,
   });
 
   if (error) {
@@ -208,7 +238,8 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     contactId: result.contact_id,
     startUtc: input.startUtc,
     endUtc,
-    redirectUrl: event.success_redirect_url,
+    // Se vuelve a validar al leer: la columna se puede escribir por la API (00310 lo exige en la base).
+    redirectUrl: isSafeRedirectUrl(event.success_redirect_url) ? event.success_redirect_url : null,
   };
 }
 

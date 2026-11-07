@@ -14,6 +14,8 @@
  *
  *   node scripts/verify-rls.mjs
  *   node scripts/verify-rls.mjs --despues-de-00143   # read_secret solo para el servidor  @plantilla-quitar(proyecto)
+ *   node scripts/verify-rls.mjs --despues-de-00313   # la media del chat con el alcance de la conversacion
+ *   node scripts/verify-rls.mjs --despues-de-00314   # Conocimiento interno solo con knowledge.edit
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -38,7 +40,7 @@ const check = (cond, m, extra) => (cond ? ok(m) : fail(m, extra));
 async function makeUser(tag) {
   const email = `zz-test-${tag}-${Date.now()}@example.test`;
   const password = randomUUID();
-  const { data, error } = await svc.auth.admin.createUser({ email, password, email_confirm: true });
+  const { data, error } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password, email_confirm: true });
   if (error) throw new Error(`no pude crear usuario ${tag}: ${error.message}`);
   const client = createClient(URL, ANON, { auth: { persistSession: false } });
   const { error: e } = await client.auth.signInWithPassword({ email, password });
@@ -58,6 +60,10 @@ const POST_00136 = process.argv.includes("--despues-de-00136");
 // Antes de aplicar la 00143 el Admin todavia la lee: sin --despues-de-00143 se prueba eso.
 const SECRETS_SERVER_ONLY = process.argv.includes("--despues-de-00143");
 // @plantilla-hasta(proyecto)
+// 00313: la media del chat y los adjuntos de email se leen con el alcance de la conversacion.
+const POST_00313 = process.argv.includes("--despues-de-00313");
+// 00314: Conocimiento interno solo con knowledge.edit; la sesion no pide lo interno.
+const POST_00314 = process.argv.includes("--despues-de-00314");
 // @plantilla-sin(proyecto): const SECRETS_SERVER_ONLY = true;
 const leadScope = leadScopeHelper(svc);
 const flagState = new Map();
@@ -525,8 +531,10 @@ try {
     });
     check(!eChunk, "el service role puede indexar fragmentos", eChunk?.message);
 
-    // La KB es conocimiento del negocio, no de un lead: todo el equipo la lee.
-    check((await sees(member, "knowledge_base", doc.id)).seen,
+    // La KB es conocimiento del negocio, no de un lead: todo el equipo la lee. Desde la 00314 la lee quien
+    // tiene knowledge.view, knowledge.edit o agents.view; aca el Member tiene un rol de prueba sin ninguna
+    // clave (lead-scope-helper), asi que esto solo vale antes. Lo nuevo lo prueba el bloque "(00314)".
+    if (!POST_00314) check((await sees(member, "knowledge_base", doc.id)).seen,
       "un Member LEE la base de conocimiento");
     check((await sees(admin, "knowledge_base", doc.id)).seen,
       "un Admin LEE la base de conocimiento");
@@ -794,6 +802,29 @@ try {
       p_workspace_id: ws.id, p_query_embedding: vec, p_match_count: 10, p_min_similarity: 0,
     });
     check((original ?? []).length === 3, "la busqueda original (00049) sigue intacta para los scripts de siempre");
+    if (POST_00314) {
+      // El Member de sistema (agents.view, sin knowledge.view) ve lo no interno y nunca lo interno.
+      await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+      const interno = byTitle["zz-test interno ventas"];
+      const { data: vistos } = await member.client.from("knowledge_base").select("id").eq("workspace_id", ws.id);
+      const idsVistos = (vistos ?? []).map((d) => d.id);
+      check(idsVistos.includes(byTitle["zz-test publico ventas"]) && !idsVistos.includes(interno),
+        "(00314) un Member ve lo no interno y NO lo interno");
+      const { data: frag } = await member.client.from("knowledge_chunks").select("document_id").eq("workspace_id", ws.id);
+      check(!(frag ?? []).some((f) => f.document_id === interno), "(00314) un Member NO lee los fragmentos de lo interno");
+      const { data: vistosAdmin } = await admin.client.from("knowledge_base").select("id").eq("workspace_id", ws.id);
+      check((vistosAdmin ?? []).length === 3, "(00314) un Admin ve todo, tambien lo interno");
+      const { error: eInterno } = await member.client.rpc("match_knowledge_chunks_filtered", {
+        p_workspace_id: ws.id, p_query_embedding: vec, p_match_count: 10,
+        p_min_similarity: 0, p_tags: null, p_include_internal: true,
+      });
+      check(!!eInterno, "(00314) con la sesion no se puede pedir lo interno");
+      const { data: origMember, error: eOrig } = await member.client.rpc("match_knowledge_chunks", {
+        p_workspace_id: ws.id, p_query_embedding: vec, p_match_count: 10, p_min_similarity: 0,
+      });
+      check(!eOrig && !(origMember ?? []).some((r) => r.document_id === interno),
+        "(00314) la busqueda original con la sesion no devuelve lo interno", eOrig?.message);
+    }
     await svc.from("knowledge_base").delete().eq("workspace_id", ws.id);
 
     // La cola de jobs sigue siendo solo del service role
@@ -1356,6 +1387,29 @@ try {
       { await admin.client.storage.from("chat-media").remove([rutaPropia]);
         const { data } = await svc.storage.from("chat-media").download(rutaPropia);
         check(!!data, "ni un Admin borra de chat-media: eso lo hace el cron de retencion"); }
+
+      if (POST_00313) {
+        // Un Member de alcance "solo lo asignado" no escucha lo de un chat que no ve; la banca, si.
+        await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+        await svc.from("contacts").update({ setter_id: null, vendedor_id: null }).eq("id", contact.id);
+        await svc.from("conversations").update({ assigned_to: null }).eq("id", conv.id);
+        const rutaConv = `${ws.id}/${conv.id}/zz-test-scope.mp3`;
+        const rutaBanca = `${ws.id}/library/zz-test-scope.mp3`;
+        await svc.storage.from("chat-media").upload(rutaConv, archivo, { upsert: true });
+        await svc.storage.from("chat-media").upload(rutaBanca, archivo, { upsert: true });
+        check(!(await seesConv(member)).seen, "(00313) el Member no ve la conversacion sin asignar");
+        { const { data, error } = await member.client.storage.from("chat-media").download(rutaConv);
+          check(!data || !!error, "(00313) un Member NO escucha el audio de un chat que no ve"); }
+        { const { data, error } = await member.client.storage.from("chat-media").download(rutaBanca);
+          check(!!data && !error, "(00313) un Member si lee la banca de recursos del negocio", error?.message); }
+        await svc.from("contacts").update({ setter_id: member.id }).eq("id", contact.id);
+        { const { data, error } = await member.client.storage.from("chat-media").download(rutaConv);
+          check(!!data && !error, "(00313) asignado como setter, el Member escucha el audio", error?.message); }
+        { const { data, error } = await admin.client.storage.from("chat-media").download(rutaConv);
+          check(!!data && !error, "(00313) un Admin escucha todo su workspace", error?.message); }
+        await svc.from("contacts").update({ setter_id: null }).eq("id", contact.id);
+        await svc.storage.from("chat-media").remove([rutaConv, rutaBanca]);
+      }
 
       await svc.storage.from("chat-media").remove([rutaPropia, `${ws.id}/zz-test-chat-media/falso.mp3`]);
     }

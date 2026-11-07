@@ -16,6 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 import { sanitizeAttribution } from "@/lib/attribution/collect";
+import { requestIp } from "@/lib/antispam/client-ip";
 
 /** El campo oculto: si llega lleno, es un bot. */
 export const HONEYPOT_FIELD = "website";
@@ -60,11 +61,12 @@ export function windowStart(action: RateLimitAction, now: Date = new Date()): st
   return new Date(Math.floor(now.getTime() / size) * size).toISOString();
 }
 
-/** La IP del pedido, de los encabezados del proxy. */
+/**
+ * La IP del pedido para los topes (`requestIp`: primero `X-Real-IP`, que pone el borde de
+ * Railway). Sin ningun encabezado, "0.0.0.0": todos los pedidos sin IP comparten un tope.
+ */
 export function clientIp(headers: Headers): string {
-  const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return headers.get("x-real-ip")?.trim() || "0.0.0.0";
+  return requestIp(headers) ?? "0.0.0.0";
 }
 
 export interface RateLimitResult {

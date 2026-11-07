@@ -1,6 +1,6 @@
 /**
- * Escritor de CSV genérico (Extra I, GF13). `lib/csv` hasta ahora solo importaba; la exportación de
- * Corridas tiene su propio `csvCell` privado y no se toca.
+ * Escritor de CSV genérico (Extra I, GF13). `lib/csv` hasta ahora solo importaba. La exportación de
+ * Corridas también usa este `csvCell` (antes tenía uno propio que no neutralizaba fórmulas).
  *
  *  - comillas si la celda tiene `,`, `"` o un salto de línea (las comillas internas se duplican);
  *  - NEUTRALIZA FÓRMULAS: un texto que empieza con `=`, `+`, `-` o `@` (o tabulación/retorno) se prefija con

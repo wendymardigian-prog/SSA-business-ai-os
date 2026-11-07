@@ -11,6 +11,7 @@ import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
 import { deferFlowNode, takeAlreadySent } from "../defer-node";
 import { deliverPrivateReply } from "./comment-reply";
+import { doNotContactSkipReason, skipForDoNotContact } from "../do-not-contact";
 
 /** Los kinds que un flow puede declarar en mediaType; cualquier otra cosa cae en "image", como siempre. */
 const VALID_MEDIA_KINDS = new Set<AttachmentKind>(["image", "video", "audio", "voice", "document"]);
@@ -35,6 +36,10 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
       context.noteStep?.({ status: "skipped", reason: "Esta ejecución no tiene un canal por donde mandar el mensaje." });
       return;
     }
+
+    // "No contactar" frena el mensaje (salvo un flujo de la agenda), tambien la respuesta privada a un comentario.
+    const blocked = await doNotContactSkipReason(supabase, context);
+    if (blocked) return skipForDoNotContact(supabase, context, { nodeId: node.id, nodeType: "sendMessage", label: "Enviar mensaje", reason: blocked });
 
     // La plataforma hace falta para adaptar el formato del mensaje. Si no vino
     // en el contexto, se resuelve una vez y se reusa para todos los mensajes.

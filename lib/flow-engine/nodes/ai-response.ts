@@ -7,6 +7,7 @@ import { generateAiReply } from "@/lib/ai/generate-reply";
 import { sendChannelMessage, recordSend } from "../send";
 import { aiResponseOutputs } from "../node-outputs";
 import { noteSessionEnd } from "../run-log";
+import { doNotContactSkipReason, skipForDoNotContact } from "../do-not-contact";
 
 /**
  * Corta la corrida.
@@ -31,6 +32,13 @@ async function executeAiResponse(
   sessionId: string,
   nodeId: string
 ) {
+  // "No contactar" (salvo un flujo de la agenda): si la respuesta se iba a mandar, ni se genera (no se gasta IA en
+  // algo que no sale). El flujo sigue; `{{ai_response}}` queda sin valor. Solo guardarla en la variable no manda nada.
+  if (data.sendDirectly !== false) {
+    const blocked = await doNotContactSkipReason(supabase, context);
+    if (blocked) return skipForDoNotContact(supabase, context, { nodeId, nodeType: "aiResponse", label: "Respuesta con IA", reason: blocked });
+  }
+
   // La generacion (BYOK, historial, traza) vive en lib/ai/generate-reply.ts,
   // que es lo mismo que usan los pasos de IA de las secuencias. Lo que sigue
   // siendo de este nodo es la politica de fallo: en un flow, no poder generar

@@ -66,6 +66,21 @@ function world(opts: {
 
 const args = { conversationId: "cv-1", workspaceId: "ws-1", trigger: "manual" as const };
 
+describe("el tope de gasto de IA del negocio (noviembre 2026)", () => {
+  it("sin presupuesto no llama al modelo: deja una corrida con el motivo y no marca la conversacion como resumida", async () => {
+    const w = world();
+    const checkBudget = vi.fn(async () => ({ allowed: false, message: "Tope mensual alcanzado" }));
+
+    const outcome = await summarizeConversationOnClose(w.db.client, args, { ...w.deps, checkBudget });
+
+    expect(w.calls).toHaveLength(0);
+    expect(outcome).toMatchObject({ kind: "run", status: "error", detail: "budget_exceeded" });
+    expect(w.db.rows("agent_runs")[0]).toMatchObject({ source: "conversation_summary", status: "error", error: "Tope mensual alcanzado" });
+    expect(w.db.rows("conversations")[0].summarized_at).toBeNull();
+    expect(checkBudget).toHaveBeenCalledWith(w.db.client, "ws-1", NOW, { model: expect.objectContaining({ provider: expect.any(String), model: expect.any(String) }) });
+  });
+});
+
 describe("resumen acumulativo con reconciliacion", () => {
   it("el resumen previo entra al prompt como dato con la instruccion de corregir lo que cambio, y lo nuevo REEMPLAZA lo viejo", async () => {
     const w = world({

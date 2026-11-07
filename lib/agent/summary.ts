@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, LeadTemperature } from "@/lib/types/database";
 import { getExactWorkspaceModel } from "@/lib/ai/provider";
-import { openAiRun, type AiRunHandle } from "@/lib/ai/run";
+import { openAiRun, recordRunOutcome, type AiRunHandle } from "@/lib/ai/run";
+import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { logAudit } from "@/lib/audit";
 import { agentForChannel, loadWorkspaceAgents, type AgentConfig } from "./config";
 import { describeAttempts, generateWithFallback, toolLoopRunner, type ModelResolver, type ModelRunner } from "./fallback";
@@ -62,9 +63,12 @@ export interface SummaryDeps {
   now: () => Date;
   resolveModel: (workspaceId: string) => ModelResolver;
   runModel: ModelRunner;
+  /** El tope de gasto del negocio, antes de llamar. Por defecto, `withinWorkspaceBudget`. */
+  checkBudget?: typeof withinWorkspaceBudget;
 }
 
 export const defaultSummaryDeps: SummaryDeps = {
+  checkBudget: withinWorkspaceBudget,
   now: () => new Date(),
   resolveModel: (workspaceId) => (provider, model) => getExactWorkspaceModel(workspaceId, { provider, modelId: model }),
   runModel: toolLoopRunner,
@@ -265,6 +269,32 @@ export async function summarizeConversationOnClose(
     const { data: wsRow } = await supabase.from("workspaces").select("contact_status_settings").eq("id", conversation.workspace_id).maybeSingle();
     const list = parseStatusSettings((wsRow as { contact_status_settings?: unknown } | null)?.contact_status_settings).setter;
     setterStatusNames = allowedSetterStatuses(list, setterConfig.allowedStatuses).map((st) => st.name);
+  }
+
+  // El tope de gasto del negocio, ANTES de llamar (antes el resumen no lo miraba). Sin presupuesto (o con un modelo
+  // sin precio y un tope que corta) no se llama: queda una corrida con el motivo, a la vista en Corridas, y el
+  // resumen se hace en el proximo cierre (no se marca `summarized_at`).
+  const budget = await (deps.checkBudget ?? withinWorkspaceBudget)(supabase, conversation.workspace_id, deps.now(), {
+    model: agent.provider && agent.model ? { provider: agent.provider, model: agent.model } : null,
+  });
+  if (!budget.allowed) {
+    const message = budget.message ?? "Se alcanzó el tope de gasto de IA del negocio.";
+    const runId = await recordRunOutcome(supabase, {
+      workspaceId: conversation.workspace_id,
+      source: "conversation_summary",
+      trigger: args.trigger,
+      agentId: agent.id,
+      promptVersion: agent.promptVersion,
+      conversationId: conversation.id,
+      contactId: conversation.contact_id,
+      channelId: conversation.channel_id,
+      provider: agent.provider,
+      model: agent.model,
+      status: "error",
+      statusDetail: "budget_exceeded",
+      error: message,
+    });
+    return { kind: "run", status: "error", detail: "budget_exceeded", runId };
   }
 
   const run = await openAiRun(

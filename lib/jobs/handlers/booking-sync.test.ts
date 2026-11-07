@@ -124,6 +124,16 @@ describe("buildDescription", () => {
 });
 
 describe("handleBookingGoogleSync · crear", () => {
+  it("una reserva publica pasada del tope de emails por direccion no invita al invitado (Google no le escribe)", async () => {
+    const db = world({ metadata: { guest_emails_suppressed: true } });
+    createEvent.mockResolvedValue({ eventId: "gev-1", iCalUID: "gev-1@google.com", meetUrl: null });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "create" }));
+
+    const [, , , body] = createEvent.mock.calls[0];
+    expect(body.attendeeEmail).toBeNull();
+  });
+
   it("crea el evento y guarda el id, el iCalUID y el Meet", async () => {
     const db = world();
     createEvent.mockResolvedValue({ eventId: "gev-1", iCalUID: "gev-1@google.com", meetUrl: "https://meet.google.com/abc-defg-hij" });

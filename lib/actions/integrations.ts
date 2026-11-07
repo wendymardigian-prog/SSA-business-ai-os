@@ -23,10 +23,12 @@ import { notifyIntegrationAttention } from "@/lib/notifications/integration-aler
 import { validateSecretValue } from "@/lib/integrations/secret-validation";
 import type { Json } from "@/lib/types/database";
 import { testConnection } from "@/lib/integrations/test-connection";
+import { publicUrlProblem } from "@/lib/integrations/public-url-check";
 import {
   configProviderOf,
   getVisibleProvider,
   secretFieldsOf,
+  secretRebindProblem,
   validateConfig,
   type ProviderDefinition,
   type SecretField,
@@ -168,6 +170,14 @@ export async function saveIntegration(
   // desde aca: se conservan los guardados.
   const configCheck = validateConfig(provider.id, config, { skipHidden: true });
   if (!configCheck.ok) return configCheck;
+
+  // Una direccion atada a un secreto (Evolution: la API key viaja a `api_url`) no cambia sin volver a escribir
+  // el secreto, y no puede ser interna. Antes de escribir nada.
+  const previousConfig = (existing?.config ?? null) as Record<string, unknown> | null;
+  const rebind = secretRebindProblem(provider, previousConfig, config, toStore.map((s) => s.field.key));
+  if (rebind) return { ok: false, error: rebind };
+  const urlProblem = await publicUrlProblem(provider, previousConfig, config);
+  if (urlProblem) return { ok: false, error: urlProblem };
 
   // La prueba va antes de escribir nada: si la clave no sirve, no queda
   // guardada ni la integracion marcada como conectada.

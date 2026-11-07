@@ -55841,10 +55841,988 @@ UPDATE public.workspaces
    AND (ai_background_settings->'call_classification') ?| ARRAY['allow_ai_types', 'discarded_types'];
 
 -- ============================================================
--- MIGRATION 316: FLOW STEP METRICS
+-- MIGRATION 309: SIGNUP NEEDS INVITE OR FLAG
 -- ============================================================
 -- ============================================================
--- 00316_flow_step_metrics
+-- 00309_signup_needs_invite_or_flag (7/11/2026)
+--
+-- Auditoria de seguridad. Con el registro publico de Supabase prendido (lo
+-- estaba en produccion), cualquiera con la anon key (que es publica) hacia
+-- POST /auth/v1/signup, confirmaba su correo y el trigger le armaba un
+-- workspace como Owner: podia publicar formularios y agendas con el dominio
+-- del negocio y usar las acciones que piden ser Owner de "algun" workspace.
+--
+-- El arreglo de fondo es apagar "Allow new users to sign up" en el panel
+-- (Authentication -> Sign In / Providers). Esta migracion es la segunda
+-- cerradura: `handle_new_user` ya NO le arma un workspace a cualquiera. Solo:
+--   * a la PRIMERA cuenta de una instalacion vacia (asi sigue andando
+--     `scripts/create-owner.mjs` y el alta desde el panel en un clon nuevo);
+--   * a una cuenta creada por el servidor con
+--     `app_metadata.ssa_create_workspace = true`. `app_metadata` solo lo
+--     escribe la API de admin (service role): un registro publico no puede
+--     ponerlo.
+-- La invitacion valida sigue igual: no se crea workspace (registerFromInvite
+-- suma la membresia). Una cuenta sin nada de esto queda sin workspace y la
+-- app la manda al login (lib/workspace.ts).
+--
+-- Los scripts de verificacion crean sus usuarios con la marca.
+--
+-- Definicion anterior (00119), copiada de la base el 7/11/2026:
+--
+--   create or replace function public.handle_new_user()
+--   returns trigger as $$
+--   declare
+--     ws_id uuid;
+--     user_name text;
+--     workspace_slug text;
+--     v_invite_id uuid;
+--     v_has_pending_invite boolean;
+--   begin
+--     v_invite_id := (new.raw_user_meta_data->>'invite_id')::uuid;
+--     if v_invite_id is not null then
+--       select exists (
+--         select 1 from public.workspace_invites
+--         where id = v_invite_id
+--           and email = new.email
+--           and status = 'pending'
+--           and expires_at > now()
+--       ) into v_has_pending_invite;
+--
+--       if v_has_pending_invite then
+--         return new;
+--       end if;
+--     end if;
+--
+--     user_name := coalesce(
+--       new.raw_user_meta_data->>'full_name',
+--       new.raw_user_meta_data->>'name',
+--       split_part(new.email, '@', 1)
+--     );
+--     workspace_slug := lower(regexp_replace(user_name, '[^a-zA-Z0-9]', '-', 'g')) || '-' || substr(new.id::text, 1, 8);
+--
+--     insert into public.workspaces (name, slug)
+--     values (user_name || '''s Workspace', workspace_slug)
+--     returning id into ws_id;
+--
+--     insert into public.workspace_members (workspace_id, user_id, role)
+--     values (ws_id, new.id, 'owner');
+--
+--     return new;
+--   exception when others then
+--     raise log 'handle_new_user error: % %', sqlerrm, sqlstate;
+--     return new;
+--   end;
+--   $$ language plpgsql security definer set search_path = public;
+--
+-- Idempotente (CREATE OR REPLACE con la misma firma; el trigger no cambia).
+-- Puede ir antes o despues del deploy.
+-- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger as $$
+declare
+  ws_id uuid;
+  user_name text;
+  workspace_slug text;
+  v_invite_id uuid;
+  v_has_pending_invite boolean;
+begin
+  -- Alta por invitacion: no se crea workspace propio. registerFromInvite ya
+  -- valido la invitacion antes de crear esta cuenta y suma la membresia el
+  -- mismo, con finalizeAcceptInvite.
+  v_invite_id := (new.raw_user_meta_data->>'invite_id')::uuid;
+  if v_invite_id is not null then
+    select exists (
+      select 1 from public.workspace_invites
+      where id = v_invite_id
+        and email = new.email
+        and status = 'pending'
+        and expires_at > now()
+    ) into v_has_pending_invite;
+
+    if v_has_pending_invite then
+      return new;
+    end if;
+  end if;
+
+  -- 00309: un registro publico no se arma un negocio. Solo la primera cuenta
+  -- de una instalacion vacia, o una creada por el servidor con la marca en
+  -- app_metadata (que el registro publico no puede escribir).
+  if coalesce(new.raw_app_meta_data->>'ssa_create_workspace', '') <> 'true'
+     and exists (select 1 from public.workspaces) then
+    return new;
+  end if;
+
+  user_name := coalesce(
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'name',
+    split_part(new.email, '@', 1)
+  );
+  workspace_slug := lower(regexp_replace(user_name, '[^a-zA-Z0-9]', '-', 'g')) || '-' || substr(new.id::text, 1, 8);
+
+  insert into public.workspaces (name, slug)
+  values (user_name || '''s Workspace', workspace_slug)
+  returning id into ws_id;
+
+  insert into public.workspace_members (workspace_id, user_id, role)
+  values (ws_id, new.id, 'owner');
+
+  return new;
+exception when others then
+  raise log 'handle_new_user error: % %', sqlerrm, sqlstate;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+
+-- ============================================================
+-- MIGRATION 310: EVENT REDIRECT HTTPS
+-- ============================================================
+-- ============================================================
+-- 00310_event_redirect_https (7/11/2026)
+--
+-- Auditoria de seguridad. `event_types.success_redirect_url` solo se validaba
+-- en la Server Action (`isSafeRedirectUrl`, solo https). La politica
+-- `event_types_update` deja que quien maneja su evento lo edite directo por
+-- la API (PostgREST), y la pagina publica de reserva hace
+-- `window.location.href = redirectUrl`: un `javascript:...` guardado asi
+-- corria en el dominio de la app para cualquiera que reservara (y la sesion
+-- de Supabase vive en cookies que el navegador puede leer).
+--
+-- Ahora la base exige lo mismo que la pantalla: NULL o https://. El codigo
+-- ademas vuelve a validar al leer y en el navegador.
+--
+-- NOT VALID: frena toda escritura nueva sin fallar si un clon ya tuviera una
+-- fila vieja rara; despues se intenta validar lo que hay (en produccion no
+-- habia ninguna fila con redirect, comprobado el 7/11/2026). Si la
+-- validacion falla, avisa y la restriccion igual queda activa para lo nuevo.
+--
+-- Idempotente. Puede ir antes o despues del deploy.
+-- ============================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'event_types_success_redirect_https'
+      AND conrelid = 'public.event_types'::regclass
+  ) THEN
+    ALTER TABLE public.event_types
+      ADD CONSTRAINT event_types_success_redirect_https
+      CHECK (success_redirect_url IS NULL OR success_redirect_url ~* '^https://[^/@\s]+') NOT VALID;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  ALTER TABLE public.event_types VALIDATE CONSTRAINT event_types_success_redirect_https;
+EXCEPTION WHEN check_violation THEN
+  RAISE WARNING '00310: hay eventos con una redireccion que no es https; la restriccion vale para lo nuevo. Revisar: SELECT id, success_redirect_url FROM public.event_types WHERE success_redirect_url !~* ''^https://'';';
+END $$;
+
+-- ============================================================
+-- MIGRATION 311: MESSAGES CLIENT ATTACHMENTS GUARD
+-- ============================================================
+-- ============================================================
+-- 00311_messages_client_attachments_guard (7/11/2026)
+--
+-- Auditoria de seguridad (SSRF). La politica `messages_insert` (00054) deja
+-- que cualquier miembro inserte mensajes con el cliente del usuario, con la
+-- columna `attachments` libre. Un adjunto con `sourceUrl` (o un formato viejo
+-- con `url`) hacia que "Reintentar descarga" (/api/v1/messages/<id>/media-retry)
+-- bajara esa direccion desde el servidor, incluida una interna, y guardara la
+-- respuesta en `chat-media`, donde se podia leer. Un `storagePath` de otro
+-- workspace llegaba al transcriptor y a "guardar sticker", que leen con el
+-- cliente de servicio.
+--
+-- La app, con la sesion del usuario, solo escribe adjuntos v2 que ya subio a
+-- `chat-media` (el envio manual de /api/v1/messages): sin `sourceUrl` y con
+-- la ruta del propio workspace. Este trigger exige exactamente eso cuando
+-- escribe un usuario (`authenticated` o `anon`). El servidor (service role),
+-- los webhooks y los jobs no cambian.
+--
+-- El codigo ademas baja la media con la misma proteccion de la "Llamada HTTP"
+-- (lib/net/safe-fetch.ts) y el reintento solo acepta mensajes entrantes.
+--
+-- El nombre ordena DESPUES de `messages_fill_workspace_id` (los BEFORE corren
+-- por orden alfabetico): cuando se mira, `workspace_id` ya esta completo.
+--
+-- Idempotente. Va ANTES o despues del deploy (el codigo no depende de esto).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.messages_guard_client_attachments()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_item jsonb;
+  v_path text;
+BEGIN
+  -- Solo lo que escribe una persona con su sesion. Sin JWT (migraciones, SQL
+  -- del cron) o con service role, como siempre.
+  IF coalesce(auth.role(), '') NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.attachments IS NOT DISTINCT FROM OLD.attachments THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.attachments IS NULL OR jsonb_typeof(NEW.attachments) = 'null' THEN
+    RETURN NEW;
+  END IF;
+
+  IF jsonb_typeof(NEW.attachments) <> 'object'
+     OR (NEW.attachments->>'v') IS DISTINCT FROM '2'
+     OR jsonb_typeof(NEW.attachments->'items') IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'adjuntos con un formato que no se puede escribir desde la app'
+      USING ERRCODE = '42501';
+  END IF;
+
+  FOR v_item IN SELECT value FROM jsonb_array_elements(NEW.attachments->'items') LOOP
+    IF jsonb_typeof(v_item) <> 'object' THEN
+      RAISE EXCEPTION 'adjunto invalido' USING ERRCODE = '42501';
+    END IF;
+    IF jsonb_typeof(v_item->'sourceUrl') IS NOT NULL AND jsonb_typeof(v_item->'sourceUrl') <> 'null' THEN
+      RAISE EXCEPTION 'un adjunto escrito desde la app no puede traer una direccion de descarga'
+        USING ERRCODE = '42501';
+    END IF;
+    IF jsonb_typeof(v_item->'storagePath') IS NOT NULL AND jsonb_typeof(v_item->'storagePath') <> 'null' THEN
+      v_path := v_item->>'storagePath';
+      IF jsonb_typeof(v_item->'storagePath') <> 'string'
+         OR NEW.workspace_id IS NULL
+         OR NOT starts_with(v_path, NEW.workspace_id::text || '/')
+         OR position('..' IN v_path) > 0 THEN
+        RAISE EXCEPTION 'el archivo de un adjunto tiene que ser de este negocio'
+          USING ERRCODE = '42501';
+      END IF;
+    END IF;
+  END LOOP;
+
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.messages_guard_client_attachments() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.messages_guard_client_attachments() TO service_role;
+
+DROP TRIGGER IF EXISTS messages_guard_client_attachments ON public.messages;
+CREATE TRIGGER messages_guard_client_attachments
+  BEFORE INSERT OR UPDATE OF attachments ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.messages_guard_client_attachments();
+
+-- ============================================================
+-- MIGRATION 312: INVITES SELECT NEEDS PERMISSION
+-- ============================================================
+-- ============================================================
+-- 00312_invites_select_needs_permission (7/11/2026)
+--
+-- Auditoria de seguridad. `workspace_invites_select` (00006) dejaba leer las
+-- invitaciones a CUALQUIER miembro, y el `id` de una invitacion es el link
+-- `/invite/<id>`: la credencial. Un Member podia leer el link de una
+-- invitacion de Admin pendiente para un email sin cuenta, crear esa cuenta
+-- con su propia contrasena (registerFromInvite) y entrar como Admin.
+--
+-- Ahora las ve solo quien puede invitar (`team.invite`), que es quien las
+-- muestra en Ajustes -> Equipo (el resto de la app las lee con el cliente de
+-- servicio). Mismo patron que `workspace_invites_insert/update/delete`.
+--
+-- Politica vieja (00006), copiada de la base el 7/11/2026:
+--   CREATE POLICY "workspace_invites_select" ON workspace_invites
+--     FOR SELECT USING (workspace_id IN (
+--       SELECT workspace_members.workspace_id FROM workspace_members
+--       WHERE workspace_members.user_id = auth.uid()));
+--
+-- Idempotente. Puede ir antes o despues del deploy.
+-- ============================================================
+
+DROP POLICY IF EXISTS "workspace_invites_select" ON public.workspace_invites;
+CREATE POLICY "workspace_invites_select" ON public.workspace_invites
+  FOR SELECT USING ((SELECT public.has_permission(workspace_invites.workspace_id, 'team.invite')));
+
+-- ============================================================
+-- MIGRATION 313: CHAT MEDIA SCOPE
+-- ============================================================
+-- ============================================================================
+-- 00313 — La media del chat y los adjuntos de email: se leen con el alcance de la conversacion
+-- ============================================================================
+-- Seguridad (noviembre 2026). Hasta aca las politicas de lectura de los buckets `chat-media` (00102) y
+-- `email-attachments` (00087) solo pedian ser miembro del workspace del PRIMER segmento del path.
+-- Asi un Member con alcance "solo lo asignado" podia firmar (y bajar) los audios, fotos y adjuntos de
+-- chats que la bandeja no le muestra: alcanzaba con conocer o adivinar el path.
+--
+-- Ahora la lectura sigue la misma regla que la bandeja. Las formas de path que se escriben hoy
+-- (relevadas en el codigo, no hay otras):
+--
+--   chat-media
+--     <ws>/<conversacion>/<mensaje>-<n>.<ext>   lo que llega (lib/inbound-media.ts, mediaPath)
+--     <ws>/<conversacion>/out-<uuid>.<ext>      lo que se sube desde el composer (lib/actions/chat-upload.ts)
+--     <ws>/<conversacion>/sticker-<uuid>.webp   un sticker copiado a la conversacion (lib/stickers/library.ts)
+--     <ws>/<conversacion>/library-<uuid>.<ext>  un recurso copiado a la conversacion (lib/response-assets/send-copy.ts)
+--        -> can_see_conversation de ESA conversacion (del mismo workspace).
+--     <ws>/groups/<grupo>/<archivo>             grupos de WhatsApp (lib/whatsapp-groups/rules.ts, groupMediaFolder)
+--        -> can_see_whatsapp_group de ese grupo (del mismo workspace).
+--     <ws>/library/<archivo>                    la banca de recursos (lib/actions/response-assets.ts)
+--     <ws>/stickers/<archivo>                   la biblioteca de stickers (lib/stickers/format.ts)
+--        -> carpetas compartidas del negocio: cualquier miembro, como antes.
+--
+--   email-attachments
+--     <ws>/<id del email de Resend>/<n>-<nombre>  (lib/email/inbound.ts, storeAttachments)
+--        -> el mensaje con ese `platform_message_id` en ese workspace, y can_see_conversation de su
+--           conversacion. Un correo automatico (sin conversacion) solo lo ve Owner/Admin.
+--
+-- Owner y Admin siguen viendo todo lo de su workspace (camino corto, sin buscar la conversacion).
+-- Cualquier otra forma de path, para un Member, NO se lee: ante la duda, lo mas angosto.
+--
+-- Costo: la politica corre una vez por fila al listar. Hoy solo listan el servidor (service role, que
+-- no pasa por RLS) y la descarga firma de a un archivo (`/api/v1/chat-media`, `/api/v1/email-attachments`,
+-- con el cliente del usuario). Para un Member son dos chequeos de pertenencia y una busqueda por clave
+-- primaria (conversacion o grupo); para el email, una por el indice nuevo (workspace, platform_message_id).
+--
+-- Escribir y borrar siguen siendo del servidor: no hay politicas de INSERT/UPDATE/DELETE (no cambia).
+-- Aditiva e idempotente: puede ir antes o despues del deploy (el codigo no cambia por esto).
+--
+-- LAS POLITICAS VIEJAS, letra por letra (leidas de la base el 7/11/2026), para volver atras:
+--
+--   DROP POLICY IF EXISTS "chat_media_select" ON storage.objects;
+--   CREATE POLICY "chat_media_select" ON storage.objects
+--     FOR SELECT USING (
+--       bucket_id = 'chat-media'
+--       AND public.is_workspace_member(((storage.foldername(name))[1])::uuid)
+--     );
+--
+--   DROP POLICY IF EXISTS "email_attachments_select" ON storage.objects;
+--   CREATE POLICY "email_attachments_select" ON storage.objects
+--     FOR SELECT USING (
+--       bucket_id = 'email-attachments'
+--       AND public.is_workspace_member(((storage.foldername(name))[1])::uuid)
+--     );
+--
+--   DROP FUNCTION IF EXISTS public.can_read_chat_media(text);
+--   DROP FUNCTION IF EXISTS public.can_read_email_attachment(text);
+--   DROP INDEX IF EXISTS public.idx_messages_workspace_platform_message_id;
+--
+-- Como probarla (con un Member de alcance "solo lo asignado" y la app corriendo):
+--   - un audio de un chat asignado a el se escucha; uno de un chat que no ve da 404 en /api/v1/chat-media;
+--   - los recursos y stickers del negocio se siguen viendo;
+--   - un adjunto de email de una conversacion que no ve da 404 en /api/v1/email-attachments;
+--   - Owner y Admin, igual que antes.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. chat-media
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.can_read_chat_media(p_name text)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_uuid  constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+  v_parts text[];
+  v_ws    uuid;
+  v_conv  public.conversations;
+  v_group uuid;
+BEGIN
+  IF p_name IS NULL THEN
+    RETURN false;
+  END IF;
+  v_parts := string_to_array(p_name, '/');
+  -- Un path invalido nunca hace fallar la consulta (un cast roto tumbaria el listado entero): no se lee.
+  IF cardinality(v_parts) < 3 OR v_parts[1] !~* v_uuid THEN
+    RETURN false;
+  END IF;
+  v_ws := v_parts[1]::uuid;
+
+  IF NOT public.is_workspace_member(v_ws) THEN
+    RETURN false;
+  END IF;
+  IF public.is_workspace_admin(v_ws) THEN
+    RETURN true;
+  END IF;
+
+  -- Las carpetas compartidas del negocio: la banca de recursos y la biblioteca de stickers.
+  IF cardinality(v_parts) = 3 AND v_parts[2] IN ('library', 'stickers') THEN
+    RETURN true;
+  END IF;
+
+  -- Un grupo de WhatsApp: <ws>/groups/<grupo>/<archivo>.
+  IF cardinality(v_parts) = 4 AND v_parts[2] = 'groups' AND v_parts[3] ~* v_uuid THEN
+    v_group := v_parts[3]::uuid;
+    IF NOT EXISTS (SELECT 1 FROM public.whatsapp_groups g WHERE g.id = v_group AND g.workspace_id = v_ws) THEN
+      RETURN false;
+    END IF;
+    RETURN COALESCE(public.can_see_whatsapp_group(v_group), false);
+  END IF;
+
+  -- Una conversacion: <ws>/<conversacion>/<archivo>.
+  IF cardinality(v_parts) = 3 AND v_parts[2] ~* v_uuid THEN
+    SELECT * INTO v_conv FROM public.conversations c WHERE c.id = v_parts[2]::uuid AND c.workspace_id = v_ws;
+    IF NOT FOUND THEN
+      RETURN false;
+    END IF;
+    RETURN COALESCE(public.can_see_conversation(v_conv), false);
+  END IF;
+
+  RETURN false;
+END;
+$$;
+
+COMMENT ON FUNCTION public.can_read_chat_media(text) IS
+  'Lectura de un archivo de chat-media (00313): Owner/Admin todo su workspace; un Member, lo de una conversacion que ve (can_see_conversation), un grupo que ve (can_see_whatsapp_group) o las carpetas compartidas library/ y stickers/. Nunca NULL.';
+
+REVOKE ALL ON FUNCTION public.can_read_chat_media(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_read_chat_media(text) TO authenticated, service_role;
+
+DROP POLICY IF EXISTS "chat_media_select" ON storage.objects;
+CREATE POLICY "chat_media_select" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'chat-media'
+    AND public.can_read_chat_media(name)
+  );
+
+-- ----------------------------------------------------------------------------
+-- 2. email-attachments
+-- ----------------------------------------------------------------------------
+
+-- El mensaje se busca por (workspace, id del email): el indice unico que ya existe empieza por la
+-- conversacion, que la politica no conoce.
+CREATE INDEX IF NOT EXISTS idx_messages_workspace_platform_message_id
+  ON public.messages (workspace_id, platform_message_id)
+  WHERE platform_message_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.can_read_email_attachment(p_name text)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_uuid  constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+  v_parts text[];
+  v_ws    uuid;
+BEGIN
+  IF p_name IS NULL THEN
+    RETURN false;
+  END IF;
+  v_parts := string_to_array(p_name, '/');
+  IF cardinality(v_parts) < 3 OR v_parts[1] !~* v_uuid THEN
+    RETURN false;
+  END IF;
+  v_ws := v_parts[1]::uuid;
+
+  IF NOT public.is_workspace_member(v_ws) THEN
+    RETURN false;
+  END IF;
+  IF public.is_workspace_admin(v_ws) THEN
+    RETURN true;
+  END IF;
+
+  -- <ws>/<id del email>/<n>-<nombre>: el mensaje que trajo ese email, en una conversacion que ve.
+  IF cardinality(v_parts) <> 3 OR v_parts[2] = '' THEN
+    RETURN false;
+  END IF;
+  RETURN EXISTS (
+    SELECT 1
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE m.workspace_id = v_ws
+      AND m.platform_message_id = v_parts[2]
+      AND c.workspace_id = v_ws
+      AND COALESCE(public.can_see_conversation(c), false)
+  );
+END;
+$$;
+
+COMMENT ON FUNCTION public.can_read_email_attachment(text) IS
+  'Lectura de un adjunto de email (00313): Owner/Admin todo su workspace; un Member, solo los adjuntos de un email de una conversacion que ve (can_see_conversation). Nunca NULL.';
+
+REVOKE ALL ON FUNCTION public.can_read_email_attachment(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_read_email_attachment(text) TO authenticated, service_role;
+
+DROP POLICY IF EXISTS "email_attachments_select" ON storage.objects;
+CREATE POLICY "email_attachments_select" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'email-attachments'
+    AND public.can_read_email_attachment(name)
+  );
+
+-- ============================================================
+-- MIGRATION 314: KNOWLEDGE READ SCOPE
+-- ============================================================
+-- ============================================================================
+-- 00314 — Conocimiento: quien lee la base y lo interno
+-- ============================================================================
+-- Seguridad (noviembre 2026). `knowledge_base_select` y `knowledge_chunks_select` (00049) solo pedian ser
+-- miembro del workspace: cualquier Member leia todos los documentos, tambien los `internal_only`
+-- (que incluyen lo que sale de las llamadas de ventas, lib/calls/knowledge-run.ts), y se salteaba el
+-- permiso `knowledge.view`. Ademas `match_knowledge_chunks_filtered` dejaba que cualquier miembro
+-- pidiera `p_include_internal = true`, y `match_knowledge_chunks` devolvia lo interno sin filtro.
+--
+-- La regla nueva, en UNA funcion (`public.can_read_knowledge`):
+--   - un documento interno: solo quien tiene `knowledge.edit` (Owner y Admin lo tienen siempre);
+--   - uno que no es interno: `knowledge.view`, `knowledge.edit` o `agents.view`.
+--
+-- Por que `agents.view` tambien: el Member de sistema NO tiene `knowledge.view`
+-- (`private.member_permission_keys()`, `MEMBER_PERMISSION_KEYS`), pero si `agents.view`, y hoy ve en
+-- pantalla los titulos de los fragmentos que leyo el agente (Corridas, `lib/agent/runs-query.ts`) y
+-- los documentos en la configuracion del agente (`/dashboard/agents/[agentId]`). Lo no interno es lo
+-- que el agente ya le cuenta a los leads: quien puede ver al agente puede ver lo que lee. Asi a nadie
+-- se le quita lo que usa en pantalla salvo lo interno. Las pantallas de Conocimiento siguen pidiendo
+-- `knowledge.view` (requirePermission), como antes.
+--
+-- Las busquedas semanticas: `p_include_internal = true` solo para el servidor (service_role); con la
+-- sesion de una persona se rechaza. Y con la sesion, las dos funciones devuelven solo lo que esa
+-- persona puede leer. El agente y el copywriter leen con el cliente de servicio (el runner, el job
+-- de copy) y no cambian: el agente nunca pide lo interno (`lib/agent/knowledge.ts`) y el copywriter
+-- lo filtra en su consulta (`lib/agent/copywriter.ts`).
+--
+-- Aditiva e idempotente: puede ir antes o despues del deploy (el codigo no cambia por esto).
+--
+-- LO VIEJO, letra por letra (leido de la base el 7/11/2026), para volver atras:
+--
+--   DROP POLICY IF EXISTS "knowledge_base_select" ON public.knowledge_base;
+--   CREATE POLICY "knowledge_base_select" ON public.knowledge_base
+--     FOR SELECT USING (public.is_workspace_member(workspace_id));
+--
+--   DROP POLICY IF EXISTS "knowledge_chunks_select" ON public.knowledge_chunks;
+--   CREATE POLICY "knowledge_chunks_select" ON public.knowledge_chunks
+--     FOR SELECT USING (public.is_workspace_member(workspace_id));
+--
+--   CREATE OR REPLACE FUNCTION public.match_knowledge_chunks(p_workspace_id uuid, p_query_embedding vector, p_match_count integer DEFAULT 8, p_min_similarity double precision DEFAULT 0.0)
+--    RETURNS TABLE(chunk_id uuid, document_id uuid, document_title text, chunk_index integer, content text, similarity double precision)
+--    LANGUAGE plpgsql
+--    STABLE SECURITY DEFINER
+--    SET search_path TO ''
+--   AS $function$
+--   BEGIN
+--     IF p_workspace_id IS NULL THEN
+--       RAISE EXCEPTION 'workspace_id is required';
+--     END IF;
+--
+--     -- coalesce y no auth.role() pelado: una conexion sin JWT devuelve NULL, y
+--     -- "NULL <> 'service_role' AND ..." evalua a NULL, con lo cual el IF no entra
+--     -- y el chequeo de permiso se saltea solo.
+--     IF COALESCE(auth.role(), '') <> 'service_role'
+--        AND NOT public.is_workspace_member(p_workspace_id) THEN
+--       RAISE EXCEPTION 'forbidden: not a member of this workspace';
+--     END IF;
+--
+--     RETURN QUERY
+--     SELECT
+--       kc.id,
+--       kc.document_id,
+--       kb.title,
+--       kc.chunk_index,
+--       kc.content,
+--       (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding))::double precision
+--     FROM public.knowledge_chunks kc
+--     JOIN public.knowledge_base kb ON kb.id = kc.document_id
+--     WHERE kc.workspace_id = p_workspace_id
+--       AND kb.deleted_at IS NULL
+--       AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= p_min_similarity
+--     ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
+--     LIMIT GREATEST(p_match_count, 1);
+--   END;
+--   $function$
+--
+--   CREATE OR REPLACE FUNCTION public.match_knowledge_chunks_filtered(p_workspace_id uuid, p_query_embedding vector, p_match_count integer, p_min_similarity double precision, p_tags text[], p_include_internal boolean)
+--    RETURNS TABLE(chunk_id uuid, document_id uuid, document_title text, chunk_index integer, content text, similarity double precision)
+--    LANGUAGE plpgsql
+--    STABLE SECURITY DEFINER
+--    SET search_path TO ''
+--   AS $function$
+--   BEGIN
+--     IF p_workspace_id IS NULL THEN
+--       RAISE EXCEPTION 'workspace_id is required';
+--     END IF;
+--
+--     IF COALESCE(auth.role(), '') <> 'service_role'
+--        AND NOT public.is_workspace_member(p_workspace_id) THEN
+--       RAISE EXCEPTION 'forbidden: not a member of this workspace';
+--     END IF;
+--
+--     RETURN QUERY
+--     SELECT
+--       kc.id,
+--       kc.document_id,
+--       kb.title,
+--       kc.chunk_index,
+--       kc.content,
+--       (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding))::double precision
+--     FROM public.knowledge_chunks kc
+--     JOIN public.knowledge_base kb ON kb.id = kc.document_id
+--     WHERE kc.workspace_id = p_workspace_id
+--       AND kb.deleted_at IS NULL
+--       AND (COALESCE(p_include_internal, false) OR kb.internal_only = false)
+--       AND (p_tags IS NULL OR cardinality(p_tags) = 0 OR kb.tags && p_tags)
+--       AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= COALESCE(p_min_similarity, 0)
+--     ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
+--     LIMIT GREATEST(COALESCE(p_match_count, 8), 1);
+--   END;
+--   $function$
+--
+--   DROP FUNCTION IF EXISTS public.can_read_knowledge(uuid, boolean);
+--
+-- Como probarla (sesion de cada persona):
+--   - un Member de sistema: en Corridas sigue viendo el titulo de lo que leyo el agente; no ve ningun
+--     documento interno (ni en la configuracion del agente);
+--   - un rol con `knowledge.view` y sin `knowledge.edit`: Conocimiento lista lo no interno;
+--   - Owner/Admin: todo, como antes;
+--   - `rpc('match_knowledge_chunks_filtered', { ..., p_include_internal: true })` con la sesion: error.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. La regla
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.can_read_knowledge(p_workspace_id uuid, p_internal_only boolean)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN COALESCE(p_internal_only, false) THEN COALESCE(public.has_permission(p_workspace_id, 'knowledge.edit'), false)
+    ELSE COALESCE(
+      public.has_permission(p_workspace_id, 'knowledge.view')
+        OR public.has_permission(p_workspace_id, 'knowledge.edit')
+        OR public.has_permission(p_workspace_id, 'agents.view'),
+      false
+    )
+  END;
+$$;
+
+COMMENT ON FUNCTION public.can_read_knowledge(uuid, boolean) IS
+  'Quien lee un documento de Conocimiento (00314): uno interno, solo knowledge.edit (Owner/Admin siempre); uno que no es interno, knowledge.view, knowledge.edit o agents.view. Nunca NULL.';
+
+REVOKE ALL ON FUNCTION public.can_read_knowledge(uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_read_knowledge(uuid, boolean) TO authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- 2. Las politicas de lectura
+-- ----------------------------------------------------------------------------
+
+DROP POLICY IF EXISTS "knowledge_base_select" ON public.knowledge_base;
+CREATE POLICY "knowledge_base_select" ON public.knowledge_base
+  FOR SELECT TO authenticated
+  USING (public.can_read_knowledge(workspace_id, internal_only));
+
+DROP POLICY IF EXISTS "knowledge_chunks_select" ON public.knowledge_chunks;
+CREATE POLICY "knowledge_chunks_select" ON public.knowledge_chunks
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.knowledge_base kb
+      WHERE kb.id = knowledge_chunks.document_id
+        AND kb.workspace_id = knowledge_chunks.workspace_id
+        AND public.can_read_knowledge(kb.workspace_id, kb.internal_only)
+    )
+  );
+
+-- ----------------------------------------------------------------------------
+-- 3. Las busquedas semanticas
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.match_knowledge_chunks(p_workspace_id uuid, p_query_embedding extensions.vector, p_match_count integer DEFAULT 8, p_min_similarity double precision DEFAULT 0.0)
+RETURNS TABLE(chunk_id uuid, document_id uuid, document_title text, chunk_index integer, content text, similarity double precision)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  -- coalesce y no auth.role() pelado: una conexion sin JWT devuelve NULL, y
+  -- "NULL <> 'service_role' AND ..." evalua a NULL, con lo cual el IF no entra
+  -- y el chequeo de permiso se saltea solo.
+  v_service boolean := COALESCE(auth.role(), '') = 'service_role';
+BEGIN
+  IF p_workspace_id IS NULL THEN
+    RAISE EXCEPTION 'workspace_id is required';
+  END IF;
+
+  IF NOT v_service AND NOT public.is_workspace_member(p_workspace_id) THEN
+    RAISE EXCEPTION 'forbidden: not a member of this workspace';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    kc.id,
+    kc.document_id,
+    kb.title,
+    kc.chunk_index,
+    kc.content,
+    (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding))::double precision
+  FROM public.knowledge_chunks kc
+  JOIN public.knowledge_base kb ON kb.id = kc.document_id
+  WHERE kc.workspace_id = p_workspace_id
+    AND kb.deleted_at IS NULL
+    -- Con la sesion de una persona, solo lo que esa persona puede leer (00314).
+    AND (v_service OR public.can_read_knowledge(p_workspace_id, kb.internal_only))
+    AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= p_min_similarity
+  ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
+  LIMIT GREATEST(p_match_count, 1);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.match_knowledge_chunks(uuid, extensions.vector, integer, double precision) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.match_knowledge_chunks(uuid, extensions.vector, integer, double precision) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.match_knowledge_chunks_filtered(p_workspace_id uuid, p_query_embedding extensions.vector, p_match_count integer, p_min_similarity double precision, p_tags text[], p_include_internal boolean)
+RETURNS TABLE(chunk_id uuid, document_id uuid, document_title text, chunk_index integer, content text, similarity double precision)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_service boolean := COALESCE(auth.role(), '') = 'service_role';
+BEGIN
+  IF p_workspace_id IS NULL THEN
+    RAISE EXCEPTION 'workspace_id is required';
+  END IF;
+
+  IF NOT v_service AND NOT public.is_workspace_member(p_workspace_id) THEN
+    RAISE EXCEPTION 'forbidden: not a member of this workspace';
+  END IF;
+
+  -- Lo interno (lo que sale de las llamadas, por ejemplo) solo lo pide el servidor.
+  IF COALESCE(p_include_internal, false) AND NOT v_service THEN
+    RAISE EXCEPTION 'forbidden: p_include_internal is only for the server';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    kc.id,
+    kc.document_id,
+    kb.title,
+    kc.chunk_index,
+    kc.content,
+    (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding))::double precision
+  FROM public.knowledge_chunks kc
+  JOIN public.knowledge_base kb ON kb.id = kc.document_id
+  WHERE kc.workspace_id = p_workspace_id
+    AND kb.deleted_at IS NULL
+    AND (COALESCE(p_include_internal, false) OR kb.internal_only = false)
+    -- Con la sesion de una persona, solo lo que esa persona puede leer (00314).
+    AND (v_service OR public.can_read_knowledge(p_workspace_id, kb.internal_only))
+    AND (p_tags IS NULL OR cardinality(p_tags) = 0 OR kb.tags && p_tags)
+    AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= COALESCE(p_min_similarity, 0)
+  ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
+  LIMIT GREATEST(COALESCE(p_match_count, 8), 1);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.match_knowledge_chunks_filtered(uuid, extensions.vector, integer, double precision, text[], boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.match_knowledge_chunks_filtered(uuid, extensions.vector, integer, double precision, text[], boolean) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 315: REVOKE TRUNCATE TRIGGER REFERENCES
+-- ============================================================
+-- ============================================================================
+-- 00315 — Sin TRUNCATE, TRIGGER ni REFERENCES para anon y authenticated, y
+--         claim_agent_reply solo para el servidor
+-- ============================================================================
+-- 1. Permisos de tabla de mas.
+--
+--    La 00000 le da `GRANT ALL ON TABLES` por defecto a anon, authenticated y
+--    service_role (asi se armo la base con el comportamiento viejo de Supabase).
+--    "ALL" incluye tres permisos que la app nunca usa con la sesion de una
+--    persona ni con la anon key:
+--
+--      * TRUNCATE: vacia una tabla entera SIN pasar por la RLS (la RLS no
+--        aplica a TRUNCATE). PostgREST no lo expone, pero cualquier camino que
+--        ejecute SQL con esos roles podria borrar todo.
+--      * TRIGGER: crear disparadores sobre la tabla.
+--      * REFERENCES: crear claves foraneas que apunten a la tabla.
+--
+--    Lectura del catalogo de produccion (7/11/2026, solo lectura): anon los tenia
+--    en 65 tablas de public y authenticated en 82-84. Se revocan en TODAS las
+--    tablas (y vistas) que existen, y en los permisos por defecto, para que las
+--    tablas que se creen despues no los reciban. SELECT, INSERT, UPDATE y DELETE
+--    NO se tocan: los sigue decidiendo cada migracion y la RLS. service_role no
+--    se toca (es el servidor).
+--
+--    Los permisos por defecto existen para dos duenos: el que corre las
+--    migraciones (postgres o el rol de la CLI) y supabase_admin. Del de
+--    supabase_admin solo se puede cambiar lo suyo si quien corre es ese rol;
+--    si no, queda un NOTICE (las tablas de la app las crean las migraciones, no
+--    supabase_admin).
+--
+-- 2. claim_agent_reply (00077) es SECURITY DEFINER y no chequea quien llama:
+--    con authenticated se podia tomar el lock de cualquier conversacion y saber
+--    si tiene una respuesta posterior a una fecha. La 00077 le saco PUBLIC y
+--    anon, pero authenticated la seguia ejecutando por el permiso por defecto.
+--    La unica que la llama es `claimAgentReply` (lib/agent/reply-check.ts),
+--    desde el turno del agente, que corre en el cron con el cliente de servicio
+--    (`/api/cron/agent-bursts`). Se le saca authenticated.
+--
+-- Idempotente: REVOKE de algo que no esta no falla.
+--
+-- Volver atras (no hace falta para ningun flujo de la app):
+--   GRANT TRUNCATE, TRIGGER, REFERENCES ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+--   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+--   ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+--   GRANT EXECUTE ON FUNCTION public.claim_agent_reply(uuid, timestamptz, uuid) TO authenticated;
+-- (Ojo: esas dos lineas de ALL vuelven a dar tambien SELECT/INSERT/UPDATE/DELETE
+-- por defecto, que es lo que la 00000 daba.)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1a. Las tablas que ya existen
+-- ----------------------------------------------------------------------------
+
+REVOKE TRUNCATE, TRIGGER, REFERENCES ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 1b. Las que se creen de aca en adelante
+-- ----------------------------------------------------------------------------
+
+DO $$
+DECLARE
+  roles constant text := 'anon, authenticated';
+BEGIN
+  EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM ' || roles;
+
+  IF current_user <> 'postgres' THEN
+    BEGIN
+      EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM ' || roles;
+    EXCEPTION WHEN insufficient_privilege THEN
+      RAISE NOTICE 'No se pudo cambiar el acceso por defecto del rol postgres: se cambio solo el del rol actual (%).', current_user;
+    END;
+  END IF;
+
+  IF current_user <> 'supabase_admin' AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    BEGIN
+      EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM ' || roles;
+    EXCEPTION WHEN insufficient_privilege THEN
+      RAISE NOTICE 'El acceso por defecto de supabase_admin no se puede cambiar desde %: queda como esta.', current_user;
+    END;
+  END IF;
+END
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 2. claim_agent_reply: solo el servidor
+-- ----------------------------------------------------------------------------
+
+REVOKE EXECUTE ON FUNCTION public.claim_agent_reply(uuid, timestamptz, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_agent_reply(uuid, timestamptz, uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 316: SIGNUP FLAG AFTER UPDATE
+-- ============================================================
+-- ============================================================
+-- 00316_signup_flag_after_update (7/11/2026)
+--
+-- Corrige la 00309. La marca `app_metadata.ssa_create_workspace` que pasan
+-- `scripts/create-owner.mjs` y los `verify-*` NO llega en el INSERT de
+-- auth.users: la API de admin de Supabase crea la cuenta y escribe
+-- `app_metadata` despues, con un UPDATE. El trigger de alta (AFTER INSERT) no
+-- la veia y la cuenta quedaba sin workspace (lo atajo
+-- `verify-workspace-isolation --despues-de-00309`).
+--
+-- Ahora `handle_new_user` tambien corre AFTER UPDATE OF raw_app_meta_data:
+-- cuando la marca pasa a `true` y la persona todavia no es miembro de ningun
+-- workspace, le arma el suyo (el mismo camino que el alta). Si ya tiene uno
+-- (por ejemplo la primera cuenta de una instalacion, que lo recibio en el
+-- INSERT), no hace nada. `app_metadata` no lo puede escribir un usuario: un
+-- registro publico sigue sin negocio.
+--
+-- La definicion anterior es la de la 00309 (supabase/migrations/00309_*.sql);
+-- lo unico que se agrega es el bloque "00316" del principio.
+--
+-- Idempotente. Puede ir antes o despues del deploy.
+-- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger as $$
+declare
+  ws_id uuid;
+  user_name text;
+  workspace_slug text;
+  v_invite_id uuid;
+  v_has_pending_invite boolean;
+begin
+  -- 00316: la marca llega en un UPDATE posterior al alta. Solo cuando pasa a
+  -- `true` y la persona todavia no tiene ningun workspace.
+  if tg_op = 'UPDATE' then
+    if coalesce(new.raw_app_meta_data->>'ssa_create_workspace', '') <> 'true'
+       or coalesce(old.raw_app_meta_data->>'ssa_create_workspace', '') = 'true' then
+      return new;
+    end if;
+    if exists (select 1 from public.workspace_members m where m.user_id = new.id) then
+      return new;
+    end if;
+  end if;
+
+  -- Alta por invitacion: no se crea workspace propio. registerFromInvite ya
+  -- valido la invitacion antes de crear esta cuenta y suma la membresia el
+  -- mismo, con finalizeAcceptInvite.
+  v_invite_id := (new.raw_user_meta_data->>'invite_id')::uuid;
+  if v_invite_id is not null then
+    select exists (
+      select 1 from public.workspace_invites
+      where id = v_invite_id
+        and email = new.email
+        and status = 'pending'
+        and expires_at > now()
+    ) into v_has_pending_invite;
+
+    if v_has_pending_invite then
+      return new;
+    end if;
+  end if;
+
+  -- 00309: un registro publico no se arma un negocio. Solo la primera cuenta
+  -- de una instalacion vacia, o una creada por el servidor con la marca en
+  -- app_metadata (que el registro publico no puede escribir).
+  if coalesce(new.raw_app_meta_data->>'ssa_create_workspace', '') <> 'true'
+     and exists (select 1 from public.workspaces) then
+    return new;
+  end if;
+
+  user_name := coalesce(
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'name',
+    split_part(new.email, '@', 1)
+  );
+  workspace_slug := lower(regexp_replace(user_name, '[^a-zA-Z0-9]', '-', 'g')) || '-' || substr(new.id::text, 1, 8);
+
+  insert into public.workspaces (name, slug)
+  values (user_name || '''s Workspace', workspace_slug)
+  returning id into ws_id;
+
+  insert into public.workspace_members (workspace_id, user_id, role)
+  values (ws_id, new.id, 'owner');
+
+  return new;
+exception when others then
+  raise log 'handle_new_user error: % %', sqlerrm, sqlstate;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+
+drop trigger if exists on_auth_user_workspace_flag on auth.users;
+create trigger on_auth_user_workspace_flag
+  after update of raw_app_meta_data on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ============================================================
+-- MIGRATION 317: FLOW STEP METRICS
+-- ============================================================
+-- ============================================================
+-- 00317_flow_step_metrics
 -- ============================================================
 -- Metricas por paso en el lienzo, el motivo de cada fallo y el lienzo como unico
 -- lugar donde se arman las automatizaciones de comentarios (noviembre 2026).
@@ -55927,7 +56905,7 @@ CREATE TABLE IF NOT EXISTS public.flow_link_clicks (
 );
 
 COMMENT ON TABLE public.flow_link_clicks IS
-  'Cada clic en un link con seguimiento que salio de un paso de una automatizacion (00316). La persona sale de la ejecucion (session_id): sin contact_id a proposito.';
+  'Cada clic en un link con seguimiento que salio de un paso de una automatizacion (00317). La persona sale de la ejecucion (session_id): sin contact_id a proposito.';
 
 CREATE INDEX IF NOT EXISTS idx_flow_link_clicks_flow_node
   ON public.flow_link_clicks(flow_id, node_id, clicked_at);
@@ -56059,7 +57037,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.flow_node_stats(uuid, timestamptz, timestamptz) IS
-  'Las cuentas de cada paso de una automatizacion para el lienzo (00316). SECURITY INVOKER: la RLS de quien mira decide que cuenta.';
+  'Las cuentas de cada paso de una automatizacion para el lienzo (00317). SECURITY INVOKER: la RLS de quien mira decide que cuenta.';
 
 REVOKE ALL ON FUNCTION public.flow_node_stats(uuid, timestamptz, timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.flow_node_stats(uuid, timestamptz, timestamptz) TO authenticated, service_role;
@@ -56158,6 +57136,6 @@ BEGIN
        AND type = 'comment_keyword'
        AND channel_id IS NULL;
 
-    RAISE NOTICE '00316: la regla % del flujo % paso al disparador del lienzo', r.trigger_id, r.flow_id;
+    RAISE NOTICE '00317: la regla % del flujo % paso al disparador del lienzo', r.trigger_id, r.flow_id;
   END LOOP;
 END $$;

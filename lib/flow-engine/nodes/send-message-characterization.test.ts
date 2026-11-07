@@ -1,11 +1,12 @@
 /**
  * Caracterizacion del nodo `sendMessage` ANTES de la Etapa 4.
  *
- * Fija que HOY el nodo NO mira `contacts.do_not_contact`: manda igual por
- * WhatsApp o Instagram. Solo el canal de email lo respeta (adentro de
- * `sendChannelMessage`). El nodo nuevo `send_email` (B7a) si lo respeta,
- * salvo cuando el flow arranco por un trigger de agenda. Este test es la
- * evidencia de que ese comportamiento viejo no cambia con la Etapa 4.
+ * CAMBIO APROBADO (noviembre 2026): hasta aca este
+ * test fijaba que el nodo NO miraba `contacts.do_not_contact` y mandaba igual
+ * por WhatsApp o Instagram. Ahora frena, con la MISMA regla que `send_email`:
+ * se saltea con el motivo salvo que el flow haya arrancado por un trigger de
+ * agenda (`lib/flow-engine/do-not-contact.ts`). El resto de lo que fija este
+ * archivo (lo que recibe `sendChannelMessage`) no cambio.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
@@ -29,12 +30,14 @@ beforeEach(() => {
   sendPrivateReply.mockClear();
 });
 
-describe("sendMessage (caracterizacion previa a la etapa 4)", () => {
-  it("manda aunque el contacto tenga do_not_contact (WhatsApp)", async () => {
+describe("sendMessage y \"no contactar\" (cambio aprobado: antes mandaba igual)", () => {
+  async function runWith(contact: Record<string, unknown>, variables: Record<string, unknown>) {
     const db = memoryDb({
       channels: [{ id: "ch-1", platform: "whatsapp" }],
-      contacts: [{ id: "c-1", do_not_contact: true }],
+      contacts: [{ id: "c-1", ...contact }],
+      analytics_events: [],
     });
+    const notes: Array<{ status: string; reason?: string }> = [];
     const context = {
       triggerId: "tr-1",
       flowId: "flow-1",
@@ -43,9 +46,10 @@ describe("sendMessage (caracterizacion previa a la etapa 4)", () => {
       conversationId: "conv-1",
       workspaceId: "ws-1",
       incomingMessage: {},
-      variables: { nombre: "Ana" },
+      variables,
+      noteStep: (n: { status: string; reason?: string }) => notes.push(n),
     };
-    await sendMessageNode.execute({
+    const result = await sendMessageNode.execute({
       supabase: db.client,
       node: { id: "n-1", type: "sendMessage", data: {} } as never,
       data: { messages: [{ text: "Hola {{nombre}}" }] } as never,
@@ -53,9 +57,28 @@ describe("sendMessage (caracterizacion previa a la etapa 4)", () => {
       sessionId: "s-1",
       runtime: { executeFlow: async () => {} },
     });
+    return { db, notes, result };
+  }
+
+  it("un contacto marcado do_not_contact NO recibe el mensaje (WhatsApp): el paso se saltea y el flujo sigue", async () => {
+    const { db, notes, result } = await runWith({ do_not_contact: true }, { nombre: "Ana" });
+    expect(sendChannelMessage).not.toHaveBeenCalled();
+    expect(recordSend).not.toHaveBeenCalled();
+    expect(result).toBeUndefined(); // no "pause": el flujo sigue con el paso que viene
+    expect(notes).toEqual([{ status: "skipped", reason: expect.stringContaining("no contactar") }]);
+    expect(db.rows("analytics_events")).toEqual([expect.objectContaining({ event_type: "node_skipped" })]);
+  });
+
+  it("en un flujo que arranco por la agenda manda igual (misma regla que Enviar email)", async () => {
+    await runWith({ do_not_contact: true }, { nombre: "Ana", trigger_scope: "booking" });
     expect(sendChannelMessage).toHaveBeenCalledTimes(1);
     const [, , message] = sendChannelMessage.mock.calls[0] as unknown as [unknown, unknown, { text: string }];
     expect(message.text).toBe("Hola Ana");
+  });
+
+  it("sin la marca, manda como siempre", async () => {
+    await runWith({ do_not_contact: false }, { nombre: "Ana" });
+    expect(sendChannelMessage).toHaveBeenCalledTimes(1);
     expect(recordSend).toHaveBeenCalledTimes(1);
   });
 });

@@ -26,10 +26,13 @@ import { stepEmailCategory } from "@/lib/email/categories";
 import { protectUnsubscribeVariable } from "@/lib/email/unsubscribe";
 import { deferFlowNode, takeAlreadySent } from "../defer-node";
 import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
-import { BOOKING_TRIGGER_SCOPE } from "@/lib/scheduling/automation/context";
+import { isBookingTriggered } from "../do-not-contact";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import { parseEmailAttachments, type EmailAttachmentRef } from "@/lib/email/attachment-limits";
 import { loadEmailAttachments } from "@/lib/email/flow-attachments";
+
+/** El motivo que queda en el historial cuando una reserva publica paso el tope de emails al invitado. */
+export const GUEST_EMAILS_SUPPRESSED_REASON = "Esa dirección ya recibió el máximo de emails de reservas de hoy: no se le mandó.";
 
 export interface SendEmailNodeData {
   /**
@@ -94,7 +97,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   if (!subject && !body) return;
 
   // Un flujo de agenda manda igual: es una reunión que la persona pidió.
-  const fromBooking = context.variables?.trigger_scope === BOOKING_TRIGGER_SCOPE;
+  const fromBooking = isBookingTriggered(context);
   const category = await nodeCategory(supabase, data, context, fromBooking);
 
   let contactEmail: string | null = null;
@@ -145,6 +148,17 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     recipients = [resolved.address];
   } else {
     recipients = await resolveRecipients(supabase, data, context, contactEmail);
+  }
+  // Una reserva publica que paso el tope de emails por direccion (seguridad): al invitado no le sale nada desde los
+  // flujos de la agenda; al anfitrion o a una direccion fija, si (lib/scheduling/booking/guest-email-limit.ts).
+  if (fromBooking && context.variables?.booking_guest_emails_suppressed === true && contactEmail) {
+    const guest = contactEmail.trim().toLowerCase();
+    const before = recipients.length;
+    recipients = recipients.filter((r) => r.trim().toLowerCase() !== guest);
+    if (recipients.length === 0 && before > 0) {
+      await markSkipped(supabase, context, node.id, GUEST_EMAILS_SUPPRESSED_REASON);
+      return;
+    }
   }
   if (recipients.length === 0) {
     console.warn(`[flow-engine] el nodo ${node.id} no tiene a dónde mandar el email`);

@@ -42,7 +42,7 @@ interface TestUser {
 async function makeUser(tag: string): Promise<TestUser> {
   const email = `zz-test-runs-${tag}-${Date.now()}@example.test`;
   const password = randomUUID();
-  const { data, error } = await svc.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: `zz-test ${tag}` } });
+  const { data, error } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password, email_confirm: true, user_metadata: { full_name: `zz-test ${tag}` } });
   if (error) throw new Error(`no pude crear usuario ${tag}: ${error.message}`);
   const client = createClient<Database>(URL, ANON, { auth: { persistSession: false } }) as SupabaseClient<Database>;
   const { error: e } = await client.auth.signInWithPassword({ email, password });

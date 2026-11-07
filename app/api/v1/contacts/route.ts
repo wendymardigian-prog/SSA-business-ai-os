@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveWorkspace } from "@/lib/workspace";
+import { sanitizeSearch } from "@/lib/url-params";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -16,7 +17,8 @@ export async function GET(request: NextRequest) {
   if (!membership) return NextResponse.json({ error: "No workspace" }, { status: 404 });
 
   const searchParams = request.nextUrl.searchParams;
-  const search = searchParams.get("search");
+  // Sin comas, parentesis ni comodines: el termino va adentro de un filtro `or` de PostgREST.
+  const search = sanitizeSearch(searchParams.get("search") ?? "");
   const tag = searchParams.get("tag");
   const subscribed = searchParams.get("subscribed");
   const limit = parseInt(searchParams.get("limit") || "50", 10);

@@ -30,11 +30,18 @@ import {
   type CategoryTotal, type MetricExpense, type MetricPayment, type MonthPoint, type VendorTotal,
 } from "./metrics";
 import type { VendorLite } from "./vendors";
+import { fetchAllPages } from "@/lib/shared/paginate";
 
 type Db = SupabaseClient<Database>;
 
-/** Tope de filas por consulta: más allá, el panel avisa que muestra parcial en vez de callarlo. */
+/**
+ * Tope de filas por consulta: más allá, el panel avisa que muestra parcial en vez de callarlo.
+ * Se lee de a páginas (`fetchAllPages`): PostgREST corta cada respuesta en 1.000 sin avisar, y un
+ * `.limit(20000)` solo devolvía las primeras mil (las cifras salían cortas y `truncated` nunca se prendía).
+ */
 export const DASHBOARD_ROW_LIMIT = 20000;
+
+type Paged<T> = { rows: T[]; truncated: boolean };
 
 export interface FinanceDashboardData {
   timeZone: string;
@@ -71,22 +78,31 @@ export function financePeriodParams(searchParams: Record<string, string | string
   return params;
 }
 
-async function readPayments(service: Db, workspaceId: string, from: string | null, to: string | null) {
-  let query = service.from("payments").select("type, status, amount, paid_at").eq("workspace_id", workspaceId).eq("status", "paid");
-  if (from) query = query.gte("paid_at", from);
-  if (to) query = query.lte("paid_at", to);
-  const { data, error } = await query.limit(DASHBOARD_ROW_LIMIT);
-  if (error) throw new Error(`pagos: ${error.message}`);
-  return (data ?? []) as unknown as MetricPayment[];
+async function readPayments(service: Db, workspaceId: string, from: string | null, to: string | null): Promise<Paged<MetricPayment>> {
+  const res = await fetchAllPages((a, b) => {
+    let query = service.from("payments").select("type, status, amount, paid_at").eq("workspace_id", workspaceId).eq("status", "paid");
+    if (from) query = query.gte("paid_at", from);
+    if (to) query = query.lte("paid_at", to);
+    // Orden estable entre páginas: sin él, una fila puede repetirse o perderse.
+    return query.order("id", { ascending: true }).range(a, b);
+  }, { maxRows: DASHBOARD_ROW_LIMIT });
+  if (res.error) throw new Error(`pagos: ${res.error}`);
+  return { rows: res.rows as unknown as MetricPayment[], truncated: res.truncated };
 }
 
-async function readPaidExpenses(db: Db, workspaceId: string, from: string | null, to: string | null) {
-  let query = db.from("expenses").select("status, amount, category_key, vendor_id, paid_date").eq("workspace_id", workspaceId).eq("status", "pagado");
-  if (from) query = query.gte("paid_date", from);
-  if (to) query = query.lte("paid_date", to);
-  const { data, error } = await query.limit(DASHBOARD_ROW_LIMIT);
-  if (error) throw new Error(`gastos: ${error.message}`);
-  return (data ?? []) as unknown as MetricExpense[];
+async function readPaidExpenses(db: Db, workspaceId: string, from: string | null, to: string | null): Promise<Paged<MetricExpense>> {
+  const res = await fetchAllPages((a, b) => {
+    let query = db.from("expenses").select("status, amount, category_key, vendor_id, paid_date").eq("workspace_id", workspaceId).eq("status", "pagado");
+    if (from) query = query.gte("paid_date", from);
+    if (to) query = query.lte("paid_date", to);
+    return query.order("id", { ascending: true }).range(a, b);
+  }, { maxRows: DASHBOARD_ROW_LIMIT });
+  if (res.error) throw new Error(`gastos: ${res.error}`);
+  return { rows: res.rows as unknown as MetricExpense[], truncated: res.truncated };
+}
+
+function emptyPage<T>(): Paged<T> {
+  return { rows: [], truncated: false };
 }
 
 export async function loadFinanceDashboard(ctx: PermissionContext, searchParams: Record<string, string | string[] | undefined>, now: Date = new Date()): Promise<FinanceDashboardData> {
@@ -123,11 +139,11 @@ export async function loadFinanceDashboard(ctx: PermissionContext, searchParams:
     const session = ctx.supabase as unknown as Db;
     const ws = ctx.workspace.id;
 
-    const [payments, prevPayments, expenses, prevExpenses, trendPayments, trendExpenses, salesCount, vendorsRes, overdueRes, scheduledRes] = await Promise.all([
+    const [paymentsPage, prevPaymentsPage, expensesPage, prevExpensesPage, trendPaymentsPage, trendExpensesPage, salesCount, vendorsRes, overdueRes, scheduledRes] = await Promise.all([
       readPayments(service, ws, range.from, range.to),
-      compare ? readPayments(service, ws, compare.from, compare.to) : Promise.resolve([] as MetricPayment[]),
+      compare ? readPayments(service, ws, compare.from, compare.to) : Promise.resolve(emptyPage<MetricPayment>()),
       readPaidExpenses(session, ws, civil.from, expenseTo),
-      civilPrev ? readPaidExpenses(session, ws, civilPrev.from, civilPrev.to) : Promise.resolve([] as MetricExpense[]),
+      civilPrev ? readPaidExpenses(session, ws, civilPrev.from, civilPrev.to) : Promise.resolve(emptyPage<MetricExpense>()),
       readPayments(service, ws, trendFromInstant, null),
       readPaidExpenses(session, ws, trendFromCivil, monthEnd(months[months.length - 1])),
       (async () => {
@@ -144,7 +160,11 @@ export async function loadFinanceDashboard(ctx: PermissionContext, searchParams:
     ]);
     if (vendorsRes.error || overdueRes.error || scheduledRes.error) throw new Error("apoyo");
 
-    const truncated = [payments, prevPayments, expenses, prevExpenses, trendPayments, trendExpenses].some((rows) => rows.length >= DASHBOARD_ROW_LIMIT);
+    const pages = [paymentsPage, prevPaymentsPage, expensesPage, prevExpensesPage, trendPaymentsPage, trendExpensesPage];
+    const truncated = pages.some((p) => p.truncated);
+    const [payments, prevPayments, expenses, prevExpenses, trendPayments, trendExpenses] = [
+      paymentsPage.rows, prevPaymentsPage.rows, expensesPage.rows, prevExpensesPage.rows, trendPaymentsPage.rows, trendExpensesPage.rows,
+    ] as [MetricPayment[], MetricPayment[], MetricExpense[], MetricExpense[], MetricPayment[], MetricExpense[]];
     const revenue = cashRevenue(payments);
     const expensesCents = paidExpenses(expenses);
     const metrics = buildSummaryMetrics({

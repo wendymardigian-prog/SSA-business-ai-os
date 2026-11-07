@@ -1,7 +1,7 @@
 /**
  * Lo que una pagina declara para compartirse: titulo, descripcion e imagen (`og:` y `twitter:`, con `<title>` de respaldo).
  *
- * Sin titulo no hay tarjeta. Una imagen solo vale si es `https`: la pasa `next/image`, que no acepta otra cosa.
+ * Sin titulo no hay tarjeta. Una imagen solo vale si es `https` (la pinta el navegador directo, sin contenido mixto).
  *
  * Modulo PURO, sin dependencias: lee texto con expresiones regulares y nunca arma HTML con lo que lee. React escapa lo
  * que se pinta. Nunca lanza.
