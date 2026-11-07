@@ -55839,3 +55839,304 @@ UPDATE public.workspaces
        )
  WHERE jsonb_typeof(ai_background_settings->'call_classification') = 'object'
    AND (ai_background_settings->'call_classification') ?| ARRAY['allow_ai_types', 'discarded_types'];
+
+-- ============================================================
+-- MIGRATION 309: SIGNUP NEEDS INVITE OR FLAG
+-- ============================================================
+-- ============================================================
+-- 00309_signup_needs_invite_or_flag (7/11/2026)
+--
+-- Auditoria de seguridad. Con el registro publico de Supabase prendido (lo
+-- estaba en produccion), cualquiera con la anon key (que es publica) hacia
+-- POST /auth/v1/signup, confirmaba su correo y el trigger le armaba un
+-- workspace como Owner: podia publicar formularios y agendas con el dominio
+-- del negocio y usar las acciones que piden ser Owner de "algun" workspace.
+--
+-- El arreglo de fondo es apagar "Allow new users to sign up" en el panel
+-- (Authentication -> Sign In / Providers). Esta migracion es la segunda
+-- cerradura: `handle_new_user` ya NO le arma un workspace a cualquiera. Solo:
+--   * a la PRIMERA cuenta de una instalacion vacia (asi sigue andando
+--     `scripts/create-owner.mjs` y el alta desde el panel en un clon nuevo);
+--   * a una cuenta creada por el servidor con
+--     `app_metadata.ssa_create_workspace = true`. `app_metadata` solo lo
+--     escribe la API de admin (service role): un registro publico no puede
+--     ponerlo.
+-- La invitacion valida sigue igual: no se crea workspace (registerFromInvite
+-- suma la membresia). Una cuenta sin nada de esto queda sin workspace y la
+-- app la manda al login (lib/workspace.ts).
+--
+-- Los scripts de verificacion crean sus usuarios con la marca.
+--
+-- Definicion anterior (00119), copiada de la base el 7/11/2026:
+--
+--   create or replace function public.handle_new_user()
+--   returns trigger as $$
+--   declare
+--     ws_id uuid;
+--     user_name text;
+--     workspace_slug text;
+--     v_invite_id uuid;
+--     v_has_pending_invite boolean;
+--   begin
+--     v_invite_id := (new.raw_user_meta_data->>'invite_id')::uuid;
+--     if v_invite_id is not null then
+--       select exists (
+--         select 1 from public.workspace_invites
+--         where id = v_invite_id
+--           and email = new.email
+--           and status = 'pending'
+--           and expires_at > now()
+--       ) into v_has_pending_invite;
+--
+--       if v_has_pending_invite then
+--         return new;
+--       end if;
+--     end if;
+--
+--     user_name := coalesce(
+--       new.raw_user_meta_data->>'full_name',
+--       new.raw_user_meta_data->>'name',
+--       split_part(new.email, '@', 1)
+--     );
+--     workspace_slug := lower(regexp_replace(user_name, '[^a-zA-Z0-9]', '-', 'g')) || '-' || substr(new.id::text, 1, 8);
+--
+--     insert into public.workspaces (name, slug)
+--     values (user_name || '''s Workspace', workspace_slug)
+--     returning id into ws_id;
+--
+--     insert into public.workspace_members (workspace_id, user_id, role)
+--     values (ws_id, new.id, 'owner');
+--
+--     return new;
+--   exception when others then
+--     raise log 'handle_new_user error: % %', sqlerrm, sqlstate;
+--     return new;
+--   end;
+--   $$ language plpgsql security definer set search_path = public;
+--
+-- Idempotente (CREATE OR REPLACE con la misma firma; el trigger no cambia).
+-- Puede ir antes o despues del deploy.
+-- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger as $$
+declare
+  ws_id uuid;
+  user_name text;
+  workspace_slug text;
+  v_invite_id uuid;
+  v_has_pending_invite boolean;
+begin
+  -- Alta por invitacion: no se crea workspace propio. registerFromInvite ya
+  -- valido la invitacion antes de crear esta cuenta y suma la membresia el
+  -- mismo, con finalizeAcceptInvite.
+  v_invite_id := (new.raw_user_meta_data->>'invite_id')::uuid;
+  if v_invite_id is not null then
+    select exists (
+      select 1 from public.workspace_invites
+      where id = v_invite_id
+        and email = new.email
+        and status = 'pending'
+        and expires_at > now()
+    ) into v_has_pending_invite;
+
+    if v_has_pending_invite then
+      return new;
+    end if;
+  end if;
+
+  -- 00309: un registro publico no se arma un negocio. Solo la primera cuenta
+  -- de una instalacion vacia, o una creada por el servidor con la marca en
+  -- app_metadata (que el registro publico no puede escribir).
+  if coalesce(new.raw_app_meta_data->>'ssa_create_workspace', '') <> 'true'
+     and exists (select 1 from public.workspaces) then
+    return new;
+  end if;
+
+  user_name := coalesce(
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'name',
+    split_part(new.email, '@', 1)
+  );
+  workspace_slug := lower(regexp_replace(user_name, '[^a-zA-Z0-9]', '-', 'g')) || '-' || substr(new.id::text, 1, 8);
+
+  insert into public.workspaces (name, slug)
+  values (user_name || '''s Workspace', workspace_slug)
+  returning id into ws_id;
+
+  insert into public.workspace_members (workspace_id, user_id, role)
+  values (ws_id, new.id, 'owner');
+
+  return new;
+exception when others then
+  raise log 'handle_new_user error: % %', sqlerrm, sqlstate;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+
+-- ============================================================
+-- MIGRATION 310: EVENT REDIRECT HTTPS
+-- ============================================================
+-- ============================================================
+-- 00310_event_redirect_https (7/11/2026)
+--
+-- Auditoria de seguridad. `event_types.success_redirect_url` solo se validaba
+-- en la Server Action (`isSafeRedirectUrl`, solo https). La politica
+-- `event_types_update` deja que quien maneja su evento lo edite directo por
+-- la API (PostgREST), y la pagina publica de reserva hace
+-- `window.location.href = redirectUrl`: un `javascript:...` guardado asi
+-- corria en el dominio de la app para cualquiera que reservara (y la sesion
+-- de Supabase vive en cookies que el navegador puede leer).
+--
+-- Ahora la base exige lo mismo que la pantalla: NULL o https://. El codigo
+-- ademas vuelve a validar al leer y en el navegador.
+--
+-- NOT VALID: frena toda escritura nueva sin fallar si un clon ya tuviera una
+-- fila vieja rara; despues se intenta validar lo que hay (en produccion no
+-- habia ninguna fila con redirect, comprobado el 7/11/2026). Si la
+-- validacion falla, avisa y la restriccion igual queda activa para lo nuevo.
+--
+-- Idempotente. Puede ir antes o despues del deploy.
+-- ============================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'event_types_success_redirect_https'
+      AND conrelid = 'public.event_types'::regclass
+  ) THEN
+    ALTER TABLE public.event_types
+      ADD CONSTRAINT event_types_success_redirect_https
+      CHECK (success_redirect_url IS NULL OR success_redirect_url ~* '^https://[^/@\s]+') NOT VALID;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  ALTER TABLE public.event_types VALIDATE CONSTRAINT event_types_success_redirect_https;
+EXCEPTION WHEN check_violation THEN
+  RAISE WARNING '00310: hay eventos con una redireccion que no es https; la restriccion vale para lo nuevo. Revisar: SELECT id, success_redirect_url FROM public.event_types WHERE success_redirect_url !~* ''^https://'';';
+END $$;
+
+-- ============================================================
+-- MIGRATION 311: MESSAGES CLIENT ATTACHMENTS GUARD
+-- ============================================================
+-- ============================================================
+-- 00311_messages_client_attachments_guard (7/11/2026)
+--
+-- Auditoria de seguridad (SSRF). La politica `messages_insert` (00054) deja
+-- que cualquier miembro inserte mensajes con el cliente del usuario, con la
+-- columna `attachments` libre. Un adjunto con `sourceUrl` (o un formato viejo
+-- con `url`) hacia que "Reintentar descarga" (/api/v1/messages/<id>/media-retry)
+-- bajara esa direccion desde el servidor, incluida una interna, y guardara la
+-- respuesta en `chat-media`, donde se podia leer. Un `storagePath` de otro
+-- workspace llegaba al transcriptor y a "guardar sticker", que leen con el
+-- cliente de servicio.
+--
+-- La app, con la sesion del usuario, solo escribe adjuntos v2 que ya subio a
+-- `chat-media` (el envio manual de /api/v1/messages): sin `sourceUrl` y con
+-- la ruta del propio workspace. Este trigger exige exactamente eso cuando
+-- escribe un usuario (`authenticated` o `anon`). El servidor (service role),
+-- los webhooks y los jobs no cambian.
+--
+-- El codigo ademas baja la media con la misma proteccion de la "Llamada HTTP"
+-- (lib/net/safe-fetch.ts) y el reintento solo acepta mensajes entrantes.
+--
+-- El nombre ordena DESPUES de `messages_fill_workspace_id` (los BEFORE corren
+-- por orden alfabetico): cuando se mira, `workspace_id` ya esta completo.
+--
+-- Idempotente. Va ANTES o despues del deploy (el codigo no depende de esto).
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.messages_guard_client_attachments()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_item jsonb;
+  v_path text;
+BEGIN
+  -- Solo lo que escribe una persona con su sesion. Sin JWT (migraciones, SQL
+  -- del cron) o con service role, como siempre.
+  IF coalesce(auth.role(), '') NOT IN ('authenticated', 'anon') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.attachments IS NOT DISTINCT FROM OLD.attachments THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.attachments IS NULL OR jsonb_typeof(NEW.attachments) = 'null' THEN
+    RETURN NEW;
+  END IF;
+
+  IF jsonb_typeof(NEW.attachments) <> 'object'
+     OR (NEW.attachments->>'v') IS DISTINCT FROM '2'
+     OR jsonb_typeof(NEW.attachments->'items') IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'adjuntos con un formato que no se puede escribir desde la app'
+      USING ERRCODE = '42501';
+  END IF;
+
+  FOR v_item IN SELECT value FROM jsonb_array_elements(NEW.attachments->'items') LOOP
+    IF jsonb_typeof(v_item) <> 'object' THEN
+      RAISE EXCEPTION 'adjunto invalido' USING ERRCODE = '42501';
+    END IF;
+    IF jsonb_typeof(v_item->'sourceUrl') IS NOT NULL AND jsonb_typeof(v_item->'sourceUrl') <> 'null' THEN
+      RAISE EXCEPTION 'un adjunto escrito desde la app no puede traer una direccion de descarga'
+        USING ERRCODE = '42501';
+    END IF;
+    IF jsonb_typeof(v_item->'storagePath') IS NOT NULL AND jsonb_typeof(v_item->'storagePath') <> 'null' THEN
+      v_path := v_item->>'storagePath';
+      IF jsonb_typeof(v_item->'storagePath') <> 'string'
+         OR NEW.workspace_id IS NULL
+         OR NOT starts_with(v_path, NEW.workspace_id::text || '/')
+         OR position('..' IN v_path) > 0 THEN
+        RAISE EXCEPTION 'el archivo de un adjunto tiene que ser de este negocio'
+          USING ERRCODE = '42501';
+      END IF;
+    END IF;
+  END LOOP;
+
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.messages_guard_client_attachments() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.messages_guard_client_attachments() TO service_role;
+
+DROP TRIGGER IF EXISTS messages_guard_client_attachments ON public.messages;
+CREATE TRIGGER messages_guard_client_attachments
+  BEFORE INSERT OR UPDATE OF attachments ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.messages_guard_client_attachments();
+
+-- ============================================================
+-- MIGRATION 312: INVITES SELECT NEEDS PERMISSION
+-- ============================================================
+-- ============================================================
+-- 00312_invites_select_needs_permission (7/11/2026)
+--
+-- Auditoria de seguridad. `workspace_invites_select` (00006) dejaba leer las
+-- invitaciones a CUALQUIER miembro, y el `id` de una invitacion es el link
+-- `/invite/<id>`: la credencial. Un Member podia leer el link de una
+-- invitacion de Admin pendiente para un email sin cuenta, crear esa cuenta
+-- con su propia contrasena (registerFromInvite) y entrar como Admin.
+--
+-- Ahora las ve solo quien puede invitar (`team.invite`), que es quien las
+-- muestra en Ajustes -> Equipo (el resto de la app las lee con el cliente de
+-- servicio). Mismo patron que `workspace_invites_insert/update/delete`.
+--
+-- Politica vieja (00006), copiada de la base el 7/11/2026:
+--   CREATE POLICY "workspace_invites_select" ON workspace_invites
+--     FOR SELECT USING (workspace_id IN (
+--       SELECT workspace_members.workspace_id FROM workspace_members
+--       WHERE workspace_members.user_id = auth.uid()));
+--
+-- Idempotente. Puede ir antes o despues del deploy.
+-- ============================================================
+
+DROP POLICY IF EXISTS "workspace_invites_select" ON public.workspace_invites;
+CREATE POLICY "workspace_invites_select" ON public.workspace_invites
+  FOR SELECT USING ((SELECT public.has_permission(workspace_invites.workspace_id, 'team.invite')));
