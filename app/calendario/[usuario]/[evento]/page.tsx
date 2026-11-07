@@ -11,7 +11,10 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createServiceClient } from "@/lib/supabase/server";
+import { shareMetadata } from "@/lib/og/share";
+import { findPublicEvent } from "@/lib/scheduling/data/slots-input";
 import { getPublicEvent, getPublicSlots } from "@/lib/scheduling/slots-service";
+import { loadEventShare } from "@/lib/scheduling/share-preview";
 import { parseEmbedParams } from "@/lib/scheduling/booker/embed-params";
 import { monthOf } from "@/lib/scheduling/booker/month-view";
 import { dateInTz } from "@/lib/scheduling/time/tz";
@@ -24,12 +27,14 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { usuario, evento } = await params;
   const service = await createServiceClient();
-  const found = await getPublicEvent(service, usuario, evento);
+  const found = await findPublicEvent(service, usuario, evento);
   if (!found) return { title: { absolute: "No encontrado" } };
+  const share = await loadEventShare(service, found);
   return {
-    title: { absolute: `${found.title} · ${found.hostName}` },
-    description: found.description ?? undefined,
+    title: { absolute: `${found.event.title} · ${found.profile.display_name}` },
+    description: share?.description ?? found.event.description_md ?? undefined,
     robots: { index: false, follow: false },
+    ...(share ? shareMetadata(share) : {}),
   };
 }
 

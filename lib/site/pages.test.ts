@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { previewBotRule } from "@/lib/og/robots";
 import { RESERVED_ROUTES, SITE_PAGES, buildRobots, isReservedPath, sitemapEntries, validateSitePages } from "./pages";
 
 describe("la lista de páginas de la plantilla", () => {
@@ -45,16 +46,23 @@ describe("sitemapEntries", () => {
 });
 
 describe("buildRobots", () => {
-  it("sin páginas queda IGUAL que antes: bloquea todo y no menciona un sitemap", () => {
-    expect(buildRobots([], "https://app.x")).toEqual({ rules: [{ userAgent: "*", disallow: "/" }] });
+  it("sin páginas bloquea todo y no menciona un sitemap; solo pasan los lectores de vista previa", () => {
+    expect(buildRobots([], "https://app.x")).toEqual({ rules: [previewBotRule(), { userAgent: "*", disallow: "/" }] });
   });
   it("con páginas bloquea todo, permite solo esas y suma el sitemap", () => {
     expect(buildRobots([{ path: "/" }, { path: "/servicios" }], "https://app.x/")).toEqual({
-      rules: [{ userAgent: "*", allow: ["/$", "/servicios"], disallow: "/" }],
+      rules: [previewBotRule(["/$", "/servicios"]), { userAgent: "*", allow: ["/$", "/servicios"], disallow: "/" }],
       sitemap: "https://app.x/sitemap.xml",
     });
   });
   it("nunca permite una ruta reservada aunque alguien la agregue", () => {
-    expect(buildRobots([{ path: "/dashboard" }], "https://app.x")).toEqual({ rules: [{ userAgent: "*", disallow: "/" }] });
+    expect(buildRobots([{ path: "/dashboard" }], "https://app.x")).toEqual({ rules: [previewBotRule(), { userAgent: "*", disallow: "/" }] });
+  });
+  it("a los lectores de vista previa les deja la agenda y los formularios, nunca una reunión ya agendada", () => {
+    const rule = previewBotRule();
+    expect(rule.userAgent).toEqual(expect.arrayContaining(["facebookexternalhit", "WhatsApp", "Twitterbot", "LinkedInBot"]));
+    expect(rule.allow).toEqual(expect.arrayContaining(["/calendario/", "/f/"]));
+    expect(rule.disallow).toEqual(expect.arrayContaining(["/calendario/agenda/", "/"]));
+    expect(rule.allow).not.toContain("/dashboard");
   });
 });

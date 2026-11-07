@@ -57,7 +57,7 @@ export default function Contacto() {
 ## SEO
 
 - Cada página define su `metadata` (`title`, `description`, opcionalmente `openGraph`).
-- `app/robots.ts` **sigue bloqueando todo** salvo las páginas de `lib/site/pages.ts`; con esa lista vacía queda como antes (nada se indexa).
+- `app/robots.ts` **sigue bloqueando todo** salvo las páginas de `lib/site/pages.ts`; con esa lista vacía no se indexa nada. Los lectores de vista previa (WhatsApp, Facebook, LinkedIn, X y otros, `lib/og/robots.ts`) además pueden leer la agenda y los formularios para armar su tarjeta.
 - `app/sitemap.ts` lista esas mismas páginas. Sin páginas, el sitemap queda vacío.
 
 ## De dónde vino cada persona (atribución)

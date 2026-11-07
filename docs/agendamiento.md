@@ -349,6 +349,16 @@ de candidatos son un tipo del área **Equipo**. Se precargan en los workspaces n
 `seed_booking_categories_for_workspace`: idempotente, respeta un área con el mismo nombre que el negocio ya tuviera y
 no cambia ninguna reunión ni el `category_snapshot` ya congelado. Se renombran pero no se archivan.
 
+## La tarjeta al compartir el link (6/11/2026)
+
+Al pegar el link de un evento en WhatsApp o una red se ve `<evento> · <anfitrión>`, la descripción en texto plano (o «30 min con Ana. Elegí un horario.») y una imagen generada con la marca del negocio. No hay nada que configurar: sale del logo, el nombre y el color de Ajustes → General → Marca. Las reuniones ya agendadas (`/calendario/agenda/<uid>`) no tienen tarjeta.
+
+- **Las piezas:** `lib/og/text.ts` (textos, puro), `lib/og/logo.ts` (el logo a PNG con `sharp` y el fondo donde se lee), `lib/og/image.tsx` (el dibujo), `lib/og/share.ts` (las etiquetas y la respuesta de la imagen) y `lib/scheduling/share-preview.ts`.
+- **La imagen** es `<link>/preview.png`, con tope de 120 pedidos por minuto y por IP. Pesa unos 20 KB y se cachea un día. Su URL lleva `?v=`, así que un cambio de marca genera una imagen nueva para los links que se compartan después.
+- **Los links ya compartidos pueden seguir con la tarjeta vieja**: WhatsApp y Meta la guardan un tiempo, y eso no se controla desde acá. En Meta se puede forzar con su herramienta Sharing Debugger.
+- **Cada app decide cómo la muestra.** WhatsApp puede usar una miniatura cuadrada, por eso logo y título van centrados, y al mandar desde la bandeja el mensaje sale por Evolution, que puede comportarse distinto.
+- **Dos condiciones para que un lector vea las etiquetas:** `htmlLimitedBots: /.*/` en `next.config.ts` (las pone en el `<head>` para todos) y el grupo de `lib/og/robots.ts` en `robots.txt`.
+
 ## Atribución de una reunión (6/11/2026)
 
 La lista suma columnas de UTM y de campaña, conjunto y anuncio de Meta, con un menú «Columnas» que recuerda lo elegido. El panel muestra toda la atribución, la URL de entrada y el vínculo con Meta, que se puede corregir ahí mismo. Kanban y calendario no cambian. Reglas en [atribucion.md](atribucion.md), «Vínculo con Meta: siempre por id».
