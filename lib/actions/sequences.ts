@@ -369,6 +369,15 @@ export async function enrollContact(
     return { ok: false, error: "El contacto está marcado como cliente. Sacale la marca antes de inscribirlo." };
   }
 
+  // El canal tambien tiene que ser de este negocio: el id llega del navegador.
+  const { data: channel } = await supabase
+    .from("channels")
+    .select("id")
+    .eq("id", channelId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+  if (!channel) return { ok: false, error: "No encontré ese canal" };
+
   const collision = await detectSequenceCollision(supabase, {
     workspaceId: workspace.id,
     contactId,

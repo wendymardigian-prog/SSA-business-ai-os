@@ -25,6 +25,7 @@ import { dateInTz } from "@/lib/scheduling/time/tz";
 import { getViewerTimezone } from "@/lib/scheduling/viewer-timezone";
 import { capitalize, formatSlotSummary } from "@/lib/scheduling/booker/format";
 import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
+import { isSafeRedirectUrl } from "@/lib/scheduling/event-validation";
 import type { BookerEvent } from "./types";
 import { EventMeta } from "./event-meta";
 import { DatePicker } from "./date-picker";
@@ -265,7 +266,8 @@ export function Booker({
         eventSlug: slug,
       });
 
-      if (body.redirectUrl) {
+      // Solo https: un `javascript:` en la redireccion correria en el dominio de la app (00310).
+      if (isSafeRedirectUrl(body.redirectUrl)) {
         window.location.href = body.redirectUrl;
         return;
       }

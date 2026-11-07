@@ -45,7 +45,7 @@ const stamp = Date.now();
 async function makeUser(tag) {
   const email = `zz-test-account-${tag}-${stamp}@example.test`;
   const password = randomUUID();
-  const { data, error } = await svc.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: `zz-test ${tag}` } });
+  const { data, error } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password, email_confirm: true, user_metadata: { full_name: `zz-test ${tag}` } });
   if (error) throw new Error(`no pude crear usuario ${tag}: ${error.message}`);
   const client = createClient(URL, ANON, { auth: { persistSession: false } });
   const { error: e } = await client.auth.signInWithPassword({ email, password });

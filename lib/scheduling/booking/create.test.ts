@@ -131,6 +131,22 @@ describe("createBooking", () => {
     expect(db.rows("bookings")[0].contact_id).toBe("c-viejo");
   });
 
+  it("un contacto de otro negocio no se agenda ni se toca", async () => {
+    const db = schedulingWorld({ contacts: [{ id: "c-ajeno", workspace_id: "ws-otro", email: null, phone: null }] });
+    const result = await createBooking(db.client, { ...base, eventTypeId: EVENT, username: undefined, slug: undefined, contactId: "c-ajeno", origin: "manual" });
+    expect(result).toMatchObject({ ok: false, status: 404, reason: "not_found" });
+    expect(db.rows("bookings")).toHaveLength(0);
+    expect(db.rows("contacts")[0].email).toBeNull();
+  });
+
+  it("una redireccion guardada que no es https no se devuelve", async () => {
+    const db = schedulingWorld({ event: { success_redirect_url: "javascript:alert(1)" } });
+    const result = await createBooking(db.client, base);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("no se creó");
+    expect(result.redirectUrl).toBeNull();
+  });
+
   it("un contacto con el mismo email se reutiliza", async () => {
     const db = schedulingWorld({ contacts: [{ id: "c-viejo", workspace_id: "ws-1", email: "juan@ejemplo.com", phone: null }] });
     const result = await createBooking(db.client, base);

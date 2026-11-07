@@ -36,7 +36,7 @@ const stamp = Date.now();
 try {
   const email = `zz-test-import-${stamp}@example.test`;
   const password = randomUUID();
-  const { data: u, error: ue } = await svc.auth.admin.createUser({ email, password, email_confirm: true });
+  const { data: u, error: ue } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password, email_confirm: true });
   if (ue) throw new Error(ue.message);
 
   const cliente = createClient(URL, ANON, { auth: { persistSession: false } });
@@ -140,7 +140,7 @@ try {
   {
     const otroEmail = `zz-test-import-otro-${stamp}@example.test`;
     const otraPass = randomUUID();
-    const { data: otro } = await svc.auth.admin.createUser({ email: otroEmail, password: otraPass, email_confirm: true });
+    const { data: otro } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email: otroEmail, password: otraPass, email_confirm: true });
     await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: otro.user.id, role: "member" });
 
     const otroCliente = createClient(URL, ANON, { auth: { persistSession: false } });
