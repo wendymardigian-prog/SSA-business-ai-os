@@ -179,9 +179,11 @@ export function CategoriesView({
             <DialogField label="Nombre" hint={`Hasta ${CATEGORY_NAME_MAX} caracteres`}>
               <input value={name} onChange={(e) => setName(e.target.value)} maxLength={CATEGORY_NAME_MAX} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm" />
             </DialogField>
+            {/* @plantilla-desde(llamadas) */}
             <DialogField label="Cuándo se usa (opcional)" hint="Ayuda a la IA a clasificar las grabaciones que no se vinculan con una reunión.">
               <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={CATEGORY_DESCRIPTION_MAX} rows={2} className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm" />
             </DialogField>
+            {/* @plantilla-hasta(llamadas) */}
             {(modal.kind === "area" || (modal.kind === "rename" && !modal.category.parent_id)) && (
               <div>
                 <p className="text-xs font-medium">Color</p>

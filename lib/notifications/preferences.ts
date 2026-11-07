@@ -28,14 +28,15 @@ export const CHANNEL_LABELS: Record<NotificationChannel, string> = {
 
 export const NOTIFICATION_SECTIONS = [
   { key: "chat", title: "Chat" },
-  { key: "tareas", title: "Tareas" },
+  { key: "tareas", title: "Tareas" }, // @plantilla-quitar(tareas)
   { key: "agenda", title: "Agenda" },
   { key: "contenido", title: "Contenido" },
-  { key: "ventas", title: "Ventas y finanzas" },
-  { key: "formularios", title: "Formularios y reportes" },
+  { key: "ventas", title: "Ventas y finanzas" }, // @plantilla-quitar(ventas)
+  { key: "formularios", title: "Formularios y reportes" }, // @plantilla-quitar(formularios)
   { key: "ia", title: "Agente IA y gasto" },
   { key: "integraciones", title: "Canales e integraciones" },
-  { key: "automatizaciones", title: "Automatizaciones y llamadas" },
+  { key: "automatizaciones", title: "Automatizaciones y llamadas" }, // @plantilla-quitar(llamadas)
+  // @plantilla-sin(llamadas): { key: "automatizaciones", title: "Automatizaciones" },
 ] as const;
 export type NotificationSectionKey = (typeof NOTIFICATION_SECTIONS)[number]["key"];
 
@@ -187,7 +188,7 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: ADMINS,
     defaults: BELL,
   },
-  // ── Ventas y finanzas ─────────────────────────────────────────────────
+  // ── Lo que solo tiene sentido con esos módulos ──
   // @plantilla-desde(comisiones)
   {
     key: "commissions_mine",
@@ -286,7 +287,8 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     key: "integration_attention",
     section: "integraciones",
     label: "Una integración necesita atención",
-    description: "Una conexión vence o se revocó (también tu Google Calendar o tu Fathom), se agotó la cuota de emails o falla un webhook.",
+    description: "Una conexión vence o se revocó (también tu Google Calendar o tu Fathom), se agotó la cuota de emails o falla un webhook.", // @plantilla-quitar(llamadas)
+    // @plantilla-sin(llamadas): description: "Una conexión vence o se revocó (también tu Google Calendar), o se agotó la cuota de emails.",
     types: [
       "integration_attention",
       "email_quota_reached",

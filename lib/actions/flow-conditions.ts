@@ -32,7 +32,8 @@ export async function getConditionCatalogInputs(input: {
   triggerData?: Record<string, unknown>;
 }): Promise<ConditionCatalogResult> {
   const ctx = await getMemberAction();
-  if (!ctx || !(ctx.can("flows.view") || ctx.can("forms.view") || ctx.can("scheduling.use"))) {
+  if (!ctx || !(ctx.can("flows.view") || ctx.can("forms.view") || ctx.can("scheduling.use"))) { // @plantilla-quitar(formularios)
+  // @plantilla-sin(formularios): if (!ctx || !(ctx.can("flows.view") || ctx.can("scheduling.use"))) {
     return { ok: false, error: "No tenés permiso para ver las automatizaciones." };
   }
   if (!UUID.test(input.flowId)) return { ok: false, error: "No encontré esa automatización." };

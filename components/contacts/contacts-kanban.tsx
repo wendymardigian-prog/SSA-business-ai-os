@@ -3,7 +3,7 @@
 /**
  * El Kanban de contactos: una columna por estado de setter o de vendedor.
  *
- * Se arrastra con HTML nativo, como los tableros de Tareas, Agenda y
+ * Se arrastra con HTML nativo, como los tableros de Agenda y
  * Contenido: tarjetas simples, sin librería. El movimiento se valida ANTES de
  * pedirlo al servidor (`evaluateContactDrop`): una tarjeta que se mueve y
  * vuelve sola, sin explicación, parece un error. La tarjeta cambia de columna

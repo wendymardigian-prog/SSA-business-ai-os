@@ -114,7 +114,7 @@ Railway es el servicio que va a mantener la app prendida las 24 horas con una di
 5. **Las 5 variables.** Son datos de configuración que la app necesita para funcionar. En Railway: hacer clic en el servicio → pestaña **Variables** → botón **New Variable** (una por una) o **Raw Editor** (pegar todas juntas, una por línea, con el formato `NOMBRE=valor`). **Importante: para copiar las claves de Supabase, que use su navegador de siempre (Chrome, Safari...), NO el Navegador de esta app**: así las claves nunca aparecen en pantallas que vos puedas ver. Ni siquiera le pidas una captura de esas pantallas. Explicale de dónde sale cada una y que las pegue DIRECTO en Railway:
    - `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase → Project Settings → Data API.
    - `SUPABASE_SERVICE_ROLE_KEY`: Supabase → Project Settings → API Keys → service_role. Es la más sensible (salta todos los permisos de la base): nunca por chat.
-   - `NEXT_PUBLIC_APP_URL`: el dominio del punto 3.
+   - `NEXT_PUBLIC_APP_URL`: el dominio del punto 3. Si el negocio ya tiene un dominio propio (por ejemplo `sistema.suempresa.com`), mejor ese: es el que van a ver en todos los links. Si lo suma después: agregarlo en Railway (Settings → Networking → Custom Domain), cambiar esta variable a `https://<dominio>`, sumar `https://<dominio>/**` en las Redirect URLs de Supabase Auth (paso 4) y, si usa Google, sumar `https://<dominio>/api/oauth/google/callback` en su cliente OAuth. Esta variable se lee al compilar: cambiarla vuelve a armar la app.
    - `CRON_SECRET`: el valor del punto 4.
 
    Contale también que hay variables opcionales de marca (`NEXT_PUBLIC_BRAND_NAME`, `NEXT_PUBLIC_BRAND_LOGO_URL`, `NEXT_PUBLIC_BRAND_COLOR`) y de WhatsApp (Evolution), explicadas en `.env.example`: no son parte del arranque obligatorio y se pueden sumar después (las de marca piden un nuevo deploy).
@@ -166,6 +166,16 @@ Explicale que esto le dice a Supabase a qué dirección devolver a alguien despu
 
 De paso, que confirme en **Authentication → Sign In / Providers** que "Allow new users to sign up" esté **apagado**: el sistema no tiene registro público, las cuentas nacen por invitación.
 
+5. **"Olvidé mi contraseña" (recomendado).** Explicale que ese email lo manda Supabase, y que con su servidor de correo por defecto manda como mucho 2 por hora. Dos cosas, las dos en Supabase → **Authentication → Emails**:
+   - **SMTP Settings**, si ya tiene Resend: host `smtp.resend.com`, puerto `465`, usuario `resend`, la API key de Resend como contraseña (la pega la persona, nunca por chat) y un remitente de un dominio verificado. Si todavía no tiene Resend, se puede hacer después.
+   - **Templates → Reset password**: que reemplace el contenido por este, que está en español y funciona aunque el link se abra en otro navegador:
+
+     ```html
+     <h2>Elegí tu contraseña nueva</h2>
+     <p>Pediste cambiar la contraseña de tu cuenta. Si no fuiste vos, ignorá este email.</p>
+     <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/restablecer">Elegir mi contraseña nueva</a></p>
+     ```
+
 ## Paso 5 — El archivo `.env` local
 
 Sirve para que el proyecto también corra en su computadora (para probar cosas antes de que se vean en vivo).
@@ -181,6 +191,7 @@ Sirve para que el proyecto también corra en su computadora (para probar cosas a
 Explicale, en lenguaje simple y sin apuro:
 
 - Quien le entregó este sistema lo sigue mejorando (arreglos, funciones nuevas). Su copia puede quedar preparada para traer esas mejoras cuando quiera.
+- Algunas versiones piden instalar de cero, con una base nueva. Si es así, el README («Cómo actualizar») lo avisa: antes de traer una actualización, revisalo.
 - **Nunca se actualiza sola.** La persona decide si actualiza y cuándo. Mientras no lo pida, su sistema queda exactamente como está.
 - Cada actualización llega como un paquete, con una lista de qué trae. Puede saltearse una y aplicarla más adelante: la siguiente incluye las anteriores.
 - Elegir solo algunas partes de una actualización se puede, pero no conviene: las partes suelen depender unas de otras. Lo normal es aplicar el paquete entero.
@@ -200,6 +211,8 @@ Hacé un resumen corto con checks de lo que quedó funcionando:
 - Las URLs de Auth apuntando al dominio.
 - El `.env` local listo.
 - Actualizaciones: preparadas o no, según lo que eligió.
+
+Si después conecta Resend, contale que la tarjeta (Ajustes → Integraciones → Resend) crea sola el webhook que avisa rebotes y quejas, si la API key es de acceso completo: sin ese webhook, el freno automático de los emails de marketing no puede funcionar.
 
 Después explicale qué falta y dónde está. Primero, crear su primer usuario (Supabase → Authentication → Users → Add user, con "Auto Confirm User"; o `node scripts/create-owner.mjs --email=... --name=... --workspace=... --timezone=...` si prefiere la terminal, que además le arma el negocio con su zona horaria) y las integraciones opcionales. Todo eso está en la guía de instalación.
 

@@ -2,8 +2,9 @@
 -- Historial y avisos
 --
 -- El historial de cambios (audit_log: inmutable, nunca se edita ni se borra) y el
--- centro de avisos de la app (notifications). Un Member ve los avisos de sus leads;
--- Owner y Admin, los de todo el negocio.
+-- centro de avisos de la app (notifications), que tambien se entregan por email y WhatsApp segun
+-- las preferencias de cada persona. Un Member ve los avisos de sus leads; Owner y Admin, los de
+-- todo el negocio.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -74,6 +75,28 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- ----------------------------------------------------------------------------
 -- Funciones
 -- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION private.enqueue_notification_delivery()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  -- Un aviso NUNCA deja de guardarse por esto: si no se puede encolar, queda
+  -- solo en la campana y se avisa en el log.
+  BEGIN
+    INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+    VALUES ('notification_deliver', jsonb_build_object('notification_id', NEW.id), now(),
+            'notification_deliver:' || NEW.id::text)
+    ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'enqueue_notification_delivery: no pude encolar el aviso %: %', NEW.id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.enqueue_notification_delivery() FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION public.can_see_notification(n public.notifications)
  RETURNS boolean
@@ -154,6 +177,12 @@ CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON public.notifications U
 CREATE INDEX IF NOT EXISTS idx_notifications_ws_created ON public.notifications USING btree (workspace_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_notifications_ws_unread ON public.notifications USING btree (workspace_id, created_at DESC) WHERE (read_at IS NULL);
+
+-- ----------------------------------------------------------------------------
+-- Disparadores
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE TRIGGER notifications_enqueue_delivery AFTER INSERT ON public.notifications FOR EACH ROW EXECUTE FUNCTION private.enqueue_notification_delivery();
 
 -- ----------------------------------------------------------------------------
 -- Reglas de acceso (RLS)

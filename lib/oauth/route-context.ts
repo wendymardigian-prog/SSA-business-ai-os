@@ -4,7 +4,7 @@
  *
  * Dos casos, siempre explicitos (nunca un `else` que adopte un proveedor
  * nuevo sin que nadie lo decida):
- *  - Por persona (Google Calendar, Fathom): el permiso del adaptador.
+ *  - Por persona (como Google Calendar): el permiso del adaptador.
  *  - Del workspace (YouTube, LinkedIn, Threads): `integrations.manage` (Equipo y roles, F18).
  */
 

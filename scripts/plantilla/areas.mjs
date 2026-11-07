@@ -65,12 +65,12 @@ updated_at.`,
     file: "00002_espacios_y_equipo",
     title: "Espacios de trabajo y equipo",
     header: `Cada negocio es un espacio de trabajo (workspace). Aca viven el negocio, su equipo,
-los roles con sus permisos, las invitaciones y las preferencias de cada persona.
+los roles con sus permisos, las invitaciones y el perfil y las preferencias de cada persona.
 
 Las reglas de acceso de todo el sistema se apoyan en estas funciones: quien es
 miembro, quien es Owner o Admin y que permisos tiene cada rol. Cuando alguien crea su
 cuenta, un disparador sobre auth.users le arma su espacio de trabajo.`,
-    tables: ["public.workspaces", "public.workspace_roles", "public.workspace_members", "public.workspace_invites", "public.user_preferences"],
+    tables: ["public.workspaces", "public.workspace_roles", "public.workspace_members", "public.workspace_invites", "public.user_preferences", "public.user_profiles"],
     functions: [
       "public.is_workspace_member",
       "public.is_workspace_admin",
@@ -147,8 +147,9 @@ misma persona dan un solo contacto. Se reconoce a una persona por un dato fuerte
 
 Tambien: los canales vinculados a cada contacto, etiquetas (algunas con efecto),
 campos personalizados, notas, el estado de setter y de vendedor con su historial, las
-marcas "conocido" y "cliente", el "no contactar" y las importaciones por CSV. Un Member solo ve los
-contactos que le corresponden (can_see_contact).`,
+marcas "conocido" y "cliente", el "no contactar", el estado de suscripcion a emails (con la
+baja, que gana siempre) y las importaciones por CSV. Un Member solo ve los contactos que le
+corresponden (can_see_contact).`,
     tables: [
       "public.contacts",
       "public.contact_channels",
@@ -177,6 +178,18 @@ contactos que le corresponden (can_see_contact).`,
       "public.contact_tags_emit",
       "public.contact_custom_fields_emit",
       "public.tags_effect_changed",
+      "public.email_address_status",
+      "public.email_address_send_state",
+      "public.set_email_status",
+      "public.set_email_status_by_address",
+      "private.email_status_rank",
+      "private.email_status_decide",
+      "private.email_status_lock",
+      "private.email_status_apply",
+      "private.email_pause_enrollments",
+      "private.contacts_email_status_guard",
+      "private.contacts_email_inherit",
+      "private.contacts_email_on_merge",
       "private.contact_identity_lookup",
       "private.contact_normalize_identity",
       "private.contact_value_taken",
@@ -197,7 +210,9 @@ contactos que le corresponden (can_see_contact).`,
     header: `La bandeja multicanal: conversaciones (una por canal y contacto) y sus mensajes,
 reacciones, llamadas de WhatsApp, stickers, comentarios de Instagram, el responsable
 de cada chat y sus reglas de asignacion por cuenta, el tope de envios automaticos por
-hora, los patrones de mensajes y el registro de emails salientes.
+hora, los patrones de mensajes y el registro de emails salientes con la guardia de entrega
+del marketing (tope diario, calentamiento y freno). Tambien los grupos de WhatsApp activados:
+sus miembros, mensajes, reacciones y votos.
 
 Un disparador sobre messages mantiene en la conversacion el ultimo mensaje, los no
 leidos y si el lead esta esperando respuesta. Un Member ve una conversacion segun lo
@@ -214,9 +229,25 @@ que su rol tiene en esa cuenta (can_see_conversation).`,
       "public.message_categories",
       "public.message_texts",
       "public.email_log",
+      "public.whatsapp_groups",
+      "public.whatsapp_group_members",
+      "public.whatsapp_group_messages",
+      "public.whatsapp_group_reactions",
+      "public.whatsapp_poll_votes",
     ],
     functions: [
       "public.can_see_conversation",
+      "public.can_see_whatsapp_group",
+      "public.can_write_whatsapp_group",
+      "public.patch_resend_config",
+      "public.reserve_email_send",
+      "public.email_send_capacity",
+      "public.record_email_delivery_event",
+      "public.messages_mark_contact_wrote",
+      "public.conversations_carry_contact_wrote",
+      "public.conversation_is_silent_outreach",
+      "private.email_guard_decide",
+      "private.email_guard_state",
       "public.conversation_people",
       "public.conversation_rule_pick",
       "public.assign_new_conversation",
@@ -258,12 +289,14 @@ columnas aplican y la base rechaza una forma invalida.`,
     header: `Flujos (con su borrador, sus versiones publicadas y sus disparadores), las sesiones
 que los ejecutan, la cola de eventos del CRM que los arranca, las secuencias (drip)
 con su auto-pausa cuando el contacto responde, los envios masivos (con su cola y el
-ritmo de cada canal) y sus analiticas.`,
+ritmo de cada canal), sus analiticas y el historial de cada ejecucion de un flujo, paso por
+paso.`,
     tables: [
       "public.flows",
       "public.flow_versions",
       "public.triggers",
       "public.flow_sessions",
+      "public.flow_session_steps",
       "public.flow_send_claims",
       "public.trigger_fires",
       "public.automation_events",
@@ -276,6 +309,8 @@ ritmo de cada canal) y sus analiticas.`,
     ],
     functions: [
       "public.emit_automation_event",
+      "public.can_see_flow_session",
+      "private.flow_sessions_set_finished_at",
       "public.triggers_set_workspace_id",
       "public.pause_sequences_on_reply",
       "public.claim_sequence_enrollments",
@@ -332,9 +367,12 @@ horario. Cancelar es un estado: una reunion nunca se borra.`,
       "public.event_types",
       "public.bookings",
       "public.out_of_office",
+      "public.event_type_moved_links",
     ],
     functions: [
       "public.can_see_booking",
+      "public.change_event_type_host",
+      "private.booking_category_system_key",
       "public.create_booking",
       "public.booking_categories_two_levels",
       "public.booking_utm_options",
@@ -390,6 +428,10 @@ Un metric que la red no dio queda en null: nunca se inventa un cero.`,
     ],
     functions: [
       "public.record_contact_touch",
+      "public.contact_last_activity",
+      "private.meta_is_numeric",
+      "private.meta_source_counts",
+      "private.meta_touch_utm_id",
       "public.contact_touch_json",
       "public.contact_last_origin_touch",
       "public.contact_touches_content_code_trg",
@@ -415,10 +457,11 @@ Un metric que la red no dio queda en null: nunca se inventa un cero.`,
     file: "00013_auditoria_y_avisos",
     title: "Historial y avisos",
     header: `El historial de cambios (audit_log: inmutable, nunca se edita ni se borra) y el
-centro de avisos de la app (notifications). Un Member ve los avisos de sus leads;
-Owner y Admin, los de todo el negocio.`,
+centro de avisos de la app (notifications), que tambien se entregan por email y WhatsApp segun
+las preferencias de cada persona. Un Member ve los avisos de sus leads; Owner y Admin, los de
+todo el negocio.`,
     tables: ["public.audit_log", "public.notifications"],
-    functions: ["public.can_see_notification"],
+    functions: ["public.can_see_notification", "private.enqueue_notification_delivery"],
   },
   {
     file: "00014_trabajos_y_cron",

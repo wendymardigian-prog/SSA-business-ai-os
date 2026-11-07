@@ -544,8 +544,9 @@ try {
     if (!eJob) await svc.from("scheduled_jobs").delete().eq("type", "booking_relative_trigger");
   }
 
-  if (process.argv.includes("--despues-de-00290")) {
-    console.log("\n— Cambiar el anfitrion de un evento (00290) —");
+  if (process.argv.includes("--despues-de-00290")) { // @plantilla-quitar(proyecto)
+  // @plantilla-sin(proyecto): {
+    console.log("\n— Cambiar el anfitrion de un evento —");
     const { data: cat } = await svc.from("booking_categories")
       .insert({ workspace_id: ws.id, name: "zz-test-host", is_system: false }).select("id").single();
     const nuevoEvento = async (ownerId, slug) => {

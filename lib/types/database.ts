@@ -1200,7 +1200,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings: Json;
           team_alerts_settings: Json;
-          website_settings: Json;
+          website_settings: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings: Json;
           /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */ // @plantilla-quitar(ventas)
           max_discount_percent: number | null; // @plantilla-quitar(ventas)
@@ -1257,7 +1257,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
-          website_settings?: Json;
+          website_settings?: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
@@ -1308,7 +1308,7 @@ export interface Database {
           /** A quien van los chats de un conocido, por cuenta (00256). */
           known_contacts_settings?: Json;
           team_alerts_settings?: Json;
-          website_settings?: Json;
+          website_settings?: Json; // @plantilla-quitar(formularios)
           customer_contacts_settings?: Json;
           max_discount_percent?: number | null; // @plantilla-quitar(ventas)
           overdue_grace_days?: number; // @plantilla-quitar(ventas)
@@ -4365,7 +4365,7 @@ export interface Database {
           /** Candado de renovacion del refresh token (claim_oauth_refresh). */
           refresh_locked_until: string | null;
           /** El avance de la importacion del historial (00297, lib/fathom/history-state.ts). */
-          history_import: Json | null;
+          history_import: Json | null; // @plantilla-quitar(llamadas)
           // @plantilla-hasta(llamadas)
         };
         Insert: {
@@ -4402,7 +4402,7 @@ export interface Database {
           sync_cursor?: string | null;
           sync_last_error?: string | null;
           refresh_locked_until?: string | null;
-          history_import?: Json | null;
+          history_import?: Json | null; // @plantilla-quitar(llamadas)
           // @plantilla-hasta(llamadas)
         };
         Relationships: [];

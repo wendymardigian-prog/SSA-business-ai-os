@@ -27,6 +27,9 @@ export interface ProfileTabProps {
 }
 
 /** Mi cuenta → Perfil: una columna de tarjetas, cada una con su propio guardado. */
+const PROFILE_DESCRIPTION = "Así te ve el resto del equipo en el chat, las tareas y la agenda."; // @plantilla-quitar(tareas)
+// @plantilla-sin(tareas): const PROFILE_DESCRIPTION = "Así te ve el resto del equipo en el chat y la agenda.";
+
 export function ProfileTab(props: ProfileTabProps) {
   return (
     <div className="space-y-4">
@@ -151,7 +154,7 @@ function PhotoAndNameCard({ email, name: initialName, avatarUrl: initialUrl }: {
   const nameChanged = name.replace(/\s+/g, " ").trim() !== savedName;
 
   return (
-    <AccountCard id="perfil" title="Tu perfil" description="Así te ve el resto del equipo en el chat, las tareas y la agenda.">
+    <AccountCard id="perfil" title="Tu perfil" description={PROFILE_DESCRIPTION}>
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
         <div className="flex items-center gap-3 sm:flex-col sm:items-center">
           <UserAvatar src={avatarUrl} initials={initialsOf(shownName)} size={80} className="text-2xl" />
