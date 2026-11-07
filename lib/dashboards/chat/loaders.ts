@@ -7,6 +7,8 @@
  *
  * Todas las funciones son SECURITY INVOKER y se llaman con el cliente del
  * usuario: la RLS aplica el scope de leads sin que la app filtre nada.
+ *
+ * Todas pasan por `chatRpc` (`rpc.ts`): la cola, el reintento y el texto claro.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -14,6 +16,7 @@ import type { Database } from "@/lib/types/database";
 import { resolvePeriod, previousPeriod, type PeriodPreset, type ResolvedPeriod } from "@/lib/dashboards/period";
 import type { DashboardFilters } from "@/lib/dashboards/url-state";
 import { blockResult, fromRpc } from "./result";
+import { chatQuery, chatRpc, type ChatQueryResult } from "./rpc";
 import type { BlockResult } from "./types";
 import {
   bucketTrends,
@@ -32,6 +35,9 @@ import { agentActionRows, escalationReasons, ruleResultRows, type AgentActionRow
 import { patternCategories, repliesPanel, type PatternCategory, type PatternSqlRow, type RepliesPanel, type ReplySqlRow } from "./patterns";
 
 type Db = SupabaseClient<Database>;
+
+/** Una cuenta sobre `message_texts`, con sus filtros todavia por poner. */
+type TextCountQuery = ReturnType<ReturnType<ReturnType<Db["from"]>["select"]>["eq"]>;
 
 /** Los parametros que comparten todas las funciones. */
 export interface ChatQueryArgs {
@@ -130,21 +136,24 @@ export function loadCards(client: Db, a: ChatQueryArgs): Promise<BlockResult<Car
     };
     const none = Promise.resolve({ data: null, error: null });
     const [cur, prev, curResponse, prevResponse, waiting] = await Promise.all([
-      client.rpc("chat_dashboard_numbers", { ...common(a), p_author: a.author }),
-      a.previous.from ? client.rpc("chat_dashboard_numbers", prevArgs) : none,
-      client.rpc("chat_dashboard_response_time", { ...common(a), p_author: a.author }),
-      a.previous.from ? client.rpc("chat_dashboard_response_time", prevArgs) : none,
-      client.rpc("chat_waiting_now_v2", { p_workspace_id: a.workspaceId, p_channel: a.channel }),
+      chatRpc(client, "chat_dashboard_numbers", { ...common(a), p_author: a.author }),
+      a.previous.from ? chatRpc(client, "chat_dashboard_numbers", prevArgs) : none,
+      chatRpc(client, "chat_dashboard_response_time", { ...common(a), p_author: a.author }),
+      a.previous.from ? chatRpc(client, "chat_dashboard_response_time", prevArgs) : none,
+      chatRpc(client, "chat_waiting_now_v2", { p_workspace_id: a.workspaceId, p_channel: a.channel }),
     ]);
-    for (const res of [cur, prev, curResponse, prevResponse, waiting]) {
+    for (const res of [cur, curResponse, waiting]) {
       if (res.error) return { error: res.error.message };
     }
     const first = (res: { data: unknown }) => ((res.data ?? []) as Record<string, unknown>[])[0];
     const w = first(waiting);
+    // Si falla solo el periodo anterior, las cifras se muestran igual, sin la
+    // comparacion: no saber contra que comparar no es no saber el numero.
+    const hasPrevious = a.previous.from && !prev.error && !prevResponse.error;
     return {
       data: {
         current: numbers(first(cur), first(curResponse)),
-        previous: a.previous.from ? numbers(first(prev), first(prevResponse)) : null,
+        previous: hasPrevious ? numbers(first(prev), first(prevResponse)) : null,
         waitingNow: {
           canReply: Number(w?.can_reply ?? 0),
           windowClosed: Number(w?.window_closed ?? 0),
@@ -170,8 +179,8 @@ export function loadTrends(client: Db, a: ChatQueryArgs): Promise<BlockResult<Tr
     // La serie de siempre y, aparte, la del tiempo de respuesta (00261): se
     // juntan por dia antes de agrupar.
     const [res, response] = await Promise.all([
-      client.rpc("chat_dashboard_trends", { ...common(a), p_author: a.author, p_tz: a.timezone }),
-      client.rpc("chat_dashboard_response_time_daily", { ...common(a), p_author: a.author, p_tz: a.timezone }),
+      chatRpc(client, "chat_dashboard_trends", { ...common(a), p_author: a.author, p_tz: a.timezone }),
+      chatRpc(client, "chat_dashboard_response_time_daily", { ...common(a), p_author: a.author, p_tz: a.timezone }),
     ]);
     if (response.error) return { error: response.error.message };
     return fromRpc<TrendRow, TrendsBlock>(res, (rows) => {
@@ -196,16 +205,16 @@ export interface AgentBlock {
 export function loadAgent(client: Db, a: ChatQueryArgs): Promise<BlockResult<AgentBlock>> {
   return blockResult<AgentBlock>("las métricas del agente", async () => {
     const [cur, prev, weekly] = await Promise.all([
-      client.rpc("chat_dashboard_agent", common(a)),
+      chatRpc(client, "chat_dashboard_agent", common(a)),
       a.previous.from
-        ? client.rpc("chat_dashboard_agent", {
+        ? chatRpc(client, "chat_dashboard_agent", {
             p_workspace_id: a.workspaceId,
             p_from: a.previous.from,
             p_to: a.previous.to,
             p_channel: a.channel,
           })
         : Promise.resolve({ data: null, error: null }),
-      client.rpc("chat_dashboard_agent_weekly", { p_workspace_id: a.workspaceId, p_channel: a.channel, p_tz: a.timezone, p_weeks: 8 }),
+      chatRpc(client, "chat_dashboard_agent_weekly", { p_workspace_id: a.workspaceId, p_channel: a.channel, p_tz: a.timezone, p_weeks: 8 }),
     ]);
     if (cur.error) return { error: cur.error.message };
     if (weekly.error) return { error: weekly.error.message };
@@ -238,21 +247,21 @@ export interface FirstResponderBlock {
 
 export function loadFirstResponder(client: Db, a: ChatQueryArgs): Promise<BlockResult<FirstResponderBlock>> {
   return blockResult("quién respondió primero", async () => {
-    const res = await client.rpc("chat_dashboard_first_responder", common(a));
+    const res = await chatRpc(client, "chat_dashboard_first_responder", common(a));
     return fromRpc<{ responder: string; episodes: number }, FirstResponderBlock>(res, (rows) => firstResponderSlices(rows));
   });
 }
 
 export function loadEscalationReasons(client: Db, a: ChatQueryArgs): Promise<BlockResult<EscalationReason[]>> {
   return blockResult("por qué derivó", async () => {
-    const res = await client.rpc("chat_dashboard_escalation_reasons", { ...common(a), p_limit: 6 });
+    const res = await chatRpc(client, "chat_dashboard_escalation_reasons", { ...common(a), p_limit: 6 });
     return fromRpc<EscalationSqlRow, EscalationReason[]>(res, escalationReasons);
   });
 }
 
 export function loadAgentActions(client: Db, a: ChatQueryArgs): Promise<BlockResult<AgentActionRow[]>> {
   return blockResult("las acciones del agente", async () => {
-    const res = await client.rpc("chat_dashboard_agent_actions", common(a));
+    const res = await chatRpc(client, "chat_dashboard_agent_actions", common(a));
     return fromRpc<{ action: string; actions: number; reverted: number }, AgentActionRow[]>(res, agentActionRows);
   });
 }
@@ -263,14 +272,14 @@ export function loadRuleResults(
   rules: Array<{ id: string; name?: string | null }>,
 ): Promise<BlockResult<RuleResultRow[]>> {
   return blockResult("los resultados de las reglas", async () => {
-    const res = await client.rpc("chat_dashboard_rule_results", common(a));
+    const res = await chatRpc(client, "chat_dashboard_rule_results", common(a));
     return fromRpc<RuleResultSqlRow, RuleResultRow[]>(res, (rows) => ruleResultRows(rows, rules));
   });
 }
 
 export function loadDrafts(client: Db, a: ChatQueryArgs): Promise<BlockResult<DraftsCard>> {
   return blockResult("la aprobación de respuestas", async () => {
-    const res = await client.rpc("chat_dashboard_drafts", { ...common(a), p_tz: a.timezone });
+    const res = await chatRpc(client, "chat_dashboard_drafts", { ...common(a), p_tz: a.timezone });
     return fromRpc<DraftsSqlRow, DraftsCard>(res, (rows) => draftsCard(rows[0] ?? null));
   });
 }
@@ -286,7 +295,7 @@ export function loadTeam(
   currentUserId?: string,
 ): Promise<BlockResult<TeamRow[]>> {
   return blockResult("la tabla de quién responde", async () => {
-    const res = await client.rpc("chat_dashboard_team", common(a));
+    const res = await chatRpc(client, "chat_dashboard_team", common(a));
     return fromRpc<TeamSqlRow, TeamRow[]>(res, (rows) => buildTeamRows(rows, members, currentUserId));
   });
 }
@@ -303,7 +312,7 @@ export interface PatternsBlock {
 export function loadPatterns(client: Db, a: ChatQueryArgs): Promise<BlockResult<PatternsBlock>> {
   return blockResult<PatternsBlock>("los patrones de mensajes", async () => {
     const [out, inb] = await Promise.all([
-      client.rpc("chat_dashboard_patterns", {
+      chatRpc(client, "chat_dashboard_patterns", {
         p_workspace_id: a.workspaceId,
         p_direction: "outbound",
         p_from: a.range.from,
@@ -311,7 +320,7 @@ export function loadPatterns(client: Db, a: ChatQueryArgs): Promise<BlockResult<
         p_channel: a.channel,
         p_author: a.author,
       }),
-      client.rpc("chat_dashboard_patterns", {
+      chatRpc(client, "chat_dashboard_patterns", {
         p_workspace_id: a.workspaceId,
         p_direction: "inbound",
         p_from: a.range.from,
@@ -333,7 +342,7 @@ export function loadPatterns(client: Db, a: ChatQueryArgs): Promise<BlockResult<
 
 export function loadReplies(client: Db, a: ChatQueryArgs, categoryId: string): Promise<BlockResult<RepliesPanel>> {
   return blockResult("qué le responden", async () => {
-    const res = await client.rpc("chat_dashboard_replies", {
+    const res = await chatRpc(client, "chat_dashboard_replies", {
       p_workspace_id: a.workspaceId,
       p_category_id: categoryId,
       p_from: a.range.from,
@@ -364,19 +373,32 @@ export interface QualityLine {
  */
 export function loadQualityLine(client: Db, a: ChatQueryArgs): Promise<BlockResult<QualityLine>> {
   return blockResult<QualityLine>("la calidad de la clasificación", async () => {
-    const [status, volumes] = await Promise.all([
-      client.rpc("message_classification_status", { p_workspace_id: a.workspaceId, p_tz: a.timezone }),
-      client.rpc("message_text_volumes", { p_workspace_id: a.workspaceId, p_direction: null, p_from: a.range.from, p_to: a.range.to }),
+    // Se cuenta en `message_texts` y no con `message_text_volumes`: de esa funcion
+    // solo importan `source` y `review_result`, que no dependen del periodo, y
+    // traer todas las filas repasaba `messages` y podia cortarse en el tope de filas.
+    const count = (label: string, filter: (q: TextCountQuery) => TextCountQuery) =>
+      chatQuery(label, () =>
+        filter(
+          client
+            .from("message_texts")
+            .select("id", { count: "exact", head: true })
+            .eq("workspace_id", a.workspaceId),
+        ) as unknown as PromiseLike<ChatQueryResult>,
+      );
+    const [status, reviewed, okReviewed, modelTexts, corrected] = await Promise.all([
+      chatRpc(client, "message_classification_status", { p_workspace_id: a.workspaceId, p_tz: a.timezone }),
+      count("calidad: revisados", (q) => q.not("review_result", "is", null)),
+      count("calidad: bien clasificados", (q) => q.eq("review_result", "ok")),
+      count("calidad: del modelo", (q) => q.eq("source", "model")),
+      count("calidad: corregidos", (q) => q.eq("source", "model").eq("review_result", "corrected")),
     ]);
-    if (status.error) return { error: status.error.message };
-    if (volumes.error) return { error: volumes.error.message };
+    for (const res of [status, reviewed, okReviewed, modelTexts, corrected]) {
+      if (res.error) return { error: res.error.message };
+    }
 
     const s = ((status.data ?? []) as Array<Record<string, unknown>>)[0] ?? {};
-    const texts = (volumes.data ?? []) as Array<{ source: string | null; review_result: string | null }>;
-    const reviewed = texts.filter((t) => t.review_result !== null);
-    const okCount = reviewed.filter((t) => t.review_result === "ok").length;
-    const modelTexts = texts.filter((t) => t.source === "model");
-    const correctedCount = modelTexts.filter((t) => t.review_result === "corrected").length;
+    const reviewedCount = reviewed.count ?? 0;
+    const modelCount = modelTexts.count ?? 0;
 
     return {
       data: {
@@ -384,9 +406,9 @@ export function loadQualityLine(client: Db, a: ChatQueryArgs): Promise<BlockResu
         lastRunStatus: (s.last_run_status as string | null) ?? null,
         classifiedToday: Number(s.texts_classified_today ?? 0),
         unclassifiedPending: Number(s.unclassified_pending ?? 0),
-        accuracyPct: reviewed.length > 0 ? Math.round((okCount / reviewed.length) * 100) : null,
-        reviewedCount: reviewed.length,
-        correctedPct: modelTexts.length > 0 ? Math.round((correctedCount / modelTexts.length) * 100) : null,
+        accuracyPct: reviewedCount > 0 ? Math.round(((okReviewed.count ?? 0) / reviewedCount) * 100) : null,
+        reviewedCount,
+        correctedPct: modelCount > 0 ? Math.round(((corrected.count ?? 0) / modelCount) * 100) : null,
       },
     };
   });

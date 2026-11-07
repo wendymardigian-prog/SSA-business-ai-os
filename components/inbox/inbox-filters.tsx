@@ -31,7 +31,7 @@ import type { InboxAccount } from "@/lib/inbox/accounts";
 import { useInboxUrl } from "@/components/inbox/use-inbox-url";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
-import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
 /**
  * Los filtros de la Bandeja (F16). Viven en el encabezado de la lista (`InboxListHeader`):

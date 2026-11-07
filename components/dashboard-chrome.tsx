@@ -10,7 +10,7 @@ import { NavLinks, type NavFlags } from "@/components/sidebar";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
-import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 import type { Database } from "@/lib/types/database";
 
 type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];

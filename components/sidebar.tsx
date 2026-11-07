@@ -35,7 +35,7 @@ import { WorkspaceSwitcher, type WorkspaceItem } from "@/components/workspace-sw
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useHtmlClass } from "@/components/use-html-class";
-import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 import { useDraftCounts } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import type { Database } from "@/lib/types/database";

@@ -2,17 +2,24 @@
 
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
+import { bumpChatPatternsGeneration } from "@/lib/dashboards/chat/generation";
 import { moveText, createCategoryAndMove, renameCategory, mergeCategory, confirmText, addButtonText, removeButtonText } from "@/lib/patterns/corrections";
 import { normalizeForGrouping } from "@/lib/text/normalize";
 
 const NOT_ADMIN = "Solo Owner y Admin pueden corregir categorías";
+
+/** Una correccion se ve enseguida: lo guardado de Patrones deja de valer. */
+async function refreshPatterns() {
+  await bumpChatPatternsGeneration();
+  revalidatePath("/dashboard/dashboards/chat");
+}
 
 /** F21: mover un texto a otra categoría. */
 export async function moveTextAction(textId: string, categoryId: string) {
   const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await moveText(ctx.supabase, { workspaceId: ctx.workspace.id, textId, categoryId, userId: ctx.user.id });
-  revalidatePath("/dashboard/dashboards/chat");
+  await refreshPatterns();
   return r;
 }
 
@@ -21,7 +28,7 @@ export async function createCategoryAndMoveAction(direction: "inbound" | "outbou
   const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await createCategoryAndMove(ctx.supabase, { workspaceId: ctx.workspace.id, direction, name, textId, userId: ctx.user.id });
-  revalidatePath("/dashboard/dashboards/chat");
+  await refreshPatterns();
   return r;
 }
 
@@ -30,7 +37,7 @@ export async function renameCategoryAction(categoryId: string, patch: { name?: s
   const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await renameCategory(ctx.supabase, { workspaceId: ctx.workspace.id, categoryId, ...patch, userId: ctx.user.id });
-  revalidatePath("/dashboard/dashboards/chat");
+  await refreshPatterns();
   return r;
 }
 
@@ -39,7 +46,7 @@ export async function mergeCategoryAction(sourceId: string, targetId: string) {
   const ctx = await getPermissionAction("ai_tasks.manage");
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await mergeCategory(ctx.supabase, { workspaceId: ctx.workspace.id, sourceId, targetId, userId: ctx.user.id });
-  revalidatePath("/dashboard/dashboards/chat");
+  await refreshPatterns();
   return r;
 }
 

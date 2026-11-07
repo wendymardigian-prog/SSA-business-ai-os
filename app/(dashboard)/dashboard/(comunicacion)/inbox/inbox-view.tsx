@@ -22,7 +22,7 @@ import type { GroupListRow, SelectedGroup, ThreadMessage } from "@/lib/whatsapp-
 import { countActiveFilters, type InboxFilters } from "@/lib/inbox/filters";
 import type { DateRange } from "@/lib/dates";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
-import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
 type Conversation = ConversationRow;
 type Message = Database["public"]["Tables"]["messages"]["Row"];

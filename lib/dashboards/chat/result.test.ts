@@ -12,8 +12,8 @@ describe("blockResult", () => {
   });
 
   it("un error de la base es un bloque caido, no un cero", async () => {
-    const r = await blockResult("las tendencias", async () => ({ error: "function does not exist" }));
-    expect(r).toEqual({ ok: false, error: "No pudimos cargar las tendencias: function does not exist" });
+    const r = await blockResult("las tendencias", async () => ({ error: "La base de datos no pudo responder." }));
+    expect(r).toEqual({ ok: false, error: "La base de datos no pudo responder." });
   });
 
   it("nunca lanza: una promesa rota tambien es un bloque caido", async () => {

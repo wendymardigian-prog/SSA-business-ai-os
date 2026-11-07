@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { Suspense, use, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, Eye, Plug } from "lucide-react";
+import { AlertTriangle, BarChart3, Eye, Plug, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "@/components/dashboards/dashboard-switcher";
 import type { DashboardOption } from "@/lib/dashboards/available";
@@ -16,13 +16,13 @@ import type { AgentVisibilityResult } from "@/lib/dashboards/chat/agent-visibili
 import { showDraftAlert } from "@/lib/dashboards/chat/drafts";
 import type { RepliesPanel } from "@/lib/dashboards/chat/patterns";
 import type { BlockResult } from "@/lib/dashboards/chat/types";
+import { cn } from "@/lib/utils";
 import type {
-  AgentBlock as AgentData, CardsBlock, FirstResponderBlock, PatternsBlock, QualityLine, TrendsBlock as TrendsData,
+  AgentBlock as AgentData, CardsBlock, FirstResponderBlock, PatternsBlock, TrendsBlock as TrendsData,
 } from "@/lib/dashboards/chat/loaders";
 import type { AgentActionRow, EscalationReason, RuleResultRow } from "@/lib/dashboards/chat/escalations";
 import type { DraftsCard } from "@/lib/dashboards/chat/drafts";
-import type { TeamRow } from "@/lib/dashboards/chat/team-rows";
-import { Block, BlockSkeleton, EmptyBlock, SectionHeading } from "./block";
+import { Block, BlockSkeleton, ChatBlockQueryContext, DeferredBlock, EmptyBlock, SectionHeading } from "./block";
 import { ChannelMenu, channelColor, type ChannelOption } from "./filters/channel-menu";
 import { AuthorMenu, authorLabel as authorLabelFor, type AuthorMember } from "./filters/author-menu";
 import { PeriodPopover } from "./filters/period-popover";
@@ -32,14 +32,15 @@ import { TrendsBlock } from "./trends-block";
 import { AgentActionsCard, AgentConnectionWarning, AgentHidden, AgentNoRuns, AgentRates, ApprovalCard, EscalationReasonsCard, FirstResponderCard, RuleResultsCard } from "./agent-block";
 import { TeamBlock } from "./team-block";
 import { PatternsSection, QualityLineRow } from "./patterns-block";
-import { fetchRepliesAction } from "@/lib/actions/chat-dashboard";
+import { fetchRepliesAction, refreshChatDashboardAction } from "@/lib/actions/chat-dashboard";
 
 /**
  * El dashboard de Chat.
  *
  * Recibe una promesa por bloque y no las espera: cada pedazo aparece cuando
  * llega el suyo. Antes la pantalla entera esperaba a que terminaran las siete
- * consultas, y la mas lenta marcaba el tiempo de todas.
+ * consultas, y la mas lenta marcaba el tiempo de todas. "Quién responde" y
+ * "Patrones" ni siquiera vienen con la pagina: se piden al llegar con el scroll.
  *
  * Los filtros viven en la URL: compartir un link es compartir la vista.
  */
@@ -58,13 +59,13 @@ export interface ChatDashboardBlocks {
   trends: Promise<BlockResult<TrendsData>>;
   agentSection: AgentSectionBlocks | null;
   drafts: Promise<BlockResult<DraftsCard>>;
-  team: Promise<BlockResult<TeamRow[]>>;
-  patterns: Promise<BlockResult<PatternsBlock>>;
-  quality: Promise<BlockResult<QualityLine>>;
 }
 
 export function ChatDashboardShell({
   blocks,
+  generation,
+  patternsGeneration,
+  setupWarning,
   filters,
   channels,
   members,
@@ -80,6 +81,12 @@ export function ChatDashboardShell({
   agentActionsHref,
 }: {
   blocks: ChatDashboardBlocks;
+  /** Cambia con "Actualizar": es parte del `key` de cada bloque. */
+  generation: number;
+  /** Cambia con una correccion de categorias: Patrones se vuelve a pedir sin parpadear. */
+  patternsGeneration: number;
+  /** Si no se pudieron leer los canales o los agentes: algunos filtros o secciones pueden faltar. */
+  setupWarning: string | null;
   filters: DashboardFilters;
   channels: ChannelOption[];
   members: AuthorMember[];
@@ -99,6 +106,10 @@ export function ChatDashboardShell({
   const pathname = usePathname();
   const [pending, start] = useTransition();
   const agentSection = blocks.agentSection;
+  const query = dashboardFiltersToParams(filters).toString();
+  // El `key` de cada bloque: filtros nuevos o "Actualizar" son un bloque nuevo, con su skeleton.
+  const loadKey = `${query}|${generation}`;
+  const authorHidesAgent = agentSectionMode(filters.author, 1) === "hidden-author";
 
   function setFilter(patch: Partial<DashboardFilters>) {
     const next = { ...filters, ...patch };
@@ -121,6 +132,7 @@ export function ChatDashboardShell({
     : undefined;
 
   return (
+    <ChatBlockQueryContext.Provider value={query}>
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/dashboards/chat"
@@ -144,7 +156,7 @@ export function ChatDashboardShell({
         }
       />
 
-      <div className="min-h-0 flex-1 overflow-auto px-4 pb-24 pt-4 md:px-6">
+      <div data-dashboard-scroll className="min-h-0 flex-1 overflow-auto px-4 pb-24 pt-4 md:px-6">
         <div className="mx-auto flex max-w-[1280px] flex-col gap-4">
           {/* Franja de contexto */}
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -161,11 +173,23 @@ export function ChatDashboardShell({
               />
             )}
             {filters.author && <Chip label={`Respondido por ${authorName}`} onClear={() => setFilter({ author: null })} />}
-            <UpdatedAgo pending={pending} />
+            <span className="ml-auto flex items-center gap-2">
+              <Suspense key={loadKey} fallback={<span className="text-muted-foreground/80">Actualizando…</span>}>
+                <UpdatedAgo promise={blocks.cards} pending={pending} />
+              </Suspense>
+              <RefreshButton />
+            </span>
           </div>
 
+          {setupWarning && (
+            <p role="alert" className="flex items-start gap-2 rounded-[14px] border border-dashed border-bad/50 bg-card p-3 text-xs text-muted-foreground">
+              <AlertTriangle className="mt-px h-4 w-4 shrink-0 text-bad" aria-hidden />
+              {setupWarning}
+            </p>
+          )}
+
           {/* Aviso de borradores (F17) */}
-          <Block promise={blocks.drafts} label="los borradores pendientes" skeleton={null}>
+          <Block key={`drafts|${loadKey}`} block="drafts" promise={blocks.drafts} label="los borradores pendientes" skeleton={null}>
             {(card) =>
               showDraftAlert({ hasDraftChannels, author: filters.author, pendingNow: card.pendingNow }) ? (
                 <DraftAlert card={card} href={draftsHref} />
@@ -174,7 +198,7 @@ export function ChatDashboardShell({
           </Block>
 
           {/* Las cinco cifras */}
-          <Block promise={blocks.cards} label="los números principales" skeleton={<BlockSkeleton kind="kpis" />}>
+          <Block key={`cards|${loadKey}`} block="cards" promise={blocks.cards} label="los números principales" skeleton={<BlockSkeleton kind="kpis" />}>
             {(data) =>
               data.current.messagesIn + data.current.messagesOut === 0 ? (
                 <EmptyState
@@ -191,7 +215,7 @@ export function ChatDashboardShell({
           </Block>
 
           {/* Tendencias */}
-          <Block promise={blocks.trends} label="las tendencias" skeleton={<BlockSkeleton kind="chart" />}>
+          <Block key={`trends|${loadKey}`} block="trends" promise={blocks.trends} label="las tendencias" skeleton={<BlockSkeleton kind="chart" />}>
             {(data) => <TrendsBlock data={data} filteredByAuthor={filters.author !== null} />}
           </Block>
 
@@ -209,68 +233,69 @@ export function ChatDashboardShell({
               }
             />
           )}
+          {/* Con el filtro en una persona, estos numeros no dicen nada sobre lo que se
+              filtró: se avisa y no se consultan. */}
+          {agentVisibility.mode !== "hidden" && authorHidesAgent && (
+            <>
+              {agentVisibility.warning && <AgentConnectionWarning message={agentVisibility.warning} />}
+              <AgentHidden notice={hiddenAuthorNotice(authorName ?? "esa persona")} onClear={() => setFilter({ author: null })} />
+            </>
+          )}
           {agentSection && (
             <>
               {agentVisibility.warning && <AgentConnectionWarning message={agentVisibility.warning} />}
-              <Block promise={agentSection.agent} label="las métricas del agente" skeleton={<BlockSkeleton kind="cards3" />}>
-                {(data) => {
-                  const mode = agentSectionMode(filters.author, data.newConversations);
-                  if (mode === "hidden-author") {
-                    return <AgentHidden notice={hiddenAuthorNotice(authorName ?? "esa persona")} onClear={() => setFilter({ author: null })} />;
-                  }
-                  if (mode === "no-runs") return <AgentNoRuns agentHref={agentHref} />;
-                  return <AgentRates data={data} />;
-                }}
+              <Block key={`agent|${loadKey}`} block="agent" promise={agentSection.agent} label="las métricas del agente" skeleton={<BlockSkeleton kind="cards3" />}>
+                {(data) =>
+                  agentSectionMode(filters.author, data.newConversations) === "no-runs" ? (
+                    <AgentNoRuns agentHref={agentHref} />
+                  ) : (
+                    <AgentRates data={data} />
+                  )
+                }
               </Block>
 
-              {/* El resto de la seccion del agente se esconde con el filtro puesto:
-                  son numeros del agente y no dicen nada sobre lo que se filtró. */}
-              {agentSectionMode(filters.author, 1) === "full" && (
-                <>
-                  <div className="row2">
-                    <Block promise={agentSection.firstResponder} label="quién respondió primero" skeleton={<BlockSkeleton kind="panel" />}>
-                      {(data) => <FirstResponderCard data={data} />}
-                    </Block>
-                    <Block promise={agentSection.escalations} label="por qué derivó" skeleton={<BlockSkeleton kind="panel" />}>
-                      {(reasons) => <EscalationReasonsCard reasons={reasons} />}
-                    </Block>
-                  </div>
+              <div className="row2">
+                <Block key={`firstResponder|${loadKey}`} block="firstResponder" promise={agentSection.firstResponder} label="quién respondió primero" skeleton={<BlockSkeleton kind="panel" />}>
+                  {(data) => <FirstResponderCard data={data} />}
+                </Block>
+                <Block key={`escalations|${loadKey}`} block="escalations" promise={agentSection.escalations} label="por qué derivó" skeleton={<BlockSkeleton kind="panel" />}>
+                  {(reasons) => <EscalationReasonsCard reasons={reasons} />}
+                </Block>
+              </div>
 
-                  <div className="row2">
-                    <Block promise={blocks.drafts} label="la aprobación de respuestas" skeleton={<BlockSkeleton kind="panel" />}>
-                      {(card) => (
-                        <ApprovalCard
-                          card={card}
-                          channelsLabel={draftChannelsLabel}
-                          hasDraftChannels={hasDraftChannels}
-                          queueHref={draftsHref}
-                          agentHref={agentHref}
-                        />
-                      )}
-                    </Block>
-                    <Block promise={agentSection.actions} label="las acciones del agente" skeleton={<BlockSkeleton kind="panel" />}>
-                      {(actions) => <AgentActionsCard actions={actions} actionsHref={agentActionsHref} />}
-                    </Block>
-                  </div>
-
-                  {agentSection.rules && (
-                    <Block promise={agentSection.rules} label="los resultados de las reglas" skeleton={<BlockSkeleton kind="panel" />}>
-                      {(rows) => <RuleResultsCard rows={rows} />}
-                    </Block>
+              <div className="row2">
+                <Block key={`drafts|${loadKey}`} block="drafts" promise={blocks.drafts} label="la aprobación de respuestas" skeleton={<BlockSkeleton kind="panel" />}>
+                  {(card) => (
+                    <ApprovalCard
+                      card={card}
+                      channelsLabel={draftChannelsLabel}
+                      hasDraftChannels={hasDraftChannels}
+                      queueHref={draftsHref}
+                      agentHref={agentHref}
+                    />
                   )}
-                </>
+                </Block>
+                <Block key={`actions|${loadKey}`} block="actions" promise={agentSection.actions} label="las acciones del agente" skeleton={<BlockSkeleton kind="panel" />}>
+                  {(actions) => <AgentActionsCard actions={actions} actionsHref={agentActionsHref} />}
+                </Block>
+              </div>
+
+              {agentSection.rules && (
+                <Block key={`rules|${loadKey}`} block="rules" promise={agentSection.rules} label="los resultados de las reglas" skeleton={<BlockSkeleton kind="panel" />}>
+                  {(rows) => <RuleResultsCard rows={rows} />}
+                </Block>
               )}
             </>
           )}
 
           {/* Quién responde */}
           <SectionHeading title="Quién responde" subtitle="Tocá una fila para filtrar todo el dashboard por esa persona" />
-          <Block promise={blocks.team} label="la tabla de quién responde" skeleton={<BlockSkeleton kind="table" />}>
+          <DeferredBlock key={`team|${loadKey}`} block="team" label="la tabla de quién responde" skeleton={<BlockSkeleton kind="table" />}>
             {(rows) => <TeamBlock rows={rows} activeAuthor={filters.author} onPick={(author) => setFilter({ author })} />}
-          </Block>
+          </DeferredBlock>
 
           {/* Patrones */}
-          <Block promise={blocks.patterns} label="los patrones de mensajes" skeleton={<BlockSkeleton kind="table" />}>
+          <DeferredBlock key={`patterns|${loadKey}`} block="patterns" label="los patrones de mensajes" skeleton={<BlockSkeleton kind="table" />} refreshToken={patternsGeneration}>
             {(data) => (
               <PatternsWithReplies
                 data={data}
@@ -278,7 +303,7 @@ export function ChatDashboardShell({
                 authorLabel={authorName}
                 filters={filters}
                 quality={
-                  <Block promise={blocks.quality} label="la calidad de la clasificación" skeleton={null}>
+                  <DeferredBlock key={`quality|${loadKey}`} block="quality" label="la calidad de la clasificación" skeleton={null} refreshToken={patternsGeneration}>
                     {(q) => (
                       <QualityLineRow
                         lastRunAt={q.lastRunAt}
@@ -289,14 +314,15 @@ export function ChatDashboardShell({
                         correctedPct={q.correctedPct}
                       />
                     )}
-                  </Block>
+                  </DeferredBlock>
                 }
               />
             )}
-          </Block>
+          </DeferredBlock>
         </div>
       </div>
     </div>
+    </ChatBlockQueryContext.Provider>
   );
 }
 
@@ -321,7 +347,7 @@ function PatternsWithReplies({
   // Lo cargado guarda de QUE categoria es: asi "esta cargando" se deduce
   // (lo elegido no coincide con lo cargado) en vez de ser otro estado que hay
   // que prender y apagar a mano.
-  const [loaded, setLoaded] = useState<{ categoryId: string; data: RepliesPanel | null } | null>(null);
+  const [loaded, setLoaded] = useState<{ categoryId: string; data: RepliesPanel | null; error: string | null } | null>(null);
   const loading = selected !== null && loaded?.categoryId !== selected;
 
   useEffect(() => {
@@ -331,7 +357,11 @@ function PatternsWithReplies({
     const query = Object.fromEntries(dashboardFiltersToParams(filters).entries());
     fetchRepliesAction(selected, query).then((result) => {
       if (cancelled) return;
-      setLoaded({ categoryId: selected, data: result.ok ? result.data : null });
+      setLoaded(
+        result.ok
+          ? { categoryId: selected, data: result.data, error: null }
+          : { categoryId: selected, data: null, error: result.error },
+      );
     });
     return () => {
       cancelled = true;
@@ -346,6 +376,7 @@ function PatternsWithReplies({
       onSelectCategory={setSelected}
       replies={selected && loaded?.categoryId === selected ? loaded.data : null}
       repliesLoading={loading}
+      repliesError={selected && loaded?.categoryId === selected ? loaded.error : null}
       isAdmin={isAdmin}
       authorLabel={authorLabel}
       quality={quality}
@@ -366,21 +397,20 @@ function Chip({ label, color, onClear }: { label: string; color?: string; onClea
 }
 
 /**
- * "Actualizado hace …" se calcula en el navegador.
+ * "Actualizado hace …", contado desde que se calcularon las cifras (puede ser de la
+ * cache, y entonces lo dice).
  *
- * Si se calculara al renderizar, el servidor y el navegador dirian horas
- * distintas y React se quejaria de la hidratacion.
+ * El texto se escribe recien en el navegador: al renderizar en el servidor, ahi y
+ * aca darian horas distintas y React se quejaria de la hidratacion.
  */
-function UpdatedAgo({ pending }: { pending: boolean }) {
-  // `loadedAt` se fija en el primer render del navegador y el texto se recalcula
-  // cada minuto. No se calcula al renderizar en el servidor: ahi y aca darian
-  // horas distintas y React se quejaria de la hidratacion.
-  const loadedAt = useRef<string | null>(null);
+function UpdatedAgo({ promise, pending }: { promise: Promise<BlockResult<CardsBlock>>; pending: boolean }) {
+  const result = use(promise);
+  const loadedAt = result.ok ? result.loadedAt : null;
   const [text, setText] = useState<string | null>(null);
 
   useEffect(() => {
-    loadedAt.current = new Date().toISOString();
-    const tick = () => setText(formatAgo(loadedAt.current as string));
+    if (!loadedAt) return;
+    const tick = () => setText(formatAgo(loadedAt));
     const timer = setInterval(tick, 60_000);
     // El primer texto va en el proximo turno del navegador: escribir estado en
     // el cuerpo del efecto encadena renders.
@@ -389,9 +419,29 @@ function UpdatedAgo({ pending }: { pending: boolean }) {
       clearInterval(timer);
       clearTimeout(first);
     };
-  }, []);
+  }, [loadedAt]);
 
-  return <span className="ml-auto text-muted-foreground/80">{pending ? "Actualizando…" : text}</span>;
+  if (pending) return <span className="text-muted-foreground/80">Actualizando…</span>;
+  // Si fallaron las cifras no se dice "Actualizado": no seria cierto.
+  if (!result.ok) return null;
+  return <span className="text-muted-foreground/80">{text}</span>;
+}
+
+/** Vuelve a pedir todo, sin esperar a que venza lo guardado. */
+function RefreshButton() {
+  const [pending, start] = useTransition();
+  return (
+    <button
+      type="button"
+      onClick={() => start(() => refreshChatDashboardAction())}
+      disabled={pending}
+      aria-label="Actualizar los datos"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-input px-2 py-1 font-medium transition-colors hover:bg-accent disabled:opacity-50"
+    >
+      <RefreshCw className={cn("h-3.5 w-3.5", pending && "animate-spin")} aria-hidden />
+      Actualizar
+    </button>
+  );
 }
 
 function EmptyState({

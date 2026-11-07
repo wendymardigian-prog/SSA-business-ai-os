@@ -3,13 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
 import { getMemberAction } from "@/lib/auth/guards";
 import { canReplyChannel } from "@/lib/inbox/channel-access";
 import { approveDraft, discardDraft, regenerateDraft, type DraftActionResult } from "@/lib/agent/drafts/actions";
 import { requestSuggestion } from "@/lib/agent/drafts/suggest";
-import { draftOwner, loadLastDiscardedDraft, loadLastExpiredDraft, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
-import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
+import { loadLastDiscardedDraft, loadLastExpiredDraft, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
+import { loadPendingDraftCounts, type PendingDraftCounts } from "@/lib/agent/drafts/pending-count";
 
 /**
  * Las cuatro decisiones sobre un borrador, desde la cola o desde la
@@ -87,40 +86,9 @@ export async function regenerateDraftAction(draftId: string, instruction?: strin
   return result;
 }
 
-/**
- * El contador del menu. Coincide con la vista por defecto de la cola ("mios"):
- * los borradores vivos cuyo contacto es del usuario (setter; sin setter,
- * vendedor). Para Owner/Admin suma los sin asignar y el total del workspace,
- * asi un Owner sin contactos propios no ve "0" con doce esperando.
- */
-export interface PendingDraftCounts {
-  mine: number;
-  /** Solo Owner/Admin. */
-  unassigned: number | null;
-  /** Solo Owner/Admin: todo el workspace. */
-  total: number | null;
-}
-
+/** El contador del menu (ver `lib/agent/drafts/pending-count.ts`). */
 export async function countPendingDrafts(): Promise<PendingDraftCounts> {
-  const { workspace, role, supabase, user } = await getWorkspace();
-  const { data, error } = await supabase
-    .from("agent_drafts")
-    .select("id, contacts(setter_id, vendedor_id)")
-    .eq("workspace_id", workspace.id)
-    .in("status", LIVE_DRAFT_STATUSES)
-    .limit(1000);
-  if (error) {
-    console.error("[drafts] no pude contar los borradores:", error.message);
-    return { mine: 0, unassigned: null, total: null };
-  }
-  const rows = (data ?? []) as unknown as Array<{ contacts: { setter_id: string | null; vendedor_id: string | null } | null }>;
-  const owners = rows.map((r) => draftOwner(r.contacts));
-  const admin = isAdminRole(role);
-  return {
-    mine: owners.filter((o) => o === user.id).length,
-    unassigned: admin ? owners.filter((o) => o === null).length : null,
-    total: admin ? rows.length : null,
-  };
+  return loadPendingDraftCounts();
 }
 
 /** El borrador vivo de una conversacion (bandeja). La RLS acota al scope de leads. */
