@@ -90,6 +90,19 @@ describe("el cuerpo en HTML (F65)", () => {
   it("escapa lo que romperia el HTML", () => {
     expect(textToHtml('<script>alert("x")</script>')).not.toContain("<script>");
   });
+
+  it("un link sale como link, y el resto igual", () => {
+    expect(textToHtml("Mirá https://a.com?x=1&y=2.\nChau")).toContain(
+      'Mirá <a href="https://a.com?x=1&amp;y=2" target="_blank" rel="noopener noreferrer">https://a.com?x=1&amp;y=2</a>.<br>Chau',
+    );
+  });
+
+  // Caracterizacion: sin links, byte por byte lo de antes.
+  it("sin links, el HTML es exactamente el de siempre", () => {
+    expect(textToHtml('Hola <b>"x"</b> & chau\nlinea\n\nOtro')).toBe(
+      '<div style="font-family: -apple-system, system-ui, sans-serif; font-size: 15px; line-height: 1.5;">\n<p>Hola &lt;b&gt;&quot;x&quot;&lt;/b&gt; &amp; chau<br>linea</p>\n<p>Otro</p>\n</div>',
+    );
+  });
 });
 
 describe("si se puede responder (F65)", () => {

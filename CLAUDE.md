@@ -1604,6 +1604,23 @@ Todo lo que filtra la lista vive arriba de ella (`components/inbox/inbox-list-he
 - **El buscador se despliega desde el icono** y arranca abierto solo si la URL trae `?q=`. La `×` (o Esc) borra lo buscado y lo cierra. `SectionSearch` con `onClose` es ese modo; Broadcasts, Secuencias y Growth lo siguen usando en la barra de arriba.
 - **Limpiar filtros conserva lo abierto** (`?c=` y `?g=`).
 
+# Links clicables y vista previa (6/11/2026)
+
+Los links de los mensajes se ven clicables en la bandeja, los chats llevan una tarjeta de vista previa (también mientras se escribe) y los emails salen con links de verdad. Sin migración. Detalle por canal en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md) («Links y vista previa»).
+
+## Lo que no se puede romper
+
+- **El envío por WhatsApp e Instagram no cambió, y la tarjeta de la bandeja NO es la que ve la otra persona.** En WhatsApp la arma Evolution 2.3.7 sola, salvo `linkPreview: false`; solo sigue redirecciones dentro del mismo dominio, así que un link con «Registrar el clic» o un acortador llegan sin tarjeta. En Instagram decide la red: el SDK de Zernio no tiene opción para mensajes.
+- **Un solo detector: `splitTextLinks` (`lib/messages/text-links.ts`, puro)**, con `http(s)://` y `www.`. Solo produce `http` y `https`, y unir los pedazos da el texto original. `URL_IN_TEXT` de `link-params.ts` no cambió: la atribución lo usa.
+- **Un link medido se abre directo al destino solo en un mensaje SALIENTE** (`trackedLinkDestination`), para que el equipo no le invente un clic al lead. **Nunca en un entrante**: un lead podría falsificar el token y mostrar otro destino. Un test compara el formato con el firmado de verdad, porque `tracked-link.ts` usa `node:crypto` y no se puede importar acá.
+- **Pedir una página pasa por `lib/link-preview/fetch.ts`**, porque el link lo puede haber mandado cualquier desconocido: `safeFetch`, 5 s, solo puertos 80 y 443, nunca `/auth/` ni `/api/` (pueden gastar un link de un solo uso), también en cada redirección. **Nunca se loguea la URL**: por eso la ruta es POST y un catch ahí no loguea. Su `LINK_PREVIEW_USER_AGENT` está en `LINK_PREVIEW_BOT_TOKENS`, o abrir un mensaje contaría como un clic.
+- **Qué canal lleva tarjeta lo decide `lib/channels/link-preview.ts`** (rama explícita por proveedor; un desconocido, sin tarjeta). Email no lleva. A qué mensaje le toca, `messageLinkCardUrl`: ni fallidos, ni emails, ni los que ya traen tarjeta (`share`, `link`, `story_reply`).
+- **Un email sin links sale byte por byte igual** (`textToHtml`, `plainTextToHtml`, con test). Primero se separan los links y después se escapa. El texto visible es igual al `href`: una variable no puede disfrazar un link.
+- **`renderEmail` de los broadcasts protege `{{unsubscribe_url}}`** antes de limpiar el HTML: sin eso, un `href` con la variable se descartaba y el link de baja se perdía.
+- **El hilo se queda abajo con `useStickToBottom`** cuando llega tarde una tarjeta o crece el composer. Si la persona subió a leer, no la mueve.
+
+**Pendiente:** el DNS rebinding en `safeFetch` (detalle en `docs/PENDIENTE.md`).
+
 # Contactos: Kanban, columnas y filtros (3/11/2026)
 
 Tabla y Kanban (`?vista=kanban`) con los MISMOS filtros: un solo planificador (`lib/contacts/list-query.ts`) y un catálogo de filtros (`lib/contacts/filters/catalog.ts` + las áreas de `lib/contacts/related/*`, registradas en `lib/contacts/list-modules.ts`). Panel de filtros y menú de columnas con buscador, chips de filtros puestos. Resumen en [docs/contactos.md](docs/contactos.md) («Lista: vistas, columnas y filtros»).
