@@ -13,6 +13,7 @@ import { z } from "zod";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { NOT_BUILT_YET, type ActionResult, type DesignTarget, type ExportKind, type ExportResult, type PublicOptions } from "@/lib/designer/contracts";
+import { exportStatusCore, requestExportCore } from "@/lib/designer/exporting";
 import { publishDesignCore, setPublicOptionsCore, unpublishDesignCore } from "@/lib/designer/publishing";
 
 const NO_PERMISSION = "No tenés permiso para hacer esto.";
@@ -48,13 +49,32 @@ export async function setPublicOptions(input: { designId: string } & PublicOptio
   return setPublicOptionsCore(await createServiceClient(), { workspaceId: ctx.workspace.id, userId: ctx.user.id }, parsed.data);
 }
 
-/** Exportar (F46): si el archivo está, el link; si no, se prepara y se consulta con `exportStatus`. */
-export async function requestExport(_input: DesignTarget & { exportKind: ExportKind; page?: number }): Promise<ExportResult> {
-  return NOT_BUILT_YET(2);
+const targetShape = {
+  kind: z.enum(["design", "template"]),
+  id: z.string().uuid(),
+  exportKind: z.enum(["pdf", "zip", "png"]),
+  page: z.number().int().min(0).max(34).optional(),
+};
+
+/**
+ * Exportar (F46): se prepara el archivo (un `design_render` de exportación) y se consulta con `exportStatus`.
+ * Con `designer.edit`. Una plantilla exporta una prueba con datos de ejemplo: no crea generación ni link.
+ */
+export async function requestExport(input: DesignTarget & { exportKind: ExportKind; page?: number }): Promise<ExportResult> {
+  const ctx = await getPermissionAction("designer.edit");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const parsed = z.object(targetShape).safeParse(input);
+  if (!parsed.success) return { ok: false, error: BAD_REQUEST };
+  return requestExportCore(await createServiceClient(), { workspaceId: ctx.workspace.id }, parsed.data);
 }
 
-export async function exportStatus(_input: DesignTarget & { exportKind: ExportKind; stamp: string; page?: number }): Promise<ExportResult> {
-  return NOT_BUILT_YET(2);
+/** Si el archivo ya está: el link firmado de corta duración para bajarlo; si falló, el motivo. */
+export async function exportStatus(input: DesignTarget & { exportKind: ExportKind; stamp: string; page?: number }): Promise<ExportResult> {
+  const ctx = await getPermissionAction("designer.edit");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const parsed = z.object({ ...targetShape, stamp: z.string().max(40) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: BAD_REQUEST };
+  return exportStatusCore(await createServiceClient(), { workspaceId: ctx.workspace.id }, parsed.data);
 }
 
 /** Anular una generación con verificación (F47): motivo obligatorio, nunca se borra. */

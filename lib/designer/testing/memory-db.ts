@@ -151,6 +151,7 @@ class Bucket {
     return { data: new Blob([file.bytes as BlobPart], { type: file.contentType }), error: null };
   }
   async list(folder: string, opts?: { limit?: number }) {
+    this.db.storageLog.push(`list:${folder}`);
     const prefix = folder.replace(/\/+$/, "") + "/";
     const names = new Set<string>();
     for (const path of this.files.keys()) {
@@ -179,6 +180,8 @@ export class MemoryDb {
   tables: Record<string, Row[]> = {};
   buckets = new Map<string, Map<string, StoredObject>>();
   log: { table: string; op: "insert" | "update" | "delete"; values: Row[]; filters?: Filter[] }[] = [];
+  /** Lo que se le pidió al Storage (`list:<carpeta>`), para comprobar que NO se lo miró. */
+  storageLog: string[] = [];
   /** `"tabla.op"` o `"storage.upload"` → el mensaje del error que tiene que devolver. */
   failures = new Map<string, string>();
 
