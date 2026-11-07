@@ -1,7 +1,7 @@
 // Firma del pedido de render (HMAC-SHA256 con marca de tiempo).
 //
 // Copia LETRA POR LETRA de `render/sign.mjs` (solo cambia la sintaxis de los
-// tipos). `render-sign.test.ts` compara las dos: si se cambia una, se cambia la otra.
+// tipos). `render-client.test.ts` compara las dos: si se cambia una, se cambia la otra.
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 // Hex del HMAC-SHA256 de `${t}.${body}`. `t` son segundos desde epoch.

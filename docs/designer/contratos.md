@@ -30,7 +30,7 @@ Lo que cada bloque le pide a otro, fijado al cerrar la Ola 1. Los tipos viven en
 
 | Job | Lo construye | Estado |
 |---|---|---|
-| `design_render` (`lib/designer/jobs/render.ts`, `runDesignRender`, `enqueueDesignRender`) | Sesión principal | Listo: `publish`, `generation`, `export` (pdf, zip, png); reintentos 1/5/15 min; `failed` al cuarto fallo. |
+| `design_render` (`lib/designer/jobs/render.ts`, `runDesignRender`, `enqueueDesignRender`) | Sesión principal | Listo: `publish`, `generation`, `export` (pdf, zip, png) de un diseño, y `export` de una PLANTILLA con `templateId` ("Exportar prueba" con `sampleValues`, sin fila en `designs`); reintentos 1/5/15 min; `failed` al cuarto fallo; una exportación que falla no toca los intentos de la fila (lleva su propio contador `retry`). Si un archivo del negocio no se puede firmar, se reintenta (nunca sale un PDF sin sus imágenes). |
 | `releasePreviousRenders` (`lib/designer/jobs/render-replace.ts`) | **DS5** (F48b) | Hoy no borra nada. DS5 borra el juego anterior de un diseño propio después de guardar el nuevo. |
 | `design_generate_many` (`lib/designer/jobs/generate-many.ts`) | **DS6** | Registrado; por ahora solo avisa que no está construido. |
 | `design_content_sync` (`lib/designer/jobs/content-sync.ts`) | **DS8** | Ídem. |

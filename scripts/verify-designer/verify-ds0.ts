@@ -199,10 +199,16 @@ export default async function ds0(ctx: BlockContext): Promise<void> {
   // ─── Limpieza diaria (F48b) y origen de corridas (F3) ───────────────────
   console.log("\n— Limpieza diaria y agent_runs —");
   const oldAt = new Date(Date.now() - 40 * 86_400_000).toISOString();
-  await raw.from("design_versions").insert({ workspace_id: t.id, design_id: design!.id, doc: minimalDoc(), reason: "manual", author_kind: "user", created_at: oldAt });
+  const jobsFor = () => Number(sql(`select count(*)::int as n from public.scheduled_jobs where type = 'design_cleanup' and payload->>'workspace_id' = '${t.id}'`)[0]?.n ?? 0);
+  sql(`select private.enqueue_design_cleanup(now())`);
+  check(jobsFor() === 0, "sin candidatas, no encola nada para ese negocio");
+  const v1 = await raw.from("design_versions").insert({ workspace_id: t.id, design_id: design!.id, doc: minimalDoc(), reason: "manual", author_kind: "user", created_at: oldAt });
+  check(!v1.error, "se guarda una versión (el trigger del documento no rompe en design_versions)", v1.error?.message);
+  sql(`select private.enqueue_design_cleanup(now())`);
+  check(jobsFor() === 0, "una versión vieja que es la ACTUAL de su pieza no cuenta como candidata (00322)");
+  await raw.from("design_versions").insert({ workspace_id: t.id, design_id: design!.id, doc: minimalDoc(), reason: "manual", author_kind: "user" });
   const enqueued = Number(sql(`select private.enqueue_design_cleanup(now()) as n`)[0]?.n ?? 0);
-  const job = sql(`select count(*)::int as n from public.scheduled_jobs where type = 'design_cleanup' and payload->>'workspace_id' = '${t.id}'`)[0]?.n;
-  check(enqueued >= 1 && Number(job) === 1, "con una versión vieja, encola un design_cleanup para ese negocio");
+  check(enqueued >= 1 && jobsFor() === 1, "con una versión vieja que ya no es la actual, encola un design_cleanup para ese negocio");
   check(Number(sql(`select private.enqueue_design_cleanup(now()) as n`)[0]?.n ?? -1) === 0, "el mismo día no lo encola dos veces");
   sql(`delete from public.scheduled_jobs where type = 'design_cleanup' and payload->>'workspace_id' = '${t.id}'`);
   check(sql(`select count(*)::int as n from cron.job where jobname = 'design-cleanup'`)[0]?.n === 1, "el cron diario design-cleanup está programado");

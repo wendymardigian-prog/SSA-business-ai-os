@@ -28,8 +28,9 @@ const payloadOf = (ctx: JobContext) => (ctx.job.payload ?? {}) as Record<string,
 
 export async function handleDesignRender(ctx: JobContext): Promise<void> {
   const payload = payloadOf(ctx) as Partial<DesignRenderPayload>;
-  if (typeof payload.designId !== "string" || !["publish", "generation", "export"].includes(payload.purpose as string)) {
-    console.error("[design_render] el job no trae el diseño o el motivo");
+  const hasTarget = typeof payload.designId === "string" || (typeof payload.templateId === "string" && payload.purpose === "export");
+  if (!hasTarget || !["publish", "generation", "export"].includes(payload.purpose as string)) {
+    console.error("[design_render] el job no trae el diseño (o la plantilla) o el motivo");
     return;
   }
   const out = await runDesignRender(ctx.supabase as Db, payload as DesignRenderPayload);

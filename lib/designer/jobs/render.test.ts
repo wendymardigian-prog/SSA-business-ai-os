@@ -7,14 +7,19 @@ const WS = "11111111-2222-3333-4444-555555555555";
 const DESIGN = "aaaaaaaa-2222-3333-4444-555555555555";
 
 /** Un cliente de Supabase en memoria con lo justo que usa el job. */
-function fakeDb(row: Record<string, unknown>) {
+function fakeDb(row: Record<string, unknown>, opts: { signFails?: boolean; template?: Record<string, unknown> } = {}) {
   const state = { row: { ...row }, uploads: [] as string[], updates: [] as Record<string, unknown>[] };
   const db = {
     from(table: string) {
       return {
         select: () => ({
           eq: () => ({
-            maybeSingle: async () => (table === "designs" ? { data: state.row, error: null } : { data: { design_settings: {} }, error: null }),
+            maybeSingle: async () =>
+              table === "designs"
+                ? { data: state.row, error: null }
+                : table === "design_templates"
+                  ? { data: opts.template ?? null, error: null }
+                  : { data: { design_settings: {}, name: "Academia Ejemplo", brand_name: null }, error: null },
           }),
         }),
         update: (values: Record<string, unknown>) => ({
@@ -32,7 +37,8 @@ function fakeDb(row: Record<string, unknown>) {
           state.uploads.push(path);
           return { error: null };
         },
-        createSignedUrls: async (paths: string[]) => ({ data: paths.map((p) => ({ path: p, signedUrl: `https://s/${p}` })), error: null }),
+        createSignedUrls: async (paths: string[]) =>
+          opts.signFails ? { data: null, error: { message: "storage caído" } } : { data: paths.map((p) => ({ path: p, signedUrl: `https://s/${p}` })), error: null },
       }),
     },
   };
@@ -121,5 +127,44 @@ describe("design_render (F6)", () => {
     const render = vi.fn();
     expect(await runDesignRender(db, { designId: DESIGN, purpose: "publish" }, { render, now: () => NOW, schedule: vi.fn() })).toEqual({ status: "skipped", reason: "web_no_export" });
     expect(render).not.toHaveBeenCalled();
+  });
+
+  it("si no se pueden firmar las imágenes del negocio, NO queda listo sin ellas: se reintenta", async () => {
+    const doc = emptyDoc("v45");
+    doc.pages[0].background = { type: "image", image: { asset: `${WS}/images/fondo.jpg`, fit: "cover", focal: { x: 50, y: 50 }, locked: true } };
+    const { db, state } = fakeDb(baseRow({ template_id: "t1", status: "queued", doc }), { signFails: true });
+    const schedule = vi.fn(async () => ({ id: "j" }));
+    const out = await runDesignRender(db, { designId: DESIGN, purpose: "generation" }, { render: fakeRender, now: () => NOW, schedule: schedule as never });
+    expect(out.status).toBe("retry");
+    expect(state.row.status).not.toBe("ready");
+    expect(state.uploads).toEqual([]);
+  });
+
+  it("«Exportar prueba» de una plantilla: con datos de ejemplo, sin fila en designs", async () => {
+    const TPL = "bbbbbbbb-2222-3333-4444-555555555555";
+    const doc = emptyDoc("carta_h");
+    doc.pages[0].elements.push({ id: "el_aaaa01", type: "text", x: 50, y: 50, w: 80, text: "Se otorga a {{contact.display_name}}", font: { family: "Inter", weight: 400 }, size: 30, align: "center", color: "#000000" });
+    const { db, state } = fakeDb(baseRow(), { template: { id: TPL, workspace_id: WS, doc, custom_vars: [] } });
+    const seen: string[] = [];
+    const render = vi.fn(async (req: RenderRequest) => {
+      seen.push(...(req.pages ?? []).map((p) => p.html));
+      return fakeRender(req);
+    });
+    const out = await runDesignRender(db, { templateId: TPL, purpose: "export", exportKind: "pdf", stamp: "prueba" }, { render, now: () => NOW, schedule: vi.fn() });
+    expect(out).toEqual({ status: "exported", paths: [`${WS}/${TPL}/exports/prueba/document.pdf`] });
+    expect(seen[0]).toContain("Se otorga a Ana Pérez");
+    expect(state.updates).toEqual([]);
+  });
+
+  it("una exportación que falla no toca los intentos de la fila: se reagenda con su propio contador", async () => {
+    const { db, state } = fakeDb(baseRow());
+    const schedule = vi.fn(async () => ({ id: "j" }));
+    const failing = vi.fn(async () => Promise.reject(new RenderFailed("dormido", { retryable: true, status: 503 })));
+    const out = await runDesignRender(db, { designId: DESIGN, purpose: "export", exportKind: "pdf", stamp: "s" }, { render: failing, now: () => NOW, schedule: schedule as never });
+    expect(out.status).toBe("retry");
+    expect(schedule).toHaveBeenCalledWith(db, DESIGN_RENDER_JOB, expect.objectContaining({ retry: 1 }), expect.any(Date));
+    expect(state.updates).toEqual([]);
+    const last = await runDesignRender(db, { designId: DESIGN, purpose: "export", exportKind: "pdf", stamp: "s", retry: 3 }, { render: failing, now: () => NOW, schedule: schedule as never });
+    expect(last.status).toBe("failed");
   });
 });

@@ -59,6 +59,28 @@ function cssString(value: string): string {
  * el render NUNCA devuelva algo ejecutable aunque llegara un documento viejo o
  * mal guardado.
  */
+/** Decodifica las entidades que se usan para disfrazar un esquema (`jav&#x61;script:`, `&colon;`) y saca los blancos. */
+function normalizeUrlValue(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);?/gi, (_m, hex: string) => String.fromCodePoint(parseInt(hex, 16) || 32))
+    .replace(/&#(\d+);?/g, (_m, dec: string) => String.fromCodePoint(Number(dec) || 32))
+    .replace(/&colon;?/gi, ":")
+    .replace(/&(tab|newline|nbsp);?/gi, "")
+    .replace(/[\u0000-\u0020\u007f-\u009f]+/g, "")
+    .toLowerCase();
+}
+
+/** Los únicos destinos que se dejan en un atributo de URL: web, anclas, rutas, archivos propios e imágenes en línea. */
+function isSafeUrl(value: string): boolean {
+  const v = normalizeUrlValue(value);
+  if (v === "" || v.startsWith("#") || v.startsWith("/") || v.startsWith("./") || v.startsWith("../") || v.startsWith("?")) return true;
+  if (/^(https?:|mailto:|tel:|asset:)/.test(v)) return true;
+  if (/^data:image\/(png|jpe?g|gif|webp);/.test(v)) return true;
+  // Sin esquema (una ruta relativa): solo si no hay ":" antes de la primera "/" o "?".
+  const scheme = v.match(/^([a-z][a-z0-9+.-]*):/);
+  return !scheme;
+}
+
 export function stripActiveContent(html: string): string {
   let out = html;
   let prev: string;
@@ -67,9 +89,13 @@ export function stripActiveContent(html: string): string {
     out = out
       .replace(/<\s*(script|iframe|object|embed|frame|frameset|applet|base|meta|link|form)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
       .replace(/<\s*\/?\s*(script|iframe|object|embed|frame|frameset|applet|base|meta|link|form)\b[^>]*>/gi, "")
-      .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-      .replace(/(href|src|action|formaction|xlink:href|srcdoc)\s*=\s*("\s*(?:javascript|vbscript|data:text\/html)[^"]*"|'\s*(?:javascript|vbscript|data:text\/html)[^']*'|(?:javascript|vbscript)[^\s>]*)/gi, "")
-      .replace(/srcdoc\s*=\s*("[^"]*"|'[^']*')/gi, "")
+      // Un manejador de eventos, también pegado al nombre de la etiqueta con "/" (`<img/onerror=…>`) o a otra comilla.
+      .replace(/([\s/"'])on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (_m, pre: string) => (pre.trim() === "" ? "" : pre))
+      .replace(/srcdoc\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      // Atributos de URL: solo destinos seguros, aunque el esquema venga disfrazado con entidades.
+      .replace(/\b(href|src|xlink:href|action|formaction|poster|background|data)\s*=\s*("([^"]*)"|'([^']*)'|([^\s>"']+))/gi, (attr, _n, _q, d, s1, bare) =>
+        isSafeUrl((d ?? s1 ?? bare ?? "") as string) ? attr : "",
+      )
       .replace(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi, (_m, css: string) => `<style>${stripActiveCss(css)}</style>`)
       .replace(/style\s*=\s*("[^"]*"|'[^']*')/gi, (attr) => attr.replace(/expression\s*\(/gi, "(").replace(/behavior\s*:/gi, "").replace(/-moz-binding\s*:/gi, ""))
       .replace(/javascript\s*:/gi, "")

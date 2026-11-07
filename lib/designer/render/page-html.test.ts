@@ -49,8 +49,32 @@ describe("renderPageHTML (F10)", () => {
     };
     const html = renderPageHTML(doc([evil, text("el_e00002", { text: "<script>alert(1)</script>" })]), 0, { mode: "public", assetUrl });
     expect(html).not.toMatch(/<script/i);
-    expect(html).not.toMatch(/\son[a-z]+\s*=/i);
+    expect(html).not.toMatch(/[\s/"']on[a-z]+\s*=/i);
     expect(html).not.toMatch(/javascript:/i);
+  });
+
+  it("tampoco con los disfraces conocidos (barra en vez de espacio, entidades en el esquema)", () => {
+    const attacks = [
+      "<img/onerror=alert(1) src=x>",
+      "<svg/onload=alert(1)>",
+      '<a href="jav&#x61;script:alert(1)">x</a>',
+      '<a href="jav&#97;script:alert(1)">x</a>',
+      '<a href="javascript&colon;alert(1)">x</a>',
+      '<a href=" &#14; javascript:alert(1)">x</a>',
+      '<img src="data:text/html;base64,PHNjcmlwdD4=">',
+      '<a href="vbscript:msgbox(1)">x</a>',
+      '<div style="background:url(javascript:alert(1))">x</div>',
+      '<img src=x onerror\n=alert(1)>',
+      '<a xlink:href="javascript:alert(1)">x</a>',
+      '<form action="javascript:alert(1)"><button>x</button></form>',
+      "<iframe srcdoc='<script>alert(1)</script>'></iframe>",
+    ];
+    for (const attack of attacks) {
+      const out = stripActiveContent(attack);
+      expect(out, attack).not.toMatch(/<script|[\s/"']on[a-z]+\s*=|javascript|vbscript|data:text\/html|&#x61;script|&#97;script|&colon;/i);
+    }
+    // Lo seguro queda.
+    expect(stripActiveContent('<a href="https://ejemplo.test/x">ok</a><img src="asset:ws/a.png">')).toBe('<a href="https://ejemplo.test/x">ok</a><img src="asset:ws/a.png">');
   });
 
   it("un texto con <b> escrito por la persona sale escapado", () => {

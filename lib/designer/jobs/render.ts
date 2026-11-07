@@ -28,7 +28,8 @@ import { FORMATS } from "../formats";
 import { renderPageHTML } from "../render/page-html";
 import { renderDesign, RenderFailed, renderErrorMessage, RenderNotConfigured, type RenderRequest, type RenderResult } from "../render-client";
 import { parseDesignSettings } from "../settings-schema";
-import { assetUrlFrom, collectAssetPaths, DESIGN_RENDERS_BUCKET, exportFolder, pageFileName, renderFolder, signAssetUrls } from "../storage";
+import { sampleValues, type CustomVar } from "../variables/catalog";
+import { assetUrlFrom, collectAssetPaths, DESIGN_RENDERS_BUCKET, exportFolder, pageFileName, pathBelongsTo, renderFolder, signAssetUrls } from "../storage";
 import { releasePreviousRenders } from "./render-replace";
 
 export const DESIGN_RENDER_JOB = "design_render";
@@ -41,7 +42,8 @@ export type RenderPurpose = "publish" | "generation" | "export";
 export type ExportKind = "pdf" | "zip" | "png";
 
 export interface DesignRenderPayload {
-  designId: string;
+  /** El diseño o la generación. Una prueba de plantilla trae `templateId` en su lugar. */
+  designId?: string;
   purpose: RenderPurpose;
   /** Solo `export`. */
   exportKind?: ExportKind;
@@ -49,9 +51,11 @@ export interface DesignRenderPayload {
   page?: number;
   /** Solo `export`: la carpeta de esta exportación (la arma quien la pide, así sabe dónde buscarla). */
   stamp?: string;
-  /** Si es una prueba de plantilla con datos de ejemplo (no hay fila en `designs`). */
+  /** "Exportar prueba" de una plantilla con datos de ejemplo (no hay fila en `designs`): solo con `purpose: "export"`. */
   templateId?: string;
   values?: Record<string, string>;
+  /** Reintentos de una exportación (no se anotan en la fila del diseño). */
+  retry?: number;
 }
 
 /** Lo que guarda `designs.renders` (el juego vigente). */
@@ -95,7 +99,11 @@ async function pagesHtml(db: Db, row: { workspace_id: string }, doc: DesignDoc, 
   const { data: ws } = await db.from("workspaces").select("design_settings").eq("id", row.workspace_id).maybeSingle();
   const settings = parseDesignSettings((ws as { design_settings?: unknown } | null)?.design_settings ?? {}, row.workspace_id);
   const uploadedFonts = settings.ok ? (settings.settings.fonts?.uploaded ?? []) : [];
-  const signed = await signAssetUrls(db, row.workspace_id, collectAssetPaths(doc, uploadedFonts));
+  const paths = collectAssetPaths(doc, uploadedFonts);
+  const signed = await signAssetUrls(db, row.workspace_id, paths);
+  // Un archivo del negocio sin su link firmado saldría vacío en el PDF: no se da por bueno, se reintenta.
+  const missing = paths.filter((p) => pathBelongsTo(p, row.workspace_id) && !signed.has(p));
+  if (missing.length > 0) throw new RenderFailed("No se pudieron preparar las imágenes del diseño.", { retryable: true });
   const assetUrl = assetUrlFrom(signed);
   return doc.pages.map((_p, i) => renderPageHTML(doc, i, { mode: "export", values, assetUrl, uploadedFonts }));
 }
@@ -132,9 +140,89 @@ async function noteFailure(db: Db, row: DesignRow, payload: DesignRenderPayload,
   return { status: "failed", error: message };
 }
 
+type RenderBase = { width: number; height: number; scale: 0.5 | 1 | 2 };
+
+/** Una exportación suelta: PDF, ZIP de PNG o una página, en `<ws>/<pieza>/exports/<marca>/`. */
+async function exportFiles(db: Db, deps: Required<RenderDeps>, input: { workspaceId: string; pieceId: string; html: string[]; base: RenderBase; payload: DesignRenderPayload }): Promise<RenderOutcome> {
+  const { payload, html, base } = input;
+  const stamp = payload.stamp ?? String(deps.now().getTime());
+  const folder = exportFolder(input.workspaceId, input.pieceId, stamp);
+  const kind = payload.exportKind ?? "pdf";
+  const paths: string[] = [];
+  if (kind === "pdf") {
+    const res = await deps.render({ ...base, pages: html.map((h) => ({ html: h })), format: "pdf" });
+    const path = `${folder}/document.pdf`;
+    await upload(db, path, res.files[0].bytes, "application/pdf");
+    paths.push(path);
+  } else if (kind === "png") {
+    const index = Math.min(Math.max(payload.page ?? 0, 0), html.length - 1);
+    const res = await deps.render({ ...base, html: html[index], format: "png" });
+    const path = `${folder}/${pageFileName(index)}`;
+    await upload(db, path, res.files[0].bytes, "image/png");
+    paths.push(path);
+  } else {
+    const res = await deps.render({ ...base, pages: html.map((h) => ({ html: h })), format: "png" });
+    const entries: Record<string, Uint8Array> = {};
+    res.files.forEach((f, i) => (entries[`${String(i + 1).padStart(2, "0")}.png`] = f.bytes));
+    const path = `${folder}/imagenes.zip`;
+    await upload(db, path, zipSync(entries, { level: 0 }), "application/zip");
+    paths.push(path);
+  }
+  return { status: "exported", paths };
+}
+
+/**
+ * Un fallo de una EXPORTACIÓN: no toca la fila del diseño (los intentos de publicar y generar son otra
+ * cosa); se reagenda a 1, 5 y 15 minutos con su propio contador en el pedido. Nunca lanza.
+ */
+async function exportFailure(db: Db, payload: DesignRenderPayload, error: unknown, deps: Required<RenderDeps>): Promise<RenderOutcome> {
+  const message = renderErrorMessage(error);
+  const retry = (payload.retry ?? 0) + 1;
+  const retryable = error instanceof RenderFailed && error.retryable && !(error instanceof RenderNotConfigured);
+  if (retryable && retry <= DESIGN_RENDER_RETRY_MS.length) {
+    const at = new Date(deps.now().getTime() + DESIGN_RENDER_RETRY_MS[retry - 1]);
+    try {
+      await deps.schedule(db, DESIGN_RENDER_JOB, { ...payload, retry }, at);
+      return { status: "retry", attempt: retry, at: at.toISOString(), error: message };
+    } catch (scheduleError) {
+      console.error("[design_render] no pude reagendar la exportación:", scheduleError instanceof Error ? scheduleError.message : "error");
+    }
+  }
+  return { status: "failed", error: message };
+}
+
+/** "Exportar prueba" de una plantilla: con los valores de muestra, sin crear generación ni link (F46). */
+async function runTemplateExport(db: Db, payload: DesignRenderPayload, deps: Required<RenderDeps>): Promise<RenderOutcome> {
+  const { data, error } = await db.from("design_templates").select("id, workspace_id, doc, custom_vars").eq("id", payload.templateId as string).maybeSingle();
+  if (error) {
+    console.error("[design_render] no pude leer la plantilla:", error.message);
+    return { status: "skipped", reason: "read_failed" };
+  }
+  if (!data) return { status: "skipped", reason: "not_found" };
+  const parsed = parseDesignDoc(data.doc);
+  if (!parsed.ok) return { status: "failed", error: "El documento de la plantilla no es válido." };
+  const format = FORMATS[parsed.doc.format];
+  if (format.primaryExport === "none") return { status: "skipped", reason: "web_no_export" };
+  try {
+    const { data: ws } = await db.from("workspaces").select("name, brand_name").eq("id", data.workspace_id).maybeSingle();
+    const workspaceName = (ws as { brand_name?: string | null; name?: string } | null)?.brand_name || (ws as { name?: string } | null)?.name || undefined;
+    const customVars = Array.isArray(data.custom_vars) ? (data.custom_vars as unknown as CustomVar[]) : [];
+    const values = { ...sampleValues({ customVars, workspaceName }), ...(payload.values ?? {}) };
+    const html = await pagesHtml(db, data, parsed.doc, values);
+    return await exportFiles(db, deps, { workspaceId: data.workspace_id, pieceId: data.id, html, base: { width: format.width, height: format.height, scale: format.exportScale }, payload });
+  } catch (err) {
+    return exportFailure(db, payload, err, deps);
+  }
+}
+
 /** Corre un render. Recibe todo por parámetro: se prueba con un cliente y un servicio simulados. */
 export async function runDesignRender(db: Db, payload: DesignRenderPayload, depsIn: RenderDeps = {}): Promise<RenderOutcome> {
   const deps: Required<RenderDeps> = { render: depsIn.render ?? ((r) => renderDesign(r)), now: depsIn.now ?? (() => new Date()), schedule: depsIn.schedule ?? scheduleJob };
+  if (payload.templateId && !payload.designId) {
+    if (payload.purpose !== "export") return { status: "skipped", reason: "template_only_exports" };
+    return runTemplateExport(db, payload, deps);
+  }
+  if (!payload.designId) return { status: "skipped", reason: "no_target" };
   const { data, error } = await db
     .from("designs")
     .select("id, workspace_id, doc, format, code, rev, values, template_id, subject_contact_id, subject_ref, renders, attempts")
@@ -160,30 +248,11 @@ export async function runDesignRender(db: Db, payload: DesignRenderPayload, deps
     const base = { width: format.width, height: format.height, scale: format.exportScale } as const;
 
     if (payload.purpose === "export") {
-      const stamp = payload.stamp ?? String(deps.now().getTime());
-      const folder = exportFolder(row.workspace_id, row.id, stamp);
-      const kind = payload.exportKind ?? "pdf";
-      const paths: string[] = [];
-      if (kind === "pdf") {
-        const res = await deps.render({ ...base, pages: html.map((h) => ({ html: h })), format: "pdf" });
-        const path = `${folder}/document.pdf`;
-        await upload(db, path, res.files[0].bytes, "application/pdf");
-        paths.push(path);
-      } else if (kind === "png") {
-        const index = Math.min(Math.max(payload.page ?? 0, 0), html.length - 1);
-        const res = await deps.render({ ...base, html: html[index], format: "png" });
-        const path = `${folder}/${pageFileName(index)}`;
-        await upload(db, path, res.files[0].bytes, "image/png");
-        paths.push(path);
-      } else {
-        const res = await deps.render({ ...base, pages: html.map((h) => ({ html: h })), format: "png" });
-        const entries: Record<string, Uint8Array> = {};
-        res.files.forEach((f, i) => (entries[`${String(i + 1).padStart(2, "0")}.png`] = f.bytes));
-        const path = `${folder}/imagenes.zip`;
-        await upload(db, path, zipSync(entries, { level: 0 }), "application/zip");
-        paths.push(path);
+      try {
+        return await exportFiles(db, deps, { workspaceId: row.workspace_id, pieceId: row.id, html, base, payload });
+      } catch (err) {
+        return exportFailure(db, payload, err, deps);
       }
-      return { status: "exported", paths };
     }
 
     // El juego vigente: un PNG por página y un PDF con todas.
@@ -222,13 +291,15 @@ export async function runDesignRender(db: Db, payload: DesignRenderPayload, deps
     }
     return { status: "rendered", set };
   } catch (err) {
+    if (payload.purpose === "export") return exportFailure(db, payload, err, deps);
     return noteFailure(db, row, payload, err, deps);
   }
 }
 
 /** Encola un render. `dedupeKey` evita dos renders pendientes iguales (doble clic). */
 export async function enqueueDesignRender(db: Db, payload: DesignRenderPayload, runAt: Date = new Date()): Promise<void> {
-  const key = payload.purpose === "export" ? `design_render:${payload.designId}:export:${payload.stamp ?? ""}` : `design_render:${payload.designId}:${payload.purpose}`;
+  const target = payload.designId ?? `t:${payload.templateId ?? ""}`;
+  const key = payload.purpose === "export" ? `design_render:${target}:export:${payload.stamp ?? ""}` : `design_render:${target}:${payload.purpose}`;
   try {
     await scheduleJob(db, DESIGN_RENDER_JOB, { ...payload }, runAt, key);
   } catch (error) {

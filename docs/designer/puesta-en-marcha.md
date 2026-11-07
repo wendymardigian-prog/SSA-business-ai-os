@@ -22,7 +22,7 @@ Lo que hay que hacer a mano, una vez por instalación, para que el Diseñador IA
 | Variable | Valor |
 |---|---|
 | `RENDER_SERVICE_SECRET` | 32+ bytes al azar (`openssl rand -hex 32`). El mismo valor va en SSA. |
-| `RENDER_ALLOWED_HOSTS` | `fonts.googleapis.com,fonts.gstatic.com,*.supabase.co` (o, en vez de `*.supabase.co`, el host exacto del Storage del proyecto: `<ref>.supabase.co`). Sin el host del Storage, las imágenes de los diseños no cargan. |
+| `RENDER_ALLOWED_HOSTS` | `fonts.googleapis.com,fonts.gstatic.com,<ref>.supabase.co` (el host EXACTO del Storage del proyecto, el mismo de `NEXT_PUBLIC_SUPABASE_URL`; mejor que el comodín `*.supabase.co`, que abriría a cualquier proyecto). Sin el host del Storage, las imágenes de los diseños no cargan. |
 
 6. Variables del servicio de **SSA** (la app):
 
