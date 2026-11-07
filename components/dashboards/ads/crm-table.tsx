@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { BarChart2, Download } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
 import { Popover } from "@/components/ui/popover";
-import { buildCrmRows, countByStatus, filterByParent, filterByStatus, showNoAdSignalNotice, totalFootnote, totalRowDetailed, type CrmLevel, type CrmRow, type DistinctLeads, type ParentScope, type StatusFilter } from "@/lib/dashboards/ads-crm";
+import { buildCrmRows, countByStatus, filterByParent, filterByStatus, showNoAdSignalNotice, totalFootnote, totalReachOptions, totalRowDetailed, type CrmLevel, type CrmRow, type DistinctLeads, type ParentScope, type StatusFilter } from "@/lib/dashboards/ads-crm";
 import { GROUP_LABEL, GROUP_ORDER, GROUP_TIP, REACH_SUM_NOTE, formatCell, isReachColumn, needsLiveReach, reachAheadOfSync, type ColumnDef, type ColumnGroup } from "@/lib/dashboards/ads-crm-columns";
 import { visibleColumns } from "@/lib/dashboards/ads-columns";
 import { csvFilename, toCsv } from "@/lib/dashboards/ads-crm-csv";
@@ -14,7 +14,7 @@ import { canOpenCell } from "@/lib/dashboards/ads-crm-detail";
 import { ADS_GUIDE_STEPS, ADS_NO_SIGNAL_MESSAGE, ADS_URL_PARAMS } from "@/lib/dashboards/ads-guide";
 import { loadCrmDistinctTotals, loadCrmObjectReach, type CrmReachResult } from "@/lib/actions/ads-crm";
 import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
-import type { AdsRow, AdsTotals } from "@/lib/dashboards/ads";
+import type { AdsRow, AdsTotalsWithSource } from "@/lib/dashboards/ads";
 import { ColumnsMenu } from "./columns-menu";
 import { CrmCellPanel, type CellTarget } from "./crm-cell-panel";
 import { RowActionsMenu, type RowAction } from "./row-actions-menu";
@@ -177,7 +177,7 @@ export function CrmLevelTable({
   /** Las filas de metricas del periodo (todos los niveles). */
   rows: AdsRow[];
   /** Los totales de la cuenta (con el alcance unico real). */
-  totals: AdsTotals;
+  totals: AdsTotalsWithSource;
   crm: CrmTableData;
   currency: string | null;
   hrefOf: (objectId: string) => string;
@@ -248,12 +248,10 @@ export function CrmLevelTable({
   const { row: total, leadsTotalIsSum } = useMemo(
     () =>
       totalRowDetailed(shown, {
-        overallReach: subset ? null : (liveAccount?.reach ?? totals.reach),
-        overallFrequency: subset ? null : (liveAccount?.frequency ?? null),
-        overallReachIsSum: !liveAccount,
+        ...totalReachOptions({ subset, liveAccount, totals }),
         distinctLeads: distinct,
       }),
-    [shown, subset, totals.reach, liveAccount, distinct],
+    [shown, subset, totals, liveAccount, distinct],
   );
 
   const groups = GROUP_ORDER.map((group) => ({ group, columns: columns.filter((c) => c.group === group) })).filter((g) => g.columns.length > 0);

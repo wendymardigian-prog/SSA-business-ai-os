@@ -21,7 +21,7 @@
  * Modulo puro: lo prueba `ads-crm.test.ts`.
  */
 
-import { ratio, groupByObject, type AdsRow, type GroupedRow } from "./ads";
+import { ratio, groupByObject, type AdsRow, type AdsTotalsWithSource, type GroupedRow } from "./ads";
 import type { ObjectReach } from "@/lib/meta/live";
 import { fromCents } from "@/lib/shared/money";
 import { metaCountersOf, metaRatios, sumMetaCounters, sumOrNull, type MetaCounters, type MetaRatios } from "./ads-meta-metrics";
@@ -436,15 +436,38 @@ export function countByStatus(rows: CrmRow[]): Record<StatusFilter, number> {
 export interface TotalOptions {
   /** El alcance de la cuenta: solo cuando la tabla muestra todos los objetos. Sin el, alcance y frecuencia son «—». */
   overallReach?: number | null;
-  /** La frecuencia de la misma respuesta de Meta que `overallReach`. Sin ella, impresiones ÷ alcance. */
+  /**
+   * La frecuencia que viaja con `overallReach` (de la misma respuesta de Meta, o de los mismos datos guardados). Con un alcance
+   * en vivo y sin ella es «—»: nunca impresiones guardadas ÷ alcance en vivo. Con una suma y sin ella, impresiones ÷ alcance.
+   */
   overallFrequency?: number | null;
-  /** `overallReach` es la suma de los dias de la cuenta, no el alcance unico. */
+  /** `overallReach` es la suma de los dias de la cuenta, no el alcance unico. Sin esto, es el alcance en vivo. */
   overallReachIsSum?: boolean;
   /**
    * Las personas DISTINTAS del filtro (`ads_crm_metrics_v2`, fila `is_total`). Sin esto, «Leads totales» del total es la suma de
    * las filas (una persona que toco dos anuncios cuenta dos veces) y `leadsTotalIsSum` lo avisa.
    */
   distinctLeads?: DistinctLeads | null;
+}
+
+/**
+ * El alcance y la frecuencia que lleva el total de la tabla, siempre de a pares y de la misma fuente:
+ *
+ * - Con un filtro de estado o un padre: nada (el alcance de la cuenta no es el de lo que se ve).
+ * - Si Meta contesto el alcance de la tabla: el de la cuenta de esa respuesta, con su frecuencia.
+ * - Si no contesto, fallo o todavia esta cargando: el de las tarjetas (`totals`), con SU frecuencia y diciendo si es una suma.
+ *   Puede ser el alcance en vivo de la cuenta (`fetchUniqueReach`): entonces no se marca con «≈» y, sin frecuencia, es «—».
+ */
+export function totalReachOptions(input: {
+  subset: boolean;
+  liveAccount: { reach: number | null; frequency: number | null } | null;
+  totals: Pick<AdsTotalsWithSource, "reach" | "frequency" | "reachIsSum">;
+}): Required<Pick<TotalOptions, "overallReach" | "overallFrequency" | "overallReachIsSum">> {
+  if (input.subset) return { overallReach: null, overallFrequency: null, overallReachIsSum: false };
+  const live = input.liveAccount;
+  if (live && live.reach !== null) return { overallReach: live.reach, overallFrequency: live.frequency, overallReachIsSum: false };
+  const { reach, frequency, reachIsSum } = input.totals;
+  return { overallReach: reach, overallFrequency: reach === null ? null : frequency, overallReachIsSum: reach !== null && reachIsSum };
 }
 
 /** La fila de total, mas si sus «Leads totales» son una suma (puede contar dos veces a alguien). */
@@ -463,6 +486,7 @@ export interface TotalResult {
  */
 export function totalRowDetailed(rows: CrmRow[], options: TotalOptions = {}): TotalResult {
   const overallReach = options.overallReach ?? null;
+  const overallReachIsSum = options.overallReachIsSum === true;
   const spend = round2(sumOrNull(rows.map((r) => r.spend)));
   const impressions = sumOrNull(rows.map((r) => r.impressions));
   const clicks = sumOrNull(rows.map((r) => r.clicks));
@@ -504,8 +528,8 @@ export function totalRowDetailed(rows: CrmRow[], options: TotalOptions = {}): To
     spend,
     impressions,
     reach: overallReach,
-    frequency: overallReach === null ? null : round2(options.overallFrequency ?? ratio(impressions, overallReach)),
-    reachIsSum: overallReach !== null && options.overallReachIsSum === true,
+    frequency: overallReach === null ? null : round2(options.overallFrequency ?? (overallReachIsSum ? ratio(impressions, overallReach) : null)),
+    reachIsSum: overallReach !== null && overallReachIsSum,
     clicks,
     ctr: round2(ctr === null ? null : ctr * 100),
     cpm: round2(cpm === null ? null : cpm * 1000),
