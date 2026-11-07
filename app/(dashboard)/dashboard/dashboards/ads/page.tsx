@@ -67,7 +67,7 @@ export default async function AdsDashboardPage({
         period={period}
         uniqueReach={null}
         uniqueFrequency={null}
-        previousUniqueReach={null}
+        previousLive={null}
         adReach={null}
         aiModel={null}
         live={{ placement: null, device: null, audience: null }}
@@ -133,10 +133,6 @@ export default async function AdsDashboardPage({
     now,
   });
 
-  // Si alguno de los dos no llego, los dos quedan en la suma de los dias:
-  // comparar un alcance unico contra uno sumado inventaria una variacion.
-  const bothReach = live?.ok && previousLive?.ok;
-
   const syncedAt =
     lastSyncedAt(rows.filter((r) => r.level === "account")) ?? account?.last_synced_at ?? null;
 
@@ -154,9 +150,9 @@ export default async function AdsDashboardPage({
       adAccountId={adAccountId}
       currency={account?.currency ?? null}
       period={period}
-      uniqueReach={bothReach ? live.data.reach : null}
-      uniqueFrequency={bothReach ? live.data.frequency : null}
-      previousUniqueReach={bothReach ? previousLive.data.reach : null}
+      uniqueReach={live?.ok ? live.data.reach : null}
+      uniqueFrequency={live?.ok ? live.data.frequency : null}
+      previousLive={previousLive?.ok ? previousLive.data : null}
       adReach={adReachLive?.ok ? adReachLive.data : null}
       live={{ placement: placementLive, device: deviceLive, audience: audienceLive }}
       liveError={live && !live.ok ? live.error : null}
