@@ -18,8 +18,28 @@ export function parseConfirmType(raw: string | null): ConfirmType | null {
   return raw && (CONFIRM_TYPES as readonly string[]).includes(raw) ? (raw as ConfirmType) : null;
 }
 
-/** Solo rutas relativas propias: nunca se redirige a un dominio externo. */
+/** Un origen que no existe: solo sirve para que `URL` resuelva la ruta relativa. */
+const NEXT_BASE = "https://app.invalid";
+
+/**
+ * Solo rutas relativas propias: nunca se redirige a un dominio externo.
+ *
+ * Se resuelve con `URL` (como lo haria el navegador) en vez de mirar el texto:
+ * `/\evil.com`, `/<TAB>/evil.com` o `/.//evil.com` empiezan con una sola "/"
+ * pero el navegador los lleva a otro dominio. Se devuelve la ruta ya
+ * normalizada (`pathname + search + hash`), nunca lo que vino.
+ */
 export function safeNextPath(raw: string | null | undefined, fallback = "/dashboard"): string {
-  if (!raw) return fallback;
-  return raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\") ? raw : fallback;
+  if (!raw || !raw.startsWith("/")) return fallback;
+  let url: URL;
+  try {
+    url = new URL(raw, NEXT_BASE);
+  } catch {
+    return fallback;
+  }
+  if (url.origin !== NEXT_BASE) return fallback;
+  const path = `${url.pathname}${url.search}${url.hash}`;
+  // Una ruta que, ya normalizada, empieza con "//" es un link a otro dominio.
+  if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
+  return path;
 }

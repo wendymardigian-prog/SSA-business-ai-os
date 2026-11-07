@@ -9,6 +9,19 @@ describe("safeNextPath", () => {
     expect(safeNextPath("https://evil.com")).toBe("/dashboard");
     expect(safeNextPath(null)).toBe("/dashboard");
   });
+
+  it("lo que el navegador lleva a otro dominio aunque empiece con una sola barra", () => {
+    expect(safeNextPath("/\t/evil.com")).toBe("/dashboard");
+    expect(safeNextPath("/\n/evil.com")).toBe("/dashboard");
+    expect(safeNextPath("/.//evil.com")).toBe("/dashboard");
+    expect(safeNextPath("/a/..//evil.com")).toBe("/dashboard");
+    expect(safeNextPath("\\evil.com")).toBe("/dashboard");
+  });
+
+  it("conserva la consulta y el ancla de una ruta propia", () => {
+    expect(safeNextPath("/dashboard/inbox?c=1#fin")).toBe("/dashboard/inbox?c=1#fin");
+    expect(safeNextPath("/%2F%2Fevil.com")).toBe("/%2F%2Fevil.com");
+  });
 });
 
 describe("parseConfirmType", () => {
