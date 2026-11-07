@@ -129,7 +129,7 @@ describe("publicar (F45)", () => {
     await publishDesignCore(db.client, actor, { designId: DESIGN }, d);
     expect(d.audit).toHaveBeenCalledTimes(1);
     const call = d.audit.mock.calls[0][0] as { changes: unknown; metadata: unknown; [key: string]: unknown };
-    expect(call).toMatchObject({ workspaceId: WS, entityType: "design", entityId: DESIGN, action: "update", performedBy: USER });
+    expect(call).toMatchObject({ workspaceId: WS, entityType: "design", entityId: DESIGN, action: "design.published", performedBy: USER });
     expect(call.metadata).toEqual({ event: "design.published", format: "v45", kind: "design" });
     expect(call.changes).toEqual({ published: { old: false, new: true } });
     expect(JSON.stringify({ changes: call.changes, metadata: call.metadata })).not.toContain(CODE);

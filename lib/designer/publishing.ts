@@ -20,7 +20,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit, type AuditChanges } from "@/lib/audit";
-import type { Database, Json } from "@/lib/types/database";
+import type { Database, Json, AuditAction } from "@/lib/types/database";
 import type { ActionResult, PublicOptions } from "./contracts";
 import { enqueueDesignRender } from "./jobs/render";
 import { loadDesignLinks } from "./public-links";
@@ -72,6 +72,15 @@ async function readDesign(db: Db, workspaceId: string, designId: string): Promis
   return { ok: true, row: data as unknown as DesignRow };
 }
 
+/** La acción del historial de cada evento (volver a publicar es «publicó», con el evento en `metadata`). */
+const EVENT_ACTIONS: Record<string, AuditAction> = {
+  "design.published": "design.published",
+  "design.republished": "design.published",
+  "design.unpublished": "design.unpublished",
+  "design.options_changed": "design.public_options_changed",
+  "design.voided": "design.voided",
+};
+
 async function audit(deps: Required<PublishingDeps>, db: Db, actor: Actor, row: DesignRow, event: string, changes: AuditChanges, extra: Record<string, Json> = {}): Promise<void> {
   try {
     await deps.audit({
@@ -79,7 +88,7 @@ async function audit(deps: Required<PublishingDeps>, db: Db, actor: Actor, row: 
       workspaceId: actor.workspaceId,
       entityType: "design",
       entityId: row.id,
-      action: "update",
+      action: EVENT_ACTIONS[event] ?? "update",
       changes,
       metadata: { event, format: row.format, kind: row.template_id ? "generation" : "design", ...extra },
       performedBy: actor.userId,
