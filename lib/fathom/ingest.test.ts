@@ -18,11 +18,12 @@ const meeting = (i: number, email = "ana@negocio.io"): Meeting => ({
   calendar_invitees: [{ name: "Lead", email: "lead@x.com", is_external: true }],
 });
 
-function world(opts: { watermark?: string | null; cursor?: string | null; permission?: boolean; noEmails?: boolean; status?: string; callsPre?: string[] } = {}) {
+function world(opts: { watermark?: string | null; cursor?: string | null; permission?: boolean; noEmails?: boolean; status?: string; callsPre?: string[]; settings?: unknown } = {}) {
   const conn = {
     id: CONN, workspace_id: WS, user_id: "user-ana", status: opts.status ?? "active", vault_secret_prefix: "oauth_fathom_c1",
     token_expires_at: "2026-10-10T19:00:00Z", account_label: "ana@negocio.io",
     sync_watermark: opts.watermark ?? null, sync_cursor: opts.cursor ?? null, sync_last_error: null as string | null, last_synced_at: null as string | null,
+    fathom_settings: opts.settings ?? {},
   };
   const calls: Array<Record<string, unknown>> = (opts.callsPre ?? []).map((id) => ({ external_id: id }));
   const jobs: Array<Record<string, unknown>> = [];
@@ -84,6 +85,58 @@ const baseDeps = (w: ReturnType<typeof world>, fetchImpl: unknown): IngestDeps =
 });
 
 beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => {}));
+
+describe("que importa cada conexion", () => {
+  it("en manual no consulta nada, ni pide un token", async () => {
+    const w = world({ settings: { mode: "manual" } });
+    const f = fathom({ pages: { first: { items: [meeting(1)] } }, log: [] });
+    const get = vi.fn(async () => "TOKEN");
+    const r = await syncFathomConnection({ ...baseDeps(w, f), tokenProvider: { get, force: get } }, CONN);
+    expect(r.outcome).toBe("manual");
+    expect(f).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
+    expect(w.calls).toHaveLength(0);
+    expect(w.conn.sync_watermark).toBeNull();
+  });
+
+  it("sin configurar entra todo, como siempre", async () => {
+    const w = world();
+    const r = await syncFathomConnection(baseDeps(w, fathom({ pages: { first: { items: [meeting(1), meeting(2)] } }, log: [] })), CONN);
+    expect(r.ingested).toBe(2);
+    expect(r.skippedByRules).toBeUndefined();
+  });
+
+  it("lo que no cumple las reglas no se guarda ni gasta el pedido de su transcripcion", async () => {
+    const w = world({ settings: { mode: "rules", rules: { title_contains: ["demo"] } } });
+    const log: string[] = [];
+    const entra = { ...meeting(1), title: "Demo con Ana" };
+    const r = await syncFathomConnection(baseDeps(w, fathom({ pages: { first: { items: [entra, meeting(2)] } }, log })), CONN);
+    expect(r).toMatchObject({ outcome: "complete", ingested: 1, skippedByRules: 1 });
+    expect(w.calls.map((c) => c.external_id)).toEqual(["1"]);
+    expect(log.filter((l) => l.includes("transcript"))).toHaveLength(1);
+  });
+
+  it("igual avanza la marca de agua: lo filtrado no se vuelve a mirar en cada vuelta", async () => {
+    const w = world({ settings: { mode: "rules", rules: { title_contains: ["demo"] } } });
+    await syncFathomConnection(baseDeps(w, fathom({ pages: { first: { items: [meeting(1)] } }, log: [] })), CONN);
+    expect(w.conn.sync_watermark).toBe(meeting(1).created_at);
+  });
+
+  it("quien salio de manual consulta desde ese momento", async () => {
+    const since = "2026-10-10T17:00:00.000Z";
+    const w = world({ settings: { mode: "auto", auto_since: since } });
+    const log: string[] = [];
+    await syncFathomConnection(baseDeps(w, fathom({ pages: { first: { items: [] } }, log })), CONN);
+    expect(decodeURIComponent(log[0])).toContain(`created_after=${since}`);
+  });
+
+  it("una llamada nueva se clasifica como siempre, con IA si el negocio la tiene prendida", async () => {
+    const w = world();
+    const enqueue = vi.fn(async () => undefined);
+    await syncFathomConnection({ ...baseDeps(w, fathom({ pages: { first: { items: [meeting(1)] } }, log: [] })), enqueueClassify: enqueue }, CONN);
+    expect(enqueue).toHaveBeenCalledWith(expect.any(String), undefined);
+  });
+});
 
 describe("syncFathomConnection", () => {
   it("con next_cursor pide la segunda pagina con ese cursor y guarda las llamadas de las dos", async () => {

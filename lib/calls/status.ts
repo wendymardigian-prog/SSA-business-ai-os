@@ -35,6 +35,7 @@ const REASONS: Record<string, string> = {
   no_transcript: "No tiene transcripción",
   rule: "El tipo lo decidió una regla",
   ai_off: "Ninguna regla lo decide y la clasificación con IA está apagada",
+  imported_no_ai: "Se importó sin clasificar con IA: elegí el área y el tipo",
   ai_error: "La IA no pudo clasificarla: elegí el tipo vos",
   no_profile: "Falta configurar el analizador de este tipo",
   no_show: "Nadie se presentó",

@@ -6,7 +6,8 @@
  * `./history-state.ts`, que es puro. Aca se habla con la base y con Fathom.
  *
  * Lo importado es historia (`calls.imported_from_history`): no dispara
- * automatizaciones y no se analiza sola. Volver a importar no duplica nada (unico
+ * automatizaciones, no se analiza sola y no gasta IA al clasificarse salvo que la
+ * persona lo pida. Aplica las reglas de la conexion. Volver a importar no duplica nada (unico
  * por `external_id`).
  *
  * No lanza por un fallo de Fathom: la cola reintentaria a los 10 segundos encima de
@@ -36,6 +37,7 @@ import {
 } from "./history-state";
 import { ingestItems, openFathomRun, type IngestDeps, type IngestTally } from "./ingest";
 import { CONTINUATION_DELAY_MS } from "./rate-budget";
+import { parseFathomSettings } from "./settings";
 
 type Db = SupabaseClient<Database>;
 
@@ -58,12 +60,12 @@ const RECONNECT_MESSAGE = "Fathom cortó el acceso: reconectá tu cuenta y segu�
 async function loadHistoryRow(db: Db, connectionId: string) {
   const { data, error } = await db
     .from("oauth_connections")
-    .select("history_import, sync_watermark")
+    .select("history_import, sync_watermark, fathom_settings")
     .eq("id", connectionId)
     .eq("provider", "fathom")
     .maybeSingle();
   if (error) throw new Error(`no pude leer la importacion: ${error.message}`);
-  return data ? { state: parseHistoryState(data.history_import), watermark: data.sync_watermark ?? null } : null;
+  return data ? { state: parseHistoryState(data.history_import), watermark: data.sync_watermark ?? null, settings: parseFathomSettings(data.fathom_settings) } : null;
 }
 
 /** Guarda el avance solo si nadie lo cambio: dos vueltas no arman dos cadenas para la misma conexion. */
@@ -91,6 +93,7 @@ export async function startHistoryImport(
   deps: Pick<HistoryDeps, "supabase" | "schedule" | "now">,
   connectionId: string,
   from: string | null,
+  opts: { classifyAi?: boolean } = {},
 ): Promise<HistoryControlResult> {
   const db = deps.supabase;
   const now = (deps.now ?? (() => new Date()))();
@@ -98,12 +101,12 @@ export async function startHistoryImport(
   if (!row) return { ok: false, error: "No encontré tu conexión de Fathom" };
   if (isHistoryRunning(row.state, now)) return { ok: false, error: "Ya hay una importación en curso" };
 
-  const before = historyUpperBound(row.watermark, now);
+  const before = historyUpperBound(row.watermark, now, row.settings);
   if (from && new Date(from).getTime() >= new Date(before).getTime()) {
     return { ok: false, error: "Esas llamadas son recientes y entran solas. Elegí una fecha anterior." };
   }
 
-  const state = newHistoryState({ runId: randomUUID(), from, before, now });
+  const state = newHistoryState({ runId: randomUUID(), from, before, now, classifyAi: opts.classifyAi });
   if (!(await writeIfCurrent(db, connectionId, state, row.state))) return { ok: false, error: "Ya hay una importación en curso" };
   await enqueue(deps, db, connectionId, state, now);
   return { ok: true };
@@ -182,7 +185,7 @@ async function advance(deps: HistoryDeps, connectionId: string, loaded: FathomHi
       const page = await run.withAuth(() =>
         listMeetings(run.api(), { createdAfter: state.from, createdBefore: state.before, recordedBy: run.emails, cursor: state.cursor }),
       );
-      await ingestItems(deps, run, page.items, tally, { history: true });
+      await ingestItems(deps, run, page.items, tally, { history: true, classifyAi: state.classify_ai });
       const after = afterHistoryPage(state, { imported: tally.ingested - counted, nextCursor: page.nextCursor }, now);
       counted = tally.ingested;
       state = after.state;

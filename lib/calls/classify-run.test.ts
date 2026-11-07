@@ -68,10 +68,11 @@ const analyzer = (categoryId: string, mode: "manual" | "auto" = "manual", rules:
   active_prompt_version: null,
 });
 
-function setup(over: { call?: Record<string, unknown>; settings?: Record<string, unknown>; bookingSnapshot?: unknown; profiles?: unknown[] } = {}) {
+function setup(over: { call?: Record<string, unknown>; settings?: Record<string, unknown>; bookingSnapshot?: unknown; profiles?: unknown[]; connectionSettings?: unknown } = {}) {
   const db = fakeDb(
     {
       "call_analysis_profiles:select": { data: over.profiles ?? [analyzer(CIERRE)] },
+      "oauth_connections:select": { data: { fathom_settings: over.connectionSettings ?? {} } },
       "calls:select": { data: { ...baseCall, ...over.call } },
       "calls:update": { data: [{ id: "c1" }] },
       "workspaces:select": { data: { ai_background_settings: over.settings ?? {} } },
@@ -218,6 +219,44 @@ describe("runCallClassification", () => {
     expect(mocks.openAiRun.mock.calls[0][1]).toMatchObject({ source: "call_classification", trigger: "job", workspaceId: "ws1" });
     expect(run.close).toHaveBeenCalledWith({ status: "responded" });
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.type_changed", entityId: "c1", label: "Clasificación automática" }));
+  });
+
+  it("el area de la conexion decide si la reunion y las reglas no: la IA solo completa el tipo", async () => {
+    const db = setup({ call: { connection_id: "conn1" }, connectionSettings: { default_area_id: SERVICIO }, settings: settingsWith({ rules: [] }), profiles: [] });
+    const generate = generateOk({ tipo: "Servicio · Onboarding", confianza: 0.9, motivo: "x" });
+    await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
+    expect(generate.mock.calls[0][0].prompt + generate.mock.calls[0][0].system).not.toContain("Ventas · Cierre");
+    expect(db.writesTo("calls").at(-1)!.values).toMatchObject({ area_id: SERVICIO, category_id: ONBOARDING, classification_source: "connection" });
+  });
+
+  it("la reunion vinculada le gana al area de la conexion", async () => {
+    const db = setup({ call: { booking_id: "b1", connection_id: "conn1" }, bookingSnapshot: { area_id: EQUIPO, area_name: "Equipo", type_id: null, type_name: null }, connectionSettings: { default_area_id: SERVICIO }, settings: settingsWith({ rules: [] }) });
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({}) }, "c1");
+    expect(db.writesTo("calls").at(-1)!.values).toMatchObject({ area_id: EQUIPO, classification_source: "booking" });
+  });
+
+  it("un area de conexion que ya no existe no decide", async () => {
+    const db = setup({ call: { connection_id: "conn1" }, connectionSettings: { default_area_id: "99999999-9999-4999-8999-999999999999" }, settings: settingsWith({ rules: [] }) });
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" }) }, "c1");
+    expect(db.writesTo("calls").at(-1)!.values).toMatchObject({ area_id: VENTAS, classification_source: "ai" });
+  });
+
+  it("lo importado sin el pedido de usar IA no llama al modelo: queda Sin clasificar y lo dice", async () => {
+    const db = setup({ call: { imported_from_history: true }, settings: settingsWith({ rules: [] }) });
+    const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" });
+    const r = await runCallClassification({ db: db.client, now: NOW, generate }, "c1", 0, { noAi: true });
+    expect(r.outcome).toBe("no_decision");
+    expect(generate).not.toHaveBeenCalled();
+    expect(mocks.openAiRun).not.toHaveBeenCalled();
+    expect(db.writesTo("calls")[0].values).toMatchObject({ analysis_status: "needs_review", analysis_status_reason: "imported_no_ai" });
+  });
+
+  it("sin IA, el area de la conexion igual clasifica lo importado", async () => {
+    const db = setup({ call: { imported_from_history: true, connection_id: "conn1" }, connectionSettings: { default_area_id: EQUIPO }, settings: settingsWith({ rules: [] }), profiles: [] });
+    const generate = generateOk({});
+    await runCallClassification({ db: db.client, now: NOW, generate }, "c1", 0, { noAi: true });
+    expect(generate).not.toHaveBeenCalled();
+    expect(db.writesTo("calls").at(-1)!.values).toMatchObject({ area_id: EQUIPO, classification_source: "connection" });
   });
 
   it("un tipo sin analizador queda en No aplica, sin encolar ni gastar", async () => {

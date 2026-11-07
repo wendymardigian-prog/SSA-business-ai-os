@@ -20,7 +20,7 @@ import { resolveProfile, statusAfterClassification } from "./profiles";
 type Db = SupabaseClient<Database>;
 
 const COLUMNS =
-  "id, workspace_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, analysis_status, imported_from_history, no_show, classification_source, call_type_source";
+  "id, workspace_id, connection_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, analysis_status, imported_from_history, no_show, classification_source, call_type_source";
 
 /** Los estados que se pueden mover: lo analizado o en curso no cambia de estado. */
 const MOVABLE = ["needs_review", "pending", "not_applicable", "error"];
@@ -34,14 +34,15 @@ export async function reclassifyCall(db: Db, callId: string, now: Date = new Dat
     if (call.classification_source === "human" || call.call_type_source === "human") return "kept_human";
 
     const ctx = await loadClassificationContext(db, call);
-    const result = resolveCascade({ booking: ctx.booking, rule: ctx.rule });
+    const result = resolveCascade({ booking: ctx.booking, rule: ctx.rule, connection: ctx.connection });
     const patch = classificationPatch(result, ctx, call.no_show);
     const movable = MOVABLE.includes(call.analysis_status);
 
     if (!result.snapshot && movable) {
       const { error } = await db.from("calls").update({ ...patch, analysis_status: "classifying", analysis_status_reason: null }).eq("id", callId);
       if (error) throw new Error(error.message);
-      await enqueueClassify(db, callId, now);
+      // Lo importado no gasta IA por haberle cambiado la reunion: lo decide una persona.
+      await enqueueClassify(db, callId, now, { noAi: call.imported_from_history === true });
       return "requeued";
     }
 

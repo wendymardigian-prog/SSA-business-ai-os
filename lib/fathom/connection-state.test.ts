@@ -62,4 +62,12 @@ describe("pickConnection / shouldNudgeToConnect", () => {
     expect(shouldNudgeToConnect({ hasLiveConnection: true, hasApp: true })).toBe(false);
     expect(shouldNudgeToConnect({ hasLiveConnection: false, hasApp: false })).toBe(false);
   });
+
+  it("en manual lo dice y no ofrece sincronizar", () => {
+    const v = fathomCardView({ ...base, connection: conn(), mode: "manual" });
+    expect(v.actions.syncNow).toBe(false);
+    expect(v.message).toContain("manual");
+    expect(fathomCardView({ ...base, connection: conn(), mode: "rules" }).actions.syncNow).toBe(true);
+    expect(fathomCardView({ ...base, connection: conn(), mode: "rules" }).message).toContain("reglas");
+  });
 });

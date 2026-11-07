@@ -11,6 +11,10 @@ import { validateFathomApp } from "@/lib/fathom/app-validation";
 import { loadRecorderCandidates } from "@/lib/fathom/ingest";
 import { resumeHistoryImport, startHistoryImport, stopHistoryImport } from "@/lib/fathom/history-import";
 import { validateRecorderEmails } from "@/lib/fathom/recorder-emails";
+import { nextFathomSettings, parseFathomSettings, type FathomSettingsInput } from "@/lib/fathom/settings";
+import { categoryGroups } from "@/lib/calls/catalog";
+import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
+import type { Json } from "@/lib/types/database";
 
 /**
  * Server Actions de Fathom (F5, F6, F10).
@@ -109,6 +113,10 @@ export async function syncFathomNow(): Promise<FathomActionResult<{ message: str
     return { ok: false, error: "Ya pediste sincronizar hace un momento. Esperá un minuto." };
   }
 
+  if (parseFathomSettings(connection.fathom_settings).mode === "manual") {
+    return { ok: false, error: "Tu Fathom está en manual: traé las llamadas con Importar historial, en Mi Fathom." };
+  }
+
   const queued = await queueFathomSyncNow(service, connection.id, now);
   if (!queued.queued && queued.reason === "already") return { ok: true, message: "Ya se está sincronizando" };
   if (!queued.queued) return { ok: false, error: "No pude pedir la sincronización. Probá de nuevo en un rato." };
@@ -123,7 +131,7 @@ type Service = Awaited<ReturnType<typeof createServiceClient>>;
 async function myLiveConnection(service: Service, workspaceId: string, userId: string) {
   const { data } = await service
     .from("oauth_connections")
-    .select("id, status")
+    .select("id, status, fathom_settings")
     .eq("workspace_id", workspaceId)
     .eq("provider", "fathom")
     .eq("user_id", userId)
@@ -182,10 +190,62 @@ export async function saveMyFathomEmails(emails: string[]): Promise<FathomAction
   return { ok: true, emails: checked.emails };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Que importa una conexion: la propia, con `calls.view`, o la de otra persona, con
+ * `calls.configure` (si no, alguien podria dejar sus llamadas afuera sin que nadie lo vea).
+ */
+export async function saveFathomSettings(input: { connectionId?: string | null; settings: FathomSettingsInput }): Promise<FathomActionResult<{ message: string }>> {
+  const ctx = await getMemberAction();
+  if (!ctx) return { ok: false, error: "Tenés que iniciar sesión" };
+  const otherId = input.connectionId ?? null;
+  if (otherId !== null && !UUID.test(otherId)) return { ok: false, error: "Los datos no son válidos" };
+
+  const service = await createServiceClient();
+  let query = service
+    .from("oauth_connections")
+    .select("id, user_id, fathom_settings")
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("provider", "fathom")
+    .in("status", ["active", "attention", "error"]);
+  query = otherId ? query.eq("id", otherId) : query.eq("user_id", ctx.user.id);
+  const { data: connection } = await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!connection) return { ok: false, error: "No encontré esa conexión" };
+
+  const own = connection.user_id === ctx.user.id;
+  if (!ctx.can(own ? "calls.view" : "calls.configure")) return { ok: false, error: own ? NO_CALLS_PERMISSION : "No tenés permiso para cambiar la conexión de otra persona" };
+
+  const before = parseFathomSettings(connection.fathom_settings);
+  const areas = categoryGroups((await listCategories(service, ctx.workspace.id)).map(toCategoryRow)).map((g) => g.areaId);
+  const next = nextFathomSettings(before, input.settings, areas, new Date());
+  if (!next.ok) return next;
+
+  const { error } = await service.from("oauth_connections").update({ fathom_settings: next.settings as unknown as Json }).eq("id", connection.id).eq("workspace_id", ctx.workspace.id);
+  if (error) return { ok: false, error: "No pude guardar el cambio. Probá de nuevo." };
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "oauth_connection",
+    entityId: connection.id,
+    action: "update",
+    changes: { fathom_settings: { old: before as unknown as Json, new: next.settings as unknown as Json } },
+    metadata: { provider: "fathom", kind: "settings_changed", ...(own ? {} : { on_behalf_of: connection.user_id }) },
+    performedBy: ctx.user.id,
+  });
+  revalidatePath(MI_FATHOM_PATH);
+
+  if (next.settings.mode === "manual") return { ok: true, message: "Guardado. Traé las llamadas con Importar historial." };
+  // Sale de manual: la consulta arranca ahora. Lo anterior se trae con Importar, para no disparar flujos de golpe.
+  if (before.mode === "manual") return { ok: true, message: "Guardado. Lo que grabes desde ahora entra solo; lo anterior traelo con Importar historial." };
+  return { ok: true, message: "Guardado." };
+}
+
 const DAY_ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
 
 /** Arranca una importacion del historial: todo (`from` null) o desde esa fecha. */
-export async function startFathomHistoryImport(input: { from: string | null }): Promise<FathomActionResult> {
+export async function startFathomHistoryImport(input: { from: string | null; classifyAi?: boolean }): Promise<FathomActionResult> {
   const ctx = await getPermissionAction("calls.view");
   if (!ctx) return { ok: false, error: NO_CALLS_PERMISSION };
   if (input.from !== null && !DAY_ISO.test(input.from)) return { ok: false, error: "La fecha no es válida" };
@@ -194,7 +254,8 @@ export async function startFathomHistoryImport(input: { from: string | null }): 
   const connection = await myLiveConnection(service, ctx.workspace.id, ctx.user.id);
   if (!connection) return { ok: false, error: "Todavía no conectaste tu Fathom" };
 
-  const result = await startHistoryImport({ supabase: service }, connection.id, input.from);
+  const classifyAi = input.classifyAi === true;
+  const result = await startHistoryImport({ supabase: service }, connection.id, input.from, { classifyAi });
   if (!result.ok) return result;
 
   await logAudit({
@@ -203,7 +264,7 @@ export async function startFathomHistoryImport(input: { from: string | null }): 
     entityType: "oauth_connection",
     entityId: connection.id,
     action: "update",
-    metadata: { provider: "fathom", kind: "history_import_started", from: input.from },
+    metadata: { provider: "fathom", kind: "history_import_started", from: input.from, classify_ai: classifyAi },
     performedBy: ctx.user.id,
   });
   revalidatePath(MI_FATHOM_PATH);

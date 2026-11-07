@@ -6,8 +6,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
-import type { CategoryRow, CategorySnapshot } from "@/lib/scheduling/categories";
-import { BOOKING_RULE_LABEL, NO_SHOW_TARGET, legacyCallTypeFor, readCategorySnapshot, ruleTargetSnapshot } from "./catalog";
+import { categorySnapshot, type CategoryRow, type CategorySnapshot } from "@/lib/scheduling/categories";
+import { parseFathomSettings } from "@/lib/fathom/settings";
+import { BOOKING_RULE_LABEL, CONNECTION_RULE_LABEL, NO_SHOW_TARGET, legacyCallTypeFor, readCategorySnapshot, ruleTargetSnapshot } from "./catalog";
 import { applyClassificationRules, teamNamesFrom, type MeetingForRules } from "./classification";
 import { categoryIdOf, type CascadeResult, type CascadeSource } from "./classify-cascade";
 import type { CallAnalysisProfile } from "./profiles";
@@ -24,6 +25,8 @@ export interface ClassificationContext {
   /** Lo que decidio la primera regla que se cumple, y su nombre. */
   rule: CategorySnapshot | null;
   ruleLabel: string | null;
+  /** El area por defecto de la conexion de Fathom que la trajo. */
+  connection: CategorySnapshot | null;
   /** Los analizadores del negocio: deciden que pasa despues de clasificar. */
   profiles: CallAnalysisProfile[];
   /** Una regla dice que nadie se presento, y su nombre. */
@@ -42,9 +45,9 @@ async function loadTeam(db: Db, workspaceId: string): Promise<{ emails: string[]
 
 export async function loadClassificationContext(
   db: Db,
-  call: MeetingForRules & { workspace_id: string; booking_id?: string | null },
+  call: MeetingForRules & { workspace_id: string; booking_id?: string | null; connection_id?: string | null },
 ): Promise<ClassificationContext> {
-  const [{ data: ws }, rows, team, bookingRow, profiles] = await Promise.all([
+  const [{ data: ws }, rows, team, bookingRow, profiles, connectionRow] = await Promise.all([
     db.from("workspaces").select("ai_background_settings").eq("id", call.workspace_id).maybeSingle(),
     listCategories(db, call.workspace_id),
     loadTeam(db, call.workspace_id),
@@ -52,6 +55,7 @@ export async function loadClassificationContext(
       ? db.from("bookings").select("category_snapshot").eq("id", call.booking_id).maybeSingle()
       : Promise.resolve({ data: null }),
     loadCallProfiles(db, call.workspace_id),
+    call.connection_id ? db.from("oauth_connections").select("fathom_settings").eq("id", call.connection_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   const settings = resolveCallTaskSettings(ws?.ai_background_settings);
   const categories = rows.map(toCategoryRow);
@@ -68,9 +72,17 @@ export async function loadClassificationContext(
     booking: readCategorySnapshot((bookingRow.data as { category_snapshot?: unknown } | null)?.category_snapshot),
     rule,
     ruleLabel: rule && fired ? fired.rule_label : null,
+    connection: connectionAreaSnapshot(connectionRow.data?.fathom_settings, categories),
     noShowRule: !!noShowFired,
     noShowRuleLabel: noShowFired?.rule_label ?? null,
   };
+}
+
+/** El area por defecto de una conexion. Una que se archivo o que ya no es un area, no decide. */
+function connectionAreaSnapshot(raw: unknown, categories: CategoryRow[]): CategorySnapshot | null {
+  const areaId = parseFathomSettings(raw).default_area_id;
+  if (!areaId || !categories.some((c) => c.id === areaId && c.parent_id === null && !c.archived_at)) return null;
+  return categorySnapshot(areaId, categories);
 }
 
 /** La columna vieja de "quien decidio" solo admite rule, ai y human. */
@@ -92,7 +104,7 @@ export function classificationPatch(
     no_show: noShow,
     call_type: legacyCallTypeFor(snapshot, ctx.categories, noShow),
     call_type_source: source ? LEGACY_SOURCE[source] : noShow ? ("rule" as const) : null,
-    call_type_rule: source === "booking" ? BOOKING_RULE_LABEL : source === "rule" ? ctx.ruleLabel : !source && noShow ? ctx.noShowRuleLabel : null,
+    call_type_rule: source === "booking" ? BOOKING_RULE_LABEL : source === "rule" ? ctx.ruleLabel : source === "connection" ? CONNECTION_RULE_LABEL : !source && noShow ? ctx.noShowRuleLabel : null,
     call_type_confidence: ai?.confidence ?? null,
     call_type_alternative: ai?.alternative ?? null,
     call_type_proposed: null,

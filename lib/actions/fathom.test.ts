@@ -22,7 +22,7 @@ vi.mock("@/lib/fathom/queue", () => queue);
 const history = vi.hoisted(() => ({ startHistoryImport: vi.fn(), resumeHistoryImport: vi.fn(), stopHistoryImport: vi.fn() }));
 vi.mock("@/lib/fathom/history-import", () => history);
 
-import { disconnectFathom, resumeFathomHistoryImport, saveFathomApp, saveMyFathomEmails, startFathomHistoryImport, stopFathomHistoryImport, syncFathomNow } from "./fathom";
+import { disconnectFathom, resumeFathomHistoryImport, saveFathomApp, saveFathomSettings, saveMyFathomEmails, syncFathomNow, startFathomHistoryImport, stopFathomHistoryImport } from "./fathom";
 import { validateFathomApp } from "@/lib/fathom/app-validation";
 
 const WS = "ws-1";
@@ -192,7 +192,7 @@ describe("importar el historial", () => {
     history.startHistoryImport.mockResolvedValue({ ok: true });
     const r = await startFathomHistoryImport({ from: "2026-01-01T15:00:00.000Z" });
     expect(r).toEqual({ ok: true });
-    expect(history.startHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1", "2026-01-01T15:00:00.000Z");
+    expect(history.startHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1", "2026-01-01T15:00:00.000Z", { classifyAi: false });
     expect(JSON.stringify(audit.logAudit.mock.calls)).toContain("history_import_started");
   });
 
@@ -200,7 +200,7 @@ describe("importar el historial", () => {
     conectada();
     history.startHistoryImport.mockResolvedValue({ ok: true });
     await startFathomHistoryImport({ from: null });
-    expect(history.startHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1", null);
+    expect(history.startHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1", null, { classifyAi: false });
   });
 
   it("rechaza una fecha que no es una fecha", async () => {
@@ -236,5 +236,80 @@ describe("importar el historial", () => {
     await stopFathomHistoryImport();
     expect(history.resumeHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1");
     expect(history.stopHistoryImport).toHaveBeenCalledWith(expect.anything(), "c1");
+  });
+});
+
+describe("saveFathomSettings", () => {
+  const AREA = "33333333-3333-4333-8333-333333333333";
+  const OTHER = "44444444-4444-4444-8444-444444444444";
+  const area = { id: AREA, parent_id: null, name: "Servicio", color: null, position: 0, is_system: true, archived_at: null, system_key: "servicio" };
+  const auto = { mode: "auto" as const, rules: {}, default_area_id: null };
+  const setup = (over: { owner?: string; settings?: unknown; can?: string[] } = {}) => {
+    const can = over.can ?? ["calls.view"];
+    guards.getMemberAction.mockResolvedValue({ ...ME, can: (k: string) => can.includes(k) });
+    const db = fakeDb({
+      "oauth_connections:select": { data: { id: OTHER, user_id: over.owner ?? "user-ana", fathom_settings: over.settings ?? {} } },
+      "oauth_connections:update": { data: null },
+      "booking_categories:select": { data: [area] },
+    });
+    server.service = db.client;
+    return db;
+  };
+
+  it("guarda la propia, filtrando por el negocio y la persona de la sesion", async () => {
+    const db = setup();
+    const r = await saveFathomSettings({ settings: { mode: "rules", rules: { with_external: true }, default_area_id: AREA } });
+    expect(r.ok).toBe(true);
+    const w = db.writesTo("oauth_connections")[0];
+    expect((w.values as { fathom_settings: { mode: string; default_area_id: string } }).fathom_settings).toMatchObject({ mode: "rules", default_area_id: AREA });
+    expect(w.filters).toEqual(expect.arrayContaining([expect.objectContaining({ column: "workspace_id", value: WS })]));
+    expect(db.calls.find((c) => c.table === "oauth_connections")?.filters).toEqual(expect.arrayContaining([expect.objectContaining({ column: "user_id", value: "user-ana" })]));
+    expect(JSON.stringify(audit.logAudit.mock.calls)).toContain("settings_changed");
+  });
+
+  it("sin calls.view no toca la propia", async () => {
+    const db = setup({ can: [] });
+    expect((await saveFathomSettings({ settings: auto })).ok).toBe(false);
+    expect(db.writesTo("oauth_connections")).toHaveLength(0);
+  });
+
+  it("la de otra persona pide calls.configure", async () => {
+    const db = setup({ owner: "user-beto" });
+    expect((await saveFathomSettings({ connectionId: OTHER, settings: auto })).ok).toBe(false);
+    expect(db.writesTo("oauth_connections")).toHaveLength(0);
+  });
+
+  it("con calls.configure la cambia, y queda en el historial a nombre de quien lo hizo", async () => {
+    const db = setup({ owner: "user-beto", can: ["calls.configure"] });
+    expect((await saveFathomSettings({ connectionId: OTHER, settings: auto })).ok).toBe(true);
+    expect(db.writesTo("oauth_connections")).toHaveLength(1);
+    expect((audit.logAudit.mock.calls as unknown[][])[0][0]).toMatchObject({ performedBy: "user-ana", metadata: { on_behalf_of: "user-beto" } });
+  });
+
+  it("un id que no es un id se rechaza", async () => {
+    setup({ can: ["calls.configure"] });
+    expect((await saveFathomSettings({ connectionId: "x", settings: auto })).ok).toBe(false);
+  });
+
+  it("un area que no es del negocio se rechaza", async () => {
+    const db = setup();
+    expect((await saveFathomSettings({ settings: { ...auto, default_area_id: OTHER } })).ok).toBe(false);
+    expect(db.writesTo("oauth_connections")).toHaveLength(0);
+  });
+
+  it("al salir de manual avisa que lo anterior se trae con Importar, sin traerlo", async () => {
+    const db = setup({ settings: { mode: "manual" } });
+    const r = await saveFathomSettings({ settings: auto });
+    expect(r.ok && r.message).toContain("Importar");
+    expect(queue.queueFathomSyncNow).not.toHaveBeenCalled();
+    expect((db.writesTo("oauth_connections")[0].values as { fathom_settings: { auto_since: string } }).fathom_settings.auto_since).toBeTruthy();
+  });
+
+  it("Sincronizar ahora, en manual, explica por que no", async () => {
+    guards.getPermissionAction.mockResolvedValue(ME);
+    server.service = fakeDb({ "oauth_connections:select": { data: { id: OTHER, status: "active", fathom_settings: { mode: "manual" } } } }).client;
+    const r = await syncFathomNow();
+    expect(r.ok === false && r.error).toContain("manual");
+    expect(queue.queueFathomSyncNow).not.toHaveBeenCalled();
   });
 });

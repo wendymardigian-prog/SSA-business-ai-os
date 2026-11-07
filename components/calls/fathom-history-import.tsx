@@ -16,11 +16,12 @@ const REFRESH_MS = 15_000;
  * "Importar historial" en Mi Fathom. Que muestra y que botones ofrece lo decide
  * `historyView` (puro, con sus tests); esto solo lo compone.
  */
-export function FathomHistoryImport({ view }: { view: HistoryView }) {
+export function FathomHistoryImport({ view, manual = false }: { view: HistoryView; manual?: boolean }) {
   const router = useRouter();
   const timeZone = useViewerTimezone();
   const [mode, setMode] = useState<"all" | "from">("all");
   const [date, setDate] = useState("");
+  const [classifyAi, setClassifyAi] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -53,7 +54,7 @@ export function FathomHistoryImport({ view }: { view: HistoryView }) {
   function confirmStart() {
     setConfirming(false);
     const from = mode === "from" ? dateInputToIso(date, timeZone) : null;
-    run(() => startFathomHistoryImport({ from }));
+    run(() => startFathomHistoryImport({ from, classifyAi }));
   }
 
   const Icon = view.phase === "done" ? CheckCircle2 : view.phase === "partial" ? TriangleAlert : running ? Loader2 : History;
@@ -90,6 +91,13 @@ export function FathomHistoryImport({ view }: { view: HistoryView }) {
               />
             )}
           </label>
+          <label className="flex items-start gap-2 border-t border-border pt-2">
+            <input type="checkbox" checked={classifyAi} onChange={(e) => setClassifyAi(e.target.checked)} className="mt-0.5" />
+            <span>
+              Clasificar con IA
+              <span className="block text-xs text-muted-foreground">Tiene costo por llamada. Sin esto, el área y el tipo salen de la reunión agendada, las reglas y tu área por defecto; lo demás queda Sin clasificar.</span>
+            </span>
+          </label>
         </fieldset>
       )}
 
@@ -115,7 +123,7 @@ export function FathomHistoryImport({ view }: { view: HistoryView }) {
       <ConfirmDialog
         open={confirming}
         title="¿Importar tu historial de Fathom?"
-        message="Puede tardar horas si tenés muchas llamadas: entran unas 400 por hora. Cada llamada se clasifica con IA si la clasificación está prendida, y eso tiene costo. No se analizan solas ni disparan automatizaciones."
+        message={`Puede tardar horas si tenés muchas llamadas: entran unas 400 por hora. ${manual ? "Llega hasta ahora mismo. " : ""}${classifyAi ? "Cada llamada se clasifica con IA si la clasificación está prendida, y eso tiene costo." : "No gasta IA."} No se analizan solas ni disparan automatizaciones.`}
         confirmLabel="Importar"
         cancelLabel="Cancelar"
         onConfirm={confirmStart}

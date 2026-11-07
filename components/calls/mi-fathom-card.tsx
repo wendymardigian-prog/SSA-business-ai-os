@@ -14,7 +14,9 @@ import { relativeTime } from "@/lib/notifications/types";
  * `fathomCardView` (puro, con sus tests); esto solo lo compone.
  */
 
-const connectHref = "/api/oauth/fathom/start?redirect_to=/dashboard/llamadas/mi-fathom";
+const BACK_TO = "/dashboard/llamadas/mi-fathom";
+/** El `?area=` viaja en la vuelta firmada: al conectar queda como el area por defecto de la conexion. */
+const connectUrl = (areaId?: string | null) => `/api/oauth/fathom/start?redirect_to=${encodeURIComponent(areaId ? `${BACK_TO}?area=${areaId}` : BACK_TO)}`;
 
 const TONE: Record<FathomCardView["state"], string> = {
   missing_app: "border-border",
@@ -27,6 +29,7 @@ export function MiFathomCard({
   view,
   connectionId,
   flash,
+  areaId = null,
   embedded = false,
 }: {
   view: FathomCardView;
@@ -36,6 +39,8 @@ export function MiFathomCard({
    * margenes), para alinearse con las demas tarjetas. Como pagina propia (Grabaciones > Mi Fathom) queda como siempre.
    */
   embedded?: boolean;
+  /** El area del modulo desde el que se conecta. */
+  areaId?: string | null;
   /** Lo que dejo el retorno de Fathom: `?connected=1` o `?error=...`. */
   flash: { kind: "connected" } | { kind: "error"; message: string } | null;
 }) {
@@ -44,6 +49,7 @@ export function MiFathomCard({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const connectHref = connectUrl(areaId);
 
   function syncNow() {
     setError(null);
@@ -138,7 +144,7 @@ export function MiFathomCard({
 
         {embedded && view.connected && (
           <Link href="/dashboard/llamadas/mi-fathom" className="mt-3 inline-block text-sm text-primary-ink underline-offset-2 hover:underline">
-            Importar historial y ver tus correos
+            Elegir qué entra, importar historial y ver tus correos
           </Link>
         )}
         {message && <p role="status" className="mt-3 text-sm text-emerald-700 dark:text-emerald-300">{message}</p>}

@@ -13,6 +13,8 @@ import { callTypeLabel } from "./list";
 export const NO_SHOW_TARGET = "no_show";
 /** Lo que se guarda en `call_type_rule` cuando decidio la reunion vinculada. */
 export const BOOKING_RULE_LABEL = "reunión vinculada";
+/** Lo que se guarda cuando decidio el area por defecto de la conexion de Fathom. */
+export const CONNECTION_RULE_LABEL = "área de la conexión";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
