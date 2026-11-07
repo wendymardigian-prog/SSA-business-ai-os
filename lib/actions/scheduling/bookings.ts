@@ -22,6 +22,7 @@ import { notifyBooking } from "@/lib/scheduling/notifications";
 import { BOOKING_GOOGLE_SYNC_JOB } from "@/lib/jobs/handlers/booking-sync";
 import { categorySnapshot } from "@/lib/scheduling/categories";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
+import { sanitizeSearch } from "@/lib/url-params";
 
 /**
  * Las acciones del anfitrion sobre una agenda (F36, F37).
@@ -481,9 +482,10 @@ export async function searchContactsForBooking(term: string): Promise<Array<{ id
     .order("last_interaction_at", { ascending: false, nullsFirst: false })
     .limit(10);
 
-  const needle = term.trim();
+  // `sanitizeSearch` saca lo que rompe el filtro `or` (comas, parentesis) y los comodines; el `_` tambien.
+  const needle = sanitizeSearch(term).replace(/_/g, "");
   if (needle) {
-    const like = `%${needle.replace(/[%_]/g, "")}%`;
+    const like = `%${needle}%`;
     query = query.or(`display_name.ilike.${like},email.ilike.${like},phone.ilike.${like}`);
   }
 
