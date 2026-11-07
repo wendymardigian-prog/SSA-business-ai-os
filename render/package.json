@@ -1,0 +1,19 @@
+{
+  "name": "ssa-render",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Servicio de render del Disenador IA: convierte HTML ya armado en PNG o PDF con Chromium sin JavaScript y con la red restringida.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "playwright": "1.65.0",
+    "pngjs": "7.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
