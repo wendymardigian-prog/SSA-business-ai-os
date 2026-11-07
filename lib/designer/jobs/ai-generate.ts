@@ -37,6 +37,7 @@ import { parseDesignDoc, type DesignDoc } from "../doc/schema";
 import { allowedFontsFor, loadWorkspaceContext, resolveStyle, type DesignerWorkspaceContext } from "../ai/context";
 import { budgetBlockMessage } from "../ai/cost";
 import { hasAnswer, recentHistory, type MessageRow } from "../ai/conversation";
+import { sanitizeAiDoc } from "../ai/doc-sanitize";
 import { insertVersion, loadTarget, saveDocWithRev, type TargetRow } from "../ai/db";
 import { keptManualNotice, mergeAiPatch } from "../ai/merge";
 import { makeMeasure, type MeasureFn } from "../ai/measure";
@@ -46,6 +47,7 @@ import { NO_AI_MESSAGE, aiSdkDesignerGenerate, resolveDesignerModel, type Design
 import { storedQa } from "../ai/qa";
 import { runDesignerEngine, type EngineAttachment, type EngineInput, type EngineOutput } from "../ai/run";
 import { checkImageUpload, DESIGN_ASSETS_BUCKET, pathBelongsTo } from "../storage";
+import { enqueueDesignRender } from "./render";
 import { sampleValues, variableGroups } from "../variables/catalog";
 
 export const DESIGN_AI_GENERATE_JOB = "design_ai_generate";
@@ -305,7 +307,7 @@ async function work(ctx: WorkContext): Promise<AiGenerateOutcome> {
 
   // ── Guardar: fusionar con lo que la persona tocó mientras tanto y guardar con control de `rev` ──
   const baseDoc = target.doc;
-  let saved: { doc: DesignDoc; rev: number; before: DesignDoc; keptNotice: string | null; keptManual: string[] } | null = null;
+  let saved: { doc: DesignDoc; rev: number; before: DesignDoc; keptNotice: string | null; keptManual: string[]; published: boolean } | null = null;
   for (let attempt = 0; attempt < MAX_SAVE_ATTEMPTS && !saved; attempt++) {
     // Siempre se vuelve a leer: durante la llamada la persona pudo haber guardado cambios.
     const fresh = await loadTarget(db, target.workspaceId, target.kind, target.id);
@@ -313,11 +315,13 @@ async function work(ctx: WorkContext): Promise<AiGenerateOutcome> {
     const mine = fresh.doc;
     const rev = fresh.rev;
     const merged = mergeAiPatch(baseDoc, mine, out.doc);
-    const valid = parseDesignDoc(merged.doc);
-    if (!valid.ok) {
-      await run.close({ status: "error", statusDetail: "merge_invalid", error: clip(valid.problems.join("; "), 400) });
+    const parsedMerge = parseDesignDoc(merged.doc);
+    if (!parsedMerge.ok) {
+      await run.close({ status: "error", statusDetail: "merge_invalid", error: clip(parsedMerge.problems.join("; "), 400) });
       return ctx.fail("invalid", "No pude aplicar ese cambio", run.runId);
     }
+    // Lo que se guarda es lo que devuelve la limpieza: nada de HTML que no estuviera ya en el diseño.
+    const valid = { ok: true as const, doc: sanitizeAiDoc(parsedMerge.doc, mine).doc };
     if (payload.mode === "style") {
       // Para poder volver atrás: el diseño de antes queda como versión.
       await insertVersion(db, { workspaceId: target.workspaceId, kind: target.kind, id: target.id, doc: mine, reason: "manual", authorKind: "user", authorId: payload.userId ?? null, createdBy: payload.userId ?? null });
@@ -332,7 +336,7 @@ async function work(ctx: WorkContext): Promise<AiGenerateOutcome> {
       lastQa: target.kind === "design" ? storedQa(out.qa.issues, out.qa.unchecked, now()) : undefined,
     });
     if (newRev === null) continue; // otra persona guardó en el medio: se vuelve a leer y a fusionar
-    saved = { doc: valid.doc, rev: newRev, before: mine, keptNotice: keptManualNotice(merged), keptManual: merged.keptManual };
+    saved = { doc: valid.doc, rev: newRev, before: mine, keptNotice: keptManualNotice(merged), keptManual: merged.keptManual, published: fresh.published === true };
   }
   if (!saved) {
     await run.close({ status: "error", statusDetail: "rev_conflict" });
@@ -340,6 +344,15 @@ async function work(ctx: WorkContext): Promise<AiGenerateOutcome> {
   }
 
   await insertVersion(db, { workspaceId: target.workspaceId, kind: target.kind, id: target.id, doc: saved.doc, reason: "ai", authorKind: "ai", authorId: null, createdBy: payload.userId ?? null });
+
+  // Un diseño que ya tiene link público: sus archivos se vuelven a renderizar con el cambio (nunca lanza).
+  if (target.kind === "design" && saved.published) {
+    try {
+      await enqueueDesignRender(db, { designId: target.id, purpose: "publish" });
+    } catch (error) {
+      console.error("[design_ai_generate] no pude encolar el render del diseño publicado:", error instanceof Error ? error.message : "error");
+    }
+  }
 
   const changedPages = changedPageIndexes(saved.before, saved.doc);
   const pages = saved.doc.pages.length;

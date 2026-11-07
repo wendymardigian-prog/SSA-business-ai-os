@@ -32,7 +32,7 @@ describe("settings: guardar y archivar estilos propios (F37)", () => {
     expect(r.ok).toBe(true);
     expect(settingsOf(s).styles).toHaveLength(1);
     expect(settingsOf(s).styles?.[0]).toMatchObject({ key: "c_abc123", name: "Mi estilo", palette: { accent: "#f2aa4c" } });
-    expect(s.tables.audit_log[0]).toMatchObject({ entity_type: "workspace", entity_id: WS, action: "update", performed_by: USER, metadata: { kind: "design_settings", change: "style_saved", style: "Mi estilo" } });
+    expect(s.tables.audit_log[0]).toMatchObject({ entity_type: "workspace", entity_id: WS, action: "design_template.settings_changed", performed_by: USER, metadata: { kind: "design_settings", change: "style_saved", style: "Mi estilo" } });
   });
 
   it("corrige una fuente fuera de la lista a la más cercana antes de guardar", async () => {

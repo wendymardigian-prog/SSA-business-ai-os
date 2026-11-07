@@ -35,6 +35,7 @@ import type { DesignStyle } from "../styles";
 import type { VariableGroup } from "../variables/catalog";
 import { AssetAliases } from "./assets";
 import { applyCoverImage, ensureOverlays } from "./cover";
+import { sanitizeAiDoc } from "./doc-sanitize";
 import type { MeasureFn } from "./measure";
 import { normalizeDoc, type NormalizeContext } from "./normalize";
 import { changedPageIndexes } from "./patch";
@@ -125,11 +126,14 @@ export function styleTextProblem(before: DesignDoc, after: DesignDoc): string | 
 type Candidate = { ok: true; doc: DesignDoc; message: string; documentKind: DocumentKind | null; patch: DesignPatch | null; warnings: string[] } | { ok: false; problems: string[] };
 
 /** Valida un documento ya normalizado; devuelve el problema en español o el documento. */
-function finalize(raw: unknown, ctx: NormalizeContext): { ok: true; doc: DesignDoc; warnings: string[] } | { ok: false; problems: string[] } {
+function finalize(raw: unknown, ctx: NormalizeContext, base: DesignDoc): { ok: true; doc: DesignDoc; warnings: string[] } | { ok: false; problems: string[] } {
   const normalized = normalizeDoc(raw, ctx);
   const parsed = parseDesignDoc(normalized.doc);
   if (!parsed.ok) return { ok: false, problems: parsed.problems };
-  return { ok: true, doc: parsed.doc, warnings: normalized.warnings };
+  // Última barrera: nada de HTML que no estuviera ya en el documento.
+  const clean = sanitizeAiDoc(parsed.doc, base);
+  const warnings = clean.removed > 0 ? [...normalized.warnings, "Saqué un bloque de HTML que la IA no podía escribir."] : normalized.warnings;
+  return { ok: true, doc: clean.doc, warnings };
 }
 
 export async function runDesignerEngine(input: EngineInput, ports: EnginePorts): Promise<EngineOutput> {
@@ -187,7 +191,7 @@ export async function runDesignerEngine(input: EngineInput, ports: EnginePorts):
         candidate = { ok: false, problems: out.problems };
         continue;
       }
-      const done = finalize({ v: 1, format: input.format, style: input.style.key, pages: out.value.doc.pages }, normalizeCtx);
+      const done = finalize({ v: 1, format: input.format, style: input.style.key, pages: out.value.doc.pages }, normalizeCtx, input.doc);
       if (!done.ok) {
         retryProblems = done.problems;
         candidate = { ok: false, problems: done.problems };
@@ -212,7 +216,7 @@ export async function runDesignerEngine(input: EngineInput, ports: EnginePorts):
       candidate = { ok: false, problems: applied.problems };
       continue;
     }
-    const done = finalize(applied.doc, { ...normalizeCtx, styleKey: input.mode === "style" ? input.style.key : (input.doc.style ?? undefined) });
+    const done = finalize(applied.doc, { ...normalizeCtx, styleKey: input.mode === "style" ? input.style.key : (input.doc.style ?? undefined) }, input.doc);
     if (!done.ok) {
       retryProblems = done.problems;
       candidate = { ok: false, problems: done.problems };
@@ -280,7 +284,7 @@ export async function runDesignerEngine(input: EngineInput, ports: EnginePorts):
     if (!out.ok) return { ok: false };
     const applied = applyScoped(request.doc, out.value.patch, scope);
     if (!applied.ok) return { ok: false };
-    const done = finalize(applied.doc, { ...normalizeCtx, assets: correctionAliases, styleKey: request.doc.style });
+    const done = finalize(applied.doc, { ...normalizeCtx, assets: correctionAliases, styleKey: request.doc.style }, request.doc);
     if (!done.ok) return { ok: false };
     return { ok: true, doc: done.doc };
   };

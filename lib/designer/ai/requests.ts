@@ -27,6 +27,7 @@ import type { AiStatus, AnswerProposalResult, LoadConversationData, StyleOption 
 import { AssetAliases } from "./assets";
 import { allowedFontsFor, loadWorkspaceContext, resolveStyle } from "./context";
 import { isPending, toMessageViews, type MessageRow } from "./conversation";
+import { sanitizeAiDoc } from "./doc-sanitize";
 import { insertVersion, loadTarget, saveDocWithRev } from "./db";
 import { normalizeDoc } from "./normalize";
 import { applyScoped } from "./scope";
@@ -275,9 +276,10 @@ export async function answerProposalRequest(db: Db, input: Who & { kind: DesignK
     });
     const valid = parseDesignDoc(normalized.doc);
     if (!valid.ok) return fail("La propuesta no se pudo aplicar. Pedila de nuevo.");
-    const rev = await saveDocWithRev(db, { workspaceId: input.workspaceId, kind: input.kind, id: input.id, rev: current.rev, doc: valid.doc });
+    const clean = sanitizeAiDoc(valid.doc, current.doc).doc;
+    const rev = await saveDocWithRev(db, { workspaceId: input.workspaceId, kind: input.kind, id: input.id, rev: current.rev, doc: clean });
     if (rev === null) continue;
-    await insertVersion(db, { workspaceId: input.workspaceId, kind: input.kind, id: input.id, doc: valid.doc, reason: "ai", authorKind: "ai", authorId: null, createdBy: input.userId });
+    await insertVersion(db, { workspaceId: input.workspaceId, kind: input.kind, id: input.id, doc: clean, reason: "ai", authorKind: "ai", authorId: null, createdBy: input.userId });
     await mark("accepted");
     return { ok: true, data: { rev } };
   }

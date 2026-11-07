@@ -128,6 +128,28 @@ describe("design_ai_generate: un cambio", () => {
     expect(s.inserts.some((i) => i.table === "scheduled_jobs")).toBe(false);
   });
 
+  it("un diseño ya publicado se vuelve a renderizar después del cambio; uno sin publicar, no", async () => {
+    const published = setup();
+    (published.tables.designs[0] as { published: boolean }).published = true;
+    const p = provider([{ message: "Listo", patch: { pages: [update(2, "el_cta0001", { size: 90 })] } }]);
+    await runAiGenerate(published.db, published.payload, deps({ generate: p.generate }).d);
+    const jobs = published.inserts.filter((i) => i.table === "scheduled_jobs").map((i) => i.row);
+    expect(jobs).toEqual([expect.objectContaining({ type: "design_render", payload: { designId: "t1", purpose: "publish" }, dedupe_key: "design_render:t1:publish" })]);
+
+    const draft = setup();
+    await runAiGenerate(draft.db, draft.payload, deps({ generate: provider([{ message: "Listo", patch: { pages: [update(2, "el_cta0001", { size: 90 })] } }]).generate }).d);
+    expect(draft.inserts.some((i) => i.table === "scheduled_jobs")).toBe(false);
+  });
+
+  it("una respuesta que mete un <script> no se guarda (el diseño queda como estaba)", async () => {
+    const s = setup();
+    const evil = { message: "Listo", patch: { pages: [{ index: 0, ops: [{ op: "add", element: { type: "html", x: 50, y: 50, w: 50, html: "<script>alert(1)</script>" } }] }] } };
+    const out = await runAiGenerate(s.db, s.payload, deps({ generate: provider([evil]).generate }).d);
+    expect(out).toMatchObject({ status: "failed", reason: "invalid" });
+    expect(JSON.stringify(s.tables.designs[0])).not.toContain("<script");
+    expect((s.tables.designs[0] as { rev: number }).rev).toBe(3);
+  });
+
   it("«Solo la página N»: el alcance viene del mensaje y el parche de otra página se descarta", async () => {
     const s = setup({ scope: 1 });
     const p = provider([

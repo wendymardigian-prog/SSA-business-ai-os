@@ -39,7 +39,7 @@ interface Who {
 const fail = (error: string) => ({ ok: false as const, error });
 
 async function audit(db: Db, who: Who, change: string, detail: Record<string, string>): Promise<void> {
-  await logAudit({ supabase: db, workspaceId: who.workspaceId, entityType: "workspace", entityId: who.workspaceId, action: "update", metadata: { kind: "design_settings", change, ...detail }, performedBy: who.userId });
+  await logAudit({ supabase: db, workspaceId: who.workspaceId, entityType: "workspace", entityId: who.workspaceId, action: "design_template.settings_changed", metadata: { kind: "design_settings", change, ...detail }, performedBy: who.userId });
 }
 
 // ─── Estilos propios (F37) ──────────────────────────────────────────────────
