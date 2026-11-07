@@ -768,11 +768,15 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 ### Ola 4
 
 #### DS7 · Automatizaciones (sesión principal)
-- [ ] F57 — Nodo "Generar desde plantilla" · prueba: — · auditado: —
-- [ ] F58 — Salidas del nodo (6, con `design.doc_type`) · prueba: — · auditado: —
-  - [ ] F58 / V4 — `design.link` y `design.pdf_url` con `publicBaseUrl` (con y sin dominio propio) · prueba: — · auditado: —
-- [ ] F59 — Adjuntar el PDF en "Enviar email" (caracterización antes) · prueba: — · auditado: —
-- [ ] F60 — "Automatizar" desde la plantilla · prueba: — · auditado: —
+> Adelantado durante la Ola 2 (7/11/2026), en archivos que ningún subagente toca. Falta: correr `verify-designer --bloque ds7` (necesita `createGeneration` de DS6), el auditor y la revisión visual del panel.
+
+- [~] F57 — Nodo "Generar desde plantilla" · prueba: `lib/flow-engine/nodes/design-generate.test.ts` (9: el valor de la respuesta, el origen `automation` con la sesión, «No generar» corta con «Falta: …», reintento de la MISMA generación a la hora del render, existente, nunca lanza), `lib/designer/automation/node-config.test.ts`, `node-requirements.test.ts` («sin plantilla no se publica»), `registry.test.ts` (34 nodos, alias `action/designGenerate`, persiste variables), `consistency.test.ts` (simulador), `node-icons.test.ts` (Sparkles en paleta y lienzo); panel `components/flow-builder/panels/DesignGeneratePanel.tsx`; `scripts/verify-designer/verify-ds7.ts` escrito · auditado: —
+- [~] F58 — Salidas del nodo (6, con `design.doc_type`) · prueba: `node-outputs.test.ts` (las seis con su rótulo; Condiciones las ofrece DESPUÉS del paso y no antes), `design.` en `FLOW_VARIABLE_PREFIXES` y `CONTACT_FREE_PREFIXES`, `getFlowVariables` · auditado: —
+  - [~] F58 / V4 — `design.link` y `design.pdf_url` con `loadDesignLinks` · prueba: `design-generate.test.ts` («deja las seis salidas con los links del dominio del negocio»); con y sin dominio propio lo cubre `lib/designer/public-links.test.ts` · auditado: —
+- [~] F59 — Adjuntar el PDF en "Enviar email" (caracterización antes) · prueba: `lib/email/attachments-characterization.test.ts` (escrito ANTES, commit 2a858ba, intacto), `lib/flow-engine/nodes/send-email-design.test.ts` (7: con la generación lista se adjunta; sin generación falla con «No hay un diseño generado en esta automatización.»; sin estar lista espera 1/5/15; otro negocio no), `send-email.test.ts` en verde, publicar sin un «Generar» antes se frena · auditado: —
+- [~] F60 — "Automatizar" desde la plantilla · prueba: `lib/designer/automation/flow-template.test.ts` (el borrador pasa la validación salvo «Falta elegir el formulario.»); acción `lib/actions/designer/automate.ts`; modal `components/designer/automate/automate-modal.tsx` · auditado: —
+  - Decisión: un flujo que genera diseños con un disparador de formulario SIN formulario elegido no se publica (vacío = cualquier formulario: emitiría certificados por una encuesta). Solo aplica a flujos con «Generar desde plantilla».
+  - Decisión: si el contacto ya tiene una pieza válida de esa plantilla (`reason: "existing"`), el flujo sigue con ESA (no se anula ni se emite otra).
 
 ### Ola 5
 
