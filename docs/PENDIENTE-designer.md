@@ -68,3 +68,8 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** `requestExport` solo encola el job (como pide el plano) y la cola corre cada minuto.
 - **Por qué:** disparar el render también en `after()` podría renderizar dos veces.
 - **Qué se decidió:** la pantalla muestra «Preparando tu archivo…» y descarga sola al terminar. Si molesta, se suma un disparo inmediato con un reclamo del job.
+
+### Un archivo borrado se sigue pudiendo bajar ~1 minuto
+- **Qué quedó:** al volver a renderizar (F48b) se borran los archivos del juego anterior, pero el almacenamiento de Supabase los sigue sirviendo desde su caché hasta ~1 minuto (comprobado el 7/11/2026 con un archivo de prueba: devuelve a los 0, 3 y 15 s y falla a los 45 s).
+- **Por qué:** es la caché del proveedor; la tabla de objetos ya no los tiene.
+- **Qué se decidió:** nada que cambiar: el link público y la descarga leen el juego VIGENTE (`designs.renders`), nunca una ruta vieja. `verify-ds5` comprueba el borrado en `storage.objects`, no con una descarga. La 00324 también: el bucket no aceptaba el `error.json`, ahora sí.
