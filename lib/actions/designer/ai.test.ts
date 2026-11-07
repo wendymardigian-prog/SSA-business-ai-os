@@ -18,7 +18,7 @@ vi.mock("@/lib/designer/ai/requests", () => requests);
 
 import { answerProposal, changeStyle, loadConversation, proposeTemplateTexts, sendAiMessage, startAiDesign } from "./ai";
 
-const session = { workspace: { id: "ws-de-la-sesion" }, user: { id: "user-de-la-sesion" } };
+const session = { workspace: { id: "ws-de-la-sesion" }, user: { id: "user-de-la-sesion" }, can: (key: string) => key === "designer.manage" };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -49,6 +49,14 @@ describe("acciones de la IA del Diseñador: el permiso y el negocio salen de la 
     getPermissionAction.mockClear();
     await loadConversation({ kind: "design", id: "d1" });
     expect(getPermissionAction.mock.calls.map((c) => c[0])).toEqual(["designer.view"]);
+  });
+
+  it("la conversación dice si puede crear estilos propios (designer.manage)", async () => {
+    const withManage = await loadConversation({ kind: "design", id: "d1" });
+    expect(withManage.ok && withManage.data.canManage).toBe(true);
+    getPermissionAction.mockResolvedValue({ ...session, can: () => false });
+    const without = await loadConversation({ kind: "design", id: "d1" });
+    expect(without.ok && without.data.canManage).toBe(false);
   });
 
   it("el negocio y la persona son los de la sesión, aunque el navegador mande otros", async () => {

@@ -179,7 +179,7 @@ describe("ai/requests: la conversación para el panel", () => {
   it("sin hilo todavía: vacío y dice si la IA está conectada", async () => {
     const s = setup({ connected: false });
     const r = await loadConversationView(s.db, { workspaceId: WS, kind: "design", id: "t1" }, NOW);
-    expect(r).toEqual({ ok: true, data: { threadId: null, messages: [], ai: { connected: false, message: "Conectá una clave de IA en Configuración" } } });
+    expect(r.ok && { ...r.data, styles: r.data.styles.length }).toEqual({ threadId: null, messages: [], ai: { connected: false, message: "Conectá una clave de IA en Configuración" }, styles: 6, canManage: false });
   });
 
   it("devuelve los mensajes con qué cambió, avisos y la propuesta, y marca pendiente el último pedido sin respuesta", async () => {
@@ -199,6 +199,17 @@ describe("ai/requests: la conversación para el panel", () => {
     expect(b).toMatchObject({ changedPages: [0], summary: "Cambió la página 1", proposal: { kind: "enable_verification", status: "pending" }, pending: false });
     expect(b.warnings).toHaveLength(1);
     expect(c.pending).toBe(true);
+  });
+
+  it("ofrece los 6 estilos de fábrica y los propios no archivados, con sus colores", async () => {
+    const custom = { key: "c_abc12", name: "Mi estilo", palette: { bg: "#111111", text: "#ffffff", accent: "#ff0000" }, fonts: { title: "Inter", body: "Inter" }, density: {}, rules: "" };
+    const s = setup({ settings: { styles: [custom, { ...custom, key: "c_old12", name: "Viejo", archived: true }] } });
+    const r = await loadConversationView(s.db, { workspaceId: WS, kind: "design", id: "t1" }, NOW);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.styles.map((x) => x.key)).toEqual(["auto", "social", "editorial", "minimal", "impact", "warm", "c_abc12"]);
+    expect(r.data.styles[6]).toMatchObject({ name: "Mi estilo", custom: true, palette: { accent: "#ff0000" } });
+    expect(r.data.styles[0].custom).toBe(false);
   });
 
   it("no mezcla conversaciones de otro negocio", async () => {

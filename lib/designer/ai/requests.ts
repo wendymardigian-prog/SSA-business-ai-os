@@ -23,7 +23,7 @@ import { parseDesignDoc } from "../doc/schema";
 import { DESIGN_AI_GENERATE_JOB } from "../jobs/ai-generate";
 import { pathBelongsTo } from "../storage";
 import { validateTemplateVerification, type DocType } from "../verification";
-import type { AiStatus, AnswerProposalResult, LoadConversationData } from "./action-types";
+import type { AiStatus, AnswerProposalResult, LoadConversationData, StyleOption } from "./action-types";
 import { AssetAliases } from "./assets";
 import { allowedFontsFor, loadWorkspaceContext, resolveStyle } from "./context";
 import { isPending, toMessageViews, type MessageRow } from "./conversation";
@@ -32,7 +32,7 @@ import { normalizeDoc } from "./normalize";
 import { applyScoped } from "./scope";
 import { NO_AI_MESSAGE, hasConnectedAi } from "./provider";
 import { parseAiPatch } from "./schema";
-import { findStyle } from "../styles";
+import { availableStyles, FACTORY_STYLES, findStyle } from "../styles";
 
 type Db = SupabaseClient<Database>;
 
@@ -176,14 +176,21 @@ export async function submitTextProposal(db: Db, input: Who & { templateId: stri
   return result.ok ? { ok: true, data: { messageId: result.data.messageId } } : result;
 }
 
-/** La conversación de un diseño o plantilla para el panel, y si la IA está conectada. */
+/** Los estilos que ofrece el menú del panel: los de fábrica y los propios no archivados. */
+export function styleOptions(custom: Parameters<typeof availableStyles>[0] = []): StyleOption[] {
+  return availableStyles(custom).map((s) => ({ key: s.key, name: s.name, description: s.description ?? null, palette: s.palette, custom: !FACTORY_STYLES.some((f) => f.key === s.key) }));
+}
+
+/** La conversación de un diseño o plantilla para el panel, si la IA está conectada y los estilos que se ofrecen. */
 export async function loadConversationView(db: Db, input: { workspaceId: string; kind: DesignKind; id: string }, now: Date = new Date()): Promise<ActionResult<LoadConversationData>> {
   const thread = await findThread(db, input.workspaceId, input.kind, input.id);
   const connected = await hasConnectedAi(input.workspaceId, db);
   const ai: AiStatus = { connected, message: connected ? null : NO_AI_MESSAGE };
-  if (!thread) return { ok: true, data: { threadId: null, messages: [], ai } };
+  const workspace = await loadWorkspaceContext(db, input.workspaceId);
+  const styles = styleOptions(workspace?.customStyles ?? []);
+  if (!thread) return { ok: true, data: { threadId: null, messages: [], ai, styles, canManage: false } };
   const rows = (await listMessages(db, thread.id)) as unknown as MessageRow[];
-  return { ok: true, data: { threadId: thread.id, messages: toMessageViews(rows, now), ai } };
+  return { ok: true, data: { threadId: thread.id, messages: toMessageViews(rows, now), ai, styles, canManage: false } };
 }
 
 interface StoredProposal {

@@ -27,6 +27,25 @@ export interface AiStatus {
   message: string | null;
 }
 
-export type LoadConversationData = { threadId: string | null; messages: AiMessageView[]; ai: AiStatus };
+/** Un estilo para el menú «Estilo ▾» del panel: de fábrica o propio. */
+export interface StyleOption {
+  key: string;
+  name: string;
+  description: string | null;
+  palette: { bg: string; text: string; accent: string };
+  custom: boolean;
+}
+
+/** Un mensaje para el panel: el del contrato más el error de la respuesta, si fue un error. */
+export type PanelMessage = AiMessageView & { error: string | null };
+
+export type LoadConversationData = {
+  threadId: string | null;
+  messages: PanelMessage[];
+  ai: AiStatus;
+  styles: StyleOption[];
+  /** Si puede crear estilos propios (`designer.manage`): el menú de estilos muestra el atajo a Ajustes solo si sí. */
+  canManage: boolean;
+};
 
 export type AnswerProposalResult = ActionResult<{ rev?: number }>;

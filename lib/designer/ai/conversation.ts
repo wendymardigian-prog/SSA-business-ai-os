@@ -10,7 +10,7 @@
  * Módulo puro.
  */
 
-import type { AiMessageView } from "../contracts";
+import type { PanelMessage } from "./action-types";
 import { parseAttachments } from "@/lib/ai-threads/schema";
 
 /** Una fila de `ai_messages` con lo que necesita el panel. */
@@ -44,7 +44,7 @@ export function isPending(rows: readonly Pick<MessageRow, "role" | "created_at">
   return now.getTime() - new Date(last.created_at).getTime() < PENDING_STALE_MS;
 }
 
-export function toMessageView(row: MessageRow, pending = false): AiMessageView {
+export function toMessageView(row: MessageRow, pending = false): PanelMessage {
   const context = isObj(row.context) ? row.context : {};
   const scope = isObj(context.scope) ? context.scope : {};
   const result = isObj(row.result) ? row.result : {};
@@ -68,11 +68,12 @@ export function toMessageView(row: MessageRow, pending = false): AiMessageView {
         ? { kind, status }
         : null,
     pending,
+    error: errorOf(row.result),
   };
 }
 
 /** Todos los mensajes de un hilo para el panel; el último de la persona queda `pending` si todavía no tiene respuesta. */
-export function toMessageViews(rows: readonly MessageRow[], now: Date): AiMessageView[] {
+export function toMessageViews(rows: readonly MessageRow[], now: Date): PanelMessage[] {
   const pending = isPending(rows, now);
   return rows.map((row, i) => toMessageView(row, pending && i === rows.length - 1));
 }

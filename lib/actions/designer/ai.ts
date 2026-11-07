@@ -75,7 +75,10 @@ export async function sendAiMessage(input: SendAiMessageInput): Promise<ActionRe
 
 /** La conversación del diseño o la plantilla (la puede leer quien puede ver el módulo). */
 export async function loadConversation(input: DesignTarget): Promise<ActionResult<LoadConversationData>> {
-  return guarded("designer.view", (ctx, service) => loadConversationView(service, { workspaceId: ctx.workspace.id, kind: input.kind, id: input.id }));
+  return guarded("designer.view", async (ctx, service) => {
+    const result = await loadConversationView(service, { workspaceId: ctx.workspace.id, kind: input.kind, id: input.id });
+    return result.ok ? { ok: true, data: { ...result.data, canManage: ctx.can("designer.manage") } } : result;
+  });
 }
 
 /** «Que la IA me proponga dónde van los textos y las variables» (F30). */
