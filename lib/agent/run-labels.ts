@@ -29,6 +29,7 @@ export const RUN_SOURCE_LABELS: Record<string, string> = {
   ads_analysis: "Analisis de anuncios",
   audio_transcription: "Transcripcion",
   media_description: "Descripcion de imagen",
+  designer: "Diseñador IA",
   // @plantilla-desde(llamadas)
   call_classification: "Clasificacion de llamada",
   call_analysis: "Analisis de llamada",
