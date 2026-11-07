@@ -414,10 +414,16 @@ guardado en `ads-columns.ts`, el CSV en `ads-crm-csv.ts`, y la carga en `ads-crm
   | Leads totales | Tuvo un toque de ese anuncio en el rango (una persona cuenta una vez por anuncio; el Total, una vez) |
   | Agendas | La reunion se agendo en el rango (`created_at`, no la fecha de la reunion), sin las liberadas y con las canceladas. La que no trae toque propio hereda el ultimo toque con anuncio anterior |
   | Asistidas | Las mismas agendas, con `status_group = 'outcome'` |
-  | Ventas y Revenue | La fecha de la venta (`sale_date`) esta en el rango, aunque el lead haya entrado antes. Sin `cancelled` ni `refunded`. Revenue en centavos USD |
-  | Cash | El pago se cobro en el rango (`paid_on`), aunque la venta sea anterior. Pagos cobrados menos reembolsos |
+  | Ventas y Revenue | La fecha de la venta (`sale_date`) esta en el rango, aunque el lead haya entrado antes. Sin `cancelled` ni `refunded`. Revenue en centavos USD. La que no tiene anuncio en su toque hereda el ultimo toque con anuncio anterior a la venta (ver abajo) |
+  | Cash | El pago se cobro en el rango (`paid_on`), aunque la venta sea anterior. Pagos cobrados menos reembolsos. El anuncio sale de la misma regla que Ventas |
 
   Por eso el ROAS cruza el gasto y las ventas del mismo rango, no los de una misma cohorte: una venta de este mes puede venir de un gasto del mes pasado.
+- **A que anuncio cuenta una venta (00302).** Una venta guarda por defecto el ultimo toque del contacto, y ese toque muchas veces no es el anuncio (la persona entra por un anuncio y despues se une a un grupo). En cada nivel (campaña, conjunto, anuncio), en este orden:
+  1. Si el toque guardado en la venta tiene un objeto en ese nivel, cuenta ese.
+  2. Si no, y la venta **no** es `manual`, cuenta el ultimo toque del contacto con un objeto en ese nivel, anterior a la venta: hasta que se guardo y antes de que termine el dia de la venta (en la zona del workspace). Sin limite de antiguedad, igual que las agendas.
+  3. Una venta `manual` (elegida del historial, cargada a mano o con la sugerencia aplicada) es la decision de una persona: cuenta solo su toque. Si no tiene anuncio (un referido), no le cuenta a ninguno.
+
+  Ventas, Revenue, Cash y UF cash salen de la misma busqueda (`ads_crm_items`), asi que ROAS y costo por venta se mueven juntos. **Lo guardado en la venta no cambia**: la ficha, la lista de Ventas y las comisiones siguen leyendo su toque, asi que la ficha puede decir «Grupo de WhatsApp» y esta tabla contarsela al anuncio. Es lo buscado. Para que no le cuente, se elige el origen a mano en la venta.
 - **Grupos con encabezado de color**: Informacion, Meta, Meta vs CRM y CRM. Las columnas salen del catalogo `lib/dashboards/ads-crm-columns.ts`.
 - **Una division por cero es «—», nunca 0.** La fila de Total suma lo sumable y calcula los cocientes **sobre los totales**. Un objeto que solo tiene CRM
   (sin gasto en el periodo) aparece con el gasto en «—».
