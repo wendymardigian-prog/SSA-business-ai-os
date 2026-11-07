@@ -20,6 +20,7 @@
  * su propia copia de la parte que le toca (`has_permission`).
  */
 
+import { parseCallAreas } from "@/lib/auth/call-areas"; // @plantilla-quitar(llamadas)
 import { ALL_CHANNELS, hasAnyChannel, MEMBER_CHANNELS, parseChannels, type ChannelsConfig } from "./channel-permissions";
 
 export const PERMISSION_MODULES = [
@@ -255,17 +256,20 @@ export type ScopedModule = (typeof SCOPED_MODULES)[number];
  * `own_unassigned` = lo suyo + lo que no tiene a nadie asignado: solo existe
  * para los leads (00136); en agendas y ventas no significa nada. Las conversaciones
  * no tienen un alcance global: se eligen por cuenta (`channels`, 00249).
+ * `areas` = lo suyo + lo de ciertas areas: solo existe para las grabaciones (`call_areas`, 00301).
  */
-export type PermissionScope = "own" | "own_unassigned" | "all";
+export type PermissionScope = "own" | "own_unassigned" | "areas" | "all";
 
 export const SCOPE_LABELS: Record<PermissionScope, string> = {
   own: "Solo los suyos",
   own_unassigned: "Los suyos + los sin asignar",
+  areas: "Los suyos + los de ciertas áreas",
   all: "Todos los del negocio",
 };
 
 /** Los alcances que se pueden elegir para cada modulo. */
 export function scopeOptionsFor(module: ScopedModule): readonly PermissionScope[] {
+  if (module === "calls") return ["own", "areas", "all"] as const; // @plantilla-quitar(llamadas)
   return module === "leads" ? (["own", "own_unassigned", "all"] as const) : (["own", "all"] as const);
 }
 
@@ -281,6 +285,8 @@ export interface RolePermissions {
   scopes: Record<ScopedModule, PermissionScope>;
   /** La bandeja, por cuenta conectada (00249). */
   channels: ChannelsConfig;
+  /** Con el alcance de grabaciones "areas": cuales (00301). */
+  call_areas?: string[];
 }
 
 /**
@@ -420,7 +426,7 @@ export function scopeFor(
  * rechazaria igual; sacarlas al leer mantiene la fila limpia.
  */
 export function parsePermissions(value: unknown): RolePermissions {
-  const record = (value ?? {}) as { keys?: unknown; scopes?: unknown; channels?: unknown };
+  const record = (value ?? {}) as { keys?: unknown; scopes?: unknown; channels?: unknown; call_areas?: unknown };
   const scopes = (record.scopes ?? {}) as Record<string, unknown>;
 
   const scope = (module: ScopedModule): PermissionScope => normalizeScope(module, scopes[module]);
@@ -432,6 +438,7 @@ export function parsePermissions(value: unknown): RolePermissions {
     scopes: { leads: scope("leads"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), commissions: scope("commissions"), tasks: scope("tasks") }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: scope("leads"), bookings: scope("bookings") },
     channels: parseChannels(record.channels),
+    ...(scopes.calls === "areas" ? { call_areas: parseCallAreas(record.call_areas) } : {}), // @plantilla-quitar(llamadas)
   };
 }
 

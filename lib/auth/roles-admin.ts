@@ -56,6 +56,8 @@ export interface RoleInput {
   scopes: Partial<Record<(typeof SCOPED_MODULES)[number], PermissionScope>>;
   /** La bandeja por cuenta. Sin esto, el rol no ve ninguna cuenta. */
   channels?: ChannelsConfig;
+  /** Con el alcance de grabaciones "areas": cuales. */
+  callAreas?: string[];
 }
 
 export interface ValidatedRole {
@@ -107,6 +109,7 @@ export function validateRole(input: RoleInput): RoleValidation {
     // `parsePermissions` normaliza: "responder" sin un alcance no existe (un permiso de cuenta siempre trae
     // "que conversaciones ve"), y un valor que no se entiende es "sin acceso".
     channels: input.channels ?? NO_CHANNELS,
+    call_areas: input.callAreas, // @plantilla-quitar(llamadas)
   });
 
   const warnings: string[] = [];
@@ -211,6 +214,7 @@ export function sortRoles(roles: RoleRow[]): RoleRow[] {
 const SCOPE_SHORT: Record<PermissionScope, { masc: string; fem: string }> = {
   own: { masc: "solo los suyos", fem: "solo las suyas" },
   own_unassigned: { masc: "los suyos + los sin asignar", fem: "las suyas + las sin asignar" },
+  areas: { masc: "los suyos + los de ciertas áreas", fem: "las suyas + las de ciertas áreas" },
   all: { masc: "todos", fem: "todas" },
 };
 

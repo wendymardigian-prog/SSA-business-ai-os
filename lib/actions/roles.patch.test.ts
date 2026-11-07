@@ -17,6 +17,11 @@ vi.mock("@/lib/auth/guards", () => guards);
 
 const { patchRole, createRole, listRoles, deleteRole } = await import("./roles");
 
+const AREA_A = "11111111-1111-4111-8111-111111111111";
+const AREA_B = "22222222-2222-4222-8222-222222222222";
+const TYPE_A = "33333333-3333-4333-8333-333333333333";
+const AREA_OTRO = "44444444-4444-4444-8444-444444444444";
+
 const perms = (
   keys: string[],
   scopes: Partial<RolePermissions["scopes"]> = {},
@@ -54,6 +59,12 @@ beforeEach(() => {
       workspace_roles: [roleRow(), roleRow({ id: "rol-2", name: "Otro" }), roleRow({ id: "sys-member", name: "Member", system_role: "member", permissions: { keys: [], scopes: {} } })],
       workspace_members: [{ workspace_id: WS, user_id: "u-1", role_id: "rol-1" }, { workspace_id: WS, user_id: "u-2", role_id: "rol-1" }],
       audit_log: [],
+      booking_categories: [
+        { id: AREA_A, workspace_id: WS, parent_id: null, name: "Ventas" },
+        { id: AREA_B, workspace_id: WS, parent_id: null, name: "Servicio" },
+        { id: TYPE_A, workspace_id: WS, parent_id: AREA_A, name: "Cierre" },
+        { id: AREA_OTRO, workspace_id: "otro-ws", parent_id: null, name: "De otro negocio" },
+      ],
     },
     { unique: { workspace_roles: (a, b) => a.workspace_id === b.workspace_id && String(a.name).toLowerCase() === String(b.name).toLowerCase() } },
   );
@@ -66,6 +77,44 @@ beforeEach(() => {
 });
 
 const stored = (id = "rol-1") => db.rows("workspace_roles").find((r) => r.id === id)!;
+
+describe("patchRole: grabaciones por area (00301)", () => {
+  it("guarda el alcance y las areas, y queda en el historial", async () => {
+    const r = await patchRole("rol-1", { scopes: { calls: "areas" }, callAreas: [AREA_A] });
+    expect(r.ok && r.data.role.permissions.call_areas).toEqual([AREA_A]);
+    expect(stored().permissions).toMatchObject({ scopes: { calls: "areas" }, call_areas: [AREA_A] });
+    const b = await patchRole("rol-1", { callAreas: [AREA_A, AREA_B] });
+    expect(b.ok).toBe(true);
+    expect((stored().permissions as RolePermissions).call_areas).toEqual([AREA_A, AREA_B]);
+    expect(JSON.stringify(db.rows("audit_log").at(-1)?.metadata)).toContain("2 áreas");
+  });
+
+  it("cambiar solo las areas se guarda, aunque nada mas cambie", async () => {
+    await patchRole("rol-1", { scopes: { calls: "areas" }, callAreas: [AREA_A] });
+    await patchRole("rol-1", { callAreas: [AREA_B] });
+    expect((stored().permissions as RolePermissions).call_areas).toEqual([AREA_B]);
+  });
+
+  it("un area de otro negocio, un tipo o un id que no existe se rechazan sin guardar", async () => {
+    await patchRole("rol-1", { scopes: { calls: "areas" }, callAreas: [AREA_A] });
+    for (const id of [AREA_OTRO, TYPE_A, "55555555-5555-4555-8555-555555555555"]) {
+      expect(await patchRole("rol-1", { callAreas: [id] })).toMatchObject({ ok: false, field: "permissions" });
+    }
+    expect((stored().permissions as RolePermissions).call_areas).toEqual([AREA_A]);
+  });
+
+  it("salir del alcance por areas descarta la lista", async () => {
+    await patchRole("rol-1", { scopes: { calls: "areas" }, callAreas: [AREA_A] });
+    await patchRole("rol-1", { scopes: { calls: "own" } });
+    expect(stored().permissions).not.toHaveProperty("call_areas");
+  });
+
+  it("no se da un area que no se tiene", async () => {
+    actor(perms(["roles.manage"], { calls: "areas" }));
+    expect(await patchRole("rol-1", { scopes: { calls: "areas" }, callAreas: [AREA_A] })).toMatchObject({ ok: false, field: "permissions" });
+    expect((stored().permissions as RolePermissions).scopes?.calls).not.toBe("areas");
+  });
+});
 
 describe("patchRole (F13)", () => {
   it("agrega una clave y devuelve el rol resultante, con cuanta gente lo tiene", async () => {

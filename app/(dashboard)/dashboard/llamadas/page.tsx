@@ -3,7 +3,7 @@ import { callDisplayLabel, categoryGroups } from "@/lib/calls/catalog";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { redirect } from "next/navigation";
-import { applyCallFilters, CALL_LIST_COLUMNS, PAGE_SIZE, parseCallFilters } from "@/lib/calls/list";
+import { applyCallFilters, CALL_LIST_COLUMNS, callScopeLabel, PAGE_SIZE, parseCallFilters } from "@/lib/calls/list";
 import { pickConnection, shouldNudgeToConnect } from "@/lib/fathom/connection-state";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -125,7 +125,7 @@ export default async function LlamadasPage({
       contactFilterName={contactFilterName}
       canConfigure={ctx.can("calls.configure")}
       pendingCount={pendingCount ?? 0}
-      scopeAll={ctx.scope("calls") === "all" || ctx.role === "owner" || ctx.role === "admin"}
+      scopeLabel={callScopeLabel(ctx.scope("calls"), ctx.role)}
       hasAnyCall={(anyCall ?? 0) > 0}
       workspaceHasConnections={(workspaceConnections ?? []).length > 0}
       hasApp={hasApp}

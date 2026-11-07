@@ -19,7 +19,7 @@
  * prueba que falla.
  *
  *   node scripts/verify-calls.mjs
- *   node scripts/verify-calls.mjs --despues-de-00300
+ *   node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -412,6 +412,44 @@ try {
 
     const memberView = await otro.client.from("booking_categories").select("id").eq("workspace_id", ws.id).limit(1);
     check(!memberView.error, "un miembro puede leer la lista", memberView.error?.message);
+  }
+  if (process.argv.includes("--despues-de-00301")) {
+    console.log("\n— Alcance por área (00301) —");
+    const { data: cats } = await svc.from("booking_categories").select("id, name, system_key").eq("workspace_id", ws.id).is("parent_id", null);
+    const ventas = cats.find((c) => c.system_key === "ventas"), servicio = cats.find((c) => c.system_key === "servicio");
+    const conRol = async (tag, permissions) => {
+      const u = await makeUser(tag);
+      const { data, error } = await svc.from("workspace_roles").insert({ workspace_id: ws.id, name: `zz-test ${tag}`, permissions: { channels: { mode: "custom", byChannel: {} }, ...permissions } }).select("id").single();
+      if (error) throw new Error(`no pude crear el rol ${tag}: ${error.message}`);
+      await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: u.id, role: "member", role_id: data.id });
+      return u;
+    };
+    const deVentas = await conRol("calls-area-ventas", { keys: ["calls.view"], scopes: { leads: "own", calls: "areas" }, call_areas: [ventas.id] });
+    const sinVer = await conRol("calls-area-sinver", { keys: [], scopes: { leads: "own", calls: "areas" }, call_areas: [ventas.id] });
+    const conLista = await conRol("calls-area-own", { keys: ["calls.view"], scopes: { leads: "own", calls: "own" }, call_areas: [ventas.id] });
+    const sinAreas = await conRol("calls-area-vacio", { keys: ["calls.view"], scopes: { leads: "own", calls: "areas" }, call_areas: [] });
+    const { data: leadPropio } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test lead del de ventas", setter_id: deVentas.id }).select("id").single();
+    const nueva = async (extra) => (await svc.from("calls").insert(callRow(ws.id, extra)).select("id").single()).data.id;
+    const deArea = await nueva({ area_id: ventas.id, category_id: ventas.id });
+    const otraArea = await nueva({ area_id: servicio.id, category_id: servicio.id });
+    const sinClasificar = await nueva({});
+    const propia = await nueva({ area_id: servicio.id, recorded_by_user_id: deVentas.id });
+    const deSuContacto = await nueva({ area_id: servicio.id, contact_id: leadPropio.id });
+
+    const ve = await visibleIds(deVentas, ws.id);
+    check(ve.has(deArea), "ve las grabaciones de su área");
+    check(!ve.has(otraArea), "no ve las de otra área");
+    check(!ve.has(sinClasificar), "no ve las sin clasificar: podrían ser de cualquiera");
+    check(ve.has(propia), "ve las que grabó, aunque sean de otra área");
+    check(ve.has(deSuContacto), "ve las de sus contactos, aunque sean de otra área");
+    check(!(await visibleIds(sinVer, ws.id)).has(deArea), "sin calls.view, el área no alcanza");
+    check(!(await visibleIds(conLista, ws.id)).has(deArea), "con el alcance propias, una lista guardada no cuenta");
+    check(!(await visibleIds(sinAreas, ws.id)).has(deArea), "con el alcance por áreas y ninguna elegida, no ve por área");
+    check((await visibleIds(supervisor, ws.id)).has(sinClasificar), "quien ve todas sigue viendo lo sin clasificar");
+    check(!(await visibleIds(otro, ws.id)).has(deArea), "el Member de sistema no cambia");
+    check((await visibleIds(admin, ws.id)).has(otraArea), "un Admin ve todo");
+    const { error: escribe } = await deVentas.client.from("calls").update({ title: "zz" }).eq("id", deArea).select("id").single();
+    check(!!escribe, "el alcance no da permiso de escribir la tabla");
   }
 } catch (e) {
   fail("el script fallo", e.message);

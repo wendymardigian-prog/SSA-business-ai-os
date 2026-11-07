@@ -357,3 +357,7 @@ node scripts/verify-rls.mjs --despues-de-00143 --despues-de-00208
 node scripts/verify-workspace-isolation.mjs --despues-de-00143
 node scripts/verify-audit-visibility.mjs --despues-de-00168
 ```
+
+## Grabaciones por área (00301)
+
+El alcance de grabaciones suma una tercera opción: «Los suyos + los de ciertas áreas». Es el único módulo con ese alcance. Se elige en Ajustes → Roles y, como la bandeja, tiene su propia regla de «no podés dar lo que no tenés»: se mira área por área, no solo el alcance. Detalle en [llamadas.md](llamadas.md), «Alcance por área».

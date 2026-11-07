@@ -38,6 +38,17 @@ export default async function RolesPage() {
         a.label.localeCompare(b.label, "es", { sensitivity: "base" }),
     );
 
+  // @plantilla-desde(llamadas)
+  // Las areas, para dar el alcance de grabaciones por area (00301). Tambien las archivadas: un rol puede seguir teniendolas.
+  const { data: areaRows } = await ctx.supabase
+    .from("booking_categories")
+    .select("id, name, archived_at, position")
+    .eq("workspace_id", ctx.workspace.id)
+    .is("parent_id", null)
+    .order("position", { ascending: true });
+  const callAreas = (areaRows ?? []).map((a) => ({ id: a.id, name: a.name, archived: !!a.archived_at }));
+  // @plantilla-hasta(llamadas)
+
   return (
     <RolesView
       roles={sortRoles(result.data.roles)}
@@ -45,6 +56,7 @@ export default async function RolesPage() {
       canSeeMembers={ctx.can("team.view")}
       viewer={grantActorOf(ctx)}
       accounts={accounts}
+      callAreas={callAreas} // @plantilla-quitar(llamadas)
     />
   );
 }
