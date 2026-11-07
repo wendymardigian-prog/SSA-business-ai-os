@@ -2144,6 +2144,22 @@ Detalle en [docs/agente-ia.md](docs/agente-ia.md) ("Sin IA conectada y la config
 - **`AGENT_RUN_SOURCES` (`lib/agent/runs-query.ts`) lista todos los `source`**; no compila si falta uno del tipo. Los orígenes con corridas salen de una consulta `limit 1` por origen sobre el índice de la 00251.
 - Migraciones `00251` (índice de `agent_runs` por origen) y `00252` (`ensure_default_agents`), **aplicadas y registradas** el 22/10/2026. La `00249` y la `00250` son de la sesión de permisos de la bandeja por canal.
 
+# Cierre por inactividad y resumen al cierre (7/11/2026)
+
+Dos cosas que se pisaban: el barrido que cierra las conversaciones inactivas y el resumen con IA que corre al cerrar. Diagnostico con datos reales de produccion en la sesion del 6/11/2026.
+
+## Lo que no se puede romper
+
+- **El resumen y la clasificacion al cierre no gastan IA si el lead no dijo nada** (`isLowSignalConversation`, `lib/agent/low-signal.ts`, aplicada en `summarizeConversationOnClose`, asi que cubre el cierre manual y el barrido): el lead nunca escribio, o escribio hasta 2 mensajes que son solo afirmaciones y agradecimientos ("Si enviamelo!", "ok", "Gracias"). **Ante cualquier senal, sigue al modelo**: una pregunta, un audio o una foto (un sticker o GIF no cuentan), mas de 2 mensajes o cualquier palabra que no sea un si, un gracias o un saludo. **No se mide por largo**: en los datos reales, entre 20 y 59 caracteres hay consultas de verdad ("no me llego nada" tiene 16). Las palabras de la lista son genericas a proposito: nada de un negocio en el codigo. El motivo `low_signal` no abre corrida ni toca la memoria del contacto.
+- **Que conversaciones cierra el barrido lo decide UNA consulta en la base**, `closable_inactive_conversations` (00306, solo `service_role`), y `sweepInactiveConversations` hace un pedido por agente. Antes tomaba las 50 inactivas mas viejas y preguntaba a `agent_runs` y `agent_drafts` de a una: eran siempre las mismas (de septiembre, sin corridas del agente), unos 3.000 pedidos por hora a la base, y las conversaciones que si se podian cerrar nunca llegaban a la lista. **Una condicion nueva del barrido va en la funcion SQL, no en un `continue` del codigo**: lo que se descarta en codigo vuelve a ser primero de la lista y traba a las demas. `lib/agent/closing.test.ts` simula la funcion en memoria (`closableRpc`): si se cambia el SQL, se cambia ahi.
+- **Piso de fecha: `SWEEP_MAX_AGE_DAYS` = 14.** Una conversacion sin actividad hace mas que eso es backlog y no se cierra sola: cerrarla y resumirla de golpe son cientos de llamadas a la IA y cientos de chats que cambian de estado en la bandeja del equipo. Esas se cierran a mano.
+- **`agent_enabled = false` y `agent_paused_until` estan en la funcion SQL**, repetidos de `resolveAgentState`, que sigue llamandose como red de seguridad.
+- **"El agente ya participo" sigue siendo cualquier corrida `source = 'agent'`**, tambien las que no hicieron nada (`already_answered`, `skipped` por la espera tras ManyChat, `no_reply_needed`): solo ~1 de cada 3 de esas conversaciones tiene un borrador real. Cambiarlo es una decision de producto, no un arreglo.
+
+## Migracion
+
+`00306_closable_inactive_conversations` (aditiva, una funcion de lectura) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 7/11/2026 UTC (version `20261107060614`), con los permisos comprobados (solo `service_role`) y la funcion devolviendo las mismas 165 conversaciones que un conteo independiente. La `00307` y la `00308` son de Grabaciones (Etapa 5). **La proxima libre es la `00309`** (confirmar con `list_migrations` y las ramas locales).
+
 # Buenas practicas de desarrollo
 
 ## Estructura de codigo

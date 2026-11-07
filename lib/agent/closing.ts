@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { LIVE_DRAFT_STATUSES } from "./drafts/types";
 import type { Database } from "@/lib/types/database";
 import { CONVERSATION_CLOSE_JOB, scheduleJob, type ConversationClosePayload } from "@/lib/scheduler";
 import { getAgentType } from "./agent-types";
@@ -16,10 +15,18 @@ import { summarizeConversationOnClose, type SummaryDeps, type SummaryOutcome } f
  *
  * El barrido cierra SOLO conversaciones abiertas donde el agente esta
  * efectivamente activo (resolveAgentState) Y ya participo (tiene al menos un
- * run de source agent). Lo segundo es a proposito: hay 578 conversaciones
- * inactivas de antes del agente; cerrarlas y resumirlas el dia que se prenda
- * el maestro serian 578 llamadas al modelo de golpe. Esas se cierran a mano.
- * Las conversaciones que maneja una persona tampoco se cierran solas.
+ * run de source agent), con actividad dentro de los ultimos
+ * SWEEP_MAX_AGE_DAYS dias. Lo del medio es a proposito: el backlog viejo no se
+ * cierra solo (cerrarlo y resumirlo de golpe serian cientos de llamadas al
+ * modelo y cientos de chats que cambian de estado en la bandeja); esos se
+ * cierran a mano. Las conversaciones que maneja una persona tampoco se cierran
+ * solas.
+ *
+ * Que conversaciones se pueden cerrar lo decide UNA consulta en la base
+ * (closable_inactive_conversations, 00306), no un recorrido de a una: antes se
+ * tomaban las 50 mas viejas y se descartaban en codigo, siempre las mismas, asi
+ * que costaba unos 3.000 pedidos por hora y nunca llegaba a las que si se
+ * podian cerrar.
  *
  * El job lo procesa el runner general (reintentos con backoff) y llama a
  * summarizeConversationOnClose, que resume y clasifica.
@@ -28,6 +35,8 @@ import { summarizeConversationOnClose, type SummaryDeps, type SummaryOutcome } f
 type Db = SupabaseClient<Database>;
 
 const SWEEP_BATCH = 50;
+/** Una conversacion sin actividad hace mas que esto es backlog: no se cierra sola. */
+export const SWEEP_MAX_AGE_DAYS = 14;
 
 export async function enqueueConversationClose(service: Db, payload: ConversationClosePayload): Promise<boolean> {
   try {
@@ -59,42 +68,28 @@ export async function sweepInactiveConversations(service: Db, now: Date = new Da
     const agents = await loadWorkspaceAgents(service, workspaceId);
     for (const agent of agents) {
       if (!agent.isEnabled || !getAgentType(agent.type)?.conversational || agent.enabledChannelIds.length === 0) continue;
-      const cutoff = new Date(now.getTime() - agent.closeAfterInactiveHours * 3_600_000).toISOString();
+      const inactiveBefore = new Date(now.getTime() - agent.closeAfterInactiveHours * 3_600_000).toISOString();
+      const activeSince = new Date(now.getTime() - SWEEP_MAX_AGE_DAYS * 86_400_000).toISOString();
 
-      const { data: rows } = await service
-        .from("conversations")
-        .select("id, channel_id, agent_enabled, agent_paused_until, last_message_at")
-        .eq("workspace_id", workspaceId)
-        .eq("status", "open")
-        .is("deleted_at", null)
-        .in("channel_id", agent.enabledChannelIds)
-        .lt("last_message_at", cutoff)
-        .order("last_message_at", { ascending: true })
-        .limit(SWEEP_BATCH);
+      const { data: rows, error: closableError } = await service.rpc("closable_inactive_conversations", {
+        p_workspace_id: workspaceId,
+        p_channel_ids: agent.enabledChannelIds,
+        p_inactive_before: inactiveBefore,
+        p_active_since: activeSince,
+        p_now: now.toISOString(),
+        p_limit: SWEEP_BATCH,
+      });
+      if (closableError) {
+        console.error("[closing] no pude leer las conversaciones a cerrar:", closableError.message);
+        continue;
+      }
 
       for (const conv of rows ?? []) {
         result.candidates++;
+        // La consulta ya filtro el agente apagado o pausado en la conversacion;
+        // esto es la red de seguridad por si la regla de resolveAgentState cambia.
         const state = resolveAgentState({ agents, channelId: conv.channel_id, conversation: conv, now });
         if (state.state !== "active") continue;
-
-        // Solo si el agente ya participo: el backlog viejo no se toca.
-        const { count } = await service
-          .from("agent_runs")
-          .select("id", { count: "exact", head: true })
-          .eq("conversation_id", conv.id)
-          .eq("source", "agent");
-        if (!count) continue;
-
-        // Un lead esperando que alguien apruebe su respuesta no es una
-        // conversacion inactiva (Bloque 2c): el borrador no mueve
-        // last_message_at, asi que sin esto se cerraria con la pregunta sin
-        // responder.
-        const { count: liveDrafts } = await service
-          .from("agent_drafts")
-          .select("id", { count: "exact", head: true })
-          .eq("conversation_id", conv.id)
-          .in("status", LIVE_DRAFT_STATUSES);
-        if (liveDrafts) continue;
 
         // CAS sobre el estado: si un entrante la reabrio en el medio, no se cierra.
         const { data: updated } = await service
