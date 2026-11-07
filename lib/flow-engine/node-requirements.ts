@@ -21,7 +21,8 @@
  */
 
 import { canonicalNodeType } from "./node-outputs";
-import { designGenerateProblem, isDesignGenerateNode, type DesignGenerateNodeData } from "@/lib/designer/automation/node-config";
+import { designGenerateProblem, hasDesignStepBefore, isDesignGenerateNode, type DesignGenerateNodeData } from "@/lib/designer/automation/node-config";
+import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits";
 
 export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel";
 export type Capabilities = Record<Requirement, boolean>;
@@ -168,9 +169,19 @@ export function configProblems(nodes: GraphNodeLike[], edges: GraphEdgeLike[]): 
   const reachable = reachableFromTrigger(nodes, edges);
   const problems = new Set<string>();
   for (const node of nodes) {
-    if (!node?.id || !reachable.has(node.id) || !isDesignGenerateNode(node as { type?: string; data?: unknown })) continue;
-    const problem = designGenerateProblem(node.data as DesignGenerateNodeData | undefined);
-    if (problem) problems.add(problem);
+    if (!node?.id || !reachable.has(node.id)) continue;
+    if (isDesignGenerateNode(node as { type?: string; data?: unknown })) {
+      const problem = designGenerateProblem(node.data as DesignGenerateNodeData | undefined);
+      if (problem) problems.add(problem);
+      continue;
+    }
+    // «Adjuntar el PDF del diseño generado» (F59) sin un «Generar desde plantilla» antes: nunca habría PDF que adjuntar.
+    const attachments = (node.data as { attachments?: unknown } | undefined)?.attachments;
+    if (attachments && parseEmailAttachments(attachments).some(isDesignAttachment)) {
+      const graphNodes = nodes.filter((n): n is { id: string; type?: string; data?: unknown } => !!n?.id);
+      const graphEdges = edges.filter((e): e is { source: string; target: string } => !!e?.source && !!e?.target);
+      if (!hasDesignStepBefore(node.id, graphNodes, graphEdges)) problems.add("El email adjunta el PDF del diseño, pero no hay un paso «Generar desde plantilla» antes.");
+    }
   }
   return [...problems];
 }

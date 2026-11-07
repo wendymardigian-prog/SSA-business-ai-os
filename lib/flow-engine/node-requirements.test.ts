@@ -121,6 +121,12 @@ describe("configProblems: lo que le falta a la configuración de un paso (Diseñ
     expect(configProblems([t, sinPlantilla], [{ source: "t", target: "g" }])).toEqual(["Elegí la plantilla del paso «Generar desde plantilla»."]);
   });
 
+  it("un email que adjunta el PDF del diseño sin un «Generar desde plantilla» antes no se publica (F59)", () => {
+    const email = { id: "e", type: "action", data: { actionType: "send_email", attachments: [{ kind: "design", from: "design" }] } };
+    expect(configProblems([t, email], [{ source: "t", target: "e" }])).toEqual(["El email adjunta el PDF del diseño, pero no hay un paso «Generar desde plantilla» antes."]);
+    expect(configProblems([t, conPlantilla, email], [{ source: "t", target: "g2" }, { source: "g2", target: "e" }])).toEqual([]);
+  });
+
   it("con plantilla, o suelto sin conectar al disparador, no frena", () => {
     expect(configProblems([t, conPlantilla], [{ source: "t", target: "g2" }])).toEqual([]);
     expect(configProblems([t, sinPlantilla], [])).toEqual([]);
