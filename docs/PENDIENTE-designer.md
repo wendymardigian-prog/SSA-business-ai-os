@@ -73,3 +73,8 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - **Qué quedó:** al volver a renderizar (F48b) se borran los archivos del juego anterior, pero el almacenamiento de Supabase los sigue sirviendo desde su caché hasta ~1 minuto (comprobado el 7/11/2026 con un archivo de prueba: devuelve a los 0, 3 y 15 s y falla a los 45 s).
 - **Por qué:** es la caché del proveedor; la tabla de objetos ya no los tiene.
 - **Qué se decidió:** nada que cambiar: el link público y la descarga leen el juego VIGENTE (`designs.renders`), nunca una ruta vieja. `verify-ds5` comprueba el borrado en `storage.objects`, no con una descarga. La 00324 también: el bucket no aceptaba el `error.json`, ahora sí.
+
+### Revisión visual de la Ola 2: el editor y el link público con datos quedan para hacerlos con vos
+- **Qué quedó:** se revisó con el navegador de la app (sesión iniciada, base real), sin crear nada: la lista vacía, el modal «Nuevo» (los 3 pasos y el paso «Archivo» de cargar HTML), Ajustes y el 404 del link público, a 1440 y a 390 px, en claro y en oscuro (el tema real, emulando el sistema). Se arregló el título de la lista, que se truncaba en escritorio. A 390 px no hay desplazamiento horizontal (ancho del documento 375).
+- **Por qué no más:** para ver el editor, Generaciones o un link publicado hay que crear un diseño, y el servidor de desarrollo escribe en la base REAL del negocio.
+- **Qué se decidió:** no crear nada en el negocio sin tu OK. Con tu OK, se crea uno llamado «zz-test revisión» y se borra al terminar; o se revisa en un clon de prueba. El aviso «Encountered a script tag…» de la consola aparece igual en `/f/` y viene del layout general, no del Diseñador.
