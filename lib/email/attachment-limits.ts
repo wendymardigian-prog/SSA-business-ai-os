@@ -17,7 +17,8 @@ export const MAX_EMAIL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
  */
 export const EMAIL_PICKABLE_KINDS: readonly string[] = ["image", "file"];
 
-export interface EmailAttachmentRef {
+/** Un recurso de la banca. */
+export interface AssetAttachmentRef {
   /** El recurso de la banca. */
   assetId: string;
   /** Lo que se ve en el panel aunque el recurso cambie de nombre (no decide nada). */
@@ -25,12 +26,40 @@ export interface EmailAttachmentRef {
   sizeBytes?: number | null;
 }
 
-/** Los adjuntos guardados en el paso, sin basura ni repetidos. */
+/**
+ * El PDF del diseño que generó un «Generar desde plantilla» ANTES en la misma corrida (Diseñador IA, F59). Al enviar se
+ * busca la generación de esa corrida (`design.id` en las variables); si no hay, el paso falla; si no está lista, espera.
+ */
+export interface DesignAttachmentRef {
+  kind: "design";
+  from: "design";
+}
+
+export type EmailAttachmentRef = AssetAttachmentRef | DesignAttachmentRef;
+
+export function isDesignAttachment(ref: EmailAttachmentRef): ref is DesignAttachmentRef {
+  return (ref as DesignAttachmentRef).kind === "design";
+}
+
+/** Solo los recursos de la banca (lo que se elige en el panel de adjuntos). */
+export function assetAttachments(refs: EmailAttachmentRef[]): AssetAttachmentRef[] {
+  return refs.filter((r): r is AssetAttachmentRef => !isDesignAttachment(r));
+}
+
+/** Los adjuntos guardados en el paso, sin basura ni repetidos. El PDF del diseño, a lo sumo una vez. */
 export function parseEmailAttachments(value: unknown): EmailAttachmentRef[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const out: EmailAttachmentRef[] = [];
   for (const item of value) {
+    const asDesign = item as { kind?: unknown; from?: unknown } | null;
+    if (asDesign?.kind === "design" && asDesign.from === "design") {
+      if (!seen.has("design:")) {
+        seen.add("design:");
+        out.push({ kind: "design", from: "design" });
+      }
+      continue;
+    }
     const id = (item as { assetId?: unknown } | null)?.assetId;
     if (typeof id !== "string" || !id || seen.has(id)) continue;
     seen.add(id);
@@ -55,7 +84,7 @@ export function emailAttachmentProblems(nodes: unknown): string[] {
   for (const node of Array.isArray(nodes) ? nodes : []) {
     const data = (node as { data?: { attachments?: unknown } } | null)?.data;
     if (!data?.attachments) continue;
-    const { problem } = attachmentBudget(parseEmailAttachments(data.attachments).map((a) => a.sizeBytes));
+    const { problem } = attachmentBudget(parseEmailAttachments(data.attachments).map((a) => (isDesignAttachment(a) ? null : a.sizeBytes)));
     if (problem) problems.add(problem);
   }
   return [...problems];

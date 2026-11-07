@@ -781,7 +781,28 @@ export type AuditAction =
   | "commission_rule.paused" // @plantilla-quitar(comisiones)
   | "commission_rule.resumed" // @plantilla-quitar(comisiones)
   | "commission_rule.archived" // @plantilla-quitar(comisiones)
-  | "commission_rule.reordered"; // @plantilla-quitar(comisiones)
+  | "commission_rule.reordered" // @plantilla-quitar(comisiones)
+  /** Diseñador IA (entity design / design_template). Lo que cambia el estado público queda en el historial. */
+  | "design.created"
+  | "design.renamed"
+  | "design.duplicated"
+  | "design.archived"
+  | "design.restored"
+  | "design.deleted"
+  | "design.version_restored"
+  | "design.published"
+  | "design.unpublished"
+  | "design.public_options_changed"
+  | "design.voided"
+  | "design.generated"
+  | "design.regenerated"
+  | "design.email_sent"
+  | "design.content_linked"
+  | "design.content_unlinked"
+  | "design_template.created"
+  | "design_template.settings_changed"
+  | "design_template.archived"
+  | "design_template.automation_created";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */

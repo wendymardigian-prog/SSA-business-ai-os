@@ -12,6 +12,7 @@ import { CreateTaskPanel } from "./CreateTaskPanel"; // @plantilla-quitar(tareas
 import { CompleteTaskPanel } from "./CompleteTaskPanel"; // @plantilla-quitar(tareas)
 import { SendWhatsAppNumberPanel } from "./SendWhatsAppNumberPanel";
 import { SendPollPanel } from "./SendPollPanel";
+import { DesignGeneratePanel } from "./DesignGeneratePanel";
 import { PrivateReplyPanel } from "./PrivateReplyPanel";
 import type { AttributionPanelContext } from "./SendMessagePanel";
 import { SendEmailPanel } from "./SendEmailPanel";
@@ -121,6 +122,9 @@ export function ActionPanel({ data: rawData, onChange, availableVariables, attri
       return <CancelBookingPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     case "set_booking_status" as NodeType:
       return <SetBookingStatusPanel data={rawData} onChange={onChange} />;
+    // Diseñador IA (F57): una pieza desde una plantilla para el contacto del disparador.
+    case "designGenerate" as NodeType:
+      return <DesignGeneratePanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     default:
       return (
         <p className="text-sm text-muted-foreground">

@@ -64,6 +64,10 @@ Cada acción valida su permiso adentro (`getPermissionAction`) y escribe con el 
 | `lib/actions/designer/content.ts` | DS8 | `useInContent`, `designFromPiece`, `syncToPiece`, `unlinkFromPiece` |
 | `lib/actions/designer/automate.ts` | Sesión principal (Ola 4) | `createAutomationFromTemplate`, `automationsUsingTemplate` |
 
+### El núcleo de una generación (DS6, usado por DS7)
+
+`lib/designer/generate-core.ts`: `createGeneration(db, CreateGenerationInput)` crea UNA generación sin sesión, con el cliente de servicio (quien llama ya decidió el permiso y el workspace). La usan las acciones de `generate.ts`, el job `design_generate_many` y el nodo `designGenerate` (DS7). Devuelve `{ ok: true, designId, code, status: "queued" | "failed", missing }`, `{ ok: false, reason: "existing", existing }` (ya tiene una válida y no se pidió reemplazarla) o `{ ok: false, reason: "error", error, retryable }`. Nunca lanza. Firma definitiva desde la Ola 2; el cuerpo es de DS6.
+
 ## 6. Puntos de montaje (componentes placeholder)
 
 Cada uno es de UN bloque, que reemplaza el archivo. El editor (DS2) los importa y les pasa las props del contrato.

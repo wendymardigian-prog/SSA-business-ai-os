@@ -584,6 +584,18 @@ export function simulateFlow(
         break;
       }
 
+      // Diseñador IA (F57): en la simulación no se genera ningún diseño ni se llama al render.
+      case "designGenerate": {
+        const name = typeof data.templateName === "string" && data.templateName.trim() ? data.templateName.trim() : "";
+        steps.push({
+          nodeId: node.id,
+          nodeType: "designGenerate",
+          nodeLabel: label,
+          result: { type: "action", actionType: "designGenerate", detail: name ? `generaría «${name}»` : "(sin plantilla)" },
+        });
+        break;
+      }
+
       // E15: el aviso al equipo. En la simulación no se crea ninguna notificación.
       case "notify_team": {
         const title = interpolate((data.title as string) || "", variables);

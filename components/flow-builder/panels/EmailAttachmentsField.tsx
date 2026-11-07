@@ -6,7 +6,7 @@ import { listAssets } from "@/lib/actions/response-assets";
 import { getEmailAttachmentContext } from "@/lib/actions/flows";
 import { toBankAsset, type BankAsset, type BankAssetRow } from "@/lib/response-assets/list";
 import { ASSET_KIND_LABEL, FILE_KINDS } from "@/lib/response-assets/kind";
-import { attachmentBudget, EMAIL_PICKABLE_KINDS, formatMegabytes, MAX_EMAIL_ATTACHMENTS, parseEmailAttachments, type EmailAttachmentRef } from "@/lib/email/attachment-limits";
+import { assetAttachments, attachmentBudget, EMAIL_PICKABLE_KINDS, formatMegabytes, isDesignAttachment, MAX_EMAIL_ATTACHMENTS, parseEmailAttachments, type AssetAttachmentRef, type EmailAttachmentRef } from "@/lib/email/attachment-limits";
 import { matchesQuery } from "@/lib/flows/search";
 import { AssetFormDialog } from "@/components/response-assets/asset-form-dialog";
 
@@ -15,8 +15,11 @@ import { AssetFormDialog } from "@/components/response-assets/asset-form-dialog"
  * eligen de Recursos o se sube uno nuevo sin salir del editor (queda guardado en Recursos y elegido). Hasta 10 archivos
  * y 25 MB en total, que es lo que entra en un correo de Resend con margen.
  */
-export function EmailAttachmentsField({ value, onChange }: { value: unknown; onChange: (next: EmailAttachmentRef[]) => void }) {
-  const chosen = parseEmailAttachments(value);
+export function EmailAttachmentsField({ value, onChange: onChangeAll }: { value: unknown; onChange: (next: EmailAttachmentRef[]) => void }) {
+  const all = parseEmailAttachments(value);
+  // Esta lista es la de los recursos; el PDF del diseño (Diseñador IA, F59) es una casilla aparte y se conserva.
+  const chosen = assetAttachments(all);
+  const onChange = (next: AssetAttachmentRef[]) => onChangeAll([...all.filter(isDesignAttachment), ...next]);
   const [assets, setAssets] = useState<BankAsset[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -58,7 +61,8 @@ export function EmailAttachmentsField({ value, onChange }: { value: unknown; onC
   const files = useMemo(() => (assets ?? []).filter((a) => EMAIL_PICKABLE_KINDS.includes(a.kind) && a.isActive), [assets]);
   const byId = useMemo(() => new Map((assets ?? []).map((a) => [a.id, a])), [assets]);
   const sizes = chosen.map((c) => byId.get(c.assetId)?.sizeBytes ?? c.sizeBytes ?? 0);
-  const budget = attachmentBudget(sizes);
+  // El PDF del diseño cuenta como un adjunto más (su peso recién se sabe al enviar).
+  const budget = attachmentBudget(all.some(isDesignAttachment) ? [...sizes, null] : sizes);
   const options = files.filter((a) => !chosen.some((c) => c.assetId === a.id) && matchesQuery([a.name, a.description, ...a.tags], query));
 
   const add = (asset: BankAsset) => {
