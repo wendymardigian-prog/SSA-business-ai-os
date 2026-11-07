@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Loader2, Plus, Search, Settings, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { InfoTooltip } from "@/components/ui/tooltip";
+import { PAGE_META } from "@/lib/nav/page-actions";
 import { FilterMenu, MenuOption } from "@/components/ui/filter-menu";
 import { Notice } from "@/components/agents/fields";
 import { NewDesignModal } from "@/components/designer/new/new-design-modal";
@@ -158,6 +160,14 @@ export function DesignsList({
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         route="/dashboard/disenos"
+        // Con pestañas y filtros en la barra, el título se truncaba también en escritorio («Diseñad…»). Desde el
+        // ancho de la barra completa (`topbar:`) no se encoge; en el celular se trunca como en el resto de la app.
+        titleSlot={
+          <>
+            <h1 className="truncate text-base font-semibold topbar:shrink-0">{PAGE_META["/dashboard/disenos"].title}</h1>
+            <InfoTooltip text={PAGE_META["/dashboard/disenos"].tooltip ?? ""} />
+          </>
+        }
         tabs={tabs}
         filters={filterBar}
         right={
