@@ -201,3 +201,25 @@ describe("limpieza defensiva", () => {
     expect(stripActiveContent('<p>Texto "one=2" y javascript: en una frase</p>')).toBe('<p>Texto "one=2" y javascript: en una frase</p>');
   });
 });
+
+describe("los @import de Google Fonts de una página cargada van primero", () => {
+  it("quedan al principio de la hoja y los externos se quitan", () => {
+    const el: DesignElement = {
+      id: "el_e00001",
+      type: "html",
+      x: 50,
+      y: 50,
+      w: 100,
+      h: 100,
+      html: "<h1>Hola</h1>",
+      css: 'h1{color:red}\n@import url(https://fonts.googleapis.com/css2?family=Inter&display=swap);\n@import url("https://evil.example/x.css");\np{margin:0}',
+    };
+    const html = renderPageHTML(doc([el]), 0, { mode: "public", assetUrl });
+    const sheet = html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
+    expect(sheet.startsWith("@import url(https://fonts.googleapis.com/css2?family=Inter&display=swap);")).toBe(true);
+    expect(sheet).not.toContain("evil.example");
+    expect(sheet.match(/@import/g)).toHaveLength(1);
+    expect(sheet).toContain("h1{color:red}");
+    expect(sheet).toContain("p{margin:0}");
+  });
+});
