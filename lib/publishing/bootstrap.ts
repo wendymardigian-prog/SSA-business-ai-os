@@ -28,6 +28,7 @@ import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
 import { registerFlowWaitTimeoutHandler } from "@/lib/jobs/handlers/flow-wait-timeout";
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
+import { registerDesignerHandlers } from "@/lib/jobs/handlers/designer";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
 import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync"; // @plantilla-quitar(llamadas)
@@ -117,6 +118,7 @@ export function registerPublishing(): void {
   // Las tareas de IA en segundo plano (F24). Despacha por `payload.task`: una
   // tarea sin implementacion falla con el motivo, no completa en silencio.
   registerBgTaskHandler();
+  registerDesignerHandlers();
 
   // Mejoras de Chat: pasar a texto las notas de voz, para que el agente sepa
   // que le dijeron (F7).
