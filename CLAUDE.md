@@ -1319,6 +1319,20 @@ Reuniones y respuestas muestran su atribución y su vínculo con campaña, conju
 
 `00299_meta_match_ids_only`: cambia a propósito la huella de `resolve_meta_match`. Se puede aplicar antes o después del código. Lo existente se vincula con el próximo sync o con `select public.rematch_meta_touches(<workspace>, '-infinity')`. **La próxima libre es la `00300`** (confirmar con `list_migrations` y las ramas locales).
 
+# A qué anuncio cuenta una venta (6/11/2026)
+
+En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el último toque con anuncio anterior a ella. Detalle en [docs/dashboards.md](docs/dashboards.md) («A qué anuncio cuenta una venta»).
+
+## Lo que no se puede romper
+
+- **Una venta `manual` nunca hereda**: es la decisión de una persona. Hereda solo `last_touch` o `none`.
+- **Solo la tabla decide al leer** (`ads_crm_items`, `v_sale_touch`): `sales.attribution`, `attribution_touch_id`, `create_sale`, la ficha y las comisiones no cambiaron.
+- **Ventas, UF cash y Cash salen de la misma búsqueda**: el Cash ya no tiene cruce propio en `ads_crm_metrics_v2`. `cash` es una métrica interna de `ads_crm_items`: `ads_crm_cell_detail` la rechaza.
+
+## Migración
+
+`00302_ads_crm_sales_fallback` (misma firma, ninguna tabla; la definición vieja en su cabecera) puede ir antes o después del deploy: **aplicada y registrada** el 6/11/2026 (versión `20261107011534`), con `verify-ads-attribution` en verde. La `00300` y la `00301` son de Grabaciones. **La próxima libre es la `00303`** (la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
+
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 
 Webhooks que no repiten, flujos sin contacto con origen, leads de Meta sin duplicados, la tabla Meta vs CRM con detalle, el anuncio de origen y el vinculo
@@ -1605,6 +1619,23 @@ Todo lo que filtra la lista vive arriba de ella (`components/inbox/inbox-list-he
 - **Un solo menu de filtros, en este orden**: Canal, Asignacion, Estado, Chats y grupos (solo si hay grupos activados), Respuesta, Tags, Conocidos y clientes, Quien es, Agente de IA, Ultimo mensaje. El contador del boton cuenta todo menos la busqueda (`countMenuFilters`); "Abiertas" es el estado de siempre y no cuenta.
 - **El buscador se despliega desde el icono** y arranca abierto solo si la URL trae `?q=`. La `×` (o Esc) borra lo buscado y lo cierra. `SectionSearch` con `onClose` es ese modo; Broadcasts, Secuencias y Growth lo siguen usando en la barra de arriba.
 - **Limpiar filtros conserva lo abierto** (`?c=` y `?g=`).
+
+# Links clicables y vista previa (6/11/2026)
+
+Los links de los mensajes se ven clicables en la bandeja, los chats llevan una tarjeta de vista previa (también mientras se escribe) y los emails salen con links de verdad. Sin migración. Detalle por canal en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md) («Links y vista previa»).
+
+## Lo que no se puede romper
+
+- **El envío por WhatsApp e Instagram no cambió, y la tarjeta de la bandeja NO es la que ve la otra persona.** En WhatsApp la arma Evolution 2.3.7 sola, salvo `linkPreview: false`; solo sigue redirecciones dentro del mismo dominio, así que un link con «Registrar el clic» o un acortador llegan sin tarjeta. En Instagram decide la red: el SDK de Zernio no tiene opción para mensajes.
+- **Un solo detector: `splitTextLinks` (`lib/messages/text-links.ts`, puro)**, con `http(s)://` y `www.`. Solo produce `http` y `https`, y unir los pedazos da el texto original. `URL_IN_TEXT` de `link-params.ts` no cambió: la atribución lo usa.
+- **Un link medido se abre directo al destino solo en un mensaje SALIENTE** (`trackedLinkDestination`), para que el equipo no le invente un clic al lead. **Nunca en un entrante**: un lead podría falsificar el token y mostrar otro destino. Un test compara el formato con el firmado de verdad, porque `tracked-link.ts` usa `node:crypto` y no se puede importar acá.
+- **Pedir una página pasa por `lib/link-preview/fetch.ts`**, porque el link lo puede haber mandado cualquier desconocido: `safeFetch`, 5 s, solo puertos 80 y 443, nunca `/auth/` ni `/api/` (pueden gastar un link de un solo uso), también en cada redirección. **Nunca se loguea la URL**: por eso la ruta es POST y un catch ahí no loguea. Su `LINK_PREVIEW_USER_AGENT` está en `LINK_PREVIEW_BOT_TOKENS`, o abrir un mensaje contaría como un clic.
+- **Qué canal lleva tarjeta lo decide `lib/channels/link-preview.ts`** (rama explícita por proveedor; un desconocido, sin tarjeta). Email no lleva. A qué mensaje le toca, `messageLinkCardUrl`: ni fallidos, ni emails, ni los que ya traen tarjeta (`share`, `link`, `story_reply`).
+- **Un email sin links sale byte por byte igual** (`textToHtml`, `plainTextToHtml`, con test). Primero se separan los links y después se escapa. El texto visible es igual al `href`: una variable no puede disfrazar un link.
+- **`renderEmail` de los broadcasts protege `{{unsubscribe_url}}`** antes de limpiar el HTML: sin eso, un `href` con la variable se descartaba y el link de baja se perdía.
+- **El hilo se queda abajo con `useStickToBottom`** cuando llega tarde una tarjeta o crece el composer. Si la persona subió a leer, no la mueve.
+
+**Pendiente:** el DNS rebinding en `safeFetch` (detalle en `docs/PENDIENTE.md`).
 
 # Contactos: Kanban, columnas y filtros (3/11/2026)
 

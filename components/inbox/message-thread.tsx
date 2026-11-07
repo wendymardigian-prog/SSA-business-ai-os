@@ -78,6 +78,12 @@ import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/a
 import { formatBytes } from "@/lib/inbox/media-render";
 import { headBase64Of } from "@/lib/content/media";
 import { accountToShow, type InboxAccountsInfo } from "@/lib/inbox/accounts";
+import { MessageText } from "@/components/inbox/message-text";
+import { linkPreviewCapability } from "@/lib/channels/link-preview";
+import { messageLinkCardUrl } from "@/lib/inbox/message-link-card";
+import { ComposerLinkPreview } from "./composer-link-preview";
+import { MessageLinkCard } from "./link-preview-card";
+import { useStickToBottom } from "./use-stick-to-bottom";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"] & {
   /** El chip "Vino de…" que arma el servidor para este mensaje (Extra I, F44). Casi todos no lo traen. */
@@ -125,8 +131,11 @@ function MessageBubble({
   replyTime = null,
   retrying = false,
   onRetry,
+  linkCards = false,
 }: {
   message: Message;
+  /** El canal muestra la tarjeta de los links (lib/channels/link-preview.ts). */
+  linkCards?: boolean;
   /** Se esta reintentando este envio fallido (00262). */
   retrying?: boolean;
   /** Reintentar un envio fallido; sin esto no se ofrece el boton. */
@@ -157,6 +166,7 @@ function MessageBubble({
   const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
   const stickerOnly = isStickerOnlyMessage(message, failed);
+  const linkCardUrl = messageLinkCardUrl(message, { outbound: !isInbound, failed, channelShowsCards: linkCards });
 
   return (
     <div
@@ -207,7 +217,8 @@ function MessageBubble({
           {/* El adjunto va ARRIBA del texto, como en WhatsApp: el texto suele
               ser el pie de la foto, no lo principal. */}
           <MessageAttachments message={message} />
-          {message.text && (isInbound && message.email_from ? <EmailMessageBody message={message} /> : <p className="whitespace-pre-wrap">{message.text}</p>)}
+          {message.text && (isInbound && message.email_from ? <EmailMessageBody message={message} /> : <p className="whitespace-pre-wrap break-words"><MessageText text={message.text} outbound={!isInbound} /></p>)}
+          {linkCardUrl && <MessageLinkCard url={linkCardUrl} />}
           {/* 00262: el motivo va aparte del texto, con que hacer y como
               reintentar. Una fila vieja no lo tiene: su texto ya es el motivo. */}
           {failed && message.send_error && (
@@ -468,6 +479,9 @@ export function MessageThread({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const messagesListRef = useRef<HTMLDivElement>(null);
+  const markAtBottom = useStickToBottom(scrollContainerRef, messagesListRef);
+  const linkCards = linkPreviewCapability(channelProvider).card;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // "Sugerir respuesta" (A1): hay un borrador vivo (lo informa PendingDraft) y se esta esperando uno.
   const [hasLiveDraft, setHasLiveDraft] = useState(false);
@@ -730,8 +744,9 @@ export function MessageThread({
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
+    markAtBottom();
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, markAtBottom]);
 
   // Listen for conversation updates (last_message_at changes when a new message arrives)
   // and re-fetch messages from Zernio API.
@@ -1471,7 +1486,7 @@ export function MessageThread({
 
       {/* Messages */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 md:p-4">
-        <div className="mx-auto max-w-2xl space-y-4">
+        <div ref={messagesListRef} className="mx-auto max-w-2xl space-y-4">
           {messages.map((message, i) => (
             <div key={message.id}>
               {callTimeline.before.get(i)?.map((call) => (
@@ -1490,6 +1505,7 @@ export function MessageThread({
               )}
               <MessageBubble
                 message={message}
+                linkCards={linkCards}
                 activity={activityMap.get(message.id)}
                 showMarker={markerMessageIds.has(message.id)}
                 runsHref={canViewAgentRuns ? "/dashboard/agents/runs" : null}
@@ -1556,6 +1572,8 @@ export function MessageThread({
             onSend={(asset, caption) => void sendLibraryAsset(asset, caption)}
             onClose={closeWidget}
           />
+
+          {!recording && !attachedFile && <ComposerLinkPreview text={input} provider={channelProvider} platform={conversation?.platform} />}
 
           {recording ? (
             // Estado grabando (F18): reemplaza al composer entero.

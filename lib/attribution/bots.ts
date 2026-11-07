@@ -43,6 +43,8 @@ export const LINK_PREVIEW_BOT_TOKENS: readonly string[] = [
   "redditbot",
   "skypeuripreview",
   "embedly",
+  // La tarjeta de la propia bandeja (lib/link-preview/fetch.ts): abrir un mensaje no es un clic.
+  "linkpreviewbot",
 ];
 
 export function isLinkPreviewBot(userAgent: string | null | undefined): boolean {
