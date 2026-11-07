@@ -22,6 +22,7 @@ import { syncCalendars } from "@/lib/scheduling/data/calendars";
 import { notifyEventsNowOnGoogle } from "@/lib/scheduling/data/calendar-switch";
 import { appUrl } from "@/lib/app-url";
 import { queueFathomSyncNow } from "@/lib/fathom/queue"; // @plantilla-quitar(llamadas)
+import { applyConnectArea } from "@/lib/fathom/connect-area"; // @plantilla-quitar(llamadas)
 import { logAudit } from "@/lib/audit";
 
 const FALLBACK = "/dashboard/settings/integrations";
@@ -71,6 +72,7 @@ export async function GET(
       // @plantilla-desde(llamadas)
       } else if (adapter.provider === "fathom") {
         // La primera consulta no espera a la vuelta del cron (F8): se encola ya.
+        await applyConnectArea(service, ctx.workspace.id, result.connectionId, result.redirectTo);
         await queueFathomSyncNow(service, result.connectionId);
         await logAudit({
           supabase: service,

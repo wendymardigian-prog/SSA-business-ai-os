@@ -19,7 +19,7 @@
  * prueba que falla.
  *
  *   node scripts/verify-calls.mjs
- *   node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301 --despues-de-00303
+ *   node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301 --despues-de-00303 --despues-de-00304
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -500,6 +500,30 @@ try {
     check(sinPerfil?.analysis_profile_id === null, "si desaparece el analizador, la grabacion conserva su analisis");
     const { count: colgadas } = await svc.from("ai_task_prompt_versions").select("id", { count: "exact", head: true }).eq("variant", perfil.id);
     check(colgadas === 0, "sus versiones se van con el");
+  }
+
+  if (process.argv.includes("--despues-de-00304")) {
+    console.log("\n— Qué importa cada conexión (00304) —");
+    const dueno = await makeUser("calls-conexion-dueno");
+    const ajeno = await makeUser("calls-conexion-ajeno");
+    await svc.from("workspace_members").insert([
+      { workspace_id: ws.id, user_id: dueno.id, role: "member" },
+      { workspace_id: ws.id, user_id: ajeno.id, role: "member" },
+    ]);
+    const { data: conexion, error: e1 } = await svc.from("oauth_connections")
+      .insert({ workspace_id: ws.id, provider: "fathom", user_id: dueno.id, external_account_id: "zz-test-conexion", vault_secret_prefix: "zz-test-conexion", status: "active" })
+      .select("id, fathom_settings").single();
+    check(!e1 && JSON.stringify(conexion?.fathom_settings) === "{}", "una conexión nace sin configurar: sigue como antes", e1?.message);
+    const { data: propia } = await dueno.client.from("oauth_connections").select("fathom_settings").eq("id", conexion.id);
+    check(propia?.length === 1, "la persona lee lo suyo");
+    const { data: otra } = await ajeno.client.from("oauth_connections").select("fathom_settings").eq("id", conexion.id);
+    check((otra ?? []).length === 0, "otro Member no ve la conexión de nadie más");
+    const { data: cambio } = await dueno.client.from("oauth_connections").update({ fathom_settings: { mode: "manual" } }).eq("id", conexion.id).select("id");
+    check((cambio ?? []).length === 0, "desde la sesión nadie la cambia: escribe solo el servidor");
+    const { data: sigue } = await svc.from("oauth_connections").select("fathom_settings").eq("id", conexion.id).single();
+    check(JSON.stringify(sigue?.fathom_settings) === "{}", "el intento no cambió nada");
+    const { error: fuente } = await svc.from("calls").insert(callRow(ws.id, { connection_id: conexion.id, classification_source: "connection" }));
+    check(!fuente, "una grabación puede quedar clasificada por el área de su conexión", fuente?.message);
   }
 } catch (e) {
   fail("el script fallo", e.message);

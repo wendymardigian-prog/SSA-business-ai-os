@@ -5,6 +5,7 @@ import { MiFathomCard } from "@/components/calls/mi-fathom-card"; // @plantilla-
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { listCalendarConnections } from "@/lib/scheduling/data/calendars";
 import { calendarConnectionStatus } from "@/lib/scheduling/bookable";
+import { parseFathomSettings } from "@/lib/fathom/settings"; // @plantilla-quitar(llamadas)
 import { fathomCardView, pickConnection } from "@/lib/fathom/connection-state"; // @plantilla-quitar(llamadas)
 import { daysAgoIso } from "@/lib/calls/format"; // @plantilla-quitar(llamadas)
 import { createServiceClient } from "@/lib/supabase/server"; // @plantilla-quitar(llamadas)
@@ -50,7 +51,7 @@ export default async function IntegrationsPage() {
     // @plantilla-desde(llamadas)
     supabase
       .from("oauth_connections")
-      .select("id, status, account_label, last_synced_at, last_error, sync_last_error, created_at")
+      .select("id, status, account_label, last_synced_at, last_error, sync_last_error, created_at, fathom_settings")
       .eq("workspace_id", workspace.id)
       .eq("provider", "fathom")
       .eq("user_id", user.id)
@@ -72,7 +73,7 @@ export default async function IntegrationsPage() {
       .gte("created_at", since);
     callsLast7d = count ?? 0;
   }
-  const fathomView = fathomCardView({ hasApp: hasFathomApp, connection: mineFathom, callsLast7d });
+  const fathomView = fathomCardView({ hasApp: hasFathomApp, connection: mineFathom, mode: parseFathomSettings(mineFathom?.fathom_settings).mode, callsLast7d });
   // @plantilla-hasta(llamadas)
 
   const mine = (

@@ -8,6 +8,14 @@
  *  4. `not_connected` — nunca conecto (o desconecto).
  */
 
+import type { FathomMode } from "./settings";
+
+const MODE_MESSAGE: Record<FathomMode, string> = {
+  auto: "Las llamadas que grabes entran solas: se consulta Fathom cada 10 minutos.",
+  rules: "Las llamadas que cumplen tus reglas entran solas: se consulta Fathom cada 10 minutos.",
+  manual: "Está en manual: no entra nada solo. Traés las llamadas con Importar historial.",
+};
+
 export type FathomCardState = "missing_app" | "error" | "connected" | "not_connected";
 
 export interface FathomConnectionInfo {
@@ -25,6 +33,8 @@ export interface FathomCardInput {
   connection: FathomConnectionInfo | null;
   /** Cuantas llamadas de Fathom trajo en los ultimos 7 dias. */
   callsLast7d: number;
+  /** Que importa la conexion. Sin esto, automatico. */
+  mode?: FathomMode;
 }
 
 export interface FathomCardView {
@@ -78,8 +88,8 @@ export function fathomCardView(input: FathomCardInput): FathomCardView {
   if (live) {
     return {
       ...base, state: "connected", title: connection.account_label ? `Conectado como ${connection.account_label}` : "Conectado",
-      message: "Las llamadas que grabes entran solas: se consulta Fathom cada 10 minutos.",
-      actions: { connect: false, reconnect: false, syncNow: true, disconnect: true },
+      message: MODE_MESSAGE[input.mode ?? "auto"],
+      actions: { connect: false, reconnect: false, syncNow: input.mode !== "manual", disconnect: true },
     };
   }
   return {

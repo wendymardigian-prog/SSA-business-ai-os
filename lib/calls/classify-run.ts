@@ -7,7 +7,7 @@
  *   1. Lo que eligio una persona NO se pisa.
  *   2. La reunion vinculada: su area y su tipo.
  *   3. Las reglas del negocio, sin gastar IA.
- *   4. El area por defecto de la conexion (Etapa 2).
+ *   4. El area por defecto de la conexion de Fathom.
  *   5. La IA, solo si lo anterior no dio el tipo: se respeta el tope de gasto, se abre
  *      el run y se pregunta al modelo. Con un area ya decidida, solo completa el tipo.
  *   6. El estado de la llamada sale del analizador de su tipo (`statusAfterClassification`); con el modo
@@ -56,9 +56,9 @@ export interface ClassifyDeps {
 }
 
 const CALL_COLUMNS =
-  "id, workspace_id, area_id, category_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, classification_source, no_show, analysis_status, imported_from_history";
+  "id, workspace_id, connection_id, area_id, category_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, classification_source, no_show, analysis_status, imported_from_history";
 
-export async function runCallClassification(deps: ClassifyDeps, callId: string, retry = 0): Promise<{ outcome: ClassifyOutcome }> {
+export async function runCallClassification(deps: ClassifyDeps, callId: string, retry = 0, opts: { noAi?: boolean } = {}): Promise<{ outcome: ClassifyOutcome }> {
   const { db } = deps;
   const now = deps.now ?? new Date();
 
@@ -81,7 +81,7 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
   }
 
   const noShow = call.no_show || ctx.noShowRule;
-  const base = resolveCascade({ booking: ctx.booking, rule: ctx.rule });
+  const base = resolveCascade({ booking: ctx.booking, rule: ctx.rule, connection: ctx.connection });
   let final = base;
   let ai: { confidence: number; alternative: string | null } | null = null;
   let lowConfidence = false;
@@ -89,7 +89,9 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
 
   // Una llamada a la que nadie vino no vale una consulta a la IA.
   if (needsAi(base, ctx.categories) && !noShow) {
-    if (classification.mode === "off" || !hasTranscript) {
+    if (opts.noAi) {
+      reasonOverride = "imported_no_ai";
+    } else if (classification.mode === "off" || !hasTranscript) {
       reasonOverride = hasTranscript ? "ai_off" : "no_transcript";
     } else {
       const budget = await withinWorkspaceBudget(db, call.workspace_id, now);
@@ -137,7 +139,7 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
       await run.step({ kind: "model_call", name: `${model.provider ?? "ia"}/${model.modelId ?? "modelo"}`, output: { categoria: d.categoryId, confianza: d.confidence, valido: !d.invalidType }, durationMs: Date.now() - startedAt });
       await run.close({ status: "responded" });
 
-      final = resolveCascade({ booking: ctx.booking, rule: ctx.rule, ai: d.categoryId ? categorySnapshot(d.categoryId, ctx.categories) : null });
+      final = resolveCascade({ booking: ctx.booking, rule: ctx.rule, connection: ctx.connection, ai: d.categoryId ? categorySnapshot(d.categoryId, ctx.categories) : null });
       ai = { confidence: d.confidence, alternative: d.alternative };
       lowConfidence = d.lowConfidence;
     }

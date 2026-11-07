@@ -803,6 +803,7 @@ ALTER TABLE public.workspace_members DROP COLUMN closer_emails;
 
 -- Conexiones OAuth: la sincronizacion de Fathom y su candado de renovacion.
 ALTER TABLE public.oauth_connections DROP COLUMN last_synced_at;
+ALTER TABLE public.oauth_connections DROP COLUMN fathom_settings;
 ALTER TABLE public.oauth_connections DROP COLUMN sync_watermark;
 ALTER TABLE public.oauth_connections DROP COLUMN sync_cursor;
 ALTER TABLE public.oauth_connections DROP COLUMN sync_last_error;

@@ -18,7 +18,11 @@ beforeEach(() => {
 describe("handler call_classify", () => {
   it("clasifica la llamada del payload con el contador de reintentos", async () => {
     await handleCallClassify(ctx({ callId: "c1", retry: 2 }));
-    expect(run.classify).toHaveBeenCalledWith({ db: { tag: "db" } }, "c1", 2);
+    expect(run.classify).toHaveBeenCalledWith({ db: { tag: "db" } }, "c1", 2, { noAi: false });
+  });
+  it("lo importado sin el pedido de usar IA viaja en el payload", async () => {
+    await handleCallClassify(ctx({ callId: "c1", noAi: true }));
+    expect(run.classify).toHaveBeenCalledWith({ db: { tag: "db" } }, "c1", 0, { noAi: true });
   });
   it("sin callId no hace nada y no lanza", async () => {
     await handleCallClassify(ctx({}));

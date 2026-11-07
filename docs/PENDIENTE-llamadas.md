@@ -86,3 +86,10 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 - **«Analizar seleccionadas» no está en el celular:** cada tarjeta es un link entero. Sigue «Analizar pendientes».
 - **Las pantallas dicen todavía «Closer» en la cabecera de la ficha** aunque sea una reunión de servicio. Decisión: se cambia con la limpieza de la Etapa 5.
 
+## Qué importa cada conexión (Etapa 2, 6/11/2026)
+
+- **Falta la prueba real con Fathom.** Todo está probado con respuestas simuladas. Hay que confirmar con una cuenta real que `calendar_invitees` e `is_external` llegan como se espera: la regla «con alguien de afuera» depende de eso, y si no llegan, esa regla deja afuera grabaciones que deberían entrar.
+- **Lo que no cumple las reglas no deja rastro:** no se guarda, y Mi Fathom no dice cuántas quedaron afuera (el log del job sí cuenta `skippedByRules`, solo en la corrida). Decisión: se suma si hace falta.
+- **Ningún módulo usa todavía el link con `?area=`:** el de Servicio está fuera de este plan.
+- **El cron sigue encolando un job por conexión en manual:** termina enseguida sin pedir nada. No se tocó `private.enqueue_fathom_sync`.
+

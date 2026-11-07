@@ -14,13 +14,13 @@ import { runCallClassification } from "@/lib/calls/classify-run";
 export const CALL_CLASSIFY_JOB = "call_classify";
 
 export async function handleCallClassify(ctx: JobContext): Promise<void> {
-  const payload = ctx.job.payload as { callId?: string; retry?: number };
+  const payload = ctx.job.payload as { callId?: string; retry?: number; noAi?: boolean };
   if (!payload.callId) {
     console.error("[call_classify] el job no trae la llamada");
     return;
   }
   try {
-    const result = await runCallClassification({ db: ctx.supabase as SupabaseClient<Database> }, payload.callId, payload.retry ?? 0);
+    const result = await runCallClassification({ db: ctx.supabase as SupabaseClient<Database> }, payload.callId, payload.retry ?? 0, { noAi: payload.noAi === true });
     console.log(`[call_classify] ${result.outcome}`);
   } catch (err) {
     // Algo inesperado (la base, no el modelo): la cola lo reintenta.

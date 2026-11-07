@@ -36,4 +36,6 @@ export async function enqueueCallJob(
   }
 }
 
-export const enqueueClassify = (db: Db, callId: string, now: Date = new Date()) => enqueueCallJob(db, "call_classify", callId, now).then(() => undefined);
+/** `noAi`: lo importado del historial sin el pedido de clasificar con IA. No gasta. */
+export const enqueueClassify = (db: Db, callId: string, now: Date = new Date(), opts: { noAi?: boolean } = {}) =>
+  enqueueCallJob(db, "call_classify", callId, now, opts.noAi ? { noAi: true } : {}).then(() => undefined);
