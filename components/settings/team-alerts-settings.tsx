@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { saveTeamAlertsChannel } from "@/lib/actions/team-alerts";
+import { WhatsappBanRiskNotice } from "@/components/channels/whatsapp-ban-risk-notice";
 
 /**
  * "Avisos al equipo por WhatsApp" (Ajustes → General): desde que WhatsApp del
@@ -101,6 +102,11 @@ export function TeamAlertsSettings({
         <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">
           El WhatsApp elegido se desconectó: mientras tanto no sale ningún aviso por WhatsApp. Reconectalo o elegí otro.
         </p>
+      )}
+      {channels.length > 0 && (
+        <WhatsappBanRiskNotice className="mt-3">
+          Estos avisos salen en el momento: no pasan por la cola de envíos ni por el ritmo de los broadcasts. Lo más seguro es un número aparte, solo para avisos.
+        </WhatsappBanRiskNotice>
       )}
     </section>
   );

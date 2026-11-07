@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus, X } from "lucide-react";
+import { WhatsappBanRiskNotice } from "@/components/channels/whatsapp-ban-risk-notice";
 import { listGroupsForFlowEditor } from "@/lib/actions/whatsapp-group-flow-editor";
 import type { EditorGroup } from "@/lib/whatsapp-groups/editor-types";
 import type { SendPollData } from "@/lib/flow-engine/nodes/send-poll";
@@ -38,6 +39,8 @@ export function SendPollPanel({ data: raw, onChange }: { data: Record<string, un
 
   return (
     <div className="space-y-4">
+      <WhatsappBanRiskNotice />
+
       <div>
         <label htmlFor="poll-group" className={labelClass}>A qué grupo</label>
         {groups && groups.length === 0 ? (
