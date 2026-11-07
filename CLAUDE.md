@@ -1977,7 +1977,7 @@ Se cortaba por el `statement_timeout` de 8 s con solo 6.361 mensajes: la RLS de 
 
 ## Migración
 
-`00305_chat_dashboard_core` (aditiva, va **ANTES** de desplegar el código): **aplicada y registrada** el 7/11/2026 UTC (versión `20261107042726`), con `verify-chat-core --carga=2000` en verde. El mismo día se corrigió `chat_dashboard_team_v2`; el SQL registrado es el corregido. **La próxima libre es la `00306`** (la `00304` está en otra rama; confirmar con `list_migrations` y las ramas locales).
+`00305_chat_dashboard_core` (aditiva, va **ANTES** de desplegar el código): **aplicada y registrada** el 7/11/2026 UTC (versión `20261107042726`), con `verify-chat-core --carga=2000` en verde. El mismo día se corrigió `chat_dashboard_team_v2`; el SQL registrado es el corregido. **La próxima libre es la `00306`** (confirmar con `list_migrations` y las ramas locales).
 
 ```
 node scripts/verify-chat-core.mjs             # cada número nuevo contra el viejo, por rol y filtro
