@@ -6,8 +6,8 @@
  * cualquiera, asi que no puede depender de modulos ni de nada del proyecto.
  *
  * El archivo compilado SE COMMITEA. En Railway el build corre `npm ci
- * --omit=dev` y esbuild llega solo como dependencia de vite/vitest, que son
- * de desarrollo: si el script no estuviera en el repo, el deploy quedaria sin
+ * --omit=dev` y esbuild es una dependencia de desarrollo (directa desde vitest 4,
+ * que ya no lo trae): si el script no estuviera en el repo, el deploy quedaria sin
  * `/embed/embed.js` y todos los embeds del cliente dejarian de cargar. Con el
  * archivo commiteado, este script solo lo regenera cuando esbuild esta.
  *

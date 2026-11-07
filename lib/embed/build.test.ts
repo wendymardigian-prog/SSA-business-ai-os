@@ -2,7 +2,7 @@
  * El script compilado que se sirve en `/embed/embed.js`.
  *
  * Está commiteado a propósito: en Railway el build corre sin dependencias de
- * desarrollo y esbuild llega solo a través de vitest, así que si el archivo
+ * desarrollo y esbuild es una dependencia de desarrollo, así que si el archivo
  * no estuviera en el repo el deploy quedaría sin script y todos los embeds de
  * los clientes dejarían de cargar sin que nadie se entere.
  *

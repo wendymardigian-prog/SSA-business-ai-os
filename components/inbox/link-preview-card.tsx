@@ -23,8 +23,10 @@ function PreviewBody({ href, preview, compact = false }: { href: string; preview
     >
       {showImage && (
         <span className={cn("relative block", compact ? "w-16 shrink-0" : "h-32 w-full")}>
-          {/* Pasa por next/image: la pide el servidor, y el sitio ajeno no ve la IP de quien mira. */}
-          <Image src={preview.image!} alt="" fill sizes={compact ? "64px" : "256px"} className="object-cover" onError={() => setImageFailed(true)} />
+          {/* Sin optimizador (next.config.ts, `images.unoptimized`): es un <img> directo, la pide el navegador.
+              El servidor nunca baja una imagen ajena; a cambio, el sitio ve la IP de quien mira. Sin referrer,
+              para que no sepa desde qué pantalla se abrió. */}
+          <Image src={preview.image!} alt="" fill sizes={compact ? "64px" : "256px"} className="object-cover" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />
         </span>
       )}
       <span className="block min-w-0 space-y-0.5 px-3 py-2">
