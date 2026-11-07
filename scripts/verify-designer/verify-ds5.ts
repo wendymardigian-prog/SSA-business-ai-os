@@ -28,7 +28,7 @@ import { decidePublicView } from "../../lib/designer/public/model";
 import { NOT_FOUND_MIN_MS, withinPublicLimit } from "../../lib/designer/public/guard";
 import { serveDownload, servePageImage, servePreview } from "../../lib/designer/public/serve";
 import { publishDesignCore, setPublicOptionsCore, unpublishDesignCore, voidDesignCore } from "../../lib/designer/publishing";
-import { anon, check, makeWorkspace, minimalDoc, raw, svc, SUPABASE_URL, type BlockContext } from "./helpers";
+import { anon, check, makeWorkspace, minimalDoc, raw, sql, svc, SUPABASE_URL, type BlockContext } from "./helpers";
 
 process.env.NEXT_PUBLIC_APP_URL ||= "https://app.zz-test.example";
 const MAIN_URL = process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
@@ -204,7 +204,11 @@ export default async function ds5(ctx: BlockContext): Promise<void> {
     check(second.status === "rendered" && secondSet.version !== firstSet.version, "el segundo render deja un juego nuevo");
     const mine = (await listAll(`${t.id}/${designId}`)).filter((p) => !p.includes("/exports/"));
     check(mine.length === 3 && mine.every((p) => p.startsWith(`${t.id}/${designId}/${secondSet.version}/`)), "en el bucket quedan SOLO los archivos nuevos de ese diseño (2 páginas y el PDF)", mine.join("\n        "));
-    check(!mine.includes(firstSet.pdf_path as string) && (await raw.storage.from(BUCKET).download(firstSet.pdf_path as string)).error !== null, "el PDF del juego anterior ya no está");
+    // Se mira la tabla de objetos y no una descarga: el almacenamiento de Supabase sigue sirviendo un archivo borrado
+    // hasta ~1 minuto desde su caché (comprobado el 7/11/2026), así que una descarga no prueba nada.
+    const oldPdf = String(firstSet.pdf_path ?? "").replace(/'/g, "''");
+    const stillThere = sql(`select count(*)::int as n from storage.objects where bucket_id = '${BUCKET}' and name = '${oldPdf}'`)[0]?.n;
+    check(!mine.includes(firstSet.pdf_path as string) && Number(stillThere) === 0, "el PDF del juego anterior ya no está", String(stillThere));
     check((await listAll(`${t.id}/${designId}`)).filter((p) => p.includes("/exports/")).length === exportsBefore.length, "las exportaciones sueltas no se tocan (las limpia la limpieza diaria)");
     check((await listAll(`${t.id}/${other!.id}`)).length === otherFiles.length, "los archivos de otro diseño tampoco");
     const { data: rendersNow } = await raw.from("designs").select("renders").eq("id", designId).single();

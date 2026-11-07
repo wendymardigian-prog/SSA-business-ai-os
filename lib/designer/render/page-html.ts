@@ -128,6 +128,19 @@ export function stripActiveCss(css: string): string {
     .replace(/@import\s+(?!(?:url\()?\s*["']?https:\/\/fonts\.googleapis\.com\/)[^;]*;?/gi, "");
 }
 
+/**
+ * Separa los `@import` (después de `stripActiveCss` solo quedan los de Google Fonts) del resto: el navegador ignora un
+ * `@import` que no está al principio de la hoja, y el CSS de una página cargada va después de las reglas del render.
+ */
+export function hoistImports(css: string): { imports: string[]; rest: string } {
+  const imports: string[] = [];
+  const rest = css.replace(/@import\s+[^;]*;/gi, (rule) => {
+    imports.push(rule.trim());
+    return "";
+  });
+  return { imports, rest };
+}
+
 /** Cambia cada `asset:<ruta>` por la URL que da `assetUrl`. */
 export function rewriteAssetRefs(text: string, assetUrl: (path: string) => string): string {
   return text.replace(/asset:([A-Za-z0-9._\-/]+)/g, (_m, path: string) => cssString(assetUrl(path)));
@@ -344,10 +357,12 @@ export function renderPageHTML(doc: DesignDoc, pageIndex: number, opts: RenderOp
 
   const google = googleCssUrl(fontsUsed(page).filter((f) => !(opts.uploadedFonts ?? []).some((u) => u.family === f.family)));
   const faces = uploadedFontFaces(opts.uploadedFonts ?? [], opts.assetUrl);
-  const htmlCss = page.elements
-    .filter((el): el is HtmlElement => el.type === "html" && !!el.css)
-    .map((el) => rewriteAssetRefs(stripActiveCss(el.css as string), opts.assetUrl))
-    .join("\n");
+  const { imports: htmlImports, rest: htmlCss } = hoistImports(
+    page.elements
+      .filter((el): el is HtmlElement => el.type === "html" && !!el.css)
+      .map((el) => rewriteAssetRefs(stripActiveCss(el.css as string), opts.assetUrl))
+      .join("\n"),
+  );
 
   const pageBox = web && opts.mode === "public" ? `width: 100%; max-width: ${width}px; min-height: ${height}px; margin: 0 auto` : `width: ${width}px; height: ${height}px`;
   const responsive = web
@@ -360,6 +375,8 @@ export function renderPageHTML(doc: DesignDoc, pageIndex: number, opts: RenderOp
       ? `.dz-var{display:inline-block;padding:0 .35em;border-radius:.4em;background:rgba(124,58,237,.16);color:#6d28d9;font-weight:600;white-space:nowrap}`
       : "";
   const styles = [
+    // Los `@import` de Google Fonts de una página cargada van primero: si no, el navegador los ignora.
+    ...htmlImports,
     `*{box-sizing:border-box;margin:0;padding:0}`,
     `html,body{background:transparent}`,
     web ? `body{overflow-x:hidden}` : `html,body{width:${width}px;height:${height}px;overflow:hidden}`,

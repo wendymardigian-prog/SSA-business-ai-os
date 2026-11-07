@@ -51,3 +51,25 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**. El avance est�
 - `custom_vars` no se valida en SQL (forma de la clave y unicidad): lo validan las acciones de DS2 y DS6.
 - `design_public_get` devuelve una generación con verificación en cualquier estado: DS5 muestra solo `ready` o `void` (y "Se está preparando" en los demás).
 - La limpieza lista hasta 2000 carpetas de diseños por negocio.
+
+## Ola 2 (7/11/2026)
+
+### Las cargas de HTML abandonadas no se limpian todavía
+- **Qué quedó:** `design-assets/<ws>/imports/<id>/` de un archivo que se revisó y nunca se cargó (o de un diseño borrado) queda en el bucket.
+- **Por qué:** la limpieza diaria solo se encola cuando hay versiones o exportaciones viejas (`enqueue_design_cleanup`, 00320/00322), y saber si una carga está en uso pide mirar el documento de todos los diseños, plantillas y versiones.
+- **Qué se decidió:** se deja para una migración propia (otro criterio de encolado + una función pura con su test). No ocupa lugar visible ni expone nada: el bucket es privado.
+
+### El tope del cuerpo de las Server Actions pasó a 51 MB
+- **Qué quedó:** `experimental.serverActions.bodySizeLimit = "51mb"` en `next.config.ts` (antes regía 1 MB).
+- **Por qué:** cargar un .zip de 50 MB (F39) y subir una imagen de 20 MB (F22) son Server Actions; con 1 MB no llegaban.
+- **Qué se decidió:** el tope es de toda la app (Next no permite uno por acción). Cada acción vuelve a validar el tamaño y los bytes antes de usar el archivo. Si algún día molesta, la alternativa es una ruta propia que lea el cuerpo con tope y sesión primero (como `readBytesCapped`).
+
+### Exportar puede tardar hasta un minuto más
+- **Qué quedó:** `requestExport` solo encola el job (como pide el plano) y la cola corre cada minuto.
+- **Por qué:** disparar el render también en `after()` podría renderizar dos veces.
+- **Qué se decidió:** la pantalla muestra «Preparando tu archivo…» y descarga sola al terminar. Si molesta, se suma un disparo inmediato con un reclamo del job.
+
+### Un archivo borrado se sigue pudiendo bajar ~1 minuto
+- **Qué quedó:** al volver a renderizar (F48b) se borran los archivos del juego anterior, pero el almacenamiento de Supabase los sigue sirviendo desde su caché hasta ~1 minuto (comprobado el 7/11/2026 con un archivo de prueba: devuelve a los 0, 3 y 15 s y falla a los 45 s).
+- **Por qué:** es la caché del proveedor; la tabla de objetos ya no los tiene.
+- **Qué se decidió:** nada que cambiar: el link público y la descarga leen el juego VIGENTE (`designs.renders`), nunca una ruta vieja. `verify-ds5` comprueba el borrado en `storage.objects`, no con una descarga. La 00324 también: el bucket no aceptaba el `error.json`, ahora sí.
