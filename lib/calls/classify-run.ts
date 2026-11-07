@@ -10,7 +10,7 @@
  *   4. El area por defecto de la conexion (Etapa 2).
  *   5. La IA, solo si lo anterior no dio el tipo: se respeta el tope de gasto, se abre
  *      el run y se pregunta al modelo. Con un area ya decidida, solo completa el tipo.
- *   6. El estado de la llamada sale de `nextStatusAfterClassify`; con el modo
+ *   6. El estado de la llamada sale del analizador de su tipo (`statusAfterClassification`); con el modo
  *      automatico prendido, se encola el analisis.
  *
  * Un fallo del modelo NO lanza: se reintenta a los 1, 5 y 15 minutos (propio) y,
@@ -32,7 +32,7 @@ import { classifyCallWithAi } from "./classify-ai";
 import { needsAi, resolveCascade } from "./classify-cascade";
 import { classificationPatch, loadClassificationContext } from "./classify-core";
 import { enqueueCallJob } from "./queue";
-import { nextStatusAfterClassify } from "./status";
+import { resolveProfile, statusAfterClassification } from "./profiles";
 
 type Db = SupabaseClient<Database>;
 
@@ -56,7 +56,7 @@ export interface ClassifyDeps {
 }
 
 const CALL_COLUMNS =
-  "id, workspace_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, classification_source, no_show, analysis_status, imported_from_history";
+  "id, workspace_id, area_id, category_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, classification_source, no_show, analysis_status, imported_from_history";
 
 export async function runCallClassification(deps: ClassifyDeps, callId: string, retry = 0): Promise<{ outcome: ClassifyOutcome }> {
   const { db } = deps;
@@ -67,15 +67,13 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
 
   const ctx = await loadClassificationContext(db, call);
   const classification = ctx.settings.call_classification;
-  const analysis = ctx.settings.call_analysis;
   const hasTranscript = Array.isArray(call.transcript) && call.transcript.length > 0;
-  // Lo importado del historial no se analiza solo: el gasto lo decide una persona, llamada por llamada.
-  const auto = analysis.mode === "now" && !call.imported_from_history;
 
   // Paso el estado a su lugar sin tocar lo que eligio una persona.
   if ((call.classification_source === "human" || call.call_type_source === "human") && call.call_type) {
     if (call.analysis_status === "classifying") {
-      const next = nextStatusAfterClassify(call.call_type, { analyzeTypes: analysis.analyze_types, auto, hasTranscript });
+      const profile = resolveProfile(ctx.profiles, { categoryId: call.category_id, areaId: call.area_id });
+      const next = statusAfterClassification(profile, { ...call, noShow: call.no_show, importedFromHistory: call.imported_from_history });
       await db.from("calls").update({ analysis_status: next.status, analysis_status_reason: next.reason }).eq("id", callId).eq("analysis_status", "classifying");
       if (next.enqueueAnalysis) await enqueueCallJob(db, "call_analyze", callId, now);
     }
@@ -148,7 +146,8 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
   const patch = classificationPatch(final, ctx, noShow, ai);
 
   if (patch.call_type) {
-    const next = nextStatusAfterClassify(patch.call_type, { analyzeTypes: analysis.analyze_types, auto, lowConfidence, hasTranscript });
+    const profile = resolveProfile(ctx.profiles, { categoryId: patch.category_id, areaId: patch.area_id });
+    const next = statusAfterClassification(profile, { ...call, noShow, lowConfidence, importedFromHistory: call.imported_from_history });
     const { data: updated } = await db
       .from("calls")
       .update({ ...patch, analysis_status: next.status, analysis_status_reason: next.reason })

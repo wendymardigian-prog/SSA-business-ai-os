@@ -862,8 +862,10 @@ DROP FUNCTION private.commission_failed_dimension(p_rule public.commission_rules
 -- En una sola orden: asi las llaves foraneas entre ellas (por ejemplo formularios
 -- y sus versiones, que se apuntan mutuamente) no obligan a un orden. Sus
 -- disparadores, politicas, indices y permisos se van con ellas.
+ALTER TABLE public.ai_task_prompt_versions DROP CONSTRAINT ai_task_prompt_versions_variant_fkey;
 DROP TABLE
   public.calls,
+  public.call_analysis_profiles,
   public.forms,
   public.form_versions,
   public.form_submissions,

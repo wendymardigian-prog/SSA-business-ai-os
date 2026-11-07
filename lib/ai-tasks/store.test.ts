@@ -22,15 +22,10 @@ function fakeClient(opts: { active?: Record<string, number>; versionRow?: { vers
       }
       if (table === "ai_task_prompt_versions") {
         return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                eq: () => ({
-                  maybeSingle: async () => ({ data: opts.versionRow ?? null, error: null }),
-                }),
-              }),
-            }),
-          }),
+          select: () => {
+            const query = { eq: () => query, is: () => query, maybeSingle: async () => ({ data: opts.versionRow ?? null, error: null }) };
+            return query;
+          },
         };
       }
       throw new Error(`tabla inesperada: ${table}`);

@@ -8,13 +8,16 @@ vi.mock("@/lib/supabase/server", () => ({ createServiceClient: mocks.service }))
 vi.mock("@/lib/ai/run", () => ({ openAiRun: mocks.openAiRun }));
 vi.mock("@/lib/ai/workspace-budget", () => ({ withinWorkspaceBudget: mocks.budget }));
 vi.mock("@/lib/ai-tasks/model", () => ({ resolveTaskModel: mocks.model }));
-vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions }));
+vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions, workspaceOwnStyle: vi.fn() }));
 vi.mock("@/lib/calls/ai-generate", () => ({ aiSdkGenerate: () => mocks.generate }));
 
 import { testCallDraft } from "./calls-test";
 import { DEFAULT_ANALYSIS } from "@/lib/calls/task-settings";
+import { DEFAULT_GENERAL_RUBRIC } from "@/lib/calls/profiles";
 import { DEFAULT_RUBRIC } from "@/lib/calls/rubric";
 
+const CATEGORY = "33333333-3333-4333-8333-333333333333";
+const draft = (over: Record<string, unknown> = {}) => ({ categoryId: CATEGORY, shape: "sales" as const, rubricDraft: DEFAULT_RUBRIC, callIds: [A], ...over });
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
 const keys = DEFAULT_RUBRIC.closer.map((c) => c.clave);
@@ -46,65 +49,71 @@ beforeEach(() => {
 });
 
 describe("testCallDraft: permisos y limites", () => {
-  it("sin permiso no hace nada", async () => {
-    setup([callRow(A)], []);
-    expect((await testCallDraft({ callIds: [A] })).ok).toBe(false);
+  it("sin permiso de configurar no hace nada", async () => {
+    setup([callRow(A)], ["agents.edit"]);
+    expect((await testCallDraft(draft())).ok).toBe(false);
     expect(mocks.generate).not.toHaveBeenCalled();
   });
-  it("probar el texto lo puede quien tiene agents.edit; probar una rubrica pide calls.configure", async () => {
-    setup([callRow(A)], ["agents.edit"]);
-    expect((await testCallDraft({ callIds: [A], instructionsText: "Mi borrador" })).ok).toBe(true);
-    expect((await testCallDraft({ callIds: [A], rubricDraft: DEFAULT_RUBRIC })).ok).toBe(false);
-  });
-  it("pide de 1 a 5 llamadas y ids validos", async () => {
+  it("pide de 1 a 5 grabaciones, ids validos y un tipo", async () => {
     setup();
-    expect((await testCallDraft({ callIds: [] })).ok).toBe(false);
+    expect((await testCallDraft(draft({ callIds: [] }))).ok).toBe(false);
     const six = Array.from({ length: 6 }, (_, i) => `${i}1111111-1111-4111-8111-111111111111`);
-    expect((await testCallDraft({ callIds: six })).ok).toBe(false);
-    expect((await testCallDraft({ callIds: ["no-es-uuid"] })).ok).toBe(false);
+    expect((await testCallDraft(draft({ callIds: six }))).ok).toBe(false);
+    expect((await testCallDraft(draft({ callIds: ["no-es-uuid"] }))).ok).toBe(false);
+    expect((await testCallDraft(draft({ categoryId: "no-es-uuid" }))).ok).toBe(false);
+    expect((await testCallDraft(draft({ shape: "raro" }))).ok).toBe(false);
   });
-  it("lee solo llamadas analizadas que la persona ve (cliente de la persona)", async () => {
+  it("lee con el cliente de la persona, y no hace falta que ya este analizada", async () => {
     setup();
-    await testCallDraft({ callIds: [A] });
-    expect(user.calls[0].filters).toEqual(expect.arrayContaining([
-      expect.objectContaining({ column: "analysis_status", value: "analyzed" }),
-      expect.objectContaining({ column: "workspace_id", value: "ws1" }),
-    ]));
+    await testCallDraft(draft());
+    const columns = user.calls[0].filters.map((f) => f.column);
+    expect(columns).toContain("workspace_id");
+    expect(columns).not.toContain("analysis_status");
   });
-  it("si ninguna es visible o analizada, lo dice", async () => {
+  it("si ninguna se ve o tiene transcripcion, lo dice", async () => {
     setup([]);
-    expect(await testCallDraft({ callIds: [A] })).toEqual({ ok: false, error: "No encontré llamadas analizadas para probar" });
+    expect(await testCallDraft(draft())).toEqual({ ok: false, error: "No encontré grabaciones con transcripción para probar" });
+    setup([{ ...callRow(A), transcript: [] as never }]);
+    expect((await testCallDraft(draft())).ok).toBe(false);
   });
 });
 
 describe("testCallDraft: lo que prueba y lo que NO escribe", () => {
-  it("usa el texto del editor aunque no este guardado, y las instrucciones activas si no hay texto", async () => {
+  it("usa el texto del editor aunque no este guardado, y las de respaldo si no hay texto", async () => {
     setup();
-    await testCallDraft({ callIds: [A], instructionsText: "TEXTO DEL EDITOR" });
+    await testCallDraft(draft({ instructionsText: "TEXTO DEL EDITOR" }));
     expect(mocks.generate.mock.calls[0][0].system).toContain("TEXTO DEL EDITOR");
     expect(mocks.instructions).not.toHaveBeenCalled();
     setup();
-    await testCallDraft({ callIds: [A] });
+    await testCallDraft(draft());
     expect(mocks.generate.mock.calls.at(-1)![0].system).toContain("Instrucciones activas");
   });
 
-  it("devuelve la comparacion por llamada", async () => {
+  it("devuelve la comparacion por grabacion", async () => {
     setup();
-    const r = await testCallDraft({ callIds: [A] });
+    const r = await testCallDraft(draft());
     expect(r.ok && r.results[0]).toMatchObject({ callId: A, closer: { current: 40, draft: 100 }, outcome: { same: true } });
+  });
+
+  it("el formato general no pide datos de venta ni tiene lead", async () => {
+    setup();
+    mocks.generate.mockResolvedValue({ object: { resumen: "r", rubrica: [{ codigo: "escucha", nombre: "Escucha", puntaje: 5, justificacion: "j" }], feedback: { foco: "f", funciono: [], mejorar: [] } }, usage: {} });
+    const r = await testCallDraft(draft({ shape: "general", rubricDraft: DEFAULT_GENERAL_RUBRIC, instructionsText: "Mirá el servicio." }));
+    expect(r.ok && r.results[0]).toMatchObject({ ok: true, lead: { draft: null }, outcome: { draft: null } });
+    expect(mocks.generate.mock.calls[0][0].system).not.toContain("creencia");
   });
 
   it("NO escribe nada: ni en calls, ni en versiones, ni en workspaces (solo los runs)", async () => {
     setup([callRow(A), callRow(B)]);
-    await testCallDraft({ callIds: [A, B], instructionsText: "borrador", rubricDraft: DEFAULT_RUBRIC });
+    await testCallDraft(draft({ callIds: [A, B], instructionsText: "borrador" }));
     expect(user.writes()).toHaveLength(0);
     expect(service.writes()).toHaveLength(0);
     expect(service.rpcCalls).toHaveLength(0);
   });
 
-  it("registra un run por llamada con source call_prompt_test, y el costo se cierra en cada una", async () => {
+  it("registra un run por grabacion con source call_prompt_test, y el costo se cierra en cada una", async () => {
     setup([callRow(A), callRow(B)]);
-    await testCallDraft({ callIds: [A, B] });
+    await testCallDraft(draft({ callIds: [A, B] }));
     expect(mocks.openAiRun).toHaveBeenCalledTimes(2);
     expect(mocks.openAiRun.mock.calls[0][1]).toMatchObject({ source: "call_prompt_test", trigger: "manual" });
     expect(run.close).toHaveBeenCalledTimes(2);
@@ -115,15 +124,15 @@ describe("testCallDraft: lo que prueba y lo que NO escribe", () => {
     setup();
     const bad = structuredClone(DEFAULT_RUBRIC);
     bad.closer[0].peso += 10;
-    const r = await testCallDraft({ callIds: [A], rubricDraft: bad });
+    const r = await testCallDraft(draft({ rubricDraft: bad }));
     expect(r.ok).toBe(false);
     expect(mocks.generate).not.toHaveBeenCalled();
   });
 
-  it("con el tope alcanzado ninguna llamada llama al modelo", async () => {
+  it("con el tope alcanzado ninguna grabacion llama al modelo", async () => {
     setup();
     mocks.budget.mockResolvedValue({ allowed: false, message: "Tope" });
-    const r = await testCallDraft({ callIds: [A] });
+    const r = await testCallDraft(draft());
     expect(r.ok && r.results[0]).toMatchObject({ ok: false, error: "Tope" });
     expect(mocks.generate).not.toHaveBeenCalled();
     expect(mocks.openAiRun).not.toHaveBeenCalled();
@@ -131,6 +140,6 @@ describe("testCallDraft: lo que prueba y lo que NO escribe", () => {
 
   it("instrucciones gigantes se rechazan", async () => {
     setup();
-    expect((await testCallDraft({ callIds: [A], instructionsText: "x".repeat(32_001) })).ok).toBe(false);
+    expect((await testCallDraft(draft({ instructionsText: "x".repeat(32_001) }))).ok).toBe(false);
   });
 });

@@ -33,6 +33,58 @@ const ratiosInput = (over: Partial<Parameters<typeof crmRatios>[0]> = {}) => ({
   spend: 100, leadsNew: 0, leadsTotal: 0, leadsWithBooking: 0, bookings: 0, attended: 0, sales: 0, revenue: 0, cash: 0, ufCash: 0, ...over,
 });
 
+describe("el alcance de cada fila", () => {
+  // Las cifras reales de los ultimos 30 dias de una cuenta, leidas de Meta el 6/11/2026.
+  const lp1 = adsRow({ level: "campaign", objectId: "lp1", objectName: "Imagenes - LP1", reach: 49545, impressions: 59454 });
+  const nuevo = adsRow({ level: "campaign", objectId: "nuevo", objectName: "Clase 9 Nov · Público nuevo", reach: 3653, impressions: 4639 });
+  const build = (liveReach?: Record<string, { reach: number; frequency: number | null }> | null) =>
+    buildCrmRows({ rows: [lp1, nuevo], level: "campaign", metrics: [], catalog: {}, liveReach });
+  const rowOf = (rows: ReturnType<typeof build>, id: string) => rows.find((r) => r.objectId === id)!;
+
+  it("con el dato de Meta muestra las personas unicas y su frecuencia, sin marca", () => {
+    const row = rowOf(build({ lp1: { reach: 18919, frequency: 3.279507 } }), "lp1");
+    expect(row).toMatchObject({ reach: 18919, frequency: 3.28, reachIsSum: false });
+  });
+
+  it("si Meta no respondio queda la suma de los dias, marcada", () => {
+    const row = rowOf(build(null), "lp1");
+    expect(row).toMatchObject({ reach: 49545, frequency: 1.2, reachIsSum: true });
+  });
+
+  it("un objeto que no vino en la respuesta: se marca solo esa fila", () => {
+    const rows = build({ lp1: { reach: 18919, frequency: 3.28 } });
+    expect(rowOf(rows, "lp1").reachIsSum).toBe(false);
+    expect(rowOf(rows, "nuevo")).toMatchObject({ reach: 3653, reachIsSum: true });
+  });
+
+  it("una campaña que recien arranca no da una frecuencia imposible", () => {
+    // Lo guardado llega hasta el ultimo sync y lo de Meta hasta ahora: 4.639 impresiones ÷ 5.580 de alcance daria 0,83.
+    const row = rowOf(build({ nuevo: { reach: 5580, frequency: 1.46 } }), "nuevo");
+    expect(row.frequency).toBe(1.46);
+    expect(row.frequency as number).toBeGreaterThanOrEqual(1);
+  });
+
+  it("un objeto sin entrega suma cero, y eso es exacto: no se marca", () => {
+    const [row] = buildCrmRows({ rows: [adsRow({ level: "campaign", objectId: "pausada", reach: 0, impressions: 0 })], level: "campaign", metrics: [], catalog: {} });
+    expect(row).toMatchObject({ reach: 0, frequency: null, reachIsSum: false });
+  });
+
+  it("un objeto sin datos de alcance no se marca: es «—»", () => {
+    const [row] = buildCrmRows({ rows: [], level: "campaign", metrics: [crm({ objectId: "solo-crm" })], catalog: {} });
+    expect(row).toMatchObject({ reach: null, frequency: null, reachIsSum: false });
+  });
+
+  it("el total usa la frecuencia de Meta y dice si es una suma", () => {
+    const rows = build(null);
+    expect(totalRow(rows, { overallReach: 182000, overallFrequency: 1.5 })).toMatchObject({ reach: 182000, frequency: 1.5, reachIsSum: false });
+    expect(totalRow(rows, { overallReach: 257000, overallReachIsSum: true })).toMatchObject({ reach: 257000, reachIsSum: true });
+  });
+
+  it("con un filtro de estado no hay alcance de la cuenta: el total es «—» y no se marca", () => {
+    expect(totalRow(build(null), { overallReach: null, overallFrequency: null, overallReachIsSum: true })).toMatchObject({ reach: null, frequency: null, reachIsSum: false });
+  });
+});
+
 describe("crmRatios (division por cero = «—»)", () => {
   it("el ejemplo del alcance: costo por agenda 53,33 y ROAS 6,25", () => {
     const r = crmRatios(ratiosInput({ spend: 320, leadsTotal: 8, leadsWithBooking: 3, bookings: 6, sales: 1, revenue: 2000, cash: 500 }));

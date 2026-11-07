@@ -29,9 +29,9 @@ beforeEach(() => {
 });
 
 describe("knowledgeEligibility", () => {
-  it("solo cierre, seguimiento y triaje con transcripcion; nunca equipo", () => {
-    for (const t of ["cierre", "seguimiento", "triaje"]) expect(knowledgeEligibility({ call_type: t, transcript }).ok).toBe(true);
-    for (const t of ["equipo", "cliente", "clase", "no_show", "otra", null]) expect(knowledgeEligibility({ call_type: t, transcript }).ok).toBe(false);
+  it("lo decide el analizador de cada tipo; nunca una reunion de equipo ni una sin nadie", () => {
+    for (const t of ["cierre", "seguimiento", "triaje", "cliente", "otra"]) expect(knowledgeEligibility({ call_type: t, transcript }).ok).toBe(true);
+    for (const t of ["equipo", "no_show", null]) expect(knowledgeEligibility({ call_type: t, transcript }).ok).toBe(false);
     expect(knowledgeEligibility({ call_type: "cierre", transcript: [] }).ok).toBe(false);
   });
 });

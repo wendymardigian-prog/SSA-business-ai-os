@@ -16,7 +16,7 @@
  *    interpretacion de hoy en datos de los que no se puede volver.
  */
 
-import { countLeadActions, countPurchaseActions } from "./action-counts";
+import { countLeadActions, countPurchaseActions, purchaseValueOf } from "./action-counts";
 import { GRAPH, humanizeGraphError, isTransientGraphError, type GraphError } from "./graph";
 
 export type AdsLevel = "account" | "campaign" | "adset" | "ad";
@@ -219,7 +219,7 @@ export function normalizeInsight(
     cpm: number(raw.cpm),
     leads: countLeads(raw.actions),
     purchases: countPurchases(raw.actions),
-    purchaseValue: actionValue(raw.action_values, (t) => t.includes("purchase")),
+    purchaseValue: purchaseValueOf(raw.action_values),
     videoP25: first(raw.video_p25_watched_actions),
     videoP50: first(raw.video_p50_watched_actions),
     videoP75: first(raw.video_p75_watched_actions),

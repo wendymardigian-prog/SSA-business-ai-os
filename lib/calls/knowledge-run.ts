@@ -17,12 +17,13 @@ import { ideaDate } from "./summary";
 type Db = SupabaseClient<Database>;
 
 /** Los tipos de llamada que entran a Conocimiento. */
-export const KNOWLEDGE_CALL_TYPES = ["cierre", "seguimiento", "triaje"] as const;
+/** Nunca va a Conocimiento una reunion de equipo ni una a la que nadie vino. El resto lo decide el analizador. */
+export const NOT_KNOWLEDGE_TYPES = ["equipo", "no_show"] as const;
 export const KNOWLEDGE_TAG = "llamadas";
 
 export function knowledgeEligibility(call: { call_type: string | null; transcript: unknown }): { ok: true } | { ok: false; reason: string } {
   if (!Array.isArray(call.transcript) || call.transcript.length === 0) return { ok: false, reason: "La llamada no tiene transcripción" };
-  if (!call.call_type || !(KNOWLEDGE_CALL_TYPES as readonly string[]).includes(call.call_type)) return { ok: false, reason: "Este tipo de llamada no se manda a Conocimiento" };
+  if (!call.call_type || (NOT_KNOWLEDGE_TYPES as readonly string[]).includes(call.call_type)) return { ok: false, reason: "Este tipo de llamada no se manda a Conocimiento" };
   return { ok: true };
 }
 

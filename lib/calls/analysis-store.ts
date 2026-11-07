@@ -55,6 +55,8 @@ export interface StoredAnalysisInput {
   /** La version activa de las instrucciones (`ai_task_prompt_versions.version`); null = el texto del sistema. */
   promptVersion: number | null;
   rubricVersion: number | null;
+  /** El formato del analizador. Sin esto, el de ventas. */
+  shape?: "sales" | "general";
   generatedAt: string;
 }
 
@@ -75,6 +77,7 @@ export function buildStoredAnalysis(i: StoredAnalysisInput): Obj {
     lead_qualification: leadQualification(i.scores.lead_score, outcome),
     prompt_version: i.promptVersion,
     rubric_version: i.rubricVersion,
+    analysis_shape: i.shape ?? "sales",
     model: i.model,
     cost_usd: Math.round((Number(i.costUsd) || 0) * 1_000_000) / 1_000_000,
     generated_at: i.generatedAt,

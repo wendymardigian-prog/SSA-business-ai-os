@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/ai/run", () => ({ openAiRun: mocks.openAiRun }));
 vi.mock("@/lib/ai/workspace-budget", () => ({ withinWorkspaceBudget: mocks.budget }));
 vi.mock("@/lib/ai-tasks/model", () => ({ resolveTaskModel: mocks.model }));
-vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions, loadTaskInstructionsForRun: mocks.instructions }));
+vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions, loadTaskInstructionsForRun: mocks.instructions, workspaceOwnStyle: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/audit", () => ({ auditAsSystem: mocks.audit, logAudit: mocks.logAudit }));
 vi.mock("./notify", () => ({ notifyBudgetBlocked: mocks.notify }));
 const emit = vi.hoisted(() => vi.fn(async () => true));
@@ -39,6 +39,9 @@ const callRow = {
   workspace_id: "ws1",
   title: "Llamada",
   call_type: "cierre",
+  area_id: "area-ventas",
+  category_id: "tipo-cierre",
+  category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-cierre", type_name: "Cierre" },
   transcript,
   contact_id: "ct1",
   analysis_status: "pending",
@@ -55,8 +58,24 @@ const analysis = () => ({
   feedback: { foco: "f", funciono: [], mejorar: [] },
 });
 
-function setup(over: { call?: Record<string, unknown>; claimed?: unknown[] } = {}) {
+const profileRow = (over: Record<string, unknown> = {}) => ({
+  id: "perfil-cierre",
+  workspace_id: "ws1",
+  category_id: "tipo-cierre",
+  shape: "sales",
+  mode: "manual",
+  rules: {},
+  rubric: DEFAULT_RUBRIC,
+  auto_summary: true,
+  auto_memory: true,
+  auto_knowledge: false,
+  active_prompt_version: null,
+  ...over,
+});
+
+function setup(over: { call?: Record<string, unknown>; claimed?: unknown[]; profiles?: unknown[] } = {}) {
   return fakeDb({
+    "call_analysis_profiles:select": { data: over.profiles ?? [profileRow()] },
     "calls:select": { data: { ...callRow, ...over.call } },
     "calls:update": { data: over.claimed ?? [{ id: "c1" }] },
     "workspaces:select": { data: { ai_background_settings: { call_analysis: DEFAULT_ANALYSIS } } },
@@ -246,5 +265,35 @@ describe("runCallAnalysisJob", () => {
     const r = await runCallAnalysisJob({ db: db.client, now: NOW }, { callId: "c1" });
     expect(r.outcome).toBe("error");
     expect(statusUpdates(db).at(-1)).toMatchObject({ analysis_status: "error", analysis_error: "No hay un proveedor de IA conectado" });
+  });
+
+  it("sin analizador para su tipo no se analiza ni se gasta: queda en No aplica", async () => {
+    const db = setup({ profiles: [] });
+    const generate = ok();
+    const r = await runCallAnalysisJob(deps(db, generate), { callId: "c1" });
+    expect(r.outcome).toBe("no_profile");
+    expect(generate).not.toHaveBeenCalled();
+    expect(mocks.openAiRun).not.toHaveBeenCalled();
+    expect(statusUpdates(db)[0]).toMatchObject({ analysis_status: "not_applicable", analysis_status_reason: "no_profile" });
+  });
+
+  it("guarda con que analizador se hizo y su rubrica, no la de la configuracion general", async () => {
+    const rubric = { ...DEFAULT_RUBRIC, version: 7 };
+    const db = setup({ profiles: [profileRow({ rubric })] });
+    await runCallAnalysisJob(deps(db), { callId: "c1" });
+    const saved = statusUpdates(db).find((u) => u.analysis_status === "analyzed")!;
+    expect(saved).toMatchObject({ analysis_profile_id: "perfil-cierre", rubric_version: 7 });
+    expect((saved.analysis as { analysis_shape: string }).analysis_shape).toBe("sales");
+  });
+
+  it("el analizador decide si hay resumen y Conocimiento", async () => {
+    registerJobHandler("call_summary", async () => undefined);
+    registerJobHandler("call_index_knowledge", async () => undefined);
+    const off = setup({ profiles: [profileRow({ auto_summary: false, auto_knowledge: false })] });
+    await runCallAnalysisJob(deps(off), { callId: "c1" });
+    expect(off.writesTo("scheduled_jobs").map((w) => (w.values as { type: string }).type)).toEqual([]);
+    const on = setup({ profiles: [profileRow({ auto_summary: true, auto_knowledge: true })] });
+    await runCallAnalysisJob(deps(on), { callId: "c1" });
+    expect(on.writesTo("scheduled_jobs").map((w) => (w.values as { type: string }).type)).toEqual(expect.arrayContaining(["call_summary", "call_index_knowledge"]));
   });
 });

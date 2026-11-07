@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PeriodPopover } from "@/components/dashboards/chat/filters/period-popover";
+import type { CategoryGroup } from "@/lib/calls/catalog";
 import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import { parsePeriodFilter } from "@/lib/agent/ai-dashboard/url-state";
 
@@ -11,13 +12,16 @@ import { parsePeriodFilter } from "@/lib/agent/ai-dashboard/url-state";
  * periodo reusa `PeriodPopover` (mismos parametros `range`, `from` y `to` que el
  * resto de los dashboards). Cambiar uno conserva lo demas de la URL.
  */
-export function CallsControls({ timezone, closers }: { timezone: string; closers: Array<{ id: string; name: string }> }) {
+export function CallsControls({ timezone, closers, categoryGroups }: { timezone: string; closers: Array<{ id: string; name: string }>; categoryGroups: CategoryGroup[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const filter = parsePeriodFilter(searchParams);
   const closer = searchParams.get("closer") ?? "";
+  const tipo = searchParams.get("tipo");
+  const area = searchParams.get("area");
+  const category = tipo ? `tipo:${tipo}` : area ? `area:${area}` : "";
 
   function replace(mutate: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString());
@@ -42,6 +46,33 @@ export function CallsControls({ timezone, closers }: { timezone: string; closers
 
   return (
     <div className="flex items-center gap-2">
+      {categoryGroups.length > 0 && (
+        <select
+          aria-label="Área y tipo de reunión"
+          value={category}
+          onChange={(e) =>
+            replace((p) => {
+              p.delete("area");
+              p.delete("tipo");
+              const [kind, id] = e.target.value.split(":");
+              if (id) p.set(kind, id);
+            })
+          }
+          className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+        >
+          <option value="">Todas las áreas</option>
+          {categoryGroups.map((g) => (
+            <optgroup key={g.areaId} label={g.areaName}>
+              <option value={`area:${g.areaId}`}>Toda el área</option>
+              {g.types.map((t) => (
+                <option key={t.id} value={`tipo:${t.id}`}>
+                  {t.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      )}
       {closers.length > 0 && (
         <select
           aria-label="Closer"

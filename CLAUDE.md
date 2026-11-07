@@ -321,6 +321,8 @@ Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de apl
 
 **Una sola clasificacion de grabaciones (6/11/2026).** `00300_calls_catalog_classification` (aditiva: `booking_categories.description/system_key`, area y tipo en `calls`, conversion de lo viejo) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 6/11/2026 (version `20261106205222`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-calls --despues-de-00300` y `verify-scheduling --despues-de-00290` en verde. **Alcance por area (6/11/2026).** `00301_calls_scope_by_area` (aditiva: `scope_rank` con `areas`, `can_see_call`, `can_grant_call_areas`, el trigger, `can_give_role` y la politica de crear) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 6/11/2026 (version `20261106220002`), con `verify-calls --despues-de-00300 --despues-de-00301`, `verify-roles` (con todas sus banderas y `--despues-de-00301`), `verify-permissions-matrix` y `verify-rls --despues-de-00143 --despues-de-00208` en verde. **La proxima libre es la `00302`** (confirmar con `list_migrations` y las ramas locales: la `00299` la uso otra sesion).
 
+**Un analizador por tipo de reunion (6/11/2026).** `00303_call_analysis_profiles` (aditiva: la tabla, `ai_task_prompt_versions.variant`, `calls.analysis_profile_id` y un analizador por cada tipo que un negocio ya analizaba) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 6/11/2026 (version `20261107020340`), despues de ensayarla en una transaccion que se deshizo sola. `verify-calls --despues-de-00300 --despues-de-00301 --despues-de-00303`. La `00302` es de otra sesion. **La proxima libre es la `00304`** (confirmar con `list_migrations` y las ramas locales).
+
 **Importacion de conversaciones de Instagram (28/10/2026).** `00267_channel_inbox_import` (`channels.inbox_import`, el avance de la importacion): aditiva, **escrita y SIN aplicar todavia**. Va ANTES de desplegar el codigo (la cola y la pantalla de Canales la leen). Ver la seccion "Importacion de conversaciones de Zernio" mas abajo. **La proxima libre es la `00268`** (confirmar con `list_migrations`). La `00284_placeholder_name_ids` (un id o un @usuario como nombre es un relleno, y el backfill de los ~75 contactos con id como nombre y @usuario guardado) es aditiva y puede ir antes o despues del deploy.
 
 **Extra I (15/10/2026).** `00224` a `00232` estan **aplicadas y registradas** (metodos de pago, gastos y finanzas, atribucion organica y comisiones); `00233`, `00234` y `00235` se aplicaron el **15/10/2026, despues del merge** y estan **aplicadas y registradas** (versiones `20261015232110`, `20261015232347` y `20261015232649`; ver las cuatro secciones del Extra I mas abajo). **La proxima libre es la `00236`.**
@@ -543,6 +545,7 @@ corrigen sin perder lo que dijo la IA, y lo aprendido vuelve al negocio. Plano e
 - **Una sola tabla nueva: `calls`.** Escribe solo el servidor; la ven Owner y
   Admin, quien la grabo, quien ve su contacto (`can_see_contact`) y un rol con
   `calls.view` de alcance `all` o, con `areas`, de una de sus areas (`can_see_call`).
+- **Un analizador por tipo (00303)**: `call_analysis_profiles`, una fila viva por tipo o area; escribe solo el servidor con `calls.configure`. **Sin analizador no se analiza ni se gasta IA** (`no_profile`). Lo decide `statusAfterClassification`; lo importado nunca corre solo y uno nuevo arranca en manual. Dos formatos (`sales`, `general`), no uno libre. `ai_task_prompt_versions.variant` es el analizador: **toda consulta de las instrucciones generales lleva `.is("variant", null)`**. Los puntajes no se promedian entre tipos (`withoutMixedScores`). Detalle en docs/llamadas.md.
 - **Alcance por area (00301)**: `scopes.calls = 'areas'` + `permissions.call_areas`. Sin clasificar no entra por el area. Gemelas `lib/auth/call-areas.ts` y `private.role_sees_call_area` / `private.call_areas_exceed`, con `call-areas.cases.json`. **Dar un area se mira area por area**, no solo por el alcance: `assertCanGrant` y, en la base, la politica al crear, el trigger al editar y `can_give_role`. Un alcance nuevo tiene que entrar en `private.scope_rank` y en `SCOPE_RANK`: lo que no conocen vale lo mas bajo y se podria dar sin tenerlo. Detalle en docs/llamadas.md.
 - **Dos copias del analisis.** `analysis_ai` (lo que dijo la IA) solo cambia con
   una corrida nueva (otro `analysis_run_id`: lo exige el trigger
@@ -1228,13 +1231,25 @@ Claude Code** (no hay editor visual). Guia completa en [docs/sitio.md](docs/siti
 - Las paginas son **estaticas o con cache: no leen la sesion**. No pueden llamarse como una ruta
   reservada: `dashboard`, `login`, `auth`, `invite`, `api`, `calendario`, `f`, `embed`, `l`, `baja`, `recuperar`, `restablecer`.
 - Cada pagina nueva se suma a `lib/site/pages.ts` (sitemap y `robots`). `robots.txt` **sigue
-  bloqueando todo** salvo esas paginas.
+  bloqueando todo** salvo esas paginas y lo que necesitan los lectores de vista previa (`lib/og/robots.ts`).
 - Un formulario se pone con `<Formulario slug="…" />`: muestra siempre la version publicada
   (cache por etiqueta `form:<slug>`; publicar, pausar, archivar o cambiar el link la invalidan).
 - **Son de cada clon**: `scripts/export-template.mjs` no copia `app/(sitio)/` ni `public/sitio/`;
   copia la version por defecto de `scripts/template-files/sitio/`.
 - La atribucion viaja entre paginas: cookie `ssa_attr` en el sitio y `localStorage` en una web
   externa con el mismo `embed.js` (modo `data-agenda-track`).
+
+# La tarjeta al compartir un link (6/11/2026, sin migracion)
+
+Un link de agenda (`/calendario/<usuario>/<evento>`) o de formulario (`/f/<slug>`) muestra titulo, descripcion e imagen con la marca del negocio que lo comparte. La imagen se genera sola: 1200 x 630, con logo o inicial, titulo y color. Detalle en [docs/agendamiento.md](docs/agendamiento.md) y [docs/formularios.md](docs/formularios.md).
+
+- **La marca sale del workspace del evento o del formulario** (`resolveBrand`). Si no se puede leer, no hay tarjeta: mejor eso que el logo de otro negocio. Nada de marca escrita en el codigo.
+- **Lo comun vive en `lib/og/`**, no en `lib/forms`: la plantilla de estudiantes no tiene Formularios. Cada modulo arma lo suyo en su `share-preview.ts`.
+- **La imagen es `<pagina>/preview.png`**: publica, con tope por IP y 404 igual que su pagina. La terminacion `.png` evita el middleware de sesion. Su URL lleva `?v=`, un hash de lo que se dibuja: si cambia el dibujo de `lib/og/image.tsx`, subir `IMAGE_REVISION`.
+- **El logo siempre se convierte a PNG con `sharp`.** Uno que no se puede bajar o leer deja la inicial, y uno claro con transparencia va sobre fondo oscuro (`logoPlate`).
+- **`htmlLimitedBots: /.*/` en `next.config.ts` no se saca**: sin eso Next manda las etiquetas al final a quien no esta en su lista, y no se sabe con que identificador preguntan Evolution o WhatsApp Web.
+- **`robots.txt` tiene un grupo para los lectores de vista previa** (`lib/og/robots.ts`): pueden leer `/calendario/`, `/f/` y `/l/`, nunca `/calendario/agenda/` (ahi la URL es una credencial). Las paginas siguen con `noindex` y el resto de los robots sigue bloqueado.
+- **Una tarjeta nunca cambia por `?c=` ni `?preview=1`**: un link firmado no personaliza nada y un borrador no tiene tarjeta.
 
 # Webhooks, atribucion y anuncios (Extra L, construido el 13/10/2026)
 
@@ -1283,6 +1298,7 @@ cuentan los toques que pueden traer datos de anuncio)** y `00195` (`ads_crm_metr
   90 dias tarda ~0,9 s bajo RLS; la salida es una politica de lectura mas barata, con aprobacion). Una division por cero es «—» (null), nunca 0; la plata
   del CRM va en centavos y se pasa con `fromCents`; el Total calcula los cocientes sobre los totales.
 - **La pantalla Anuncios (`/dashboard/anuncios`, menú → Adquisición) es la misma tabla del dashboard**, con el mismo permiso y la misma consulta (`loadCrmForRows`): si se cambia una, cambian las dos.
+- **Alcance y Frec. de cada fila los da Meta en vivo, los dos de la misma respuesta** (`fetchObjectReach`), y solo se piden si esas columnas están a la vista (`loadCrmObjectReach`). No calcular la frecuencia con las impresiones guardadas: lo guardado llega hasta el último sync y daría menos de 1. Lo que Meta no dio es la suma de los días y se ve con «≈» (`CrmRow.reachIsSum`). **El valor de compras usa un solo nombre, igual que el conteo** (`purchaseValueOf`); lo guardado antes del 6/11/2026 no se puede recontar sin releer de Meta (pasos en docs/dashboards.md).
 - **Un solo selector de fechas en los dashboards** (`PeriodPopover`). Meta Ads, sus detalles, Anuncios, Contenido y Unificado leen el período con `lib/dashboards/period-filter.ts` y lo dibujan con `DashboardPeriodControl`: `range`, `from` y `to`; `periodo` se sigue leyendo solo por links viejos. Un link entre pantallas de anuncios lleva `periodQuery`, o el rango a medida se pierde sin avisar. **`loadAdsInsights` lee de a páginas**: PostgREST corta en 1.000 filas sin avisar.
 - **El dashboard de Anuncios pide `dashboards.ads.view`, no el cargo.** Las cuentas publicitarias (`integration_configs`) se leen con el cliente de servicio
   filtrado por el workspace de la sesion. `meta_ads_insights_daily` tiene una politica ADICIONAL de lectura por permiso (00191); la de Owner/Admin no se toco.

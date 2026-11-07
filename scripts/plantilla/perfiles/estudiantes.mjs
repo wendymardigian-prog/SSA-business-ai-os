@@ -27,6 +27,8 @@ export const MODULES = {
       "components/contacts/calls-section.tsx",
       "lib/contacts/related/calls.ts",
       "components/settings/integrations/fathom-app-card.tsx",
+      "lib/actions/call-profiles.ts",
+      "lib/actions/call-profiles.test.ts",
       "lib/actions/call-proposals.ts",
       "lib/actions/call-proposals.test.ts",
       "lib/actions/call-task-settings.ts",

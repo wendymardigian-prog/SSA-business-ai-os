@@ -8,6 +8,8 @@ import {
   cacheKey,
   clearLiveCache,
   fetchBreakdown,
+  canAskUniqueReach,
+  fetchObjectReach,
   fetchReachByLevel,
   fetchUniqueReach,
   liveQuery,
@@ -245,5 +247,57 @@ describe("el alcance unico por objeto", () => {
     const url = new URL((fetchImpl as unknown as { mock: { calls: string[][] } }).mock.calls[0][0]);
     expect(url.searchParams.get("level")).toBe("campaign");
     expect(url.searchParams.get("time_increment")).toBeNull();
+  });
+
+  it("trae el alcance y la frecuencia de la misma respuesta, con los numeros reales de una campaña", async () => {
+    const fetchImpl = respond({
+      data: [
+        { campaign_id: "lp1", reach: "18919", frequency: "3.28" },
+        { campaign_id: "sin_frecuencia", reach: "10" },
+        { campaign_id: "sin_alcance", frequency: "2" },
+      ],
+    });
+    const result = await fetchObjectReach({ token: "t", adAccountId: "act_1", level: "campaign", since: "2026-10-08", until: "2026-11-06", fetchImpl });
+
+    expect(result.ok && result.data).toEqual({
+      lp1: { reach: 18919, frequency: 3.28 },
+      sin_frecuencia: { reach: 10, frequency: null },
+    });
+    const url = new URL((fetchImpl as unknown as { mock: { calls: string[][] } }).mock.calls[0][0]);
+    expect(url.searchParams.get("fields")).toBe("campaign_id,reach,frequency");
+  });
+
+  it("las dos funciones comparten la consulta: pedir las dos gasta una sola", async () => {
+    const fetchImpl = respond({ data: [{ ad_id: "a1", reach: "100", frequency: "1.5" }] });
+    const params = { token: "t", adAccountId: "act_1", level: "ad" as const, since: "2026-10-01", until: "2026-10-07", fetchImpl };
+
+    const objects = await fetchObjectReach(params);
+    const reach = await fetchReachByLevel(params);
+
+    expect(objects.ok && objects.data).toEqual({ a1: { reach: 100, frequency: 1.5 } });
+    expect(reach.ok && reach.data).toEqual({ a1: 100 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("un error de Meta vuelve como resultado, no se guarda en la cache", async () => {
+    const fails = respond({ error: { message: "Limite de uso", code: 17 } });
+    const params = { token: "t", adAccountId: "act_1", level: "ad" as const, since: "2026-10-01", until: "2026-10-07" };
+    expect((await fetchObjectReach({ ...params, fetchImpl: fails })).ok).toBe(false);
+    const works = respond({ data: [{ ad_id: "a1", reach: "100" }] });
+    expect((await fetchObjectReach({ ...params, fetchImpl: works })).ok).toBe(true);
+  });
+});
+
+describe("hasta donde se le puede preguntar a Meta", () => {
+  const now = new Date("2026-11-06T12:00:00Z");
+  it("hasta 37 meses justos, si", () => {
+    expect(canAskUniqueReach("2023-10-06", now)).toBe(true);
+    expect(canAskUniqueReach("2026-10-08", now)).toBe(true);
+  });
+  it("mas atras, no", () => {
+    expect(canAskUniqueReach("2023-10-05", now)).toBe(false);
+  });
+  it("todo el historial llega como 2000-01-01 y no se pregunta", () => {
+    expect(canAskUniqueReach("2000-01-01", now)).toBe(false);
   });
 });
