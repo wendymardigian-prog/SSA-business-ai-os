@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/database";
 import { generateText } from "ai";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { getWorkspaceModel } from "@/lib/ai/provider";
+import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { openAiRun } from "@/lib/ai/run";
 import { parseAttachments } from "@/lib/messages/attachments";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
@@ -134,6 +135,15 @@ export async function describeMessageMedia(
       messageId,
       "No hay ningún modelo con visión conectado para describir la imagen",
     );
+  }
+
+  // El tope de gasto del negocio, ANTES de llamar (antes la descripcion no lo miraba). Sin presupuesto (o con un
+  // modelo sin precio y un tope que corta) no se llama: el mensaje queda no interpretable y el agente escala.
+  const budget = await withinWorkspaceBudget(supabase, claimed.workspace_id, new Date(), {
+    model: resolved.provider && resolved.modelId ? { provider: resolved.provider, model: resolved.modelId } : null,
+  });
+  if (!budget.allowed) {
+    return await giveUp(supabase, messageId, budget.message ?? "Se alcanzó el tope de gasto de IA del negocio");
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());

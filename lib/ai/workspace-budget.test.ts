@@ -144,3 +144,38 @@ describe("workspaceSpendCandidates", () => {
     expect(isTemporaryBlock("agent_monthly")).toBe(false);
   });
 });
+
+describe("withinWorkspaceBudget: un modelo sin precio no deja pasar gasto invisible (lote 3)", () => {
+  /** Topes del negocio y la tabla de precios; `price` null = el modelo no tiene fila. */
+  function pricedDb(opts: { daily: number | null; dailyAction?: "notify" | "disable"; price: { audio_per_hour: number | null } | null }) {
+    const chain = (table: string) => {
+      const q: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "lte", "order", "limit"]) q[m] = () => q;
+      q.maybeSingle = async () =>
+        table === "workspaces"
+          ? { data: { ai_daily_cost_limit_usd: opts.daily, ai_monthly_cost_limit_usd: null, ai_daily_limit_action: opts.dailyAction ?? null, timezone: TZ }, error: null }
+          : { data: opts.price ? { id: "p1", input_per_mtok: 1, output_per_mtok: 1, cached_input_per_mtok: 0, ...opts.price } : null, error: null };
+      return q;
+    };
+    return { rpc: async () => ({ data: 0, error: null }), from: chain } as never;
+  }
+  const chat = { provider: "anthropic", model: "modelo-x" };
+
+  it("con un tope que corta y sin precio: no se llama", async () => {
+    const res = await withinWorkspaceBudget(pricedDb({ daily: 10, price: null }), "ws-1", MID, { model: chat });
+    expect(res.allowed).toBe(false);
+    expect(res.message).toContain("no tiene precio");
+  });
+
+  it("con precio, o sin topes, o con un tope que solo avisa: pasa", async () => {
+    expect((await withinWorkspaceBudget(pricedDb({ daily: 10, price: { audio_per_hour: null } }), "ws-1", MID, { model: chat })).allowed).toBe(true);
+    expect((await withinWorkspaceBudget(pricedDb({ daily: null, price: null }), "ws-1", MID, { model: chat })).allowed).toBe(true);
+    expect((await withinWorkspaceBudget(pricedDb({ daily: 10, dailyAction: "notify", price: null }), "ws-1", MID, { model: chat })).allowed).toBe(true);
+  });
+
+  it("un modelo de audio necesita precio por hora", async () => {
+    const audio = { provider: "groq", model: "whisper", kind: "audio" as const };
+    expect((await withinWorkspaceBudget(pricedDb({ daily: 10, price: { audio_per_hour: null } }), "ws-1", MID, { model: audio })).allowed).toBe(false);
+    expect((await withinWorkspaceBudget(pricedDb({ daily: 10, price: { audio_per_hour: 0.04 } }), "ws-1", MID, { model: audio })).allowed).toBe(true);
+  });
+});

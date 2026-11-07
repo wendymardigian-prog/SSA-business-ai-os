@@ -271,6 +271,18 @@ export async function generateAiReply(
 
   run.setModel(resolved.provider ?? "", resolved.modelId ?? "");
 
+  // Con un tope del negocio que corta, un modelo SIN precio no se usa: lo que gaste no se podria contar
+  // (lib/ai/workspace-budget.ts). El tope en si ya se miro arriba; aca solo el precio del modelo elegido.
+  if (resolved.provider && resolved.modelId) {
+    const priced = await withinWorkspaceBudget(supabase, request.workspaceId, new Date(), { model: { provider: resolved.provider, model: resolved.modelId } });
+    if (!priced.allowed) {
+      const message = priced.message ?? "Se alcanzó el tope de gasto de IA del negocio.";
+      await recordTrace(supabase, request, "ai_response_failed", { reason: "budget_exceeded", message });
+      if (ownsRun) await run.close({ status: "error", statusDetail: "budget_exceeded", error: message });
+      return { ok: false, problem: "budget_exceeded", message, runId: run.runId };
+    }
+  }
+
   const nonce = newNonce();
   const aiMessages = buildAiMessages(recentMessages ?? [], nonce);
   const hasLeadText = aiMessages.some((m) => m.role === "user");
