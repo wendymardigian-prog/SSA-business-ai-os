@@ -72,7 +72,7 @@ describe("la frecuencia de las tarjetas", () => {
     expect(computeTotals(stored(17100, 9000), 10000, 1.87).frequency).toBe(1.87);
   });
 
-  it("«Clase 9 Nov · Público nuevo» mostraba 0,72: nunca menos de 1 en una campaña recién prendida", () => {
+  it("una campaña recién prendida mostraba 0,72: nunca menos de 1", () => {
     const totals = computeTotals(stored(720, 700), 1000, 1.05);
 
     expect(totals.frequency).toBe(1.05);
