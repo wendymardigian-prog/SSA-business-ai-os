@@ -32,14 +32,14 @@ describe("truncateText", () => {
 });
 
 describe("eventShareText", () => {
-  const base = { title: "1:1 con Wen", hostName: "Wendy", durationMinutes: 30, description: null };
+  const base = { title: "Consulta inicial", hostName: "Ana", durationMinutes: 30, description: null };
 
   it("sin descripción arma una con la duración y el anfitrión", () => {
     expect(eventShareText(base)).toEqual({
-      title: "1:1 con Wen · Wendy",
-      description: "30 min con Wendy. Elegí un horario.",
-      imageTitle: "1:1 con Wen",
-      imageSubtitle: "30 min · con Wendy",
+      title: "Consulta inicial · Ana",
+      description: "30 min con Ana. Elegí un horario.",
+      imageTitle: "Consulta inicial",
+      imageSubtitle: "30 min · con Ana",
     });
   });
   it("con descripción usa su texto plano", () => {
@@ -47,8 +47,8 @@ describe("eventShareText", () => {
   });
   it("sin duración no deja un separador suelto", () => {
     const out = eventShareText({ ...base, durationMinutes: null });
-    expect(out.imageSubtitle).toBe("con Wendy");
-    expect(out.description).toBe("Elegí un horario con Wendy.");
+    expect(out.imageSubtitle).toBe("con Ana");
+    expect(out.description).toBe("Elegí un horario con Ana.");
   });
 });
 
