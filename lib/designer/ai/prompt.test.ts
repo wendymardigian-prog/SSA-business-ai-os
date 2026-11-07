@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FACTORY_STYLES, findStyle, wordsPerPage, type DesignStyle } from "../styles";
 import { FORMATS } from "../formats";
+import type { TextElement } from "../doc/schema";
 import { CURATED_FONTS } from "../fonts";
 import { allowedFontFamilies, buildSystemPrompt, buildUserPrompt, dataBlock, docForPrompt, type PromptInput } from "./prompt";
 import { carousel } from "./test-fixtures";
@@ -105,7 +106,7 @@ describe("ai/prompt: lo que recibe la IA", () => {
 
   it("las fuentes permitidas incluyen las del documento aunque ya no estén en la lista", () => {
     const doc = carousel();
-    doc.pages[0].elements[0] = { ...(doc.pages[0].elements[0] as never), font: { family: "Fuente Vieja", weight: 400 } };
+    (doc.pages[0].elements[0] as TextElement).font = { family: "Fuente Vieja", weight: 400 };
     const list = allowedFontFamilies({ curated: CURATED_FONTS.map((f) => f.family), doc });
     expect(list).toContain("Fuente Vieja");
   });
