@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { NodeMetricsBadge } from "../metrics-context";
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from "@xyflow/react";
 import { Split } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,9 @@ export function BranchNode({ id, data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-indigo-500 px-3 py-2 text-white">
         <Split className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Condiciones</span>
+        <div className="ml-auto shrink-0">
+          <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
+        </div>
       </div>
       <div className="p-3">
         <p className="text-sm font-medium">{nodeData.label || "Según una respuesta"}</p>

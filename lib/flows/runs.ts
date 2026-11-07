@@ -145,10 +145,13 @@ export interface FlowRunFilters {
   page: number;
   /** La ejecucion abierta en el panel. */
   ejecucion: string | null;
+  /** Solo las ejecuciones en las que ESTE paso fallo (el «Ver las que fallaron» de las metricas del lienzo). */
+  pasoFallido: string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CIVIL_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const NODE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** Lo que viene de la URL se valida: un valor inventado se ignora en vez de romper la consulta. */
 export function parseFlowRunFilters(params: SearchParams): FlowRunFilters {
@@ -163,9 +166,59 @@ export function parseFlowRunFilters(params: SearchParams): FlowRunFilters {
     q: sanitizeSearch(firstParam(params.q)),
     page: pickPage(params.page),
     ejecucion: UUID.test(ejecucion) ? ejecucion : null,
+    pasoFallido: NODE_ID.test(firstParam(params.paso_fallido)) ? firstParam(params.paso_fallido) : null,
   };
 }
 
 export function countActiveFlowRunFilters(filters: FlowRunFilters): number {
-  return [filters.estado, filters.fecha, filters.q].filter(Boolean).length;
+  return [filters.estado, filters.fecha, filters.q, filters.pasoFallido].filter(Boolean).length;
+}
+
+// ------------------------------------------------------------
+// Reintentar un paso
+// ------------------------------------------------------------
+
+/**
+ * Motivos que no se arreglan reintentando. Instagram deja una sola respuesta privada por comentario: si otra app ya
+ * contesto o los botones gastaron el intento, otro intento falla igual. Lo mismo un hilo de otra app, una cuenta
+ * desconectada, la ventana de 24 horas o una persona que no recibe mensajes.
+ */
+export const NOT_RETRYABLE_KINDS: Record<string, string> = {
+  already_replied: "Instagram ya no deja otra respuesta privada a este comentario: otra app contestó primero.",
+  buttons_not_allowed: "Instagram ya gastó la respuesta privada de este comentario al rechazar los botones.",
+  not_thread_owner: "La conversación la maneja otra app conectada a la cuenta: reintentar falla igual.",
+  outside_window: "Pasaron más de 24 horas desde el último mensaje de la persona.",
+  user_unavailable: "La persona no está recibiendo mensajes.",
+  token_expired: "Hay que volver a conectar la cuenta antes de reintentar.",
+  policy_violation: "Instagram rechazó el mensaje por sus reglas: reintentar falla igual.",
+};
+
+/** Los pasos que responden a un comentario: Instagram los acepta hasta 7 dias despues del comentario. */
+const COMMENT_REPLY_NODE_TYPES = new Set(["privateReply"]);
+export const COMMENT_REPLY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface RetryStepInput {
+  stepStatus: string;
+  errorKind: string | null;
+  nodeType: string;
+  /** Si es el ultimo paso fallido de la ejecucion (solo se reintenta desde ahi). */
+  isLastFailure: boolean;
+  runStatus: string;
+  /** Cuando arranco la ejecucion: para un comentario, es la hora del comentario. */
+  runCreatedAt: string;
+}
+
+/** Si se puede reintentar desde este paso, o por que no. */
+export function canRetryStep(input: RetryStepInput, now: number = Date.now()): { ok: true } | { ok: false; reason: string } {
+  if (input.stepStatus !== "failed") return { ok: false, reason: "Solo se reintenta un paso que falló." };
+  if (input.runStatus === "active") return { ok: false, reason: "La ejecución todavía está en curso." };
+  if (!input.isLastFailure) return { ok: false, reason: "Se reintenta desde el último paso que falló." };
+  if (input.errorKind && NOT_RETRYABLE_KINDS[input.errorKind]) return { ok: false, reason: NOT_RETRYABLE_KINDS[input.errorKind] };
+  if (COMMENT_REPLY_NODE_TYPES.has(input.nodeType)) {
+    const started = new Date(input.runCreatedAt).getTime();
+    if (!Number.isFinite(started) || now - started > COMMENT_REPLY_MAX_AGE_MS) {
+      return { ok: false, reason: "Pasaron más de 7 días desde el comentario: Instagram ya no deja responderlo por privado." };
+    }
+  }
+  return { ok: true };
 }

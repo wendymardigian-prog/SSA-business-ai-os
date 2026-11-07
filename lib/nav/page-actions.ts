@@ -118,9 +118,9 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Secuencia",
     tooltip: "Los pasos del seguimiento y quienes estan inscriptos.",
   },
-  "/dashboard/growth": {
-    title: "Growth",
-    tooltip: "Automatizaciones por comentario: una palabra en un post dispara un mensaje.",
+  "/dashboard/comentarios": {
+    title: "Comentarios",
+    tooltip: "Las automatizaciones de comentarios y cómo les fue. Se arman en el lienzo de cada automatización.",
   },
   "/dashboard/content": {
     title: "Contenido",
@@ -468,6 +468,8 @@ export const PAGE_META: Record<string, PageMeta> = {
 
 /** Rutas que a proposito NO llevan barra superior, y por que. */
 export const PAGES_WITHOUT_HEADER: Record<string, string> = {
+  "/dashboard/growth":
+    "Growth paso a llamarse Comentarios: solo redirige a /dashboard/comentarios; nunca se dibuja.",
   "/dashboard/agenda/configuracion":
     "Solo redirige a la seccion por defecto (Eventos); nunca se dibuja.",
   "/dashboard":

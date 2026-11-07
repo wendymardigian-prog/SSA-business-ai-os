@@ -50,6 +50,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
         }
       });
     }
+    if (result.flowClick) {
+      const click = result.flowClick;
+      // Las metricas del lienzo: cada clic de un paso. Nunca demora ni rompe la redireccion.
+      after(async () => {
+        try {
+          const { error } = await service.from("flow_link_clicks").insert({
+            workspace_id: click.workspaceId,
+            flow_id: click.flowId,
+            node_id: click.nodeId,
+            button_key: click.buttonKey,
+            session_id: click.sessionId,
+          });
+          if (error) console.error(`[atribucion] no pude contar el clic del paso (code=${error.code ?? "?"})`);
+        } catch (error) {
+          console.error("[atribucion] no pude contar el clic del paso:", error instanceof Error ? error.name : "error");
+        }
+      });
+    }
     return NextResponse.redirect(result.location, { status: 302, headers: NO_STORE });
   } catch {
     return NextResponse.redirect(fallback, { status: 302, headers: NO_STORE });

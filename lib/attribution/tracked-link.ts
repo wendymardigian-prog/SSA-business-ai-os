@@ -48,6 +48,14 @@ export interface TrackedLinkPayload {
   s: string | null;
   /** vencimiento, en segundos desde epoch */
   e: number;
+  /**
+   * Opcionales (las metricas del lienzo): el paso que mando el link (`node_id`), cual de sus links fue (`b0`, `b1`…
+   * para un boton, `t` para el texto) y la ejecucion (`flow_sessions.id`). Un token viejo no los trae y sigue
+   * valiendo; un clic sin paso no se puede contar por paso.
+   */
+  n?: string | null;
+  b?: string | null;
+  r?: string | null;
 }
 
 /** Lo que se firma: el payload sin `v` (siempre 1) y con `e` opcional (por defecto, 180 dias desde `now`). */
@@ -59,7 +67,13 @@ export interface TrackedLinkInput {
   p?: string | null;
   s?: string | null;
   e?: number;
+  n?: string | null;
+  b?: string | null;
+  r?: string | null;
 }
+
+/** El id de un paso o la clave de un link: corto y sin nada raro. */
+const SHORT_KEY = /^[A-Za-z0-9_-]{1,64}$/;
 
 const b64 = (data: Buffer | string): string => Buffer.from(data).toString("base64url");
 const mac = (body: string, secret: string): Buffer => createHmac("sha256", secret).update(body).digest();
@@ -86,6 +100,9 @@ export function signTrackedLink(input: TrackedLinkInput, secret: string, now: nu
   if (input.p != null && !UUID.test(input.p)) throw new Error("La pieza del link no es valida");
   if (input.s != null && !UUID.test(input.s)) throw new Error("La publicacion del link no es valida");
   if (!isHttpUrl(input.u) || input.u.length > MAX_DESTINATION_LENGTH) throw new Error("El destino del link tiene que ser http(s) y de hasta 2000 caracteres");
+  if (input.n != null && !SHORT_KEY.test(input.n)) throw new Error("El paso del link no es valido");
+  if (input.b != null && !SHORT_KEY.test(input.b)) throw new Error("La clave del link no es valida");
+  if (input.r != null && !UUID.test(input.r)) throw new Error("La ejecucion del link no es valida");
 
   const payload: TrackedLinkPayload = {
     v: 1,
@@ -96,6 +113,10 @@ export function signTrackedLink(input: TrackedLinkInput, secret: string, now: nu
     p: input.p ?? null,
     s: input.s ?? null,
     e: input.e ?? Math.floor((now + TRACKED_LINK_TTL_DAYS * DAY_MS) / 1000),
+    // Solo si vienen: un link sin paso firma exactamente igual que antes.
+    ...(input.n != null ? { n: input.n } : {}),
+    ...(input.b != null ? { b: input.b } : {}),
+    ...(input.r != null ? { r: input.r } : {}),
   };
   const body = b64(JSON.stringify(payload));
   return `${body}.${b64(mac(body, secret))}`;
@@ -179,9 +200,23 @@ export function verifyTrackedLink(token: unknown, secret: string | null | undefi
       return { ok: false, reason: "payload", destination };
     }
 
+    // Los opcionales de las metricas: lo que no tiene forma se ignora (el clic se registra igual, sin paso).
+    const shortKey = (v: unknown): string | null => (typeof v === "string" && SHORT_KEY.test(v) ? v : null);
     return {
       ok: true,
-      payload: { v: 1, w: p.w, c: p.c, u: destination, f: p.f, p: (p.p as string | null | undefined) ?? null, s: (p.s as string | null | undefined) ?? null, e: p.e },
+      payload: {
+        v: 1,
+        w: p.w,
+        c: p.c,
+        u: destination,
+        f: p.f,
+        p: (p.p as string | null | undefined) ?? null,
+        s: (p.s as string | null | undefined) ?? null,
+        e: p.e,
+        n: shortKey(p.n),
+        b: shortKey(p.b),
+        r: typeof p.r === "string" && UUID.test(p.r) ? p.r : null,
+      },
     };
   } catch {
     return { ok: false, reason: "format" };

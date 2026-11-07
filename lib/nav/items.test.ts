@@ -20,14 +20,14 @@ describe("orden del menú (F13)", () => {
 });
 
 describe("lo que salio del menú", () => {
-  // Broadcasts, Sequences y Growth se llegan por las sub-pestañas de Inbox;
+  // Broadcasts, Sequences y Comentarios se llegan por las sub-pestañas de Inbox;
   // Channels (D3) se llega desde el detalle de Zernio/Evolution en
   // Integraciones. Las rutas siguen vivas: lo que se testea aca es que no
   // vuelvan a aparecer como item del menu lateral.
   const fuera = [
     { name: "Broadcasts", href: "/dashboard/broadcasts" },
     { name: "Sequences", href: "/dashboard/sequences" },
-    { name: "Growth", href: "/dashboard/growth" },
+    { name: "Comentarios", href: "/dashboard/comentarios" },
     { name: "Channels", href: "/dashboard/channels" },
   ];
 

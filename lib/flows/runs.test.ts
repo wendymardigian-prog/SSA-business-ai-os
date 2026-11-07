@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { countActiveFlowRunFilters, deriveRunState, formatRunDate, formatRunDuration, parseFlowRunFilters, runEndReasonLabel, runSourceLabel, runStepReasonLabel, runStepStatusLabel } from "./runs";
+import { canRetryStep, countActiveFlowRunFilters, deriveRunState, formatRunDate, formatRunDuration, parseFlowRunFilters, runEndReasonLabel, runSourceLabel, runStepReasonLabel, runStepStatusLabel } from "./runs";
 import { flowStepRetentionCutoff } from "./runs-cleanup";
 
 const base = { status: "active", waiting_for_input: false, waiting_until: null, error_message: null, has_failed_step: false };
@@ -109,5 +109,47 @@ describe("la pantalla nunca lee variables", () => {
 describe("la retencion", () => {
   it("el corte es a 12 meses", () => {
     expect(flowStepRetentionCutoff(new Date("2026-11-04T00:00:00Z")).toISOString()).toBe("2025-11-04T00:00:00.000Z");
+  });
+});
+
+describe("el paso que fallo (metricas del lienzo)", () => {
+  it("lee el paso de la URL y descarta lo que no parece un id", () => {
+    expect(parseFlowRunFilters({ paso_fallido: "step-1" }).pasoFallido).toBe("step-1");
+    expect(parseFlowRunFilters({ paso_fallido: "a b;drop" }).pasoFallido).toBeNull();
+    expect(countActiveFlowRunFilters(parseFlowRunFilters({ paso_fallido: "step-1" }))).toBe(1);
+  });
+});
+
+describe("canRetryStep", () => {
+  const now = new Date("2026-11-07T12:00:00Z").getTime();
+  const base = {
+    stepStatus: "failed",
+    errorKind: null,
+    nodeType: "privateReply",
+    isLastFailure: true,
+    runStatus: "completed",
+    runCreatedAt: "2026-11-06T17:56:44Z",
+  };
+
+  it("un fallo desconocido o pasajero se puede reintentar", () => {
+    expect(canRetryStep(base, now)).toEqual({ ok: true });
+    expect(canRetryStep({ ...base, errorKind: "rate_limited" }, now)).toEqual({ ok: true });
+  });
+
+  it("no se reintenta cuando otra app ya contesto el comentario (el caso del 6/11)", () => {
+    const r = canRetryStep({ ...base, errorKind: "already_replied" }, now);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.reason).toMatch(/otra app/);
+  });
+
+  it("una respuesta privada de hace mas de 7 dias no se reintenta; otro paso si", () => {
+    expect(canRetryStep({ ...base, runCreatedAt: "2026-10-30T11:00:00Z" }, now).ok).toBe(false);
+    expect(canRetryStep({ ...base, nodeType: "send_email", runCreatedAt: "2026-10-30T11:00:00Z" }, now).ok).toBe(true);
+  });
+
+  it("solo un paso fallido, el ultimo, y con la ejecucion terminada", () => {
+    expect(canRetryStep({ ...base, stepStatus: "ok" }, now).ok).toBe(false);
+    expect(canRetryStep({ ...base, isLastFailure: false }, now).ok).toBe(false);
+    expect(canRetryStep({ ...base, runStatus: "active" }, now).ok).toBe(false);
   });
 });

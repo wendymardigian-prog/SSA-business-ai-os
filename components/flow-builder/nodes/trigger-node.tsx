@@ -2,6 +2,7 @@
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { MousePointerClick, Zap } from "lucide-react";
+import { scopeSummary } from "@/lib/flows/comment-scope";
 import { cn } from "@/lib/utils";
 import { chosenType, triggerDisplayLabel, triggerEntry } from "@/lib/flow-engine/trigger-catalog";
 import { TRIGGER_GROUP_ICONS } from "../trigger-picker";
@@ -68,6 +69,14 @@ export function TriggerNode({ data, selected }: NodeProps) {
           </p>
         ) : (
           (type === "keyword" || type === "comment_keyword") && <p className="mt-1 text-xs italic text-amber-600 dark:text-amber-400">Falta cargar las palabras clave</p>
+        )}
+        {type === "comment_keyword" && (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {scopeSummary({
+              channelName: typeof nodeData.channelId === "string" && nodeData.channelId ? "Una cuenta" : null,
+              postCount: Array.isArray(nodeData.postIds) ? nodeData.postIds.length : 0,
+            })}
+          </p>
         )}
         {typeof nodeData.label === "string" && nodeData.label.trim() && <p className="mt-0.5 text-xs text-muted-foreground">{triggerDisplayLabel(nodeData)}</p>}
       </div>

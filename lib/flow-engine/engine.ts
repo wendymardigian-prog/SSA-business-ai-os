@@ -6,7 +6,7 @@ import { SKIP_NEXT_STEP } from "./wait-until";
 import { messageOriginVariables } from "@/lib/messages/origin-context";
 import { seedContactVariables } from "./variable-catalog";
 import type { AutomationSource, FlowRuntime } from "./registry/types";
-import { finalStepStatus, mergeStepNote, noteSessionEnd, noteSessionVersion, recordStep, stepExitLabel, stepLabel, type SessionEndReason, type StepNote } from "./run-log";
+import { finalStepStatus, mergeStepNote, noteSessionEnd, noteSessionVersion, noteWaitExit, recordStep, stepExitHandle, stepExitLabel, stepLabel, type SessionEndReason, type StepNote } from "./run-log";
 
 /**
  * Lo que el motor le presta a los nodos que necesitan arrancar otro flow.
@@ -62,10 +62,11 @@ export async function findWaitingSession(
   return data ?? null;
 }
 
+/** Corre un flujo desde el principio. Devuelve el id de la ejecucion (la sesion), o nada si no arranco. */
 export async function executeFlow(
   supabase: SupabaseClient<Database>,
   context: FlowExecutionContext
-) {
+): Promise<string | undefined> {
   // Ensure variables always exists so nodes (aiResponse, httpRequest) can write
   // outputs even when the trigger passed none (e.g. DM-triggered flows).
   // Una copia: quien llama puede reusar el mismo objeto para varios flujos (un evento que dispara dos), y la cadena de
@@ -208,10 +209,11 @@ export async function executeFlow(
   // siempre, y sumaba una sesion viva por cada vez que se disparaba).
   if (!startNode) {
     await completeSession(supabase, session.id);
-    return;
+    return session.id;
   }
 
   await runTraversal(supabase, session.id, startNode, nodes, edges, context);
+  return session.id;
 }
 
 /** Lee y siembra las variables del contacto y del negocio. Un fallo de lectura no frena el flujo: siguen sin sembrar. */
@@ -426,6 +428,9 @@ export async function resumeSession(
 
   // Get next node after the current one. Un "Esperar respuesta" tiene dos salidas: la de siempre (respondio) y
   // "Si no responde a tiempo" (`timeout`). Respondio nunca toma la de timeout; timeout solo toma la suya.
+  // Que quede en el historial por que salida siguio la espera (las metricas del lienzo cuentan «Respondió»).
+  if (session.waiting_for_input) await noteWaitExit(supabase, session.id, currentNode.id, exit);
+
   const outgoing = edges.filter((e) => e.source === currentNode.id);
   // Vencido sin la salida "Si no responde a tiempo" conectada, sigue por la de siempre (lo que el panel prometia).
   const mainEdge = outgoing.find((e) => e.sourceHandle !== WAIT_TIMEOUT_HANDLE);
@@ -538,7 +543,9 @@ async function traverseNodes(
       label: stepLabel(node.data, getNode(node)?.label ?? String(node.type)),
       status,
       exitLabel: stepExitLabel(node.data, extra.exit),
+      exitHandle: stepExitHandle(extra.exit),
       reason: extra.reason ?? (note as StepNote | null)?.reason ?? null,
+      errorKind: (note as StepNote | null)?.kind ?? null,
       resumesAt: (note as StepNote | null)?.resumesAt ?? null,
       startedAt,
     });

@@ -207,7 +207,7 @@ function SwitchRow({
  * registro del clic. Plegable (un botón con `aria-expanded`); arranca abierto si ya está encendido. Todo lo que decide qué
  * mostrar sale de `attributionPanelView`. No escribe nada en el nodo hasta que la persona toca un interruptor.
  */
-function AttributionBlock({
+export function AttributionBlock({
   data,
   onChange,
   context,

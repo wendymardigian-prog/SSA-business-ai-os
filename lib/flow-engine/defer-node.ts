@@ -25,7 +25,10 @@ export async function deferFlowNode(
     sessionId: string;
     context: FlowExecutionContext;
     retryAt: Date;
-    reason: DeferReason;
+    /** `provider_retry`: un problema pasajero de Instagram o Zernio (`provider-retry.ts`). Lleva su `message`. */
+    reason: DeferReason | "provider_retry";
+    /** El motivo que queda en el historial. Sin esto, el de la guardia de entrega. */
+    message?: string;
     /** Direcciones a las que el paso YA mando en esta corrida: al volver no se les manda de nuevo. */
     alreadySent?: string[];
   },
@@ -76,7 +79,8 @@ export async function deferFlowNode(
     metadata: { nodeId, nodeType: args.nodeType, reason: args.reason, retryAt: runAt },
   });
 
-  context.noteStep?.({ status: "deferred", reason: DEFER_MESSAGES[args.reason], resumesAt: runAt });
+  const message = args.message ?? (args.reason === "provider_retry" ? "Se vuelve a intentar más tarde." : DEFER_MESSAGES[args.reason]);
+  context.noteStep?.({ status: "deferred", reason: message, resumesAt: runAt });
 
   return "pause";
 }

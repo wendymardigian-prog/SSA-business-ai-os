@@ -108,3 +108,24 @@ describe("attributeOutgoing", () => {
     expect(await attributeOutgoing(db, ctx(), { append: true, trackClicks: true }, plain)).toBe(plain);
   });
 });
+
+describe("attributeOutgoing con el paso (métricas del lienzo)", () => {
+  const SESSION = "55555555-5555-4555-8555-555555555555";
+  const tokenOf = (url: string | undefined) => /\/l\/(\S+)$/.exec(url ?? "")?.[1] ?? "";
+
+  it("cada botón sale con su clave y la ejecución, aunque apunte al mismo destino que el texto", async () => {
+    const out = await attributeOutgoing(world(), ctx({ nodeId: "step-1", sessionId: SESSION }), { append: true, trackClicks: true }, message());
+    const fromText = verifyTrackedLink(/\/l\/(\S+)/.exec(out.text)![1], secrets.attribution_link_secret);
+    const fromButton = verifyTrackedLink(tokenOf(out.buttons?.[0].url), secrets.attribution_link_secret);
+    const fromCard = verifyTrackedLink(tokenOf(out.template?.elements[0].buttons?.[0].url), secrets.attribution_link_secret);
+    expect(fromText.ok && [fromText.payload.n, fromText.payload.b, fromText.payload.r]).toEqual(["step-1", "t", SESSION]);
+    expect(fromButton.ok && [fromButton.payload.n, fromButton.payload.b]).toEqual(["step-1", "b0"]);
+    expect(fromCard.ok && fromCard.payload.b).toBe("c0-0");
+  });
+
+  it("sin paso, los tokens no llevan paso (como siempre)", async () => {
+    const out = await attributeOutgoing(world(), ctx(), { append: true, trackClicks: true }, message());
+    const read = verifyTrackedLink(tokenOf(out.buttons?.[0].url), secrets.attribution_link_secret);
+    expect(read.ok && read.payload.n).toBeNull();
+  });
+});

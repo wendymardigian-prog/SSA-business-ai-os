@@ -11,7 +11,7 @@
  * Conocimiento se abre desde Agentes IA (boton de la barra) y Recursos e
  * Integraciones son pestañas de Ajustes. Sus rutas siguen andando.
  *
- * Broadcasts, Sequences y Growth NO estan aca: son sub-pestañas de Inbox
+ * Broadcasts, Sequences y Comentarios (antes Growth) NO estan aca: son sub-pestañas de Inbox
  * (components/comunicacion/section-tabs.tsx). Inbox es el hub de comunicacion,
  * y las tres son formas de mandar o provocar mensajes, no secciones aparte.
  * Channels tampoco: sale del menu (D3), pero la pantalla se conserva entera y
@@ -84,7 +84,7 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // La cola de borradores y las sub-pestañas de la bandeja (broadcasts,
   // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
   // La bandeja no tiene claves: aparece si el rol ve al menos una cuenta conectada (`canUseInbox`, 00249).
-  { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", requires: "inbox", group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
+  { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", requires: "inbox", group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/comentarios", "/dashboard/growth"] },
   // @plantilla-desde(formularios)
   // Reporte de fin de día (E10): completarlo no necesita permiso, alcanza con estar en
   // la audiencia de un EOD publicado. Por eso es una condición del servidor y no un permiso.

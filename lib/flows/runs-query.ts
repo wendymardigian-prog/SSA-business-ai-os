@@ -32,6 +32,9 @@ export interface FlowRunRow {
 
 export interface FlowRunStep {
   id: string;
+  node_id: string;
+  node_type: string;
+  error_kind: string | null;
   node_label: string;
   status: RunStepStatus;
   exit_label: string | null;
@@ -74,6 +77,24 @@ export async function loadFlowRuns(
     .eq("flow_id", flowId);
 
   if (filters.estado) query = applyState(query, filters.estado);
+  // Las ejecuciones en las que ese paso fallo. La RLS de los pasos sigue la de las ejecuciones.
+  if (filters.pasoFallido) {
+    const { data: failed, error: failedError } = await supabase
+      .from("flow_session_steps")
+      .select("session_id")
+      .eq("flow_id", flowId)
+      .eq("node_id", filters.pasoFallido)
+      .eq("status", "failed")
+      .order("started_at", { ascending: false })
+      .limit(1000);
+    if (failedError) {
+      console.error(`[flows] no pude leer los pasos fallidos (code=${failedError.code ?? "?"})`);
+      return { rows: [], total: 0, error: true };
+    }
+    const ids = [...new Set(((failed ?? []) as Array<{ session_id: string }>).map((r) => r.session_id))];
+    if (ids.length === 0) return { rows: [], total: 0, error: false };
+    query = query.in("id", ids);
+  }
   if (dateRange.from) query = query.gte("created_at", dateRange.from);
   if (dateRange.to) query = query.lte("created_at", dateRange.to);
   if (search) query = query.or(search, { referencedTable: "contact" });
@@ -107,7 +128,7 @@ export async function loadFlowRunDetail(
 
   const { data: steps, error: stepsError } = await supabase
     .from("flow_session_steps")
-    .select("id, node_label, status, exit_label, reason, resumes_at, started_at, finished_at")
+    .select("id, node_id, node_type, error_kind, node_label, status, exit_label, reason, resumes_at, started_at, finished_at")
     .eq("session_id", args.runId)
     .order("started_at", { ascending: true })
     .order("seq", { ascending: true })

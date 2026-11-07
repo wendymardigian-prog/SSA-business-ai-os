@@ -1565,7 +1565,7 @@ Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con b
 - **Arrancar un flujo NO retoma una sesión en espera** (`executeFlow`): solo el receptor de mensajes retoma (`lib/inbound.ts`). Retomar «Esperar respuesta» es un reclamo sobre `waiting_for_input`; un flujo despublicado cancela la sesión al retomar.
 - **Una automatización publicada guarda en `draft_nodes`/`draft_edges`** (00254, `saveFlowDraft`); lo que corre es `nodes` hasta «Publicar cambios». El lienzo ya NO escribe `flows` desde el navegador. Los editores de pasos de Formularios, Agenda, EOD y Cobranza siguen escribiendo `nodes` (publican al guardar).
 - **Un solo disparador, elegido**: `triggerType: null` = sin elegir (así nace una automatización); un nodo viejo sin la clave es palabra clave. Publicar lo exige (`lib/flow-engine/publish-rules.ts`). El disparador no se borra; se cambia con el selector.
-- **Republicar reconcilia todas las filas sin canal** de los tipos que arma el editor (`persistableTriggerTypes`) y no reactiva las filas con canal (Growth).
+- **Republicar reconcilia todas las filas del lienzo** (sin canal, o con `config.origin = "canvas"`) de los tipos que arma el editor (`persistableTriggerTypes`) y no toca ni reactiva las reglas viejas de Growth (con canal y sin la marca).
 - **Tres catálogos, una sola lista cada uno**: disparadores (`trigger-catalog.ts`, comparado con el registro y el CHECK de la base), sus valores por defecto (`trigger-defaults.ts`) y las variables por disparador (`variable-catalog.ts`). El motor siembra `contact.*` y `workspace.*` en todos los pasos.
 - **Categorías**: `flows.categories` (text[], hasta 10, normalizadas en `lib/flows/categories.ts`); las sugerencias salen de las que usan las demás automatizaciones. La lista filtra por URL (`?q=&estado=&origen=&categoria=`, `lib/flows/list.ts`).
 - **Llamada HTTP solo por `lib/net/safe-fetch.ts`** (sin direcciones internas, 10 s, 256 KB). Un test que la use simula el DNS (`vi.mock("node:dns/promises")`).
@@ -1983,6 +1983,27 @@ Se cortaba por el `statement_timeout` de 8 s con solo 6.361 mensajes: la RLS de 
 ```
 node scripts/verify-chat-core.mjs             # cada número nuevo contra el viejo, por rol y filtro
 node scripts/verify-chat-core.mjs --carga     # además, tiempos con 2.000 conversaciones
+```
+
+# Comentarios en el lienzo, métricas por paso y reintentar (7/11/2026)
+
+El 6/11 una respuesta privada a un comentario «clase» falló con un texto genérico: ManyChat había contestado 3 s antes y Instagram deja una sola. Detalle en [docs/flow-registry.md](docs/flow-registry.md) («Responder por privado», «Todo en el lienzo», «Métricas por paso», «Reintentar desde un paso»).
+
+## Lo que no se puede romper
+
+- **Todo se arma en el lienzo.** Growth pasó a **Comentarios** (`/dashboard/comentarios`, solo lectura; `/dashboard/growth` redirige). La cuenta y las publicaciones de «Palabra clave en un comentario» viven en el nodo (`channelId`, `postIds`) y publicar arma la fila con `config.origin = "canvas"`. El lienzo es el dueño de sus filas (`CANVAS_TRIGGER_ROWS_FILTER`); una regla vieja de Growth se muestra como tal y no se toca. `completePostIds` escribe también el nodo.
+- **Un fallo de Instagram queda con su clave** (`describeSendError` → `flow_session_steps.error_kind`): `already_replied`, `buttons_not_allowed`, `not_thread_owner`... Solo lo pasajero (`canAutoRetry`: `rate_limited`, `temporary`) se reintenta solo, a 1, 5 y 15 min (`provider-retry.ts`). Un error desconocido NO: puede gastar la única respuesta privada.
+- **La respuesta pública al comentario va después del flujo** y solo si el privado salió (`shouldPostPublicReply`); `comment_logs.dm_sent` es el mensaje enviado de verdad.
+- **Métricas por paso:** `flow_node_stats` (SECURITY INVOKER) + `buildNodeMetrics`; viven en un contexto, **nunca en `node.data`**. `flow_link_clicks` no lleva `contact_id` (la persona sale de la ejecución): `merge_contacts` no cambia. Los clics solo existen con «Registrar el clic»: el token lleva `n` (paso), `b` (link) y `r` (ejecución), opcionales; sin paso, firma igual que siempre.
+- **Reintentar** (`retryFlowStep`, `flows.edit`): solo el último paso fallido de una ejecución terminada, nunca con un motivo de `NOT_RETRYABLE_KINDS` ni una respuesta privada de más de 7 días (`canRetryStep`). Reclamo condicional y `resume_flow` con `rerunNode`.
+- **Los íconos del panel y del lienzo son los mismos** (`components/flow-builder/node-icons.test.ts`).
+
+## Migración
+
+`00317_flow_step_metrics` (aditiva: `error_kind`, `exit_handle`, `flow_link_clicks`, `flow_node_stats`, índices y el paso de las reglas de Growth al lienzo) va **ANTES** de desplegar el código. Sin aplicar, el motor anota los pasos sin las columnas nuevas, pero las métricas y el reintento no andan. Las `00309` a `00316` son de las ramas de seguridad. **La próxima libre es la `00318`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-flow-metrics.mjs   # flow_node_stats por rol, un deferred cuenta una vez, 24 h de respuesta, clics, restricciones
 ```
 
 # Auditoria de seguridad (7/11/2026)

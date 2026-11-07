@@ -226,8 +226,21 @@ export function memoryDb(
       },
       // Un filtro sobre una relacion embebida ("flows.status") no se simula: pasa.
       eq: (col: string, val: unknown) => (filters.push((r) => col.includes(".") || jsonPath(r, col) === val), b),
-      // .or() de PostgREST tampoco se simula: pasa todo.
-      or: () => b,
+      // .or() de PostgREST: solo se simula si todas sus partes son `col.eq.valor` o `col.is.null` (tambien sobre una
+      // clave de un jsonb, `config->>origin.eq.canvas`). Cualquier otra forma no se simula: pasa todo.
+      or: (expr: string) => {
+        const parts = expr.split(",").map((p) => /^([\w>-]+(?:->>?\w+)*)\.(eq|is)\.(.*)$/.exec(p.trim()));
+        if (parts.length === 0 || parts.some((m) => !m)) return b;
+        filters.push((r) =>
+          parts.some((m) => {
+            const [, col, op, raw] = m!;
+            const value = jsonPath(r, col);
+            if (op === "is") return raw === "null" ? value == null : String(value) === raw;
+            return value != null && String(value) === raw;
+          }),
+        );
+        return b;
+      },
       // Como en Postgres, un NULL no es distinto de nada: `neq` deja afuera las filas sin esa clave.
       neq: (col: string, val: unknown) => (filters.push((r) => (col.includes("->") ? jsonPath(r, col) != null && jsonPath(r, col) !== val : r[col] !== val)), b),
       // `.filter(col, op, val)` de PostgREST, solo `eq` y `neq` y comparando como JSON (un jsonb `blocked_by` contra `"[]"`).

@@ -64,6 +64,8 @@ function RunSearch({ initial, onApply }: { initial: string; onApply: (value: str
  * navegacion y el servidor rehace la consulta.
  */
 export function FlowRunsScreen({
+  flowId,
+  canRetry,
   rows,
   total,
   loadFailed,
@@ -71,6 +73,9 @@ export function FlowRunsScreen({
   timeZone,
   detail,
 }: {
+  flowId: string;
+  /** `flows.edit`: puede reintentar un paso. */
+  canRetry: boolean;
   rows: FlowRunRow[];
   total: number;
   loadFailed: boolean;
@@ -105,6 +110,17 @@ export function FlowRunsScreen({
             options={RUN_STATES.map((state) => ({ value: state, label: RUN_STATE_LABELS[state] }))}
           />
           <DateFilter preset={filters.fecha} from={filters.desde} to={filters.hasta} setParam={setParam} />
+          {filters.pasoFallido && (
+            <button
+              type="button"
+              onClick={() => setParam("paso_fallido", "")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300/60 bg-red-50 px-3 py-2 text-sm text-red-900 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-200"
+              title="Sacar este filtro"
+            >
+              Solo donde falló un paso
+              <span aria-hidden>×</span>
+            </button>
+          )}
         </FilterBar>
         <button
           type="button"
@@ -170,6 +186,8 @@ export function FlowRunsScreen({
 
       {detail && (
         <FlowRunSheet
+          flowId={flowId}
+          canRetry={canRetry}
           run={detail.run}
           steps={detail.steps}
           timeZone={timeZone}

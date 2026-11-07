@@ -20,7 +20,7 @@ export default async function FlowRunsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { flowId } = await params;
-  await requirePermission("flows.view");
+  const permissions = await requirePermission("flows.view");
   const { workspace, supabase } = await getWorkspace();
 
   const { data: flow } = await supabase
@@ -52,7 +52,16 @@ export default async function FlowRunsPage({
         }
       />
       <div className="flex-1 overflow-auto px-4 py-6 md:px-8">
-        <FlowRunsScreen rows={rows} total={total} loadFailed={error} filters={filters} timeZone={timeZone} detail={detail} />
+        <FlowRunsScreen
+          flowId={flowId}
+          canRetry={permissions.can("flows.edit")}
+          rows={rows}
+          total={total}
+          loadFailed={error}
+          filters={filters}
+          timeZone={timeZone}
+          detail={detail}
+        />
       </div>
     </div>
   );

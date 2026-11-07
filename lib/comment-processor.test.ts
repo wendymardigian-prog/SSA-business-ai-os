@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchCommentTrigger, type CommentForMatching } from "./comment-processor";
+import { matchCommentTrigger, shouldPostPublicReply, type CommentForMatching } from "./comment-processor";
 import type { Database } from "@/lib/types/database";
 
 type Trigger = Database["public"]["Tables"]["triggers"]["Row"];
@@ -61,5 +61,17 @@ describe("matchCommentTrigger", () => {
   it("returns null for empty comment text", () => {
     const t = trigger("t1", { keywords: [{ value: "hi" }] });
     expect(matchCommentTrigger([t], comment("   "))).toBeNull();
+  });
+});
+
+describe("la respuesta publica va despues del mensaje privado (6/11/2026)", () => {
+  it("se publica si el privado salio, o si la automatizacion no intento ninguno", () => {
+    expect(shouldPostPublicReply({ dmSent: true, privateReplyFailed: false, pending: false })).toBe(true);
+    expect(shouldPostPublicReply({ dmSent: false, privateReplyFailed: false, pending: false })).toBe(true);
+  });
+
+  it("no se publica «Te envié por DM» si el privado fallo o quedo para reintentar", () => {
+    expect(shouldPostPublicReply({ dmSent: false, privateReplyFailed: true, pending: false })).toBe(false);
+    expect(shouldPostPublicReply({ dmSent: false, privateReplyFailed: false, pending: true })).toBe(false);
   });
 });

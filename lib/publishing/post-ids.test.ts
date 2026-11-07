@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 import type { AutomationRule } from "@/lib/content/keywords";
-import { completePostIds, planPostId } from "./post-ids";
+import { completePostIds, planPostId, withNodePostIds } from "./post-ids";
 
 const rule = (over: Partial<AutomationRule> = {}): AutomationRule => ({
   triggerId: "t1",
@@ -30,6 +30,7 @@ describe("a que automatizacion se le completa el id (F39)", () => {
   it("a la que esta limitada a posts y responde esa palabra", () => {
     expect(planPostId({ ...base, rules: [rule()] })).toEqual({
       triggerId: "t1",
+      flowId: "f1",
       postIds: ["ig-viejo", "ig-9"],
     });
   });
@@ -78,7 +79,17 @@ describe("escribirlo (F39)", () => {
             config: { keywords: [{ value: "SISTEMA" }], postIds: ["ig-viejo"] },
           },
         ],
-        flows: [{ id: "f1", name: "Guia" }],
+        flows: [
+          {
+            id: "f1",
+            name: "Guia",
+            nodes: [
+              { id: "trig", type: "trigger", data: { triggerType: "comment_keyword", keywords: [{ value: "SISTEMA" }], postIds: ["ig-viejo"] } },
+              { id: "n", type: "action", data: { actionType: "privateReply" } },
+            ],
+            draft_nodes: null,
+          },
+        ],
       },
       { joins: { "triggers.flows": () => ({ name: "Guia" }) } },
     );
@@ -98,6 +109,17 @@ describe("escribirlo (F39)", () => {
     expect((memory.rows("triggers")[0].config as { postIds: string[] }).postIds).toEqual([
       "ig-viejo",
       "ig-9",
+    ]);
+    // El lienzo es el dueno de la fila: el id queda tambien en su disparador, asi sobrevive a republicar.
+    const nodes = memory.rows("flows")[0].nodes as Array<{ type: string; data: { postIds?: string[] } }>;
+    expect(nodes.find((n) => n.type === "trigger")?.data.postIds).toEqual(["ig-viejo", "ig-9"]);
+  });
+
+  it("withNodePostIds solo toca el disparador de comentario", () => {
+    expect(withNodePostIds([{ type: "trigger", data: { triggerType: "keyword" } }], ["x"])).toBeNull();
+    expect(withNodePostIds(null, ["x"])).toBeNull();
+    expect(withNodePostIds([{ type: "trigger", data: { triggerType: "comment_keyword" } }], ["x"])).toEqual([
+      { type: "trigger", data: { triggerType: "comment_keyword", postIds: ["x"] } },
     ]);
   });
 

@@ -4,7 +4,11 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Loader2 } from "lucide-react";
 
-export function CreateFlowButton() {
+/**
+ * «Nueva automatización». Con `body`, nace con lo que trae (por ejemplo el disparador de comentario ya elegido, desde la
+ * pestaña Comentarios); sin nada, con el disparador sin elegir.
+ */
+export function CreateFlowButton({ body, label }: { body?: Record<string, unknown>; label?: string } = {}) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +24,7 @@ export function CreateFlowButton() {
       const res = await fetch("/api/v1/flows", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(body ?? {}),
       });
 
       if (!res.ok) {
@@ -52,7 +56,7 @@ export function CreateFlowButton() {
           "Creando…"
         ) : (
           <>
-            <span className="hidden sm:inline">Nueva automatización</span>
+            <span className="hidden sm:inline">{label ?? "Nueva automatización"}</span>
             <span className="sm:hidden">Nueva</span>
           </>
         )}

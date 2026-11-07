@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeSendError, RATE_LIMIT_REACHED } from "./instagram-errors";
+import { canAutoRetry, describeSendError, RATE_LIMIT_REACHED } from "./instagram-errors";
 
 /**
  * Lo que se prueba no es que el texto sea exactamente este, sino que un rechazo
@@ -113,5 +113,42 @@ describe("otra app maneja la conversacion (handover de Meta)", () => {
 
   it("un 409 suelto (Idempotency-Key en curso) NO es eso", () => {
     expect(describeSendError(Object.assign(new Error("Request still processing"), { statusCode: 409 })).kind).toBe("unknown");
+  });
+});
+
+describe("respuesta privada a un comentario", () => {
+  // El texto real que devolvio Zernio el 6/11/2026, cuando ManyChat contesto 3 segundos antes que el sistema.
+  const yaRespondido = Object.assign(
+    new Error("A private reply has already been sent to this comment. Instagram only allows one private reply per comment."),
+    { statusCode: 400 },
+  );
+
+  it("reconoce que otra app ya contesto y no propone reintentar", () => {
+    const r = describeSendError(yaRespondido);
+    expect(r.kind).toBe("already_replied");
+    expect(r.retryable).toBe(false);
+    expect(r.message).toMatch(/otra app/i);
+    expect(pareceErrorCrudo(r.message)).toBe(false);
+  });
+
+  it("reconoce los botones rechazados a quien no sigue la cuenta (subcodigo en details)", () => {
+    const r = describeSendError(Object.assign(new Error("Invalid parameter"), { statusCode: 400, details: { error_subcode: 1545133 } }));
+    expect(r.kind).toBe("buttons_not_allowed");
+    expect(r.retryable).toBe(false);
+    expect(describeSendError({ error: { code: 2, error_subcode: 1545133 } }).kind).toBe("buttons_not_allowed");
+  });
+
+  it("un 5xx de Zernio es pasajero y se puede reintentar solo", () => {
+    const r = describeSendError(Object.assign(new Error("Bad gateway"), { statusCode: 502 }));
+    expect(r.kind).toBe("temporary");
+    expect(canAutoRetry(r.kind)).toBe(true);
+  });
+
+  it("solo se reintenta solo lo claramente pasajero", () => {
+    expect(canAutoRetry("rate_limited")).toBe(true);
+    expect(canAutoRetry("unknown")).toBe(false);
+    expect(canAutoRetry("already_replied")).toBe(false);
+    expect(canAutoRetry("buttons_not_allowed")).toBe(false);
+    expect(canAutoRetry("not_thread_owner")).toBe(false);
   });
 });
