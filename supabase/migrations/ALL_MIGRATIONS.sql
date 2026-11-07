@@ -56147,7 +56147,7 @@ CREATE POLICY "workspace_invites_select" ON public.workspace_invites
 -- ============================================================================
 -- 00313 — La media del chat y los adjuntos de email: se leen con el alcance de la conversacion
 -- ============================================================================
--- Seguridad (lote 3). Hasta aca las politicas de lectura de los buckets `chat-media` (00102) y
+-- Seguridad (noviembre 2026). Hasta aca las politicas de lectura de los buckets `chat-media` (00102) y
 -- `email-attachments` (00087) solo pedian ser miembro del workspace del PRIMER segmento del path.
 -- Asi un Member con alcance "solo lo asignado" podia firmar (y bajar) los audios, fotos y adjuntos de
 -- chats que la bandeja no le muestra: alcanzaba con conocer o adivinar el path.
@@ -56360,7 +56360,7 @@ CREATE POLICY "email_attachments_select" ON storage.objects
 -- ============================================================================
 -- 00314 — Conocimiento: quien lee la base y lo interno
 -- ============================================================================
--- Seguridad (lote 3). `knowledge_base_select` y `knowledge_chunks_select` (00049) solo pedian ser
+-- Seguridad (noviembre 2026). `knowledge_base_select` y `knowledge_chunks_select` (00049) solo pedian ser
 -- miembro del workspace: cualquier Member leia todos los documentos, tambien los `internal_only`
 -- (que incluyen lo que sale de las llamadas de ventas, lib/calls/knowledge-run.ts), y se salteaba el
 -- permiso `knowledge.view`. Ademas `match_knowledge_chunks_filtered` dejaba que cualquier miembro

@@ -9,7 +9,7 @@ export type ReplaceTriggersResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Rehace los triggers de UN flujo (borrar y volver a insertar), mirando los dos
- * pasos. Lo usan los editores de pasos de Formularios y de la Agenda.
+ * pasos. Lo usan los editores de pasos que rehacen el disparador al guardar.
  *
  * Antes se borraba y se insertaba sin mirar ningun error y se devolvia ok: un
  * insert que fallaba dejaba el flujo "encendido" sin ningun disparador, sin que

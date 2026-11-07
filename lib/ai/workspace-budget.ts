@@ -15,7 +15,7 @@
  * se llama al modelo**. Un tope que se salta cuando falla la consulta no es
  * un tope.
  *
- * Gasto invisible (seguridad, lote 3): una corrida de un modelo SIN precio
+ * Gasto invisible (seguridad, noviembre 2026): una corrida de un modelo SIN precio
  * cargado queda con `cost_usd` null y `sum_ai_spend` no la cuenta, asi que con
  * un tope que corta podia gastar sin limite. La opcion mas simple: quien sabe
  * que modelo va a usar lo pasa en `opts.model`, y si hay un tope del negocio

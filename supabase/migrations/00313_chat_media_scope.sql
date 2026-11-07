@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 00313 — La media del chat y los adjuntos de email: se leen con el alcance de la conversacion
 -- ============================================================================
--- Seguridad (lote 3). Hasta aca las politicas de lectura de los buckets `chat-media` (00102) y
+-- Seguridad (noviembre 2026). Hasta aca las politicas de lectura de los buckets `chat-media` (00102) y
 -- `email-attachments` (00087) solo pedian ser miembro del workspace del PRIMER segmento del path.
 -- Asi un Member con alcance "solo lo asignado" podia firmar (y bajar) los audios, fotos y adjuntos de
 -- chats que la bandeja no le muestra: alcanzaba con conocer o adivinar el path.

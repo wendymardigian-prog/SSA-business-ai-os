@@ -3,8 +3,8 @@
  *
  * Una sola regla, la misma que ya tenia "Enviar email": un contacto marcado "no contactar" no recibe nada de un
  * flujo, SALVO que el flujo haya arrancado por un disparador de la agenda (la confirmacion o el recordatorio de
- * una reunion que la persona pidio no es una comunicacion comercial). Cambio aprobado por la dueña (lote 3 de
- * seguridad): antes WhatsApp e Instagram mandaban igual.
+ * una reunion que la persona pidio no es una comunicacion comercial). Cambio aprobado
+ * (noviembre 2026): antes WhatsApp e Instagram mandaban igual.
  *
  * El paso se saltea con el motivo (historial de ejecuciones y `node_skipped`) y el flujo SIGUE: un paso que no
  * manda no corta lo que viene despues (poner una etiqueta, avisar al equipo).

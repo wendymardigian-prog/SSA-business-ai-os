@@ -1,5 +1,5 @@
 /**
- * Tope de emails al invitado POR DIRECCION en una reserva publica (seguridad, lote 3).
+ * Tope de emails al invitado POR DIRECCION en una reserva publica (seguridad, noviembre 2026).
  *
  * La pagina de la agenda es publica y el tope por IP no alcanza: cambiando de IP, alguien podia usar las reservas
  * para llenarle la bandeja a un tercero con confirmaciones (los flujos de la agenda mandan aunque haya "no

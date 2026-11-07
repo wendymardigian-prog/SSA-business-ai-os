@@ -66,7 +66,7 @@ function world(opts: {
 
 const args = { conversationId: "cv-1", workspaceId: "ws-1", trigger: "manual" as const };
 
-describe("el tope de gasto de IA del negocio (lote 3)", () => {
+describe("el tope de gasto de IA del negocio (noviembre 2026)", () => {
   it("sin presupuesto no llama al modelo: deja una corrida con el motivo y no marca la conversacion como resumida", async () => {
     const w = world();
     const checkBudget = vi.fn(async () => ({ allowed: false, message: "Tope mensual alcanzado" }));

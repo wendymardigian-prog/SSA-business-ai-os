@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 00314 — Conocimiento: quien lee la base y lo interno
 -- ============================================================================
--- Seguridad (lote 3). `knowledge_base_select` y `knowledge_chunks_select` (00049) solo pedian ser
+-- Seguridad (noviembre 2026). `knowledge_base_select` y `knowledge_chunks_select` (00049) solo pedian ser
 -- miembro del workspace: cualquier Member leia todos los documentos, tambien los `internal_only`
 -- (que incluyen lo que sale de las llamadas de ventas, lib/calls/knowledge-run.ts), y se salteaba el
 -- permiso `knowledge.view`. Ademas `match_knowledge_chunks_filtered` dejaba que cualquier miembro

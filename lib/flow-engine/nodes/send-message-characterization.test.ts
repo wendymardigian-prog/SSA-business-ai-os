@@ -1,7 +1,7 @@
 /**
  * Caracterizacion del nodo `sendMessage` ANTES de la Etapa 4.
  *
- * CAMBIO APROBADO (lote 3 de seguridad, decision de la dueña): hasta aca este
+ * CAMBIO APROBADO (noviembre 2026): hasta aca este
  * test fijaba que el nodo NO miraba `contacts.do_not_contact` y mandaba igual
  * por WhatsApp o Instagram. Ahora frena, con la MISMA regla que `send_email`:
  * se saltea con el motivo salvo que el flow haya arrancado por un trigger de

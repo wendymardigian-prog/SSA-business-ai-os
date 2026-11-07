@@ -324,7 +324,7 @@ describe("transcribeAudio: lo que no se intenta (F6)", () => {
   });
 });
 
-describe("transcribeAudio: el tope de gasto de IA del negocio (lote 3)", () => {
+describe("transcribeAudio: el tope de gasto de IA del negocio (noviembre 2026)", () => {
   it("si no alcanza el presupuesto, no llama al proveedor y no se reintenta solo", async () => {
     const memory = db([{ provider: "groq" }]);
     const { impl, calls } = queue([{ body: { text: "hola", duration: 1 } }]);

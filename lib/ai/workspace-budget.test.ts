@@ -145,7 +145,7 @@ describe("workspaceSpendCandidates", () => {
   });
 });
 
-describe("withinWorkspaceBudget: un modelo sin precio no deja pasar gasto invisible (lote 3)", () => {
+describe("withinWorkspaceBudget: un modelo sin precio no deja pasar gasto invisible (noviembre 2026)", () => {
   /** Topes del negocio y la tabla de precios; `price` null = el modelo no tiene fila. */
   function pricedDb(opts: { daily: number | null; dailyAction?: "notify" | "disable"; price: { audio_per_hour: number | null } | null }) {
     const chain = (table: string) => {

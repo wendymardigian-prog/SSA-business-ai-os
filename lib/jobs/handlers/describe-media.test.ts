@@ -259,7 +259,7 @@ describe("el handler del job (F8)", () => {
   });
 });
 
-describe("describeMessageMedia: el tope de gasto de IA del negocio (lote 3)", () => {
+describe("describeMessageMedia: el tope de gasto de IA del negocio (noviembre 2026)", () => {
   it("sin presupuesto no llama al modelo: el mensaje queda no interpretable (el agente escala)", async () => {
     withinWorkspaceBudget.mockResolvedValueOnce({ allowed: false, message: "Tope diario alcanzado" });
     const memory = db();
