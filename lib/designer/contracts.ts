@@ -211,6 +211,9 @@ export interface GenerateManyInput {
   email?: { subject: string; body: string } | null;
 }
 
+/** El núcleo sin sesión que crea una generación (DS6; lo usa también el nodo de DS7). */
+export type { CreateGenerationInput, CreateGenerationResult, GenerationSource } from "./generate-core";
+
 // ─── 5. Server Actions: DS8 (lib/actions/designer/content.ts) ───────────────
 
 export type UseInContentInput =
