@@ -23,12 +23,6 @@ import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 
 export type Level = "campaign" | "adset" | "ad";
 
-export interface UniqueReach {
-  campaign: Record<string, number> | null;
-  adset: Record<string, number> | null;
-  ad: Record<string, number> | null;
-}
-
 const TAB_LABEL: Record<Level, string> = { campaign: "Campañas", adset: "AdSets", ad: "Anuncios" };
 const SEGMENT: Record<Level, string> = { campaign: "campaigns", adset: "adsets", ad: "ads" };
 
@@ -40,7 +34,6 @@ export function HierarchyCard({
   levels,
   rows,
   totals,
-  uniqueReach,
   currency,
   adAccountId,
   period,
@@ -54,13 +47,12 @@ export function HierarchyCard({
   /** Las filas a agrupar: las del periodo, ya filtradas al objeto si es un detalle. */
   rows: AdsRow[];
   totals: AdsTotals;
-  uniqueReach: UniqueReach;
   currency: string | null;
   adAccountId: string;
   period: PeriodFilter;
   heading?: ReactNode;
   crm: CrmTableData;
-  /** En un detalle: mostrar solo los hijos de este objeto. Lo que dice `totals` y `uniqueReach` es de el. */
+  /** En un detalle: mostrar solo los hijos de este objeto. */
   scope?: ParentScope | null;
   /** Pantalla Anuncios: un clic en una fila ofrece ver sus hijos ahi mismo. */
   drill?: boolean;
@@ -132,13 +124,11 @@ export function HierarchyCard({
           <CrmLevelTable
             level={level}
             rows={rows}
-            // El alcance de la cuenta no es el de una seleccion: sin esto el total mostraria un numero que no le corresponde.
-            totals={drill && activeScope ? { ...totals, reach: null } : totals}
+            totals={totals}
             crm={crm}
             currency={currency}
             hrefOf={(id) => detailHref(level, id, adAccountId, period)}
             scope={activeScope}
-            uniqueReach={scope ? uniqueReach[level] : null}
             rowActions={drill ? rowActions : undefined}
           />
         </Tabs>

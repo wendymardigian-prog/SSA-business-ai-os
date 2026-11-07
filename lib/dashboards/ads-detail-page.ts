@@ -49,7 +49,7 @@ export interface DetailPageData {
   /** "hoy 14:32": la ultima escritura del sync. */
   syncedLabel: string | null;
   /** Alcance unico de los hijos (conjuntos y anuncios de este objeto). */
-  reach: { adset: Record<string, number> | null; ad: Record<string, number> | null };
+  adReach: Record<string, number> | null;
   /** Los desgloses en vivo de ESTE objeto, cada uno por su cuenta. */
   live: {
     placement: Live<BreakdownRow[]>;
@@ -134,10 +134,8 @@ export async function loadDetailPage(params: {
     token && range.from ? run(sinceOf(range) as string, untilOf(range)) : Promise.resolve(null);
   const breakdownOf = (breakdown: BreakdownKind) =>
     live((since, until) => fetchBreakdown({ token: token as string, adAccountId, objectId, breakdown, since, until }));
-  const childReach = (childLevel: "adset" | "ad") =>
-    live((since, until) => fetchReachByLevel({ token: token as string, adAccountId, objectId, level: childLevel, since, until }));
 
-  const [allRows, previousRows, reachNow, reachBefore, objectMeta, adsetReach, adReach, placement, device, audience, hourly] =
+  const [allRows, previousRows, reachNow, reachBefore, objectMeta, adReach, placement, device, audience, hourly] =
     await Promise.all([
       loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone }),
       loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: before, timeZone }),
@@ -146,8 +144,9 @@ export async function loadDetailPage(params: {
         ? fetchUniqueReach({ token, adAccountId, objectId, since: sinceOf(before) as string, until: untilOf(before) })
         : Promise.resolve(null),
       token ? fetchObjectMeta({ token, adAccountId, objectId, level }) : Promise.resolve(null),
-      level === "campaign" ? childReach("adset") : Promise.resolve(null),
-      level === "ad" ? Promise.resolve(null) : childReach("ad"),
+      level === "ad"
+        ? Promise.resolve(null)
+        : live((since, until) => fetchReachByLevel({ token: token as string, adAccountId, objectId, level: "ad", since, until })),
       breakdownOf("publisher_platform,platform_position"),
       // El anuncio no muestra dispositivo en la referencia: no se pide.
       level === "ad" ? Promise.resolve(null) : breakdownOf("device_platform"),
@@ -160,6 +159,7 @@ export async function loadDetailPage(params: {
     level,
     objectId,
     uniqueReach: reachNow?.ok ? reachNow.data.reach : null,
+    uniqueFrequency: reachNow?.ok ? reachNow.data.frequency : null,
   });
 
   // Sin filas propias en el rango: si el objeto existe en esta cuenta, la pantalla lo dice y deja elegir otro rango
@@ -235,10 +235,7 @@ export async function loadDetailPage(params: {
     period,
     days,
     syncedLabel: syncedLabel(syncedAt, now, timeZone),
-    reach: {
-      adset: adsetReach?.ok ? adsetReach.data : null,
-      ad: adReach?.ok ? adReach.data : null,
-    },
+    adReach: adReach?.ok ? adReach.data : null,
     live: { placement, device, audience, hourly },
     meta: {
       objective: objectMeta?.ok ? objectMeta.data.objective : null,

@@ -88,6 +88,12 @@ describe("los totales del periodo (F56)", () => {
     expect(totals.frequency).toBeCloseTo(1.67, 2);
   });
 
+  it("con la frecuencia de Meta no se divide lo guardado por el alcance en vivo", () => {
+    expect(computeTotals(rows, 9000, 1.87).frequency).toBe(1.87);
+    // Sin el alcance en vivo, esa frecuencia no corresponde a estas filas.
+    expect(computeTotals(rows, null, 1.87).frequency).toBe(computeTotals(rows).frequency);
+  });
+
   it("sin leads, el costo por lead es una raya", () => {
     const totals = computeTotals([row({ date: "2026-10-01", spend: 100, leads: 0 })]);
 

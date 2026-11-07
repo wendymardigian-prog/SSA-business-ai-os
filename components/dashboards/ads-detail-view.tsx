@@ -27,6 +27,7 @@ import { HeaderFilters, RefreshButton } from "./ads/header-controls";
 import { HierarchyCard, type Level } from "./ads/hierarchy-tables";
 import { ActionsCard, DeviceCard, PlacementCard, RankingsCard, VideoCard, type Live } from "./ads/insight-cards";
 import { buildKpiItems } from "./ads/kpi-items";
+import { ReachAheadNote } from "./ads/ads-page-notices";
 import { KpiRow } from "./ads/kpi-row";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 import { LinkContentMenu } from "./ads/link-content-menu";
@@ -76,7 +77,8 @@ export interface AdsDetailViewProps {
   period: PeriodFilter;
   days: number;
   syncedLabel: string | null;
-  reach: { adset: Record<string, number> | null; ad: Record<string, number> | null };
+  /** Alcance unico de cada anuncio (en vivo), para la comparativa. Null si Meta no respondio. */
+  adReach: Record<string, number> | null;
   live: {
     placement: Live<BreakdownRow[]>;
     device: Live<BreakdownRow[]>;
@@ -115,7 +117,7 @@ export function AdsDetailView({
   currency,
   period,
   days,
-  reach,
+  adReach,
   live,
   meta,
   contentLink = null,
@@ -349,11 +351,12 @@ export function AdsDetailView({
         <section className="space-y-2" aria-label="Resumen">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Resumen</p>
           <KpiRow items={kpis} />
+          <ReachAheadNote totals={detail.totals} />
         </section>
 
         <EvolutionCard rows={own} currency={currency} />
 
-        {level !== "ad" && <ComparisonCards variant="ads" rows={scoped} currency={currency} adReach={reach.ad} />}
+        {level !== "ad" && <ComparisonCards variant="ads" rows={scoped} currency={currency} adReach={adReach} />}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionsCard rows={own} />
@@ -371,7 +374,6 @@ export function AdsDetailView({
             levels={CHILD_LEVELS[level]}
             rows={scoped}
             totals={detail.totals}
-            uniqueReach={{ campaign: null, adset: reach.adset, ad: reach.ad }}
             currency={currency}
             adAccountId={adAccountId}
             period={period}

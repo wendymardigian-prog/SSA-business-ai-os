@@ -9,9 +9,6 @@ import { HeaderFilters, RefreshButton, SyncedPill } from "./ads/header-controls"
 import { HierarchyCard } from "./ads/hierarchy-tables";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 
-/** Esta pantalla no pide el alcance por objeto al cargar: la tabla «Meta vs CRM» lo pide por su cuenta, si Alcance o Frec. estan a la vista. */
-const NO_OBJECT_REACH = { campaign: null, adset: null, ad: null };
-
 /** La pantalla Anuncios: la tabla de campañas, conjuntos y anuncios, con sus filtros de cuenta y periodo. */
 export function AdsTablePage(props: AdsTablePageData) {
   const { pending, navigate, applyPeriod, refresh } = useAdsNavigation();
@@ -44,7 +41,6 @@ export function AdsTablePage(props: AdsTablePageData) {
           levels={["campaign", "adset", "ad"]}
           rows={props.rows}
           totals={totals}
-          uniqueReach={NO_OBJECT_REACH}
           currency={props.currency}
           adAccountId={props.adAccountId}
           period={props.period}
