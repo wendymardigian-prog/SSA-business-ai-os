@@ -38,8 +38,8 @@ Una sola tabla nueva: **`calls`**. Todo lo demás son columnas y funciones.
   corrige. Una corrección recalcula los puntajes con `rubric_snapshot`, no con
   la rúbrica vigente.
 - Quién la ve (`can_see_call`): Owner y Admin, quien la grabó, quien ve su
-  contacto, y un rol con `calls.view` de alcance `all`. Los usuarios solo leen;
-  escribe el servidor.
+  contacto, y un rol con `calls.view` de alcance `all` o, con el alcance `areas`,
+  de una de sus áreas (ver "Alcance por área"). Los usuarios solo leen; escribe el servidor.
 - `oauth_connections` suma `fathom` y las columnas de sincronización
   (`last_synced_at`, `sync_watermark`, `sync_cursor`, `sync_last_error`) y el
   candado del refresh token (`claim_oauth_refresh`, `release_oauth_refresh`: el
@@ -121,6 +121,29 @@ Importar historial**: todo, o desde una fecha. Un clic alcanza.
 - No lanza por un fallo de Fathom: 429 y 5xx esperan 1, 5 y 15 minutos (o el `Retry-After`,
   si es mayor) y después queda incompleta con "Seguir desde donde quedó". Repetir no
   duplica: la llamada es única por `external_id`.
+
+## Alcance por área (00301, 6/11/2026)
+
+Un rol elige qué grabaciones ve en Ajustes → Roles: **«Solo los suyos»**, **«Los suyos + los de
+ciertas áreas»** (con las áreas tildadas) o **«Todos»**. Se guarda en `permissions.scopes.calls`
+y `permissions.call_areas`.
+
+- **Con áreas ve:** las de esas áreas, las que grabó y las de los contactos que ve. Así un setter
+  sigue viendo la llamada de su lead aunque sea de otra área.
+- **Una grabación Sin clasificar no entra por el área**: podría ser de cualquiera. Queda para quien
+  la grabó, quien ve su contacto y quien ve todas.
+- **Sin ninguna área tildada**, ve lo mismo que «Solo los suyos». La pantalla lo avisa.
+- **El Member de sistema no cambia**: sigue en «Solo los suyos». Owner y Admin ven todo.
+- **Las reglas son gemelas** (`lib/auth/call-areas.ts` y `private.role_sees_call_area` /
+  `private.call_areas_exceed`), con los casos de `lib/auth/call-areas.cases.json`.
+- **No se da un área que no se tiene**, y no alcanza con mirar el alcance: agregarle un área a un rol
+  que ya es por áreas no sube su alcance. Lo revisan `assertCanGrant` en el servidor y, en la base,
+  la política al crear, el trigger al editar y `can_give_role` al invitar. Sacar áreas siempre se
+  puede. Un área tiene que ser de ese negocio (`patchRole`).
+- **`private.scope_rank` conoce `areas`**: antes, un valor desconocido valía lo más bajo y alguien con
+  «las suyas» podía darlo.
+- **Avisos:** una objeción le llega a quien edita todas o las de esa área (`membersWithPermission`
+  con `areaId`).
 
 ## Área y tipo de una grabación (00300, 6/11/2026)
 

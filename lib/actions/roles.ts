@@ -20,6 +20,7 @@ import {
   validateRole,
   type RoleRow,
 } from "@/lib/auth/roles-admin";
+import { callAreasOf } from "@/lib/auth/call-areas"; // @plantilla-quitar(llamadas)
 import { assertCanEditRole, assertCanGrant, grantActorOf } from "@/lib/team/grant";
 import { isSameSession, mergeRoleAuditSession, type RoleAuditMetadata } from "@/lib/roles/audit-session";
 import type { Json } from "@/lib/types/database";
@@ -147,6 +148,7 @@ export async function updateRole(
     scopes: { leads: input.leadsScope, bookings: input.bookingsScope, calls: input.callsScope, sales: input.salesScope, commissions: input.commissionsScope, tasks: input.tasksScope }, // @plantilla-quitar(llamadas,ventas,comisiones,tareas)
     // @plantilla-sin(llamadas,ventas,comisiones,tareas): scopes: { leads: input.leadsScope, bookings: input.bookingsScope },
     channels: input.channels ? parseChannels(input.channels) : parsePermissions(existing.permissions).channels,
+    callAreas: parsePermissions(existing.permissions).call_areas, // @plantilla-quitar(llamadas)
   });
   if (!checked.ok) return checked;
 
@@ -289,6 +291,8 @@ export interface RolePatch {
   scopes?: Partial<Record<ScopedModule, PermissionScope>>;
   /** La bandeja entera, ya armada por la pantalla (`lib/auth/channel-permissions.ts`). */
   channels?: ChannelsConfig;
+  /** Las áreas de grabaciones que ve el rol, enteras (00301). */
+  callAreas?: string[];
   name?: string;
   description?: string | null;
 }
@@ -330,10 +334,29 @@ export async function patchRole(
     keys,
     scopes: { ...current.scopes, ...(patch.scopes ?? {}) },
     channels: patch.channels ? parseChannels(patch.channels) : current.channels,
+    callAreas: patch.callAreas ?? current.call_areas, // @plantilla-quitar(llamadas)
   });
   if (!checked.ok) {
     return { ok: false, error: checked.error, field: patch.name !== undefined ? "name" : patch.description !== undefined ? "description" : "permissions" };
   }
+
+  // @plantilla-desde(llamadas)
+  // Un área tiene que ser de este negocio, aunque el pedido se arme a mano.
+  const wantedAreas = callAreasOf(checked.role.permissions);
+  if (patch.callAreas && wantedAreas.length > 0) {
+    const { data: areaRows, error: areaError } = await ctx.supabase
+      .from("booking_categories")
+      .select("id")
+      .eq("workspace_id", ctx.workspace.id)
+      .is("parent_id", null)
+      .in("id", wantedAreas);
+    if (areaError) {
+      console.error("[roles] no pude comprobar las áreas:", areaError.message);
+      return { ok: false, error: "No pude guardar los cambios" };
+    }
+    if ((areaRows ?? []).length !== wantedAreas.length) return { ok: false, error: "Alguna de esas áreas ya no existe", field: "permissions" };
+  }
+  // @plantilla-hasta(llamadas)
 
   const allowed = assertCanEditRole(grantActorOf(ctx), { id: row.id, systemRole: null, permissions: current }, checked.role.permissions);
   if (!allowed.ok) return { ok: false, error: allowed.error, field: "permissions" };
@@ -371,7 +394,7 @@ export async function patchRole(
   };
 }
 
-const sortedPermissions = (p: RolePermissions) => ({ keys: [...p.keys].sort(), scopes: p.scopes, channels: canonicalChannels(p.channels) });
+const sortedPermissions = (p: RolePermissions) => ({ call_areas: [...(p.call_areas ?? [])].sort(), keys: [...p.keys].sort(), scopes: p.scopes, channels: canonicalChannels(p.channels) });
 
 /**
  * Deja el cambio en el historial, agrupado por sesion de edicion: si esta misma persona ya toco este
@@ -395,6 +418,12 @@ async function recordRoleEdit(
     }
     // La bandeja no se lista cuenta por cuenta: queda el resumen final ("todas las cuentas (todas)", "2 cuentas").
     if (!sameChannels(before.channels, after.channels)) scopes.bandeja = describeChannels(after.channels);
+    // @plantilla-desde(llamadas)
+    if (JSON.stringify([...(before.call_areas ?? [])].sort()) !== JSON.stringify([...(after.call_areas ?? [])].sort())) {
+      const n = after.call_areas?.length ?? 0;
+      scopes.areas_de_grabaciones = n === 1 ? "1 área" : `${n} áreas`;
+    }
+    // @plantilla-hasta(llamadas)
     const now = new Date();
     const service = await createServiceClient();
 

@@ -141,6 +141,13 @@ export const ANALYSIS_STATUSES: readonly CallAnalysisStatus[] = [
   "classifying", "needs_review", "pending", "analyzing", "analyzed", "not_applicable", "error",
 ];
 
+/** Que grabaciones ve esta persona, en una frase. */
+export function callScopeLabel(scope: string, role: string): string {
+  if (scope === "all" || role === "owner" || role === "admin") return "Todas las del equipo";
+  if (scope === "areas") return "Las de tus áreas, las tuyas y las de tus contactos";
+  return "Las tuyas y las de tus contactos";
+}
+
 /** El valor del filtro de area que trae lo que todavia no se clasifico. */
 export const UNCLASSIFIED_AREA = "sin";
 

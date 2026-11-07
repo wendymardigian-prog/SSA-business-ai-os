@@ -18,10 +18,12 @@
  *  - Lo mismo con la bandeja, cuenta por cuenta: no se da una cuenta que no ves, un alcance más
  *    ancho que el tuyo en esa cuenta, ni "responder" si no respondés. "Todas las cuentas" (que
  *    incluye las que se conecten después) solo la da quien la tiene (`canGrantChannels`).
+ *  - Lo mismo con las áreas de grabaciones: no se da un área que no se tiene (`callAreasExceed`).
  *  - Nadie se cambia su propio rol. Nadie edita el rol que tiene asignado (salvo Owner y Admin,
  *    que no dependen de un rol personalizado para tener lo que tienen).
  *  - Nadie toca al Owner.
  */
+import { callAreasExceed, type CallAreaPermissions } from "@/lib/auth/call-areas";
 import { canGrantChannels, type ChannelsConfig } from "@/lib/auth/channel-permissions";
 import {
   OWNER_ONLY_KEYS,
@@ -68,7 +70,7 @@ export type GrantResult =
 
 const deny = (reason: GrantDenial, error: string, keys?: string[]): GrantResult => ({ ok: false, reason, error, keys });
 
-const SCOPE_RANK: Record<PermissionScope, number> = { own: 0, own_unassigned: 1, all: 2 };
+const SCOPE_RANK: Record<PermissionScope, number> = { own: 0, own_unassigned: 1, areas: 2, all: 3 };
 
 const isAdminLike = (actor: GrantActor) => actor.role === "owner" || actor.role === "admin";
 
@@ -87,6 +89,8 @@ export function assertCanGrant(
     scopes?: Partial<Record<ScopedModule, PermissionScope>>;
     /** La bandeja que se quiere dar, y la que ya tenía el rol (al editar). */
     channels?: { wanted: ChannelsConfig; before: ChannelsConfig | null };
+    /** Las áreas de grabaciones que se quieren dar, y las que ya tenía el rol (al editar). */
+    callAreas?: { wanted: CallAreaPermissions; before: CallAreaPermissions | null };
   },
 ): GrantResult {
   const forbidden = grant.keys.filter((k) => OWNER_ONLY_KEYS.includes(k) || RESERVED_KEYS.includes(k));
@@ -107,6 +111,9 @@ export function assertCanGrant(
   }
 
   if (grant.channels && !canGrantChannels(actor.permissions.channels, grant.channels.wanted, grant.channels.before)) {
+    return deny("scope_too_wide", CANNOT_GRANT_MESSAGE);
+  }
+  if (grant.callAreas && callAreasExceed(grant.callAreas.wanted, grant.callAreas.before, actor.permissions)) {
     return deny("scope_too_wide", CANNOT_GRANT_MESSAGE);
   }
   return { ok: true };
@@ -158,6 +165,7 @@ export function assertCanAssignRole(
     keys: role.permissions.keys,
     scopes: role.permissions.scopes,
     channels: { wanted: role.permissions.channels, before: null },
+    callAreas: { wanted: role.permissions, before: null },
   });
 }
 
@@ -176,5 +184,5 @@ export function assertCanEditRole(
     return deny("own_role", "No podés editar el rol que tenés asignado.");
   }
   const added = diffGrant(role.permissions, after);
-  return assertCanGrant(actor, { ...added, channels: { wanted: after.channels, before: role.permissions.channels } });
+  return assertCanGrant(actor, { ...added, channels: { wanted: after.channels, before: role.permissions.channels }, callAreas: { wanted: after, before: role.permissions } });
 }
