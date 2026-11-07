@@ -149,6 +149,8 @@ export interface Kpi {
   changePercent: number | null;
   /** Cuando no se puede calcular, por que. */
   note?: string;
+  /** Que es esta cifra. */
+  tip: string;
 }
 
 /**
@@ -249,24 +251,28 @@ export function computeKpis(input: KpiInput): Kpi[] {
       label: "Seguidores",
       value: sum(followersNow),
       changePercent: changePercent(sum(followersNow), sum(followersBefore)),
+      tip: "Los seguidores de las cuentas al final del período. Es un total acumulado: no se suma día por día.",
     },
     {
       key: "reach",
       label: "Alcance y vistas",
       value: reachOf(input.postDaily),
       changePercent: changePercent(reachOf(input.postDaily), reachOf(input.previous.postDaily)),
+      tip: "El alcance de las publicaciones del período. Si una red no informa alcance, se usan sus vistas o impresiones. No son personas únicas: alguien que vio dos publicaciones cuenta dos veces.",
     },
     {
       key: "posts",
       label: "Publicaciones",
       value: input.posts.length,
       changePercent: changePercent(input.posts.length, input.previous.posts.length),
+      tip: "Cuántas publicaciones salieron en el período.",
     },
     {
       key: "engagement",
       label: "Engagement promedio",
       value: engagementOf(input.postDaily),
       changePercent: changePercent(engagementOf(input.postDaily), engagementOf(input.previous.postDaily)),
+      tip: "El promedio del engagement de cada publicación, en %: me gusta, comentarios, compartidos y guardados ÷ alcance. Se promedia por publicación para que una viral no tape a las demás.",
     },
     {
       key: "follows",
@@ -274,6 +280,7 @@ export function computeKpis(input: KpiInput): Kpi[] {
       value: followsOf(input.postDaily),
       changePercent: changePercent(followsOf(input.postDaily), followsOf(input.previous.postDaily)),
       note: "Solo Instagram lo informa.",
+      tip: "Las personas que empezaron a seguir la cuenta por una publicación del período.",
     },
   ];
 }

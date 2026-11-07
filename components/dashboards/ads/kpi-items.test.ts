@@ -26,6 +26,12 @@ describe("las tarjetas de arriba del dashboard de Ads", () => {
     expect(card.tip).toMatch(/primer contacto/);
   });
 
+  it("todas las cifras explican qué son", () => {
+    const items = buildKpiItems({ totals, previous: null, currency: "USD", crmLeads: { leadsNew: 1, leadsTotal: 1, cplNew: 1, cplTotal: 1, leadsTotalIsSum: false } });
+    expect(items.filter((i) => !i.tip).map((i) => i.key)).toEqual([]);
+    expect(items.find((i) => i.key === "leads")!.tip).toMatch(/reporta Meta/);
+  });
+
   it("sin leads el CPL es «—» y no 0", () => {
     const items = buildKpiItems({ totals, previous: null, currency: "USD", crmLeads: { leadsNew: 0, leadsTotal: 0, cplNew: null, cplTotal: null, leadsTotalIsSum: false } });
     expect(items[8].sub).toBe("CPL — nuevo · — total");

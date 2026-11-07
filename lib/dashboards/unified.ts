@@ -139,6 +139,6 @@ export function comparison(view: UnifiedView): ComparisonRow[] {
       paid: null,
     },
     { label: "Gasto", organic: 0, paid: view.paid?.spend ?? null },
-    { label: "Leads", organic: null, paid: view.paid?.leads ?? null },
+    { label: "Leads", organic: null, paid: view.paid?.leads ?? null, note: "Los que reporta Meta, no los de tu CRM." },
   ];
 }

@@ -17,6 +17,7 @@ import {
   ctrByAge,
   dailyTableRows,
   deviceSummary,
+  funnelNote,
   funnelSteps,
   genderTotals,
   hasAnyPoint,
@@ -350,10 +351,10 @@ describe("el embudo", () => {
     const steps = funnelSteps(
       computeTotals([row({ date: "2026-10-01", impressions: 10000, outboundClicks: 200, leads: 20 })]),
     );
-    expect(steps).toEqual([
-      { label: "Impresiones", value: 10000, percent: 100 },
-      { label: "Clics", value: 200, percent: 2 },
-      { label: "Leads", value: 20, percent: 10 },
+    expect(steps?.map(({ label, value, percent, source }) => ({ label, value, percent, source }))).toEqual([
+      { label: "Impresiones", value: 10000, percent: 100, source: "meta" },
+      { label: "Clics", value: 200, percent: 2, source: "meta" },
+      { label: "Leads Meta", value: 20, percent: 10, source: "meta" },
     ]);
   });
 
@@ -361,10 +362,61 @@ describe("el embudo", () => {
     const steps = funnelSteps(
       computeTotals([row({ date: "2026-10-01", impressions: 100, clicks: 10, leads: 5, purchases: 1 })]),
     );
-    expect(steps?.[3]).toEqual({ label: "Compras", value: 1, percent: 20 });
+    expect(steps?.[3]).toMatchObject({ label: "Compras Meta", value: 1, percent: 20 });
   });
 
   it("sin leads ni compras no hay embudo", () => {
     expect(funnelSteps(computeTotals([row({ date: "2026-10-01", impressions: 100 })]))).toBeNull();
+    expect(funnelSteps(computeTotals([row({ date: "2026-10-01", impressions: 100 })]), { leadsTotal: 0, bookings: 0, sales: 0 })).toBeNull();
+  });
+
+  describe("con lo que dice el CRM", () => {
+    const totals = computeTotals([row({ date: "2026-10-01", impressions: 1000, outboundClicks: 100, leads: 10 })]);
+
+    it("suma leads, agendas y ventas, cada uno contra el paso anterior", () => {
+      const steps = funnelSteps(totals, { leadsTotal: 8, bookings: 4, sales: 1 });
+      expect(steps?.map((s) => [s.label, s.value, s.percent, s.source])).toEqual([
+        ["Impresiones", 1000, 100, "meta"],
+        ["Clics", 100, 10, "meta"],
+        ["Leads Meta", 10, 10, "meta"],
+        ["Leads CRM", 8, null, "crm"],
+        ["Agendas", 4, 50, "crm"],
+        ["Ventas", 1, 25, "crm"],
+      ]);
+    });
+
+    it("un paso del CRM en cero no se muestra", () => {
+      const steps = funnelSteps(totals, { leadsTotal: 8, bookings: 0, sales: 2 });
+      expect(steps?.map((s) => s.label)).toEqual(["Impresiones", "Clics", "Leads Meta", "Leads CRM", "Ventas"]);
+      expect(steps?.[4].percent).toBe(25);
+    });
+
+    it("sin leads de Meta, el embudo sigue con los del CRM y sí se compara contra los clics", () => {
+      const steps = funnelSteps(computeTotals([row({ date: "2026-10-01", impressions: 1000, outboundClicks: 100 })]), { leadsTotal: 5, bookings: 0, sales: 0 });
+      expect(steps?.map((s) => [s.label, s.percent])).toEqual([["Impresiones", 100], ["Clics", 10], ["Leads CRM", 5]]);
+    });
+
+    it("cada paso explica de donde sale", () => {
+      const steps = funnelSteps(totals, { leadsTotal: 8, bookings: 4, sales: 1 }) ?? [];
+      expect(steps.every((s) => s.tip.length > 20)).toBe(true);
+      expect(steps.find((s) => s.key === "leadsMeta")?.tip).toContain("reporta Meta");
+      expect(steps.find((s) => s.key === "leadsCrm")?.tip).toContain("CRM");
+    });
+  });
+
+  it("los clics dicen si son salientes o todos", () => {
+    const outbound = funnelSteps(computeTotals([row({ date: "2026-10-01", impressions: 10, outboundClicks: 2, clicks: 5, leads: 1 })]));
+    const all = funnelSteps(computeTotals([row({ date: "2026-10-01", impressions: 10, clicks: 5, leads: 1 })]));
+    expect(outbound?.[1]).toMatchObject({ value: 2 });
+    expect(outbound?.[1].tip).toContain("salientes");
+    expect(all?.[1]).toMatchObject({ value: 5 });
+    expect(all?.[1].tip).toContain("Todos los clics");
+  });
+
+  it("la nota dice por que falta un paso", () => {
+    expect(funnelNote({ leadsTotal: 3, bookings: 0, sales: 0 }, false)).toBe("Sin agendas ni ventas atribuidas en este período.");
+    expect(funnelNote({ leadsTotal: 3, bookings: 2, sales: 0 }, false)).toBe("Sin ventas atribuidas en este período.");
+    expect(funnelNote({ leadsTotal: 3, bookings: 2, sales: 1 }, false)).toBeNull();
+    expect(funnelNote(null, true)).toContain("No pude leer");
   });
 });
