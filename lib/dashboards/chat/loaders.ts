@@ -5,8 +5,10 @@
  * bloque aparece cuando llega el suyo, en vez de que la pantalla entera espere a
  * la consulta mas lenta. Ninguno lanza (ver `result.ts`).
  *
- * Todas las funciones son SECURITY INVOKER y se llaman con el cliente del
- * usuario: la RLS aplica el scope de leads sin que la app filtre nada.
+ * Se llaman con el cliente del usuario, asi la app no filtra nada: el alcance de
+ * leads lo aplica la base. Las funciones pesadas (`chat_dashboard_core`, `_v2`) son
+ * SECURITY DEFINER y deciden el permiso una vez por conversacion, con la misma regla
+ * que la RLS (`can_see_conversation`, ver la 00305); el resto son INVOKER.
  *
  * Todas pasan por `chatRpc` (`rpc.ts`): la cola, el reintento y el texto claro.
  */
@@ -125,35 +127,71 @@ function numbers(row: Record<string, unknown> | undefined, response: Record<stri
   };
 }
 
-export function loadCards(client: Db, a: ChatQueryArgs): Promise<BlockResult<CardsBlock>> {
+/** Lo que devuelve `chat_dashboard_core` (00305). */
+export interface ChatCore {
+  numbers: Record<string, unknown>;
+  numbers_prev: Record<string, unknown> | null;
+  response: Record<string, unknown>;
+  response_prev: Record<string, unknown> | null;
+  trends: TrendRow[];
+  response_daily: ResponseDayRow[];
+  first_responder: Array<{ responder: string; episodes: number }> | null;
+  agent: AgentRow | null;
+  agent_prev: AgentRow | null;
+  agent_weekly: AgentWeekRow[] | null;
+}
+
+/**
+ * Cifras, tendencias y seccion del agente salen de UNA consulta. Cada bloque la
+ * pide y comparten la que esta en curso (`blocks.ts`).
+ */
+export async function loadChatCore(client: Db, a: ChatQueryArgs, includeAgent: boolean): Promise<{ data: ChatCore } | { error: string }> {
+  const res = await chatRpc(client, "chat_dashboard_core", {
+    p_workspace_id: a.workspaceId,
+    p_from: a.range.from,
+    p_to: a.range.to,
+    p_prev_from: a.previous.from,
+    p_prev_to: a.previous.to,
+    p_channel: a.channel,
+    p_author: a.author,
+    p_tz: a.timezone,
+    p_include_agent: includeAgent,
+  });
+  if (res.error) return { error: res.error.message };
+  return { data: res.data as ChatCore };
+}
+
+/** Lo que falta para armar un bloque: la consulta compartida y un error se dicen igual. */
+export type LoadCore = () => Promise<BlockResult<ChatCore>>;
+
+/**
+ * Corre un bloque que sale de la consulta compartida.
+ *
+ * Adentro de `blockResult`: un `.then(map)` suelto que lanzara rechazaria la promesa
+ * que lee `use()`, y eso si tira la pantalla abajo.
+ */
+function fromCore<T>(label: string, core: LoadCore, map: (data: ChatCore) => T): Promise<BlockResult<T>> {
+  return blockResult<T>(label, async () => {
+    const result = await core();
+    if (!result.ok) return { error: result.error };
+    return { data: map(result.data) };
+  });
+}
+
+export function loadCards(client: Db, a: ChatQueryArgs, core: LoadCore): Promise<BlockResult<CardsBlock>> {
   return blockResult<CardsBlock>("los números principales", async () => {
-    const prevArgs = {
-      p_workspace_id: a.workspaceId,
-      p_from: a.previous.from,
-      p_to: a.previous.to,
-      p_channel: a.channel,
-      p_author: a.author,
-    };
-    const none = Promise.resolve({ data: null, error: null });
-    const [cur, prev, curResponse, prevResponse, waiting] = await Promise.all([
-      chatRpc(client, "chat_dashboard_numbers", { ...common(a), p_author: a.author }),
-      a.previous.from ? chatRpc(client, "chat_dashboard_numbers", prevArgs) : none,
-      chatRpc(client, "chat_dashboard_response_time", { ...common(a), p_author: a.author }),
-      a.previous.from ? chatRpc(client, "chat_dashboard_response_time", prevArgs) : none,
+    const [result, waiting] = await Promise.all([
+      core(),
       chatRpc(client, "chat_waiting_now_v2", { p_workspace_id: a.workspaceId, p_channel: a.channel }),
     ]);
-    for (const res of [cur, curResponse, waiting]) {
-      if (res.error) return { error: res.error.message };
-    }
-    const first = (res: { data: unknown }) => ((res.data ?? []) as Record<string, unknown>[])[0];
-    const w = first(waiting);
-    // Si falla solo el periodo anterior, las cifras se muestran igual, sin la
-    // comparacion: no saber contra que comparar no es no saber el numero.
-    const hasPrevious = a.previous.from && !prev.error && !prevResponse.error;
+    if (!result.ok) return { error: result.error };
+    if (waiting.error) return { error: waiting.error.message };
+    const w = ((waiting.data ?? []) as Record<string, unknown>[])[0];
+    const data = result.data;
     return {
       data: {
-        current: numbers(first(cur), first(curResponse)),
-        previous: hasPrevious ? numbers(first(prev), first(prevResponse)) : null,
+        current: numbers(data.numbers, data.response),
+        previous: data.numbers_prev ? numbers(data.numbers_prev, data.response_prev ?? undefined) : null,
         waitingNow: {
           canReply: Number(w?.can_reply ?? 0),
           windowClosed: Number(w?.window_closed ?? 0),
@@ -174,20 +212,12 @@ export interface TrendsBlock {
   totals: ReturnType<typeof trendTotals>;
 }
 
-export function loadTrends(client: Db, a: ChatQueryArgs): Promise<BlockResult<TrendsBlock>> {
-  return blockResult<TrendsBlock>("las tendencias", async () => {
-    // La serie de siempre y, aparte, la del tiempo de respuesta (00261): se
-    // juntan por dia antes de agrupar.
-    const [res, response] = await Promise.all([
-      chatRpc(client, "chat_dashboard_trends", { ...common(a), p_author: a.author, p_tz: a.timezone }),
-      chatRpc(client, "chat_dashboard_response_time_daily", { ...common(a), p_author: a.author, p_tz: a.timezone }),
-    ]);
-    if (response.error) return { error: response.error.message };
-    return fromRpc<TrendRow, TrendsBlock>(res, (rows) => {
-      const weekly = shouldGroupWeekly(a.days);
-      const buckets = bucketTrends(withResponseTimes(rows, (response.data ?? []) as ResponseDayRow[]), weekly);
-      return { buckets, weekly, totals: trendTotals(buckets) };
-    });
+export function loadTrends(a: ChatQueryArgs, core: LoadCore): Promise<BlockResult<TrendsBlock>> {
+  return fromCore("las tendencias", core, (data) => {
+    // La serie de siempre y la del tiempo de respuesta se juntan por dia antes de agrupar.
+    const weekly = shouldGroupWeekly(a.days);
+    const buckets = bucketTrends(withResponseTimes(data.trends, data.response_daily), weekly);
+    return { buckets, weekly, totals: trendTotals(buckets) };
   });
 }
 
@@ -202,39 +232,19 @@ export interface AgentBlock {
   previousPercent: Record<string, number | null>;
 }
 
-export function loadAgent(client: Db, a: ChatQueryArgs): Promise<BlockResult<AgentBlock>> {
-  return blockResult<AgentBlock>("las métricas del agente", async () => {
-    const [cur, prev, weekly] = await Promise.all([
-      chatRpc(client, "chat_dashboard_agent", common(a)),
-      a.previous.from
-        ? chatRpc(client, "chat_dashboard_agent", {
-            p_workspace_id: a.workspaceId,
-            p_from: a.previous.from,
-            p_to: a.previous.to,
-            p_channel: a.channel,
-          })
-        : Promise.resolve({ data: null, error: null }),
-      chatRpc(client, "chat_dashboard_agent_weekly", { p_workspace_id: a.workspaceId, p_channel: a.channel, p_tz: a.timezone, p_weeks: 8 }),
-    ]);
-    if (cur.error) return { error: cur.error.message };
-    if (weekly.error) return { error: weekly.error.message };
-
-    const row = ((cur.data ?? []) as AgentRow[])[0] ?? null;
-    const weeks = (weekly.data ?? []) as AgentWeekRow[];
-    const prevRow = prev.error ? null : (((prev.data ?? []) as AgentRow[])[0] ?? null);
-
+export function loadAgent(core: LoadCore): Promise<BlockResult<AgentBlock>> {
+  return fromCore("las métricas del agente", core, (data) => {
+    const row = data.agent;
+    const prevRow = data.agent_prev;
     const prevTotal = Number(prevRow?.new_conversations ?? 0);
     const pct = (n: number | undefined) => (prevTotal > 0 ? Math.round((Number(n ?? 0) / prevTotal) * 100) : null);
-
     return {
-      data: {
-        newConversations: Number(row?.new_conversations ?? 0),
-        rates: agentRates(row, weeks),
-        previousPercent: {
-          acted: pct(prevRow?.agent_acted),
-          took_first: pct(prevRow?.agent_took_first),
-          escalated: pct(prevRow?.agent_escalated),
-        },
+      newConversations: Number(row?.new_conversations ?? 0),
+      rates: agentRates(row, data.agent_weekly ?? []),
+      previousPercent: {
+        acted: pct(prevRow?.agent_acted),
+        took_first: pct(prevRow?.agent_took_first),
+        escalated: pct(prevRow?.agent_escalated),
       },
     };
   });
@@ -245,11 +255,8 @@ export interface FirstResponderBlock {
   total: number;
 }
 
-export function loadFirstResponder(client: Db, a: ChatQueryArgs): Promise<BlockResult<FirstResponderBlock>> {
-  return blockResult("quién respondió primero", async () => {
-    const res = await chatRpc(client, "chat_dashboard_first_responder", common(a));
-    return fromRpc<{ responder: string; episodes: number }, FirstResponderBlock>(res, (rows) => firstResponderSlices(rows));
-  });
+export function loadFirstResponder(core: LoadCore): Promise<BlockResult<FirstResponderBlock>> {
+  return fromCore("quién respondió primero", core, (data) => firstResponderSlices(data.first_responder ?? []));
 }
 
 export function loadEscalationReasons(client: Db, a: ChatQueryArgs): Promise<BlockResult<EscalationReason[]>> {
@@ -295,7 +302,7 @@ export function loadTeam(
   currentUserId?: string,
 ): Promise<BlockResult<TeamRow[]>> {
   return blockResult("la tabla de quién responde", async () => {
-    const res = await chatRpc(client, "chat_dashboard_team", common(a));
+    const res = await chatRpc(client, "chat_dashboard_team_v2", common(a));
     return fromRpc<TeamSqlRow, TeamRow[]>(res, (rows) => buildTeamRows(rows, members, currentUserId));
   });
 }
@@ -312,7 +319,7 @@ export interface PatternsBlock {
 export function loadPatterns(client: Db, a: ChatQueryArgs): Promise<BlockResult<PatternsBlock>> {
   return blockResult<PatternsBlock>("los patrones de mensajes", async () => {
     const [out, inb] = await Promise.all([
-      chatRpc(client, "chat_dashboard_patterns", {
+      chatRpc(client, "chat_dashboard_patterns_v2", {
         p_workspace_id: a.workspaceId,
         p_direction: "outbound",
         p_from: a.range.from,
@@ -320,7 +327,7 @@ export function loadPatterns(client: Db, a: ChatQueryArgs): Promise<BlockResult<
         p_channel: a.channel,
         p_author: a.author,
       }),
-      chatRpc(client, "chat_dashboard_patterns", {
+      chatRpc(client, "chat_dashboard_patterns_v2", {
         p_workspace_id: a.workspaceId,
         p_direction: "inbound",
         p_from: a.range.from,

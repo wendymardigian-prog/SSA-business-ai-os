@@ -26,9 +26,9 @@ export const dynamic = "force-dynamic";
 /**
  * Dashboard de Chat (Bloques 2e y 3, F14-F18, F22).
  *
- * Todo se calcula con funciones SQL SECURITY INVOKER: se llaman con el cliente
- * del usuario, asi la RLS aplica el scope de leads sin lógica extra acá. Un
- * Member ve solo sus conversaciones; Owner y Admin, todo el workspace.
+ * Todo se calcula con funciones SQL que se llaman con el cliente del usuario: la
+ * base aplica el scope de leads sin lógica extra acá. Un Member ve solo sus
+ * conversaciones; Owner y Admin, todo el workspace.
  *
  * **Las consultas de los bloques NO se esperan acá**: se crean las promesas y se
  * pasan al componente, que muestra cada bloque cuando llega el suyo. Lo único
@@ -105,6 +105,7 @@ export default async function ChatDashboardPage({
     args: chatQueryArgs({ workspaceId: workspace.id, filters, timezone }),
     userId: user.id,
     generations,
+    includeAgent: queryAgentSection,
     members: async () => teamMembers,
     rules: async () => (agent ? loadRuleNames(supabase, agent.id) : []),
   };

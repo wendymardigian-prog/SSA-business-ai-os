@@ -25,6 +25,7 @@ import { UNCACHED_BLOCKS, type ChatBlockData, type ChatBlockKey } from "./block-
 import { minStoredAtFor, type ChatGenerations } from "./generation";
 import {
   chatQueryArgs,
+  loadChatCore,
   loadAgent,
   loadAgentActions,
   loadCards,
@@ -36,9 +37,11 @@ import {
   loadRuleResults,
   loadTeam,
   loadTrends,
+  type ChatCore,
   type ChatQueryArgs,
+  type LoadCore,
 } from "./loaders";
-import { fail } from "./result";
+import { blockResult, fail } from "./result";
 import type { BlockResult } from "./types";
 
 type Db = SupabaseClient<Database>;
@@ -61,11 +64,43 @@ export interface ChatBlockContext {
   generations: ChatGenerations;
   /** Saltear lo guardado: "Reintentar" tiene que volver a preguntar. */
   skipStored?: boolean;
+  /**
+   * Si la pantalla va a mostrar la seccion del agente. La pagina lo sabe; para que las
+   * cifras compartan la consulta con esa seccion, las dos tienen que pedir la misma.
+   */
+  includeAgent: boolean;
   members: () => Promise<ChatTeamMember[]>;
   rules: () => Promise<ChatRuleName[]>;
 }
 
 type Loaders = { [K in ChatBlockKey]: (ctx: ChatBlockContext) => Promise<BlockResult<ChatBlockData[K]>> };
+
+function cacheKeyFor(ctx: ChatBlockContext, block: string): string {
+  return chatBlockCacheKey({
+    userId: ctx.userId,
+    workspaceId: ctx.args.workspaceId,
+    block,
+    channel: ctx.args.channel,
+    author: ctx.args.author,
+    rangeFrom: ctx.args.range.from,
+    rangeTo: ctx.args.range.to,
+    timezone: ctx.args.timezone,
+  });
+}
+
+/**
+ * La consulta compartida de cifras, tendencias y agente: pedida por varios bloques a
+ * la vez, corre una sola (`block-cache.ts` comparte la que esta en curso). Con o sin
+ * los datos del agente son dos entradas distintas: sin ellos, la consulta es mas barata.
+ */
+function coreFor(ctx: ChatBlockContext, includeAgent: boolean): LoadCore {
+  return () =>
+    chatBlockCache().get<ChatCore>(
+      cacheKeyFor(ctx, includeAgent ? "core:agent" : "core"),
+      () => blockResult<ChatCore>("los números del dashboard", () => loadChatCore(ctx.client, ctx.args, includeAgent)),
+      { minStoredAt: ctx.generations.all, skipStored: ctx.skipStored },
+    );
+}
 
 /** Los datos aparte de un bloque pueden fallar: no pueden tumbar la promesa que lee `use()`. */
 async function withExtra<E, T>(
@@ -84,10 +119,10 @@ async function withExtra<E, T>(
 }
 
 const LOADERS: Loaders = {
-  cards: (c) => loadCards(c.client, c.args),
-  trends: (c) => loadTrends(c.client, c.args),
-  agent: (c) => loadAgent(c.client, c.args),
-  firstResponder: (c) => loadFirstResponder(c.client, c.args),
+  cards: (c) => loadCards(c.client, c.args, coreFor(c, c.includeAgent)),
+  trends: (c) => loadTrends(c.args, coreFor(c, c.includeAgent)),
+  agent: (c) => loadAgent(coreFor(c, true)),
+  firstResponder: (c) => loadFirstResponder(coreFor(c, true)),
   escalations: (c) => loadEscalationReasons(c.client, c.args),
   actions: (c) => loadAgentActions(c.client, c.args),
   rules: (c) => withExtra("reglas", c.rules, (rules) => loadRuleResults(c.client, c.args, rules)),
@@ -102,16 +137,7 @@ export function loadChatBlock<K extends ChatBlockKey>(key: K, ctx: ChatBlockCont
   const load = () => LOADERS[key](ctx);
   if (UNCACHED_BLOCKS.includes(key)) return load();
   return chatBlockCache().get<ChatBlockData[K]>(
-    chatBlockCacheKey({
-      userId: ctx.userId,
-      workspaceId: ctx.args.workspaceId,
-      block: key,
-      channel: ctx.args.channel,
-      author: ctx.args.author,
-      rangeFrom: ctx.args.range.from,
-      rangeTo: ctx.args.range.to,
-      timezone: ctx.args.timezone,
-    }),
+    cacheKeyFor(ctx, key),
     load,
     { minStoredAt: minStoredAtFor(key, ctx.generations), skipStored: ctx.skipStored },
   );
@@ -146,6 +172,8 @@ export async function chatBlockContextFromSession(
     userId: user.id,
     generations,
     skipStored,
+    // Un bloque suelto del agente pide esos datos por su cuenta; el resto no los necesita.
+    includeAgent: false,
     members: async () =>
       isAdminRole(role)
         ? (await getWorkspaceMembers(workspace.id)).map((m) => ({ id: m.userId, label: m.name, role: m.role }))

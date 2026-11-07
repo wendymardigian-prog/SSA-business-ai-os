@@ -7192,6 +7192,54 @@ export interface Database {
           drafts_approved_unedited_pct: number | null;
         }[];
       };
+      /** Lo mismo, leyendo los mensajes de una sola pasada (migracion 00305). */
+      chat_dashboard_team_v2: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: {
+          author: string;
+          conversations: number;
+          messages_out: number;
+          first_response_median_seconds: number | null;
+          reply_median_seconds: number | null;
+          replies_under_1h_pct: number | null;
+          escalations_received: number | null;
+          drafts_approved: number | null;
+          drafts_approved_unedited_pct: number | null;
+        }[];
+      };
+      /**
+       * Cifras, tendencias y seccion del agente, de una sola pasada (migracion 00305).
+       * La forma del jsonb esta en `ChatCore` (lib/dashboards/chat/loaders.ts).
+       */
+      chat_dashboard_core: {
+        Args: {
+          p_workspace_id: string;
+          p_from: string | null;
+          p_to: string | null;
+          p_prev_from: string | null;
+          p_prev_to: string | null;
+          p_channel?: string | null;
+          p_author?: string | null;
+          p_tz?: string;
+          p_include_agent?: boolean;
+        };
+        Returns: Record<string, unknown>;
+      };
+      /** Los mensajes que la persona puede ver, sin texto (migracion 00305). */
+      chat_visible_messages: {
+        Args: { p_workspace_id: string; p_channel?: string | null };
+        Returns: {
+          id: string;
+          conversation_id: string;
+          contact_id: string;
+          channel_id: string;
+          direction: string;
+          origin: string | null;
+          sent_by_user_id: string | null;
+          status: string | null;
+          created_at: string;
+        }[];
+      };
       /** Serie densa por dia, por grupo de autor y con la mediana diaria (00110). */
       chat_dashboard_trends: {
         Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_author?: string | null; p_tz?: string };
@@ -7249,6 +7297,29 @@ export interface Database {
       };
       /** Patrones con text_id, autor principal y % que obtuvo respuesta (migracion 00111). */
       chat_dashboard_patterns: {
+        Args: {
+          p_workspace_id: string;
+          p_direction: string;
+          p_from: string | null;
+          p_to: string | null;
+          p_channel?: string | null;
+          p_author?: string | null;
+        };
+        Returns: {
+          category_id: string;
+          category_name: string;
+          description: string | null;
+          is_fallback: boolean;
+          message_count: number;
+          text_count: number;
+          top_author: string | null;
+          reply_rate: number | null;
+          rank: number;
+          top_variants: Json;
+        }[];
+      };
+      /** Lo mismo, con el permiso decidido una vez por conversacion (migracion 00305). */
+      chat_dashboard_patterns_v2: {
         Args: {
           p_workspace_id: string;
           p_direction: string;
