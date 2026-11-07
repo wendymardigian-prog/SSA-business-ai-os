@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { memoryDb } from "@/lib/designer/testing/memory-db";
+import { memoryDb } from "@/lib/designer/testing/editor-memory-db";
 
 const WS = "11111111-2222-3333-4444-555555555555";
 const OTHER_WS = "99999999-2222-3333-4444-555555555555";

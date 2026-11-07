@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyDoc, type DesignDoc } from "./doc/schema";
 import type { CoreEnv } from "./designs-core";
 import { archiveCore, copyName, deleteCore, duplicateCore, listVersionsCore, renameCore, restoreVersionCore, saveDocCore, updateTemplateSettingsCore } from "./designs-ops";
-import { memoryDb, type MemoryDb, type Row } from "./testing/memory-db";
+import { memoryDb, type MemoryDb, type Row } from "./testing/editor-memory-db";
 
 // F48: guardar una versión no pide nada al servicio de render. Si estos módulos se llamaran, estos espías lo dirían.
 const scheduleJob = vi.fn();

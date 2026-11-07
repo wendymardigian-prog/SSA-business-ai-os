@@ -1,125 +1,232 @@
 /**
- * Una base de datos EN MEMORIA para probar las operaciones del editor con lo que de verdad hace la base:
- * `UPDATE … WHERE rev = $rev` que no toca nada si la `rev` cambió, filas que se guardan y se leen, borrados.
- *
- * Solo implementa lo que usan `designs-core` y `designs-ops` (select, insert, update, delete, eq, is, order, limit,
- * maybeSingle, single y el conteo con `head`). No es una base: sirve para comprobar el COMPORTAMIENTO de las
- * operaciones, no la sintaxis de las consultas.
- *
- * Solo para tests.
+ * Un cliente de Supabase en memoria, con lo justo que usan las acciones y el job de render del Diseñador IA
+ * (tablas con `select / insert / update / delete`, filtros `eq / in / is`, `maybeSingle / single`, y un Storage
+ * con `upload / download / list / remove / createSignedUrl`). Solo para tests: nunca habla con nadie.
  */
 
 export type Row = Record<string, unknown>;
 
 interface Filter {
+  op: "eq" | "neq" | "in" | "is";
   column: string;
-  kind: "eq" | "is";
   value: unknown;
 }
 
-export interface MemoryDb {
-  client: any;
-  tables: Record<string, Row[]>;
-  /** Cada escritura, en orden: para comprobar qué se escribió. */
-  log: Array<{ table: string; op: "insert" | "update" | "delete"; values?: Row }>;
-  /** Cada tabla que se tocó (lectura o escritura): para comprobar que NO se tocó la cola de jobs. */
-  touched: Set<string>;
-  /** Falla la próxima escritura a esa tabla con ese error. */
-  failNext(table: string, error?: { code?: string; message: string }): void;
+export interface StoredObject {
+  bytes: Uint8Array;
+  contentType: string;
 }
 
-export function memoryDb(initial: Record<string, Row[]> = {}, clock: () => Date = () => new Date()): MemoryDb {
-  const tables: Record<string, Row[]> = {};
-  for (const [name, rows] of Object.entries(initial)) tables[name] = rows.map((r) => ({ ...r }));
-  const log: MemoryDb["log"] = [];
-  const touched = new Set<string>();
-  const failures = new Map<string, { code?: string; message: string }>();
-  let counter = 0;
+let counter = 0;
 
-  function builder(table: string) {
-    touched.add(table);
-    tables[table] ??= [];
-    const state = {
-      op: "select" as "select" | "insert" | "update" | "delete",
-      values: undefined as Row | undefined,
-      filters: [] as Filter[],
-      order: null as { column: string; ascending: boolean } | null,
-      limit: null as number | null,
-      count: false,
-      head: false,
-      returning: false,
-    };
+class Query implements PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }> {
+  private op: "select" | "insert" | "update" | "delete" = "select";
+  private payload: Row | Row[] | null = null;
+  private filters: Filter[] = [];
+  private returning = false;
+  private mode: "many" | "maybe" | "single" = "many";
+  private max: number | null = null;
 
-    const matches = (row: Row) =>
-      state.filters.every((f) => (f.kind === "is" ? (row[f.column] ?? null) === f.value : row[f.column] === f.value));
+  constructor(
+    private readonly db: MemoryDb,
+    private readonly table: string,
+  ) {}
 
-    function run(): { data: unknown; error: { code?: string; message: string } | null; count: number | null } {
-      if (state.op !== "select") {
-        const failure = failures.get(table);
-        if (failure) {
-          failures.delete(table);
-          return { data: null, error: failure, count: null };
-        }
-      }
-      if (state.op === "insert") {
-        const row: Row = { id: `${table}-${++counter}`, created_at: clock().toISOString(), ...(state.values ?? {}) };
-        tables[table].push(row);
-        log.push({ table, op: "insert", values: state.values });
-        return { data: state.returning ? [row] : null, error: null, count: null };
-      }
-      let rows = tables[table].filter(matches);
-      if (state.op === "update") {
-        for (const row of rows) Object.assign(row, state.values);
-        log.push({ table, op: "update", values: state.values });
-        return { data: state.returning ? rows.map((r) => ({ ...r })) : null, error: null, count: null };
-      }
-      if (state.op === "delete") {
-        tables[table] = tables[table].filter((r) => !rows.includes(r));
-        log.push({ table, op: "delete" });
-        return { data: null, error: null, count: null };
-      }
-      if (state.order) {
-        const { column, ascending } = state.order;
-        rows = [...rows].sort((a, b) => (String(a[column]) < String(b[column]) ? -1 : String(a[column]) > String(b[column]) ? 1 : 0) * (ascending ? 1 : -1));
-      }
-      const count = state.count ? rows.length : null;
-      if (state.head) return { data: null, error: null, count };
-      if (state.limit !== null) rows = rows.slice(0, state.limit);
-      return { data: rows.map((r) => ({ ...r })), error: null, count };
-    }
-
-    const single = (required: boolean) => {
-      const result = run();
-      const rows = Array.isArray(result.data) ? result.data : [];
-      return Promise.resolve({ data: rows[0] ?? null, error: result.error ?? (required && rows.length === 0 ? { message: "sin filas" } : null), count: result.count });
-    };
-
-    const b: Record<string, unknown> = {
-      select: (_columns?: string, options?: { count?: string; head?: boolean }) => {
-        if (state.op === "insert" || state.op === "update") state.returning = true;
-        if (options?.count) state.count = true;
-        if (options?.head) state.head = true;
-        return b;
-      },
-      insert: (values: Row) => ((state.op = "insert"), (state.values = values), b),
-      update: (values: Row) => ((state.op = "update"), (state.values = values), b),
-      delete: () => ((state.op = "delete"), b),
-      eq: (column: string, value: unknown) => (state.filters.push({ column, kind: "eq", value }), b),
-      is: (column: string, value: unknown) => (state.filters.push({ column, kind: "is", value }), b),
-      order: (column: string, options?: { ascending?: boolean }) => ((state.order = { column, ascending: options?.ascending ?? true }), b),
-      limit: (n: number) => ((state.limit = n), b),
-      maybeSingle: () => single(false),
-      single: () => single(true),
-      then: (ok: (v: unknown) => unknown, bad?: (e: unknown) => unknown) => Promise.resolve(run()).then(ok, bad),
-    };
-    return b;
+  select(_columns?: string): this {
+    if (this.op !== "select") this.returning = true;
+    return this;
+  }
+  insert(values: Row | Row[]): this {
+    this.op = "insert";
+    this.payload = values;
+    return this;
+  }
+  update(values: Row): this {
+    this.op = "update";
+    this.payload = values;
+    return this;
+  }
+  delete(): this {
+    this.op = "delete";
+    return this;
+  }
+  eq(column: string, value: unknown): this {
+    this.filters.push({ op: "eq", column, value });
+    return this;
+  }
+  neq(column: string, value: unknown): this {
+    this.filters.push({ op: "neq", column, value });
+    return this;
+  }
+  in(column: string, value: unknown[]): this {
+    this.filters.push({ op: "in", column, value });
+    return this;
+  }
+  is(column: string, value: unknown): this {
+    this.filters.push({ op: "is", column, value });
+    return this;
+  }
+  order(): this {
+    return this;
+  }
+  limit(n: number): this {
+    this.max = n;
+    return this;
+  }
+  maybeSingle(): Promise<{ data: unknown; error: { message: string; code?: string } | null }> {
+    this.mode = "maybe";
+    return this.exec();
+  }
+  single(): Promise<{ data: unknown; error: { message: string; code?: string } | null }> {
+    this.mode = "single";
+    return this.exec();
+  }
+  then<T1 = { data: unknown; error: { message: string; code?: string } | null }, T2 = never>(
+    onfulfilled?: ((value: { data: unknown; error: { message: string; code?: string } | null }) => T1 | PromiseLike<T1>) | null,
+    onrejected?: ((reason: unknown) => T2 | PromiseLike<T2>) | null,
+  ): PromiseLike<T1 | T2> {
+    return this.exec().then(onfulfilled, onrejected);
   }
 
-  return {
-    client: { from: (table: string) => builder(table) },
-    tables,
-    log,
-    touched,
-    failNext: (table, error = { message: "falló" }) => failures.set(table, error),
-  };
+  private matches(row: Row): boolean {
+    return this.filters.every((f) => {
+      const v = row[f.column];
+      if (f.op === "eq") return v === f.value;
+      if (f.op === "neq") return v !== f.value;
+      if (f.op === "in") return (f.value as unknown[]).includes(v);
+      return f.value === null ? v === null || v === undefined : v === f.value;
+    });
+  }
+
+  private async exec(): Promise<{ data: unknown; error: { message: string; code?: string } | null }> {
+    const rows = this.db.tables[this.table] ?? (this.db.tables[this.table] = []);
+    const failure = this.db.failures.get(`${this.table}.${this.op}`);
+    if (failure) return { data: null, error: { message: failure } };
+    let out: Row[] = [];
+    if (this.op === "insert") {
+      const list = Array.isArray(this.payload) ? this.payload : [this.payload as Row];
+      for (const item of list) {
+        const row = { id: `00000000-0000-4000-8000-${String(++counter).padStart(12, "0")}`, ...item };
+        rows.push(row);
+        out.push(row);
+      }
+      this.db.log.push({ table: this.table, op: "insert", values: list });
+    } else if (this.op === "update") {
+      out = rows.filter((r) => this.matches(r));
+      for (const row of out) Object.assign(row, this.payload);
+      this.db.log.push({ table: this.table, op: "update", values: [this.payload as Row], filters: this.filters });
+    } else if (this.op === "delete") {
+      out = rows.filter((r) => this.matches(r));
+      this.db.tables[this.table] = rows.filter((r) => !out.includes(r));
+      this.db.log.push({ table: this.table, op: "delete", values: [], filters: this.filters });
+    } else {
+      out = rows.filter((r) => this.matches(r));
+      if (this.max !== null) out = out.slice(0, this.max);
+      const snapshot = out.map((r) => ({ ...r }));
+      this.db.onSelect?.(this.table);
+      out = snapshot;
+    }
+    if (this.op !== "select" && !this.returning && this.mode === "many") return { data: null, error: null };
+    if (this.mode === "many") return { data: out.map((r) => ({ ...r })), error: null };
+    if (out.length === 0) return this.mode === "single" ? { data: null, error: { message: "no rows", code: "PGRST116" } } : { data: null, error: null };
+    return { data: { ...out[0] }, error: null };
+  }
+}
+
+class Bucket {
+  constructor(private readonly db: MemoryDb, private readonly name: string) {}
+  private get files(): Map<string, StoredObject> {
+    let bucket = this.db.buckets.get(this.name);
+    if (!bucket) this.db.buckets.set(this.name, (bucket = new Map()));
+    return bucket;
+  }
+  async upload(path: string, bytes: Uint8Array | Blob, opts?: { contentType?: string; upsert?: boolean }) {
+    const failure = this.db.failures.get(`storage.upload`);
+    if (failure) return { data: null, error: { message: failure } };
+    if (!opts?.upsert && this.files.has(path)) return { data: null, error: { message: "The resource already exists" } };
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(await (bytes as Blob).arrayBuffer());
+    this.files.set(path, { bytes: data, contentType: opts?.contentType ?? "application/octet-stream" });
+    return { data: { path }, error: null };
+  }
+  async download(path: string) {
+    const file = this.files.get(path);
+    if (!file) return { data: null, error: { message: "Object not found" } };
+    return { data: new Blob([file.bytes as BlobPart], { type: file.contentType }), error: null };
+  }
+  async list(folder: string, opts?: { limit?: number }) {
+    this.db.storageLog.push(`list:${folder}`);
+    const prefix = folder.replace(/\/+$/, "") + "/";
+    const names = new Set<string>();
+    for (const path of this.files.keys()) {
+      if (!path.startsWith(prefix)) continue;
+      names.add(path.slice(prefix.length).split("/")[0]);
+    }
+    return { data: [...names].slice(0, opts?.limit ?? 100).map((name) => ({ name })), error: null };
+  }
+  async remove(paths: string[]) {
+    const failure = this.db.failures.get("storage.remove");
+    if (failure) return { data: null, error: { message: failure } };
+    for (const p of paths) this.files.delete(p);
+    return { data: paths.map((name) => ({ name })), error: null };
+  }
+  async createSignedUrl(path: string, seconds: number, opts?: { download?: string | boolean }) {
+    if (!this.files.has(path)) return { data: null, error: { message: "Object not found" } };
+    const dl = opts?.download ? `&download=${encodeURIComponent(String(opts.download))}` : "";
+    return { data: { signedUrl: `https://storage.test/${this.name}/${path}?token=t&ttl=${seconds}${dl}` }, error: null };
+  }
+  async createSignedUrls(paths: string[], seconds: number) {
+    return { data: paths.map((path) => ({ path, signedUrl: `https://storage.test/${this.name}/${path}?ttl=${seconds}` })), error: null };
+  }
+}
+
+export class MemoryDb {
+  tables: Record<string, Row[]> = {};
+  buckets = new Map<string, Map<string, StoredObject>>();
+  log: { table: string; op: "insert" | "update" | "delete"; values: Row[]; filters?: Filter[] }[] = [];
+  /** Se llama después de cada lectura (para simular que algo cambió entre leer y escribir). */
+  onSelect?: (table: string) => void;
+  /** Lo que se le pidió al Storage (`list:<carpeta>`), para comprobar que NO se lo miró. */
+  storageLog: string[] = [];
+  /** `"tabla.op"` o `"storage.upload"` → el mensaje del error que tiene que devolver. */
+  failures = new Map<string, string>();
+
+  constructor(seed: Record<string, Row[]> = {}) {
+    for (const [table, rows] of Object.entries(seed)) this.tables[table] = rows.map((r) => ({ ...r }));
+  }
+
+  from(table: string): Query {
+    return new Query(this, table);
+  }
+
+  readonly storage = { from: (bucket: string) => new Bucket(this, bucket) };
+
+  /** Las funciones de la base (`rpc`) que el test quiere simular: nombre → lo que devuelve. */
+  rpcs: Record<string, (args: Record<string, unknown>) => unknown> = {};
+  rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
+
+  async rpc(name: string, args: Record<string, unknown> = {}): Promise<{ data: unknown; error: { message: string } | null }> {
+    this.rpcCalls.push({ name, args });
+    const failure = this.failures.get(`rpc.${name}`);
+    if (failure) return { data: null, error: { message: failure } };
+    const handler = this.rpcs[name];
+    if (!handler) return { data: null, error: { message: `rpc ${name} no simulada` } };
+    return { data: handler(args), error: null };
+  }
+
+  /** Las rutas guardadas en un bucket. */
+  paths(bucket: string): string[] {
+    return [...(this.buckets.get(bucket)?.keys() ?? [])].sort();
+  }
+  put(bucket: string, path: string, bytes: Uint8Array = new Uint8Array([1]), contentType = "image/png"): void {
+    let b = this.buckets.get(bucket);
+    if (!b) this.buckets.set(bucket, (b = new Map()));
+    b.set(path, { bytes, contentType });
+  }
+  rows(table: string): Row[] {
+    return this.tables[table] ?? [];
+  }
+  /** Para pasarlo donde se espera un `SupabaseClient`. */
+  get client(): never {
+    return this as never;
+  }
 }
