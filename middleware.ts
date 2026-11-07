@@ -5,7 +5,7 @@ import { canonicalRedirectUrl } from "@/lib/public-url";
 
 export async function middleware(request: NextRequest) {
   // Quien entra por el dominio de Railway termina en el principal: así los links que ve son los de su dominio y el
-  // retorno de Google/Fathom encuentra su cookie. Antes de la sesión: no hace falta preguntarle nada a Supabase.
+  // retorno de OAuth encuentra su cookie. Antes de la sesión: no hace falta preguntarle nada a Supabase.
   const target = canonicalRedirectUrl({
     url: request.url,
     method: request.method,

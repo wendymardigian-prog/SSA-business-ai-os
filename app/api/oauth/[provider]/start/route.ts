@@ -26,7 +26,7 @@ export async function GET(
   }
 
   // Las conexiones del workspace (YouTube, LinkedIn, Threads) son de Owner y
-  // Admin. Una conexion por persona (Google Calendar, Fathom) la hace cualquiera
+  // Admin. Una conexion por persona (como Google Calendar) la hace cualquiera
   // con el permiso del adaptador: siempre a su propio nombre. Ver `oauthRouteContext`.
   const ctx = await oauthRouteContext(adapter);
   if (!ctx) {

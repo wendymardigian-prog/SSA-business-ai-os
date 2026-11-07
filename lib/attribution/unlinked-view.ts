@@ -76,10 +76,12 @@ const forMatch = (t: UnlinkedTouch): TouchForMatch => ({
 export function touchSourceLink(touch: Pick<UnlinkedTouch, "dedupe_key" | "raw">): { href: string; label: string } | null {
   const key = touch.dedupe_key ?? "";
   if (key.startsWith("booking:")) return { href: `/dashboard/agenda?agenda=${key.slice("booking:".length)}`, label: "Ver la reunión" };
+  // @plantilla-desde(formularios)
   if (key.startsWith("form:")) {
     const formId = (touch.raw as { source_id?: unknown } | null | undefined)?.source_id;
     if (typeof formId === "string" && formId) return { href: `/dashboard/formularios/${formId}/respuestas/${key.slice("form:".length)}`, label: "Ver la respuesta" };
   }
+  // @plantilla-hasta(formularios)
   return null;
 }
 

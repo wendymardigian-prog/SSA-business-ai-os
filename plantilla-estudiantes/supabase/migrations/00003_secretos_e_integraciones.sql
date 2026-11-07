@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS public.channels (
   messaging_window_hours integer,
   email_address text,
   inbox_import jsonb,
+  send_policy jsonb,
   CONSTRAINT channels_pkey PRIMARY KEY (id),
   CONSTRAINT channels_workspace_id_late_account_id_key UNIQUE (workspace_id, late_account_id),
   CONSTRAINT channels_connection_status_check CHECK ((connection_status = ANY (ARRAY['connected'::text, 'disconnected'::text, 'connecting'::text, 'error'::text, 'unknown'::text]))),
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public.integration_configs (
   last_error text,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  last_event_at timestamp with time zone,
   CONSTRAINT integration_configs_pkey PRIMARY KEY (id),
   CONSTRAINT integration_configs_type_check CHECK ((type = ANY (ARRAY['channel'::text, 'ai_provider'::text, 'email_provider'::text, 'social_network'::text, 'publishing_service'::text, 'google'::text, 'meta'::text]))),
   CONSTRAINT integration_configs_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
@@ -72,6 +74,7 @@ CREATE TABLE IF NOT EXISTS public.integration_configs (
 ALTER TABLE public.integration_configs ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.integration_configs IS 'Integraciones del workspace (canales, IA, email). Las API keys viven en Vault; aca solo el nombre del secret.';
 COMMENT ON COLUMN public.integration_configs.vault_secret_name IS 'Nombre limpio del secret en Vault (sin el prefijo ws:<id>:). Null si la integracion no usa API key.';
+COMMENT ON COLUMN public.integration_configs.last_event_at IS 'Ultimo aviso valido (firma verificada) recibido del proveedor. Lo escribe el receptor del webhook (Resend: a lo sumo una vez por minuto).';
 
 CREATE TABLE IF NOT EXISTS public.oauth_connections (
   id uuid DEFAULT gen_random_uuid() NOT NULL,

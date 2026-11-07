@@ -8,8 +8,9 @@
 --
 -- Tambien: los canales vinculados a cada contacto, etiquetas (algunas con efecto),
 -- campos personalizados, notas, el estado de setter y de vendedor con su historial, las
--- marcas "conocido" y "cliente", el "no contactar" y las importaciones por CSV. Un Member solo ve los
--- contactos que le corresponden (can_see_contact).
+-- marcas "conocido" y "cliente", el "no contactar", el estado de suscripcion a emails (con la
+-- baja, que gana siempre) y las importaciones por CSV. Un Member solo ve los contactos que le
+-- corresponden (can_see_contact).
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -47,7 +48,6 @@ CREATE TABLE IF NOT EXISTS public.contacts (
   lead_temperature text,
   attribution jsonb DEFAULT '{}'::jsonb NOT NULL,
   deleted_at timestamp with time zone,
-  is_anonymous boolean GENERATED ALWAYS AS (((lower(btrim(COALESCE(display_name, ''::text))) = ANY (ARRAY[''::text, 'instagram user'::text, 'facebook user'::text, 'whatsapp user'::text, 'unknown commenter'::text])) AND (email IS NULL) AND (secondary_email IS NULL) AND (phone IS NULL) AND (whatsapp_phone IS NULL) AND (instagram_username IS NULL))) STORED,
   notes text,
   ai_summary_updated_at timestamp with time zone,
   timezone text,
@@ -73,9 +73,17 @@ CREATE TABLE IF NOT EXISTS public.contacts (
   customer_marked_by uuid,
   customer_marked_at timestamp with time zone,
   customer_source text,
+  email_status text DEFAULT 'subscribed'::text NOT NULL,
+  email_status_at timestamp with time zone DEFAULT now(),
+  email_status_source text,
+  email_subscribed_at timestamp with time zone DEFAULT now(),
+  email_unsubscribe_token uuid DEFAULT gen_random_uuid() NOT NULL,
+  first_inbound_at timestamp with time zone,
+  is_anonymous boolean GENERATED ALWAYS AS ((((lower(btrim(COALESCE(display_name, ''::text))) = ANY (ARRAY[''::text, 'instagram user'::text, 'facebook user'::text, 'whatsapp user'::text, 'unknown commenter'::text])) OR ((btrim(COALESCE(display_name, ''::text)) ~ '^\+?[0-9]{8,}$'::text) AND (first_inbound_at IS NULL))) AND (email IS NULL) AND (secondary_email IS NULL) AND (phone IS NULL) AND (whatsapp_phone IS NULL) AND (instagram_username IS NULL))) STORED,
   CONSTRAINT contacts_pkey PRIMARY KEY (id),
   CONSTRAINT contacts_avatar_source_check CHECK ((avatar_source = ANY (ARRAY['external'::text, 'storage'::text, 'manual'::text]))),
   CONSTRAINT contacts_customer_source_check CHECK (((customer_source IS NULL) OR (customer_source = ANY (ARRAY['manual'::text, 'sale'::text])))),
+  CONSTRAINT contacts_email_status_check CHECK ((email_status = ANY (ARRAY['subscribed'::text, 'not_subscribed'::text, 'unsubscribed'::text, 'bounced'::text, 'complained'::text]))),
   CONSTRAINT contacts_last_status_role_check CHECK (((last_status_role IS NULL) OR (last_status_role = ANY (ARRAY['setter'::text, 'closer'::text])))),
   CONSTRAINT contacts_lead_temperature_check CHECK (((lead_temperature IS NULL) OR (lead_temperature = ANY (ARRAY['cold'::text, 'warm'::text, 'hot'::text])))),
   CONSTRAINT contacts_status_dates_check CHECK ((((setter_status IS NULL) = (setter_status_at IS NULL)) AND ((closer_status IS NULL) = (closer_status_at IS NULL)) AND ((last_status IS NULL) = (last_status_role IS NULL)) AND ((last_status IS NULL) = (last_status_at IS NULL)))),
@@ -99,7 +107,6 @@ COMMENT ON COLUMN public.contacts.next_followup_date IS 'Proximo seguimiento. Se
 COMMENT ON COLUMN public.contacts.ai_conversation_summary IS 'Memoria acumulativa del agente de IA: el resumen de las conversaciones con este contacto.';
 COMMENT ON COLUMN public.contacts.attribution IS '{ "first_click": {...}, "last_click": {...} } con UTMs, fbclid, gclid, ad_id, campaign_id, referrer_url, landing_page y captured_at. first_click no se pisa nunca.';
 COMMENT ON COLUMN public.contacts.deleted_at IS 'Borrado logico. Retencion de 30 dias, despues lo purga /api/cron/purge-deleted.';
-COMMENT ON COLUMN public.contacts.is_anonymous IS 'true cuando no hay con que reconocer a la persona: sin nombre propio (o con un relleno de la plataforma) y sin ningun dato de contacto. Es sobre la identidad, no sobre el trabajo hecho: un contacto con tags y vendedor asignado sigue siendo anonimo. La calcula la base, asi que se apaga sola cuando el contacto se enriquece.';
 COMMENT ON COLUMN public.contacts.notes IS 'Notas internas del contacto, en un solo texto. Quien cambio que queda en audit_log.';
 COMMENT ON COLUMN public.contacts.ai_summary_updated_at IS 'Cuando se actualizo por ultima vez ai_conversation_summary (la memoria del agente). NULL si todavia no hay memoria.';
 COMMENT ON COLUMN public.contacts.timezone IS 'Zona IANA del contacto (ej. America/Mexico_City). La aprende la agenda del invitado; el agente de chat la confirma antes de proponer horarios.';
@@ -109,6 +116,10 @@ COMMENT ON COLUMN public.contacts.assignment_locked_at IS 'Se escribe cuando alg
 COMMENT ON COLUMN public.contacts.is_known IS 'Conocido: alguien personal. Apaga el agente, pausa secuencias y sus chats van a la persona de cada cuenta (workspaces.known_contacts_settings).';
 COMMENT ON COLUMN public.contacts.is_customer IS 'Cliente: ya compro. Mismos efectos que is_known: apaga el agente, pausa secuencias y sus chats van a la persona configurada por cuenta (workspaces.customer_contacts_settings).';
 COMMENT ON COLUMN public.contacts.customer_source IS 'De donde vino la marca de cliente: manual (una persona) o sale (automatica).';
+COMMENT ON COLUMN public.contacts.email_status IS 'Estado de las direcciones de email del contacto: subscribed | not_subscribed | unsubscribed | bounced | complained. Se cambia SOLO con public.set_email_status / set_email_status_by_address. No es is_subscribed (difusiones por chat).';
+COMMENT ON COLUMN public.contacts.email_unsubscribe_token IS 'Token opaco del link de baja (/baja/<token>). Solo permite darse de baja.';
+COMMENT ON COLUMN public.contacts.first_inbound_at IS 'Cuando escribio la persona por primera vez, por cualquier canal. Null = nunca escribio, o escribio antes de que se guardaran los mensajes entrantes. La mantienen los triggers messages_zz_contact_wrote y conversations_zz_contact_wrote.';
+COMMENT ON COLUMN public.contacts.is_anonymous IS 'true cuando no hay con que reconocer a la persona: sin ningun dato de contacto y con un nombre vacio, un relleno de la plataforma, o un id numerico si nunca escribio. Es sobre la identidad, no sobre el trabajo hecho: un contacto con tags y vendedor asignado sigue siendo anonimo. La calcula la base, asi que se apaga sola.';
 
 CREATE TABLE IF NOT EXISTS public.contact_channels (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -465,6 +476,122 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION private.contact_value_taken(p_workspace_id uuid, p_exclude_contact uuid, p_kind text, p_value text) FROM PUBLIC;
 
+CREATE OR REPLACE FUNCTION private.contacts_email_inherit()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_addr text;
+  v_worst text;
+  v_current text;
+BEGIN
+  BEGIN
+    FOR v_addr IN
+      SELECT DISTINCT a
+        FROM unnest(ARRAY[public.normalize_email(NEW.email), public.normalize_email(NEW.secondary_email)]) AS a
+       WHERE a IS NOT NULL
+         AND (TG_OP = 'INSERT'
+              OR (a IS DISTINCT FROM public.normalize_email(OLD.email)
+                  AND a IS DISTINCT FROM public.normalize_email(OLD.secondary_email)))
+    LOOP
+      PERFORM private.email_status_lock(NEW.workspace_id, v_addr);
+
+      SELECT c.email_status INTO v_worst
+        FROM public.contacts c
+       WHERE c.workspace_id = NEW.workspace_id
+         AND c.id <> NEW.id
+         AND (public.normalize_email(c.email) = v_addr OR public.normalize_email(c.secondary_email) = v_addr)
+       ORDER BY private.email_status_rank(c.email_status) DESC
+       LIMIT 1;
+
+      SELECT email_status INTO v_current FROM public.contacts WHERE id = NEW.id;
+
+      IF v_worst IS NOT NULL AND private.email_status_rank(v_worst) > private.email_status_rank(v_current) THEN
+        PERFORM private.email_status_apply(
+          NEW.workspace_id, ARRAY[NEW.id], v_addr, v_worst, 'inherit', now(),
+          'La direccion ya estaba dada de baja en otro contacto', NULL, 'system', NULL,
+          jsonb_build_object('inherited', true));
+      END IF;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING '[email_status] no pude heredar el estado de email del contacto % (%): %', NEW.id, SQLSTATE, SQLERRM;
+    BEGIN
+      INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+      VALUES (NEW.workspace_id, 'contact', NEW.id, 'email_status_inherit_failed', NULL,
+              jsonb_build_object('error', SQLERRM, 'sqlstate', SQLSTATE,
+                                 'address', coalesce(public.normalize_email(NEW.email), public.normalize_email(NEW.secondary_email))),
+              NULL);
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING '[email_status] tampoco pude anotar el fallo de herencia del contacto %: %', NEW.id, SQLERRM;
+    END;
+  END;
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.contacts_email_inherit() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.contacts_email_on_merge()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_main uuid;
+BEGIN
+  IF OLD.deleted_at IS NOT NULL OR NEW.deleted_at IS NULL OR NEW.email_status = 'subscribed' THEN
+    RETURN NULL;
+  END IF;
+  IF NOT (coalesce(NEW.metadata, '{}'::jsonb) ? 'merged_into') THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_main := (NEW.metadata ->> 'merged_into')::uuid;
+  EXCEPTION WHEN others THEN
+    RETURN NULL;
+  END;
+  -- Sin candado por direccion: merge_contacts ya tiene bloqueadas las dos filas, y
+  -- email_status_apply relee la del principal con FOR UPDATE.
+  PERFORM private.email_status_apply(
+    NEW.workspace_id, ARRAY[v_main],
+    coalesce(public.normalize_email(NEW.email), public.normalize_email(NEW.secondary_email)),
+    NEW.email_status, 'merge', coalesce(NEW.email_status_at, now()),
+    'Fusion de contactos', NULL, 'system', NULL,
+    jsonb_build_object('merged_from', NEW.id, 'original_source', NEW.email_status_source));
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.contacts_email_on_merge() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.contacts_email_status_guard()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF coalesce(current_setting('app.email_status_internal', true), '') = 'on' THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.email_status IS DISTINCT FROM 'subscribed' THEN
+      RAISE EXCEPTION 'El estado de email de un contacto se cambia con set_email_status' USING ERRCODE = 'EM003';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.email_status IS DISTINCT FROM OLD.email_status
+     OR NEW.email_status_at IS DISTINCT FROM OLD.email_status_at
+     OR NEW.email_status_source IS DISTINCT FROM OLD.email_status_source
+     OR NEW.email_subscribed_at IS DISTINCT FROM OLD.email_subscribed_at
+     OR NEW.email_unsubscribe_token IS DISTINCT FROM OLD.email_unsubscribe_token THEN
+    RAISE EXCEPTION 'El estado de email de un contacto se cambia con set_email_status' USING ERRCODE = 'EM003';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.contacts_email_status_guard() FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION private.contacts_interest_check()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -595,6 +722,210 @@ AS $function$
   }$defaults$::jsonb;
 $function$;
 REVOKE ALL ON FUNCTION private.default_contact_status_settings() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.email_pause_enrollments(p_contact_id uuid, p_status text)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_n integer := 0;
+BEGIN
+  IF p_status NOT IN ('not_subscribed', 'unsubscribed', 'bounced', 'complained') THEN RETURN 0; END IF; -- Suma not_subscribed
+
+  UPDATE public.sequence_enrollments e
+     SET status = 'paused',
+         paused_reason = 'email_' || p_status,
+         paused_at = now(),
+         locked_at = NULL
+    FROM public.channels ch, public.sequences s
+   WHERE e.contact_id = p_contact_id
+     AND e.status = 'active'
+     AND ch.id = e.channel_id
+     AND ch.provider = 'resend'
+     AND s.id = e.sequence_id
+     AND EXISTS (
+       SELECT 1
+         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(s.steps) = 'array' THEN s.steps ELSE '[]'::jsonb END)
+              WITH ORDINALITY AS st(step, ord)
+        WHERE st.ord - 1 >= e.current_step_index
+          AND st.step ->> 'type' IN ('message', 'aiMessage', 'asset')
+          AND coalesce(st.step ->> 'emailCategory', 'marketing') = 'marketing');
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  RETURN v_n;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.email_pause_enrollments(p_contact_id uuid, p_status text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.email_status_apply(p_workspace_id uuid, p_contact_ids uuid[], p_address text, p_status text, p_source text, p_occurred_at timestamp with time zone, p_reason text, p_performed_by uuid, p_mode text, p_subscribed_at timestamp with time zone, p_extra jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_at timestamptz := LEAST(coalesce(p_occurred_at, now()), now());
+  v_sub_at timestamptz := CASE WHEN p_subscribed_at IS NULL THEN NULL ELSE LEAST(p_subscribed_at, now()) END;
+  v_c record;
+  v_decision text;
+  v_changed integer := 0;
+  v_kept boolean := false;
+  v_paused integer;
+  v_paused_total integer := 0;
+  v_before text := NULL;
+  v_after text := NULL;
+BEGIN
+  IF p_mode IS NULL OR p_mode NOT IN ('system', 'person', 'admin', 'consent') -- Suma 'consent'
+     OR private.email_status_rank(p_status) = 0 THEN
+    RAISE EXCEPTION 'Estado o modo de email no valido' USING ERRCODE = 'EM001';
+  END IF;
+  IF NULLIF(btrim(coalesce(p_source, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'Falta el origen del cambio de estado de email' USING ERRCODE = 'EM001';
+  END IF;
+
+  FOR v_c IN
+    SELECT c.id, c.workspace_id, c.email_status, c.email_subscribed_at, c.email_status_at, c.email_status_source
+      FROM public.contacts c
+     WHERE c.id = ANY (coalesce(p_contact_ids, '{}'::uuid[]))
+       AND c.workspace_id = p_workspace_id
+     ORDER BY c.id
+       FOR UPDATE
+  LOOP
+    IF v_before IS NULL OR private.email_status_rank(v_c.email_status) > private.email_status_rank(v_before) THEN
+      v_before := v_c.email_status;
+    END IF;
+
+    v_decision := private.email_status_decide(v_c.email_status, p_status, p_mode, p_reason);
+
+    IF v_decision = 'reason_required' THEN
+      RAISE EXCEPTION 'Para volver a suscribir una direccion que rebota o marco spam hace falta un motivo' USING ERRCODE = 'EM002';
+    ELSIF v_decision = 'invalid' THEN
+      RAISE EXCEPTION 'Estado o modo de email no valido' USING ERRCODE = 'EM001';
+    ELSIF v_decision = 'apply' THEN
+      PERFORM set_config('app.email_status_internal', 'on', true);
+      UPDATE public.contacts
+         SET email_status = p_status,
+             email_status_at = v_at,
+             email_status_source = p_source,
+             email_subscribed_at = CASE WHEN p_status = 'subscribed' THEN coalesce(v_sub_at, v_at) ELSE email_subscribed_at END
+       WHERE id = v_c.id;
+      PERFORM set_config('app.email_status_internal', 'off', true);
+
+      v_paused := private.email_pause_enrollments(v_c.id, p_status);
+      v_paused_total := v_paused_total + v_paused;
+
+      INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+      VALUES (
+        v_c.workspace_id, 'contact', v_c.id, 'email_status',
+        jsonb_build_object('email_status', jsonb_build_object('old', v_c.email_status, 'new', p_status)),
+        coalesce(p_extra, '{}'::jsonb) || jsonb_build_object(
+          'source', p_source,
+          'reason', NULLIF(btrim(coalesce(p_reason, '')), ''),
+          'address', p_address,
+          'mode', p_mode,
+          'occurred_at', v_at,
+          'enrollments_paused', v_paused),
+        p_performed_by);
+      v_changed := v_changed + 1;
+    ELSIF v_decision = 'kept' THEN
+      v_kept := true;
+    ELSIF v_decision = 'noop' AND p_status = 'subscribed' AND v_sub_at IS NOT NULL
+          AND v_sub_at < coalesce(v_c.email_subscribed_at, 'infinity'::timestamptz) THEN
+      -- La misma suscripcion, pero con un consentimiento mas viejo (una importacion
+      -- con su fecha original): se corrige la fecha. No es un cambio de estado.
+      PERFORM set_config('app.email_status_internal', 'on', true);
+      UPDATE public.contacts
+         SET email_subscribed_at = v_sub_at,
+             email_status_at = LEAST(coalesce(email_status_at, v_sub_at), v_sub_at),
+             email_status_source = coalesce(NULLIF(email_status_source, 'backfill'), p_source)
+       WHERE id = v_c.id;
+      PERFORM set_config('app.email_status_internal', 'off', true);
+    END IF;
+  END LOOP;
+
+  SELECT c.email_status INTO v_after
+    FROM public.contacts c
+   WHERE c.id = ANY (coalesce(p_contact_ids, '{}'::uuid[])) AND c.workspace_id = p_workspace_id
+   ORDER BY private.email_status_rank(c.email_status) DESC
+   LIMIT 1;
+
+  RETURN jsonb_build_object(
+    'status', v_after,
+    'previous_status', v_before,
+    'changed', v_changed > 0,
+    'kept_existing', v_kept AND v_changed = 0,
+    'contacts_changed', v_changed,
+    'enrollments_paused', v_paused_total);
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.email_status_apply(p_workspace_id uuid, p_contact_ids uuid[], p_address text, p_status text, p_source text, p_occurred_at timestamp with time zone, p_reason text, p_performed_by uuid, p_mode text, p_subscribed_at timestamp with time zone, p_extra jsonb) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.email_status_decide(p_from text, p_to text, p_mode text, p_reason text)
+ RETURNS text
+ LANGUAGE plpgsql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF p_mode IS NULL OR p_mode NOT IN ('system', 'person', 'admin', 'consent') THEN RETURN 'invalid'; END IF;
+  IF private.email_status_rank(p_to) = 0 OR private.email_status_rank(p_from) = 0 THEN RETURN 'invalid'; END IF;
+  IF p_from = p_to THEN RETURN 'noop'; END IF;
+
+  IF p_mode = 'system' THEN
+    IF p_to <> 'subscribed' AND private.email_status_rank(p_to) > private.email_status_rank(p_from) THEN
+      RETURN 'apply';
+    END IF;
+    RETURN 'kept';
+  END IF;
+
+  -- Una casilla de consentimiento. Solo saca de 'not_subscribed' a 'subscribed': nunca levanta una
+  -- baja, un rebote ni una queja. Cualquier otro destino tampoco.
+  IF p_mode = 'consent' THEN
+    IF p_from = 'not_subscribed' AND p_to = 'subscribed' THEN RETURN 'apply'; END IF;
+    RETURN 'kept';
+  END IF;
+
+  IF p_mode = 'person' THEN
+    IF p_from IN ('bounced', 'complained') THEN RETURN 'kept'; END IF;
+    IF p_to IN ('subscribed', 'unsubscribed') THEN RETURN 'apply'; END IF;
+    RETURN 'kept';
+  END IF;
+
+  -- admin
+  IF p_to = 'subscribed' AND p_from IN ('bounced', 'complained')
+     AND NULLIF(btrim(coalesce(p_reason, '')), '') IS NULL THEN
+    RETURN 'reason_required';
+  END IF;
+  RETURN 'apply';
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.email_status_decide(p_from text, p_to text, p_mode text, p_reason text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.email_status_lock(p_workspace_id uuid, p_address text)
+ RETURNS void
+ LANGUAGE sql
+ SET search_path TO ''
+AS $function$
+  SELECT pg_advisory_xact_lock(hashtextextended('email_status:' || p_workspace_id::text || ':' || coalesce(p_address, ''), 0));
+$function$;
+REVOKE ALL ON FUNCTION private.email_status_lock(p_workspace_id uuid, p_address text) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.email_status_rank(p_status text)
+ RETURNS integer
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT CASE p_status
+    WHEN 'complained' THEN 5
+    WHEN 'bounced' THEN 4
+    WHEN 'unsubscribed' THEN 3
+    -- Nunca acepto marketing. Mas grave que suscripto, menos que una baja.
+    WHEN 'not_subscribed' THEN 2
+    WHEN 'subscribed' THEN 1
+    ELSE 0
+  END;
+$function$;
+REVOKE ALL ON FUNCTION private.email_status_rank(p_status text) FROM PUBLIC;
 
 CREATE OR REPLACE FUNCTION private.known_assignee(p_workspace_id uuid, p_channel_id uuid)
  RETURNS uuid
@@ -956,6 +1287,31 @@ END;
 $function$;
 COMMENT ON FUNCTION public.can_see_contact(c public.contacts) IS 'Se ve un contacto si es del workspace y: sos Admin, o tu rol tiene alcance leads=all, o es tuyo (setter, vendedor o conversacion asignada), o tu rol tiene leads=own_unassigned y nadie lo tiene asignado, o tiene una conversacion que ves por su cuenta con "todas" o con "asignadas + sin asignar" y nadie lo tiene.';
 REVOKE ALL ON FUNCTION public.can_see_contact(c public.contacts) FROM PUBLIC, anon;
+
+CREATE OR REPLACE FUNCTION public.contact_attribution_options(p_workspace_id uuid)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE
+ SET search_path TO ''
+AS $function$
+  WITH vals AS (
+    SELECT t.touch, k.key, k.value
+      FROM public.contacts c
+      CROSS JOIN LATERAL (VALUES ('first', c.attribution -> 'first_touch'), ('last', c.attribution -> 'last_touch')) AS t(touch, data)
+      CROSS JOIN LATERAL (VALUES ('campaign', t.data ->> 'campaign'), ('content', t.data ->> 'content'), ('term', t.data ->> 'term')) AS k(key, value)
+     WHERE c.workspace_id = p_workspace_id
+       AND c.deleted_at IS NULL
+       AND jsonb_typeof(t.data) = 'object'
+       AND nullif(btrim(k.value), '') IS NOT NULL
+  ),
+  lists AS (
+    SELECT touch, key, (SELECT jsonb_agg(v ORDER BY v) FROM (SELECT DISTINCT value AS v FROM vals x WHERE x.touch = g.touch AND x.key = g.key ORDER BY 1 LIMIT 300) d) AS items
+      FROM (SELECT DISTINCT touch, key FROM vals) g
+  )
+  SELECT coalesce(jsonb_object_agg(touch || '_' || key, items), '{}'::jsonb) FROM lists
+$function$;
+COMMENT ON FUNCTION public.contact_attribution_options(p_workspace_id uuid) IS 'Valores de campaña, contenido y término del primer y último toque (claves first_campaign, last_term…), para los filtros de la lista de contactos. SECURITY INVOKER: respeta la RLS de quien llama.';
+REVOKE ALL ON FUNCTION public.contact_attribution_options(p_workspace_id uuid) FROM PUBLIC, anon;
 
 CREATE OR REPLACE FUNCTION public.contact_custom_fields_emit()
  RETURNS trigger
@@ -1416,6 +1772,69 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.contacts_known_on_merge() FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.email_address_send_state(p_workspace_id uuid, p_email text, p_contact_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_addr text := public.normalize_email(p_email);
+  v_token uuid;
+  v_matched boolean;
+  v_dnc boolean;
+BEGIN
+  IF v_addr IS NULL THEN
+    RETURN jsonb_build_object('status', 'subscribed', 'do_not_contact', false, 'token', NULL, 'matched', false);
+  END IF;
+
+  SELECT EXISTS (
+           SELECT 1 FROM public.contacts c
+            WHERE c.workspace_id = p_workspace_id
+              AND (public.normalize_email(c.email) = v_addr OR public.normalize_email(c.secondary_email) = v_addr)),
+         EXISTS (
+           SELECT 1 FROM public.contacts c
+            WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL AND c.do_not_contact
+              AND (public.normalize_email(c.email) = v_addr OR public.normalize_email(c.secondary_email) = v_addr))
+    INTO v_matched, v_dnc;
+
+  -- El token: el del contacto del envio si esa direccion es suya; si no, el de
+  -- un contacto con esa direccion (los vivos primero, el mas antiguo).
+  SELECT c.email_unsubscribe_token INTO v_token
+    FROM public.contacts c
+   WHERE c.workspace_id = p_workspace_id
+     AND (public.normalize_email(c.email) = v_addr OR public.normalize_email(c.secondary_email) = v_addr)
+   ORDER BY (c.id = p_contact_id) DESC, (c.deleted_at IS NULL) DESC, c.created_at
+   LIMIT 1;
+
+  RETURN jsonb_build_object(
+    'status', public.email_address_status(p_workspace_id, v_addr),
+    'do_not_contact', coalesce(v_dnc, false),
+    'token', v_token,
+    'matched', coalesce(v_matched, false));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.email_address_send_state(p_workspace_id uuid, p_email text, p_contact_id uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.email_address_status(p_workspace_id uuid, p_email text)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  SELECT coalesce(
+    (SELECT c.email_status
+       FROM public.contacts c
+      WHERE c.workspace_id = p_workspace_id
+        AND public.normalize_email(p_email) IS NOT NULL
+        AND (public.normalize_email(c.email) = public.normalize_email(p_email)
+             OR public.normalize_email(c.secondary_email) = public.normalize_email(p_email))
+      ORDER BY private.email_status_rank(c.email_status) DESC
+      LIMIT 1),
+    'subscribed');
+$function$;
+REVOKE ALL ON FUNCTION public.email_address_status(p_workspace_id uuid, p_email text) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.find_or_create_contact(p_workspace_id uuid, p_identity jsonb, p_defaults jsonb DEFAULT '{}'::jsonb, p_mode text DEFAULT 'create'::text, p_allow_without_identity boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1871,6 +2290,71 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.set_contact_status(p_workspace_id uuid, p_contact_id uuid, p_role text, p_status text, p_actor_user uuid, p_actor_agent uuid, p_reason text, p_respect_human boolean) FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.set_email_status_by_address(p_workspace_id uuid, p_email text, p_status text, p_source text, p_occurred_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_reason text DEFAULT NULL::text, p_performed_by uuid DEFAULT NULL::uuid, p_mode text DEFAULT 'system'::text, p_subscribed_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_extra jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_addr text := public.normalize_email(p_email);
+  v_ids uuid[];
+BEGIN
+  IF p_workspace_id IS NULL OR v_addr IS NULL THEN
+    RETURN jsonb_build_object('status', NULL, 'previous_status', NULL, 'changed', false, 'kept_existing', false, 'not_found', true);
+  END IF;
+
+  PERFORM private.email_status_lock(p_workspace_id, v_addr);
+
+  SELECT array_agg(c.id) INTO v_ids
+    FROM public.contacts c
+   WHERE c.workspace_id = p_workspace_id
+     AND (public.normalize_email(c.email) = v_addr OR public.normalize_email(c.secondary_email) = v_addr);
+
+  IF v_ids IS NULL THEN
+    RETURN jsonb_build_object('status', NULL, 'previous_status', NULL, 'changed', false, 'kept_existing', false, 'not_found', true);
+  END IF;
+
+  RETURN private.email_status_apply(p_workspace_id, v_ids, v_addr, p_status, p_source, p_occurred_at, p_reason,
+                                    p_performed_by, p_mode, p_subscribed_at, p_extra);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.set_email_status_by_address(p_workspace_id uuid, p_email text, p_status text, p_source text, p_occurred_at timestamp with time zone, p_reason text, p_performed_by uuid, p_mode text, p_subscribed_at timestamp with time zone, p_extra jsonb) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.set_email_status(p_contact_id uuid, p_status text, p_source text, p_occurred_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_reason text DEFAULT NULL::text, p_performed_by uuid DEFAULT NULL::uuid, p_mode text DEFAULT 'system'::text, p_address text DEFAULT NULL::text, p_subscribed_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_extra jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_ws uuid;
+  v_addr text;
+  v_ids uuid[];
+  v_contact public.contacts%ROWTYPE;
+BEGIN
+  SELECT * INTO v_contact FROM public.contacts WHERE id = p_contact_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', NULL, 'previous_status', NULL, 'changed', false, 'kept_existing', false, 'not_found', true);
+  END IF;
+  v_ws := v_contact.workspace_id;
+  v_addr := coalesce(public.normalize_email(p_address), public.normalize_email(v_contact.email), public.normalize_email(v_contact.secondary_email));
+
+  PERFORM private.email_status_lock(v_ws, coalesce(v_addr, 'contact:' || p_contact_id::text));
+
+  -- El contacto y todos los del workspace que comparten la direccion (vivos y borrados).
+  SELECT array_agg(DISTINCT c.id) INTO v_ids
+    FROM public.contacts c
+   WHERE c.id = p_contact_id
+      OR (v_addr IS NOT NULL AND c.workspace_id = v_ws
+          AND (public.normalize_email(c.email) = v_addr OR public.normalize_email(c.secondary_email) = v_addr));
+
+  RETURN private.email_status_apply(v_ws, v_ids, v_addr, p_status, p_source, p_occurred_at, p_reason,
+                                    p_performed_by, p_mode, p_subscribed_at, p_extra);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.set_email_status(p_contact_id uuid, p_status text, p_source text, p_occurred_at timestamp with time zone, p_reason text, p_performed_by uuid, p_mode text, p_address text, p_subscribed_at timestamp with time zone, p_extra jsonb) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.tags_effect_changed()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -1933,13 +2417,21 @@ CREATE INDEX IF NOT EXISTS idx_contacts_alive ON public.contacts USING btree (wo
 
 CREATE INDEX IF NOT EXISTS idx_contacts_closer_status ON public.contacts USING btree (workspace_id, closer_status) WHERE ((deleted_at IS NULL) AND (closer_status IS NOT NULL));
 
+CREATE INDEX IF NOT EXISTS idx_contacts_country ON public.contacts USING btree (workspace_id, country) WHERE ((deleted_at IS NULL) AND (country IS NOT NULL));
+
+CREATE INDEX IF NOT EXISTS idx_contacts_created ON public.contacts USING btree (workspace_id, created_at) WHERE (deleted_at IS NULL);
+
 CREATE INDEX IF NOT EXISTS idx_contacts_customer ON public.contacts USING btree (workspace_id) WHERE is_customer;
 
 CREATE INDEX IF NOT EXISTS idx_contacts_deleted_at ON public.contacts USING btree (deleted_at) WHERE (deleted_at IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS idx_contacts_email ON public.contacts USING btree (workspace_id, lower(email)) WHERE (email IS NOT NULL);
 
+CREATE INDEX IF NOT EXISTS idx_contacts_email_status ON public.contacts USING btree (workspace_id, email_status) WHERE (deleted_at IS NULL);
+
 CREATE INDEX IF NOT EXISTS idx_contacts_facebook ON public.contacts USING btree (workspace_id, facebook_id) WHERE (facebook_id IS NOT NULL);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_first_touch_campaign ON public.contacts USING btree (workspace_id, (((attribution -> 'first_touch'::text) ->> 'campaign'::text))) WHERE (deleted_at IS NULL);
 
 CREATE INDEX IF NOT EXISTS idx_contacts_first_touch_content_post ON public.contacts USING btree (workspace_id, (((attribution -> 'first_touch'::text) ->> 'content_post_id'::text))) WHERE ((deleted_at IS NULL) AND ((attribution -> 'first_touch'::text) ? 'content_post_id'::text));
 
@@ -1963,7 +2455,15 @@ CREATE INDEX IF NOT EXISTS idx_contacts_last_interaction ON public.contacts USIN
 
 CREATE INDEX IF NOT EXISTS idx_contacts_last_status ON public.contacts USING btree (workspace_id, last_status_role, last_status) WHERE ((deleted_at IS NULL) AND (last_status IS NOT NULL));
 
+CREATE INDEX IF NOT EXISTS idx_contacts_last_touch_campaign ON public.contacts USING btree (workspace_id, (((attribution -> 'last_touch'::text) ->> 'campaign'::text))) WHERE (deleted_at IS NULL);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_last_touch_medium ON public.contacts USING btree (workspace_id, (((attribution -> 'last_touch'::text) ->> 'medium'::text))) WHERE (deleted_at IS NULL);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_last_touch_source ON public.contacts USING btree (workspace_id, (((attribution -> 'last_touch'::text) ->> 'source'::text))) WHERE (deleted_at IS NULL);
+
 CREATE INDEX IF NOT EXISTS idx_contacts_linkedin_slug ON public.contacts USING btree (workspace_id, public.linkedin_slug(linkedin_profile_url)) WHERE ((deleted_at IS NULL) AND (linkedin_profile_url IS NOT NULL));
+
+CREATE INDEX IF NOT EXISTS idx_contacts_next_followup ON public.contacts USING btree (workspace_id, next_followup_date) WHERE ((deleted_at IS NULL) AND (next_followup_date IS NOT NULL));
 
 CREATE INDEX IF NOT EXISTS idx_contacts_phone ON public.contacts USING btree (workspace_id, phone) WHERE (phone IS NOT NULL);
 
@@ -1993,11 +2493,17 @@ CREATE INDEX IF NOT EXISTS idx_contacts_workspace ON public.contacts USING btree
 
 CREATE INDEX IF NOT EXISTS idx_contacts_ws_created_alive ON public.contacts USING btree (workspace_id, created_at) WHERE (deleted_at IS NULL);
 
+CREATE INDEX IF NOT EXISTS idx_contacts_ws_email_all ON public.contacts USING btree (workspace_id, public.normalize_email(email)) WHERE (public.normalize_email(email) IS NOT NULL);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_ws_secondary_email_all ON public.contacts USING btree (workspace_id, public.normalize_email(secondary_email)) WHERE (public.normalize_email(secondary_email) IS NOT NULL);
+
 CREATE INDEX IF NOT EXISTS idx_csv_imports_workspace ON public.csv_imports USING btree (workspace_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_custom_field_definitions_alive ON public.custom_field_definitions USING btree (workspace_id, name) WHERE (deleted_at IS NULL);
 
 CREATE INDEX IF NOT EXISTS idx_tags_with_effect ON public.tags USING btree (workspace_id) WHERE disables_agent;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_email_unsubscribe_token ON public.contacts USING btree (email_unsubscribe_token);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_workspace_email ON public.contacts USING btree (workspace_id, public.normalize_email(email)) WHERE ((deleted_at IS NULL) AND (public.normalize_email(email) IS NOT NULL));
 
@@ -2021,11 +2527,17 @@ CREATE OR REPLACE TRIGGER contacts_automation_changes AFTER UPDATE OF setter_id,
 
 CREATE OR REPLACE TRIGGER contacts_automation_created AFTER INSERT ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_created();
 
-CREATE OR REPLACE TRIGGER contacts_automation_deanonymized AFTER UPDATE OF display_name, email, secondary_email, phone, whatsapp_phone, instagram_username ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_deanonymized();
+CREATE OR REPLACE TRIGGER contacts_automation_deanonymized AFTER UPDATE OF display_name, email, secondary_email, phone, whatsapp_phone, instagram_username, first_inbound_at ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_deanonymized();
 
 CREATE OR REPLACE TRIGGER contacts_customer_effects AFTER UPDATE OF is_customer ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_customer_effects();
 
 CREATE OR REPLACE TRIGGER contacts_customer_on_merge AFTER UPDATE OF deleted_at ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_customer_on_merge();
+
+CREATE OR REPLACE TRIGGER contacts_email_inherit AFTER INSERT OR UPDATE OF email, secondary_email ON public.contacts FOR EACH ROW WHEN ((new.deleted_at IS NULL)) EXECUTE FUNCTION private.contacts_email_inherit();
+
+CREATE OR REPLACE TRIGGER contacts_email_on_merge AFTER UPDATE OF deleted_at ON public.contacts FOR EACH ROW EXECUTE FUNCTION private.contacts_email_on_merge();
+
+CREATE OR REPLACE TRIGGER contacts_email_status_guard BEFORE INSERT OR UPDATE ON public.contacts FOR EACH ROW EXECUTE FUNCTION private.contacts_email_status_guard();
 
 CREATE OR REPLACE TRIGGER contacts_enqueue_sales_eval AFTER INSERT OR UPDATE OF attribution ON public.contacts FOR EACH ROW EXECUTE FUNCTION public.contacts_enqueue_sales_eval();
 

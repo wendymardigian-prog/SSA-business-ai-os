@@ -692,6 +692,7 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.seed_copywriter_agent() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.sum_ai_spend(p_workspace_id uuid, p_since timestamp with time zone, p_agent_id uuid DEFAULT NULL::uuid)
  RETURNS numeric

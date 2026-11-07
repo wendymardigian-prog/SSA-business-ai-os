@@ -93,6 +93,7 @@ describe("la pantalla nunca lee variables", () => {
     expect(source).not.toMatch(/\.select\(\s*["'`]\*/);
   });
 
+  // @plantilla-desde(proyecto)
   it("cada columna que lee la pantalla tiene su permiso en la migracion", () => {
     const query = readFileSync(path.join(process.cwd(), "lib/flows/runs-query.ts"), "utf8");
     const migration = readFileSync(path.join(process.cwd(), "supabase/migrations/00292_flow_run_history.sql"), "utf8");
@@ -102,6 +103,7 @@ describe("la pantalla nunca lee variables", () => {
     for (const column of columns) expect(granted, column).toMatch(new RegExp(`\\b${column}\\b`));
     expect(granted).not.toMatch(/\bvariables\b/);
   });
+  // @plantilla-hasta(proyecto)
 });
 
 describe("la retencion", () => {

@@ -245,6 +245,8 @@ export const REWRITES = [
   { from: "  -- La URL tiene que ser la publica de produccion. Una local no falla: los",
     to: "  -- La URL tiene que ser la publica de la app. Una local no falla: los" },
   { from: "  -- 2) Referido (lo deja el selector de la venta)", to: "  -- 2) Referido" },
+  { from: "  -- 00278: la casilla de marketing de un formulario. Solo saca de 'not_subscribed' a 'subscribed':\n  -- nunca levanta una baja, un rebote ni una queja (cualquiera puede llenar un formulario con un\n  -- email ajeno). Cualquier otro destino tampoco.",
+    to: "  -- Una casilla de consentimiento. Solo saca de 'not_subscribed' a 'subscribed': nunca levanta una\n  -- baja, un rebote ni una queja. Cualquier otro destino tampoco." },
   { from: "    -- Facebook solo busca cuando el que llama lo pide (un canal de Facebook): sus ids no son\n    -- confiables para formularios, que nunca lo mandan como parte de la identidad.",
     to: "    -- Facebook solo busca cuando el que llama lo pide (un canal de Facebook): sus ids no son\n    -- confiables como dato de identidad suelto." },
   { from: "  -- eventos assignment_changed de mas (contacts_automation_changes, 00039).",
@@ -255,6 +257,10 @@ export const REWRITES = [
 // Comentarios de la base (COMMENT ON) que se reescriben enteros. Clave: el objeto como
 // lo nombra describeComment(); valor: el texto nuevo.
 export const COMMENT_REWRITES = {
+  "column public.booking_categories.system_key":
+    "Clave estable de las areas y tipos que el codigo reconoce. No cambia al renombrar.",
+  "column public.email_log.category":
+    "marketing | transactional. Null: un email al equipo o del sistema. El tope diario cuenta solo marketing.",
   "column public.agent_drafts.window_missed_at":
     "Cuando la ventana cerro con el borrador todavia sin enviar. El borrador pasa a expired en el mismo momento.",
   "column public.audit_log.actor_type":

@@ -14,15 +14,17 @@ Descripción: un sistema operativo centralizado que unifica CRM, bandeja multica
 
 Lo que trae:
 - **Bandeja multicanal**: WhatsApp (Evolution API), Instagram (Zernio) y email, con adjuntos, notas de voz transcriptas, reacciones, stickers y registro de llamadas de WhatsApp.
-- **Contactos (CRM)**: etiquetas, campos personalizados, segmentos, importación, estados de setter y de vendedor, producto de interés, fusión de duplicados, marca «Conocido».
+- **Grupos de WhatsApp** (bandeja, encuestas y disparadores) y **revisar e importar el historial de WhatsApp**.
+- **Contactos (CRM)**: tabla y Kanban, etiquetas, campos personalizados, importación, estados de setter y de vendedor, producto de interés, fusión de duplicados, marcas «Conocido» y «Cliente».
+- **Emails**: suscripción y baja, rebotes y quejas, guardia de entrega del marketing y resultados de cada envío.
 - **Asignación**: setter y vendedor de cada lead (a mano o por reglas) y responsable de cada chat (Ajustes → Asignación).
 - **Banca de recursos**: textos, audios, videos, imágenes, archivos y enlaces listos para mandar.
-- **Secuencias**, **broadcasts** y **automatizaciones** (editor visual de flujos con el paso Condiciones).
+- **Secuencias**, **broadcasts** con cola de envíos y **automatizaciones** (editor visual de flujos con el paso Condiciones, e historial de ejecuciones).
 - **Agentes IA** (BYOK: tu propia clave de OpenAI, Anthropic o Google), las tareas de IA en segundo plano y la base de conocimiento.
 - **Agenda**: Google Calendar, página pública `/calendario` y un embed para cualquier web.
 - **Contenido y publicación**, **Social** y **dashboards** (Chat, Contenido, Anuncios de Meta con la tabla Meta vs CRM, Agenda y el unificado).
 - **Catálogo de productos** (Ajustes → Productos).
-- **Equipo, roles, permisos e invitaciones**.
+- **Equipo, roles, permisos e invitaciones**, y **Mi cuenta** (perfil y avisos por persona).
 
 Multi-tenancy: **una copia por dueño**. Una instalación puede tener **varios negocios del MISMO dueño** (por ejemplo dos marcas propias): cada uno es un workspace con sus claves, canales, equipo y marca, y se cambia con el selector de arriba a la izquierda. No hay pantalla para crear workspaces: se usa `scripts/create-workspace.mjs` (ver «Varios negocios en una instalación»).
 
@@ -55,7 +57,7 @@ NO reescribir (ya existe, solo verificar/extender):
 - Bandeja con lista de conversaciones y panel de mensajes.
 - CRM con tags, campos personalizados (6 tipos: text, number, boolean, date, url, email — NO existe 'list') y segmentos.
 - Secuencias (drip) con auto-pausa cuando el contacto responde.
-- Broadcasts.
+- Broadcasts y su cola de envíos (`lib/send-queue/`).
 - Registro de eventos de webhook para idempotencia (tabla `webhook_events`).
 - Versiones de flujos (historial al publicar).
 - Realtime en `conversations` y `messages`.
@@ -83,8 +85,10 @@ Cada instalación es su propia copia, con su propia base y su propio deploy.
 - **Marca por variables de entorno, nunca en el código**: `NEXT_PUBLIC_BRAND_NAME`, `NEXT_PUBLIC_BRAND_LOGO_URL`, `NEXT_PUBLIC_BRAND_COLOR` (ver `lib/brand.ts`). Sin configurar, el sistema muestra un nombre genérico. Es la marca de la INSTALACIÓN (login, ícono de la pestaña) y el respaldo de cada negocio: cada workspace puede tener la suya (`workspaces.brand_*`, Ajustes → General → Marca), y todo lo que ve un lead y el panel usan `resolveBrand(workspace)`.
 - **Cómo habla el agente en español**: `AI_LANGUAGE_STYLE` (ver `lib/ai/language-style.ts`). Sin configurar, "español neutro, directo y sin relleno". Un negocio con `workspaces.ai_language_style` usa el suyo (`aiLanguageStyle(propio)`; las tareas de IA lo reciben con `loadTaskInstructionsForRun`).
 - **Alta solo por invitación**: no hay registro público. `scripts/create-owner.mjs` crea el primer Owner (cuenta + workspace + zona horaria del negocio). Después, el resto del equipo entra por invitación (Ajustes → Equipo).
-- **Zona horaria por USUARIO**, no por workspace: se detecta del navegador en el primer ingreso y se guarda en `user_preferences`; se edita desde el menú de perfil. `workspaces.timezone` existe aparte para las reglas que no pueden depender de quién mira (horario de atención del agente, topes de gasto de IA, hora de lo programado) — ver `lib/dates.ts` y `lib/user-timezone.ts`.
+- **Zona horaria por USUARIO**, no por workspace: se detecta del navegador en el primer ingreso y se guarda en `user_preferences`; se edita en Mi cuenta. Se guarda en UTC y se muestra en la zona de quien mira: en cliente `useViewerTimezone()`, en servidor `resolveViewerTimezone()`. `formatDateTime`, `formatRelative` y las fechas de la bandeja piden la zona como parámetro obligatorio, y **`lib/timezone-boundary.test.ts` falla si aparece una fecha sin `timeZone`**. `workspaces.timezone` existe aparte para las reglas que no pueden depender de quién mira (horario de atención del agente, topes de gasto de IA, hora de lo programado, «Esperar hasta»). Un solo selector de zona: `components/ui/timezone-select.tsx`.
 - **Secretos del cron en Vault**: cada instalación necesita `app_url` y `cron_secret` propios en Supabase Vault (`system:app_url` / `system:cron_secret`). Se cargan con `select private.set_system_secret('cron_secret', '...')` (el mismo valor que `CRON_SECRET` en Railway) y se comprueban con `select * from private.system_secrets_status();`, que dice si están cargados y cuántos cron dieron 200/401 sin mostrar el secreto. Sin esto, todo lo automático queda agendado y no corre nunca.
+- **Legibilidad del color de marca**: lo que va ENCIMA del color sale de `readableTextOn` (el de más contraste WCAG). En el panel, el color de marca como LETRA es `text-primary-ink` y como BORDE o anillo es `border-primary-edge` / `ring-primary-edge`; `text-primary` a secas no se lee con un color clarito. Los emails del sistema usan el marco `brandedEmailHtml`; los que arma una persona en un flujo NO se envuelven.
+- **Dominios**: el principal es `NEXT_PUBLIC_APP_URL` (`appUrl()`, la ÚNICA que lee la variable) y lo usan el equipo y los proveedores. Los links que ve un lead salen de `publicBaseUrl(workspace)` (`lib/public-url.ts`): el dominio del negocio (Ajustes → General → «Dominio de tus links») o el principal, nunca el host del pedido. El dominio de Railway redirige al principal salvo `/api/`, `/auth/`, `/embed/`, `?embed=1` y lo que no es GET. `lib/public-url.test.ts` lo cuida.
 - **`/setup`** (`.claude/commands/setup.md`) guía en Claude Code el arranque obligatorio: Supabase y migraciones, Railway y variables, los secretos del cron, las URLs de Auth y el `.env` local. Nunca pide claves por chat.
 - La raíz del dominio (`/`) redirige a `/login`.
 
@@ -148,18 +152,18 @@ La base viene armada en **17 archivos, uno por área**, que se aplican en orden:
 |---|---|
 | `00000_permisos_por_defecto` | El acceso por defecto de `anon`, `authenticated` y `service_role` a lo nuevo de `public`. Corre antes que todo. |
 | `00001_extensiones_y_utilidades` | Extensiones, el esquema `private` y funciones chicas (normalizar teléfonos, emails, textos). |
-| `00002_espacios_y_equipo` | Workspaces, roles, miembros, invitaciones, preferencias y las funciones de permisos. |
+| `00002_espacios_y_equipo` | Workspaces, roles, miembros, invitaciones, perfil y preferencias de cada persona, y las funciones de permisos. |
 | `00003_secretos_e_integraciones` | Vault (guardar/leer/borrar claves), integraciones, conexiones OAuth y canales. |
 | `00004_catalogo_y_asignacion` | Productos y variantes, y las reglas de asignación de setter/vendedor. |
-| `00005_contactos` | Contactos, tags, campos, segmentos, estados, la regla única de alta. |
-| `00006_bandeja` | Conversaciones, mensajes, reacciones, stickers, llamadas de WhatsApp, reglas de responsable. |
+| `00005_contactos` | Contactos, tags, campos, estados, la regla única de alta, el estado de suscripción a emails. |
+| `00006_bandeja` | Conversaciones, mensajes, reacciones, stickers, llamadas y grupos de WhatsApp, reglas de responsable, registro y guardia de entrega de emails. |
 | `00007_banca_de_recursos` | `response_assets`. |
-| `00008_automatizaciones` | Flujos, disparadores, sesiones, secuencias, broadcasts. |
+| `00008_automatizaciones` | Flujos, disparadores, sesiones y sus pasos, secuencias, broadcasts y la cola de envíos. |
 | `00009_agentes_ia` | Agentes, corridas, borradores, conocimiento, tareas de IA, precios de modelos. |
 | `00010_agenda` | Eventos, disponibilidad, reuniones, `create_booking`. |
 | `00011_contenido` | Ideas, piezas, publicaciones, pilares. |
 | `00012_metricas_anuncios_y_atribucion` | Métricas sociales, catálogo de Meta, toques de atribución. |
-| `00013_auditoria_y_avisos` | `audit_log` y notificaciones. |
+| `00013_auditoria_y_avisos` | `audit_log`, notificaciones y su entrega por email y WhatsApp. |
 | `00014_trabajos_y_cron` | `scheduled_jobs`, `call_app_cron` y los cron de `pg_cron`. |
 | `00015_funciones_transversales` | Funciones que cruzan áreas (fusión de contactos, métricas del chat...). |
 | `00016_archivos` | Buckets de Storage y sus políticas. |
@@ -209,6 +213,12 @@ node scripts/verify-ads-attribution.mjs       # catálogo de Meta, paridad SQL�
 node scripts/verify-organic-attribution.mjs
 node scripts/verify-dashboards.mjs
 node scripts/verify-audit-visibility.mjs
+node scripts/verify-account.mjs               # Mi cuenta: perfil, foto, preferencias y entrega de avisos
+node scripts/verify-broadcasts.mjs            # cola de envíos: RLS, reclamos a la vez, contadores
+node scripts/verify-email-subscription.mjs    # estados de email, baja, herencia y guardia de entrega
+node scripts/verify-flow-runs.mjs             # historial de ejecuciones: quién ve qué, el motor y la limpieza
+node scripts/verify-unidentified-contacts.mjs # contactos ocultos hasta saber quién es
+node scripts/verify-whatsapp-groups.mjs       # grupos: permisos, RLS, toque orgánico, disparadores
 ```
 
 Para correrlos contra una base local (`supabase start`): `DB_TARGET=local` (y `SUPABASE_WORKDIR=<carpeta>` si hay otro stack local prendido), con el `.env` apuntando también a la base local (URL y claves de `supabase status`). Nunca contra una base con datos reales de clientes sin entender qué hace el script.
@@ -261,6 +271,8 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Producto de interés**: el trigger `contacts_interest_check` exige una variante del mismo producto y del mismo workspace.
 - **Un valor de campo personalizado se valida por tipo en UN lugar** (`normalizeCustomValue`, `lib/custom-fields.ts`): ficha, flujos e importación. `value_number` / `value_date` los llena un trigger que nunca lanza; comparar números o fechas va contra esas columnas, nunca contra el texto.
 - **Importación**: un contacto nuevo nace con el toque de origen `import`; uno que ya existía no recibe toque, solo una entrada en su historial.
+- **La lista es tabla y Kanban (`?vista=kanban`) con los MISMOS filtros**: un solo planificador (`lib/contacts/list-query.ts`) y un catálogo (`lib/contacts/filters/catalog.ts` + las áreas de `lib/contacts/related/*`, registradas en `lib/contacts/list-modules.ts`). Todo valor de la URL pasa por el `accepts` de su filtro. Las columnas relacionadas se cargan solo para la página visible y si están visibles.
+- **La bandeja y Contactos buscan con la misma regla** (`contactSearchFilter`, `lib/contacts/search.ts`): nombre, emails, teléfonos, usuarios y el id de WhatsApp.
 - **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en el endpoint, la acción y el botón. Un Member no exporta.
 - **El historial del contacto** (`lib/contacts/history.ts`) muestra lo automático (automatizaciones, secuencias, emails), no los mensajes del chat.
 - **La foto de perfil** se refresca sola cuando viene de Instagram/WhatsApp (`avatar_source = 'external'`); una subida a mano nunca se pisa (`lib/contacts/avatar.ts`). El @ de Instagram es un link (`lib/contacts/links.ts`).
@@ -293,6 +305,7 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Reglas con gemelas SQL↔TS**: el mensaje de cierre (`chat_is_closure_message` / `lib/messages/closure.ts`, conservadora: un "?" o una promesa nuestra piden respuesta) y la respuesta humana (`chat_reply_is_human` / `isHumanReply`). La espera se cuenta desde el PRIMER mensaje sin responder.
 - **El último mensaje de la conversación** (`last_message_at`, `_preview`, `_direction`) lo mantiene un trigger con cualquier entrante y cualquier saliente que salió, mirando cuál es DE VERDAD el último. El «Vos: » lo pone la pantalla. El «no leído» se apaga en la base si el último mensaje es una respuesta nuestra.
 - **Un envío fallido** guarda lo que se quiso mandar en `text` y el motivo en `messages.send_error`. «Reintentar» reclama la MISMA fila (`failed -> pending`): doble clic = un envío. Un fallido no cuenta como respuesta para el agente.
+- **La barra de la lista** (`components/inbox/inbox-list-header.tsx`): la cantidad, un solo menú de **Filtros** (`InboxFiltersMenu`), el buscador desplegable y los borradores. El contador del botón cuenta todo menos la búsqueda (`countMenuFilters`); limpiar filtros conserva lo abierto (`?c=` y `?g=`).
 - **CSS**: el tema lo maneja la clase `.dark` del `<html>`, no `prefers-color-scheme` (el `dark:` de Tailwind sigue a esa clase). `min-width` le gana a `max-width`. La flecha de todos los `<select>` sale de `app/globals.css`; uno que dibuja la suya lleva `select-bare`. Las fechas del sistema abren el calendario con un clic en cualquier parte del campo (un único escuchador en `app/layout.tsx`).
 
 ## Banca de recursos
@@ -320,6 +333,71 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - «Agregar/Quitar etiqueta» decide por el tipo del paso, nunca por `data.action`.
 - Categorías en `flows.categories` (hasta 10, `lib/flows/categories.ts`); la lista filtra por URL.
 - `flows` no tiene `deleted_at`: una consulta que lo filtre falla.
+- **«Esperar hasta» se guarda en la hora del negocio** (`waitUntilLocal`); con la fecha ya pasada se saltea el paso siguiente (`SKIP_NEXT_STEP`). **«Una sola vez por contacto»** (`oncePerContact`, apagado por defecto) mira `flow_sessions`, porque publicar borra `trigger_fires`.
+- **Las variables de un flujo entienden `{{x|respaldo}}`.**
+- **«Responder por privado»** solo se publica con el disparador de comentario, hasta tres botones con link. Lo que no se puede mandar se descarta antes de llamar a Zernio: un rechazo puede gastar la única respuesta del comentario.
+- **Historial de ejecuciones** (`/dashboard/flows/<id>/ejecuciones`): anotar nunca frena un flujo (`lib/flow-engine/run-log.ts` no lanza). Un paso que falla o se saltea sin lanzar avisa con `context.noteStep`, o queda como «Salió bien» (`run-history-boundary.test.ts`). `reason` y `error_message` pasan por `sanitizeRunText`. Quién ve qué lo decide `can_see_flow_session`. **`flow_sessions.variables` no se lee con la sesión: nunca `select("*")` sobre `flow_sessions`**, y una columna nueva para la pantalla se suma a su `GRANT`. `flow_session_steps` no lleva `contact_id` a propósito. Los pasos se borran a los 12 meses; la fila de la sesión nunca, porque «Una sola vez por contacto» la mira.
+
+## Emails: suscripción, baja y entrega
+
+- **Cinco estados en `contacts.email_status`**: Suscripto, Sin suscribir, Dado de baja, Rebota y Marcó spam. El estado de una DIRECCIÓN es el peor entre todos los contactos que la tienen, incluidos los borrados (`email_address_status`): borrar un contacto no borra una baja. `is_subscribed` es otra cosa: solo las difusiones por chat.
+- **Todo cambio de estado pasa por `set_email_status` / `set_email_status_by_address`**, y desde el código solo por `lib/email/subscription.ts`. La guardia `contacts_email_status_guard` (EM003) rechaza cualquier otra escritura, también del service role, y `subscription-single-entry.test.ts` lo exige en el código. Cada cambio deja su entrada en `audit_log`.
+- **La baja gana.** Un proceso automático (importación, webhooks, herencia, fusión) solo empeora y nunca vuelve a suscribir. La persona, desde el link, va y viene entre suscripto y dado de baja, nunca desde un rebote o una queja. El equipo puede todo, pero sacar un rebote o una queja exige motivo. Gemelas `private.email_status_decide` y `decideEmailStatus`, con `subscription-transitions.cases.json`.
+- **Todo email a un contacto pasa por `canSendEmailTo`**, adentro de `sendTransactionalEmail` y `sendEmailReply`. Rebota: no sale nada. Dado de baja o spam: no sale marketing; lo transaccional sí. Si la base no contesta: marketing no sale, transaccional sí. Un salto queda en `email_log` (`skipped_*`), nunca es un fallo y nunca frena un flujo ni una secuencia. Los emails al equipo no llevan categoría (`subscription-gate.test.ts` lista cada uno).
+- **Marketing o transaccional**: en «Enviar email», lo que elija el paso; sin elegir, transaccional si el flujo es de agenda o del sistema, marketing si lo armó una persona (`stepEmailCategory`). En secuencias, por paso. La bandeja es transaccional.
+- **Todo email de marketing lleva el pie y las cabeceras `List-Unsubscribe`** (`lib/email/unsubscribe.ts`). `/baja/<token>` NO da de baja al abrirse: lo hace el botón. `POST /api/email/baja/<token>` es el clic del cliente de correo. Solo se muestra la dirección enmascarada, con tope por IP.
+- **La baja pausa en el momento** las inscripciones con marketing pendiente, y **no se reanudan solas**. Una dirección dada de baja se hereda al ponerla en otro contacto, y al fusionar el principal se lleva el peor estado (sin reescribir `merge_contacts`).
+- **Una sola guardia de entrega** para el marketing: `reserve_email_send` y su gemela `decideEmailSend` (`lib/email/delivery-guard.ts`, `delivery-guard.cases.json`). El tope del día es el más bajo entre el máximo del negocio (por defecto 100) y el escalón del calentamiento (100 → 200 → 400 → 800), contado en el día del negocio. La reserva es atómica: el envío cierra esa fila de `email_log`, no inserta otra. Lo transaccional nunca espera ni cuenta.
+- **Lo que excede el tope no falla ni se pierde**: queda para el día siguiente. Broadcasts vuelven a `pending`, los flujos reagendan el mismo paso (`deferFlowNode`) y las secuencias esperan. Primero salen los contactos más activos (`broadcast_recipients.sort_key`).
+- **El freno** (`lib/email/marketing-brake.ts`): con al menos 50 de marketing en 24 h, pasar el límite de rebotes o de quejas pausa todo el marketing del negocio, avisa y queda en `audit_log`. Se reanuda solo a mano. Los límites son de cada negocio (`lib/email/brake-limits.ts`): por defecto 2 % y 0,05 %.
+- **Preheader**: `withPreheader` lo pone DESPUÉS de limpiar el HTML, porque la lista blanca lo dejaría a la vista. `{{contact.first_name|}}` con respaldo vacío da «Hola.» y no «Hola, .»; un nombre que no sirve para saludar queda vacío (`firstNameOf`).
+- **Citas de un email**: `messages.text` guarda lo que escribió la persona y la cita va a `email_quoted_text` (`lib/email/quoted-reply.ts`). **La regla de baja nunca lee una cita**: si no, responder citando «Darme de baja» marcaría «no contactar».
+- **Importador**: consolida las filas del mismo email (gana lo más grave), respeta las fechas originales, nunca vuelve a suscribir y no dispara automatizaciones. «Revisar antes de importar» corre la misma lógica sin escribir.
+
+## Resend
+
+- **Una sola tarjeta** (Ajustes → Integraciones → Resend): Estado, Conexión, Remitentes, Entrega de marketing, Webhook y Recepción. La configuración vive en `integration_configs.config` de la fila `email_provider/resend`, en claves planas (`RESEND_CONNECTION_CONFIG_KEYS`), y lo que cambia la guardia se escribe solo con `patch_resend_config`.
+- **El sistema solo administra SU webhook** (`lib/email/resend-webhook.ts`): el que apunta exactamente al receptor. Uno de otro negocio u otra dirección no se toca nunca, y el módulo no sabe borrar. Los eventos están en un solo lugar (`lib/email/resend-events.ts`).
+- **Un webhook por negocio con `?w=<workspace>`**: el parámetro solo elige con qué secreto verificar; la firma sigue siendo obligatoria. Sin `?w=` funciona igual.
+- **Probar y guardar** prueba la key: acceso completo crea el webhook solo; una key de solo envío se guarda y el webhook se hace a mano.
+- **Recepción por dominio**: el canal de email es uno por negocio; un email a cualquier dirección del dominio entra a la bandeja y la respuesta sale desde esa misma dirección, nunca desde un dominio ajeno. Sin webhook avisando rebotes y quejas, el freno no funciona: la pantalla lo avisa en rojo.
+
+## Broadcasts y la cola de envíos
+
+- **La audiencia son los parámetros de URL de Contactos** (`broadcasts.audience_params`), se planifica con el cliente de la PERSONA y se congela al confirmar. Antes de cada envío se vuelve a mirar borrado, no contactar, baja y, si el filtro lleva etiquetas, que siga teniendo alguna.
+- **A quién se le manda lo decide UNA función** (`classifyRecipient`, `lib/broadcasts/audience.ts`). WhatsApp: solo quien ya escribió a ESE número, salvo la casilla «solo tienen teléfono». Email: marketing. Instagram queda afuera.
+- **El mensaje se arma en UN lugar** (`lib/broadcasts/render.ts`, puro): variables, respaldo `{{x|y}}` y hasta 5 variantes, estable por destinatario.
+- **El ritmo es del carril (el canal) y es puro** (`lib/send-queue/pace.ts`): espera al azar, topes por minuto, hora y día, horario del negocio y pausa tras fallos seguidos. El techo es `channels.send_policy`; un broadcast solo puede ir más lento.
+- **El despachador** (`lib/send-queue/dispatch.ts`, `/api/cron/send-queue` cada 15 s) toma el carril y el destinatario con `claim_lane_slot` y `claim_broadcast_recipient`, y manda solo por `sendChannelMessage` o `sendTransactionalEmail`. Nunca lanza por un proveedor: reintenta a 1, 5 y 15 minutos. Los contadores salen de los destinatarios.
+- **Antes del primer mensaje a un número que nunca escribió, se pregunta si tiene WhatsApp** (`resolveWhatsappTarget`). Sin WhatsApp se saltea, sin contar para la pausa; un error es un fallo con reintento, nunca un salteado.
+- **Escribe solo el servidor**: `broadcasts` y `broadcast_recipients` se leen con `broadcasts.manage` y no tienen políticas de escritura.
+
+## WhatsApp: grupos, historial y conversaciones sin teléfono
+
+- **Un grupo NO es una conversación**: vive en `whatsapp_groups`, `whatsapp_group_members`, `whatsapp_group_messages`, `whatsapp_group_reactions` y `whatsapp_poll_votes`. No pasa por el agente, los flujos de mensajes ni «Esperando respuesta». Un grupo no activado se ignora en el receptor.
+- **Sin `contact_id` a propósito**: cada participante es su identidad de WhatsApp, y el contacto se busca por `contact_channels`. Por eso `merge_contacts` no cambia.
+- **Quién ve y escribe**: `can_see_whatsapp_group` y `can_write_whatsapp_group`, gemelas de `lib/auth/channel-permissions.ts` con `whatsapp-group-access.cases.json`. Escribe solo el servidor, por un solo camino (`lib/whatsapp-groups/send.ts`).
+- **Contactos solo si el grupo guarda contactos** (o con «Importar miembros», que no dispara automatizaciones). El toque es `origin = whatsapp_group`, orgánico, una vez por persona y grupo.
+- **Un voto de encuesta NO es un mensaje** (`parseBaileysPollVote`). Evolution solo descifra votos de encuestas que salieron de nuestro número.
+- **Disparadores** (`whatsapp_group_joined`, `_reaction`, `_poll_vote`): de contacto, escriben por privado desde el número del grupo y saltean «no contactar». Paso «Enviar encuesta» (`send_poll`, sin contacto).
+- **Chats y grupos son una sola lista, sin tocar la base** (`lib/inbox/unified-list.ts`, puro): cada grupo cae en la página que le toca por fecha. Con filtros que un grupo no puede cumplir, no aparece (`groupsCanMatch`).
+- **Revisar e importar el historial** (Canales, `channels.manage`) solo lee la base del propio Evolution, sin hablar con WhatsApp. Lo importado es historia: sin no leídos, automatizaciones, agente, asignación ni toques. Una conversación que ya existe no se toca y volver a importar no duplica. Los archivos no se traen (el adjunto queda en `none`). Es un botón a propósito: cada chat pasa a ser un contacto, también los personales.
+- **La identidad de WhatsApp es el teléfono o, si no hay, el `@lid`** (`resolveWhatsappSender`, `lib/whatsapp-sender.ts`). Un `@lid` se manda ENTERO a Evolution (`toEvolutionNumber`) y `getDmLink` no arma `wa.me` con él. Grupos, estados y canales no son una persona.
+
+## Contactos sin identificar
+
+- Instagram no da el nombre ni el usuario de un seguidor al que le escribe una herramienta externa hasta que interactúa. El contacto **se guarda igual pero queda oculto**.
+- **`is_anonymous` es una columna generada**: suma un nombre de solo dígitos sin ningún dato, solo si la persona nunca escribió (`contacts.first_inbound_at`). La misma expresión vive en `isAnonymousContact` y un test las compara. `contact_created` recién se emite al identificarse.
+- **La bandeja oculta lo mismo** con `conversation_is_silent_outreach`, y se ve con `?sin-identificar=1`. `contact_wrote_at` lo mantiene un trigger.
+- **Un nombre de solo dígitos o un `@usuario` es un relleno** (`is_placeholder_name` / `isPlaceholderName`): el nombre real lo reemplaza cuando llega. Un comentario completa el contacto sin pisar lo escrito por una persona.
+
+## Mi cuenta y avisos
+
+- **Todo sale de la sesión**: ninguna acción de `lib/actions/account.ts` recibe un usuario del navegador.
+- **`user_profiles`**: solo la fila propia, y el bucket `user-avatars` no tiene políticas de escritura (sube el servidor, después de validar los bytes). Sin foto, `Avatar` dibuja lo mismo de siempre.
+- **Un solo catálogo de avisos** (`lib/notifications/preferences.ts`): cada tipo de `NOTIFICATION_TYPES` está en un evento, y un tipo nuevo se suma en el mismo cambio.
+- **Email y WhatsApp los manda solo el job `notification_deliver`** (`lib/notifications/deliver.ts`): reagenda a 1, 5 y 15 minutos, un reintento no repite, tope de uno por persona y evento cada 10 minutos. El WhatsApp sale del canal elegido en Ajustes → General.
+- **Olvidé mi contraseña**: `/recuperar` responde siempre lo mismo (no revela cuentas) y el link vuelve por `/auth/callback` o `/auth/confirm`.
 
 ## Agentes IA
 
@@ -353,6 +431,9 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Automatizaciones de la agenda**: disparadores por evento y relativos a la hora de la reunión; los relativos se AGENDAN (`syncRelativeJobs`) con una clave que lleva el número de reagendas. `flow_sessions.channel_id` admite null (quien agenda desde la página pública no tiene conversación).
 - **Las cuatro áreas de sistema de la agenda vienen precargadas**: se renombran pero no se archivan, y `SYSTEM_AREAS` y el SQL dicen lo mismo.
 - **El embed** (`public/embed/embed.js`) **se commitea** (en Railway el build no tiene esbuild) y no pasa de 60 KB. Se regenera con `npm run build:embed` cuando se toca `lib/attribution/` o `lib/embed/`.
+- **Agendar a mano es un solo modal**: título libre o cualquier evento, con **ubicación** o Google Meet. El botón de Meet aparece solo si quien atiende puede crearlo (`meetAvailableFor`) y el servidor lo vuelve a comprobar. El modal separa la zona de quien agenda de la del invitado (`p_timezone`, con ella salen sus emails).
+- **Reuniones sin evento** (Agenda → Configuración): flujos con `event_type_id` null y `template_key` `no_event_*`, con el permiso `settings.general`. Un flujo de evento y uno sin evento nunca corren para la misma reunión.
+- **Cambiar el anfitrión de un evento** solo cambia las reuniones NUEVAS y va por `change_event_type_host`. El link anterior sigue funcionando (`event_type_moved_links`). **Reagendar nunca busca el evento por el link**: sale de la reunión. Mover una reunión conserva SU duración.
 - Los endpoints públicos tienen tope por IP; la IP nunca se guarda en texto (SHA-256 con `RATE_LIMIT_SALT`).
 
 ## Contenido, publicación y Social
@@ -393,9 +474,11 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 - **Links medidos**: `/l/[token]` es público; el destino sale SOLO del token firmado (HMAC, secreto en Vault, vence a 180 días), un token alterado cae a la app sin error, nunca 500. Con la opción apagada, el mensaje es idéntico al de siempre.
 - **`content_posts.attribution_code`** en el `utm_content` vincula el toque a la pieza.
 - **Vínculo toque ↔ anuncio de Meta**: `resolve_meta_match` (SQL) y `resolveMetaMatch` (TS) son gemelas (`meta-match.cases.json`). En un comentario o DM orgánico, `content_label` es el título de la publicación, no un dato de anuncio. **El vínculo automático nunca pisa un `manual` ni un `ignored`**; vincular a mano va por `set_touch_meta_match` (atómica) desde `lib/actions/meta-match.ts` y queda en `audit_log`.
+- **Nunca se vincula por un nombre suelto**: campaña y conjunto solo por id; un anuncio por nombre, solo si es único dentro del conjunto o la campaña ya conocidos por id. Un toque sin ids cuya fuente no es de Meta queda `none`. **El toque es la ÚNICA fuente del vínculo**; `bookings` no tiene columnas de Meta y se une por `dedupe_key`. Una reunión sin vínculo propio muestra el último toque con vínculo anterior a ella, aclarándolo, y vincularla le crea su propio toque (`linkBookingToMeta`). Todo lo que la Agenda guarda de más va dentro de `bookings.utm`.
 - **El catálogo de Meta nunca se borra**; su sync es independiente del de métricas. Un tope de páginas se anota en `integration_configs.config.ad_accounts[].last_error`, no en silencio.
 - **Leads de Meta: un solo evento canónico por nombre** (`lib/meta/action-counts.ts`); sumar variantes infla el número.
 - **Tabla Meta vs CRM** (`ads_crm_metrics_v2`, `ads_crm_items`, SECURITY INVOKER: la RLS de quien mira decide). Leads nuevos ≠ leads totales; el Total cuenta personas DISTINTAS; la lista que abre un número sale de la misma consulta. Las columnas son un catálogo (`lib/dashboards/ads-crm-columns.ts`); las preferencias en `localStorage` siempre en `try/catch`.
+- **La pantalla Anuncios (`/dashboard/anuncios`) es la misma tabla del dashboard**, con el mismo permiso y la misma consulta (`loadCrmForRows`): si cambia una, cambian las dos.
 - El anuncio de origen de un DM de Instagram se recupera de Zernio UNA vez (job con reintentos a 1, 5 y 15 minutos), sin bloquear el webhook.
 
 ## Catálogo de productos
@@ -442,11 +525,12 @@ Reglas de cada módulo que no se ven mirando una sola pantalla. Si un cambio cho
 
 ```
 app/
-├── (auth)/              # Login
+├── (auth)/              # Login, recuperar y restablecer la contraseña
 ├── (dashboard)/         # La app: bandeja, contactos, automatizaciones, agentes, agenda, contenido, ajustes
 ├── invite/              # Aceptar una invitación (y crear la cuenta, si hace falta)
 ├── calendario/          # Páginas públicas de la agenda (sin sesión)
 ├── l/                   # Links medidos (atribución)
+├── baja/                # Darse de baja de los emails de marketing
 └── api/
     ├── webhooks/        # Receptores: Zernio (Instagram), Evolution (WhatsApp), Resend (email)
     ├── cron/            # Lo que llama pg_cron

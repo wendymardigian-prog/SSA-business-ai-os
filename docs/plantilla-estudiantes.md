@@ -42,3 +42,7 @@ Los controles del export: tipos (`tsc`), lint, tests, `next build`, nombres prop
 5. **Prueba de instalación** (recomendada si cambió la base): copiar la exportación, poner los puertos de su `supabase/config.toml` en 557xx (solo para la prueba), `supabase start` + `supabase db reset`, `create-owner`, seeds y los `verify-*` con `DB_TARGET=local SUPABASE_WORKDIR=<carpeta>`.
    La CLI 2.95.4 tiene problemas con `db query --local` (texto plano en DDL, varias sentencias en un `-f`, funciones `void`): cuatro verify (ads-attribution, chat-awaiting, contact-merge, organic-attribution) fallan por eso en local y pasan contra un proyecto vinculado.
 6. **Publicar** (con el OK de Wendy): desde la primera versión limpia, cada actualización es **un commit nuevo** encima en `Scaling-Systems/SSA-BAIOS` (copiar la exportación sobre el clon local, revisar el diff, commit y push). El reemplazo de cero (force push) fue solo la primera vez.
+
+Si una actualización regenera los 17 archivos (cambia la base y se llaman igual), quien ya tiene la plantilla instalada tiene que instalar de cero: `db push` no aplica nada sobre una base vieja. El README lo avisa en «Cómo actualizar». Conviene decírselo a los estudiantes al publicar.
+
+El generador soporta columnas `GENERATED ... AS IDENTITY` (la secuencia nace con la columna). Otras secuencias sueltas siguen sin soporte: se corta y lo dice.

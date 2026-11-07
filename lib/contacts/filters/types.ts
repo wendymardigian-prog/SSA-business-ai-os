@@ -3,7 +3,7 @@
  * contactos. Solo tipos y ayudas puras: el catálogo (`catalog.ts`), las
  * columnas (`../columns.ts`) y cada área (`../related/*`) las usan.
  *
- * Un área (Agenda, Ventas, Formularios…) es un `ContactListModule`: trae sus
+ * Un área (Agenda, Secuencias…) es un `ContactListModule`: trae sus
  * filtros, sus columnas, cómo cargar las opciones de sus filtros y cómo cargar
  * sus columnas para la página que se ve. Sumar un área es un archivo y una
  * línea en `../list-modules.ts`; la pantalla no cambia.

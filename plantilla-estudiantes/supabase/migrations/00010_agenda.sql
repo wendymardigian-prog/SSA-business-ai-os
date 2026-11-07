@@ -47,7 +47,10 @@ CREATE TABLE IF NOT EXISTS public.booking_categories (
   archived_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  description text,
+  system_key text,
   CONSTRAINT booking_categories_pkey PRIMARY KEY (id),
+  CONSTRAINT booking_categories_description_check CHECK (((description IS NULL) OR (char_length(description) <= 400))),
   CONSTRAINT booking_categories_name_check CHECK (((char_length(btrim(name)) >= 1) AND (char_length(btrim(name)) <= 40))),
   CONSTRAINT booking_categories_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.booking_categories(id) ON DELETE CASCADE,
   CONSTRAINT booking_categories_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
@@ -55,6 +58,8 @@ CREATE TABLE IF NOT EXISTS public.booking_categories (
 ALTER TABLE public.booking_categories ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.booking_categories IS 'Areas (parent_id null) y tipos (con parent_id) con los que se clasifican eventos y agendas. Maximo dos niveles.';
 COMMENT ON COLUMN public.booking_categories.is_system IS 'Ventas, Servicio, Equipo y Otros vienen precargadas: se renombran pero no se archivan.';
+COMMENT ON COLUMN public.booking_categories.description IS 'Opcional: cuando se usa este tipo. Lo lee la IA al clasificar una grabacion.';
+COMMENT ON COLUMN public.booking_categories.system_key IS 'Clave estable de las areas y tipos que el codigo reconoce. No cambia al renombrar.';
 
 CREATE TABLE IF NOT EXISTS public.calendars (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -224,6 +229,20 @@ COMMENT ON TABLE public.bookings IS 'Una fila por reunion agendada. No se borran
 COMMENT ON COLUMN public.bookings.uid IS 'Token publico de 22 caracteres (unos 131 bits): con el se cancela y se reagenda sin sesion. Nunca se le entrega al agente de IA.';
 COMMENT ON COLUMN public.bookings.status_group IS 'Calculada desde status. active / no_show / outcome / cancelled. Solo las active ocupan el horario.';
 
+CREATE TABLE IF NOT EXISTS public.event_type_moved_links (
+  username text NOT NULL,
+  slug text NOT NULL,
+  workspace_id uuid NOT NULL,
+  event_type_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT event_type_moved_links_pkey PRIMARY KEY (username, slug),
+  CONSTRAINT event_type_moved_links_event_type_id_fkey FOREIGN KEY (event_type_id) REFERENCES public.event_types(id) ON DELETE CASCADE,
+  CONSTRAINT event_type_moved_links_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
+);
+ALTER TABLE public.event_type_moved_links ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE public.event_type_moved_links IS 'Links anteriores de un evento que cambio de anfitrion. Los lee y los escribe solo el servidor.';
+REVOKE ALL ON TABLE public.event_type_moved_links FROM anon, authenticated;
+
 CREATE TABLE IF NOT EXISTS public.out_of_office (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   workspace_id uuid NOT NULL,
@@ -284,6 +303,35 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- Funciones
 -- ----------------------------------------------------------------------------
 
+CREATE OR REPLACE FUNCTION private.booking_category_system_key()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_key text;
+  v_parent_key text;
+BEGIN
+  IF NEW.system_key IS NOT NULL THEN RETURN NEW; END IF;
+  IF NEW.parent_id IS NULL THEN
+    IF lower(NEW.name) IN ('ventas', 'servicio', 'equipo', 'otros') THEN v_key := lower(NEW.name); END IF;
+  ELSE
+    SELECT system_key INTO v_parent_key FROM public.booking_categories WHERE id = NEW.parent_id;
+    IF v_parent_key = 'ventas' AND lower(NEW.name) IN ('triaje', 'cierre', 'seguimiento') THEN
+      v_key := 'ventas.' || lower(NEW.name);
+    END IF;
+  END IF;
+  IF v_key IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.booking_categories
+     WHERE workspace_id = NEW.workspace_id AND system_key = v_key AND archived_at IS NULL
+  ) THEN
+    NEW.system_key := v_key;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.booking_category_system_key() FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION public.booking_categories_two_levels()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -312,6 +360,7 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.booking_categories_two_levels() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.booking_utm_options(p_workspace_id uuid)
  RETURNS jsonb
@@ -352,6 +401,87 @@ AS $function$
      );
 $function$;
 REVOKE ALL ON FUNCTION public.can_see_booking(b public.bookings) FROM PUBLIC, anon;
+
+CREATE OR REPLACE FUNCTION public.change_event_type_host(p_workspace_id uuid, p_event_type_id uuid, p_expected_host_id uuid, p_new_host_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_owner uuid;
+  v_slug text;
+  v_old_username text;
+  v_new_username text;
+BEGIN
+  -- El candado evita que dos cambios a la vez dejen un link anterior equivocado.
+  SELECT owner_user_id, slug INTO v_owner, v_slug
+  FROM public.event_types
+  WHERE id = p_event_type_id
+    AND workspace_id = p_workspace_id
+    AND deleted_at IS NULL
+    AND is_internal = false
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+
+  -- Otra persona lo cambio mientras esta pantalla estaba abierta.
+  IF v_owner <> p_expected_host_id THEN
+    RETURN jsonb_build_object('status', 'stale');
+  END IF;
+  IF p_new_host_id = v_owner THEN
+    RETURN jsonb_build_object('status', 'same_host');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workspace_members
+    WHERE workspace_id = p_workspace_id AND user_id = p_new_host_id
+  ) THEN
+    RETURN jsonb_build_object('status', 'not_member');
+  END IF;
+
+  SELECT username INTO v_new_username
+  FROM public.scheduling_profiles
+  WHERE workspace_id = p_workspace_id AND user_id = p_new_host_id;
+  IF v_new_username IS NULL THEN
+    RETURN jsonb_build_object('status', 'no_profile');
+  END IF;
+
+  SELECT username INTO v_old_username
+  FROM public.scheduling_profiles
+  WHERE workspace_id = p_workspace_id AND user_id = v_owner;
+
+  BEGIN
+    UPDATE public.event_types
+    SET owner_user_id = p_new_host_id,
+        -- Apuntaban a filas de la persona anterior. Sin elegir, el evento usa el
+        -- horario y los calendarios por defecto de quien atiende.
+        schedule_id = NULL,
+        destination_calendar_id = NULL,
+        conflict_calendar_ids = '{}'
+    WHERE id = p_event_type_id;
+  EXCEPTION WHEN unique_violation THEN
+    -- `uq_event_types_owner_slug`: la persona nueva ya tiene un evento con ese link.
+    RETURN jsonb_build_object('status', 'slug_taken');
+  END;
+
+  IF v_old_username IS NOT NULL THEN
+    INSERT INTO public.event_type_moved_links (username, slug, workspace_id, event_type_id)
+    VALUES (lower(v_old_username), v_slug, p_workspace_id, p_event_type_id)
+    ON CONFLICT (username, slug) DO UPDATE
+      SET workspace_id = EXCLUDED.workspace_id,
+          event_type_id = EXCLUDED.event_type_id,
+          created_at = now();
+  END IF;
+
+  -- Si el evento vuelve a un link que ya fue suyo, ese link es otra vez el real.
+  DELETE FROM public.event_type_moved_links
+  WHERE username = lower(v_new_username) AND slug = v_slug;
+
+  RETURN jsonb_build_object('status', 'ok', 'old_username', v_old_username, 'new_username', v_new_username, 'slug', v_slug);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.change_event_type_host(p_workspace_id uuid, p_event_type_id uuid, p_expected_host_id uuid, p_new_host_id uuid) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.create_booking(p_workspace_id uuid, p_event_type_id uuid, p_host_user_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_title text, p_name text, p_email text, p_phone text, p_timezone text, p_host_timezone text, p_location_type text, p_location_text text, p_responses jsonb, p_origin text, p_utm jsonb, p_referrer_url text, p_uid text, p_category_id uuid, p_category_snapshot jsonb, p_contact_assignment text, p_created_by uuid DEFAULT NULL::uuid, p_contact_id uuid DEFAULT NULL::uuid, p_metadata jsonb DEFAULT '{}'::jsonb, p_landing_page text DEFAULT NULL::text)
  RETURNS jsonb
@@ -668,6 +798,7 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.seed_booking_categories() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.set_default_schedule(p_schedule_id uuid)
  RETURNS void
@@ -736,6 +867,10 @@ CREATE INDEX IF NOT EXISTS idx_bookings_ws_status_start ON public.bookings USING
 
 CREATE INDEX IF NOT EXISTS idx_calendars_ws_user ON public.calendars USING btree (workspace_id, user_id, is_active);
 
+CREATE INDEX IF NOT EXISTS idx_event_type_moved_links_event ON public.event_type_moved_links USING btree (event_type_id);
+
+CREATE INDEX IF NOT EXISTS idx_event_type_moved_links_workspace ON public.event_type_moved_links USING btree (workspace_id);
+
 CREATE INDEX IF NOT EXISTS idx_event_types_category ON public.event_types USING btree (workspace_id, category_id) WHERE (deleted_at IS NULL);
 
 CREATE INDEX IF NOT EXISTS idx_event_types_owner ON public.event_types USING btree (owner_user_id) WHERE (deleted_at IS NULL);
@@ -747,6 +882,8 @@ CREATE INDEX IF NOT EXISTS idx_out_of_office_user_range ON public.out_of_office 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_availability_schedules_default ON public.availability_schedules USING btree (user_id) WHERE (is_default AND (deleted_at IS NULL));
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_categories_name ON public.booking_categories USING btree (workspace_id, COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name)) WHERE (archived_at IS NULL);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_categories_system_key ON public.booking_categories USING btree (workspace_id, system_key) WHERE ((system_key IS NOT NULL) AND (archived_at IS NULL));
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_bookings_uid ON public.bookings USING btree (uid);
 
@@ -767,6 +904,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduling_profiles_ws_username ON public.s
 -- ----------------------------------------------------------------------------
 
 CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.availability_schedules FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE OR REPLACE TRIGGER booking_categories_system_key BEFORE INSERT ON public.booking_categories FOR EACH ROW EXECUTE FUNCTION private.booking_category_system_key();
 
 CREATE OR REPLACE TRIGGER booking_categories_two_levels BEFORE INSERT OR UPDATE OF parent_id ON public.booking_categories FOR EACH ROW EXECUTE FUNCTION public.booking_categories_two_levels();
 

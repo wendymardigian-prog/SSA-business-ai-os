@@ -7,7 +7,7 @@ import { EMAIL_CATEGORY_HINTS, EMAIL_CATEGORY_LABELS, isEmailCategory } from "@/
  * "Tipo de email" de un paso que manda un email (suscripcion a emails, E2).
  *
  * Sin elegir, vale `fallback`: marketing en las automatizaciones que arma una
- * persona, transaccional en las de agenda, formularios y cobranza (lo mismo que
+ * persona, transaccional en las que manda el sistema, como la agenda (lo mismo que
  * decide el motor con `stepEmailCategory`). Elegir guarda el valor en el paso.
  */
 export function EmailCategoryField({

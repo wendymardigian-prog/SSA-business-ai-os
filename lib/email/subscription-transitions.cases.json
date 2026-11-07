@@ -1,5 +1,5 @@
 {
-  "_comment": "Tabla de transiciones del estado de email (00271; not_subscribed y el modo consent desde la 00278). La usan lib/email/subscription.ts (decideEmailStatus, vitest) y private.email_status_decide (SQL, scripts/verify-email-subscription.mjs). Si se cambia una regla, se cambia en las dos y se suma el caso. Resultados: apply | noop | kept | reason_required | invalid.",
+  "_comment": "Tabla de transiciones del estado de email. La usan lib/email/subscription.ts (decideEmailStatus, vitest) y private.email_status_decide (SQL, scripts/verify-email-subscription.mjs). Si se cambia una regla, se cambia en las dos y se suma el caso. Resultados: apply | noop | kept | reason_required | invalid.",
   "cases": [
     { "from": "subscribed", "to": "subscribed", "mode": "system", "expect": "noop" },
     { "from": "subscribed", "to": "unsubscribed", "mode": "system", "expect": "apply" },

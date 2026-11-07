@@ -49,12 +49,12 @@ export function deriveRunState(run: RunStateInput): RunState {
 const SOURCE_LABELS: Record<string, string> = {
   contact: "Contacto",
   member: "Persona del equipo",
-  webhook: "Webhook",
-  task: "Tarea",
-  form: "Formulario",
+  webhook: "Webhook", // @plantilla-quitar(webhooks)
+  task: "Tarea", // @plantilla-quitar(tareas)
+  form: "Formulario", // @plantilla-quitar(formularios)
   booking: "Reunión",
-  sale: "Venta",
-  call: "Llamada",
+  sale: "Venta", // @plantilla-quitar(ventas)
+  call: "Llamada", // @plantilla-quitar(llamadas)
   system: "Sistema",
 };
 
@@ -71,7 +71,7 @@ const END_REASON_LABELS: Record<string, string> = {
   wait_expired: "Se venció la espera de respuesta.",
   ai_failed: "No se pudo generar la respuesta con IA.",
   job_failed: "No se pudo retomar después de una espera.",
-  reprocessed: "Se canceló porque el webhook se volvió a procesar.",
+  reprocessed: "Se canceló porque el webhook se volvió a procesar.", // @plantilla-quitar(webhooks)
 };
 
 export function runEndReasonLabel(reason: string | null | undefined): string | null {
