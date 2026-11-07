@@ -14,10 +14,12 @@ import {
   sortCrmRows,
   statusKind,
   totalFootnote,
+  totalReachOptions,
   totalRow,
   totalRowDetailed,
   type CrmMetrics,
 } from "./ads-crm";
+import { computeTotals } from "./ads";
 
 const adsRow = (over: Partial<AdsRow> = {}): AdsRow => ({
   level: "ad", objectId: "a1", objectName: "Anuncio", parentName: "Conjunto", campaignId: "c1", adsetId: "s1", date: "2026-10-01",
@@ -317,8 +319,11 @@ describe("totalRow", () => {
   it("el alcance y la frecuencia solo salen si se pasa el alcance unico real", () => {
     expect(totalRow(rows).reach).toBeNull();
     expect(totalRow(rows).frequency).toBeNull();
-    expect(totalRow(rows, 2500)).toMatchObject({ reach: 2500, frequency: 2 });
-    expect(totalRow(rows, { overallReach: 2500 })).toMatchObject({ reach: 2500, frequency: 2 });
+    // Una suma de los dias: impresiones ÷ alcance, marcado con «≈».
+    expect(totalRow(rows, { overallReach: 2500, overallReachIsSum: true })).toMatchObject({ reach: 2500, frequency: 2, reachIsSum: true });
+    // Un alcance en vivo sin su frecuencia: «—». Las impresiones guardadas ÷ un alcance en vivo dan cifras imposibles.
+    expect(totalRow(rows, 2500)).toMatchObject({ reach: 2500, frequency: null, reachIsSum: false });
+    expect(totalRow(rows, { overallReach: 2500 })).toMatchObject({ reach: 2500, frequency: null, reachIsSum: false });
   });
 
   it("sin filas no inventa ceros en lo de Meta", () => {
@@ -481,5 +486,55 @@ describe("de que campaña y conjunto cuelga cada fila", () => {
   it("una campaña es su propia campaña y no tiene conjunto", () => {
     const metric = { objectId: "c1", leadsNew: 1, leadsTotal: 1, leadsWithBooking: 0, bookings: 0, bookingsAttended: 0, sales: 0, revenueCents: 0, cashCents: 0, ufCashCents: 0 };
     expect(buildCrmRows({ rows: [], level: "campaign", metrics: [metric], catalog: {} })[0]).toMatchObject({ campaignId: "c1", adsetId: null });
+  });
+});
+
+describe("el alcance del total de la tabla (totalReachOptions)", () => {
+  // Una campaña recien prendida: lo guardado llega hasta el ultimo sync (4.639 impresiones) y Meta en vivo dice 6.400 de alcance.
+  const account = adsRow({ level: "account", objectId: "cuenta", impressions: 4639, reach: 3653 });
+  const shown = buildCrmRows({ rows: [adsRow({ level: "campaign", objectId: "c1", impressions: 4639, reach: 3653 })], level: "campaign", metrics: [], catalog: {} });
+  const total = (input: Parameters<typeof totalReachOptions>[0]) => totalRow(shown, totalReachOptions(input));
+
+  it("Meta contesto el alcance de la tabla: el de la cuenta de esa respuesta, con su frecuencia y sin «≈»", () => {
+    const totals = computeTotals([account], 6400, 1.0);
+    expect(total({ subset: false, liveAccount: { reach: 6500, frequency: 1.02 }, totals })).toMatchObject({ reach: 6500, frequency: 1.02, reachIsSum: false });
+  });
+
+  it("Meta contesto sin frecuencia: «—», nunca impresiones guardadas ÷ alcance en vivo", () => {
+    const totals = computeTotals([account], 6400, 1.0);
+    expect(total({ subset: false, liveAccount: { reach: 6500, frequency: null }, totals })).toMatchObject({ reach: 6500, frequency: null, reachIsSum: false });
+  });
+
+  it("Meta no contesto o todavia carga, y las tarjetas tienen el alcance en vivo: el par de las tarjetas, sin «≈»", () => {
+    const totals = computeTotals([account], 6400, 1.0);
+    // Antes: 6.400 ≈ y frecuencia 0,72 (4.639 ÷ 6.400), mientras las tarjetas decian 1.
+    expect(total({ subset: false, liveAccount: null, totals })).toMatchObject({ reach: 6400, frequency: 1, reachIsSum: false });
+  });
+
+  it("Meta no contesto y las tarjetas tienen el alcance en vivo sin frecuencia: «—»", () => {
+    const totals = computeTotals([account], 6400, null);
+    expect(total({ subset: false, liveAccount: null, totals })).toMatchObject({ reach: 6400, frequency: null, reachIsSum: false });
+  });
+
+  it("Meta no contesto y las tarjetas son la suma de los dias: esa suma, con su frecuencia y marcada con «≈»", () => {
+    const totals = computeTotals([account]);
+    expect(totals).toMatchObject({ reach: 3653, frequency: 1.27, reachIsSum: true });
+    expect(total({ subset: false, liveAccount: null, totals })).toMatchObject({ reach: 3653, frequency: 1.27, reachIsSum: true });
+  });
+
+  it("una respuesta de Meta sin alcance de la cuenta no se mezcla con la frecuencia de otra fuente", () => {
+    const totals = computeTotals([account], 6400, 1.0);
+    expect(total({ subset: false, liveAccount: { reach: null, frequency: 2.5 }, totals })).toMatchObject({ reach: 6400, frequency: 1, reachIsSum: false });
+  });
+
+  it("con un filtro de estado o un padre no hay alcance de la cuenta", () => {
+    const totals = computeTotals([account], 6400, 1.0);
+    expect(total({ subset: true, liveAccount: { reach: 6500, frequency: 1.02 }, totals })).toMatchObject({ reach: null, frequency: null, reachIsSum: false });
+  });
+
+  it("sin datos de alcance en ningun lado, «—» y sin marca", () => {
+    const totals = computeTotals([adsRow({ level: "account", objectId: "cuenta", reach: null, impressions: null })]);
+    expect(totals.reachIsSum).toBe(false);
+    expect(total({ subset: false, liveAccount: null, totals })).toMatchObject({ reach: null, frequency: null, reachIsSum: false });
   });
 });

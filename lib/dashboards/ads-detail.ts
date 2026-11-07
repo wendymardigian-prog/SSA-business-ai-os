@@ -10,7 +10,7 @@
  * por cada detalle abierto no cambiarian nada salvo la latencia.
  */
 
-import { computeTotals, groupByObject, type AdsRow, type AdsTotals, type GroupedRow } from "./ads";
+import { computeTotals, groupByObject, type AdsRow, type AdsTotalsWithSource, type GroupedRow } from "./ads";
 import { periodQuery, type PeriodFilter } from "./period-filter";
 
 export type DetailLevel = "campaign" | "adset" | "ad";
@@ -100,7 +100,7 @@ export interface DetailView {
   status: string | null;
   campaignId: string | null;
   adsetId: string | null;
-  totals: AdsTotals;
+  totals: AdsTotalsWithSource;
   /** Los hijos directos: conjuntos de una campaña, anuncios de un conjunto. */
   children: GroupedRow[];
   /** Todos los anuncios que cuelgan, para la pestaña de anuncios. */
