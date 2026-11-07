@@ -315,6 +315,35 @@ período por vez.
 
 Si una consulta en vivo falla, **solo esa tarjeta** muestra el error.
 
+### Alcance y frecuencia de cada fila en «Meta vs CRM»
+
+Sumar los días infla mucho: el 6/11/2026, en 30 días, «Imagenes - LP1» tenía 18.919 personas únicas y frecuencia 3,28 según Meta, y la suma daba 49.545 y 1,20. Un público saturado parecía fresco.
+
+- **Se pide solo si se ve.** Alcance y Frec. están ocultas por defecto. La tabla llama a `loadCrmObjectReach` (`lib/actions/ads-crm.ts`) recién cuando alguna está a la vista, una vez por nivel y período, con la caché de 15 minutos de siempre. Cada consulta tarda cerca de 1 s y gasta cupo de Meta, por eso abrir Anuncios no pide nada por objeto. El dashboard y Anuncios usan el mismo camino.
+- **La frecuencia también viene de Meta**, en la misma respuesta (`fetchObjectReach`, `lib/meta/live.ts`). No se calcula con las impresiones guardadas: esas llegan hasta el último sync y el alcance en vivo hasta ahora, y una campaña que recién arranca daba 0,83, que es imposible. Por eso estas dos columnas pueden ir adelantadas respecto del resto de la fila: en una campaña recién prendida el alcance puede superar a las impresiones guardadas, y la tabla lo aclara debajo de los filtros (`reachAheadOfSync`).
+- **Las tarjetas de arriba hacen lo mismo**: la Frecuencia es la de `fetchUniqueReach`, de la misma respuesta que el Alcance. Si el alcance supera a las impresiones, una línea debajo explica que son de dos momentos (`ReachAheadNote`). La tabla pide el alcance de sus filas sola: el dashboard y los detalles ya no piden el de campañas ni el de conjuntos al cargar, solo el de anuncios, para la comparativa.
+- **Lo que Meta no dio se marca.** Si no respondió, si el período arranca hace más de 37 meses (`canAskUniqueReach`; «todo el historial» ni se pregunta) o si un objeto no vino en la respuesta (se lee una sola página, de 500), esa fila muestra la suma de los días con «≈» (`CrmRow.reachIsSum`). La tabla lo explica en un aviso, y en el CSV el encabezado dice «con suma de los días». Mientras Meta contesta, la celda muestra «…»: nunca una suma que parezca el dato real.
+- **La cuenta se valida.** Tiene que ser una de las que sincroniza el workspace de la sesión, porque el token puede leer más cuentas que las elegidas.
+
+### Valor de compras y ROAS Meta
+
+Meta informa el mismo evento con varios nombres, y en `action_values` repite el valor con cada uno: una respuesta real trae `lead`, `onsite_web_lead` y `offsite_conversion.fb_pixel_lead`, los tres con 350. Por eso el valor sale de **un solo nombre, el mismo que el conteo** (`purchaseValueOf`, `lib/meta/action-counts.ts`: `omni_purchase` › `purchase` › `offsite_conversion.fb_pixel_purchase`). Antes se sumaba todo lo que contenía «purchase».
+
+`action_values` no se guarda crudo, así que **lo ya guardado no se puede recontar sin volver a leerlo de Meta**. El sync solo relee los últimos 3 días: en una instalación con compras, los días viejos siguen inflados y se mezclan con los nuevos. Los tooltips de las dos columnas lo avisan.
+
+Para saber si una instalación tiene algo que corregir:
+
+```sql
+select ad_account_id, level, count(*), min(date), max(date), sum(purchase_value)
+from meta_ads_insights_daily
+where purchase_value is not null
+group by 1, 2;
+```
+
+- **Sin filas:** no hay nada que hacer. Así estaba la instalación principal el 6/11/2026 (0 de 1.373 filas, y la cuenta nunca registró una compra).
+- **Con filas de hasta 90 días:** vaciar `first_sync_completed_at` de esa cuenta en `integration_configs.config.ad_accounts`. El próximo sync relee 90 días, con los cuatro niveles y sus páginas. Ojo: también reescribe los demás campos con el valor actual de Meta.
+- **Con filas más viejas:** hace falta un script de una sola vez que relea `action_values` por día (Meta guarda hasta 37 meses) y actualice solo `purchase_value`, con un respaldo antes, como la 00220. Un anuncio borrado que Meta ya no devuelva queda con su valor viejo.
+
 ### Analizar con IA
 
 El botón le pasa al modelo los números reales de la cuenta, en texto, y le
@@ -397,7 +426,7 @@ El funnel aparece en los detalles de una campaña, un AdSet y un anuncio. **Impr
 
 ## La pantalla Anuncios (menú → Adquisición)
 
-`/dashboard/anuncios` muestra la tabla «Meta vs CRM» sin el resto del dashboard: las pestañas Campañas, AdSets y Anuncios, con los filtros de cuenta y período. Pide el mismo permiso (`dashboards.ads.view`), y los números salen de la misma consulta que el dashboard (`loadCrmForRows`). La tabla sigue también en el dashboard de Meta Ads. **Un clic en una fila abre un menú y no saca de la pantalla**: «Ver AdSets» y «Ver anuncios» muestran los hijos ahí mismo, con el filtro a la vista para sacarlo, y «Abrir el detalle» lleva al de siempre, que cuelga de Dashboards. Lo elegido vive en la URL (`nivel`, `campana`, `conjunto`; `lib/dashboards/ads-drill.ts`), así el «atrás» lo deshace. En el dashboard y los detalles, un clic en una fila sigue llevando a su detalle. Los detalles usan la misma tabla, con las columnas elegidas para cada nivel, filtrada a los hijos de ese objeto (`filterByParent`). Los datos se cargan en `lib/dashboards/ads-table-page.ts`: de lo que se pide en vivo a Meta, esta pantalla solo necesita el alcance único de la cuenta, para el total.
+`/dashboard/anuncios` muestra la tabla «Meta vs CRM» sin el resto del dashboard: las pestañas Campañas, AdSets y Anuncios, con los filtros de cuenta y período. Pide el mismo permiso (`dashboards.ads.view`), y los números salen de la misma consulta que el dashboard (`loadCrmForRows`). La tabla sigue también en el dashboard de Meta Ads. **Un clic en una fila abre un menú y no saca de la pantalla**: «Ver AdSets» y «Ver anuncios» muestran los hijos ahí mismo, con el filtro a la vista para sacarlo, y «Abrir el detalle» lleva al de siempre, que cuelga de Dashboards. Lo elegido vive en la URL (`nivel`, `campana`, `conjunto`; `lib/dashboards/ads-drill.ts`), así el «atrás» lo deshace. En el dashboard y los detalles, un clic en una fila sigue llevando a su detalle. Los detalles usan la misma tabla, con las columnas elegidas para cada nivel, filtrada a los hijos de ese objeto (`filterByParent`). Los datos se cargan en `lib/dashboards/ads-table-page.ts`: al abrir, de lo que se pide en vivo a Meta, esta pantalla solo necesita el alcance único de la cuenta, para el total. El de cada fila lo pide la tabla si Alcance o Frec. están a la vista (ver «Alcance y frecuencia de cada fila»).
 
 ## Tabla «Meta vs CRM» en el dashboard de Anuncios (Extra L, AT4)
 

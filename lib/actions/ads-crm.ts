@@ -3,12 +3,16 @@
 import { getPermissionAction } from "@/lib/auth/guards";
 import type { CrmLevel, DistinctLeads } from "@/lib/dashboards/ads-crm";
 import { PAGE_SIZE, isCellMetric, isCivilDate, mapDetailRows, type DetailPage, type DetailRpcRow } from "@/lib/dashboards/ads-crm-detail";
+import { parseMetaConfig, resolveSyncedAccount } from "@/lib/meta/accounts";
+import { canAskUniqueReach, fetchObjectReach, fetchUniqueReach, type ObjectReach } from "@/lib/meta/live";
+import { getMetaToken } from "@/lib/meta/token";
+import { createServiceClient } from "@/lib/supabase/server";
 
 /**
- * Lo que la tabla «Meta vs CRM» pide DESPUÉS de cargarse (Tirón 2, B2–B3): el detalle de una celda y las personas distintas
- * de los objetos que se ven. Con la sesión de QUIEN MIRA: las funciones son SECURITY INVOKER y la RLS decide qué contactos,
- * agendas y ventas cuenta cada persona. El workspace sale de la sesión, nunca del pedido. Se piden solo al abrir el panel o
- * al filtrar por estado: nunca por adelantado.
+ * Lo que la tabla «Meta vs CRM» pide DESPUÉS de cargarse (Tirón 2, B2–B3): el detalle de una celda, las personas distintas
+ * de los objetos que se ven y el alcance único de cada fila. Lo del CRM va con la sesión de QUIEN MIRA: las funciones son
+ * SECURITY INVOKER y la RLS decide qué contactos, agendas y ventas cuenta cada persona. El workspace sale de la sesión, nunca
+ * del pedido. Se piden solo al abrir el panel, al filtrar por estado o al mostrar Alcance o Frec.: nunca por adelantado.
  *
  * Todo lo exportado es una función asincrónica (regla de los archivos "use server").
  */
@@ -19,6 +23,9 @@ const GENERIC_ERROR = "No pude leer el detalle. Probá de nuevo en un rato.";
 
 export type CellDetailResult = { ok: true; page: DetailPage } | { ok: false; error: string };
 export type DistinctResult = { ok: true; distinct: DistinctLeads } | { ok: false; error: string };
+export type CrmReachResult =
+  | { ok: true; byObject: Record<string, ObjectReach>; account: { reach: number; frequency: number | null } | null }
+  | { ok: false; reason: "period_too_long" | "unavailable"; error: string };
 
 interface Range {
   level: CrmLevel;
@@ -100,5 +107,52 @@ export async function loadCrmDistinctTotals(input: Range): Promise<DistinctResul
   } catch (err) {
     console.error("[ads] no pude calcular las personas distintas:", err instanceof Error ? err.message : err);
     return { ok: false, error: GENERIC_ERROR };
+  }
+}
+
+/**
+ * El alcance único y la frecuencia de cada fila de un nivel, y los de la cuenta para el total. Pasa por la caché de 15 minutos de
+ * `lib/meta/live.ts`: repetirlo no vuelve a gastar cupo.
+ *
+ * La cuenta tiene que ser una de las que sincroniza ESTE workspace: el token puede leer más cuentas que las elegidas.
+ */
+export async function loadCrmObjectReach(input: Range): Promise<CrmReachResult> {
+  const range = validRange(input);
+  if (!range) return { ok: false, reason: "unavailable", error: "El pedido no es válido." };
+  const ctx = await getPermissionAction("dashboards.ads.view");
+  if (!ctx) return { ok: false, reason: "unavailable", error: "No tenés permiso para ver este dashboard." };
+  if (!canAskUniqueReach(range.since)) {
+    return { ok: false, reason: "period_too_long", error: "Meta da el alcance único de los últimos 37 meses, y este período arranca antes." };
+  }
+
+  try {
+    // Las cuentas y el token solo se leen con el cliente de servicio, después del permiso y con el workspace de la sesión.
+    const service = await createServiceClient();
+    const { data: configRow } = await service
+      .from("integration_configs")
+      .select("config")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("type", "meta")
+      .eq("provider", "meta")
+      .maybeSingle();
+    const account = resolveSyncedAccount(parseMetaConfig(configRow?.config).ad_accounts, range.adAccountId);
+    if (!account.ok) return { ok: false, reason: "unavailable", error: "Esa cuenta publicitaria no está sincronizada." };
+
+    const token = await getMetaToken(service, ctx.workspace.id);
+    if (!token) return { ok: false, reason: "unavailable", error: "Falta el token de Meta." };
+
+    const query = { token, adAccountId: account.adAccountId, since: range.since, until: range.until };
+    const [objects, overall] = await Promise.all([fetchObjectReach({ ...query, level: range.level }), fetchUniqueReach(query)]);
+    if (!objects.ok) return { ok: false, reason: "unavailable", error: objects.error };
+
+    const reach = overall.ok ? overall.data.reach : null;
+    return {
+      ok: true,
+      byObject: objects.data,
+      account: overall.ok && reach !== null ? { reach, frequency: overall.data.frequency } : null,
+    };
+  } catch (err) {
+    console.error("[ads] no pude leer el alcance único:", err instanceof Error ? err.message : err);
+    return { ok: false, reason: "unavailable", error: "No pude leer el alcance único de Meta." };
   }
 }

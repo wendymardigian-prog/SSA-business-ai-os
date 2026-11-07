@@ -8,7 +8,7 @@
  * planilla no lo ejecute como formula (inyeccion de formulas en CSV).
  */
 
-import { csvCell, type ColumnDef } from "./ads-crm-columns";
+import { csvCell, csvColumnLabel, type ColumnDef } from "./ads-crm-columns";
 import type { CrmRow } from "./ads-crm";
 
 const FORMULA_START = /^[=+\-@\t\r]/;
@@ -19,7 +19,7 @@ export function csvEscape(value: string): string {
 }
 
 export function toCsv(params: { firstColumnLabel: string; columns: ColumnDef[]; rows: CrmRow[]; total: CrmRow }): string {
-  const header = [params.firstColumnLabel, ...params.columns.map((c) => c.label)];
+  const header = [params.firstColumnLabel, ...params.columns.map((c) => csvColumnLabel(c, [...params.rows, params.total]))];
   const line = (row: CrmRow) => [row.name ?? row.objectId, ...params.columns.map((c) => csvCell(c, row))];
   const lines = [header, ...params.rows.map(line), line(params.total)];
   // Con BOM: Excel abre bien los acentos.

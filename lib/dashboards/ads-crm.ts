@@ -22,6 +22,7 @@
  */
 
 import { ratio, groupByObject, type AdsRow, type GroupedRow } from "./ads";
+import type { ObjectReach } from "@/lib/meta/live";
 import { fromCents } from "@/lib/shared/money";
 import { metaCountersOf, metaRatios, sumMetaCounters, sumOrNull, type MetaCounters, type MetaRatios } from "./ads-meta-metrics";
 
@@ -116,8 +117,11 @@ export interface CrmRow extends MetaRatios, MetaCounters {
   // Meta
   spend: number | null;
   impressions: number | null;
+  /** Personas unicas del periodo, en vivo. Si Meta no lo dio, la suma de los dias y `reachIsSum` lo dice. */
   reach: number | null;
   frequency: number | null;
+  /** Alcance y frecuencia salen de sumar los dias: la misma persona cuenta una vez por dia y la frecuencia queda baja. */
+  reachIsSum: boolean;
   clicks: number | null;
   ctr: number | null;
   cpm: number | null;
@@ -274,15 +278,15 @@ export interface BuildParams {
   /** Lo que devolvio `ads_crm_metrics_v2` para este nivel. */
   metrics: CrmMetrics[];
   catalog: Record<string, CatalogEntry>;
-  /** Alcance unico por objeto (consulta en vivo), si se pudo pedir. */
-  uniqueReach?: Record<string, number> | null;
+  /** Alcance unico y frecuencia por objeto (consulta en vivo), si se pudo pedir. Lo que no este aca sale de sumar los dias, marcado. */
+  liveReach?: Record<string, ObjectReach> | null;
   /** Que anuncios hay (catalogo e insights), para «# anuncios». Si no se pasa, sale solo de los insights. */
   adLinks?: AdLink[];
 }
 
 /** Las filas de la tabla: la union de los objetos con metricas de Meta y los que tienen algo en el CRM. */
 export function buildCrmRows(params: BuildParams): CrmRow[] {
-  const groups = new Map<string, GroupedRow>(groupByObject(params.rows, params.level, params.uniqueReach ?? null).map((g) => [g.objectId, g]));
+  const groups = new Map<string, GroupedRow>(groupByObject(params.rows, params.level).map((g) => [g.objectId, g]));
   const crm = new Map(params.metrics.map((m) => [m.objectId, m]));
   const rowsByObject = new Map<string, AdsRow[]>();
   for (const row of params.rows) {
@@ -336,6 +340,8 @@ export function buildCrmRows(params: BuildParams): CrmRow[] {
     const leadsWithBooking = c?.leadsWithBooking ?? 0;
 
     const counters = metaCountersOf(rowsByObject.get(objectId) ?? []);
+    const live = params.liveReach?.[objectId] ?? null;
+    const summedReach = g?.reach ?? null;
 
     out.push({
       objectId,
@@ -356,8 +362,12 @@ export function buildCrmRows(params: BuildParams): CrmRow[] {
 
       spend,
       impressions,
-      reach: g?.reach ?? null,
-      frequency: g?.frequency ?? null,
+      // Los dos de la misma respuesta de Meta. La frecuencia no se calcula con las impresiones guardadas: esas llegan hasta el
+      // ultimo sync y el alcance en vivo hasta ahora, y una campaña que recien arranca daria menos de 1.
+      reach: live ? live.reach : summedReach,
+      frequency: live ? round2(live.frequency) : (g?.frequency ?? null),
+      // Sumar ceros da cero, y eso es exacto: no hay nada que marcar.
+      reachIsSum: !live && summedReach !== null && summedReach > 0,
       clicks: g?.clicks ?? null,
       ctr: g?.ctr ?? null,
       cpm: g?.cpm ?? null,
@@ -424,8 +434,12 @@ export function countByStatus(rows: CrmRow[]): Record<StatusFilter, number> {
 }
 
 export interface TotalOptions {
-  /** El alcance unico real de la cuenta: solo cuando la tabla muestra todos los objetos. Sin el, alcance y frecuencia son «—». */
+  /** El alcance de la cuenta: solo cuando la tabla muestra todos los objetos. Sin el, alcance y frecuencia son «—». */
   overallReach?: number | null;
+  /** La frecuencia de la misma respuesta de Meta que `overallReach`. Sin ella, impresiones ÷ alcance. */
+  overallFrequency?: number | null;
+  /** `overallReach` es la suma de los dias de la cuenta, no el alcance unico. */
+  overallReachIsSum?: boolean;
   /**
    * Las personas DISTINTAS del filtro (`ads_crm_metrics_v2`, fila `is_total`). Sin esto, «Leads totales» del total es la suma de
    * las filas (una persona que toco dos anuncios cuenta dos veces) y `leadsTotalIsSum` lo avisa.
@@ -490,7 +504,8 @@ export function totalRowDetailed(rows: CrmRow[], options: TotalOptions = {}): To
     spend,
     impressions,
     reach: overallReach,
-    frequency: round2(ratio(impressions, overallReach)),
+    frequency: overallReach === null ? null : round2(options.overallFrequency ?? ratio(impressions, overallReach)),
+    reachIsSum: overallReach !== null && options.overallReachIsSum === true,
     clicks,
     ctr: round2(ctr === null ? null : ctr * 100),
     cpm: round2(cpm === null ? null : cpm * 1000),

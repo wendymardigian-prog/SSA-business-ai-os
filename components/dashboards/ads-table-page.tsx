@@ -9,7 +9,7 @@ import { HeaderFilters, RefreshButton, SyncedPill } from "./ads/header-controls"
 import { HierarchyCard } from "./ads/hierarchy-tables";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 
-/** Esta pantalla no usa el alcance por objeto: la tabla «Meta vs CRM» no lo lee (solo el de la cuenta, para el total). */
+/** Esta pantalla no pide el alcance por objeto al cargar: la tabla «Meta vs CRM» lo pide por su cuenta, si Alcance o Frec. estan a la vista. */
 const NO_OBJECT_REACH = { campaign: null, adset: null, ad: null };
 
 /** La pantalla Anuncios: la tabla de campañas, conjuntos y anuncios, con sus filtros de cuenta y periodo. */
