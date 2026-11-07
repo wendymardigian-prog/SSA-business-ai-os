@@ -194,10 +194,10 @@ export function taskAbout(id: AiTaskId): TaskAbout {
       };
     case "call_analysis":
       return {
-        trigger: "Cuando una llamada de cierre o seguimiento se clasifica (si el modo es automático), o cuando alguien aprieta Analizar. Con el modo apagado, nunca corre sola.",
+        trigger: "Cuando se clasifica una grabación cuyo tipo tiene un analizador automático y cumple sus reglas, o cuando alguien aprieta Analizar. Un tipo sin analizador nunca se analiza.",
         reads: [
           "La transcripción completa, el título, los invitados y lo que ya se sabe del contacto.",
-          "Tu rúbrica (criterios y pesos), tus categorías de objeciones y el contexto del negocio.",
+          "El analizador de su tipo (instrucciones, criterios y pesos), tus categorías de objeciones y el contexto del negocio.",
           "Tus instrucciones de la pestaña Instrucciones (por ejemplo, el método de ventas del negocio).",
         ],
         decides: [

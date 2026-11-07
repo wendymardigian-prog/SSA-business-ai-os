@@ -20,7 +20,9 @@ import {
 } from "@/lib/calls/edit-rules";
 import { applySectionEdits, type SectionEdit } from "@/lib/calls/section-edit";
 import { isAnalysisSection } from "@/lib/calls/scoring";
-import { canAnalyze, nextStatusAfterClassify } from "@/lib/calls/status";
+import { canAnalyze } from "@/lib/calls/status";
+import { resolveProfile, statusAfterClassification } from "@/lib/calls/profiles";
+import { loadCallProfiles } from "@/lib/calls/profiles-load";
 import { resolveCallTaskSettings } from "@/lib/calls/task-settings";
 import { callCategoryLabel, legacyCallTypeFor, readCategorySnapshot } from "@/lib/calls/catalog";
 import { categorySnapshot } from "@/lib/scheduling/categories";
@@ -66,7 +68,7 @@ export async function changeCallType(input: { callId: string; categoryId: string
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
+    .select("id, title, duration_seconds, attendees, call_type, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -84,12 +86,15 @@ export async function changeCallType(input: { callId: string; categoryId: string
 
   // El estado solo se mueve mientras la llamada espera: una analizada o en curso no se toca.
   const movable = ["classifying", "needs_review", "pending", "not_applicable", "error"].includes(call.analysis_status);
-  const analysis = settings.call_analysis;
-  const next = nextStatusAfterClassify(legacy ?? "otra", {
-    analyzeTypes: analysis.analyze_types,
-    // Lo importado del historial no se analiza solo: se analiza con el boton.
-    auto: analysis.mode === "now" && !call.imported_from_history,
-    hasTranscript: Array.isArray(call.transcript) && call.transcript.length > 0,
+  // Lo importado del historial no se analiza solo: se analiza con el boton.
+  const profiles = await loadCallProfiles(service, ctx.workspace.id);
+  const next = statusAfterClassification(resolveProfile(profiles, { categoryId: input.categoryId, areaId: snapshot.area_id }), {
+    transcript: call.transcript,
+    title: call.title,
+    duration_seconds: call.duration_seconds,
+    attendees: call.attendees,
+    noShow: call.no_show,
+    importedFromHistory: call.imported_from_history,
   });
 
   const { error } = await service
@@ -136,7 +141,7 @@ export async function setCallNoShow(input: { callId: string; noShow: boolean }):
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
+    .select("id, title, duration_seconds, attendees, call_type, area_id, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -144,16 +149,19 @@ export async function setCallNoShow(input: { callId: string; noShow: boolean }):
   if (!call) return { ok: false, error: NOT_FOUND };
   if (call.no_show === input.noShow) return { ok: true };
 
-  const { service, settings } = await loadSettings(ctx.workspace.id);
+  const service = await createServiceClient();
   const categories = (await listCategories(service, ctx.workspace.id)).map(toCategoryRow);
   const legacy = legacyCallTypeFor(readCategorySnapshot(call.category_snapshot), categories, input.noShow);
   const movable = ["needs_review", "pending", "not_applicable", "error"].includes(call.analysis_status);
-  const analysis = settings.call_analysis;
+  const profiles = await loadCallProfiles(service, ctx.workspace.id);
   const next = legacy
-    ? nextStatusAfterClassify(legacy, {
-        analyzeTypes: analysis.analyze_types,
-        auto: analysis.mode === "now" && !call.imported_from_history,
-        hasTranscript: Array.isArray(call.transcript) && call.transcript.length > 0,
+    ? statusAfterClassification(resolveProfile(profiles, { categoryId: call.category_id, areaId: call.area_id }), {
+        transcript: call.transcript,
+        title: call.title,
+        duration_seconds: call.duration_seconds,
+        attendees: call.attendees,
+        noShow: input.noShow,
+        importedFromHistory: call.imported_from_history,
       })
     : null;
 
@@ -195,7 +203,7 @@ export async function analyzeCall(input: { callId: string }): Promise<CallEditRe
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, analysis_status, transcript")
+    .select("id, area_id, category_id, no_show, analysis_status, transcript")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -203,11 +211,13 @@ export async function analyzeCall(input: { callId: string }): Promise<CallEditRe
   if (!call) return { ok: false, error: NOT_FOUND };
   if (call.analysis_status === "analyzed") return { ok: false, error: "Ya está analizada. Para volver a hacerlo, usá Regenerar." };
 
-  const { service, settings } = await loadSettings(ctx.workspace.id);
+  const service = await createServiceClient();
+  const profiles = await loadCallProfiles(service, ctx.workspace.id);
   const check = canAnalyze({
     status: call.analysis_status,
-    callType: call.call_type,
-    analyzeTypes: settings.call_analysis.analyze_types,
+    hasArea: Boolean(call.area_id),
+    noShow: call.no_show,
+    hasProfile: Boolean(resolveProfile(profiles, { categoryId: call.category_id, areaId: call.area_id })),
     hasTranscript: Array.isArray(call.transcript) && call.transcript.length > 0,
     canEdit: true,
   });
@@ -224,20 +234,47 @@ export async function analyzePendingCalls(): Promise<{ ok: true; queued: number 
   const ctx = await getPermissionAction("calls.edit");
   if (!ctx) return { ok: false, error: NOT_ALLOWED };
 
-  const { service, settings } = await loadSettings(ctx.workspace.id);
   const { data: pending } = await ctx.supabase
     .from("calls")
-    .select("id, call_type")
+    .select("id, area_id, category_id")
     .eq("workspace_id", ctx.workspace.id)
     .eq("analysis_status", "pending")
     .is("archived_at", null)
-    .in("call_type", settings.call_analysis.analyze_types)
     .order("recorded_at", { ascending: false })
-    .limit(ANALYZE_PENDING_LIMIT);
+    .limit(ANALYZE_PENDING_LIMIT * 3);
+  return enqueueAnalyses(ctx, pending ?? []);
+}
 
+/** "Analizar seleccionadas": lo mismo, con las que eligio la persona (la RLS decide cuales ve). */
+export async function analyzeSelectedCalls(input: { callIds: string[] }): Promise<{ ok: true; queued: number; skipped: number } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("calls.edit");
+  if (!ctx) return { ok: false, error: NOT_ALLOWED };
+  const ids = [...new Set(Array.isArray(input.callIds) ? input.callIds : [])];
+  if (ids.length === 0 || ids.length > ANALYZE_PENDING_LIMIT || !ids.every((id) => typeof id === "string" && UUID.test(id))) {
+    return { ok: false, error: `Elegí entre 1 y ${ANALYZE_PENDING_LIMIT} grabaciones` };
+  }
+  const { data } = await ctx.supabase
+    .from("calls")
+    .select("id, area_id, category_id, no_show, analysis_status, transcript")
+    .eq("workspace_id", ctx.workspace.id)
+    .is("archived_at", null)
+    .in("id", ids);
+  const eligible = (data ?? []).filter((c) => !c.no_show && c.analysis_status !== "analyzed" && c.analysis_status !== "analyzing" && c.analysis_status !== "classifying" && Array.isArray(c.transcript) && c.transcript.length > 0);
+  const result = await enqueueAnalyses(ctx, eligible);
+  return { ...result, skipped: ids.length - result.queued };
+}
+
+/** Encola de a una cada 30 segundos, solo las que tienen analizador, para no pegarle de golpe al proveedor. */
+async function enqueueAnalyses(
+  ctx: { workspace: { id: string }; user: { id: string } },
+  calls: Array<{ id: string; area_id: string | null; category_id: string | null }>,
+): Promise<{ ok: true; queued: number }> {
+  const service = await createServiceClient();
+  const profiles = await loadCallProfiles(service, ctx.workspace.id);
+  const withProfile = calls.filter((c) => resolveProfile(profiles, { categoryId: c.category_id, areaId: c.area_id })).slice(0, ANALYZE_PENDING_LIMIT);
   const now = new Date();
   let queued = 0;
-  for (const [i, call] of (pending ?? []).entries()) {
+  for (const [i, call] of withProfile.entries()) {
     const runAt = new Date(now.getTime() + i * ANALYZE_PENDING_SPACING_MS);
     const res = await enqueueCallJob(service, "call_analyze", call.id, now, { manual: true, requestedBy: ctx.user.id }, runAt);
     if (res.queued) queued += 1;
@@ -256,7 +293,7 @@ export async function saveCallSections(input: { callId: string; edits: SectionEd
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, analysis, rubric_snapshot, transcript, analysis_status, updated_at")
+    .select("id, call_type, analysis_profile_id, analysis, rubric_snapshot, transcript, analysis_status, updated_at")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -266,7 +303,7 @@ export async function saveCallSections(input: { callId: string; edits: SectionEd
 
   const applied = applySectionEdits(call.analysis, input.edits, {
     rubric: (call.rubric_snapshot ?? null) as never,
-    callType: call.call_type,
+    callType: call.analysis_profile_id ? null : call.call_type,
     transcript: transcriptText(call.transcript),
   });
   if (!applied.ok) return { ok: false, error: applied.error };

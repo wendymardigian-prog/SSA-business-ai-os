@@ -67,6 +67,7 @@ export async function saveTaskInstructions(taskId: string, rawInstructions: stri
     .select("version")
     .eq("workspace_id", workspace.id)
     .eq("task", task.id)
+    .is("variant", null)
     .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -128,6 +129,7 @@ export async function restoreTaskInstructions(taskId: string, version: number | 
       .select("version")
       .eq("workspace_id", workspace.id)
       .eq("task", task.id)
+    .is("variant", null)
       .eq("version", version)
       .maybeSingle();
     if (!target) return { ok: false, error: "Esa versión no existe." };

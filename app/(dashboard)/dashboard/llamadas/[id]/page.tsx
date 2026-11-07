@@ -6,6 +6,8 @@ import { canAnalyze } from "@/lib/calls/status";
 import { detailView } from "@/lib/calls/detail-view";
 import { readAnalysis } from "@/lib/calls/detail";
 import { createServiceClient } from "@/lib/supabase/server";
+import { resolveProfile } from "@/lib/calls/profiles";
+import { loadCallProfiles } from "@/lib/calls/profiles-load";
 import { resolveCallTaskSettings } from "@/lib/calls/task-settings";
 import { callDisplayLabel, categoryGroups } from "@/lib/calls/catalog";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
@@ -36,7 +38,7 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   const { data: call } = await supabase
     .from("calls")
     .select(
-      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, category_id, category_snapshot, no_show, analyzed_category_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections, summary, summary_status, memory_status, knowledge_document_id",
+      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, analyzed_category_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections, summary, summary_status, memory_status, knowledge_document_id",
     )
     .eq("id", id)
     .eq("workspace_id", workspace.id)
@@ -72,13 +74,20 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   const analysis = readAnalysis(call.analysis);
   const canEdit = ctx.can("calls.edit");
 
-  // Lo que se analiza lo decide la configuracion del negocio, no una lista fija.
+  // Lo que se analiza lo decide el analizador de cada tipo.
   const { data: wsRow } = await service.from("workspaces").select("ai_background_settings").eq("id", workspace.id).maybeSingle();
   const taskSettings = resolveCallTaskSettings(wsRow?.ai_background_settings);
   const categories = (await listCategories(supabase, workspace.id)).map(toCategoryRow);
-  const analyzeTypes = taskSettings.call_analysis.analyze_types;
+  const profiles = await loadCallProfiles(service, workspace.id);
 
-  const verdict = canAnalyze({ status, callType: call.call_type, analyzeTypes, hasTranscript: lines.length > 0, canEdit });
+  const verdict = canAnalyze({
+    status,
+    hasArea: Boolean(call.area_id),
+    noShow: call.no_show,
+    hasProfile: Boolean(resolveProfile(profiles, { categoryId: call.category_id, areaId: call.area_id })),
+    hasTranscript: lines.length > 0,
+    canEdit,
+  });
   const view = detailView({
     status,
     reason: call.analysis_status_reason,

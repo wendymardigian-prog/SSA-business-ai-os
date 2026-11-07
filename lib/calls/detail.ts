@@ -195,6 +195,9 @@ export function readAnalysis(a: unknown) {
   const verified = obj(A.citas_verificadas);
   return {
     empty: Object.keys(A).length === 0,
+    /** El formato del analizador. Lo viejo, sin la marca, es de ventas. */
+    shape: A.analysis_shape === 'general' ? ('general' as const) : ('sales' as const),
+    nextSteps: strList(A.proximos_pasos),
     result: { category: str(res.categoria) ?? str(A.outcome), date: str(res.fecha), nextStep: str(res.proximo_paso), scheduledInCall: bool(res.agendada_en_llamada) },
     breakpoint: { text: str(q.descripcion) ?? str(q.texto), suggested: str(q.frase_sugerida), timestamp: str(q.timestamp) },
     pain: { category: str(pain.categoria), proposed: pain.propuesta === true, text: str(pain.texto) ?? str(A.dolor_principal), depth: str(pain.profundidad), timestamp: str(pain.timestamp) },
