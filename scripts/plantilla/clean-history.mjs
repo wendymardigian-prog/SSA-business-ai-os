@@ -257,6 +257,8 @@ export const REWRITES = [
 // Comentarios de la base (COMMENT ON) que se reescriben enteros. Clave: el objeto como
 // lo nombra describeComment(); valor: el texto nuevo.
 export const COMMENT_REWRITES = {
+  "column public.ai_task_prompt_versions.variant":
+    "Sin uso en esta instalacion: siempre NULL, que son las instrucciones generales de la tarea de IA.",
   "column public.booking_categories.system_key":
     "Clave estable de las areas y tipos que el codigo reconoce. No cambia al renombrar.",
   "column public.email_log.category":

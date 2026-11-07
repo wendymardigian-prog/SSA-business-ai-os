@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS public.ai_task_prompt_versions (
   note text,
   created_by uuid,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
+  variant uuid,
   CONSTRAINT ai_task_prompt_versions_pkey PRIMARY KEY (id),
   CONSTRAINT ai_task_prompt_versions_task_check CHECK ((task = ANY (ARRAY['message_classification'::text, 'conversation_summary'::text, 'close_classification'::text, 'media_description'::text, 'ads_analysis'::text]))),
   CONSTRAINT ai_task_prompt_versions_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -123,6 +124,7 @@ CREATE TABLE IF NOT EXISTS public.ai_task_prompt_versions (
 );
 ALTER TABLE public.ai_task_prompt_versions ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.ai_task_prompt_versions IS 'Historial inmutable de las instrucciones (parte editable del prompt) de cada tarea de IA. Mismo patron que agent_prompt_versions.';
+COMMENT ON COLUMN public.ai_task_prompt_versions.variant IS 'Sin uso en esta instalacion: siempre NULL, que son las instrucciones generales de la tarea de IA.';
 REVOKE ALL ON TABLE public.ai_task_prompt_versions FROM anon;
 REVOKE UPDATE, DELETE ON TABLE public.ai_task_prompt_versions FROM authenticated;
 
@@ -761,7 +763,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_run_steps_run_index ON public.agent_r
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_agents_copywriter_por_workspace ON public.agents USING btree (workspace_id) WHERE ((type = 'copywriter'::text) AND (deleted_at IS NULL));
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_task_prompt_versions_workspace_task_version ON public.ai_task_prompt_versions USING btree (workspace_id, task, version);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_task_prompt_versions_workspace_task_variant_version ON public.ai_task_prompt_versions USING btree (workspace_id, task, COALESCE(variant, '00000000-0000-0000-0000-000000000000'::uuid), version);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_model_pricing_version ON public.model_pricing USING btree (workspace_id, provider, model, valid_from);
 

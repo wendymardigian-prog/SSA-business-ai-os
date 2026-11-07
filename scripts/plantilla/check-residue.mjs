@@ -127,7 +127,7 @@ const ALLOW = [
     reason: "nombre de la tarea de IA, no el modulo Tareas" },
   { kind: "constraint", key: "public.ai_task_prompt_versions.ai_task_prompt_versions_task_check", tokens: ["tarea"],
     reason: "lista de tareas de IA (columna 'task'), no el modulo Tareas" },
-  { kind: "index", key: "public.uq_ai_task_prompt_versions_workspace_task_version", tokens: ["tarea"],
+  { kind: "index", key: "public.uq_ai_task_prompt_versions_workspace_task_variant_version", tokens: ["tarea"],
     reason: "indice por tarea de IA (columna 'task'), no el modulo Tareas" },
 ];
 

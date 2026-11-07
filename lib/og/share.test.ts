@@ -3,17 +3,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildShareData, shareMetadata } from "./share";
 
-const text = { title: "1:1 · Wendy", description: "30 min con Wendy.", imageTitle: "1:1", imageSubtitle: "30 min · con Wendy" };
+const text = { title: "1:1 · Marta", description: "30 min con Marta.", imageTitle: "1:1", imageSubtitle: "30 min · con Marta" };
 const workspace = { brand_name: "Negocio Dos", brand_logo_path: "ws-1/logo/a.png", brand_color: "#aabbcc", scheduling_public_base_url: "https://agenda.negocio.com" };
 
 afterEach(() => vi.unstubAllEnvs());
 
 describe("buildShareData", () => {
   it("usa la marca y el dominio del negocio", () => {
-    const share = buildShareData(workspace, "/calendario/wendy/uno", text);
+    const share = buildShareData(workspace, "/calendario/marta/uno", text);
     expect(share.brand.name).toBe("Negocio Dos");
     expect(share.brand.colorHex).toBe("#aabbcc");
-    expect(share.pageUrl).toBe("https://agenda.negocio.com/calendario/wendy/uno");
+    expect(share.pageUrl).toBe("https://agenda.negocio.com/calendario/marta/uno");
   });
   it("un negocio con nombre y sin logo nunca toma el de la instalación", () => {
     vi.stubEnv("NEXT_PUBLIC_BRAND_LOGO_URL", "https://x/instalacion.png");
@@ -37,8 +37,8 @@ describe("shareMetadata", () => {
     expect(meta.openGraph).toMatchObject({
       url: "https://agenda.negocio.com/f/uno",
       siteName: "Negocio Dos",
-      title: "1:1 · Wendy",
-      description: "30 min con Wendy.",
+      title: "1:1 · Marta",
+      description: "30 min con Marta.",
       images: [{ url: image, width: 1200, height: 630, type: "image/png" }],
     });
     expect(meta.twitter).toMatchObject({ card: "summary_large_image", images: [image] });
