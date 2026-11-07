@@ -104,6 +104,39 @@ describe("resumen acumulativo con reconciliacion", () => {
     expect(w.db.rows("agent_runs")).toHaveLength(0);
   });
 
+  it("si el lead solo dijo que si a la automatizacion, no llama al modelo, no abre run y no pisa la memoria", async () => {
+    const w = world({
+      previous: "Ana quiere el plan anual.",
+      messages: [
+        { direction: "outbound", text: "Hola! Gracias por el follow. Hice una guia de Claude, te la paso?", created_at: "2026-09-24T10:00:00.000Z" },
+        { direction: "inbound", text: "Si enviamelo!", created_at: "2026-09-24T10:01:00.000Z" },
+        { direction: "outbound", text: "Aca te comparto la guia", created_at: "2026-09-24T10:02:00.000Z" },
+      ],
+    });
+    const outcome = await summarizeConversationOnClose(w.db.client, args, w.deps);
+    expect(outcome).toEqual({ kind: "skipped", reason: "low_signal" });
+    expect(w.calls).toHaveLength(0);
+    expect(w.db.rows("agent_runs")).toHaveLength(0);
+    expect(w.db.rows("contacts")[0].ai_conversation_summary).toBe("Ana quiere el plan anual.");
+    expect(w.db.rows("conversations")[0].summarized_at).toBeNull();
+  });
+
+  it("si el lead nunca escribio (solo la automatizacion), tampoco gasta", async () => {
+    const w = world({
+      messages: [{ direction: "outbound", text: "Hola! Gracias por el follow", created_at: "2026-09-24T10:00:00.000Z" }],
+    });
+    expect(await summarizeConversationOnClose(w.db.client, args, w.deps)).toEqual({ kind: "skipped", reason: "low_signal" });
+    expect(w.calls).toHaveLength(0);
+  });
+
+  it("si el lead dijo algo concreto, aunque sea corto, si se resume", async () => {
+    const w = world({
+      messages: [{ direction: "inbound", text: "no me llego nada", created_at: "2026-09-24T10:00:00.000Z" }],
+    });
+    expect(await summarizeConversationOnClose(w.db.client, args, w.deps)).toMatchObject({ kind: "run", status: "completed" });
+    expect(w.calls).toHaveLength(1);
+  });
+
   it("si la conversacion se reabrio antes del job, no hace nada", async () => {
     const w = world({ status: "open" });
     expect(await summarizeConversationOnClose(w.db.client, args, w.deps)).toEqual({ kind: "skipped", reason: "not_closed" });

@@ -68,6 +68,7 @@ const DETAIL_LABELS: Record<string, string> = {
   message_persistence_off: "el guardado de mensajes entrantes esta apagado en Ajustes",
   reopened: "la conversacion se reabrio antes de resumirla",
   no_new_messages: "no habia mensajes nuevos desde el ultimo resumen",
+  low_signal: "el lead no dijo nada que resumir (no contesto, o solo una respuesta corta a la automatizacion)",
   bad_output: "el modelo no devolvio un resumen valido",
   summary_condensed: "el resumen se condenso por largo",
   summary_truncated: "el resumen se recorto al tope",
