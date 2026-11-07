@@ -7,12 +7,12 @@ import { BarChart2, Download } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
 import { Popover } from "@/components/ui/popover";
 import { buildCrmRows, countByStatus, filterByStatus, showNoAdSignalNotice, totalFootnote, totalRowDetailed, type CrmLevel, type CrmRow, type DistinctLeads, type StatusFilter } from "@/lib/dashboards/ads-crm";
-import { GROUP_LABEL, GROUP_ORDER, GROUP_TIP, formatCell, type ColumnDef, type ColumnGroup } from "@/lib/dashboards/ads-crm-columns";
+import { GROUP_LABEL, GROUP_ORDER, GROUP_TIP, REACH_SUM_NOTE, formatCell, isReachColumn, needsLiveReach, reachAheadOfSync, type ColumnDef, type ColumnGroup } from "@/lib/dashboards/ads-crm-columns";
 import { visibleColumns } from "@/lib/dashboards/ads-columns";
 import { csvFilename, toCsv } from "@/lib/dashboards/ads-crm-csv";
 import { canOpenCell } from "@/lib/dashboards/ads-crm-detail";
 import { ADS_GUIDE_STEPS, ADS_NO_SIGNAL_MESSAGE, ADS_URL_PARAMS } from "@/lib/dashboards/ads-guide";
-import { loadCrmDistinctTotals } from "@/lib/actions/ads-crm";
+import { loadCrmDistinctTotals, loadCrmObjectReach, type CrmReachResult } from "@/lib/actions/ads-crm";
 import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 import type { AdsRow, AdsTotals } from "@/lib/dashboards/ads";
 import { ColumnsMenu } from "./columns-menu";
@@ -29,6 +29,7 @@ import { StatusDot } from "./status-dot";
  *   abre el panel con las personas o registros que lo forman (`CrmCellPanel`).
  * - La primera columna queda fija al desplazarse de costado; la pagina nunca hace scroll horizontal (la tabla se desplaza adentro).
  * - El total suma lo sumable, cuenta a cada persona UNA vez en «Leads totales» y calcula los cocientes sobre los totales.
+ * - Alcance y Frec. se le piden a Meta recien cuando estan a la vista. Lo que Meta no dio es la suma de los dias y se ve con «≈».
  */
 
 const FIRST_LABEL: Record<CrmLevel, string> = { campaign: "Campaña", adset: "Ad Set", ad: "Anuncio" };
@@ -110,7 +111,10 @@ function StatusCell({ row }: { row: CrmRow }) {
 }
 
 /** Una celda segun su tipo: numero (con su boton si se puede abrir), texto, estado o enlace. */
-function Cell({ column, row, currency, onOpen, titleNote }: { column: ColumnDef; row: CrmRow; currency: string | null; onOpen?: () => void; titleNote?: string }) {
+function Cell({ column, row, currency, onOpen, titleNote, reachPending }: { column: ColumnDef; row: CrmRow; currency: string | null; onOpen?: () => void; titleNote?: string; reachPending: boolean }) {
+  // Mientras Meta responde no se muestra la suma: un numero que despues cambia se lee como el dato real.
+  if (reachPending && isReachColumn(column.id) && row.reach !== null) return <span aria-label="Cargando" title="Preguntándole a Meta">…</span>;
+  if (isReachColumn(column.id) && row.reachIsSum) return <span title={REACH_SUM_NOTE}>{formatCell(column, row, currency)}</span>;
   if (column.kind === "status") return row.objectId === "total" ? <span>—</span> : <StatusCell row={row} />;
   if (column.kind === "link") {
     const href = column.href?.(row);
@@ -130,6 +134,16 @@ function Cell({ column, row, currency, onOpen, titleNote }: { column: ColumnDef;
     );
   }
   return <span title={titleNote}>{text}</span>;
+}
+
+/** Por que se ve algun «≈»: Meta no respondio, el periodo es muy largo o faltan algunas filas en su respuesta. */
+function ReachSumNotice({ result }: { result: CrmReachResult | null }) {
+  const why = !result || result.ok ? "Meta no dio el alcance único de algunas filas." : result.reason === "period_too_long" ? result.error : `No pude leer el alcance único de Meta: ${result.error}`;
+  return (
+    <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+      {why} Lo marcado con «≈» es la suma de los días: cuenta dos veces a quien vio el anuncio en días distintos, y por eso la frecuencia queda más baja.
+    </p>
+  );
 }
 
 function NoSignalNotice() {
@@ -169,9 +183,35 @@ export function CrmLevelTable({
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [target, setTarget] = useState<CellTarget | null>(null);
 
+  const columns = visibleColumns(prefs, level);
+
+  // El alcance unico: un pedido por nivel y periodo, solo si se ve (las dos columnas estan ocultas por defecto y cada consulta
+  // gasta cupo de Meta). Un fallo tambien se recuerda: no se reintenta en cada cambio de pestaña.
+  const wantsReach = needsLiveReach(columns);
+  const reachKey = `${level}|${crm.adAccountId}|${crm.since}|${crm.until}`;
+  const [reachResults, setReachResults] = useState<Record<string, CrmReachResult>>({});
+  const reachResult = reachResults[reachKey] ?? null;
+  const reachAnswered = reachResult !== null;
+  useEffect(() => {
+    if (!wantsReach || reachAnswered || !crm.adAccountId) return;
+    let cancelled = false;
+    const remember = (result: CrmReachResult) => {
+      if (!cancelled) setReachResults((before) => ({ ...before, [reachKey]: result }));
+    };
+    loadCrmObjectReach({ level, since: crm.since, until: crm.until, adAccountId: crm.adAccountId, objectIds: null })
+      .then(remember)
+      .catch(() => remember({ ok: false, reason: "unavailable", error: "no hubo respuesta" }));
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsReach, reachAnswered, reachKey, level, crm.adAccountId, crm.since, crm.until]);
+  const reachPending = wantsReach && !reachAnswered && Boolean(crm.adAccountId);
+  const liveReach = reachResult?.ok ? reachResult.byObject : null;
+  const liveAccount = reachResult?.ok ? reachResult.account : null;
+
   const all = useMemo(
-    () => buildCrmRows({ rows, level, metrics: crm.metrics[level], catalog: crm.catalog[level], adLinks: crm.adLinks }),
-    [rows, level, crm.metrics, crm.catalog, crm.adLinks],
+    () => buildCrmRows({ rows, level, metrics: crm.metrics[level], catalog: crm.catalog[level], adLinks: crm.adLinks, liveReach }),
+    [rows, level, crm.metrics, crm.catalog, crm.adLinks, liveReach],
   );
   const shown = useMemo(() => filterByStatus(all, filter), [all, filter]);
   const counts = useMemo(() => countByStatus(all), [all]);
@@ -193,13 +233,18 @@ export function CrmLevelTable({
   }, [filter, filterKey, level, shownIds, crm.adAccountId, crm.since, crm.until]);
 
   const distinct: DistinctLeads | null = filter === "all" ? crm.distinct[level] : filtered?.key === filterKey ? filtered.distinct : null;
-  // El alcance unico de la cuenta solo corresponde al total cuando se ven todos los objetos.
+  // El alcance de la cuenta solo corresponde al total cuando se ven todos los objetos.
   const { row: total, leadsTotalIsSum } = useMemo(
-    () => totalRowDetailed(shown, { overallReach: filter === "all" ? totals.reach : null, distinctLeads: distinct }),
-    [shown, filter, totals.reach, distinct],
+    () =>
+      totalRowDetailed(shown, {
+        overallReach: filter === "all" ? (liveAccount?.reach ?? totals.reach) : null,
+        overallFrequency: filter === "all" ? (liveAccount?.frequency ?? null) : null,
+        overallReachIsSum: !liveAccount,
+        distinctLeads: distinct,
+      }),
+    [shown, filter, totals.reach, liveAccount, distinct],
   );
 
-  const columns = visibleColumns(prefs, level);
   const groups = GROUP_ORDER.map((group) => ({ group, columns: columns.filter((c) => c.group === group) })).filter((g) => g.columns.length > 0);
   const noSignal = !crm.error && all.length > 0 && showNoAdSignalNotice(total);
 
@@ -267,6 +312,12 @@ export function CrmLevelTable({
         </p>
       )}
       {noSignal && <NoSignalNotice />}
+      {wantsReach && !reachPending && [...shown, total].some((row) => row.reachIsSum) && <ReachSumNotice result={reachResult} />}
+      {wantsReach && !reachPending && [...shown, total].some(reachAheadOfSync) && (
+        <p className="text-xs text-muted-foreground">
+          Donde el alcance supera a las impresiones, las dos cifras no son del mismo momento: Alcance y Frec. se le preguntan a Meta ahora, y el resto de la fila viene de la última sincronización. Se emparejan en la próxima.
+        </p>
+      )}
       {crm.scopeLimited && <p className="text-xs text-muted-foreground">Ves los leads, agendas y ventas de tu alcance.</p>} {/* @plantilla-quitar(ventas) */}
       {/* @plantilla-sin(ventas): {crm.scopeLimited && <p className="text-xs text-muted-foreground">Ves los leads y las agendas de tu alcance.</p>} */}
 
@@ -308,7 +359,7 @@ export function CrmLevelTable({
                   </td>
                   {columns.map((column) => (
                     <td key={column.id} className={`${TD} ${column.kind === "text" || column.kind === "status" || column.kind === "link" ? "text-left" : ""} ${GROUP_STYLE[column.group].cell}`}>
-                      <Cell column={column} row={row} currency={currency} onOpen={() => open(row, column)} />
+                      <Cell column={column} row={row} currency={currency} onOpen={() => open(row, column)} reachPending={reachPending} />
                     </td>
                   ))}
                 </tr>
@@ -324,6 +375,7 @@ export function CrmLevelTable({
                       row={total}
                       currency={currency}
                       onOpen={() => open(total, column)}
+                      reachPending={reachPending}
                       titleNote={column.id === "leadsTotal" && leadsTotalIsSum ? "Puede contar dos veces a quien tocó varios anuncios" : undefined}
                     />
                   </td>
