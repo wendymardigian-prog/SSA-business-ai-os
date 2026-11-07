@@ -76,6 +76,12 @@ export function canonicalCount(source: ActionEntry[] | ActionMap | undefined | n
 
 export const countLeadActions = (source: ActionEntry[] | ActionMap | undefined | null) => canonicalCount(source, LEAD_ACTIONS);
 export const countPurchaseActions = (source: ActionEntry[] | ActionMap | undefined | null) => canonicalCount(source, PURCHASE_ACTIONS);
+/**
+ * El valor de las compras, de `action_values`: la misma regla y la misma lista que el conteo, así el ROAS y el costo por compra hablan del
+ * mismo evento. `action_values` repite el valor con cada nombre igual que `actions` repite la cantidad (en una respuesta real: `lead`,
+ * `onsite_web_lead` y `offsite_conversion.fb_pixel_lead`, los tres con 350), y sumarlos lo multiplica. Null si no vino: nunca 0.
+ */
+export const purchaseValueOf = (source: ActionEntry[] | ActionMap | undefined | null) => canonicalCount(source, PURCHASE_ACTIONS);
 export const countScheduleActions = (source: ActionEntry[] | ActionMap | undefined | null) => canonicalCount(source, SCHEDULE_ACTIONS, /schedule/i);
 export const countViewContentActions = (source: ActionEntry[] | ActionMap | undefined | null) => canonicalCount(source, VIEW_CONTENT_ACTIONS);
 export const countSubmitApplicationActions = (source: ActionEntry[] | ActionMap | undefined | null) => canonicalCount(source, SUBMIT_APPLICATION_ACTIONS);

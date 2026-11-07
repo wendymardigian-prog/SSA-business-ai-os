@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COLUMNS } from "./ads-crm-columns";
+import { COLUMNS, formatCell, needsLiveReach } from "./ads-crm-columns";
 import { csvEscape, csvFilename, toCsv } from "./ads-crm-csv";
 import { buildCrmRows, totalRow } from "./ads-crm";
 
@@ -81,5 +81,44 @@ describe("csvFilename", () => {
     expect(csvFilename("ad", "2026-09-14", "2026-10-13")).toBe("anuncios-meta-vs-crm-2026-09-14_2026-10-13.csv");
     expect(csvFilename("campaign", "", "")).toBe("campanas-meta-vs-crm-periodo.csv");
     expect(csvFilename("adset", "2026-01-01", "2026-01-31")).toContain("conjuntos");
+  });
+});
+
+describe("el alcance en el CSV y en la celda", () => {
+  const base = { level: "ad", objectId: "a1", objectName: "Anuncio", parentName: null, campaignId: null, adsetId: null, date: "2026-10-01", spend: 100, impressions: 59454, reach: 49545, clicks: 20, outboundClicks: null, linkClicks: null, leads: 4, purchases: null, purchaseValue: null, status: null, effectiveStatus: null, qualityRanking: null, engagementRanking: null, conversionRanking: null, videoP25: null, videoP50: null, videoP75: null, videoP95: null, videoP100: null, thruplays: null, videoAvgTimeSeconds: null, actions: {}, updatedAt: null };
+  const build = (liveReach: Record<string, { reach: number; frequency: number | null }> | null) => buildCrmRows({ rows: [base], level: "ad", metrics: [], catalog: {}, liveReach });
+  const columns = [col("reach"), col("frequency")];
+
+  it("una suma lo dice en el encabezado y deja el numero limpio", () => {
+    const rows = build(null);
+    const [header, line] = toCsv({ firstColumnLabel: "Anuncio", columns, rows, total: totalRow(rows) }).replace("\uFEFF", "").split("\r\n");
+    expect(header).toBe("Anuncio,Alcance (con suma de los días),Frec. (con suma de los días)");
+    expect(line).toBe("Anuncio,49545,1.2");
+  });
+
+  it("con el dato de Meta el encabezado queda igual", () => {
+    const rows = build({ a1: { reach: 18919, frequency: 3.28 } });
+    const [header, line] = toCsv({ firstColumnLabel: "Anuncio", columns, rows, total: totalRow(rows) }).replace("\uFEFF", "").split("\r\n");
+    expect(header).toBe("Anuncio,Alcance,Frec.");
+    expect(line).toBe("Anuncio,18919,3.28");
+  });
+
+  it("en la pantalla, la suma lleva «≈» y el dato de Meta no", () => {
+    expect(formatCell(col("reach"), build(null)[0], "USD")).toBe("≈ 49.545");
+    expect(formatCell(col("frequency"), build(null)[0], "USD")).toBe("≈ 1,20");
+    const live = build({ a1: { reach: 18919, frequency: 3.28 } })[0];
+    expect(formatCell(col("reach"), live, "USD")).toBe("18.919");
+    expect(formatCell(col("frequency"), live, "USD")).toBe("3,28");
+    expect(formatCell(col("spend"), build(null)[0], "USD")).not.toContain("≈");
+  });
+
+  it("solo se le pregunta a Meta si alguna de las dos columnas esta a la vista", () => {
+    expect(needsLiveReach([col("spend"), col("leadsTotal")])).toBe(false);
+    expect(needsLiveReach([col("spend"), col("frequency")])).toBe(true);
+    expect(needsLiveReach([col("reach")])).toBe(true);
+  });
+
+  it("las dos columnas siguen ocultas por defecto: abrir la tabla no gasta cupo", () => {
+    expect(needsLiveReach(COLUMNS.filter((c) => c.defaultVisible))).toBe(false);
   });
 });

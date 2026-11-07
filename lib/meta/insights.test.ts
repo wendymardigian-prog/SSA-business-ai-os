@@ -3,8 +3,10 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import { canonicalCount, LEAD_ACTIONS, purchaseValueOf } from "./action-counts";
 import {
   actionsMap,
+  actionValue,
   countLeads,
   countPurchases,
   fetchInsights,
@@ -51,6 +53,50 @@ describe("contar leads (F55)", () => {
 
   it("las compras se cuentan igual", () => {
     expect(countPurchases([{ action_type: "offsite_conversion.fb_pixel_purchase", value: "7" }])).toBe(7);
+  });
+});
+
+describe("el valor de las compras: un nombre por evento", () => {
+  const raw = (action_values: Array<{ action_type: string; value: string }>) => ({ date_start: "2026-10-01", action_values });
+  const valueOf = (action_values: Array<{ action_type: string; value: string }>) =>
+    normalizeInsight(raw(action_values), "account", "act_1")?.purchaseValue;
+
+  it("la respuesta real de Meta repite el mismo valor con cada nombre", () => {
+    // `action_values` tal como lo devolvio Meta para act_479859938258708 el 6/11/2026, historia completa. Esa cuenta no tiene
+    // compras: es un lead, y es la prueba de que sumar lo que contiene una palabra multiplica el valor (daria 1.050).
+    const real = [
+      { action_type: "offsite_conversion.fb_pixel_lead", value: "350" },
+      { action_type: "onsite_web_lead", value: "350" },
+      { action_type: "lead", value: "350" },
+    ];
+    expect(actionValue(real, (t) => t.includes("lead"))).toBe(1050);
+    expect(canonicalCount(real, LEAD_ACTIONS)).toBe(350);
+  });
+
+  it("una compra con tres nombres vale una vez", () => {
+    // Datos armados con la forma de arriba: todavia no se vio una compra real en una respuesta.
+    expect(
+      valueOf([
+        { action_type: "omni_purchase", value: "1200" },
+        { action_type: "purchase", value: "1200" },
+        { action_type: "offsite_conversion.fb_pixel_purchase", value: "1200" },
+      ]),
+    ).toBe(1200);
+  });
+
+  it("sin omni_purchase da lo mismo, con el nombre que venga", () => {
+    expect(valueOf([{ action_type: "purchase", value: "1200" }, { action_type: "offsite_conversion.fb_pixel_purchase", value: "1200" }])).toBe(1200);
+    expect(valueOf([{ action_type: "offsite_conversion.fb_pixel_purchase", value: "1200" }])).toBe(1200);
+  });
+
+  it("usa la misma lista que el conteo: valor y cantidad hablan del mismo evento", () => {
+    const entries = [{ action_type: "purchase", value: "4" }, { action_type: "omni_purchase", value: "5" }];
+    expect(purchaseValueOf(entries)).toBe(countPurchases(entries));
+  });
+
+  it("sin compras, null y no cero", () => {
+    expect(valueOf([{ action_type: "lead", value: "350" }])).toBeNull();
+    expect(normalizeInsight({ date_start: "2026-10-01" }, "account", "act_1")?.purchaseValue).toBeNull();
   });
 });
 
