@@ -44,8 +44,22 @@ export const EFFECTIVE_STATUSES = [
   "DELETED",
 ] as const;
 
+/**
+ * El video del creativo puede venir en tres lugares, segun como se armo el anuncio: `video_id` (lo mas comun),
+ * `object_story_spec.video_data` (un anuncio armado en el Administrador) o `asset_feed_spec.videos` (creativo
+ * dinamico). Se piden los tres y gana el primero que tenga valor (`creativeVideoId`).
+ */
 const CREATIVE_FIELDS =
-  "creative{id,title,body,call_to_action_type,object_type,thumbnail_url,image_url,object_story_id,effective_instagram_media_id,effective_object_story_id,link_url}";
+  "creative{id,title,body,call_to_action_type,object_type,thumbnail_url,image_url,object_story_id,effective_instagram_media_id,effective_object_story_id,link_url,video_id,object_story_spec{video_data{video_id}},asset_feed_spec{videos{video_id}}}";
+
+/**
+ * La version de los campos que se le piden a Meta para el catalogo. Se sube cuando se suma un campo: una cuenta
+ * guardada con una version anterior se lee ENTERA la proxima vez (no solo lo que cambio), porque el sync
+ * incremental solo trae lo que Meta modifico y un anuncio viejo no se modifica por pedirle un campo nuevo.
+ *  - 1 (sin anotar): el catalogo original.
+ *  - 2: el id del video (`video_id`, 00323).
+ */
+export const CATALOG_FIELDS_VERSION = 2;
 
 const FIELDS: Record<CatalogLevel, string> = {
   campaign: "id,name,status,effective_status,objective,buying_type,daily_budget,lifetime_budget,start_time,stop_time,created_time",
@@ -105,6 +119,8 @@ export interface AdEntity {
   instagramMediaId: string | null;
   /** La publicacion de Facebook que promociona. */
   objectStoryId: string | null;
+  /** El id del video del creativo en Meta, o null si no es un video (o Meta no lo dio). */
+  videoId: string | null;
 }
 
 export type CatalogEntity = CampaignEntity | AdsetEntity | AdEntity;
@@ -138,6 +154,9 @@ interface RawEntity {
     effective_instagram_media_id?: string;
     effective_object_story_id?: string;
     link_url?: string;
+    video_id?: string;
+    object_story_spec?: { video_data?: { video_id?: string } };
+    asset_feed_spec?: { videos?: Array<{ video_id?: string }> };
   };
 }
 
@@ -188,6 +207,15 @@ export function normalizeAdset(raw: RawEntity): AdsetEntity | null {
   };
 }
 
+/** El id del video de un creativo: el primero de los tres lugares donde Meta puede ponerlo. */
+export function creativeVideoId(creative: RawEntity["creative"]): string | null {
+  if (!creative) return null;
+  const fromFeed = Array.isArray(creative.asset_feed_spec?.videos)
+    ? creative.asset_feed_spec.videos.map((v) => text(v?.video_id)).find((id): id is string => id !== null)
+    : undefined;
+  return text(creative.video_id) ?? text(creative.object_story_spec?.video_data?.video_id) ?? fromFeed ?? null;
+}
+
 export function normalizeAd(raw: RawEntity): AdEntity | null {
   if (!raw.id) return null;
   const creative = raw.creative ?? {};
@@ -212,6 +240,7 @@ export function normalizeAd(raw: RawEntity): AdEntity | null {
     thumbnailSourceUrl: text(creative.thumbnail_url) ?? text(creative.image_url),
     instagramMediaId: text(creative.effective_instagram_media_id),
     objectStoryId: text(creative.effective_object_story_id) ?? text(creative.object_story_id),
+    videoId: creativeVideoId(creative),
   };
 }
 
@@ -341,6 +370,15 @@ export async function fetchEntities<L extends CatalogLevel>(params: {
 }
 
 /** Desde cuando pedir en un sync incremental: la ultima vez completa menos un dia de margen. */
+/**
+ * Desde cuando pedir el catalogo de una cuenta: todo (null) si se guardo con campos de una version anterior,
+ * y si no, lo de `updatedSinceFor`.
+ */
+export function catalogUpdatedSince(account: { catalog_synced_at?: string | null; catalog_fields_version?: number | null }): Date | null {
+  if ((account.catalog_fields_version ?? 1) < CATALOG_FIELDS_VERSION) return null;
+  return updatedSinceFor(account.catalog_synced_at);
+}
+
 export function updatedSinceFor(catalogSyncedAt: string | null | undefined): Date | null {
   if (!catalogSyncedAt) return null;
   const at = new Date(catalogSyncedAt).getTime();

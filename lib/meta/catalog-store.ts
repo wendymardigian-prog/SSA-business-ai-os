@@ -5,8 +5,9 @@
  *
  * Dos cuidados:
  *  - El upsert de anuncios NO manda `social_post_id`, `content_post_id`, `content_link_manual`,
- *    `thumbnail_path` ni `thumbnail_attempts`: un sync no puede borrar un enlace manual ni tirar
- *    una miniatura ya bajada.
+ *    `thumbnail_path`, `thumbnail_attempts` ni ninguna columna de transcripcion (`transcript*`, 00323):
+ *    un sync no puede borrar un enlace manual, tirar una miniatura ya bajada ni pisar lo que una
+ *    persona escribio. `video_id` SI lo manda: sale de Meta.
  *  - Un lote que falla se anota y se sigue con el siguiente, igual que las metricas. Pero NO se calla: se devuelve
  *    cuantas filas no se pudieron guardar y por que, para que el sync deje el catalogo como incompleto (si no, la
  *    proxima corrida seria incremental y esas filas no volverian nunca: Tiron 2, E1).
@@ -103,6 +104,7 @@ export async function persistAds(supabase: Db, params: { workspaceId: string; ad
     thumbnail_source_url: r.thumbnailSourceUrl,
     instagram_media_id: r.instagramMediaId,
     object_story_id: r.objectStoryId,
+    video_id: r.videoId,
     synced_at: params.at.toISOString(),
   }));
   return upsertChunks(supabase, "meta_ads", payload, "workspace_id,ad_account_id,ad_id");

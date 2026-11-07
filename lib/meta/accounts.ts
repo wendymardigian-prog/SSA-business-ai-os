@@ -30,6 +30,11 @@ export const adAccountSchema = z.object({
    * la ultima vez completa. Opcional: las cuentas guardadas antes del catalogo no lo tienen.
    */
   catalog_synced_at: z.string().nullable().optional(),
+  /**
+   * Con que version de los campos se leyo completo el catalogo (`CATALOG_FIELDS_VERSION`, lib/meta/entities.ts).
+   * Sin anotar = 1. Si es menor que la actual, el proximo sync lee todo de nuevo.
+   */
+  catalog_fields_version: z.number().int().nullable().optional(),
 });
 
 export type AdAccount = z.infer<typeof adAccountSchema>;
@@ -140,6 +145,7 @@ export function mergeAdAccounts(graphAccounts: GraphAdAccount[], existing: AdAcc
       last_error: before?.last_error ?? null,
       first_sync_completed_at: before?.first_sync_completed_at ?? null,
       ...(before?.catalog_synced_at !== undefined ? { catalog_synced_at: before.catalog_synced_at } : {}),
+      ...(before?.catalog_fields_version !== undefined ? { catalog_fields_version: before.catalog_fields_version } : {}),
     };
   });
 
@@ -216,13 +222,15 @@ export function markSync(
 export function markCatalogSync(
   accounts: AdAccount[],
   adAccountId: string,
-  outcome: { at: string; complete: boolean; note?: string | null },
+  outcome: { at: string; complete: boolean; note?: string | null; fieldsVersion?: number },
 ): AdAccount[] {
   return accounts.map((a) =>
     a.ad_account_id === adAccountId
       ? {
           ...a,
           catalog_synced_at: outcome.complete ? outcome.at : (a.catalog_synced_at ?? null),
+          // La version de los campos avanza con el catalogo completo: un sync cortado vuelve a leer todo.
+          ...(outcome.complete && outcome.fieldsVersion !== undefined ? { catalog_fields_version: outcome.fieldsVersion } : {}),
           // Un error de las metricas que ya estaba anotado no se pisa con el silencio.
           last_error: outcome.note ?? a.last_error,
         }

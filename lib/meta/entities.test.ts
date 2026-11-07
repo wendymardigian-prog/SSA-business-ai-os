@@ -2,7 +2,7 @@
  * F23: el catalogo de Meta, con respuestas del grafo simuladas (nada sale a internet).
  */
 import { describe, expect, it, vi } from "vitest";
-import { EFFECTIVE_STATUSES, fetchEntities, MAX_ENTITY_PAGES, normalizeAd, normalizeAdset, normalizeCampaign, updatedSinceFor } from "./entities";
+import { CATALOG_FIELDS_VERSION, catalogUpdatedSince, creativeVideoId, EFFECTIVE_STATUSES, fetchEntities, MAX_ENTITY_PAGES, normalizeAd, normalizeAdset, normalizeCampaign, updatedSinceFor } from "./entities";
 
 const json = (body: unknown, headers: Record<string, string> = {}) =>
   ({ ok: true, status: 200, json: async () => body, headers: new Headers(headers) }) as unknown as Response;
@@ -50,7 +50,19 @@ describe("normalizadores", () => {
       thumbnailSourceUrl: "https://x/y.jpg",
       instagramMediaId: "ig-1",
       objectStoryId: "p_1",
+      videoId: null,
     });
+  });
+
+  it("el id del video sale de cualquiera de los tres lugares donde Meta lo pone", () => {
+    expect(normalizeAd({ id: "1", creative: { video_id: "v1" } })?.videoId).toBe("v1");
+    expect(normalizeAd({ id: "1", creative: { object_story_spec: { video_data: { video_id: "v2" } } } })?.videoId).toBe("v2");
+    expect(normalizeAd({ id: "1", creative: { asset_feed_spec: { videos: [{}, { video_id: "v3" }] } } })?.videoId).toBe("v3");
+    // Si viene en mas de uno, gana el campo directo del creativo.
+    expect(creativeVideoId({ video_id: "v1", object_story_spec: { video_data: { video_id: "v2" } } })).toBe("v1");
+    // Una imagen o un texto vacio no son un video.
+    expect(creativeVideoId({ video_id: "  " })).toBeNull();
+    expect(creativeVideoId(undefined)).toBeNull();
   });
 });
 
@@ -137,6 +149,16 @@ describe("fetchEntities", () => {
     });
     const result = await fetchEntities({ token: "t", adAccountId: "act_1", level: "ad", fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(result).toMatchObject({ ok: false, retryable: true, error: "ECONNRESET" });
+  });
+});
+
+describe("catalogUpdatedSince", () => {
+  it("una cuenta leida con campos viejos (o sin anotar) se lee entera", () => {
+    expect(catalogUpdatedSince({ catalog_synced_at: "2026-10-10T12:00:00Z" })).toBeNull();
+    expect(catalogUpdatedSince({ catalog_synced_at: "2026-10-10T12:00:00Z", catalog_fields_version: CATALOG_FIELDS_VERSION - 1 })).toBeNull();
+  });
+  it("con los campos al dia, solo lo que cambio", () => {
+    expect(catalogUpdatedSince({ catalog_synced_at: "2026-10-10T12:00:00Z", catalog_fields_version: CATALOG_FIELDS_VERSION })?.toISOString()).toBe("2026-10-09T12:00:00.000Z");
   });
 });
 

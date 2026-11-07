@@ -5753,6 +5753,12 @@ export interface Database {
           social_post_id: string | null;
           content_post_id: string | null;
           content_link_manual: boolean;
+          video_id: string | null;
+          transcript: string | null;
+          transcript_status: string;
+          transcript_source: string | null;
+          transcript_updated_at: string | null;
+          transcript_updated_by: string | null;
           raw: Json;
           synced_at: string;
           created_at: string;
@@ -5780,6 +5786,12 @@ export interface Database {
           social_post_id?: string | null;
           content_post_id?: string | null;
           content_link_manual?: boolean;
+          video_id?: string | null;
+          transcript?: string | null;
+          transcript_status?: string;
+          transcript_source?: string | null;
+          transcript_updated_at?: string | null;
+          transcript_updated_by?: string | null;
           raw?: Json;
           synced_at?: string;
           created_at?: string;
