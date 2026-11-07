@@ -59,6 +59,36 @@ describe("las tablas nuevas declaran sus permisos", () => {
   });
 });
 
+describe("anon y authenticated no reciben TRUNCATE, TRIGGER ni REFERENCES", () => {
+  // TRUNCATE vacia una tabla sin pasar por la RLS; TRIGGER y REFERENCES dejan crear disparadores y claves foraneas.
+  // La app no los usa con la sesion ni con la anon key: se revocaron (00315) y ninguna migracion los vuelve a dar.
+  // Los permisos por defecto de la primera migracion (`ALTER DEFAULT PRIVILEGES ... GRANT ALL`) no son una sentencia GRANT.
+  // `ON <algo>` que no es funcion, secuencia, esquema, tipo ni dominio: una tabla, con o sin la palabra TABLE.
+  const forbidden =
+    /^grant\s+(?:all\b|[^;]*\b(?:truncate|trigger|references)\b)[^;]*?\bon\s+(?!(?:function|procedure|routine|sequence|schema|type|domain|all\s+(?:functions|procedures|routines|sequences))\b)[^;]*\bto\b[^;]*\b(?:anon|authenticated|public)\b/i;
+
+  it("el patron reconoce lo que tiene que reconocer", () => {
+    expect(forbidden.test("grant all on public.contacts to authenticated")).toBe(true);
+    expect(forbidden.test("grant select, truncate on table public.contacts to anon")).toBe(true);
+    expect(forbidden.test("grant references on all tables in schema public to authenticated")).toBe(true);
+    expect(forbidden.test("grant select, insert on public.contacts to authenticated")).toBe(false);
+    expect(forbidden.test("grant all on public.contacts to service_role")).toBe(false);
+    expect(forbidden.test("grant all on function public.x() to authenticated")).toBe(false);
+  });
+
+  it("ninguna sentencia GRANT se los da sobre una tabla", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      for (const statement of code(file).split(";")) {
+        // Sin las listas de columnas: una columna puede llamarse `trigger` (agent_runs.trigger).
+        const text = statement.trim().replace(/\([^)]*\)/g, "").replace(/\s+/g, " ");
+        if (forbidden.test(text)) offenders.push(`${file}: ${text.slice(0, 120)}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("tipos de extension con esquema", () => {
   it("ninguna migracion escribe vector(N) sin extensions.", () => {
     const offenders = files.filter((f) => /(?<![.\w])vector\s*\(\s*\d+\s*\)/i.test(code(f)));
