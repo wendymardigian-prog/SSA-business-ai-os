@@ -39,6 +39,9 @@ vi.mock("@/lib/social/accounts", () => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// La direccion de Evolution se resuelve al cambiar (no puede ser interna): DNS simulado, IP publica de prueba.
+const { lookup } = vi.hoisted(() => ({ lookup: vi.fn() }));
+vi.mock("node:dns/promises", () => ({ lookup }));
 vi.mock("@/lib/ai/provider", () => ({ listConnectedAiProviders: vi.fn().mockResolvedValue([]) }));
 
 import {
@@ -63,6 +66,18 @@ function admin(seed: Record<string, Array<Record<string, unknown>>> = {}) {
   return db;
 }
 
+/** Una fila de Evolution ya conectada, con su direccion. */
+function evolutionRow(apiUrl: string): Record<string, unknown> {
+  return {
+    id: "ic-evo",
+    workspace_id: WS,
+    type: "channel",
+    provider: "evolution",
+    is_active: true,
+    config: { api_url: apiUrl, instance_prefix: "ssa" },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", fetchMock);
@@ -74,6 +89,7 @@ beforeEach(() => {
   deleteSecret.mockResolvedValue({ ok: true });
   listSecretNames.mockResolvedValue([]);
   logAudit.mockResolvedValue("audit-1");
+  lookup.mockResolvedValue([{ address: "203.0.113.10", family: 4 }]);
 });
 
 describe("guardar una integracion", () => {
@@ -193,13 +209,65 @@ describe("guardar una integracion", () => {
 
   it("un secreto que ya esta guardado no hace falta volver a pegarlo", async () => {
     listSecretNames.mockResolvedValue(["evolution_api_key", "evolution_webhook_token"]);
-    admin();
+    admin({ integration_configs: [evolutionRow("https://otro-servidor.test")] });
 
     const result = await updateIntegrationConfig("evolution", {
-      api_url: "https://otro-servidor.test",
+      api_url: "https://otro-servidor.test/",
+      instance_prefix: "otro",
     });
 
     expect(result).toEqual({ ok: true });
+    expect(storeSecret).not.toHaveBeenCalled();
+  });
+
+  it("cambiar la direccion de Evolution sin volver a escribir la API key se rechaza", async () => {
+    // La API key viaja en un header a esa direccion: apuntarla a otro servidor le mandaria la clave guardada.
+    listSecretNames.mockResolvedValue(["evolution_api_key", "evolution_webhook_token"]);
+    const db = admin({ integration_configs: [evolutionRow("https://evolution.test")] });
+
+    const result = await updateIntegrationConfig("evolution", { api_url: "https://otro-servidor.test" });
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("api key del servidor") });
+    expect(storeSecret).not.toHaveBeenCalled();
+    expect((db.tables.integration_configs[0]!.config as Record<string, string>).api_url).toBe("https://evolution.test");
+  });
+
+  it("cambiar la direccion con la API key nueva en el mismo guardado, pasa", async () => {
+    listSecretNames.mockResolvedValue(["evolution_api_key", "evolution_webhook_token"]);
+    admin({ integration_configs: [evolutionRow("https://evolution.test")] });
+
+    const result = await saveIntegration({
+      providerId: "evolution",
+      secrets: { api_key: "clave-valida-del-servidor" },
+      config: { api_url: "https://otro-servidor.test" },
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(storeSecret.mock.calls.map((c) => c[2])).toEqual(["evolution_api_key"]);
+  });
+
+  it("la direccion de Evolution tiene que ser https y no puede ser interna", async () => {
+    admin();
+    const secrets = { api_key: "clave-valida-del-servidor", webhook_token: "token-de-webhook-largo" };
+
+    const http = await saveIntegration({ providerId: "evolution", secrets, config: { api_url: "http://evolution.test" } });
+    expect(http).toEqual({ ok: false, error: expect.stringContaining("https://") });
+
+    const local = await saveIntegration({ providerId: "evolution", secrets, config: { api_url: "https://127.0.0.1:8080" } });
+    expect(local).toEqual({ ok: false, error: expect.stringContaining("internas") });
+
+    // La red privada de Railway se corta por el nombre, sin resolver.
+    const privada = await saveIntegration({ providerId: "evolution", secrets, config: { api_url: "https://evolution.railway.internal" } });
+    expect(privada).toEqual({ ok: false, error: expect.stringContaining("internas") });
+
+    lookup.mockResolvedValueOnce([{ address: "10.0.0.5", family: 4 }]);
+    const resuelveAdentro = await saveIntegration({ providerId: "evolution", secrets, config: { api_url: "https://evolution.example.test" } });
+    expect(resuelveAdentro).toEqual({ ok: false, error: expect.stringContaining("internas") });
+
+    lookup.mockRejectedValueOnce(Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }));
+    const noExiste = await saveIntegration({ providerId: "evolution", secrets, config: { api_url: "https://no-existe.example.test" } });
+    expect(noExiste).toEqual({ ok: false, error: expect.stringContaining("no encontré") });
+
     expect(storeSecret).not.toHaveBeenCalled();
   });
 
