@@ -131,7 +131,7 @@ function finalize(raw: unknown, ctx: NormalizeContext, base: DesignDoc): { ok: t
   const parsed = parseDesignDoc(normalized.doc);
   if (!parsed.ok) return { ok: false, problems: parsed.problems };
   // Última barrera: nada de HTML que no estuviera ya en el documento.
-  const clean = sanitizeAiDoc(parsed.doc, base);
+  const clean = sanitizeAiDoc(parsed.doc, base, ctx.assets.workspaceId);
   const warnings = clean.removed > 0 ? [...normalized.warnings, "Saqué un bloque de HTML que la IA no podía escribir."] : normalized.warnings;
   return { ok: true, doc: clean.doc, warnings };
 }

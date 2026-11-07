@@ -25,7 +25,7 @@ export class AssetAliases {
   private readonly toPath = new Map<string, string>();
 
   constructor(
-    private readonly workspaceId: string,
+    readonly workspaceId: string,
     attachments: readonly string[] = [],
     doc?: DesignDoc,
   ) {
