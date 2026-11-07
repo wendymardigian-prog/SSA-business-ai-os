@@ -15,7 +15,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => "audit-1") }));
 const setActiveWorkspaceCookie = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("@/lib/workspace", () => ({ getWorkspace: vi.fn(), setActiveWorkspaceCookie }));
-vi.mock("@/lib/fathom/revoke", () => ({ revokeFathomConnectionsOf: vi.fn(async () => 0) }));
+vi.mock("@/lib/fathom/revoke", () => ({ revokeFathomConnectionsOf: vi.fn(async () => 0) })); // @plantilla-quitar(llamadas)
 vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: vi.fn() }));
 
 const auth = vi.hoisted(() => ({ createUser: vi.fn(), signInWithPassword: vi.fn() }));
