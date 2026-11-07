@@ -128,6 +128,33 @@ async function readCapped(response: Response, maxBytes: number): Promise<{ text:
   return { text: decoderFor(response.headers.get("content-type") ?? "", bytes).decode(bytes), truncated };
 }
 
+/**
+ * Lo mismo que `safeFetch` (IPs publicas en cada salto, redirecciones a mano, corte por tiempo) pero devuelve la
+ * respuesta final SIN leer el cuerpo: para bajar un archivo binario (la media de un mensaje), que no es texto y
+ * tiene su propio tope de tamaño. Quien llama lee el cuerpo antes de que venza `timeoutMs`.
+ */
+export async function safeFetchResponse(
+  rawUrl: string,
+  options: { timeoutMs?: number; fetchImpl?: typeof fetch; checkUrl?: (url: string) => Promise<URL> } = {},
+): Promise<{ response: Response; finalUrl: string }> {
+  const check = options.checkUrl ?? assertPublicUrl;
+  const doFetch = options.fetchImpl ?? fetch;
+  const signal = AbortSignal.timeout(options.timeoutMs ?? SAFE_FETCH_TIMEOUT_MS);
+  let current = rawUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const url = await check(current);
+    const response = await doFetch(url, { method: "GET", redirect: "manual", signal, cache: "no-store" });
+    const location = response.headers.get("location");
+    if (response.status >= 300 && response.status < 400 && location) {
+      await response.body?.cancel().catch(() => undefined);
+      current = new URL(location, url).toString();
+      continue;
+    }
+    return { response, finalUrl: url.toString() };
+  }
+  throw new BlockedUrlError("Demasiadas redirecciones.");
+}
+
 export async function safeFetch(
   rawUrl: string,
   init: { method: string; headers?: Record<string, string>; body?: string },

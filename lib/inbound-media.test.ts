@@ -11,6 +11,14 @@ import { memoryDb } from "@/lib/agent/testing/memory-db";
 import { emptyAttachment, type ChatAttachment } from "@/lib/messages/attachments";
 import { chatMediaEnabled, downloadAttachments, storeInboundMedia, type MediaFetcher } from "./inbound-media";
 
+// El DNS simulado: los CDN de los tests resuelven a una IP publica, y `interno.test` a una de la red privada. Asi
+// se prueba la proteccion SSRF sin salir a la red.
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn(async (host: string) =>
+    host === "interno.test" ? [{ address: "10.0.0.5", family: 4 }] : [{ address: "93.184.216.34", family: 4 }],
+  ),
+}));
+
 const WS = "ws-1";
 const CV = "cv-1";
 const MSG = "m-1";
@@ -455,5 +463,40 @@ describe("downloadAttachments: la parte de red, sin base", () => {
     });
 
     expect(result.items[0]).toMatchObject({ status: "failed", error: "Evolution no devolvió el archivo" });
+  });
+});
+
+describe("downloadAttachments: direcciones internas (SSRF)", () => {
+  it("no baja una direccion de la red interna: marca el adjunto como fallido y nunca la pide", async () => {
+    const { memory } = db();
+    const fetchImpl = vi.fn(async () => new Response(new Uint8Array(10), { status: 200 }));
+    const result = await downloadAttachments({
+      supabase: memory.client as never,
+      workspaceId: WS,
+      conversationId: CV,
+      messageId: MSG,
+      items: [emptyAttachment("document", { sourceUrl: "http://interno.test/secreto", mime: "text/plain", status: "pending" })],
+      fetcher: async (item) => ({ kind: "url", url: item.sourceUrl! }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(result.items[0].status).toBe("failed");
+    expect(result.stored).toBe(0);
+  });
+
+  it("tampoco sigue una redireccion hacia la red interna", async () => {
+    const { memory } = db();
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest" } }));
+    const result = await downloadAttachments({
+      supabase: memory.client as never,
+      workspaceId: WS,
+      conversationId: CV,
+      messageId: MSG,
+      items: [emptyAttachment("image", { sourceUrl: "https://cdn.meta/x.jpg", status: "pending" })],
+      fetcher: async (item) => ({ kind: "url", url: item.sourceUrl! }),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.items[0].status).toBe("failed");
   });
 });
