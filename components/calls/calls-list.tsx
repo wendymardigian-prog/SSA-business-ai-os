@@ -10,7 +10,7 @@ import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { ImportCallModal } from "@/components/calls/import-call-modal";
 import { AlertsChip, OutcomeChip, QualificationChip, ScoreCell, StatusChip, TypeChip } from "@/components/calls/call-chips";
 import { syncFathomNow } from "@/lib/actions/fathom";
-import { analyzePendingCalls } from "@/lib/actions/calls-edit";
+import { analyzePendingCalls, analyzeSelectedCalls } from "@/lib/actions/calls-edit";
 import { Popover } from "@/components/ui/popover";
 import { formatCallDate, formatDuration, humanize } from "@/lib/calls/format";
 import {
@@ -149,6 +149,10 @@ export function CallsList(props: Props) {
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
+  // Lo elegido cuenta solo si sigue en la pagina: cambiar de filtro o de pagina no arrastra nada a ciegas.
+  const [selected, setSelected] = useState<string[]>([]);
+  const selectedOnPage = selected.filter((id) => rows.some((r) => r.id === id));
+
   function saveView() {
     const name = viewName.trim();
     if (!name) return;
@@ -156,6 +160,22 @@ export function CallsList(props: Props) {
     persistViews([...views.filter((v) => v.name !== name), { id: crypto.randomUUID(), name, params }].slice(-12));
     setNaming(false);
     setViewName("");
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  }
+
+  function analyzeSelected() {
+    setSyncMessage(null);
+    startQueue(async () => {
+      const r = await analyzeSelectedCalls({ callIds: selectedOnPage });
+      if (!r.ok) return setSyncMessage({ ok: false, text: r.error });
+      const queued = r.queued === 0 ? "No se puede analizar ninguna de las elegidas." : `Se van a analizar ${r.queued} ${r.queued === 1 ? "grabación" : "grabaciones"}, una cada 30 segundos.`;
+      setSyncMessage({ ok: true, text: r.queued > 0 && r.skipped > 0 ? `${queued} ${r.skipped} no se pueden analizar: ya están analizadas, no tienen transcripción o a su tipo le falta el analizador.` : queued });
+      setSelected([]);
+      router.refresh();
+    });
   }
 
   function analyzePending() {
@@ -188,6 +208,12 @@ export function CallsList(props: Props) {
               <button type="button" onClick={syncNow} disabled={syncing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50" aria-label="Sincronizar ahora">
                 {syncing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
                 <span className="hidden sm:inline">Sincronizar ahora</span>
+              </button>
+            )}
+            {canEdit && selectedOnPage.length > 0 && (
+              <button type="button" onClick={analyzeSelected} disabled={queueing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50" aria-label={`Analizar seleccionadas (${selectedOnPage.length})`}>
+                {queueing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+                <span className="hidden sm:inline">Analizar seleccionadas ({selectedOnPage.length})</span>
               </button>
             )}
             {canEdit && props.pendingCount > 0 && (
@@ -380,6 +406,17 @@ export function CallsList(props: Props) {
                   <table className="w-full min-w-[960px] text-sm">
                     <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
                       <tr>
+                        {canEdit && (
+                          <th scope="col" className="w-8 px-3 py-2">
+                            <input
+                              type="checkbox"
+                              aria-label="Elegir todas las de esta página"
+                              checked={rows.length > 0 && selectedOnPage.length === rows.length}
+                              onChange={(e) => setSelected(e.target.checked ? rows.map((r) => r.id) : [])}
+                              className="h-4 w-4"
+                            />
+                          </th>
+                        )}
                         {["Lead / llamada", "Fecha", "Duración", "Closer", "Tipo", "Resultado", "Closer", "Lead", "Estado", ""].map((h, i) => (
                           <th key={i} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{i === 6 ? "Puntaje closer" : i === 7 ? "Puntaje lead" : h}</th>
                         ))}
@@ -390,6 +427,11 @@ export function CallsList(props: Props) {
                         const gray = isNonSaleRow({ call_type: r.callType, analysis_status: r.status });
                         return (
                           <tr key={r.id} className={`hover:bg-muted/30 ${gray ? "opacity-60" : ""}`}>
+                            {canEdit && (
+                              <td className="px-3 py-2">
+                                <input type="checkbox" aria-label={`Elegir ${r.title}`} checked={selected.includes(r.id)} onChange={() => toggleSelected(r.id)} className="h-4 w-4" />
+                              </td>
+                            )}
                             <td className="max-w-[260px] px-3 py-2">
                               <Link href={`/dashboard/llamadas/${r.id}`} className="block rounded outline-offset-2 focus-visible:outline">
                                 <span className="block truncate font-medium">{r.contactName ?? "Sin vincular"}</span>

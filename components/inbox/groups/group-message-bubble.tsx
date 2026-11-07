@@ -8,6 +8,7 @@ import type { ThreadMessage } from "@/lib/whatsapp-groups/thread";
 import { cn } from "@/lib/utils";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { CreateGroupAutomationDialog } from "./create-group-automation-dialog";
+import { MessageText } from "@/components/inbox/message-text";
 
 /**
  * Un mensaje del hilo de un grupo: quién lo escribió (con link a su ficha si es contacto), los adjuntos, el texto,
@@ -69,7 +70,11 @@ export function GroupMessageBubble({ message, canCreateAutomation }: { message: 
             })}
           </div>
         ) : (
-          message.text && <p className="whitespace-pre-wrap break-words">{message.text}</p>
+          message.text && (
+            <p className="whitespace-pre-wrap break-words">
+              <MessageText text={message.text} outbound={message.outbound} />
+            </p>
+          )
         )}
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useViewerTimezone } from "@/components/dashboard-chrome";
-import { useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { History, RotateCcw } from "lucide-react";
 import { saveTaskInstructions, restoreTaskInstructions } from "@/lib/actions/ai-tasks";
@@ -32,7 +32,6 @@ export function TaskInstructionsPanel({
   versions,
   technical,
   variables = [],
-  testPanel,
 }: {
   taskId: string;
   taskName: string;
@@ -44,8 +43,6 @@ export function TaskInstructionsPanel({
   technical: string;
   /** Las `{{variables}}` que esta tarea reemplaza en sus instrucciones. */
   variables?: Array<{ name: string; description: string }>;
-  /** "Probar antes de guardar": recibe el texto que hay en el editor, guardado o no. */
-  testPanel?: (draftText: string) => ReactNode;
 }) {
   const timeZone = useViewerTimezone();
   const router = useRouter();
@@ -152,7 +149,6 @@ export function TaskInstructionsPanel({
       </div>
       {message && <Notice tone={message.tone}>{message.text}</Notice>}
 
-      {testPanel?.(text)}
 
       <div>
         <h3 className="flex items-center gap-1.5 text-xs font-semibold">

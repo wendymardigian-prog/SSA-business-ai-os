@@ -29,7 +29,7 @@ vi.mock("@/lib/calls/ai-generate", () => ({ aiSdkGenerate: () => mocks.generate 
 const emit = vi.hoisted(() => vi.fn(async () => true));
 vi.mock("@/lib/calls/automation/emit", () => ({ emitCallEvent: emit }));
 
-import { analyzeCall, analyzePendingCalls, changeCallType, proposeSectionCorrection, regenerateCall, saveCallSections, setCallNoShow } from "./calls-edit";
+import { analyzeCall, analyzePendingCalls, analyzeSelectedCalls, changeCallType, proposeSectionCorrection, regenerateCall, saveCallSections, setCallNoShow } from "./calls-edit";
 import { DEFAULT_ANALYSIS, DEFAULT_CLASSIFICATION } from "@/lib/calls/task-settings";
 
 const CALL = "11111111-1111-4111-8111-111111111111";
@@ -62,17 +62,34 @@ const row = (over: Record<string, unknown> = {}) => ({
   analysis: analysis(),
   analysis_ai: analysis(),
   rubric_snapshot: { closer: [{ clave: "rapport", peso: 100 }], lead: [] },
+  area_id: VENTAS,
+  category_id: CIERRE,
   updated_at: "2026-10-10T10:00:00Z",
   contact_id: null,
   ...over,
 });
 
 interface Setup { user: FakeDb; service: FakeDb }
-function setup(over: { call?: Record<string, unknown> | null; settings?: Record<string, unknown>; pending?: unknown[]; updated?: unknown[]; duplicateJob?: boolean } = {}): Setup {
+const analyzer = (categoryId: string, mode: "manual" | "auto" = "manual") => ({
+  id: `perfil-${categoryId}`,
+  workspace_id: "ws1",
+  category_id: categoryId,
+  shape: "sales",
+  mode,
+  rules: {},
+  rubric: null,
+  auto_summary: true,
+  auto_memory: true,
+  auto_knowledge: false,
+  active_prompt_version: null,
+});
+
+function setup(over: { call?: Record<string, unknown> | null; settings?: Record<string, unknown>; pending?: unknown[]; updated?: unknown[]; duplicateJob?: boolean; profiles?: unknown[]; selected?: unknown[] } = {}): Setup {
   const user = fakeDb({
-    "calls:select": (c) => (c.filters.some((f) => f.column === "analysis_status" && f.value === "pending") && c.filters.some((f) => f.method === "in") ? { data: over.pending ?? [] } : { data: over.call === null ? null : row(over.call ?? {}) }),
+    "calls:select": (c) => (c.filters.some((f) => f.method === "in" && f.column === "id") ? { data: over.selected ?? [] } : c.filters.some((f) => f.column === "analysis_status" && f.value === "pending") ? { data: over.pending ?? [] } : { data: over.call === null ? null : row(over.call ?? {}) }),
   });
   const service = fakeDb({
+    "call_analysis_profiles:select": { data: over.profiles ?? [analyzer(CIERRE)] },
     "workspaces:select": { data: { ai_background_settings: over.settings ?? { call_analysis: DEFAULT_ANALYSIS, call_classification: DEFAULT_CLASSIFICATION } } },
     "calls:update": { data: over.updated ?? [{ id: CALL }] },
     "booking_categories:select": { data: CATEGORIES },
@@ -145,16 +162,16 @@ describe("changeCallType", () => {
     expect(service.writesTo("calls")[0].values).toMatchObject({ area_id: VENTAS, category_id: VENTAS, category_snapshot: { area_id: VENTAS, type_id: null } });
   });
 
-  it("con el analisis automatico prendido, un tipo que se analiza encola el analisis", async () => {
-    const { service } = setup({ call: { analysis_status: "needs_review", call_type: null, category_id: null, no_show: false }, settings: { call_analysis: { ...DEFAULT_ANALYSIS, mode: "now" } } });
+  it("con un analizador automatico, elegir ese tipo encola el analisis", async () => {
+    const { service } = setup({ call: { analysis_status: "needs_review", call_type: null, category_id: null, no_show: false }, profiles: [analyzer(CIERRE, "auto")] });
     await changeCallType({ callId: CALL, categoryId: CIERRE });
     expect(service.writesTo("scheduled_jobs")[0].values).toMatchObject({ type: "call_analyze", dedupe_key: `call_analyze:${CALL}` });
   });
 
-  it("un area que no se analiza deja la llamada en No aplica", async () => {
+  it("un tipo sin analizador deja la llamada en No aplica y lo dice", async () => {
     const { service } = setup({ call: { analysis_status: "needs_review", call_type: null, category_id: null, no_show: false } });
     await changeCallType({ callId: CALL, categoryId: EQUIPO });
-    expect(service.writesTo("calls")[0].values).toMatchObject({ analysis_status: "not_applicable", analysis_status_reason: null });
+    expect(service.writesTo("calls")[0].values).toMatchObject({ analysis_status: "not_applicable", analysis_status_reason: "no_profile" });
   });
 
   it("una llamada ya analizada conserva su estado al cambiarle el tipo", async () => {
@@ -193,7 +210,7 @@ describe("setCallNoShow", () => {
   });
 
   it("sacar la marca vuelve al tipo de su area", async () => {
-    const { service } = setup({ call: { analysis_status: "not_applicable", call_type: "no_show", category_snapshot: snapshot, no_show: true } });
+    const { service } = setup({ call: { analysis_status: "not_applicable", call_type: "no_show", category_snapshot: snapshot, area_id: VENTAS, category_id: CIERRE, no_show: true } });
     await setCallNoShow({ callId: CALL, noShow: false });
     expect(service.writesTo("calls")[0].values).toMatchObject({ no_show: false, call_type: "cierre", analysis_status: "pending" });
   });
@@ -219,8 +236,8 @@ describe("analyzeCall", () => {
     expect(job.type).toBe("call_analyze");
     expect(job.payload).toMatchObject({ callId: CALL, manual: true, requestedBy: "u1" });
   });
-  it("un tipo que no se analiza, sin transcripcion o ya analizada: no se encola", async () => {
-    for (const call of [{ call_type: "triaje" }, { transcript: [] }, { analysis_status: "analyzed" }, { analysis_status: "analyzing" }, { call_type: null }]) {
+  it("sin analizador, sin clasificar, sin nadie, sin transcripcion o ya analizada: no se encola", async () => {
+    for (const call of [{ category_id: SEGUIMIENTO }, { area_id: null, category_id: null }, { no_show: true }, { transcript: [] }, { analysis_status: "analyzed" }, { analysis_status: "analyzing" }]) {
       const { service } = setup({ call });
       const r = await analyzeCall({ callId: CALL });
       expect(r.ok).toBe(false);
@@ -235,24 +252,56 @@ describe("analyzeCall", () => {
 });
 
 describe("analyzePendingCalls", () => {
+  const pending = (id: string, category_id: string = CIERRE) => ({ id, area_id: VENTAS, category_id });
+
   it("encola las pendientes espaciadas 30 segundos", async () => {
-    const { service } = setup({ pending: [{ id: "a" }, { id: "b" }, { id: "c" }] });
+    const { service } = setup({ pending: [pending("a"), pending("b"), pending("c")] });
     const r = await analyzePendingCalls();
     expect(r).toEqual({ ok: true, queued: 3 });
     const times = service.writesTo("scheduled_jobs").map((c) => new Date((c.values as { run_at: string }).run_at).getTime());
     expect(times[1] - times[0]).toBe(30_000);
     expect(times[2] - times[1]).toBe(30_000);
   });
-  it("pide como mucho 20, solo pendientes de tipos que se analizan, de las que la persona ve", async () => {
+  it("salta las de un tipo sin analizador, y encola como mucho 20", async () => {
+    const many = Array.from({ length: 25 }, (_, i) => pending(`c${i}`));
+    const { service } = setup({ pending: [pending("sin", SEGUIMIENTO), ...many] });
+    expect(await analyzePendingCalls()).toEqual({ ok: true, queued: 20 });
+    expect(service.writesTo("scheduled_jobs").some((w) => (w.values as { payload: { callId: string } }).payload.callId === "sin")).toBe(false);
+  });
+  it("lee con el cliente de la persona: solo pendientes que ve", async () => {
     const { user } = setup({ pending: [] });
     await analyzePendingCalls();
-    const q = user.calls[0];
-    expect(q.table).toBe("calls");
-    expect(q.filters).toEqual(expect.arrayContaining([
-      expect.objectContaining({ method: "eq", column: "analysis_status", value: "pending" }),
-      expect.objectContaining({ method: "in", column: "call_type" }),
-      expect.objectContaining({ method: "limit", column: 20 }),
-    ]));
+    expect(user.calls[0].table).toBe("calls");
+    expect(user.calls[0].filters).toEqual(expect.arrayContaining([expect.objectContaining({ method: "eq", column: "analysis_status", value: "pending" })]));
+  });
+});
+
+describe("analyzeSelectedCalls", () => {
+  const A = "77777777-7777-4777-8777-777777777777";
+  const B = "88888888-8888-4888-8888-888888888888";
+  const row = (id: string, over: Record<string, unknown> = {}) => ({ id, area_id: VENTAS, category_id: CIERRE, no_show: false, analysis_status: "pending", transcript, ...over });
+
+  it("encola las que tienen analizador y cuenta las que no", async () => {
+    const { service } = setup({ selected: [row(A), row(B, { category_id: SEGUIMIENTO })] });
+    expect(await analyzeSelectedCalls({ callIds: [A, B] })).toEqual({ ok: true, queued: 1, skipped: 1 });
+    expect(service.writesTo("scheduled_jobs")).toHaveLength(1);
+  });
+  it("no vuelve a analizar lo analizado, ni lo que no se puede", async () => {
+    const { service } = setup({ selected: [row(A, { analysis_status: "analyzed" }), row(B, { no_show: true })] });
+    expect(await analyzeSelectedCalls({ callIds: [A, B] })).toEqual({ ok: true, queued: 0, skipped: 2 });
+    expect(service.writesTo("scheduled_jobs")).toHaveLength(0);
+  });
+  it("pide ids validos y un tope", async () => {
+    setup();
+    expect((await analyzeSelectedCalls({ callIds: [] })).ok).toBe(false);
+    expect((await analyzeSelectedCalls({ callIds: ["no-es-uuid"] })).ok).toBe(false);
+    const many = Array.from({ length: 21 }, (_, i) => `${String(i).padStart(8, "0")}-7777-4777-8777-777777777777`);
+    expect((await analyzeSelectedCalls({ callIds: many })).ok).toBe(false);
+  });
+  it("sin permiso no hace nada", async () => {
+    setup();
+    mocks.permission.mockResolvedValue(null);
+    expect((await analyzeSelectedCalls({ callIds: [A] })).ok).toBe(false);
   });
 });
 

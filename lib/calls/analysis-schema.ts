@@ -92,6 +92,21 @@ export const analysisSchema = z.object({
 
 export type CallAnalysis = z.infer<typeof analysisSchema>;
 
+/**
+ * El formato general: una reunion que no es de venta (servicio, equipo...). Sin resultado de venta,
+ * sin lead ni creencias: por eso no tiene puntaje de lead. Las claves que comparte con el de ventas
+ * son las mismas, asi la ficha y las correcciones las leen igual.
+ */
+export const generalAnalysisSchema = z.object({
+  resumen: z.string(),
+  rubrica: analysisSchema.shape.rubrica,
+  proximos_pasos: z.array(z.string()).nullish(),
+  feedback: analysisSchema.shape.feedback,
+  alertas: analysisSchema.shape.alertas,
+});
+
+export type GeneralCallAnalysis = z.infer<typeof generalAnalysisSchema>;
+
 /** Las secciones de texto que el resumen y el contacto usan, sin tener que conocer el esquema entero. */
 export function parseAnalysis(value: unknown): { ok: true; analysis: CallAnalysis } | { ok: false; error: string } {
   const parsed = analysisSchema.safeParse(value);

@@ -36,6 +36,9 @@ const REASONS: Record<string, string> = {
   rule: "El tipo lo decidió una regla",
   ai_off: "Ninguna regla lo decide y la clasificación con IA está apagada",
   ai_error: "La IA no pudo clasificarla: elegí el tipo vos",
+  no_profile: "Falta configurar el analizador de este tipo",
+  no_show: "Nadie se presentó",
+  rules: "No cumple las reglas para analizarse sola: analizala a mano si querés",
 };
 
 /** El motivo en palabras, o null si no hay (o no se conoce). */
@@ -54,8 +57,9 @@ export interface AnalyzeCheck {
 /** Si el boton "Analizar" se ofrece, y si no, por que. */
 export function canAnalyze(input: {
   status: CallAnalysisStatus;
-  callType: string | null;
-  analyzeTypes: string[];
+  hasArea: boolean;
+  noShow: boolean;
+  hasProfile: boolean;
   hasTranscript: boolean;
   canEdit: boolean;
 }): AnalyzeCheck {
@@ -63,33 +67,8 @@ export function canAnalyze(input: {
   if (!input.hasTranscript) return { ok: false, reason: "La llamada no tiene transcripción" };
   if (input.status === "analyzing") return { ok: false, reason: "Ya se está analizando" };
   if (input.status === "classifying") return { ok: false, reason: "Todavía se está clasificando" };
-  if (!input.callType) return { ok: false, reason: "Primero elegí el tipo de llamada" };
-  if (!input.analyzeTypes.includes(input.callType)) return { ok: false, reason: "Este tipo de llamada no se analiza" };
+  if (!input.hasArea) return { ok: false, reason: "Primero elegí el área y el tipo" };
+  if (input.noShow) return { ok: false, reason: "Nadie se presentó" };
+  if (!input.hasProfile) return { ok: false, reason: "Falta configurar el analizador de este tipo" };
   return { ok: true };
-}
-
-export interface AfterClassify {
-  status: Extract<CallAnalysisStatus, "needs_review" | "pending" | "not_applicable">;
-  reason: string | null;
-  /** Se encola el analisis ahora (modo automatico). */
-  enqueueAnalysis: boolean;
-}
-
-/**
- * El estado en que queda la llamada despues de clasificarla.
- *  - Confianza baja: Por revisar.
- *  - Tipo que no se analiza: No aplica.
- *  - Tipo que si: Pendiente; con el modo automatico se encola, y sin el queda
- *    esperando (motivo `manual`).
- */
-export function nextStatusAfterClassify(
-  callType: string,
-  opts: { analyzeTypes: string[]; auto: boolean; lowConfidence?: boolean; hasTranscript?: boolean },
-): AfterClassify {
-  if (opts.lowConfidence) return { status: "needs_review", reason: "low_confidence", enqueueAnalysis: false };
-  if (!opts.analyzeTypes.includes(callType) && callType !== "venta") return { status: "not_applicable", reason: null, enqueueAnalysis: false };
-  if (opts.hasTranscript === false) return { status: "needs_review", reason: "no_transcript", enqueueAnalysis: false };
-  return opts.auto
-    ? { status: "pending", reason: null, enqueueAnalysis: true }
-    : { status: "pending", reason: "manual", enqueueAnalysis: false };
 }

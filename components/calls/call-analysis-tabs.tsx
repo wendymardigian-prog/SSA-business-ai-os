@@ -82,6 +82,21 @@ export interface TabsData {
   uses?: CallUsesData;
 }
 
+function AlertsCard({ alerts, className }: { alerts: ReadAnalysis["alerts"]; className?: string }) {
+  return (
+    <Card title="Alertas" className={className}>
+      <ul className="space-y-1 text-sm">
+        {alerts.map((al) => (
+          <li key={al.index} className="flex items-start gap-2">
+            <span className={callBadgeClass(al.resolved ? "neutral" : "negative")}>{humanize(al.type)}</span>
+            <span className="text-muted-foreground">{al.text}{al.resolved ? " (revisada)" : ""}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 export function SummaryTab({ data, onJump }: { data: TabsData; onJump: (ts: string) => void }) {
   const a = useMemo(() => readAnalysis(data.analysis), [data.analysis]);
   const metrics = useMemo(() => {
@@ -105,7 +120,17 @@ export function SummaryTab({ data, onJump }: { data: TabsData; onJump: (ts: stri
 
   return (
     <div className="space-y-4">
-      {data.emptyMessage ? <Empty t={data.emptyMessage} /> : a.empty ? <Empty t="Esta llamada todavía no tiene análisis." /> : (
+      {data.emptyMessage ? <Empty t={data.emptyMessage} /> : a.empty ? <Empty t="Esta llamada todavía no tiene análisis." /> : a.shape === "general" ? (
+        <div className="grid grid-cols-1 gap-3">
+          <Card title="Resumen de la IA" section="resumen">
+            {a.summary ? <p className="whitespace-pre-line text-sm leading-relaxed">{a.summary}</p> : <Empty />}
+          </Card>
+          <Card title="Próximos pasos">
+            {a.nextSteps.length ? <ul className="list-disc space-y-1 pl-4 text-sm">{a.nextSteps.map((step, i) => <li key={i}>{step}</li>)}</ul> : <Empty t="Sin próximos pasos." />}
+          </Card>
+          {a.alerts.length > 0 && <AlertsCard alerts={a.alerts} />}
+        </div>
+      ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Card title="Resultado y próximo paso" section="resultado">
             <span className={callBadgeClass(outcomeBadgeTone(a.result.category))}>{a.result.category ? humanize(a.result.category) : "Sin resultado"}</span>
@@ -139,18 +164,7 @@ export function SummaryTab({ data, onJump }: { data: TabsData; onJump: (ts: stri
           <Card title="Resumen de la IA" className="sm:col-span-2" section="resumen">
             {a.summary ? <p className="whitespace-pre-line text-sm leading-relaxed">{a.summary}</p> : <Empty />}
           </Card>
-          {a.alerts.length > 0 && (
-            <Card title="Alertas" className="sm:col-span-2">
-              <ul className="space-y-1 text-sm">
-                {a.alerts.map((al) => (
-                  <li key={al.index} className="flex items-start gap-2">
-                    <span className={callBadgeClass(al.resolved ? "neutral" : "negative")}>{humanize(al.type)}</span>
-                    <span className="text-muted-foreground">{al.text}{al.resolved ? " (revisada)" : ""}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          {a.alerts.length > 0 && <AlertsCard alerts={a.alerts} className="sm:col-span-2" />}
         </div>
       )}
 

@@ -32,8 +32,21 @@ describe("detailView: un estado, una pantalla", () => {
   });
 
   it("no aplica: avisa y manda a la configuracion si se puede", () => {
-    expect(detailView({ ...base, status: "not_applicable" }).banner).toMatchObject({ title: "Este tipo no se analiza", action: "config" });
+    expect(detailView({ ...base, status: "not_applicable" }).banner).toMatchObject({ title: "Falta configurar el analizador de este tipo", action: "config" });
     expect(detailView({ ...base, status: "not_applicable", canConfigure: false }).banner?.action).toBeNull();
+    expect(detailView({ ...base, status: "not_applicable" }).banner?.message).not.toContain("Antes decía");
+  });
+
+  it("nadie se presento: sin banner, y lo dice en las pestañas", () => {
+    const v = detailView({ ...base, status: "not_applicable", reason: "no_show" });
+    expect(v.banner).toBeNull();
+    expect(v.emptyMessage).toContain("Nadie se presentó");
+  });
+
+  it("si el analizador llego despues, ofrece analizar", () => {
+    const v = detailView({ ...base, status: "not_applicable", reason: "no_profile", analyze: { ok: true } });
+    expect(v.banner).toMatchObject({ action: "analyze" });
+    expect(detailView({ ...base, status: "not_applicable", reason: "no_profile", analyze: { ok: false, reason: "Falta" } }).banner).toMatchObject({ action: "config" });
   });
 
   it("analizada con analisis: pestañas con contenido y sin banner", () => {

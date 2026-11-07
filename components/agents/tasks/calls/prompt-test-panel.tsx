@@ -7,30 +7,30 @@ import { testCallDraft } from "@/lib/actions/calls-test";
 import { MAX_TEST_CALLS, type TestCallResult } from "@/lib/calls/prompt-test";
 import { Notice, Section } from "@/components/agents/fields";
 import type { TestableCall } from "@/lib/calls/config-data";
+import type { ProfileShape } from "@/lib/calls/profiles";
 
 /**
- * "Probar antes de guardar" (F26): corre el borrador del editor —el texto, la
- * rubrica o los dos— sobre 1 a 5 llamadas ya analizadas y muestra que cambiaria.
- * No guarda nada: ni las llamadas, ni las instrucciones, ni la configuracion.
+ * "Probar antes de guardar" (F26): corre el analizador del editor sobre 1 a 5 grabaciones de ese
+ * tipo y muestra que daria. No guarda nada: ni las grabaciones, ni las instrucciones, ni el analizador.
  * Cuesta lo que cuesta un analisis por llamada, y lo dice antes de probar.
  */
 export function PromptTestPanel({
   calls,
   getDraft,
-  what,
+  general = false,
   disabled = false,
   disabledReason,
 }: {
   calls: TestableCall[];
-  /** El texto y/o la rubrica del editor, en el momento de apretar "Probar". */
-  getDraft: () => { instructionsText?: string; rubricDraft?: unknown };
-  /** "las instrucciones" o "la rúbrica": para el texto de ayuda. */
-  what: string;
+  /** Lo que tiene el editor, en el momento de apretar "Probar". */
+  getDraft: () => { categoryId: string; shape: ProfileShape; instructionsText?: string; rubricDraft: unknown };
+  /** El formato general no tiene lead ni resultado: no se muestran. */
+  general?: boolean;
   disabled?: boolean;
   disabledReason?: string;
 }) {
   const timeZone = useViewerTimezone();
-  const [selected, setSelected] = useState<string[]>(() => calls.slice(0, 3).map((c) => c.id));
+  const [selected, setSelected] = useState<string[]>(() => calls.slice(0, 1).map((c) => c.id));
   const [results, setResults] = useState<TestCallResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -51,15 +51,15 @@ export function PromptTestPanel({
   return (
     <Section
       title="Probar antes de guardar"
-      description={`Corre ${what} del editor, aunque no las hayas guardado, sobre llamadas ya analizadas y te muestra qué cambiaría. No guarda nada. Cada llamada probada gasta un análisis.`}
+      description="Corre lo que tiene el editor, aunque no lo hayas guardado, sobre grabaciones de este tipo y te muestra qué daría. No guarda nada. Cada grabación probada gasta un análisis."
     >
       {calls.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Todavía no hay llamadas analizadas para probar. Cuando analices alguna, aparece acá.</p>
+        <p className="text-sm text-muted-foreground">Todavía no hay grabaciones de este tipo con transcripción. Cuando haya alguna, aparece acá.</p>
       ) : (
         <>
           <fieldset>
             <legend className="text-xs font-semibold">
-              Llamadas a probar ({selected.length} de {MAX_TEST_CALLS} como máximo)
+              Grabaciones a probar ({selected.length} de {MAX_TEST_CALLS} como máximo)
             </legend>
             <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
               {calls.map((c) => {
@@ -101,7 +101,7 @@ export function PromptTestPanel({
         </>
       )}
       {error && <Notice tone="error">{error}</Notice>}
-      {results && <TestResults results={results} />}
+      {results && <TestResults results={results} general={general} />}
     </Section>
   );
 }
@@ -118,7 +118,7 @@ function Change({ current, draft }: { current: number | null; draft: number | nu
   );
 }
 
-function TestResults({ results }: { results: TestCallResult[] }) {
+function TestResults({ results, general }: { results: TestCallResult[]; general: boolean }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full text-left text-xs">
@@ -126,9 +126,9 @@ function TestResults({ results }: { results: TestCallResult[] }) {
         <thead className="bg-muted/50 text-muted-foreground">
           <tr>
             <th scope="col" className="px-3 py-2 font-medium">Llamada</th>
-            <th scope="col" className="px-3 py-2 font-medium">Closer</th>
-            <th scope="col" className="px-3 py-2 font-medium">Lead</th>
-            <th scope="col" className="px-3 py-2 font-medium">Resultado</th>
+            <th scope="col" className="px-3 py-2 font-medium">{general ? "Puntaje" : "Closer"}</th>
+            {!general && <th scope="col" className="px-3 py-2 font-medium">Lead</th>}
+            {!general && <th scope="col" className="px-3 py-2 font-medium">Resultado</th>}
             <th scope="col" className="px-3 py-2 font-medium">Criterios que cambian</th>
           </tr>
         </thead>
@@ -139,10 +139,12 @@ function TestResults({ results }: { results: TestCallResult[] }) {
               {r.ok ? (
                 <>
                   <td className="px-3 py-2"><Change current={r.closer.current} draft={r.closer.draft} /></td>
-                  <td className="px-3 py-2"><Change current={r.lead.current} draft={r.lead.draft} /></td>
-                  <td className="px-3 py-2">
-                    {r.outcome.same ? <span className="text-muted-foreground">Igual</span> : <span className="font-medium">Cambió: {r.outcome.current ?? "—"} → {r.outcome.draft ?? "—"}</span>}
-                  </td>
+                  {!general && <td className="px-3 py-2"><Change current={r.lead.current} draft={r.lead.draft} /></td>}
+                  {!general && (
+                    <td className="px-3 py-2">
+                      {r.outcome.same ? <span className="text-muted-foreground">Igual</span> : <span className="font-medium">Cambió: {r.outcome.current ?? "—"} → {r.outcome.draft ?? "—"}</span>}
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     {r.changedCriteria.length === 0 ? (
                       <span className="text-muted-foreground">Ninguno</span>
@@ -158,7 +160,7 @@ function TestResults({ results }: { results: TestCallResult[] }) {
                   </td>
                 </>
               ) : (
-                <td colSpan={4} className="px-3 py-2 text-red-700 dark:text-red-400">No se pudo probar: {r.error}</td>
+                <td colSpan={general ? 2 : 4} className="px-3 py-2 text-red-700 dark:text-red-400">No se pudo probar: {r.error}</td>
               )}
             </tr>
           ))}
