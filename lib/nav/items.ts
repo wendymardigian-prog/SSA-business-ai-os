@@ -123,8 +123,8 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // @plantilla-hasta(finanzas,comisiones)
 
   // Herramientas (plano formularios-ui, D1): la unica seccion colapsable. Orden fijo:
-  // Tareas, Automatizaciones, Formularios, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.  @plantilla-quitar(tareas,formularios)
-  // @plantilla-sin(tareas,formularios): // Automatizaciones, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
+  // Tareas, Automatizaciones, Formularios, Diseñador IA, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.  @plantilla-quitar(tareas,formularios)
+  // @plantilla-sin(tareas,formularios): // Automatizaciones, Diseñador IA, Agentes IA y Ajustes. Cada item pide el permiso de lo que abre.
   // @plantilla-desde(tareas)
   // Tareas (Extra A): el trabajo pendiente del equipo. Se ve con `tasks.view`: el Member de sistema lo tiene
   // (ve las que creo, tiene a cargo o sigue). Se mudo de los sueltos de arriba a Herramientas.
@@ -137,6 +137,9 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // crear y publicar lo decide `forms.manage`, no el menu.
   { name: "Formularios", href: "/dashboard/formularios", icon: "ClipboardList", permissions: ["forms.view"], group: "herramientas" },
   // @plantilla-hasta(formularios)
+  // Diseñador IA: diseños, plantillas y sus generaciones. Se ve con `designer.view` (el Member de sistema lo
+  // tiene: cambio aprobado M12). Las pantallas de edición y los ajustes viven debajo de esta ruta.
+  { name: "Diseñador IA", href: "/dashboard/disenos", icon: "Sparkles", permissions: ["designer.view"], group: "herramientas" },
   // Agentes IA: Conocimiento ya no es un item (D3): se abre con el boton "Conocimiento" de la
   // barra de esta pantalla (lib/nav/page-actions.ts), y mientras esta abierto queda marcado Agentes IA.
   { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", permissions: ["agents.view"], group: "herramientas", alsoActiveOn: ["/dashboard/knowledge"] },

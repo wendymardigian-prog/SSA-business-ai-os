@@ -46,22 +46,24 @@ describe("sitemapEntries", () => {
 });
 
 describe("buildRobots", () => {
-  it("sin páginas bloquea todo y no menciona un sitemap; solo pasan los lectores de vista previa", () => {
-    expect(buildRobots([], "https://app.x")).toEqual({ rules: [previewBotRule(), { userAgent: "*", disallow: "/" }] });
+  // Diseñador IA: el link público de un diseño (/d/) lo puede leer cualquier robot; cada página lleva su
+  // noindex salvo una página web publicada con "Permitir que aparezca en buscadores".
+  it("sin páginas bloquea todo menos /d/ y no menciona un sitemap; solo pasan los lectores de vista previa", () => {
+    expect(buildRobots([], "https://app.x")).toEqual({ rules: [previewBotRule(), { userAgent: "*", allow: ["/d/"], disallow: "/" }] });
   });
   it("con páginas bloquea todo, permite solo esas y suma el sitemap", () => {
     expect(buildRobots([{ path: "/" }, { path: "/servicios" }], "https://app.x/")).toEqual({
-      rules: [previewBotRule(["/$", "/servicios"]), { userAgent: "*", allow: ["/$", "/servicios"], disallow: "/" }],
+      rules: [previewBotRule(["/$", "/servicios"]), { userAgent: "*", allow: ["/d/", "/$", "/servicios"], disallow: "/" }],
       sitemap: "https://app.x/sitemap.xml",
     });
   });
   it("nunca permite una ruta reservada aunque alguien la agregue", () => {
-    expect(buildRobots([{ path: "/dashboard" }], "https://app.x")).toEqual({ rules: [previewBotRule(), { userAgent: "*", disallow: "/" }] });
+    expect(buildRobots([{ path: "/dashboard" }], "https://app.x")).toEqual({ rules: [previewBotRule(), { userAgent: "*", allow: ["/d/"], disallow: "/" }] });
   });
   it("a los lectores de vista previa les deja la agenda y los formularios, nunca una reunión ya agendada", () => {
     const rule = previewBotRule();
     expect(rule.userAgent).toEqual(expect.arrayContaining(["facebookexternalhit", "WhatsApp", "Twitterbot", "LinkedInBot"]));
-    expect(rule.allow).toEqual(expect.arrayContaining(["/calendario/", "/f/"]));
+    expect(rule.allow).toEqual(expect.arrayContaining(["/calendario/", "/f/", "/d/"]));
     expect(rule.disallow).toEqual(expect.arrayContaining(["/calendario/agenda/", "/"]));
     expect(rule.allow).not.toContain("/dashboard");
   });

@@ -66,7 +66,7 @@ describe("updateSession: quién va adónde (previo a Formularios)", () => {
   it("las páginas públicas existentes pasan con y sin sesión", async () => {
     for (const on of [false, true]) {
       withSession(on);
-      for (const path of ["/calendario/ana/llamada", "/invite/abc", "/f/aplicacion", "/ejemplo"]) {
+      for (const path of ["/calendario/ana/llamada", "/invite/abc", "/f/aplicacion", "/ejemplo", "/d/K8F2-WQ4M-7TQA"]) {
         expect((await go(path)).location, `${path} con sesión=${on}`).toBeNull();
       }
     }
