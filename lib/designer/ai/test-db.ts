@@ -14,12 +14,17 @@ export interface MemoryDbOptions {
   files?: Record<string, Uint8Array>;
   /** Se llama antes de cada `update`: sirve para simular a otra persona guardando en el medio. */
   beforeUpdate?: (table: string, rows: Row[]) => void;
+  /** Hace fallar las subidas al Storage con este mensaje. */
+  uploadError?: string;
 }
 
 export function memoryDb(initial: Record<string, Row[]>, options: MemoryDbOptions = {}) {
   const tables: Record<string, Row[]> = initial;
   const inserts: { table: string; row: Row }[] = [];
   const updates: { table: string; patch: Row }[] = [];
+  const uploads: { path: string; bytes: Uint8Array; contentType?: string }[] = [];
+  const removed: string[] = [];
+  const files: Record<string, Uint8Array> = { ...(options.files ?? {}) };
   let counter = 0;
 
   function query(name: string, mode: "select" | "update", patch?: Row) {
@@ -106,9 +111,22 @@ export function memoryDb(initial: Record<string, Row[]>, options: MemoryDbOption
     storage: {
       from: (_bucket: string) => ({
         async download(path: string) {
-          const bytes = options.files?.[path];
+          const bytes = files[path];
           if (!bytes) return { data: null, error: { message: "no existe" } };
           return { data: new Blob([bytes as BlobPart]), error: null };
+        },
+        async upload(path: string, bytes: Uint8Array, opts?: { contentType?: string }) {
+          if (options.uploadError) return { data: null, error: { message: options.uploadError } };
+          files[path] = bytes;
+          uploads.push({ path, bytes, contentType: opts?.contentType });
+          return { data: { path }, error: null };
+        },
+        async remove(paths: string[]) {
+          for (const path of paths) {
+            delete files[path];
+            removed.push(path);
+          }
+          return { data: [], error: null };
         },
         async createSignedUrls(paths: string[]) {
           return { data: paths.map((path) => ({ path, signedUrl: `https://firmado.example/${path}` })), error: null };
@@ -116,7 +134,7 @@ export function memoryDb(initial: Record<string, Row[]>, options: MemoryDbOption
       }),
     },
   };
-  return { db: db as never, tables, inserts, updates };
+  return { db: db as never, tables, inserts, updates, uploads, removed, files };
 }
 
 /** Un PNG mínimo (la firma y relleno): alcanza para `sniffMime`. */
