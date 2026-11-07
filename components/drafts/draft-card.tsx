@@ -19,6 +19,7 @@ import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { MediaAttachment } from "@/components/inbox/media-attachment";
 import { AssetKindIcon } from "@/components/response-assets/asset-kind-icon";
 import { assetAttachment } from "@/lib/response-assets/preview";
+import { MessageText } from "@/components/inbox/message-text";
 
 /**
  * Un borrador del agente y las decisiones sobre el (Bloque 2c). Dos formas:
@@ -223,7 +224,9 @@ function BurstQuote({ draft }: { draft: DraftQueueRow }) {
     <ul className="space-y-1">
       {draft.burst.map((m) => (
         <li key={m.id} className="border-l-2 border-border pl-2 text-sm">
-          <span className="whitespace-pre-wrap break-words">{m.text || "(adjunto)"}</span>
+          <span className="whitespace-pre-wrap break-words">
+            <MessageText text={m.text || "(adjunto)"} />
+          </span>
           <span className="ml-1.5 text-[11px] text-muted-foreground">
             {new Date(m.createdAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", timeZone })}
           </span>
@@ -297,7 +300,7 @@ function ProposedReply({ draft, decision }: { draft: DraftQueueRow; decision: De
     <div className="space-y-1.5">
       {(draft.bodyParts.length > 1 ? draft.bodyParts : [draft.body]).map((part, i) => (
         <p key={i} className="whitespace-pre-wrap break-words rounded-lg bg-muted/60 px-3 py-2 text-sm">
-          {part}
+          <MessageText text={part} outbound />
         </p>
       ))}
       {draft.bodyParts.length > 1 && <p className="text-[11px] text-muted-foreground">Sale en {draft.bodyParts.length} mensajes.</p>}
@@ -653,11 +656,11 @@ function DecidedSummary({ draft }: { draft: DraftQueueRow }) {
       <p className="text-xs font-medium">{STATUS_LABELS[draft.status] ?? draft.status}</p>
       {draft.status === "sent" && draft.sentBody && (
         <p className="whitespace-pre-wrap break-words rounded-lg bg-muted/60 px-3 py-2 text-sm">
-          {draft.sentBody}
+          <MessageText text={draft.sentBody} outbound />
           {draft.body && draft.sentBody !== draft.body && <span className="ml-1 text-[11px] text-muted-foreground">(editado)</span>}
         </p>
       )}
-      {draft.status !== "sent" && draft.body && <p className="line-clamp-3 text-sm text-muted-foreground">{draft.body}</p>}
+      {draft.status !== "sent" && draft.body && <p className="line-clamp-3 text-sm text-muted-foreground"><MessageText text={draft.body} outbound /></p>}
       {draft.discardReason && !draft.discardReason.startsWith("auto:") && (
         <p className="text-[11px] text-muted-foreground">Motivo: {draft.discardReason}</p>
       )}
@@ -730,7 +733,7 @@ export function DiscardedSuggestion({
         </span>
         <span className="text-[11px] text-muted-foreground">{timeAgo(draft.decidedAt ?? draft.createdAt)}</span>
       </div>
-      <p className="whitespace-pre-wrap rounded-lg bg-background/60 p-2.5 text-sm text-muted-foreground">{draft.body}</p>
+      <p className="whitespace-pre-wrap break-words rounded-lg bg-background/60 p-2.5 text-sm text-muted-foreground"><MessageText text={draft.body} outbound /></p>
       {draft.discardReason && !draft.discardReason.startsWith("auto:") && (
         <p className="text-[11px] text-muted-foreground">Motivo: {draft.discardReason}</p>
       )}
@@ -790,7 +793,7 @@ export function ExpiredSuggestion({ draft, onClose }: { draft: DraftQueueRow; on
           La ventana de {draft.windowHours} h venció {timeAgo(draft.sendableUntil ?? draft.decidedAt ?? draft.createdAt)}
         </span>
       </div>
-      <p className="whitespace-pre-wrap rounded-lg bg-background/60 p-2.5 text-sm text-muted-foreground select-text">{draft.body}</p>
+      <p className="whitespace-pre-wrap break-words rounded-lg bg-background/60 p-2.5 text-sm text-muted-foreground select-text"><MessageText text={draft.body} outbound /></p>
       <p className="text-[11px] text-muted-foreground">
         Desde acá ya no se puede enviar. Si todavía sirve, copiala y mandala desde la app de {draft.channel.label}.
       </p>

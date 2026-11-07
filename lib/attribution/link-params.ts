@@ -142,24 +142,30 @@ const URL_IN_TEXT = /https?:\/\/[^\s<>"'`]+/gi;
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}»”’]+$/;
 
 /**
- * Reemplaza cada URL `http(s)` de un texto por lo que devuelva `fn`. La puntuacion final ("…mira https://a.com.")
- * queda fuera del link y vuelve a su lugar; un `)` final se considera parte del link solo si la URL abre un `(`.
+ * Separa la puntuacion final de un link encontrado en un texto ("…mira https://a.com."): queda fuera del link y vuelve
+ * a su lugar. Un `)` final se considera parte del link solo si la URL abre un `(`.
  */
+export function splitTrailingPunctuation(match: string): { url: string; tail: string } {
+  let url = match;
+  let tail = "";
+  const stripped = url.match(TRAILING_PUNCTUATION);
+  if (stripped) {
+    let cut = stripped[0];
+    // `https://es.wikipedia.org/wiki/Foo_(bar)`: el ")" es del link.
+    if (cut.startsWith(")") && url.includes("(") && (url.match(/\(/g) ?? []).length > (url.slice(0, url.length - cut.length).match(/\)/g) ?? []).length) {
+      cut = cut.slice(1);
+    }
+    tail = cut;
+    url = url.slice(0, url.length - cut.length);
+  }
+  return { url, tail };
+}
+
+/** Reemplaza cada URL `http(s)` de un texto por lo que devuelva `fn`, sin tocar su puntuacion final. */
 export function mapUrlsInText(text: string, fn: (url: string) => string): string {
   if (typeof text !== "string" || text === "") return text;
   return text.replace(URL_IN_TEXT, (match) => {
-    let url = match;
-    let tail = "";
-    const stripped = url.match(TRAILING_PUNCTUATION);
-    if (stripped) {
-      let cut = stripped[0];
-      // `https://es.wikipedia.org/wiki/Foo_(bar)`: el ")" es del link.
-      if (cut.startsWith(")") && url.includes("(") && (url.match(/\(/g) ?? []).length > (url.slice(0, url.length - cut.length).match(/\)/g) ?? []).length) {
-        cut = cut.slice(1);
-      }
-      tail = cut;
-      url = url.slice(0, url.length - cut.length);
-    }
+    const { url, tail } = splitTrailingPunctuation(match);
     if (!url) return match;
     try {
       return fn(url) + tail;

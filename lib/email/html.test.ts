@@ -105,6 +105,19 @@ describe("estilos en linea", () => {
 });
 
 describe("texto plano y finalizeEmailHtml", () => {
+  it("un link en texto plano sale como link, con su estilo", () => {
+    const out = plainTextToHtml("Mirá https://a.com/x?y=1&z=2.");
+    expect(out).toContain('<a href="https://a.com/x?y=1&amp;z=2" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">https://a.com/x?y=1&amp;z=2</a>.');
+  });
+
+  it("una etiqueta metida en el texto sigue escapada aunque haya un link al lado", () => {
+    const out = plainTextToHtml('<a href="https://malo.com">x</a> https://a.com');
+    expect(out).toContain("&lt;a href=");
+    // La URL de adentro se ve tal cual y lleva a donde dice; nunca se esconde atras de otro texto.
+    expect(out).not.toContain(">x</a>");
+    expect(out).toContain('<a href="https://a.com"');
+  });
+
   it("el texto plano se escapa y respeta los saltos", () => {
     const out = plainTextToHtml("Hola <b>x</b>\nlinea\n\nOtro & otro");
     expect(out).toContain("Hola &lt;b&gt;x&lt;/b&gt;<br>linea");

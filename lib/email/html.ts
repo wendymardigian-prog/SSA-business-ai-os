@@ -21,6 +21,7 @@
 
 import { resolveVariablePath } from "@/lib/flow-engine/interpolate";
 import { fallbackText, needsFallback } from "@/lib/templates/fallback";
+import { linkifyToHtml } from "@/lib/messages/text-links";
 
 export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -156,7 +157,7 @@ export function inlineEmailStyles(safeHtml: string): string {
 
 /** El texto plano se vuelve HTML respetando los saltos de linea. */
 export function plainTextToHtml(body: string): string {
-  const paragraphs = escapeHtml(body)
+  const paragraphs = linkifyToHtml(body, escapeHtml)
     .split(/\n{2,}/)
     .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
     .join("");

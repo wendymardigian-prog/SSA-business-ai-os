@@ -10,6 +10,7 @@ import {
   templateVariables,
   unknownVariables,
 } from "./render";
+import { UNSUBSCRIBE_PLACEHOLDER } from "@/lib/email/unsubscribe";
 import { finalizeEmailHtml } from "@/lib/email/html";
 
 const ana = broadcastVariables(
@@ -119,6 +120,13 @@ describe("renderEmail", () => {
     expect(plain.html).toBe(finalizeEmailHtml("Hola, Ana.\nchau", false));
     const html = renderEmail("Asunto", '<p>Hola, {{contact.first_name}}.</p><p><a href="https://x.com">x</a></p>', ana);
     expect(html.html).toBe(finalizeEmailHtml('<p>Hola, Ana.</p><p><a href="https://x.com">x</a></p>', true));
+  });
+
+  it("el link de baja sobrevive a la limpieza, en HTML y en texto", () => {
+    const html = renderEmail("A", '<p><a href="{{unsubscribe_url}}">Darme de baja</a></p>', ana).html;
+    expect(html).toContain(`href="${UNSUBSCRIBE_PLACEHOLDER}"`);
+    expect(renderEmail("A", "Baja: {{unsubscribe_url}}", ana).html).toContain(`<a href="${UNSUBSCRIBE_PLACEHOLDER}"`);
+    expect(renderEmail("A", "Baja: {{unsubscribe_url}}", ana).missing).toEqual([]);
   });
 
   it("saludo con respaldo vacío: «Hola, Ana.» o «Hola.», en texto y en HTML", () => {
