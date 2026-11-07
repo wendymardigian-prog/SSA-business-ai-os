@@ -25,7 +25,6 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { decideAiFailure, isTruncated } from "@/lib/calls/ai-retry";
 import { openAiRun, type AiRunHandle } from "@/lib/ai/run";
 import { withinWorkspaceBudget, type BudgetDecision } from "@/lib/ai/workspace-budget";
 import { appendMessage, getOrCreateDesignerThread, listMessages, type AiThreadRow } from "@/lib/ai-threads/store";
@@ -38,6 +37,7 @@ import { allowedFontsFor, loadWorkspaceContext, resolveStyle, type DesignerWorks
 import { budgetBlockMessage } from "../ai/cost";
 import { hasAnswer, recentHistory, type MessageRow } from "../ai/conversation";
 import { sanitizeAiDoc } from "../ai/doc-sanitize";
+import { decideAiFailure, isTruncated } from "../ai/retry";
 import { insertVersion, loadTarget, saveDocWithRev, type TargetRow } from "../ai/db";
 import { keptManualNotice, mergeAiPatch } from "../ai/merge";
 import { makeMeasure, type MeasureFn } from "../ai/measure";
