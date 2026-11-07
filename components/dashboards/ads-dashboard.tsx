@@ -19,7 +19,7 @@ import { useAdsNavigation } from "./ads/use-ads-navigation";
 import { AdsAiPanel } from "./ads-ai-panel";
 import type { PeriodFilter } from "@/lib/dashboards/period-filter";
 import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
-import { computeTotals, type AdsRow } from "@/lib/dashboards/ads";
+import { computePreviousTotals, computeTotals, type AdsRow, type LiveReach } from "@/lib/dashboards/ads";
 import { crmLeadsSummary } from "@/lib/dashboards/ads-crm";
 
 /**
@@ -44,8 +44,8 @@ export interface AdsDashboardProps {
   uniqueReach: number | null;
   /** La frecuencia de la misma respuesta de Meta que `uniqueReach`. */
   uniqueFrequency: number | null;
-  /** El del periodo anterior; solo viene si el de este llego tambien. */
-  previousUniqueReach: number | null;
+  /** Lo mismo del periodo anterior. Null si Meta no respondio. */
+  previousLive: LiveReach | null;
   liveError: string | null;
   /** Los desgloses que se piden a Meta en vivo, cada uno por su cuenta. */
   live: { placement: Live<BreakdownRow[]>; device: Live<BreakdownRow[]>; audience: Live<BreakdownRow[]> };
@@ -78,11 +78,12 @@ export function AdsDashboard(props: AdsDashboardProps) {
 
   const previousTotals = useMemo(
     () =>
-      computeTotals(
+      computePreviousTotals(
         props.previousRows.filter((r) => r.level === "account"),
-        props.previousUniqueReach,
+        { reach: props.uniqueReach, frequency: props.uniqueFrequency },
+        props.previousLive,
       ),
-    [props.previousRows, props.previousUniqueReach],
+    [props.previousRows, props.uniqueReach, props.uniqueFrequency, props.previousLive],
   );
 
 

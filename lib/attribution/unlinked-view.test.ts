@@ -83,7 +83,7 @@ describe("buildUnlinkedRows", () => {
 
   it("enlaza la respuesta o la reunion de origen", () => {
     expect(touchSourceLink({ dedupe_key: "booking:abc", raw: null })).toEqual({ href: "/dashboard/agenda?agenda=abc", label: "Ver la reunión" });
-    expect(touchSourceLink({ dedupe_key: "form:abc", raw: { source_id: "f1" } })).toEqual({ href: "/dashboard/formularios/f1/respuestas/abc", label: "Ver la respuesta" });
+    expect(touchSourceLink({ dedupe_key: "form:abc", raw: { source_id: "f1" } })).toEqual({ href: "/dashboard/formularios/f1/respuestas/abc", label: "Ver la respuesta" }); // @plantilla-quitar(formularios)
     expect(touchSourceLink({ dedupe_key: "form:abc", raw: {} })).toBeNull();
     expect(touchSourceLink({ dedupe_key: "msg:1", raw: null })).toBeNull();
   });

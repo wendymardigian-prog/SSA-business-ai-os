@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verificacion de Mi cuenta (00273, 00274 y, con --despues-de-00275, el trigger).
+ * Verificacion de Mi cuenta: perfil, foto, preferencias de avisos y su entrega.
  *
  * Prueba contra la base real, con usuarios de verdad, lo que vitest no puede:
  *   1. `user_profiles`: cada uno ve, crea y edita SOLO su fila; los CHECK del
@@ -10,14 +10,14 @@
  *   3. `user_preferences.notification_prefs`: solo la propia, y el CHECK de objeto.
  *   4. `workspaces.team_alerts_settings`: un Member no lo puede cambiar.
  *   5. `workspace_member_profiles` devuelve la foto y sigue cerrada a `authenticated`.
- *   6. (--despues-de-00275) un aviso nuevo encola su `notification_deliver`, y si
+ *   6. Un aviso nuevo encola su `notification_deliver`, y si
  *      encolar falla, el aviso se guarda igual.
  *
  * Crea y limpia sus datos (prefijo `zz-test-`). No correr en simultaneo con los
  * otros verify-*: tomar el candado /private/tmp/ssa-verify.lock.
  *
  *   node scripts/verify-account.mjs
- *   node scripts/verify-account.mjs --despues-de-00275
+ *   node scripts/verify-account.mjs --despues-de-00275  @plantilla-quitar(proyecto)
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -33,7 +33,8 @@ const env = Object.fromEntries(
 const URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const ANON = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-const AFTER_00275 = process.argv.includes("--despues-de-00275");
+const AFTER_00275 = process.argv.includes("--despues-de-00275"); // @plantilla-quitar(proyecto)
+// @plantilla-sin(proyecto): const AFTER_00275 = true;
 
 let failures = 0;
 const ok = (m) => console.log("  ok  ", m);
@@ -148,8 +149,10 @@ try {
     const { data: jobs } = await svc.from("scheduled_jobs").select("id, status, dedupe_key").eq("type", "notification_deliver").eq("dedupe_key", `notification_deliver:${n.id}`);
     check((jobs ?? []).length === 1, "y queda un job notification_deliver con su clave", JSON.stringify(jobs));
     await svc.from("scheduled_jobs").delete().in("id", (jobs ?? []).map((j) => j.id));
+  // @plantilla-desde(proyecto)
   } else {
     console.log("\n6. (el trigger de la 00275 se prueba con --despues-de-00275)");
+  // @plantilla-hasta(proyecto)
   }
 } catch (err) {
   fail("la verificacion se corto", err instanceof Error ? err.message : String(err));

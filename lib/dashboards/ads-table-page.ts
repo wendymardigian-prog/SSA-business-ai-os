@@ -27,6 +27,8 @@ export interface AdsTablePageData {
   period: PeriodFilter;
   /** El alcance unico del periodo, de la consulta en vivo. Null si no se pudo leer: el total usa la suma de los dias. */
   uniqueReach: number | null;
+  /** La frecuencia de la misma respuesta de Meta que `uniqueReach`. */
+  uniqueFrequency: number | null;
   liveError: string | null;
   /** "hoy 14:32": cuando escribio el sync por ultima vez. */
   syncedLabel: string | null;
@@ -58,7 +60,7 @@ export async function loadAdsTablePage(
   const resolved = resolveSyncedAccount(config.ad_accounts, typeof searchParams.cuenta === "string" ? searchParams.cuenta : undefined);
 
   if (!resolved.ok) {
-    return { rows: [], accounts: [], adAccountId: "", currency: null, period, uniqueReach: null, liveError: null, syncedLabel: null, crm: null };
+    return { rows: [], accounts: [], adAccountId: "", currency: null, period, uniqueReach: null, uniqueFrequency: null, liveError: null, syncedLabel: null, crm: null };
   }
 
   const adAccountId = resolved.adAccountId;
@@ -88,6 +90,7 @@ export async function loadAdsTablePage(
     currency: account?.currency ?? null,
     period,
     uniqueReach: live?.ok ? live.data.reach : null,
+    uniqueFrequency: live?.ok ? live.data.frequency : null,
     liveError: live && !live.ok ? live.error : null,
     syncedLabel: buildSyncedLabel(syncedAt, now, timeZone),
     crm,

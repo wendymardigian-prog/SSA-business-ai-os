@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  computePreviousTotals,
   computeTotals,
   ctrTone,
   dailySeries,
@@ -62,6 +63,69 @@ describe("dividir sin mentir (F56)", () => {
   });
 });
 
+describe("la frecuencia de las tarjetas", () => {
+  // Las cifras de frecuencia son las del 6/11/2026; las impresiones y el alcance son de ejemplo y dan esa misma division.
+  const stored = (impressions: number, reach: number) => [row({ date: "2026-11-05", impressions, reach })];
+
+  it("el dashboard mostraba 1,71 cuando Meta daba 1,87", () => {
+    expect(computeTotals(stored(17100, 9000), 10000).reach).toBe(10000);
+    expect(computeTotals(stored(17100, 9000), 10000, 1.87).frequency).toBe(1.87);
+  });
+
+  it("una campaña recién prendida mostraba 0,72: nunca menos de 1", () => {
+    const totals = computeTotals(stored(720, 700), 1000, 1.05);
+
+    expect(totals.frequency).toBe(1.05);
+    expect(totals.reach).toBeGreaterThan(totals.impressions as number);
+  });
+
+  it("si Meta da el alcance sin la frecuencia es una raya, no la división de dos momentos", () => {
+    expect(computeTotals(stored(720, 700), 1000, null).frequency).toBeNull();
+    expect(computeTotals(stored(720, 700), 1000).frequency).toBeNull();
+  });
+
+  it("si Meta no respondió sigue la suma de los días, aunque quede una frecuencia suelta", () => {
+    expect(computeTotals(stored(1500, 1000)).frequency).toBe(1.5);
+    expect(computeTotals(stored(1500, 1000), null, 1.87).frequency).toBe(1.5);
+  });
+
+  it("la frecuencia de Meta se redondea como las demás", () => {
+    expect(computeTotals(stored(100, 100), 50, 1.8749).frequency).toBe(1.87);
+  });
+});
+
+describe("el periodo anterior compara lo mismo con lo mismo", () => {
+  const before = [row({ date: "2026-10-01", impressions: 1000, reach: 800, clicks: 10 }), row({ date: "2026-10-02", impressions: 1000, reach: 800, clicks: 10 })];
+
+  it("los dos en vivo: alcance y frecuencia de la respuesta de Meta de ese periodo", () => {
+    const totals = computePreviousTotals(before, { reach: 5000, frequency: 1.87 }, { reach: 1200, frequency: 1.66 });
+
+    expect(totals.reach).toBe(1200);
+    expect(totals.frequency).toBe(1.66);
+  });
+
+  it("los dos sumados: los dos salen de los días", () => {
+    const totals = computePreviousTotals(before, null, null);
+
+    expect(totals.reach).toBe(1600);
+    expect(totals.frequency).toBe(1.25);
+  });
+
+  it.each([
+    ["solo el actual en vivo", { reach: 5000, frequency: 1.87 }, null],
+    ["solo el anterior en vivo", null, { reach: 1200, frequency: 1.66 }],
+    ["Meta contestó vacío en el actual", { reach: null, frequency: null }, { reach: 1200, frequency: 1.66 }],
+    ["Meta contestó vacío en el anterior", { reach: 5000, frequency: 1.87 }, { reach: null, frequency: null }],
+  ])("%s: sin comparación, sin tocar lo demás", (_name, current, previous) => {
+    const totals = computePreviousTotals(before, current, previous);
+
+    expect(totals.reach).toBeNull();
+    expect(totals.frequency).toBeNull();
+    expect(totals.impressions).toBe(2000);
+    expect(totals.clicks).toBe(20);
+  });
+});
+
 describe("los totales del periodo (F56)", () => {
   const rows = [
     row({ date: "2026-10-01", spend: 100, impressions: 10000, clicks: 350, leads: 10, reach: 8000 }),
@@ -82,16 +146,10 @@ describe("los totales del periodo (F56)", () => {
 
   it("el alcance unico del periodo pisa la suma diaria", () => {
     // Sumar alcances cuenta a la misma persona una vez por dia.
-    const totals = computeTotals(rows, 9000);
+    const totals = computeTotals(rows, 9000, 1.67);
 
     expect(totals.reach).toBe(9000);
-    expect(totals.frequency).toBeCloseTo(1.67, 2);
-  });
-
-  it("con la frecuencia de Meta no se divide lo guardado por el alcance en vivo", () => {
-    expect(computeTotals(rows, 9000, 1.87).frequency).toBe(1.87);
-    // Sin el alcance en vivo, esa frecuencia no corresponde a estas filas.
-    expect(computeTotals(rows, null, 1.87).frequency).toBe(computeTotals(rows).frequency);
+    expect(totals.frequency).toBe(1.67);
   });
 
   it("sin leads, el costo por lead es una raya", () => {
@@ -222,7 +280,8 @@ describe("agrupar con el alcance unico", () => {
     );
 
     expect(grouped[0].reach).toBe(150);
-    expect(grouped[0].frequency).toBe(4);
+    // Este alcance viene sin su frecuencia: no se calcula con las impresiones guardadas.
+    expect(grouped[0].frequency).toBeNull();
   });
 
   it("sin el dato en vivo, queda la suma de los dias", () => {

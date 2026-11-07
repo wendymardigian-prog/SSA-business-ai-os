@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo es el mismo para todos. Regla de la 00299: siempre por id; por nombre solo un anuncio unico dentro del conjunto o la campaña conocidos por id.",
+  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo es el mismo para todos. Regla: siempre por id; por nombre solo un anuncio unico dentro del conjunto o la campaña conocidos por id.",
   "catalog": {
     "campaigns": [
       {

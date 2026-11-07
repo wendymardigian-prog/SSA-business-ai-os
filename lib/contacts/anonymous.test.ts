@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync } from "node:fs"; // @plantilla-quitar(proyecto)
+import { resolve } from "node:path"; // @plantilla-quitar(proyecto)
 import { lastFunctionDefinition } from "@/lib/test-utils/migrations";
 import {
   PLACEHOLDER_NAMES,
@@ -184,6 +184,7 @@ describe("la lista de placeholders no se puede desincronizar del SQL", () => {
     expect(sql).toContain(`~ '${HANDLE_NAME_PATTERN}'`);
   });
 
+  // @plantilla-desde(proyecto)
   it("la columna is_anonymous usa la misma lista y la misma expresion del id (00298)", () => {
     const sql = readFileSync(resolve(__dirname, "../../supabase/migrations/00298_anonymous_only_if_never_wrote.sql"), "utf8");
     const columna = sql.slice(sql.indexOf("ADD COLUMN is_anonymous boolean\n  GENERATED"), sql.indexOf(") STORED;", sql.indexOf("ADD COLUMN is_anonymous boolean\n  GENERATED")));
@@ -194,4 +195,5 @@ describe("la lista de placeholders no se puede desincronizar del SQL", () => {
     expect(columna).toContain(`~ '${ID_NAME_PATTERN}' AND first_inbound_at IS NULL`);
     expect(columna).not.toContain(HANDLE_NAME_PATTERN);
   });
+  // @plantilla-hasta(proyecto)
 });

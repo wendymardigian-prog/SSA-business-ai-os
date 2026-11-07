@@ -533,7 +533,8 @@ export const PROVIDERS: ProviderDefinition[] = [
     visible: true,
     label: "Resend",
     description:
-      "Emails: los importantes (agenda, contratos, invitaciones, avisos) y los de marketing, los rebotes y las quejas, y si querés, recibir emails en la bandeja.",
+      "Emails: los importantes (agenda, contratos, invitaciones, avisos) y los de marketing, los rebotes y las quejas, y si querés, recibir emails en la bandeja.", // @plantilla-quitar(formularios)
+      // @plantilla-sin(formularios): "Emails: los importantes (agenda, invitaciones, avisos) y los de marketing, los rebotes y las quejas, y si querés, recibir emails en la bandeja.",
     secretName: SECRET_NAMES.resendApiKey,
     keyPrefix: "re_",
     minKeyLength: 20,

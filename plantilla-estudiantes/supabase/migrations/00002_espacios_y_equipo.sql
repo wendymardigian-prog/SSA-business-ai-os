@@ -2,7 +2,7 @@
 -- Espacios de trabajo y equipo
 --
 -- Cada negocio es un espacio de trabajo (workspace). Aca viven el negocio, su equipo,
--- los roles con sus permisos, las invitaciones y las preferencias de cada persona.
+-- los roles con sus permisos, las invitaciones y el perfil y las preferencias de cada persona.
 --
 -- Las reglas de acceso de todo el sistema se apoyan en estas funciones: quien es
 -- miembro, quien es Owner o Admin y que permisos tiene cada rol. Cuando alguien crea su
@@ -19,12 +19,34 @@ CREATE TABLE IF NOT EXISTS public.user_preferences (
   timezone_source text DEFAULT 'browser'::text NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  notification_prefs jsonb DEFAULT '{}'::jsonb NOT NULL,
   CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id),
+  CONSTRAINT user_preferences_notification_prefs_check CHECK ((jsonb_typeof(notification_prefs) = 'object'::text)),
   CONSTRAINT user_preferences_timezone_source_check CHECK ((timezone_source = ANY (ARRAY['browser'::text, 'manual'::text]))),
   CONSTRAINT user_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
-COMMENT ON TABLE public.user_preferences IS 'Preferencias por persona, no por workspace. Hoy solo la zona horaria.';
+COMMENT ON TABLE public.user_preferences IS 'Preferencias por persona, no por workspace: la zona horaria y que avisos le llegan y por donde.';
+COMMENT ON COLUMN public.user_preferences.notification_prefs IS 'Lo que la persona cambio de sus avisos: { evento: { bell, email, whatsapp } }. Lo que falta usa el valor por defecto de lib/notifications/preferences.ts.';
+
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+  user_id uuid NOT NULL,
+  avatar_path text,
+  phone text,
+  whatsapp_phone text,
+  whatsapp_same_as_phone boolean DEFAULT true NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT user_profiles_pkey PRIMARY KEY (user_id),
+  CONSTRAINT user_profiles_avatar_path_check CHECK (((avatar_path IS NULL) OR (avatar_path ~~ ((user_id)::text || '/%'::text)))),
+  CONSTRAINT user_profiles_phone_check CHECK (((phone IS NULL) OR (phone ~ '^\+[0-9]{8,15}$'::text))),
+  CONSTRAINT user_profiles_whatsapp_phone_check CHECK (((whatsapp_phone IS NULL) OR (whatsapp_phone ~ '^\+[0-9]{8,15}$'::text))),
+  CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+);
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE public.user_profiles IS 'Datos personales de cada persona del equipo (foto, telefono, WhatsApp), iguales en todos los negocios. El nombre sigue en auth.users.user_metadata.full_name.';
+COMMENT ON COLUMN public.user_profiles.whatsapp_phone IS 'WhatsApp para los avisos que la persona elija. Solo se usa si whatsapp_same_as_phone es false; si no, vale phone.';
+REVOKE ALL ON TABLE public.user_profiles FROM anon;
 
 CREATE TABLE IF NOT EXISTS public.workspaces (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -60,6 +82,8 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   brand_color text,
   ai_language_style text,
   customer_contacts_settings jsonb DEFAULT '{}'::jsonb NOT NULL,
+  email_footer_address text,
+  team_alerts_settings jsonb DEFAULT '{}'::jsonb NOT NULL,
   CONSTRAINT workspaces_pkey PRIMARY KEY (id),
   CONSTRAINT workspaces_slug_key UNIQUE (slug),
   CONSTRAINT workspaces_ai_daily_limit_action_check CHECK ((ai_daily_limit_action = ANY (ARRAY['disable'::text, 'notify'::text]))),
@@ -72,7 +96,9 @@ CREATE TABLE IF NOT EXISTS public.workspaces (
   CONSTRAINT workspaces_brand_name_check CHECK (((brand_name IS NULL) OR ((char_length(btrim(brand_name)) >= 1) AND (char_length(btrim(brand_name)) <= 60)))),
   CONSTRAINT workspaces_chat_media_retention_check CHECK (((chat_media_retention_days >= 0) AND (chat_media_retention_days <= 3650))),
   CONSTRAINT workspaces_content_copy_settings_object CHECK ((jsonb_typeof(content_copy_settings) = 'object'::text)),
-  CONSTRAINT workspaces_opt_out_phrases_is_array CHECK ((jsonb_typeof(opt_out_phrases) = 'array'::text))
+  CONSTRAINT workspaces_email_footer_address_len CHECK (((email_footer_address IS NULL) OR (char_length(email_footer_address) <= 300))),
+  CONSTRAINT workspaces_opt_out_phrases_is_array CHECK ((jsonb_typeof(opt_out_phrases) = 'array'::text)),
+  CONSTRAINT workspaces_team_alerts_settings_check CHECK ((jsonb_typeof(team_alerts_settings) = 'object'::text))
 );
 ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
 COMMENT ON COLUMN public.workspaces.opt_out_phrases IS 'Frases que marcan un contacto como "no contactar" cuando aparecen en un mensaje entrante. Se editan desde Ajustes. Se comparan por palabra completa, sin acentos ni mayusculas.';
@@ -95,6 +121,7 @@ COMMENT ON COLUMN public.workspaces.brand_logo_path IS 'Path del logo en el buck
 COMMENT ON COLUMN public.workspaces.brand_color IS 'Color principal en #rrggbb. NULL = el de la instalacion (NEXT_PUBLIC_BRAND_COLOR).';
 COMMENT ON COLUMN public.workspaces.ai_language_style IS 'Como escribe la IA de este negocio, por ejemplo "español rioplatense (vos/tenés)". NULL = AI_LANGUAGE_STYLE.';
 COMMENT ON COLUMN public.workspaces.customer_contacts_settings IS 'A quien van los chats de un cliente: {"by_channel": {"<channel_id>": "<user_id>"}, "default_user_id": "<user_id>"}. Sin nada, el responsable no cambia.';
+COMMENT ON COLUMN public.workspaces.team_alerts_settings IS 'Avisos al equipo: { whatsapp_channel_id } = el canal de WhatsApp (Evolution) desde el que se mandan. Sin canal, nadie recibe avisos por WhatsApp.';
 
 CREATE TABLE IF NOT EXISTS public.workspace_roles (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -166,6 +193,41 @@ COMMENT ON COLUMN public.workspace_members.role_id IS 'El rol con los permisos f
 -- ----------------------------------------------------------------------------
 -- Funciones
 -- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION private.call_areas_of(p_permissions jsonb)
+ RETURNS text[]
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT CASE
+    WHEN p_permissions #>> '{scopes,calls}' = 'areas' AND jsonb_typeof(p_permissions -> 'call_areas') = 'array'
+      THEN ARRAY(SELECT jsonb_array_elements_text(p_permissions -> 'call_areas'))
+    ELSE ARRAY[]::text[]
+  END
+$function$;
+REVOKE ALL ON FUNCTION private.call_areas_of(p_permissions jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.call_areas_of(p_permissions jsonb) TO service_role;
+
+CREATE OR REPLACE FUNCTION private.call_areas_exceed(p_wanted jsonb, p_before jsonb, p_actor jsonb)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT CASE
+    WHEN p_wanted #>> '{scopes,calls}' IS DISTINCT FROM 'areas' THEN false
+    WHEN p_actor #>> '{scopes,calls}' = 'all' THEN false
+    WHEN p_before #>> '{scopes,calls}' = 'all' THEN false
+    ELSE EXISTS (
+      SELECT 1 FROM unnest(private.call_areas_of(p_wanted)) AS a(area_id)
+      WHERE NOT (a.area_id = ANY (private.call_areas_of(p_before)))
+        AND NOT (a.area_id = ANY (private.call_areas_of(p_actor)))
+    )
+  END
+$function$;
+REVOKE ALL ON FUNCTION private.call_areas_exceed(p_wanted jsonb, p_before jsonb, p_actor jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.call_areas_exceed(p_wanted jsonb, p_before jsonb, p_actor jsonb) TO service_role;
 
 CREATE OR REPLACE FUNCTION private.channel_grant_exceeds(p_wanted jsonb, p_before jsonb, p_actor jsonb)
  RETURNS boolean
@@ -281,6 +343,39 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION private.member_permission_keys() FROM PUBLIC;
 
+CREATE OR REPLACE FUNCTION private.my_call_permissions(p_workspace_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_role        text;
+  v_role_id     uuid;
+  v_system_role text;
+  v_permissions jsonb;
+BEGIN
+  SELECT m.role, m.role_id, r.system_role, COALESCE(r.permissions, '{}'::jsonb)
+    INTO v_role, v_role_id, v_system_role, v_permissions
+  FROM public.workspace_members m
+  LEFT JOIN public.workspace_roles r ON r.id = m.role_id
+  WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid();
+
+  IF v_role IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF v_role IN ('owner', 'admin') THEN
+    RETURN '{"scopes":{"calls":"all"}}'::jsonb;
+  END IF;
+  IF v_role_id IS NULL OR v_system_role = 'member' THEN
+    RETURN '{"scopes":{"calls":"own"}}'::jsonb;
+  END IF;
+  RETURN v_permissions;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.my_call_permissions(p_workspace_id uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.my_call_permissions(p_workspace_id uuid) TO service_role;
+
 CREATE OR REPLACE FUNCTION private.normalize_channel_grant(p_grant jsonb)
  RETURNS jsonb
  LANGUAGE sql
@@ -326,6 +421,21 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION private.role_channel_grant(p_channels jsonb, p_channel_id text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION private.role_channel_grant(p_channels jsonb, p_channel_id text) TO service_role;
+
+CREATE OR REPLACE FUNCTION private.role_sees_call_area(p_permissions jsonb, p_area_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+  SELECT COALESCE(
+    p_permissions #>> '{scopes,calls}' = 'all'
+    OR (p_area_id IS NOT NULL AND p_area_id::text = ANY (private.call_areas_of(p_permissions))),
+    false
+  )
+$function$;
+REVOKE ALL ON FUNCTION private.role_sees_call_area(p_permissions jsonb, p_area_id uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION private.role_sees_call_area(p_permissions jsonb, p_area_id uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION private.ungrantable_keys()
  RETURNS text[]
@@ -417,9 +527,29 @@ BEGIN
   END IF;
 
   RETURN public.can_grant_permissions(p_workspace_id, COALESCE(v_permissions -> 'keys', '[]'::jsonb), COALESCE(v_permissions -> 'scopes', '{}'::jsonb))
-     AND public.can_grant_channels(p_workspace_id, v_permissions -> 'channels', NULL);
+     AND public.can_grant_channels(p_workspace_id, v_permissions -> 'channels', NULL)
+     AND public.can_grant_call_areas(p_workspace_id, v_permissions, NULL);
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.can_give_role(p_workspace_id uuid, p_role_id uuid, p_base_role text) FROM PUBLIC, anon;
+
+CREATE OR REPLACE FUNCTION public.can_grant_call_areas(p_workspace_id uuid, p_wanted jsonb, p_before jsonb DEFAULT NULL::jsonb)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_actor jsonb;
+BEGIN
+  v_actor := private.my_call_permissions(p_workspace_id);
+  IF v_actor IS NULL THEN
+    RETURN false;
+  END IF;
+  RETURN NOT private.call_areas_exceed(p_wanted, p_before, v_actor);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.can_grant_call_areas(p_workspace_id uuid, p_wanted jsonb, p_before jsonb) FROM PUBLIC, anon;
 
 CREATE OR REPLACE FUNCTION public.can_grant_channels(p_workspace_id uuid, p_wanted jsonb, p_before jsonb DEFAULT NULL::jsonb)
  RETURNS boolean
@@ -536,6 +666,7 @@ BEGIN
   RETURN true;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.can_grant_permissions(p_workspace_id uuid, p_keys jsonb, p_scopes jsonb) FROM PUBLIC, anon;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
  RETURNS trigger
@@ -645,6 +776,7 @@ AS $function$
     WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid() AND m.role_id = p_role_id
   )
 $function$;
+REVOKE ALL ON FUNCTION public.is_own_role(p_workspace_id uuid, p_role_id uuid) FROM PUBLIC, anon;
 
 CREATE OR REPLACE FUNCTION public.is_workspace_admin(ws_id uuid)
  RETURNS boolean
@@ -771,9 +903,10 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.seed_workspace_roles() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.workspace_member_profiles(p_workspace_id uuid)
- RETURNS TABLE(user_id uuid, role text, role_id uuid, joined_at timestamp with time zone, email text, full_name text, meta_name text)
+ RETURNS TABLE(user_id uuid, role text, role_id uuid, joined_at timestamp with time zone, email text, full_name text, meta_name text, avatar_path text)
  LANGUAGE sql
  STABLE SECURITY DEFINER
  SET search_path TO ''
@@ -785,12 +918,14 @@ AS $function$
     m.created_at,
     u.email::text,
     u.raw_user_meta_data ->> 'full_name',
-    u.raw_user_meta_data ->> 'name'
+    u.raw_user_meta_data ->> 'name',
+    p.avatar_path
   FROM public.workspace_members m
   LEFT JOIN auth.users u ON u.id = m.user_id
+  LEFT JOIN public.user_profiles p ON p.user_id = m.user_id
   WHERE m.workspace_id = p_workspace_id;
 $function$;
-COMMENT ON FUNCTION public.workspace_member_profiles(p_workspace_id uuid) IS 'Miembros de un workspace con email y nombre (de auth.users) en una sola consulta. Solo service_role: reemplaza N llamadas a auth.admin.getUserById.';
+COMMENT ON FUNCTION public.workspace_member_profiles(p_workspace_id uuid) IS 'Miembros de un workspace con email, nombre (de auth.users) y foto (de user_profiles) en una sola consulta. Solo service_role.';
 REVOKE ALL ON FUNCTION public.workspace_member_profiles(p_workspace_id uuid) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.workspace_roles_grant_check()
@@ -824,9 +959,14 @@ BEGIN
      AND NOT public.can_grant_channels(NEW.workspace_id, NEW.permissions -> 'channels', OLD.permissions -> 'channels') THEN
     RAISE EXCEPTION 'No podés dar permisos que no tenés' USING ERRCODE = '42501';
   END IF;
+
+  IF NOT public.can_grant_call_areas(NEW.workspace_id, NEW.permissions, OLD.permissions) THEN
+    RAISE EXCEPTION 'No podés dar permisos que no tenés' USING ERRCODE = '42501';
+  END IF;
   RETURN NEW;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.workspace_roles_grant_check() FROM PUBLIC, anon, authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Indices
@@ -853,6 +993,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_workspace_roles_system ON public.workspace_
 CREATE OR REPLACE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.user_preferences FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.user_profiles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 CREATE OR REPLACE TRIGGER protect_system_roles BEFORE DELETE OR UPDATE ON public.workspace_roles FOR EACH ROW EXECUTE FUNCTION public.protect_system_roles();
 
@@ -882,6 +1024,22 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY user_preferences_update ON public.user_preferences FOR UPDATE TO public
+    USING ((user_id = ( SELECT auth.uid() AS uid)))
+    WITH CHECK ((user_id = ( SELECT auth.uid() AS uid)));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY user_profiles_insert ON public.user_profiles FOR INSERT TO public
+    WITH CHECK ((user_id = ( SELECT auth.uid() AS uid)));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY user_profiles_select ON public.user_profiles FOR SELECT TO public
+    USING ((user_id = ( SELECT auth.uid() AS uid)));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY user_profiles_update ON public.user_profiles FOR UPDATE TO public
     USING ((user_id = ( SELECT auth.uid() AS uid)))
     WITH CHECK ((user_id = ( SELECT auth.uid() AS uid)));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
@@ -939,7 +1097,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   CREATE POLICY workspace_roles_insert ON public.workspace_roles FOR INSERT TO public
-    WITH CHECK ((( SELECT public.has_permission(workspace_roles.workspace_id, 'roles.manage'::text) AS has_permission) AND (system_role IS NULL) AND public.can_grant_permissions(workspace_id, COALESCE((permissions -> 'keys'::text), '[]'::jsonb), COALESCE((permissions -> 'scopes'::text), '{}'::jsonb)) AND public.can_grant_channels(workspace_id, (permissions -> 'channels'::text), NULL::jsonb)));
+    WITH CHECK ((( SELECT public.has_permission(workspace_roles.workspace_id, 'roles.manage'::text) AS has_permission) AND (system_role IS NULL) AND public.can_grant_permissions(workspace_id, COALESCE((permissions -> 'keys'::text), '[]'::jsonb), COALESCE((permissions -> 'scopes'::text), '{}'::jsonb)) AND public.can_grant_channels(workspace_id, (permissions -> 'channels'::text), NULL::jsonb) AND public.can_grant_call_areas(workspace_id, permissions, NULL::jsonb)));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN

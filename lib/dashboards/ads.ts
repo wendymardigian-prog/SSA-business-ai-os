@@ -80,6 +80,10 @@ export function ratio(numerator: number | null, denominator: number | null): num
  *
  * `uniqueReach` viene de la consulta en vivo (F58) y pisa la suma diaria:
  * sumar alcances cuenta a la misma persona una vez por dia.
+ *
+ * `liveFrequency` es la de esa misma respuesta de Meta. Con alcance en vivo, la frecuencia sale solo de ahi: las
+ * impresiones guardadas llegan hasta el ultimo sync, y dividirlas por ese alcance dio 1,71 donde Meta decia 1,87, y 0,72
+ * en una campaña recien prendida. Si Meta no la dio es una raya.
  */
 export function computeTotals(rows: AdsRow[], uniqueReach?: number | null, liveFrequency?: number | null): AdsTotals {
   const spend = sum(rows.map((r) => r.spend));
@@ -102,8 +106,7 @@ export function computeTotals(rows: AdsRow[], uniqueReach?: number | null, liveF
     leads,
     purchases,
     purchaseValue: round(purchaseValue),
-    // La de Meta viene en la misma respuesta que el alcance en vivo: dividir impresiones guardadas por ese alcance mezcla dos momentos.
-    frequency: round(uniqueReach != null && liveFrequency != null ? liveFrequency : ratio(impressions, reach)),
+    frequency: round(uniqueReach != null ? (liveFrequency ?? null) : ratio(impressions, reach)),
     ctr: round(ratio(clicks, impressions) === null ? null : (ratio(clicks, impressions) as number) * 100),
     cpm: round(ratio(spend, impressions) === null ? null : (ratio(spend, impressions) as number) * 1000),
     cpc: round(ratio(spend, clicks)),
@@ -111,6 +114,24 @@ export function computeTotals(rows: AdsRow[], uniqueReach?: number | null, liveF
     cpl: round(ratio(spend, leads)),
     roas: round(ratio(purchaseValue, spend)),
   };
+}
+
+/** Lo que Meta contesto en vivo para un periodo. Null si no se pudo preguntar. */
+export interface LiveReach {
+  reach: number | null;
+  frequency: number | null;
+}
+
+/**
+ * Los totales del periodo anterior, para la variacion de las tarjetas.
+ *
+ * El alcance y la frecuencia solo se comparan si los dos periodos salen de la misma fuente (los dos en vivo o los dos
+ * sumados por dia). Uno en vivo contra uno sumado inventaria una variacion: quedan en null, y la tarjeta sin flecha.
+ */
+export function computePreviousTotals(rows: AdsRow[], current: LiveReach | null, previous: LiveReach | null): AdsTotals {
+  const totals = computeTotals(rows, previous?.reach, previous?.frequency);
+  const sameSource = (current?.reach != null) === (previous?.reach != null);
+  return sameSource ? totals : { ...totals, reach: null, frequency: null };
 }
 
 // ── Umbrales de color ────────────────────────────────────────────────────

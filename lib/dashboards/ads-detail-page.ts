@@ -26,7 +26,7 @@ import { loadAdsInsights } from "./ads-load";
 import { loadCrmForRows, type CrmTableData } from "./ads-crm-load";
 import { buildDetail, ownRows, type DetailLevel, type DetailView } from "./ads-detail";
 import { lastSyncedAt, syncedLabel, type Rankings, latestRankings } from "./ads-view";
-import { computeTotals, type AdsRow, type AdsTotals } from "./ads";
+import { computePreviousTotals, type AdsRow, type AdsTotals } from "./ads";
 import { daysBetween } from "@/lib/metrics/rules";
 import type { AdContentLink } from "@/lib/meta/content-ad-summary";
 import { isoToDateInput } from "@/lib/dates";
@@ -178,15 +178,10 @@ export async function loadDetailPage(params: {
   }
 
   const previousOwn = ownRows(previousRows, { level, objectId });
-  let previousTotals: AdsTotals | null =
-    previousOwn.length > 0 ? computeTotals(previousOwn, reachBefore?.ok ? reachBefore.data.reach : null) : null;
-
-  // El alcance solo se compara si los dos salen de la misma fuente (los dos
-  // unicos, o los dos sumados por dia). Un unico contra uno sumado
-  // inventaria una variacion: sin comparacion, el alcance queda sin flecha.
-  if (previousTotals && Boolean(reachNow?.ok) !== Boolean(reachBefore?.ok)) {
-    previousTotals = { ...previousTotals, reach: null, frequency: null };
-  }
+  const previousTotals: AdsTotals | null =
+    previousOwn.length > 0
+      ? computePreviousTotals(previousOwn, reachNow?.ok ? reachNow.data : null, reachBefore?.ok ? reachBefore.data : null)
+      : null;
 
   const days = range.from
     ? Math.max(1, daysBetween(range.from, range.to ?? now.toISOString()) + 1)

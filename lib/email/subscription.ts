@@ -133,7 +133,7 @@ export function emailStatusSourceLabel(source: string | null | undefined): strin
     resend_complaint: "una queja de spam",
     inherit: "la misma dirección, dada de baja en otro contacto",
     merge: "una fusión de contactos",
-    form_consent: "la casilla de emails de un formulario",
+    form_consent: "la casilla de emails de un formulario", // @plantilla-quitar(formularios)
   };
   return labels[source] ?? source;
 }

@@ -1,5 +1,5 @@
 {
-  "_doc": "Casos compartidos del alcance de grabaciones por area. Los corre call-areas.test.ts contra lib/auth/call-areas.ts y verify-roles.mjs --despues-de-00301 contra private.role_sees_call_area y private.call_areas_exceed. Si se cambia una regla, se cambia en las dos y se suma el caso.",
+  "_doc": "Casos compartidos del alcance de grabaciones por area. Los corre call-areas.test.ts contra lib/auth/call-areas.ts y verify-roles.mjs contra private.role_sees_call_area y private.call_areas_exceed. Si se cambia una regla, se cambia en las dos y se suma el caso.",
   "ids": {
     "A": "11111111-1111-4111-8111-111111111111",
     "B": "22222222-2222-4222-8222-222222222222",

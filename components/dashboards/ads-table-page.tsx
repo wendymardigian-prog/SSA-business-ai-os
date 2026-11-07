@@ -13,8 +13,8 @@ import { useAdsNavigation } from "./ads/use-ads-navigation";
 export function AdsTablePage(props: AdsTablePageData) {
   const { pending, navigate, applyPeriod, refresh } = useAdsNavigation();
   const totals = useMemo(
-    () => computeTotals(props.rows.filter((r) => r.level === "account"), props.uniqueReach),
-    [props.rows, props.uniqueReach],
+    () => computeTotals(props.rows.filter((r) => r.level === "account"), props.uniqueReach, props.uniqueFrequency),
+    [props.rows, props.uniqueReach, props.uniqueFrequency],
   );
 
   if (props.accounts.length === 0 || !props.crm) {

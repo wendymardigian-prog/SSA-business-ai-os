@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeTotals } from "@/lib/dashboards/ads";
+import { ReachAheadNote } from "./ads-page-notices";
 import { buildKpiItems } from "./kpi-items";
 
 const totals = computeTotals([
@@ -24,6 +25,18 @@ describe("las tarjetas de arriba del dashboard de Ads", () => {
     expect(card.sub).toMatch(/30/);
     expect(card.sub).toMatch(/15/);
     expect(card.tip).toMatch(/primer contacto/);
+  });
+
+  it("una frecuencia que Meta no dio es «—»", () => {
+    const items = buildKpiItems({ totals: { ...totals, frequency: null }, previous: null, currency: "USD" });
+    expect(items.find((i) => i.key === "frequency")!.value).toBe("—");
+  });
+
+  it("el alcance en vivo se aclara si supera a las impresiones, y solo entonces", () => {
+    expect(ReachAheadNote({ totals: { reach: 1000, impressions: 720 } })).not.toBeNull();
+    expect(ReachAheadNote({ totals: { reach: 720, impressions: 720 } })).toBeNull();
+    expect(ReachAheadNote({ totals: { reach: 500, impressions: 720 } })).toBeNull();
+    expect(ReachAheadNote({ totals: { reach: null, impressions: 720 } })).toBeNull();
   });
 
   it("todas las cifras explican qué son", () => {
