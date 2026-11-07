@@ -132,7 +132,7 @@ describe("cron automation-events (caracterizacion previa a la etapa 4)", () => {
   });
   it("si no se pueden leer los disparadores, el evento NO se cierra: lo toma la corrida siguiente", async () => {
     seed([{ event_type: "contact_created", contact_id: "c-1", created_at: new Date().toISOString() }], [{ type: "new_contact" }]);
-    const realFrom = db.client.from.bind(db.client);
+    const realFrom = db.client.from.bind(db.client) as unknown as (table: string) => unknown;
     const failing = (table: string) => {
       if (table !== "triggers") return realFrom(table);
       const q: Record<string, unknown> = {};
