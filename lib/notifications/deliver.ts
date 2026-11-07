@@ -12,6 +12,10 @@
  * Reglas:
  * - **Nunca lanza por un fallo de un proveedor**: reagenda a 1, 5 y 15 minutos
  *   (la cola reintentaria a los 10 s encima). Un error de la base si lanza.
+ * - **El tope del numero de WhatsApp** (200 por hora, compartido con todo lo que
+ *   sale por ese numero): si se lleno, el WhatsApp no se pierde ni gasta un
+ *   intento; se reagenda para el inicio de la hora siguiente (`retryAt`). La
+ *   campana y el email salen igual.
  * - **No manda dos veces**: cada envio queda anotado en `metadata.delivered`
  *   (`<persona>:<canal>` → fecha) en el momento, y un reintento saltea lo hecho.
  * - **Tope anti-spam**: a una persona, por un mismo evento y una misma cosa,
@@ -57,6 +61,8 @@ export interface ChannelSendResult {
   ok: boolean;
   /** Solo si fallo: si tiene sentido reintentar (red, 5xx, 429) o no (numero invalido, sin canal). */
   retryable?: boolean;
+  /** Solo si no salio porque el numero llego a su tope: cuando vuelve a haber lugar. No gasta un intento. */
+  retryAt?: Date;
 }
 
 export interface DeliverDeps {
@@ -125,6 +131,8 @@ export async function deliverNotification(deps: DeliverDeps, notificationId: str
   let sent = 0;
   let skipped = 0;
   let retry = false;
+  /** El tope del numero: lo mas temprano que vuelve a haber lugar. */
+  let deferUntil: Date | null = null;
 
   for (const { r, prefs } of wanted) {
     for (const channel of ["email", "whatsapp"] as const) {
@@ -145,6 +153,8 @@ export async function deliverNotification(deps: DeliverDeps, notificationId: str
       if (result.ok) {
         sent++;
         await deps.markDelivered(n.id, key, now.toISOString());
+      } else if (result.retryAt) {
+        if (!deferUntil || result.retryAt < deferUntil) deferUntil = result.retryAt;
       } else if (result.retryable) {
         retry = true;
       } else {
@@ -153,10 +163,17 @@ export async function deliverNotification(deps: DeliverDeps, notificationId: str
     }
   }
 
-  if (retry && attempt < DELIVER_RETRY_MINUTES.length) {
+  const backoff = retry && attempt < DELIVER_RETRY_MINUTES.length;
+  // Lo que espera al tope se reagenda aunque no haya fallado nada, mientras el aviso no pase de las 24 horas.
+  const deferred = deferUntil !== null && deferUntil.getTime() - new Date(n.created_at).getTime() <= DELIVER_MAX_AGE_HOURS * 3600_000;
+  if (backoff) {
+    // El reintento de un fallo llega antes que la hora siguiente; si el tope sigue lleno, ese intento vuelve a esperar.
     await deps.scheduleRetry(n.id, attempt + 1, new Date(now.getTime() + DELIVER_RETRY_MINUTES[attempt] * 60_000));
+  } else if (deferred) {
+    // Esperar al tope no es un fallo: mismo numero de intento.
+    await deps.scheduleRetry(n.id, attempt, deferUntil!);
   }
-  return { status: "done", sent, skipped, retry: retry && attempt < DELIVER_RETRY_MINUTES.length };
+  return { status: "done", sent, skipped, retry: backoff || deferred };
 }
 
 // ---------------------------------------------------------------------------

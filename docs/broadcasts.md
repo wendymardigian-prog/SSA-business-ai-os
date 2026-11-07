@@ -90,6 +90,37 @@ comparte su ritmo, porque WhatsApp bloquea por número. El despachador
   recomendado.
 - **Un broadcast puede ir más lento, nunca más rápido** (`combinePolicies`: de
   cada regla, la más lenta).
+- **Los topes por minuto, hora y día cuentan solo los broadcasts**
+  (`broadcast_recipients`). Lo demás que sale por el número no entra en esa
+  cuenta: lo frena el tope único del número (200 por hora,
+  `claim_automated_send`, que el despachador también respeta) y la regla de
+  abajo.
+
+### La cola le hace lugar a lo que sale en el momento (7/11/2026)
+
+Los avisos al equipo, la bandeja (chats y grupos), el agente, los flujos, las
+secuencias, «Enviar WhatsApp a un número» y «Enviar encuesta» **no esperan su
+turno**: salen ya. Pero después de cada uno, si el número tiene carril, el
+próximo turno de la cola (`channel_send_lanes.next_send_at`) se corre a **ahora +
+la espera mínima del número** (`laneTurnAfterLiveSend`), así el broadcast no
+manda pegado a ese mensaje.
+
+- **Nunca lo adelanta**: si el turno ya estaba más lejos, queda igual. La guarda
+  va también en el UPDATE (`.lt("next_send_at", …)`), por si el despachador lo
+  corrió entre medio.
+- **Un solo lugar**: `makeRoomForLiveSend` (`lib/send-queue/live-send.ts`), que
+  llaman los dos tramos finales de Evolution: `sendEvolutionDirect` (todo lo que
+  va a una persona; su parámetro `lane` es obligatorio) y `sendToGroup`. Corre
+  después de intentar el envío, salga o lo rechace WhatsApp (pudo haberle llegado).
+- **Lo que manda la cola misma no lo corre** (`origin: "broadcast"` pasa
+  `lane: null`): su turno ya lo tomó con `claim_lane_slot`.
+- **Nunca frena ni hace fallar un envío**: va en `try/catch`. Escribe con el
+  cliente de servicio (la bandeja manda con el de la persona y pasa el de servicio
+  en `secrets`). Sin carril (el número nunca mandó un broadcast) es una sola
+  lectura.
+- **Sin migración**: la tabla y la columna ya existían (00285).
+- No cambia el ritmo, el horario ni los topes de los broadcasts, ni nada de
+  Instagram. Las reacciones no corren el turno (no son un mensaje).
 
 ### Lo que no se puede romper
 

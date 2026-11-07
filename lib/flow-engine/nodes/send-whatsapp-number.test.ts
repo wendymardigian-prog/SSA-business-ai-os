@@ -16,7 +16,8 @@ vi.mock("@/lib/evolution-client", async () => {
 const evolutionConfig = vi.hoisted(() => ({ value: { baseUrl: "https://evo.test", apiKey: "k", instancePrefix: "t" } as { baseUrl: string; apiKey: string; instancePrefix: string } | null }));
 vi.mock("@/lib/evolution-config", () => ({ getEvolutionConfig: vi.fn(async () => evolutionConfig.value) }));
 
-const { sendWhatsAppNumberNode, resolveWhatsAppTarget, WHATSAPP_NUMBER_HOURLY_LIMIT } = await import("./send-whatsapp-number");
+const { sendWhatsAppNumberNode, resolveWhatsAppTarget } = await import("./send-whatsapp-number");
+const { WHATSAPP_HOURLY_LIMIT } = await import("@/lib/channels/whatsapp-limits");
 
 const WS = "ws-1";
 const CH = "ch-wa";
@@ -222,8 +223,8 @@ describe("Enviar WhatsApp a un número", () => {
     expect(sendText).not.toHaveBeenCalled();
     expect(events("node_skipped")[0].metadata).toMatchObject({ rate_limited: true });
     const call = db.rpcCalls.find((c) => c.name === "claim_automated_send");
-    expect(call?.args).toEqual({ p_channel_id: CH, p_limit: WHATSAPP_NUMBER_HOURLY_LIMIT });
-    expect(WHATSAPP_NUMBER_HOURLY_LIMIT).toBe(200);
+    expect(call?.args).toEqual({ p_channel_id: CH, p_limit: WHATSAPP_HOURLY_LIMIT });
+    expect(WHATSAPP_HOURLY_LIMIT).toBe(200);
   });
 
   it("si Evolution rechaza el envío, no lanza: queda anotado como fallido", async () => {

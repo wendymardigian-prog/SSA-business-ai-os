@@ -19,6 +19,7 @@ import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
 import { validatePoll } from "@/lib/whatsapp-groups/poll";
 import { sendToGroup } from "@/lib/whatsapp-groups/send";
+import { WHATSAPP_HOURLY_LIMIT } from "@/lib/channels/whatsapp-limits";
 
 export interface SendPollData {
   /** El grupo (`whatsapp_groups.id`). */
@@ -30,9 +31,6 @@ export interface SendPollData {
 }
 
 export const SEND_POLL_TYPE = "send_poll";
-
-/** Tope de mensajes automaticos por hora y canal (el mismo del resto del motor). */
-const HOURLY_LIMIT = 200;
 
 async function execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<SendPollData, FlowExecutionContext>): Promise<void> {
   const label = "Enviar encuesta";
@@ -96,7 +94,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
       return await skip("No pude reservar el envío, así que no se mandó.");
     }
 
-    const { data: allowed, error: capError } = await supabase.rpc("claim_automated_send", { p_channel_id: channel.id, p_limit: HOURLY_LIMIT });
+    const { data: allowed, error: capError } = await supabase.rpc("claim_automated_send", { p_channel_id: channel.id, p_limit: WHATSAPP_HOURLY_LIMIT });
     if (capError) console.error("[flow-engine] no pude reclamar el envío de la encuesta, dejo pasar:", capError.message);
     else if (allowed === false) return await skip("El canal llegó al tope de mensajes automáticos de la hora: no se mandó.", { rate_limited: true });
 
