@@ -546,7 +546,8 @@ try {
     check(!!closer, "workspace_members.is_closer ya no existe");
     const { error: correos } = await svc.from("workspace_members").select("closer_emails").limit(1);
     check(!correos, "closer_emails sigue: son los otros correos de cada persona", correos?.message);
-    const { data: viejas } = await svc.from("workspaces").select("id, ai_background_settings");
+    // El negocio de prueba de este script guarda claves viejas a proposito (bloque 00148): no cuenta.
+    const { data: viejas } = await svc.from("workspaces").select("id, ai_background_settings").neq("id", ws.id);
     const conClaves = (viejas ?? []).filter((w) => {
       const a = w.ai_background_settings?.call_analysis ?? {};
       const c = w.ai_background_settings?.call_classification ?? {};
