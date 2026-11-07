@@ -101,6 +101,20 @@ puede no llegar nunca. Por eso Mi Fathom muestra los correos en uso: si alguien 
 con otro y no lo carga, sus llamadas no entran. Al sumar un correo, la próxima consulta
 vuelve a mirar los últimos 14 días.
 
+## Qué importa cada conexión (00304, 6/11/2026)
+
+Cada persona elige en **Mi Fathom** qué entra de lo que graba (`oauth_connections.fathom_settings`, reglas puras en `lib/fathom/settings.ts`). Sin configurar es automático y sin área: una conexión vieja no cambia.
+
+- **Automático:** entra todo, cada 10 minutos.
+- **Con reglas:** el nombre contiene o no contiene, duración mínima y con alguien de afuera del equipo. **Lo que no cumple no se guarda**, y se mira en `ingestItems` ANTES de pedir la transcripción, para no gastar ese pedido. Un dato que falta no cumple una condición. La marca de agua avanza igual: lo filtrado se recupera con Importar, si después se cambian las reglas.
+- **Manual:** la consulta de cada 10 minutos no hace nada, ni pide un token. Las llamadas entran con Importar, que en este modo llega hasta ahora mismo.
+- **Al salir de manual** se guarda `auto_since`: la consulta arranca en ese momento y lo anterior se trae con Importar, para no disparar flujos de golpe. Importar llega justo hasta ahí.
+- **Área por defecto:** es el paso `connection` de la clasificación. Decide si la reunión vinculada o una regla no lo hicieron, y la IA solo puede completar el tipo dentro de esa área. Un área archivada no decide.
+- **Conectar desde un módulo:** `/dashboard/llamadas/mi-fathom?area=<id>`. El área viaja en la vuelta firmada del OAuth y al conectar queda como la de la conexión (`applyConnectArea`), sin pisar una ya elegida. Con la conexión hecha, queda elegida en el formulario y se guarda con el botón.
+- **Quién configura:** la propia persona, con `calls.view`. Quien tiene `calls.configure` ve y cambia las de los demás («Conexiones del equipo», en Mi Fathom), porque alguien podría dejar sus llamadas afuera pasando a manual. Todo queda en `audit_log`, con `on_behalf_of` si lo cambió otra persona. Escribe solo el servidor.
+
+**Falta la prueba real con Fathom:** las reglas se apoyan en lo que devuelve la API (`calendar_invitees`, `is_external`, las horas de grabación). Está probado con respuestas simuladas.
+
 ## Importar el historial
 
 Al conectar solo entran los últimos 14 días. Lo anterior se trae desde **Mi Fathom →
@@ -109,13 +123,17 @@ Importar historial**: todo, o desde una fecha. Un clic alcanza.
 - Corre en la cola, por partes (`fathom_history_import`, `lib/fathom/history-import.ts`;
   las reglas son puras, en `history-state.ts`). Cada transcripción es un pedido aparte:
   9 pedidos por vuelta cada 70 s, unas 400 llamadas por hora como máximo.
-- **Llega hasta la marca de agua** (`historyUpperBound`). Lo posterior lo cubre la
+- **Llega hasta la marca de agua** (`historyUpperBound`), salvo en manual, que llega hasta ahora, y al salir de manual, que llega hasta `auto_since`. Lo posterior lo cubre la
   consulta de cada 10 minutos: si no, una llamada nueva quedaría marcada como historia y
   no dispararía sus automatizaciones.
 - **Lo importado es historia** (`calls.imported_from_history`): `emitCallEvent` no emite
   nada, ni aunque alguien la vincule o la analice después, y no se analiza sola (se
-  analiza con el botón). Se clasifica con el modo que tenga el negocio (gasta IA por
-  llamada y respeta los topes) y se vincula a contacto y agenda.
+  analiza con el botón). Se vincula a contacto y agenda, y **aplica las reglas de la
+  conexión**.
+- **«Clasificar con IA» está apagado por defecto**, porque cuesta por llamada (`classify_ai`
+  en el estado, `noAi` en el job). Sin eso siguen funcionando la reunión vinculada, las
+  reglas y el área por defecto, y el resto queda por revisar con el motivo `imported_no_ai`.
+  Cambiarle después la reunión tampoco gasta IA.
 - Una corrida a la vez por conexión. El avance se guarda condicionado a `run_id` + `step`,
   así una vuelta vieja o repetida no avanza.
 - No lanza por un fallo de Fathom: 429 y 5xx esperan 1, 5 y 15 minutos (o el `Retry-After`,
@@ -285,7 +303,7 @@ Configuración; todas tienen las mismas cinco pestañas que el resto de las tare
 ## Verificación
 
 ```
-node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301 --despues-de-00303  # RLS, únicos, trigger de analysis_ai, candado, cron, configuración, claim, L3
+node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301 --despues-de-00303 --despues-de-00304  # RLS, únicos, trigger de analysis_ai, candado, cron, configuración, claim, L3
 node scripts/verify-audit-visibility.mjs --despues-de-00147
 ```
 

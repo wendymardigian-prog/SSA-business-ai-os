@@ -17,11 +17,11 @@ const meeting = (i: number, email = "ana@negocio.io") => ({
   calendar_invitees: [{ name: "Lead", email: "lead@x.com", is_external: true }],
 });
 
-function world(opts: { state?: FathomHistoryState | null; watermark?: string | null; status?: string; permission?: boolean; contact?: boolean } = {}) {
+function world(opts: { state?: FathomHistoryState | null; watermark?: string | null; status?: string; permission?: boolean; contact?: boolean; settings?: unknown } = {}) {
   const conn: Record<string, unknown> = {
     id: CONN, workspace_id: WS, user_id: "user-ana", status: opts.status ?? "active", vault_secret_prefix: "oauth_fathom_c1",
     token_expires_at: "2026-11-06T19:00:00Z", account_label: "ana@negocio.io",
-    sync_watermark: opts.watermark ?? BEFORE, sync_cursor: null, sync_last_error: null,
+    sync_watermark: opts.watermark ?? BEFORE, sync_cursor: null, sync_last_error: null, fathom_settings: opts.settings ?? {},
     history_import: opts.state === undefined ? newHistoryState({ runId: "run-1", from: null, before: BEFORE, now: NOW }) : opts.state,
   };
   const calls: Array<Record<string, unknown>> = [];
@@ -251,5 +251,55 @@ describe("arrancar, seguir y frenar", () => {
     const hecha = world({ state: { ...newHistoryState({ runId: "run-1", from: null, before: BEFORE, now: NOW }), status: "done" } });
     expect((await resumeHistoryImport(control(hecha), CONN)).ok).toBe(false);
     expect((await stopHistoryImport(control(hecha), CONN)).ok).toBe(false);
+  });
+});
+
+describe("la importacion y lo que elige cada conexion", () => {
+  const control = (w: ReturnType<typeof world>) => ({ supabase: w.db.client, now: () => NOW });
+
+  it("aplica las reglas de la conexion", async () => {
+    const w = world({ settings: { mode: "rules", rules: { title_contains: ["demo"] } } });
+    const f = fathom({ pages: { first: { items: [{ ...meeting(1), title: "Demo" }, meeting(2)] } }, log: [] });
+    await runFathomHistoryImport(deps(w, f), payload());
+    expect(w.calls.map((c) => c.external_id)).toEqual(["1"]);
+    expect(w.state()).toMatchObject({ status: "done", imported: 1 });
+  });
+
+  it("sin el pedido, lo importado no gasta IA al clasificarse", async () => {
+    const w = world();
+    const enqueue = vi.fn(async () => undefined);
+    await runFathomHistoryImport(deps(w, fathom({ pages: { first: { items: [meeting(1)] } }, log: [] }), { enqueueClassify: enqueue }), payload());
+    expect(enqueue).toHaveBeenCalledWith(expect.any(String), { noAi: true });
+  });
+
+  it("con el pedido, se clasifica con IA", async () => {
+    const w = world({ state: newHistoryState({ runId: "run-1", from: null, before: BEFORE, now: NOW, classifyAi: true }) });
+    const enqueue = vi.fn(async () => undefined);
+    await runFathomHistoryImport(deps(w, fathom({ pages: { first: { items: [meeting(1)] } }, log: [] }), { enqueueClassify: enqueue }), payload());
+    expect(enqueue).toHaveBeenCalledWith(expect.any(String), undefined);
+  });
+
+  it("en manual llega hasta ahora mismo: no hay consulta que cubra lo reciente", async () => {
+    const w = world({ state: null, settings: { mode: "manual" } });
+    expect(await startHistoryImport(control(w), CONN, null)).toEqual({ ok: true });
+    expect(w.state().before).toBe(NOW.toISOString());
+  });
+
+  it("en manual se puede importar lo de hoy", async () => {
+    const w = world({ state: null, settings: { mode: "manual" } });
+    expect(await startHistoryImport(control(w), CONN, new Date(NOW.getTime() - 3600_000).toISOString())).toEqual({ ok: true });
+  });
+
+  it("quien salio de manual importa hasta el momento en que paso a automatico", async () => {
+    const since = new Date(NOW.getTime() - 3600_000).toISOString();
+    const w = world({ state: null, watermark: BEFORE, settings: { mode: "auto", auto_since: since } });
+    await startHistoryImport(control(w), CONN, null);
+    expect(w.state().before).toBe(since);
+  });
+
+  it("guarda el pedido de usar IA", async () => {
+    const w = world({ state: null });
+    await startHistoryImport(control(w), CONN, null, { classifyAi: true });
+    expect(w.state().classify_ai).toBe(true);
   });
 });

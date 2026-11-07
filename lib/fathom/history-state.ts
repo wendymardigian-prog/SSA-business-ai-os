@@ -8,6 +8,8 @@
  * la misma pagina (la llamada es unica por `external_id`: repetir no duplica).
  */
 
+import type { FathomSettings } from "./settings";
+
 export type HistoryStatus = "running" | "done" | "partial" | "stopped";
 
 export interface FathomHistoryState {
@@ -26,6 +28,8 @@ export interface FathomHistoryState {
   pages: number;
   /** Llamadas nuevas que importo. */
   imported: number;
+  /** La persona pidio clasificar lo importado con IA. Apagado por defecto: cuesta por llamada. */
+  classify_ai: boolean;
   /** Reintentos seguidos sin avanzar. */
   retries: number;
   started_at: string;
@@ -50,11 +54,15 @@ export const MAX_PAGES = 5000;
  * como historia y no dispararia sus automatizaciones. Sin marca de agua (la primera
  * consulta todavia no termino), se corta donde empieza su ventana.
  */
-export function historyUpperBound(watermark: string | null | undefined, now: Date): string {
-  return watermark || new Date(now.getTime() - INITIAL_WINDOW_MS).toISOString();
+export function historyUpperBound(watermark: string | null | undefined, now: Date, settings?: Pick<FathomSettings, "mode" | "auto_since">): string {
+  // En manual no hay consulta que cubra lo reciente: la importacion llega hasta ahora mismo.
+  if (settings?.mode === "manual") return now.toISOString();
+  const bound = watermark || new Date(now.getTime() - INITIAL_WINDOW_MS).toISOString();
+  // Quien salio de manual: la consulta arranca en `auto_since`, y lo anterior lo cubre la importacion.
+  return settings?.auto_since && settings.auto_since > bound ? settings.auto_since : bound;
 }
 
-export function newHistoryState(input: { runId: string; from: string | null; before: string; now: Date }): FathomHistoryState {
+export function newHistoryState(input: { runId: string; from: string | null; before: string; now: Date; classifyAi?: boolean }): FathomHistoryState {
   const at = input.now.toISOString();
   return {
     run_id: input.runId,
@@ -65,6 +73,7 @@ export function newHistoryState(input: { runId: string; from: string | null; bef
     step: 0,
     pages: 0,
     imported: 0,
+    classify_ai: input.classifyAi === true,
     retries: 0,
     started_at: at,
     updated_at: at,
@@ -91,6 +100,7 @@ export function parseHistoryState(raw: unknown): FathomHistoryState | null {
     step: n(s.step),
     pages: n(s.pages),
     imported: n(s.imported),
+    classify_ai: s.classify_ai === true,
     retries: n(s.retries),
     started_at: str(s.started_at) ?? new Date(0).toISOString(),
     updated_at: str(s.updated_at) ?? new Date(0).toISOString(),

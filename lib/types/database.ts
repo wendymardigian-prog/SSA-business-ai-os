@@ -4366,6 +4366,8 @@ export interface Database {
           refresh_locked_until: string | null;
           /** El avance de la importacion del historial (00297, lib/fathom/history-state.ts). */
           history_import: Json | null;
+          /** Que importa esta conexion (00304, lib/fathom/settings.ts). */
+          fathom_settings: Json;
           // @plantilla-hasta(llamadas)
         };
         Insert: {
@@ -4403,6 +4405,7 @@ export interface Database {
           sync_last_error?: string | null;
           refresh_locked_until?: string | null;
           history_import?: Json | null;
+          fathom_settings?: Json;
           // @plantilla-hasta(llamadas)
         };
         Relationships: [];

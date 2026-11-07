@@ -19,7 +19,23 @@ import {
 const NOW = new Date("2026-11-06T12:00:00.000Z");
 const fresh = () => newHistoryState({ runId: "r1", from: null, before: "2026-10-23T12:00:00.000Z", now: NOW });
 
+describe("classify_ai", () => {
+  it("apagado por defecto: una importacion vieja tampoco gasta IA", () => {
+    expect(fresh().classify_ai).toBe(false);
+    const { classify_ai: _omit, ...vieja } = fresh();
+    expect(parseHistoryState(vieja)?.classify_ai).toBe(false);
+    expect(newHistoryState({ runId: "r", from: null, before: "2026-10-23T12:00:00.000Z", now: NOW, classifyAi: true }).classify_ai).toBe(true);
+  });
+});
+
 describe("historyUpperBound", () => {
+  it("en manual llega hasta ahora mismo", () => {
+    expect(historyUpperBound("2026-01-01T00:00:00.000Z", NOW, { mode: "manual", auto_since: null })).toBe(NOW.toISOString());
+  });
+  it("quien salio de manual llega hasta ese momento, no hasta su vieja marca de agua", () => {
+    const since = new Date(NOW.getTime() - 3600_000).toISOString();
+    expect(historyUpperBound("2026-01-01T00:00:00.000Z", NOW, { mode: "auto", auto_since: since })).toBe(since);
+  });
   it("llega hasta la marca de agua: lo de despues lo cubre la consulta de cada 10 minutos", () => {
     expect(historyUpperBound("2026-11-01T00:00:00.000Z", NOW)).toBe("2026-11-01T00:00:00.000Z");
   });

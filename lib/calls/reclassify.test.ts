@@ -26,11 +26,12 @@ const baseCall = {
   call_type_source: null,
 };
 
-function setup(over: { call?: Record<string, unknown>; booking?: unknown } = {}) {
+function setup(over: { call?: Record<string, unknown>; booking?: unknown; connectionSettings?: unknown } = {}) {
   return fakeDb(
     {
       "calls:select": { data: { ...baseCall, ...over.call } },
       "calls:update": { data: [{ id: "c1" }] },
+      "oauth_connections:select": { data: { fathom_settings: over.connectionSettings ?? {} } },
       "workspaces:select": { data: { ai_background_settings: {} } },
       "booking_categories:select": { data: CATEGORIES },
       "bookings:select": { data: { category_snapshot: over.booking === undefined ? SNAPSHOT : over.booking } },
@@ -41,6 +42,18 @@ function setup(over: { call?: Record<string, unknown>; booking?: unknown } = {})
 }
 
 describe("reclassifyCall", () => {
+  it("al desvincularla, vuelve al area de su conexion en vez de quedar sin nada", async () => {
+    const db = setup({ call: { booking_id: null, connection_id: "conn1" }, connectionSettings: { default_area_id: SERVICIO } });
+    expect(await reclassifyCall(db.client, "c1", NOW)).toBe("updated");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ area_id: SERVICIO, classification_source: "connection" });
+  });
+
+  it("lo importado no gasta IA por haberle cambiado la reunion", async () => {
+    const db = setup({ call: { booking_id: null, imported_from_history: true } });
+    expect(await reclassifyCall(db.client, "c1", NOW)).toBe("requeued");
+    expect(db.writesTo("scheduled_jobs")[0].values).toMatchObject({ payload: { noAi: true } });
+  });
+
   it("una grabacion que se vincula toma el area y el tipo de la reunion", async () => {
     const db = setup();
     expect(await reclassifyCall(db.client, "c1", NOW)).toBe("updated");
