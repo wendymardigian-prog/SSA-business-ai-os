@@ -45,7 +45,7 @@ export function ConditionNode({ id, data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-amber-500 px-3 py-2 text-white">
         <GitBranch className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Condición (sí / si no)</span>
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
         </div>
       </div>

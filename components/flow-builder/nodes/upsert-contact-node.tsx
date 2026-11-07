@@ -21,7 +21,7 @@ export function UpsertContactNode({ id, data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-teal-600 px-3 py-2 text-white">
         <UserRoundPlus className="h-3.5 w-3.5" aria-hidden />
         <span className="text-xs font-semibold">Crear o actualizar contacto</span>
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
         </div>
       </div>

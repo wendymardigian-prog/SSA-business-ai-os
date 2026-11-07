@@ -32,7 +32,7 @@ export function AiResponseNode({ id, data, selected }: NodeProps) {
       <div className="flex items-center gap-2 rounded-t-lg bg-violet-500 px-3 py-2 text-white">
         <Sparkles className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">Respuesta con IA</span>
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
         </div>
       </div>

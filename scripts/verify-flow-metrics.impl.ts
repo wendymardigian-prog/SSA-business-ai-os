@@ -120,7 +120,7 @@ try {
     .from("flow_sessions")
     .insert([
       { flow_id: flowId, contact_id: mine, channel_id: channel.id, status: "completed", has_failed_step: true, variables: {} },
-      { flow_id: flowId, contact_id: other, channel_id: channel.id, status: "completed", variables: {} },
+      { flow_id: flowId, contact_id: other, channel_id: channel.id, status: "completed", has_failed_step: false, variables: {} },
     ])
     .select("id, contact_id");
   if (sessionsError) throw new Error(`no pude crear ejecuciones: ${sessionsError.message}`);

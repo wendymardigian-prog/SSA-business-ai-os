@@ -299,7 +299,7 @@ export function ActionNode({ id, data, selected }: NodeProps) {
       >
         <Icon className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">{config.label}</span>
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <NodeMetricsBadge nodeId={id} data={data as Record<string, unknown>} />
         </div>
       </div>

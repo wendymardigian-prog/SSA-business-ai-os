@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { BarChart3, ChevronDown, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -154,13 +155,24 @@ export function FlowMetricsError() {
  */
 export function NodeMetricsBadge({ nodeId, data }: { nodeId: string; data?: Record<string, unknown> }) {
   const state = useFlowMetrics();
-  const [open, setOpen] = useState(false);
+  // Donde se abre el detalle (en la pantalla, no en el lienzo: asi no se achica con el zoom). Null = cerrado.
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const open = anchor !== null;
+  const setOpen = (value: boolean) => {
+    if (!value) return setAnchor(null);
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = 288;
+    setAnchor({ top: Math.min(rect.bottom + 4, window.innerHeight - 120), left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) });
+  };
   const ref = useRef<HTMLDivElement>(null);
+  const popover = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !popover.current?.contains(target)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -181,11 +193,11 @@ export function NodeMetricsBadge({ nodeId, data }: { nodeId: string; data?: Reco
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          setOpen((v) => !v);
+          setOpen(!open);
         }}
         aria-expanded={open}
         className={cn(
-          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+          "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold",
           !text
             ? "border-border bg-muted text-muted-foreground"
             : m && m.failed > 0
@@ -197,12 +209,15 @@ export function NodeMetricsBadge({ nodeId, data }: { nodeId: string; data?: Reco
         {text ?? "0"}
         <ChevronDown className="h-3 w-3" aria-hidden />
       </button>
-      {open && (
+      {anchor &&
+        createPortal(
         <div
+          ref={popover}
           role="dialog"
           aria-label="Métricas del paso"
           onClick={(e) => e.stopPropagation()}
-          className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-border bg-popover p-3 text-left text-xs text-popover-foreground shadow-lg"
+          style={{ top: anchor.top, left: anchor.left }}
+          className="fixed z-50 max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-border bg-popover p-3 text-left text-xs text-popover-foreground shadow-lg"
         >
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold">Métricas del paso</p>
@@ -211,8 +226,9 @@ export function NodeMetricsBadge({ nodeId, data }: { nodeId: string; data?: Reco
             </button>
           </div>
           <NodeMetricsDetail metrics={m} data={data} flowId={state.flowId} nodeId={nodeId} />
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }
