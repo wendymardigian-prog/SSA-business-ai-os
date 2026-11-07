@@ -898,7 +898,15 @@ motivo en `status_detail`, sin llamar al proveedor.
 
 Un modelo que no esté en `model_pricing` deja el run con `cost_usd` en NULL y un
 aviso en consola —el run no se pierde—, pero ojo: **un costo desconocido no suma
-a los topes**.
+a los topes**. Por eso (noviembre 2026), con un tope **del negocio** que corta, quien sabe qué
+modelo va a usar lo pasa a `withinWorkspaceBudget(..., { model })` y un modelo sin
+precio (para audio, sin precio por hora) **no se usa**: la transcripción, la
+descripción de imágenes, el resumen al cierre y la respuesta con IA de los flujos.
+Sin topes cargados no cambia nada. Esas cuatro tareas, además, preguntan por el tope
+antes de llamar (antes no lo miraban): el audio queda `failed` con el motivo, la
+imagen no interpretable (el agente escala) y el resumen deja una corrida
+`budget_exceeded`. El agente, el copywriter, Grabaciones y el clasificador todavía
+no le pasan el modelo (solo miran el tope).
 
 ## El encadenado
 
