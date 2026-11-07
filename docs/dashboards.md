@@ -392,6 +392,16 @@ el contexto de filas irrelevantes.
 El costo queda registrado y los topes de IA del negocio se respetan **antes**
 de llamar.
 
+## Video y transcripción de un anuncio (7/11/2026, 00323)
+
+En el detalle de un anuncio hay una tarjeta «Video y transcripción».
+
+- **El id del video se guarda** en `meta_ads.video_id`. El sync lo toma del creativo (`video_id`, `object_story_spec.video_data` o `asset_feed_spec.videos`, `creativeVideoId`). Como el sync es incremental, `CATALOG_FIELDS_VERSION` (`lib/meta/entities.ts`) hace que una cuenta leída con campos viejos se lea entera una vez; se sube cada vez que se suma un campo al catálogo.
+- **El archivo se pide en el momento** («Ver video», `getAdVideo` → `fetchAdVideoSource`): `/{video_id}?fields=source`, y si Meta no lo da, el `media_url` de la publicación de Instagram. No se guarda una copia: el link vence en unas horas. Si Meta da un `video_id` que faltaba, se guarda ahí mismo.
+- **La transcripción se escribe a mano** (`saveAdTranscript`, pide `dashboards.ads.view` y `content.create`, queda en `audit_log` como `transcript.updated` / `transcript.cleared`). Vacía la borra. La regla vive en `manualTranscriptWrite` y coincide con el CHECK `meta_ads_transcript_shape`: con texto, `ready` + `manual`; sin texto, `none`.
+- **El sync nunca manda las columnas `transcript*`**: no puede pisar lo que escribió una persona. La transcripción automática queda para más adelante: va a escribir `auto` (con `pending`/`failed` mientras corre) y nunca pisar una `manual`; por eso hay un índice por `(workspace_id, video_id)`, para transcribir una vez cada video aunque corra en varios anuncios.
+- **Si el anuncio está vinculado a una pieza con guion**, la tarjeta muestra el guion (lo que se planeó decir) debajo de la transcripción (lo que se dijo).
+
 ## Unificado (F59)
 
 Lo orgánico y lo pago del mismo período, lado a lado.

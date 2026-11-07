@@ -705,6 +705,9 @@ export type AuditAction =
   /** Entity meta_ad: una persona vinculo un anuncio con una pieza de Contenido, o lo desvinculo (Tiron 2, A2). */
   | "content_link.linked"
   | "content_link.unlinked"
+  /** Entity meta_ad: una persona escribio, cambio o borro la transcripcion del video del anuncio (00323). */
+  | "transcript.updated"
+  | "transcript.cleared"
   /** Entity eod_report: una correccion de un reporte enviado (con lo que cambio). */
   | "eod.edited" // @plantilla-quitar(formularios)
   /** Entity contract_signature. */
