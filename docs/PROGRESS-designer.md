@@ -719,31 +719,31 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 - [ ] F48 — Miniaturas en vivo (`renderPageHTML` reducido); guardar una versión no encola renders · prueba: — · auditado: —
 
 #### DS3 · IA (subagente)
-- [ ] F31 — La conversación (en `ai_threads` / `ai_messages`, canal `designer`) · prueba: — · auditado: —
-- [ ] F32 — El motor (proveedor, salida estructurada, reglas) · prueba: — · auditado: —
-- [ ] F33 — Primera versión · prueba: — · auditado: —
-- [ ] F34 — Cambios por página o de todo · prueba: — · auditado: —
-- [ ] F35 — Estilos en la IA · prueba: — · auditado: —
-  - [ ] F35–F36 / V2 — la IA propone prender la verificación (Hacerlo / No) en impresos de tipo certificado, constancia o diploma · prueba: — · auditado: —
-- [ ] F36 — Revisión automática · prueba: — · auditado: —
-- [ ] F37 — Estilos propios (y pantalla de Ajustes con Fuentes) · prueba: — · auditado: —
-- [ ] F38 — Costos y topes · prueba: — · auditado: —
+- [~] F31 — La conversación (en `ai_threads` / `ai_messages`, canal `designer`) · prueba: `lib/designer/ai/merge.test.ts`, `requests.test.ts`, `lib/actions/designer/ai.test.ts`, `screens/ai-panel.test.ts`, `ai-panel.test.ts`; todo por `lib/ai-threads/store.ts` · auditado: —
+- [~] F32 — El motor (proveedor, salida estructurada, reglas) · prueba: `ai/schema.test.ts`, `prompt.test.ts` (zonas seguras y densidad del estilo; el pedido viaja como dato), `patch.test.ts`, `normalize.test.ts`, `run.test.ts` (un reintento ante validación); lo que escribe pasa por `sanitizeAiDoc` + `sanitizeDocHtml` (`doc-sanitize.test.ts`) · auditado: —
+- [~] F33 — Primera versión · prueba: `jobs/ai-generate.test.ts` (26: con una imagen, `pages[0].background.type = "image"` y capa con opacidad > 0), `run.test.ts` · auditado: —
+- [~] F34 — Cambios por página o de todo · prueba: `ai/scope.test.ts` · auditado: —
+- [~] F35 — Estilos en la IA · prueba: `run.test.ts` y `ai-generate.test.ts` (cambiar de estilo conserva los textos) · auditado: —
+  - [~] F35–F36 / V2 — la IA propone prender la verificación (Hacerlo / No) · prueba: `ai/proposals.test.ts`, `requests.test.ts` («Hacerlo» valida con `validateTemplateVerification`), `ai-generate.test.ts` · auditado: —
+- [~] F36 — Revisión automática · prueba: `ai/qa.test.ts` (los 5 problemas; nunca más de 2 pasadas), `measure.test.ts`, `run.test.ts` · auditado: —
+- [~] F37 — Estilos propios (y pantalla de Ajustes con Fuentes) · prueba: `style-extract.test.ts` (estilo extraído valida, fuente fuera de la lista se corrige), `settings-requests.test.ts`, `lib/actions/designer/settings.test.ts`, `screens/settings.test.ts`, `settings-screen.test.ts`; F11 fuentes en las mismas acciones · auditado: —
+- [~] F38 — Costos y topes · prueba: `ai/cost.test.ts`, `ai-generate.test.ts` (con el tope alcanzado NO se llama al proveedor) · auditado: —
 
 #### DS4 · Cargar HTML (subagente)
-- [ ] F39 — Subir (`.html` / `.zip`) · prueba: — · auditado: —
-- [ ] F40 — Limpiar (≥ 20 ataques) · prueba: — · auditado: —
-- [ ] F41 — Detectar el formato (6 fixtures) · prueba: — · auditado: —
-- [ ] F42 — Editar lo cargado · prueba: — · auditado: —
+- [~] F39 — Subir (`.html` / `.zip`) · prueba: `import/zip.test.ts` (28: `../evil.html` y 301 archivos se rechazan; absolutas, `\\`, enlaces simbólicos, >50 MB, cifrado), `lib/actions/designer/import.test.ts`, `pipeline.test.ts`, `screens/html-step.test.ts`; tope de 51 MB en `next.config.ts` · auditado: —
+- [~] F40 — Limpiar (≥ 20 ataques) · prueba: `import/sanitize.test.ts` (54 ataques, comprobados con un lector de etiquetas), `css.test.ts` · auditado: —
+- [~] F41 — Detectar el formato (6 fixtures) · prueba: `import/detect.test.ts` (2 landings → web, 2 presentaciones 16:9 → wide, carrusel → v45 de 6, ambiguo → web) · auditado: —
+- [~] F42 — Editar lo cargado · prueba: `import/mark-text.test.ts` (editar un texto marcado cambia solo ese nodo; un parche con `<script>` queda limpio) · auditado: —
 
 #### DS5 · Publicar y exportar (subagente)
-- [ ] F43 — Link público (sin pie) · prueba: — · auditado: —
-  - [ ] F43 / V3 — recuadro con `verificationText` según el tipo · prueba: — · auditado: —
-  - [ ] F43 / V4 — link, copiar link, descarga y Open Graph con `publicBaseUrl` (con y sin dominio propio) · prueba: — · auditado: —
-- [ ] F44 — Descargar · prueba: — · auditado: —
-- [ ] F45 — Publicar y despublicar · prueba: — · auditado: —
-- [ ] F46 — Exportar · prueba: — · auditado: —
-- [ ] F47 — Verificación y anular (apagada por defecto; CHECK + acción) · prueba: — · auditado: —
-- [ ] F48b — Un solo juego de archivos por diseño (re-renderizar borra los anteriores; generaciones intactas) · prueba: — · auditado: —
+- [~] F43 — Link público (sin pie) · prueba: `lib/designer/public/{model,serve,guard,boundary}.test.ts` (sin «Hecho con», `sandbox` sin `allow-scripts`, tope por IP, 404 con tiempo parejo; generación solo `ready`/`void`); `verify-designer ds5` 75/75 · auditado: —
+  - [~] F43 / V3 — recuadro con `verificationText` según el tipo · prueba: `public/model.test.ts` (4 tipos × válido/anulado) · auditado: —
+  - [~] F43 / V4 — link, copiar link, descarga y Open Graph con `publicBaseUrl` · prueba: `public/share.test.ts` (dominio propio vs. principal) · auditado: —
+- [~] F44 — Descargar · prueba: `public/download.test.ts`, `serve.test.ts` (nombre legible, 404 con descarga apagada o anulada, 202 mientras se prepara); `verify-designer ds5` · auditado: —
+- [~] F45 — Publicar y despublicar · prueba: `publishing.test.ts` (despublicar → 404 en el siguiente pedido, el código se conserva), `publish-actions.test.ts`, `screens/publish-menu.test.ts`; `verify-designer ds5` · auditado: —
+- [~] F46 — Exportar · prueba: `export.test.ts`, `exporting.test.ts` (incluye `error.json`; 00324 para que el bucket lo acepte), `screens/export-menu.test.ts`; `verify-designer ds5` · auditado: —
+- [~] F47 — Verificación y anular (apagada por defecto; CHECK + acción) · prueba: `void.test.ts` (motivo obligatorio, nunca se borra, link «anulado» sin Descargar); CHECK en `verify-designer ds0`; la acción que rechaza `verify` es de DS2 · auditado: —
+- [~] F48b — Un solo juego de archivos por diseño · prueba: `jobs/render-replace.test.ts`; `verify-designer ds5` (en el bucket quedan solo los archivos nuevos, mirando `storage.objects`) · auditado: —
 
 ### Ola 3
 
@@ -792,10 +792,10 @@ Formato de cada renglón: `- [ ] F — qué` · **prueba:** test o comando y su 
 | Subagente | Rama | Estado | Informe | Integrado | Auditado |
 |---|---|---|---|---|---|
 | R (render) | `feat/disenador-ia-render` | terminado (`7c2d34e`) | F5 completo, 57 tests; Playwright 1.65.0; Docker sin probar (no hay Docker) | sí (merge en la Ola 1) | sí (auditor Ola 1) |
-| DS2 | `feat/disenador-ia-ds2` | sin arrancar | — | no | no |
-| DS3 | `feat/disenador-ia-ds3` | sin arrancar | — | no | no |
-| DS4 | `feat/disenador-ia-ds4` | sin arrancar | — | no | no |
-| DS5 | `feat/disenador-ia-ds5` | sin arrancar | — | no | no |
+| DS2 | `feat/disenador-ia-ds2` | trabajando | — | no | no |
+| DS3 | `feat/disenador-ia-ds3` | terminado (`a3406c2`) | F31–F38, F11, V2; 17.257 tests en su rama | sí (`063d970`; `sanitizeAiDoc` enganchado a `sanitizeDocHtml`) | no |
+| DS4 | `feat/disenador-ia-ds4` | terminado (`978d3a8`) | F39–F42, 54 ataques | sí (`2365ee6`; tope de 51 MB y `@import` primero) | no |
+| DS5 | `feat/disenador-ia-ds5` | terminado (`d65b6b2`) | F43–F47, F48b; verify-ds5 75/75 tras la 00324 | sí (`002ec98`; acciones propias en el historial) | no |
 | DS6 | `feat/disenador-ia-ds6` | sin arrancar | — | no | no |
 | DS8 | `feat/disenador-ia-ds8` | sin arrancar | — | no | no |
 | Auditor ola 1–5 | — (solo lectura) | sin arrancar | — | — | — |
