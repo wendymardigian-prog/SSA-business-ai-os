@@ -24,6 +24,7 @@ import { resolveWhatsAppTarget } from "../whatsapp-target";
 import { recordSend, sendChannelMessage, sendEvolutionDirect } from "../send";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { findContact } from "@/lib/contacts/find-or-create";
+import { WHATSAPP_HOURLY_LIMIT } from "@/lib/channels/whatsapp-limits";
 
 export interface SendWhatsAppNumberData {
   to?: "fixed" | "variable";
@@ -38,9 +39,6 @@ export interface SendWhatsAppNumberData {
   mediaUrl?: string;
   mediaType?: string;
 }
-
-/** Tope de mensajes automáticos por hora y canal (el mismo que usa el resto del motor). */
-export const WHATSAPP_NUMBER_HOURLY_LIMIT = 200;
 
 export const SEND_WHATSAPP_NUMBER_TYPE = "send_whatsapp_number";
 
@@ -130,7 +128,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
   }
 
   // 6. El tope por hora del canal. Si la función falla (no por tope, sino por un error), se deja pasar: es lo que hace el resto del motor.
-  const { data: allowed, error: capError } = await supabase.rpc("claim_automated_send", { p_channel_id: channel.id, p_limit: WHATSAPP_NUMBER_HOURLY_LIMIT });
+  const { data: allowed, error: capError } = await supabase.rpc("claim_automated_send", { p_channel_id: channel.id, p_limit: WHATSAPP_HOURLY_LIMIT });
   if (capError) console.error("[flow-engine] no pude reclamar el envío de WhatsApp, dejo pasar:", capError.message);
   else if (allowed === false) return skip("El canal llegó al tope de mensajes automáticos de la hora: no se mandó.", { rate_limited: true });
 
@@ -166,7 +164,7 @@ async function execute({ supabase, data, context, node, sessionId }: NodeExecuti
     await recordInHistory(false, "WhatsApp no está configurado en este entorno.");
     return skip("WhatsApp no está configurado en este entorno.");
   }
-  const outcome = await sendEvolutionDirect(supabase, config, channel.evolution_instance, phone, message);
+  const outcome = await sendEvolutionDirect(supabase, config, channel.evolution_instance, phone, message, { client: supabase, channelId: channel.id });
   if (!outcome.ok) context.noteStep?.({ status: "failed", reason: outcome.failure?.message ?? "No se pudo mandar el mensaje." });
   await recordInHistory(outcome.ok, outcome.ok ? null : (outcome.failure?.message ?? null));
 }

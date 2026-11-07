@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, BarChart2, Download } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
 import { Popover } from "@/components/ui/popover";
-import { buildCrmRows, countByStatus, filterByParent, filterByStatus, showNoAdSignalNotice, totalFootnote, totalRowDetailed, type CrmLevel, type CrmRow, type DistinctLeads, type ParentScope, type StatusFilter } from "@/lib/dashboards/ads-crm";
+import { buildCrmRows, countByStatus, filterByParent, filterByStatus, showNoAdSignalNotice, totalFootnote, totalReachOptions, totalRowDetailed, type CrmLevel, type CrmRow, type DistinctLeads, type ParentScope, type StatusFilter } from "@/lib/dashboards/ads-crm";
 import { GROUP_LABEL, GROUP_ORDER, GROUP_TIP, REACH_SUM_NOTE, formatCell, formatNumber, isReachColumn, needsLiveReach, reachAheadOfSync, type ColumnDef, type ColumnGroup, type ColumnId } from "@/lib/dashboards/ads-crm-columns";
 import { visibleColumns, type ColumnPrefs } from "@/lib/dashboards/ads-columns";
 import { csvFilename, toCsv } from "@/lib/dashboards/ads-crm-csv";
@@ -16,7 +16,7 @@ import { COLUMN_BETTER, cellTone, columnReferences, toneNote } from "@/lib/dashb
 import { sortByColumn, splitPinned, stickyOffsets, type SortKey, type SortState } from "@/lib/dashboards/ads-table-view";
 import { loadCrmDistinctTotals, loadCrmObjectReach, type CrmReachResult } from "@/lib/actions/ads-crm";
 import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
-import type { AdsRow, AdsTotals } from "@/lib/dashboards/ads";
+import type { AdsRow, AdsTotalsWithSource } from "@/lib/dashboards/ads";
 import { ColumnsMenu } from "./columns-menu";
 import { CrmCellPanel, type CellTarget } from "./crm-cell-panel";
 import { RowActionsMenu, type RowAction } from "./row-actions-menu";
@@ -117,7 +117,7 @@ export function useCrmLevelTable({
 }: {
   level: CrmLevel;
   rows: AdsRow[];
-  totals: AdsTotals;
+  totals: AdsTotalsWithSource;
   crm: CrmTableData;
   scope?: ParentScope | null;
   status: StatusFilter;
@@ -183,12 +183,10 @@ export function useCrmLevelTable({
   const { row: total, leadsTotalIsSum } = useMemo(
     () =>
       totalRowDetailed(shown, {
-        overallReach: subset ? null : (liveAccount?.reach ?? totals.reach),
-        overallFrequency: subset ? null : (liveAccount?.frequency ?? null),
-        overallReachIsSum: !liveAccount,
+        ...totalReachOptions({ subset, liveAccount, totals }),
         distinctLeads: distinct,
       }),
-    [shown, subset, totals.reach, liveAccount, distinct],
+    [shown, subset, totals, liveAccount, distinct],
   );
 
   const exportCsv = () => {
@@ -668,7 +666,7 @@ export function CrmLevelTable({
   /** Las filas de metricas del periodo (todos los niveles). */
   rows: AdsRow[];
   /** Los totales de la cuenta (con el alcance unico real). */
-  totals: AdsTotals;
+  totals: AdsTotalsWithSource;
   crm: CrmTableData;
   currency: string | null;
   hrefOf: (objectId: string) => string;

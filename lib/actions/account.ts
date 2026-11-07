@@ -292,7 +292,8 @@ async function writePrefs(
 
 /**
  * "Mandarme un WhatsApp de prueba": desde el WhatsApp de avisos del negocio
- * al numero de la persona. Tres por hora.
+ * al numero de la persona. Tres por hora por persona, y cada prueba cuenta
+ * tambien en el tope unico del numero (`sendTeamWhatsApp`).
  */
 export async function sendMyTestWhatsApp(): Promise<Result> {
   const { user, workspace } = await getWorkspace();
@@ -319,6 +320,7 @@ export async function sendMyTestWhatsApp(): Promise<Result> {
     `${businessName}: este es un mensaje de prueba. Así te van a llegar los avisos que elijas en Mi cuenta → Notificaciones.`,
   );
   if (!result.ok) {
+    if (result.reason === "rate_limited") return { ok: false, error: `${result.error} Probá de nuevo en la próxima hora.` };
     return { ok: false, error: result.reason === "failed" ? `No se pudo mandar: ${result.error} Revisá el número.` : result.error };
   }
   return { ok: true };

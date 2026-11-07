@@ -120,6 +120,49 @@ describe("deliverNotification", () => {
     expect(minutes).toEqual([1, 5, 15]);
   });
 
+  it("el numero de avisos en su tope: el email sale igual y el WhatsApp se reagenda para la hora siguiente, sin gastar un intento", async () => {
+    const nextHour = new Date("2026-10-30T16:00:00Z");
+    const d = deps({ sendWhatsApp: vi.fn(async () => ({ ok: false, retryable: true, retryAt: nextHour })) });
+    const out = await deliverNotification(d, "n1", 1);
+    expect(d.sendEmail).toHaveBeenCalledTimes(1);
+    expect(d.markDelivered).toHaveBeenCalledWith("n1", `${ANA}:email`, NOW.toISOString());
+    expect(d.markDelivered).not.toHaveBeenCalledWith("n1", `${ANA}:whatsapp`, expect.anything());
+    expect(d.scheduleRetry).toHaveBeenCalledTimes(1);
+    expect(d.scheduleRetry).toHaveBeenCalledWith("n1", 1, nextHour);
+    expect(out).toEqual({ status: "done", sent: 1, skipped: 0, retry: true });
+  });
+
+  it("el tope se sigue esperando aunque ya se hayan gastado los tres reintentos de un fallo", async () => {
+    const nextHour = new Date("2026-10-30T16:00:00Z");
+    const d = deps({
+      sendEmail: vi.fn(async () => ({ ok: false, retryable: true })),
+      sendWhatsApp: vi.fn(async () => ({ ok: false, retryable: true, retryAt: nextHour })),
+    });
+    const out = await deliverNotification(d, "n1", 3);
+    expect(d.scheduleRetry).toHaveBeenCalledWith("n1", 3, nextHour);
+    expect(out).toMatchObject({ retry: true });
+  });
+
+  it("con un fallo y el tope a la vez, gana el reintento corto (y ese intento vuelve a mirar el tope)", async () => {
+    const d = deps({
+      sendEmail: vi.fn(async () => ({ ok: false, retryable: true })),
+      sendWhatsApp: vi.fn(async () => ({ ok: false, retryable: true, retryAt: new Date("2026-10-30T16:00:00Z") })),
+    });
+    await deliverNotification(d, "n1", 0);
+    expect(d.scheduleRetry).toHaveBeenCalledTimes(1);
+    expect(d.scheduleRetry).toHaveBeenCalledWith("n1", 1, new Date(NOW.getTime() + 60_000));
+  });
+
+  it("no reagenda para esperar el tope si para entonces el aviso ya tendria mas de 24 horas", async () => {
+    const d = deps({
+      n: notification({ created_at: "2026-10-29T15:30:00Z" }),
+      sendWhatsApp: vi.fn(async () => ({ ok: false, retryable: true, retryAt: new Date("2026-10-30T16:00:00Z") })),
+    });
+    const out = await deliverNotification(d, "n1");
+    expect(d.scheduleRetry).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ retry: false });
+  });
+
   it("un fallo que no se puede reintentar (numero invalido) no reagenda", async () => {
     const d = deps({ sendWhatsApp: vi.fn(async () => ({ ok: false, retryable: false })) });
     const out = await deliverNotification(d, "n1");

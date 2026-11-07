@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Tabs } from "@/components/ui/tabs";
-import type { AdsRow, AdsTotals } from "@/lib/dashboards/ads";
+import type { AdsRow, AdsTotalsWithSource } from "@/lib/dashboards/ads";
 import type { ParentScope } from "@/lib/dashboards/ads-crm";
 import { periodQuery, type PeriodFilter } from "@/lib/dashboards/period-filter";
 import { CrmLevelTable } from "./crm-table";
@@ -39,7 +39,7 @@ export function HierarchyCard({
   levels: Level[];
   /** Las filas a agrupar: las del periodo, ya filtradas al objeto si es un detalle. */
   rows: AdsRow[];
-  totals: AdsTotals;
+  totals: AdsTotalsWithSource;
   currency: string | null;
   adAccountId: string;
   period: PeriodFilter;

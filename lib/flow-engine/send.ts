@@ -12,6 +12,8 @@ import { sentContentContext } from "@/lib/attribution/content-variables";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
 import { foldOptionsIntoText } from "./platform-adapter";
+import { WHATSAPP_HOURLY_LIMIT } from "@/lib/channels/whatsapp-limits";
+import { makeRoomForLiveSend, type LiveSendLane } from "@/lib/send-queue/live-send";
 import type { EmailCategory, EmailSkipReason } from "@/lib/email/subscription";
 import type { DeferReason } from "@/lib/email/delivery-guard";
 /**
@@ -29,8 +31,6 @@ import type { DeferReason } from "@/lib/email/delivery-guard";
 
 /** Tope de mensajes automatizados por hora que impone Instagram. */
 const INSTAGRAM_HOURLY_LIMIT = 200;
-/** El tope por hora de los envios automaticos por WhatsApp, por canal. */
-const WHATSAPP_HOURLY_LIMIT = 200;
 
 /**
  * Lo minimo que hace falta para mandar un mensaje y dejarlo registrado.
@@ -518,8 +518,14 @@ async function sendViaEvolution(
     };
   }
 
-  return sendEvolutionDirect(supabase, config, channel.evolution_instance, link.platform_sender_id, message);
+  // Lo que manda la cola de broadcasts no le corre el turno a la cola: ya lo corrio ella con `claim_lane_slot`.
+  // El cliente de servicio (`secrets`): la bandeja manda con el de la persona, que no puede escribir el carril.
+  const lane = context.origin === "broadcast" ? null : { client: secrets, channelId: channel.id };
+  return sendEvolutionDirect(supabase, config, channel.evolution_instance, link.platform_sender_id, message, lane);
 }
+
+/** El archivo de chat-media no se pudo firmar: el envio ni se intento. */
+const PREPARE_MEDIA_FAILED: FriendlyError = { kind: "unknown", message: "No pude preparar el archivo para enviarlo.", retryable: true };
 
 /**
  * Manda el mensaje a un número de WhatsApp con Evolution, sin mirar contactos ni conversaciones (Tirón 2, D3).
@@ -527,8 +533,27 @@ async function sendViaEvolution(
  * Es el tramo final de `sendViaEvolution`, sin cambios: texto, un archivo de `chat-media` o una URL pública, y el
  * mismo manejo del error del proveedor. El paso «Enviar WhatsApp a un número» lo usa para avisar a alguien que no es
  * un contacto (por ejemplo, el aviso a la dueña); el resto del motor sigue entrando por `sendChannelMessage`.
+ *
+ * `lane`: despues de intentar el envio, el proximo turno de la cola de broadcasts de ese numero se corre a ahora + su
+ * espera minima (`makeRoomForLiveSend`, nunca lo adelanta ni tumba el envio). Es obligatorio a proposito: quien llama
+ * decide; null solo para lo que manda la cola misma.
  */
 export async function sendEvolutionDirect(
+  supabase: SupabaseClient<Database>,
+  config: EvolutionConfig,
+  instance: string,
+  number: string,
+  rawMessage: OutboundMessage,
+  lane: LiveSendLane | null,
+): Promise<SendOutcome> {
+  const outcome = await sendEvolutionDirectOnce(supabase, config, instance, number, rawMessage);
+  // Un archivo que no se pudo preparar no llego a WhatsApp; cualquier otro intento (salio, o Evolution lo rechazo
+  // despues de recibirlo) cuenta para el numero.
+  if (outcome.ok || outcome.failure !== PREPARE_MEDIA_FAILED) await makeRoomForLiveSend(lane);
+  return outcome;
+}
+
+async function sendEvolutionDirectOnce(
   supabase: SupabaseClient<Database>,
   config: EvolutionConfig,
   instance: string,
@@ -544,10 +569,7 @@ export async function sendEvolutionDirect(
     if (message.media) {
       const signedUrl = await chatMediaSignedUrl(supabase, message.media.storagePath, EVOLUTION_MEDIA_URL_SECONDS);
       if (!signedUrl) {
-        return {
-          ok: false,
-          failure: { kind: "unknown", message: "No pude preparar el archivo para enviarlo.", retryable: true },
-        };
+        return { ok: false, failure: PREPARE_MEDIA_FAILED };
       }
       const sent = await sendEvolutionMediaMessage(config, instance, number, {
         url: signedUrl,

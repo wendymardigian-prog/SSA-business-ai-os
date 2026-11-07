@@ -64,6 +64,15 @@ export interface AdsTotals {
   roas: number | null;
 }
 
+/** Los totales y de donde salio su alcance. No es una metrica: queda fuera de `keyof AdsTotals` (tarjetas, serie diaria). */
+export interface AdsTotalsWithSource extends AdsTotals {
+  /**
+   * `reach` es la suma de los alcances diarios (no vino el alcance en vivo). Viaja con `reach` y `frequency`: quien los use
+   * los tiene que usar juntos, porque una frecuencia calculada con un alcance en vivo da cifras imposibles.
+   */
+  reachIsSum: boolean;
+}
+
 function sum(values: Array<number | null>): number | null {
   const present = values.filter((v): v is number => v !== null);
   return present.length > 0 ? present.reduce((a, b) => a + b, 0) : null;
@@ -85,7 +94,7 @@ export function ratio(numerator: number | null, denominator: number | null): num
  * impresiones guardadas llegan hasta el ultimo sync, y dividirlas por ese alcance dio 1,71 donde Meta decia 1,87, y 0,72
  * en una campaña recien prendida. Si Meta no la dio es una raya.
  */
-export function computeTotals(rows: AdsRow[], uniqueReach?: number | null, liveFrequency?: number | null): AdsTotals {
+export function computeTotals(rows: AdsRow[], uniqueReach?: number | null, liveFrequency?: number | null): AdsTotalsWithSource {
   const spend = sum(rows.map((r) => r.spend));
   const impressions = sum(rows.map((r) => r.impressions));
   const clicks = sum(rows.map((r) => r.clicks));
@@ -107,6 +116,7 @@ export function computeTotals(rows: AdsRow[], uniqueReach?: number | null, liveF
     purchases,
     purchaseValue: round(purchaseValue),
     frequency: round(uniqueReach != null ? (liveFrequency ?? null) : ratio(impressions, reach)),
+    reachIsSum: uniqueReach == null && reach !== null,
     ctr: round(ratio(clicks, impressions) === null ? null : (ratio(clicks, impressions) as number) * 100),
     cpm: round(ratio(spend, impressions) === null ? null : (ratio(spend, impressions) as number) * 1000),
     cpc: round(ratio(spend, clicks)),
@@ -128,10 +138,10 @@ export interface LiveReach {
  * El alcance y la frecuencia solo se comparan si los dos periodos salen de la misma fuente (los dos en vivo o los dos
  * sumados por dia). Uno en vivo contra uno sumado inventaria una variacion: quedan en null, y la tarjeta sin flecha.
  */
-export function computePreviousTotals(rows: AdsRow[], current: LiveReach | null, previous: LiveReach | null): AdsTotals {
+export function computePreviousTotals(rows: AdsRow[], current: LiveReach | null, previous: LiveReach | null): AdsTotalsWithSource {
   const totals = computeTotals(rows, previous?.reach, previous?.frequency);
   const sameSource = (current?.reach != null) === (previous?.reach != null);
-  return sameSource ? totals : { ...totals, reach: null, frequency: null };
+  return sameSource ? totals : { ...totals, reach: null, frequency: null, reachIsSum: false };
 }
 
 // ── Umbrales de color ────────────────────────────────────────────────────

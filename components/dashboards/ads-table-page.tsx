@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { PageHeader } from "@/components/page-header";
 import { ExpandableSearch } from "@/components/ui/expandable-search";
-import { computeTotals, money, objectiveLabel, type AdsTotals } from "@/lib/dashboards/ads";
+import { computeTotals, money, objectiveLabel, type AdsTotalsWithSource } from "@/lib/dashboards/ads";
 import type { CrmRow } from "@/lib/dashboards/ads-crm";
 import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 import { drillTargets } from "@/lib/dashboards/ads-drill";
@@ -63,7 +63,7 @@ function nameOptions(data: AdsTablePageData, crm: CrmTableData, level: "campaign
     .sort((a, b) => a.label.localeCompare(b.label, "es"));
 }
 
-function AdsTableScreen({ data, crm, totals, nav }: { data: AdsTablePageData; crm: CrmTableData; totals: AdsTotals; nav: ReturnType<typeof useAdsNavigation> }) {
+function AdsTableScreen({ data, crm, totals, nav }: { data: AdsTablePageData; crm: CrmTableData; totals: AdsTotalsWithSource; nav: ReturnType<typeof useAdsNavigation> }) {
   const { level, filters, setFilters, setLevel, drillTo } = useAdsTableUrl();
   const { adAccountId, period, currency } = data;
 

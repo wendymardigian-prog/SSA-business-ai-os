@@ -166,6 +166,16 @@ export function pickGapSeconds(policy: Pick<SendPolicy, "minGapSeconds" | "maxGa
   return policy.minGapSeconds + Math.floor(r * (span + 1));
 }
 
+/**
+ * El próximo turno del carril después de un mensaje que salió por ese número FUERA de la cola (un aviso al equipo, la
+ * bandeja, el agente, un flujo): ahora + la espera mínima del número, para que el broadcast no mande pegado a él.
+ * null si eso no lo atrasa: un mensaje en el momento nunca adelanta la cola.
+ */
+export function laneTurnAfterLiveSend(policy: Pick<SendPolicy, "minGapSeconds">, currentNextSendAt: Date, now: Date): Date | null {
+  const target = new Date(now.getTime() + policy.minGapSeconds * 1000);
+  return target.getTime() > currentNextSendAt.getTime() ? target : null;
+}
+
 const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
 /** ¿Este momento está adentro del horario de envío? */
