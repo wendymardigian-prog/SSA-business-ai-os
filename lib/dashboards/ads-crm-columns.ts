@@ -245,7 +245,8 @@ export function csvColumnLabel(def: ColumnDef, rows: CrmRow[]): string {
   return `${def.label} (con suma de los días)`;
 }
 
-function formatNumber(def: ColumnDef, value: number, currency: string | null): string {
+/** Un número suelto con el formato de su columna (la referencia del semáforo, por ejemplo). */
+export function formatNumber(def: ColumnDef, value: number, currency: string | null): string {
   switch (def.kind) {
     case "money":
       return money(value, currency, { narrow: true });
