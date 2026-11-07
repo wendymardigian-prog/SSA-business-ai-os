@@ -4,10 +4,10 @@
  * Dos dominios, una regla:
  * - **El dominio principal de la instalación** (`appUrl()`, la variable `NEXT_PUBLIC_APP_URL`): lo que usa el
  *   EQUIPO y los proveedores. Invitaciones, recuperar la contraseña, avisos, links al panel, el retorno de OAuth
- *   (Google, Fathom) y los webhooks de Zernio, Evolution y Resend.
+ *   (como Google) y los webhooks de Zernio, Evolution y Resend.
  * - **El dominio de los links públicos del negocio** (`publicBaseUrl(workspace)`): lo que ve o recibe un LEAD, o lo
- *   que el negocio pega en otro lado. Agenda, formularios, links firmados, la baja de emails, los links medidos
- *   (`/l/`), el embed, los webhooks entrantes y lo de «Tu sitio web». Si el negocio cargó el suyo (Ajustes →
+ *   que el negocio pega en otro lado. La agenda, los links firmados, la baja de emails, los links medidos
+ *   (`/l/`) y el embed, entre otros. Si el negocio cargó el suyo (Ajustes →
  *   General → Dominio), gana; si no, es el principal.
  *
  * El dominio del negocio vive en `workspaces.scheduling_public_base_url` (00098). Nació solo para la agenda y sin

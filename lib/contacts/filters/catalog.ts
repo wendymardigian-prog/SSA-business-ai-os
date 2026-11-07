@@ -4,7 +4,7 @@
  *
  * De acá salen el panel de filtros (con su buscador), los chips de filtros
  * activos, "Limpiar filtros", el contador y la consulta (`../list-query.ts`).
- * Los de cada área (Agenda, Ventas…) viven en `../related/*` y se suman en
+ * Los de cada área (Agenda, Secuencias…) viven en `../related/*` y se suman en
  * `../list-modules.ts`.
  *
  * Puro: no importa nada de `next/*` ni de Supabase.

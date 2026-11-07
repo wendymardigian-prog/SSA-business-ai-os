@@ -56,7 +56,7 @@ export interface SendEmailNodeData {
   /**
    * "Tipo de email" (suscripcion a emails, E2). Marketing no le llega a quien se dio de baja y lleva el link de
    * baja; transaccional (lo que la persona pidio) sale igual salvo que la direccion rebote. Sin guardar: el de su
-   * flujo (`stepEmailCategory`): transaccional en agenda, formularios, contratos y cobranza; marketing si no.
+   * flujo (`stepEmailCategory`): transaccional en los que manda el sistema (agenda, por ejemplo); marketing si no.
    */
   category?: EmailCategory;
 }

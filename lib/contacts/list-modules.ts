@@ -2,9 +2,8 @@
  * Las áreas que suman filtros y columnas a la lista de contactos. Cada una vive
  * en `./related/*` y se registra con UNA línea acá.
  *
- * Las de un módulo que la plantilla de estudiantes no lleva (Ventas,
- * Formularios, Tareas, Llamadas) van con su marca: el export saca la línea y
- * borra el archivo (`scripts/plantilla/perfiles/estudiantes.mjs`).
+ * Las de un módulo que una plantilla no lleva van con su marca: el export saca
+ * la línea y borra el archivo.
  */
 import { CORE_FILTERS } from "./filters/catalog";
 import type { ContactColumnDef, ContactFilterDef, ContactListModule } from "./filters/types";

@@ -40,6 +40,9 @@ const TOKENS = {
   webhook_entrante: /inbound_webhook|webhook_endpoint|webhook_received/i,
   proveedor: word("vendors?"),
   finanzas: word("finance"),
+  // Dos columnas que no tienen ninguna de las palabras de arriba y son de modulos que no viajan.
+  fathom_historial: /history_import/i,
+  web_propia: /website_settings/i,
 };
 
 // ---------------------------------------------------------------------------
@@ -90,6 +93,18 @@ const ALLOW = [
   { kind: "function", key: /^private\.meta_touch_utm_counts\(/, tokens: ["formulario"],
     reason: "gemela de lib/attribution: nombra el origen 'form', que en la plantilla ya no aparece (inofensivo)" },
 
+  // Roles: las areas de grabaciones estan cableadas en la logica comun de "no podes dar lo que no
+  // tenes" (can_give_role, workspace_roles_grant_check, la politica de insert). Sin Grabaciones nadie
+  // tiene ese alcance, asi que no hacen nada; reescribir esas tres en la poda las dejaria desfasadas.
+  { kind: "function", key: /^private\.(call_areas_of|call_areas_exceed|role_sees_call_area|my_call_permissions)\(/, tokens: ["llamada"],
+    reason: "areas de grabaciones: inertes en la plantilla, gemelas de lib/auth/call-areas.ts" },
+  { kind: "function", key: /^public\.can_grant_call_areas\(/, tokens: ["llamada"],
+    reason: "areas de grabaciones: inerte en la plantilla, la usan los permisos de roles" },
+  { kind: "function", key: /^public\.(can_give_role|workspace_roles_grant_check)\(/, tokens: ["llamada"],
+    reason: "llaman a can_grant_call_areas (ver arriba)" },
+  { kind: "policy", key: "public.workspace_roles.workspace_roles_insert", tokens: ["llamada"],
+    reason: "llama a can_grant_call_areas (ver arriba)" },
+
   // Tabla de anuncios: conserva la firma (las columnas de cierres y plata vuelven en NULL).
   { kind: "function", key: /^public\.ads_crm_metrics_v2\(/, tokens: ["venta"],
     reason: "firma conservada para la pantalla; la columna 'sales' siempre vuelve NULL" },
@@ -112,7 +127,7 @@ const ALLOW = [
     reason: "nombre de la tarea de IA, no el modulo Tareas" },
   { kind: "constraint", key: "public.ai_task_prompt_versions.ai_task_prompt_versions_task_check", tokens: ["tarea"],
     reason: "lista de tareas de IA (columna 'task'), no el modulo Tareas" },
-  { kind: "index", key: "public.uq_ai_task_prompt_versions_workspace_task_version", tokens: ["tarea"],
+  { kind: "index", key: "public.uq_ai_task_prompt_versions_workspace_task_variant_version", tokens: ["tarea"],
     reason: "indice por tarea de IA (columna 'task'), no el modulo Tareas" },
 ];
 

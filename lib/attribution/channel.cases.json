@@ -1153,7 +1153,7 @@
       "expected": "paid"
     },
     {
-      "name": "organic: alguien que se unio a un grupo de WhatsApp (00281)",
+      "name": "organic: alguien que se unio a un grupo de WhatsApp",
       "input": {
         "origin": "whatsapp_group",
         "medium": "whatsapp_group",

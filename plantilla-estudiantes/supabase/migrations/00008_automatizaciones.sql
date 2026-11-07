@@ -3,7 +3,9 @@
 --
 -- Flujos (con su borrador, sus versiones publicadas y sus disparadores), las sesiones
 -- que los ejecutan, la cola de eventos del CRM que los arranca, las secuencias (drip)
--- con su auto-pausa cuando el contacto responde, los envios masivos y sus analiticas.
+-- con su auto-pausa cuando el contacto responde, los envios masivos (con su cola y el
+-- ritmo de cada canal), sus analiticas y el historial de cada ejecucion de un flujo, paso por
+-- paso.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -49,11 +51,29 @@ CREATE TABLE IF NOT EXISTS public.broadcasts (
   failed integer DEFAULT 0 NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  channel_id uuid,
+  audience_params jsonb DEFAULT '{}'::jsonb NOT NULL,
+  include_phone_only boolean DEFAULT false NOT NULL,
+  message_variants jsonb DEFAULT '[]'::jsonb NOT NULL,
+  email_subject text,
+  skip_missing_variables boolean DEFAULT false NOT NULL,
+  pace jsonb DEFAULT '{}'::jsonb NOT NULL,
+  skipped integer DEFAULT 0 NOT NULL,
+  created_by uuid,
+  started_at timestamp with time zone,
+  paused_at timestamp with time zone,
+  cancelled_at timestamp with time zone,
+  completed_at timestamp with time zone,
+  email_preheader text,
   CONSTRAINT broadcasts_pkey PRIMARY KEY (id),
-  CONSTRAINT broadcasts_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'scheduled'::text, 'sending'::text, 'completed'::text, 'cancelled'::text]))),
+  CONSTRAINT broadcasts_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'scheduled'::text, 'sending'::text, 'paused'::text, 'completed'::text, 'cancelled'::text]))),
+  CONSTRAINT broadcasts_variants_array CHECK (((jsonb_typeof(message_variants) = 'array'::text) AND (jsonb_array_length(message_variants) <= 5))),
+  CONSTRAINT broadcasts_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.channels(id) ON DELETE SET NULL,
+  CONSTRAINT broadcasts_created_by_fkey FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL,
   CONSTRAINT broadcasts_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.broadcasts ENABLE ROW LEVEL SECURITY;
+COMMENT ON COLUMN public.broadcasts.email_preheader IS 'Email: la linea que la bandeja de entrada muestra al lado del asunto. Admite las variables del broadcast. Opcional.';
 
 CREATE TABLE IF NOT EXISTS public.broadcast_recipients (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -63,12 +83,41 @@ CREATE TABLE IF NOT EXISTS public.broadcast_recipients (
   status text DEFAULT 'pending'::text NOT NULL,
   sent_at timestamp with time zone,
   error_message text,
+  workspace_id uuid,
+  target text,
+  variant_index integer DEFAULT 0 NOT NULL,
+  skip_reason text,
+  conversation_id uuid,
+  attempts integer DEFAULT 0 NOT NULL,
+  next_attempt_at timestamp with time zone,
+  claimed_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  sort_key timestamp with time zone,
   CONSTRAINT broadcast_recipients_pkey PRIMARY KEY (id),
+  CONSTRAINT broadcast_recipients_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'sending'::text, 'sent'::text, 'failed'::text, 'skipped'::text, 'cancelled'::text]))),
   CONSTRAINT broadcast_recipients_broadcast_id_fkey FOREIGN KEY (broadcast_id) REFERENCES public.broadcasts(id) ON DELETE CASCADE,
   CONSTRAINT broadcast_recipients_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.channels(id) ON DELETE CASCADE,
-  CONSTRAINT broadcast_recipients_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id) ON DELETE CASCADE
+  CONSTRAINT broadcast_recipients_contact_id_fkey FOREIGN KEY (contact_id) REFERENCES public.contacts(id) ON DELETE CASCADE,
+  CONSTRAINT broadcast_recipients_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE SET NULL,
+  CONSTRAINT broadcast_recipients_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
 );
 ALTER TABLE public.broadcast_recipients ENABLE ROW LEVEL SECURITY;
+COMMENT ON COLUMN public.broadcast_recipients.sort_key IS 'La actividad mas reciente del contacto al poner el broadcast en cola. Sale primero el mas activo.';
+
+CREATE TABLE IF NOT EXISTS public.channel_send_lanes (
+  channel_id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  next_send_at timestamp with time zone DEFAULT now() NOT NULL,
+  consecutive_failures integer DEFAULT 0 NOT NULL,
+  paused_at timestamp with time zone,
+  paused_reason text,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT channel_send_lanes_pkey PRIMARY KEY (channel_id),
+  CONSTRAINT channel_send_lanes_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.channels(id) ON DELETE CASCADE,
+  CONSTRAINT channel_send_lanes_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
+);
+ALTER TABLE public.channel_send_lanes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.channel_send_lanes FROM anon;
 
 CREATE TABLE IF NOT EXISTS public.flows (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -132,6 +181,11 @@ CREATE TABLE IF NOT EXISTS public.flow_sessions (
   member_user_id uuid,
   source_type text,
   source_id text,
+  finished_at timestamp with time zone,
+  end_reason text,
+  error_message text,
+  has_failed_step boolean DEFAULT false NOT NULL,
+  flow_version integer,
   CONSTRAINT flow_sessions_pkey PRIMARY KEY (id),
   CONSTRAINT flow_sessions_contact_or_source CHECK (((contact_id IS NOT NULL) OR (member_user_id IS NOT NULL) OR (source_type IS NOT NULL))),
   CONSTRAINT flow_sessions_source_type_check CHECK (((source_type IS NULL) OR (source_type = ANY (ARRAY['contact'::text, 'member'::text, 'booking'::text, 'system'::text])))),
@@ -146,6 +200,13 @@ COMMENT ON COLUMN public.flow_sessions.channel_id IS 'Null cuando el flow no arr
 COMMENT ON COLUMN public.flow_sessions.member_user_id IS 'La persona del equipo de un flujo sin contacto. Una sesion tiene contacto, persona u origen, nunca ninguno.';
 COMMENT ON COLUMN public.flow_sessions.source_type IS 'Que disparo la sesion: contact | member | booking | system. Lo completa fill_automation_source si viene vacio.';
 COMMENT ON COLUMN public.flow_sessions.source_id IS 'La entidad que disparo la sesion (el envio, el evento, la persona...), como texto.';
+COMMENT ON COLUMN public.flow_sessions.finished_at IS 'Cuando dejo de estar activa (lo pone un trigger). Null en lo que sigue corriendo y en lo que termino antes de esta migracion.';
+COMMENT ON COLUMN public.flow_sessions.end_reason IS 'Por que termino, como codigo (lib/flows/runs.ts lo traduce). Lo escribe noteSessionEnd; gana el primero.';
+COMMENT ON COLUMN public.flow_sessions.error_message IS 'El error que corto la ejecucion, saneado: sin emails ni URLs con parametros, hasta 300 caracteres.';
+COMMENT ON COLUMN public.flow_sessions.has_failed_step IS 'Algun paso fallo sin cortar la ejecucion (un mensaje rechazado, por ejemplo).';
+COMMENT ON COLUMN public.flow_sessions.flow_version IS 'La version publicada del flujo con la que arranco.';
+REVOKE SELECT ON TABLE public.flow_sessions FROM anon, authenticated;
+GRANT SELECT (id, contact_id, flow_id, channel_id, status, current_node_id, waiting_until, waiting_for_input, human_takeover_at, created_at, updated_at, source_type, source_id, finished_at, end_reason, error_message, has_failed_step, flow_version) ON TABLE public.flow_sessions TO authenticated;
 
 CREATE TABLE IF NOT EXISTS public.flow_send_claims (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -161,6 +222,30 @@ CREATE TABLE IF NOT EXISTS public.flow_send_claims (
 );
 ALTER TABLE public.flow_send_claims ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.flow_send_claims FROM anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS public.flow_session_steps (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  seq bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  session_id uuid NOT NULL,
+  flow_id uuid NOT NULL,
+  node_id text NOT NULL,
+  node_type text NOT NULL,
+  node_label text NOT NULL,
+  status text NOT NULL,
+  exit_label text,
+  reason text,
+  resumes_at timestamp with time zone,
+  started_at timestamp with time zone NOT NULL,
+  finished_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT flow_session_steps_pkey PRIMARY KEY (id),
+  CONSTRAINT flow_session_steps_status_values CHECK ((status = ANY (ARRAY['ok'::text, 'failed'::text, 'skipped'::text, 'waiting'::text, 'deferred'::text]))),
+  CONSTRAINT flow_session_steps_flow_id_fkey FOREIGN KEY (flow_id) REFERENCES public.flows(id) ON DELETE CASCADE,
+  CONSTRAINT flow_session_steps_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.flow_sessions(id) ON DELETE CASCADE
+);
+ALTER TABLE public.flow_session_steps ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE public.flow_session_steps IS 'Una fila por paso corrido en una ejecucion de una automatizacion. Escribe solo el servidor; se lee con la RLS. Se borra a los 12 meses; la fila de flow_sessions queda.';
+REVOKE ALL ON TABLE public.flow_session_steps FROM anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON TABLE public.flow_session_steps FROM authenticated;
 
 CREATE TABLE IF NOT EXISTS public.flow_versions (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -244,7 +329,7 @@ CREATE TABLE IF NOT EXISTS public.triggers (
   workspace_id uuid NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT triggers_pkey PRIMARY KEY (id),
-  CONSTRAINT triggers_type_check CHECK ((type = ANY (ARRAY['keyword'::text, 'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text, 'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text, 'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text, 'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text]))),
+  CONSTRAINT triggers_type_check CHECK ((type = ANY (ARRAY['keyword'::text, 'postback'::text, 'quick_reply'::text, 'welcome'::text, 'default'::text, 'comment_keyword'::text, 'new_contact'::text, 'crm_event'::text, 'inactivity'::text, 'email_received'::text, 'booking_created'::text, 'booking_rescheduled'::text, 'booking_cancelled'::text, 'booking_updated'::text, 'booking_ended'::text, 'booking_status_changed'::text, 'booking_before_start'::text, 'booking_after_end'::text, 'booking_after_created'::text, 'whatsapp_group_joined'::text, 'whatsapp_group_reaction'::text, 'whatsapp_group_poll_vote'::text]))),
   CONSTRAINT triggers_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.channels(id) ON DELETE SET NULL,
   CONSTRAINT triggers_flow_id_fkey FOREIGN KEY (flow_id) REFERENCES public.flows(id) ON DELETE CASCADE,
   CONSTRAINT triggers_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES public.workspaces(id) ON DELETE CASCADE
@@ -278,6 +363,10 @@ DO $$ BEGIN
   ALTER TABLE public.messages ADD CONSTRAINT messages_sent_by_flow_id_fkey FOREIGN KEY (sent_by_flow_id) REFERENCES public.flows(id) ON DELETE SET NULL;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+  ALTER TABLE public.whatsapp_group_messages ADD CONSTRAINT whatsapp_group_messages_sent_by_flow_id_fkey FOREIGN KEY (sent_by_flow_id) REFERENCES public.flows(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- ----------------------------------------------------------------------------
 -- Funciones
 -- ----------------------------------------------------------------------------
@@ -303,6 +392,103 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION private.fill_automation_source() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION private.flow_sessions_set_finished_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF OLD.status = 'active' AND NEW.status <> 'active' AND NEW.finished_at IS NULL THEN
+    NEW.finished_at := now();
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION private.flow_sessions_set_finished_at() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION public.can_see_flow_session(p_flow_id uuid, p_contact_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_workspace uuid;
+  v_contact   public.contacts;
+BEGIN
+  SELECT f.workspace_id INTO v_workspace FROM public.flows f WHERE f.id = p_flow_id;
+  IF v_workspace IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF NOT COALESCE(public.has_permission(v_workspace, 'flows.view'), false) THEN
+    RETURN false;
+  END IF;
+
+  IF p_contact_id IS NULL THEN
+    RETURN true;
+  END IF;
+
+  -- Antes de mirar el contacto: uno borrado sigue contando para Owner y Admin.
+  IF COALESCE(public.is_workspace_admin(v_workspace), false) THEN
+    RETURN true;
+  END IF;
+
+  SELECT c.* INTO v_contact FROM public.contacts c WHERE c.id = p_contact_id;
+  IF v_contact.id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  RETURN COALESCE(public.can_see_contact(v_contact), false);
+END;
+$function$;
+COMMENT ON FUNCTION public.can_see_flow_session(p_flow_id uuid, p_contact_id uuid) IS 'Quien ve una ejecucion: flows.view y, si tiene contacto, poder ver ese contacto. Owner y Admin, todo.';
+REVOKE ALL ON FUNCTION public.can_see_flow_session(p_flow_id uuid, p_contact_id uuid) FROM PUBLIC, anon;
+
+CREATE OR REPLACE FUNCTION public.claim_broadcast_recipient(p_broadcast_id uuid)
+ RETURNS SETOF public.broadcast_recipients
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+BEGIN
+  RETURN QUERY
+  UPDATE public.broadcast_recipients r
+  SET status = 'sending', claimed_at = now()
+  WHERE r.id = (
+    SELECT x.id FROM public.broadcast_recipients x
+    WHERE x.broadcast_id = p_broadcast_id
+      AND x.status = 'pending'
+      AND (x.next_attempt_at IS NULL OR x.next_attempt_at <= now())
+    ORDER BY x.next_attempt_at NULLS FIRST, x.sort_key DESC NULLS LAST, x.id
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+  )
+  RETURNING r.*;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.claim_broadcast_recipient(p_broadcast_id uuid) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.claim_lane_slot(p_channel_id uuid, p_next timestamp with time zone)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_ok boolean;
+BEGIN
+  UPDATE public.channel_send_lanes
+  SET next_send_at = p_next, updated_at = now()
+  WHERE channel_id = p_channel_id
+    AND next_send_at <= now()
+    AND paused_at IS NULL
+  RETURNING true INTO v_ok;
+  RETURN coalesce(v_ok, false);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.claim_lane_slot(p_channel_id uuid, p_next timestamp with time zone) FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.claim_sequence_enrollments(p_limit integer DEFAULT 25, p_stale_after interval DEFAULT '00:05:00'::interval)
  RETURNS SETOF public.sequence_enrollments
@@ -436,6 +622,44 @@ $function$;
 COMMENT ON FUNCTION public.pause_sequences_on_reply(p_contact_id uuid, p_channel_id uuid) IS 'Pausa las secuencias activas del contacto en ESE canal cuando responde. La llaman los dos receptores de webhook con service role.';
 REVOKE ALL ON FUNCTION public.pause_sequences_on_reply(p_contact_id uuid, p_channel_id uuid) FROM PUBLIC, anon, authenticated;
 
+CREATE OR REPLACE FUNCTION public.refresh_broadcast_counts(p_broadcast_id uuid)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_sent integer;
+  v_failed integer;
+  v_skipped integer;
+  v_open integer;
+  v_status text;
+BEGIN
+  SELECT
+    count(*) FILTER (WHERE status = 'sent'),
+    count(*) FILTER (WHERE status = 'failed'),
+    count(*) FILTER (WHERE status = 'skipped'),
+    count(*) FILTER (WHERE status IN ('pending', 'sending'))
+  INTO v_sent, v_failed, v_skipped, v_open
+  FROM public.broadcast_recipients
+  WHERE broadcast_id = p_broadcast_id;
+
+  UPDATE public.broadcasts
+  SET sent = v_sent,
+      delivered = v_sent,
+      failed = v_failed,
+      skipped = v_skipped,
+      status = CASE WHEN v_open = 0 AND status = 'sending' THEN 'completed' ELSE status END,
+      completed_at = CASE WHEN v_open = 0 AND status = 'sending' THEN now() ELSE completed_at END,
+      updated_at = now()
+  WHERE id = p_broadcast_id
+  RETURNING status INTO v_status;
+
+  RETURN v_status;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.refresh_broadcast_counts(p_broadcast_id uuid) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.triggers_set_workspace_id()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -466,11 +690,27 @@ CREATE INDEX IF NOT EXISTS idx_automation_events_pending ON public.automation_ev
 
 CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_broadcast ON public.broadcast_recipients USING btree (broadcast_id, status);
 
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_channel_sent ON public.broadcast_recipients USING btree (channel_id, sent_at) WHERE (status = 'sent'::text);
+
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_pending ON public.broadcast_recipients USING btree (broadcast_id, next_attempt_at, id) WHERE (status = 'pending'::text);
+
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_sending ON public.broadcast_recipients USING btree (claimed_at) WHERE (status = 'sending'::text);
+
+CREATE INDEX IF NOT EXISTS idx_broadcasts_active ON public.broadcasts USING btree (channel_id, created_at) WHERE (status = ANY (ARRAY['scheduled'::text, 'sending'::text]));
+
 CREATE INDEX IF NOT EXISTS idx_broadcasts_workspace ON public.broadcasts USING btree (workspace_id);
 
 CREATE INDEX IF NOT EXISTS idx_flow_send_claims_workspace ON public.flow_send_claims USING btree (workspace_id, created_at);
 
+CREATE INDEX IF NOT EXISTS idx_flow_session_steps_flow ON public.flow_session_steps USING btree (flow_id);
+
+CREATE INDEX IF NOT EXISTS idx_flow_session_steps_session ON public.flow_session_steps USING btree (session_id, started_at, seq);
+
+CREATE INDEX IF NOT EXISTS idx_flow_session_steps_started ON public.flow_session_steps USING btree (started_at);
+
 CREATE INDEX IF NOT EXISTS idx_flow_sessions_contact_active ON public.flow_sessions USING btree (contact_id, channel_id) WHERE (status = 'active'::text);
+
+CREATE INDEX IF NOT EXISTS idx_flow_sessions_flow_created ON public.flow_sessions USING btree (flow_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_flow_versions_flow ON public.flow_versions USING btree (flow_id, version DESC);
 
@@ -502,6 +742,10 @@ CREATE INDEX IF NOT EXISTS idx_triggers_flow ON public.triggers USING btree (flo
 
 CREATE INDEX IF NOT EXISTS idx_triggers_workspace_type ON public.triggers USING btree (workspace_id, type, is_active);
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_broadcast_recipients_contact ON public.broadcast_recipients USING btree (broadcast_id, contact_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_flows_no_event_template ON public.flows USING btree (workspace_id, template_key) WHERE ((event_type_id IS NULL) AND (template_key ~~ 'no\_event\_%'::text));
+
 -- ----------------------------------------------------------------------------
 -- Disparadores
 -- ----------------------------------------------------------------------------
@@ -511,6 +755,8 @@ CREATE OR REPLACE TRIGGER fill_source_before_insert BEFORE INSERT ON public.auto
 CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.broadcasts FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 CREATE OR REPLACE TRIGGER fill_source_before_insert BEFORE INSERT ON public.flow_sessions FOR EACH ROW EXECUTE FUNCTION private.fill_automation_source();
+
+CREATE OR REPLACE TRIGGER flow_sessions_set_finished_at BEFORE UPDATE OF status ON public.flow_sessions FOR EACH ROW EXECUTE FUNCTION private.flow_sessions_set_finished_at();
 
 CREATE OR REPLACE TRIGGER set_updated_at BEFORE UPDATE ON public.flow_sessions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
@@ -538,41 +784,32 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE POLICY "Users can insert broadcast recipients" ON public.broadcast_recipients FOR INSERT TO public
-    WITH CHECK ((EXISTS ( SELECT 1
-   FROM public.broadcasts b
-  WHERE ((b.id = broadcast_recipients.broadcast_id) AND public.is_workspace_member(b.workspace_id)))));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE POLICY "Users can update broadcast recipients" ON public.broadcast_recipients FOR UPDATE TO public
+  CREATE POLICY broadcast_recipients_select ON public.broadcast_recipients FOR SELECT TO public
     USING ((EXISTS ( SELECT 1
    FROM public.broadcasts b
-  WHERE ((b.id = broadcast_recipients.broadcast_id) AND public.is_workspace_member(b.workspace_id)))));
+  WHERE ((b.id = broadcast_recipients.broadcast_id) AND ( SELECT public.has_permission(b.workspace_id, 'broadcasts.manage'::text) AS has_permission)))));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE POLICY "Users can view broadcast recipients" ON public.broadcast_recipients FOR SELECT TO public
+  CREATE POLICY broadcasts_select ON public.broadcasts FOR SELECT TO public
+    USING (( SELECT public.has_permission(broadcasts.workspace_id, 'broadcasts.manage'::text) AS has_permission));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY channel_send_lanes_select ON public.channel_send_lanes FOR SELECT TO public
+    USING (( SELECT public.has_permission(channel_send_lanes.workspace_id, 'broadcasts.manage'::text) AS has_permission));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY flow_session_steps_select ON public.flow_session_steps FOR SELECT TO public
     USING ((EXISTS ( SELECT 1
-   FROM public.broadcasts b
-  WHERE ((b.id = broadcast_recipients.broadcast_id) AND public.is_workspace_member(b.workspace_id)))));
+   FROM public.flow_sessions s
+  WHERE (s.id = flow_session_steps.session_id))));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE POLICY "Users can manage broadcasts in their workspaces" ON public.broadcasts TO public
-    USING (public.is_workspace_member(workspace_id));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE POLICY "Users can view broadcasts in their workspaces" ON public.broadcasts FOR SELECT TO public
-    USING (public.is_workspace_member(workspace_id));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
-  CREATE POLICY "Users can view flow sessions via flow" ON public.flow_sessions FOR SELECT TO public
-    USING ((EXISTS ( SELECT 1
-   FROM public.flows f
-  WHERE ((f.id = flow_sessions.flow_id) AND public.is_workspace_member(f.workspace_id)))));
+  CREATE POLICY flow_sessions_select ON public.flow_sessions FOR SELECT TO public
+    USING (public.can_see_flow_session(flow_id, contact_id));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN

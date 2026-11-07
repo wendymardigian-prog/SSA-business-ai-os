@@ -125,6 +125,8 @@ const tables = await q(
           c.reltype::int as rowtype
      from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = any($1) and c.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
+      -- La secuencia de una columna GENERATED ... AS IDENTITY nace con la columna.
+      and not exists (select 1 from pg_depend d where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'i')
     order by 2, 3`,
   [SCHEMAS],
 );
@@ -150,7 +152,7 @@ const columns = await q(
   [tableOids],
 );
 for (const c of columns) {
-  if (c.identity) die(`Columna ${c.name}: identity no soportada.`);
+  if (c.identity && c.identity !== "a" && c.identity !== "d") die(`Columna ${c.name}: identity '${c.identity}' no soportada.`);
   if (c.custom_collation) die(`Columna ${c.name}: collation propia no soportada.`);
 }
 
@@ -285,7 +287,13 @@ const types = await q(
   [SCHEMAS],
 );
 if (types.length) die(`Tipos propios no soportados: ${types.map((t) => t.name).join(", ")}`);
-const seqs = await q(`select schemaname || '.' || sequencename as name from pg_sequences where schemaname = any($1)`, [SCHEMAS]);
+const seqs = await q(
+  `select s.schemaname || '.' || s.sequencename as name from pg_sequences s
+    where s.schemaname = any($1)
+      and not exists (select 1 from pg_depend d where d.classid = 'pg_class'::regclass and d.deptype = 'i'
+                       and d.objid = (quote_ident(s.schemaname) || '.' || quote_ident(s.sequencename))::regclass)`,
+  [SCHEMAS],
+);
 if (seqs.length) die(`Secuencias no soportadas: ${seqs.map((s) => s.name).join(", ")}`);
 const schemaInfo = await q(
   `select n.nspname as name, pg_get_userbyid(n.nspowner) as owner, obj_description(n.oid, 'pg_namespace') as comment,
@@ -505,6 +513,7 @@ for (const t of tables) {
   for (const c of cols) {
     let s = `  ${c.qname} ${c.type}`;
     if (c.generated === "s") s += ` GENERATED ALWAYS AS (${c.expr}) STORED`;
+    else if (c.identity) s += ` GENERATED ${c.identity === "a" ? "ALWAYS" : "BY DEFAULT"} AS IDENTITY`;
     else if (c.expr !== null) s += ` DEFAULT ${c.expr}`;
     if (c.not_null) s += " NOT NULL";
     lines.push(s);

@@ -11,7 +11,7 @@
  *   - `emojis` (reacciones): VACIO = cualquier emoji.
  *   - `options` (votos): VACIO = cualquier opcion; si no, alcanza con que el voto incluya UNA de ellas.
  *
- * Una configuracion ROTA no dispara para nadie (es mas seguro que mandar a todos), igual que en Tareas.
+ * Una configuracion ROTA no dispara para nadie (es mas seguro que mandar a todos).
  */
 
 import type { GroupTriggerType } from "./payload";

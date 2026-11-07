@@ -1,6 +1,5 @@
 /**
- * Plantillas de los emails del sistema (invitaciones, avisos al equipo, la
- * copia de un contrato firmado).
+ * Plantillas de los emails del sistema (invitaciones, avisos al equipo...).
  *
  * Todos van con la marca del negocio que los manda (`resolveBrand(workspace)`,
  * lib/brand.ts; lo que el negocio no tenga sale de la instalacion): su logo

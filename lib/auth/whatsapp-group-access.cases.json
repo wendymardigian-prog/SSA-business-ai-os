@@ -1,5 +1,5 @@
 {
-  "_comment": "Casos compartidos entre canSeeWhatsappGroup/canWriteWhatsappGroup (TS, lib/auth/channel-permissions.ts) y public.can_see_whatsapp_group/can_write_whatsapp_group (SQL, 00280; scripts/verify-whatsapp-groups.mjs los corre con un rol personalizado). `channels` es la bandeja del rol; el grupo es de la cuenta CH. Owner y Admin siempre ven y escriben.",
+  "_comment": "Casos compartidos entre canSeeWhatsappGroup/canWriteWhatsappGroup (TS, lib/auth/channel-permissions.ts) y public.can_see_whatsapp_group/can_write_whatsapp_group (SQL; scripts/verify-whatsapp-groups.mjs los corre con un rol personalizado). `channels` es la bandeja del rol; el grupo es de la cuenta CH. Owner y Admin siempre ven y escriben.",
   "cases": [
     { "name": "todas las cuentas, alcance todas, responde", "channels": { "mode": "all", "all": { "scope": "all", "reply": true } }, "see": true, "write": true },
     { "name": "todas las cuentas, alcance todas, sin responder", "channels": { "mode": "all", "all": { "scope": "all", "reply": false } }, "see": true, "write": false },
