@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCss, sanitizeCss, sanitizeStyleAttribute, scopeRootSelectors, serializeCss, unescapeCss, type AssetRef } from "./css";
+import { IMPORT_BASE_CSS, parseCss, sanitizeCss, sanitizeStyleAttribute, scopeRootSelectors, serializeCss, unescapeCss, type AssetRef } from "./css";
 
 const ZIP: AssetRef = (url) => (/^(img|fonts)\//.test(url) ? `asset:ws/imports/up/${url.replace("/", "__")}` : null);
 const run = (css: string, assetRef: AssetRef = ZIP) => sanitizeCss(css, { assetRef });
@@ -154,6 +154,13 @@ describe("raíz del documento", () => {
     expect(scopeRootSelectors("#html5")).toBe("#html5");
     // las comas de adentro de :not(...) no se pierden ni se repiten
     expect(scopeRootSelectors("a:not(.x, .y), b:not(.x, .y)")).toBe("a:not(.x,.y),b:not(.x,.y)");
+  });
+});
+
+describe("la base de lo cargado", () => {
+  it("devuelve los márgenes del navegador sin pesar nada, y sobrevive a la limpieza tal cual", () => {
+    expect(IMPORT_BASE_CSS).toBe(":where(.dz-import) *{margin:revert;padding:revert;box-sizing:content-box;}");
+    expect(run(IMPORT_BASE_CSS).css).toBe(IMPORT_BASE_CSS);
   });
 });
 

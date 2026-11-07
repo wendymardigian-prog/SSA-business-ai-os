@@ -17,6 +17,13 @@
 
 export const IMPORT_ROOT_CLASS = "dz-import";
 
+/**
+ * Lo primero del CSS de un archivo cargado: el render pone un reinicio global (`*{margin:0;padding:0;box-sizing:border-box}`)
+ * que no estaba en el archivo. Esta regla le devuelve a lo cargado los márgenes y rellenos del navegador y su
+ * `content-box`; con `:where()` pesa cero, así que cualquier regla del propio archivo le gana.
+ */
+export const IMPORT_BASE_CSS = `:where(.${IMPORT_ROOT_CLASS}) *{margin:revert;padding:revert;box-sizing:content-box;}`;
+
 export interface CssDecl {
   kind: "decl";
   prop: string;
