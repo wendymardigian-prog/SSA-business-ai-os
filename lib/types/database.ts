@@ -7406,6 +7406,24 @@ export interface Database {
         Args: { p_channel_id: string; p_next: string };
         Returns: boolean;
       };
+      /** Las conversaciones que el barrido de inactividad puede cerrar (migracion 00306). Solo service_role. */
+      closable_inactive_conversations: {
+        Args: {
+          p_workspace_id: string;
+          p_channel_ids: string[];
+          p_inactive_before: string;
+          p_active_since: string;
+          p_now?: string;
+          p_limit?: number;
+        };
+        Returns: {
+          id: string;
+          channel_id: string;
+          agent_enabled: boolean | null;
+          agent_paused_until: string | null;
+          last_message_at: string;
+        }[];
+      };
       /** El proximo destinatario pendiente de un broadcast, reservado (pending -> sending). Solo service_role. */
       claim_broadcast_recipient: {
         Args: { p_broadcast_id: string };
