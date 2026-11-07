@@ -531,8 +531,10 @@ try {
     });
     check(!eChunk, "el service role puede indexar fragmentos", eChunk?.message);
 
-    // La KB es conocimiento del negocio, no de un lead: todo el equipo la lee.
-    check((await sees(member, "knowledge_base", doc.id)).seen,
+    // La KB es conocimiento del negocio, no de un lead: todo el equipo la lee. Desde la 00314 la lee quien
+    // tiene knowledge.view, knowledge.edit o agents.view; aca el Member tiene un rol de prueba sin ninguna
+    // clave (lead-scope-helper), asi que esto solo vale antes. Lo nuevo lo prueba el bloque "(00314)".
+    if (!POST_00314) check((await sees(member, "knowledge_base", doc.id)).seen,
       "un Member LEE la base de conocimiento");
     check((await sees(admin, "knowledge_base", doc.id)).seen,
       "un Admin LEE la base de conocimiento");
