@@ -70,6 +70,53 @@ describe("assertCanGrant", () => {
 });
 
 describe("casos de ataque (plano §12)", () => {
+  describe("alcance de grabaciones por area (00301)", () => {
+    const A = "11111111-1111-4111-8111-111111111111";
+    const B = "22222222-2222-4222-8222-222222222222";
+    const withAreas = (areas: string[] | "own" | "all") =>
+      areas === "own" || areas === "all"
+        ? { scopes: { ...SYSTEM_ROLE_PERMISSIONS.member.scopes, calls: areas } }
+        : { scopes: { ...SYSTEM_ROLE_PERMISSIONS.member.scopes, calls: "areas" as const }, call_areas: areas };
+    const actorWith = (areas: string[] | "own" | "all") => {
+      const a = custom(["team.invite", "roles.manage"]);
+      a.permissions = { ...a.permissions, ...withAreas(areas) };
+      return a;
+    };
+    const roleWith = (areas: string[] | "own" | "all") => {
+      const r = customRole([]);
+      r.permissions = { ...r.permissions, ...withAreas(areas) };
+      return r;
+    };
+
+    it("un rol con las suyas no invita con un rol por areas", () => {
+      expect(assertCanAssignRole(actorWith("own"), roleWith([A]), null)).toMatchObject({ ok: false, reason: "scope_too_wide" });
+    });
+    it("un rol con un area no invita con un rol que tiene otra", () => {
+      expect(assertCanAssignRole(actorWith([A]), roleWith([B]), null)).toMatchObject({ ok: false, reason: "scope_too_wide" });
+      expect(assertCanAssignRole(actorWith([A]), roleWith([A]), null)).toEqual({ ok: true });
+    });
+    it("un rol con areas no da todas", () => {
+      expect(assertCanAssignRole(actorWith([A]), roleWith("all"), null)).toMatchObject({ ok: false, reason: "scope_too_wide" });
+    });
+    it("un rol con todas da cualquier area", () => {
+      expect(assertCanAssignRole(actorWith("all"), roleWith([A, B]), null)).toEqual({ ok: true });
+    });
+    it("agregarle un area a un rol pide tenerla, aunque el alcance no cambie", () => {
+      const role = { id: "r2", systemRole: null, permissions: roleWith([A]).permissions };
+      const after = roleWith([A, B]).permissions;
+      expect(assertCanEditRole(actorWith([A]), role, after)).toMatchObject({ ok: false, reason: "scope_too_wide" });
+      expect(assertCanEditRole(actorWith([A, B]), role, after)).toEqual({ ok: true });
+    });
+    it("sacarle un area nunca es una escalada", () => {
+      const role = { id: "r2", systemRole: null, permissions: roleWith([A, B]).permissions };
+      expect(assertCanEditRole(actorWith("own"), role, roleWith([A]).permissions)).toEqual({ ok: true });
+    });
+    it("Owner y Admin dan cualquier area", () => {
+      const owner = { userId: "o", role: "owner" as const, roleId: null, permissions: SYSTEM_ROLE_PERMISSIONS.owner };
+      expect(assertCanAssignRole(owner, roleWith([A, B]), null)).toEqual({ ok: true });
+    });
+  });
+
   it("un rol con team.invite invita como Admin", () => {
     const actor = custom(["team.view", "team.invite"]);
     expect(assertCanAssignRole(actor, adminRole, null)).toMatchObject({ ok: false, reason: "admin_role", error: CANNOT_GRANT_MESSAGE });

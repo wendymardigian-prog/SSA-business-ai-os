@@ -88,7 +88,7 @@ async function makeUser(tag: string): Promise<TestUser> {
 
 /** Consultas de solo lectura por la CLI (esquemas que la API no expone). */
 function sql(query: string): Array<Record<string, unknown>> {
-  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return (JSON.parse(out).rows ?? []) as Array<Record<string, unknown>>;
 }
 
@@ -526,15 +526,54 @@ try {
   const tooLong = await owner.client.rpc("form_metrics_daily", { p_form_id: mForm!.id, p_from: "2024-01-01", p_to: "2026-10-12" });
   check(!!tooLong.error, "un rango de mas de 366 dias se rechaza");
 
-  // Igualdad en las tres columnas iniciales del indice parcial (workspace, formulario y tipo de evento) mas el
-  // predicado `LIKE 'form\\_%'` de la funcion: con enable_seqscan = off el planificador tiene que elegirlo. Una
-  // consulta con solo un rango de fechas puede preferir el indice general por (workspace, fecha) en un workspace
-  // nuevo y sin estadisticas, y eso no seria una falla del indice.
-  const plan = sql(
-    `set enable_seqscan = off; explain select count(*) from public.analytics_events e where e.workspace_id = '${ws.id}' and e.metadata ->> 'form_id' = '${mForm!.id}' and e.event_type = 'form_view' and e.event_type LIKE 'form\\_%'`,
+  // No se mira el plan sobre el workspace de esta prueba: las estadisticas no lo conocen, el planificador calcula casi
+  // cero filas y los dos indices le salen casi gratis, asi que el resultado cambia segun el ultimo autoanalyze.
+  const formsIndex = sql(
+    `select x.indisvalid, x.indisready, x.indislive, pg_get_indexdef(x.indexrelid) as def from pg_index x where x.indexrelid = to_regclass('public.idx_analytics_forms')`,
+  )[0];
+  const formsIndexDef = String(formsIndex?.def ?? "");
+  check(
+    formsIndex?.indisvalid === true && formsIndex?.indisready === true && formsIndex?.indislive === true,
+    "idx_analytics_forms existe y esta valido",
+    JSON.stringify(formsIndex),
   );
-  const planText = JSON.stringify(plan);
-  check(planText.includes("idx_analytics_forms"), "el EXPLAIN de la consulta de vistas usa idx_analytics_forms", planText.slice(0, 300));
+  check(
+    formsIndexDef.includes("(workspace_id, ((metadata ->> 'form_id'::text)), event_type, created_at)") && formsIndexDef.includes("WHERE (event_type ~~ 'form\\_%'::text)"),
+    "idx_analytics_forms conserva sus columnas y su condicion",
+    formsIndexDef,
+  );
+
+  // La consulta de eventos sale de la funcion VIGENTE y corre contra una copia temporal de la tabla (con sus indices
+  // reales), con volumen y estadisticas al dia: nada se escribe en analytics_events. Si la funcion pierde el LIKE o
+  // el filtro por formulario, o el indice cambia, el plan deja de filtrar por formulario en el indice.
+  const metricsDef = String(sql(`select pg_get_functiondef('public.form_metrics_daily(uuid, date, date)'::regprocedure) as d`)[0]?.d ?? "");
+  const eventsQuery = /\bev AS \(\s*([\s\S]+?)\s*\),\s*sub AS/.exec(metricsDef)?.[1];
+  check(!!eventsQuery, "form_metrics_daily conserva su consulta de eventos");
+  if (eventsQuery) {
+    const volumeForm = "00000000-0000-4000-8000-000000000001";
+    const volumeEnd = "'2026-10-11T00:00:00Z'::timestamptz";
+    const volumeDay = `${volumeEnd} - (g % 180) * interval '1 day'`;
+    const volumeQuery = eventsQuery
+      .replace("public.analytics_events", "zz_test_forms_ev")
+      .replace(/\bv_ws\b/g, `'${ws.id}'::uuid`)
+      .replace(/\bp_form_id\b/g, `'${volumeForm}'::uuid`)
+      .replace(/\bv_tz\b/g, "'UTC'")
+      .replace(/\bv_from_ts\b/g, `${volumeEnd} - interval '30 days'`)
+      .replace(/\bv_to_ts\b/g, volumeEnd);
+    const volumePlan = sql(`begin;
+      create temp table zz_test_forms_ev (like public.analytics_events including defaults including indexes) on commit drop;
+      insert into zz_test_forms_ev (workspace_id, event_type, metadata, created_at)
+        select '${ws.id}'::uuid, (array['form_view', 'form_start', 'form_rejected'])[1 + g % 3], jsonb_build_object('form_id', '00000000-0000-4000-8000-' || lpad(f::text, 12, '0')), ${volumeDay}
+        from generate_series(1, 20) f, generate_series(1, 2000) g;
+      insert into zz_test_forms_ev (workspace_id, event_type, metadata, created_at)
+        select '${ws.id}'::uuid, 'contact_created', '{}'::jsonb, ${volumeDay}
+        from generate_series(1, 10000) g;
+      analyze zz_test_forms_ev;
+      explain ${volumeQuery};`)
+      .map((r) => String(r["QUERY PLAN"]))
+      .join("\n");
+    check(/Index Cond:.*metadata ->> 'form_id'/.test(volumePlan), "con volumen, la consulta de form_metrics_daily filtra por formulario en idx_analytics_forms", volumePlan.slice(0, 500));
+  }
 
   // El beacon, con los puertos reales.
   const beaconPorts = createBeaconPorts(svc);
@@ -1208,8 +1247,10 @@ try {
   // El PDF, de verdad: con la base y el bucket reales, sin proveedores.
   console.log("\n— F27-F28: el PDF y el email (base y Storage reales; Resend simulado) —");
   const pdfDeps = { db: svc, businessName: () => "zz-test negocio" };
+  // `already` = el trabajador real de la cola se adelanto al script (el job lo agenda la firma). Solo sale con el PDF
+  // ya generado, y los controles de abajo leen ese archivo: la ruta, el estado y el contenido se comprueban igual.
   const pdfResult = await runContractPdf(pdfDeps, sig1!.id);
-  check(pdfResult === "generated", "el job genera el PDF de la firma", pdfResult);
+  check(pdfResult === "generated" || pdfResult === "already", "el job genera el PDF de la firma", pdfResult);
   const { data: sig1Pdf } = await svc.from("contract_signatures").select("pdf_path, pdf_status, email_status").eq("id", sig1!.id).single();
   check(sig1Pdf?.pdf_status === "generated" && sig1Pdf?.pdf_path === `${ws.id}/${kForm!.id}/${sig1!.id}/contrato-v1.pdf`, "queda generated con la ruta contratos/{ws}/{form}/{firma}/contrato-v1.pdf", sig1Pdf?.pdf_path ?? "");
   if (sig1Pdf?.pdf_path) contractFiles.push(sig1Pdf.pdf_path);
@@ -1252,7 +1293,7 @@ try {
 
   // Reintentos con la cola real: un fallo transitorio agenda el siguiente a +5 minutos.
   const secondPdf = await runContractPdf(pdfDeps, sig2!.id);
-  check(secondPdf === "generated", "se genera tambien el PDF de la firma de la version 2");
+  check(secondPdf === "generated" || secondPdf === "already", "se genera tambien el PDF de la firma de la version 2", secondPdf);
   const { data: sig2Pdf } = await svc.from("contract_signatures").select("pdf_path").eq("id", sig2!.id).single();
   if (sig2Pdf?.pdf_path) contractFiles.push(sig2Pdf.pdf_path);
   const { data: sig2EmailJob } = await svc.from("scheduled_jobs").select("id").eq("dedupe_key", `contract_email:${sig2!.id}:0`);

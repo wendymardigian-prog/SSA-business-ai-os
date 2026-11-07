@@ -73,7 +73,8 @@ interface Props {
   canConfigure: boolean;
   /** Cuantas llamadas que ve estan pendientes de analisis (para "Analizar pendientes"). */
   pendingCount: number;
-  scopeAll: boolean;
+  /** Qué grabaciones ve esta persona, en una frase. */
+  scopeLabel: string;
   categoryGroups: CategoryGroup[];
   /** Las que todavia no tienen area, para el aviso de arriba. */
   unclassifiedCount: number;
@@ -287,7 +288,7 @@ export function CallsList(props: Props) {
                 </>
               )}
               <span className="ml-auto rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                {props.scopeAll ? "Todas las del equipo" : "Las tuyas y las de tus contactos"}
+                {props.scopeLabel}
               </span>
             </div>
 
