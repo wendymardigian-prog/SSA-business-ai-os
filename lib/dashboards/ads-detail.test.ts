@@ -95,6 +95,16 @@ describe("armar el detalle (F57)", () => {
     expect(detail?.totals.spend).toBe(100);
   });
 
+  it("la frecuencia es la de Meta, no impresiones guardadas ÷ alcance en vivo (daba 0,72)", () => {
+    const recien = [row({ level: "campaign", objectId: "c1", campaignId: "c1", date: "2026-11-05", impressions: 720, reach: 700 })];
+
+    const conMeta = buildDetail({ rows: recien, level: "campaign", objectId: "c1", uniqueReach: 1000, uniqueFrequency: 1.05 });
+    expect(conMeta?.totals.reach).toBe(1000);
+    expect(conMeta?.totals.frequency).toBe(1.05);
+
+    expect(buildDetail({ rows: recien, level: "campaign", objectId: "c1", uniqueReach: 1000 })?.totals.frequency).toBeNull();
+  });
+
   it("los hijos de una campaña son sus conjuntos", () => {
     const detail = buildDetail({ rows, level: "campaign", objectId: "c1" });
 
