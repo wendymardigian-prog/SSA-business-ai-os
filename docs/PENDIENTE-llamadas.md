@@ -67,7 +67,6 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 
 - **Lo que sigue del plan:** Etapa 2 (qué importa cada conexión, necesita la prueba real con Fathom), Etapa 3 (un analizador por tipo: `call_analysis_profiles`, necesita las rúbricas de Wendy), Etapa 4 (alcance por área) y Etapa 5 (limpieza).
 - **El dashboard sigue con `call_type`** y promedia puntajes entre tipos. Se corrige en la Etapa 3, junto con el analizador por tipo.
-- **`analyze_types` sigue siendo la regla de qué se analiza**, sobre el `call_type` derivado. Un tipo nuevo de Ventas se analiza como un cierre hasta la Etapa 3.
 - **El paso "área de la conexión" está en la cascada pero nadie lo llena todavía** (`connection`): llega con la Etapa 2.
 - **Se borra en la Etapa 5:** `call_type`, `call_type_proposed`, `custom_types`, `allow_ai_types`, `discarded_types` y las claves viejas de las reglas (`LEGACY_TO_SYSTEM_KEY`).
 - **Sin revisar en pantalla con datos reales:** producción tiene 0 grabaciones. Falta ver una agendada de Servicio y una sin vínculo.
@@ -77,5 +76,13 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 - **Sin revisar en pantalla:** el selector de áreas en Ajustes → Roles nunca se abrió en un navegador.
 - **La lista ofrece todas las áreas en el filtro**, también las que esa persona no ve por área: puede ver una grabación de otra área por su contacto, y sacarla del filtro la escondería. Filtrar por un área ajena solo devuelve esas.
 - **Quien ve por área puede moverla a otra área** si tiene `calls.edit`, y entonces deja de verla. No se frena: es lo mismo que le pasa a quien corrige una clasificación equivocada.
-- **El dashboard de llamadas** cuenta lo que la RLS deja ver: con alcance por área, solo eso. Sus filtros por área llegan con la Etapa 3.
+- **El dashboard de llamadas** cuenta lo que la RLS deja ver: con alcance por área, solo eso. Sus filtros por área y tipo están desde la Etapa 3.
+
+## Etapa 3: un analizador por tipo (00303, 6/11/2026)
+
+- **El historial de la rúbrica de cada analizador no tiene pantalla.** Por qué: cada guardado queda en `audit_log` (entidad `ai_task`, con la rúbrica vieja y la nueva) y las instrucciones sí tienen versiones. La pantalla «Cargar en el editor» de la rúbrica única se fue con ella. Decisión: se suma si hace falta.
+- **Una rúbrica copiada de la configuración vieja puede no sumar 100** en un tipo, porque sus criterios se filtran por `aplica_a`. Por qué: los pesos se pensaron para el conjunto. Decisión: el análisis funciona igual (los pesos se normalizan), y el editor pide corregirla antes de guardar.
+- **`ai_background_settings.call_analysis` conserva `mode`, `rubric`, `analyze_types` y `auto_*` sin leerse.** Se borran en la Etapa 5, junto con `call_type`.
+- **«Analizar seleccionadas» no está en el celular:** cada tarjeta es un link entero. Sigue «Analizar pendientes».
+- **Las pantallas dicen todavía «Closer» en la cabecera de la ficha** aunque sea una reunión de servicio. Decisión: se cambia con la limpieza de la Etapa 5.
 

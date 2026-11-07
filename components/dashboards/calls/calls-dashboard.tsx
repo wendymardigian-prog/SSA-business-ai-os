@@ -1,3 +1,4 @@
+import type { CategoryGroup } from "@/lib/calls/catalog";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "@/components/dashboards/dashboard-switcher";
@@ -26,6 +27,8 @@ export function CallsDashboard({
   dashboards,
   timezone,
   closers,
+  categoryGroups,
+  scoresHidden,
   headline,
   teamCriteria,
   closerRows,
@@ -40,6 +43,9 @@ export function CallsDashboard({
   dashboards: DashboardOption[];
   timezone: string;
   closers: Array<{ id: string; name: string }>;
+  categoryGroups: CategoryGroup[];
+  /** Hay mas de un tipo en el periodo: cada uno se evalua con su rubrica y no se promedian. */
+  scoresHidden: boolean;
   headline: Headline;
   teamCriteria: CriterionAverage[];
   closerRows: CloserSummary[];
@@ -62,12 +68,18 @@ export function CallsDashboard({
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader route="/dashboard/dashboards/llamadas" left={<DashboardSwitcher options={dashboards} />} filters={<CallsControls timezone={timezone} closers={closers} />} />
+      <PageHeader route="/dashboard/dashboards/llamadas" left={<DashboardSwitcher options={dashboards} />} filters={<CallsControls timezone={timezone} closers={closers} categoryGroups={categoryGroups} />} />
       <div className="flex-1 space-y-6 overflow-auto px-4 py-6 md:px-8">
         <p className="text-sm text-muted-foreground">
           {periodLabel}
           {closerFilterName ? ` · ${closerFilterName}` : ""} · solo llamadas analizadas, por la fecha de la llamada
         </p>
+
+        {scoresHidden && (
+          <p role="status" className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+            Cada tipo de reunión se evalúa con su propia rúbrica, así que los puntajes no se promedian entre tipos. Elegí un tipo para verlos.
+          </p>
+        )}
 
         {failed && (
           <p role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">

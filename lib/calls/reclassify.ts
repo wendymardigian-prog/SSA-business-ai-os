@@ -15,7 +15,7 @@ import type { Database } from "@/lib/types/database";
 import { classificationPatch, loadClassificationContext } from "./classify-core";
 import { resolveCascade } from "./classify-cascade";
 import { enqueueCallJob, enqueueClassify } from "./queue";
-import { nextStatusAfterClassify } from "./status";
+import { resolveProfile, statusAfterClassification } from "./profiles";
 
 type Db = SupabaseClient<Database>;
 
@@ -45,12 +45,11 @@ export async function reclassifyCall(db: Db, callId: string, now: Date = new Dat
       return "requeued";
     }
 
-    const analysis = ctx.settings.call_analysis;
     const next = patch.call_type
-      ? nextStatusAfterClassify(patch.call_type, {
-          analyzeTypes: analysis.analyze_types,
-          auto: analysis.mode === "now" && !call.imported_from_history,
-          hasTranscript: Array.isArray(call.transcript) && call.transcript.length > 0,
+      ? statusAfterClassification(resolveProfile(ctx.profiles, { categoryId: patch.category_id, areaId: patch.area_id }), {
+          ...call,
+          noShow: call.no_show,
+          importedFromHistory: call.imported_from_history,
         })
       : null;
     const { error } = await db

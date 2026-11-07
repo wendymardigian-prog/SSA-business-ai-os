@@ -85,6 +85,7 @@ export async function loadTaskInstructions(service: Db, workspaceId: string, tas
       .select("version, instructions")
       .eq("workspace_id", workspaceId)
       .eq("task", task)
+      .is("variant", null)
       .eq("version", version)
       .maybeSingle();
     if (error || !row) return fallback;
@@ -112,7 +113,7 @@ export async function loadTaskInstructionsForRun(service: Db, workspaceId: strin
   return style ? { ...instructions, text: interpolate(instructions.text, { estilo: style }) } : instructions;
 }
 
-async function workspaceOwnStyle(service: Db, workspaceId: string): Promise<string | null> {
+export async function workspaceOwnStyle(service: Db, workspaceId: string): Promise<string | null> {
   try {
     const { data } = await service.from("workspaces").select("ai_language_style").eq("id", workspaceId).maybeSingle();
     return data?.ai_language_style?.trim() || null;
@@ -134,6 +135,7 @@ export async function loadTaskPromptVersions(
     .select("version, instructions, note, created_at, created_by")
     .eq("workspace_id", workspaceId)
     .eq("task", task)
+    .is("variant", null)
     .order("version", { ascending: false });
   if (error) {
     console.error(`[ai-tasks] no pude leer el historial de ${task}:`, error.message);

@@ -3,8 +3,8 @@
  * `call_analyze`; el handler es fino y todo lo que decide vive aca, con la base
  * y el modelo por parametro.
  *
- * Orden: tope de gasto -> claim condicional del estado -> instrucciones, rubrica
- * y modelo -> run registrado -> analisis -> guardar. Nada se guarda a medias:
+ * Orden: el analizador de su tipo (sin analizador, no se analiza) -> tope de gasto -> claim
+ * condicional del estado -> instrucciones, rubrica y modelo -> run registrado -> analisis -> guardar. Nada se guarda a medias:
  * `analysis_ai` (lo que dijo la IA, inmutable) y `analysis` (lo que se muestra y
  * se corrige) se escriben en el mismo update, con un `analysis_run_id` NUEVO,
  * que es lo que el trigger `calls_protect_analysis_ai` exige para dejarlo.
@@ -20,7 +20,6 @@ import { auditAsSystem, logAudit } from "@/lib/audit";
 import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
-import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 import { getJobHandler } from "@/lib/jobs/registry";
 import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
@@ -29,6 +28,11 @@ import { buildStoredAnalysis } from "./analysis-store";
 import { emitCallEvent } from "./automation/emit";
 import { notifyBudgetBlocked } from "./notify";
 import { enqueueCallJob } from "./queue";
+import { callDisplayLabel } from "./catalog";
+import { loadProfileInstructionsForRun } from "./profile-instructions";
+import { resolveProfile } from "./profiles";
+import { loadCallProfiles } from "./profiles-load";
+import { summaryEligibility } from "./summary";
 import { resolveCallTaskSettings } from "./task-settings";
 
 type Db = SupabaseClient<Database>;
@@ -37,6 +41,7 @@ export type AnalyzeOutcome =
   | "gone" // no existe o esta archivada
   | "not_claimable" // otro proceso la tiene, o ya esta analizada
   | "no_transcript"
+  | "no_profile" // su tipo no tiene analizador: no se analiza ni se gasta IA
   | "budget"
   | "analyzed"
   | "retry" // fallo el modelo, se reintenta
@@ -67,7 +72,7 @@ export interface AnalyzeDeps {
 const AUTO_CLAIMABLE = ["pending"] as const;
 const MANUAL_CLAIMABLE = ["pending", "error", "needs_review", "analyzed", "not_applicable"] as const;
 
-const CALL_COLUMNS = "id, workspace_id, title, call_type, category_id, transcript, contact_id, analysis_status, closer_score, lead_score";
+const CALL_COLUMNS = "id, workspace_id, title, call_type, area_id, category_id, category_snapshot, transcript, contact_id, analysis_status, closer_score, lead_score";
 
 export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobPayload): Promise<{ outcome: AnalyzeOutcome }> {
   const { db } = deps;
@@ -76,13 +81,19 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
   const retry = payload.retry ?? 0;
   const claimable = payload.manual ? MANUAL_CLAIMABLE : AUTO_CLAIMABLE;
 
-  const { data: peek } = await db.from("calls").select("id, workspace_id, transcript").eq("id", callId).is("archived_at", null).maybeSingle();
+  const { data: peek } = await db.from("calls").select("id, workspace_id, transcript, area_id, category_id").eq("id", callId).is("archived_at", null).maybeSingle();
   if (!peek) return { outcome: "gone" };
   const workspaceId = peek.workspace_id;
 
   if (!Array.isArray(peek.transcript) || peek.transcript.length === 0) {
     await db.from("calls").update({ analysis_status: "needs_review", analysis_status_reason: "no_transcript" }).eq("id", callId).in("analysis_status", [...claimable]);
     return { outcome: "no_transcript" };
+  }
+
+  const profile = resolveProfile(await loadCallProfiles(db, workspaceId), { categoryId: peek.category_id, areaId: peek.area_id });
+  if (!profile) {
+    await db.from("calls").update({ analysis_status: "not_applicable", analysis_status_reason: "no_profile" }).eq("id", callId).in("analysis_status", [...claimable]);
+    return { outcome: "no_profile" };
   }
 
   const budget = await withinWorkspaceBudget(db, workspaceId, now);
@@ -109,7 +120,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
 
   const [model, instructions] = await Promise.all([
     resolveTaskModel(db, workspaceId, "call_analysis"),
-    loadTaskInstructionsForRun(db, workspaceId, "call_analysis"),
+    loadProfileInstructionsForRun(db, workspaceId, profile),
   ]);
   if (!deps.generate && (!model.ok || !model.model)) {
     return fail(db, callId, "error", model.message ?? "No hay un proveedor de IA conectado", "ai_error");
@@ -129,7 +140,9 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
 
   const result = await runCallAnalysis({
     call,
-    rubric: settings.rubric,
+    shape: profile.shape,
+    meetingLabel: callDisplayLabel(call.category_snapshot, call.call_type),
+    rubric: profile.rubric,
     categories: settings.categories,
     allowNewCategories: settings.allow_new_categories,
     companyContext: settings.company_context,
@@ -171,11 +184,12 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     model: modelLabel,
     costUsd: closed.costUsd ?? 0,
     promptVersion: instructions.version,
-    rubricVersion: settings.rubric.version,
+    rubricVersion: profile.rubric.version,
+    shape: profile.shape,
     generatedAt: now.toISOString(),
   });
 
-  const autoSummary = settings.auto_summary && Boolean(getJobHandler("call_summary"));
+  const autoSummary = profile.autoSummary && summaryEligibility(call).ok && Boolean(getJobHandler("call_summary"));
   const citas = (stored.citas_verificadas ?? { total: 0, verificadas: 0 }) as { total: number; verificadas: number };
 
   const { error: writeError } = await db
@@ -194,8 +208,9 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
       quotes_total: citas.total,
       quotes_verified: citas.verificadas,
       analysis_prompt_version: instructions.version,
-      rubric_snapshot: settings.rubric as unknown as Json,
-      rubric_version: settings.rubric.version,
+      rubric_snapshot: profile.rubric as unknown as Json,
+      rubric_version: profile.rubric.version,
+      analysis_profile_id: profile.id,
       analysis_model: modelLabel,
       // Tiene que cambiar en CADA analisis: es lo que el trigger de inmutabilidad exige.
       analysis_run_id: run.runId ?? randomUUID(),
@@ -222,7 +237,8 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     },
     metadata: {
       prompt_version: instructions.version,
-      rubric_version: settings.rubric.version,
+      rubric_version: profile.rubric.version,
+      profile_id: profile.id,
       model: modelLabel,
       cost_usd: closed.costUsd,
       ...(payload.reason ? { reason: payload.reason } : {}),
@@ -235,7 +251,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
   await emitCallEvent(db, "call_analyzed", callId);
 
   if (autoSummary) await enqueueCallJob(db, "call_summary", callId, now);
-  if (settings.auto_knowledge && getJobHandler("call_index_knowledge")) await enqueueCallJob(db, "call_index_knowledge", callId, now);
+  if (profile.autoKnowledge && getJobHandler("call_index_knowledge")) await enqueueCallJob(db, "call_index_knowledge", callId, now);
   return { outcome: "analyzed" };
 }
 

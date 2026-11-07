@@ -8,8 +8,8 @@
  * las llamadas y registra los runs.
  */
 import type { GenerateFn } from "./ai-generate";
+import type { ProfileShape } from "./profiles";
 import { runCallAnalysis } from "./analyze";
-import type { CallAnalysis } from "./analysis-schema";
 import { changedCriteria, type CallCategories, type Rubric } from "./rubric";
 
 export const MAX_TEST_CALLS = 5;
@@ -35,6 +35,9 @@ export interface TestCallResult {
 }
 
 export interface TestSetup {
+  shape?: ProfileShape;
+  /** El nombre del tipo de cada grabacion. Con un analizador por tipo, la rubrica se usa entera. */
+  meetingLabelFor?: (callId: string) => string | null;
   rubric: Rubric;
   categories: CallCategories;
   allowNewCategories: boolean;
@@ -64,6 +67,8 @@ function emptyResult(call: TestCallInput): Omit<TestCallResult, "ok"> {
 export async function testOneCall(call: TestCallInput, setup: TestSetup): Promise<TestCallResult> {
   const result = await runCallAnalysis({
     call: { title: call.title, call_type: call.call_type, transcript: call.transcript },
+    shape: setup.shape,
+    meetingLabel: setup.meetingLabelFor?.(call.id),
     rubric: setup.rubric,
     categories: setup.categories,
     allowNewCategories: setup.allowNewCategories,
@@ -72,8 +77,8 @@ export async function testOneCall(call: TestCallInput, setup: TestSetup): Promis
     generate: setup.generate,
   });
   if (!result.ok) return { ...emptyResult(call), ok: false, error: result.error };
-  const draft: CallAnalysis = result.analysis;
-  const draftOutcome = draft.resultado.categoria;
+  const draft = result.analysis;
+  const draftOutcome = "resultado" in draft ? draft.resultado.categoria : null;
   return {
     ...emptyResult(call),
     ok: true,

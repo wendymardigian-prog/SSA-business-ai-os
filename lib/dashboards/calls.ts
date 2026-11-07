@@ -38,6 +38,8 @@ export interface DashboardCall {
   recordedAt: string;
   closerId: string | null;
   callType: string | null;
+  /** El tipo o, si solo tiene area, el area: lo que dice con que rubrica se analizo. */
+  categoryKey: string | null;
   closerScore: number | null;
   leadScore: number | null;
   qualification: string | null;
@@ -64,6 +66,16 @@ export function parseCriteria(rubrica: unknown): CallCriterion[] {
 
 const avg = (values: number[]): number | null => (values.length ? Math.round((values.reduce((a, v) => a + v, 0) / values.length) * 10) / 10 : null);
 const nums = (values: Array<number | null>): number[] => values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+
+/**
+ * Cada tipo se evalua con su rubrica: un promedio entre tipos no dice nada. Sin un tipo elegido,
+ * y si en el periodo hay mas de uno, se muestran solo cantidades. Saca los puntajes de las filas,
+ * asi ninguna cuenta de abajo los puede mezclar.
+ */
+export function withoutMixedScores(calls: DashboardCall[], typeSelected: boolean): { calls: DashboardCall[]; scoresHidden: boolean } {
+  if (typeSelected || new Set(calls.map((c) => c.categoryKey)).size <= 1) return { calls, scoresHidden: false };
+  return { calls: calls.map((c) => ({ ...c, closerScore: null, leadScore: null, criteria: [] })), scoresHidden: true };
+}
 
 // ── Arriba: el resumen ───────────────────────────────────────────────────
 
