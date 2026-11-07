@@ -26,6 +26,29 @@ export interface AutomationEvent {
 export type Db = Awaited<ReturnType<typeof createServiceClient>>;
 
 /**
+ * Un fallo pasajero (la base no contesto al leer los disparadores): el evento NO se marca
+ * procesado y lo vuelve a tomar la corrida siguiente. Sin esto, un error de lectura se leia
+ * como "no hay disparadores" y el evento se cerraba sin correr ningun flujo.
+ */
+export class AutomationEventRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AutomationEventRetryableError";
+  }
+}
+
+/** Hasta cuando se reintenta un evento con un fallo pasajero: despues se cierra con el motivo (que no quede girando para siempre). */
+export const RETRYABLE_EVENT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** El cron deja el evento sin procesar (para la corrida siguiente) solo ante un fallo pasajero y mientras no sea viejo. */
+export function shouldRetryEventLater(err: unknown, createdAt: string | null | undefined, now = Date.now()): boolean {
+  if (!(err instanceof AutomationEventRetryableError)) return false;
+  const created = createdAt ? Date.parse(createdAt) : NaN;
+  if (!Number.isFinite(created)) return true;
+  return now - created < RETRYABLE_EVENT_MAX_AGE_MS;
+}
+
+/**
  * Dispara los flows que le corresponden a un evento. Devuelve cuantos arrancaron.
  *
  * Una rama EXPLICITA por sujeto (como con los proveedores, nunca un `else`): un evento
@@ -61,13 +84,14 @@ async function processContactEvent(
   const types = triggerTypesForEvent(event.event_type) as TriggerType[];
   if (types.length === 0) return 0;
 
-  const { data: triggers } = await supabase
+  const { data: triggers, error: triggersError } = await supabase
     .from("triggers")
     .select("id, flow_id, channel_id, type, config, priority, is_active, flows!inner(status)")
     .eq("workspace_id", event.workspace_id)
     .in("type", types)
     .eq("is_active", true)
     .eq("flows.status", "published");
+  if (triggersError) throw new AutomationEventRetryableError(`no pude leer los disparadores: ${triggersError.message}`);
 
   if (!triggers || triggers.length === 0) return 0;
 
@@ -285,13 +309,14 @@ async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: 
   });
   if (types.length === 0) return 0;
 
-  const { data: triggers } = await supabase
+  const { data: triggers, error: triggersError } = await supabase
     .from("triggers")
     .select("id, flow_id, channel_id, type, config, priority, is_active, flows!inner(status)")
     .eq("workspace_id", event.workspace_id)
     .in("type", types)
     .eq("is_active", true)
     .eq("flows.status", "published");
+  if (triggersError) throw new AutomationEventRetryableError(`no pude leer los disparadores: ${triggersError.message}`);
   if (!triggers || triggers.length === 0) return 0;
 
   let fired = 0;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
-import { processEvent, type AutomationEvent } from "@/lib/flow-engine/automation-events";
+import { processEvent, shouldRetryEventLater, type AutomationEvent } from "@/lib/flow-engine/automation-events";
 import { shouldWaitForMeet } from "@/lib/scheduling/automation/meet-wait";
 
 /**
@@ -70,9 +70,15 @@ export async function GET(request: NextRequest) {
         .update({ processed_at: new Date().toISOString() })
         .eq("id", event.id);
     } catch (err) {
+      const detail = err instanceof Error ? err.message : "error desconocido";
+      // Un fallo pasajero (no se pudieron leer los disparadores) NO cierra el evento:
+      // lo toma la corrida siguiente. Cerrarlo seria perder sus flujos sin que nadie se entere.
+      if (shouldRetryEventLater(err, event.created_at)) {
+        console.error(`[cron/automation-events] evento ${event.id} se reintenta:`, detail);
+        continue;
+      }
       // Un evento que falla no puede frenar a los demas. Se marca procesado con
       // el motivo: reintentarlo eternamente tampoco sirve, y asi queda la traza.
-      const detail = err instanceof Error ? err.message : "error desconocido";
       console.error(`[cron/automation-events] evento ${event.id} fallo:`, detail);
       await supabase
         .from("automation_events")

@@ -49,6 +49,8 @@ interface World {
   claimed: Enrollment[];
   sequence: { id: string; workspace_id: string; status: string; steps: unknown } | null;
   contacts: Array<{ id: string; do_not_contact: boolean; deleted_at: string | null }>;
+  /** La lectura de los contactos bloqueados falla. */
+  contactsError?: boolean;
   conversation: { id: string; late_conversation_id: string | null } | null;
 }
 
@@ -66,6 +68,7 @@ function fakeClient(world: Partial<World> = {}) {
         ? world.sequence
         : { id: "seq-1", workspace_id: WS, status: "active", steps: [{ type: "message", content: "hola" }] },
     contacts: world.contacts ?? [{ id: "con-1", do_not_contact: false, deleted_at: null }],
+    contactsError: world.contactsError,
     conversation:
       world.conversation !== undefined
         ? world.conversation
@@ -100,7 +103,7 @@ function fakeClient(world: Partial<World> = {}) {
       select: (_cols?: string) => {
         if (name === "contacts") {
           return {
-            in: async () => ({ data: w.contacts, error: null }),
+            in: async () => (w.contactsError ? { data: null, error: { message: "timeout" } } : { data: w.contacts, error: null }),
             eq: () => chain,
           };
         }
@@ -156,6 +159,17 @@ describe("processSequenceSteps", () => {
 
     expect(sendChannelMessage).not.toHaveBeenCalled();
     expect(lastPatch()).toMatchObject({ status: "paused", paused_reason: "opt_out" });
+  });
+
+  it("si no se pudo leer quien tiene 'no contactar', no manda nada: suelta la tanda para el proximo tick", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { lastPatch } = fakeClient({ contactsError: true });
+
+    const result = await processSequenceSteps();
+
+    expect(sendChannelMessage).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ processed: 0, skipped: 1 });
+    expect(lastPatch()).toEqual({ locked_at: null });
   });
 
   it("sin conversacion abierta pausa en vez de reintentar contra una puerta que no existe", async () => {

@@ -27,6 +27,7 @@ vi.mock("@/lib/flow-engine/engine", () => ({ executeFlow: (...a: unknown[]) => e
 vi.mock("@/lib/audit", () => ({ logAudit: (...a: unknown[]) => logAudit(...(a as [])) }));
 
 import { GET } from "./route";
+import { AutomationEventRetryableError, shouldRetryEventLater } from "@/lib/flow-engine/automation-events";
 
 const WS = "ws-1";
 const request = () => new NextRequest("http://localhost/api/cron/automation-events");
@@ -128,6 +129,32 @@ describe("cron automation-events (caracterizacion previa a la etapa 4)", () => {
     seed([{ event_type: "contact_created", contact_id: "c-1" }], [{ type: "new_contact", is_active: false }]);
     const res = await GET(request());
     expect(await res.json()).toEqual({ ok: true, processed: 1, fired: 0 });
+  });
+  it("si no se pueden leer los disparadores, el evento NO se cierra: lo toma la corrida siguiente", async () => {
+    seed([{ event_type: "contact_created", contact_id: "c-1", created_at: new Date().toISOString() }], [{ type: "new_contact" }]);
+    const realFrom = db.client.from.bind(db.client);
+    const failing = (table: string) => {
+      if (table !== "triggers") return realFrom(table);
+      const q: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "in"]) q[m] = () => q;
+      q.then = (resolve: (v: unknown) => unknown) => resolve({ data: null, error: { message: "timeout" } });
+      return q;
+    };
+    (db.client as unknown as { from: unknown }).from = failing;
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const res = await GET(request());
+    err.mockRestore();
+    expect(await res.json()).toMatchObject({ ok: true, fired: 0 });
+    expect(executeFlow).not.toHaveBeenCalled();
+    expect(db.rows("automation_events")[0].processed_at).toBeNull();
+  });
+
+  it("un fallo pasajero de un evento de mas de un dia se cierra con el motivo", () => {
+    const now = Date.parse("2026-11-07T12:00:00Z");
+    const retryable = new AutomationEventRetryableError("no pude leer los disparadores");
+    expect(shouldRetryEventLater(retryable, "2026-11-07T11:00:00Z", now)).toBe(true);
+    expect(shouldRetryEventLater(retryable, "2026-11-05T11:00:00Z", now)).toBe(false);
+    expect(shouldRetryEventLater(new Error("otra cosa"), "2026-11-07T11:00:00Z", now)).toBe(false);
   });
 });
 
