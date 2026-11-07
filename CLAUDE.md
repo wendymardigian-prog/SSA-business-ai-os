@@ -2158,7 +2158,7 @@ Dos cosas que se pisaban: el barrido que cierra las conversaciones inactivas y e
 
 ## Migracion
 
-`00306_closable_inactive_conversations` (aditiva, una funcion de lectura) va **ANTES** de desplegar el codigo. **Escrita y SIN aplicar todavia**: ver el estado en la ultima linea de esta seccion cuando se aplique. **La proxima libre es la `00307`** (confirmar con `list_migrations` y las ramas locales).
+`00306_closable_inactive_conversations` (aditiva, una funcion de lectura) va **ANTES** de desplegar el codigo: **aplicada y registrada** el 7/11/2026 UTC (version `20261107060614`), con los permisos comprobados (solo `service_role`) y la funcion devolviendo las mismas 165 conversaciones que un conteo independiente. La `00307` y la `00308` son de Grabaciones (Etapa 5). **La proxima libre es la `00309`** (confirmar con `list_migrations` y las ramas locales).
 
 # Buenas practicas de desarrollo
 
