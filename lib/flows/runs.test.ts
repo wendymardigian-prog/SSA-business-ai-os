@@ -73,7 +73,7 @@ describe("como se lee", () => {
   });
 
   it("un origen o un motivo desconocido no inventan nada", () => {
-    expect(runSourceLabel("form")).toBe("Formulario");
+    expect(runSourceLabel("form")).toBe("Formulario"); // @plantilla-quitar(formularios)
     expect(runSourceLabel("otra_cosa")).toBe("—");
     expect(runEndReasonLabel("otra_cosa")).toBeNull();
   });

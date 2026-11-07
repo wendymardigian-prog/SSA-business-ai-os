@@ -212,7 +212,7 @@ reacciones, llamadas de WhatsApp, stickers, comentarios de Instagram, el respons
 de cada chat y sus reglas de asignacion por cuenta, el tope de envios automaticos por
 hora, los patrones de mensajes y el registro de emails salientes con la guardia de entrega
 del marketing (tope diario, calentamiento y freno). Tambien los grupos de WhatsApp activados:
-sus miembros, mensajes, reacciones y votos de encuestas.
+sus miembros, mensajes, reacciones y votos.
 
 Un disparador sobre messages mantiene en la conversacion el ultimo mensaje, los no
 leidos y si el lead esta esperando respuesta. Un Member ve una conversacion segun lo

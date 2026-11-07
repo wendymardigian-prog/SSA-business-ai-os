@@ -5,7 +5,7 @@ import { PERIOD_LABELS, resolvePeriod, type PeriodPreset, type ResolvedPeriod } 
 
 /**
  * El periodo de un dashboard en la URL: un atajo (`range`) o un rango a medida (`from` y `to`), con el mismo
- * vocabulario que Chat, Agenda y Llamadas. Puro: lo usan las paginas, los links y el navegador.
+ * vocabulario que Chat y Agenda. Puro: lo usan las paginas, los links y el navegador.
  *
  * `periodo` es el nombre viejo del atajo. Se sigue leyendo para que no se rompa un link guardado, pero ya no se escribe.
  */

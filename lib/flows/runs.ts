@@ -71,7 +71,7 @@ const END_REASON_LABELS: Record<string, string> = {
   wait_expired: "Se venció la espera de respuesta.",
   ai_failed: "No se pudo generar la respuesta con IA.",
   job_failed: "No se pudo retomar después de una espera.",
-  reprocessed: "Se canceló porque el webhook se volvió a procesar.", // @plantilla-quitar(webhooks)
+  reprocessed: "Se canceló porque el webhook se volvió a procesar.",
 };
 
 export function runEndReasonLabel(reason: string | null | undefined): string | null {
