@@ -45,7 +45,9 @@ type VisibleBooking =
 async function visibleBooking(bookingId: string): Promise<VisibleBooking> {
   const ctx = await getPermissionAction("bookings.manage");
   if (!ctx) return { error: "No tenés permiso para tocar agendas." };
-  const { data } = await ctx.supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle();
+  // Filtrado por el negocio activo: el permiso es de ESTE negocio, y quien esta en dos podria ver por RLS una
+  // agenda del otro.
+  const { data } = await ctx.supabase.from("bookings").select("*").eq("id", bookingId).eq("workspace_id", ctx.workspace.id).maybeSingle();
   if (!data) return { error: "No encontré esa agenda." };
   return { ctx, booking: data };
 }
@@ -361,8 +363,22 @@ export async function bookManually(input: {
   if (!ctx) return { ok: false, error: "No tenés permiso para agendar." };
 
   const service = await createServiceClient();
-  const { data: event } = await ctx.supabase.from("event_types").select("id, owner_user_id").eq("id", input.eventTypeId).maybeSingle();
+  const { data: event } = await ctx.supabase.from("event_types").select("id, owner_user_id").eq("id", input.eventTypeId).eq("workspace_id", ctx.workspace.id).maybeSingle();
   if (!event) return { ok: false, error: "No encontré ese evento." };
+
+  // Un contacto elegido tiene que ser uno que quien agenda VE (RLS: alcance de leads) y de este negocio. Sin esto,
+  // con el id de un contacto ajeno se agendaba sobre el y quedaba como setter (y `create_booking` no mira el
+  // workspace del contacto). Mismo control que `bookManuallyQuick`.
+  if (input.contactId) {
+    const { data: contact } = await ctx.supabase
+      .from("contacts")
+      .select("id")
+      .eq("id", input.contactId)
+      .eq("workspace_id", ctx.workspace.id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!contact) return { ok: false, error: "No encontré ese contacto." };
+  }
 
   const result = await createBooking(service, {
     eventTypeId: input.eventTypeId,
