@@ -78,32 +78,6 @@ describe("saveCallTaskSettings", () => {
     );
   });
 
-  it("sube la version de la rubrica solo si cambia lo que afecta los puntajes, y la informa", async () => {
-    const stored = { call_analysis: DEFAULT_ANALYSIS };
-    const heavier = structuredClone(DEFAULT_ANALYSIS);
-    heavier.rubric.closer[0].peso += 5;
-    heavier.rubric.closer[1].peso -= 5;
-    db(stored, DEFAULT_ANALYSIS);
-    const r = await saveCallTaskSettings("call_analysis", heavier);
-    expect(r).toEqual({ ok: true, rubricVersion: DEFAULT_ANALYSIS.rubric.version + 1 });
-    expect(mocks.audit.mock.calls[0][0].metadata).toMatchObject({ rubric_version: DEFAULT_ANALYSIS.rubric.version + 1, rubric_scoring_changed: true });
-
-    vi.clearAllMocks();
-    mocks.permission.mockResolvedValue(ctx);
-    db(stored, DEFAULT_ANALYSIS);
-    const same = await saveCallTaskSettings("call_analysis", { ...DEFAULT_ANALYSIS, company_context: "Somos una agencia" });
-    expect(same).toEqual({ ok: true, rubricVersion: DEFAULT_ANALYSIS.rubric.version });
-  });
-
-  it("una rubrica que no suma 100 se rechaza", async () => {
-    const bad = structuredClone(DEFAULT_ANALYSIS);
-    bad.rubric.closer[0].peso += 10;
-    const d = db({ call_analysis: DEFAULT_ANALYSIS });
-    const r = await saveCallTaskSettings("call_analysis", bad);
-    expect(r.ok).toBe(false);
-    expect(d.rpcCalls).toHaveLength(0);
-  });
-
   it("si la base falla devuelve un error claro, sin detalles tecnicos, y no audita", async () => {
     db({}, null, "boom interno");
     const r = await saveCallTaskSettings("call_classification", DEFAULT_CLASSIFICATION);

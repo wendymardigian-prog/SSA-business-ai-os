@@ -23,7 +23,7 @@ const PAGE = 1000;
 /** 10 paginas = 10.000 llamadas por periodo: muy por encima de lo que maneja una agencia. */
 export const MAX_PAGES = 10;
 
-const COLUMNS = "id, recorded_at, recorded_by_user_id, call_type, area_id, category_id, closer_score, lead_score, lead_qualification, outcome, main_objection, has_open_alerts, rubrica:analysis->rubrica";
+const COLUMNS = "id, recorded_at, recorded_by_user_id, area_id, category_id, closer_score, lead_score, lead_qualification, outcome, main_objection, has_open_alerts, rubrica:analysis->rubrica";
 
 export async function loadCallRows(
   supabase: Db,
@@ -60,7 +60,6 @@ export async function loadCallRows(
         id: r.id as string,
         recordedAt: r.recorded_at as string,
         closerId: (r.recorded_by_user_id as string | null) ?? null,
-        callType: (r.call_type as string | null) ?? null,
         categoryKey: (r.category_id as string | null) ?? (r.area_id as string | null) ?? null,
         closerScore: (r.closer_score as number | null) ?? null,
         leadScore: (r.lead_score as number | null) ?? null,

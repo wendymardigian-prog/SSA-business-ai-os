@@ -17,7 +17,6 @@ export const MAX_TEST_CALLS = 5;
 export interface TestCallInput {
   id: string;
   title: string;
-  call_type: string | null;
   transcript: unknown;
   /** Lo que tiene guardado hoy (puntajes y analisis vigente), para comparar. */
   current: { closer_score: number | null; lead_score: number | null; outcome: string | null; analysis: unknown };
@@ -37,7 +36,7 @@ export interface TestCallResult {
 export interface TestSetup {
   shape?: ProfileShape;
   /** El nombre del tipo de cada grabacion. Con un analizador por tipo, la rubrica se usa entera. */
-  meetingLabelFor?: (callId: string) => string | null;
+  meetingLabelFor: (callId: string) => string;
   rubric: Rubric;
   categories: CallCategories;
   allowNewCategories: boolean;
@@ -66,9 +65,9 @@ function emptyResult(call: TestCallInput): Omit<TestCallResult, "ok"> {
 
 export async function testOneCall(call: TestCallInput, setup: TestSetup): Promise<TestCallResult> {
   const result = await runCallAnalysis({
-    call: { title: call.title, call_type: call.call_type, transcript: call.transcript },
+    call: { title: call.title, transcript: call.transcript },
     shape: setup.shape,
-    meetingLabel: setup.meetingLabelFor?.(call.id),
+    meetingLabel: setup.meetingLabelFor(call.id),
     rubric: setup.rubric,
     categories: setup.categories,
     allowNewCategories: setup.allowNewCategories,

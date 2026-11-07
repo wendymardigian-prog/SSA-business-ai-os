@@ -45,12 +45,13 @@ export function isNonSaleRow(r: { call_type: string | null; analysis_status: str
 
 /** Quien decidio el tipo, en texto chico: «regla: …», «IA 91%» o «persona». */
 export function typeDeciderText(r: {
-  call_type_source: string | null; call_type_rule: string | null; call_type_confidence: number | null;
+  classification_source: string | null; classification_rule: string | null; classification_confidence: number | null;
 }): string | null {
-  if (r.call_type_source === "human") return "persona";
-  if (r.call_type_rule === "reunión vinculada") return "reunión vinculada";
-  if (r.call_type_source === "rule") return `regla: ${r.call_type_rule || "sin nombre"}`;
-  if (r.call_type_source === "ai") return `IA ${Math.round((Number(r.call_type_confidence) || 0) * 100)}%`;
+  if (r.classification_source === "human") return "persona";
+  if (r.classification_source === "booking") return "reunión vinculada";
+  if (r.classification_source === "connection") return "área de la conexión";
+  if (r.classification_source === "ai") return `IA ${Math.round((Number(r.classification_confidence) || 0) * 100)}%`;
+  if (r.classification_source === "rule" || r.classification_rule) return `regla: ${r.classification_rule || "sin nombre"}`;
   return null;
 }
 
@@ -157,7 +158,7 @@ export interface CallFilters {
   contacto: string;
   /** Un area, o "sin" para las que todavia no tienen. */
   area: string;
-  /** Un tipo de la lista (o una clave vieja, si el link es de antes). */
+  /** Un tipo de la lista. Una clave vieja en un link de antes se ignora. */
   tipo: string;
   resultado: string;
   estado: CallAnalysisStatus | "";
@@ -215,7 +216,7 @@ export function parseCallFilters(sp: SearchParams, ctx: FilterContext): CallFilt
     closer: closers.has(closer) ? closer : "",
     contacto: UUID_PARAM.test(firstParam(sp.contacto)) ? firstParam(sp.contacto) : "",
     area: area === UNCLASSIFIED_AREA || UUID_PARAM.test(area) ? area : "",
-    tipo: UUID_PARAM.test(tipo) || /^[a-z0-9_]{1,40}$/.test(tipo) ? tipo : "",
+    tipo: UUID_PARAM.test(tipo) ? tipo : "",
     resultado: /^[a-z0-9_]{1,60}$/.test(resultado) ? resultado : "",
     estado: pickEnum<CallAnalysisStatus, "">(sp.estado, ANALYSIS_STATUSES, ""),
     vinculo: pickEnum<(typeof LINK_FILTERS)[number], "">(sp.vinculo, LINK_FILTERS, ""),
@@ -275,7 +276,7 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
   if (f.contacto) q = q.eq("contact_id", f.contacto);
   if (f.area === UNCLASSIFIED_AREA) q = q.is("area_id", null).eq("no_show", false);
   else if (f.area) q = q.eq("area_id", f.area);
-  if (f.tipo) q = UUID_PARAM.test(f.tipo) ? q.eq("category_id", f.tipo) : q.eq("call_type", f.tipo);
+  if (f.tipo) q = q.eq("category_id", f.tipo);
   if (f.resultado) q = q.eq("outcome", f.resultado);
   if (f.estado) q = q.eq("analysis_status", f.estado);
   if (f.vinculo === "sin_vincular") q = q.is("contact_id", null);
@@ -303,7 +304,7 @@ export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: Call
 
 /** Las columnas que lee la lista (nunca la transcripcion ni el analisis entero). */
 export const CALL_LIST_COLUMNS =
-  "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
+  "id, title, recorded_at, duration_seconds, recorded_by_user_id, recorded_by_email, contact_id, booking_id, area_id, category_id, category_snapshot, no_show, classification_source, classification_rule, classification_confidence, analysis_status, analysis_status_reason, closer_score, lead_score, lead_qualification, outcome, has_open_alerts, source, link_method";
 
 // ── Columnas visibles (vistas guardadas por persona) ──────────────────────
 

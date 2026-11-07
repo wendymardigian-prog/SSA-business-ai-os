@@ -36,7 +36,7 @@ export interface MeetingForRules {
   booking_id?: string | null;
 }
 
-export interface RuleResult { call_type: string; rule_label: string }
+export interface RuleResult { target: string; rule_label: string }
 
 export function normalizeText(s: string | null | undefined): string {
   return String(s ?? '')
@@ -110,18 +110,18 @@ export function applyClassificationRules(
         const mins = Number(r.value) || 0;
         const secs = meeting.duration_seconds;
         if (secs != null && mins > 0 && secs < mins * 60) {
-          return { call_type: r.type, rule_label: `menos de ${mins} min` };
+          return { target: r.type, rule_label: `menos de ${mins} min` };
         }
         break;
       }
       case 'people_gte': {
         const n = Number(r.value) || 0;
-        if (n > 0 && people >= n) return { call_type: r.type, rule_label: `${people} participantes` };
+        if (n > 0 && people >= n) return { target: r.type, rule_label: `${people} participantes` };
         break;
       }
       case 'title_contains': {
         const hit = toTerms(r.value).find((t) => normalizeText(t) && title.includes(normalizeText(t)));
-        if (hit) return { call_type: r.type, rule_label: `título contiene «${hit}»` };
+        if (hit) return { target: r.type, rule_label: `título contiene «${hit}»` };
         break;
       }
       case 'email_contains': {
@@ -130,7 +130,7 @@ export function applyClassificationRules(
           const nt = normalizeText(t);
           return nt && emails.some((e) => e.includes(nt));
         });
-        if (hit) return { call_type: r.type, rule_label: `email «${hit}»` };
+        if (hit) return { target: r.type, rule_label: `email «${hit}»` };
         break;
       }
       case 'only_team': {
@@ -146,7 +146,7 @@ export function applyClassificationRules(
           return teamEmailSet.has(e) || teamDomains.has(domainOf(e)) || a.is_external === false;
         });
         const allTeamVoices = voices.every((v) => teamNameSet.has(v));
-        if (allInternal && allTeamVoices) return { call_type: r.type, rule_label: 'solo equipo' };
+        if (allInternal && allTeamVoices) return { target: r.type, rule_label: 'solo equipo' };
         break;
       }
       default:

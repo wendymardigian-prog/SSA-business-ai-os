@@ -12,7 +12,10 @@ const CALL = "11111111-1111-4111-8111-111111111111";
 const transcript = [{ timestamp: "0", speaker: { display_name: "Ana" }, text: "hola" }];
 
 function setup(opts: { call?: Record<string, unknown> | null; can?: string[]; duplicate?: boolean } = {}) {
-  const user = fakeDb({ "calls:select": { data: opts.call === null ? null : { id: CALL, call_type: "cierre", transcript, summary_status: "none", ...opts.call } } });
+  const user = fakeDb({
+    "calls:select": { data: opts.call === null ? null : { id: CALL, category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-cierre", type_name: "Cierre" }, no_show: false, transcript, summary_status: "none", ...opts.call } },
+    "booking_categories:select": { data: [{ id: "area-ventas", system_key: "ventas" }, { id: "tipo-cierre", system_key: "ventas.cierre" }, { id: "area-equipo", system_key: "equipo" }] },
+  });
   const service = fakeDb({ "scheduled_jobs:insert": opts.duplicate ? { error: { message: "dup", code: "23505" } } : { data: { id: "j" } }, "calls:update": { data: [{ id: CALL }] } });
   const can = opts.can ?? ["knowledge.edit"];
   mocks.permission.mockResolvedValue({ workspace: { id: "ws1" }, user: { id: "u1" }, supabase: user.client, can: (k: string) => can.includes(k) });
@@ -39,7 +42,7 @@ describe("summarizeCall", () => {
     expect(service.writesTo("calls")[0].values).toEqual({ summary_status: "pending" });
   });
   it("una llamada de equipo, sin transcripcion o que no se ve no se encola", async () => {
-    for (const call of [{ call_type: "equipo" }, { transcript: [] }, null]) {
+    for (const call of [{ category_snapshot: { area_id: "area-equipo", area_name: "Equipo", type_id: null, type_name: null } }, { no_show: true }, { transcript: [] }, null]) {
       const { service } = setup({ call });
       expect((await summarizeCall({ callId: CALL })).ok).toBe(false);
       expect(service.writesTo("scheduled_jobs")).toHaveLength(0);
@@ -70,7 +73,7 @@ describe("sendCallToKnowledge", () => {
     expect(service.writesTo("scheduled_jobs")[0].values).toMatchObject({ type: "call_index_knowledge", dedupe_key: `call_index_knowledge:${CALL}` });
   });
   it("una reunión de equipo no se manda: ni por el botón", async () => {
-    const { service } = setup({ call: { call_type: "equipo" } });
+    const { service } = setup({ call: { category_snapshot: { area_id: "area-equipo", area_name: "Equipo", type_id: null, type_name: null } } });
     const r = await sendCallToKnowledge({ callId: CALL });
     expect(r.ok).toBe(false);
     expect(service.writesTo("scheduled_jobs")).toHaveLength(0);

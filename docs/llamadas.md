@@ -27,8 +27,9 @@ Plano: [requerimientos-llamadas.md](requerimientos-llamadas.md). Avance:
 Una sola tabla nueva: **`calls`**. Todo lo demás son columnas y funciones.
 
 - `calls` (00145): la llamada, su transcripción, el vínculo (`contact_id`,
-  `booking_id`, `link_method`), el tipo y quién lo decidió (`call_type_source`:
-  `rule` | `ai` | `human`), el estado del análisis (`analysis_status`), las dos
+  `booking_id`, `link_method`), el área y el tipo con quién los decidió (`classification_source`:
+  `human` | `booking` | `rule` | `connection` | `ai`, más `classification_rule` y
+  `classification_confidence`, 00307), el estado del análisis (`analysis_status`), las dos
   copias del análisis, los puntajes, la rúbrica con la que se analizó
   (`rubric_snapshot`), el resumen y su estado, la memoria, las ideas y las
   objeciones del closer.
@@ -45,8 +46,7 @@ Una sola tabla nueva: **`calls`**. Todo lo demás son columnas y funciones.
   candado del refresh token (`claim_oauth_refresh`, `release_oauth_refresh`: el
   refresh token de Fathom es de UN SOLO USO).
 - `workspace_members` suma `closer_emails` (los otros correos con los que la
-  persona graba en Fathom, los carga ella) e `is_closer` (**sin usar desde la
-  00297**: se borra en otra migración, después del deploy).
+  persona graba en Fathom, los carga ella).
 - `oauth_connections.history_import` y `calls.imported_from_history` (00297): ver
   "Importar el historial".
 - `audit_log` suma `actor_type` y `actor_label` (00144): quién hizo cada cosa,
@@ -194,17 +194,20 @@ tipos ya está completa y no se le pregunta a la IA.
   no se toca. Una grabación ya analizada conserva su análisis y la ficha avisa que se puede
   regenerar (`analyzed_category_id` distinto de `category_id`). Sin reunión ni regla, y sin
   analizar, vuelve a la cola de clasificación.
-- **`call_type` sigue existiendo, pero es DERIVADO** (`legacyCallTypeFor`,
-  `lib/calls/catalog.ts`), hasta la Etapa 3: de él dependen el resumen, Conocimiento, la
-  rúbrica y los filtros viejos de los flujos. Sale de `system_key`, una clave que no cambia
+- **La clave vieja de tipo ya no se guarda (00308): se deriva** (`legacyCallTypeFor`, y
+  `derivedCallType` en `lib/calls/legacy-type.ts` cuando hay que leer las áreas). De ella
+  dependen qué no se resume, qué nunca va a Conocimiento (una reunión de equipo o sin nadie),
+  la rúbrica de un análisis viejo y los filtros de los flujos viejos (`call_types`,
+  `last_call_type:`). `derivedCallType` lanza si no puede leer las áreas: sin saber el área, una
+  reunión de equipo podría pasar por otra cosa. Sale de `system_key`, una clave que no cambia
   al renombrar (`ventas`, `ventas.cierre`, `servicio`, `equipo`, `otros`...), nunca del
   nombre. Un tipo creado por el negocio toma el comportamiento de su área: uno nuevo de
   Ventas se trata como un cierre; Servicio, como `cliente`; Equipo, como `equipo`; el resto,
   como `otra`.
 - **La IA ya no propone tipos nuevos**: los tipos se crean en una sola lista. Los tipos
   propios que tenía cada negocio pasaron a la lista, bajo Otros (migración 00300).
-  `custom_types`, `allow_ai_types` y `discarded_types` quedan sin usar (solo se leen para
-  entender reglas viejas) y se borran en la Etapa 5.
+  `custom_types` se sigue leyendo solo para entender una regla vieja guardada con la clave de
+  un tipo propio.
 
 ## Un analizador por tipo de reunión (00303, 6/11/2026)
 

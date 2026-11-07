@@ -28,7 +28,7 @@ const analysis = (p = 4) => ({
   lead: { perfil: "p", creencias: DEFAULT_RUBRIC.lead.map((l) => ({ codigo: l.clave, nombre: l.nombre, estado: "Firme" })) },
   feedback: { foco: "f", funciono: [], mejorar: [] },
 });
-const callRow = (id: string) => ({ id, title: `Llamada ${id.slice(0, 2)}`, call_type: "cierre", transcript: [{ timestamp: "0", speaker: { display_name: "A" }, text: "hola" }], closer_score: 40, lead_score: 50, outcome: "venta", analysis: analysis(2) });
+const callRow = (id: string) => ({ id, title: `Llamada ${id.slice(0, 2)}`, category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-cierre", type_name: "Cierre" }, transcript: [{ timestamp: "0", speaker: { display_name: "A" }, text: "hola" }], closer_score: 40, lead_score: 50, outcome: "venta", analysis: analysis(2) });
 
 let user: ReturnType<typeof fakeDb>;
 let service: ReturnType<typeof fakeDb>;

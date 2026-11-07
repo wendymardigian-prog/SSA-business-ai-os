@@ -3,14 +3,12 @@ import {
   DEFAULT_ANALYSIS, DEFAULT_CLASSIFICATION, DEFAULT_RULES, isCallTaskKey, resolveCallTaskSettings, validateCallTaskSettings,
   validTypeKeys, type CallAnalysisSettings,
 } from "./task-settings";
-import { DEFAULT_RUBRIC } from "./rubric";
 
 describe("resolveCallTaskSettings", () => {
   it("sin nada guardado devuelve los defaults de las dos tareas", () => {
     const s = resolveCallTaskSettings({});
     expect(s.call_classification).toEqual(DEFAULT_CLASSIFICATION);
     expect(s.call_analysis).toEqual(DEFAULT_ANALYSIS);
-    expect(s.call_analysis.mode).toBe("off"); // el primer gasto lo decide una persona
     expect(s.call_classification.confidence_threshold).toBe(0.7);
   });
   it("las cuatro reglas por defecto, en orden: la reunion vinculada ya no es una regla", () => {
@@ -19,20 +17,22 @@ describe("resolveCallTaskSettings", () => {
   it("un valor guardado invalido cae a su default SIN afectar a las otras", () => {
     const s = resolveCallTaskSettings({
       call_classification: { mode: "inventado" },
-      call_analysis: { mode: "now", analyze_types: ["cierre"] },
+      call_analysis: { company_context: "Agencia" },
       message_classification: { mode: "off" },
     });
     expect(s.call_classification).toEqual(DEFAULT_CLASSIFICATION);
-    expect(s.call_analysis.mode).toBe("now");
-    expect(s.call_analysis.analyze_types).toEqual(["cierre"]);
+    expect(s.call_analysis.company_context).toBe("Agencia");
+  });
+  it("las claves viejas que quedaron guardadas no vuelven: lo decide cada analizador", () => {
+    const s = resolveCallTaskSettings({ call_analysis: { mode: "now", analyze_types: ["cierre"], rubric: { version: 7 }, auto_summary: false, company_context: "Agencia" } });
+    expect(s.call_analysis).toEqual({ ...DEFAULT_ANALYSIS, company_context: "Agencia" });
   });
   it("basura o undefined no rompe", () => {
     expect(resolveCallTaskSettings(null).call_analysis).toEqual(DEFAULT_ANALYSIS);
     expect(resolveCallTaskSettings("x").call_classification).toEqual(DEFAULT_CLASSIFICATION);
   });
-  it("lee la rubrica guardada y las categorias", () => {
-    const s = resolveCallTaskSettings({ call_analysis: { ...DEFAULT_ANALYSIS, rubric: { ...DEFAULT_RUBRIC, version: 7 }, categories: { accepted: { dolores: [{ clave: "deudas", nombre: "Deudas" }] } } } });
-    expect(s.call_analysis.rubric.version).toBe(7);
+  it("lee las categorias guardadas", () => {
+    const s = resolveCallTaskSettings({ call_analysis: { ...DEFAULT_ANALYSIS, categories: { accepted: { dolores: [{ clave: "deudas", nombre: "Deudas" }] } } } });
     expect(s.call_analysis.categories.accepted.dolores[0].clave).toBe("deudas");
   });
   it("isCallTaskKey", () => {
@@ -82,39 +82,22 @@ describe("reglas que apuntan a la lista de la agenda", () => {
   });
 });
 
-describe("validateCallTaskSettings: analisis y rubrica", () => {
+describe("validateCallTaskSettings: lo que comparten los analizadores", () => {
   const ok = (over: Partial<CallAnalysisSettings> = {}) => ({ ...DEFAULT_ANALYSIS, ...over });
 
-  it("acepta la configuracion por defecto, con la rubrica en su version", () => {
-    const r = validateCallTaskSettings("call_analysis", ok(), DEFAULT_ANALYSIS);
-    expect(r.ok && r.task === "call_analysis" && r.value.rubric.version).toBe(1);
-  });
-  it("pesos del closer que suman 95: rechaza con el motivo y no cambia nada", () => {
-    const rubric = structuredClone(DEFAULT_RUBRIC); rubric.closer[0].peso = 5;
-    const r = validateCallTaskSettings("call_analysis", ok({ rubric }), DEFAULT_ANALYSIS);
-    expect(r).toMatchObject({ ok: false });
-    expect(!r.ok && r.error).toMatch(/suman 95/);
-  });
-  it("cambiar un peso sube la version en 1; cambiar solo un nombre no", () => {
-    const peso = structuredClone(DEFAULT_RUBRIC); peso.closer[0].peso = 15; peso.closer[1].peso = 15;
-    const a = validateCallTaskSettings("call_analysis", ok({ rubric: peso }), DEFAULT_ANALYSIS);
-    expect(a.ok && a.task === "call_analysis" && a.value.rubric.version).toBe(2);
-    const nombre = structuredClone(DEFAULT_RUBRIC); nombre.closer[0].nombre = "Otro nombre";
-    const b = validateCallTaskSettings("call_analysis", ok({ rubric: nombre }), DEFAULT_ANALYSIS);
-    expect(b.ok && b.task === "call_analysis" && b.value.rubric.version).toBe(1);
-  });
-  it("la version sale de la rubrica GUARDADA, no de la que manda el navegador", () => {
-    const guardada = { ...DEFAULT_ANALYSIS, rubric: { ...DEFAULT_RUBRIC, version: 5 } };
-    const mandada = { ...structuredClone(DEFAULT_RUBRIC), version: 99 };
-    const r = validateCallTaskSettings("call_analysis", ok({ rubric: mandada }), guardada);
-    expect(r.ok && r.task === "call_analysis" && r.value.rubric.version).toBe(5);
+  it("acepta la configuracion por defecto", () => {
+    expect(validateCallTaskSettings("call_analysis", ok()).ok).toBe(true);
   });
   it("el contexto del negocio tiene tope de 4.000 caracteres", () => {
     expect(validateCallTaskSettings("call_analysis", ok({ company_context: "x".repeat(4001) })).ok).toBe(false);
     expect(validateCallTaskSettings("call_analysis", ok({ company_context: "x".repeat(4000) })).ok).toBe(true);
   });
+  it("una clave vieja que llegue no se guarda", () => {
+    const r = validateCallTaskSettings("call_analysis", { ...ok(), mode: "now", rubric: {} });
+    expect(r.ok && r.task === "call_analysis" && r.value).toEqual(DEFAULT_ANALYSIS);
+  });
   it("no acepta cualquier cosa como configuracion", () => {
     expect(validateCallTaskSettings("call_analysis", null).ok).toBe(false);
-    expect(validateCallTaskSettings("call_analysis", ok({ mode: "batch" as never })).ok).toBe(false);
+    expect(validateCallTaskSettings("call_analysis", ok({ allow_new_categories: "si" as never })).ok).toBe(false);
   });
 });

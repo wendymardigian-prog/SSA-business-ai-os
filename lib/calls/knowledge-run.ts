@@ -12,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { indexText } from "@/lib/knowledge/index-text";
 import { segmentTranscript, transcriptToText, type Segment } from "./transcript-segments";
+import { derivedCallType } from "./legacy-type";
 import { ideaDate } from "./summary";
 
 type Db = SupabaseClient<Database>;
@@ -44,13 +45,14 @@ export type KnowledgeOutcome =
 export async function runCallKnowledgeJob(deps: { db: Db; now?: Date }, payload: { callId: string; requestedBy?: string | null }): Promise<KnowledgeOutcome> {
   const { db } = deps;
   const now = deps.now ?? new Date();
-  const { data: call } = await db
+  const { data: row } = await db
     .from("calls")
-    .select("id, workspace_id, title, call_type, recorded_at, transcript, knowledge_document_id")
+    .select("id, workspace_id, title, category_snapshot, no_show, recorded_at, transcript, knowledge_document_id")
     .eq("id", payload.callId)
     .is("archived_at", null)
     .maybeSingle();
-  if (!call) return { outcome: "gone" };
+  if (!row) return { outcome: "gone" };
+  const call = { ...row, call_type: await derivedCallType(db, row.workspace_id, row) };
   if (!knowledgeEligibility(call).ok) return { outcome: "not_eligible" };
 
   const { data: ws } = await db.from("workspaces").select("timezone").eq("id", call.workspace_id).maybeSingle();

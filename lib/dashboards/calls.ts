@@ -37,7 +37,6 @@ export interface DashboardCall {
   id: string;
   recordedAt: string;
   closerId: string | null;
-  callType: string | null;
   /** El tipo o, si solo tiene area, el area: lo que dice con que rubrica se analizo. */
   categoryKey: string | null;
   closerScore: number | null;

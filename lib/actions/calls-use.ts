@@ -1,5 +1,6 @@
 "use server";
 
+import { derivedCallType } from "@/lib/calls/legacy-type";
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -33,14 +34,14 @@ export async function summarizeCall(input: { callId: string }): Promise<CallUseR
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, transcript, summary_status")
+    .select("id, category_snapshot, no_show, transcript, summary_status")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
     .maybeSingle();
   if (!call) return { ok: false, error: "No encontré esa llamada" };
 
-  const eligible = summaryEligibility(call);
+  const eligible = summaryEligibility({ transcript: call.transcript, call_type: await derivedCallType(ctx.supabase, ctx.workspace.id, call) });
   if (!eligible.ok) return { ok: false, error: eligible.reason };
 
   const service = await createServiceClient();
@@ -60,14 +61,14 @@ export async function sendCallToKnowledge(input: { callId: string }): Promise<Ca
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, transcript")
+    .select("id, category_snapshot, no_show, transcript")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
     .maybeSingle();
   if (!call) return { ok: false, error: "No encontré esa llamada" };
 
-  const eligible = knowledgeEligibility(call);
+  const eligible = knowledgeEligibility({ transcript: call.transcript, call_type: await derivedCallType(ctx.supabase, ctx.workspace.id, call) });
   if (!eligible.ok) return { ok: false, error: eligible.reason };
 
   const service = await createServiceClient();

@@ -4,11 +4,12 @@
  *
  *   last_call_outcome:    el resultado ("venta", "seguimiento_con_fecha"…)
  *   last_call_lead_score: el puntaje del lead, como numero
- *   last_call_type:       el tipo ("cierre", "seguimiento"…)
+ *   last_call_type:       la clave vieja del tipo ("cierre", "seguimiento"…), para los flujos que ya la usan
  *
  * Sin llamada analizada devuelven vacio: "resultado de la ultima llamada es
  * venta" no puede decir que si por no haber ninguna.
  */
+import { derivedCallType } from "@/lib/calls/legacy-type";
 import { registerConditionField } from "./registry";
 import { readCategorySnapshot } from "@/lib/calls/catalog";
 import type { ConditionFieldArgs } from "./types";
@@ -18,13 +19,13 @@ interface LastCall {
   category_snapshot?: unknown;
   outcome: string | null;
   lead_score: number | null;
-  call_type: string | null;
+  no_show?: boolean | null;
 }
 
 async function lastAnalyzedCall(args: ConditionFieldArgs): Promise<LastCall | null> {
   const { data } = await args.supabase
     .from("calls")
-    .select("outcome, lead_score, call_type, category_snapshot")
+    .select("outcome, lead_score, no_show, category_snapshot")
     .eq("workspace_id", args.context.workspaceId)
     .eq("contact_id", requireContactId(args.context))
     .eq("analysis_status", "analyzed")
@@ -65,5 +66,10 @@ registerConditionField({
 registerConditionField({
   prefix: "last_call_type:",
   label: "Tipo de la última llamada",
-  resolve: async (args) => (await lastAnalyzedCall(args))?.call_type ?? "",
+  resolve: async (args) => {
+    const call = await lastAnalyzedCall(args);
+    if (!call) return "";
+    // Un campo que no se puede leer es "no se cumple", nunca un error que frene el flujo.
+    return (await derivedCallType(args.supabase, args.context.workspaceId, call).catch(() => null)) ?? "";
+  },
 });

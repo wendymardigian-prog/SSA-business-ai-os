@@ -5,7 +5,7 @@ import { CONTACT_CALLS_LIMIT, loadBookingCalls, loadContactCalls, toCallSectionR
 const row = (id: string, over: Record<string, unknown> = {}) => ({
   id,
   recorded_at: "2026-10-07T15:00:00Z",
-  call_type: "cierre",
+  category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-cierre", type_name: "Cierre" },
   recorded_by_user_id: "u1",
   outcome: "venta",
   closer_score: 80,
@@ -18,7 +18,7 @@ const names = new Map([["u1", "Ana"]]);
 describe("toCallSectionRows", () => {
   it("arma la fila con el nombre del closer, y un closer desconocido queda null", () => {
     expect(toCallSectionRows([row("c1"), row("c2", { recorded_by_user_id: "otro" }), row("c3", { recorded_by_user_id: null })], names).map((r) => r.closerName)).toEqual(["Ana", null, null]);
-    expect(toCallSectionRows([row("c1")], names)[0]).toEqual({ id: "c1", recordedAt: "2026-10-07T15:00:00Z", callType: "cierre", categoryLabel: "Cierre", closerName: "Ana", outcome: "venta", closerScore: 80, leadScore: 70, status: "analyzed" });
+    expect(toCallSectionRows([row("c1")], names)[0]).toEqual({ id: "c1", recordedAt: "2026-10-07T15:00:00Z", categoryLabel: "Ventas · Cierre", closerName: "Ana", outcome: "venta", closerScore: 80, leadScore: 70, status: "analyzed" });
   });
 });
 

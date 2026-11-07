@@ -4,13 +4,12 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
-import { normalizeRubric, rubricScoringChanged } from "@/lib/calls/rubric";
 import { isCallTaskKey, validateCallTaskSettings } from "@/lib/calls/task-settings";
 import type { Json } from "@/lib/types/database";
 
 /**
  * Guardar la configuracion de una tarea de Llamadas (reglas y umbral del
- * clasificador; modo, rubrica, categorias y contexto del analisis).
+ * clasificador; categorias y contexto del analisis).
  *
  * Quien puede: `calls.configure` (no "ser Admin"). Se escribe con la funcion de
  * la base (`set_ai_background_task_settings`, solo service_role): cambia UNA
@@ -19,7 +18,7 @@ import type { Json } from "@/lib/types/database";
  * despues de esa clave (`audit_log.entity_id` es un uuid y la tarea es texto).
  */
 
-export type CallTaskSettingsResult = { ok: true; rubricVersion?: number } | { ok: false; error: string };
+export type CallTaskSettingsResult = { ok: true } | { ok: false; error: string };
 
 const NOT_ALLOWED = "No tenés permiso para configurar las tareas de llamadas.";
 
@@ -30,10 +29,7 @@ export async function saveCallTaskSettings(task: string, input: unknown): Promis
 
   const service = await createServiceClient();
 
-  const { data: current } = await service.from("workspaces").select("ai_background_settings").eq("id", ctx.workspace.id).maybeSingle();
-  const stored = (current?.ai_background_settings ?? {}) as Record<string, unknown>;
-
-  const validated = validateCallTaskSettings(task, input, stored[task]);
+  const validated = validateCallTaskSettings(task, input);
   if (!validated.ok) return { ok: false, error: validated.error };
 
   const { data: previous, error } = await service.rpc("set_ai_background_task_settings", {
@@ -46,10 +42,6 @@ export async function saveCallTaskSettings(task: string, input: unknown): Promis
     return { ok: false, error: "No pude guardar el cambio." };
   }
 
-  const rubricVersion = validated.task === "call_analysis" ? validated.value.rubric.version : undefined;
-  const scoringChanged =
-    validated.task === "call_analysis" && rubricScoringChanged(normalizeRubric((previous as { rubric?: unknown } | null)?.rubric), validated.value.rubric);
-
   await logAudit({
     supabase: service,
     workspaceId: ctx.workspace.id,
@@ -57,16 +49,12 @@ export async function saveCallTaskSettings(task: string, input: unknown): Promis
     entityId: ctx.workspace.id,
     action: "update",
     changes: { [`ai_background_settings.${task}`]: { old: (previous ?? null) as Json, new: validated.value as unknown as Json } },
-    metadata: {
-      task,
-      ...(rubricVersion !== undefined ? { rubric_version: rubricVersion } : {}),
-      ...(scoringChanged ? { rubric_scoring_changed: true } : {}),
-    },
+    metadata: { task },
     performedBy: ctx.user.id,
   });
 
   revalidatePath("/dashboard/agents");
   revalidatePath(`/dashboard/agents/tareas/${task}`);
   revalidatePath("/dashboard/llamadas");
-  return { ok: true, ...(rubricVersion !== undefined ? { rubricVersion } : {}) };
+  return { ok: true };
 }

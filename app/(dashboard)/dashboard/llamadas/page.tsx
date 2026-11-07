@@ -1,5 +1,5 @@
 import { CallsList, type CallListRow } from "@/components/calls/calls-list";
-import { callDisplayLabel, categoryGroups } from "@/lib/calls/catalog";
+import { callDisplayLabel, categoryGroups, legacyCallTypeFor, readCategorySnapshot } from "@/lib/calls/catalog";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { redirect } from "next/navigation";
@@ -59,29 +59,6 @@ export default async function LlamadasPage({
   const contactName = new Map((contacts ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"]));
   const memberName = new Map(members.map((m) => [m.userId, m.name]));
 
-  const rows: CallListRow[] = raw.map((r) => ({
-    id: r.id as string,
-    title: r.title as string,
-    recordedAt: r.recorded_at as string,
-    durationSeconds: (r.duration_seconds as number | null) ?? null,
-    closerName: r.recorded_by_user_id ? memberName.get(r.recorded_by_user_id as string) ?? (r.recorded_by_email as string | null) : (r.recorded_by_email as string | null),
-    contactId: (r.contact_id as string | null) ?? null,
-    contactName: r.contact_id ? contactName.get(r.contact_id as string) ?? null : null,
-    callType: (r.call_type as string | null) ?? null,
-    categoryLabel: callDisplayLabel(r.category_snapshot, (r.call_type as string | null) ?? null, r.no_show === true),
-    callTypeSource: (r.call_type_source as string | null) ?? null,
-    callTypeRule: (r.call_type_rule as string | null) ?? null,
-    callTypeConfidence: r.call_type_confidence === null || r.call_type_confidence === undefined ? null : Number(r.call_type_confidence),
-    status: r.analysis_status as CallAnalysisStatus,
-    outcome: (r.outcome as string | null) ?? null,
-    closerScore: (r.closer_score as number | null) ?? null,
-    leadScore: (r.lead_score as number | null) ?? null,
-    leadQualification: (r.lead_qualification as string | null) ?? null,
-    hasOpenAlerts: r.has_open_alerts === true,
-    hasBooking: !!r.booking_id,
-    source: r.source as string,
-  }));
-
   // Para los estados vacios y el aviso de "conecta tu Fathom".
   const service = await createServiceClient();
   const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: outcomes }, { count: pendingCount }, categoryRows, { count: unclassifiedCount }] = await Promise.all([
@@ -97,6 +74,30 @@ export default async function LlamadasPage({
     listCategories(supabase, workspace.id),
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null).is("area_id", null).eq("no_show", false),
   ]);
+
+  const categories = categoryRows.map(toCategoryRow);
+  const rows: CallListRow[] = raw.map((r) => ({
+    id: r.id as string,
+    title: r.title as string,
+    recordedAt: r.recorded_at as string,
+    durationSeconds: (r.duration_seconds as number | null) ?? null,
+    closerName: r.recorded_by_user_id ? memberName.get(r.recorded_by_user_id as string) ?? (r.recorded_by_email as string | null) : (r.recorded_by_email as string | null),
+    contactId: (r.contact_id as string | null) ?? null,
+    contactName: r.contact_id ? contactName.get(r.contact_id as string) ?? null : null,
+    callType: legacyCallTypeFor(readCategorySnapshot(r.category_snapshot), categories, r.no_show === true),
+    categoryLabel: callDisplayLabel(r.category_snapshot, r.no_show === true),
+    classificationSource: (r.classification_source as string | null) ?? null,
+    classificationRule: (r.classification_rule as string | null) ?? null,
+    classificationConfidence: r.classification_confidence === null || r.classification_confidence === undefined ? null : Number(r.classification_confidence),
+    status: r.analysis_status as CallAnalysisStatus,
+    outcome: (r.outcome as string | null) ?? null,
+    closerScore: (r.closer_score as number | null) ?? null,
+    leadScore: (r.lead_score as number | null) ?? null,
+    leadQualification: (r.lead_qualification as string | null) ?? null,
+    hasOpenAlerts: r.has_open_alerts === true,
+    hasBooking: !!r.booking_id,
+    source: r.source as string,
+  }));
 
   // Si la lista viene filtrada por un contacto, su nombre (solo si quien mira lo ve).
   let contactFilterName: string | null = null;

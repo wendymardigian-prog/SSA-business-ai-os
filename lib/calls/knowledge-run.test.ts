@@ -14,14 +14,15 @@ const callRow = (over: Record<string, unknown> = {}) => ({
   id: "c1",
   workspace_id: "ws1",
   title: "Llamada con Ana",
-  call_type: "cierre",
+  category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-cierre", type_name: "Cierre" },
+  no_show: false,
   recorded_at: "2026-10-09T15:00:00Z",
   transcript,
   knowledge_document_id: null,
   ...over,
 });
 const setup = (call: Record<string, unknown> | null = callRow()) =>
-  fakeDb({ "calls:select": { data: call }, "workspaces:select": { data: { timezone: "America/Costa_Rica" } }, "calls:update": { data: [{ id: "c1" }] } });
+  fakeDb({ "calls:select": { data: call }, "booking_categories:select": { data: [{ id: "area-ventas", system_key: "ventas" }, { id: "tipo-cierre", system_key: "ventas.cierre" }, { id: "area-equipo", system_key: "equipo" }] }, "workspaces:select": { data: { timezone: "America/Costa_Rica" } }, "calls:update": { data: [{ id: "c1" }] } });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -79,7 +80,7 @@ describe("runCallKnowledgeJob", () => {
   });
 
   it("una llamada de equipo NO crea documento", async () => {
-    const db = setup(callRow({ call_type: "equipo" }));
+    const db = setup(callRow({ category_snapshot: { area_id: "area-equipo", area_name: "Equipo", type_id: null, type_name: null } }));
     expect(await runCallKnowledgeJob({ db: db.client }, { callId: "c1" })).toEqual({ outcome: "not_eligible" });
     expect(mocks.indexText).not.toHaveBeenCalled();
   });

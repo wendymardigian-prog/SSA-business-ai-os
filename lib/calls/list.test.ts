@@ -27,10 +27,14 @@ describe("tipos de venta y etiquetas", () => {
     expect(callTypeLabel("venta")).toBe("Cierre");
   });
   it("typeDeciderText: regla, IA o persona", () => {
-    expect(typeDeciderText({ call_type_source: "rule", call_type_rule: "11 participantes", call_type_confidence: null })).toBe("regla: 11 participantes");
-    expect(typeDeciderText({ call_type_source: "ai", call_type_rule: null, call_type_confidence: 0.91 })).toBe("IA 91%");
-    expect(typeDeciderText({ call_type_source: "human", call_type_rule: null, call_type_confidence: null })).toBe("persona");
-    expect(typeDeciderText({ call_type_source: null, call_type_rule: null, call_type_confidence: null })).toBeNull();
+    const d = (classification_source: string | null, classification_rule: string | null = null, classification_confidence: number | null = null) => typeDeciderText({ classification_source, classification_rule, classification_confidence });
+    expect(d("rule", "11 participantes")).toBe("regla: 11 participantes");
+    expect(d("ai", null, 0.91)).toBe("IA 91%");
+    expect(d("human")).toBe("persona");
+    expect(d("booking")).toBe("reunión vinculada");
+    expect(d("connection")).toBe("área de la conexión");
+    expect(d(null, "menos de 10 min")).toBe("regla: menos de 10 min");
+    expect(d(null)).toBeNull();
   });
 });
 
@@ -75,15 +79,15 @@ describe("parseCallFilters", () => {
     expect(f).toEqual({ ...EMPTY_FILTERS });
   });
   it("lee los validos", () => {
-    const f = parseCallFilters({ closer: CLOSER, estado: "analyzed", vinculo: "sin_vincular", cmin: "60", lmax: "90", tipo: "cierre", resultado: "venta_deposito", desde: "2026-10-01", hasta: "2026-10-31", q: " Ana, (x) ", pagina: "3" }, ctx);
-    expect(f).toMatchObject({ closer: CLOSER, estado: "analyzed", vinculo: "sin_vincular", closerMin: 60, leadMax: 90, tipo: "cierre", resultado: "venta_deposito", desde: "2026-10-01", hasta: "2026-10-31", q: "Ana x", pagina: 3 });
+    const f = parseCallFilters({ closer: CLOSER, estado: "analyzed", vinculo: "sin_vincular", cmin: "60", lmax: "90", tipo: CLOSER, resultado: "venta_deposito", desde: "2026-10-01", hasta: "2026-10-31", q: " Ana, (x) ", pagina: "3" }, ctx);
+    expect(f).toMatchObject({ closer: CLOSER, estado: "analyzed", vinculo: "sin_vincular", closerMin: 60, leadMax: 90, tipo: CLOSER, resultado: "venta_deposito", desde: "2026-10-01", hasta: "2026-10-31", q: "Ana x", pagina: 3 });
   });
-  it("el area acepta un id o \"sin\"; el tipo, un id o una clave vieja", () => {
+  it("el area acepta un id o \"sin\"; el tipo, solo un id: una clave vieja en un link de antes se ignora", () => {
     const ID = "11111111-1111-4111-8111-111111111111";
     expect(parseCallFilters({ area: ID, tipo: ID }, ctx)).toMatchObject({ area: ID, tipo: ID });
     expect(parseCallFilters({ area: "sin" }, ctx).area).toBe("sin");
     expect(parseCallFilters({ area: "ventas" }, ctx).area).toBe("");
-    expect(parseCallFilters({ tipo: "cierre" }, ctx).tipo).toBe("cierre");
+    expect(parseCallFilters({ tipo: "cierre" }, ctx).tipo).toBe("");
     expect(countActiveCallFilters({ ...EMPTY_FILTERS, area: "sin" })).toBe(1);
     expect(callFiltersToParams({ ...EMPTY_FILTERS, area: "sin" }).toString()).toBe("area=sin");
   });
@@ -125,9 +129,9 @@ describe("applyCallFilters: se aplican en la consulta", () => {
   });
   it("closer, tipo, resultado, estado y rangos de puntaje", () => {
     const { q, calls } = recorder();
-    applyCallFilters(q, { ...EMPTY_FILTERS, closer: CLOSER, tipo: "cierre", resultado: "venta", estado: "analyzed", closerMin: 60, leadMax: 80 }, { timeZone: "UTC" });
+    applyCallFilters(q, { ...EMPTY_FILTERS, closer: CLOSER, tipo: CLOSER, resultado: "venta", estado: "analyzed", closerMin: 60, leadMax: 80 }, { timeZone: "UTC" });
     expect(calls).toEqual(expect.arrayContaining([
-      ["eq", "recorded_by_user_id", CLOSER], ["eq", "call_type", "cierre"], ["eq", "outcome", "venta"],
+      ["eq", "recorded_by_user_id", CLOSER], ["eq", "category_id", CLOSER], ["eq", "outcome", "venta"],
       ["eq", "analysis_status", "analyzed"], ["gte", "closer_score", 60], ["lte", "lead_score", 80],
     ]));
   });

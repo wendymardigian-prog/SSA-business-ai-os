@@ -19,7 +19,6 @@ const call = (over: Partial<DashboardCall> = {}): DashboardCall => ({
   id: `c${++n}`,
   recordedAt: "2026-10-07T15:00:00Z",
   closerId: "ana",
-  callType: "cierre",
   categoryKey: "tipo-cierre",
   closerScore: 60,
   leadScore: 60,

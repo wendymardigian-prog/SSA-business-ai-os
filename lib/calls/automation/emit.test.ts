@@ -6,7 +6,8 @@ const callRow = (over: Record<string, unknown> = {}) => ({
   id: "c1",
   workspace_id: "ws1",
   contact_id: "ct1",
-  call_type: "cierre",
+  category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-cierre", type_name: "Cierre" },
+  no_show: false,
   outcome: "venta",
   closer_score: 80,
   lead_score: 70,
@@ -19,7 +20,7 @@ const callRow = (over: Record<string, unknown> = {}) => ({
 
 describe("emitCallEvent", () => {
   it("una llamada con contacto emite el evento con el payload del plano", async () => {
-    const db = fakeDb({ "calls:select": { data: callRow() }, "automation_events:insert": { data: null } });
+    const db = fakeDb({ "calls:select": { data: callRow() }, "booking_categories:select": { data: [{ id: "area-ventas", system_key: "ventas" }, { id: "tipo-cierre", system_key: "ventas.cierre" }, { id: "area-equipo", system_key: "equipo" }] }, "automation_events:insert": { data: null } });
     expect(await emitCallEvent(db.client, "call_analyzed", "c1")).toBe(true);
     expect(db.writesTo("automation_events")[0].values).toEqual({
       workspace_id: "ws1",

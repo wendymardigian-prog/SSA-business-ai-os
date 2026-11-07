@@ -55,7 +55,7 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 
 ## Sacar la marca de closer e importar el historial (6/11/2026)
 
-- **Borrar `workspace_members.is_closer`.** Ya no se lee (la 00297 lo deja comentado). Se borra en una migración aparte, DESPUÉS de desplegar el código. `closer_emails` se queda: son los otros correos de la persona. Las etiquetas de `lib/audit-history.ts` se quedan para el historial viejo.
+- **`workspace_members.is_closer` se borra en la 00308.** `closer_emails` se queda: son los otros correos de la persona. Las etiquetas de `lib/audit-history.ts` se quedan para el historial viejo.
 - **Un clon con conexiones existentes:** quien había conectado sin la marca empieza a recibir sus llamadas al desplegar, y su primera consulta mira 14 días. En producción no hay ninguna conexión.
 - **La conexión de un admin ya no trae las llamadas de otros.** Antes, una conexión podía traer lo compartido por otros closers; ahora cada persona conecta la suya.
 - **Prueba real pendiente (lo más importante):** conectar una cuenta de Fathom e importar un rango chico. Confirma `recorded_by[]` con OAuth, la transcripción, el refresco del token y cuánto historial devuelve Fathom (su documentación no dice un límite de antigüedad). Todo se probó contra Fathom simulado.
@@ -68,7 +68,7 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 - **Lo que sigue del plan:** Etapa 2 (qué importa cada conexión, necesita la prueba real con Fathom), Etapa 3 (un analizador por tipo: `call_analysis_profiles`, necesita las rúbricas de Wendy), Etapa 4 (alcance por área) y Etapa 5 (limpieza).
 - **El dashboard sigue con `call_type`** y promedia puntajes entre tipos. Se corrige en la Etapa 3, junto con el analizador por tipo.
 - **El paso "área de la conexión" está en la cascada pero nadie lo llena todavía** (`connection`): llega con la Etapa 2.
-- **Se borra en la Etapa 5:** `call_type`, `call_type_proposed`, `custom_types`, `allow_ai_types`, `discarded_types` y las claves viejas de las reglas (`LEGACY_TO_SYSTEM_KEY`).
+- **Se quedan a propósito después de la Etapa 5:** `custom_types` y `LEGACY_TO_SYSTEM_KEY`. Por qué: las cuatro reglas por defecto y las guardadas por cada negocio apuntan con esas claves (`equipo`, `no_show`), y el motor de los flujos viejos sigue entendiendo `call_types`. Decisión: se sacan cuando se conviertan las reglas guardadas a ids.
 - **Sin revisar en pantalla con datos reales:** producción tiene 0 grabaciones. Falta ver una agendada de Servicio y una sin vínculo.
 
 ## Alcance por área (Etapa 4, 6/11/2026)
@@ -82,9 +82,8 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 
 - **El historial de la rúbrica de cada analizador no tiene pantalla.** Por qué: cada guardado queda en `audit_log` (entidad `ai_task`, con la rúbrica vieja y la nueva) y las instrucciones sí tienen versiones. La pantalla «Cargar en el editor» de la rúbrica única se fue con ella. Decisión: se suma si hace falta.
 - **Una rúbrica copiada de la configuración vieja puede no sumar 100** en un tipo, porque sus criterios se filtran por `aplica_a`. Por qué: los pesos se pensaron para el conjunto. Decisión: el análisis funciona igual (los pesos se normalizan), y el editor pide corregirla antes de guardar.
-- **`ai_background_settings.call_analysis` conserva `mode`, `rubric`, `analyze_types` y `auto_*` sin leerse.** Se borran en la Etapa 5, junto con `call_type`.
 - **«Analizar seleccionadas» no está en el celular:** cada tarjeta es un link entero. Sigue «Analizar pendientes».
-- **Las pantallas dicen todavía «Closer» en la cabecera de la ficha** aunque sea una reunión de servicio. Decisión: se cambia con la limpieza de la Etapa 5.
+- **«Closer» se conserva en lo que puntúa una llamada de ventas** (la rúbrica y la pestaña del formato de ventas), porque ahí es el rol. La persona que grabó ya dice «Quien grabó» o «Grabó» en la lista, la ficha, el dashboard y el historial (Etapa 5).
 
 ## Qué importa cada conexión (Etapa 2, 6/11/2026)
 

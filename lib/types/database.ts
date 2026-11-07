@@ -331,12 +331,8 @@ export type CallRow = {
   link_method: CallLinkMethod;
   linked_by: string | null;
   linked_at: string | null;
-  call_type: string | null;
-  call_type_source: CallTypeSource | null;
-  call_type_rule: string | null;
-  call_type_confidence: number | null;
-  call_type_alternative: string | null;
-  call_type_proposed: string | null;
+  classification_rule: string | null;
+  classification_confidence: number | null;
   analysis_status: CallAnalysisStatus;
   analysis_status_reason: string | null;
   analysis_error: string | null;
@@ -1454,7 +1450,6 @@ export interface Database {
           role_id: string | null;
           created_at: string;
           /** Graba llamadas de venta (00145). */ // @plantilla-quitar(llamadas)
-          is_closer: boolean; // @plantilla-quitar(llamadas)
           /** Correos alternos con los que graba en Fathom o Zoom (00145). */ // @plantilla-quitar(llamadas)
           closer_emails: string[]; // @plantilla-quitar(llamadas)
         };
@@ -1464,13 +1459,11 @@ export interface Database {
           role?: string;
           role_id?: string | null;
           created_at?: string;
-          is_closer?: boolean; // @plantilla-quitar(llamadas)
           closer_emails?: string[]; // @plantilla-quitar(llamadas)
         };
         Update: {
           role?: string;
           role_id?: string | null;
-          is_closer?: boolean; // @plantilla-quitar(llamadas)
           closer_emails?: string[]; // @plantilla-quitar(llamadas)
         };
         Relationships: [

@@ -27,6 +27,7 @@ import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
 import { applyMemory, readContactMemory } from "./memory";
 import { enqueueCallJob } from "./queue";
+import { derivedCallType } from "./legacy-type";
 import { ideasFromSummary, memoryApplies, runCallSummary, summaryEligibility } from "./summary";
 
 type Db = SupabaseClient<Database>;
@@ -46,15 +47,16 @@ export interface SummaryDeps {
   generate?: GenerateFn;
 }
 
-const CALL_COLUMNS = "id, workspace_id, title, call_type, analysis_profile_id, recorded_at, attendees, transcript, contact_id, ideas_created_at";
+const CALL_COLUMNS = "id, workspace_id, title, category_snapshot, no_show, analysis_profile_id, recorded_at, attendees, transcript, contact_id, ideas_created_at";
 
 export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPayload): Promise<{ outcome: SummaryOutcome }> {
   const { db } = deps;
   const now = deps.now ?? new Date();
   const retry = payload.retry ?? 0;
 
-  const { data: call } = await db.from("calls").select(CALL_COLUMNS).eq("id", payload.callId).is("archived_at", null).maybeSingle();
-  if (!call) return { outcome: "gone" };
+  const { data: row } = await db.from("calls").select(CALL_COLUMNS).eq("id", payload.callId).is("archived_at", null).maybeSingle();
+  if (!row) return { outcome: "gone" };
+  const call = { ...row, call_type: await derivedCallType(db, row.workspace_id, row) };
 
   const eligibility = summaryEligibility(call);
   if (!eligibility.ok) {

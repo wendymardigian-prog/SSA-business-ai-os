@@ -75,7 +75,7 @@ export function CallsControls({ timezone, closers, categoryGroups }: { timezone:
       )}
       {closers.length > 0 && (
         <select
-          aria-label="Closer"
+          aria-label="Quien grabó"
           value={closer}
           onChange={(e) => replace((p) => (e.target.value ? p.set("closer", e.target.value) : p.delete("closer")))}
           className="rounded-md border border-input bg-background px-2 py-1 text-sm"

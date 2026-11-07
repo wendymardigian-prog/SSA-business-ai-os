@@ -64,9 +64,9 @@ export interface TabsData {
   closerName: string | null;
   source: string;
   callType: string | null;
-  callTypeSource: string | null;
-  callTypeRule: string | null;
-  callTypeConfidence: number | null;
+  classificationSource: string | null;
+  classificationRule: string | null;
+  classificationConfidence: number | null;
   model: string | null;
   promptVersion: number | null;
   rubricVersion: number | null;
@@ -309,7 +309,7 @@ export function TechTab({ data }: { data: TabsData }) {
   const ok = data.quotesVerified ?? a.verifiedQuotes.ok;
   const rows: Array<[string, string]> = [
     ["Ingesta", data.source === "fathom" ? "Fathom (automática)" : "Importación manual"],
-    ["Clasificación", typeDeciderText({ call_type_source: data.callTypeSource, call_type_rule: data.callTypeRule, call_type_confidence: data.callTypeConfidence }) || "—"],
+    ["Clasificación", typeDeciderText({ classification_source: data.classificationSource, classification_rule: data.classificationRule, classification_confidence: data.classificationConfidence }) || "—"],
     ["Modelo", data.model ?? "—"],
     ["Versión del prompt", data.promptVersion ? `v${data.promptVersion}` : data.model ? "Texto del sistema" : "—"],
     ["Versión de la rúbrica", data.rubricVersion ? `v${data.rubricVersion}` : "—"],

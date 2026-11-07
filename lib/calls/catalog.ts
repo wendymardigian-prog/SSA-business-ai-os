@@ -1,20 +1,16 @@
 /**
  * Las grabaciones sobre la lista de areas y tipos de la agenda. Puro.
  *
- * `call_type` sigue existiendo como valor DERIVADO hasta la Etapa 3: de el dependen el
- * resumen, Conocimiento, la rubrica y los filtros viejos de los flujos. Sale de la
- * `system_key` de cada fila, nunca del nombre, porque las areas y los tipos se renombran.
+ * La clave vieja de tipo ya no se guarda (00308): se deriva con `legacyCallTypeFor`. De ella
+ * dependen el resumen, Conocimiento, la rubrica de un analisis viejo y los filtros viejos de los
+ * flujos. Sale de la `system_key` de cada fila, nunca del nombre, porque las areas y los tipos se
+ * renombran.
  */
 
 import { categorySnapshot, type CategoryRow, type CategorySnapshot } from "@/lib/scheduling/categories";
-import { callTypeLabel } from "./list";
 
 /** La regla que marca una llamada como "no se presento": no decide area ni tipo. */
 export const NO_SHOW_TARGET = "no_show";
-/** Lo que se guarda en `call_type_rule` cuando decidio la reunion vinculada. */
-export const BOOKING_RULE_LABEL = "reunión vinculada";
-/** Lo que se guarda cuando decidio el area por defecto de la conexion de Fathom. */
-export const CONNECTION_RULE_LABEL = "área de la conexión";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -75,10 +71,10 @@ export function ruleTargetSnapshot(
 }
 
 /**
- * El `call_type` de una grabacion. Un tipo que creo el negocio toma el comportamiento de su
- * area: un tipo nuevo de Ventas se trata como un cierre hasta que tenga su analizador (Etapa 3).
+ * La clave vieja de tipo de una grabacion. Un tipo que creo el negocio toma el comportamiento de
+ * su area: un tipo nuevo de Ventas se trata como un cierre.
  */
-export function legacyCallTypeFor(snapshot: CategorySnapshot | null, categories: CategoryRow[], noShow = false): string | null {
+export function legacyCallTypeFor(snapshot: CategorySnapshot | null, categories: Array<Pick<CategoryRow, "id" | "system_key">>, noShow = false): string | null {
   if (noShow) return "no_show";
   if (!snapshot?.area_id) return null;
   const byId = new Map(categories.map((c) => [c.id, c]));
@@ -117,11 +113,11 @@ export function callCategoryLabel(snapshot: CategorySnapshot | null): string {
   return snapshot.type_name ? `${snapshot.area_name} · ${snapshot.type_name}` : snapshot.area_name ?? "Sin clasificar";
 }
 
-/** Lo que se muestra de una grabacion: su area y tipo, o su tipo viejo si todavia no los tiene. */
-export function callDisplayLabel(raw: unknown, callType: string | null, noShow = false): string {
+/** Lo que se muestra de una grabacion: su area y tipo, con la marca de no show si la tiene. */
+export function callDisplayLabel(raw: unknown, noShow = false): string {
   const snapshot = readCategorySnapshot(raw);
   if (snapshot) return noShow ? `${callCategoryLabel(snapshot)} · No show` : callCategoryLabel(snapshot);
-  return noShow ? "No show" : callTypeLabel(callType);
+  return noShow ? "No show" : "Sin clasificar";
 }
 
 export interface CategoryGroup {

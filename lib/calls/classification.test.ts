@@ -27,34 +27,34 @@ describe('applyClassificationRules', () => {
     expect(applyClassificationRules({ title: 'Impromptu Google Meet Meeting', duration_seconds: LONG, attendees: inv(1), transcript: voices(2) }, RULES)).toBeNull();
   });
   it('Sesión semanal con 2 invitados y 7 voces → equipo', () => {
-    expect(applyClassificationRules({ title: 'Sesión semanal - Reto X 30 días', duration_seconds: LONG, attendees: inv(2), transcript: voices(7) }, RULES)?.call_type).toBe('equipo');
+    expect(applyClassificationRules({ title: 'Sesión semanal - Reto X 30 días', duration_seconds: LONG, attendees: inv(2), transcript: voices(7) }, RULES)?.target).toBe('equipo');
   });
   it('WBR con 11 invitados → equipo', () => {
     const r = applyClassificationRules({ title: 'WBR SalesXcelerator', duration_seconds: LONG, attendees: inv(11), transcript: voices(2) }, RULES);
-    expect(r).toEqual({ call_type: 'equipo', rule_label: '11 participantes' });
+    expect(r).toEqual({ target: 'equipo', rule_label: '11 participantes' });
   });
   it('Tech Daily → equipo por título', () => {
     const r = applyClassificationRules({ title: 'Tech Daily [Xcelerator]', duration_seconds: LONG, attendees: inv(1), transcript: voices(2) }, RULES);
-    expect(r).toEqual({ call_type: 'equipo', rule_label: 'título contiene «Daily»' });
+    expect(r).toEqual({ target: 'equipo', rule_label: 'título contiene «Daily»' });
   });
   it('normaliza tildes y mayúsculas; frase completa como subcadena', () => {
     const rules: ClassificationRule[] = [{ cond: 'title_contains', value: ['sesion semanal'], type: 'equipo' }];
-    expect(applyClassificationRules({ title: 'Sesión Semanal' }, rules)?.call_type).toBe('equipo');
+    expect(applyClassificationRules({ title: 'Sesión Semanal' }, rules)?.target).toBe('equipo');
     const rules2: ClassificationRule[] = [{ cond: 'title_contains', value: ['Sesión semanal'], type: 'equipo' }];
     expect(applyClassificationRules({ title: 'Revisión semanal' }, rules2)).toBeNull();
   });
   it('gana la primera regla del array; invertido gana la otra', () => {
     const m = { title: 'Daily', duration_seconds: 60 };
     const a: ClassificationRule[] = [{ cond: 'duration_lt', value: 10, type: 'no_show' }, { cond: 'title_contains', value: ['Daily'], type: 'equipo' }];
-    expect(applyClassificationRules(m, a)?.call_type).toBe('no_show');
-    expect(applyClassificationRules(m, [...a].reverse())?.call_type).toBe('equipo');
+    expect(applyClassificationRules(m, a)?.target).toBe('no_show');
+    expect(applyClassificationRules(m, [...a].reverse())?.target).toBe('equipo');
   });
   it('una regla con on: false se saltea', () => {
     const rules: ClassificationRule[] = [{ on: false, cond: 'duration_lt', value: 10, type: 'no_show' }];
     expect(applyClassificationRules({ duration_seconds: 60 }, rules)).toBeNull();
   });
   it('5 minutos → no_show', () => {
-    expect(applyClassificationRules({ title: 'x', duration_seconds: 300 }, RULES)).toEqual({ call_type: 'no_show', rule_label: 'menos de 10 min' });
+    expect(applyClassificationRules({ title: 'x', duration_seconds: 300 }, RULES)).toEqual({ target: 'no_show', rule_label: 'menos de 10 min' });
   });
   it('tener una reunion vinculada no es una regla: lo decide su area y su tipo', () => {
     expect(applyClassificationRules({ title: 'Llamada', duration_seconds: LONG, attendees: inv(1), transcript: voices(2), booking_id: 'a1' }, RULES)).toBeNull();
@@ -63,7 +63,7 @@ describe('applyClassificationRules', () => {
   });
   it('email_contains', () => {
     const rules: ClassificationRule[] = [{ cond: 'email_contains', value: ['@cliente.com'], type: 'cliente' }];
-    expect(applyClassificationRules({ attendees: [{ email: 'ana@cliente.com' }] }, rules)).toEqual({ call_type: 'cliente', rule_label: 'email «@cliente.com»' });
+    expect(applyClassificationRules({ attendees: [{ email: 'ana@cliente.com' }] }, rules)).toEqual({ target: 'cliente', rule_label: 'email «@cliente.com»' });
   });
   describe('only_team', () => {
     const rules: ClassificationRule[] = [{ cond: 'only_team', type: 'equipo' }];

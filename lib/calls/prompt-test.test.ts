@@ -14,11 +14,11 @@ const analysis = (puntaje: number, categoria = "venta") => ({
 const call = (id: string, over: Partial<TestCallInput["current"]> = {}): TestCallInput => ({
   id,
   title: `Llamada ${id}`,
-  call_type: "cierre",
   transcript: [{ timestamp: "0", speaker: { display_name: "Ana" }, text: "hola" }],
   current: { closer_score: 50, lead_score: 60, outcome: "venta", analysis: analysis(3), ...over },
 });
 const setup = (generate: TestSetup["generate"], over: Partial<TestSetup> = {}): TestSetup => ({
+  meetingLabelFor: () => "Ventas · Cierre",
   rubric: DEFAULT_RUBRIC,
   categories: EMPTY_CATEGORIES,
   allowNewCategories: true,
@@ -59,7 +59,7 @@ describe("testCallAnalysis", () => {
     const generate = vi.fn().mockResolvedValue({ object: analysis(3) });
     await testCallAnalysis([call("a")], setup(generate));
     const sent = generate.mock.calls[0][0].system;
-    const prod = buildAnalysisSystem({ instructions: "Analizá {{estilo}}", rubric: DEFAULT_RUBRIC, categories: EMPTY_CATEGORIES, allowNewCategories: true, companyContext: "Agencia", callType: "cierre" });
+    const prod = buildAnalysisSystem({ instructions: "Analizá {{estilo}}", rubric: DEFAULT_RUBRIC, categories: EMPTY_CATEGORIES, allowNewCategories: true, companyContext: "Agencia", callType: null });
     expect(sent).toBe(prod);
   });
 

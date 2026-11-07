@@ -8,7 +8,7 @@ import type { Database, Json } from "@/lib/types/database";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { categorySnapshot, type CategoryRow, type CategorySnapshot } from "@/lib/scheduling/categories";
 import { parseFathomSettings } from "@/lib/fathom/settings";
-import { BOOKING_RULE_LABEL, CONNECTION_RULE_LABEL, NO_SHOW_TARGET, legacyCallTypeFor, readCategorySnapshot, ruleTargetSnapshot } from "./catalog";
+import { NO_SHOW_TARGET, readCategorySnapshot, ruleTargetSnapshot } from "./catalog";
 import { applyClassificationRules, teamNamesFrom, type MeetingForRules } from "./classification";
 import { categoryIdOf, type CascadeResult, type CascadeSource } from "./classify-cascade";
 import type { CallAnalysisProfile } from "./profiles";
@@ -63,7 +63,7 @@ export async function loadClassificationContext(
 
   const noShowFired = applyClassificationRules(call, rules.filter((r) => r.type === NO_SHOW_TARGET), team.emails, team.names);
   const fired = applyClassificationRules(call, rules.filter((r) => r.type !== NO_SHOW_TARGET), team.emails, team.names);
-  const rule = fired ? ruleTargetSnapshot(fired.call_type, categories, settings.call_classification.custom_types) : null;
+  const rule = fired ? ruleTargetSnapshot(fired.target, categories, settings.call_classification.custom_types) : null;
 
   return {
     settings,
@@ -85,15 +85,12 @@ function connectionAreaSnapshot(raw: unknown, categories: CategoryRow[]): Catego
   return categorySnapshot(areaId, categories);
 }
 
-/** La columna vieja de "quien decidio" solo admite rule, ai y human. */
-const LEGACY_SOURCE: Record<CascadeSource, "rule" | "ai"> = { booking: "rule", rule: "rule", connection: "rule", ai: "ai" };
-
-/** Lo que se guarda de una clasificacion automatica, con `call_type` derivado. */
+/** Lo que se guarda de una clasificacion automatica. */
 export function classificationPatch(
   result: CascadeResult,
   ctx: Pick<ClassificationContext, "categories" | "ruleLabel" | "noShowRuleLabel">,
   noShow: boolean,
-  ai: { confidence: number; alternative: string | null } | null = null,
+  ai: { confidence: number } | null = null,
 ) {
   const { snapshot, source } = result;
   return {
@@ -102,11 +99,7 @@ export function classificationPatch(
     category_snapshot: (snapshot ?? null) as unknown as Json,
     classification_source: source,
     no_show: noShow,
-    call_type: legacyCallTypeFor(snapshot, ctx.categories, noShow),
-    call_type_source: source ? LEGACY_SOURCE[source] : noShow ? ("rule" as const) : null,
-    call_type_rule: source === "booking" ? BOOKING_RULE_LABEL : source === "rule" ? ctx.ruleLabel : source === "connection" ? CONNECTION_RULE_LABEL : !source && noShow ? ctx.noShowRuleLabel : null,
-    call_type_confidence: ai?.confidence ?? null,
-    call_type_alternative: ai?.alternative ?? null,
-    call_type_proposed: null,
+    classification_rule: source === "rule" ? ctx.ruleLabel : !source && noShow ? ctx.noShowRuleLabel : null,
+    classification_confidence: ai?.confidence ?? null,
   };
 }

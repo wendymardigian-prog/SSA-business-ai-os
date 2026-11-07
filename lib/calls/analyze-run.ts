@@ -21,6 +21,7 @@ import { openAiRun } from "@/lib/ai/run";
 import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { resolveTaskModel } from "@/lib/ai-tasks/model";
 import { getJobHandler } from "@/lib/jobs/registry";
+import { derivedCallType } from "./legacy-type";
 import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
 import { runCallAnalysis } from "./analyze";
@@ -72,7 +73,7 @@ export interface AnalyzeDeps {
 const AUTO_CLAIMABLE = ["pending"] as const;
 const MANUAL_CLAIMABLE = ["pending", "error", "needs_review", "analyzed", "not_applicable"] as const;
 
-const CALL_COLUMNS = "id, workspace_id, title, call_type, area_id, category_id, category_snapshot, transcript, contact_id, analysis_status, closer_score, lead_score";
+const CALL_COLUMNS = "id, workspace_id, title, no_show, area_id, category_id, category_snapshot, transcript, contact_id, analysis_status, closer_score, lead_score";
 
 export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobPayload): Promise<{ outcome: AnalyzeOutcome }> {
   const { db } = deps;
@@ -141,7 +142,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
   const result = await runCallAnalysis({
     call,
     shape: profile.shape,
-    meetingLabel: callDisplayLabel(call.category_snapshot, call.call_type),
+    meetingLabel: callDisplayLabel(call.category_snapshot),
     rubric: profile.rubric,
     categories: settings.categories,
     allowNewCategories: settings.allow_new_categories,
@@ -189,7 +190,11 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     generatedAt: now.toISOString(),
   });
 
-  const autoSummary = profile.autoSummary && summaryEligibility(call).ok && Boolean(getJobHandler("call_summary"));
+  // Si no se puede leer el area, el analisis ya hecho no se pierde: el resumen queda sin encolar.
+  const summaryAllowed = await derivedCallType(db, workspaceId, call)
+    .then((call_type) => summaryEligibility({ call_type, transcript: call.transcript }).ok)
+    .catch(() => false);
+  const autoSummary = profile.autoSummary && summaryAllowed && Boolean(getJobHandler("call_summary"));
   const citas = (stored.citas_verificadas ?? { total: 0, verificadas: 0 }) as { total: number; verificadas: number };
 
   const { error: writeError } = await db

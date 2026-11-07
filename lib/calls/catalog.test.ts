@@ -111,13 +111,12 @@ describe("lo que se muestra y se ofrece", () => {
 
 describe("callDisplayLabel", () => {
   const snapshot = { area_id: "a", area_name: "Servicio", type_id: "t", type_name: "Onboarding" };
-  it("muestra area y tipo; sin clasificacion, el tipo viejo", () => {
-    expect(callDisplayLabel(snapshot, "cliente")).toBe("Servicio · Onboarding");
-    expect(callDisplayLabel(null, "cierre")).toBe("Cierre");
-    expect(callDisplayLabel(null, null)).toBe("Sin clasificar");
+  it("muestra area y tipo; sin clasificacion lo dice", () => {
+    expect(callDisplayLabel(snapshot)).toBe("Servicio · Onboarding");
+    expect(callDisplayLabel(null)).toBe("Sin clasificar");
   });
   it("suma la marca de no show", () => {
-    expect(callDisplayLabel(snapshot, "no_show", true)).toBe("Servicio · Onboarding · No show");
-    expect(callDisplayLabel(null, "no_show", true)).toBe("No show");
+    expect(callDisplayLabel(snapshot, true)).toBe("Servicio · Onboarding · No show");
+    expect(callDisplayLabel(null, true)).toBe("No show");
   });
 });
