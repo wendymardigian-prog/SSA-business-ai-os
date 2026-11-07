@@ -205,3 +205,41 @@ export function mappingRows(
   }
   return rows.sort((a, b) => Number(b.group === "Propias") - Number(a.group === "Propias"));
 }
+
+/** Los grupos del selector de cada variable (F57), a partir de las variables que el lienzo ofrece en este paso. */
+export function groupVariableOptions(available: readonly string[]): Array<{ label: string; vars: string[] }> {
+  const trigger: string[] = [];
+  const previous: string[] = [];
+  const contact: string[] = [];
+  const business: string[] = [];
+  for (const v of available) {
+    if (v.startsWith("contact.")) contact.push(v);
+    else if (v.startsWith("workspace.")) business.push(v);
+    else if (v.startsWith("design.") || v === "ai_response" || v === "contact_result" || v === "contact_fail_reason" || !v.includes(".")) previous.push(v);
+    else trigger.push(v);
+  }
+  return [
+    { label: "Del disparador", vars: trigger },
+    { label: "De pasos anteriores", vars: previous },
+    { label: "Contacto", vars: contact },
+    { label: "Negocio", vars: business },
+  ].filter((g) => g.vars.length > 0);
+}
+
+/** El valor del `<select>` de una fila: `template`, `today`, `text`, `combine` o `var:<ruta>`. */
+export function mappingToSelect(mapping: unknown): string {
+  const m = parseMapping(mapping);
+  if (!m) return "template";
+  return m.mode === "variable" ? `var:${m.path}` : m.mode;
+}
+
+/** La asignación que deja elegir una opción del selector (conserva el texto si se pasa entre «Texto fijo» y «Combinar»). */
+export function selectToMapping(value: string, previous: unknown): VarMapping {
+  const prev = parseMapping(previous);
+  const prevText = prev && (prev.mode === "text" || prev.mode === "combine") ? prev.text : "";
+  if (value.startsWith("var:")) return parseMapping({ mode: "variable", path: value.slice(4) }) ?? { mode: "template" };
+  if (value === "today") return { mode: "today" };
+  if (value === "text") return { mode: "text", text: prevText };
+  if (value === "combine") return { mode: "combine", text: prevText };
+  return { mode: "template" };
+}

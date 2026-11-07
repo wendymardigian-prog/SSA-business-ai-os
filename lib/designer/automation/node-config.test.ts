@@ -121,3 +121,28 @@ describe("mappingRows (las filas del panel)", () => {
     ]);
   });
 });
+
+describe("el selector de cada variable", () => {
+  it("agrupa lo que ofrece el lienzo: disparador, pasos anteriores, contacto y negocio", async () => {
+    const { groupVariableOptions } = await import("./node-config");
+    expect(groupVariableOptions(["answer.nombre", "form.name", "design.link", "ai_response", "respuesta_crm", "contact.first_name", "workspace.name"])).toEqual([
+      { label: "Del disparador", vars: ["answer.nombre", "form.name"] },
+      { label: "De pasos anteriores", vars: ["design.link", "ai_response", "respuesta_crm"] },
+      { label: "Contacto", vars: ["contact.first_name"] },
+      { label: "Negocio", vars: ["workspace.name"] },
+    ]);
+    expect(groupVariableOptions([])).toEqual([]);
+  });
+
+  it("ida y vuelta entre la asignación y el valor del selector", async () => {
+    const { mappingToSelect, selectToMapping } = await import("./node-config");
+    expect(mappingToSelect(undefined)).toBe("template");
+    expect(mappingToSelect({ mode: "variable", path: "answer.nombre" })).toBe("var:answer.nombre");
+    expect(mappingToSelect({ mode: "combine", text: "x" })).toBe("combine");
+    expect(selectToMapping("var:answer.nombre", undefined)).toEqual({ mode: "variable", path: "answer.nombre" });
+    expect(selectToMapping("combine", { mode: "text", text: "Hola" })).toEqual({ mode: "combine", text: "Hola" });
+    expect(selectToMapping("today", { mode: "text", text: "Hola" })).toEqual({ mode: "today" });
+    expect(selectToMapping("var:", undefined)).toEqual({ mode: "template" });
+    expect(selectToMapping("otra", undefined)).toEqual({ mode: "template" });
+  });
+});
