@@ -19,9 +19,9 @@ import type { DocumentKind } from "./schema";
 export type RecognizedDocType = Exclude<DocType, "otro">;
 
 const KEYWORDS: { type: RecognizedDocType; re: RegExp }[] = [
-  { type: "diploma", re: /\bdiploma/i },
-  { type: "constancia", re: /\bconstancia/i },
-  { type: "certificado", re: /\bcertificad[oa]/i },
+  { type: "diploma", re: /\bdiplomas?\b/i },
+  { type: "constancia", re: /\bconstancias?\b/i },
+  { type: "certificado", re: /\bcertificad[oa]s?\b/i },
 ];
 
 /**
