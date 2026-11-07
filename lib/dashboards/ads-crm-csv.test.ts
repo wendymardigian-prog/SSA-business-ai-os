@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COLUMNS, formatCell, needsLiveReach } from "./ads-crm-columns";
+import { COLUMNS, formatCell, needsLiveReach, reachAheadOfSync } from "./ads-crm-columns";
 import { csvEscape, csvFilename, toCsv } from "./ads-crm-csv";
 import { buildCrmRows, totalRow } from "./ads-crm";
 
@@ -110,6 +110,15 @@ describe("el alcance en el CSV y en la celda", () => {
     expect(formatCell(col("reach"), live, "USD")).toBe("18.919");
     expect(formatCell(col("frequency"), live, "USD")).toBe("3,28");
     expect(formatCell(col("spend"), build(null)[0], "USD")).not.toContain("≈");
+  });
+
+  it("avisa cuando el alcance en vivo supera a las impresiones guardadas, y solo entonces", () => {
+    // «Clase 9 Nov · Público nuevo», 6/11/2026: 6.450 de alcance en vivo contra 4.628 impresiones del ultimo sync.
+    const recienPrendida = (reach: number, impressions: number, live: boolean) =>
+      buildCrmRows({ rows: [{ ...base, reach, impressions }], level: "ad", metrics: [], catalog: {}, liveReach: live ? { a1: { reach, frequency: 1.51 } } : null })[0];
+    expect(reachAheadOfSync(recienPrendida(6450, 4628, true))).toBe(true);
+    expect(reachAheadOfSync(recienPrendida(18919, 59454, true))).toBe(false);
+    expect(reachAheadOfSync(recienPrendida(6450, 4628, false))).toBe(false); // una suma ya lleva su propia marca
   });
 
   it("solo se le pregunta a Meta si alguna de las dos columnas esta a la vista", () => {

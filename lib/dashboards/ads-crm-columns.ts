@@ -228,6 +228,14 @@ export function needsLiveReach(columns: ColumnDef[]): boolean {
   return columns.some((c) => isReachColumn(c.id));
 }
 
+/**
+ * El alcance en vivo supera a las impresiones guardadas: las dos cifras no son del mismo momento (Alcance y Frec. llegan hasta ahora,
+ * el resto de la fila hasta el ultimo sync). Pasa en una campaña recien prendida, y sin explicarlo la fila se lee como imposible.
+ */
+export function reachAheadOfSync(row: CrmRow): boolean {
+  return !row.reachIsSum && row.reach !== null && row.impressions !== null && row.reach > row.impressions;
+}
+
 /** Lo que explica un «≈». */
 export const REACH_SUM_NOTE = "Suma de los días: cuenta dos veces a quien vio el anuncio en días distintos, y por eso la frecuencia queda más baja.";
 

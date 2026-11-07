@@ -7,7 +7,7 @@ import { BarChart2, Download } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
 import { Popover } from "@/components/ui/popover";
 import { buildCrmRows, countByStatus, filterByStatus, showNoAdSignalNotice, totalFootnote, totalRowDetailed, type CrmLevel, type CrmRow, type DistinctLeads, type StatusFilter } from "@/lib/dashboards/ads-crm";
-import { GROUP_LABEL, GROUP_ORDER, GROUP_TIP, REACH_SUM_NOTE, formatCell, isReachColumn, needsLiveReach, type ColumnDef, type ColumnGroup } from "@/lib/dashboards/ads-crm-columns";
+import { GROUP_LABEL, GROUP_ORDER, GROUP_TIP, REACH_SUM_NOTE, formatCell, isReachColumn, needsLiveReach, reachAheadOfSync, type ColumnDef, type ColumnGroup } from "@/lib/dashboards/ads-crm-columns";
 import { visibleColumns } from "@/lib/dashboards/ads-columns";
 import { csvFilename, toCsv } from "@/lib/dashboards/ads-crm-csv";
 import { canOpenCell } from "@/lib/dashboards/ads-crm-detail";
@@ -313,6 +313,11 @@ export function CrmLevelTable({
       )}
       {noSignal && <NoSignalNotice />}
       {wantsReach && !reachPending && [...shown, total].some((row) => row.reachIsSum) && <ReachSumNotice result={reachResult} />}
+      {wantsReach && !reachPending && [...shown, total].some(reachAheadOfSync) && (
+        <p className="text-xs text-muted-foreground">
+          Donde el alcance supera a las impresiones, las dos cifras no son del mismo momento: Alcance y Frec. se le preguntan a Meta ahora, y el resto de la fila viene de la última sincronización. Se emparejan en la próxima.
+        </p>
+      )}
       {crm.scopeLimited && <p className="text-xs text-muted-foreground">Ves los leads, agendas y ventas de tu alcance.</p>} {/* @plantilla-quitar(ventas) */}
       {/* @plantilla-sin(ventas): {crm.scopeLimited && <p className="text-xs text-muted-foreground">Ves los leads y las agendas de tu alcance.</p>} */}
 
