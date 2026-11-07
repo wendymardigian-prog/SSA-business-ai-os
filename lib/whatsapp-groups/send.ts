@@ -13,6 +13,7 @@ import { EvolutionError, sendMedia, sendPoll, sendText } from "@/lib/evolution-c
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { CHAT_MEDIA_BUCKET, SIGNED_URL_SECONDS } from "@/lib/chat-media/bucket";
 import { toAttachmentsColumn, type ChatAttachment } from "@/lib/messages/attachments";
+import { makeRoomForLiveSend } from "@/lib/send-queue/live-send";
 
 type Db = SupabaseClient<Database>;
 
@@ -59,13 +60,17 @@ export async function sendToGroup(
 
   let platformId: string | null = null;
   let sendError: string | null = null;
+  /** Si el mensaje llego a pedirse a WhatsApp (un archivo que no se pudo leer, no). */
+  let attempted = false;
   const attachments: ChatAttachment[] = [];
   try {
     if (out.poll) {
+      attempted = true;
       platformId = (await sendPoll(config, instance, group.group_jid, out.poll)).id;
     } else if (out.media) {
       const { data: signed, error } = await db.storage.from(CHAT_MEDIA_BUCKET).createSignedUrl(out.media.storagePath, SIGNED_URL_SECONDS);
       if (error || !signed?.signedUrl) throw new Error("No pude leer el archivo subido.");
+      attempted = true;
       platformId = (
         await sendMedia(config, instance, group.group_jid, {
           media: signed.signedUrl,
@@ -88,11 +93,14 @@ export async function sendToGroup(
         meta: null,
       });
     } else {
+      attempted = true;
       platformId = (await sendText(config, instance, group.group_jid, out.text ?? "")).id;
     }
   } catch (err) {
     sendError = err instanceof EvolutionError ? `WhatsApp no lo aceptó (${err.status ?? "sin respuesta"}).` : err instanceof Error ? err.message.slice(0, 300) : "No se pudo mandar.";
   }
+  // Un mensaje a un grupo sale por el mismo numero: la cola de broadcasts de ese numero espera su espera minima.
+  if (attempted) await makeRoomForLiveSend({ client: db, channelId: channel.id });
 
   const row = {
     workspace_id: group.workspace_id,

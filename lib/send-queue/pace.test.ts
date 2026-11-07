@@ -8,6 +8,7 @@ import {
   estimateFinish,
   hourlyRate,
   isInWindow,
+  laneTurnAfterLiveSend,
   nextWindowOpen,
   paceDecision,
   paceExceedsCeiling,
@@ -196,5 +197,24 @@ describe("describePolicy", () => {
     expect(describeDays([0, 1, 2, 3, 4, 5, 6])).toBe("Todos los días");
     expect(describeDays([1, 3, 5])).toBe("Lun, Mié, Vie");
     expect(describeDays([1, 2])).toBe("Lun, Mar");
+  });
+});
+
+describe("laneTurnAfterLiveSend", () => {
+  const now = new Date("2026-11-07T15:00:00Z");
+  const plus = (s: number) => new Date(now.getTime() + s * 1000);
+
+  it("un turno ya vencido o muy cerca pasa a ahora + la espera minima", () => {
+    expect(laneTurnAfterLiveSend(DEFAULT_WHATSAPP_POLICY, plus(-60), now)).toEqual(plus(25));
+    expect(laneTurnAfterLiveSend(DEFAULT_WHATSAPP_POLICY, plus(10), now)).toEqual(plus(25));
+  });
+
+  it("nunca adelanta: un turno igual o mas lejos queda (null)", () => {
+    expect(laneTurnAfterLiveSend(DEFAULT_WHATSAPP_POLICY, plus(25), now)).toBeNull();
+    expect(laneTurnAfterLiveSend(DEFAULT_WHATSAPP_POLICY, plus(3600), now)).toBeNull();
+  });
+
+  it("sin espera minima no corre nada que ya este en el futuro", () => {
+    expect(laneTurnAfterLiveSend({ minGapSeconds: 0 }, plus(1), now)).toBeNull();
   });
 });

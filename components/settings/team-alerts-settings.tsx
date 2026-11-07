@@ -105,7 +105,7 @@ export function TeamAlertsSettings({
       )}
       {channels.length > 0 && (
         <WhatsappBanRiskNotice className="mt-3">
-          Estos avisos salen en el momento: no pasan por la cola de envíos ni por el ritmo de los broadcasts. Lo más seguro es un número aparte, solo para avisos.
+          Estos avisos salen en el momento, pero cuentan en el mismo tope de 200 mensajes por hora que todo lo que sale por ese número: si se llena, el WhatsApp sale en la hora siguiente (la campana y el email, igual). Si hay un envío masivo por ese número, el próximo mensaje masivo espera un poco más. Lo más seguro es un número aparte, solo para avisos.
         </WhatsappBanRiskNotice>
       )}
     </section>

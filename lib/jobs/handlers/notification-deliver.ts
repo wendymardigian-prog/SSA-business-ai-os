@@ -6,7 +6,8 @@
  *
  * NUNCA lanza por un fallo de un proveedor (Resend, Evolution): la logica
  * reagenda a 1, 5 y 15 minutos con `scheduleJob` (la cola reintentaria a los
- * 10 s encima). Un error de la base si lanza: la cola reintenta, y lo que ya
+ * 10 s encima), y un WhatsApp que encontro el numero en su tope, para la hora
+ * siguiente. Un error de la base si lanza: la cola reintenta, y lo que ya
  * salio no se repite (`metadata.delivered`).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -86,7 +87,10 @@ export function realDeliverDeps(db: Db): DeliverDeps {
       const brand = await brandOf(n.workspace_id);
       const channel = channelCache.has(n.workspace_id) ? channelCache.get(n.workspace_id) : undefined;
       const result = await sendTeamWhatsApp(db, n.workspace_id, to, whatsappText(brand.name, n, absolute(link)), channel);
-      return result.ok ? { ok: true } : { ok: false, retryable: result.retryable };
+      if (result.ok) return { ok: true };
+      // El numero de avisos llego a su tope de la hora: se reagenda para cuando se libera, sin gastar un intento.
+      if (result.reason === "rate_limited") return { ok: false, retryable: true, retryAt: result.retryAt };
+      return { ok: false, retryable: result.retryable };
     },
     async scheduleRetry(id, attempt, runAt) {
       try {
