@@ -170,6 +170,10 @@ El modo, la firma del negocio y las copias viven en `forms.contract_config` (`li
 
 El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante y el seguimiento. Para páginas del propio proyecto: `<Formulario slug="…" />` ([sitio.md](sitio.md)).
 
+### La tarjeta al compartir el link (6/11/2026)
+
+Al pegar `/f/<slug>` en WhatsApp o una red se ve el título del formulario (si no tiene, el nombre del negocio), su introducción recortada y una imagen con la marca del negocio. Sale de `lib/forms/share-preview.ts` y `lib/og/`, con la definición de `get_public_form`; de `forms` solo se lee de qué negocio es. Un formulario no disponible no tiene etiquetas y su imagen da 404, un link firmado (`?c=`) muestra la misma tarjeta y `?preview=1` no cambia nada. Las reglas comunes están en [agendamiento.md](agendamiento.md), «La tarjeta al compartir el link».
+
 ### La web propia de un negocio (otro dominio, 2/11/2026)
 
 Una web externa (un sitio estático, sin servidor) manda sus formularios **desde el navegador** a `POST /api/public/forms/<slug>/submit`. La guía paso a paso que viaja a los clientes es el comando `/conectar-web` (`.claude/commands/conectar-web.md`); la pantalla es **Ajustes → Integraciones → Tu sitio web**.

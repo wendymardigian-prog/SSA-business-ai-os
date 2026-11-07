@@ -45,13 +45,20 @@ export const LINK_PREVIEW_BOT_TOKENS: readonly string[] = [
   "embedly",
   // La tarjeta de la propia bandeja (lib/link-preview/fetch.ts): abrir un mensaje no es un clic.
   "linkpreviewbot",
+  // WhatsApp por Evolution: Baileys arma la vista previa con su propio pedido, sin User-Agent propio, antes de mandar.
+  "node-fetch",
+  "undici",
 ];
+
+/** El `fetch` de Node se presenta como "node", a secas. Va aparte: como fragmento podria coincidir con otro nombre. */
+const EXACT_BOT_USER_AGENTS: readonly string[] = ["node"];
 
 export function isLinkPreviewBot(userAgent: string | null | undefined): boolean {
   if (typeof userAgent !== "string") return true;
   const ua = userAgent.trim().toLowerCase();
   if (ua === "") return true;
 
+  if (EXACT_BOT_USER_AGENTS.includes(ua)) return true;
   if (LINK_PREVIEW_BOT_TOKENS.some((token) => ua.includes(token))) return true;
 
   // La app de Instagram sin navegador (la vista previa); el navegador interno trae "Mozilla/".

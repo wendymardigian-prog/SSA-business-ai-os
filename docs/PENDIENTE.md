@@ -1310,7 +1310,7 @@ a propósito o por falta de revisión.
 
 - **Probar en un celular** lo que recibe la otra persona en WhatsApp: una página con imagen, un link de Google Meet, un link con «Registrar el clic» y un número que no tenga agendado al negocio.
 - **Instagram:** probar un link común en una cuenta donde ManyChat no sea la dueña de los hilos. Según eso, decidir si hacen falta botones o tarjetas.
-- **Posibles clics falsos en WhatsApp:** cuando Evolution arma un preview abre el link desde su servidor, y su User-Agent quizás no esté en `LINK_PREVIEW_BOT_TOKENS`. Si es así, cada link medido enviado registraría un clic que nadie hizo. Falta medirlo: contar cuántos `link_click` llegan a pocos segundos del envío, con permiso para leer producción.
+- **Clics falsos en WhatsApp:** cuando Evolution arma un preview abre el link desde su servidor, y sin aviso eso registraría un clic que nadie hizo. `isLinkPreviewBot` ya ignora `node-fetch`, `undici` y `node` (el User-Agent real no está confirmado: depende de la versión que resuelve Evolution). Falta probarlo antes de usar «Registrar el clic» en WhatsApp: mandarse un link medido a un número propio; sin tocarlo tienen que quedar 0 toques `link_click`, y al tocarlo, 1.
 - **DNS rebinding en `safeFetch`:** se valida la IP y después `fetch` vuelve a resolver el nombre, así que un dominio podría cambiar de IP entre las dos cosas. Riesgo bajo: quien manda el link nunca ve la respuesta. Afecta también a la «Llamada HTTP» de los flujos.
 - **Tarjeta en grupos de WhatsApp:** los links se ven clicables, pero sin tarjeta.
 

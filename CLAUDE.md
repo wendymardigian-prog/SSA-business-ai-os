@@ -1231,13 +1231,25 @@ Claude Code** (no hay editor visual). Guia completa en [docs/sitio.md](docs/siti
 - Las paginas son **estaticas o con cache: no leen la sesion**. No pueden llamarse como una ruta
   reservada: `dashboard`, `login`, `auth`, `invite`, `api`, `calendario`, `f`, `embed`, `l`, `baja`, `recuperar`, `restablecer`.
 - Cada pagina nueva se suma a `lib/site/pages.ts` (sitemap y `robots`). `robots.txt` **sigue
-  bloqueando todo** salvo esas paginas.
+  bloqueando todo** salvo esas paginas y lo que necesitan los lectores de vista previa (`lib/og/robots.ts`).
 - Un formulario se pone con `<Formulario slug="…" />`: muestra siempre la version publicada
   (cache por etiqueta `form:<slug>`; publicar, pausar, archivar o cambiar el link la invalidan).
 - **Son de cada clon**: `scripts/export-template.mjs` no copia `app/(sitio)/` ni `public/sitio/`;
   copia la version por defecto de `scripts/template-files/sitio/`.
 - La atribucion viaja entre paginas: cookie `ssa_attr` en el sitio y `localStorage` en una web
   externa con el mismo `embed.js` (modo `data-agenda-track`).
+
+# La tarjeta al compartir un link (6/11/2026, sin migracion)
+
+Un link de agenda (`/calendario/<usuario>/<evento>`) o de formulario (`/f/<slug>`) muestra titulo, descripcion e imagen con la marca del negocio que lo comparte. La imagen se genera sola: 1200 x 630, con logo o inicial, titulo y color. Detalle en [docs/agendamiento.md](docs/agendamiento.md) y [docs/formularios.md](docs/formularios.md).
+
+- **La marca sale del workspace del evento o del formulario** (`resolveBrand`). Si no se puede leer, no hay tarjeta: mejor eso que el logo de otro negocio. Nada de marca escrita en el codigo.
+- **Lo comun vive en `lib/og/`**, no en `lib/forms`: la plantilla de estudiantes no tiene Formularios. Cada modulo arma lo suyo en su `share-preview.ts`.
+- **La imagen es `<pagina>/preview.png`**: publica, con tope por IP y 404 igual que su pagina. La terminacion `.png` evita el middleware de sesion. Su URL lleva `?v=`, un hash de lo que se dibuja: si cambia el dibujo de `lib/og/image.tsx`, subir `IMAGE_REVISION`.
+- **El logo siempre se convierte a PNG con `sharp`.** Uno que no se puede bajar o leer deja la inicial, y uno claro con transparencia va sobre fondo oscuro (`logoPlate`).
+- **`htmlLimitedBots: /.*/` en `next.config.ts` no se saca**: sin eso Next manda las etiquetas al final a quien no esta en su lista, y no se sabe con que identificador preguntan Evolution o WhatsApp Web.
+- **`robots.txt` tiene un grupo para los lectores de vista previa** (`lib/og/robots.ts`): pueden leer `/calendario/`, `/f/` y `/l/`, nunca `/calendario/agenda/` (ahi la URL es una credencial). Las paginas siguen con `noindex` y el resto de los robots sigue bloqueado.
+- **Una tarjeta nunca cambia por `?c=` ni `?preview=1`**: un link firmado no personaliza nada y un borrador no tiene tarjeta.
 
 # Webhooks, atribucion y anuncios (Extra L, construido el 13/10/2026)
 

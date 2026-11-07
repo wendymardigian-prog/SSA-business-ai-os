@@ -16,6 +16,9 @@ describe("isLinkPreviewBot: previsualizadores", () => {
     ["Googlebot", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"],
     ["Meta externalagent", "meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/crawler)"],
     ["en mayusculas", "FACEBOOKEXTERNALHIT/1.1"],
+    ["vista previa de Evolution (node-fetch)", "node-fetch/1.0 (+https://github.com/bitinn/node-fetch)"],
+    ["vista previa de Evolution (undici)", "undici"],
+    ["vista previa de Evolution (fetch de Node)", "node"],
   ])("%s", (_name, ua) => {
     expect(isLinkPreviewBot(ua)).toBe(true);
   });
@@ -36,6 +39,7 @@ describe("isLinkPreviewBot: personas", () => {
     ["navegador interno de Instagram (Android)", "Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/118.0.0.0 Mobile Safari/537.36 Instagram 300.0.0.29.110 Android (33/13; 420dpi)"],
     ["navegador interno de Facebook", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBAV/430.0.0.0;FBBV/1;FBDV/iPhone14,5]"],
     ["Firefox", "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/118.0"],
+    ["un navegador que menciona node en otra palabra", "Mozilla/5.0 (Linux; Android 13; Nodeo X1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Mobile Safari/537.36"],
     ["un telefono Cubot (no es un bot)", "Mozilla/5.0 (Linux; Android 12; CUBOT_X30) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Mobile Safari/537.36"],
   ])("%s", (_name, ua) => {
     expect(isLinkPreviewBot(ua)).toBe(false);
