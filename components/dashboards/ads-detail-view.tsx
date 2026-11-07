@@ -15,6 +15,7 @@ import {
   type DetailView,
 } from "@/lib/dashboards/ads-detail";
 import { periodQuery, type PeriodFilter } from "@/lib/dashboards/period-filter";
+import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 import type { Rankings } from "@/lib/dashboards/ads-view";
 import type { BreakdownRow } from "@/lib/meta/live";
 import { AudienceCard, HourlyCard } from "./ads/audience-card";
@@ -100,6 +101,8 @@ export interface AdsDetailViewProps {
   contentLink?: AdContentLink | null;
   /** Mostrar el menú «⋯» para vincular el anuncio con una pieza. */
   canLinkContent?: boolean;
+  /** Lo que dice el CRM: la tabla de los hijos y el funnel. */
+  crm: CrmTableData;
 }
 
 export function AdsDetailView({
@@ -117,6 +120,7 @@ export function AdsDetailView({
   meta,
   contentLink = null,
   canLinkContent = false,
+  crm,
 }: AdsDetailViewProps) {
   const router = useRouter();
   const { pending, navigate, applyPeriod, refresh } = useAdsNavigation();
@@ -196,6 +200,12 @@ export function AdsDetailView({
   const creativeType = meta.creative?.objectType ? (CREATIVE_TYPE_LABELS[meta.creative.objectType] ?? meta.creative.objectType) : null;
 
   const m = (value: number | null) => money(value, currency, { narrow: true });
+
+  const childScope = useMemo(() => (level === "ad" ? null : { level, id: detail.objectId }), [level, detail.objectId]);
+
+  // Sin fila en el CRM es que no hubo nada atribuido: cero, no un dato faltante.
+  const crmMetrics = crm.metrics[level].find((metric) => metric.objectId === detail.objectId);
+  const funnelCrm = crm.error ? null : { leadsTotal: crmMetrics?.leadsTotal ?? 0, bookings: crmMetrics?.bookings ?? 0, sales: crmMetrics?.sales ?? 0 };
 
   return (
     <div className="flex h-full flex-col">
@@ -354,7 +364,7 @@ export function AdsDetailView({
 
         <AudienceCard result={live.audience} />
         <HourlyCard result={live.hourly} currency={currency} />
-        <FunnelCard totals={detail.totals} currency={currency} />
+        <FunnelCard totals={detail.totals} currency={currency} crm={funnelCrm} crmFailed={Boolean(crm.error)} />
 
         {CHILD_LEVELS[level].length > 0 && (
           <HierarchyCard
@@ -365,6 +375,8 @@ export function AdsDetailView({
             currency={currency}
             adAccountId={adAccountId}
             period={period}
+            crm={crm}
+            scope={childScope}
           />
         )}
 

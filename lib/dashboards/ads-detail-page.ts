@@ -23,6 +23,7 @@ import {
   type LiveResult,
 } from "@/lib/meta/live";
 import { loadAdsInsights } from "./ads-load";
+import { loadCrmForRows, type CrmTableData } from "./ads-crm-load";
 import { buildDetail, ownRows, type DetailLevel, type DetailView } from "./ads-detail";
 import { lastSyncedAt, syncedLabel, type Rankings, latestRankings } from "./ads-view";
 import { computeTotals, type AdsRow, type AdsTotals } from "./ads";
@@ -73,6 +74,8 @@ export interface DetailPageData {
   contentLink: AdContentLink | null;
   /** Quien mira puede vincular el anuncio con una pieza: `content.create` (ya tiene `dashboards.ads.view` para estar acá). */
   canLinkContent: boolean;
+  /** Lo que dice el CRM (la tabla de los hijos y el funnel). Si falla, se ve lo de Meta y lo avisa. */
+  crm: CrmTableData;
 }
 
 /** El objeto existe en esta cuenta, pero no tuvo datos en el rango elegido. */
@@ -88,7 +91,8 @@ export async function loadDetailPage(params: {
   searchParams: Record<string, string | string[] | undefined>;
 }): Promise<DetailPageData | EmptyDetailPageData> {
   // El permiso, no el cargo (F32).
-  const { workspace, supabase, can } = await requirePermission("dashboards.ads.view");
+  const permissions = await requirePermission("dashboards.ads.view");
+  const { workspace, supabase, can } = permissions;
   const sp = params.searchParams;
 
   const period = readDashboardPeriod(sp);
@@ -191,6 +195,15 @@ export async function loadDetailPage(params: {
   const syncedAt =
     lastSyncedAt(ownRows(allRows, { level, objectId })) ?? account?.last_synced_at ?? null;
 
+  const crm = await loadCrmForRows(permissions, {
+    adAccountId,
+    rows: allRows,
+    since: sinceOf(range) ?? "2000-01-01",
+    until: untilOf(range),
+    timeZone,
+    now,
+  });
+
   // El vínculo manual con una pieza de Contenido (A2): solo se muestra en el menú del anuncio.
   let contentLink: AdContentLink | null = null;
   if (level === "ad") {
@@ -236,5 +249,6 @@ export async function loadDetailPage(params: {
     },
     contentLink,
     canLinkContent: level === "ad" && can("content.create"),
+    crm,
   };
 }

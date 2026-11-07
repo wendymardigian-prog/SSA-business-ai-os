@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AdsRow } from "./ads";
 import {
+  filterByParent,
+  type CrmRow,
   buildCrmRows,
   countByStatus,
   crmRatios,
@@ -394,5 +396,38 @@ describe("crmLeadsSummary (la tarjeta «Leads CRM»)", () => {
     const { crmLeadsSummary } = await import("./ads-crm");
     expect(crmLeadsSummary({ metrics: [], distinct: null, spend: 100 })).toMatchObject({ leadsNew: 0, leadsTotal: 0, cplNew: null, cplTotal: null });
     expect(crmLeadsSummary({ metrics: [crm()], distinct: null, spend: null })).toMatchObject({ cplNew: null, cplTotal: null });
+  });
+});
+
+describe("filterByParent: solo los hijos de una campaña o un conjunto", () => {
+  const base = { objectId: "x", campaignId: null, adsetId: null } as unknown as CrmRow;
+  const rows = [
+    { ...base, objectId: "a", campaignId: "c1", adsetId: "s1" },
+    { ...base, objectId: "b", campaignId: "c1", adsetId: "s2" },
+    { ...base, objectId: "d", campaignId: "c2", adsetId: "s3" },
+    { ...base, objectId: "e", campaignId: null, adsetId: null },
+  ];
+
+  it("filtra por campaña o por conjunto", () => {
+    expect(filterByParent(rows, { level: "campaign", id: "c1" }).map((r) => r.objectId)).toEqual(["a", "b"]);
+    expect(filterByParent(rows, { level: "adset", id: "s3" }).map((r) => r.objectId)).toEqual(["d"]);
+  });
+
+  it("sin filtro no saca nada, y uno sin padre conocido queda afuera si hay filtro", () => {
+    expect(filterByParent(rows, null)).toHaveLength(4);
+    expect(filterByParent(rows, { level: "campaign", id: "c1" }).some((r) => r.objectId === "e")).toBe(false);
+  });
+});
+
+describe("de que campaña y conjunto cuelga cada fila", () => {
+  it("el catalogo manda; lo que no tiene sale de los insights", () => {
+    const metric = { objectId: "ad1", leadsNew: 1, leadsTotal: 1, leadsWithBooking: 0, bookings: 0, bookingsAttended: 0, sales: 0, revenueCents: 0, cashCents: 0, ufCashCents: 0 };
+    const [row] = buildCrmRows({ rows: [], level: "ad", metrics: [metric], catalog: { ad1: { name: "A", effectiveStatus: null, campaignId: "c9", adsetId: "s9" } } });
+    expect(row).toMatchObject({ campaignId: "c9", adsetId: "s9" });
+  });
+
+  it("una campaña es su propia campaña y no tiene conjunto", () => {
+    const metric = { objectId: "c1", leadsNew: 1, leadsTotal: 1, leadsWithBooking: 0, bookings: 0, bookingsAttended: 0, sales: 0, revenueCents: 0, cashCents: 0, ufCashCents: 0 };
+    expect(buildCrmRows({ rows: [], level: "campaign", metrics: [metric], catalog: {} })[0]).toMatchObject({ campaignId: "c1", adsetId: null });
   });
 });

@@ -49,6 +49,7 @@ export function AdsTablePage(props: AdsTablePageData) {
           adAccountId={props.adAccountId}
           period={props.period}
           crm={props.crm}
+          drill
         />
       </div>
     </div>

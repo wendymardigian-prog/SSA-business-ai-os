@@ -154,16 +154,18 @@ export function AdsDashboard(props: AdsDashboardProps) {
 
         <AudienceCard result={props.live.audience} />
 
-        <HierarchyCard
-          levels={["campaign", "adset", "ad"]}
-          rows={props.rows}
-          totals={totals}
-          uniqueReach={props.reach}
-          currency={props.currency}
-          adAccountId={props.adAccountId}
-          period={props.period}
-          crm={props.crm}
-        />
+        {props.crm && (
+          <HierarchyCard
+            levels={["campaign", "adset", "ad"]}
+            rows={props.rows}
+            totals={totals}
+            uniqueReach={props.reach}
+            currency={props.currency}
+            adAccountId={props.adAccountId}
+            period={props.period}
+            crm={props.crm}
+          />
+        )}
 
         <DailyTableCard rows={accountRows} totals={totals} currency={props.currency} />
       </div>

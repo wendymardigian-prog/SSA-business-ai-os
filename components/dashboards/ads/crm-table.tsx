@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BarChart2, Download } from "lucide-react";
 import { Tip } from "@/components/ui/tooltip";
 import { Popover } from "@/components/ui/popover";
-import { buildCrmRows, countByStatus, filterByStatus, showNoAdSignalNotice, totalFootnote, totalRowDetailed, type CrmLevel, type CrmRow, type DistinctLeads, type StatusFilter } from "@/lib/dashboards/ads-crm";
+import { buildCrmRows, countByStatus, filterByParent, filterByStatus, showNoAdSignalNotice, totalFootnote, totalRowDetailed, type CrmLevel, type CrmRow, type DistinctLeads, type ParentScope, type StatusFilter } from "@/lib/dashboards/ads-crm";
 import { GROUP_LABEL, GROUP_ORDER, GROUP_TIP, formatCell, type ColumnDef, type ColumnGroup } from "@/lib/dashboards/ads-crm-columns";
 import { visibleColumns } from "@/lib/dashboards/ads-columns";
 import { csvFilename, toCsv } from "@/lib/dashboards/ads-crm-csv";
@@ -17,6 +17,7 @@ import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 import type { AdsRow, AdsTotals } from "@/lib/dashboards/ads";
 import { ColumnsMenu } from "./columns-menu";
 import { CrmCellPanel, type CellTarget } from "./crm-cell-panel";
+import { RowActionsMenu, type RowAction } from "./row-actions-menu";
 import { useColumnPrefs } from "./use-column-prefs";
 import { StatusDot } from "./status-dot";
 
@@ -25,8 +26,9 @@ import { StatusDot } from "./status-dot";
  * y lo que paso en el CRM, en grupos de color. Todas las cuentas salen de `lib/dashboards/ads-crm.ts` y las
  * columnas de `ads-crm-columns.ts`; esto solo las dibuja.
  *
- * - Un clic en una fila lleva al detalle del objeto. Un clic en un NUMERO de leads, agendas o ventas (por fila y en el total)
- *   abre el panel con las personas o registros que lo forman (`CrmCellPanel`).
+ * - Un clic en una fila lleva al detalle del objeto, o abre su menu si la pantalla pasa `rowActions` (Anuncios). Un clic en un
+ *   NUMERO de leads, agendas o ventas (por fila y en el total) abre el panel con las personas o registros que lo forman (`CrmCellPanel`).
+ * - `scope` muestra solo los hijos de una campaña o un conjunto: el total deja de ser el de la cuenta y se calcula sobre lo que se ve.
  * - La primera columna queda fija al desplazarse de costado; la pagina nunca hace scroll horizontal (la tabla se desplaza adentro).
  * - El total suma lo sumable, cuenta a cada persona UNA vez en «Leads totales» y calcula los cocientes sobre los totales.
  */
@@ -154,6 +156,9 @@ export function CrmLevelTable({
   crm,
   currency,
   hrefOf,
+  scope = null,
+  uniqueReach = null,
+  rowActions,
 }: {
   level: CrmLevel;
   /** Las filas de metricas del periodo (todos los niveles). */
@@ -163,26 +168,35 @@ export function CrmLevelTable({
   crm: CrmTableData;
   currency: string | null;
   hrefOf: (objectId: string) => string;
+  /** Solo los hijos de esta campaña o conjunto. */
+  scope?: ParentScope | null;
+  /** El alcance unico de cada objeto, si la pantalla lo pidio. */
+  uniqueReach?: Record<string, number> | null;
+  /** Con esto, un clic en una fila abre un menu en vez de llevar al detalle. */
+  rowActions?: (row: CrmRow) => RowAction[];
 }) {
   const router = useRouter();
   const [prefs, setPrefs] = useColumnPrefs(level);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [target, setTarget] = useState<CellTarget | null>(null);
+  const [menu, setMenu] = useState<{ row: CrmRow; x: number; y: number } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   const all = useMemo(
-    () => buildCrmRows({ rows, level, metrics: crm.metrics[level], catalog: crm.catalog[level], adLinks: crm.adLinks }),
-    [rows, level, crm.metrics, crm.catalog, crm.adLinks],
+    () => filterByParent(buildCrmRows({ rows, level, metrics: crm.metrics[level], catalog: crm.catalog[level], adLinks: crm.adLinks, uniqueReach }), scope),
+    [rows, level, crm.metrics, crm.catalog, crm.adLinks, uniqueReach, scope],
   );
   const shown = useMemo(() => filterByStatus(all, filter), [all, filter]);
   const counts = useMemo(() => countByStatus(all), [all]);
 
-  // Las personas DISTINTAS: con todos los objetos vienen en la misma consulta que las filas. Con un filtro de estado hay que pedir las de
-  // los objetos que se ven (una sola vez por filtro, y solo si hace falta).
+  // Las personas DISTINTAS: con todos los objetos vienen en la misma consulta que las filas. Con un filtro de estado o de padre hay que
+  // pedir las de los objetos que se ven (una sola vez por filtro, y solo si hace falta).
+  const subset = filter !== "all" || scope !== null;
   const shownIds = useMemo(() => shown.map((r) => r.objectId), [shown]);
   const [filtered, setFiltered] = useState<{ key: string; distinct: DistinctLeads } | null>(null);
-  const filterKey = `${level}|${filter}|${shownIds.join(",")}`;
+  const filterKey = `${level}|${subset}|${shownIds.join(",")}`;
   useEffect(() => {
-    if (filter === "all" || shownIds.length === 0 || !crm.adAccountId) return;
+    if (!subset || shownIds.length === 0 || !crm.adAccountId) return;
     let cancelled = false;
     void loadCrmDistinctTotals({ level, since: crm.since, until: crm.until, adAccountId: crm.adAccountId, objectIds: shownIds }).then((res) => {
       if (!cancelled && res.ok) setFiltered({ key: filterKey, distinct: res.distinct });
@@ -190,10 +204,10 @@ export function CrmLevelTable({
     return () => {
       cancelled = true;
     };
-  }, [filter, filterKey, level, shownIds, crm.adAccountId, crm.since, crm.until]);
+  }, [subset, filterKey, level, shownIds, crm.adAccountId, crm.since, crm.until]);
 
-  const distinct: DistinctLeads | null = filter === "all" ? crm.distinct[level] : filtered?.key === filterKey ? filtered.distinct : null;
-  // El alcance unico de la cuenta solo corresponde al total cuando se ven todos los objetos.
+  const distinct: DistinctLeads | null = !subset ? crm.distinct[level] : filtered?.key === filterKey ? filtered.distinct : null;
+  // El alcance unico de `totals` solo corresponde al total cuando se ven todos los objetos que cubre.
   const { row: total, leadsTotalIsSum } = useMemo(
     () => totalRowDetailed(shown, { overallReach: filter === "all" ? totals.reach : null, distinctLeads: distinct }),
     [shown, filter, totals.reach, distinct],
@@ -218,7 +232,7 @@ export function CrmLevelTable({
   const open = (row: CrmRow, column: ColumnDef) => {
     if (!column.cell) return;
     const isTotal = row.objectId === "total";
-    setTarget({ metric: column.cell, objectId: isTotal ? null : row.objectId, objectName: isTotal ? null : row.name, objectIds: isTotal && filter !== "all" ? shownIds : null });
+    setTarget({ metric: column.cell, objectId: isTotal ? null : row.objectId, objectName: isTotal ? null : row.name, objectIds: isTotal && subset ? shownIds : null });
   };
 
   return (
@@ -273,7 +287,7 @@ export function CrmLevelTable({
       {shown.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
           <BarChart2 className="h-8 w-8 opacity-40" aria-hidden />
-          {all.length === 0 ? EMPTY_LABEL[level] : "No hay objetos con ese estado en este período"}
+          {all.length > 0 ? "No hay objetos con ese estado en este período" : scope ? "No hay nada de esta selección en este período" : EMPTY_LABEL[level]}
         </div>
       ) : (
         <div className="max-w-full overflow-x-auto rounded-lg border border-border/60">
@@ -300,11 +314,30 @@ export function CrmLevelTable({
             </thead>
             <tbody>
               {shown.map((row) => (
-                <tr key={row.objectId} onClick={() => router.push(hrefOf(row.objectId))} className="group cursor-pointer border-b border-border/50 hover:bg-muted/30">
+                <tr
+                  key={row.objectId}
+                  onClick={(e) => (rowActions ? setMenu({ row, x: e.clientX, y: e.clientY }) : router.push(hrefOf(row.objectId)))}
+                  className="group cursor-pointer border-b border-border/50 hover:bg-muted/30"
+                >
                   <td className="sticky left-0 z-[1] bg-card px-2 py-2 group-hover:bg-muted">
-                    <Link href={hrefOf(row.objectId)} onClick={(e) => e.stopPropagation()} className="block hover:underline">
-                      <FirstCell row={row} level={level} />
-                    </Link>
+                    {rowActions ? (
+                      <button
+                        type="button"
+                        aria-haspopup="menu"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setMenu({ row, x: rect.left, y: rect.bottom });
+                        }}
+                        className="block w-full rounded text-left hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <FirstCell row={row} level={level} />
+                      </button>
+                    ) : (
+                      <Link href={hrefOf(row.objectId)} onClick={(e) => e.stopPropagation()} className="block hover:underline">
+                        <FirstCell row={row} level={level} />
+                      </Link>
+                    )}
                   </td>
                   {columns.map((column) => (
                     <td key={column.id} className={`${TD} ${column.kind === "text" || column.kind === "status" || column.kind === "link" ? "text-left" : ""} ${GROUP_STYLE[column.group].cell}`}>
@@ -335,6 +368,10 @@ export function CrmLevelTable({
       )}
 
       <p className="text-[11px] leading-relaxed text-muted-foreground">{totalFootnote(leadsTotalIsSum)}</p>
+
+      {menu && rowActions && (
+        <RowActionsMenu label={menu.row.name || menu.row.objectId} actions={rowActions(menu.row)} x={menu.x} y={menu.y} onClose={closeMenu} />
+      )}
 
       {target && (
         <CrmCellPanel
