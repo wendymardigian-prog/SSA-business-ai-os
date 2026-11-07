@@ -13,6 +13,7 @@
 
 import { clamp } from "../color";
 import type { DesignElement } from "../doc/schema";
+import { IMPORTED_PAGE_NAME, isImportedPage } from "../import/imported-page";
 
 export interface LayerRow {
   id: string;
@@ -39,7 +40,8 @@ export function layerName(el: DesignElement, variableLabel: (key: string) => str
     case "shape":
       return el.shape === "circle" ? "Círculo" : el.shape === "line" ? "Línea" : "Forma";
     case "html":
-      return "Página cargada (HTML)";
+      // Lo que se cargó como archivo (un HTML que ocupa toda la página) es la capa «Página cargada (HTML)».
+      return isImportedPage(el) ? IMPORTED_PAGE_NAME : "Bloque HTML";
   }
 }
 

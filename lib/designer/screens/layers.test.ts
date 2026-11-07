@@ -43,6 +43,12 @@ describe("capas (F20)", () => {
     expect(layerName(text("el_a", "Hola", { name: "Título" }))).toBe("Título");
   });
 
+  it("un HTML cargado que ocupa la página se llama «Página cargada (HTML)»; uno más chico, «Bloque HTML»", () => {
+    const page = { id: "el_h", type: "html", x: 50, y: 50, w: 100, h: 100, html: "<p>x</p>" } as DesignElement;
+    expect(layerName(page)).toBe("Página cargada (HTML)");
+    expect(layerName({ ...page, w: 50 } as DesignElement)).toBe("Bloque HTML");
+  });
+
   it("las cuatro acciones de orden dejan un orden válido (los mismos elementos, sin repetir)", () => {
     for (const id of ["el_a", "el_b", "el_c", "el_d"]) {
       for (const action of ["front", "forward", "backward", "back"] as const) {

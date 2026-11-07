@@ -91,6 +91,19 @@ export function thumbHtml(input: ThumbInput): string {
   });
 }
 
+/** Las rutas de archivos (imágenes del fondo y de los elementos) que usa UNA página, para firmarlas de una vez. */
+export function collectAssetPathsOf(doc: DesignDoc, pageIndex: number): string[] {
+  const page = doc.pages[pageIndex];
+  if (!page) return [];
+  const paths = new Set<string>();
+  if (page.background.type === "image" && page.background.image) paths.add(page.background.image.asset);
+  for (const el of page.elements) {
+    if (el.type === "image") paths.add(el.asset);
+    if (el.type === "html") for (const m of `${el.html}\n${el.css ?? ""}`.matchAll(/asset:([A-Za-z0-9._\-/]+)/g)) paths.add(m[1]);
+  }
+  return [...paths];
+}
+
 /** Un documento reducido a su primera página (lo que viaja al navegador desde la lista). */
 export function firstPageDoc(doc: DesignDoc): DesignDoc {
   return { ...doc, pages: doc.pages.slice(0, 1) };
