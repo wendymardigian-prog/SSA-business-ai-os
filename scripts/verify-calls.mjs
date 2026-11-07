@@ -481,13 +481,14 @@ try {
     check(sigueManual?.mode === "manual", "el intento no cambio nada");
 
     const version = (variant, n) => svc.from("ai_task_prompt_versions").insert({ workspace_id: ws.id, task: "call_analysis", version: n, instructions: "zz-test", variant });
-    const { error: v1 } = await version(perfil.id, 1);
+    // 77: el bloque de los CHECK ya uso la version 1 de las generales de este negocio.
+    const { error: v1 } = await version(perfil.id, 77);
     check(!v1, "cada analizador numera sus instrucciones aparte", v1?.message);
-    const { error: general } = await version(null, 1);
+    const { error: general } = await version(null, 77);
     check(!general, "las generales de la tarea siguen con su numeracion", general?.message);
-    const { error: repetida } = await version(perfil.id, 1);
+    const { error: repetida } = await version(perfil.id, 77);
     check(repetida?.code === "23505", "dentro de un analizador la version no se repite");
-    const { error: repetidaGeneral } = await version(null, 1);
+    const { error: repetidaGeneral } = await version(null, 77);
     check(repetidaGeneral?.code === "23505", "en las generales tampoco");
 
     const { data: analizada, error: e2 } = await svc.from("calls").insert(callRow(ws.id, { analysis_profile_id: perfil.id })).select("id, analysis_profile_id").single();
