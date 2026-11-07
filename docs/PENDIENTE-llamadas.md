@@ -55,7 +55,7 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 
 ## Sacar la marca de closer e importar el historial (6/11/2026)
 
-- **`workspace_members.is_closer` se borra en la 00308.** `closer_emails` se queda: son los otros correos de la persona. Las etiquetas de `lib/audit-history.ts` se quedan para el historial viejo.
+- **`workspace_members.is_closer` se borró en la 00308** (7/11/2026 UTC; el respaldo quedó fuera del repo, en `Claude outputs/`). `closer_emails` se queda: son los otros correos de la persona. Las etiquetas de `lib/audit-history.ts` se quedan para el historial viejo.
 - **Un clon con conexiones existentes:** quien había conectado sin la marca empieza a recibir sus llamadas al desplegar, y su primera consulta mira 14 días. En producción no hay ninguna conexión.
 - **La conexión de un admin ya no trae las llamadas de otros.** Antes, una conexión podía traer lo compartido por otros closers; ahora cada persona conecta la suya.
 - **Prueba real pendiente (lo más importante):** conectar una cuenta de Fathom e importar un rango chico. Confirma `recorded_by[]` con OAuth, la transcripción, el refresco del token y cuánto historial devuelve Fathom (su documentación no dice un límite de antigüedad). Todo se probó contra Fathom simulado.
