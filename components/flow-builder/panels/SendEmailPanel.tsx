@@ -8,6 +8,7 @@ import { InsertAssetButton } from "@/components/response-assets/insert-asset-but
 import { VariableChips } from "./variable-chips";
 import { EmailAttachmentsField } from "./EmailAttachmentsField";
 import { EmailCategoryField } from "@/components/automations/email-category-field";
+import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 const labelClass = "mb-2 block text-xs font-semibold text-foreground";
@@ -94,6 +95,25 @@ export function SendEmailPanel({
       </div>
 
       <EmailAttachmentsField value={data.attachments} onChange={(attachments) => set({ attachments })} />
+
+      {/* Diseñador IA (F59): solo si hay un «Generar desde plantilla» antes (deja `design.pdf_url` en este paso). */}
+      {(availableVariables ?? []).includes("design.pdf_url") || parseEmailAttachments(data.attachments).some(isDesignAttachment) ? (
+        <label className="flex items-start gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={parseEmailAttachments(data.attachments).some(isDesignAttachment)}
+            onChange={(e) => {
+              const rest = parseEmailAttachments(data.attachments).filter((a) => !isDesignAttachment(a));
+              set({ attachments: e.target.checked ? [{ kind: "design", from: "design" }, ...rest] : rest });
+            }}
+          />
+          <span>
+            Adjuntar el PDF del diseño generado
+            <span className="block text-[11px] text-muted-foreground">Si todavía se está armando, el email espera hasta que esté listo.</span>
+          </span>
+        </label>
+      ) : null}
 
       {availableVariables && availableVariables.length > 0 && mode === "variable" && (
         <div>

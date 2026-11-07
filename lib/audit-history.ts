@@ -411,3 +411,27 @@ export const SALE_ACTION_LABELS: Record<
   "payment.receipt_uploaded": "subió el comprobante del pago", // @plantilla-quitar(ventas)
   "payment.fee_corrected": "corrigió la comisión del procesador del pago", // @plantilla-quitar(ventas)
 };
+
+/** Etiquetas de las acciones del Diseñador IA (entity design / design_template), para <Historial/> y la ficha. */
+export const DESIGN_ACTION_LABELS: Record<Extract<AuditAction, `design.${string}` | `design_template.${string}`>, string> = {
+  "design.created": "creó el diseño",
+  "design.renamed": "le cambió el nombre al diseño",
+  "design.duplicated": "duplicó el diseño",
+  "design.archived": "archivó el diseño",
+  "design.restored": "restauró el diseño",
+  "design.deleted": "borró el diseño",
+  "design.version_restored": "volvió a una versión anterior del diseño",
+  "design.published": "publicó el diseño",
+  "design.unpublished": "despublicó el diseño",
+  "design.public_options_changed": "cambió lo que deja hacer el link del diseño",
+  "design.voided": "anuló el diseño",
+  "design.generated": "generó un diseño desde una plantilla",
+  "design.regenerated": "volvió a generar un diseño",
+  "design.email_sent": "mandó el diseño por email",
+  "design.content_linked": "vinculó el diseño con una pieza de Contenido",
+  "design.content_unlinked": "desvinculó el diseño de su pieza de Contenido",
+  "design_template.created": "creó la plantilla",
+  "design_template.settings_changed": "cambió la configuración de la plantilla",
+  "design_template.archived": "archivó la plantilla",
+  "design_template.automation_created": "creó una automatización con la plantilla",
+};

@@ -21,6 +21,9 @@
  */
 
 import { canonicalNodeType } from "./node-outputs";
+import { designGenerateProblem, hasDesignStepBefore, isDesignGenerateNode, type DesignGenerateNodeData } from "@/lib/designer/automation/node-config";
+import { isDesignAttachment, parseEmailAttachments } from "@/lib/email/attachment-limits";
+import { designFlowFormProblem } from "@/lib/designer/automation/flow-template";
 
 export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel";
 export type Capabilities = Record<Requirement, boolean>;
@@ -157,4 +160,32 @@ export function requirementProblems(blocked: readonly BlockedNode[]): string[] {
     const where = b.missing.map((r) => REQUIREMENT_INFO[r].cta).join(" / ");
     return `«${b.name}» no se va a poder ejecutar: falta ${what}. ${where} y volvé a publicar.`;
   });
+}
+
+/**
+ * Lo que le falta a la CONFIGURACIÓN de un paso para poder publicarse (no una conexión): hoy, «Generar desde plantilla»
+ * sin plantilla (Diseñador IA, F57). Como los bloqueos de arriba, cuenta solo lo que se alcanza desde el disparador.
+ */
+export function configProblems(nodes: GraphNodeLike[], edges: GraphEdgeLike[]): string[] {
+  const reachable = reachableFromTrigger(nodes, edges);
+  const problems = new Set<string>();
+  // Un flujo que genera diseños con un formulario sin elegir correría con cualquier formulario (F60).
+  const formProblem = designFlowFormProblem(nodes.filter((n) => !!n?.id && reachable.has(n.id as string)) as Array<{ type?: string; data?: unknown }>);
+  if (formProblem) problems.add(formProblem);
+  for (const node of nodes) {
+    if (!node?.id || !reachable.has(node.id)) continue;
+    if (isDesignGenerateNode(node as { type?: string; data?: unknown })) {
+      const problem = designGenerateProblem(node.data as DesignGenerateNodeData | undefined);
+      if (problem) problems.add(problem);
+      continue;
+    }
+    // «Adjuntar el PDF del diseño generado» (F59) sin un «Generar desde plantilla» antes: nunca habría PDF que adjuntar.
+    const attachments = (node.data as { attachments?: unknown } | undefined)?.attachments;
+    if (attachments && parseEmailAttachments(attachments).some(isDesignAttachment)) {
+      const graphNodes = nodes.filter((n): n is { id: string; type?: string; data?: unknown } => !!n?.id);
+      const graphEdges = edges.filter((e): e is { source: string; target: string } => !!e?.source && !!e?.target);
+      if (!hasDesignStepBefore(node.id, graphNodes, graphEdges)) problems.add("El email adjunta el PDF del diseño, pero no hay un paso «Generar desde plantilla» antes.");
+    }
+  }
+  return [...problems];
 }

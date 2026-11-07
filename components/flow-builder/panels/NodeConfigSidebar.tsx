@@ -15,6 +15,7 @@ import { AiResponsePanel } from "./AiResponsePanel";
 import { BranchPanel } from "./BranchPanel";
 import { UpsertContactPanel } from "./UpsertContactPanel"; // @plantilla-quitar(webhooks)
 import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
+import { DESIGN_OUTPUT_KEYS } from "@/lib/designer/automation/node-config";
 import { flowSendsMessages } from "@/lib/webhooks/once-per-contact"; // @plantilla-quitar(webhooks)
 import { getConditionCatalogInputs } from "@/lib/actions/flow-conditions";
 import { chosenType } from "@/lib/flow-engine/trigger-catalog";
@@ -80,6 +81,8 @@ function getFlowVariables({ node, nodes, edges, schemaPaths }: { node: Node; nod
       const responseVariable = String((n.data as Record<string, unknown>).responseVariable ?? "").trim();
       if (responseVariable) upstreamOutputs.push(responseVariable, `${responseVariable}_status`, `${responseVariable}_ok`);
     }
+    // Diseñador IA (F58): las seis salidas de «Generar desde plantilla».
+    if (kind === "designGenerate") upstreamOutputs.push(...DESIGN_OUTPUT_KEYS);
   }
 
   return pickerVariables({ triggerType, schemaPaths, upstreamOutputs, contactBefore });
