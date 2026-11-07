@@ -212,7 +212,7 @@ export interface GenerateManyInput {
 }
 
 /** El núcleo sin sesión que crea una generación (DS6; lo usa también el nodo de DS7). */
-export type { CreateGenerationInput, CreateGenerationResult, GenerationSource } from "./generate-core";
+export type { CreateGenerationInput, CreateGenerationResult, GenerationSource, GenerationSourceRef } from "./generate-core";
 
 // ─── 5. Server Actions: DS8 (lib/actions/designer/content.ts) ───────────────
 

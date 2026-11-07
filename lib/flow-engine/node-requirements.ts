@@ -21,6 +21,7 @@
  */
 
 import { canonicalNodeType } from "./node-outputs";
+import { designGenerateProblem, isDesignGenerateNode, type DesignGenerateNodeData } from "@/lib/designer/automation/node-config";
 
 export type Requirement = "email" | "whatsapp_channel" | "ai" | "agent" | "channel";
 export type Capabilities = Record<Requirement, boolean>;
@@ -157,4 +158,19 @@ export function requirementProblems(blocked: readonly BlockedNode[]): string[] {
     const where = b.missing.map((r) => REQUIREMENT_INFO[r].cta).join(" / ");
     return `«${b.name}» no se va a poder ejecutar: falta ${what}. ${where} y volvé a publicar.`;
   });
+}
+
+/**
+ * Lo que le falta a la CONFIGURACIÓN de un paso para poder publicarse (no una conexión): hoy, «Generar desde plantilla»
+ * sin plantilla (Diseñador IA, F57). Como los bloqueos de arriba, cuenta solo lo que se alcanza desde el disparador.
+ */
+export function configProblems(nodes: GraphNodeLike[], edges: GraphEdgeLike[]): string[] {
+  const reachable = reachableFromTrigger(nodes, edges);
+  const problems = new Set<string>();
+  for (const node of nodes) {
+    if (!node?.id || !reachable.has(node.id) || !isDesignGenerateNode(node as { type?: string; data?: unknown })) continue;
+    const problem = designGenerateProblem(node.data as DesignGenerateNodeData | undefined);
+    if (problem) problems.add(problem);
+  }
+  return [...problems];
 }

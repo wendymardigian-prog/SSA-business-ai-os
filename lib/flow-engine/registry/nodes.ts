@@ -31,6 +31,7 @@ import { createTaskNode } from "../nodes/create-task"; // @plantilla-quitar(tare
 import { completeTaskNode } from "../nodes/complete-task"; // @plantilla-quitar(tareas)
 import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 import { sendPollNode } from "../nodes/send-poll";
+import { designGenerateNode } from "../nodes/design-generate";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -83,3 +84,5 @@ registerNode(completeTaskNode);
 registerNode(sendWhatsAppNumberNode);
 // Grupos de WhatsApp: una encuesta a un grupo activado (sus votos pueden disparar otro flujo).
 registerNode(sendPollNode);
+// Diseñador IA (DS7, F57): genera un certificado, una constancia o cualquier pieza desde una plantilla.
+registerNode(designGenerateNode);

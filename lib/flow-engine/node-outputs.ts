@@ -8,13 +8,16 @@
  * sola fuente, asi lo que el nodo hace y lo que la pantalla ofrece no se
  * separan.
  *
- * Hoy solo dos nodos escriben una variable que despues se lee:
+ * Los nodos que escriben una variable que despues se lee:
  *   - `httpRequest`: la respuesta, en la variable que se eligio;
- *   - `aiResponse`: el texto generado, SIEMPRE en `ai_response`.
+ *   - `aiResponse`: el texto generado, SIEMPRE en `ai_response`;
+ *   - `upsert_contact`: que paso con el contacto;
+ *   - `designGenerate` (Diseñador IA): `design.*`, el diseño generado.
  * Los demas no aportan nada (enviar un mensaje, poner un tag...).
  */
 
 import type { ConditionFieldSpec } from "./condition-eval";
+import { designGenerateOutputs } from "@/lib/designer/automation/node-config";
 
 /** Un nodo como lo guarda el canvas. */
 export interface RawFlowNode {
@@ -68,6 +71,8 @@ const OUTPUTS: Record<string, (data: never) => ConditionFieldSpec[]> = {
   httpRequest: httpRequestOutputs as (data: never) => ConditionFieldSpec[],
   aiResponse: aiResponseOutputs as (data: never) => ConditionFieldSpec[],
   upsert_contact: upsertContactOutputs as (data: never) => ConditionFieldSpec[], // @plantilla-quitar(webhooks)
+  // Diseñador IA (F58): `design.*` del paso «Generar desde plantilla».
+  designGenerate: designGenerateOutputs as (data: never) => ConditionFieldSpec[],
 };
 
 /** Los tipos de nodo que aportan campos (para el test que lo cruza con el registro). */

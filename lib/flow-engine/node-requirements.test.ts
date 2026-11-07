@@ -3,6 +3,7 @@ import {
   ALL_CONNECTED,
   REQUIREMENT_INFO,
   blockedNodes,
+  configProblems,
   missingFor,
   needsText,
   requirementProblems,
@@ -108,5 +109,20 @@ describe("pasos bloqueados de un flujo", () => {
 
   it("una accion sin requisitos (esperar, tag) nunca se bloquea", () => {
     expect(blockedNodes([trigger, delay, tag], [{ source: "t", target: "d" }, { source: "d", target: "g" }], none)).toEqual([]);
+  });
+});
+
+describe("configProblems: lo que le falta a la configuración de un paso (Diseñador IA, F57)", () => {
+  const t = { id: "t", type: "trigger" };
+  const sinPlantilla = { id: "g", type: "action", data: { actionType: "designGenerate" } };
+  const conPlantilla = { id: "g2", type: "designGenerate", data: { templateId: "tpl-1" } };
+
+  it("«Generar desde plantilla» sin plantilla no se publica", () => {
+    expect(configProblems([t, sinPlantilla], [{ source: "t", target: "g" }])).toEqual(["Elegí la plantilla del paso «Generar desde plantilla»."]);
+  });
+
+  it("con plantilla, o suelto sin conectar al disparador, no frena", () => {
+    expect(configProblems([t, conPlantilla], [{ source: "t", target: "g2" }])).toEqual([]);
+    expect(configProblems([t, sinPlantilla], [])).toEqual([]);
   });
 });

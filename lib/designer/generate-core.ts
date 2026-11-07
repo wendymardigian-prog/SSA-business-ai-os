@@ -15,6 +15,16 @@ import type { MissingPolicy } from "./contracts";
 
 export type GenerationSource = "manual" | "bulk" | "automation" | "module";
 
+/**
+ * Lo que se guarda en `designs.source_ref` (jsonb): de dónde salió la generación. La pestaña Generaciones arma con esto
+ * "A mano · <persona>", "Automatización «<nombre>»" (con link a la corrida), "Para varios" o el módulo.
+ */
+export type GenerationSourceRef =
+  | { kind: "user"; user_id: string }
+  | { kind: "automation"; flow_id: string; session_id: string; node_id: string }
+  | { kind: "bulk"; batch_id: string; user_id: string | null }
+  | { kind: "module"; module: string; id: string };
+
 export interface CreateGenerationInput {
   workspaceId: string;
   templateId: string;
@@ -26,8 +36,8 @@ export interface CreateGenerationInput {
   policy: MissingPolicy;
   publish: boolean;
   source: GenerationSource;
-  /** Usuario (manual), sesión de la automatización (automation), tanda (bulk) o registro del módulo. */
-  sourceRef: string | null;
+  /** De dónde salió (va a `designs.source_ref`). Su `kind` acompaña a `source`. */
+  sourceRef: GenerationSourceRef | null;
   /** Si ya tiene una válida y la plantilla verifica: true = anular la anterior y generar otra; false = devolver `existing`. */
   replaceExisting?: boolean;
   /** Quien la pidió (para el historial); null si es automática. */
