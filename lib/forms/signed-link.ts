@@ -16,10 +16,11 @@
  * `saleId`) y CX (ítems del camino, con `serviceId`). `service_id` y `sale_id` se
  * guardan sin validar contra tablas que todavía no existen.
  */
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { readSecret, SECRET_NAMES, storeSecret } from "@/lib/vault";
+import { readSecret, SECRET_NAMES } from "@/lib/vault";
+import { getOrCreateSecret } from "@/lib/vault-get-or-create";
 import { FORM_LIMITS } from "./limits";
 
 type Db = SupabaseClient<Database>;
@@ -102,16 +103,8 @@ export function readToken(token: string, secret: string, expected: { formId: str
 
 /** La clave de firma de este workspace: se genera la primera vez y queda en Vault. */
 export async function getOrCreateLinkSecret(service: Db, workspaceId: string): Promise<string> {
-  try {
-    const existing = await readSecret(service, workspaceId, SECRET_NAMES.formsLinkSecret);
-    if (existing) return existing;
-  } catch {
-    // No estar es el caso normal la primera vez.
-  }
-  const secret = randomBytes(32).toString("base64url");
-  const stored = await storeSecret(service, workspaceId, SECRET_NAMES.formsLinkSecret, secret);
-  if (!stored.ok) throw new Error(`No pude guardar la clave de firma de los links: ${stored.error}`);
-  return secret;
+  // Un error de Vault sube: generar otra pisaria la guardada (lib/vault-get-or-create.ts).
+  return getOrCreateSecret(service, workspaceId, SECRET_NAMES.formsLinkSecret, "de los links");
 }
 
 export interface SignInput extends TokenInput {
