@@ -59,6 +59,8 @@ export const VISIBLE_ALLOWLIST = [
   { re: /\b(?:tu tarea|agente, tarea u origen)\b/gi, why: "\"tarea\" como palabra comun (la del modelo, o el origen de una corrida de IA)" },
   // Meta Ads
   { files: /^(components\/dashboards\/ads\/col-tips\.ts|lib\/dashboards\/ads-crm-columns\.ts|lib\/dashboards\/ads-leads\.ts)$/, re: /\bformularios?\b/gi, why: "el formulario de clientes potenciales de Meta (lead form), no el modulo de Formularios" },
+  { files: /^(components\/dashboards\/ads\/kpi-items\.ts|lib\/dashboards\/ads-view\.ts)$/, re: /\bsus formularios\b/g, why: "los formularios de Meta (Instant Forms), no el modulo de Formularios" },
+  { files: /^lib\/dashboards\/ads-view\.ts$/, re: /^Ventas$|\bVentas con fecha dentro del per[ií]odo\b/g, why: "el paso Ventas del funnel solo aparece con ventas atribuidas: en la plantilla nunca hay (la columna vuelve NULL)" },
   { files: /^lib\/dashboards\/ads\.ts$/, re: /\bVentas\b/g, why: "el objetivo de campaña de Meta OUTCOME_SALES" },
   { re: /\bleads, ventas, tr[aá]fico\b/gi, why: "los objetivos de campaña de Meta" },
   { files: /^(components\/dashboards\/unified-dashboard\.tsx|lib\/dashboards\/unified\.ts)$/, re: /\bpagos?\b/gi, why: "lo pago = la pauta, frente a lo organico" },

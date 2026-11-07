@@ -29,7 +29,8 @@ export function FunnelCard({ totals, currency, crm = null, crmFailed = false }: 
         <TrendingDown className="h-4 w-4 text-primary-ink" aria-hidden /> Funnel de conversión
         <InfoTooltip
           label="Qué muestra el funnel"
-          text="Cada paso cuenta lo que pasó en el período elegido. Hasta los leads de Meta, los números son de Meta. Leads CRM, Agendas y Ventas salen de tu CRM y solo cuentan lo que se atribuye a esto. Pasá por encima de cada paso para ver qué es."
+          text="Cada paso cuenta lo que pasó en el período elegido. Hasta los leads de Meta, los números son de Meta. Leads CRM, Agendas y Ventas salen de tu CRM y solo cuentan lo que se atribuye a esto. Pasá por encima de cada paso para ver qué es." // @plantilla-quitar(ventas)
+          // @plantilla-sin(ventas): text="Cada paso cuenta lo que pasó en el período elegido. Hasta los leads de Meta, los números son de Meta. Leads CRM y Agendas salen de tu CRM y solo cuentan lo que se atribuye a esto. Pasá por encima de cada paso para ver qué es."
         />
       </h3>
       <div className="space-y-1">

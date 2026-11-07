@@ -600,7 +600,8 @@ export function funnelSteps(totals: AdsTotals, crm: FunnelCrm | null = null): Fu
       value: totals.purchases,
       percent: leads > 0 ? pct(totals.purchases, totals.leads) : pct(totals.purchases, clicks),
       source: "meta",
-      tip: "Las compras que reporta Meta con su píxel. No son las ventas cargadas en el sistema.",
+      tip: "Las compras que reporta Meta con su píxel. No son las ventas cargadas en el sistema.", // @plantilla-quitar(ventas)
+      // @plantilla-sin(ventas): tip: "Las compras que reporta Meta con su píxel.",
     });
   }
   if (crmLeads > 0) {
@@ -610,7 +611,8 @@ export function funnelSteps(totals: AdsTotals, crm: FunnelCrm | null = null): Fu
       value: crmLeads,
       percent: leads > 0 || purchases > 0 ? null : pct(crmLeads, clicks),
       source: "crm",
-      tip: "Personas de tu CRM que tuvieron un toque de esto en el período (por ejemplo, un formulario o un mensaje con sus datos de anuncio). Cada persona cuenta una vez. No se compara con Leads Meta porque son dos formas de contar.",
+      tip: "Personas de tu CRM que tuvieron un toque de esto en el período (por ejemplo, un formulario o un mensaje con sus datos de anuncio). Cada persona cuenta una vez. No se compara con Leads Meta porque son dos formas de contar.", // @plantilla-quitar(formularios)
+      // @plantilla-sin(formularios): tip: "Personas de tu CRM que tuvieron un toque de esto en el período (por ejemplo, un mensaje con sus datos de anuncio). Cada persona cuenta una vez. No se compara con Leads Meta porque son dos formas de contar.",
     });
   }
 
@@ -641,7 +643,8 @@ export function funnelSteps(totals: AdsTotals, crm: FunnelCrm | null = null): Fu
 /** La aclaracion de abajo del embudo: que un paso no aparezca tiene que tener un motivo a la vista. */
 export function funnelNote(crm: FunnelCrm | null, crmFailed: boolean): string | null {
   if (crmFailed) return "No pude leer los datos del CRM: se muestra solo lo que dice Meta.";
-  const missing = [(crm?.bookings ?? 0) === 0 ? "agendas" : null, (crm?.sales ?? 0) === 0 ? "ventas" : null].filter(Boolean);
+  const missing = [(crm?.bookings ?? 0) === 0 ? "agendas" : null, (crm?.sales ?? 0) === 0 ? "ventas" : null].filter(Boolean); // @plantilla-quitar(ventas)
+  // @plantilla-sin(ventas): const missing = [(crm?.bookings ?? 0) === 0 ? "agendas" : null].filter(Boolean);
   if (missing.length === 0) return null;
   return `Sin ${missing.join(" ni ")} atribuidas en este período.`;
 }

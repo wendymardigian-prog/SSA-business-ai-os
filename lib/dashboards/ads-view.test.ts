@@ -414,8 +414,10 @@ describe("el embudo", () => {
   });
 
   it("la nota dice por que falta un paso", () => {
-    expect(funnelNote({ leadsTotal: 3, bookings: 0, sales: 0 }, false)).toBe("Sin agendas ni ventas atribuidas en este período.");
-    expect(funnelNote({ leadsTotal: 3, bookings: 2, sales: 0 }, false)).toBe("Sin ventas atribuidas en este período.");
+    expect(funnelNote({ leadsTotal: 3, bookings: 0, sales: 0 }, false)).toBe("Sin agendas ni ventas atribuidas en este período."); // @plantilla-quitar(ventas)
+    expect(funnelNote({ leadsTotal: 3, bookings: 2, sales: 0 }, false)).toBe("Sin ventas atribuidas en este período."); // @plantilla-quitar(ventas)
+    // @plantilla-sin(ventas): expect(funnelNote({ leadsTotal: 3, bookings: 0, sales: 0 }, false)).toBe("Sin agendas atribuidas en este período.");
+    // @plantilla-sin(ventas): expect(funnelNote({ leadsTotal: 3, bookings: 2, sales: 0 }, false)).toBeNull();
     expect(funnelNote({ leadsTotal: 3, bookings: 2, sales: 1 }, false)).toBeNull();
     expect(funnelNote(null, true)).toContain("No pude leer");
   });
