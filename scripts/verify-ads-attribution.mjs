@@ -273,7 +273,8 @@ try {
     const rowD = await touchRow(dm.data.touch_id);
     check(rowD.meta_match_status === "unmatched" && rowD.meta_match_reason === "id_not_in_catalog", "un DM con un ad_id que no esta en el catalogo no se vincula por el titulo (00299)", JSON.stringify(rowD));
     const fb = await record(c, { source: "instagram", medium: "dm", origin: "dm", fbclid: "IwAR0zz" });
-    check((await touchRow(fb.data.touch_id)).meta_match_reason === "fbclid_only", "un fbclid solo cuenta siempre (fbclid_only)");
+    // 00318: el fbclid solo ya no es un dato de anuncio (Instagram y Facebook lo agregan a cualquier link).
+    check((await touchRow(fb.data.touch_id)).meta_match_status === "none", "un fbclid solo no va a «Sin vincular» (00318)");
   }
 
   console.log("\n— AT3: el trigger NUNCA hace fallar el insert (error forzado) —");
