@@ -38,7 +38,7 @@ const callRow = {
   id: "c1",
   workspace_id: "ws1",
   title: "Llamada",
-  call_type: "cierre",
+  no_show: false,
   area_id: "area-ventas",
   category_id: "tipo-cierre",
   category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-cierre", type_name: "Cierre" },
@@ -152,14 +152,14 @@ describe("runCallAnalysisJob", () => {
       outcome: "venta",
       main_objection: "precio",
       analysis_prompt_version: 1,
-      rubric_version: DEFAULT_ANALYSIS.rubric.version,
+      rubric_version: DEFAULT_RUBRIC.version,
       analysis_model: "anthropic/sonnet",
       analysis_run_id: "11111111-1111-4111-8111-111111111111",
       analysis_edited: false,
       analysis_error: null,
     });
     expect(final.analysis_ai).toEqual(final.analysis);
-    expect(final.rubric_snapshot).toEqual(DEFAULT_ANALYSIS.rubric);
+    expect(final.rubric_snapshot).toEqual(DEFAULT_RUBRIC);
     expect(final.quotes_total).toBeGreaterThan(0);
     expect(final.quotes_verified).toBe(final.quotes_total);
     expect(String(final.followup_at)).toContain("2026-10-20");

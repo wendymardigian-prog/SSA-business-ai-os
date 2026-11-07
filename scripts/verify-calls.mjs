@@ -19,7 +19,7 @@
  * prueba que falla.
  *
  *   node scripts/verify-calls.mjs
- *   node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301 --despues-de-00303 --despues-de-00304
+ *   node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301 --despues-de-00303 --despues-de-00304 --despues-de-00307 --despues-de-00308
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -309,7 +309,7 @@ try {
 
   console.log("\n— El claim del analisis (lo que hace el handler call_analyze) —");
   {
-    const { data: objetivo } = await svc.from("calls").insert(callRow(ws.id, { analysis_status: "pending", call_type: "cierre" })).select("id").single();
+    const { data: objetivo } = await svc.from("calls").insert(callRow(ws.id, { analysis_status: "pending" })).select("id").single();
     // Diez procesos a la vez piden la misma llamada con el mismo UPDATE condicional: gana uno.
     const resultados = await Promise.all(
       Array.from({ length: 10 }, () =>
@@ -524,6 +524,35 @@ try {
     check(JSON.stringify(sigue?.fathom_settings) === "{}", "el intento no cambió nada");
     const { error: fuente } = await svc.from("calls").insert(callRow(ws.id, { connection_id: conexion.id, classification_source: "connection" }));
     check(!fuente, "una grabación puede quedar clasificada por el área de su conexión", fuente?.message);
+  }
+
+  if (process.argv.includes("--despues-de-00307")) {
+    console.log("\n— Quién clasificó (00307) —");
+    const { data: decidida, error: e1 } = await svc.from("calls")
+      .insert(callRow(ws.id, { classification_source: "ai", classification_confidence: 0.91, classification_rule: "menos de 10 min" }))
+      .select("id, classification_rule, classification_confidence").single();
+    check(!e1 && Number(decidida?.classification_confidence) === 0.91 && decidida?.classification_rule === "menos de 10 min", "guarda la regla y la seguridad de la IA", e1?.message);
+    const { error: fuera } = await svc.from("calls").insert(callRow(ws.id, { classification_confidence: 1.5 }));
+    check(!!fuera, "la seguridad no puede pasar de 1");
+  }
+
+  if (process.argv.includes("--despues-de-00308")) {
+    console.log("\n— Lo viejo ya no está (00308) —");
+    const { error: columna } = await svc.from("calls").select("call_type").limit(1);
+    check(!!columna, "calls.call_type ya no existe");
+    const { error: fuente } = await svc.from("calls").select("call_type_source").limit(1);
+    check(!!fuente, "calls.call_type_source ya no existe");
+    const { error: closer } = await svc.from("workspace_members").select("is_closer").limit(1);
+    check(!!closer, "workspace_members.is_closer ya no existe");
+    const { error: correos } = await svc.from("workspace_members").select("closer_emails").limit(1);
+    check(!correos, "closer_emails sigue: son los otros correos de cada persona", correos?.message);
+    const { data: viejas } = await svc.from("workspaces").select("id, ai_background_settings");
+    const conClaves = (viejas ?? []).filter((w) => {
+      const a = w.ai_background_settings?.call_analysis ?? {};
+      const c = w.ai_background_settings?.call_classification ?? {};
+      return ["mode", "analyze_types", "auto_summary", "auto_knowledge", "rubric"].some((k) => k in a) || ["allow_ai_types", "discarded_types"].some((k) => k in c);
+    });
+    check(conClaves.length === 0, "no quedan claves viejas en la configuración", `${conClaves.length} negocios`);
   }
 } catch (e) {
   fail("el script fallo", e.message);

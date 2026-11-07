@@ -27,7 +27,7 @@ import { loadTaskInstructionsForRun } from "@/lib/ai-tasks/store";
 import { categorySnapshot } from "@/lib/scheduling/categories";
 import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
-import { classifierOptions, callCategoryLabel } from "./catalog";
+import { classifierOptions, callCategoryLabel, readCategorySnapshot } from "./catalog";
 import { classifyCallWithAi } from "./classify-ai";
 import { needsAi, resolveCascade } from "./classify-cascade";
 import { classificationPatch, loadClassificationContext } from "./classify-core";
@@ -56,7 +56,7 @@ export interface ClassifyDeps {
 }
 
 const CALL_COLUMNS =
-  "id, workspace_id, connection_id, area_id, category_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, call_type, call_type_source, classification_source, no_show, analysis_status, imported_from_history";
+  "id, workspace_id, connection_id, area_id, category_id, category_snapshot, title, duration_seconds, attendees, transcript, booking_id, contact_id, classification_source, no_show, analysis_status, imported_from_history";
 
 export async function runCallClassification(deps: ClassifyDeps, callId: string, retry = 0, opts: { noAi?: boolean } = {}): Promise<{ outcome: ClassifyOutcome }> {
   const { db } = deps;
@@ -70,7 +70,7 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
   const hasTranscript = Array.isArray(call.transcript) && call.transcript.length > 0;
 
   // Paso el estado a su lugar sin tocar lo que eligio una persona.
-  if ((call.classification_source === "human" || call.call_type_source === "human") && call.call_type) {
+  if (call.classification_source === "human" && (call.area_id || call.no_show)) {
     if (call.analysis_status === "classifying") {
       const profile = resolveProfile(ctx.profiles, { categoryId: call.category_id, areaId: call.area_id });
       const next = statusAfterClassification(profile, { ...call, noShow: call.no_show, importedFromHistory: call.imported_from_history });
@@ -83,7 +83,7 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
   const noShow = call.no_show || ctx.noShowRule;
   const base = resolveCascade({ booking: ctx.booking, rule: ctx.rule, connection: ctx.connection });
   let final = base;
-  let ai: { confidence: number; alternative: string | null } | null = null;
+  let ai: { confidence: number } | null = null;
   let lowConfidence = false;
   let reasonOverride: string | null = null;
 
@@ -140,21 +140,21 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
       await run.close({ status: "responded" });
 
       final = resolveCascade({ booking: ctx.booking, rule: ctx.rule, connection: ctx.connection, ai: d.categoryId ? categorySnapshot(d.categoryId, ctx.categories) : null });
-      ai = { confidence: d.confidence, alternative: d.alternative };
+      ai = { confidence: d.confidence };
       lowConfidence = d.lowConfidence;
     }
   }
 
   const patch = classificationPatch(final, ctx, noShow, ai);
 
-  if (patch.call_type) {
+  if (patch.area_id || patch.no_show) {
     const profile = resolveProfile(ctx.profiles, { categoryId: patch.category_id, areaId: patch.area_id });
     const next = statusAfterClassification(profile, { ...call, noShow, lowConfidence, importedFromHistory: call.imported_from_history });
     const { data: updated } = await db
       .from("calls")
       .update({ ...patch, analysis_status: next.status, analysis_status_reason: next.reason })
       .eq("id", callId)
-      .or("call_type_source.is.null,call_type_source.neq.human")
+      .or("classification_source.is.null,classification_source.neq.human")
       .select("id");
     if (updated && updated.length > 0) {
       if (next.enqueueAnalysis) await enqueueCallJob(db, "call_analyze", callId, now);
@@ -164,8 +164,8 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
         entityType: "call",
         entityId: callId,
         action: "call.type_changed",
-        changes: { call_type: { old: call.call_type, new: patch.call_type } },
-        metadata: { source: final.source ?? "rule", category: callCategoryLabel(final.snapshot), ...(patch.call_type_rule ? { rule: patch.call_type_rule } : {}) },
+        changes: { category: { old: callCategoryLabel(readCategorySnapshot(call.category_snapshot)), new: callCategoryLabel(final.snapshot) } },
+        metadata: { source: final.source ?? "rule", category: callCategoryLabel(final.snapshot), ...(patch.classification_rule ? { rule: patch.classification_rule } : {}) },
         label: "Clasificación automática",
       });
     }

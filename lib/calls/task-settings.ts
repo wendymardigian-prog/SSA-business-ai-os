@@ -11,10 +11,7 @@
 
 import { z } from "zod";
 import { BASE_CALL_TYPES } from "./classification";
-import {
-  DEFAULT_RUBRIC, EMPTY_CATEGORIES, normalizeCategories, normalizeRubric, rubricScoringChanged, slugKey,
-  validateRubric, type CallCategories, type Rubric,
-} from "./rubric";
+import { EMPTY_CATEGORIES, normalizeCategories, slugKey, type CallCategories } from "./rubric";
 
 export const CALL_TASK_KEYS = ["call_classification", "call_analysis"] as const;
 export type CallTaskKey = (typeof CALL_TASK_KEYS)[number];
@@ -49,9 +46,8 @@ export interface CallClassificationSettings {
   mode: "now" | "off";
   rules: ClassificationRuleSetting[];
   confidence_threshold: number;
+  /** Tipos propios viejos: una regla guardada con su clave se sigue entendiendo. */
   custom_types: CustomCallType[];
-  allow_ai_types: boolean;
-  discarded_types: string[];
   /** Compatibilidad con `TaskConfig`: el modelo real es `ai_task_models`. */
   model: string | null;
 }
@@ -68,8 +64,6 @@ export const DEFAULT_CLASSIFICATION: CallClassificationSettings = {
   rules: DEFAULT_RULES,
   confidence_threshold: 0.7,
   custom_types: [],
-  allow_ai_types: true,
-  discarded_types: [],
   model: null,
 };
 
@@ -78,26 +72,15 @@ export const DEFAULT_CLASSIFICATION: CallClassificationSettings = {
 export const MAX_COMPANY_CONTEXT = 4000;
 
 export interface CallAnalysisSettings {
-  /** `now` = automatico; `off` = solo con el boton. Arranca APAGADO: el primer gasto lo decide una persona. */
-  mode: "now" | "off";
-  analyze_types: string[];
-  auto_summary: boolean;
-  auto_knowledge: boolean;
   allow_new_categories: boolean;
   company_context: string | null;
-  rubric: Rubric;
   categories: CallCategories;
   model: string | null;
 }
 
 export const DEFAULT_ANALYSIS: CallAnalysisSettings = {
-  mode: "off",
-  analyze_types: ["cierre", "seguimiento"],
-  auto_summary: true,
-  auto_knowledge: false,
   allow_new_categories: true,
   company_context: null,
-  rubric: DEFAULT_RUBRIC,
   categories: EMPTY_CATEGORIES,
   model: null,
 };
@@ -124,19 +107,12 @@ const classificationSchema = z.object({
   rules: z.array(ruleSchema).max(30),
   confidence_threshold: z.number().min(0).max(1),
   custom_types: z.array(customTypeSchema).max(30),
-  allow_ai_types: z.boolean(),
-  discarded_types: z.array(z.string().max(60)).max(100),
   model: z.string().nullable(),
 });
 
 const analysisSchema = z.object({
-  mode: z.enum(["now", "off"]),
-  analyze_types: z.array(z.string().min(1).max(40)).max(40),
-  auto_summary: z.boolean(),
-  auto_knowledge: z.boolean(),
   allow_new_categories: z.boolean(),
   company_context: z.string().max(MAX_COMPANY_CONTEXT, `El contexto del negocio puede tener hasta ${MAX_COMPANY_CONTEXT} caracteres`).nullable(),
-  rubric: z.unknown(),
   categories: z.unknown(),
   model: z.string().nullable(),
 });
@@ -166,8 +142,7 @@ function readAnalysis(raw: unknown): CallAnalysisSettings {
   const parsed = analysisSchema.safeParse(merged);
   if (!parsed.success) return structuredClone(DEFAULT_ANALYSIS);
   return {
-    ...(parsed.data as Omit<CallAnalysisSettings, "rubric" | "categories">),
-    rubric: normalizeRubric(raw.rubric ?? DEFAULT_RUBRIC),
+    ...(parsed.data as Omit<CallAnalysisSettings, "categories">),
     categories: normalizeCategories(raw.categories ?? EMPTY_CATEGORIES),
   };
 }
@@ -198,11 +173,8 @@ export type ValidatedCallTask =
 
 const firstIssue = (e: z.ZodError) => e.issues[0]?.message ?? "La configuración no es válida";
 
-/**
- * Valida lo que se quiere guardar. `previous` es lo que habia: sirve para subir
- * `rubric.version` solo cuando cambia algo que afecta los puntajes.
- */
-export function validateCallTaskSettings(task: CallTaskKey, input: unknown, previous?: unknown): ValidatedCallTask {
+/** Valida lo que se quiere guardar. */
+export function validateCallTaskSettings(task: CallTaskKey, input: unknown): ValidatedCallTask {
   if (!isObj(input)) return { ok: false, error: "La configuración no es válida" };
 
   if (task === "call_classification") {
@@ -225,23 +197,13 @@ export function validateCallTaskSettings(task: CallTaskKey, input: unknown, prev
 
   const parsed = analysisSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
-  const rubric = normalizeRubric(parsed.data.rubric);
-  const problems = validateRubric(rubric);
-  if (problems.length > 0) return { ok: false, error: problems[0] };
-
-  const prevRubric = isObj(previous) && previous.rubric ? normalizeRubric(previous.rubric) : DEFAULT_RUBRIC;
-  const baseVersion = prevRubric.version;
-  const bumped = rubricScoringChanged(prevRubric, rubric);
-  const versioned: Rubric = { ...rubric, version: bumped ? baseVersion + 1 : baseVersion };
-
   const categories = normalizeCategories(parsed.data.categories);
 
   return {
     ok: true,
     task,
     value: {
-      ...(parsed.data as Omit<CallAnalysisSettings, "rubric" | "categories">),
-      rubric: versioned,
+      ...(parsed.data as Omit<CallAnalysisSettings, "categories">),
       categories,
     },
   };

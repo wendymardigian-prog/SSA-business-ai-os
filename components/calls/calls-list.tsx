@@ -42,9 +42,9 @@ export interface CallListRow {
   contactName: string | null;
   callType: string | null;
   categoryLabel: string;
-  callTypeSource: string | null;
-  callTypeRule: string | null;
-  callTypeConfidence: number | null;
+  classificationSource: string | null;
+  classificationRule: string | null;
+  classificationConfidence: number | null;
   status: CallAnalysisStatus;
   outcome: string | null;
   closerScore: number | null;
@@ -333,7 +333,7 @@ export function CallsList(props: Props) {
 
             {panelOpen && (
               <div className="mt-3 grid gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Closer">
+                <Field label="Quien grabó">
                   <select className={selectClass} value={filters.closer} onChange={(e) => go({ closer: e.target.value })}>
                     <option value="">Todos</option>
                     {closers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -417,7 +417,7 @@ export function CallsList(props: Props) {
                             />
                           </th>
                         )}
-                        {["Lead / llamada", "Fecha", "Duración", "Closer", "Tipo", "Resultado", "Closer", "Lead", "Estado", ""].map((h, i) => (
+                        {["Lead / llamada", "Fecha", "Duración", "Quien grabó", "Tipo", "Resultado", "Puntaje", "Lead", "Estado", ""].map((h, i) => (
                           <th key={i} scope="col" className="whitespace-nowrap px-3 py-2 font-medium">{i === 6 ? "Puntaje closer" : i === 7 ? "Puntaje lead" : h}</th>
                         ))}
                       </tr>
@@ -441,7 +441,7 @@ export function CallsList(props: Props) {
                             <td className="whitespace-nowrap px-3 py-2">{formatCallDate(r.recordedAt, timeZone)}</td>
                             <td className="whitespace-nowrap px-3 py-2">{formatDuration(r.durationSeconds)}</td>
                             <td className="whitespace-nowrap px-3 py-2">{r.closerName ?? "—"}</td>
-                            <td className="px-3 py-2" title={typeDeciderText({ call_type_source: r.callTypeSource, call_type_rule: r.callTypeRule, call_type_confidence: r.callTypeConfidence }) ?? undefined}>
+                            <td className="px-3 py-2" title={typeDeciderText({ classification_source: r.classificationSource, classification_rule: r.classificationRule, classification_confidence: r.classificationConfidence }) ?? undefined}>
                               <TypeChip type={r.callType} label={r.categoryLabel} needsReview={r.status === "needs_review"} />
                             </td>
                             <td className="px-3 py-2"><OutcomeChip outcome={r.outcome} /></td>

@@ -34,7 +34,7 @@ describe("decideCategoryProposal", () => {
     const [task, value] = mocks.save.mock.calls[0];
     expect(task).toBe("call_analysis");
     expect(value.categories.accepted.objeciones.map((c: { clave: string }) => c.clave)).toEqual(["precio", "falta_de_confianza"]);
-    expect(value.mode).toBe(DEFAULT_ANALYSIS.mode); // el resto de la configuracion sigue igual
+    expect(value.allow_new_categories).toBe(DEFAULT_ANALYSIS.allow_new_categories); // el resto de la configuracion sigue igual
   });
   it("unir guarda la union y exige una categoria aceptada de destino", async () => {
     await decideCategoryProposal({ group: "objeciones", key: "costoso", decision: "merge", targetKey: "precio" });

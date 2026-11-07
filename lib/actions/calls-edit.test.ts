@@ -56,7 +56,6 @@ const analysis = () => ({
 });
 const row = (over: Record<string, unknown> = {}) => ({
   id: CALL,
-  call_type: "cierre",
   analysis_status: "pending",
   transcript,
   analysis: analysis(),
@@ -138,7 +137,7 @@ describe("permisos", () => {
 
 describe("changeCallType", () => {
   it("guarda area y tipo como humano, limpia lo de la IA, audita y deja pendiente", async () => {
-    const { service } = setup({ call: { analysis_status: "needs_review", call_type: "otra", category_id: null, no_show: false } });
+    const { service } = setup({ call: { analysis_status: "needs_review", category_id: null, no_show: false } });
     const r = await changeCallType({ callId: CALL, categoryId: CIERRE });
     expect(r.ok).toBe(true);
     expect(service.writesTo("calls")[0].values).toMatchObject({
@@ -146,43 +145,41 @@ describe("changeCallType", () => {
       category_id: CIERRE,
       category_snapshot: { area_id: VENTAS, area_name: "Ventas", type_id: CIERRE, type_name: "Cierre" },
       classification_source: "human",
-      call_type: "cierre",
-      call_type_source: "human",
-      call_type_confidence: null,
-      call_type_proposed: null,
+      classification_rule: null,
+      classification_confidence: null,
       analysis_status: "pending",
       analysis_status_reason: "manual",
     });
-    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.type_changed", changes: { call_type: { old: "otra", new: "cierre" } }, performedBy: "u1" }));
+    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.type_changed", changes: { category: { old: "Sin clasificar", new: "Ventas · Cierre" } }, performedBy: "u1" }));
   });
 
   it("se puede elegir solo el area", async () => {
-    const { service } = setup({ call: { analysis_status: "needs_review", call_type: null, category_id: null, no_show: false } });
+    const { service } = setup({ call: { analysis_status: "needs_review", category_id: null, no_show: false } });
     await changeCallType({ callId: CALL, categoryId: VENTAS });
     expect(service.writesTo("calls")[0].values).toMatchObject({ area_id: VENTAS, category_id: VENTAS, category_snapshot: { area_id: VENTAS, type_id: null } });
   });
 
   it("con un analizador automatico, elegir ese tipo encola el analisis", async () => {
-    const { service } = setup({ call: { analysis_status: "needs_review", call_type: null, category_id: null, no_show: false }, profiles: [analyzer(CIERRE, "auto")] });
+    const { service } = setup({ call: { analysis_status: "needs_review", category_id: null, no_show: false }, profiles: [analyzer(CIERRE, "auto")] });
     await changeCallType({ callId: CALL, categoryId: CIERRE });
     expect(service.writesTo("scheduled_jobs")[0].values).toMatchObject({ type: "call_analyze", dedupe_key: `call_analyze:${CALL}` });
   });
 
   it("un tipo sin analizador deja la llamada en No aplica y lo dice", async () => {
-    const { service } = setup({ call: { analysis_status: "needs_review", call_type: null, category_id: null, no_show: false } });
+    const { service } = setup({ call: { analysis_status: "needs_review", category_id: null, no_show: false } });
     await changeCallType({ callId: CALL, categoryId: EQUIPO });
     expect(service.writesTo("calls")[0].values).toMatchObject({ analysis_status: "not_applicable", analysis_status_reason: "no_profile" });
   });
 
   it("una llamada ya analizada conserva su estado al cambiarle el tipo", async () => {
-    const { service } = setup({ call: { analysis_status: "analyzed", call_type: "cierre", category_id: CIERRE, no_show: false } });
+    const { service } = setup({ call: { analysis_status: "analyzed", category_id: CIERRE, no_show: false } });
     await changeCallType({ callId: CALL, categoryId: SEGUIMIENTO });
     expect(service.writesTo("calls")[0].values).not.toHaveProperty("analysis_status");
     expect(service.writesTo("calls")[0].values).toMatchObject({ category_id: SEGUIMIENTO });
   });
 
   it("rechaza lo que no existe o esta archivado, y no cambia nada si es el mismo", async () => {
-    const { service } = setup({ call: { analysis_status: "pending", call_type: "cierre", category_id: CIERRE, no_show: false } });
+    const { service } = setup({ call: { analysis_status: "pending", category_id: CIERRE, no_show: false } });
     expect((await changeCallType({ callId: CALL, categoryId: "no-es-uuid" })).ok).toBe(false);
     expect((await changeCallType({ callId: CALL, categoryId: CALL })).ok).toBe(false);
     expect((await changeCallType({ callId: CALL, categoryId: ARCHIVADA })).ok).toBe(false);
@@ -191,9 +188,9 @@ describe("changeCallType", () => {
   });
 
   it("una llamada que no se presento sigue siendo no_show aunque se le elija el tipo", async () => {
-    const { service } = setup({ call: { analysis_status: "needs_review", call_type: "no_show", category_id: null, no_show: true } });
+    const { service } = setup({ call: { analysis_status: "needs_review", category_id: null, no_show: true } });
     await changeCallType({ callId: CALL, categoryId: CIERRE });
-    expect(service.writesTo("calls")[0].values).toMatchObject({ category_id: CIERRE, call_type: "no_show", analysis_status: "not_applicable" });
+    expect(service.writesTo("calls")[0].values).toMatchObject({ category_id: CIERRE, analysis_status: "not_applicable" });
   });
 });
 
@@ -201,28 +198,28 @@ describe("setCallNoShow", () => {
   const snapshot = { area_id: VENTAS, area_name: "Ventas", type_id: CIERRE, type_name: "Cierre" };
 
   it("marcar no cambia el area ni el tipo, y evita el analisis", async () => {
-    const { service } = setup({ call: { analysis_status: "pending", call_type: "cierre", category_snapshot: snapshot, no_show: false } });
+    const { service } = setup({ call: { analysis_status: "pending", category_snapshot: snapshot, no_show: false } });
     expect((await setCallNoShow({ callId: CALL, noShow: true })).ok).toBe(true);
     const values = service.writesTo("calls")[0].values as Record<string, unknown>;
-    expect(values).toMatchObject({ no_show: true, call_type: "no_show", analysis_status: "not_applicable" });
+    expect(values).toMatchObject({ no_show: true, analysis_status: "not_applicable" });
     expect(values).not.toHaveProperty("area_id");
     expect(values).not.toHaveProperty("category_id");
   });
 
   it("sacar la marca vuelve al tipo de su area", async () => {
-    const { service } = setup({ call: { analysis_status: "not_applicable", call_type: "no_show", category_snapshot: snapshot, area_id: VENTAS, category_id: CIERRE, no_show: true } });
+    const { service } = setup({ call: { analysis_status: "not_applicable", category_snapshot: snapshot, area_id: VENTAS, category_id: CIERRE, no_show: true } });
     await setCallNoShow({ callId: CALL, noShow: false });
-    expect(service.writesTo("calls")[0].values).toMatchObject({ no_show: false, call_type: "cierre", analysis_status: "pending" });
+    expect(service.writesTo("calls")[0].values).toMatchObject({ no_show: false, analysis_status: "pending" });
   });
 
   it("sin area, sacar la marca la deja por revisar", async () => {
-    const { service } = setup({ call: { analysis_status: "not_applicable", call_type: "no_show", category_snapshot: null, no_show: true } });
+    const { service } = setup({ call: { analysis_status: "not_applicable", category_snapshot: null, no_show: true } });
     await setCallNoShow({ callId: CALL, noShow: false });
-    expect(service.writesTo("calls")[0].values).toMatchObject({ no_show: false, call_type: null, analysis_status: "needs_review" });
+    expect(service.writesTo("calls")[0].values).toMatchObject({ no_show: false, analysis_status: "needs_review" });
   });
 
   it("si ya estaba asi, no escribe nada", async () => {
-    const { service } = setup({ call: { analysis_status: "pending", call_type: "cierre", no_show: false } });
+    const { service } = setup({ call: { analysis_status: "pending", no_show: false } });
     expect((await setCallNoShow({ callId: CALL, noShow: false })).ok).toBe(true);
     expect(service.writes()).toHaveLength(0);
   });

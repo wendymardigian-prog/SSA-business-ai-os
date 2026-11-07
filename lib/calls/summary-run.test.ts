@@ -23,7 +23,8 @@ const callRow = (over: Record<string, unknown> = {}) => ({
   id: "c1",
   workspace_id: "ws1",
   title: "Llamada con Ana",
-  call_type: "cierre",
+  category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-cierre", type_name: "Cierre" },
+  no_show: false,
   recorded_at: "2026-10-09T15:00:00Z",
   attendees: [],
   transcript,
@@ -52,6 +53,7 @@ function setup(over: { call?: Record<string, unknown> | null; contact?: Contact 
   const state = contact ? { ...contact } : null;
   const db = fakeDb({
     "calls:select": { data: over.call === null ? null : callRow(over.call ?? {}) },
+    "booking_categories:select": { data: [{ id: "area-ventas", system_key: "ventas" }, { id: "tipo-cierre", system_key: "ventas.cierre" }, { id: "area-equipo", system_key: "equipo" }] },
     "calls:update": { data: [{ id: "c1" }] },
     "workspaces:select": { data: { timezone: "America/Costa_Rica" } },
     "contacts:select": (c: DbCall) =>
@@ -136,7 +138,7 @@ describe("runCallSummaryJob: el resumen y las ideas (F29)", () => {
   });
 
   it("una llamada de equipo no llama al modelo ni abre run", async () => {
-    const s = setup({ call: { call_type: "equipo" } });
+    const s = setup({ call: { category_snapshot: { area_id: "area-equipo", area_name: "Equipo", type_id: null, type_name: null } } });
     const generate = gen();
     const r = await runCallSummaryJob({ db: s.db.client, now: NOW, generate }, { callId: "c1" });
     expect(r.outcome).toBe("not_eligible");
@@ -231,7 +233,7 @@ describe("runCallSummaryJob: la memoria del contacto (F30)", () => {
   });
 
   it("una llamada de equipo no toca la memoria (ni siquiera se resume)", async () => {
-    const s = setup({ call: { call_type: "equipo" } });
+    const s = setup({ call: { category_snapshot: { area_id: "area-equipo", area_name: "Equipo", type_id: null, type_name: null } } });
     await runCallSummaryJob({ db: s.db.client, now: NOW, generate: gen() }, { callId: "c1" });
     expect(s.db.writesTo("contacts")).toHaveLength(0);
   });

@@ -134,11 +134,11 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                 <span>{formatCallDate(data.recordedAt, timeZone)}</span>
                 <span>{formatDuration(data.durationSeconds)}</span>
-                <span>Closer: {data.closerName ?? data.recorderEmail ?? "—"}</span>
+                <span>Grabó: {data.closerName ?? data.recorderEmail ?? "—"}</span>
                 <SourceChip source={data.source} />
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                <span title={typeDeciderText({ call_type_source: data.callTypeSource, call_type_rule: data.callTypeRule, call_type_confidence: data.callTypeConfidence }) ?? undefined} className="inline-flex items-center gap-1">
+                <span title={typeDeciderText({ classification_source: data.classificationSource, classification_rule: data.classificationRule, classification_confidence: data.classificationConfidence }) ?? undefined} className="inline-flex items-center gap-1">
                   <Tag className="h-3 w-3 text-muted-foreground" aria-hidden />
                   <TypeChip type={data.callType} label={data.categoryLabel} needsReview={data.needsReview} />
                 </span>

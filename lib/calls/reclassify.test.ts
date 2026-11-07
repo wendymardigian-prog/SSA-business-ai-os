@@ -22,8 +22,6 @@ const baseCall = {
   imported_from_history: false,
   no_show: false,
   classification_source: null,
-  call_type: null,
-  call_type_source: null,
 };
 
 function setup(over: { call?: Record<string, unknown>; booking?: unknown; connectionSettings?: unknown } = {}) {
@@ -57,17 +55,17 @@ describe("reclassifyCall", () => {
   it("una grabacion que se vincula toma el area y el tipo de la reunion", async () => {
     const db = setup();
     expect(await reclassifyCall(db.client, "c1", NOW)).toBe("updated");
-    expect(db.writesTo("calls")[0].values).toMatchObject({ area_id: SERVICIO, category_id: ONBOARDING, classification_source: "booking", call_type: "cliente" });
+    expect(db.writesTo("calls")[0].values).toMatchObject({ area_id: SERVICIO, category_id: ONBOARDING, classification_source: "booking" });
   });
 
   it("lo que eligio una persona no se toca", async () => {
-    const db = setup({ call: { classification_source: "human", call_type: "cierre", call_type_source: "human" } });
+    const db = setup({ call: { classification_source: "human" } });
     expect(await reclassifyCall(db.client, "c1", NOW)).toBe("kept_human");
     expect(db.writes()).toHaveLength(0);
   });
 
   it("una grabacion ya analizada cambia de clasificacion pero conserva su estado y no se reanaliza", async () => {
-    const db = setup({ call: { analysis_status: "analyzed", call_type: "cierre" } });
+    const db = setup({ call: { analysis_status: "analyzed" } });
     expect(await reclassifyCall(db.client, "c1", NOW)).toBe("updated");
     const values = db.writesTo("calls")[0].values as Record<string, unknown>;
     expect(values).toMatchObject({ area_id: SERVICIO, category_id: ONBOARDING });
@@ -83,7 +81,7 @@ describe("reclassifyCall", () => {
   });
 
   it("una ya analizada sin reunion queda sin clasificar, sin volver a gastar IA", async () => {
-    const db = setup({ call: { booking_id: null, analysis_status: "analyzed", call_type: "cierre" } });
+    const db = setup({ call: { booking_id: null, analysis_status: "analyzed" } });
     expect(await reclassifyCall(db.client, "c1", NOW)).toBe("cleared");
     expect(db.writesTo("scheduled_jobs")).toHaveLength(0);
   });

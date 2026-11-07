@@ -45,7 +45,7 @@ export async function testCallDraft(input: {
 
   const { data: rows } = await ctx.supabase
     .from("calls")
-    .select("id, title, call_type, category_snapshot, transcript, closer_score, lead_score, outcome, analysis")
+    .select("id, title, category_snapshot, transcript, closer_score, lead_score, outcome, analysis")
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
     .in("id", ids)
@@ -54,7 +54,6 @@ export async function testCallDraft(input: {
   const calls: TestCallInput[] = usable.map((r) => ({
     id: r.id,
     title: r.title,
-    call_type: r.call_type,
     transcript: r.transcript,
     current: { closer_score: r.closer_score, lead_score: r.lead_score, outcome: r.outcome, analysis: r.analysis },
   }));
@@ -96,7 +95,7 @@ export async function testCallDraft(input: {
       shape: input.shape,
       meetingLabelFor: (id) => {
         const row = usable.find((r) => r.id === id);
-        return callDisplayLabel(row?.category_snapshot, row?.call_type ?? null);
+        return callDisplayLabel(row?.category_snapshot);
       },
       rubric,
       categories: settings.categories,

@@ -24,7 +24,8 @@ import { canAnalyze } from "@/lib/calls/status";
 import { resolveProfile, statusAfterClassification } from "@/lib/calls/profiles";
 import { loadCallProfiles } from "@/lib/calls/profiles-load";
 import { resolveCallTaskSettings } from "@/lib/calls/task-settings";
-import { callCategoryLabel, legacyCallTypeFor, readCategorySnapshot } from "@/lib/calls/catalog";
+import { callCategoryLabel, readCategorySnapshot } from "@/lib/calls/catalog";
+import { derivedCallType } from "@/lib/calls/legacy-type";
 import { categorySnapshot } from "@/lib/scheduling/categories";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { transcriptText } from "@/lib/calls/transcript-text";
@@ -68,7 +69,7 @@ export async function changeCallType(input: { callId: string; categoryId: string
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, title, duration_seconds, attendees, call_type, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
+    .select("id, title, duration_seconds, attendees, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -82,7 +83,6 @@ export async function changeCallType(input: { callId: string; categoryId: string
   if (call.category_id === input.categoryId) return { ok: true };
 
   const snapshot = categorySnapshot(input.categoryId, categories);
-  const legacy = legacyCallTypeFor(snapshot, categories, call.no_show);
 
   // El estado solo se mueve mientras la llamada espera: una analizada o en curso no se toca.
   const movable = ["classifying", "needs_review", "pending", "not_applicable", "error"].includes(call.analysis_status);
@@ -104,12 +104,8 @@ export async function changeCallType(input: { callId: string; categoryId: string
       category_id: input.categoryId,
       category_snapshot: snapshot as unknown as Json,
       classification_source: "human",
-      call_type: legacy,
-      call_type_source: "human",
-      call_type_rule: null,
-      call_type_confidence: null,
-      call_type_alternative: null,
-      call_type_proposed: null,
+      classification_rule: null,
+      classification_confidence: null,
       ...(movable ? { analysis_status: next.status, analysis_status_reason: next.reason, analysis_error: null } : {}),
     })
     .eq("id", call.id);
@@ -125,7 +121,7 @@ export async function changeCallType(input: { callId: string; categoryId: string
     entityType: "call",
     entityId: call.id,
     action: "call.type_changed",
-    changes: { call_type: { old: call.call_type, new: legacy } },
+    changes: { category: { old: callCategoryLabel(readCategorySnapshot(call.category_snapshot)), new: callCategoryLabel(snapshot) } },
     metadata: { source: "human", category: callCategoryLabel(snapshot) },
     performedBy: ctx.user.id,
   });
@@ -141,7 +137,7 @@ export async function setCallNoShow(input: { callId: string; noShow: boolean }):
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, title, duration_seconds, attendees, call_type, area_id, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
+    .select("id, title, duration_seconds, attendees, area_id, category_id, category_snapshot, no_show, analysis_status, transcript, imported_from_history")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -150,11 +146,9 @@ export async function setCallNoShow(input: { callId: string; noShow: boolean }):
   if (call.no_show === input.noShow) return { ok: true };
 
   const service = await createServiceClient();
-  const categories = (await listCategories(service, ctx.workspace.id)).map(toCategoryRow);
-  const legacy = legacyCallTypeFor(readCategorySnapshot(call.category_snapshot), categories, input.noShow);
   const movable = ["needs_review", "pending", "not_applicable", "error"].includes(call.analysis_status);
   const profiles = await loadCallProfiles(service, ctx.workspace.id);
-  const next = legacy
+  const next = input.noShow || readCategorySnapshot(call.category_snapshot)
     ? statusAfterClassification(resolveProfile(profiles, { categoryId: call.category_id, areaId: call.area_id }), {
         transcript: call.transcript,
         title: call.title,
@@ -169,7 +163,6 @@ export async function setCallNoShow(input: { callId: string; noShow: boolean }):
     .from("calls")
     .update({
       no_show: input.noShow,
-      call_type: legacy,
       ...(movable && next ? { analysis_status: next.status, analysis_status_reason: next.reason, analysis_error: null } : {}),
       ...(movable && !next ? { analysis_status: "needs_review" as const, analysis_status_reason: "ai_off" } : {}),
     })
@@ -293,7 +286,7 @@ export async function saveCallSections(input: { callId: string; edits: SectionEd
 
   const { data: call } = await ctx.supabase
     .from("calls")
-    .select("id, call_type, analysis_profile_id, analysis, rubric_snapshot, transcript, analysis_status, updated_at")
+    .select("id, category_snapshot, no_show, analysis_profile_id, analysis, rubric_snapshot, transcript, analysis_status, updated_at")
     .eq("id", input.callId)
     .eq("workspace_id", ctx.workspace.id)
     .is("archived_at", null)
@@ -303,7 +296,8 @@ export async function saveCallSections(input: { callId: string; edits: SectionEd
 
   const applied = applySectionEdits(call.analysis, input.edits, {
     rubric: (call.rubric_snapshot ?? null) as never,
-    callType: call.analysis_profile_id ? null : call.call_type,
+    // Un analisis de antes de los analizadores se recalcula con la rubrica filtrada por su tipo.
+    callType: call.analysis_profile_id ? null : await derivedCallType(ctx.supabase, ctx.workspace.id, call),
     transcript: transcriptText(call.transcript),
   });
   if (!applied.ok) return { ok: false, error: applied.error };

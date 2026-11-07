@@ -125,7 +125,7 @@ export function CallsDashboard({
                   <caption className="sr-only">Llamadas analizadas, puntajes y el criterio más bajo de cada closer</caption>
                   <thead>
                     <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                      <th scope="col" className="p-2 font-medium">Closer</th>
+                      <th scope="col" className="p-2 font-medium">Quien grabó</th>
                       <th scope="col" className="p-2 text-right font-medium">Llamadas</th>
                       <th scope="col" className="p-2 text-right font-medium">Puntaje closer</th>
                       <th scope="col" className="p-2 text-right font-medium">Puntaje lead</th>

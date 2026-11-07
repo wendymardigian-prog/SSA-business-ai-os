@@ -59,7 +59,8 @@ const FIELD_LABELS: Record<string, string> = {
   contact_id: "Contacto",
   booking_id: "Agenda",
   call_type: "Tipo de llamada", // @plantilla-quitar(llamadas)
-  recorded_by_user_id: "Closer", // @plantilla-quitar(llamadas)
+  category: "Área y tipo", // @plantilla-quitar(llamadas)
+  recorded_by_user_id: "Quien grabó", // @plantilla-quitar(llamadas)
   is_closer: "Es closer", // @plantilla-quitar(llamadas)
   closer_emails: "Correos alternos", // @plantilla-quitar(llamadas)
   closer_score: "Puntaje del closer", // @plantilla-quitar(llamadas)

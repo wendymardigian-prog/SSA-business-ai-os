@@ -20,7 +20,7 @@ import { resolveProfile, statusAfterClassification } from "./profiles";
 type Db = SupabaseClient<Database>;
 
 const COLUMNS =
-  "id, workspace_id, connection_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, analysis_status, imported_from_history, no_show, classification_source, call_type_source";
+  "id, workspace_id, connection_id, title, duration_seconds, attendees, transcript, booking_id, contact_id, analysis_status, imported_from_history, no_show, classification_source";
 
 /** Los estados que se pueden mover: lo analizado o en curso no cambia de estado. */
 const MOVABLE = ["needs_review", "pending", "not_applicable", "error"];
@@ -31,7 +31,7 @@ export async function reclassifyCall(db: Db, callId: string, now: Date = new Dat
   try {
     const { data: call } = await db.from("calls").select(COLUMNS).eq("id", callId).is("archived_at", null).maybeSingle();
     if (!call) return "gone";
-    if (call.classification_source === "human" || call.call_type_source === "human") return "kept_human";
+    if (call.classification_source === "human") return "kept_human";
 
     const ctx = await loadClassificationContext(db, call);
     const result = resolveCascade({ booking: ctx.booking, rule: ctx.rule, connection: ctx.connection });
@@ -46,7 +46,7 @@ export async function reclassifyCall(db: Db, callId: string, now: Date = new Dat
       return "requeued";
     }
 
-    const next = patch.call_type
+    const next = patch.area_id || patch.no_show
       ? statusAfterClassification(resolveProfile(ctx.profiles, { categoryId: patch.category_id, areaId: patch.area_id }), {
           ...call,
           noShow: call.no_show,

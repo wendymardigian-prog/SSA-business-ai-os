@@ -798,7 +798,6 @@ ALTER TABLE public.flow_sessions DROP COLUMN inbound_webhook_id; -- el envio de 
 ALTER TABLE public.contacts DROP COLUMN payment_health;
 
 -- Equipo: quien graba llamadas en Fathom y con que correos.
-ALTER TABLE public.workspace_members DROP COLUMN is_closer;
 ALTER TABLE public.workspace_members DROP COLUMN closer_emails;
 
 -- Conexiones OAuth: la sincronizacion de Fathom y su candado de renovacion.

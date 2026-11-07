@@ -22,7 +22,8 @@ const call = (over: Record<string, unknown>) => ({
   recorded_at: "2026-10-01T00:00:00Z",
   outcome: null,
   lead_score: null,
-  call_type: null,
+  no_show: false,
+  category_snapshot: null,
   ...over,
 });
 
@@ -50,9 +51,14 @@ describe("area y tipo de la ultima llamada", () => {
 describe("las tres condiciones de la ultima llamada analizada", () => {
   const db = () =>
     memoryDb({
+      booking_categories: [
+        { id: "a-v", workspace_id: WS, system_key: "ventas" },
+        { id: "t-t", workspace_id: WS, system_key: "ventas.triaje" },
+        { id: "t-c", workspace_id: WS, system_key: "ventas.cierre" },
+      ],
       calls: [
-        call({ recorded_at: "2026-09-20T00:00:00Z", outcome: "no_venta", lead_score: 30, call_type: "triaje" }),
-        call({ recorded_at: "2026-10-05T00:00:00Z", outcome: "venta", lead_score: 88, call_type: "cierre" }),
+        call({ recorded_at: "2026-09-20T00:00:00Z", outcome: "no_venta", lead_score: 30, category_snapshot: { area_id: "a-v", area_name: "Ventas", type_id: "t-t", type_name: "Triaje" } }),
+        call({ recorded_at: "2026-10-05T00:00:00Z", outcome: "venta", lead_score: 88, category_snapshot: { area_id: "a-v", area_name: "Ventas", type_id: "t-c", type_name: "Cierre" } }),
         // Mas nueva pero sin analizar, de otro contacto y archivada: ninguna cuenta.
         call({ recorded_at: "2026-10-09T00:00:00Z", analysis_status: "pending", outcome: "x" }),
         call({ recorded_at: "2026-10-09T00:00:00Z", contact_id: "otro", outcome: "y" }),
