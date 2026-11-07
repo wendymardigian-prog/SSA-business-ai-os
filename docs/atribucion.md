@@ -273,6 +273,8 @@ utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_id={{campaign
 
 ## Vínculo con Meta: siempre por id (6/11/2026)
 
+> Desde la 00318 se suman reglas, el nombre exacto único y el parecido: ver «Conciliación» más abajo.
+
 Dos campañas o dos anuncios pueden llamarse igual, así que un nombre solo no identifica a ninguno. La regla (`resolve_meta_match`, gemela `lib/attribution/meta-match.ts`, migración 00299):
 
 | Nivel | Cómo se encuentra |
@@ -290,6 +292,38 @@ Sin ningún id queda «Sin vincular» con el motivo `name_without_id`. Un víncu
 **Dónde se ve y se corrige:** la tabla de respuestas, la lista de agendas (columnas de campaña, conjunto, anuncio y «Vínculo con Meta»), el detalle de una respuesta, el panel de una reunión y la ficha del contacto (primer toque, último toque y `/toques`). Desde ahí, con `settings.general`, se puede vincular, ignorar o quitar. La revisión en lote sigue en «Sin vincular» (Dashboards → Anuncios), con la vista nueva «Sin anuncio» y el link a la respuesta o reunión de origen. Los nombres piden `dashboards.ads.view`; sin ese permiso se ven los ids.
 
 **La Agenda guarda lo mismo que un formulario:** todas las claves de atribución, la URL de entrada, la página de llegada y la del envío, en `bookings.utm`. Un embed reenvía todas las claves y guarda el referrer real, no la página que lo contiene. Una reunión sin vínculo propio (a mano, por el agente o sin datos de Meta) muestra el último toque con vínculo del contacto anterior a ella, igual que la tabla Meta vs CRM. Vincularla le crea su propio toque (`booking:<id>`), con la fecha de la reunión, que puede pasar a ser el último toque del contacto.
+
+## Conciliación: reglas, nombre exacto y parecido (00318, 7/11/2026)
+
+Lo que había en «Sin vincular» en producción: links de la bio y de ManyChat que no eran anuncios (la fuente «ig» contaba como Meta, y el `fbclid` que Instagram agrega a cualquier link también), y anuncios cuyos UTMs son etiquetas escritas a mano («clase-9-nov» / «ad-n4-techo») que no coinciden con los nombres de Meta («N4 · El techo»). Desde la 00318:
+
+**Qué cuenta como dato de un anuncio**
+- El `fbclid` solo ya no cuenta: queda `none`.
+- Un `utm_medium` orgánico gana (social, organic, bio, email, dm, referral…): esos UTMs no son de un anuncio. Se lee de `raw.utm.utm_medium`, porque un formulario guarda `medium = 'form'`.
+- `meta`/`facebook` cuentan solas; `ig`, `instagram`, `fb` o sin fuente, solo con un medium pago (paid, cpc, paid_social…).
+
+**El orden de `resolve_meta_match`** (gemela `resolveMetaMatch`, casos en `meta-match.cases.json`)
+
+| Paso | Método | Va a «Para revisar» |
+|---|---|---|
+| Por id, como antes | `ad_id`, `utm_content_id`, `adset_id`, `utm_term_id`, `campaign_id`, `utm_campaign_id` | No |
+| Una regla de `meta_match_rules` | `rule` | No |
+| Nombre exacto adentro de lo conocido por id | `utm_content_name_adset` / `_campaign` | No |
+| Sin ids: campaña por su nombre exacto, solo si es único | `utm_campaign_name` | No |
+| Anuncio por nombre exacto dentro de esa campaña | `utm_content_name` | No |
+| Campaña por parecido (la única que contiene todas las palabras) | `utm_campaign_similar` | Sí |
+| Anuncio por parecido: el único del alcance que contiene todas las palabras del `utm_content` (dos palabras o un código como «n4») | `utm_content_similar_adset` / `_campaign` | Sí |
+| El único anuncio del conjunto | `adset_single_ad` | No |
+
+«Palabras» = `metaNameKey` partido por todo lo que no es letra ni número, sin relleno (ad, anuncio, el, la, de, campaña, copia…): `ad-n4-techo` → {n4, techo} ⊂ «N4 · El techo». **Nunca se busca por parecido contra el catálogo entero**: hace falta un conjunto o una campaña (por id, por nombre o por parecido). Con dos candidatos no se elige ninguno.
+
+**Reglas** (`meta_match_rules`, la única tabla nueva): «estos UTMs (campaign, content, term, normalizados) = este anuncio» o «no es un anuncio». Se crean al vincular un grupo en «Sin vincular», al confirmar uno de «Para revisar» o una propuesta de la IA, y valen para lo que ya llegó y lo que llegue. Nunca contradicen un id ni pisan un `manual`/`ignored` de una persona. Borrar una regla vuelve a resolver sus toques. Escribe solo el servidor (`create_meta_match_rule`, `delete_meta_match_rule`); las ven quienes tienen `dashboards.ads.view`.
+
+**La pantalla** muestra grupos (los toques con los mismos UTMs), ordenados por ventas, agendas y personas, con cuántas personas lo tienen como primer y último toque. Pestañas: Sin vincular, Para revisar, Sin anuncio, Reglas, Hechos a mano. «Cómo evitar que pase» trae los parámetros de URL para pegar en Meta (`META_URL_PARAMS`): con `ad_id={{ad.id}}` y los demás ids, todo se vincula por id.
+
+**«Proponer con IA»** (tarea `ads_matching`, «Vincular anuncios» en Agentes IA): mira los grupos que las reglas no resolvieron, el catálogo y ejemplos ya vinculados, y propone. Nunca vincula: cada propuesta se valida contra el catálogo y se confirma (una o todas), y confirmar crea la regla. Al modelo viajan solo UTMs y conteos, nunca datos de contacto.
+
+**El canal**: el trigger le pasa a `touch_channel` el medium efectivo (`private.touch_effective_medium`, gemela `effectiveTouchMedium`, casos en `effective-medium.cases.json`): un formulario de un anuncio queda «pauta» y el link de la bio, «orgánico».
 
 ## La URL de entrada completa (`entry_url`, octubre 2026)
 

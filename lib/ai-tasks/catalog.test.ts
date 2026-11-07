@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { AI_TASKS, AI_TASK_IDS, ALL_AI_TASKS, CONFIGURABLE_AI_TASKS, controlLabel, getAiTask, hasEditableInstructions } from "./catalog";
 
 describe("catalogo de tareas de IA", () => {
-  it("tiene las diez tareas, sin repetir id", () => {
-    expect(AI_TASK_IDS).toHaveLength(10);
-    expect(new Set(AI_TASK_IDS).size).toBe(10);
-    expect(ALL_AI_TASKS).toHaveLength(10);
+  it("tiene las once tareas, sin repetir id", () => {
+    expect(AI_TASK_IDS).toHaveLength(11);
+    expect(new Set(AI_TASK_IDS).size).toBe(11);
+    expect(ALL_AI_TASKS).toHaveLength(11);
   });
 
   it("solo la clasificacion de mensajes tiene modo propio (las demas no tienen modo económico implementado)", () => {
@@ -21,9 +21,9 @@ describe("catalogo de tareas de IA", () => {
     expect(AI_TASKS.close_classification.backgroundTask).toBeUndefined();
   });
 
-  it("instrucciones: ocho editables; las otras dicen por que no tienen", () => {
+  it("instrucciones: nueve editables; las otras dicen por que no tienen", () => {
     const editable = AI_TASK_IDS.filter((id) => hasEditableInstructions(AI_TASKS[id]));
-    expect(editable.sort()).toEqual(["ads_analysis", "call_analysis", "call_classification", "call_summary", "close_classification", "conversation_summary", "media_description", "message_classification"]);
+    expect(editable.sort()).toEqual(["ads_analysis", "ads_matching", "call_analysis", "call_classification", "call_summary", "close_classification", "conversation_summary", "media_description", "message_classification"]);
     for (const t of ALL_AI_TASKS) {
       if (!t.instructions.editable) expect(t.instructions.whyNot.length).toBeGreaterThan(20);
     }
@@ -44,8 +44,15 @@ describe("catalogo de tareas de IA", () => {
     expect(t.hasModelPicker).toBe(true);
   });
 
-  it("tienen selector de modelo el analisis de anuncios y las tres de llamadas", () => {
-    expect(AI_TASK_IDS.filter((id) => AI_TASKS[id].hasModelPicker).sort()).toEqual(["ads_analysis", "call_analysis", "call_classification", "call_summary"]);
+  it("vincular anuncios corre bajo demanda y solo propone", () => {
+    const t = AI_TASKS.ads_matching;
+    expect(t.source).toBe("ads_matching");
+    expect(t.onDemand).toBe(true);
+    expect(t.control.kind).toBe("on_demand");
+  });
+
+  it("tienen selector de modelo las dos de anuncios y las tres de llamadas", () => {
+    expect(AI_TASK_IDS.filter((id) => AI_TASKS[id].hasModelPicker).sort()).toEqual(["ads_analysis", "ads_matching", "call_analysis", "call_classification", "call_summary"]);
   });
 
   it("las tareas de llamadas corren bajo demanda y dos tienen configuracion propia (no la de lote)", () => {

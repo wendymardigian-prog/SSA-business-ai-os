@@ -196,6 +196,14 @@ try {
     const e2 = (await svc.from("meta_adsets").insert(adsets)).error;
     const e3 = (await svc.from("meta_ads").insert(ads)).error;
     check(!e1 && !e2 && !e3, "se carga el catalogo de prueba", (e1 ?? e2 ?? e3)?.message);
+    // Las reglas de los casos (00318), con la misma funcion que usa la pantalla.
+    for (const r of shared.catalog.rules ?? []) {
+      const { data, error } = await svc.rpc("create_meta_match_rule", {
+        p_workspace_id: wsM.id, p_user_id: admin.id, p_utm_campaign: r.utmCampaign, p_utm_content: r.utmContent, p_utm_term: r.utmTerm,
+        p_action: r.action, p_ad_id: r.adId ?? undefined, p_adset_id: r.adsetId ?? undefined, p_campaign_id: r.campaignId ?? undefined, p_origin: "manual",
+      });
+      check(!error && data?.ok === true, `se carga la regla ${r.utmCampaign ?? ""} / ${r.utmContent ?? ""}`, error?.message ?? JSON.stringify(data));
+    }
   }
 
   console.log("\n— AT3: paridad SQL ↔ TypeScript (los mismos casos que Vitest) —");
@@ -348,6 +356,81 @@ try {
     await svc.from("contact_touches").update({ meta_ad_id: null, meta_match_method: "utm_term_id" }).eq("id", partial.data.touch_id);
     await svc.rpc("rematch_meta_touches", { p_workspace_id: wsM.id, p_since: "-infinity" });
     check((await touchRow(partial.data.touch_id)).meta_ad_id === "3002", "rematch completa el anuncio de un conjunto de un solo anuncio");
+  }
+
+  console.log("\n— 00318: reglas, parecido, lo que no es un anuncio y el canal —");
+  {
+    const FORM_ORIGIN = "form"; // @plantilla-quitar(formularios)
+    // @plantilla-sin(formularios): const FORM_ORIGIN = "import";
+    const paid = { source: "meta", medium: "form", origin: FORM_ORIGIN, raw: { utm: { utm_medium: "paid" } } };
+    const c = await mkContact("00318");
+
+    const bio = await record(c, { source: "ig", medium: "form", origin: FORM_ORIGIN, content: "link_in_bio", fbclid: "IwAR-zz", raw: { utm: { utm_medium: "social" } }, dedupe_key: `zz-${randomUUID()}` });
+    const rowBio = await touchRow(bio.data.touch_id);
+    check(rowBio.meta_match_status === "none" && rowBio.channel === "organic", "el link de la bio (ig + social + fbclid) no es un anuncio y es organico", JSON.stringify({ s: rowBio.meta_match_status, ch: rowBio.channel }));
+    const follow = await record(c, { source: "instagram", medium: "form", origin: FORM_ORIGIN, campaign: "new-follow", dedupe_key: `zz-${randomUUID()}` });
+    check((await touchRow(follow.data.touch_id)).meta_match_status === "none", "instagram sin medium pago (ManyChat) no es un anuncio");
+    const onlyFbclid = await record(c, { source: "web", medium: "form", origin: FORM_ORIGIN, fbclid: "IwAR-zz2", dedupe_key: `zz-${randomUUID()}` });
+    check((await touchRow(onlyFbclid.data.touch_id)).meta_match_status === "none", "un fbclid solo ya no va a «Sin vincular»");
+
+    const similar = await record(c, { ...paid, campaign: "promo-5-mayo", content: "ad-f1-costo", fbclid: "IwAR-zz3", dedupe_key: `zz-${randomUUID()}` });
+    const rowSimilar = await touchRow(similar.data.touch_id);
+    check(rowSimilar.meta_ad_id === "3007" && rowSimilar.meta_match_method === "utm_content_similar_campaign" && rowSimilar.channel === "paid",
+      "un anuncio con etiquetas propias se vincula por parecido y su canal es pauta", JSON.stringify({ ad: rowSimilar.meta_ad_id, m: rowSimilar.meta_match_method, ch: rowSimilar.channel }));
+
+    // Una regla nueva vincula lo que ya llego y lo que llegue.
+    const before = await record(c, { ...paid, campaign: "promo-5-mayo", content: "ad-zz-nuevo", dedupe_key: `zz-${randomUUID()}` });
+    check((await touchRow(before.data.touch_id)).meta_match_status === "unmatched", "sin regla, «ad-zz-nuevo» queda sin vincular");
+    const rule = await svc.rpc("create_meta_match_rule", { p_workspace_id: wsM.id, p_user_id: admin.id, p_utm_campaign: "promo-5-mayo", p_utm_content: "AD-ZZ-NUEVO", p_utm_term: null, p_action: "link", p_ad_id: "3010", p_origin: "confirmed" });
+    check(rule.data?.ok === true && rule.data?.applied >= 1 && rule.data?.adset_id === "2006" && rule.data?.campaign_id === "1007", "crear la regla completa el conjunto y la campaña y la aplica", JSON.stringify(rule.data ?? rule.error));
+    const rowBefore = await touchRow(before.data.touch_id);
+    check(rowBefore.meta_ad_id === "3010" && rowBefore.meta_match_method === "rule", "el toque que ya estaba queda vinculado por la regla", JSON.stringify(rowBefore));
+    check((await attributionOf(c))?.last_touch?.meta_ad_id !== undefined, "y la atribucion del contacto se recalcula");
+    const after = await record(c, { ...paid, campaign: "Promo-5-Mayo", content: "ad-zz-nuevo", dedupe_key: `zz-${randomUUID()}` });
+    check((await touchRow(after.data.touch_id)).meta_match_method === "rule", "uno que llega despues tambien");
+
+    const badRule = await svc.rpc("create_meta_match_rule", { p_workspace_id: wsM.id, p_user_id: admin.id, p_utm_campaign: "x", p_utm_content: null, p_utm_term: null, p_action: "link", p_ad_id: "no-existe", p_origin: "manual" });
+    check(badRule.data?.ok === false && badRule.data?.error === "not_in_catalog", "una regla a algo que no esta en el catalogo se rechaza");
+    const noKeys = await svc.rpc("create_meta_match_rule", { p_workspace_id: wsM.id, p_user_id: admin.id, p_utm_campaign: " ", p_utm_content: null, p_utm_term: null, p_action: "ignore", p_origin: "manual" });
+    check(noKeys.data?.ok === false && noKeys.data?.error === "no_keys", "una regla sin UTMs se rechaza");
+
+    // Un manual no se pisa.
+    const manual = await record(c, { ...paid, campaign: "promo-5-mayo", content: "ad-zz-otro", dedupe_key: `zz-${randomUUID()}` });
+    await svc.rpc("set_touch_meta_match", { p_workspace_id: wsM.id, p_touch_id: manual.data.touch_id, p_action: "link", p_user_id: admin.id, p_campaign_id: "1006" });
+    await svc.rpc("create_meta_match_rule", { p_workspace_id: wsM.id, p_user_id: admin.id, p_utm_campaign: "promo-5-mayo", p_utm_content: "ad-zz-otro", p_utm_term: null, p_action: "ignore", p_origin: "manual" });
+    const rowManual = await touchRow(manual.data.touch_id);
+    check(rowManual.meta_match_status === "manual" && rowManual.meta_campaign_id === "1006", "una regla nunca pisa lo que eligio una persona", JSON.stringify(rowManual));
+
+    // «No es un anuncio» y borrar la regla.
+    const ignoredBefore = await record(c, { ...paid, campaign: "zz-seguidores", dedupe_key: `zz-${randomUUID()}` });
+    const ign = await svc.rpc("create_meta_match_rule", { p_workspace_id: wsM.id, p_user_id: admin.id, p_utm_campaign: "zz-seguidores", p_utm_content: null, p_utm_term: null, p_action: "ignore", p_origin: "manual" });
+    const rowIgnored = await touchRow(ignoredBefore.data.touch_id);
+    check(rowIgnored.meta_match_status === "ignored" && rowIgnored.meta_match_method === "rule" && rowIgnored.meta_match_by === null, "una regla de ignorar deja el toque ignorado (por regla, no por una persona)", JSON.stringify(rowIgnored));
+    const del = await svc.rpc("delete_meta_match_rule", { p_workspace_id: wsM.id, p_rule_id: ign.data?.rule_id });
+    check(del.data?.ok === true && del.data?.reverted >= 1, "borrar la regla vuelve a resolver sus toques", JSON.stringify(del.data ?? del.error));
+    check((await touchRow(ignoredBefore.data.touch_id)).meta_match_status === "unmatched", "y el toque vuelve a «Sin vincular»");
+    const delAgain = await svc.rpc("delete_meta_match_rule", { p_workspace_id: wsM.id, p_rule_id: ign.data?.rule_id });
+    check(delAgain.data?.ok === false && delAgain.data?.error === "rule_not_found", "borrarla dos veces no rompe");
+
+    // Permisos: la app no escribe reglas; quien ve anuncios las lee.
+    const appCreate = await admin.client.rpc("create_meta_match_rule", { p_workspace_id: wsM.id, p_user_id: admin.id, p_utm_campaign: "x", p_utm_content: null, p_utm_term: null, p_action: "ignore" });
+    check(!!appCreate.error, "create_meta_match_rule no se puede llamar desde la app (solo service_role)");
+    const appInsert = await admin.client.from("meta_match_rules").insert({ workspace_id: wsM.id, campaign_key: "x", action: "ignore" });
+    check(!!appInsert.error, "nadie inserta una regla desde la app");
+    await svc.from("workspace_members").insert({ workspace_id: wsM.id, user_id: admin.id, role: "admin" });
+    const read = await admin.client.from("meta_match_rules").select("id").eq("workspace_id", wsM.id);
+    check(!read.error && (read.data ?? []).length >= 2, "el Owner/Admin las ve", read.error?.message);
+    await svc.from("workspace_members").delete().eq("workspace_id", wsM.id).eq("user_id", admin.id);
+    const readOut = await outsider.client.from("meta_match_rules").select("id").eq("workspace_id", wsM.id);
+    check((readOut.data ?? []).length === 0, "quien es de otro workspace no");
+
+    // El medium efectivo: los mismos casos que Vitest.
+    const mediumCases = JSON.parse(readFileSync("lib/attribution/effective-medium.cases.json", "utf8")).cases;
+    for (const mc of mediumCases) {
+      const lit = (v) => (v === null ? "null" : `'${String(v).replace(/'/g, "''")}'`);
+      const rows = sql(`select private.touch_effective_medium(${lit(mc.medium)}, ${mc.raw === null ? "null" : lit(JSON.stringify(mc.raw)) + "::jsonb"}) as m;`);
+      check((rows[0]?.m ?? null) === mc.expected, `SQL medium efectivo: ${mc.name}`, `dio ${rows[0]?.m}`);
+    }
   }
 
   console.log("\n— AT3: re-vincular despues de un sync (rematch_meta_touches) —");
