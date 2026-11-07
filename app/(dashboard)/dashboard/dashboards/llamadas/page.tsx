@@ -1,7 +1,9 @@
 import { requirePermission } from "@/lib/auth/guards";
 import { availableDashboards } from "@/lib/dashboards/available";
 import { CallsDashboard } from "@/components/dashboards/calls/calls-dashboard";
-import { closerSummaries, computeHeadline, criteriaAverages, qualificationMatrix, topObjections, weeklyEvolution } from "@/lib/dashboards/calls";
+import { categoryGroups } from "@/lib/calls/catalog";
+import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
+import { closerSummaries, computeHeadline, criteriaAverages, qualificationMatrix, topObjections, weeklyEvolution, withoutMixedScores } from "@/lib/dashboards/calls";
 import { loadCallRows } from "@/lib/dashboards/calls-load";
 import { PERIOD_LABELS, resolvePeriod } from "@/lib/dashboards/period";
 import { parsePeriodFilter } from "@/lib/agent/ai-dashboard/url-state";
@@ -51,10 +53,16 @@ export default async function CallsDashboardPage({
   const requested = typeof sp.closer === "string" && UUID.test(sp.closer) ? sp.closer : null;
   const closerId = requested && closers.some((c) => c.id === requested) ? requested : null;
 
-  const [{ calls, truncated, failed }, { data: wsRow }] = await Promise.all([
-    loadCallRows(supabase, { workspaceId: workspace.id, range, closerId }),
+  // Lo mismo con el area y el tipo: solo cuenta lo que esta en la lista del negocio.
+  const groups = categoryGroups((await listCategories(supabase, workspace.id)).map(toCategoryRow));
+  const areaId = typeof sp.area === "string" && groups.some((g) => g.areaId === sp.area) ? sp.area : null;
+  const categoryId = typeof sp.tipo === "string" && groups.some((g) => g.types.some((t) => t.id === sp.tipo)) ? sp.tipo : null;
+
+  const [{ calls: rows, truncated, failed }, { data: wsRow }] = await Promise.all([
+    loadCallRows(supabase, { workspaceId: workspace.id, range, closerId, areaId, categoryId }),
     service.from("workspaces").select("ai_background_settings").eq("id", workspace.id).maybeSingle(),
   ]);
+  const { calls, scoresHidden } = withoutMixedScores(rows, Boolean(categoryId));
   const categories = resolveCallTaskSettings(wsRow?.ai_background_settings).call_analysis.categories;
 
   const custom = filter.from && filter.to ? isoRangeToCivil(filter.from, filter.to, timeZone) : null;
@@ -65,6 +73,8 @@ export default async function CallsDashboardPage({
       dashboards={dashboards}
       timezone={timeZone}
       closers={closers}
+      categoryGroups={groups}
+      scoresHidden={scoresHidden}
       headline={computeHeadline(calls)}
       teamCriteria={criteriaAverages(calls)}
       closerRows={closerSummaries(calls, names)}

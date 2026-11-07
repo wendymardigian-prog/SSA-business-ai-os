@@ -19,7 +19,7 @@
  * prueba que falla.
  *
  *   node scripts/verify-calls.mjs
- *   node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301
+ *   node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301 --despues-de-00303
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -450,6 +450,56 @@ try {
     check((await visibleIds(admin, ws.id)).has(otraArea), "un Admin ve todo");
     const { error: escribe } = await deVentas.client.from("calls").update({ title: "zz" }).eq("id", deArea).select("id").single();
     check(!!escribe, "el alcance no da permiso de escribir la tabla");
+  }
+
+  if (process.argv.includes("--despues-de-00303")) {
+    console.log("\n— Un analizador por tipo (00303) —");
+    const { data: cats } = await svc.from("booking_categories").select("id, system_key").eq("workspace_id", ws.id);
+    const cierre = cats.find((c) => c.system_key === "ventas.cierre"), seguimiento = cats.find((c) => c.system_key === "ventas.seguimiento");
+    const { count: alNacer } = await svc.from("call_analysis_profiles").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id);
+    check(alNacer === 0, "un negocio nuevo no tiene analizadores: nada se analiza hasta configurarlo");
+
+    const { data: perfil, error: e1 } = await svc.from("call_analysis_profiles").insert({ workspace_id: ws.id, category_id: cierre.id, shape: "sales" }).select("id, mode").single();
+    check(!e1 && perfil?.mode === "manual", "el modo por defecto es manual: no gasta solo", e1?.message);
+    const { error: doble } = await svc.from("call_analysis_profiles").insert({ workspace_id: ws.id, category_id: cierre.id });
+    check(doble?.code === "23505", "un solo analizador vivo por tipo");
+    const { error: formaMala } = await svc.from("call_analysis_profiles").insert({ workspace_id: ws.id, category_id: seguimiento.id, shape: "raro" });
+    check(!!formaMala, "la base rechaza un formato que no existe");
+
+    const miembro = await makeUser("calls-perfil-miembro");
+    await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: miembro.id, role: "member" });
+    const ajeno = await makeUser("calls-perfil-ajeno");
+    const { data: loVe } = await miembro.client.from("call_analysis_profiles").select("id").eq("id", perfil.id);
+    check(loVe?.length === 1, "un miembro lo puede leer: la ficha necesita saber si el tipo tiene analizador");
+    const { data: noLoVe } = await ajeno.client.from("call_analysis_profiles").select("id").eq("id", perfil.id);
+    check((noLoVe ?? []).length === 0, "alguien de afuera no lo ve");
+    const { error: crea } = await miembro.client.from("call_analysis_profiles").insert({ workspace_id: ws.id, category_id: seguimiento.id });
+    check(!!crea, "desde la sesion nadie lo crea: escribe solo el servidor");
+    const { error: cambia } = await miembro.client.from("call_analysis_profiles").update({ mode: "auto" }).eq("id", perfil.id).select("id").single();
+    check(!!cambia, "desde la sesion nadie lo cambia");
+    const { data: sigueManual } = await svc.from("call_analysis_profiles").select("mode").eq("id", perfil.id).single();
+    check(sigueManual?.mode === "manual", "el intento no cambio nada");
+
+    const version = (variant, n) => svc.from("ai_task_prompt_versions").insert({ workspace_id: ws.id, task: "call_analysis", version: n, instructions: "zz-test", variant });
+    // 77: el bloque de los CHECK ya uso la version 1 de las generales de este negocio.
+    const { error: v1 } = await version(perfil.id, 77);
+    check(!v1, "cada analizador numera sus instrucciones aparte", v1?.message);
+    const { error: general } = await version(null, 77);
+    check(!general, "las generales de la tarea siguen con su numeracion", general?.message);
+    const { error: repetida } = await version(perfil.id, 77);
+    check(repetida?.code === "23505", "dentro de un analizador la version no se repite");
+    const { error: repetidaGeneral } = await version(null, 77);
+    check(repetidaGeneral?.code === "23505", "en las generales tampoco");
+
+    const { data: analizada, error: e2 } = await svc.from("calls").insert(callRow(ws.id, { analysis_profile_id: perfil.id })).select("id, analysis_profile_id").single();
+    check(!e2 && analizada?.analysis_profile_id === perfil.id, "la grabacion guarda con que analizador se hizo", e2?.message);
+
+    // Una fila por version + una llamada que lo apunta: borrar el tipo no puede dejar colgados.
+    await svc.from("call_analysis_profiles").delete().eq("id", perfil.id);
+    const { data: sinPerfil } = await svc.from("calls").select("analysis_profile_id").eq("id", analizada.id).single();
+    check(sinPerfil?.analysis_profile_id === null, "si desaparece el analizador, la grabacion conserva su analisis");
+    const { count: colgadas } = await svc.from("ai_task_prompt_versions").select("id", { count: "exact", head: true }).eq("variant", perfil.id);
+    check(colgadas === 0, "sus versiones se van con el");
   }
 } catch (e) {
   fail("el script fallo", e.message);

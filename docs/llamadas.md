@@ -188,6 +188,23 @@ tipos ya está completa y no se le pregunta a la IA.
   `custom_types`, `allow_ai_types` y `discarded_types` quedan sin usar (solo se leen para
   entender reglas viejas) y se borran en la Etapa 5.
 
+## Un analizador por tipo de reunión (00303, 6/11/2026)
+
+Cada tipo de reunión se evalúa con lo suyo. **Sin analizador, ese tipo no se analiza ni gasta IA**, y la ficha dice «Falta configurar el analizador de este tipo». Se configura en Agentes IA → Análisis de llamadas → Configuración, con la lista por área y tipo y su estado (Sin configurar, Manual o Automático).
+
+- **Cómo se busca:** el analizador del tipo; si no tiene, el de su área («Toda el área»); si tampoco, ninguno (`resolveProfile`, `lib/calls/profiles.ts`). Una tabla, `call_analysis_profiles`, una fila viva por tipo o área. Escribe solo el servidor con `calls.configure` (`lib/actions/call-profiles.ts`); se archiva, no se borra.
+- **Dos formatos, no uno libre.** Un formato libre rompería la ficha, el dashboard y los flujos. **Ventas**: puntaje de quien vende y del lead, resultado, objeciones y creencias. **General**: resumen, puntaje de quien atendió, alertas y próximos pasos, sin datos de venta (`generalAnalysisSchema`). Lo guardado lleva `analysis_shape`; lo viejo, sin la marca, es de ventas.
+- **Cuándo corre:** `statusAfterClassification`, en este orden: poca confianza → Por revisar; no show → No aplica; sin analizador → No aplica (`no_profile`); sin transcripción → Por revisar; manual o importado → Pendiente; no cumple las reglas → Pendiente (`rules`); si no, se encola. **Lo importado del historial nunca corre solo.** Uno nuevo arranca en manual, y copiar de otro tipo no copia cuándo corre: una copia no empieza a gastar sola.
+- **Cada analizador se usa entero.** `aplica_a` ya no filtra: `callType = null` en el armado del prompt, en el puntaje y al corregir una sección (`analysis_profile_id` lo decide). Lo analizado antes de esto conserva su snapshot y sigue filtrando como antes.
+- **Instrucciones:** `ai_task_prompt_versions.variant` es el id del analizador y cada uno numera aparte. `variant` NULL son las generales de la tarea: **toda consulta de instrucciones generales lleva `.is("variant", null)`**, o tomaría las de un analizador. Sin versión activa, el formato de ventas usa las generales de la tarea y el general, `CALL_ANALYSIS_GENERAL_DEFAULT_INSTRUCTIONS`.
+- **Lo que comparten todos** sigue en `workspaces.ai_background_settings.call_analysis`: el contexto del negocio y las categorías, así el dashboard puede comparar objeciones entre tipos. Los resultados de venta siguen fijos (`OUTCOME_CATEGORIES`): de ellos dependen los filtros de los flujos.
+- **Configurar un analizador no gasta nada:** las grabaciones que esperaban pasan a Pendiente a mano (`no_profile` → `manual`), y la ficha ofrece Analizar.
+- **Probar** (`testCallDraft`) corre lo que tiene el editor sobre grabaciones de ese tipo, aunque no estén analizadas. No escribe nada; cada una gasta un análisis, y por eso arranca con una sola elegida.
+- **Dashboard:** los puntajes no se promedian entre tipos (`withoutMixedScores`). Sin un tipo elegido y con más de uno en el período, solo cantidades.
+- **Lista:** «Analizar seleccionadas», hasta 20, en escritorio (`analyzeSelectedCalls`); salta lo analizado y lo que no tiene analizador, y dice cuántas saltó.
+
+La migración es aditiva y va **antes** de desplegar: sin ella, nada se analiza (`loadCallProfiles` da la lista vacía). Un negocio que ya tenía configuración guardada arranca con un analizador de ventas por cada tipo que analizaba, con su rúbrica (solo los criterios de ese tipo), su modo y sus instrucciones.
+
 ## Clasificación y análisis (L2)
 
 Tres tareas de IA en **Agentes IA** (`call_classification`, `call_analysis`,
@@ -207,8 +224,7 @@ Configuración; todas tienen las mismas cinco pestañas que el resto de las tare
   "regenerar" y "probar el borrador". Salida estructurada (Zod), 32.000 tokens
   de salida. Los puntajes los calcula el código con la rúbrica; la IA no da
   totales. Las citas se verifican contra la transcripción.
-- **Automático o a mano**: `call_analysis.mode` (`off` por defecto: el primer
-  gasto lo decide una persona). Respeta el tope de gasto del workspace; si lo
+- **Automático o a mano**: lo decide el analizador de cada tipo (ver "Un analizador por tipo de reunión"). Uno nuevo arranca en manual: el primer gasto lo decide una persona. Respeta el tope de gasto del workspace; si lo
   alcanzó, la llamada queda `pending` con motivo `budget` y se avisa a quienes
   tienen `calls.configure` una vez por día.
 - **Corregir a mano / con IA / regenerar con motivo / probar el borrador /
@@ -218,8 +234,7 @@ Configuración; todas tienen las mismas cinco pestañas que el resto de las tare
 - **Reintentos de la IA**: los handlers no lanzan por un fallo del modelo;
   reagendan a 1, 5 y 15 minutos. Una key inválida (401/403/400) no se
   reintenta.
-- El SPSP del negocio se carga como la versión 1 de las instrucciones de
-  `call_analysis` y su rúbrica como la rúbrica vigente. No está en el repo.
+- El SPSP del negocio se carga como instrucciones y rúbrica del analizador de cada tipo de venta. No está en el repo.
 
 ## Lo que se hace con lo analizado (L3)
 
@@ -270,7 +285,7 @@ Configuración; todas tienen las mismas cinco pestañas que el resto de las tare
 ## Verificación
 
 ```
-node scripts/verify-calls.mjs                      # RLS, únicos, trigger de analysis_ai, candado, cron, configuración, claim, L3
+node scripts/verify-calls.mjs --despues-de-00300 --despues-de-00301 --despues-de-00303  # RLS, únicos, trigger de analysis_ai, candado, cron, configuración, claim, L3
 node scripts/verify-audit-visibility.mjs --despues-de-00147
 ```
 

@@ -147,6 +147,16 @@ Reglas:
 - Hablá en {{estilo}}.
 - El feedback es para el closer: concreto, accionable y con una frase sugerida.`;
 
+/** El punto de partida de un analizador con formato general: una reunion que no es de venta. */
+export const CALL_ANALYSIS_GENERAL_DEFAULT_INSTRUCTIONS = `Sos un analista de reuniones. Mirás cómo trabajó la persona del equipo que atendió la reunión y qué quedó acordado.
+
+Reglas:
+- Todo sale de la transcripción. Si algo no está, no lo afirmes.
+- Las citas son textuales: las palabras exactas de la transcripción, nunca parafraseadas.
+- Puntuá cada criterio de la rúbrica de 1 a 5 con una justificación corta y la frase que lo respalda.
+- Hablá en {{estilo}}.
+- El feedback es para quien atendió: concreto, accionable y con una frase sugerida.`;
+
 /**
  * El resumen de una llamada y la memoria del contacto (el `DEFAULT_SYSTEM_PROMPT`
  * de `meeting-generate-insights`, mas la regla de reconciliacion del resumen de

@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/ai/run", () => ({ openAiRun: mocks.openAiRun }));
 vi.mock("@/lib/ai/workspace-budget", () => ({ withinWorkspaceBudget: mocks.budget }));
 vi.mock("@/lib/ai-tasks/model", () => ({ resolveTaskModel: mocks.model }));
-vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions, loadTaskInstructionsForRun: mocks.instructions }));
+vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions, loadTaskInstructionsForRun: mocks.instructions, workspaceOwnStyle: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/audit", () => ({ auditAsSystem: mocks.audit }));
 
 import { runCallClassification } from "./classify-run";
@@ -54,9 +54,24 @@ const baseCall = {
   analysis_status: "classifying",
 };
 
-function setup(over: { call?: Record<string, unknown>; settings?: Record<string, unknown>; bookingSnapshot?: unknown } = {}) {
+const analyzer = (categoryId: string, mode: "manual" | "auto" = "manual", rules: Record<string, unknown> = {}) => ({
+  id: `perfil-${categoryId}`,
+  workspace_id: "ws1",
+  category_id: categoryId,
+  shape: "sales",
+  mode,
+  rules,
+  rubric: null,
+  auto_summary: true,
+  auto_memory: true,
+  auto_knowledge: false,
+  active_prompt_version: null,
+});
+
+function setup(over: { call?: Record<string, unknown>; settings?: Record<string, unknown>; bookingSnapshot?: unknown; profiles?: unknown[] } = {}) {
   const db = fakeDb(
     {
+      "call_analysis_profiles:select": { data: over.profiles ?? [analyzer(CIERRE)] },
       "calls:select": { data: { ...baseCall, ...over.call } },
       "calls:update": { data: [{ id: "c1" }] },
       "workspaces:select": { data: { ai_background_settings: over.settings ?? {} } },
@@ -91,7 +106,7 @@ describe("runCallClassification", () => {
   });
 
   it("un tipo puesto por una persona nunca se pisa", async () => {
-    const db = setup({ call: { call_type: "cierre", call_type_source: "human" } });
+    const db = setup({ call: { call_type: "cierre", call_type_source: "human", category_id: CIERRE, area_id: VENTAS } });
     const generate = generateOk({ tipo: "equipo", confianza: 1, motivo: "x" });
     const r = await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(r.outcome).toBe("kept_human");
@@ -101,15 +116,15 @@ describe("runCallClassification", () => {
     expect(update.values).toMatchObject({ analysis_status: "pending", analysis_status_reason: "manual" });
   });
 
-  it("con el analisis automatico prendido, una llamada nueva se manda a analizar", async () => {
-    const db = setup({ settings: settingsWith({ rules: [] }, { mode: "now" }) });
+  it("con un analizador automatico, una llamada nueva se manda a analizar", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }), profiles: [analyzer(CIERRE, "auto")] });
     const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 0.95, motivo: "x" });
     await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(db.writesTo("scheduled_jobs").some((w) => (w.values as { type: string }).type === "call_analyze")).toBe(true);
   });
 
   it("una llamada importada del historial se clasifica, pero NO se analiza sola", async () => {
-    const db = setup({ call: { imported_from_history: true }, settings: settingsWith({ rules: [] }, { mode: "now" }) });
+    const db = setup({ call: { imported_from_history: true }, settings: settingsWith({ rules: [] }), profiles: [analyzer(CIERRE, "auto")] });
     const generate = generateOk({ tipo: "Ventas · Cierre", confianza: 0.95, motivo: "x" });
     await runCallClassification({ db: db.client, now: NOW, generate }, "c1");
     expect(db.writesTo("calls")[0].values).toMatchObject({ call_type: "cierre", analysis_status: "pending", analysis_status_reason: "manual" });
@@ -117,7 +132,7 @@ describe("runCallClassification", () => {
   });
 
   it("tampoco si una persona ya le habia puesto el tipo", async () => {
-    const db = setup({ call: { imported_from_history: true, call_type: "cierre", call_type_source: "human" }, settings: settingsWith({}, { mode: "now" }) });
+    const db = setup({ call: { imported_from_history: true, call_type: "cierre", call_type_source: "human", category_id: CIERRE, area_id: VENTAS }, profiles: [analyzer(CIERRE, "auto")] });
     await runCallClassification({ db: db.client, now: NOW, generate: generateOk({}) }, "c1");
     expect(db.writesTo("scheduled_jobs").some((w) => (w.values as { type: string }).type === "call_analyze")).toBe(false);
   });
@@ -205,8 +220,35 @@ describe("runCallClassification", () => {
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.type_changed", entityId: "c1", label: "Clasificación automática" }));
   });
 
-  it("con el analisis automatico prendido, encola el analisis de un cierre", async () => {
-    const db = setup({ settings: settingsWith({ rules: [] }, { mode: "now" }) });
+  it("un tipo sin analizador queda en No aplica, sin encolar ni gastar", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }), profiles: [] });
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" }) }, "c1");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ analysis_status: "not_applicable", analysis_status_reason: "no_profile" });
+    expect(db.writesTo("scheduled_jobs")).toHaveLength(0);
+  });
+
+  it("sin analizador propio, usa el de su area", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }), profiles: [analyzer(VENTAS, "auto")] });
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" }) }, "c1");
+    expect(db.writesTo("scheduled_jobs")[0].values).toMatchObject({ type: "call_analyze" });
+  });
+
+  it("un analizador automatico respeta sus reglas: lo que no cumple queda pendiente", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }), profiles: [analyzer(CIERRE, "auto", { title_contains: ["demo"] })] });
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" }) }, "c1");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ analysis_status: "pending", analysis_status_reason: "rules" });
+    expect(db.writesTo("scheduled_jobs")).toHaveLength(0);
+  });
+
+  it("el analizador de Ventas no alcanza a una reunion de Servicio", async () => {
+    const db = setup({ call: { booking_id: "b1" }, bookingSnapshot: SERVICIO_ONBOARDING, settings: settingsWith({ rules: [] }), profiles: [analyzer(VENTAS, "auto"), analyzer(CIERRE, "auto")] });
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({}) }, "c1");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ area_id: SERVICIO, analysis_status: "not_applicable", analysis_status_reason: "no_profile" });
+    expect(db.writesTo("scheduled_jobs")).toHaveLength(0);
+  });
+
+  it("con un analizador automatico, encola el analisis de un cierre", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }), profiles: [analyzer(CIERRE, "auto")] });
     await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.9, motivo: "x" }) }, "c1");
     const job = db.writesTo("scheduled_jobs")[0];
     expect(job.values).toMatchObject({ type: "call_analyze", dedupe_key: "call_analyze:c1" });
@@ -214,7 +256,7 @@ describe("runCallClassification", () => {
   });
 
   it("confianza bajo el umbral: queda por revisar y no se encola nada", async () => {
-    const db = setup({ settings: settingsWith({ rules: [], confidence_threshold: 0.8 }, { mode: "now" }) });
+    const db = setup({ settings: settingsWith({ rules: [], confidence_threshold: 0.8 }), profiles: [analyzer(CIERRE, "auto")] });
     await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "Ventas · Cierre", confianza: 0.4, motivo: "dudoso" }) }, "c1");
     expect(db.writesTo("calls")[0].values).toMatchObject({ analysis_status: "needs_review", analysis_status_reason: "low_confidence" });
     expect(db.writesTo("scheduled_jobs")).toHaveLength(0);

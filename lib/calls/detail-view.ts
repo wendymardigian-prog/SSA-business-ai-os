@@ -106,13 +106,21 @@ export function detailView(input: DetailViewInput): DetailView {
         },
       };
     case "not_applicable":
+      // Un analizador que se configuro despues: ya se puede analizar a mano.
+      if (input.reason === "no_profile" && input.analyze.ok) {
+        return {
+          analysisAvailable: false,
+          emptyMessage: "Todavía no se analizó.",
+          banner: { tone: "neutral", title: "Pendiente de análisis", message: "Este tipo ya tiene analizador. Se analiza cuando lo pidas.", action: "analyze" },
+        };
+      }
       return {
         analysisAvailable: false,
-        emptyMessage: "Este tipo de llamada no se analiza.",
-        banner: {
+        emptyMessage: input.reason === "no_show" ? "Nadie se presentó: no hay nada para analizar." : "Este tipo de reunión todavía no tiene analizador.",
+        banner: input.reason === "no_show" ? null : {
           tone: "neutral",
-          title: "Este tipo no se analiza",
-          message: "Podés cambiar el tipo de llamada, o elegir qué tipos se analizan en la configuración del análisis.",
+          title: "Falta configurar el analizador de este tipo",
+          message: "Podés cambiar el tipo de la grabación, o configurar el analizador de este tipo en Agentes IA. Hasta entonces no se analiza ni gasta IA.",
           action: input.canConfigure ? "config" : null,
         },
       };

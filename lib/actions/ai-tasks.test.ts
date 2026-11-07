@@ -21,8 +21,11 @@ function fakeSupabase() {
       select: () => ({
         eq: () => ({
           eq: () => ({
-            order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: { version: 2 } }) }) }),
-            eq: () => ({ maybeSingle: async () => ({ data: { version: 1 } }) }),
+            // Las generales de la tarea: las de cada analizador tienen su `variant`.
+            is: () => ({
+              order: () => ({ limit: () => ({ maybeSingle: async () => ({ data: { version: 2 } }) }) }),
+              eq: () => ({ maybeSingle: async () => ({ data: { version: 1 } }) }),
+            }),
           }),
         }),
       }),

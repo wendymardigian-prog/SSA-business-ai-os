@@ -93,14 +93,16 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
     return () => clearInterval(handle);
   }, [busy, router]);
 
+  // El formato general no tiene lead, resultado de venta ni temperatura.
+  const general = a.shape === "general";
   const tabs: Array<{ value: DetailTab | "transcripcion"; label: string }> = [
     { value: "resumen", label: "Resumen" },
-    { value: "closer", label: "Closer" },
-    { value: "lead", label: "Lead" },
+    { value: "closer", label: general ? "Quien atendió" : "Closer" },
+    ...(general ? [] : [{ value: "lead" as const, label: "Lead" }]),
     { value: "tecnico", label: "Técnico" },
     ...(isDesktop ? [] : [{ value: "transcripcion" as const, label: "Transcripción" }]),
   ];
-  const activeTab = !isDesktop || tab !== "transcripcion" ? tab : "resumen";
+  const activeTab = (isDesktop && tab === "transcripcion") || (general && tab === "lead") ? "resumen" : tab;
 
   const jump = (ts: string) => {
     if (!isDesktop) setTab("transcripcion");
@@ -179,22 +181,28 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
             )}
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {!general && (
+                <div className="rounded-lg border border-border p-2.5">
+                  <div className="text-[11px] text-muted-foreground">Resultado</div>
+                  <div className="mt-1"><OutcomeChip outcome={data.outcome} /></div>
+                </div>
+              )}
               <div className="rounded-lg border border-border p-2.5">
-                <div className="text-[11px] text-muted-foreground">Resultado</div>
-                <div className="mt-1"><OutcomeChip outcome={data.outcome} /></div>
-              </div>
-              <div className="rounded-lg border border-border p-2.5">
-                <div className="text-[11px] text-muted-foreground">Puntaje del closer</div>
+                <div className="text-[11px] text-muted-foreground">{general ? "Puntaje de quien atendió" : "Puntaje del closer"}</div>
                 <div className={`mt-1 inline-flex text-xl font-semibold tabular-nums ${data.closerScore === null ? "" : callBadgeClass(scoreBadgeTone(data.closerScore))}`}>{data.closerScore ?? "—"}</div>
               </div>
-              <div className="rounded-lg border border-border p-2.5">
-                <div className="text-[11px] text-muted-foreground">Puntaje del lead</div>
-                <div className={`mt-1 inline-flex text-xl font-semibold tabular-nums ${data.leadScore === null ? "" : callBadgeClass(scoreBadgeTone(data.leadScore))}`}>{data.leadScore ?? "—"}</div>
-              </div>
-              <div className="rounded-lg border border-border p-2.5">
-                <div className="text-[11px] text-muted-foreground">Temperatura</div>
-                <div className="text-xl font-semibold tabular-nums">{data.temperature === null ? "—" : `${data.temperature}/10`}</div>
-              </div>
+              {!general && (
+                <div className="rounded-lg border border-border p-2.5">
+                  <div className="text-[11px] text-muted-foreground">Puntaje del lead</div>
+                  <div className={`mt-1 inline-flex text-xl font-semibold tabular-nums ${data.leadScore === null ? "" : callBadgeClass(scoreBadgeTone(data.leadScore))}`}>{data.leadScore ?? "—"}</div>
+                </div>
+              )}
+              {!general && (
+                <div className="rounded-lg border border-border p-2.5">
+                  <div className="text-[11px] text-muted-foreground">Temperatura</div>
+                  <div className="text-xl font-semibold tabular-nums">{data.temperature === null ? "—" : `${data.temperature}/10`}</div>
+                </div>
+              )}
             </div>
 
             <Tabs tabs={tabs} value={activeTab} onChange={setTab} label="Secciones de la llamada">

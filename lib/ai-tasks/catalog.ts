@@ -237,11 +237,11 @@ const CALL_TASKS: Record<CallTaskId, AiTaskDef> = {
   call_analysis: {
     id: "call_analysis",
     name: "Análisis de llamadas",
-    description: "Analiza las llamadas de cierre y seguimiento con la rúbrica del negocio: puntajes, citas, objeciones y feedback.",
+    description: "Analiza cada grabación con el analizador de su tipo de reunión: puntajes, citas, alertas y feedback.",
     icon: "PhoneCall",
     configurable: false,
     canTurnOff: false,
-    control: { kind: "on_demand", where: "cuando una llamada de un tipo que se analiza se analiza (sola o con el botón Analizar)" },
+    control: { kind: "on_demand", where: "cuando una grabación de un tipo con analizador se analiza (sola o con el botón Analizar)" },
     instructions: { editable: true, variables: [ESTILO] },
     modelSource: "El que elijas acá; sin elección, el modelo por defecto del negocio.",
     hasModelPicker: true,

@@ -46,7 +46,7 @@ export interface SummaryDeps {
   generate?: GenerateFn;
 }
 
-const CALL_COLUMNS = "id, workspace_id, title, call_type, recorded_at, attendees, transcript, contact_id, ideas_created_at";
+const CALL_COLUMNS = "id, workspace_id, title, call_type, analysis_profile_id, recorded_at, attendees, transcript, contact_id, ideas_created_at";
 
 export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPayload): Promise<{ outcome: SummaryOutcome }> {
   const { db } = deps;
@@ -69,7 +69,13 @@ export async function runCallSummaryJob(deps: SummaryDeps, payload: SummaryJobPa
   }
 
   // La memoria del contacto: solo si la llamada tiene contacto y no es de equipo.
-  const read = memoryApplies(call) && call.contact_id ? await readContactMemory(db, call.contact_id) : null;
+  // Lo decide el analizador con el que se analizo; una grabacion vieja, sin analizador, como siempre.
+  let profileWantsMemory = true;
+  if (call.analysis_profile_id) {
+    const { data: profile } = await db.from("call_analysis_profiles").select("auto_memory").eq("id", call.analysis_profile_id).maybeSingle();
+    profileWantsMemory = profile?.auto_memory !== false;
+  }
+  const read = profileWantsMemory && memoryApplies(call) && call.contact_id ? await readContactMemory(db, call.contact_id) : null;
   const withMemory = read !== null;
 
   const [model, instructions] = await Promise.all([

@@ -8,6 +8,7 @@ import {
   qualificationMatrix,
   topObjections,
   weeklyEvolution,
+  withoutMixedScores,
   type DashboardCall,
 } from "./calls";
 import { EMPTY_CATEGORIES } from "@/lib/calls/rubric";
@@ -19,6 +20,7 @@ const call = (over: Partial<DashboardCall> = {}): DashboardCall => ({
   recordedAt: "2026-10-07T15:00:00Z",
   closerId: "ana",
   callType: "cierre",
+  categoryKey: "tipo-cierre",
   closerScore: 60,
   leadScore: 60,
   qualification: "con_reservas",
@@ -159,5 +161,25 @@ describe("weeklyEvolution", () => {
   });
   it("una semana sin puntajes no inventa un cero", () => {
     expect(weeklyEvolution([call({ closerScore: null })], "UTC")[0].avgCloserScore).toBeNull();
+  });
+});
+
+describe("withoutMixedScores: los puntajes no se promedian entre tipos", () => {
+  it("con un solo tipo en el periodo, se ven", () => {
+    const { calls, scoresHidden } = withoutMixedScores([call(), call()], false);
+    expect(scoresHidden).toBe(false);
+    expect(computeHeadline(calls).avgCloserScore).toBe(60);
+  });
+  it("con dos tipos y ninguno elegido, solo cantidades", () => {
+    const { calls, scoresHidden } = withoutMixedScores([call(), call({ categoryKey: "tipo-servicio", closerScore: 90 })], false);
+    expect(scoresHidden).toBe(true);
+    const h = computeHeadline(calls);
+    expect(h.analyzed).toBe(2);
+    expect(h.avgCloserScore).toBeNull();
+    expect(h.avgLeadScore).toBeNull();
+    expect(criteriaAverages(calls)).toEqual([]);
+  });
+  it("con un tipo elegido, se ven", () => {
+    expect(withoutMixedScores([call(), call({ categoryKey: "otro" })], true).scoresHidden).toBe(false);
   });
 });

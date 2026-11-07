@@ -1,17 +1,20 @@
 /**
- * Lo que la pestaña Configuracion de Clasificacion y Analisis de llamadas
- * necesita (F19). Lee la configuracion guardada, las propuestas de la IA, las
- * llamadas que se pueden usar para probar y el historial de la rubrica (que es
- * el `audit_log`: no hay tabla de versiones de rubrica).
+ * Lo que la pestaña Configuracion de Clasificacion y Analisis de llamadas necesita (F19).
+ * Lee la configuracion guardada, las propuestas de la IA, los analizadores por tipo con sus
+ * instrucciones, y las grabaciones que se pueden usar para probar.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { CALL_ANALYSIS_GENERAL_DEFAULT_INSTRUCTIONS } from "@/lib/ai-tasks/instructions";
+import { loadTaskInstructions, type TaskPromptVersion } from "@/lib/ai-tasks/store";
+import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { loadCategoryProposals } from "./category-inbox";
 import type { CategoryProposal } from "./categories";
-import { normalizeRubric, type Rubric } from "./rubric";
-import { resolveCallTaskSettings, validTypeKeys, type CallAnalysisSettings, type CallClassificationSettings, type CallTaskKey } from "./task-settings";
-import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { categoryGroups, legacyRuleTargets, type CategoryGroup } from "./catalog";
+import type { DefaultInstructions } from "./profile-form";
+import type { CallAnalysisProfile } from "./profiles";
+import { loadCallProfiles } from "./profiles-load";
+import { resolveCallTaskSettings, type CallAnalysisSettings, type CallClassificationSettings, type CallTaskKey } from "./task-settings";
 
 type Db = SupabaseClient<Database>;
 
@@ -20,14 +23,8 @@ export interface TestableCall {
   title: string;
   recordedAt: string;
   closerScore: number | null;
-}
-
-export interface RubricVersion {
-  /** `audit_log.id`: identifica la version en el historial. */
-  id: string;
-  at: string;
-  version: number;
-  rubric: Rubric;
+  categoryId: string | null;
+  areaId: string | null;
 }
 
 export type CallConfigData =
@@ -36,32 +33,19 @@ export type CallConfigData =
       task: "call_analysis";
       canEdit: boolean;
       settings: CallAnalysisSettings;
-      /** Todavia no se guardo una rubrica: se usa la generica de arranque, y la pantalla lo dice. */
-      usingDefaultRubric: boolean;
-      validTypes: string[];
+      categoryGroups: CategoryGroup[];
+      /** Las areas y los tipos de Ventas: su analizador arranca en el formato de ventas. */
+      salesCategoryIds: string[];
+      profiles: CallAnalysisProfile[];
+      /** El historial de instrucciones de cada analizador, de la version mas nueva a la mas vieja. */
+      profileVersions: Record<string, TaskPromptVersion[]>;
+      defaultInstructions: DefaultInstructions;
       categoryProposals: CategoryProposal[];
       testableCalls: TestableCall[];
-      rubricHistory: RubricVersion[];
     };
 
-interface AuditRow {
-  id: string;
-  created_at: string;
-  changes: unknown;
-}
-
-/** Las rubricas que quedaron en el historial, de la mas nueva a la mas vieja. Descarta lo que no tiene una rubrica legible. */
-export function parseRubricHistory(rows: AuditRow[]): RubricVersion[] {
-  const out: RubricVersion[] = [];
-  for (const row of rows) {
-    const changes = row.changes as Record<string, { new?: { rubric?: unknown } | null }> | null;
-    const saved = changes?.["ai_background_settings.call_analysis"]?.new;
-    if (!saved || typeof saved !== "object" || !saved.rubric) continue;
-    const rubric = normalizeRubric(saved.rubric);
-    out.push({ id: row.id, at: row.created_at, version: rubric.version, rubric });
-  }
-  return out;
-}
+/** Grabaciones que se ofrecen para probar. No hace falta que ya esten analizadas. */
+const TESTABLE_CALLS = 50;
 
 export async function loadCallConfig(args: {
   service: Db;
@@ -73,8 +57,8 @@ export async function loadCallConfig(args: {
   stored: unknown;
 }): Promise<CallConfigData> {
   const settings = resolveCallTaskSettings(args.stored);
+  const categories = (await listCategories(args.service, args.workspaceId)).map(toCategoryRow);
   if (args.task === "call_classification") {
-    const categories = (await listCategories(args.service, args.workspaceId)).map(toCategoryRow);
     return {
       task: "call_classification",
       canEdit: args.canEdit,
@@ -85,40 +69,45 @@ export async function loadCallConfig(args: {
   }
 
   const analysis = settings.call_analysis;
-  const stored = args.stored && typeof args.stored === "object" ? (args.stored as Record<string, unknown>) : {};
-  const storedAnalysis = stored.call_analysis && typeof stored.call_analysis === "object" ? (stored.call_analysis as Record<string, unknown>) : null;
-
-  const [proposals, calls, history] = await Promise.all([
+  const [proposals, calls, profiles, versions, salesDefault] = await Promise.all([
     args.canEdit ? loadCategoryProposals(args.service, args.workspaceId, analysis.categories) : Promise.resolve([]),
     args.userClient
       .from("calls")
-      .select("id, title, recorded_at, closer_score")
+      .select("id, title, recorded_at, closer_score, category_id, area_id")
       .eq("workspace_id", args.workspaceId)
-      .eq("analysis_status", "analyzed")
+      .not("transcript", "is", null)
       .is("archived_at", null)
       .order("recorded_at", { ascending: false })
-      .limit(10),
-    args.canEdit
-      ? args.service
-          .from("audit_log")
-          .select("id, created_at, changes")
-          .eq("workspace_id", args.workspaceId)
-          .eq("entity_type", "workspace")
-          .eq("action", "update")
-          .contains("metadata", { task: "call_analysis" })
-          .order("created_at", { ascending: false })
-          .limit(10)
-      : Promise.resolve({ data: [] as AuditRow[] }),
+      .limit(TESTABLE_CALLS),
+    loadCallProfiles(args.service, args.workspaceId),
+    args.service
+      .from("ai_task_prompt_versions")
+      .select("variant, version, instructions, note, created_at")
+      .eq("workspace_id", args.workspaceId)
+      .eq("task", "call_analysis")
+      .not("variant", "is", null)
+      .order("version", { ascending: false }),
+    loadTaskInstructions(args.service, args.workspaceId, "call_analysis"),
   ]);
+
+  const profileVersions: Record<string, TaskPromptVersion[]> = {};
+  for (const v of versions.data ?? []) {
+    if (!v.variant) continue;
+    (profileVersions[v.variant] ??= []).push({ version: v.version, instructions: v.instructions, note: v.note, createdAt: v.created_at, authorLabel: null });
+  }
+
+  const salesCategoryIds = categories.filter((c) => c.system_key === "ventas" || c.system_key?.startsWith("ventas.")).map((c) => c.id);
 
   return {
     task: "call_analysis",
     canEdit: args.canEdit,
     settings: analysis,
-    usingDefaultRubric: !storedAnalysis?.rubric,
-    validTypes: validTypeKeys(settings.call_classification.custom_types),
+    categoryGroups: categoryGroups(categories),
+    salesCategoryIds,
+    profiles,
+    profileVersions,
+    defaultInstructions: { sales: salesDefault.text, general: CALL_ANALYSIS_GENERAL_DEFAULT_INSTRUCTIONS },
     categoryProposals: proposals,
-    testableCalls: (calls.data ?? []).map((c) => ({ id: c.id, title: c.title, recordedAt: c.recorded_at, closerScore: c.closer_score })),
-    rubricHistory: parseRubricHistory((history.data ?? []) as AuditRow[]),
+    testableCalls: (calls.data ?? []).map((c) => ({ id: c.id, title: c.title, recordedAt: c.recorded_at, closerScore: c.closer_score, categoryId: c.category_id, areaId: c.area_id })),
   };
 }

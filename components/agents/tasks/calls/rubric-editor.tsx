@@ -3,22 +3,23 @@
 import { useState } from "react";
 import { Archive, ArchiveRestore, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SALES_TYPES, activeWeight, uniqueKey, validateRubric, type Criterion, type Rubric, type SalesType } from "@/lib/calls/rubric";
+import { validateProfileRubric, type ProfileShape } from "@/lib/calls/profiles";
+import { activeWeight, uniqueKey, type Criterion, type Rubric } from "@/lib/calls/rubric";
 import { inputClass } from "@/components/agents/fields";
 
 /**
- * La rubrica del analisis (F19): criterios del closer y del lead, con la suma
- * de pesos siempre a la vista. No guarda: el padre decide cuando (junto con el
+ * La rubrica de un analizador (F19): criterios de quien atendio y, en el formato de ventas, del
+ * lead, con la suma de pesos siempre a la vista. No guarda: el padre decide cuando (junto con el
  * resto de la configuracion). Los pesos son del negocio: no hay una rubrica
  * "correcta" fija, solo una que tiene que sumar 100 en cada lado.
  */
-export function RubricEditor({ value, onChange, readOnly }: { value: Rubric; onChange: (next: Rubric) => void; readOnly: boolean }) {
-  const problems = validateRubric(value);
+export function RubricEditor({ value, shape, onChange, readOnly }: { value: Rubric; shape: ProfileShape; onChange: (next: Rubric) => void; readOnly: boolean }) {
+  const problems = validateProfileRubric(value, shape);
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Column side="closer" title="Closer" list={value.closer} readOnly={readOnly} onChange={(closer) => onChange({ ...value, closer })} />
-        <Column side="lead" title="Lead (creencias)" list={value.lead} readOnly={readOnly} onChange={(lead) => onChange({ ...value, lead })} />
+      <div className={cn("grid gap-4", shape === "sales" && "lg:grid-cols-2")}>
+        <Column side="closer" title={shape === "sales" ? "Closer" : "Quien atendió"} list={value.closer} readOnly={readOnly} onChange={(closer) => onChange({ ...value, closer })} />
+        {shape === "sales" && <Column side="lead" title="Lead (creencias)" list={value.lead} readOnly={readOnly} onChange={(lead) => onChange({ ...value, lead })} />}
       </div>
       {problems.length > 0 && (
         <ul role="alert" className="list-disc space-y-0.5 pl-5 text-xs text-amber-800 dark:text-amber-300">
@@ -40,7 +41,7 @@ function Column({ side, title, list, readOnly, onChange }: { side: "closer" | "l
   const add = () => {
     const nombre = side === "closer" ? "Nuevo criterio" : "Nueva creencia";
     const clave = uniqueKey(nombre, list.map((c) => c.clave));
-    onChange([...list, { clave, nombre, peso: 0, ...(side === "closer" ? { aplica_a: [...SALES_TYPES] } : {}), niveles: {} }]);
+    onChange([...list, { clave, nombre, peso: 0, niveles: {} }]);
     setOpen(clave);
   };
 
@@ -91,26 +92,6 @@ function Column({ side, title, list, readOnly, onChange }: { side: "closer" | "l
               </div>
               {expanded && (
                 <div className="mt-3 space-y-3 text-xs">
-                  {side === "closer" && (
-                    <fieldset disabled={readOnly || c.archivado}>
-                      <legend className="font-semibold">Aplica a</legend>
-                      <div className="mt-1 flex flex-wrap gap-3">
-                        {SALES_TYPES.map((t) => {
-                          const on = c.aplica_a?.includes(t) ?? false;
-                          return (
-                            <label key={t} className="flex items-center gap-1.5">
-                              <input
-                                type="checkbox"
-                                checked={on}
-                                onChange={() => update(c.clave, { aplica_a: on ? (c.aplica_a ?? []).filter((x) => x !== t) : ([...(c.aplica_a ?? []), t] as SalesType[]) })}
-                              />
-                              {t}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </fieldset>
-                  )}
                   {(["1", "3", "5"] as const).map((n) => (
                     <label key={n} className="block">
                       <span className="font-semibold">

@@ -17,7 +17,6 @@ import { QualityPanel, ButtonTextsPanel } from "./classification-quality";
 import { AgentCloseTable, HowItWorks } from "./how-it-works";
 import { ClassificationConfig } from "./calls/classification-config"; // @plantilla-quitar(llamadas)
 import { AnalysisConfig } from "./calls/analysis-config"; // @plantilla-quitar(llamadas)
-import { PromptTestPanel } from "./calls/prompt-test-panel"; // @plantilla-quitar(llamadas)
 import { MODE_LABELS, formatSpend, lastRunLabel } from "@/lib/background/screen";
 import { controlLabel } from "@/lib/ai-tasks/catalog";
 import { TASK_TABS, resolveTaskTab } from "@/lib/ai-tasks/tabs";
@@ -142,19 +141,6 @@ export function TaskTabBody({ data, tab }: { data: TaskScreenData; tab: string }
               versions={data.instructions.versions}
               technical={data.instructions.technical}
               variables={task.instructions.variables}
-              // @plantilla-desde(llamadas)
-              testPanel={
-                data.callConfig?.task === "call_analysis"
-                  ? (draft) => (
-                      <PromptTestPanel
-                        calls={data.callConfig && data.callConfig.task === "call_analysis" ? data.callConfig.testableCalls : []}
-                        what="las instrucciones"
-                        getDraft={() => ({ instructionsText: draft })}
-                      />
-                    )
-                  : undefined
-              }
-              // @plantilla-hasta(llamadas)
             />
           )
         ) : (
