@@ -1987,11 +1987,11 @@ node scripts/verify-chat-core.mjs --carga     # además, tiempos con 2.000 conve
 
 # Auditoria de seguridad (7/11/2026)
 
-Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medias, #170 Bajas). Migraciones `00309` a `00315`, todas aditivas (pueden ir antes o despues del deploy). **La proxima libre es la `00316`** (confirmar con `list_migrations` y las ramas locales).
+Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medias, #170 Bajas). Migraciones `00309` a `00316`, todas aditivas (pueden ir antes o despues del deploy), **aplicadas y registradas el 7/11/2026**. La `00316` corrige la `00309`: la API de admin escribe `app_metadata` en un UPDATE despues del alta, asi que el trigger tambien corre al llegar la marca. **La proxima libre es la `00317`** (confirmar con `list_migrations` y las ramas locales).
 
 ## Lo que no se puede romper
 
-- **El registro publico de Supabase va APAGADO** ("Allow new users to sign up", panel de cada proyecto; `/setup` lo pide). Ademas `handle_new_user` (00309) solo arma un workspace a la primera cuenta de una instalacion vacia o a una creada por el servidor con `app_metadata.ssa_create_workspace = true`: **todo script que crea un usuario que necesita negocio pasa esa marca** (`create-owner` y los `verify-*` ya la pasan). `app_metadata` no lo puede escribir un registro publico.
+- **El registro publico de Supabase va APAGADO** ("Allow new users to sign up", panel de cada proyecto; `/setup` lo pide). Ademas `handle_new_user` (00309) solo arma un workspace a la primera cuenta de una instalacion vacia o a una creada por el servidor con `app_metadata.ssa_create_workspace = true`: **todo script que crea un usuario que necesita negocio pasa esa marca** (`create-owner` y los `verify-*` ya la pasan; la marca llega en un UPDATE y la atrapa el trigger `on_auth_user_workspace_flag`, 00316). `app_metadata` no lo puede escribir un registro publico.
 - **Un adjunto escrito con la sesion de un usuario** es v2, sin `sourceUrl` y con `storagePath` de su propio workspace (trigger `messages_guard_client_attachments`, 00311). Una URL que viene de un payload o de una fila se baja SOLO con `safeFetch` / `safeFetchResponse` (`lib/net/safe-fetch.ts`): IPs publicas en cada salto y tope de tiempo. Nunca un `fetch` suelto a una direccion que no escribimos nosotros.
 - **Una redireccion que se guarda y se usa en el navegador** se valida en la base (CHECK https, 00310), al leerla y antes de `window.location`. React no protege `location.href`.
 - **Las invitaciones las lee solo `team.invite`** (00312): su `id` es el link. Aceptar reclama la invitacion (`pending -> accepted` condicional) antes de sumar a la persona.
