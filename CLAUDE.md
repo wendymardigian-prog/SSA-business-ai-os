@@ -32,7 +32,7 @@ Data: @supabase/supabase-js 2.95 + @supabase/ssr 0.8
 Testing: Vitest 3
 
 Patterns a seguir (mantener consistencia con el fork, no reinventar):
-- Auth: Supabase SSR con cookies httpOnly. Trigger `on_auth_user_created` crea el workspace automaticamente.
+- Auth: Supabase SSR con cookies (NO son httpOnly: el cliente del navegador las lee; por eso un XSS se lleva la sesion). Trigger `on_auth_user_created` crea el workspace solo a la primera cuenta o a una creada por el servidor con `app_metadata.ssa_create_workspace` (00309).
 - State management: Server Components + React hooks. NO Redux, NO Zustand.
 - API layer: webhooks en API Routes (`app/api/`), mutaciones de UI en Server Actions.
 - Data access: `@supabase/supabase-js` con RLS del lado cliente; Service Role Key solo en server (cron jobs, webhooks).
@@ -1985,10 +1985,36 @@ node scripts/verify-chat-core.mjs             # cada número nuevo contra el vie
 node scripts/verify-chat-core.mjs --carga     # además, tiempos con 2.000 conversaciones
 ```
 
+# Auditoria de seguridad (7/11/2026)
+
+Auditoria completa en cuatro lotes (PRs #171 dependencias, #168 Altas, #172 Medias, #170 Bajas). Migraciones `00309` a `00315`, todas aditivas (pueden ir antes o despues del deploy). **La proxima libre es la `00316`** (confirmar con `list_migrations` y las ramas locales).
+
+## Lo que no se puede romper
+
+- **El registro publico de Supabase va APAGADO** ("Allow new users to sign up", panel de cada proyecto; `/setup` lo pide). Ademas `handle_new_user` (00309) solo arma un workspace a la primera cuenta de una instalacion vacia o a una creada por el servidor con `app_metadata.ssa_create_workspace = true`: **todo script que crea un usuario que necesita negocio pasa esa marca** (`create-owner` y los `verify-*` ya la pasan). `app_metadata` no lo puede escribir un registro publico.
+- **Un adjunto escrito con la sesion de un usuario** es v2, sin `sourceUrl` y con `storagePath` de su propio workspace (trigger `messages_guard_client_attachments`, 00311). Una URL que viene de un payload o de una fila se baja SOLO con `safeFetch` / `safeFetchResponse` (`lib/net/safe-fetch.ts`): IPs publicas en cada salto y tope de tiempo. Nunca un `fetch` suelto a una direccion que no escribimos nosotros.
+- **Una redireccion que se guarda y se usa en el navegador** se valida en la base (CHECK https, 00310), al leerla y antes de `window.location`. React no protege `location.href`.
+- **Las invitaciones las lee solo `team.invite`** (00312): su `id` es el link. Aceptar reclama la invitacion (`pending -> accepted` condicional) antes de sumar a la persona.
+- **Un id que llega del navegador se filtra por el workspace de la sesion**, tambien cuando despues se escribe con el cliente de servicio o se pasa a una funcion `SECURITY DEFINER` (`createBooking` valida el contacto contra el negocio del evento).
+- **Los archivos de `chat-media` y `email-attachments` respetan el alcance de leads** (`can_read_chat_media`, `can_read_email_attachment`, 00313): una ruta nueva en esos buckets tiene que encajar en esas funciones (`<ws>/<conversacion>/...`, `<ws>/groups/<grupo>/...`, `<ws>/library|stickers/...`) o ningun Member la lee.
+- **Conocimiento interno solo con `knowledge.edit`** (`can_read_knowledge`, 00314); la busqueda con lo interno, solo el servidor.
+- **La IP de los topes sale de `requestIp`** (`lib/antispam/client-ip.ts`): `X-Real-IP` primero (Railway la pisa). Nunca el primer valor de `X-Forwarded-For`, que lo elige el cliente. Si un clon pone un CDN adelante, ese CDN tiene que mandar `X-Real-IP`.
+- **`anon` y `authenticated` no tienen TRUNCATE, TRIGGER ni REFERENCES** (00315, y `lib/migrations-grants.test.ts` lo exige en cada migracion).
+- **"No contactar" frena los envios de los flujos** (mensaje, recurso, respuesta con IA), salvo los que arrancan por la agenda.
+- **El optimizador de imagenes esta apagado** (`images.unoptimized`): nunca `remotePatterns` con `"**"`.
+- **Un error al leer permisos, bloqueos o disparadores nunca abre**: niega, no manda o reintenta.
+
+## Pendiente
+- Apagar el registro publico y prender "Secure password change" en el Supabase de produccion y de cada clon (es de panel).
+- `eslint-config-next` sigue en 16.1.6 (la 16.4.5 trae react-hooks 7.1 con 18 errores nuevos).
+- El agente, el copywriter, Grabaciones y el clasificador todavia no pasan el modelo al chequeo de "modelo sin precio con tope".
+- DNS rebinding en `safeFetch` (fijar la IP validada con undici).
+- No hay CSP de scripts (solo `frame-ancestors`).
+
 # Seguridad
 
 ## Autenticacion y sesiones
-- Supabase Auth con email/password. Sesiones por Supabase SSR con cookies httpOnly (access token 1h, refresh 7d).
+- Supabase Auth con email/password. Sesiones por Supabase SSR con cookies que el navegador puede leer (`@supabase/ssr` las deja sin httpOnly; access token 1h, refresh 7d).
 - Rate limiting de login por defecto de Supabase. Recuperacion de contrasena con token de tiempo limitado.
 
 ## Row Level Security (RLS) — obligatorio
