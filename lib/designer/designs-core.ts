@@ -13,10 +13,11 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logAudit } from "@/lib/audit";
-import type { Database, Json } from "@/lib/types/database";
+import type { AuditAction, Database, Json } from "@/lib/types/database";
 import type { CreateDesignInput, DesignKind } from "./contracts";
 import { parseDesignDoc, type DesignDoc } from "./doc/schema";
 import { formatsForNew, isFormatKey, type FormatKey } from "./formats";
+import { sanitizeDocHtml } from "./import/edit";
 import { pathBelongsTo } from "./storage";
 import { aiStartDoc, blankDoc, defaultName, imageDoc } from "./screens/starter-docs";
 import { findStyle, type DesignStyle } from "./styles";
@@ -60,6 +61,28 @@ export function cleanName(raw: unknown, kind: DesignKind): string | null {
 /** Las imágenes que sube el editor van siempre a `<ws>/images/…`: una ruta de otra carpeta (o de otro negocio) no sirve. */
 export function isOwnImagePath(path: unknown, workspaceId: string): path is string {
   return typeof path === "string" && pathBelongsTo(path, workspaceId) && path.startsWith(`${workspaceId}/images/`) && path.length <= 500;
+}
+
+export type AuditEvent = "created" | "renamed" | "duplicated" | "archived" | "restored" | "deleted" | "version_restored" | "settings_changed";
+
+/** La acción del historial de cada cosa que se hace (los nombres compartidos de `AuditAction`). Las plantillas tienen menos. */
+export function auditActionFor(kind: DesignKind, event: AuditEvent): AuditAction {
+  if (kind === "template") {
+    switch (event) {
+      case "created":
+      case "duplicated":
+        return "design_template.created";
+      case "archived":
+        return "design_template.archived";
+      case "deleted":
+        return "design.deleted";
+      case "version_restored":
+        return "design.version_restored";
+      default:
+        return "design_template.settings_changed";
+    }
+  }
+  return event === "settings_changed" ? "design.renamed" : (`design.${event}` as AuditAction);
 }
 
 export function asJson(value: unknown): Json {
@@ -143,24 +166,26 @@ export async function createDesignCore(env: CoreEnv, input: CreateDesignInput, c
     return { ok: false, error: "No pudimos armar el diseño. Probá de nuevo." };
   }
 
+  // Todo lo que se escribe pasa por la limpieza del HTML cargado (los documentos de arranque no lo traen, pero es la regla).
+  const clean = sanitizeDocHtml(parsed.doc, env.actor.workspaceId).doc;
   const table = tableFor(input.kind);
-  const row = { workspace_id: env.actor.workspaceId, name, format: input.format, doc: asJson(parsed.doc), origin: input.origin, style, created_by: env.actor.userId };
+  const row = { workspace_id: env.actor.workspaceId, name, format: input.format, doc: asJson(clean), origin: input.origin, style, created_by: env.actor.userId };
   const { data, error } = await env.service.from(table).insert(row as never).select("id").single();
   if (error || !data) {
     console.error("[designer] no pude crear el diseño:", error?.code ?? "sin fila");
     return { ok: false, error: "No pudimos crear el diseño. Probá de nuevo." };
   }
   const id = (data as { id: string }).id;
-  await insertVersion(env, { kind: input.kind, id }, parsed.doc, "manual");
+  await insertVersion(env, { kind: input.kind, id }, clean, "manual");
   await logAudit({
     supabase: env.service,
     workspaceId: env.actor.workspaceId,
     entityType: input.kind === "template" ? "design_template" : "design",
     entityId: id,
-    action: "create",
+    action: auditActionFor(input.kind, "created"),
     metadata: { origin: input.origin, format: input.format },
     performedBy: env.actor.userId,
   });
-  return { ok: true, data: { id, kind: input.kind, href: hrefFor(input.kind, id), doc: parsed.doc } };
+  return { ok: true, data: { id, kind: input.kind, href: hrefFor(input.kind, id), doc: clean } };
 }
 

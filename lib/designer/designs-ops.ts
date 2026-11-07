@@ -12,9 +12,11 @@
 import { logAudit } from "@/lib/audit";
 import type { Json } from "@/lib/types/database";
 import type { ActionResult, DesignKind, SaveDocResult, TemplateSettingsInput, VersionSummary } from "./contracts";
-import { asJson, cleanName, hrefFor, insertVersion, maxNameLength, tableFor, type CoreEnv, type Db } from "./designs-core";
+import { asJson, auditActionFor, cleanName, hrefFor, insertVersion, maxNameLength, tableFor, type CoreEnv, type Db } from "./designs-core";
 import { parseDesignDoc, type DesignDoc } from "./doc/schema";
 import { isFormatKey } from "./formats";
+import { sanitizeDocHtml } from "./import/edit";
+import { enqueueDesignRender } from "./jobs/render";
 import { archiveDecision, deleteBlockers, formatChangeOutcome } from "./screens/config";
 import { convertDocFormat } from "./screens/format-change";
 import { validateCustomVars } from "./screens/variables";
@@ -56,15 +58,18 @@ export async function saveDocCore(env: CoreEnv, input: SaveInput): Promise<SaveD
   if (!parsed.ok) return { ok: false, error: `El diseño no se pudo guardar: ${parsed.problems.slice(0, 3).join(" · ")}` };
   const table = tableFor(input.kind);
 
-  const { data: row, error: readError } = await mine(env.service.from(table).select("format"), env, input.id).maybeSingle();
+  // Lo que se escribe siempre pasa por la limpieza del HTML cargado: un `<script>` que llegara en un elemento `html` se saca.
+  const clean = sanitizeDocHtml(parsed.doc, env.actor.workspaceId).doc;
+
+  const { data: row, error: readError } = await mine(env.service.from(table).select(input.kind === "design" ? "format, published" : "format"), env, input.id).maybeSingle();
   if (readError) {
     console.error("[designer] no pude leer para guardar:", readError.code ?? "error");
     return { ok: false, error: "No pudimos guardar. Probá de nuevo." };
   }
   if (!row) return { ok: false, error: "No encontramos este diseño." };
 
-  if (input.kind === "template" && parsed.doc.format !== (row as { format: string }).format) return { ok: false, error: "El formato de una plantilla se cambia desde Configuración." };
-  const update: Record<string, unknown> = { doc: asJson(parsed.doc), format: parsed.doc.format, rev: input.rev + 1 };
+  if (input.kind === "template" && clean.format !== (row as unknown as { format: string }).format) return { ok: false, error: "El formato de una plantilla se cambia desde Configuración." };
+  const update: Record<string, unknown> = { doc: asJson(clean), format: clean.format, rev: input.rev + 1 };
   if (input.customVars !== undefined) {
     if (input.kind !== "template") return { ok: false, error: "Solo una plantilla tiene variables propias." };
     const vars = validateCustomVars(input.customVars);
@@ -86,8 +91,19 @@ export async function saveDocCore(env: CoreEnv, input: SaveInput): Promise<SaveD
     return { ok: false, error: "Alguien más cambió este diseño. Recargá la página para ver lo último." };
   }
 
-  await snapshotManualIfDue(env, input, parsed.doc);
+  await snapshotManualIfDue(env, input, clean);
+  // Un diseño ya publicado que se edita deja el link desactualizado: se vuelve a armar el juego de archivos.
+  if (input.kind === "design" && (row as unknown as { published?: boolean }).published) await requestPublishRender(env, input.id);
   return { ok: true, rev: (saved as { rev: number }).rev };
+}
+
+/** Vuelve a renderizar el juego publicado de un diseño. Nunca hace fallar a quien lo pide (el job se reagenda solo). */
+async function requestPublishRender(env: CoreEnv, designId: string): Promise<void> {
+  try {
+    await enqueueDesignRender(env.service, { designId, purpose: "publish" });
+  } catch (error) {
+    console.error("[designer] no pude encolar el render del diseño publicado:", error instanceof Error ? error.message : "error");
+  }
 }
 
 /** Deja una versión manual si pasaron 10 minutos desde la última. Nunca hace fallar el guardado. */
@@ -125,7 +141,7 @@ export async function renameCore(env: CoreEnv, target: Target, rawName: unknown)
     console.error("[designer] no pude renombrar:", error.code ?? "error");
     return { ok: false, error: "No pudimos cambiar el nombre. Probá de nuevo." };
   }
-  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: "update", changes: { name: { old: before, new: name } }, performedBy: env.actor.userId });
+  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: auditActionFor(target.kind, "renamed"), changes: { name: { old: before, new: name } }, performedBy: env.actor.userId });
   return { ok: true, data: undefined };
 }
 
@@ -181,7 +197,7 @@ export async function duplicateCore(env: CoreEnv, target: Target): Promise<Actio
   }
   const id = (created as { id: string }).id;
   await insertVersion(env, { kind: target.kind, id }, doc.doc, "manual");
-  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: id, action: "create", metadata: { duplicated_from: target.id }, performedBy: env.actor.userId });
+  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: id, action: auditActionFor(target.kind, "duplicated"), metadata: { duplicated_from: target.id }, performedBy: env.actor.userId });
   return { ok: true, data: { id, href: hrefFor(target.kind, id) } };
 }
 
@@ -203,13 +219,13 @@ export async function archiveCore(env: CoreEnv, target: Target, options: Archive
   const { data } = await mine(env.service.from(table).select(columns), env, target.id).maybeSingle();
   if (!data) return { ok: false, error: "No encontramos este diseño." };
   const row = data as unknown as { archived_at: string | null; published?: boolean; status?: string; template_id?: string | null };
-  const audit = (metadata: Record<string, Json>) => logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: "update", metadata, performedBy: env.actor.userId });
+  const audit = (event: "archived" | "restored", metadata: Record<string, Json>) => logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: auditActionFor(target.kind, event), metadata, performedBy: env.actor.userId });
 
   if (options.restore) {
     if (!row.archived_at) return { ok: true, data: {} };
     const { error } = await mine(env.service.from(table).update({ archived_at: null } as never), env, target.id);
     if (error) return { ok: false, error: "No pudimos restaurarlo. Probá de nuevo." };
-    await audit({ archived: false });
+    await audit("restored", { archived: false });
     return { ok: true, data: {} };
   }
 
@@ -229,7 +245,7 @@ export async function archiveCore(env: CoreEnv, target: Target, options: Archive
     console.error("[designer] no pude archivar:", error.code ?? "error");
     return { ok: false, error: "No pudimos archivarlo. Probá de nuevo." };
   }
-  await audit({ archived: true, unpublished: decision.unpublish });
+  await audit("archived", { archived: true, unpublished: decision.unpublish });
   return { ok: true, data: {} };
 }
 
@@ -262,7 +278,7 @@ export async function deleteCore(env: CoreEnv, target: Target, canManage: boolea
   }
   // La conversación con la IA de este diseño no tiene a dónde apuntar: se va con él (los mensajes, en cascada).
   await env.service.from("ai_threads").delete().eq("workspace_id", env.actor.workspaceId).eq("channel", "designer").eq("subject_id", target.id);
-  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: "delete", performedBy: env.actor.userId });
+  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: auditActionFor(target.kind, "deleted"), performedBy: env.actor.userId });
   return { ok: true, data: undefined };
 }
 
@@ -296,13 +312,15 @@ export async function restoreVersionCore(env: CoreEnv, target: Target, versionId
   const column = target.kind === "template" ? "template_id" : "design_id";
   const { data: version } = await env.service.from("design_versions").select("doc").eq("id", versionId).eq("workspace_id", env.actor.workspaceId).eq(column, target.id).maybeSingle();
   if (!version) return { ok: false, error: "No encontramos esa versión." };
-  const restored = parseDesignDoc((version as { doc: Json }).doc);
-  if (!restored.ok) return { ok: false, error: "Esa versión no se puede leer." };
+  const parsedVersion = parseDesignDoc((version as { doc: Json }).doc);
+  if (!parsedVersion.ok) return { ok: false, error: "Esa versión no se puede leer." };
+  // Lo que se escribe pasa por la limpieza del HTML cargado, también lo que viene de una versión vieja.
+  const restored = { ok: true as const, doc: sanitizeDocHtml(parsedVersion.doc, env.actor.workspaceId).doc };
 
   const table = tableFor(target.kind);
-  const { data: row } = await mine(env.service.from(table).select("format, rev, doc"), env, target.id).maybeSingle();
+  const { data: row } = await mine(env.service.from(table).select(target.kind === "design" ? "format, rev, doc, published" : "format, rev, doc"), env, target.id).maybeSingle();
   if (!row) return { ok: false, error: "No encontramos este diseño." };
-  const current = row as { format: string; rev: number; doc: Json };
+  const current = row as unknown as { format: string; rev: number; doc: Json; published?: boolean };
   if (target.kind === "template" && restored.doc.format !== current.format) return { ok: false, error: "Esa versión es de otro formato: cambiá el formato de la plantilla y volvé a intentar." };
 
   const previous = parseDesignDoc(current.doc);
@@ -313,7 +331,8 @@ export async function restoreVersionCore(env: CoreEnv, target: Target, versionId
     .maybeSingle();
   if (error || !saved) return { ok: false, error: "Alguien guardó mientras tanto. Probá de nuevo." };
   await insertVersion(env, target, restored.doc, "restore");
-  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: "restore", metadata: { version_id: versionId }, performedBy: env.actor.userId });
+  if (target.kind === "design" && current.published) await requestPublishRender(env, target.id);
+  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: entityOf(target.kind), entityId: target.id, action: auditActionFor(target.kind, "version_restored"), metadata: { version_id: versionId }, performedBy: env.actor.userId });
   return { ok: true, data: { rev: (saved as { rev: number }).rev } };
 }
 
@@ -395,6 +414,6 @@ export async function updateTemplateSettingsCore(env: CoreEnv, input: TemplateSe
     return { ok: false, error: "No pudimos guardar la configuración. Probá de nuevo." };
   }
   if (!saved) return { ok: false, error: "Otra persona cambió la plantilla mientras tanto. Recargá la página." };
-  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: "design_template", entityId: input.id, action: "update", metadata: { settings: Object.keys(update).filter((k) => k !== "doc") }, performedBy: env.actor.userId });
+  await logAudit({ supabase: env.service, workspaceId: env.actor.workspaceId, entityType: "design_template", entityId: input.id, action: auditActionFor("template", "settings_changed"), metadata: { settings: Object.keys(update).filter((k) => k !== "doc") }, performedBy: env.actor.userId });
   return { ok: true, data: { notice } };
 }

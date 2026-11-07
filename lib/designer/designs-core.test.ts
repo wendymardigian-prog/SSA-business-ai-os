@@ -30,6 +30,7 @@ describe("crear un diseño o una plantilla (F16)", () => {
     expect(fake.writesTo("design_versions")).toHaveLength(1);
     expect(fake.writesTo("design_versions")[0].values).toMatchObject({ design_id: "new-design", template_id: null, reason: "manual", author_kind: "user", author_id: USER });
     expect(fake.writesTo("audit_log")).toHaveLength(1);
+    expect(fake.writesTo("audit_log")[0].values).toMatchObject({ action: "design.created", entity_type: "design" });
   });
 
   it("una plantilla va a su tabla, con su versión de plantilla", async () => {
@@ -39,6 +40,7 @@ describe("crear un diseño o una plantilla (F16)", () => {
     expect(fake.writesTo("design_templates")[0].values).toMatchObject({ name: "Constancia de curso", format: "carta_h", workspace_id: WS });
     expect(fake.writesTo("designs")).toHaveLength(0);
     expect(fake.writesTo("design_versions")[0].values).toMatchObject({ template_id: "new-template", design_id: null });
+    expect(fake.writesTo("audit_log")[0].values).toMatchObject({ action: "design_template.created", entity_type: "design_template" });
   });
 
   it("desde una imagen: la imagen queda de fondo bloqueado, ajuste «Cubrir» (background.type = image)", async () => {

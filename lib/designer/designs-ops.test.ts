@@ -208,12 +208,92 @@ describe("guardar con rev (F27)", () => {
   });
 });
 
+describe("lo que se escribe pasa por la limpieza del HTML cargado", () => {
+  const evilDoc = (): DesignDoc => {
+    const doc = docWithText();
+    doc.pages[0].elements.push({ id: "el_htmlaa", type: "html", x: 50, y: 50, w: 100, h: 100, html: '<h1 data-tx="t1">Hola</h1><script>alert(1)</script><img src=x onerror="alert(1)">', css: "h1{color:red}" });
+    return doc;
+  };
+  const storedHtml = (db: MemoryDb, table = "designs") => ((db.tables[table][0].doc as DesignDoc).pages[0].elements.find((e) => e.type === "html") as { html: string }).html;
+
+  it("guardar saca el <script> y los manejadores de eventos de un elemento html", async () => {
+    const { db, env } = setup();
+    expect(await saveDocCore(env, { kind: "design", id: "d1", doc: evilDoc(), rev: 3 })).toEqual({ ok: true, rev: 4 });
+    const html = storedHtml(db);
+    expect(html).not.toMatch(/<script|onerror/i);
+    expect(html).toContain("Hola");
+    // La versión que queda es la limpia también.
+    expect(JSON.stringify(db.tables.design_versions[0].doc)).not.toMatch(/<script|onerror/i);
+  });
+
+  it("restaurar una versión vieja con un <script> lo limpia al escribir", async () => {
+    const { db, env } = setup({ design_versions: [{ id: "v1", workspace_id: WS, design_id: "d1", template_id: null, reason: "manual", author_kind: "user", author_id: USER, created_at: now.toISOString(), doc: evilDoc() }] });
+    expect(await restoreVersionCore(env, { kind: "design", id: "d1" }, "v1")).toMatchObject({ ok: true });
+    expect(storedHtml(db)).not.toMatch(/<script|onerror/i);
+    expect(JSON.stringify(db.tables.design_versions.find((v) => v.reason === "restore")?.doc)).not.toMatch(/<script|onerror/i);
+  });
+});
+
+describe("un diseño publicado que se edita vuelve a armar sus archivos", () => {
+  it("guardar un diseño publicado encola el render de publicación", async () => {
+    const { db, env } = setup({ designs: [designRow({ published: true, status: "ready" })] });
+    await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("editado"), rev: 3 });
+    expect(enqueueDesignRender).toHaveBeenCalledTimes(1);
+    expect(enqueueDesignRender).toHaveBeenCalledWith(db.client, { designId: "d1", purpose: "publish" });
+  });
+
+  it("un borrador, una plantilla o un guardado que dio conflicto NO encolan nada", async () => {
+    const { env } = setup();
+    await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("x"), rev: 3 });
+    await saveDocCore(env, { kind: "template", id: "t1", doc: docWithText("{{contact.display_name}}", "carta_h"), rev: 5 });
+    expect(enqueueDesignRender).not.toHaveBeenCalled();
+    const pub = setup({ designs: [designRow({ published: true, rev: 9 })] });
+    expect(await saveDocCore(pub.env, { kind: "design", id: "d1", doc: docWithText("x"), rev: 3 })).toMatchObject({ conflict: true });
+    expect(enqueueDesignRender).not.toHaveBeenCalled();
+  });
+
+  it("un fallo al encolar no tumba el guardado", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    enqueueDesignRender.mockRejectedValueOnce(new Error("cola caída"));
+    const { env } = setup({ designs: [designRow({ published: true })] });
+    expect(await saveDocCore(env, { kind: "design", id: "d1", doc: docWithText("x"), rev: 3 })).toEqual({ ok: true, rev: 4 });
+    spy.mockRestore();
+  });
+
+  it("restaurar una versión de un diseño publicado también lo vuelve a armar", async () => {
+    const { env } = setup({ designs: [designRow({ published: true })], design_versions: [{ id: "v1", workspace_id: WS, design_id: "d1", template_id: null, reason: "manual", author_kind: "user", author_id: USER, created_at: now.toISOString(), doc: docWithText("vieja") }] });
+    await restoreVersionCore(env, { kind: "design", id: "d1" }, "v1");
+    expect(enqueueDesignRender).toHaveBeenCalledWith(expect.anything(), { designId: "d1", purpose: "publish" });
+  });
+});
+
+describe("el historial usa las acciones del Diseñador IA", () => {
+  it("cada cosa que se hace deja su acción", async () => {
+    const { db, env } = setup();
+    await renameCore(env, { kind: "design", id: "d1" }, "Otro");
+    await duplicateCore(env, { kind: "design", id: "d1" });
+    await archiveCore(env, { kind: "design", id: "d1" });
+    await archiveCore(env, { kind: "design", id: "d1" }, { restore: true });
+    await duplicateCore(env, { kind: "template", id: "t1" });
+    await archiveCore(env, { kind: "template", id: "t1" });
+    await updateTemplateSettingsCore(env, { id: "t1", allow_download: false });
+    expect(db.tables.audit_log.map((a) => a.action)).toEqual(["design.renamed", "design.duplicated", "design.archived", "design.restored", "design_template.created", "design_template.archived", "design_template.settings_changed"]);
+  });
+
+  it("restaurar una versión y borrar", async () => {
+    const { db, env } = setup({ design_versions: [{ id: "v1", workspace_id: WS, design_id: "d1", template_id: null, reason: "manual", author_kind: "user", author_id: USER, created_at: now.toISOString(), doc: docWithText("vieja") }] });
+    await restoreVersionCore(env, { kind: "design", id: "d1" }, "v1");
+    await deleteCore(env, { kind: "design", id: "d1" }, true);
+    expect(db.tables.audit_log.map((a) => a.action)).toEqual(["design.version_restored", "design.deleted"]);
+  });
+});
+
 describe("renombrar y duplicar (F17, F28)", () => {
   it("renombra, limpia los espacios y lo deja en el historial", async () => {
     const { db, env } = setup();
     expect(await renameCore(env, { kind: "design", id: "d1" }, "  Mi   carrusel ")).toEqual({ ok: true, data: undefined });
     expect(db.tables.designs[0].name).toBe("Mi carrusel");
-    expect(db.tables.audit_log[0]).toMatchObject({ entity_type: "design", entity_id: "d1", action: "update" });
+    expect(db.tables.audit_log[0]).toMatchObject({ entity_type: "design", entity_id: "d1", action: "design.renamed" });
     expect(db.tables.audit_log[0].changes).toEqual({ name: { old: "Carrusel de prueba", new: "Mi carrusel" } });
   });
 
@@ -320,7 +400,7 @@ describe("archivar y borrar (F28)", () => {
     expect(await deleteCore(env, { kind: "design", id: "d1" }, true)).toEqual({ ok: true, data: undefined });
     expect(db.tables.designs).toHaveLength(0);
     expect(db.tables.ai_threads).toHaveLength(0);
-    expect(db.tables.audit_log[0]).toMatchObject({ action: "delete" });
+    expect(db.tables.audit_log[0]).toMatchObject({ action: "design.deleted" });
   });
 });
 
