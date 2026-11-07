@@ -12,9 +12,9 @@
 import { z } from "zod";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
-import { NOT_BUILT_YET, type ActionResult, type DesignTarget, type ExportKind, type ExportResult, type PublicOptions } from "@/lib/designer/contracts";
+import { type ActionResult, type DesignTarget, type ExportKind, type ExportResult, type PublicOptions } from "@/lib/designer/contracts";
 import { exportStatusCore, requestExportCore } from "@/lib/designer/exporting";
-import { publishDesignCore, setPublicOptionsCore, unpublishDesignCore } from "@/lib/designer/publishing";
+import { publishDesignCore, setPublicOptionsCore, unpublishDesignCore, voidDesignCore } from "@/lib/designer/publishing";
 
 const NO_PERMISSION = "No tenés permiso para hacer esto.";
 const BAD_REQUEST = "El pedido no es válido.";
@@ -77,7 +77,14 @@ export async function exportStatus(input: DesignTarget & { exportKind: ExportKin
   return exportStatusCore(await createServiceClient(), { workspaceId: ctx.workspace.id }, parsed.data);
 }
 
-/** Anular una generación con verificación (F47): motivo obligatorio, nunca se borra. */
-export async function voidDesign(_input: { designId: string; reason: string }): Promise<ActionResult> {
-  return NOT_BUILT_YET(2);
+/**
+ * Anular una generación (F47), con `designer.generate`: el motivo es obligatorio y nunca se borra; el link pasa
+ * a mostrar «anulado» con ese motivo y deja de poder descargarse.
+ */
+export async function voidDesign(input: { designId: string; reason: string }): Promise<ActionResult> {
+  const ctx = await getPermissionAction("designer.generate");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const parsed = z.object({ designId: z.string().uuid(), reason: z.string().max(2000) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: BAD_REQUEST };
+  return voidDesignCore(await createServiceClient(), { workspaceId: ctx.workspace.id, userId: ctx.user.id }, parsed.data);
 }

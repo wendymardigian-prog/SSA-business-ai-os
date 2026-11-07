@@ -122,6 +122,9 @@ class Query implements PromiseLike<{ data: unknown; error: { message: string; co
     } else {
       out = rows.filter((r) => this.matches(r));
       if (this.max !== null) out = out.slice(0, this.max);
+      const snapshot = out.map((r) => ({ ...r }));
+      this.db.onSelect?.(this.table);
+      out = snapshot;
     }
     if (this.op !== "select" && !this.returning && this.mode === "many") return { data: null, error: null };
     if (this.mode === "many") return { data: out.map((r) => ({ ...r })), error: null };
@@ -180,6 +183,8 @@ export class MemoryDb {
   tables: Record<string, Row[]> = {};
   buckets = new Map<string, Map<string, StoredObject>>();
   log: { table: string; op: "insert" | "update" | "delete"; values: Row[]; filters?: Filter[] }[] = [];
+  /** Se llama después de cada lectura (para simular que algo cambió entre leer y escribir). */
+  onSelect?: (table: string) => void;
   /** Lo que se le pidió al Storage (`list:<carpeta>`), para comprobar que NO se lo miró. */
   storageLog: string[] = [];
   /** `"tabla.op"` o `"storage.upload"` → el mensaje del error que tiene que devolver. */
