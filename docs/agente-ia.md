@@ -180,7 +180,7 @@ valida server-side contra el schema de cada una (`updateAgentTools`).
 | `cambiar_estado_setter` | Estados de setter que puede poner (lista blanca de los activos); si puede pisar un estado que puso una persona (default: no). El de vendedor no lo toca nunca. También lo usa la clasificación al cierre. Ver [pipeline-contactos.md](pipeline-contactos.md) |
 | `programar_seguimiento` | Máximo de días (90); si puede pisar una fecha puesta a mano por una persona (se detecta por el audit) |
 | `asignar_conversacion` | Usuarios habilitados; criterio: round-robin (sin estado nuevo, por el audit), usuario fijo, o el setter del contacto |
-| `buscar_datos_del_contacto` | Qué campos lee; email y teléfono apagados por defecto. Es lectura: deja paso en el run, **no** entrada en `audit_log` |
+| `buscar_datos_del_contacto` | Qué campos lee; email, teléfono, notas del equipo y setter/vendedor apagados por defecto (sin nombre cargado, la persona del equipo es «una persona del equipo», nunca su email). Es lectura: deja paso en el run, **no** entrada en `audit_log` |
 | `pausarse` | Máximo de minutos; si se reanuda sola al vencer (usa `agent_paused_until`) |
 | `generar_link_whatsapp` | Número de destino (internacional sin +, se normaliza al guardar quitando +, espacios, guiones y paréntesis; 8 a 15 dígitos, sin empezar en 0); mensaje por defecto; largo máximo del texto preescrito (40-300). Sin número no existe para el modelo y la pantalla lo explica |
 
