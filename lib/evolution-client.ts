@@ -313,7 +313,19 @@ export async function setWebhook(
   // GROUP_PARTICIPANTS_UPDATE: quien entra o sale de un grupo (Grupos de WhatsApp).
   // Una instancia vieja los recibe recien despues de volver a registrar el webhook.
   // GROUPS_UPSERT / GROUP_UPDATE: un grupo nuevo o un cambio de nombre, foto, permisos o comunidad.
-  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "CALL", "GROUP_PARTICIPANTS_UPDATE", "GROUPS_UPSERT", "GROUP_UPDATE"];
+  // MESSAGES_DELETE / MESSAGES_EDITED (00356): un mensaje borrado "para todos". Evolution 2.3.7 manda el borrado por
+  // los dos (lib/messages/revoke.ts); sin ellos la bandeja seguia mostrando lo que en WhatsApp ya no existe.
+  const events = [
+    "MESSAGES_UPSERT",
+    "MESSAGES_DELETE",
+    "MESSAGES_EDITED",
+    "CONNECTION_UPDATE",
+    "QRCODE_UPDATED",
+    "CALL",
+    "GROUP_PARTICIPANTS_UPDATE",
+    "GROUPS_UPSERT",
+    "GROUP_UPDATE",
+  ];
 
   // El token va como header porque el webhook queda expuesto en internet: es lo
   // unico que separa un evento real de cualquiera que descubra la URL.
@@ -612,6 +624,30 @@ export async function sendReaction(
   const body = major === 2 ? { key, reaction: args.reaction } : { reactionMessage: { key, reaction: args.reaction } };
 
   await request(config, "POST", `/message/sendReaction/${encodeURIComponent(instanceName)}`, body);
+}
+
+/**
+ * Borra "para todos" un mensaje que mandamos nosotros (00356):
+ * `DELETE /chat/deleteMessageForEveryone/{instance}` con la key del mensaje
+ * (verificado en la 2.3.7: Evolution le pasa `remoteJid` tal cual a Baileys,
+ * asi que tiene que ser un jid completo). `to` es la identidad del contacto en
+ * el canal: el telefono o su @lid, que va entero.
+ */
+export async function deleteMessageForEveryone(
+  config: EvolutionConfig,
+  instanceName: string,
+  args: { to: string; messageId: string },
+): Promise<void> {
+  const number = toEvolutionNumber(args.to);
+  if (!number) {
+    throw new EvolutionError(`Numero de WhatsApp invalido: "${args.to}"`);
+  }
+  const remoteJid = number.includes("@") ? number : `${number}@s.whatsapp.net`;
+  await request(config, "DELETE", `/chat/deleteMessageForEveryone/${encodeURIComponent(instanceName)}`, {
+    id: args.messageId,
+    remoteJid,
+    fromMe: true,
+  });
 }
 
 // ── Media ────────────────────────────────────────────────────────────────────

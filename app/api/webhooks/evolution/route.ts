@@ -6,6 +6,7 @@
  * - connection.update: la sesion se abrio, se esta abriendo o se cayo
  * - call: una llamada (00258)
  * - group-participants.update: alguien entro o salio de un grupo (Grupos de WhatsApp, 00280)
+ * - messages.delete / messages.edited: un mensaje se borro "para todos" (00356; ver lib/messages/revoke.ts)
  *
  * Autenticacion: esta URL es publica, asi que se exige el header
  * x-webhook-token, el mismo que se configura al crear la instancia
@@ -41,6 +42,8 @@ import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { resolveWhatsappSender, type WhatsappMessageKey, type WhatsappSender } from "@/lib/whatsapp-sender";
 import { handleWhatsappReaction, parseBaileysReaction } from "@/lib/messages/reactions-inbound";
 import { parseBaileysPollVote } from "@/lib/messages/poll-votes";
+import { parseWhatsappRevoke, protocolMessageOf, revokeSource } from "@/lib/messages/revoke";
+import { markMessageDeletedForEveryone } from "@/lib/messages/revoke-inbound";
 import { withKnownLid } from "@/lib/whatsapp-known-lid";
 import { groupJidOfMessage, parseGroupParticipantsEvent, parseGroupsUpdateEvent } from "@/lib/whatsapp-groups/parse";
 import { ensureInboxGroup, handleGroupMessage, handleGroupParticipants, handleGroupsUpdate } from "@/lib/whatsapp-groups/inbound";
@@ -196,6 +199,29 @@ async function handleWebhook(request: NextRequest) {
       }
     });
     return NextResponse.json({ ok: true, queued: "groups-update" });
+  }
+
+  // Un mensaje borrado "para todos" (00356). No es un mensaje: marca la fila borrada y el camino termina aca. En la
+  // 2.3.7 llega por `messages.delete` y por `messages.edited` (el protocolMessage); si llegara por `messages.upsert`
+  // tambien se ataja aca, ANTES de los grupos y del camino de los mensajes: si no, entraria como un mensaje vacio.
+  if (event === "messages.delete" || event === "messages.edited" || event === "messages.upsert") {
+    const revoke = parseWhatsappRevoke(event, payload.data);
+    if (revoke) {
+      const marked = await markMessageDeletedForEveryone(supabase, {
+        workspaceId: channel.workspace_id,
+        channelId: channel.id,
+        platformMessageId: revoke.targetId,
+        source: revokeSource(revoke, payload.data?.key?.fromMe === true),
+      });
+      return NextResponse.json({ ok: true, handled: "revoke", marked });
+    }
+    // Una edicion u otro aviso del protocolo (mensajes temporales, sincronizacion): tampoco es un mensaje.
+    if (event !== "messages.upsert") {
+      return NextResponse.json({ ok: true, skipped: event === "messages.edited" ? "edicion" : "borrado ilegible" });
+    }
+    if (protocolMessageOf(payload.data?.message)) {
+      return NextResponse.json({ ok: true, skipped: "mensaje del protocolo" });
+    }
   }
 
   if (event !== "messages.upsert") {
