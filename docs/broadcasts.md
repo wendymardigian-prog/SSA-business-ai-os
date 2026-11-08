@@ -204,7 +204,8 @@ queda `cancelled`, lo enviado no se deshace). Un destinatario: `pending`,
   ruta no existe).
 - `00347_delete_unsent_broadcast` (aditiva: una función, solo `service_role`).
   Puede ir antes o después del código; sin ella, «Eliminar» responde un error
-  claro.
+  claro. Aplicada y registrada en producción el 8/11/2026 UTC (versión
+  `20261108180049`).
 
 ```
 node scripts/verify-broadcasts.mjs   # RLS, índice único, claim_lane_slot (10 a la vez = 1), claim_broadcast_recipient, contadores
