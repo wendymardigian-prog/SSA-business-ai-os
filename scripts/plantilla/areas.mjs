@@ -483,15 +483,22 @@ configuracion del sistema y los cron de pg_cron.
 
 Casi todos los cron llaman a una ruta /api/cron/<nombre> de la app con
 private.call_app_cron, que lee la URL de la app y el secreto del cron desde Vault
-(se cargan con private.set_system_secret). Los demas corren en la base: las purgas
+(se cargan con private.set_system_secret). Los que corren seguido pasan antes por
+una guarda (private.call_app_cron_if_work): solo llaman si hay algo que hacer, y
+igual una vez cada tanto por seguridad. Los demas corren en la base: las purgas
 de lo borrado (pasados 30 dias) y de lo vencido (mensajes, borradores, eventos, avisos,
 historial de cron y de pg_net).`,
-    tables: ["public.scheduled_jobs", "public.webhook_events", "public.rate_limits", "private.system_config"],
+    tables: ["public.scheduled_jobs", "public.webhook_events", "public.rate_limits", "private.system_config", "private.cron_guard_state"],
     functions: [
       "public.push_debounced_job",
       "public.bump_rate_limit",
       "public.purge_rate_limits",
       "private.call_app_cron",
+      "private.call_app_cron_if_work",
+      "private.cron_guard_decide",
+      "private.cron_has_work",
+      /^private\.cron_work_/,
+      "private.purge_scheduled_jobs",
       "private.purge_cron_run_details",
       "private.purge_pg_net_responses",
       "public.purge_soft_deleted",
