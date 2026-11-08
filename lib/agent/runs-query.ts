@@ -221,6 +221,7 @@ export const AGENT_RUN_SOURCES = [
   "ads_matching",
   "audio_transcription",
   "media_description",
+  "designer",
   "call_classification", // @plantilla-quitar(llamadas)
   "call_analysis", // @plantilla-quitar(llamadas)
   "call_correction", // @plantilla-quitar(llamadas)

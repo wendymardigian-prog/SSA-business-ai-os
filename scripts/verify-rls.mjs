@@ -1576,6 +1576,32 @@ try {
         "borrar el contacto NO borra el registro del email: queda sin contacto"); }
   }
 
+  console.log("\n— Diseñador IA (00319, 00320): lectura por permiso, sin escritura con la sesion, hilos por canal —");
+  { const doc = { v: 1, format: "sq", pages: [{ id: "pg_test0001", background: { type: "color", color: "#ffffff" }, elements: [] }] };
+    const { data: d } = await svc.from("designs").insert({ workspace_id: ws.id, name: "zz-test diseño rls", format: "sq", doc, origin: "blank" }).select("id").single();
+    const { data: t } = await svc.from("design_templates").insert({ workspace_id: ws.id, name: "zz-test plantilla rls", format: "sq", doc, origin: "blank" }).select("id").single();
+    check((await sees(admin, "designs", d.id)).seen, "el Admin ve un diseño");
+    check((await sees(member, "designs", d.id)).seen && (await sees(member, "design_templates", t.id)).seen, "el Member de sistema ve diseños y plantillas (designer.view, cambio aprobado M12)");
+    check(!!(await member.client.from("designs").insert({ workspace_id: ws.id, name: "zz-test colado", format: "sq", doc, origin: "blank" })).error, "un Member NO escribe diseños con su sesion");
+    check(!!(await admin.client.from("designs").insert({ workspace_id: ws.id, name: "zz-test colado admin", format: "sq", doc, origin: "blank" })).error, "ni un Admin: sin policy de INSERT (escriben las Server Actions)");
+    const { count: upd } = await admin.client.from("designs").update({ name: "zz-test pisado" }, { count: "exact" }).eq("id", d.id);
+    check((upd ?? 0) === 0, "ni un UPDATE con la sesion");
+    const { data: threads } = await svc.from("ai_threads").insert([
+      { workspace_id: ws.id, channel: "designer", subject_type: "design", subject_id: d.id },
+      { workspace_id: ws.id, channel: "assistant", user_id: admin.id },
+      { workspace_id: ws.id, channel: "portal", contact_id: contact.id },
+    ]).select("id, channel");
+    const byChannel = Object.fromEntries((threads ?? []).map((r) => [r.channel, r.id]));
+    check((await sees(member, "ai_threads", byChannel.designer)).seen, "el Member ve el hilo del Diseñador IA");
+    check(!(await sees(member, "ai_threads", byChannel.assistant)).seen, "el Member NO ve el hilo del asistente de otra persona");
+    check((await sees(admin, "ai_threads", byChannel.assistant)).seen, "la persona dueña ve su hilo del asistente");
+    check(!(await sees(admin, "ai_threads", byChannel.portal)).seen, "nadie ve un hilo del portal todavia (sin politica)");
+    check(!!(await admin.client.from("ai_messages").insert({ workspace_id: ws.id, thread_id: byChannel.designer, role: "user", content: "zz-test" })).error, "nadie escribe mensajes de IA con su sesion");
+    const otroDis = await makeUser("otro-disenador");
+    const { data: wsOtroDis } = await svc.from("workspaces").insert({ name: "zz-test-disenador-ws", slug: `zz-test-disenador-${Date.now()}` }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: wsOtroDis.id, user_id: otroDis.id, role: "owner" });
+    check(!(await sees(otroDis, "designs", d.id)).seen, "otro workspace NO ve los diseños de este"); }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

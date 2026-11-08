@@ -44,6 +44,12 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "contract_email", // @plantilla-quitar(formularios)
       "contract_pdf", // @plantilla-quitar(formularios)
       "describe_media",
+      // Diseñador IA (F6): render, generar para varios, sincronizar con Contenido, la IA y la limpieza diaria.
+      "design_ai_generate",
+      "design_cleanup",
+      "design_content_sync",
+      "design_generate_many",
+      "design_render",
       // Reporte de fin de día (E13): el recordatorio. // @plantilla-quitar(formularios)
       "eod_reminder_sweep", // @plantilla-quitar(formularios)
       "fathom_history_import", // @plantilla-quitar(llamadas)

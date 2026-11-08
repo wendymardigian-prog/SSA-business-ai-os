@@ -122,8 +122,9 @@ describe("Agenda en el menu (F8)", () => {
     const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { inbox: true } }).map((i) => i.name);
     // Plano formularios-ui (D4): Recursos ya no es un item (se llega por Ajustes) y Ajustes pide su bandera,
     // que aca no se pasa: un viewer sin flags no lo ve.
-    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Agentes IA"]); // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,tareas,formularios)
-    // @plantilla-sin(llamadas,ventas,finanzas,comisiones,tareas,formularios): expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Automatizaciones", "Agentes IA"]);
+    // Cambio aprobado M12: el Member de sistema gana «Diseñador IA» (designer.view).
+    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA"]); // @plantilla-quitar(llamadas,ventas,finanzas,comisiones,tareas,formularios)
+    // @plantilla-sin(llamadas,ventas,finanzas,comisiones,tareas,formularios): expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Agenda", "Automatizaciones", "Diseñador IA", "Agentes IA"]);
     // (cambio aprobado M9: «Finanzas» se suma al Member de sistema, que tiene commissions.view) // @plantilla-quitar(comisiones)
     // Sin ningun permiso (y sin banderas), no queda nada.
     expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
@@ -286,8 +287,9 @@ describe("grupos del menu (bloque N, N1)", () => {
       ["adquisicion", ["Contenido", "Social", "Anuncios"]],
       ["ventas", ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas"]], // Extra I: Finanzas al final del grupo // @plantilla-quitar(llamadas,ventas,finanzas,comisiones)
       // @plantilla-sin(llamadas,ventas,finanzas,comisiones): ["ventas", ["Contactos", "Agenda"]],
-      ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)
-      // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Agentes IA", "Ajustes"]],
+      // Diseñador IA: después de Formularios.
+      ["herramientas", ["Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA", "Ajustes"]], // @plantilla-quitar(tareas,formularios)
+      // @plantilla-sin(tareas,formularios): ["herramientas", ["Automatizaciones", "Diseñador IA", "Agentes IA", "Ajustes"]],
     ]);
   });
 

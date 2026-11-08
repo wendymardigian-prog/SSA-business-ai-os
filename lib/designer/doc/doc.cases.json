@@ -1,0 +1,1197 @@
+[
+ {
+  "name": "un texto simple",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "documento vacío de una página",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "imagen, forma y html",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_img001",
+       "type": "image",
+       "x": 50,
+       "y": 30,
+       "w": 60,
+       "h": 40,
+       "asset": "ws/a.png",
+       "fit": "cover"
+      },
+      {
+       "id": "el_shp001",
+       "type": "shape",
+       "x": 20,
+       "y": 80,
+       "w": 10,
+       "h": 10,
+       "shape": "circle",
+       "fill": "#ff0000"
+      },
+      {
+       "id": "el_htm001",
+       "type": "html",
+       "x": 50,
+       "y": 50,
+       "w": 100,
+       "h": 100,
+       "html": "<p data-tx=\"t1\">Hola</p>"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "fondo de imagen con capa de color",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "image",
+      "image": {
+       "asset": "ws/f.jpg",
+       "fit": "cover",
+       "focal": {
+        "x": 50,
+        "y": 40
+       },
+       "locked": true
+      },
+      "overlay": {
+       "color": "#000000",
+       "opacity": 0.55
+      }
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "degradé",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "gradient",
+      "gradient": {
+       "from": "#000000",
+       "to": "#ffffffcc",
+       "angle": 135
+      }
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "texto con variables bien escritas",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Se otorga a {{contact.display_name}} el {{design.issued_on}}",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "página web con alto propio",
+  "doc": {
+   "v": 1,
+   "format": "web",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [],
+     "height": 3200
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "carrusel de 20 páginas",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_p0000",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0001",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0002",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0003",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0004",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0005",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0006",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0007",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0008",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0009",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0010",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0011",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0012",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0013",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0014",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0015",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0016",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0017",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0018",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_p0019",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": true,
+  "sql": true
+ },
+ {
+  "name": "elemento sin id",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "id de elemento mal formado",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "texto-1",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "porcentaje mayor que 100",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 120,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "porcentaje negativo",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": -5,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "ancho cero",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 0,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "color inválido",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "rojo"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "fuente vacía",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "  ",
+        "weight": 400
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "peso de fuente raro",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 450
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "variable mal escrita",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola {{Contact Nombre}}",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "variable sin cerrar",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola {{contact.first_name",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "variable vacía",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola {{}}",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "página web con varias páginas",
+  "doc": {
+   "v": 1,
+   "format": "web",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_aaaa02",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "sin páginas",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": []
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "21 páginas",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_q0000",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0001",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0002",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0003",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0004",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0005",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0006",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0007",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0008",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0009",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0010",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0011",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0012",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0013",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0014",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0015",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0016",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0017",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0018",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0019",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    },
+    {
+     "id": "pg_q0020",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "formato desconocido",
+  "doc": {
+   "v": 1,
+   "format": "a3",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "versión desconocida",
+  "doc": {
+   "v": 2,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "tipo de elemento desconocido",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_vid001",
+       "type": "video",
+       "x": 50,
+       "y": 50,
+       "w": 50
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "tipo de fondo desconocido",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "pattern"
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": false,
+  "sql": false
+ },
+ {
+  "name": "capa de color por encima de 90 %",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "image",
+      "image": {
+       "asset": "ws/f.jpg",
+       "fit": "cover",
+       "focal": {
+        "x": 50,
+        "y": 50
+       },
+       "locked": false
+      },
+      "overlay": {
+       "color": "#000000",
+       "opacity": 0.95
+      }
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "fondo de imagen sin imagen",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "image"
+     },
+     "elements": []
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "elemento repetido",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      },
+      {
+       "id": "el_text01",
+       "type": "text",
+       "x": 50,
+       "y": 50,
+       "w": 80,
+       "text": "Hola",
+       "font": {
+        "family": "Inter",
+        "weight": 700
+       },
+       "size": 48,
+       "align": "center",
+       "color": "#111111"
+      }
+     ]
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "alto propio fuera de una página web",
+  "doc": {
+   "v": 1,
+   "format": "v45",
+   "pages": [
+    {
+     "id": "pg_aaaa01",
+     "background": {
+      "type": "color",
+      "color": "#ffffff"
+     },
+     "elements": [],
+     "height": 3000
+    }
+   ]
+  },
+  "valid": false,
+  "sql": true
+ },
+ {
+  "name": "no es un objeto",
+  "doc": [
+   1,
+   2,
+   3
+  ],
+  "valid": false,
+  "sql": false
+ }
+]

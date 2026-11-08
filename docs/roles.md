@@ -33,6 +33,7 @@ Cada fila tiene su test y el comentario «cambio aprobado».
 | M8 | Entrar a Integraciones por la URL | lo rebotaba | ve solo «Mis conexiones». El menú cambió por el rediseño de Formularios: Integraciones y Recursos son pestañas de Ajustes, y «Ajustes» lo ve cualquiera (entra a Recursos) |
 | M9 | Ver sus propias comisiones (Extra I) | no existía | **sí**, solo `commissions.view` con alcance `own`: ve «Finanzas» en el menú pero ninguna pestaña de gastos. NO tiene `commissions.manage` ni `expenses.*` |
 | M10 | Editar el contenido de su pieza (o la que tiene asignada) después de aprobada (22/10/2026) | solo hasta «En revisión» | **sí, en cualquier estado**. Cambiar el ESTADO sigue igual: un Member lo mueve solo entre Borrador, En producción y En revisión (trigger `content_posts_status_guard`, 00253) |
+| M12 | Diseñador IA: ver y editar diseños (8/11/2026) | no existía | **sí**, `designer.view` y `designer.edit` (en `MEMBER_PERMISSION_KEYS` y en `private.member_permission_keys()`, 00319). NO `designer.publish`, `designer.generate` ni `designer.manage`: no publica, no emite ni anula piezas, no cambia «Permitir descargar» de una plantilla ni los ajustes. Guardar nunca cambia el link público (eso es publicar) |
 | M4, M5 | Reasignar los leads que ve; publicar flujos | podía | sin cambios |
 
 ## El catálogo: 72 claves
@@ -361,3 +362,8 @@ node scripts/verify-audit-visibility.mjs --despues-de-00168
 ## Grabaciones por área (00301)
 
 El alcance de grabaciones suma una tercera opción: «Los suyos + los de ciertas áreas». Es el único módulo con ese alcance. Se elige en Ajustes → Roles y, como la bandeja, tiene su propia regla de «no podés dar lo que no tenés»: se mira área por área, no solo el alcance. Detalle en [llamadas.md](llamadas.md), «Alcance por área».
+
+## Diseñador IA (00319)
+
+Cinco claves: `designer.view` (ver la lista, el editor y las generaciones), `designer.edit` (crear y editar diseños y plantillas, pedirle a la IA, exportar), `designer.publish` (publicar, despublicar, las opciones del link y «Permitir descargar» de una plantilla), `designer.generate` (emitir, generar para varios, reintentar, volver a generar y anular) y `designer.manage` (estilos propios, fuentes y borrar diseños sin uso). Las tres capas: la página (`requireDesigner`, 404 sin la clave), la acción (`getPermissionAction`) y la política (`has_permission`, lectura; escribe solo el servidor). El Member de sistema tiene `view` y `edit` (M12). Detalle en [designer.md](designer.md).
+

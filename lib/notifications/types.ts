@@ -34,6 +34,8 @@ export const NOTIFICATION_TYPES = [
   "content_networks_unscheduled",
   "content_copy_ready",
   "content_copy_failed",
+  /** Diseñador IA (F55): una generación no se hizo (falta un dato o falló el render). */
+  "design_generation_failed",
   // Agenda (Etapa 4, F38).
   "booking_created",
   "booking_rescheduled",
@@ -123,6 +125,8 @@ export type NotificationEntity =
   | "draft_queue"
   | "integration"
   | "content_post"
+  /** Diseñador IA: una plantilla (el aviso abre su pestaña Generaciones). */
+  | "design_template"
   | "booking"
   | "flow"
   | "fathom" // @plantilla-quitar(llamadas)
@@ -330,6 +334,12 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     label: "El copywriter no pudo escribir",
     tone: "warning",
     entity: "content_post",
+  },
+  design_generation_failed: {
+    type: "design_generation_failed",
+    label: "Una generación del Diseñador IA no se hizo",
+    tone: "warning",
+    entity: "design_template",
   },
   booking_created: {
     type: "booking_created",
@@ -551,6 +561,10 @@ export function linkFor(
       // Todas llevan a la pantalla de integraciones, con el filtro puesto:
       // desde ahi se reconecta, que es lo unico que se puede hacer.
       return "/dashboard/settings/integrations";
+
+    // Diseñador IA: la pestaña Generaciones de la plantilla, con el filtro de fallidas.
+    case "design_template":
+      return entityId ? `/dashboard/disenos/t/${entityId}?tab=generaciones&estado=fallidas` : "/dashboard/disenos?tab=plantillas";
 
     case "content_post":
       return entityId

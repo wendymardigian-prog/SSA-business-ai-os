@@ -27,6 +27,7 @@ import { BarChart3,
   BadgeDollarSign,
   CalendarClock,
   Ban,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -174,6 +175,8 @@ const actionConfig: Record<
   mark_payment_paid: { icon: BadgeDollarSign, label: "Marcar pago como cobrado", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
   reschedule_payment: { icon: CalendarClock, label: "Reprogramar pago", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
   set_sale_status: { icon: Ban, label: "Cancelar la venta", color: "bg-gray-500" }, // @plantilla-quitar(ventas)
+  // Diseñador IA (F57).
+  designGenerate: { icon: Sparkles, label: "Generar desde plantilla", color: "bg-gray-500" },
 };
 
 /** El nombre de cada accion (lo usan el nodo y el encabezado del panel lateral). */
@@ -250,6 +253,9 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       return (nodeData as { question?: string }).question?.trim() || null;
     case "privateReply":
       return (nodeData as { text?: string }).text?.trim() || null;
+    // Diseñador IA (F57): la plantilla elegida.
+    case "designGenerate" as NodeType:
+      return (nodeData as { templateName?: string; templateId?: string }).templateId ? ((nodeData as { templateName?: string }).templateName?.trim() || "Plantilla elegida") : null;
     case "send_email" as NodeType: {
       if (nodeData.to === "variable") return nodeData.toVariable?.trim() ? `A ${nodeData.toVariable.trim()}` : null;
       if (nodeData.to === "fixed") return nodeData.fixedEmail?.trim() ? `A ${nodeData.fixedEmail.trim()}` : null;
