@@ -2364,14 +2364,18 @@ El 8/11/2026 la base quedo "Unhealthy": pg_cron llamaba a la app ~16.500 veces p
 - **Realtime publica exactamente `lib/realtime/tables.ts`** (las tablas que escucha la interfaz; lo compara `lib/realtime/tables.test.ts`). Una tabla publicada que nadie escucha le cuesta a la base en cada cambio.
 - **Purgas**: `scheduled_jobs` completados y cancelados a los 30 dias, fallidos a los 90, pendientes nunca (`purge-scheduled-jobs`); `cron.job_run_details` a 1 dia.
 - En la plantilla de estudiantes, la poda deja `private.cron_work_jobs_extra` en `false` (no tiene webhooks propios).
+- **Un trabajo de pg_cron por frecuencia (00350)**: cada corrida abre una conexion y escribe tres veces en `cron.job_run_details`, haga algo o no. `every-15-seconds` (agent-bursts + send-queue), `every-minute` (automation-events + jobs + sequences) y `every-5-minutes` (`3-59/5`: sweep_agent_drafts + alert_draft_windows + drafts-refresh + whatsapp-health) corren `private.cron_tick_*`, con **cada parte en su propio bloque `BEGIN ... EXCEPTION`** (una que falla no frena a las otras) y `lock_timeout` de 10 s. **El error de una parte NO aparece en `cron.job_run_details`** (la corrida dice "succeeded"): queda en `private.cron_tick_errors` (UNLOGGED) y lo muestra `measure-cron-load`. Un cron nuevo de una frecuencia que ya tiene trabajo es una parte mas (`lib/cron/ticks.json` + una migracion que redefine la funcion), no un trabajo aparte; `guards.test.ts` lo controla.
 
 ## Migracion
 
-`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy): **aplicada y registrada** el 8/11/2026 UTC (version `20261108050809`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-cron-guards` en verde. En los primeros 10 minutos todas las corridas salieron bien y, por ejemplo, `agent-bursts` corrio 41 veces y llamo a la app 2. **La proxima libre es la `00328`** (confirmar con `list_migrations` y las ramas locales).
+`00327_cron_guards` (aditiva: el codigo no cambia; puede ir antes o despues de un deploy): **aplicada y registrada** el 8/11/2026 UTC (version `20261108050809`), despues de ensayarla en una transaccion que se deshizo sola, con `verify-cron-guards` en verde. En los primeros 10 minutos todas las corridas salieron bien y, por ejemplo, `agent-bursts` corrio 41 veces y llamo a la app 2.
+
+`00350_cron_ticks` (aditiva, va encima de la 00327; el codigo no cambia): **aplicada y registrada** el 8/11/2026 UTC (version `20261108181854`), con `verify-cron-guards --despues-de-00350` en verde y las primeras 26 corridas sin fallas. Lee `cron.job` y aborta si alguno de los nueve cron no tiene el comando que dejo la 00327 o esta apagado. Ensayada contra produccion en una transaccion que se deshizo (dos pasadas seguidas: idempotente; 35 trabajos pasan a 29; los tres juntos tardan 39 ms; una parte forzada a fallar no frena a las otras). Ahorra 9.504 corridas y conexiones por dia (de ~18.000 a ~8.500). **La proxima libre es la `00351`** (la `00349` es de Comunidades de WhatsApp; confirmar con `list_migrations` y las ramas locales).
 
 ```
-node scripts/verify-cron-guards.mjs   # despues de aplicar: decision SQL = TS, comandos, permisos, Realtime y cada guarda con y sin el dato justo
-node scripts/measure-cron-load.mjs    # antes y despues (solo lee)
+node scripts/verify-cron-guards.mjs                     # decision SQL = TS, comandos, permisos, Realtime y cada guarda con y sin el dato justo
+node scripts/verify-cron-guards.mjs --despues-de-00350  # ademas: los tres trabajos agrupados y la falla forzada de una parte
+node scripts/measure-cron-load.mjs                      # antes y despues (solo lee)
 ```
 
 # «En una fecha y hora» (00339, 8/11/2026)

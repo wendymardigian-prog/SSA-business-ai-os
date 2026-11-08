@@ -1,0 +1,23 @@
+[
+  {
+    "job": "every-15-seconds",
+    "schedule": "15 seconds",
+    "periodMinutes": 0.25,
+    "sqlFunction": "private.cron_tick_15_seconds",
+    "parts": ["agent-bursts", "send-queue"]
+  },
+  {
+    "job": "every-minute",
+    "schedule": "* * * * *",
+    "periodMinutes": 1,
+    "sqlFunction": "private.cron_tick_minute",
+    "parts": ["automation-events", "jobs", "sequences"]
+  },
+  {
+    "job": "every-5-minutes",
+    "schedule": "3-59/5 * * * *",
+    "periodMinutes": 5,
+    "sqlFunction": "private.cron_tick_5_minutes",
+    "parts": ["agent-drafts-sweep", "draft-window-alerts", "drafts-refresh", "whatsapp-health"]
+  }
+]
