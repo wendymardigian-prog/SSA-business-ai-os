@@ -6,7 +6,11 @@
 
 ## Checklist de bloques (A1)
 
-- [ ] **S0** Seguridad previa: F1, F2, F3, `verify-servicios-migracion.mjs`
+- [x] **S0** Seguridad previa: F1, F2, F3, `verify-servicios-migracion.mjs` (8/11)
+  - F1: `verify-workspace-isolation --despues-de-00309` en 0 (punto de partida); `create-owner.mjs` ya pasa `ssa_create_workspace`.
+  - F2: `verify-auth-settings` sale **1** en producción: el registro público está prendido y "Leaked password protection" apagada. Es de panel: queda en PENDIENTE para Wendy. Paso sumado a `/setup`.
+  - F3: `docs/seguridad-despliegue.md`.
+  - `verify-servicios-migracion --todas` antes de aplicar nada: verde (huellas iguales).
 - [ ] **SV1** El servicio: F4, F5, F6, F7, F8, F9, F10, F11, F12, F93, F94, F96, F97, F99 (S01–S05)
 - [ ] **SV2** El camino: F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25 (S06–S07)
 - [ ] **PRD** Productos por variante: F114, F115, F116, F117, F31, F32
