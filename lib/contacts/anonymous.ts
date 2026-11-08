@@ -26,6 +26,23 @@ export const PLACEHOLDER_NAMES = [
   "unknown commenter",
 ] as const;
 
+/**
+ * El nombre que el propio sistema le pone a una persona de WhatsApp cuando
+ * WhatsApp no manda el suyo (el receptor, la importacion del historial y los
+ * grupos). Vive aca para que los tres usen el mismo texto y para que el saludo
+ * lo reconozca.
+ */
+export const UNKNOWN_WHATSAPP_NAME = "Contacto de WhatsApp";
+
+/**
+ * Nombres que pone el sistema y que NO van en `PLACEHOLDER_NAMES` a proposito:
+ * esa lista tiene su gemela en SQL (`is_placeholder_name` y la columna
+ * `is_anonymous`), y sumar uno ahi cambiaria que contactos se ocultan. Esta
+ * lista solo decide con que nombre se saluda (ver `isGreetingPlaceholder`).
+ * Ya normalizados, como `PLACEHOLDER_NAMES`.
+ */
+export const SYSTEM_FALLBACK_NAMES = [UNKNOWN_WHATSAPP_NAME.toLowerCase()] as const;
+
 function normalize(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
@@ -59,6 +76,16 @@ function isListedPlaceholder(name: string | null | undefined): boolean {
 export function isPlaceholderName(name: string | null | undefined): boolean {
   const trimmed = (name ?? "").trim();
   return isListedPlaceholder(name) || ID_NAME.test(trimmed) || HANDLE_NAME.test(trimmed);
+}
+
+/**
+ * true si con este nombre NO se puede saludar a nadie: un relleno de la
+ * plataforma (`isPlaceholderName`) o uno que puso el sistema («Contacto de
+ * WhatsApp»). Lo usan el saludo de los broadcasts, los flujos, las secuencias y
+ * los respaldos `{{contact.first_name|...}}`: «Hola Contacto» es peor que «Hola».
+ */
+export function isGreetingPlaceholder(name: string | null | undefined): boolean {
+  return isPlaceholderName(name) || (SYSTEM_FALLBACK_NAMES as readonly string[]).includes(normalize(name).replace(/\s+/g, " "));
 }
 
 /**

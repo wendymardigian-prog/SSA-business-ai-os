@@ -18,6 +18,7 @@ import { formatMoney } from "@/lib/shared/format";
 import { saleBalance } from "../sale-math";
 import { paymentMethodName } from "../payment-methods";
 import { snapshotText } from "../sale-text";
+import { firstNameOf } from "@/lib/flow-engine/variable-catalog";
 
 export const SALES_VARIABLE_KEYS = [
   "sale.product_name",
@@ -118,7 +119,7 @@ export function salesVariables(input: SalesVariablesInput): SalesVariables {
 
   // `first_name` no es una columna: es la primera palabra del nombre (como en las secuencias).
   const displayName = (input.contact?.display_name ?? "").replace(/\s+/g, " ").trim();
-  const contactVars: Record<string, string> = { first_name: displayName.split(" ")[0] ?? "", display_name: displayName };
+  const contactVars: Record<string, string> = { first_name: firstNameOf(displayName), display_name: displayName };
 
   return { sale: saleVars, payment: paymentVars, contact: contactVars };
 }

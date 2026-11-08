@@ -40,9 +40,25 @@ describe("renderTemplate", () => {
     expect(renderTemplate("Hola {{contact.first_name|amigo}}!", sin)).toEqual({ text: "Hola amigo!", missing: [] });
   });
 
-  it("sin respaldo deja el hueco y lo cuenta una vez", () => {
+  it("un nombre vacío sin respaldo no deja hueco, y se cuenta una vez", () => {
     const sin = broadcastVariables({ display_name: null, email: null, phone: null }, { name: "N" });
-    expect(renderTemplate("Hola {{contact.first_name}} {{contact.first_name}}", sin)).toEqual({ text: "Hola  ", missing: ["contact.first_name"] });
+    expect(renderTemplate("Hola {{contact.first_name}} {{contact.first_name}}", sin)).toEqual({ text: "Hola", missing: ["contact.first_name"] });
+    expect(renderTemplate("¡Hola {{contact.first_name}}! ¿Cómo estás?", sin).text).toBe("¡Hola! ¿Cómo estás?");
+    expect(renderTemplate("Hola, {{contact.first_name}}.", sin).text).toBe("Hola.");
+    expect(renderTemplate("Hola {{contact.first_name}}, te escribo", sin).text).toBe("Hola, te escribo");
+    expect(renderTemplate("Gracias {{contact.first_name}} por venir", sin).text).toBe("Gracias por venir");
+  });
+
+  it("«Contacto de WhatsApp» (el nombre que pone el sistema) cuenta como vacío: usa el respaldo", () => {
+    const wa = broadcastVariables({ display_name: "Contacto de WhatsApp", email: null, phone: "+50688888888" }, { name: "N" });
+    expect(renderTemplate("¡Hola {{contact.first_name|de nuevo}}!", wa).text).toBe("¡Hola de nuevo!");
+    expect(renderTemplate("¡Hola {{contact.first_name}}!", wa).text).toBe("¡Hola!");
+    expect(renderTemplate("Hola {{contact.name|amigo}}", wa).text).toBe("Hola amigo");
+  });
+
+  it("un dato que no es un nombre vacío deja su hueco como siempre", () => {
+    const sin = broadcastVariables({ display_name: "Ana", email: null, phone: null }, { name: "N" });
+    expect(renderTemplate("Mail: {{contact.email}}.", sin).text).toBe("Mail: .");
   });
 
   it("un nombre de relleno (id o @usuario) cuenta como vacío", () => {
