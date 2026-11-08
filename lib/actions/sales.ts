@@ -2,6 +2,7 @@
 
 import { workspaceMethods } from "@/lib/sales/workspace-methods";
 import { revalidatePath } from "next/cache";
+import { inheritContactAffiliate } from "@/lib/affiliates/sale-inherit";
 import { z } from "zod";
 import { snapshotProductId } from "@/lib/sales/sale-text";
 import { getPermissionAction } from "@/lib/auth/guards";
@@ -150,6 +151,9 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
 
   // 5. Los recordatorios relativos de los pagos (se completan en el Bloque 4).
   await syncPaymentRelativeJobs(service, { saleId });
+
+  // 6. El afiliado vigente del contacto pasa a la venta (Servicios A1, F74). Nunca lanza ni tumba la venta.
+  await inheritContactAffiliate(service, workspace.id, saleId, input.contactId);
 
   revalidatePath("/dashboard/ventas");
   revalidatePath(`/dashboard/contacts/${input.contactId}`);

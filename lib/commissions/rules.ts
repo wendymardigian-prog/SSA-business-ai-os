@@ -27,6 +27,7 @@ export type RuleDimension =
   | "user_ids"
   | "vendedor_ids"
   | "setter_ids"
+  | "affiliate_kinds"
   | "product_ids"
   | "variant_ids"
   | "financing_types"
@@ -96,6 +97,8 @@ function salePersonFor(role: RoleLike, facts: CommissionFacts): string | null {
       return facts.sale.setter_id;
     case "content_assignee":
       return facts.content_assignee_id;
+    case "sale_affiliate":
+      return facts.sale.affiliate_user_id ?? null;
     default:
       return null;
   }
@@ -119,6 +122,7 @@ function firstFailedDimension(rule: Pick<CommissionRule, "conditions" | "valid_f
   if (userIds.length && role.payee !== "fixed" && !inList(userIds, salePersonFor(role, facts))) return "user_ids";
   if (!inList(list(c.vendedor_ids), facts.sale.vendedor_id)) return "vendedor_ids";
   if (!inList(list(c.setter_ids), facts.sale.setter_id)) return "setter_ids";
+  if (!inList(list(c.affiliate_kinds), facts.sale.affiliate_kind)) return "affiliate_kinds";
   if (!inList(list(c.product_ids), facts.sale.product_id)) return "product_ids";
   if (!inList(list(c.variant_ids), facts.sale.variant_id)) return "variant_ids";
   if (!inList(list(c.financing_types), facts.sale.financing_type)) return "financing_types";
@@ -184,7 +188,7 @@ export function payeeFor(
   role: RoleLike,
   rule: Pick<CommissionRule, "beneficiary_user_id">,
   facts: CommissionFacts,
-): { applies: boolean; userId: string | null } {
+): { applies: boolean; userId: string | null; contactId?: string | null } {
   const override = rule.beneficiary_user_id || null;
   switch (role.payee) {
     case "sale_vendedor":
@@ -198,6 +202,13 @@ export function payeeFor(
     }
     case "fixed":
       return { applies: override !== null, userId: override };
+    case "sale_affiliate": {
+      // Del equipo (user_id) o un contacto (contact_id). Sin afiliado en la venta, no aplica.
+      if (override) return { applies: true, userId: override };
+      if (facts.sale.affiliate_user_id) return { applies: true, userId: facts.sale.affiliate_user_id };
+      if (facts.sale.affiliate_contact_id) return { applies: true, userId: null, contactId: facts.sale.affiliate_contact_id };
+      return { applies: false, userId: null };
+    }
     default:
       return { applies: false, userId: null };
   }
@@ -250,4 +261,35 @@ export function evaluatePayment(roles: readonly CommissionRole[], rules: readonl
       const { baseCents, amountCents } = commissionAmount(rule, facts);
       return { role: role.key, ruleId: rule.id, applies: true, userId: payee.userId, baseCents, amountCents };
     });
+}
+
+/** Lo evaluado de un rol, con lo que necesita «pagar solo la mayor». */
+export interface MaxEval {
+  role: string;
+  payee: string;
+  whenAlsoSeller: "both" | "max";
+  applies: boolean;
+  userId: string | null;
+  amountCents: number;
+  reason?: string;
+}
+
+/**
+ * «Pagar solo la mayor» (F75): si el afiliado de la venta es también su vendedor o setter y la regla del rol Afiliado
+ * dice `max`, de las comisiones de esa persona en este pago queda solo la mayor (en un empate, la del otro rol).
+ * Gemela de `public.commission_apply_max`; casos en `when-also-seller.cases.json`.
+ */
+export function applyWhenAlsoSeller(evals: readonly MaxEval[]): MaxEval[] {
+  const out = evals.map((e) => ({ ...e }));
+  out.forEach((e, i) => {
+    if (!(e.payee === "sale_affiliate" && e.applies && e.whenAlsoSeller === "max" && e.userId)) return;
+    const others = out.filter((o, j) => j !== i && (o.payee === "sale_vendedor" || o.payee === "sale_setter") && o.applies && o.userId === e.userId);
+    if (others.length === 0) return;
+    const best = Math.max(...others.map((o) => o.amountCents));
+    if (e.amountCents <= best) out[i] = { ...e, applies: false, reason: "max_other" };
+    else out.forEach((o, j) => {
+      if (j !== i && (o.payee === "sale_vendedor" || o.payee === "sale_setter") && o.userId === e.userId) out[j] = { ...o, applies: false, reason: "max_other" };
+    });
+  });
+  return out;
 }

@@ -1,0 +1,165 @@
+{
+  "_comment": "Casos de validateAffiliateSettings (F72). Corren contra la gemela TS (lib/affiliates/settings.ts) y contra public.validate_affiliate_settings (verify-affiliates).",
+  "cases": [
+    {
+      "name": "vacío = los valores por defecto",
+      "input": {},
+      "expected": []
+    },
+    {
+      "name": "todo bien",
+      "input": {
+        "v": 1,
+        "originated": {
+          "months": 12,
+          "replace": "keep"
+        },
+        "influenced": {
+          "days": 90,
+          "renew_on_click": true,
+          "replace": "last"
+        },
+        "counts": {
+          "first_purchase_only": false
+        },
+        "show_lead_names": "full"
+      },
+      "expected": []
+    },
+    {
+      "name": "de por vida",
+      "input": {
+        "originated": {
+          "months": null
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "no es un objeto",
+      "input": [
+        1
+      ],
+      "expected": [
+        "las reglas no son válidas"
+      ]
+    },
+    {
+      "name": "texto suelto",
+      "input": "x",
+      "expected": [
+        "las reglas no son válidas"
+      ]
+    },
+    {
+      "name": "meses fuera de rango",
+      "input": {
+        "originated": {
+          "months": 0
+        }
+      },
+      "expected": [
+        "«lo trajo» dura de 1 a 120 meses (o de por vida)"
+      ]
+    },
+    {
+      "name": "meses con decimales",
+      "input": {
+        "originated": {
+          "months": 1.5
+        }
+      },
+      "expected": [
+        "«lo trajo» dura de 1 a 120 meses (o de por vida)"
+      ]
+    },
+    {
+      "name": "meses como texto",
+      "input": {
+        "originated": {
+          "months": "12"
+        }
+      },
+      "expected": [
+        "«lo trajo» dura de 1 a 120 meses (o de por vida)"
+      ]
+    },
+    {
+      "name": "regla de reemplazo desconocida",
+      "input": {
+        "originated": {
+          "replace": "random"
+        },
+        "influenced": {
+          "replace": null
+        }
+      },
+      "expected": [
+        "elegí qué pasa con otro afiliado sobre un «lo trajo»",
+        "elegí qué pasa con otro afiliado sobre un «influyó»"
+      ]
+    },
+    {
+      "name": "originated no es objeto",
+      "input": {
+        "originated": 3
+      },
+      "expected": [
+        "la regla de «lo trajo» no es válida"
+      ]
+    },
+    {
+      "name": "días fuera de rango y renovar no booleano",
+      "input": {
+        "influenced": {
+          "days": 4000,
+          "renew_on_click": "si"
+        }
+      },
+      "expected": [
+        "«influyó» dura de 1 a 3650 días",
+        "«un clic nuevo corre la fecha» tiene que ser sí o no"
+      ]
+    },
+    {
+      "name": "días null no vale",
+      "input": {
+        "influenced": {
+          "days": null
+        }
+      },
+      "expected": [
+        "«influyó» dura de 1 a 3650 días"
+      ]
+    },
+    {
+      "name": "counts mal",
+      "input": {
+        "counts": {
+          "first_purchase_only": 1
+        }
+      },
+      "expected": [
+        "«solo la primera compra» tiene que ser sí o no"
+      ]
+    },
+    {
+      "name": "counts no objeto",
+      "input": {
+        "counts": true
+      },
+      "expected": [
+        "«solo la primera compra» tiene que ser sí o no"
+      ]
+    },
+    {
+      "name": "nombres desconocido",
+      "input": {
+        "show_lead_names": "initials"
+      },
+      "expected": [
+        "elegí cómo se ven los nombres de los referidos"
+      ]
+    }
+  ]
+}

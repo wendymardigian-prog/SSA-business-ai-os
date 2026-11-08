@@ -6,13 +6,19 @@ import { parseAttributionSettings } from "@/lib/attribution/settings";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadAutomationCapabilities } from "@/lib/flow-engine/capabilities";
 import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
+import Link from "next/link"; // @plantilla-quitar(servicios)
+import { ArrowLeft } from "lucide-react"; // @plantilla-quitar(servicios)
+import { backToPathHref } from "@/lib/services/screens/back-to-path"; // @plantilla-quitar(servicios)
 
 export default async function FlowEditorPage({
   params,
+  searchParams, // @plantilla-quitar(servicios)
 }: {
   params: Promise<{ flowId: string }>;
+  searchParams: Promise<{ volver?: string }>; // @plantilla-quitar(servicios)
 }) {
   const { flowId } = await params;
+  const backTo = backToPathHref((await searchParams).volver); // @plantilla-quitar(servicios)
   // Equipo y roles (F22): la pagina pide su permiso.
   await requirePermission("flows.view");
   const { workspace, supabase } = await getWorkspace();
@@ -37,6 +43,14 @@ export default async function FlowEditorPage({
 
   return (
     <div className="flex h-full flex-col">
+      {/* @plantilla-desde(servicios) */}
+      {backTo && (
+        <Link href={backTo} className="flex items-center gap-1.5 border-b border-border bg-muted/40 px-4 py-2 text-sm text-primary-ink hover:underline">
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Volver al camino
+        </Link>
+      )}
+      {/* @plantilla-hasta(servicios) */}
       <FlowCanvas
         flow={flow}
         capabilities={capabilities}

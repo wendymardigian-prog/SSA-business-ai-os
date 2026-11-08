@@ -54,8 +54,9 @@ describe("rolesPayload y PAYEE_CHOICES", () => {
   it("manda solo lo que la acción espera", () => {
     expect(rolesPayload(defaultCommissionRoles())[0]).toEqual({ key: "vendedor", name: "Vendedor", payee: "sale_vendedor", active: true });
   });
-  it("ofrece las cuatro formas de pagar, en palabras", () => {
-    expect(PAYEE_CHOICES.map((c) => c.label)).toEqual(["El vendedor de la venta", "El setter de la venta", "El responsable de la pieza", "Una persona fija"]);
+  it("ofrece las formas de pagar, en palabras", () => {
+    // Servicios A1 (F75): suma «El afiliado de la venta» (del equipo o un contacto).
+    expect(PAYEE_CHOICES.map((c) => c.label)).toEqual(["El vendedor de la venta", "El setter de la venta", "El responsable de la pieza", "Una persona fija", "El afiliado de la venta"]);
   });
 });
 

@@ -1,0 +1,302 @@
+{
+  "_comment": "Casos de validateProductLinks (F70). Corren contra la gemela TS (lib/affiliates/product-links.ts) y contra public.validate_product_links (verify-affiliates).",
+  "cases": [
+    {
+      "name": "vacío",
+      "links": {
+        "v": 1,
+        "items": []
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": []
+    },
+    {
+      "name": "dos principales correctos",
+      "links": {
+        "v": 1,
+        "primary_learn": "lk_aaaaa1",
+        "primary_convert": "lk_aaaaa2",
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "Link",
+            "kind": "landing",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          },
+          {
+            "key": "lk_aaaaa2",
+            "name": "Agendar",
+            "kind": "booking",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": []
+    },
+    {
+      "name": "url sin https",
+      "links": {
+        "v": 1,
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "Link",
+            "kind": "landing",
+            "url": "http://ejemplo.test",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "«Link»: el link tiene que empezar con https://"
+      ]
+    },
+    {
+      "name": "clave repetida",
+      "links": {
+        "v": 1,
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "Link",
+            "kind": "landing",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          },
+          {
+            "key": "lk_aaaaa1",
+            "name": "Otro",
+            "kind": "landing",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "la clave lk_aaaaa1 está repetida"
+      ]
+    },
+    {
+      "name": "clave inválida",
+      "links": {
+        "v": 1,
+        "items": [
+          {
+            "key": "link1",
+            "name": "Link",
+            "kind": "landing",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "«Link»: la clave no es válida"
+      ]
+    },
+    {
+      "name": "variante de otro producto",
+      "links": {
+        "v": 1,
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "Link",
+            "kind": "landing",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": "22222222-2222-4222-8222-222222222222"
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "«Link»: la variante tiene que ser de este producto"
+      ]
+    },
+    {
+      "name": "variante del producto",
+      "links": {
+        "v": 1,
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "Link",
+            "kind": "landing",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": "11111111-1111-4111-8111-111111111111"
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": []
+    },
+    {
+      "name": "principal para conocer de tipo agenda",
+      "links": {
+        "v": 1,
+        "primary_learn": "lk_aaaaa1",
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "Link",
+            "kind": "booking",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "el principal para conocer no puede ser de ese tipo"
+      ]
+    },
+    {
+      "name": "principal para convertir de tipo landing",
+      "links": {
+        "v": 1,
+        "primary_convert": "lk_aaaaa1",
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "Link",
+            "kind": "landing",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "el principal para convertir no puede ser de ese tipo"
+      ]
+    },
+    {
+      "name": "principal que no existe",
+      "links": {
+        "v": 1,
+        "primary_learn": "lk_zzzzzz",
+        "items": []
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "el principal para conocer no es uno de los links"
+      ]
+    },
+    {
+      "name": "sin nombre y tipo inválido",
+      "links": {
+        "v": 1,
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "",
+            "kind": "x",
+            "url": "https://a.test",
+            "active": true,
+            "valid_until": null,
+            "variant_id": null
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "hay un link sin nombre",
+        "«un link»: elegí el tipo"
+      ]
+    },
+    {
+      "name": "fecha de vigencia inválida",
+      "links": {
+        "v": 1,
+        "items": [
+          {
+            "key": "lk_aaaaa1",
+            "name": "Link",
+            "kind": "landing",
+            "url": "https://ejemplo.test/x",
+            "active": true,
+            "valid_until": "31/12/2026",
+            "variant_id": null
+          }
+        ]
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "«Link»: la fecha de vigencia no es válida"
+      ]
+    },
+    {
+      "name": "versión desconocida",
+      "links": {
+        "v": 2,
+        "items": []
+      },
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "versión desconocida"
+      ]
+    },
+    {
+      "name": "no es un objeto",
+      "links": [],
+      "variants": [
+        "11111111-1111-4111-8111-111111111111"
+      ],
+      "expected": [
+        "los links no son válidos"
+      ]
+    }
+  ]
+}

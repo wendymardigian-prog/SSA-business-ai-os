@@ -155,6 +155,15 @@ export const MODULES = {
       "lib/flow-engine/nodes/sales-actions.test.ts",
       "scripts/verify-sales.mjs",
       "scripts/verify-payment-methods.mjs",
+      // Afiliados y links (Servicios A1, bloque AF): siguen a Ventas.
+      `${D}/afiliados`,
+      `${D}/mis-links`,
+      "app/r",
+      "lib/affiliates",
+      "components/affiliates",
+      "lib/actions/affiliates.ts",
+      "lib/flow-engine/registry/affiliate-triggers.ts",
+      "scripts/verify-affiliates.mjs",
     ],
   },
   tareas: {
@@ -225,6 +234,7 @@ export const MODULES = {
       "lib/actions/commissions.ts",
       "lib/actions/commissions.test.ts",
       "lib/actions/commissions-ui.ts",
+      "lib/actions/commission-edit.ts",
       "lib/jobs/handlers/commissions-payment.ts",
       "lib/jobs/handlers/commissions-payment.test.ts",
       "scripts/verify-commissions.mjs",
@@ -254,8 +264,11 @@ export const MODULES = {
   servicios: {
     label: "Servicios y portal (camino del cliente, accesos, programa)",
     paths: [
+      `${D}/settings/productos/[id]/variantes`,
+      `${D}/clientes`,
       "lib/services",
       "lib/portal-admin",
+      "components/services",
       "lib/actions/services.ts",
       "lib/flow-engine/nodes/service-actions.ts",
       "lib/flow-engine/registry/service-triggers.ts",

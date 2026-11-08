@@ -36,14 +36,23 @@ export const CONTACT_MERGE_TABLES = [
 ] as const;
 
 /**
- * Relaciones con `contacts` que `merge_contacts` NO mueve, y por que. No quedan colgadas: las mueve un
- * trigger al borrar el duplicado (mismo patron que la marca de Conocido, 00256), sin reescribir la funcion.
+ * Relaciones con `contacts` que no estan en la lista de arriba, y por que. Casi todas las mueve un trigger al borrar el
+ * duplicado (mismo patron que la marca de Conocido, 00256), sin reescribir la funcion; las de afiliados las reapunta
+ * `merge_contacts` aparte (00343) y no entran en la cuenta de lo movido que ve la persona.
  */
 export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {
   designs:
     "Diseñador IA (00320): `subject_contact_id` de una generación lo reapunta el trigger `contacts_designs_on_merge` al borrar el duplicado con `metadata.merged_into`.",
   ai_threads:
     "Conversaciones con IA (00320): `contact_id` lo reapunta el mismo trigger `contacts_designs_on_merge` al borrar el duplicado.",
+  contact_qualification_changes:
+    "Calificación (00329): el historial lo mueve el trigger `contacts_qualification_on_merge` al borrar el duplicado, que además deja al principal con el nivel más alto.",
+  commissions: // @plantilla-quitar(comisiones)
+    "Afiliados (00343): `contact_id` de la comisión de un afiliado externo lo reapunta `merge_contacts` al principal; no se cuenta como movido.", // @plantilla-quitar(comisiones)
+  vendors: // @plantilla-quitar(finanzas)
+    "Afiliados (00343): el proveedor vinculado a un afiliado externo lo reapunta `merge_contacts` (si el principal ya tiene uno, el del duplicado queda sin contacto).", // @plantilla-quitar(finanzas)
+  "app_servicio.services": // @plantilla-quitar(servicios)
+    "Servicios A1: los servicios del duplicado los reapunta `app_servicio.merge_contacts_hook`, que `merge_contacts` llama desde la S16 (bloque X).", // @plantilla-quitar(servicios)
 };
 
 export interface MergeMoved {

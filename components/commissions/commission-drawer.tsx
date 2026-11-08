@@ -11,6 +11,8 @@ import { CommissionStatusChip, toneClasses } from "@/components/commissions/comm
 import { Historial } from "@/components/historial/historial";
 import { SaleModal } from "@/components/shared/sale-modal";
 import { assignCommissionPerson, voidCommission } from "@/lib/actions/commissions";
+import { editCommission } from "@/lib/actions/commission-edit";
+import { canEditCommission } from "@/lib/commissions/edit";
 import type { DescribeLookups } from "@/lib/commissions/describe";
 import { allowedActions, attributionView, paymentLines, saleClosedChip, usedRuleText } from "@/lib/commissions/drawer-view";
 import type { CommissionFilters } from "@/lib/commissions/filters";
@@ -39,10 +41,10 @@ export interface CommissionDrawerProps {
   timeZone: string;
   /** Id de persona → nombre, para el historial. */
   names: Record<string, string>;
-  can: { expenses: boolean; sales: boolean; content: boolean; ads: boolean };
+  can: { expenses: boolean; sales: boolean; content: boolean; ads: boolean; /** F107: editar a mano (`commissions.edit`). Sin la clave, el cajón es el de siempre. */ edit?: boolean };
 }
 
-type DialogKind = "assign" | "void" | "adjust" | null;
+type DialogKind = "assign" | "void" | "adjust" | "edit" | null;
 
 export function CommissionDrawer({ detail, extras, members, roles, lookups, filters, timeZone, names, can }: CommissionDrawerProps) {
   const router = useRouter();
@@ -69,11 +71,13 @@ export function CommissionDrawer({ detail, extras, members, roles, lookups, filt
   });
   const title = d.kind === "adjustment" ? "Ajuste de comisión" : `Comisión${d.roleName ? ` · ${d.roleName}` : ""}`;
   const person = d.userName ?? (d.userId ? "Una persona" : "Sin persona");
-  const footer = d.canManage ? (
+  const editable = !!can.edit && d.kind !== "adjustment" && !d.voidedAt && canEditCommission({ expenseId: d.expense ? "x" : null, voidedAt: d.voidedAt ?? null });
+  const footer = d.canManage || editable ? (
     <>
-      {actions.assign && <FooterButton onClick={() => setDialog("assign")}>Asignar persona</FooterButton>}
-      <FooterButton onClick={() => setDialog("adjust")}>Crear ajuste</FooterButton>
-      {actions.void && <FooterButton danger onClick={() => setDialog("void")}>Anular</FooterButton>}
+      {editable && <FooterButton onClick={() => setDialog("edit")}>Editar</FooterButton>}
+      {d.canManage && actions.assign && <FooterButton onClick={() => setDialog("assign")}>Asignar persona</FooterButton>}
+      {d.canManage && <FooterButton onClick={() => setDialog("adjust")}>Crear ajuste</FooterButton>}
+      {d.canManage && actions.void && <FooterButton danger onClick={() => setDialog("void")}>Anular</FooterButton>}
     </>
   ) : undefined;
 
@@ -240,6 +244,25 @@ export function CommissionDrawer({ detail, extras, members, roles, lookups, filt
 
       {dialog === "assign" && <AssignDialog id={d.id} members={members} onClose={() => setDialog(null)} onDone={refresh} />}
       {dialog === "void" && <VoidDialog id={d.id} amountCents={d.amountCents} onClose={() => setDialog(null)} onDone={refresh} />}
+      {dialog === "edit" && (
+        <EditDialog
+          id={d.id}
+          amountCents={d.amountCents}
+          role={d.role ?? ""}
+          userId={d.userId ?? null}
+          roles={roleList.map((r) => ({ key: r.key, name: r.name }))}
+          members={members}
+          onClose={() => setDialog(null)}
+          onDone={(newId) => {
+            if (newId) {
+              const params = new URLSearchParams(window.location.search);
+              params.set("commission", newId);
+              router.replace(`?${params.toString()}`, { scroll: false });
+            }
+            refresh();
+          }}
+        />
+      )}
       {dialog === "adjust" && (
         <AdjustmentDialog
           members={members}
@@ -336,6 +359,73 @@ function AssignDialog({ id, members, onClose, onDone }: { id: string; members: R
           <option value="">Elegí una persona</option>
           {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
+      </DialogField>
+    </SaleModal>
+  );
+}
+
+/**
+ * Editar una comisión a mano (F107): monto, persona o rol, con motivo. La vieja queda anulada y la nueva marcada como
+ * editada (la generación automática no la pisa). Solo pendientes y sin gasto.
+ */
+function EditDialog({
+  id,
+  amountCents,
+  role,
+  userId,
+  roles,
+  members,
+  onClose,
+  onDone,
+}: {
+  id: string;
+  amountCents: number;
+  role: string;
+  userId: string | null;
+  roles: ReadonlyArray<{ key: string; name: string }>;
+  members: ReadonlyArray<{ id: string; name: string }>;
+  onClose: () => void;
+  onDone: (newId: string | null) => void;
+}) {
+  const [amount, setAmount] = useState((amountCents / 100).toFixed(2));
+  const [roleKey, setRoleKey] = useState(role);
+  const [person, setPerson] = useState(userId ?? "");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  function submit() {
+    setError(null);
+    start(async () => {
+      const res = await editCommission(id, { void: false, amount, role: roleKey, person: person ? { type: "user", id: person } : null, reason });
+      if (!res.ok) return setError(res.error);
+      onDone(res.id);
+      onClose();
+    });
+  }
+  return (
+    <SaleModal
+      title="Editar la comisión"
+      label="Editar la comisión a mano"
+      onClose={onClose}
+      footer={<DialogFooter error={error} pending={pending} disabled={!reason.trim()} onClose={onClose} onSubmit={submit} label="Guardar" />}
+    >
+      <p className="text-sm text-muted-foreground">La comisión de ahora queda anulada y se crea una nueva con estos datos, marcada como editada a mano: los recálculos automáticos no la pisan.</p>
+      <DialogField label="Monto (USD)">
+        <input className={fieldInput} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      </DialogField>
+      <DialogField label="Rol">
+        <select className={fieldInput} value={roleKey} onChange={(e) => setRoleKey(e.target.value)}>
+          {roles.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}
+        </select>
+      </DialogField>
+      <DialogField label="Persona">
+        <select className={fieldInput} value={person} onChange={(e) => setPerson(e.target.value)}>
+          <option value="">Sin persona</option>
+          {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+      </DialogField>
+      <DialogField label="Motivo">
+        <textarea className={fieldInput} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
       </DialogField>
     </SaleModal>
   );

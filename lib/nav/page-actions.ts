@@ -398,6 +398,42 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Producto",
     tooltip: "Las variantes del producto y, en cada una, su precio vigente y el historial de precios.",
   },
+  // @plantilla-desde(servicios)
+  "/dashboard/clientes": {
+    title: "Clientes",
+    tooltip: "Los servicios de tus clientes: en qué fase están, su semáforo y su avance.",
+  },
+  "/dashboard/clientes/lista": {
+    title: "Clientes",
+    tooltip: "Una fila por cliente con al menos un servicio: cuántos tiene, lo que pagó y su último contacto.",
+  },
+  "/dashboard/clientes/c/[contactId]": {
+    title: "Cliente",
+    tooltip: "Todo lo de este cliente: sus servicios, lo que pagó y la actividad del equipo.",
+  },
+  "/dashboard/clientes/importar": {
+    title: "Importar servicios",
+    tooltip: "Carga inicial de los servicios que ya existían antes del sistema.",
+  },
+  "/dashboard/clientes/s/[serviceId]": {
+    title: "Servicio",
+    tooltip: "El servicio de un cliente: su camino, su semáforo, sus datos y lo que se puede hacer.",
+  },
+  "/dashboard/settings/productos/[id]/variantes/[variantId]": {
+    title: "Variante",
+    tooltip: "La configuración de una variante: su camino del cliente, qué pasa al cobrarse, su portal y su precio.",
+  },
+  // @plantilla-hasta(servicios)
+  // @plantilla-desde(ventas)
+  "/dashboard/afiliados": {
+    title: "Afiliados",
+    tooltip: "Quién trae a quién: referidos, ventas y comisiones de cada afiliado, y las reglas de asignación.",
+  },
+  "/dashboard/mis-links": {
+    title: "Mis links",
+    tooltip: "Tu código y los links de los productos para compartir. Quien entra por ellos queda como tu referido.",
+  },
+  // @plantilla-hasta(ventas)
   "/dashboard/settings/asignacion": {
     title: "Reglas de asignación",
     tooltip: "Cómo se asignan solos el setter, el vendedor y el referido de un contacto, con probador y simulación en seco. Lo asignado a mano nunca se pisa.",

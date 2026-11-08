@@ -54,12 +54,12 @@ const jlit = (v) => `${lit(JSON.stringify(v))}::jsonb`;
 
 // La CLI abre un rol temporal por consulta y, con muchas seguidas, a veces no se puede conectar con el
 // (SASL 28P01, "failed to connect as temp role"). Eso no es un resultado de la prueba: se reintenta.
-const TRANSIENT = /failed to connect as temp role|SQLSTATE 28P01|failed SASL auth|connection reset|ECONNRESET|timeout expired|unexpected status 50[234]|upstream connect error/i;
+const TRANSIENT = /failed to connect as temp role|SQLSTATE 28P01|failed SASL auth|connection reset|ECONNRESET|timeout expired|unexpected status 50[234]|upstream connect error|ETIMEDOUT|SIGTERM/i;
 const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 function sql(query) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+      const out = execFileSync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024, timeout: 90_000 });
       return JSON.parse(out).rows ?? [];
     } catch (e) {
       const text = `${e.stdout ?? ""}${e.stderr ?? ""}${e.message ?? ""}`;
@@ -88,7 +88,7 @@ function sqlErr(query) {
 async function sqlAsync(query) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const { stdout } = await execFileAsync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+      const { stdout } = await execFileAsync("supabase", ["db", "query", ...dbTargetArgs(), query], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 90_000 });
       return JSON.parse(stdout).rows ?? [];
     } catch (e) {
       const text = `${e.stdout ?? ""}${e.stderr ?? ""}${e.message ?? ""}`;
@@ -126,12 +126,22 @@ function asUser(uid, query) {
   return { ok: false, error: text.slice(0, 400), code };
 }
 
+/** Llama una funcion del modulo con la sesion de la persona, por la API (como la app). Devuelve { data, error }. */
+async function rpcAs(user, fn, args) {
+  const { data, error } = await user.client.schema("app_servicio").rpc(fn, args);
+  return { data, error: error ? `${error.code ?? ""} ${error.message}` : null };
+}
+
 async function makeUser(tag) {
   const email = `zz-test-${tag}-${Date.now()}@example.test`;
   const password = randomUUID();
   const { data, error } = await svc.auth.admin.createUser({ app_metadata: { ssa_create_workspace: true }, email, password, email_confirm: true });
   if (error) throw new Error(`no pude crear usuario ${tag}: ${error.message}`);
-  return { id: data.user.id, email };
+  // Una sesion de verdad para lo que tiene que QUEDAR guardado (asUser deshace todo al final).
+  const client = createClient(URL_, ANON, { auth: { persistSession: false } });
+  const { error: e } = await client.auth.signInWithPassword({ email, password });
+  if (e) throw new Error(`no pude iniciar sesion con ${tag}: ${e.message}`);
+  return { id: data.user.id, email, client };
 }
 
 const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
@@ -544,37 +554,40 @@ try {
     const rev = (id, col) => sql(`SELECT ${col} r FROM public.product_variants WHERE id = ${lit(id)}`)[0]?.r;
 
     const settingsA = { v: 1, mode: "create", when: { rule: "any_payment" }, confirm: false, start: "payment_date", owner: { mode: "fixed", user_id: member.id, fallback_user_id: owner.id }, renewal: "new_linked" };
-    const save1 = asUser(owner.id, `SELECT app_servicio.svc_save_service_settings(${lit(vA.id)}, ${jlit(settingsA)}, ${rev(vA.id, "service_settings_rev")}) r`);
-    check(save1.ok && save1.row?.r?.status === "ok", "el Owner guarda la configuracion de la variante", save1.error ?? JSON.stringify(save1.row));
-    const stale = asUser(owner.id, `SELECT app_servicio.svc_save_service_settings(${lit(vA.id)}, ${jlit(settingsA)}, 0) r`);
-    check(stale.ok && stale.row?.r?.status === "conflict", "con una version vieja responde conflict (no pisa)", JSON.stringify(stale.row));
-    const bad = asUser(owner.id, `SELECT app_servicio.svc_save_service_settings(${lit(vA.id)}, ${jlit({ v: 1, mode: "extend", when: { rule: "any_payment" }, extend: { n: 3, unit: "months" } })}, ${rev(vA.id, "service_settings_rev")}) r`);
-    check(bad.ok && bad.row?.r?.status === "invalid" && (bad.row?.r?.problems ?? []).length > 0, "extend sin variante de respaldo se rechaza con sus problemas", JSON.stringify(bad.row));
+    const save1 = await rpcAs(owner, "svc_save_service_settings", { p_variant_id: vA.id, p_settings: settingsA, p_rev: rev(vA.id, "service_settings_rev") });
+    check(!save1.error && save1.data?.status === "ok", "el Owner guarda la configuracion de la variante (por la API, con su sesion)", save1.error ?? JSON.stringify(save1.data));
+    check(sql(`SELECT service_settings ->> 'mode' m FROM public.product_variants WHERE id = ${lit(vA.id)}`)[0]?.m === "create", "y queda guardada");
+    const stale = await rpcAs(owner, "svc_save_service_settings", { p_variant_id: vA.id, p_settings: settingsA, p_rev: 0 });
+    check(!stale.error && stale.data?.status === "conflict", "con una version vieja responde conflict (no pisa)", stale.error ?? JSON.stringify(stale.data));
+    const bad = await rpcAs(owner, "svc_save_service_settings", { p_variant_id: vA.id, p_settings: { v: 1, mode: "extend", when: { rule: "any_payment" }, extend: { n: 3, unit: "months" } }, p_rev: rev(vA.id, "service_settings_rev") });
+    check(!bad.error && bad.data?.status === "invalid" && (bad.data?.problems ?? []).length > 0, "extend sin variante de respaldo se rechaza con sus problemas", bad.error ?? JSON.stringify(bad.data));
     const byMember = asUser(member.id, `SELECT app_servicio.svc_save_service_settings(${lit(vB.id)}, ${jlit(settingsA)}, ${rev(vB.id, "service_settings_rev")}) r`);
     check(!byMember.ok && /SV004|permiso/.test(byMember.error), "un Member no configura variantes (services.configure)", byMember.error);
 
     const tplA = { v: 1, phases: [{ key: "ph_bbbbb1", name: "Inicio", duration_days: 30, advance: "auto", items: [{ key: "it_bbbbb1", kind: "checkbox", name: "Arranque" }] }] };
-    const saveTpl = asUser(admin.id, `SELECT app_servicio.svc_save_journey_template(${lit(vA.id)}, ${jlit(tplA)}, ${rev(vA.id, "journey_template_rev")}) r`);
-    check(saveTpl.ok && saveTpl.row?.r?.status === "ok", "el Admin guarda el camino con su version", saveTpl.error ?? JSON.stringify(saveTpl.row));
+    const saveTpl = await rpcAs(admin, "svc_save_journey_template", { p_variant_id: vA.id, p_template: tplA, p_rev: rev(vA.id, "journey_template_rev") });
+    check(!saveTpl.error && saveTpl.data?.status === "ok", "el Admin guarda el camino con su version", saveTpl.error ?? JSON.stringify(saveTpl.data));
 
     console.log("\nprd · El portal de la variante y products.portal_enabled (F116)");
     const portalOf = () => sql(`SELECT portal_enabled e FROM public.products WHERE id = ${lit(prd.id)}`)[0]?.e;
     check(portalOf() === false, "un producto nace sin portal");
-    const on = asUser(owner.id, `SELECT app_servicio.portal_admin_save_variant_portal(${lit(vA.id)}, ${jlit({ v: 1, enabled: true, sections: [{ section: "program", included: true }] })}, ${rev(vA.id, "portal_settings_rev")}) r`);
-    check(on.ok && on.row?.r?.status === "ok" && portalOf() === true, "prender el acceso de una variante prende el portal del producto", on.error ?? JSON.stringify(on.row));
-    sql(`SELECT app_servicio.portal_admin_save_variant_portal(${lit(vB.id)}, ${jlit({ v: 1, enabled: true, sections: [] })}, ${rev(vB.id, "portal_settings_rev")})`);
-    sql(`SELECT app_servicio.portal_admin_save_variant_portal(${lit(vA.id)}, ${jlit({ v: 1, enabled: false, sections: [] })}, ${rev(vA.id, "portal_settings_rev")})`);
+    const savePortal = (v, settings) => rpcAs(owner, "portal_admin_save_variant_portal", { p_variant_id: v.id, p_settings: settings, p_rev: rev(v.id, "portal_settings_rev") });
+    const on = await savePortal(vA, { v: 1, enabled: true, sections: [{ section: "program", included: true }] });
+    check(!on.error && on.data?.status === "ok" && portalOf() === true, "prender el acceso de una variante prende el portal del producto", on.error ?? JSON.stringify(on.data));
+    await savePortal(vB, { v: 1, enabled: true, sections: [] });
+    await savePortal(vA, { v: 1, enabled: false, sections: [] });
     check(portalOf() === true, "apagar una variante con otra prendida deja el portal prendido");
-    sql(`SELECT app_servicio.portal_admin_save_variant_portal(${lit(vB.id)}, ${jlit({ v: 1, enabled: false, sections: [] })}, ${rev(vB.id, "portal_settings_rev")})`);
+    await savePortal(vB, { v: 1, enabled: false, sections: [] });
     check(portalOf() === false, "apagar la ultima lo apaga");
-    const notYet = asUser(owner.id, `SELECT app_servicio.portal_admin_save_variant_portal(${lit(vA.id)}, ${jlit({ v: 1, enabled: true, sections: [{ section: "fame", included: true }] })}, ${rev(vA.id, "portal_settings_rev")}) r`);
-    check(notYet.ok && notYet.row?.r?.status === "invalid" && JSON.stringify(notYet.row?.r?.problems).includes("Todavía no está disponible"), "una seccion fuera de las disponibles se rechaza", JSON.stringify(notYet.row));
+    const notYet = await savePortal(vA, { v: 1, enabled: true, sections: [{ section: "fame", included: true }] });
+    check(!notYet.error && notYet.data?.status === "invalid" && JSON.stringify(notYet.data?.problems).includes("Todavía no está disponible"), "una seccion fuera de las disponibles se rechaza", notYet.error ?? JSON.stringify(notYet.data));
 
     console.log("\nprd · Copiar de otra variante");
-    const copied = asUser(owner.id, `SELECT app_servicio.svc_copy_variant_setup(${lit(vA.id)}, ${lit(vB.id)}, ARRAY['journey','service']) r`);
-    check(copied.ok && copied.row?.r?.status === "ok", "copia el camino y la configuracion", copied.error ?? JSON.stringify(copied.row));
-    const b = sql(`SELECT journey_template -> 'phases' -> 0 ->> 'key' k, service_settings ->> 'mode' m FROM public.product_variants WHERE id = ${lit(vB.id)}`)[0];
-    check(b?.k === "ph_bbbbb1" && b?.m === "create", "la otra variante queda con las mismas claves y el mismo modo", JSON.stringify(b));
+    const copied = await rpcAs(owner, "svc_copy_variant_setup", { p_from_variant_id: vA.id, p_to_variant_id: vB.id, p_parts: ["journey", "service"] });
+    check(!copied.error && copied.data?.status === "ok", "copia el camino y la configuracion", copied.error ?? JSON.stringify(copied.data));
+    const b = sql(`SELECT journey_template -> 'phases' -> 0 ->> 'key' k, journey_template -> 'phases' -> 0 ->> 'name' n, jsonb_array_length(journey_template -> 'phases' -> 0 -> 'items') i, service_settings ->> 'mode' m FROM public.product_variants WHERE id = ${lit(vB.id)}`)[0];
+    // La copia arma claves NUEVAS (cada variante con las suyas) y reacomoda las dependencias entre pasos.
+    check(b?.n === "Inicio" && b?.i === 1 && /^ph_[a-z0-9]{6}$/.test(b?.k ?? "") && b?.k !== "ph_bbbbb1" && b?.m === "create", "la otra variante queda con el mismo camino (claves nuevas) y el mismo modo", JSON.stringify(b));
     const guard = asUser(owner.id, `WITH u AS (UPDATE public.product_variants SET journey_template = '{"v":1,"phases":[]}'::jsonb WHERE id = ${lit(vB.id)} RETURNING 1) SELECT count(*) n FROM u`);
     check(!guard.ok && /SV003|desde sus pantallas/.test(guard.error), "el camino no se escribe directo con la sesion (SV003)", guard.error);
   }

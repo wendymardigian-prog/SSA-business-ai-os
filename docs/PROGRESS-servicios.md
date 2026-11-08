@@ -21,9 +21,19 @@
 - [x] **SV2** El camino: F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25 (S06–S07) — **listo el 8/11**
   - S06 (00335) y S07 (00336) aplicadas y verificadas. `verify-services --bloque sv2`: **0** (35 chequeos: el camino se copia al crear, tildar con permiso y alcance, destildar, el avance lo calcula la base, el completado por formulario con paso firmado de otro contacto descartado, avance automático de fase, `service_item_id` inmutable, eventos sin `booking_id`, la tarea de equipo y la reunión completan su paso, el enganche roto no tumba la respuesta, la reunión, la venta ni la tarea, el módulo apagado no completa nada, el historial por servicio y el CHECK de `triggers.type`).
   - Los 5 pasos y los 26 disparadores en Automatizaciones, ocultos con el módulo apagado.
-- [ ] **PRD** Productos por variante: F114, F115, F116, F117, F31, F32
-- [ ] **SV3** Pantallas de Servicios: F26, F27, F28, F29, F30, F33, F95
-- [ ] **AF** Afiliados y links: F70, F71, F72, F73, F74, F75, F103, F104, F105, F106, F107 (S13)
+- [x] **PRD** Productos por variante: F114, F115, F116, F117, F31, F32 — **listo el 8/11** (revisión visual pendiente: ver PENDIENTE)
+  - Con el módulo prendido: tarjetas de productos, la página del producto (variantes con «Al cobrarse», camino, portal y servicios activos) y la de la variante con Camino del cliente (fases y pasos que se arrastran o se mueven con Subir/Bajar y Alt+↑/↓, el drawer del paso, los workflows de cada lugar), Servicio, Portal (secciones, «En el programa» y el drawer de la regla) y Precio y cobro (lo de siempre). Apagado, Productos es exactamente el de siempre.
+  - Lógica pura con test: `service-settings-form`, `journey-editor`, `product-cards`, `variant-portal-form`, `workflow-chips`, `back-to-path`.
+  - `verify-services --bloque prd`: **0** (guardar por la API con la sesión, conflicto de versión, `invalid` con problemas, Member sin `services.configure`, `products.portal_enabled` por trigger, sección no disponible, copiar de otra variante con claves nuevas, SV003).
+- [x] **SV3** Pantallas de Servicios: F26, F27, F28, F29, F30, F33, F95 — **listo el 8/11** (revisión visual pendiente)
+  - `/dashboard/clientes` (Servicios: tabla y tablero, filtros rápidos, agrupar, buscador, paginado de 50, aviso de responsables dados de baja), `/clientes/lista` (Clientes), `/clientes/c/[id]` (ficha del cliente con su actividad y comentarios internos), `/clientes/s/[id]` (ficha del servicio con alertas, acciones según permiso y las pestañas Actividad, Camino y Datos), `/clientes/importar`, el modal «+ Servicio» (regla de la venta en rojo con motivo), las secciones Servicios/Servicio en las fichas del contacto y de la venta, y la columna Servicio de Ventas por el punto de extensión `lib/sales/module-columns.ts`.
+  - «Clientes» va en el grupo Ventas del menú (ver PENDIENTE). Las pestañas Accesos, Programa, Asistencia, Entregas y Asistente IA se suman con sus bloques.
+  - `verify-services` completo (sv1 + sv2 + prd) para el cierre del bloque.
+- [x] **AF** Afiliados y links: F70, F71, F72, F73, F74, F75, F103, F104, F105, F106, F107 (S13) — **listo el 8/11** (revisión visual pendiente; F106 va con el portal en AC)
+  - `00343_affiliates` aplicada y registrada. Links del producto (tarjeta Links con los dos principales), códigos que no cambian (AF001/AF004), asignación al entrar por un link con `?ref=` (trigger sobre el toque, que nunca lo tumba), reglas, asignar a mano con motivo, el afiliado de la venta (hereda el del contacto), el destinatario «El afiliado de la venta» en comisiones con «pagar solo la mayor» y editar una comisión a mano.
+  - Pantallas: Afiliados (Resumen, Afiliados con el alta de uno externo, Reglas) en el grupo Ventas; Mis links en el menú de usuario; el link corto `/r/<código>/<link>` (público, con tope y `noindex`); el campo Afiliado en las fichas del contacto y de la venta; «Editar» en la ficha de una comisión. Tres disparadores nuevos en Automatizaciones.
+  - Gemelas: `product-links`, `affiliate-settings`, `affiliate-assign` y `when-also-seller`, corridas contra la base en `verify-affiliates` (44 comprobaciones en 0). `verify-servicios-migracion --s S13`, `verify-commissions --despues-de-00235`, `verify-contact-merge` y `verify-sales` en 0. Huellas protegidas iguales.
+  - Pendiente (ver PENDIENTE): el campo Afiliado en el asistente de venta y «Copiar con mi código» en Formularios y Agenda.
 - [ ] **AC** Accesos y cuentas: F34, F35, F36, F37, F38, F39, F40, F41, F42, F43, F44, F109 (S08–S09)
 - [ ] **PR** Programa: F45, F46, F47, F48, F49, F50, F51, F100, F101, F102, F112 (S10)
 - [ ] **EV** Evaluaciones y actividades: F52, F53, F54, F55, F56, F57, F113 (S11)
@@ -35,7 +45,7 @@
 
 ## Migraciones (S0x → número real)
 
-La `00337` también la ocupó otra sesión (`00337_email_guard_fast_time_zone`, 8/11), así que **S08 a S16 van de la 00338 a la 00346**. Antes, la `00329` la ocupó otra sesión (`00329_contact_qualification`, aplicada el 8/11 a las 07:15 UTC, mientras se armaba este plan). Por eso **S01–S16 van de la 00330 a la 00345** (la tabla del plan, más abajo, decía 00329–00344). Si otra sesión ocupa un número antes de aplicar, se corre el resto y se anota acá.
+**Renumeración del 8/11 (2ª):** otras ramas locales ocupan la `00338` (`purge_stale_unread_notifications`) y la `00339` (`scheduled_time_trigger`), así que **S08 a S12 pasan a la 00340, 00341, 00342, 00344 y 00345; S13 queda en la 00343; S14 a S16 van de la 00346 a la 00348**. Numéricamente la S13 (00343) queda antes que la S11 (00344): no nombra nada de S08 a S12, así que un clon nuevo las aplica en orden sin problema. Antes, la `00337` también la ocupó otra sesión (`00337_email_guard_fast_time_zone`, 8/11). Antes, la `00329` la ocupó otra sesión (`00329_contact_qualification`, aplicada el 8/11 a las 07:15 UTC, mientras se armaba este plan). Por eso **S01–S16 van de la 00330 a la 00345** (la tabla del plan, más abajo, decía 00329–00344). Si otra sesión ocupa un número antes de aplicar, se corre el resto y se anota acá.
 
 | Id | Número | Archivo | Bloque | Estado |
 |---|---|---|---|---|
@@ -46,15 +56,15 @@ La `00337` también la ocupó otra sesión (`00337_email_guard_fast_time_zone`, 
 | S05 | 00334 | `00334_app_servicio_sales_triggers.sql` | SV1 | **aplicada y registrada** (versión `20261108140802`; corregida el mismo día: `sale_hook` declara `record`); `--s S05` y `verify-commissions` en 0; `verify-sales` en 0 en la 2ª pasada (la 1ª se cortó por la CLI, sin relación con la migración) |
 | S06 | 00335 | `00335_app_servicio_completion_triggers.sql` | SV2 | **aplicada y registrada** (versión `20261108150155`); `--s S06`, `verify-forms`, `verify-scheduling` y `verify-tasks` en 0. Corregida el mismo día (`booking_hook` declara `record`, ver PENDIENTE) |
 | S07 | 00336 | `00336_app_servicio_audit_and_triggers_check.sql` | SV2 | **aplicada y registrada** (versión `20261108151119`); `--s S07` y `verify-audit-visibility --despues-de-00168` en 0 |
-| S08 | 00338 | `00338_app_servicio_portal_accounts.sql` | AC | pendiente |
-| S09 | 00339 | `00339_app_servicio_portal_access.sql` | AC | pendiente |
-| S10 | 00340 | `00340_app_servicio_program.sql` | PR | pendiente |
-| S11 | 00341 | `00341_app_servicio_portal_forms.sql` | EV | pendiente |
-| S12 | 00342 | `00342_app_servicio_calendar.sql` | CA | pendiente |
-| S13 | 00343 | `00343_affiliates.sql` | AF | pendiente |
-| S14 | 00344 | `00344_app_servicio_community.sql` | CO | pendiente |
-| S15 | 00345 | `00345_app_servicio_tutor.sql` | IA | pendiente |
-| S16 | 00346 | `00346_app_servicio_merge_and_cron.sql` | X | pendiente |
+| S08 | 00340 | `00340_app_servicio_portal_accounts.sql` | AC | pendiente |
+| S09 | 00341 | `00341_app_servicio_portal_access.sql` | AC | pendiente |
+| S10 | 00342 | `00342_app_servicio_program.sql` | PR | pendiente |
+| S11 | 00344 | `00344_app_servicio_portal_forms.sql` | EV | pendiente |
+| S12 | 00345 | `00345_app_servicio_calendar.sql` | CA | pendiente |
+| S13 | 00343 | `00343_affiliates.sql` | AF | **aplicada y registrada** (8/11, versión `20261108161154`), después de ensayarla en una transacción que se deshizo sola; `--s S13` en 0 |
+| S14 | 00346 | `00346_app_servicio_community.sql` | CO | pendiente |
+| S15 | 00347 | `00347_app_servicio_tutor.sql` | IA | pendiente |
+| S16 | 00348 | `00348_app_servicio_merge_and_cron.sql` | X | pendiente |
 
 ## Punto de partida (8/11/2026)
 

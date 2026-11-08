@@ -2,11 +2,13 @@
 // @plantilla-quitar(servicios)
 
 import { revalidatePath } from "next/cache";
-import { getPermissionAction } from "@/lib/auth/guards";
+import { getAnyPermissionAction, getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
-import { svcRpc, type SvcResult } from "@/lib/services/db";
+import { svcRpc, svcSchema, type SvcResult } from "@/lib/services/db";
 import { parseServicesImport } from "@/lib/services/import";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
+import { unpublishFlow } from "@/lib/flow-engine/publish";
+import { newPathWorkflowNodes, orphanWorkflows, slotOf, slotTrigger, triggerOf, type CanvasNodeLike, type PathSlot } from "@/lib/services/screens/workflow-chips";
 
 /**
  * Las acciones de Servicios (bloques SV1 y SV2). Cada una pide su clave aca (la pantalla puede
@@ -211,10 +213,56 @@ export async function saveServiceSettings(variantId: string, settings: unknown, 
   return svcRpc<SaveResult>(ctx.supabase, "svc_save_service_settings", { p_variant_id: variantId, p_settings: settings, p_rev: rev });
 }
 
-export async function saveJourneyTemplate(variantId: string, template: unknown, rev: number): Promise<SvcResult<SaveResult>> {
+export async function saveJourneyTemplate(variantId: string, template: unknown, rev: number): Promise<SvcResult<SaveResult & { pausedWorkflows?: number }>> {
   const ctx = await getPermissionAction("services.configure");
   if (!ctx) return NOT_ALLOWED;
-  return svcRpc<SaveResult>(ctx.supabase, "svc_save_journey_template", { p_variant_id: variantId, p_template: template, p_rev: rev });
+  const res = await svcRpc<SaveResult>(ctx.supabase, "svc_save_journey_template", { p_variant_id: variantId, p_template: template, p_rev: rev });
+  if (!res.ok || res.data.status !== "ok") return res;
+  // F117: los workflows de un paso o una fase que ya no está en el camino se pausan (y se avisa). Nunca frena el guardado.
+  let paused = 0;
+  try {
+    const svc = await createServiceClient();
+    const { data: flows } = await svc.from("flows").select("id, status, nodes, draft_nodes").eq("workspace_id", ctx.workspace.id).eq("status", "published");
+    const mine = ((flows ?? []) as Array<{ id: string; nodes: unknown; draft_nodes: unknown }>)
+      .map((f) => ({ id: f.id, slot: slotOf(variantId, triggerOf(((Array.isArray(f.draft_nodes) ? f.draft_nodes : f.nodes) ?? []) as CanvasNodeLike[])) }))
+      .filter((f): f is { id: string; slot: PathSlot } => f.slot !== null);
+    const tpl = template as { phases?: Array<{ key: string; items?: Array<{ key: string }> }> };
+    const orphans = orphanWorkflows(mine, { phases: (tpl.phases ?? []).map((p) => ({ key: p.key, items: p.items ?? [] })) });
+    for (const id of orphans) if (await unpublishFlow(svc as never, ctx.workspace.id, id)) paused++;
+  } catch (error) {
+    console.error("[servicios] no pude pausar los workflows del camino:", error instanceof Error ? error.message : "error");
+  }
+  return { ok: true, data: { ...res.data, pausedWorkflows: paused } };
+}
+
+/** «+ Workflow» desde el camino (F117): crea la automatización en borrador con el disparador ya filtrado. */
+export async function createPathWorkflow(variantId: string, slot: PathSlot, name: string): Promise<SvcResult<string>> {
+  const ctx = await getPermissionAction("services.configure");
+  if (!ctx || !ctx.can("flows.edit")) return NOT_ALLOWED;
+  const { data: variant } = await ctx.supabase.from("product_variants").select("id").eq("id", variantId).eq("workspace_id", ctx.workspace.id).maybeSingle();
+  if (!variant) return { ok: false, error: { code: null, message: "No encontré la variante.", detail: null } };
+  const nodes = newPathWorkflowNodes(slotTrigger(variantId, slot)).map((n) => ({ ...n, position: { x: 0, y: 0 }, deletable: false }));
+  const { data, error } = await ctx.supabase
+    .from("flows")
+    .insert({ workspace_id: ctx.workspace.id, name: name.trim().slice(0, 120) || "Workflow del camino", nodes: nodes as never, edges: [] as never, categories: ["Servicios"] })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: { code: null, message: "No se pudo crear la automatización.", detail: null } };
+  return { ok: true, data: data.id };
+}
+
+/** El portal de una variante (F116). La base decide qué parte pide `portal.sections` y cuál `portal.access_rules`. */
+export async function saveVariantPortal(variantId: string, settings: unknown, rev: number): Promise<SvcResult<SaveResult>> {
+  const ctx = await getAnyPermissionAction(["portal.sections", "portal.access_rules"]);
+  if (!ctx) return NOT_ALLOWED;
+  return svcRpc<SaveResult>(ctx.supabase, "portal_admin_save_variant_portal", { p_variant_id: variantId, p_settings: settings, p_rev: rev });
+}
+
+/** Lo del programa que vale para todas sus variantes (F116: «En el programa»; F113: términos). Solo cambia lo que viene. */
+export async function saveProgramSettings(productId: string, patch: Record<string, unknown>, rev: number): Promise<SvcResult<SaveResult>> {
+  const ctx = await getAnyPermissionAction(["portal.sections", "portal.settings"]);
+  if (!ctx) return NOT_ALLOWED;
+  return svcRpc<SaveResult>(ctx.supabase, "portal_admin_save_program_settings", { p_product_id: productId, p_patch: patch, p_rev: rev });
 }
 
 export async function copyVariantSetup(fromVariantId: string, toVariantId: string, parts: Array<"journey" | "service" | "portal">): Promise<SvcResult<{ status: string; needs_attention: number }>> {
@@ -300,4 +348,65 @@ export async function importServices(csv: string, commit: boolean): Promise<{ ok
   }
   if (commit) refresh();
   return { ok: true, rows: out.sort((a, b) => a.line - b.line), created, missingColumns: [] };
+}
+
+// ── «+ Servicio» (F30): buscar el contacto y sus ventas sin servicio ───────
+export async function searchContactsForService(q: string): Promise<Array<{ id: string; name: string; email: string | null }>> {
+  const ctx = await getPermissionAction("services.create");
+  if (!ctx || q.trim().length < 2) return [];
+  const term = q.trim().replace(/[%_,()]/g, "").slice(0, 60);
+  const { data } = await ctx.supabase
+    .from("contacts")
+    .select("id, display_name, email")
+    .eq("workspace_id", ctx.workspace.id)
+    .is("deleted_at", null)
+    .or(`display_name.ilike.%${term}%,email.ilike.%${term}%`)
+    .limit(10);
+  return ((data ?? []) as Array<{ id: string; display_name: string | null; email: string | null }>).map((c) => ({ id: c.id, name: c.display_name ?? "Sin nombre", email: c.email }));
+}
+
+export async function contactSalesWithoutService(contactId: string): Promise<Array<{ id: string; label: string; variantId: string }>> {
+  const ctx = await getPermissionAction("services.create");
+  if (!ctx) return [];
+  const { data: sales } = await ctx.supabase
+    .from("sales")
+    .select("id, sale_date, product_variant_id, product_snapshot")
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("contact_id", contactId)
+    .not("status", "in", "(cancelled,refunded)")
+    .order("sale_date", { ascending: false })
+    .limit(20);
+  const list = (sales ?? []) as Array<{ id: string; sale_date: string; product_variant_id: string; product_snapshot: { product_name?: string; variant_name?: string } | null }>;
+  if (list.length === 0) return [];
+  const { data: taken } = await svcSchema(ctx.supabase).from("services").select("sale_id").in("sale_id", list.map((s) => s.id));
+  const used = new Set(((taken ?? []) as Array<{ sale_id: string }>).map((t) => t.sale_id));
+  return list
+    .filter((s) => !used.has(s.id))
+    .map((s) => ({ id: s.id, variantId: s.product_variant_id, label: `${s.sale_date} · ${s.product_snapshot?.product_name ?? "Venta"}${s.product_snapshot?.variant_name ? ` · ${s.product_snapshot.variant_name}` : ""}` }));
+}
+
+/** Si la venta cumple la regla de su variante (F95): el modal sale en rojo si no. */
+export async function checkSaleRule(saleId: string): Promise<SvcResult<{ met: boolean; reason: string; mode: string; variant_id: string }>> {
+  const ctx = await getPermissionAction("services.create");
+  if (!ctx) return NOT_ALLOWED;
+  return svcRpc(ctx.supabase, "svc_rule_check", { p_sale_id: saleId });
+}
+
+// ── La ficha del cliente (F28): comentario interno, del cliente o de un servicio ──────────────────
+export async function addClientComment(contactId: string, serviceId: string | null, content: string): Promise<SvcResult<null>> {
+  const ctx = await getPermissionAction("services.view");
+  if (!ctx) return NOT_ALLOWED;
+  const text = content.trim().slice(0, 5000);
+  if (!text) return { ok: false, error: { code: null, message: "Escribí el comentario.", detail: null } };
+  if (serviceId) {
+    // El servicio tiene que ser de ese contacto y la persona tiene que verlo (la RLS de services lo decide).
+    const { data } = await svcSchema(ctx.supabase).from("services").select("id").eq("id", serviceId).eq("contact_id", contactId).eq("workspace_id", ctx.workspace.id).maybeSingle();
+    if (!data) return NOT_ALLOWED;
+  }
+  const { error } = await ctx.supabase
+    .from("contact_notes")
+    .insert({ workspace_id: ctx.workspace.id, contact_id: contactId, content: text, created_by: ctx.user.id, service_id: serviceId });
+  if (error) return { ok: false, error: { code: null, message: "No se pudo guardar el comentario.", detail: null } };
+  revalidatePath(`/dashboard/clientes/c/${contactId}`);
+  return { ok: true, data: null };
 }

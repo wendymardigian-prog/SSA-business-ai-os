@@ -77,6 +77,22 @@ Formato: **qué quedó · por qué · qué se decidió**. Lo que encontró la ex
 - **«Clientes» va en el grupo Ventas del menú, no en un grupo «Servicios» nuevo.** · Un grupo nuevo cambia el orden de los grupos que fijan seis tests del menú (plano formularios-ui) aunque quede vacío. · Va al final de Ventas y solo se ve con el módulo prendido (bandera `services`). Se extendieron dos tests: la lista de ítems de `items.test.ts` (como se hizo con Diseñador IA) y la bandera del Admin en `active.test.ts`. «Portal» se suma igual en AC.
 - **Los filtros «Accesos por vencer» y «Entregas por revisar»** responden vacío hasta que existan los accesos (AC) y las entregas (EV).
 
+## Decisiones de AF (8/11)
+
+- **Numeración:** otras ramas locales ya usan la `00338` y la `00339`. · Se renumeró S08–S16 (ver PROGRESS). · La S13 queda en la 00343 y se aplica antes que S08 (como decía el plan); no nombra nada de S08 a S12.
+- **El link corto `/r/<código>/<link>` no adivina el negocio.** · El código y la clave del link son únicos por negocio, no en toda la instalación. · Se buscan los productos con esa clave y, de ésos, el negocio donde el código existe. Si quedan cero o más de uno, cae a la app (nunca a un negocio equivocado). La ruta solo redirige: la asignación la hace el toque que deja la página de destino (trigger de la 00343).
+- **La venta hereda el afiliado vigente del contacto** (`inheritContactAffiliate`, segundo paso después de `create_sale`, que no se toca). · El plano pedía un campo «Afiliado» en el paso 1 del asistente. · Hoy la venta toma el del contacto y se cambia desde su ficha (con `affiliates.assign` y motivo). **Queda pendiente el campo en el asistente** para elegir otro al cargar; la acción del servidor (`setNewSaleAffiliate`) ya existe.
+- **«Copiar con mi código» en Formularios y en Agenda** (F73) queda pendiente. · `withRef` ya arma el link con `?ref=`; falta el botón en las dos pantallas. · Mientras tanto, Mis links tiene los links de cada producto con el código.
+- **Editar una comisión a mano** elige personas del equipo; pagarle a un contacto afiliado desde ese diálogo queda pendiente (la base ya lo acepta, `commission_edit` con `contact_id`). Las comisiones de un afiliado externo las genera la regla igual.
+- **El resumen de afiliados cuenta como «comisiones» solo las de los roles que le pagan al afiliado de la venta** (`payee = sale_affiliate`), no todo lo que cobra esa persona.
+- **`validate_affiliate_settings` no tenía gemela en TypeScript.** · Se sumó `lib/affiliates/settings.ts` con `affiliate-settings.cases.json`, y `verify-affiliates` corre los casos contra la base.
+- **`commission_apply_max` (pagar solo la mayor) se compara en `verify-affiliates`**, no en `verify-commissions` (el plan lo ponía ahí). Corre los mismos casos de `when-also-seller.cases.json`.
+- **El afiliado de una venta no se puede tocar con la sesión por dos lados:** `sales` no tiene política de UPDATE (0 filas) y, si la tuviera, la guarda dice AF010. `verify-affiliates` comprueba las dos cosas.
+
+## Revisión visual (8/11)
+
+- **No se pudo hacer en esta corrida.** · La app local (`localhost:3097`) pide iniciar sesión y en el navegador de la sesión no hay una abierta; la regla es no escribir credenciales. Además, las pantallas nuevas solo se ven con el módulo prendido, y solo se puede prender en un negocio de prueba. · Queda para Wendy, a 1440 y 390 px y en claro y oscuro, comparando con `claude/v12/prototipo-v12-panel.html`: Ajustes › Productos (tarjetas, producto, variante con sus cuatro pestañas, el drawer del paso, la regla de una sección del portal y la línea de workflows), Clientes (Servicios en tabla y tablero, Clientes, ficha del cliente, ficha del servicio, Importar servicios), la sección Servicios del contacto y de la venta, la columna Servicio en Ventas y los cinco pasos de Servicios en Automatizaciones. Con el módulo apagado, comprobar que Productos, Ventas, la ficha del contacto y de la venta y el editor de automatizaciones se ven iguales que antes.
+
 ## Pasos manuales de Wendy
 
 - **Apagar "Allow new users to sign up"** en Supabase › Authentication. `verify-auth-settings` lo informa.

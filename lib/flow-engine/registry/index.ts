@@ -20,6 +20,7 @@ import "./booking-triggers";
 import "./call-triggers"; // @plantilla-quitar(llamadas)
 import "./form-triggers"; // @plantilla-quitar(formularios)
 import "./sales-triggers"; // @plantilla-quitar(ventas)
+import "./affiliate-triggers"; // @plantilla-quitar(ventas)
 import "./eod-triggers"; // @plantilla-quitar(formularios)
 import "./webhook-triggers"; // @plantilla-quitar(webhooks)
 import "./task-triggers"; // @plantilla-quitar(tareas)

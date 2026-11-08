@@ -25,6 +25,7 @@ const PAYEE_LABELS: Record<CommissionPayee, string> = {
   sale_setter: "El setter de la venta",
   content_assignee: "El responsable de la pieza",
   fixed: "Una persona fija",
+  sale_affiliate: "El afiliado de la venta",
 };
 
 /** «A quién se le paga» en palabras. */

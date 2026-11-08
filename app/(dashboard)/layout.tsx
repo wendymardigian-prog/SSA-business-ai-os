@@ -13,6 +13,7 @@ import { visibleSettingsTabs } from "@/lib/settings/tabs";
 import { getMyProfile } from "@/lib/account/profile";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { MemberAvatarsProvider } from "@/components/account/member-avatars";
+import { isModuleEnabled } from "@/lib/services/module"; // @plantilla-quitar(servicios)
 
 export default async function DashboardLayout({
   children,
@@ -55,6 +56,7 @@ export default async function DashboardLayout({
     eod: hasEod,
     settings: visibleSettingsTabs(permissionContext.can).length > 0,
     inbox: canUseInbox(permissionContext.permissions),
+    services: isModuleEnabled(workspace as { services_enabled?: boolean | null }), // @plantilla-quitar(servicios)
   };
   const permissionKeys = permissionContext.permissions.keys;
   const viewerTimezone = await resolveViewerTimezone(workspace.timezone);

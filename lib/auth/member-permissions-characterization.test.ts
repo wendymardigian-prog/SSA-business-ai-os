@@ -65,9 +65,12 @@ describe("Member de sistema", () => {
         // @plantilla-desde(servicios)
         // Servicios (cambio aprobado M11): ve los servicios donde es responsable o setter o vendedor del
         // contacto, tilda los pasos a su cargo y usa "Ver como estudiante" con esos clientes. Alcance `own`.
-        // `affiliates.use` lo suma el bloque AF.
         "services.view", "services.items", "portal.view_as",
         // @plantilla-hasta(servicios)
+        // @plantilla-desde(ventas)
+        // Afiliados (cambio aprobado M11, bloque AF): usa Mis links. No asigna, no da de alta ni ve el resumen.
+        "affiliates.use",
+        // @plantilla-hasta(ventas)
       ].sort(),
     );
   });

@@ -20,6 +20,7 @@ export const DIMENSION_LABELS: Record<RuleDimension, string> = {
   user_ids: "la persona",
   vendedor_ids: "el vendedor",
   setter_ids: "el setter",
+  affiliate_kinds: "el tipo de afiliado",
   product_ids: "el producto",
   variant_ids: "la variante",
   financing_types: "el tipo de financiamiento",

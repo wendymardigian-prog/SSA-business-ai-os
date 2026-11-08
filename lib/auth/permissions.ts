@@ -192,6 +192,13 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." }, // @plantilla-quitar(ventas)
   { key: "products.manage", module: "sales", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." }, // @plantilla-quitar(ventas)
   // @plantilla-sin(ventas): { key: "products.manage", module: "catalogo", label: "Administrar productos", description: "El catálogo: productos, variantes, precios y estados." },
+  // Afiliados y links de producto (Servicios A1, bloque AF): son de BAIOS y viajan con Ventas.
+  { key: "product_links.manage", module: "sales", label: "Administrar los links de los productos", description: "La tarjeta Links de cada producto: agregar, editar, activar y elegir los dos principales." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.use", module: "sales", label: "Usar mis links de afiliado", description: "Mis links: su código y los links de los productos para compartir, y sus referidos." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.assign", module: "sales", label: "Asignar afiliados a mano", description: "Asignar, cambiar o quitar el afiliado de un contacto o de una venta, con motivo." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.external", module: "sales", label: "Dar de alta afiliados externos", description: "Convertir un contacto en afiliado (con su código)." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.view_all", module: "sales", label: "Ver el resumen de afiliados", description: "Afiliados: el resumen por afiliado y producto, y la lista de afiliados." }, // @plantilla-quitar(ventas)
+  { key: "affiliates.settings", module: "sales", label: "Reglas de afiliados", description: "Cuánto dura una asignación y qué pasa si entra otro afiliado." }, // @plantilla-quitar(ventas)
   { key: "sales.settings", module: "sales", label: "Configurar ventas y cobranza", description: "Métodos de pago, tope de descuento, días de gracia y los flujos de cobranza." }, // @plantilla-quitar(ventas)
 
   // ── Finanzas (Extra I) ────────────────────────────────────────────────── // @plantilla-quitar(finanzas)
@@ -201,6 +208,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // ── Comisiones (Extra I) ──────────────────────────────────────────────── // @plantilla-quitar(comisiones)
   { key: "commissions.view", module: "commissions", label: "Ver comisiones", description: "La lista de Comisiones y el detalle de cada una. El alcance decide si ve todas o solo las que tiene a su nombre." }, // @plantilla-quitar(comisiones)
   { key: "commissions.manage", module: "commissions", label: "Administrar comisiones", description: "Crear y editar reglas y roles de comisión, generar gastos de liquidación, asignar persona, anular y crear ajustes." }, // @plantilla-quitar(comisiones)
+  { key: "commissions.edit", module: "commissions", label: "Editar una comisión a mano", description: "Cambiar el monto, la persona o el rol de una comisión pendiente y sin gasto, o anularla, con motivo." }, // @plantilla-quitar(comisiones)
 
   // ── Tareas (Extra A) ──────────────────────────────────────────────────── // @plantilla-quitar(tareas)
   { key: "tasks.view", module: "tasks", label: "Ver las tareas", description: "La tabla y el tablero de Tareas. El alcance decide si ve todas o solo las que creó, tiene a cargo o sigue." }, // @plantilla-quitar(tareas)
@@ -388,6 +396,9 @@ const MEMBER_KEYS = [
   "services.view", // @plantilla-quitar(servicios)
   "services.items", // @plantilla-quitar(servicios)
   "portal.view_as", // @plantilla-quitar(servicios)
+  // Afiliados (cambio aprobado M11): un Member usa Mis links (su código y los links de los productos) y ve sus
+  // referidos. NO asigna afiliados, no da de alta externos ni ve el resumen. // @plantilla-quitar(ventas)
+  "affiliates.use", // @plantilla-quitar(ventas)
 ] as const;
 
 /**

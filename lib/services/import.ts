@@ -50,6 +50,9 @@ const COLUMNS: Record<string, string[]> = {
   phase: ["fase", "fase actual"],
 };
 
+/** Los nombres de columna que se muestran en la pantalla (el primero de cada una). */
+export const IMPORT_COLUMNS = Object.values(COLUMNS).map((names) => names[0]);
+
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

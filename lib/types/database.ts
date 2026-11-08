@@ -996,7 +996,10 @@ export type TriggerType =
   | "challenge_completed" // @plantilla-quitar(servicios)
   | "certificate_issued" // @plantilla-quitar(servicios)
   | "portal_access_expiring" // @plantilla-quitar(servicios)
-  | "portal_access_expired" // @plantilla-quitar(servicios);
+  | "portal_access_expired" // @plantilla-quitar(servicios)
+  | "affiliate_lead_created" // @plantilla-quitar(ventas)
+  | "affiliate_sale_created" // @plantilla-quitar(ventas)
+  | "affiliate_assignment_expired"; // @plantilla-quitar(ventas)
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -3795,6 +3798,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
           deleted_at: string | null;
+          service_id: string | null; // @plantilla-quitar(servicios)
         };
         Insert: {
           id?: string;
@@ -3805,6 +3809,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
           deleted_at?: string | null;
+          service_id?: string | null; // @plantilla-quitar(servicios)
         };
         Update: {
           /** Se reasigna al unir un contacto duplicado con el principal. */
@@ -3812,6 +3817,7 @@ export interface Database {
           content?: string;
           updated_at?: string;
           deleted_at?: string | null;
+          service_id?: string | null; // @plantilla-quitar(servicios)
         };
         Relationships: [
           {

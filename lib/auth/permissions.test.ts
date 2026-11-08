@@ -135,12 +135,14 @@ describe("el Member es exactamente el de hoy (F68)", () => {
   it("coincide con lo que el menu le muestra hoy", () => {
     // Lo que el Member NO ve en el menu es justo lo que no tiene permiso de ver (Social). Plano formularios-ui (D3):
     // Conocimiento ya no es un item; se abre con un boton de la barra de Agentes IA que pide `knowledge.view`.
-    const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true, settings: true, inbox: true } }).map((i) => i.name);
+    // Cambio aprobado M11 (Servicios A1): con el modulo prendido (bandera `services`) el Member ve Clientes (services.view, own).
+    const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true, settings: true, inbox: true, services: true } }).map((i) => i.name);
     const ocultos = NAV_ITEMS.map((i) => i.name).filter((n) => !visibles.includes(n)).sort();
     // Cambio aprobado M9 (Extra I): Finanzas se ve con expenses.view O commissions.view; el Member de sistema
     // tiene commissions.view (sus comisiones), asi que lo ve. Sigue sin Social.
     // Anuncios tampoco: es un item nuevo, con un permiso que nunca tuvo (dashboards.ads.view).
-    expect(ocultos).toEqual(["Anuncios", "Social"]);
+    // Afiliados (Servicios A1, F105): item nuevo con affiliates.view_all / affiliates.settings, que el Member no tiene.
+    expect(ocultos).toEqual(["Afiliados", "Anuncios", "Social"]);
     expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
     expect(can(member, "knowledge.view")).toBe(false);
     // Social no es por cargo (F78): se ve con `social.view`, que el Member de sistema no tiene.

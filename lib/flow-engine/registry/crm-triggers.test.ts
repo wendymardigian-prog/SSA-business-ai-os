@@ -228,6 +228,10 @@ describe("los tres tipos nuevos estan registrados", () => {
       "certificate_issued", // @plantilla-quitar(servicios)
       "portal_access_expiring", // @plantilla-quitar(servicios)
       "portal_access_expired", // @plantilla-quitar(servicios)
+      // Afiliados (Servicios A1, 00343): los tres de evento sobre el contacto. // @plantilla-quitar(ventas)
+      "affiliate_lead_created", // @plantilla-quitar(ventas)
+      "affiliate_sale_created", // @plantilla-quitar(ventas)
+      "affiliate_assignment_expired", // @plantilla-quitar(ventas)
     ].sort());
     // Los tres relativos de agenda los agenda un job, igual que inactividad.
     // Tambien los dos de pagos (antes y despues del vencimiento).  @plantilla-quitar(ventas)

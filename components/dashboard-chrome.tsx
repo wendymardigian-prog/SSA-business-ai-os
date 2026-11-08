@@ -148,7 +148,7 @@ export function MobileMenuButton({ chrome }: { chrome: DashboardChrome }) {
               <NavLinks role={chrome.role} permissionKeys={chrome.permissionKeys} navFlags={chrome.navFlags} drafts={drafts} onNavigate={() => setOpen(false)} />
             </nav>
             <div className="border-t border-sidebar-border p-3">
-              <ProfileMenu user={chrome.user} />
+              <ProfileMenu user={chrome.user} showMyLinks={(chrome.permissionKeys ?? []).includes("affiliates.use")} />
             </div>
           </div>
         </div>

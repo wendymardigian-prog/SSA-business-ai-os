@@ -1,0 +1,514 @@
+{
+  "_comment": "Casos de planAffiliateAssignment (F72). Corren contra la gemela TS (lib/affiliates/assign.ts) y contra public.affiliate_assign_plan (verify-affiliates).",
+  "cases": [
+    {
+      "name": "contacto nuevo: lo trajo, 12 meses",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": true,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": null
+      },
+      "expected": {
+        "action": "assign",
+        "kind": "originated",
+        "expiresAt": "2027-11-08T12:00:00.000Z"
+      }
+    },
+    {
+      "name": "contacto existente: influyó, 90 días",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": null
+      },
+      "expected": {
+        "action": "assign",
+        "kind": "influenced",
+        "expiresAt": "2027-02-06T12:00:00.000Z"
+      }
+    },
+    {
+      "name": "primer toque pero el contacto es viejo: influyó",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-10-01T00:00:00.000Z",
+        "isFirstTouch": true,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": null
+      },
+      "expected": {
+        "action": "assign",
+        "kind": "influenced",
+        "expiresAt": "2027-02-06T12:00:00.000Z"
+      }
+    },
+    {
+      "name": "el mismo afiliado vuelve: se corre la fecha",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "influenced",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2026-12-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "renew",
+        "expiresAt": "2027-02-06T12:00:00.000Z"
+      }
+    },
+    {
+      "name": "el mismo afiliado sin renovación: solo se anota",
+      "input": {
+        "settings": {
+          "influenced": {
+            "renew_on_click": false
+          }
+        },
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "influenced",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2026-12-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "touch",
+        "reason": "same_affiliate"
+      }
+    },
+    {
+      "name": "el mismo afiliado sobre un lo trajo: solo se anota",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "originated",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2027-10-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "touch",
+        "reason": "same_affiliate"
+      }
+    },
+    {
+      "name": "otro afiliado sobre un influyó con keep: no cambia",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "contact",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "influenced",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2026-12-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "none",
+        "reason": "keep"
+      }
+    },
+    {
+      "name": "otro afiliado sobre un influyó con last: cambia al nuevo",
+      "input": {
+        "settings": {
+          "influenced": {
+            "replace": "last"
+          }
+        },
+        "ref": {
+          "type": "contact",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "influenced",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2026-12-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "replace",
+        "kind": "influenced",
+        "expiresAt": "2027-02-06T12:00:00.000Z"
+      }
+    },
+    {
+      "name": "sobre un lo trajo manda su regla (keep) aunque influyó diga last",
+      "input": {
+        "settings": {
+          "influenced": {
+            "replace": "last"
+          }
+        },
+        "ref": {
+          "type": "contact",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "originated",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2027-10-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "none",
+        "reason": "keep"
+      }
+    },
+    {
+      "name": "last_if_not_bought con una venta: no cambia",
+      "input": {
+        "settings": {
+          "influenced": {
+            "replace": "last_if_not_bought"
+          }
+        },
+        "ref": {
+          "type": "contact",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": true,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "influenced",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2026-12-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "none",
+        "reason": "bought"
+      }
+    },
+    {
+      "name": "last_if_not_bought sin venta: cambia",
+      "input": {
+        "settings": {
+          "influenced": {
+            "replace": "last_if_not_bought"
+          }
+        },
+        "ref": {
+          "type": "contact",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "influenced",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2026-12-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "replace",
+        "kind": "influenced",
+        "expiresAt": "2027-02-06T12:00:00.000Z"
+      }
+    },
+    {
+      "name": "contacto ya cliente: nada",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": true,
+        "isCustomer": true,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": null
+      },
+      "expected": {
+        "action": "none",
+        "reason": "customer"
+      }
+    },
+    {
+      "name": "de por vida: vence null",
+      "input": {
+        "settings": {
+          "originated": {
+            "months": null
+          }
+        },
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": true,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": null
+      },
+      "expected": {
+        "action": "assign",
+        "kind": "originated",
+        "expiresAt": null
+      }
+    },
+    {
+      "name": "código inexistente: nada",
+      "input": {
+        "settings": {},
+        "ref": null,
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": true,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": null
+      },
+      "expected": {
+        "action": "none",
+        "reason": "no_code"
+      }
+    },
+    {
+      "name": "su propio código: nada",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "contact",
+          "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": true,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": null
+      },
+      "expected": {
+        "action": "none",
+        "reason": "own_code"
+      }
+    },
+    {
+      "name": "asignación vencida: se asigna de nuevo",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "contact",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "influenced",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "expected": {
+        "action": "assign",
+        "kind": "influenced",
+        "expiresAt": "2027-02-06T12:00:00.000Z"
+      }
+    },
+    {
+      "name": "lo trajo de por vida sigue vigente: otro con keep no cambia",
+      "input": {
+        "settings": {},
+        "ref": {
+          "type": "contact",
+          "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2026-11-08T12:00:00.000Z",
+        "contactCreatedAt": "2026-11-08T11:55:00.000Z",
+        "isFirstTouch": false,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2026-11-08T12:00:00.000Z",
+        "current": {
+          "affiliate": {
+            "type": "user",
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+          },
+          "kind": "originated",
+          "assignedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": null
+        }
+      },
+      "expected": {
+        "action": "none",
+        "reason": "keep"
+      }
+    },
+    {
+      "name": "fin de mes: 31/1 + 1 mes = 28/2",
+      "input": {
+        "settings": {
+          "originated": {
+            "months": 1
+          }
+        },
+        "ref": {
+          "type": "user",
+          "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "contactId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "touchedAt": "2027-01-31T12:00:00.000Z",
+        "contactCreatedAt": "2027-01-31T11:59:00.000Z",
+        "isFirstTouch": true,
+        "isCustomer": false,
+        "hasSale": false,
+        "now": "2027-01-31T12:00:00.000Z",
+        "current": null
+      },
+      "expected": {
+        "action": "assign",
+        "kind": "originated",
+        "expiresAt": "2027-02-28T12:00:00.000Z"
+      }
+    }
+  ]
+}

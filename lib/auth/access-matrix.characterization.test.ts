@@ -298,7 +298,8 @@ describe("caracterizacion: la matriz de acceso de Owner, Admin y Member", () => 
     const REMOVED_FROM_MENU = ["Conocimiento", "Recursos", "Integraciones"];
     // Extra I (Finanzas) y Anuncios: Owner y Admin GANAN un item. No se regenera la foto: se declara aca, a proposito.
     // Diseñador IA: Owner y Admin ganan «Diseñador IA» (designer.view).
-    const ADDED_TO_MENU = ["Finanzas", "Anuncios", "Diseñador IA"];
+    // Servicios A1 (F105): Owner y Admin ganan «Afiliados» (affiliates.view_all / affiliates.settings). El Member no.
+    const ADDED_TO_MENU = ["Finanzas", "Anuncios", "Diseñador IA", "Afiliados"];
     // Cambio aprobado M9 (Extra I): el Member de sistema tambien gana «Finanzas», por `commissions.view`.
     // Cambio aprobado M12 (Diseñador IA): el Member de sistema gana «Diseñador IA», por `designer.view`.
     const ADDED_TO_MENU_MEMBER = ["Finanzas", "Diseñador IA"];

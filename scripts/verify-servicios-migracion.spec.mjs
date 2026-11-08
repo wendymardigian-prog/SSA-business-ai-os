@@ -141,20 +141,20 @@ export const SPECS = {
     checks: [{ name: "triggers_type_check", adds: ["service_created", "service_started", "service_item_completed", "portal_access_expired"] }],
   },
   S08: {
-    file: "00338_app_servicio_portal_accounts.sql",
+    file: "00340_app_servicio_portal_accounts.sql",
     title: "Esquema app_servicio_portal, cuentas y sesiones",
     schemas: [{ name: "app_servicio_portal", authenticatedUsage: false }],
     tables: ["app_servicio_portal.portal_accounts", "app_servicio_portal.portal_sessions"],
     buckets: ["portal-avatars"],
   },
   S09: {
-    file: "00339_app_servicio_portal_access.sql",
+    file: "00341_app_servicio_portal_access.sql",
     title: "Accesos al portal",
     tables: ["app_servicio_portal.portal_access"],
     functions: ["app_servicio.portal_access_effective", "app_servicio.portal_section_enabled", "app_servicio.portal_admin_create_preview_pass"],
   },
   S10: {
-    file: "00340_app_servicio_program.sql",
+    file: "00342_app_servicio_program.sql",
     title: "Programa",
     tables: ["app_servicio.program_items", "app_servicio_portal.program_progress"],
     columns: ["knowledge_base:program_item_id", "knowledge_chunks:start_second"],
@@ -162,14 +162,14 @@ export const SPECS = {
     functions: ["app_servicio.program_item_unlocked", "app_servicio.program_live_recordings"],
   },
   S11: {
-    file: "00341_app_servicio_portal_forms.sql",
+    file: "00344_app_servicio_portal_forms.sql",
     title: "Formularios del portal",
     columns: ["forms:product_id", "form_submissions:review_status", "form_submissions:grade", "form_submissions:context"],
     checks: [{ name: "forms_type_check", adds: ["terms", "quiz", "activity"] }],
     functions: ["app_servicio.quiz_grade", "app_servicio.submission_review", "app_servicio.portal_terms_pending"],
   },
   S12: {
-    file: "00342_app_servicio_calendar.sql",
+    file: "00345_app_servicio_calendar.sql",
     title: "Calendario y asistencia",
     tables: ["app_servicio.live_sessions", "app_servicio.live_session_dates", "app_servicio.link_clicks", "app_servicio_portal.live_attendance"],
     functions: ["app_servicio.live_session_occurrences", "app_servicio.attendance_base_members", "app_servicio.attendance_mark"],
@@ -186,14 +186,14 @@ export const SPECS = {
     checks: [{ name: "triggers_type_check", adds: ["affiliate_lead_created", "affiliate_sale_created", "affiliate_assignment_expired"] }],
   },
   S14: {
-    file: "00344_app_servicio_community.sql",
+    file: "00346_app_servicio_community.sql",
     title: "Comunidad",
     tables: ["app_servicio_portal.community_posts", "app_servicio_portal.community_reactions"],
     buckets: ["community-media"],
     functions: ["app_servicio.community_can_post", "app_servicio.community_unanswered"],
   },
   S15: {
-    file: "00345_app_servicio_tutor.sql",
+    file: "00347_app_servicio_tutor.sql",
     title: "Tutor del programa",
     columns: ["products:tutor_agent_id"],
     checks: [
@@ -203,7 +203,7 @@ export const SPECS = {
     policies: ["ai_threads:ai_threads_select_portal"],
   },
   S16: {
-    file: "00346_app_servicio_merge_and_cron.sql",
+    file: "00348_app_servicio_merge_and_cron.sql",
     title: "Fusion de contactos y cron diario del servicio",
     functions: ["app_servicio.merge_contacts_hook", "private.enqueue_svc_daily"],
   },

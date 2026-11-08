@@ -42,7 +42,8 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
         // Owner y Admin ganan «Anuncios» (tienen dashboards.ads.view); el Member de sistema no.
         { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido", "Social", "Anuncios"] },
         // Extra I: Owner y Admin ganan «Finanzas» al final del grupo; el resto del orden no cambia. // @plantilla-quitar(finanzas)
-        { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas"] }, // @plantilla-quitar(llamadas,ventas,finanzas)
+        // Servicios A1 (F105): Owner y Admin ganan «Afiliados» al final del grupo (resumen y reglas). El Member no.
+        { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Grabaciones", "Ventas", "Finanzas", "Afiliados"] }, // @plantilla-quitar(llamadas,ventas,finanzas)
         // @plantilla-sin(llamadas,ventas,finanzas): { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda"] },
         { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Tareas", "Automatizaciones", "Formularios", "Diseñador IA", "Agentes IA", "Ajustes"] }, // @plantilla-quitar(tareas,formularios)
         // @plantilla-sin(tareas,formularios): { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Diseñador IA", "Agentes IA", "Ajustes"] },
