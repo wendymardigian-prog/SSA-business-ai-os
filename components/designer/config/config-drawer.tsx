@@ -116,6 +116,10 @@ export function ConfigDrawer({
     linkedToContent: subject.contentLinked,
     canManage: can.manage,
   });
+  // Lo que el permiso no da se OCULTA: sin `designer.edit` (o en una pieza emitida) el drawer muestra los valores como texto.
+  const editable = can.edit && !subject.generation;
+  // «Permitir descargar» pide `designer.publish`, no `designer.edit` (§4.1).
+  const canDownload = can.publish;
   const formatLocked = !can.edit || subject.origin === "html" || !!subject.generation || formatChoices(format).length < 2;
 
   useEffect(() => {
@@ -256,13 +260,20 @@ export function ConfigDrawer({
             const fit = currentFit(subject.doc.pages);
             return (
               <Section key={id} id={id}>
+                {!editable ? (
+                  <p className={kv}>
+                    <span className="text-muted-foreground">Imagen de fondo</span>
+                    <span className="font-medium">{FIT_OPTIONS.find((o) => o.value === fit)?.label ?? "—"}</span>
+                  </p>
+                ) : (
                 <div role="group" aria-label="Ajuste de la imagen de fondo" className="inline-flex w-fit gap-0.5 rounded-[9px] border border-border bg-muted p-[3px]">
                   {FIT_OPTIONS.map((o) => (
-                    <button key={o.value} type="button" disabled={!can.edit} aria-pressed={fit === o.value} onClick={() => onPages((pages) => setFitEverywhere(pages, o.value))} className={cn("rounded-md px-3 py-1 text-[12.5px] font-medium", fit === o.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground")}>
+                    <button key={o.value} type="button" aria-pressed={fit === o.value} onClick={() => onPages((pages) => setFitEverywhere(pages, o.value))} className={cn("rounded-md px-3 py-1 text-[12.5px] font-medium", fit === o.value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground")}>
                       {o.label}
                     </button>
                   ))}
                 </div>
+                )}
               </Section>
             );
           }
@@ -281,28 +292,42 @@ export function ConfigDrawer({
           case "dates":
             return settings ? (
               <Section key={id} id={id}>
-                <select aria-label="Formato de fechas" value={settings.dateFormat} disabled={!can.edit || busy === "settings"} onChange={(e) => void saveSettings({ id: subject.id, date_format: e.target.value as DateFormat }, { ...settings, dateFormat: e.target.value as DateFormat })} className={inputClass}>
+                {!can.edit ? (
+                  <p className={kv}>
+                    <span className="text-muted-foreground">Formato de fechas</span>
+                    <span className="font-medium">{DATE_FORMAT_LABELS[settings.dateFormat]}</span>
+                  </p>
+                ) : (
+                <select aria-label="Formato de fechas" value={settings.dateFormat} disabled={busy === "settings"} onChange={(e) => void saveSettings({ id: subject.id, date_format: e.target.value as DateFormat }, { ...settings, dateFormat: e.target.value as DateFormat })} className={inputClass}>
                   {(Object.keys(DATE_FORMAT_LABELS) as DateFormat[]).map((key) => (
                     <option key={key} value={key}>
                       {DATE_FORMAT_LABELS[key]}
                     </option>
                   ))}
                 </select>
+                )}
               </Section>
             ) : null;
           case "generate":
             return settings ? (
               <Section key={id} id={id}>
-                <label className="flex items-center gap-2 text-[13px]">
-                  <Switch checked={settings.allowDownload} disabled={!can.edit || busy === "settings"} label="Permitir descargar" onChange={(on) => void saveSettings({ id: subject.id, allow_download: on }, { ...settings, allowDownload: on })} />
-                  Las piezas generadas se pueden descargar
-                </label>
-                {showsVerification(format) ? (
+                {canDownload && (
+                  <label className="flex items-center gap-2 text-[13px]">
+                    <Switch checked={settings.allowDownload} disabled={busy === "settings"} label="Permitir descargar" onChange={(on) => void saveSettings({ id: subject.id, allow_download: on }, { ...settings, allowDownload: on })} />
+                    Las piezas generadas se pueden descargar
+                  </label>
+                )}
+                {showsVerification(format) && !can.edit ? (
+                  <p className={kv}>
+                    <span className="text-muted-foreground">{VERIFY_TOGGLE_LABEL}</span>
+                    <span className="font-medium">{settings.verify ? (settings.docType ? `Sí · ${settings.docType === "otro" ? (settings.docTypeLabel ?? DOC_TYPE_LABELS.otro) : DOC_TYPE_LABELS[settings.docType]}` : "Sí") : "No"}</span>
+                  </p>
+                ) : showsVerification(format) ? (
                   <>
                     <label className="flex items-center gap-2 text-[13px]">
                       <Switch
                         checked={settings.verify}
-                        disabled={!can.edit || busy === "settings"}
+                        disabled={busy === "settings"}
                         label={VERIFY_TOGGLE_LABEL}
                         onChange={(on) => {
                           const type = settings.docType ?? "certificado";
@@ -320,7 +345,7 @@ export function ConfigDrawer({
                               type="button"
                               role="radio"
                               aria-checked={settings.docType === type}
-                              disabled={!can.edit || busy === "settings"}
+                              disabled={busy === "settings"}
                               onClick={() => void saveSettings({ id: subject.id, doc_type: type, doc_type_label: type === "otro" ? typeLabel.trim() || null : null }, { ...settings, docType: type, docTypeLabel: type === "otro" ? typeLabel.trim() || null : null })}
                               className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium", settings.docType === type ? "border-primary-edge bg-primary/15" : "border-border bg-card hover:bg-accent")}
                             >
@@ -334,7 +359,6 @@ export function ConfigDrawer({
                             maxLength={MAX_DOC_TYPE_LABEL}
                             placeholder="Cómo se llama (por ejemplo, Credencial)"
                             aria-label="Nombre del documento"
-                            disabled={!can.edit}
                             onChange={(e) => setTypeLabel(e.target.value)}
                             onBlur={() => typeLabel.trim() !== (settings.docTypeLabel ?? "") && void saveSettings({ id: subject.id, doc_type: "otro", doc_type_label: typeLabel.trim() || null }, { ...settings, docTypeLabel: typeLabel.trim() || null })}
                             className={inputClass}
@@ -395,7 +419,7 @@ export function ConfigDrawer({
           case "versions":
             return (
               <Section key={id} id={id}>
-                <VersionsList target={{ kind: subject.kind, id: subject.id }} canEdit={can.edit} timeZone={timeZone} uploadedFonts={uploadedFonts} customVars={customVars} beforeRestore={beforeServer} onRestored={onReload} />
+                <VersionsList target={{ kind: subject.kind, id: subject.id }} canEdit={editable} timeZone={timeZone} uploadedFonts={uploadedFonts} customVars={customVars} beforeRestore={beforeServer} onRestored={onReload} />
               </Section>
             );
           case "more":

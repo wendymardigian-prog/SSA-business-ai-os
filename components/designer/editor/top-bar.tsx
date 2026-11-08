@@ -105,7 +105,7 @@ export function TopBar({
 
   const rightButtons = (
     <>
-      {actions.tabs === null && slots.useInContent}
+      {actions.useInContent.visible && slots.useInContent}
       {actions.exportMenu.visible && slots.exportMenu}
       {actions.publish.visible && slots.publish}
       {actions.automate.visible && (

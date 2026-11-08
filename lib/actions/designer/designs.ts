@@ -29,8 +29,13 @@ const NO_PERMISSION = "No tenés permiso para editar diseños.";
 const MAX_AI_IMAGES = 6;
 
 /** El contexto de una acción de edición: la persona y el negocio salen de la sesión. */
-async function editContext() {
-  const ctx = await getPermissionAction("designer.edit");
+async function editContext(keys: readonly string[] = ["designer.edit"]) {
+  // Todas las claves tienen que estar: cada una se pregunta por separado y la sesión decide.
+  let ctx: Awaited<ReturnType<typeof getPermissionAction>> = null;
+  for (const key of keys) {
+    ctx = await getPermissionAction(key);
+    if (!ctx) return null;
+  }
   if (!ctx) return null;
   const service = await createServiceClient();
   const env: CoreEnv = { service, actor: { workspaceId: ctx.workspace.id, userId: ctx.user.id } };
@@ -197,9 +202,18 @@ export async function listUploadedImages(): Promise<ActionResult<UploadedImage[]
   return { ok: true, data: paths.flatMap((path) => (map.get(path) ? [{ path, url: map.get(path) as string }] : [])) };
 }
 
-/** Configuración de una plantilla (F28): formato, verificación y tipo, formato de fecha, descarga y variables propias. */
+/**
+ * Configuración de una plantilla (F28): formato, verificación y tipo, formato de fecha, descarga y variables propias.
+ *
+ * «Permitir descargar» decide si el mundo puede bajar lo que se genera, así que pide `designer.publish` (§4.1) y no
+ * `designer.edit`. Todo lo demás (formato, verificación, tipo, fechas, variables) sigue pidiendo `designer.edit`. Un
+ * pedido que toca las dos cosas pide las dos claves.
+ */
 export async function updateTemplateSettings(input: TemplateSettingsInput): Promise<ActionResult<{ notice: string | null }>> {
-  const scope = await editContext();
+  const touchesDownload = input.allow_download !== undefined;
+  const touchesOther = Object.entries(input).some(([key, value]) => key !== "id" && key !== "allow_download" && value !== undefined);
+  const keys = [...(touchesOther || !touchesDownload ? ["designer.edit"] : []), ...(touchesDownload ? ["designer.publish"] : [])];
+  const scope = await editContext(keys);
   if (!scope) return { ok: false, error: NO_PERMISSION };
   try {
     const result = await updateTemplateSettingsCore(scope.env, input);

@@ -19,6 +19,7 @@ import { parseDesignSettings, type DesignSettings } from "./settings-schema";
 import type { CustomVar, DateFormat } from "./variables/catalog";
 import { CUSTOM_VAR_KEY_RE } from "./variables/catalog";
 import { LIST_PAGE_SIZE, originValues, pageRange, type CardRow, type ListFilters } from "./screens/list";
+import { differsFromPublished } from "./screens/stale";
 import { firstPageDoc, usedUploadedFonts } from "./screens/thumbs";
 import type { UploadedFont } from "./fonts";
 import type { DesignKind } from "./contracts";
@@ -212,6 +213,8 @@ export interface EditorRecord {
   /** Una generación: de qué plantilla y para quién. */
   generation: { templateId: string; templateName: string | null; subjectLabel: string | null; status: string; verify: boolean; docType: "certificado" | "constancia" | "diploma" | "otro" | null; docTypeLabel: string | null } | null;
   voidInfo: { status: "valid" | "void" } | null;
+  /** Publicado y con un documento distinto del de la última publicación («Hay cambios sin publicar», F48b). */
+  publishedDiffers: boolean;
   // Plantillas.
   customVars: CustomVar[];
   dateFormat: DateFormat;
@@ -255,6 +258,7 @@ export async function loadEditorRecord(db: Db, workspaceId: string, kind: Design
         contentNetwork: null,
         generation: null,
         voidInfo: null,
+        publishedDiffers: false,
         customVars: parseCustomVars(data.custom_vars),
         dateFormat: data.date_format,
         verify: data.verify,
@@ -272,6 +276,12 @@ export async function loadEditorRecord(db: Db, workspaceId: string, kind: Design
     const { data: tpl } = await db.from("design_templates").select("name, verify, doc_type, doc_type_label").eq("id", data.template_id).eq("workspace_id", workspaceId).maybeSingle();
     const ref = data.subject_ref as { label?: unknown } | null;
     generation = { templateId: data.template_id, templateName: tpl?.name ?? null, subjectLabel: typeof ref?.label === "string" ? ref.label : null, status: data.status, verify: !!tpl?.verify, docType: tpl?.doc_type ?? null, docTypeLabel: tpl?.doc_type_label ?? null };
+  }
+  // Un diseño publicado se compara con la copia que dejó su última publicación (no con fechas: ver `screens/stale.ts`).
+  let publishedDiffers = false;
+  if (data.published && !data.template_id) {
+    const { data: last } = await db.from("design_versions").select("doc").eq("workspace_id", workspaceId).eq("design_id", data.id).eq("reason", "publish").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    publishedDiffers = differsFromPublished({ published: true, doc: data.doc, publishedDoc: last ? last.doc : null });
   }
   return {
     ok: true,
@@ -295,6 +305,7 @@ export async function loadEditorRecord(db: Db, workspaceId: string, kind: Design
       contentNetwork: data.content_network,
       generation,
       voidInfo: generation ? { status: data.status === "void" ? "void" : "valid" } : null,
+      publishedDiffers,
       customVars: [],
       dateFormat: "long",
       verify: false,

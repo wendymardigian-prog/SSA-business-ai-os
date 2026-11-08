@@ -57,6 +57,22 @@ describe("lo que el permiso no da se oculta", () => {
   });
 });
 
+describe("hay cambios sin publicar (F48b)", () => {
+  it("publicado y editado después: el aviso y el botón «Publicar cambios»", () => {
+    const v = publishMenuView(props(), { published: true, link: LINK, stale: true });
+    expect(v.staleNotice).toEqual({ text: "Hay cambios sin publicar", button: "Publicar cambios" });
+    // Sigue siendo «Publicado»: el link funciona, con la versión anterior.
+    expect(v.trigger).toEqual({ text: "Publicado", published: true });
+  });
+
+  it("sin cambios, sin publicar, o sin designer.publish, no hay aviso", () => {
+    expect(publishMenuView(props(), { published: true, link: LINK, stale: false }).staleNotice).toBeNull();
+    expect(publishMenuView(props(), { published: true, link: LINK }).staleNotice).toBeNull();
+    expect(publishMenuView(props(), { published: false, link: LINK, stale: true }).staleNotice).toBeNull();
+    expect(publishMenuView(props({ can: { publish: false, generate: true }, verification: { docType: "certificado", docTypeLabel: null, status: "valid" } }), { published: true, link: LINK, stale: true }).staleNotice).toBeNull();
+  });
+});
+
 describe("anular (F47)", () => {
   it("el botón y el título se nombran con el tipo de documento", () => {
     const can = { publish: true, generate: true };

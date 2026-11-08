@@ -64,6 +64,21 @@ describe("barra superior del editor (F17)", () => {
     expect(editorActions(template({ format: "sq" }), ALL).useInContent.visible).toBe(false);
   });
 
+  it("«Usar en contenido» NO se ve con solo designer.view, ni en formatos que no son de redes, ni en generaciones, archivados o plantillas (F17)", () => {
+    // Es la única condición que mira la barra para dibujar el botón: `actions.useInContent.visible`.
+    const hidden: [string, EditorDesign, EditorCan][] = [
+      ["solo designer.view", design(), VIEWER],
+      ["formato que no es de redes", design({ format: "a4_h" }), ALL],
+      ["una página web", design({ format: "web" }), ALL],
+      ["una generación", design({ isGeneration: true, status: "ready" }), ALL],
+      ["archivado", design({ archived: true }), ALL],
+      ["una plantilla", template({ format: "sq" }), ALL],
+    ];
+    for (const [why, d, can] of hidden) expect(editorActions(d, can).useInContent.visible, why).toBe(false);
+    expect(editorActions(design(), ALL).useInContent.visible).toBe(true);
+    expect(editorActions(design(), MEMBER).useInContent.visible).toBe(true);
+  });
+
   it("una página web no se exporta: el botón está deshabilitado con el motivo", () => {
     const a = editorActions(design({ format: "web" }), ALL);
     expect(a.exportMenu.enabled).toBe(false);

@@ -122,6 +122,31 @@ describe("el editor carga lo suyo", () => {
     expect(out.ok && out.record.generation).toEqual({ templateId: "t1", templateName: "Certificado", subjectLabel: "Ana Pérez", status: "ready", verify: true, docType: "constancia", docTypeLabel: null });
   });
 
+  it("un diseño publicado se compara con la copia de su última publicación (F48b)", async () => {
+    const base = { ...designRow("d1"), code: "K8F2-WQ4M-7TQA", allow_download: true, allow_indexing: false, style: null, rev: 2, template_id: null, content_post_id: null, content_network: null, subject_ref: null, status: "ready", published: true };
+    const same = fakeDb({ designs: { data: base }, design_versions: { data: { doc: JSON.parse(JSON.stringify(base.doc)) } } });
+    const out = await loadEditorRecord(same.client, WS, "design", "d1");
+    expect(out.ok && out.record.publishedDiffers).toBe(false);
+    const call = same.calls.find((c) => c.table === "design_versions");
+    expect(call!.filters).toContainEqual({ method: "eq", column: "reason", value: "publish" });
+
+    const edited = JSON.parse(JSON.stringify(base.doc));
+    edited.pages[0].background.color = "#123456";
+    const differs = fakeDb({ designs: { data: base }, design_versions: { data: { doc: edited } } });
+    const out2 = await loadEditorRecord(differs.client, WS, "design", "d1");
+    expect(out2.ok && out2.record.publishedDiffers).toBe(true);
+  });
+
+  it("un borrador, o un publicado sin copia con la que comparar, no avisa ni consulta de más", async () => {
+    const draft = fakeDb({ designs: { data: { ...designRow("d1"), allow_download: true, allow_indexing: false, style: null, rev: 1, template_id: null, content_post_id: null, content_network: null, subject_ref: null, status: "draft", code: "K8F2-WQ4M-7TQA" } } });
+    const out = await loadEditorRecord(draft.client, WS, "design", "d1");
+    expect(out.ok && out.record.publishedDiffers).toBe(false);
+    expect(draft.calls.some((c) => c.table === "design_versions")).toBe(false);
+    const noCopy = fakeDb({ designs: { data: { ...designRow("d2"), published: true, allow_download: true, allow_indexing: false, style: null, rev: 1, template_id: null, content_post_id: null, content_network: null, subject_ref: null, status: "ready", code: "K8F2-WQ4M-7TQB" } }, design_versions: { data: null } });
+    const out2 = await loadEditorRecord(noCopy.client, WS, "design", "d2");
+    expect(out2.ok && out2.record.publishedDiffers).toBe(false);
+  });
+
   it("las variables propias se leen con su forma y lo demás se descarta", () => {
     expect(parseCustomVars([{ key: "nombre_en_el_certificado", label: "Nombre", sample: "Ana" }, { key: "Mal Escrita", label: "x" }, { key: "ok_1", label: 3 }, null, "x"])).toEqual([
       { key: "nombre_en_el_certificado", label: "Nombre", sample: "Ana", default: null },
