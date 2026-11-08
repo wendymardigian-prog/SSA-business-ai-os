@@ -292,6 +292,17 @@ describe("webhook de Evolution: que mensajes procesa", () => {
     expect(claimWebhookEvent).not.toHaveBeenCalled();
   });
 
+  it("una instancia que no es nuestra y sin token en el entorno se ignora con 200, no 500", async () => {
+    // Con un 500 Evolution reintenta cada aviso 10 veces (8/11/2026: una conexión vieja del mismo número).
+    delete process.env.EVOLUTION_WEBHOOK_TOKEN;
+    db([channelRow({ evolution_instance: "otra-instancia" })]);
+    const res = await callRoute(post(message(), {}));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, skipped: "instancia desconocida" });
+    expect(claimWebhookEvent).not.toHaveBeenCalled();
+  });
+
   it("un evento que no nos interesa se ignora con 200", async () => {
     db();
     const res = await callRoute(post({ event: "CHATS_SET", instance: INSTANCE }));
