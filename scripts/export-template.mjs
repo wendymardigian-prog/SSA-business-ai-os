@@ -6,7 +6,8 @@
  * Este repo tiene su historia interna (docs/, BITACORA.md), carpetas propias
  * de la sesion de Claude Code (claude/, .claude/worktrees/) y secretos
  * locales (.env* salvo .env.example, supabase/.temp/, .mcp.json). Nada de eso tiene que viajar
- * al clon de un cliente: este script copia todo lo demas tal cual, le
+ * al clon de un cliente: este script copia lo demas QUE GIT SIGUE (`git ls-files`; nada
+ * sin seguimiento ni ignorado, como `Claude outputs/`) tal cual, le
  * arma una historia de git nueva (un solo commit, sin rastro del historial de
  * este repo) y al final corre un grep de control que busca nombres y
  * dominios identificables. Si el control encuentra algo, el script NO borra
@@ -31,7 +32,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
-  statSync,
+  lstatSync,
   copyFileSync,
   readFileSync,
   writeFileSync,
@@ -77,6 +78,9 @@ function isExcluded(relPath) {
   if (relPath === ".claude/worktrees" || relPath.startsWith(".claude/worktrees/")) return true;
   if (relPath === "supabase/.temp" || relPath.startsWith("supabase/.temp/")) return true;
   if (relPath === ".mcp.json") return true;
+  // Respaldos y salidas locales de las sesiones (datos del negocio). Ya quedan afuera por
+  // no estar en git; esto es por si alguien los agrega por error.
+  if (relPath === "Claude outputs" || relPath.startsWith("Claude outputs/")) return true;
   // El sitio publico de cada clon es SUYO: ni sus paginas ni sus imagenes
   // viajan. En su lugar se copia la version por defecto (ver `copySiteDefaults`).
   if (relPath === "app/(sitio)" || relPath.startsWith("app/(sitio)/")) return true;
@@ -94,27 +98,61 @@ function isExcluded(relPath) {
   return false;
 }
 
-// --- Copia recursiva --------------------------------------------------------
+// --- Copia: SOLO lo que git sigue --------------------------------------------
+//
+// La lista sale de `git ls-files` (lo que esta en el indice), nunca de recorrer el
+// disco: una carpeta local sin seguimiento o ignorada (respaldos con datos del
+// negocio, salidas de una sesion, un .env nuevo) no puede terminar en la plantilla.
+// Asi paso el 8/11/2026 con "Claude outputs/". Despues se aplican las exclusiones
+// de `isExcluded`, que siguen valiendo para lo que SI esta en git (docs/, hooks...).
+// Se copia el contenido del disco de cada archivo seguido (sync-template exige el
+// repo sin cambios, asi que es lo commiteado); uno seguido pero borrado del disco
+// no se copia.
 
 let filesCopied = 0;
 
-function copyTree(srcDir, destDir, relDir) {
-  mkdirSync(destDir, { recursive: true });
-  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-    const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
-    if (isExcluded(relPath)) continue;
-    if (entry.isSymbolicLink()) continue; // no hay en este repo; si aparece uno, se ignora en vez de romper
-
-    const srcPath = join(srcDir, entry.name);
-    const destPath = join(destDir, entry.name);
-
-    if (entry.isDirectory()) {
-      copyTree(srcPath, destPath, relPath);
-    } else if (entry.isFile()) {
-      copyFileSync(srcPath, destPath);
-      filesCopied += 1;
-    }
+function trackedFiles(root) {
+  let out;
+  try {
+    out = execFileSync("git", ["ls-files", "-z", "--cached"], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 256 * 1024 * 1024,
+    });
+  } catch (error) {
+    // Sin git no hay forma de saber que es del repo: nunca se cae a copiar el disco.
+    throw new Error(`No se pudo leer la lista de archivos de git en "${root}": ${error.message}`);
   }
+  return [...new Set(out.split("\0").filter(Boolean))].sort();
+}
+
+function copyTrackedFiles(srcRoot, destRoot) {
+  mkdirSync(destRoot, { recursive: true });
+  for (const relPath of trackedFiles(srcRoot)) {
+    if (isExcludedPath(relPath)) continue;
+    const srcPath = join(srcRoot, relPath);
+    let stat;
+    try {
+      stat = lstatSync(srcPath);
+    } catch {
+      continue; // seguido por git pero borrado del disco
+    }
+    // Un enlace simbolico (no hay en este repo) o una entrada de submodulo se ignoran.
+    if (!stat.isFile()) continue;
+    const destPath = join(destRoot, relPath);
+    mkdirSync(dirname(destPath), { recursive: true });
+    copyFileSync(srcPath, destPath);
+    filesCopied += 1;
+  }
+}
+
+/** `isExcluded` mira cada carpeta del camino, como cuando se recorria el arbol. */
+function isExcludedPath(relPath) {
+  const parts = relPath.split("/");
+  for (let i = 1; i <= parts.length; i++) {
+    if (isExcluded(parts.slice(0, i).join("/"))) return true;
+  }
+  return false;
 }
 
 /**
@@ -202,7 +240,7 @@ async function main() {
   }
 
   console.log(`Exportando ${REPO_ROOT} -> ${DEST}`);
-  copyTree(REPO_ROOT, DEST, "");
+  copyTrackedFiles(REPO_ROOT, DEST);
   copySiteDefaults();
   console.log(`Copiados ${filesCopied} archivos.`);
 

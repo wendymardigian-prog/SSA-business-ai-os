@@ -62,3 +62,7 @@ claude/
 
 # Bases locales de trabajo de la plantilla de estudiantes (scripts/plantilla)
 .plantilla-work/
+
+# Respaldos y salidas locales de las sesiones de Claude (pueden tener datos del negocio).
+# Nunca se commitean ni viajan a una plantilla.
+/Claude outputs/

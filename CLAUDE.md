@@ -1710,6 +1710,19 @@ Todo lo que filtra la lista vive arriba de ella (`components/inbox/inbox-list-he
 - **El buscador se despliega desde el icono** y arranca abierto solo si la URL trae `?q=`. La `×` (o Esc) borra lo buscado y lo cierra. `SectionSearch` con `onClose` es ese modo; Broadcasts, Secuencias y Growth lo siguen usando en la barra de arriba.
 - **Limpiar filtros conserva lo abierto** (`?c=` y `?g=`).
 
+# Mensajes borrados para todos (00356, 8/11/2026)
+
+Un mensaje de WhatsApp borrado «para todos» (por el contacto, el teléfono del negocio, la API o el botón de la bandeja) se ve como «Mensaje eliminado» y el equipo puede ver lo que decía. Detalle en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md) («Mensajes borrados para todos»).
+
+- **Un borrado no es un mensaje**: llega por `MESSAGES_DELETE` y `MESSAGES_EDITED` (Evolution 2.3.7) y el receptor lo ataja antes del camino de los mensajes (`lib/messages/revoke.ts`). Ningún `protocolMessage` entra como mensaje. Por la API, el id bueno es `data.key.id`, no `data.id`.
+- **La fila no se borra**: `deleted_for_everyone_at/_source/_by`, escritas SOLO por `mark_message_deleted_for_everyone` (solo `service_role`; la guardia `messages_guard_deleted_for_everyone` las cierra a la sesión de una persona). Idempotente.
+- **La vista previa** sale de `private.message_list_preview` y el trigger recalcula al marcar; la etiqueta es `DELETED_MESSAGE_LABEL` (un test la compara con el SQL).
+- **El agente y el resumen no leen lo borrado** (`withoutDeletedMessages`).
+- **«Eliminar para todos»** solo en WhatsApp, saliente, salido, con id y de menos de 2 días (`canDeleteForEveryone`, la misma regla en el botón y en la acción).
+- **Un número viejo necesita volver a registrar el webhook** para recibir los avisos de borrado.
+
+`00356_messages_deleted_for_everyone` (aditiva) va **ANTES** de desplegar el código. La `00351` a la `00353` son de Servicios, la `00354` de «un saliente reabre la conversación» y la `00355` de reabrir un broadcast sin enviar. **La próxima libre es la `00357`** (confirmar con `list_migrations` y las ramas locales).
+
 # Links clicables y vista previa (6/11/2026)
 
 Los links de los mensajes se ven clicables en la bandeja, los chats llevan una tarjeta de vista previa (también mientras se escribe) y los emails salen con links de verdad. Sin migración. Detalle por canal en [docs/flujo-de-mensajes.md](docs/flujo-de-mensajes.md) («Links y vista previa»).
@@ -1971,7 +1984,7 @@ Un mensaje a muchos contactos por WhatsApp (Evolution) o email (Resend), con los
 - **Antes del primer mensaje a un número que nunca escribió, se pregunta si tiene WhatsApp** (`resolveWhatsappTarget`, `lib/send-queue/whatsapp-number.ts`; `dispatch.ts` sigue sin hablar con Evolution). Sin WhatsApp se saltea (`no_whatsapp`), sin vínculo ni conversación y sin contar para la pausa. Con WhatsApp se vincula con la forma que devuelve WhatsApp. Un error o una respuesta rara es un fallo con reintento, nunca un salteado.
 - **Escribe solo el servidor** (00285): `broadcasts` y `broadcast_recipients` se leen con `broadcasts.manage` y no tienen políticas de escritura.
 - **Eliminar = nunca salió nada** (00347, `delete_unsent_broadcast`, solo `service_role`): ningún destinatario `sending`/`sent`/`failed` y no se está enviando. Lo decide la base bloqueando el broadcast y las filas abiertas; se va con su cola (cascada). Lo que mandó algo queda como historia. La lista filtra por `?estado=` en la consulta y ordena siempre por creación (`lib/broadcasts/list.ts`).
-- **Editar** (00355, `reopen_unsent_broadcast`, solo `service_role`): un programado o pausado que nunca mandó nada vuelve a borrador (misma regla y bloqueos que eliminar; la cola se vacía y la audiencia se arma de nuevo al reprogramar). Con envíos, solo «Editar mensaje» (`saveBroadcastMessage`, condicional a programado o pausado): el texto se arma al mandar, así que lo cambiado le llega a los que faltan. Los campos del mensaje son un solo componente (`components/broadcasts/message-fields.tsx`). La `00355` es aditiva: **escrita, SIN aplicar todavía**; **la próxima libre es la `00356`** (confirmar con `list_migrations` y las ramas locales).
+- **Editar** (00355, `reopen_unsent_broadcast`, solo `service_role`): un programado o pausado que nunca mandó nada vuelve a borrador (misma regla y bloqueos que eliminar; la cola se vacía y la audiencia se arma de nuevo al reprogramar). Con envíos, solo «Editar mensaje» (`saveBroadcastMessage`, condicional a programado o pausado): el texto se arma al mandar, así que lo cambiado le llega a los que faltan. Los campos del mensaje son un solo componente (`components/broadcasts/message-fields.tsx`). La `00355` es aditiva: **escrita, SIN aplicar todavía**; la `00356` es de otra sesión (mensajes de WhatsApp borrados): **la próxima libre es la `00357`** (confirmar con `list_migrations` y las ramas locales).
 - **La cola le hace lugar a lo que sale en el momento** (7/11/2026, sin migración): todo WhatsApp que sale fuera de la cola (avisos, bandeja, grupos, agente, flujos, secuencias) corre `channel_send_lanes.next_send_at` a ahora + la espera mínima del número, nunca para adelante. Un solo lugar, `makeRoomForLiveSend` (`lib/send-queue/live-send.ts`), lo llaman `sendEvolutionDirect` (parámetro `lane` obligatorio; `null` solo para la cola misma, `origin: "broadcast"`) y `sendToGroup`. Nunca tumba un envío. El tope de WhatsApp es UNO: `WHATSAPP_HOURLY_LIMIT`, no se duplica. El envío viejo (`send_broadcast` en `/api/cron/jobs`, siempre por Zernio) y el `SegmentBuilder` ya no existen.
 
 ## Migraciones
