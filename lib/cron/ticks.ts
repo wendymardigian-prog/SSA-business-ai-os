@@ -1,5 +1,5 @@
 /**
- * Los cron agrupados (migracion 00349, docs/crons.md).
+ * Los cron agrupados (migracion 00350, docs/crons.md).
  *
  * pg_cron abre una conexion y escribe tres veces en cron.job_run_details por
  * cada corrida, haga algo o no. Por eso los cron que corren con la misma

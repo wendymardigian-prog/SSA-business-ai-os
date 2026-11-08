@@ -7,7 +7,7 @@
  *      lib/cron/guard-decide.cases.json.
  *   2. Cada cron de lib/cron/guards.json llama a private.call_app_cron_if_work
  *      con su intervalo de seguridad; la purga de scheduled_jobs esta agendada y
- *      el historial de pg_cron se purga a 1 dia. Con --despues-de-00349: los
+ *      el historial de pg_cron se purga a 1 dia. Con --despues-de-00350: los
  *      cron de la misma frecuencia son UN trabajo (lib/cron/ticks.json), los
  *      viejos ya no estan, y una parte que falla no frena a las otras (se
  *      prueba forzando el error dentro de una transaccion que se deshace).
@@ -23,7 +23,7 @@
  * otros verify-*. Mientras corre puede tener tomada unos segundos la fila del
  * carril de envios de un canal (el caso de send-queue).
  *
- *   node scripts/verify-cron-guards.mjs [--despues-de-00349]
+ *   node scripts/verify-cron-guards.mjs [--despues-de-00350]
  */
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -46,7 +46,7 @@ const lit = (v) => (v === null || v === undefined ? "NULL" : `'${String(v).repla
 
 const guards = JSON.parse(readFileSync(repoFile("lib/cron/guards.json"), "utf8"));
 const ticks = JSON.parse(readFileSync(repoFile("lib/cron/ticks.json"), "utf8"));
-const after00349 = process.argv.includes("--despues-de-00349");
+const after00350 = process.argv.includes("--despues-de-00350");
 // Las partes que corren en la base (gemela de TICK_DB_PARTS en lib/cron/ticks.ts).
 const TICK_DB_PARTS = { "agent-drafts-sweep": "private.sweep_agent_drafts", "draft-window-alerts": "private.alert_draft_windows" };
 const decideCases = JSON.parse(readFileSync(repoFile("lib/cron/guard-decide.cases.json"), "utf8"));
@@ -77,7 +77,7 @@ try {
     const inTick = new Set(ticks.flatMap((t) => t.parts));
     const guardCall = (g) => `private.call_app_cron_if_work('${g.path}', interval '${intervalText(g.safetyMinutes)}')`;
     for (const g of guards) {
-      if (after00349 && inTick.has(g.path)) {
+      if (after00350 && inTick.has(g.path)) {
         check(!byName.has(g.path), `${g.path}: ya no tiene su propio cron (va en su trabajo agrupado)`, `en la base: ${byName.get(g.path)?.command}`);
         continue;
       }
@@ -87,8 +87,8 @@ try {
     check(byName.get("purge-scheduled-jobs")?.command === "SELECT private.purge_scheduled_jobs(30, 90)", "la purga de scheduled_jobs esta agendada");
     check(byName.get("purge-cron-runs")?.command === "SELECT private.purge_cron_run_details(1)", "el historial de pg_cron se purga a 1 dia");
 
-    if (after00349) {
-      console.log("\n2b. Los cron agrupados (00349)");
+    if (after00350) {
+      console.log("\n2b. Los cron agrupados (00350)");
       for (const t of ticks) {
         const j = byName.get(t.job);
         check(
@@ -143,7 +143,7 @@ try {
              has_function_privilege('authenticated', 'private.call_app_cron_if_work(text,interval)', 'execute') AS auth_exec,
              has_function_privilege('authenticated', 'private.cron_has_work(text,timestamptz)', 'execute') AS auth_has_work,
              has_table_privilege('authenticated', 'private.cron_guard_state', 'select') AS auth_state`);
-    if (after00349) {
+    if (after00350) {
       const [t] = sql(`
         SELECT (SELECT relpersistence::text FROM pg_class WHERE oid = 'private.cron_tick_errors'::regclass) AS persistence,
                bool_or(has_function_privilege(r, f, 'execute')) AS someone_exec,

@@ -7,13 +7,13 @@
  *   1. Corridas de cada cron de pg_cron y el tiempo total que tardaron
  *      (cron.job_run_details). Cada corrida abre una conexion a la base
  *      (cron.use_background_workers = off) y escribe tres veces en ese
- *      historial: por eso desde la 00349 los de la misma frecuencia son un
+ *      historial: por eso desde la 00350 los de la misma frecuencia son un
  *      solo trabajo (lib/cron/ticks.json).
  *   2. Llamadas a la app: por cada ruta, cuantas llamo y cuantas salteo la
  *      guarda (private.cron_guard_state, desde la 00327; antes de la 00327 cada
  *      corrida era una llamada), y en que trabajo de pg_cron corre.
  *   2b. Los errores de las partes de un trabajo agrupado
- *      (private.cron_tick_errors, desde la 00349): la corrida dice "succeeded"
+ *      (private.cron_tick_errors, desde la 00350): la corrida dice "succeeded"
  *      aunque una parte haya fallado.
  *   3. Pedidos HTTP que salieron de verdad (net._http_response, se guarda 1 dia).
  *   4. Si se puede leer pg_stat_statements: lo que lleva Realtime leyendo cambios.
@@ -97,7 +97,7 @@ else console.log("  (los contadores de la guarda son desde 'counted_since', no d
 
 console.log("\nErrores de las partes de los trabajos agrupados (private.cron_tick_errors)");
 if (sql(`SELECT to_regclass('private.cron_tick_errors') IS NOT NULL AS ok`)[0]?.ok !== true) {
-  console.log("  (la 00349 no esta aplicada)");
+  console.log("  (la 00350 no esta aplicada)");
 } else {
   const errors = sql(`SELECT part, error_count, last_error_at::text AS ultimo, left(last_error, 80) AS error FROM private.cron_tick_errors ORDER BY last_error_at DESC`);
   if (errors.length === 0) console.log("  ninguno");

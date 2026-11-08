@@ -45,7 +45,7 @@ describe("la decision de llamar (gemela de private.cron_guard_decide)", () => {
 });
 
 /**
- * Con que intervalo llama cada cron a la guarda, leido de los comandos de los cron. Desde la 00349 los que corren
+ * Con que intervalo llama cada cron a la guarda, leido de los comandos de los cron. Desde la 00350 los que corren
  * con la misma frecuencia van en un solo trabajo (`private.cron_tick_*`, lib/cron/ticks.json): sus guardas se leen
  * de la ULTIMA definicion de esa funcion. Los demas siguen con su propio cron, en dos formas: la lista `VALUES` de
  * la 00327 y el comando literal (`call_app_cron_if_work('jobs', interval '10 minutes')`), que es como lo escriben
@@ -63,7 +63,7 @@ function scheduledGuards(): Map<string, { safety: string; via: string }> {
       for (const m of values?.[1].matchAll(/\('([a-z-]+)',\s*'([^']+)'\)/g) ?? []) direct.push([m[1], m[2]]);
     }
     for (const m of guardCalls(sql)) direct.push([m[1], m[2]]);
-    // Lo que paso a un trabajo agrupado ya no tiene su propio cron (la 00349 lo saca): se lee de ese trabajo, abajo.
+    // Lo que paso a un trabajo agrupado ya no tiene su propio cron (la 00350 lo saca): se lee de ese trabajo, abajo.
     for (const [path, safety] of direct) if (!inTick.has(path)) found.set(path, { safety, via: path });
   }
   for (const tick of CRON_TICKS) {
@@ -119,7 +119,7 @@ describe("los cron con guarda", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Los cron agrupados (00349): un trabajo por frecuencia, cada parte en su bloque.
+// Los cron agrupados (00350): un trabajo por frecuencia, cada parte en su bloque.
 // ---------------------------------------------------------------------------
 
 /** El ultimo `cron.schedule('<trabajo>', '<horario>', '<comando>')` de cada trabajo (comillas simples o `$$`). */

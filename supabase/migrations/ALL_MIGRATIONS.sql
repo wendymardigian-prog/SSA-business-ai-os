@@ -61338,10 +61338,10 @@ REVOKE ALL ON FUNCTION public.delete_unsent_broadcast(uuid, uuid) FROM PUBLIC, a
 GRANT EXECUTE ON FUNCTION public.delete_unsent_broadcast(uuid, uuid) TO service_role;
 
 -- ============================================================
--- MIGRATION 349: CRON TICKS
+-- MIGRATION 350: CRON TICKS
 -- ============================================================
 -- ============================================================================
--- 00349: un solo trabajo de pg_cron por frecuencia
+-- 00350: un solo trabajo de pg_cron por frecuencia
 -- ============================================================================
 --
 -- Por que: despues de la 00327 (las guardas) los cron casi no llaman a la app,
@@ -61454,10 +61454,10 @@ GRANT EXECUTE ON FUNCTION public.delete_unsent_broadcast(uuid, uuid) TO service_
 DO $$
 BEGIN
   IF to_regprocedure('private.call_app_cron_if_work(text,interval)') IS NULL THEN
-    RAISE EXCEPTION '00349: falta private.call_app_cron_if_work (la 00327 va antes)';
+    RAISE EXCEPTION '00350: falta private.call_app_cron_if_work (la 00327 va antes)';
   END IF;
   IF to_regprocedure('private.sweep_agent_drafts()') IS NULL OR to_regprocedure('private.alert_draft_windows()') IS NULL THEN
-    RAISE EXCEPTION '00349: falta private.sweep_agent_drafts o private.alert_draft_windows';
+    RAISE EXCEPTION '00350: falta private.sweep_agent_drafts o private.alert_draft_windows';
   END IF;
 END $$;
 
@@ -61475,7 +61475,7 @@ CREATE UNLOGGED TABLE IF NOT EXISTS private.cron_tick_errors (
 );
 REVOKE ALL ON TABLE private.cron_tick_errors FROM PUBLIC, anon, authenticated;
 COMMENT ON TABLE private.cron_tick_errors IS
-  'Errores de las partes de los cron agrupados (00349): cuantos y el ultimo. UNLOGGED a proposito: sin WAL, y se vacia si la base se reinicia.';
+  'Errores de las partes de los cron agrupados (00350): cuantos y el ultimo. UNLOGGED a proposito: sin WAL, y se vacia si la base se reinicia.';
 
 -- Anota el error de una parte. Nunca lanza: si no puede anotar, avisa en el log
 -- y la corrida sigue con la parte siguiente.
@@ -61591,11 +61591,11 @@ REVOKE ALL ON FUNCTION private.cron_tick_minute() FROM PUBLIC, anon, authenticat
 REVOKE ALL ON FUNCTION private.cron_tick_5_minutes() FROM PUBLIC, anon, authenticated;
 
 COMMENT ON FUNCTION private.cron_tick_15_seconds() IS
-  'Cron every-15-seconds (00349): agent-bursts y send-queue, cada uno por su guarda y en su bloque.';
+  'Cron every-15-seconds (00350): agent-bursts y send-queue, cada uno por su guarda y en su bloque.';
 COMMENT ON FUNCTION private.cron_tick_minute() IS
-  'Cron every-minute (00349): automation-events, jobs y sequences, cada uno por su guarda y en su bloque.';
+  'Cron every-minute (00350): automation-events, jobs y sequences, cada uno por su guarda y en su bloque.';
 COMMENT ON FUNCTION private.cron_tick_5_minutes() IS
-  'Cron every-5-minutes (00349): sweep_agent_drafts, alert_draft_windows, drafts-refresh y whatsapp-health, cada uno en su bloque.';
+  'Cron every-5-minutes (00350): sweep_agent_drafts, alert_draft_windows, drafts-refresh y whatsapp-health, cada uno en su bloque.';
 
 -- ----------------------------------------------------------------------------
 -- 3. Los nueve cron pasan a ser tres. Se comprueba que cada uno siga como lo
@@ -61620,10 +61620,10 @@ BEGIN
   FOR r IN SELECT j.jobname, j.command, j.active FROM cron.job j WHERE v_old ? j.jobname
   LOOP
     IF btrim(r.command, E' ;\n\t') IS DISTINCT FROM v_old ->> r.jobname THEN
-      RAISE EXCEPTION '00349: el cron "%" cambio desde la 00327 (hoy: %). Revisalo antes de juntarlo.', r.jobname, r.command;
+      RAISE EXCEPTION '00350: el cron "%" cambio desde la 00327 (hoy: %). Revisalo antes de juntarlo.', r.jobname, r.command;
     END IF;
     IF NOT r.active THEN
-      RAISE EXCEPTION '00349: el cron "%" esta apagado. Juntarlo lo prenderia: revisalo antes.', r.jobname;
+      RAISE EXCEPTION '00350: el cron "%" esta apagado. Juntarlo lo prenderia: revisalo antes.', r.jobname;
     END IF;
   END LOOP;
 
