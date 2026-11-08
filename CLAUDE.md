@@ -1959,6 +1959,7 @@ Una **guardia única de entrega** para todo el email de marketing (broadcasts, a
   - **broadcasts**: el destinatario vuelve a `pending` con `next_attempt_at`, y el carril de email consulta el cupo (`email_send_capacity`) ANTES de reclamar;
   - **flujos**: `deferFlowNode` (`lib/flow-engine/defer-node.ts`) agenda un `resume_flow` con `rerunNode: true` y `resumeSession(..., { rerunNode })` vuelve a correr ESE paso, sin repetir a quien ya le mandó. Lo usan «Enviar email», «Enviar mensaje», «Enviar recurso» y «Respuesta con IA» por email;
   - **secuencias**: el paso queda para `retryAt`.
+- **La zona del día del negocio sale de `private.email_guard_time_zone`** (00337): misma regla que estar en `pg_timezone_names`, pero un nombre IANA (`Zona/Ciudad`) se prueba con `AT TIME ZONE` sin leer el catálogo (leerlo costaba ~337 ms por email, dentro del candado). Lo demás (abreviaturas, POSIX, minúsculas) sigue yendo al catálogo y cae a UTC. **Nunca `pg_timezone_names` en algo que corre seguido**: lee ~1.200 archivos del disco cada vez. La `00337` está **aplicada y registrada** (8/11/2026 UTC, versión `20261108145052`); la `00338` (purga de avisos sin leer a 60 días) espera el OK. La `00330` a la `00336` son de Servicios y la `00339` de «En una fecha y hora»: **la próxima libre es la `00340`** (confirmar con `list_migrations` y las ramas locales).
 - **Primero los más activos**: `broadcast_recipients.sort_key` (00288) = `contact_last_activity` al poner en cola (último mensaje o último toque; si no hay, el alta), y `claim_broadcast_recipient` ordena por ahí después de los reintentos.
 - **El freno** (`lib/email/marketing-brake.ts`): con al menos 50 de marketing en 24 h, pasar el límite de rebotes (duros) o de quejas pausa TODO el marketing del negocio (`marketing_paused_at` en la config de Resend), avisa (`email_marketing_paused`) y queda en `audit_log`. Se evalúa al llegar un rebote o una queja de un email de marketing. Se reanuda solo a mano (`resumeMarketingAction`, `integrations.manage`, con confirmación). **Los límites son de cada negocio** (`lib/email/brake-limits.ts`, claves `marketing_brake_bounce_pct` y `marketing_brake_complaint_pct`, se cambian en «Entrega de marketing», quedan en `audit_log`): sin guardar, o con un valor inválido, 2 % y 0,05 %. Rebotes entre 0,5 y 10 %, quejas entre 0,01 y 1 %: un freno que nunca salta deja de cuidar el dominio.
 - **Preheader** (la línea que la bandeja muestra al lado del asunto): `broadcasts.email_preheader` (00294) y `data.preheader` en el paso «Enviar email», con variables. `withPreheader` (`lib/email/html.ts`) lo pone DESPUÉS de limpiar el HTML, porque la lista blanca descarta el `div` oculto y dejaría el texto a la vista. Sin preheader, el email sale byte por byte igual.
@@ -2338,7 +2339,7 @@ node scripts/verify-cron-guards.mjs   # despues de aplicar: decision SQL = TS, c
 node scripts/measure-cron-load.mjs    # antes y despues (solo lee)
 ```
 
-# «En una fecha y hora» (00337, 8/11/2026)
+# «En una fecha y hora» (00339, 8/11/2026)
 
 Disparador de SISTEMA (`scheduled_time`, sin contacto ni persona): una automatizacion que arranca sola una vez, todos los dias, ciertos dias de la semana o un dia del mes, en la hora del NEGOCIO. Sirve, por ejemplo, para mandar una encuesta a un grupo de WhatsApp con «Enviar encuesta». Detalle en [docs/flow-registry.md](docs/flow-registry.md) («En una fecha y hora»).
 
@@ -2351,7 +2352,7 @@ Disparador de SISTEMA (`scheduled_time`, sin contacto ni persona): una automatiz
 
 ## Migracion
 
-`00337_scheduled_time_trigger` (aditiva: el CHECK de `triggers.type` suma `scheduled_time`) va **ANTES** de desplegar el codigo. **Sin aplicar todavia.** Tiene un freno: si la base ya acepta tipos que su lista no conoce (la `00336` de Servicios redefine el mismo CHECK), aborta en vez de borrarlos; el que se aplique segundo tiene que llevar los tipos de los dos. La `00330` a la `00336` son de Servicios (rama `feat/servicios-a1`). **La proxima libre es la `00338`** (confirmar con `list_migrations` y las ramas locales).
+`00339_scheduled_time_trigger` (aditiva: el CHECK de `triggers.type` suma `scheduled_time`) va **ANTES** de desplegar el codigo. **Sin aplicar todavia**: hasta aplicarla, publicar una automatizacion programada no guarda su disparador y no corre (lo demas no cambia). Tiene un freno: si la base ya acepta tipos que su lista no conoce (la `00336` de Servicios redefine el mismo CHECK), aborta en vez de borrarlos; el que se aplique segundo tiene que llevar los tipos de los dos. La `00330` a la `00336` son de Servicios (rama `feat/servicios-a1`) y la `00337`/`00338` de la guardia de email y los avisos. **La proxima libre es la `00340`** (confirmar con `list_migrations` y las ramas locales).
 
 # Buenas practicas de desarrollo
 

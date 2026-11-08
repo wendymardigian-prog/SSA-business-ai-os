@@ -1,5 +1,5 @@
 -- ============================================================================
--- 00337 — «En una fecha y hora»: un disparador nuevo (`scheduled_time`)
+-- 00339 — «En una fecha y hora»: un disparador nuevo (`scheduled_time`)
 -- ============================================================================
 -- `triggers_type_check` acepta un tipo mas (37 -> 38): `scheduled_time`, una automatizacion que arranca sola el dia y
 -- la hora que se eligen (una vez, todos los dias, ciertos dias de la semana o un dia del mes). Es de SISTEMA: corre sin

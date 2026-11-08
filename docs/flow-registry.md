@@ -835,7 +835,7 @@ El nivel de calificación del lead (1 a 5) se cambia desde una automatización c
   `down`, `eq:N`, `gte:N` (al cruzar hacia N o más) o `lt:N` (al bajar de N). La regla es `qualificationEventMatches`, y las
   variables `event_level` y `event_previous_level` viajan al flujo.
 
-## «En una fecha y hora» (`scheduled_time`, 00337)
+## «En una fecha y hora» (`scheduled_time`, 00339)
 
 Una automatización que arranca sola el día y la hora que se eligen: **una vez**, **todos los días**, **ciertos días de la
 semana** o **un día del mes** (el 31 en un mes de 30 cae el último día). Es el primer disparador de **sistema**
