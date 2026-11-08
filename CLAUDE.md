@@ -1326,7 +1326,7 @@ Reuniones y respuestas muestran su atribución y su vínculo con campaña, conju
 
 ## Lo que no se puede romper
 
-- **Nunca se vincula por un nombre suelto.** Dos campañas o anuncios pueden llamarse igual. Campaña y conjunto, solo por id. Un anuncio por nombre, solo si es único dentro del conjunto (o, sin conjunto, de la campaña) ya conocidos por id. Si el conjunto tiene un solo anuncio, ese (`adset_single_ad`), salvo que haya llegado un id de anuncio que no está en el catálogo. Gemelas `resolve_meta_match` y `resolveMetaMatch`, con `meta-match.cases.json`.
+- **Un nombre solo vincula si es único** (desde la 00318, ver «Conciliación de anuncios»). Dos campañas o anuncios pueden llamarse igual. Un anuncio por nombre, solo si es único dentro del conjunto o la campaña ya hallados. Si el conjunto tiene un solo anuncio, ese (`adset_single_ad`), salvo que haya llegado un id de anuncio que no está en el catálogo. Gemelas `resolve_meta_match` y `resolveMetaMatch`, con `meta-match.cases.json`.
 - **Un toque sin ids cuya fuente no es de Meta y con UTMs de texto queda `none`**: no ensucia «Sin vincular». `utm_id` numérico cuenta como id de campaña (`raw.utm_id` en un formulario, `raw.utm.utm_id` en una reunión).
 - **El toque es la ÚNICA fuente del vínculo.** Ni `form_submissions` ni `bookings` tienen columnas de Meta; se unen por `dedupe_key` (`form:<id>`, `booking:<id>`, `lib/attribution/source-touches.ts`), con el cliente de servicio y solo para filas que la persona ya leyó con su sesión: quien atiende una reunión puede no ver el contacto.
 - **Una reunión sin vínculo propio muestra el último toque con vínculo del contacto anterior a ella**, aclarándolo, igual que `ads_crm_items`. Vincularla no cambia ese toque viejo: le crea el suyo (`linkBookingToMeta`).
@@ -1351,6 +1351,23 @@ En la tabla Meta vs CRM, una venta sin anuncio en su toque cuenta para el últim
 ## Migración
 
 `00302_ads_crm_sales_fallback` (misma firma, ninguna tabla; la definición vieja en su cabecera) puede ir antes o después del deploy: **aplicada y registrada** el 6/11/2026 (versión `20261107011534`), con `verify-ads-attribution` en verde. La `00300` y la `00301` son de Grabaciones. **La próxima libre es la `00303`** (la `00291` sigue reservada para `automation_runs`; confirmar con `list_migrations` y las ramas locales).
+
+# Conciliación de anuncios (00318, 7/11/2026)
+
+«Sin vincular» se vacía sola: lo que no es un anuncio sale, lo que se parece se vincula y queda para revisar, y lo que decide una persona queda como regla. Detalle en [docs/atribucion.md](docs/atribucion.md) («Conciliación: reglas, nombre exacto y parecido»).
+
+## Lo que no se puede romper
+
+- **Orden de `resolve_meta_match`**: ids → regla → nombre exacto (en lo hallado por id) → campaña por nombre único o parecido → anuncio por nombre exacto o parecido → único anuncio del conjunto. Gemelas con `meta-match.cases.json`; la huella cambió a propósito (`scripts/protected-functions.mjs`).
+- **El parecido nunca corre contra el catálogo entero** y con dos candidatos no elige. Lo que sale por parecido (`REVIEW_METHODS`) cuenta igual en Anuncios, agendas y ventas, y va a «Para revisar».
+- **El fbclid solo no es un anuncio**, un `utm_medium` orgánico gana, e `ig`/`instagram` necesitan un medium pago. `private.meta_touch_utm_counts` / `utmCounts` son gemelas.
+- **Una regla (`meta_match_rules`) es por la combinación EXACTA de UTMs normalizados** (`private.meta_rule_key` / `metaRuleKey`), nunca contradice un id ni pisa un `manual`/`ignored` de una persona. Escribe solo el servidor; no hay columna en el toque: el toque dice `method = 'rule'` y la regla se encuentra por sus claves.
+- **La IA (`ads_matching`) solo propone**: lee los grupos en el servidor, descarta ids que no están en el catálogo (`parseAiMatchResponse`) y no ve datos de contacto. Confirmar es `applyMetaRule`.
+- **El canal de un formulario o una reunión usa el `utm_medium` que llegó** (`private.touch_effective_medium`); `touch_channel` no cambió.
+
+## Migración
+
+`00318_meta_match_rules_similar` (aditiva: la tabla, las funciones, los CHECK de la tarea de IA y, al final, el re-vínculo y el canal de lo existente) va **ANTES** de desplegar el código: **aplicada y registrada** el 7/11/2026 (versión `20261107215432`), después de ensayarla en una transacción que se deshizo sola. Resultado: «Sin vincular» quedó en 0, 87 toques de anuncios en «Para revisar» y 37 orgánicos fuera de la lista. **La próxima libre es la `00319`** (confirmar con `list_migrations` y las ramas locales).
 
 # Correcciones del Extra L (Tiron 2, 14/10/2026, rama `fix/atribucion-webhooks-flujos`)
 

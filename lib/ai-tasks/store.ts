@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/database";
 import { AI_TASKS, type AiTaskId } from "./catalog";
 import {
   ADS_ANALYSIS_DEFAULT_INSTRUCTIONS,
+  ADS_MATCHING_DEFAULT_INSTRUCTIONS,
   CALL_ANALYSIS_DEFAULT_INSTRUCTIONS, // @plantilla-quitar(llamadas)
   CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS, // @plantilla-quitar(llamadas)
   CALL_SUMMARY_DEFAULT_INSTRUCTIONS, // @plantilla-quitar(llamadas)
@@ -29,7 +30,8 @@ export type VersionedTask =
   | "call_analysis" // @plantilla-quitar(llamadas)
   | "call_summary" // @plantilla-quitar(llamadas)
   | "media_description"
-  | "ads_analysis";
+  | "ads_analysis"
+  | "ads_matching";
 
 export const DEFAULT_TEXT: Record<VersionedTask, string> = {
   message_classification: CLASSIFY_DEFAULT_INSTRUCTIONS,
@@ -37,6 +39,7 @@ export const DEFAULT_TEXT: Record<VersionedTask, string> = {
   close_classification: CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS,
   media_description: MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS,
   ads_analysis: ADS_ANALYSIS_DEFAULT_INSTRUCTIONS,
+  ads_matching: ADS_MATCHING_DEFAULT_INSTRUCTIONS,
   call_classification: CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS, // @plantilla-quitar(llamadas)
   call_analysis: CALL_ANALYSIS_DEFAULT_INSTRUCTIONS, // @plantilla-quitar(llamadas)
   call_summary: CALL_SUMMARY_DEFAULT_INSTRUCTIONS, // @plantilla-quitar(llamadas)
