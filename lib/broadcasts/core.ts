@@ -271,6 +271,86 @@ export async function deleteBroadcast(service: Client, workspaceId: string, id: 
   return fail(DELETE_ERRORS[String(data)] ?? "No pude eliminar el broadcast. Probá de nuevo.");
 }
 
+const REOPEN_ERRORS: Record<string, string> = {
+  not_found: "No encontré ese broadcast.",
+  sending: "Se está enviando ahora: pausalo primero y después editalo.",
+  has_sends: "Este broadcast ya mandó mensajes: solo se puede editar el mensaje de los que faltan.",
+  not_editable: "Un broadcast terminado o cancelado ya no se edita.",
+};
+
+/**
+ * Vuelve a borrador un broadcast programado o pausado que nunca mandó nada,
+ * para editarlo entero. Se vacía su cola: al programarlo de nuevo, la
+ * audiencia se arma otra vez. Lo decide la base (`reopen_unsent_broadcast`,
+ * 00355), con la misma regla que eliminar.
+ */
+export async function reopenBroadcast(service: Client, workspaceId: string, id: string): Promise<CoreResult> {
+  const { data, error } = await service.rpc("reopen_unsent_broadcast", { p_workspace_id: workspaceId, p_broadcast_id: id });
+  if (error) {
+    console.error("[broadcasts] no pude volver a borrador:", error.message);
+    return fail("No pude abrir el broadcast para editarlo. Probá de nuevo.");
+  }
+  if (data === "reopened" || data === "already_draft") return { ok: true };
+  return fail(REOPEN_ERRORS[String(data)] ?? "No pude abrir el broadcast para editarlo. Probá de nuevo.");
+}
+
+export interface MessagePatch {
+  variants: unknown;
+  emailSubject?: string | null;
+  emailPreheader?: string | null;
+}
+
+/**
+ * Cambia el mensaje de un broadcast programado o pausado (aunque ya haya
+ * mandado algunos): el texto se arma al mandar cada uno, así que los que
+ * faltan reciben el nuevo y los ya enviados no cambian. La audiencia, el canal
+ * y la fecha no se tocan. Uno que se está enviando primero se pausa.
+ */
+export async function saveBroadcastMessage(service: Client, workspaceId: string, id: string, patch: MessagePatch): Promise<CoreResult> {
+  const b = await loadBroadcast(service, workspaceId, id);
+  if (!b) return fail("No encontré ese broadcast.");
+  if (b.status === "sending") return fail("Se está enviando ahora: pausalo primero y después cambiá el mensaje.");
+  if (b.status !== "scheduled" && b.status !== "paused") return fail("Solo se cambia el mensaje de un broadcast programado o pausado.");
+
+  const raw = Array.isArray(patch.variants) ? patch.variants.filter((v): v is string => typeof v === "string").slice(0, 5) : [];
+  const variants = raw.map((v) => v.slice(0, 4000));
+  const emailSubject = patch.emailSubject ? String(patch.emailSubject).slice(0, MAX_SUBJECT) : null;
+  const emailPreheader = String(patch.emailPreheader ?? "").trim().slice(0, MAX_PREHEADER) || null;
+
+  const channel = b.channel_id ? await loadBroadcastChannel(service, workspaceId, b.channel_id) : null;
+  const { data: fieldRows } = await service.from("custom_field_definitions").select("slug").eq("workspace_id", workspaceId).is("deleted_at", null);
+  const problems = draftProblems(
+    { channel_id: b.channel_id, message_variants: variants, email_subject: emailSubject, email_preheader: emailPreheader },
+    channel?.kind ?? null,
+    fieldRows ?? [],
+  );
+  if (problems.length > 0) return fail(problems[0]);
+
+  const update: Database["public"]["Tables"]["broadcasts"]["Update"] = {
+    message_variants: variants as Json,
+    updated_at: new Date().toISOString(),
+  };
+  if (channel?.kind === "email") {
+    update.email_subject = emailSubject;
+    update.email_preheader = emailPreheader;
+  }
+
+  // Condicional sobre el estado: si en el medio se puso a enviar, no se cambia a mitad de camino.
+  const { data, error } = await service
+    .from("broadcasts")
+    .update(update)
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .in("status", ["scheduled", "paused"])
+    .select("id");
+  if (error) {
+    console.error("[broadcasts] no pude guardar el mensaje:", error.message);
+    return fail("No pude guardar el mensaje. Probá de nuevo.");
+  }
+  if (!data || data.length === 0) return fail("El broadcast cambió de estado mientras lo editabas. Pausalo y probá de nuevo.");
+  return { ok: true };
+}
+
 /** Vuelve a habilitar un carril que se pausó solo por fallos seguidos. */
 export async function resumeLane(service: Client, workspaceId: string, channelId: string): Promise<CoreResult> {
   const { data } = await service

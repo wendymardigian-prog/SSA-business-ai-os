@@ -1,21 +1,19 @@
 "use client";
 
-import { EmailDeliveryNotice } from "@/components/email/email-delivery-notice";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, Loader2, Mail, MessageCircle, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Mail, MessageCircle, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ContactFiltersPanel } from "@/components/contacts/filters-panel";
 import { ActiveFilterChips } from "@/components/contacts/active-filter-chips";
-import { RichTextEditor } from "@/components/editor/rich-text-editor";
-import { VariableChips } from "@/components/flow-builder/panels/variable-chips";
+import { BroadcastMessageFields } from "@/components/broadcasts/message-fields";
 import { CONTACT_FILTERS } from "@/lib/contacts/list-modules";
 import { CUSTOM_FILTER_PARAMS, countMenuFilters, customFilterRawValue, parseContactListFilters } from "@/lib/contacts/list-query";
 import type { CustomFieldRef } from "@/lib/contacts/list-filters";
 import type { MultiFilterOption } from "@/lib/ui/multi-filter";
 import { firstParam } from "@/lib/url-params";
 import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
-import { broadcastVariableList, MAX_VARIANTS, templateVariables } from "@/lib/broadcasts/render";
+import { broadcastVariableList, templateVariables } from "@/lib/broadcasts/render";
 import { draftProblems } from "@/lib/broadcasts/draft";
 import { combinePolicies, describePolicy, estimateFinish, paceExceedsCeiling, parseBroadcastPace, type SendPolicy } from "@/lib/send-queue/pace";
 import type { BroadcastChannelKind } from "@/lib/broadcasts/audience";
@@ -205,22 +203,7 @@ export function BroadcastEditor({
     setParams((prev): Params => (prev.q ? { q: prev.q } : {}));
   }
 
-  // ── Mensaje ───────────────────────────────────────────────────────────
-  const textareas = useRef<(HTMLTextAreaElement | null)[]>([]);
-  const [focused, setFocused] = useState(0);
-  function insertVariable(token: string) {
-    const i = Math.min(focused, variants.length - 1);
-    const el = textareas.current[i];
-    const current = variants[i] ?? "";
-    const start = el?.selectionStart ?? current.length;
-    const end = el?.selectionEnd ?? current.length;
-    const nextText = current.slice(0, start) + token + current.slice(end);
-    setVariants((prev) => prev.map((v, idx) => (idx === i ? nextText : v)));
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(start + token.length, start + token.length);
-    });
-  }
+  // ── Mensaje ─── (los campos viven en BroadcastMessageFields)
   const noFallback = [
     ...new Set([...variants, kind === "email" ? emailSubject : "", kind === "email" ? emailPreheader : ""].flatMap((t) => templateVariables(t).filter((v) => !v.hasFallback).map((v) => v.path))),
   ];
@@ -456,70 +439,18 @@ export function BroadcastEditor({
             : "Podés usar variables y escribir hasta 5 versiones: a cada contacto le toca una al azar, así WhatsApp no ve el mismo texto repetido."
         }
       >
-        {kind === "email" ? (
-          <div className="space-y-3">
-            {/* La guardia de entrega (00287): si los rebotes y quejas no llegan, el freno no puede funcionar. */}
-            <EmailDeliveryNotice />
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium">Asunto</span>
-              <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} maxLength={200} className={input} placeholder="Ej.: {{contact.first_name|Hola}}, tenemos novedades" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium">Texto de vista previa (opcional)</span>
-              <input value={emailPreheader} onChange={(e) => setEmailPreheader(e.target.value)} maxLength={200} className={input} placeholder="Lo que se lee al lado del asunto en la bandeja de entrada" />
-            </label>
-            <RichTextEditor
-              id={`bc-email-${draft.id}`}
-              label="Cuerpo del email"
-              value={variants[0] ?? ""}
-              onChange={(body) => setVariants([body])}
-              variables={[...variableList, "unsubscribe_url"]}
-            />
-            <p className="text-xs text-muted-foreground">Sale como email de marketing: lleva el link de baja al pie y no le llega a quien se dio de baja.</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {variants.map((v, i) => (
-              <div key={i}>
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-xs font-medium">{variants.length > 1 ? `Versión ${i + 1}` : "Mensaje"}</span>
-                  {variants.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setVariants((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="h-3 w-3" aria-hidden /> Quitar
-                    </button>
-                  )}
-                </div>
-                <textarea
-                  ref={(el) => {
-                    textareas.current[i] = el;
-                  }}
-                  value={v}
-                  onFocus={() => setFocused(i)}
-                  onChange={(e) => setVariants((prev) => prev.map((x, idx) => (idx === i ? e.target.value : x)))}
-                  rows={4}
-                  maxLength={4000}
-                  aria-label={variants.length > 1 ? `Versión ${i + 1} del mensaje` : "Mensaje"}
-                  placeholder="Hola {{contact.first_name|}}, …"
-                  className={input}
-                />
-              </div>
-            ))}
-            <VariableChips variables={variableList} onInsert={insertVariable} hint="Tocá una variable para agregarla donde está el cursor. Para un respaldo: {{contact.first_name|amigo}}." />
-            {variants.length < MAX_VARIANTS && (
-              <button
-                type="button"
-                onClick={() => setVariants((prev) => [...prev, ""])}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-accent"
-              >
-                <Plus className="h-3.5 w-3.5" aria-hidden /> Otra versión
-              </button>
-            )}
-          </div>
-        )}
+        <BroadcastMessageFields
+          idBase={draft.id}
+          kind={kind}
+          variants={variants}
+          onVariantsChange={setVariants}
+          emailSubject={emailSubject}
+          onEmailSubjectChange={setEmailSubject}
+          emailPreheader={emailPreheader}
+          onEmailPreheaderChange={setEmailPreheader}
+          variableList={variableList}
+          inputClass={input}
+        />
 
         {noFallback.length > 0 && (
           <label className="flex items-start gap-2 text-sm">
