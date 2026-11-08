@@ -1603,6 +1603,29 @@ node scripts/verify-contact-pipeline.mjs   # 00244-00246: valores tipados, estad
 node scripts/verify-contact-merge.mjs      # la fusión, con estados y producto de interés
 ```
 
+# Nivel de calificación del lead (00329, 8/11/2026)
+
+Un número del 1 al 5 por contacto (o «Sin calificar»), con el nombre y la rúbrica de cada nivel configurables en **Ajustes → Estados**. Convive con la temperatura. Se cambia a mano (ficha, bandeja, Kanban), con el paso «Calificar lead» (fijar, sumar/restar o «según reglas»), lo pone el agente (`calificar_lead` y la clasificación al cierre) o entra por CSV. Detalle en [docs/pipeline-contactos.md](docs/pipeline-contactos.md) («Nivel de calificación»), [docs/flow-registry.md](docs/flow-registry.md) y [docs/agente-ia.md](docs/agente-ia.md).
+
+## Lo que no se puede romper
+
+- **Una sola puerta**: `set_contact_qualification` (solo `service_role`) y desde el código solo `lib/contacts/qualification-core.ts`. La guardia `contacts_qualification_guard` (QL001) rechaza cualquier otra escritura de `qualification_level`, `qualification_at` y `qualification_by_agent`, también del service role; `lib/contacts/qualification-single-entry.test.ts` lo exige en el código.
+- **La regla de recorte tiene gemelas**: `private.qualification_next_level` y `nextQualificationLevel`, con `lib/contacts/qualification.cases.json` (vitest y `verify-contact-qualification`). Desde «Sin calificar» se cuenta desde 0; nunca pasa de 5 ni baja de 1.
+- **Los niveles son fijos (1-5); se edita el nombre y la descripción** (`workspaces.qualification_settings`, DEFAULT literal = `DEFAULT_QUALIFICATION_SETTINGS`). Guardar pide `contact_statuses.manage`.
+- **Cada cambio deja su fila en `contact_qualification_changes`** (lo lee quien ve el contacto) y emite `qualification_changed`, que es una opción de «Evento del CRM» (`qualificationEventMatches`: `up`, `down`, `eq:N`, `gte:N`, `lt:N`).
+- **«Según reglas» mira TODAS las reglas** (no la primera, como «Condiciones») con el mismo evaluador, y aplica un solo cambio. El motivo nombra las reglas, nunca los valores.
+- **El agente solo sube y no pisa a una persona** salvo que se le permita, y lo decide la base bajo el bloqueo (`p_only_raise`, `p_respect_human`). Sin la herramienta, el prompt del cierre no cambia ni un carácter.
+- **La fusión no reescribió `merge_contacts`**: el trigger `contacts_qualification_on_merge` mueve el historial y deja el nivel más alto (la tabla está en `CONTACT_MERGE_EXCLUSIONS`).
+- La columna nueva de la lista nace oculta.
+
+## Migración
+
+`00329_contact_qualification` (aditiva: columnas, ajustes, historial, función, guardia, trigger de fusión, la siembra frío = 2 / tibio = 3 / caliente = 4 y `calificar_lead` en los agentes que tenían `cambiar_temperatura`) va **ANTES** de desplegar el código: **aplicada y registrada** el 8/11/2026 UTC (versión `20261108071521`), después de ensayarla en una transacción que se deshizo sola (sembró 71 contactos: 17 en nivel 2 y 54 en nivel 3, sin emitir eventos; 1 agente con `calificar_lead`), con `verify-contact-qualification` y `verify-contact-pipeline` en verde y la guardia de la fusión cubriendo las 28 relaciones con `contacts`. **La próxima libre es la `00330`** (confirmar con `list_migrations` y las ramas locales).
+
+```
+node scripts/verify-contact-qualification.mjs   # después de aplicar: regla SQL = TS, función, guardia, RLS, 10 a la vez, fusión
+```
+
 # Automatizaciones: auditoría (construido, 23/10/2026)
 
 Auditoría del motor, los disparadores, los pasos y la pantalla, con lista con buscador y categorías, borrador para lo publicado, el disparador primero, buscador de pasos, adjuntos en el email y todo en español. Resumen en [docs/flow-registry.md](docs/flow-registry.md) («Auditoría de automatizaciones»); avance en `docs/PROGRESS-automatizaciones-auditoria.md`, pendientes en `docs/PENDIENTE-automatizaciones-auditoria.md`.

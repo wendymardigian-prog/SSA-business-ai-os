@@ -17,8 +17,7 @@ import type { MultiFilterOption } from "@/lib/ui/multi-filter";
 import { UUID_RE, type CellMap } from "./filters/types";
 import type { CustomFieldRef } from "./list-filters";
 import { contactOrderClauses, type ContactSort } from "./sort";
-import { KANBAN_CARD_SELECT, kanbanColumnClause, toKanbanCard, type KanbanCard } from "./kanban";
-import type { StatusRole } from "./statuses";
+import { KANBAN_CARD_SELECT, kanbanColumnClause, toKanbanCard, type KanbanAxis, type KanbanCard } from "./kanban";
 
 type Client = SupabaseClient<Database>;
 
@@ -70,13 +69,13 @@ export async function loadKanbanColumn(
   supabase: Client,
   workspaceId: string,
   plan: ContactListPlan,
-  role: StatusRole,
+  axis: KanbanAxis,
   key: string,
   sort: ContactSort,
   offset: number,
   limit: number,
 ): Promise<{ cards: KanbanCard[]; total: number; failed: boolean }> {
-  const query = contactListQuery(supabase, workspaceId, KANBAN_CARD_SELECT, plan, [kanbanColumnClause(role, key)]);
+  const query = contactListQuery(supabase, workspaceId, KANBAN_CARD_SELECT, plan, [kanbanColumnClause(axis, key)]);
   const ordered = contactOrderClauses(sort).reduce(
     (q, clause) => q.order(clause.column, { ascending: clause.ascending, nullsFirst: clause.nullsFirst }),
     query,

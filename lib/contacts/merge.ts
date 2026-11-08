@@ -44,6 +44,8 @@ export const CONTACT_MERGE_EXCLUSIONS: Readonly<Record<string, string>> = {
     "Diseñador IA (00320): `subject_contact_id` de una generación lo reapunta el trigger `contacts_designs_on_merge` al borrar el duplicado con `metadata.merged_into`.",
   ai_threads:
     "Conversaciones con IA (00320): `contact_id` lo reapunta el mismo trigger `contacts_designs_on_merge` al borrar el duplicado.",
+  contact_qualification_changes:
+    "Calificación (00329): el historial lo mueve el trigger `contacts_qualification_on_merge` al borrar el duplicado, que además deja al principal con el nivel más alto.",
 };
 
 export interface MergeMoved {

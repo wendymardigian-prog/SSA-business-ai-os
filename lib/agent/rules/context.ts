@@ -17,6 +17,7 @@ export function buildPreRuleContext(args: {
   lastInboundText: string | null;
   knownButtonExtra?: Iterable<string>;
   temperature: string | null;
+  qualification?: number | null;
   tags: string[];
   hasPriorOutbound: boolean;
   hasPriorMessages: boolean;
@@ -33,6 +34,7 @@ export function buildPreRuleContext(args: {
     },
     contact: {
       temperature: args.temperature,
+      qualification: args.qualification ?? null,
       tags: args.tags,
       is_new: !args.hasPriorOutbound,
       previous_episodes: 0,

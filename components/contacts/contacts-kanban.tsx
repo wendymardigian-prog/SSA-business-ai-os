@@ -22,21 +22,25 @@ import { cn } from "@/lib/utils";
 import { DoNotContactBadge, TemperatureBadge, formatRelative } from "@/components/contacts/ui";
 import { MarkBadge } from "@/components/contacts/mark-badge";
 import { setContactStatus } from "@/lib/actions/contact-status";
+import { setContactQualification } from "@/lib/actions/contact-qualification";
+import { QualificationBadge } from "@/components/contacts/qualification-badge";
+import type { QualificationSettings } from "@/lib/contacts/qualification";
 import { loadContactsKanbanColumn } from "@/lib/actions/contacts-kanban";
-import { appendCards, columnOf, evaluateContactDrop, moveCard, type KanbanCard, type KanbanColumn } from "@/lib/contacts/kanban";
+import { appendCards, axisLabel, columnOf, evaluateContactDrop, moveCard, type KanbanAxis, type KanbanCard, type KanbanColumn } from "@/lib/contacts/kanban";
 import { NONE } from "@/lib/contacts/list-query";
 import { interestLabel, type InterestCatalog } from "@/lib/contacts/interest";
-import { STATUS_ROLE_LABELS, type StatusRole } from "@/lib/contacts/statuses";
 
 export function ContactsKanban({
   columns: fromServer,
-  role,
+  axis,
+  qualificationSettings,
   canEdit,
   memberLabel,
   interestCatalog,
 }: {
   columns: KanbanColumn[];
-  role: StatusRole;
+  axis: KanbanAxis;
+  qualificationSettings: QualificationSettings;
   canEdit: boolean;
   memberLabel: Map<string, string>;
   interestCatalog: InterestCatalog;
@@ -79,7 +83,10 @@ export function ContactsKanban({
     }
     setProblem(null);
     setColumns((current) => moveCard(current, cardId, toKey));
-    const result = await setContactStatus(cardId, role, toKey === NONE ? null : toKey);
+    const result =
+      axis === "qualification"
+        ? await setContactQualification(cardId, toKey === NONE ? null : Number(toKey))
+        : await setContactStatus(cardId, axis, toKey === NONE ? null : toKey);
     if (!result.ok) {
       setColumns((current) => moveCard(current, cardId, from));
       setProblem(`No se pudo mover: ${result.error}.`);
@@ -178,7 +185,8 @@ export function ContactsKanban({
                   <ContactKanbanCard
                     key={card.id}
                     card={card}
-                    role={role}
+                    axis={axis}
+                    qualificationSettings={qualificationSettings}
                     columnKey={column.key}
                     targets={targets}
                     canEdit={canEdit}
@@ -212,8 +220,8 @@ export function ContactsKanban({
 
       <p className="text-xs text-muted-foreground">
         {canEdit
-          ? `Arrastrá una tarjeta (o usá «Mover a…») para cambiar el estado de ${STATUS_ROLE_LABELS[role].toLowerCase()}. Queda en el historial del contacto.`
-          : "Para mover contactos entre estados hace falta el permiso de editar contactos."}
+          ? `Arrastrá una tarjeta (o usá «Mover a…») para cambiar ${axisLabel(axis)}. Queda en el historial del contacto.`
+          : "Para mover contactos entre columnas hace falta el permiso de editar contactos."}
       </p>
     </div>
   );
@@ -221,7 +229,8 @@ export function ContactsKanban({
 
 function ContactKanbanCard({
   card,
-  role,
+  axis,
+  qualificationSettings,
   columnKey,
   targets,
   canEdit,
@@ -233,7 +242,8 @@ function ContactKanbanCard({
   onMove,
 }: {
   card: KanbanCard;
-  role: StatusRole;
+  axis: KanbanAxis;
+  qualificationSettings: QualificationSettings;
   columnKey: string;
   targets: KanbanColumn[];
   canEdit: boolean;
@@ -267,6 +277,7 @@ function ContactKanbanCard({
     >
       <Link href={`/dashboard/contacts/${card.id}`} className="flex flex-wrap items-center gap-1.5 font-medium hover:underline" draggable={false}>
         <span className="min-w-0 truncate">{name}</span>
+        {axis !== "qualification" && <QualificationBadge settings={qualificationSettings} level={card.qualificationLevel} compact />}
         <TemperatureBadge value={card.temperature} />
         {card.doNotContact && <DoNotContactBadge />}
         {card.isCustomer && <MarkBadge mark="customer" size="xs" />}
@@ -283,7 +294,7 @@ function ContactKanbanCard({
         <span className="text-[11px] text-muted-foreground/80">{formatRelative(card.lastInteractionAt, timeZone)}</span>
         {canEdit && targets.length > 1 && (
           <label className="opacity-100 transition-opacity focus-within:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
-            <span className="sr-only">Mover a {name} a otro estado de {STATUS_ROLE_LABELS[role].toLowerCase()}</span>
+            <span className="sr-only">Mover a {name}: cambiar {axisLabel(axis)}</span>
             <select
               value=""
               onChange={(e) => {

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditAction, AuditEntityType, Database, Json } from "@/lib/types/database";
 import { logAudit, type AuditChanges } from "@/lib/audit";
 import { applyContactStatus } from "@/lib/contacts/status-core";
+import { applyContactQualification } from "@/lib/contacts/qualification-core";
 
 /**
  * Revertir una accion del agente (F28): el inverso de lo que quedo en
@@ -34,10 +35,12 @@ export type RevertPlan =
   | { kind: "conversation"; conversationId: string; patch: Record<string, Json> }
   | { kind: "agent"; agentId: string; patch: Record<string, Json> }
   /** Pipeline (00245): el estado de setter vuelve al anterior, por `set_contact_status` (queda en el historial). */
-  | { kind: "setter_status"; contactId: string; status: string | null };
+  | { kind: "setter_status"; contactId: string; status: string | null }
+  /** Calificación (00329): el nivel vuelve al anterior, por `set_contact_qualification` (queda en el historial). */
+  | { kind: "qualification"; contactId: string; level: number | null };
 
 /** Las acciones del agente que se pueden deshacer desde la pestana. */
-export const REVERTIBLE_ACTIONS: AuditAction[] = ["tag", "temperature", "followup", "summary", "assign", "human_takeover", "agent_paused", "update", "setter_status"];
+export const REVERTIBLE_ACTIONS: AuditAction[] = ["tag", "temperature", "followup", "summary", "assign", "human_takeover", "agent_paused", "update", "setter_status", "qualification"];
 
 function change(entry: AuditEntry, field: string): { old: Json; new: Json } | null {
   const changes = entry.changes;
@@ -98,6 +101,10 @@ export function planRevert(entry: AuditEntry): RevertPlan | null {
     case "setter_status": {
       const c = change(entry, "setter_status");
       return c ? { kind: "setter_status", contactId: entry.entity_id, status: typeof c.old === "string" && c.old ? c.old : null } : null;
+    }
+    case "qualification": {
+      const c = change(entry, "qualification_level");
+      return c ? { kind: "qualification", contactId: entry.entity_id, level: typeof c.old === "number" ? c.old : null } : null;
     }
     case "update": {
       // El agente se apago solo por un tope de gasto.
@@ -164,6 +171,20 @@ export async function applyRevert(
     });
     if (result.kind === "invalid_status") return { ok: false, error: "No pude revertir: el estado anterior ya no existe o esta archivado." };
     if (result.kind !== "changed" && result.kind !== "unchanged") return { ok: false, error: "No pude revertir el estado." };
+  } else if (plan.kind === "qualification") {
+    const { data: visible } = await supabase.from("contacts").select("id").eq("id", plan.contactId).eq("workspace_id", entry.workspace_id).maybeSingle();
+    if (!visible) return { ok: false, error: "No pude revertir: el contacto no esta a tu alcance o ya no existe." };
+    if (!actor.service) return { ok: false, error: "No pude revertir la calificacion." };
+    const result = await applyContactQualification(actor.service, {
+      workspaceId: entry.workspace_id,
+      contactId: plan.contactId,
+      mode: plan.level === null ? "clear" : "set",
+      value: plan.level,
+      source: "person",
+      actorUserId: actor.userId,
+      reason: "Revirtió lo que hizo el agente",
+    });
+    if (result.kind !== "changed" && result.kind !== "unchanged") return { ok: false, error: "No pude revertir la calificacion." };
   } else if (plan.kind === "contact") {
     const { data, error } = await supabase.from("contacts").update(plan.patch as never).eq("id", plan.contactId).select("id");
     if (error || !data?.length) return { ok: false, error: "No pude revertir: el contacto no esta a tu alcance o ya no existe." };

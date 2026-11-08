@@ -17,6 +17,9 @@ import { InterestFields } from "@/components/contacts/interest-fields";
 import { loadInterestCatalog } from "@/lib/contacts/interest-load";
 import type { InterestCatalog } from "@/lib/contacts/interest";
 import { parseStatusSettings, type ContactStatusSettings } from "@/lib/contacts/statuses";
+import { parseQualificationSettings, type QualificationSettings } from "@/lib/contacts/qualification";
+import { QualificationField } from "@/components/contacts/qualification-field";
+import { QualificationBadge } from "@/components/contacts/qualification-badge";
 import { FollowupField } from "@/components/contacts/followup-field";
 import { NotesSection } from "@/components/contacts/notes-section";
 import { TagsEditor, type TagOption } from "@/components/contacts/tags-editor";
@@ -63,6 +66,7 @@ interface ContactDetails {
   contact: Contact;
   /** Las listas de estados del workspace (00245). */
   statusSettings: ContactStatusSettings;
+  qualificationSettings: QualificationSettings;
   /** Los productos, para el producto de interes (00246). */
   interestCatalog: InterestCatalog;
   tagIds: string[];
@@ -139,7 +143,7 @@ export function ContactPanel({
         supabase.from("contact_tags").select("tag_id").eq("contact_id", contactId!),
         supabase.from("contact_channels").select("platform_username, platform_sender_id, channel_id, channels(platform)").eq("contact_id", contactId!),
         // Las listas de estados no son un secreto: cualquier miembro ve su workspace.
-        supabase.from("workspaces").select("contact_status_settings").eq("id", workspaceId).maybeSingle(),
+        supabase.from("workspaces").select("contact_status_settings, qualification_settings").eq("id", workspaceId).maybeSingle(),
         loadInterestCatalog(supabase, workspaceId),
       ]);
 
@@ -153,6 +157,9 @@ export function ContactPanel({
         setDetails({
           contact: contactRes.data,
           statusSettings: parseStatusSettings((settingsRes.data as { contact_status_settings?: unknown } | null)?.contact_status_settings),
+          qualificationSettings: parseQualificationSettings(
+            (settingsRes.data as { qualification_settings?: unknown } | null)?.qualification_settings,
+          ),
           interestCatalog,
           tagIds: (tagsRes.data ?? []).map((t) => t.tag_id),
           channels: (channelsRes.data ?? []).map((cc) => ({
@@ -227,6 +234,15 @@ export function ContactPanel({
               canEdit
               onSaved={reload}
             />
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">Calificación</p>
+              <QualificationField
+                contactId={details.contact.id}
+                level={details.contact.qualification_level}
+                settings={details.qualificationSettings}
+                onSaved={reload}
+              />
+            </div>
             <InterestFields
               contactId={details.contact.id}
               catalog={details.interestCatalog}
@@ -355,6 +371,7 @@ function Identity({ details, canEdit, onSaved }: { details: ContactDetails; canE
         </a>
       )}
       <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+        <QualificationBadge settings={details.qualificationSettings} level={c.qualification_level} />
         <TemperatureBadge value={c.lead_temperature} />
         {/* `is_subscribed` es solo de las difusiones por chat: "Suscripto/Dado de baja" se confundia con la baja de
             los emails (que es el estado de email, abajo). */}

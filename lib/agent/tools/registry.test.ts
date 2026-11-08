@@ -16,6 +16,8 @@ describe("registro de herramientas", () => {
         "asignar_conversacion",
         "buscar_datos_del_contacto",
         "buscar_en_conocimiento",
+        // Calificación del lead (00329): el nivel 1-5. Nace apagada.
+        "calificar_lead",
         "cambiar_temperatura",
         // Pipeline (00245): el estado de setter. Nace apagada.
         "cambiar_estado_setter",

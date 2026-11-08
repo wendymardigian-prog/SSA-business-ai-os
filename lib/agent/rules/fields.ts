@@ -33,6 +33,8 @@ export const RULE_FIELDS: FieldDef[] = [
   { field: "inbound.length", label: "Largo del mensaje del lead", stage: "pre", operators: ["gt", "lt"], valueType: "number" },
   { field: "inbound.burst_count", label: "Mensajes en la ráfaga", stage: "pre", operators: ["gt", "lt"], valueType: "number" },
   { field: "contact.temperature", label: "Temperatura del contacto", stage: "pre", operators: ["is", "is_not"], valueType: "temperature" },
+  // Calificación del lead (00329): 1 a 5; sin calificar no cumple ni "mayor" ni "menor".
+  { field: "contact.qualification", label: "Calificación del contacto (1 a 5)", stage: "pre", operators: ["gt", "lt"], valueType: "number" },
   { field: "contact.tags", label: "Etiquetas del contacto", stage: "pre", operators: ["has_any", "has_none"], valueType: "tags" },
   { field: "contact.is_new", label: "Es contacto nuevo", stage: "pre", operators: ["is"], valueType: "bool" },
   { field: "contact.previous_episodes", label: "Conversaciones previas", stage: "pre", operators: ["gt", "lt"], valueType: "number" },

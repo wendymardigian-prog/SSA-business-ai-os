@@ -3,7 +3,7 @@
 import { getPermissionAction } from "@/lib/auth/guards";
 import { NONE } from "@/lib/contacts/list-query";
 import { loadCustomFieldRefs, loadKanbanColumn, prepareContactList } from "@/lib/contacts/list-load";
-import { KANBAN_PAGE_SIZE, groupingRole, parseKanbanGrouping, type KanbanCard } from "@/lib/contacts/kanban";
+import { KANBAN_PAGE_SIZE, groupingAxis, parseKanbanGrouping, type KanbanCard } from "@/lib/contacts/kanban";
 import { parseContactSort } from "@/lib/contacts/sort";
 import { STATUS_KEY_RE } from "@/lib/contacts/statuses";
 import { firstParam, sanitizeSearch, searchParamsToRecord } from "@/lib/url-params";
@@ -25,18 +25,19 @@ export async function loadContactsKanbanColumn(
   const ctx = await getPermissionAction("contacts.view");
   if (!ctx) return { ok: false, error: "No tenés permiso para ver contactos" };
   if (typeof query !== "string" || query.length > 8000) return { ok: false, error: "La vista no es válida" };
-  if (columnKey !== NONE && !STATUS_KEY_RE.test(columnKey)) return { ok: false, error: "Esa columna no existe" };
+  const axis = groupingAxis(parseKanbanGrouping(searchParamsToRecord(new URLSearchParams(query)).agrupar));
+  const validKey = axis === "qualification" ? /^[1-5]$/.test(columnKey) : STATUS_KEY_RE.test(columnKey);
+  if (columnKey !== NONE && !validKey) return { ok: false, error: "Esa columna no existe" };
   if (!Number.isInteger(offset) || offset < 0 || offset > 100_000) return { ok: false, error: "No pude seguir cargando" };
 
   const params = searchParamsToRecord(new URLSearchParams(query));
   const search = sanitizeSearch(firstParam(params.q));
-  const role = groupingRole(parseKanbanGrouping(params.agrupar));
   const [customFields, timeZone] = await Promise.all([
     loadCustomFieldRefs(ctx.supabase, ctx.workspace.id),
     resolveViewerTimezone(ctx.workspace.timezone),
   ]);
   const { plan } = await prepareContactList(ctx.supabase, ctx.workspace.id, params, customFields, search, { now: new Date(), timeZone });
-  const column = await loadKanbanColumn(ctx.supabase, ctx.workspace.id, plan, role, columnKey, parseContactSort(params.orden), offset, KANBAN_PAGE_SIZE);
+  const column = await loadKanbanColumn(ctx.supabase, ctx.workspace.id, plan, axis, columnKey, parseContactSort(params.orden), offset, KANBAN_PAGE_SIZE);
   if (column.failed) return { ok: false, error: "No pude cargar más contactos. Probá de nuevo." };
   return { ok: true, cards: column.cards };
 }

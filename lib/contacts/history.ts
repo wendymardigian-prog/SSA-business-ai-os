@@ -18,6 +18,9 @@
  *    00245). Lo ve quien ve el contacto, no solo quien lo cambio (con el audit
  *    un Member ve solo lo suyo). Lo que hizo el agente deja ademas una entrada
  *    `setter_status` en el audit, para poder revertirla: esa no se repite aca.
+ *  - `qualification`: un cambio del nivel de calificacion
+ *    (contact_qualification_changes, 00329), con el mismo criterio: lo del
+ *    agente deja ademas su entrada `qualification` en el audit, que no se repite.
  *
  * Los MENSAJES de chat no van: ya estan en Conversaciones. Un email manual
  * respondido desde la bandeja tampoco (es un mensaje de la conversacion de
@@ -32,6 +35,7 @@
 import type { AuditAction, EmailLogStatus, Json } from "@/lib/types/database";
 import { emailDeliveryBadges, type EmailDeliveryRow } from "@/lib/email/delivery-badges";
 import { STATUS_ROLE_LABELS, statusName, type ContactStatusSettings, type StatusRole } from "./statuses";
+import { QUALIFICATION_SOURCE_LABELS, qualificationLabel, type QualificationSettings, type QualificationSource } from "./qualification";
 
 export interface AuditHistoryItem {
   source: "audit";
@@ -89,7 +93,24 @@ export interface StatusHistoryItem {
   reason: string | null;
 }
 
-export type HistoryItem = AuditHistoryItem | FlowHistoryItem | SequenceHistoryItem | EmailHistoryItem | StatusHistoryItem;
+export interface QualificationHistoryItem {
+  source: "qualification";
+  id: string;
+  at: string;
+  /** «4 · Bueno»; null = sin calificar. */
+  oldLabel: string | null;
+  newLabel: string | null;
+  actorLabel: string;
+  reason: string | null;
+}
+
+export type HistoryItem =
+  | AuditHistoryItem
+  | FlowHistoryItem
+  | SequenceHistoryItem
+  | EmailHistoryItem
+  | StatusHistoryItem
+  | QualificationHistoryItem;
 
 /** Dos huellas de la MISMA automatizacion: el audit y el motor la anotan con segundos de diferencia. */
 const SAME_RUN_WINDOW_MS = 5 * 60 * 1000;
@@ -131,6 +152,17 @@ export interface BuildHistoryInput {
   }>;
   /** Las listas de estados, para mostrar el nombre y no la clave. */
   statusSettings?: ContactStatusSettings;
+  /** Los cambios del nivel de calificacion (00329). Sin `actorLabel`, se dice de donde vino. */
+  qualificationChanges?: Array<{
+    id: string;
+    oldLevel: number | null;
+    newLevel: number | null;
+    source: QualificationSource;
+    createdAt: string;
+    actorLabel: string | null;
+    reason: string | null;
+  }>;
+  qualificationSettings?: QualificationSettings;
   /** Cuantas entradas como maximo. */
   limit?: number;
 }
@@ -196,7 +228,7 @@ export function buildContactHistory(input: BuildHistoryInput): HistoryItem[] {
 
   for (const entry of input.audit) {
     // Lo cuenta `contact_status_changes`: el audit del agente queda para revertir.
-    if (entry.action === "setter_status") continue;
+    if (entry.action === "setter_status" || entry.action === "qualification") continue;
     const flowId = entry.action === "automation_triggered" ? flowIdOf(entry.metadata) : null;
 
     // Ya esta contada por el motor (`flow_started`): la del audit no se repite.
@@ -265,6 +297,21 @@ export function buildContactHistory(input: BuildHistoryInput): HistoryItem[] {
     });
   }
 
+  for (const change of input.qualificationChanges ?? []) {
+    const settings = input.qualificationSettings;
+    const label = (level: number | null) => (level === null ? null : settings ? qualificationLabel(settings, level) : String(level));
+    const sourceLabel = QUALIFICATION_SOURCE_LABELS[change.source] ?? "El sistema";
+    items.push({
+      source: "qualification",
+      id: `qualification:${change.id}`,
+      at: change.createdAt,
+      oldLabel: label(change.oldLevel),
+      newLabel: label(change.newLevel),
+      actorLabel: change.actorLabel ?? sourceLabel.charAt(0).toUpperCase() + sourceLabel.slice(1),
+      reason: change.reason,
+    });
+  }
+
   items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   return input.limit ? items.slice(0, input.limit) : items;
 }
@@ -307,6 +354,11 @@ export function describeHistoryItem(item: Exclude<HistoryItem, AuditHistoryItem>
       if (!item.newLabel) return { actor: item.actorLabel, text: `quitó el estado de ${role} (era ${quoted(item.oldLabel, "—")})` };
       if (!item.oldLabel) return { actor: item.actorLabel, text: `puso el estado de ${role} en ${quoted(item.newLabel, "")}` };
       return { actor: item.actorLabel, text: `cambió el estado de ${role}: ${quoted(item.oldLabel, "")} → ${quoted(item.newLabel, "")}` };
+    }
+    case "qualification": {
+      if (!item.newLabel) return { actor: item.actorLabel, text: `quitó la calificación (era ${quoted(item.oldLabel, "—")})` };
+      if (!item.oldLabel) return { actor: item.actorLabel, text: `calificó al lead en ${quoted(item.newLabel, "")}` };
+      return { actor: item.actorLabel, text: `cambió la calificación: ${quoted(item.oldLabel, "")} → ${quoted(item.newLabel, "")}` };
     }
   }
 }

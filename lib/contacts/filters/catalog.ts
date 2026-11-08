@@ -12,6 +12,7 @@
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "../fields";
 import { MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "../taxonomy";
 import { STATUS_KEY_RE, parseLastStatusParam } from "../statuses";
+import { UNQUALIFIED_LABEL } from "../qualification";
 import { EMAIL_STATUSES, EMAIL_STATUS_LABELS } from "@/lib/email/subscription";
 import { isSupportedPlatform } from "@/lib/platforms";
 import { foldText } from "@/lib/ui/multi-filter";
@@ -312,6 +313,15 @@ export const CORE_FILTERS: readonly ContactFilterDef[] = [
     accepts: statusOrNone,
     options: { from: "closerStatuses", none: "Sin estado" },
     keywords: "closer",
+  }),
+  multiColumnFilter({
+    param: "calif",
+    label: "Calificación",
+    group: GROUPS.pipeline,
+    column: "qualification_level",
+    accepts: (v) => v === NONE || /^[1-5]$/.test(v),
+    options: { from: "qualificationLevels", none: UNQUALIFIED_LABEL },
+    keywords: "nivel puntaje score",
   }),
   multiColumnFilter({
     param: "producto",

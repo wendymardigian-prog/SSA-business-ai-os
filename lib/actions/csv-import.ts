@@ -6,6 +6,7 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
+import { applyContactQualification } from "@/lib/contacts/qualification-core";
 import { recordImportTouches, type ImportTouchAttribution } from "@/lib/contacts/touch-entry";
 import { logAudit } from "@/lib/audit";
 import { findContact, findOrCreateContact, type FindOrCreateResult } from "@/lib/contacts/find-or-create";
@@ -372,6 +373,22 @@ async function runBatch(
         if (Object.keys(attribution).length > 0) atribucion[contactId] = attribution;
       }
       tocados.add(contactId);
+
+      // Calificación (00329): por la función central, con la importación como origen (queda en el historial).
+      if (typeof result.row.qualification === "number") {
+        const applied = await applyContactQualification(service, {
+          workspaceId: workspace.id,
+          contactId,
+          mode: "set",
+          value: result.row.qualification,
+          source: "import",
+          actorUserId: user.id,
+          reason: `Importación: ${registro.file_name}`.slice(0, 300),
+        });
+        if (applied.kind !== "changed" && applied.kind !== "unchanged") {
+          counters.details.push({ line: result.row.line, error: `No se pudo guardar la calificación: ${"message" in applied ? applied.message : ""}` });
+        }
+      }
 
       // Suscripcion a emails (E6): por la funcion central, como el sistema (nunca re-suscribe), con la fecha original.
       // Va DESPUES de completar los datos: si la fila le puso el email a un contacto que no lo tenia, la baja alcanza

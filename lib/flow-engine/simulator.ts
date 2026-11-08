@@ -4,6 +4,7 @@
  * flow builder.
  */
 
+import { describeQualifyStep, type QualifyLeadStepData } from "./qualify-lead";
 import type { Node, Edge } from "@xyflow/react";
 import { pickPath, type BranchNodeData, type FieldValue } from "./condition-eval";
 import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
@@ -592,6 +593,17 @@ export function simulateFlow(
           nodeType: "send_meta_event",
           nodeLabel: label,
           result: { type: "action", actionType: "send_meta_event", detail: eventName ? `le avisaría a Meta: ${eventName}` : "(sin evento)" },
+        });
+        break;
+      }
+
+      // Calificación del lead (00329): en la simulación no se cambia nada.
+      case "qualify_lead": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "qualify_lead",
+          nodeLabel: label,
+          result: { type: "action", actionType: "qualify_lead", detail: describeQualifyStep(data as Partial<QualifyLeadStepData>) },
         });
         break;
       }

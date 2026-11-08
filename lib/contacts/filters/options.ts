@@ -7,6 +7,7 @@ import type { MultiFilterOption } from "@/lib/ui/multi-filter";
 import { STATUS_ROLE_LABELS, activeStatuses, statusName, type ContactStatus, type ContactStatusSettings } from "../statuses";
 import { offeredProducts, type InterestCatalog } from "../interest";
 import { COUNTRY_CODES } from "../country";
+import { QUALIFICATION_COLORS, parseQualificationSettings, type QualificationSettings } from "../qualification";
 
 let countryNames: Intl.DisplayNames | null = null;
 /** El nombre de un país en español ("CR" → "Costa Rica"). Lo desconocido, tal cual. */
@@ -35,7 +36,10 @@ export function coreFilterOptions(input: {
   platforms: readonly { value: string; label: string }[];
   statusSettings: ContactStatusSettings;
   interestCatalog: InterestCatalog;
+  /** Los nombres de los niveles (00329); sin pasarlos, los de por defecto. */
+  qualificationSettings?: QualificationSettings;
 }): Record<string, MultiFilterOption[]> {
+  const qualification = input.qualificationSettings ?? parseQualificationSettings(null);
   return {
     members: input.members.map((m) => ({ value: m.userId, label: m.label })),
     tags: input.tags.map((t) => ({ value: t.id, label: t.name, color: t.color })),
@@ -50,5 +54,10 @@ export function coreFilterOptions(input: {
       })),
     ),
     products: offeredProducts(input.interestCatalog, null).map((p) => ({ value: p.id, label: p.name })),
+    qualificationLevels: qualification.levels.map((l) => ({
+      value: String(l.level),
+      label: `${l.level} · ${l.name}`,
+      color: QUALIFICATION_COLORS[l.level],
+    })),
   };
 }

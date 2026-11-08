@@ -57,9 +57,40 @@ campos personalizados que se comportan según su tipo. Migraciones `00244` a `00
 `merge_contacts` mueve `contact_status_changes` y completa en el principal el estado de cada rol que no tenga, y el producto de interés
 (con su variante). Ver [contactos-fusion.md](contactos-fusion.md).
 
+## Nivel de calificación (00329)
+
+Un número del **1 al 5** por contacto (o «Sin calificar»), que convive con la temperatura. Lo que tiene que cumplir un lead para
+estar en cada nivel lo decide cada negocio.
+
+- **Los 5 niveles son fijos; se edita el nombre y la descripción** (la rúbrica) en **Ajustes → Estados → «Calificación del lead»**
+  (permiso `contact_statuses.manage`). Se guardan en `workspaces.qualification_settings` (`{ levels: [{ level, name, description }] }`),
+  con un DEFAULT literal igual a `DEFAULT_QUALIFICATION_SETTINGS` (`lib/contacts/qualification.ts`). Por defecto: No califica, Bajo,
+  Medio, Bueno, Ideal.
+- **Una sola puerta**: `set_contact_qualification` (solo `service_role`; núcleo `applyContactQualification`,
+  `lib/contacts/qualification-core.ts`). Modos `set` (1-5), `add` (suma o resta, recorta entre 1 y 5; desde «Sin calificar» cuenta
+  desde 0, así que +1 da 1 y restar no hace nada) y `clear`. La regla de recorte es gemela de `nextQualificationLevel`, con los
+  casos de `lib/contacts/qualification.cases.json`. La guardia `contacts_qualification_guard` (QL001) rechaza cualquier otra
+  escritura; `qualification-single-entry.test.ts` lo exige en el código.
+- **Cada cambio** deja su fila en `contact_qualification_changes` (antes, después, `source`: persona, agente, automatización,
+  importación, fusión o siembra; quién, el flujo y el motivo) y emite `qualification_changed` (`level`, `previous_level`,
+  `direction`). La siembra y la fusión no emiten evento.
+- **Dónde se ve y se cambia**: ficha (sección «Calificación» y la insignia de la cabecera), panel de la bandeja, columna y filtro
+  `?calif=` de la lista (también en la audiencia de un broadcast) y el Kanban agrupado por calificación (`?agrupar=calificacion`:
+  arrastrar una tarjeta cambia el nivel).
+- **Automatizaciones**: el paso «Calificar lead», la condición «Calificación del lead (1 a 5)» y el disparador «Cambió la
+  calificación» (ver [flow-registry.md](flow-registry.md)).
+- **El agente de IA**: la herramienta `calificar_lead` y la clasificación al cierre (ver [agente-ia.md](agente-ia.md)).
+- **Importar CSV**: la columna «Calificación» (también «nivel», «score», «puntaje») acepta del 1 al 5 y entra por la misma función
+  con origen `import`. «Temperatura» sigue yendo a la temperatura.
+- **Fusión**: no se reescribió `merge_contacts`. El trigger `contacts_qualification_on_merge` mueve el historial y deja al principal
+  con el nivel más alto (por eso la tabla está en `CONTACT_MERGE_EXCLUSIONS`).
+- **La siembra (una vez, en la 00329)**: los contactos con temperatura y sin nivel arrancaron con frío = 2, tibio = 3, caliente = 4.
+  La 00329 se aplicó el 8/11/2026 UTC (versión `20261108071521`): 17 contactos quedaron en nivel 2 y 54 en nivel 3.
+
 ## Verificación
 
 ```
-node scripts/verify-contact-pipeline.mjs   # 00244-00246 contra la base
-node scripts/verify-contact-merge.mjs      # incluye los estados y el producto de interés
+node scripts/verify-contact-pipeline.mjs        # 00244-00246 contra la base
+node scripts/verify-contact-merge.mjs           # incluye los estados y el producto de interés
+node scripts/verify-contact-qualification.mjs   # 00329: la regla SQL = TS, la función, la guardia, la RLS, concurrencia y fusión
 ```

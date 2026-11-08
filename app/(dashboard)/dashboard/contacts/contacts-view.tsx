@@ -40,13 +40,15 @@ import {
   DEFAULT_KANBAN_GROUPING,
   KANBAN_GROUPINGS,
   KANBAN_GROUPING_STORAGE_KEY,
-  groupingRole,
+  groupingAxis,
   parseKanbanGrouping,
   type ContactView,
   type KanbanColumn,
   type KanbanGrouping,
 } from "@/lib/contacts/kanban";
 import type { ContactStatusSettings } from "@/lib/contacts/statuses";
+import type { QualificationSettings } from "@/lib/contacts/qualification";
+import { QualificationBadge } from "@/components/contacts/qualification-badge";
 import { interestLabel, type InterestCatalog } from "@/lib/contacts/interest";
 import { displayCustomValue } from "@/lib/custom-fields";
 import type { EmailStatus } from "@/lib/email/subscription";
@@ -74,6 +76,8 @@ export interface ContactRow {
   phone: string | null;
   lastInteractionAt: string | null;
   temperature: LeadTemperature | null;
+  /** Nivel de calificación 1-5 (00329). */
+  qualificationLevel: number | null;
   doNotContact: boolean;
   /** Conocido (00256). */
   isKnown?: boolean;
@@ -120,6 +124,7 @@ export function ContactsView({
   customFilter,
   customFields,
   statusSettings,
+  qualificationSettings,
   interestCatalog,
 }: {
   contacts: ContactRow[];
@@ -147,6 +152,7 @@ export function ContactsView({
   customFilter: { slug: string; op: CustomFilterOp; value: string } | null;
   customFields: CustomFieldRef[];
   statusSettings: ContactStatusSettings;
+  qualificationSettings: QualificationSettings;
   interestCatalog: InterestCatalog;
 }) {
   const router = useRouter();
@@ -445,7 +451,8 @@ export function ContactsView({
           ) : (
             <ContactsKanban
               columns={kanban}
-              role={groupingRole(grouping)}
+              axis={groupingAxis(grouping)}
+              qualificationSettings={qualificationSettings}
               canEdit={canEdit}
               memberLabel={memberLabel}
               interestCatalog={interestCatalog}
@@ -501,6 +508,7 @@ export function ContactsView({
                       contact={contact}
                       memberLabel={memberLabel}
                       statusSettings={statusSettings}
+                      qualificationSettings={qualificationSettings}
                       interestCatalog={interestCatalog}
                       customField={col.key.startsWith("cf:") ? customById.get(col.key.slice(3)) : undefined}
                       related={related[contact.id]}
@@ -607,6 +615,7 @@ function TableCell({
   contact,
   memberLabel,
   statusSettings,
+  qualificationSettings,
   interestCatalog,
   customField,
   related,
@@ -617,6 +626,7 @@ function TableCell({
   related?: Record<string, CellValue>;
   memberLabel: Map<string, string>;
   statusSettings: ContactStatusSettings;
+  qualificationSettings: QualificationSettings;
   interestCatalog: InterestCatalog;
   customField?: CustomFieldRef;
 }) {
@@ -642,6 +652,16 @@ function TableCell({
         <td className="px-4 py-3">
           {contact.lastStatus ? (
             <LastStatusBadge settings={statusSettings} role={contact.lastStatusRole} status={contact.lastStatus} compact />
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          )}
+        </td>
+      );
+    case "qualification":
+      return (
+        <td className="px-4 py-3">
+          {contact.qualificationLevel ? (
+            <QualificationBadge settings={qualificationSettings} level={contact.qualificationLevel} />
           ) : (
             <span className="text-sm text-muted-foreground">—</span>
           )}

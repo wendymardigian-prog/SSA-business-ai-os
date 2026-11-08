@@ -75,6 +75,7 @@ export const CORE_COLUMNS: readonly ContactColumnDef[] = [
     const contactId = str(r.referred_by_contact_id);
     return contactId ? { t: "text", text: "Otro contacto", href: `/dashboard/contacts/${contactId}` } : null;
   }, "referencia"),
+  { key: "qualification", label: "Calificación", group: GROUPS.pipeline, hideable: true, defaultVisible: false, source: "special", keywords: "nivel puntaje score" },
   { key: "setter_status", label: "Estado de setter", group: GROUPS.pipeline, hideable: true, defaultVisible: false, source: "special" },
   { key: "closer_status", label: "Estado de vendedor", group: GROUPS.pipeline, hideable: true, defaultVisible: false, source: "special", keywords: "closer" },
   contactColumn("last_status_at", "Fecha del último estado", GROUPS.pipeline, (r) => day(r.last_status_at)),

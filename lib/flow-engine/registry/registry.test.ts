@@ -43,6 +43,8 @@ const NODOS_DE_ACCION = [
   "designGenerate",
   // API de Conversiones de Meta (00328).
   "send_meta_event",
+  // Calificación del lead (00329).
+  "qualify_lead",
 ] as const;
 
 describe("registro de nodos", () => {
@@ -60,8 +62,9 @@ describe("registro de nodos", () => {
     // + `send_poll` ("Enviar encuesta", Grupos de WhatsApp).
     // + `designGenerate` ("Generar desde plantilla", Diseñador IA, F57).
     // + `send_meta_event` ("Enviar evento a Meta", API de Conversiones, 00328).
-    expect(listNodes()).toHaveLength(35); // @plantilla-quitar(ventas,webhooks,tareas)
-    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(29);
+    // + `qualify_lead` ("Calificar lead", 00329).
+    expect(listNodes()).toHaveLength(36); // @plantilla-quitar(ventas,webhooks,tareas)
+    // @plantilla-sin(ventas,webhooks,tareas): expect(listNodes()).toHaveLength(30);
   });
 
   it.each(NODOS_DE_ACCION)(

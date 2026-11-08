@@ -24,6 +24,8 @@ export interface AgentCloseSettings {
   closeAfterInactiveHours: number;
   tags: { enabled: boolean; allowedNames: string[]; canRemove: boolean };
   temperature: { enabled: boolean; canLower: boolean };
+  /** Calificación del lead (00329). Opcional para no romper lecturas viejas. */
+  qualification?: { enabled: boolean; canLower: boolean };
   followup: { enabled: boolean; maxDaysAhead: number; canOverrideManual: boolean };
 }
 
@@ -44,6 +46,7 @@ function toolConfig<T>(agent: AgentConfig, tool: string): T | null {
 export function closeSettingsFor(agent: AgentConfig, tagsById: Map<string, TagInfo>): AgentCloseSettings {
   const tag = toolConfig<{ allowedTagIds: string[]; canRemove: boolean }>(agent, "etiquetar_contacto");
   const temp = toolConfig<{ canLower: boolean }>(agent, "cambiar_temperatura");
+  const qualify = toolConfig<{ canLower: boolean }>(agent, "calificar_lead");
   const follow = toolConfig<{ maxDaysAhead: number; canOverrideManual: boolean }>(agent, "programar_seguimiento");
   const allowedNames = (tag?.allowedTagIds ?? [])
     .map((id) => tagsById.get(id))
@@ -59,6 +62,7 @@ export function closeSettingsFor(agent: AgentConfig, tagsById: Map<string, TagIn
     closeAfterInactiveHours: agent.closeAfterInactiveHours,
     tags: { enabled: tag !== null, allowedNames, canRemove: tag?.canRemove ?? false },
     temperature: { enabled: temp !== null, canLower: temp?.canLower ?? false },
+    qualification: { enabled: qualify !== null, canLower: qualify?.canLower ?? false },
     followup: { enabled: follow !== null, maxDaysAhead: follow?.maxDaysAhead ?? 0, canOverrideManual: follow?.canOverrideManual ?? false },
   };
 }

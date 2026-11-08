@@ -29,6 +29,7 @@ import { BarChart3,
   UserRoundPlus,
   Smartphone,
   Target,
+  Gauge,
 } from "lucide-react";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Search } from "lucide-react";
@@ -252,6 +253,16 @@ const categories: PaletteCategory[] = [
         description: "Un aviso a un número fijo o de una variable (no necesita contacto)",
         synonyms: ["whatsapp", "aviso", "telefono"],
         actionType: "send_whatsapp_number",
+      },
+      // Calificación del lead (00329): fija, suma o resta el nivel 1-5, o lo calcula con reglas.
+      {
+        type: "action",
+        nodeType: "qualify_lead",
+        label: "Calificar lead",
+        icon: Gauge,
+        description: "Fija, suma o resta el nivel de calificación (1 a 5), o lo calcula con reglas",
+        synonyms: ["calificacion", "calificar", "puntaje", "score", "nivel", "lead scoring", "puntos"],
+        actionType: "qualify_lead",
       },
       // API de Conversiones (00328): le avisa a Meta que pasó algo que vale (un lead, una reunión).
       {

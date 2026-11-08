@@ -33,6 +33,7 @@ import { sendWhatsAppNumberNode } from "../nodes/send-whatsapp-number";
 import { sendMetaEventNode } from "../nodes/send-meta-event";
 import { sendPollNode } from "../nodes/send-poll";
 import { designGenerateNode } from "../nodes/design-generate";
+import { qualifyLeadNode } from "../nodes/qualify-lead";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -89,3 +90,5 @@ registerNode(sendMetaEventNode);
 registerNode(sendPollNode);
 // Diseñador IA (DS7, F57): genera un certificado, una constancia o cualquier pieza desde una plantilla.
 registerNode(designGenerateNode);
+// Calificación del lead (00329): fija, suma, resta o calcula con reglas el nivel 1-5.
+registerNode(qualifyLeadNode);

@@ -4,6 +4,8 @@ import { logAudit } from "@/lib/audit";
 import { notifyConversationAssigned } from "@/lib/conversations/assignment";
 import { applyContactStatus } from "@/lib/contacts/status-core";
 import { activeStatuses, parseStatusSettings, type ContactStatus } from "@/lib/contacts/statuses";
+import { applyContactQualification } from "@/lib/contacts/qualification-core";
+import { parseQualificationSettings, qualificationLabel } from "@/lib/contacts/qualification";
 
 /**
  * Los efectos de negocio que el agente puede producir sobre el CRM.
@@ -194,6 +196,77 @@ export async function setTemperature(
     performedByAgentId: ctx.agentId,
   });
   return { ok: true, message: `Listo: temperatura ${current ?? "sin definir"} → ${input.temperature}.`, auditLogId };
+}
+
+// ---------------------------------------------------------------------------
+// Calificación del lead (00329)
+// ---------------------------------------------------------------------------
+
+export interface QualificationEffectConfig {
+  /** Si puede BAJAR el nivel. Apagado por defecto: bajar a un lead es una decisión comercial. */
+  canLower: boolean;
+  /** Si puede pisar un nivel que puso una persona o una automatización. Apagado por defecto. */
+  canOverrideHuman: boolean;
+}
+
+/**
+ * Fija el nivel de calificación (1-5). Pasa por `set_contact_qualification` (la
+ * misma función que la ficha): la base decide, bajo el bloqueo, si se puede bajar
+ * o pisar, lo anota en el historial con el agente como autor y emite
+ * `qualification_changed`. Además deja su entrada `qualification` en el audit, que
+ * es lo que arma la pestaña Acciones y permite revertirlo.
+ */
+export async function setQualification(
+  ctx: EffectContext,
+  config: QualificationEffectConfig,
+  input: { level: number; reason?: string | null },
+): Promise<EffectResult> {
+  if (!ctx.contactId) return { ok: false, message: "No hay un contacto." };
+  if (!Number.isInteger(input.level) || input.level < 1 || input.level > 5) {
+    return { ok: false, message: "El nivel tiene que ser un número del 1 al 5." };
+  }
+
+  const result = await applyContactQualification(ctx.supabase, {
+    workspaceId: ctx.workspaceId,
+    contactId: ctx.contactId,
+    mode: "set",
+    value: input.level,
+    source: "agent",
+    actorAgentId: ctx.agentId,
+    reason: input.reason ?? null,
+    respectHuman: !config.canOverrideHuman,
+    onlyRaise: !config.canLower,
+  });
+
+  const { data: row } = await ctx.supabase.from("workspaces").select("qualification_settings").eq("id", ctx.workspaceId).maybeSingle();
+  const settings = parseQualificationSettings((row as { qualification_settings?: unknown } | null)?.qualification_settings);
+  const label = (level: number | null) => (level === null ? "sin calificar" : `«${qualificationLabel(settings, level)}»`);
+
+  if (result.kind === "unchanged") return { ok: true, message: `La calificación ya era ${label(input.level)}.` };
+  if (result.kind === "not_raised") {
+    return { ok: false, message: `No tenés permitido bajar la calificación (está en ${label(result.oldLevel)}). Solo podés subirla.` };
+  }
+  if (result.kind === "protected") {
+    return { ok: false, message: "La calificación la puso una persona del equipo o una automatización: no la cambiás." };
+  }
+  if (result.kind !== "changed") return { ok: false, message: "No pude cambiar la calificación." };
+
+  const auditLogId = await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspaceId,
+    entityType: "contact",
+    entityId: ctx.contactId,
+    action: "qualification",
+    changes: { qualification_level: { old: result.oldLevel, new: result.newLevel } },
+    metadata: auditMeta(ctx, { reason: input.reason ?? null, change_id: result.changeId }),
+    performedByAgentId: ctx.agentId,
+  });
+  return {
+    ok: true,
+    message: `Listo: calificación ${label(result.oldLevel)} → ${label(result.newLevel)}.`,
+    auditLogId,
+    detail: { old: result.oldLevel, new: result.newLevel },
+  };
 }
 
 // ---------------------------------------------------------------------------

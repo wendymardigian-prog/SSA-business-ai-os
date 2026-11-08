@@ -133,6 +133,18 @@ export function availableConditionFields(input: CatalogInput): ConditionFieldGro
     seen,
   );
 
+  pushUnique(
+    groups,
+    GROUP_CONTACT,
+    {
+      path: "contact.qualification_level",
+      label: "Calificación del lead (1 a 5)",
+      type: "number",
+      hint: "El nivel del 1 al 5. Sin calificar cuenta como vacío.",
+    },
+    seen,
+  );
+
   // El pipeline (00245): el estado de cada rol y el ultimo de los dos. Un estado
   // archivado se sigue ofreciendo (hay contactos que lo tienen).
   if (input.statusSettings) {
